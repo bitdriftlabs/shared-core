@@ -127,8 +127,7 @@ impl LoggerBuilder {
 
     let dynamic_stats = Arc::new(bd_client_stats::DynamicStats::new(&scope, &runtime_loader));
 
-    let (maybe_stats_flusher, maybe_stats_uploader, maybe_flusher_trigger) = if self.mobile_features
-    {
+    let (maybe_stats_flusher, maybe_flusher_trigger) = if self.mobile_features {
       let stats =
         bd_client_stats::Stats::new(maybe_managed_collector.unwrap(), dynamic_stats.clone());
       let flush_handles = stats.flush_handle(
@@ -140,11 +139,10 @@ impl LoggerBuilder {
 
       (
         Some(flush_handles.flusher),
-        Some(flush_handles.uploader),
         Some(flush_handles.flush_trigger),
       )
     } else {
-      (None, None, None)
+      (None, None)
     };
 
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
@@ -249,13 +247,6 @@ impl LoggerBuilder {
           if let Some(stats_flusher) = maybe_stats_flusher {
             stats_flusher.periodic_flush().await;
           };
-
-          Ok(())
-        },
-        async move {
-          if let Some(stats_uploader) = maybe_stats_uploader {
-            stats_uploader.upload_stats().await;
-          }
 
           Ok(())
         },
