@@ -50,10 +50,10 @@ use bd_runtime::runtime::{RuntimeManager, Watch};
 use bd_shutdown::ComponentShutdown;
 use bd_time::OffsetDateTimeExt;
 use protobuf::Message;
-use time::OffsetDateTime;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
 
