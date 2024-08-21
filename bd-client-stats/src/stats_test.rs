@@ -48,7 +48,7 @@ struct Setup<F: SerializedFileSystem + Send + 'static> {
   upload_handle: tokio::task::JoinHandle<()>,
   flush_handle: tokio::task::JoinHandle<()>,
   data_rx: Receiver<DataUpload>,
-  test_time: Arc<TestTimeProvider>,
+  test_time: TestTimeProvider,
   phantom: PhantomData<F>,
 }
 
@@ -90,7 +90,7 @@ impl Setup<RealSerializedFileSystem> {
 impl<F: SerializedFileSystem + Send + 'static> Setup<F> {
   fn new_with_filesystem(fs: Arc<F>, directory: Option<tempdir::TempDir>) -> Self {
     let directory = directory.unwrap_or_else(|| tempdir::TempDir::new("sdk").unwrap());
-    let test_time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+    let test_time = TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH);
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let runtime_loader = ConfigLoader::new(directory.path());
     let dynamic_stats = Arc::new(DynamicStats::new(
@@ -251,7 +251,6 @@ async fn report() {
         upload.get_counter("test:test", labels! {"buffer" => "continuous"}),
         Some(1)
       );
-      assert_eq!(upload.sent_at(), t0);
     })
     .await;
 
@@ -271,7 +270,6 @@ async fn report() {
         upload.get_counter("test:test", labels! {"buffer" => "continuous"}),
         Some(5)
       );
-      assert_eq!(upload.sent_at(), t1);
     })
     .await;
 
@@ -292,7 +290,6 @@ async fn report() {
         upload.get_counter("second:test", labels! {"another" => "tag"}),
         Some(1)
       );
-      assert_eq!(upload.sent_at(), t1);
     })
     .await;
 
@@ -311,7 +308,6 @@ async fn report() {
         upload.get_counter("test:test", labels! {"buffer" => "continuous"}),
         Some(1)
       );
-      assert_eq!(upload.sent_at(), t1);
     })
     .await;
 
@@ -734,10 +730,6 @@ impl StatRequestHelper {
       assert_matches!(snapshot.occurred_at, Some(Occurred_at::Aggregated(_)));
     }
     Self { request }
-  }
-
-  fn sent_at(&self) -> OffsetDateTime {
-    self.request.sent_at.to_offset_date_time()
   }
 
   fn aggregation_window_start(&self) -> OffsetDateTime {

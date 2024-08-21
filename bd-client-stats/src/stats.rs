@@ -149,27 +149,24 @@ impl SerializedFileSystem for RealSerializedFileSystem {
 
 /// Responsible for periodically preparing an upload request from the aggregated stats file to
 /// a "pending upload" file and periodically retrying this upload.
-pub struct Uploader<T: TimeProvider, F: SerializedFileSystem> {
+pub struct Uploader<F: SerializedFileSystem> {
   shutdown: ComponentShutdown,
   upload_interval_flag: Watch<u32, UploadStatFlushIntervalFlag>,
   data_flush_tx: Sender<DataUpload>,
-  time_provider: Arc<T>,
   fs: Arc<F>,
 }
 
-impl<T: TimeProvider, F: SerializedFileSystem> Uploader<T, F> {
+impl<F: SerializedFileSystem> Uploader<F> {
   pub const fn new(
     shutdown: ComponentShutdown,
     upload_interval_flag: Watch<u32, UploadStatFlushIntervalFlag>,
     data_flush_tx: Sender<DataUpload>,
-    time_provider: Arc<T>,
     fs: Arc<F>,
   ) -> Self {
     Self {
       shutdown,
       upload_interval_flag,
       data_flush_tx,
-      time_provider,
       fs,
     }
   }
@@ -278,9 +275,6 @@ impl<T: TimeProvider, F: SerializedFileSystem> Uploader<T, F> {
   // Attempts to upload the provided stats request. Upon success, the file containing the pending
   // request will be deleted.
   async fn process_pending_upload(&mut self, request: StatsUploadRequest) -> anyhow::Result<()> {
-    let mut request = request;
-    request.sent_at = self.time_provider.now().into_proto();
-
     let (stats, response_rx) = TrackedStatsUploadRequest::new(request.upload_uuid.clone(), request);
 
     log::debug!(
@@ -331,8 +325,7 @@ pub struct Flusher<T: TimeProvider, F: SerializedFileSystem> {
   shutdown: ComponentShutdown,
   flush_interval_flag: Watch<u32, DirectStatFlushIntervalFlag>,
   flush_rx: tokio::sync::mpsc::Receiver<FlushTriggerCompletionSender>,
-  time_provider: Arc<T>,
-
+  time_provider: T,
   flush_time_histogram: Histogram,
   fs: Arc<F>,
 }
@@ -343,7 +336,7 @@ impl<T: TimeProvider, F: SerializedFileSystem> Flusher<T, F> {
     shutdown: ComponentShutdown,
     flush_interval_flag: Watch<u32, DirectStatFlushIntervalFlag>,
     flush_rx: tokio::sync::mpsc::Receiver<FlushTriggerCompletionSender>,
-    time_provider: Arc<T>,
+    time_provider: T,
     flush_time_histogram: Histogram,
     fs: Arc<F>,
   ) -> Self {
@@ -517,7 +510,7 @@ struct SnapshotHelper {
 }
 
 impl SnapshotHelper {
-  fn new<T: TimeProvider>(time_provider: &Arc<T>) -> Self {
+  fn new(time_provider: &dyn TimeProvider) -> Self {
     Self {
       time: time_provider.now(),
       metrics: HashMap::new(),
