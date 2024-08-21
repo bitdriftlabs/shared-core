@@ -1,0 +1,40 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "fuzz"
+publish      = false
+version      = "0.0.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+arbitrary.workspace        = true
+bd-buffer.path             = "../bd-buffer"
+bd-client-common.path      = "../bd-client-common"
+bd-client-stats-store.path = "../bd-client-stats-store"
+bd-test-helpers.path       = "../bd-test-helpers"
+libfuzzer-sys.workspace    = true
+log.workspace              = true
+tempdir.workspace          = true
+
+[dev-dependencies]
+ctor.workspace = true
+
+[[bin]]
+doc  = false
+name = "mpsc_buffer_fuzz_test"
+path = "fuzz_targets/mpsc_buffer_fuzz_test.rs"
+test = false
+
+[[bin]]
+doc  = false
+name = "spsc_buffer_fuzz_test"
+path = "fuzz_targets/spsc_buffer_fuzz_test.rs"
+test = false
+
+[[bin]]
+doc  = false
+name = "buffer_corruption_fuzz_test"
+path = "fuzz_targets/buffer_corruption_fuzz_test.rs"
+test = false

@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+import "google/protobuf/duration.proto";
+import "validate/validate.proto";
+
+package proto_validate.test;
+
+message Duration {
+  google.protobuf.Duration field = 1 [(validate.rules).duration.gt = {}];
+}
+
+message Bool {
+  bool field = 1 [(validate.rules).bool.const = true];
+
+  oneof test {
+    bool field2 = 2 [(validate.rules).bool.const = true];
+  }
+}
+
+message String {
+  string field = 1 [(validate.rules).string.min_len = 1];
+  string field2 = 2 [(validate.rules).string.max_len = 2];
+}
+
+message Repeated {
+  message Inner {}
+
+  repeated string strings = 1 [(validate.rules).repeated.min_items = 1];
+  repeated Inner messages = 2 [(validate.rules).repeated.min_items = 1];
+}
+
+message Message {
+  message Inner {}
+
+  Inner inner = 1 [(validate.rules).message = {required: true}];
+}
+
+message OneOf {
+  oneof test {
+    option (validate.required) = true;
+
+    bool field1 = 1 [(validate.rules).bool.const = true];
+    string field2 = 2 [(validate.rules).string.min_len = 1];
+  }
+}
+
+message NotImplemented {
+  string field = 1 [(validate.rules).string.max_bytes = 10];
+}
+
+message EnumOld {
+  enum Enum {
+    FOO = 0;
+  }
+
+  Enum field = 1 [(validate.rules).enum.defined_only = true];
+}
+
+message EnumNew {
+  enum Enum {
+    FOO = 0;
+    BAR = 1;
+  }
+
+  Enum field = 1;
+}
+
+message Uint32 {
+  uint32 field = 1 [(validate.rules).uint32.gt = 0];
+}
+
+message Uint64 {
+  uint64 field = 1 [(validate.rules).uint64.gt = 0];
+}
+
+message Int32 {
+  int32 field = 1 [(validate.rules).int32.gt = 0];
+}
+
+message Int64 {
+  int64 field = 1 [(validate.rules).int64.gt = 0];
+}

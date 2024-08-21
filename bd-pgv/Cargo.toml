@@ -1,0 +1,19 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-pgv"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+log.workspace       = true
+protobuf.workspace  = true
+thiserror.workspace = true
+
+[dev-dependencies]
+bd-time           = { path = "../bd-time" }
+matches.workspace = true
+time.workspace    = true
+
+[build-dependencies]
+protobuf-codegen.workspace = true

@@ -1,0 +1,320 @@
+// shared-core - bitdrift's common client/server libraries
+// Copyright Bitdrift, Inc. All rights reserved.
+//
+// Use of this source code is governed by a source available license that can be found in the
+// LICENSE file or at:
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
+
+#[cfg(test)]
+#[path = "./hyper_test.rs"]
+mod hyper_test;
+
+use bd_api::{PlatformNetworkManager, PlatformNetworkStream};
+use bd_shutdown::ComponentShutdown;
+use bytes::Bytes;
+use http::{Method, Request};
+use http_body::Frame;
+use http_body_util::{BodyExt, StreamBody};
+use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
+use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::Client;
+use hyper_util::rt::TokioExecutor;
+use std::collections::HashMap;
+use std::convert::Infallible;
+use tokio::sync::mpsc::{self, channel, Sender};
+use tokio_stream::wrappers::ReceiverStream;
+
+type BoxBody = http_body_util::combinators::BoxBody<Bytes, Infallible>;
+type BodySender = mpsc::Sender<std::result::Result<Frame<Bytes>, Infallible>>;
+
+/// An implementation of `bd_api::PlatformNetworkManager` using hyper, for use in native contexts.
+#[derive(Debug)]
+pub struct HyperNetwork {
+  stream_event_rx: mpsc::Receiver<StreamEvent>,
+  uri: String,
+  shutdown: ComponentShutdown,
+}
+
+/// The handle used to interface with the active hyper task.
+#[derive(Clone)]
+pub struct Handle {
+  stream_event_tx: mpsc::Sender<StreamEvent>,
+}
+
+#[derive(Debug)]
+enum StreamEvent {
+  Start(Sender<bd_api::StreamEvent>, HashMap<String, String>),
+  Data(Vec<u8>),
+}
+
+impl HyperNetwork {
+  fn make_tls_connector() -> HttpsConnector<HttpConnector> {
+    let mut connector = HttpConnector::new();
+    connector.enforce_http(false);
+
+    HttpsConnectorBuilder::new()
+      .with_webpki_roots()
+      .https_or_http()
+      .enable_http2()
+      .wrap_connector(connector)
+  }
+
+  /// Runs the network on a dedicated thread, returning a Handle that can be used to interface with
+  /// the running network processing loop.
+  #[must_use]
+  pub fn run_on_thread(address: &str, shutdown: ComponentShutdown) -> Handle {
+    let (network, handle) = Self::new(address, shutdown);
+
+    std::thread::spawn(|| {
+      bd_client_common::error::handle_unexpected(
+        tokio::runtime::Builder::new_current_thread()
+          .enable_all()
+          .build()
+          .unwrap()
+          .block_on(network.start()),
+        "single threaded hyper loop",
+      );
+    });
+
+    handle
+  }
+
+  #[must_use]
+  pub fn new(address: &str, shutdown: ComponentShutdown) -> (Self, Handle) {
+    let (stream_event_tx, stream_event_rx) = channel(1);
+
+    let uri = format!("{address}/bitdrift_public.protobuf.client.v1.ApiService/Mux");
+
+    (
+      Self {
+        stream_event_rx,
+        uri,
+        shutdown,
+      },
+      Handle { stream_event_tx },
+    )
+  }
+
+  /// Called to start the processing loop.
+  pub async fn start(mut self) -> anyhow::Result<()> {
+    log::debug!("initializing hyper networking");
+
+    let client = Client::builder(TokioExecutor::new())
+      .http2_only(true)
+      .build(Self::make_tls_connector());
+
+    loop {
+      // Loop until we get a new start stream event. There might be stale data left from an
+      // previous stream, so this serves to clear out the channel of events that
+      // corresponded to the previous stream.
+      log::debug!("awaiting next stream");
+      let (event_tx, headers) = loop {
+        let event = tokio::select! {
+          event = self.stream_event_rx.recv() => event,
+          () = self.shutdown.cancelled() => return Ok(()),
+        };
+
+        match event {
+          Some(StreamEvent::Start(event_tx, headers)) => break (event_tx, headers),
+          Some(_) => {},
+          // Channel has been closed, so we must be shutting down.
+          None => return Ok(()),
+        }
+      };
+
+      let Some(event) = self.process_stream(&client, &event_tx, headers).await else {
+        return Ok(());
+      };
+
+      if event_tx.send(event).await.is_err() {
+        // Channel has shut down on us, we must be shutting down.
+        return Ok(());
+      }
+    }
+  }
+
+  async fn process_stream(
+    &mut self,
+    client: &Client<HttpsConnector<HttpConnector>, BoxBody>,
+    event_tx: &tokio::sync::mpsc::Sender<bd_api::StreamEvent>,
+    headers: HashMap<String, String>,
+  ) -> Option<bd_api::StreamEvent> {
+    log::debug!("received request for new stream: {}", self.uri.as_str());
+
+    let (body_sender, request) = Self::create_request(self.uri.as_str(), headers);
+
+    // TODO(snowp): Should this also be gated on the shutdown hook?
+    let mut response = match client.request(request).await {
+      Ok(response) => response,
+      Err(e) => {
+        log::debug!("failed to connect to server: {e}");
+
+        return Some(bd_api::StreamEvent::StreamClosed(
+          "failed to connect".to_string(),
+        ));
+      },
+    };
+
+    if response.status() != 200 {
+      log::debug!(
+        "closing stream due to bad response status: {}",
+        response.status()
+      );
+
+      return Some(bd_api::StreamEvent::StreamClosed(
+        "bad response status".to_string(),
+      ));
+    }
+
+    if let Some(grpc_status) = response.headers().get("grpc-status") {
+      if grpc_status != "0" {
+        // TODO(snowp): The grpc-message is url encoded, it would be nice to decode it.
+        log::debug!(
+          "closing stream due to bad response grpc-status {:?}, messsage: {:?}",
+          std::str::from_utf8(grpc_status.as_bytes()).unwrap_or_default(),
+          response.headers().get("grpc-message")
+        );
+
+        return Some(bd_api::StreamEvent::StreamClosed(
+          "bad grpc response code".to_string(),
+        ));
+      }
+    }
+
+    loop {
+      // Handle either an inbound message from the server or an outbound message from the api mux.
+      let maybe_event = tokio::select! {
+        stream_event = self.stream_event_rx.recv() => {
+          // Short circuit if stream_event has been closed - this indicates shutdown.
+          Self::handle_outbound_data(&body_sender, stream_event?).await
+        },
+        frame = response.body_mut().frame() => {
+          Some(Self::handle_inbound_data(frame).await)
+        }
+        () = self.shutdown.cancelled() => {
+          log::debug!("received shutdown signal, shutting down hyper networking");
+          return None;
+        }
+      };
+
+      // We may need to process a stream event in response to the above call.
+      let Some(event) = maybe_event else {
+        continue;
+      };
+
+      // Forward any data directly via the event_tx so we can continue this stream, if we end up
+      // with a StreamClosed then we bubble that up.
+      match event {
+        bd_api::StreamEvent::Data(data) => {
+          if event_tx
+            .send(bd_api::StreamEvent::Data(data))
+            .await
+            .is_err()
+          {
+            return None;
+          }
+        },
+        bd_api::StreamEvent::StreamClosed(closed) => {
+          return Some(bd_api::StreamEvent::StreamClosed(closed))
+        },
+      }
+    }
+  }
+
+  /// Handles outbound data received over the stream event channel from the API mux. Returns true
+  /// if the stream should be closed.
+  async fn handle_outbound_data(
+    body_sender: &BodySender,
+    event: StreamEvent,
+  ) -> Option<bd_api::StreamEvent> {
+    match event {
+      StreamEvent::Start(..) => panic!("should never happen"),
+      StreamEvent::Data(data) => {
+        if body_sender
+          .send(Ok(Frame::data(data.into())))
+          .await
+          .is_err()
+        {
+          // We failed to send data over the body channel, the stream must have closed.
+          // Signal that the stream closed.
+          return Some(bd_api::StreamEvent::StreamClosed(
+            "upstream close".to_string(),
+          ));
+        }
+
+        None
+      },
+    }
+  }
+
+  /// Handles inbound data arriving via the hyper response channel. Returns true if the stream
+  /// should be closed.
+  async fn handle_inbound_data(
+    frame: Option<std::result::Result<Frame<Bytes>, hyper::Error>>,
+  ) -> bd_api::StreamEvent {
+    // Stream is closing, signal close and go back to waiting for a new stream.
+    let Some(Ok(frame)) = frame else {
+      return bd_api::StreamEvent::StreamClosed("upstream closed stream".to_string());
+    };
+    if frame.is_trailers() {
+      // TODO(mattklein123): Do something with this?
+      return bd_api::StreamEvent::StreamClosed("upstream closed stream".to_string());
+    }
+
+    bd_api::StreamEvent::Data(frame.into_data().unwrap().into())
+  }
+
+  fn create_request(uri: &str, headers: HashMap<String, String>) -> (BodySender, Request<BoxBody>) {
+    let (tx, rx) = mpsc::channel(1);
+    let mut builder = Request::builder().method(Method::POST).uri(uri);
+
+    for (key, value) in headers {
+      builder = builder.header(key, value);
+    }
+    let result = builder.body(StreamBody::new(ReceiverStream::new(rx)).boxed());
+
+    (tx, result.unwrap())
+  }
+}
+
+#[async_trait::async_trait]
+impl<T> PlatformNetworkManager<T> for Handle {
+  async fn start_stream(
+    &self,
+    event_tx: Sender<bd_api::StreamEvent>,
+    _runtime: &T,
+    headers: &HashMap<&str, &str>,
+  ) -> anyhow::Result<Box<dyn PlatformNetworkStream>> {
+    log::debug!("hyper starting new stream");
+
+    let headers = headers
+      .iter()
+      .map(|(&k, &v)| (k.to_string(), v.to_string()))
+      .collect();
+
+    self
+      .stream_event_tx
+      .send(StreamEvent::Start(event_tx, headers))
+      .await
+      .unwrap();
+
+    // Unlike the other implementations we continue to use the same channel for both stream
+    // creation and events sent over the active stream.
+    // TODO(snowp): Consider teasing this apart, it might make parts of the processing loop
+    // simpler.
+    Ok(Box::new(self.clone()))
+  }
+}
+
+#[async_trait::async_trait]
+impl PlatformNetworkStream for Handle {
+  async fn send_data(&mut self, data: &[u8]) -> anyhow::Result<()> {
+    self
+      .stream_event_tx
+      .send(StreamEvent::Data(Vec::from(data)))
+      .await
+      .unwrap();
+
+    Ok(())
+  }
+}

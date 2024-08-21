@@ -1,0 +1,50 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-grpc"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+anyhow.workspace            = true
+async-trait.workspace       = true
+axum.workspace              = true
+base64ct.workspace          = true
+bd-grpc-codec.path          = "../bd-grpc-codec"
+bd-log.path                 = "../bd-log"
+bd-pgv.path                 = "../bd-pgv"
+bd-server-stats.path        = "../bd-server-stats"
+bd-shutdown.path            = "../bd-shutdown"
+bd-stats-common.path        = "../bd-stats-common"
+bd-time.path                = "../bd-time"
+bytes.workspace             = true
+futures.workspace           = true
+http-body-util.workspace    = true
+http-body.workspace         = true
+http.workspace              = true
+hyper-util.workspace        = true
+hyper.workspace             = true
+log.workspace               = true
+mockall                     = { workspace = true, optional = true }
+prometheus.workspace        = true
+protobuf.workspace          = true
+snap.workspace              = true
+thiserror.workspace         = true
+time.workspace              = true
+tokio-stream.workspace      = true
+tokio.workspace             = true
+tower.workspace             = true
+unwrap-infallible.workspace = true
+urlencoding.workspace       = true
+
+[dev-dependencies]
+assert_matches.workspace = true
+bd-test-helpers.path     = "../bd-test-helpers"
+bd-time.path             = "../bd-time"
+ctor.workspace           = true
+
+[build-dependencies]
+protobuf-codegen.workspace = true
+
+[features]
+mock = ["dep:mockall"]

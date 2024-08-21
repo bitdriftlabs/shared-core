@@ -1,0 +1,10 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-profile"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+axum.workspace              = true
+tikv-jemalloc-ctl.workspace = true

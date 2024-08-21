@@ -1,0 +1,35 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-api"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+anyhow.workspace           = true
+async-trait.workspace      = true
+backoff.workspace          = true
+bd-client-common.path      = "../bd-client-common"
+bd-client-stats-store.path = "../bd-client-stats-store"
+bd-device.path             = "../bd-device"
+bd-grpc-codec.path         = "../bd-grpc-codec"
+bd-internal-logging.path   = "../bd-internal-logging"
+bd-metadata.path           = "../bd-metadata"
+bd-pgv.path                = "../bd-pgv"
+bd-proto.path              = "../bd-proto"
+bd-runtime.path            = "../bd-runtime"
+bd-shutdown.path           = "../bd-shutdown"
+bd-time.path               = "../bd-time"
+log.workspace              = true
+protobuf.workspace         = true
+time.workspace             = true
+tokio.workspace            = true
+tracing.workspace          = true
+uuid.workspace             = true
+
+[dev-dependencies]
+assert_matches.workspace = true
+bd-stats-common.path     = "../bd-stats-common"
+bd-test-helpers          = { path = "../bd-test-helpers", default-features = false }
+ctor.workspace           = true
+tempdir.workspace        = true

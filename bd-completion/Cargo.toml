@@ -1,0 +1,11 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-completion"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+anyhow.workspace = true
+log.workspace    = true
+tokio.workspace  = true

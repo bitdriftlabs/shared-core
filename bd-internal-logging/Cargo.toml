@@ -1,0 +1,13 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-internal-logging"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+anyhow.workspace       = true
+bd-log-primitives.path = "../bd-log-primitives"
+bd-proto.path          = "../bd-proto"
+bd-runtime.path        = "../bd-runtime"
+tokio.workspace        = true

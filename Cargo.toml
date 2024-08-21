@@ -1,0 +1,125 @@
+[workspace]
+members = [
+  "profiling",
+  "bd-api",
+  "bd-buffer",
+  "bd-client-common",
+  "bd-client-stats",
+  "bd-client-stats-store",
+  "bd-completion",
+  "bd-device",
+  "bd-events",
+  "bd-grpc",
+  "bd-grpc-codec",
+  "bd-hyper-network",
+  "bd-metadata",
+  "bd-logger",
+  "bd-internal-logging",
+  "bd-noop-network",
+  "bd-panic",
+  "bd-pgv",
+  "bd-profile",
+  "bd-proto",
+  "bd-proto-util",
+  "bd-session",
+  "bd-key-value",
+  "bd-matcher",
+  "bd-resource-utilization",
+  "bd-rt",
+  "bd-runtime",
+  "bd-runtime-config",
+  "bd-server-stats",
+  "bd-stats-common",
+  "bd-test-helpers",
+  "bd-time",
+  "bd-workflows",
+  "fuzz",
+]
+resolver = "2"
+
+[workspace.dependencies]
+android_logger  = "0.14.1"
+anyhow          = "1.0.86"
+arbitrary       = { version = "1.3.2", features = ["derive"] }
+arc-swap        = "1.7.1"
+assert_matches  = "1.5.0"
+async-trait     = "0.1.81"
+axum            = { version = "0.7.5", features = ["http2"] }
+axum-server     = { version = "0.7.1", features = ["tls-rustls-no-provider"] }
+backoff         = "0.4.0"
+base64          = "0.22.1"
+base64ct        = { version = "1.6.0", features = ["alloc", "std"] }
+base64-url      = "3.0.0"
+bincode         = "1.3.3"
+bytes           = "1.7.1"
+clap            = { version = "4.5.13", features = ["derive", "env"] }
+color-backtrace = "0.6.1"
+concat-string   = "1.0.1"
+crc32fast       = "1.4.2"
+ctor            = "0.2.8"
+dashmap         = "6.0.1"
+flatbuffers     = "24.3.25"
+flatc-rust      = "0.2.0"
+flate2          = { version = "1.0.31", default-features = false }
+fs2             = "0.4.3"
+futures         = "0.3.30"
+futures-core    = "0.3.30"
+futures-util    = "0.3.30"
+http            = "1.1.0"
+http-body       = "1.0.1"
+http-body-util  = "0.1.2"
+hyper           = "1.4.1"
+
+hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "ring", "webpki-tokio"] }
+
+hyper-util            = { version = "0.1.6", features = ["client", "client-legacy"] }
+intrusive-collections = "0.9.6"
+itertools             = "0.13.0"
+jni                   = "0.21.1"
+libfuzzer-sys         = "0.4.7"
+log                   = "0.4.22"
+matches               = "0.1.10"
+memmap2               = "0.9.4"
+mockall               = "0.13.0"
+notify                = "6.1.1"
+parameterized         = "2.0.0"
+parking_lot           = "0.12.3"
+pretty_assertions     = "1.4.0"
+prometheus            = { version = "0.13.4", default-features = false }
+thread_local          = "1.1"
+tracing               = "0.1.40"
+tracing-log           = "0.2.0"
+tracing-subscriber    = { version = "0.3.18", features = ["env-filter"] }
+
+protobuf = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack", features = [
+  "bytes",
+  "with-bytes",
+] }
+protobuf-codegen = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack" }
+protobuf-json-mapping = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack" }
+
+rand       = "0.8.5"
+regex      = "1.10.6"
+serde      = { version = "1", features = ["derive"] }
+serde_yaml = "0.9.34"
+sha2       = "0.10.8"
+
+sketches-rust = { git = "https://github.com/mattklein123/sketches-rust.git", branch = "patch-stack" }
+
+snap              = "1.1.1"
+static_assertions = "1.1.0"
+tempdir           = "0.3.7"
+thiserror         = "1.0.63"
+tikv-jemalloc-ctl = "0.6.0"
+time              = { version = "0.3.36", features = ["serde-well-known", "macros"] }
+tokio             = { version = "1.39.2", features = ["full", "test-util"] }
+tokio-stream      = "0.1.15"
+tokio-test        = "0.4.4"
+tower             = { version = "0.4.13", features = ["retry", "util"] }
+tracing-error     = "0.2.0"
+unwrap-infallible = "0.1.5"
+urlencoding       = "2.1.3"
+uuid              = { version = "1.10.0", features = ["v4"] }
+
+[profile.bench]
+debug = true

@@ -1,0 +1,12 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-noop-network"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+anyhow.workspace      = true
+async-trait.workspace = true
+bd-api                = { path = "../bd-api" }
+bd-client-common      = { path = "../bd-client-common" }

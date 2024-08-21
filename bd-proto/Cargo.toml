@@ -1,0 +1,19 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-proto"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+bd-pgv.path           = "../bd-pgv"
+bytes.workspace       = true
+flatbuffers.workspace = true
+protobuf.workspace    = true
+
+[dev-dependencies]
+matches.workspace = true
+
+[build-dependencies]
+flatc-rust.workspace       = true
+protobuf-codegen.workspace = true

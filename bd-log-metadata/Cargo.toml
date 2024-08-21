@@ -1,0 +1,11 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-log-metadata"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+anyhow.workspace       = true
+bd-log-primitives.path = "../bd-log-primitives"
+time.workspace         = true
