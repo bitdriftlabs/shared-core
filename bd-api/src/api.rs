@@ -48,7 +48,9 @@ use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::Data as ProtoData;
 use bd_runtime::runtime::{RuntimeManager, Watch};
 use bd_shutdown::ComponentShutdown;
+use bd_time::OffsetDateTimeExt;
 use protobuf::Message;
+use time::OffsetDateTime;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -229,7 +231,8 @@ impl StreamState {
         let req = self.upload_state_tracker.track_upload(request);
         self.send_request(req).await
       },
-      DataUpload::StatsUploadRequest(request) => {
+      DataUpload::StatsUploadRequest(mut request) => {
+        request.payload.sent_at = OffsetDateTime::now_utc().into_proto();
         let req = self.upload_state_tracker.track_upload(request);
         self.send_request(req).await
       },
