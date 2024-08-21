@@ -1,0 +1,22 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-key-value"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+anyhow.workspace  = true
+base64.workspace  = true
+bd-log.path       = "../bd-log"
+bincode.workspace = true
+log.workspace     = true
+serde.workspace   = true
+time.workspace    = true
+tokio.workspace   = true
+
+[dev-dependencies]
+bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
+ctor.workspace              = true
+parking_lot.workspace       = true
+pretty_assertions.workspace = true

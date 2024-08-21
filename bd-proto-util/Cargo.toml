@@ -1,0 +1,12 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-proto-util"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+base64ct.workspace  = true
+itertools.workspace = true
+protobuf.workspace  = true
+sha2.workspace      = true

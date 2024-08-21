@@ -1,0 +1,34 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-client-stats"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+anyhow.workspace           = true
+async-trait.workspace      = true
+bd-api.path                = "../bd-api"
+bd-client-common.path      = "../bd-client-common"
+bd-client-stats-store.path = "../bd-client-stats-store"
+bd-completion.path         = "../bd-completion"
+bd-proto.path              = "../bd-proto"
+bd-runtime.path            = "../bd-runtime"
+bd-shutdown.path           = "../bd-shutdown"
+bd-stats-common.path       = "../bd-stats-common"
+bd-time.path               = "../bd-time"
+flate2                     = { workspace = true, default-features = false, features = ["zlib"] }
+log.workspace              = true
+parking_lot.workspace      = true
+protobuf.workspace         = true
+time.workspace             = true
+tokio.workspace            = true
+
+[dev-dependencies]
+assert_matches.workspace = true
+bd-log.path              = "../bd-log"
+bd-stats-common.path     = "../bd-stats-common"
+bd-test-helpers.path     = "../bd-test-helpers"
+ctor.workspace           = true
+futures-util.workspace   = true
+tempdir.workspace        = true

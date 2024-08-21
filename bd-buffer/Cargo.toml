@@ -1,0 +1,37 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-buffer"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+anyhow.workspace                = true
+async-trait.workspace           = true
+bd-client-common.path           = "../bd-client-common"
+bd-client-stats-store.path      = "../bd-client-stats-store"
+bd-completion.path              = "../bd-completion"
+bd-proto.path                   = "../bd-proto"
+bd-runtime.path                 = "../bd-runtime"
+bd-stats-common.path            = "../bd-stats-common"
+crc32fast.workspace             = true
+fs2.workspace                   = true
+futures.workspace               = true
+intrusive-collections.workspace = true
+log.workspace                   = true
+memmap2.workspace               = true
+parking_lot.workspace           = true
+static_assertions.workspace     = true
+thiserror.workspace             = true
+time.workspace                  = true
+tokio.workspace                 = true
+tracing.workspace               = true
+
+[dev-dependencies]
+assert_matches.workspace = true
+bd-test-helpers          = { path = "../bd-test-helpers", default-features = false }
+ctor.workspace           = true
+itertools.workspace      = true
+parameterized.workspace  = true
+tempdir.workspace        = true
+tokio-test.workspace     = true

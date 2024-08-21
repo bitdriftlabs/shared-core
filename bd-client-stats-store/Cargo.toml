@@ -1,0 +1,19 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-client-stats-store"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+bd-proto                = { path = "../bd-proto" }
+bd-stats-common         = { path = "../bd-stats-common" }
+log.workspace           = true
+parking_lot.workspace   = true
+sketches-rust.workspace = true
+thiserror.workspace     = true
+tokio.workspace         = true
+
+[dev-dependencies]
+bd-test-helpers.path = "../bd-test-helpers"
+ctor.workspace       = true

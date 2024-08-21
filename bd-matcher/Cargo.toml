@@ -1,0 +1,17 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-matcher"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+bd-log-primitives.path = "../bd-log-primitives"
+bd-proto.path          = "../bd-proto"
+protobuf.workspace     = true
+regex.workspace        = true
+thiserror.workspace    = true
+
+[dev-dependencies]
+assert_matches.workspace = true
+matches.workspace        = true

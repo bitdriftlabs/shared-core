@@ -1,0 +1,21 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-runtime"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+anyhow.workspace      = true
+bd-client-common.path = "../bd-client-common"
+bd-proto.path         = "../bd-proto"
+log.workspace         = true
+protobuf.workspace    = true
+time.workspace        = true
+tokio.workspace       = true
+
+[dev-dependencies]
+assert_matches.workspace = true
+bd-test-helpers          = { path = "../bd-test-helpers", default-features = false }
+ctor.workspace           = true
+tempdir.workspace        = true

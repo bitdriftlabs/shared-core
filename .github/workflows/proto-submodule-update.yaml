@@ -1,0 +1,84 @@
+name: proto-submodule-update
+on:
+  repository_dispatch:
+    types: [proto-submodule-update]
+  workflow_dispatch:
+jobs:
+  proto_submodule_update:
+    permissions:
+      contents: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+    # Get a token that can be used for org read-only clones.
+    - name: org-read-only-install token
+      id: org-read-only
+      uses: getsentry/action-github-app-token@v2
+      with:
+        app_id: ${{ secrets.ORG_READ_ONLY_APP_ID }}
+        private_key: ${{ secrets.ORG_READ_ONLY_APP_PRIVATE_KEY }}
+    # Install the token so all ssh pulls are rewritten to use the token from the previous step.
+    - name: setup git credentials
+      uses: de-vri-es/setup-git-credentials@v2
+      with:
+        credentials: https://x-access-token:${{ steps.org-read-only.outputs.token }}@github.com/
+
+    - name: Checkout source
+      uses: actions/checkout@v4
+      with:
+        submodules: true
+        token: ${{ steps.org-read-only.outputs.token }}
+    - name: CI Setup
+      run: if [[ -f ci/setup.sh ]]; then ci/setup.sh; fi
+
+    - name: Fetch latest submodule
+      run: |
+        git submodule update --init --recursive --remote
+    - name: Check for changes
+      id: state
+      run: |
+        if ! git diff-index --quiet HEAD --; then
+          echo "Detected changes..."
+          echo "dirty=true" >> $GITHUB_OUTPUT
+          echo "proto_submodule_sha=$(cd proto && git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Rust Toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        profile: minimal
+    - name: Cache
+      uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43
+    - name: Run "cargo build --package bd-proto"
+      id: cargo-build-bd-proto
+      if: steps.state.outputs.dirty == 'true'
+      run: cargo build --package bd-proto
+
+    - name: org-pr-create token
+      id: org-pr-create-token
+      uses: getsentry/action-github-app-token@v2
+      with:
+        app_id: ${{ secrets.ORG_PROTO_SYNC_APP_ID }}
+        private_key: ${{ secrets.ORG_PROTO_SYNC_APP_KEY }}
+    - name: Create PR
+      id: create-pr
+      if: steps.state.outputs.dirty == 'true'
+      uses: peter-evans/create-pull-request@v6
+      with:
+        token: ${{ steps.org-pr-create-token.outputs.token  }}
+        title: Update proto submodule SHA to ${{ env.PROTO_SHA }}
+        commit-message: Update proto submodule SHA to ${{ env.PROTO_SHA }}
+        committer: GitHub Action <noreply@github.com>
+        base: main
+        delete-branch: true
+        branch: update-proto-submodule-${{ env.PROTO_SHA }}
+      env:
+        PROTO_SHA: ${{ steps.state.outputs.proto_submodule_sha }}
+    - name: Enable Pull Request Automerge
+      if: steps.create-pr.outputs.pull-request-operation == 'created'
+      run: gh pr merge $PR_NUMBER --auto -s
+      env:
+        PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
+        GH_TOKEN: ${{ steps.org-pr-create-token.outputs.token }}

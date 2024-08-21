@@ -1,0 +1,13 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-time"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+async-trait.workspace = true
+parking_lot.workspace = true
+protobuf.workspace    = true
+time.workspace        = true
+tokio.workspace       = true

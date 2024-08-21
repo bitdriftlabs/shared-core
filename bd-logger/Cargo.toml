@@ -1,0 +1,57 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-logger"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+anyhow.workspace             = true
+async-trait.workspace        = true
+backoff.workspace            = true
+bd-api.path                  = "../bd-api"
+bd-buffer.path               = "../bd-buffer"
+bd-client-common.path        = "../bd-client-common"
+bd-client-stats-store.path   = "../bd-client-stats-store"
+bd-client-stats.path         = "../bd-client-stats"
+bd-completion.path           = "../bd-completion"
+bd-device.path               = "../bd-device"
+bd-events.path               = "../bd-events"
+bd-internal-logging.path     = "../bd-internal-logging"
+bd-key-value.path            = "../bd-key-value"
+bd-log-metadata.path         = "../bd-log-metadata"
+bd-log-primitives.path       = "../bd-log-primitives"
+bd-log.path                  = "../bd-log"
+bd-matcher.path              = "../bd-matcher"
+bd-proto.path                = "../bd-proto"
+bd-resource-utilization.path = "../bd-resource-utilization"
+bd-runtime.path              = "../bd-runtime"
+bd-session.path              = "../bd-session"
+bd-shutdown.path             = "../bd-shutdown"
+bd-stats-common.path         = "../bd-stats-common"
+bd-time.path                 = "../bd-time"
+bd-workflows.path            = "../bd-workflows"
+flatbuffers.workspace        = true
+futures-util.workspace       = true
+itertools.workspace          = true
+log.workspace                = true
+parking_lot.workspace        = true
+protobuf.workspace           = true
+serde.workspace              = true
+thiserror.workspace          = true
+time.workspace               = true
+tokio.workspace              = true
+tower.workspace              = true
+tracing.workspace            = true
+unwrap-infallible.workspace  = true
+
+[dev-dependencies]
+assert_matches.workspace    = true
+bd-hyper-network            = { path = "../bd-hyper-network" }
+bd-noop-network             = { path = "../bd-noop-network" }
+bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
+ctor.workspace              = true
+pretty_assertions.workspace = true
+tempdir.workspace           = true
+tokio-test.workspace        = true
+uuid.workspace              = true

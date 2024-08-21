@@ -1,0 +1,18 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-log"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+anyhow.workspace             = true
+bd-time                      = { path = "../bd-time" }
+log.workspace                = true
+parking_lot.workspace        = true
+time.workspace               = true
+tokio.workspace              = true
+tracing-error.workspace      = true
+tracing-log.workspace        = true
+tracing-subscriber.workspace = true
+tracing.workspace            = true

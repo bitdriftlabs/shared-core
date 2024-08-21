@@ -1,0 +1,188 @@
+// shared-core - bitdrift's common client/server libraries
+// Copyright Bitdrift, Inc. All rights reserved.
+//
+// Use of this source code is governed by a source available license that can be found in the
+// LICENSE file or at:
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
+
+pub use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+/// A union type that allows representing either a UTF-8 string or an opaque series of bytes. This
+/// is generic over the underlying String type to support different ownership models.
+#[derive(Debug, Clone)]
+pub enum StringOrBytes<S: AsRef<str>, B: AsRef<[u8]>> {
+  String(S),
+  Bytes(B),
+}
+
+impl<T: AsRef<str>, B: AsRef<[u8]>> StringOrBytes<T, B> {
+  /// Extracts the underlying str if the enum represents a String, None otherwise.
+  pub fn as_str(&self) -> Option<&str> {
+    if let Self::String(s) = self {
+      return Some(s.as_ref());
+    }
+
+    None
+  }
+}
+
+impl From<String> for StringOrBytes<String, Vec<u8>> {
+  fn from(s: String) -> Self {
+    Self::String(s)
+  }
+}
+
+impl From<Vec<u8>> for StringOrBytes<String, Vec<u8>> {
+  fn from(s: Vec<u8>) -> Self {
+    Self::Bytes(s)
+  }
+}
+
+// Support converting a &str into a StringOrBytes<S>::String if S : From<&str>.
+impl<'a, T: AsRef<str> + From<&'a str>, B: AsRef<[u8]>> From<&'a str> for StringOrBytes<T, B> {
+  fn from(s: &'a str) -> Self {
+    Self::String(s.into())
+  }
+}
+
+// A &[u8] can be converted to a StringOrBytes<S>::Bytes.
+impl<'a, T: AsRef<str>, B: AsRef<[u8]> + From<&'a [u8]>> From<&'a [u8]> for StringOrBytes<T, B> {
+  fn from(slice: &'a [u8]) -> Self {
+    Self::Bytes(slice.into())
+  }
+}
+
+/// A log message is a borrowed string or binary value.
+pub type LogMessage = StringOrBytes<String, Vec<u8>>;
+
+impl std::fmt::Display for LogMessage {
+  // This trait requires `fmt` with this exact signature.
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::String(s) => write!(f, "{s}"),
+      Self::Bytes(b) => {
+        write!(f, "bytes:{b:?}")
+      },
+    }
+  }
+}
+
+pub type LogLevel = u32;
+
+/// Well known log levels used by the library.
+pub mod log_level {
+  use crate::LogLevel;
+
+  pub const ERROR: LogLevel = 4;
+  pub const WARNING: LogLevel = 3;
+  pub const INFO: LogLevel = 2;
+  pub const DEBUG: LogLevel = 1;
+  pub const TRACE: LogLevel = 0;
+}
+
+//
+// LogFieldValue
+//
+
+pub type LogFieldValue = StringOrBytes<String, Vec<u8>>;
+
+//
+// AnnotatedLogFields
+//
+
+/// The list of log fields annotated with extra information.
+pub type AnnotatedLogFields = Vec<AnnotatedLogField>;
+
+//
+// LogFields
+//
+
+/// The list of owned log fields.
+pub type LogFields = Vec<LogField>;
+
+//
+// AnnotatedLogField
+//
+
+#[derive(Debug, Clone)]
+pub struct AnnotatedLogField {
+  pub field: LogField,
+  pub kind: LogFieldKind,
+}
+
+//
+// LogField
+//
+
+#[derive(Debug, Clone)]
+pub struct LogField {
+  pub key: String,
+  pub value: LogFieldValue,
+}
+
+impl From<AnnotatedLogField> for LogField {
+  fn from(value: AnnotatedLogField) -> Self {
+    Self {
+      key: value.field.key,
+      value: value.field.value,
+    }
+  }
+}
+
+//
+// LogFieldKind
+//
+
+#[derive(Debug, Clone, Copy)]
+pub enum LogFieldKind {
+  Ootb,
+  Custom,
+}
+
+//
+// LogRef
+//
+
+/// A reference to a log message and its associated fields.
+#[derive(Clone, Copy)]
+pub struct LogRef<'a> {
+  pub log_type: LogType,
+  pub log_level: LogLevel,
+  pub message: &'a LogMessage,
+  pub fields: &'a FieldsRef<'a>,
+  pub session_id: &'a str,
+  pub occurred_at: time::OffsetDateTime,
+}
+
+//
+// FieldsRef
+//
+
+/// A wrapper around log fields that are divided into two categories: captured fields and matching
+/// fields. Captured fields are those that might be stored and uploaded to a remote server, while
+/// matching fields are used solely for matching purposes and are never stored or uploaded.
+#[derive(Clone, Copy, Debug)]
+pub struct FieldsRef<'a> {
+  pub captured_fields: &'a LogFields,
+  /// Matching fields are fields that are used for matching but are not stored or leave the device.
+  /// They should not be exposed publicly to prevent unintentional data leakage.
+  matching_fields: &'a LogFields,
+}
+
+impl<'a> FieldsRef<'a> {
+  #[must_use]
+  pub const fn new(captured_fields: &'a LogFields, matching_fields: &'a LogFields) -> Self {
+    Self {
+      captured_fields,
+      matching_fields,
+    }
+  }
+
+  #[must_use]
+  pub fn matching_field_value(&self, key: &str) -> Option<&str> {
+    self
+      .matching_fields
+      .iter()
+      .find(|field| field.key == key)
+      .and_then(|field| field.value.as_str())
+  }
+}
