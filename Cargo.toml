@@ -9,6 +9,7 @@ members = [
   "bd-completion",
   "bd-device",
   "bd-events",
+  "bd-filters",
   "bd-grpc",
   "bd-grpc-codec",
   "bd-hyper-network",

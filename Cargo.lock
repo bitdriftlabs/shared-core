@@ -453,6 +453,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-filters"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "bd-matcher",
+ "bd-proto",
+ "bd-test-helpers",
+ "bd-time",
+ "ctor",
+ "time",
+]
+
+[[package]]
 name = "bd-grpc"
 version = "1.0.0"
 dependencies = [
