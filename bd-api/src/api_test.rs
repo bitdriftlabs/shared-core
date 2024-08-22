@@ -248,7 +248,7 @@ impl Setup {
       }
     }?;
 
-    if let Some(requests) = self.requests_decoder.decode_data(&data).ok() {
+    if let Some(requests) = self.requests_decoder.decode_data(&data) {
       if requests.len() != 1 {
         panic!("expected 1 request, got {}", requests.len());
       }
