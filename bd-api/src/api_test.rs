@@ -416,10 +416,7 @@ async fn set_stats_upload_request_sent_at_field() {
   setup.next_stream(1.seconds()).await;
   setup.handshake_response().await;
 
-  let (tracked, _) = Tracked::new(
-    "123".to_string(),
-    StatsUploadRequest::default(),
-  );
+  let (tracked, _) = Tracked::new("123".to_string(), StatsUploadRequest::default());
 
   let data_upload = DataUpload::StatsUploadRequest(tracked);
   setup.send_request(data_upload).await;
