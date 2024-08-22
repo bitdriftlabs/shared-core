@@ -249,7 +249,11 @@ impl Setup {
     }?;
 
     if let Ok(requests) = self.requests_decoder.decode_data(&data) {
-      assert!(requests.len() == 1, "expected 1 request, got {}", requests.len());
+      assert!(
+        requests.len() == 1,
+        "expected 1 request, got {}",
+        requests.len()
+      );
       return requests.first().cloned();
     }
 
