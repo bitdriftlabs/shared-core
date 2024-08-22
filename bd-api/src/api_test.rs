@@ -411,7 +411,7 @@ async fn unauthenticated_response_before_handshake() {
 }
 
 #[tokio::test]
-async fn update_stats_upload_request() {
+async fn set_stats_upload_request_sent_at_field() {
   let mut setup = Setup::new();
 
   setup.next_stream(1.seconds()).await;
