@@ -48,12 +48,11 @@ use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::Data as ProtoData;
 use bd_runtime::runtime::{RuntimeManager, Watch};
 use bd_shutdown::ComponentShutdown;
-use bd_time::OffsetDateTimeExt;
+use bd_time::{OffsetDateTimeExt, TimeProvider};
 use protobuf::Message;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
 
@@ -125,6 +124,8 @@ struct StreamState {
 
   stream_event_rx: tokio::sync::mpsc::Receiver<StreamEvent>,
 
+  time_provider: Arc<dyn TimeProvider>,
+
   stats: Stats,
 }
 
@@ -133,6 +134,7 @@ impl StreamState {
     compression: Option<Compression>,
     stream_handle: Box<dyn PlatformNetworkStream>,
     stream_event_rx: tokio::sync::mpsc::Receiver<StreamEvent>,
+    time_provider: Arc<dyn TimeProvider>,
     stats: Stats,
   ) -> Self {
     let mut decoder = bd_grpc_codec::Decoder::default();
@@ -155,6 +157,7 @@ impl StreamState {
       upload_state_tracker: StateTracker::new(),
       stream_handle,
       stream_event_rx,
+      time_provider,
       stats,
     }
   }
@@ -232,7 +235,7 @@ impl StreamState {
         self.send_request(req).await
       },
       DataUpload::StatsUploadRequest(mut request) => {
-        request.payload.sent_at = OffsetDateTime::now_utc().into_proto();
+        request.payload.sent_at = self.time_provider.now().into_proto();
         let req = self.upload_state_tracker.track_upload(request);
         self.send_request(req).await
       },
@@ -312,6 +315,7 @@ pub struct Api {
   runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
 
   internal_logger: Arc<dyn bd_internal_logging::Logger>,
+  time_provider: Arc<dyn TimeProvider>,
 
   stats: Stats,
 }
@@ -326,6 +330,7 @@ impl Api {
     static_metadata: Arc<dyn Metadata + Send + Sync>,
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
     configuration_pipelines: Vec<Box<dyn ConfigurationUpdate>>,
+    time_provider: Arc<dyn TimeProvider>,
     self_logger: Arc<dyn bd_internal_logging::Logger>,
     stats: &Scope,
   ) -> anyhow::Result<Self> {
@@ -340,6 +345,7 @@ impl Api {
       static_metadata,
       data_upload_rx,
       trigger_upload_tx,
+      time_provider,
       runtime_loader,
       max_backoff_interval,
       initial_backoff_interval,
@@ -419,6 +425,7 @@ impl Api {
           .start_stream(stream_event_tx.clone(), &self.runtime_loader, headers)
           .await?,
         stream_event_rx,
+        self.time_provider.clone(),
         self.stats.clone(),
       );
 

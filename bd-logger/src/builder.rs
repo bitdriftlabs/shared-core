@@ -18,6 +18,7 @@ use bd_client_stats_store::{Collector, Scope};
 use bd_internal_logging::NoopLogger;
 use bd_runtime::runtime;
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
+use bd_time::SystemTimeProvider;
 use futures_util::{try_join, Future};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -224,6 +225,7 @@ impl LoggerBuilder {
         Box::new(bd_runtime::runtime::RuntimeManager::new(runtime_loader)),
         updater,
       ],
+      Arc::new(SystemTimeProvider {}),
       log.clone(),
       &scope.scope("api"),
     )?;
