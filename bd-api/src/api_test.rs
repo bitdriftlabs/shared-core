@@ -18,7 +18,6 @@ use bd_internal_logging::{LogFields, LogLevel, LogType};
 use bd_metadata::{Metadata, Platform};
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::client::api::api_response::Response_type;
-use bd_proto::protos::client::api::stats_upload_request::Snapshot;
 use bd_proto::protos::client::api::{
   ApiRequest,
   ApiResponse,
@@ -419,11 +418,7 @@ async fn set_stats_upload_request_sent_at_field() {
 
   let (tracked, _) = Tracked::new(
     "123".to_string(),
-    StatsUploadRequest {
-      upload_uuid: "123".to_string(),
-      snapshot: vec![Snapshot::default()],
-      ..Default::default()
-    },
+    StatsUploadRequest::default(),
   );
 
   let data_upload = DataUpload::StatsUploadRequest(tracked);
