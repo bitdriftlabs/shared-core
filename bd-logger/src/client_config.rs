@@ -17,7 +17,7 @@ use bd_client_common::fb::make_log;
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::LogRef;
 use bd_proto::protos::bdtail::bdtail_config::BdTailConfigurations;
-use bd_proto::protos::client::api::configuration_update::Update_type;
+use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
 use bd_proto::protos::client::api::{
   ApiRequest,
@@ -27,6 +27,7 @@ use bd_proto::protos::client::api::{
   HandshakeRequest,
 };
 use bd_proto::protos::config::v1::config::BufferConfigList;
+use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::insight::insight::InsightsConfiguration;
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
 use bd_runtime::runtime::workflows::WorkflowsEnabledFlag;
@@ -45,12 +46,27 @@ pub trait ApplyConfig {
   async fn apply_configuration(&mut self, configuration: Configuration) -> anyhow::Result<()>;
 }
 
-pub type Configuration = (
-  BufferConfigList,
-  WorkflowsConfigurationProto,
-  InsightsConfiguration,
-  BdTailConfigurations,
-);
+#[cfg_attr(test, derive(Debug, Default, PartialEq))]
+pub struct Configuration {
+  buffer: BufferConfigList,
+  workflows: WorkflowsConfigurationProto,
+  insights: InsightsConfiguration,
+  bdtail: BdTailConfigurations,
+  #[allow(dead_code)]
+  filters: FiltersConfiguration,
+}
+
+impl Configuration {
+  fn new(sow: &StateOfTheWorld) -> Self {
+    Self {
+      buffer: sow.buffer_config_list.clone().unwrap_or_default(),
+      workflows: sow.workflows_configuration.clone().unwrap_or_default(),
+      insights: sow.insights_configuration.clone().unwrap_or_default(),
+      bdtail: sow.bdtail_configuration.clone().unwrap_or_default(),
+      filters: sow.filters_configuration.clone().unwrap_or_default(),
+    }
+  }
+}
 
 // Manages config validation and persistence.
 pub struct Config<A: ApplyConfig> {
@@ -98,12 +114,7 @@ impl<A: ApplyConfig> Config<A> {
 
     self
       .apply_config
-      .apply_configuration((
-        sotw.buffer_config_list.clone().unwrap_or_default(),
-        sotw.workflows_configuration.clone().unwrap_or_default(),
-        sotw.insights_configuration.clone().unwrap_or_default(),
-        sotw.bdtail_configuration.clone().unwrap_or_default(),
-      ))
+      .apply_configuration(Configuration::new(sotw))
       .await?;
 
     // Upon applying the configuration sucesfully, write the configuration proto to disk.
@@ -231,25 +242,30 @@ impl LoggerUpdate {
 
 #[async_trait::async_trait]
 impl ApplyConfig for LoggerUpdate {
-  async fn apply_configuration(
-    &mut self,
-    (buffer_config, workflows_config, insights_config, bdtail_config): Configuration,
-  ) -> anyhow::Result<()> {
+  async fn apply_configuration(&mut self, configuration: Configuration) -> anyhow::Result<()> {
+    let Configuration {
+      buffer,
+      workflows,
+      insights,
+      bdtail,
+      ..
+    } = configuration;
+
     let maybe_stream_buffer = self
       .buffer_manager
-      .update_from_config(&buffer_config, !bdtail_config.active_streams.is_empty())
+      .update_from_config(&buffer, !bdtail.active_streams.is_empty())
       .await?;
 
     debug_assert_eq!(
       maybe_stream_buffer.is_some(),
-      !bdtail_config.active_streams.is_empty()
+      !bdtail.active_streams.is_empty()
     );
 
     // It's in here so that we do not even attempt to parse workflow protos if workflows
     // are disabled.
     // TODO(Augustyniak): Consider removing this feature flag once workflows APIs are stable.
     let workflows_configuration = if self.workflows_enabled_flag.read() {
-      WorkflowsConfiguration::new(&workflows_config, &insights_config)
+      WorkflowsConfiguration::new(&workflows, &insights)
     } else {
       WorkflowsConfiguration::default()
     };
@@ -258,11 +274,11 @@ impl ApplyConfig for LoggerUpdate {
       .config_update_tx
       .send(ConfigUpdate {
         buffer_producers: BufferProducers::new(&self.buffer_manager)?,
-        buffer_selector: bd_matcher::buffer_selector::BufferSelector::new(&buffer_config)?,
+        buffer_selector: bd_matcher::buffer_selector::BufferSelector::new(&buffer)?,
         // TODO(Augustyniak): Propagate the information about invalid workflows to server.
         workflows_configuration,
         tail_configs: TailConfigurations::new(
-          bdtail_config,
+          bdtail,
           || {
             // This is only called if we have active streams, which means we should have an active
             // stream buffer.

@@ -8,12 +8,9 @@
 use super::{Config, Configuration};
 use anyhow::anyhow;
 use bd_client_stats_store::Collector;
-use bd_proto::protos::bdtail::bdtail_config::BdTailConfigurations;
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::ConfigurationUpdate;
 use bd_proto::protos::config::v1::config::BufferConfigList;
-use bd_proto::protos::insight::insight::InsightsConfiguration;
-use bd_proto::protos::workflow::workflow::WorkflowsConfiguration;
 use pretty_assertions::assert_eq;
 use std::path::Path;
 use tempdir::TempDir;
@@ -59,12 +56,7 @@ async fn process_and_load() {
     .unwrap();
 
   assert_eq!(
-    (
-      BufferConfigList::default(),
-      WorkflowsConfiguration::default(),
-      InsightsConfiguration::default(),
-      BdTailConfigurations::default()
-    ),
+    Configuration::default(),
     configuration_rx.recv().await.unwrap()
   );
 
