@@ -248,11 +248,8 @@ impl Setup {
       }
     }?;
 
-    if let Some(requests) = self.requests_decoder.decode_data(&data) {
-      if requests.len() != 1 {
-        panic!("expected 1 request, got {}", requests.len());
-      }
-
+    if let Ok(requests) = self.requests_decoder.decode_data(&data) {
+      assert!(requests.len() == 1, "expected 1 request, got {}", requests.len());
       return requests.first().cloned();
     }
 
