@@ -7,22 +7,33 @@
 
 use super::{Api, PlatformNetworkManager, PlatformNetworkStream};
 use crate::api::StreamEvent;
+use crate::upload::Tracked;
+use crate::DataUpload;
 use anyhow::anyhow;
+use assert_matches::assert_matches;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
 use bd_grpc_codec::Encoder;
 use bd_internal_logging::{LogFields, LogLevel, LogType};
 use bd_metadata::{Metadata, Platform};
+use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::client::api::api_response::Response_type;
-use bd_proto::protos::client::api::{ApiResponse, ErrorShutdown, HandshakeResponse, RuntimeUpdate};
+use bd_proto::protos::client::api::{
+  ApiRequest,
+  ApiResponse,
+  ErrorShutdown,
+  HandshakeResponse,
+  RuntimeUpdate,
+  StatsUploadRequest,
+};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
-use bd_time::TimeDurationExt;
+use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use time::ext::NumericalDuration;
-use time::Duration;
+use time::{Duration, OffsetDateTime};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 struct EmptyMetadata;
@@ -45,7 +56,7 @@ impl Metadata for EmptyMetadata {
 #[allow(clippy::struct_field_names)]
 struct PlatformNetwork {
   start_stream_tx: Sender<()>,
-  send_data_tx: Sender<()>,
+  send_data_tx: Sender<Vec<u8>>,
 
   current_stream_tx: Arc<Mutex<Option<Sender<StreamEvent>>>>,
 }
@@ -53,7 +64,7 @@ struct PlatformNetwork {
 impl PlatformNetwork {
   const fn new(
     start_stream_tx: Sender<()>,
-    send_data_tx: Sender<()>,
+    send_data_tx: Sender<Vec<u8>>,
     current_stream_tx: Arc<Mutex<Option<Sender<StreamEvent>>>>,
   ) -> Self {
     Self {
@@ -90,15 +101,15 @@ impl<T> PlatformNetworkManager<T> for PlatformNetwork {
 struct Stream {
   _event_tx: Sender<StreamEvent>,
 
-  send_data_tx: Sender<()>,
+  send_data_tx: Sender<Vec<u8>>,
 }
 
 #[async_trait::async_trait]
 impl PlatformNetworkStream for Stream {
-  async fn send_data(&mut self, _data: &[u8]) -> anyhow::Result<()> {
+  async fn send_data(&mut self, data: &[u8]) -> anyhow::Result<()> {
     self
       .send_data_tx
-      .send(())
+      .send(data.to_vec())
       .await
       .map_err(|_| anyhow!("start stream"))
   }
@@ -106,10 +117,13 @@ impl PlatformNetworkStream for Stream {
 
 struct Setup {
   _sdk_directory: tempdir::TempDir,
-  send_data_rx: Receiver<()>,
+  data_tx: Sender<DataUpload>,
+  send_data_rx: Receiver<Vec<u8>>,
   start_stream_rx: Receiver<()>,
   shutdown_trigger: ComponentShutdownTrigger,
   collector: Collector,
+  requests_decoder: bd_grpc_codec::Decoder<ApiRequest>,
+  time_provider: Arc<bd_time::TestTimeProvider>,
 
   current_stream_tx: Arc<Mutex<Option<Sender<StreamEvent>>>>,
 }
@@ -133,8 +147,10 @@ impl Setup {
       current_stream_tx.clone(),
     ));
     let shutdown_trigger = ComponentShutdownTrigger::default();
-    let (_log_upload_tx, data_rx) = channel(1);
+    let (data_tx, data_rx) = channel(1);
     let (trigger_upload_tx, _trigger_upload_rx) = channel(1);
+
+    let time_provider = Arc::new(bd_time::TestTimeProvider::new(OffsetDateTime::now_utc()));
 
     let collector = Collector::default();
 
@@ -147,6 +163,7 @@ impl Setup {
       Arc::new(EmptyMetadata),
       ConfigLoader::new(sdk_directory.path()),
       Vec::new(),
+      time_provider.clone(),
       Arc::new(TestLog {}),
       &collector.scope("api"),
     )
@@ -158,9 +175,12 @@ impl Setup {
       current_stream_tx,
       _sdk_directory: sdk_directory,
       start_stream_rx,
+      data_tx,
       send_data_rx,
       shutdown_trigger,
       collector,
+      time_provider,
+      requests_decoder: bd_grpc_codec::Decoder::default(),
     }
   }
 
@@ -174,6 +194,10 @@ impl Setup {
     };
 
     self.send_response(response).await;
+  }
+
+  async fn send_request(&self, data: DataUpload) {
+    self.data_tx.send(data).await.unwrap();
   }
 
   async fn send_response(&self, response: ApiResponse) {
@@ -214,6 +238,26 @@ impl Setup {
     self.send_data_rx.recv().await.unwrap();
 
     true
+  }
+
+  async fn next_request(&mut self, wait: Duration) -> Option<ApiRequest> {
+    let data = tokio::select! {
+      data = self.send_data_rx.recv() => { data },
+      () = wait.sleep() => {
+        return None;
+      }
+    }?;
+
+    if let Ok(requests) = self.requests_decoder.decode_data(&data) {
+      assert!(
+        requests.len() == 1,
+        "expected 1 request, got {}",
+        requests.len()
+      );
+      return requests.first().cloned();
+    }
+
+    None
   }
 }
 
@@ -364,4 +408,21 @@ async fn unauthenticated_response_before_handshake() {
   setup
     .collector
     .assert_counter_eq(0, "api:error_shutdown_total", labels! {});
+}
+
+#[tokio::test]
+async fn set_stats_upload_request_sent_at_field() {
+  let mut setup = Setup::new();
+
+  setup.next_stream(1.seconds()).await;
+  setup.handshake_response().await;
+
+  let (tracked, _) = Tracked::new("123".to_string(), StatsUploadRequest::default());
+
+  let data_upload = DataUpload::StatsUploadRequest(tracked);
+  setup.send_request(data_upload).await;
+
+  let next_received_request = setup.next_request(1.seconds()).await.unwrap();
+  assert_matches!(next_received_request.request_type, Some(Request_type::StatsUpload(payload))
+    if { payload.sent_at == setup.time_provider.now().into_proto() });
 }

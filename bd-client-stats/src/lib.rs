@@ -41,7 +41,7 @@ fn test_global_init() {
 pub struct FlushHandles<T: TimeProvider, F: SerializedFileSystem> {
   pub flusher: Flusher<T, F>,
   pub flush_trigger: FlushTrigger,
-  pub uploader: Uploader<T, F>,
+  pub uploader: Uploader<F>,
 }
 
 //
@@ -190,9 +190,7 @@ impl Stats {
     self.flush_handle_helper(
       runtime_loader,
       shutdown,
-      // TODO (Augustyniak): Use a time provider supplied by the customer of the SDK (e.g., an NTP
-      // time provider), or integrate an internal implementation of an NTP time provider.
-      Arc::new(SystemTimeProvider {}),
+      SystemTimeProvider {},
       data_flush_tx,
       Arc::new(RealSerializedFileSystem::new(sdk_directory.to_path_buf())),
     )
@@ -202,7 +200,7 @@ impl Stats {
     self: &Arc<Self>,
     runtime_loader: &Arc<ConfigLoader>,
     shutdown: ComponentShutdown,
-    time_provider: Arc<T>,
+    time_provider: T,
     data_flush_tx: tokio::sync::mpsc::Sender<DataUpload>,
     fs: Arc<F>,
   ) -> anyhow::Result<FlushHandles<T, F>> {
@@ -216,7 +214,7 @@ impl Stats {
         shutdown.clone(),
         runtime_loader.register_watch()?,
         flush_rx,
-        time_provider.clone(),
+        time_provider,
         flush_time_histogram,
         fs.clone(),
       ),
@@ -225,7 +223,6 @@ impl Stats {
         shutdown,
         runtime_loader.register_watch()?,
         data_flush_tx,
-        time_provider,
         fs,
       ),
     })
