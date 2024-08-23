@@ -10,22 +10,6 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-    # Get a token that can be used for org read-only clones.
-    # TODO(mattklein123): Remove this once public.
-    - name: org-read-only-install token
-      id: org-read-only
-      uses: getsentry/action-github-app-token@v2
-      with:
-        app_id: ${{ secrets.ORG_READ_ONLY_APP_ID }}
-        private_key: ${{ secrets.ORG_READ_ONLY_APP_PRIVATE_KEY }}
-
-    # Install the token so all ssh pulls are rewritten to use the token from the previous step.
-    # TODO(mattklein123): Remove this once public.
-    - name: setup git credentials
-      uses: de-vri-es/setup-git-credentials@v2
-      with:
-        credentials: https://x-access-token:${{ steps.org-read-only.outputs.token }}@github.com/
-
     - name: Checkout source
       uses: actions/checkout@v4
       with:
