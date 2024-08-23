@@ -13,6 +13,7 @@ mod consumer;
 pub mod internal;
 mod internal_report;
 mod logger;
+mod logger_replay;
 mod logging_state;
 mod memory_bound;
 mod metadata;

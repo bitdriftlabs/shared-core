@@ -1,20 +1,49 @@
 use anyhow::{anyhow, Result};
 use bd_proto::protos::filter::filter::filter::transform::capture_fields::fields::Fields_type;
 use bd_proto::protos::filter::filter::filter::{self};
+use bd_proto::protos::filter::filter::{Filter as FilterProto, FiltersConfiguration};
 use filter::transform::Transform_type;
 
-pub struct FiltersConfiguration {
-  filters: Vec<FilterConfiguration>,
+pub struct FiltersChain {
+  filters: Vec<Filter>,
 }
 
-impl FiltersConfiguration {}
+impl FiltersChain {
+  pub fn new(configs: FiltersConfiguration) -> Result<Self> {
+    // let mut filters = Vec::new();
+    let filters = configs.filters.into_iter().map(Filter::new).collect::<Result<Vec<_>>>()?;
+    // for config in configs.filters {
+      // filters.push(Filter::new(config)?);
+    // }
+    Ok(Self { filters })
+  }
+}
 
-pub struct FilterConfiguration {
+pub struct Filter {
   matcher: bd_matcher::matcher::Tree,
   transforms: Vec<Transform>,
 }
 
-impl FilterConfiguration {}
+impl Filter {
+  pub fn new(config: FilterProto) -> Result<Self> {
+    // config.matcher.opt
+    let Some(matcher) = config.matcher.into_option() else {
+      anyhow::bail!("no matcher");
+    };
+
+    let matcher = bd_matcher::matcher::Tree::new(&matcher)?;
+    let transforms = config
+      .transforms
+      .into_iter()
+      .map(Transform::new)
+      .collect::<Result<Vec<_>>>()?;
+
+    Ok(Self {
+      matcher,
+      transforms,
+    })
+  }
+}
 
 enum Transform {
   CaptureField(CaptureField),

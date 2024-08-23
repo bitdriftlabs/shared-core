@@ -160,43 +160,6 @@ impl MemorySized for AnnotatedLogLine {
   }
 }
 
-// An abstraction for logger replay. Introduced to make testing easier.
-#[async_trait::async_trait]
-pub trait LogReplay {
-  async fn replay_log(
-    &mut self,
-    log: AnnotatedLogLine,
-    log_processing_completed_tx: Option<oneshot::Sender<()>>,
-    initialized_logging_context: &mut InitializedLoggingContext,
-  ) -> anyhow::Result<()>;
-}
-
-pub struct LoggerReplay;
-
-#[async_trait::async_trait]
-impl LogReplay for LoggerReplay {
-  async fn replay_log(
-    &mut self,
-    log: AnnotatedLogLine,
-    log_processing_completed_tx: Option<oneshot::Sender<()>>,
-    initialized_logging_context: &mut InitializedLoggingContext,
-  ) -> anyhow::Result<()> {
-    write_log_with_logging_context(
-      &LogRef {
-        log_level: log.log_level,
-        log_type: log.log_type,
-        message: &log.message,
-        session_id: &log.session_id,
-        occurred_at: log.occurred_at,
-        fields: &FieldsRef::new(&log.fields, &log.matching_fields),
-      },
-      log_processing_completed_tx,
-      initialized_logging_context,
-    )
-    .await
-  }
-}
-
 //
 // LogInterceptor
 //
@@ -232,8 +195,6 @@ pub struct AsyncLogBuffer<L: LogReplay> {
 
   logging_state: LoggingState<AnnotatedLogLine>,
   workflows_enabled_flag: Watch<bool, WorkflowsEnabledFlag>,
-
-  replayer: L,
 }
 
 impl<L: LogReplay + Send + 'static> AsyncLogBuffer<L> {

@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::client_config::TailConfigurations;
+use crate::logger_replay::LogReplay;
 use crate::memory_bound::MemorySized;
 use crate::pre_config_buffer::{self, PreConfigBuffer};
 use anyhow::anyhow;
@@ -13,6 +14,7 @@ use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::BuffersWithAck;
 use bd_client_stats::{DynamicStats, FlushTrigger};
 use bd_client_stats_store::{Counter, Scope};
+use bd_filters::FiltersConfiguration;
 use bd_log_primitives::{log_level, LogLevel};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::ConfigLoader;
@@ -36,7 +38,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 /// The logging state used by the `AsyncLogBuffer` to encapsulate objects
 /// that are needed to process incoming logs.
 #[derive(Debug)]
-pub enum LoggingState<T: MemorySized + Debug> {
+pub enum LoggingState<T: MemorySized + Debug, R: LogReplay> {
   /// The initial state that each `AsyncLogBuffer` starts in. While in this state
   /// the buffer takes incoming logs, populates them with extra information using
   /// its metadata provider and puts them on hold for further processing inside of
@@ -49,7 +51,7 @@ pub enum LoggingState<T: MemorySized + Debug> {
   /// the cached version of the configuration is not always available and in these
   /// cases the `AsyncLogBuffer` waits for the configuration to be fetched
   /// from the Bitdrift control plane (can potentially take seconds or even minutes).
-  Uninitialized(UninitializedLoggingContext<T>),
+  Uninitialized(UninitializedLoggingContext<T, R>),
   /// The state that `AsyncLogBuffer` moves to as soon as it receives any configuration
   /// update.
   /// While in this state the `AsyncLogBuffer` takes incoming logs, populates them with
@@ -58,7 +60,7 @@ pub enum LoggingState<T: MemorySized + Debug> {
   /// logs stored inside of its `PreConfigBuffer`. All replayed logs are sent for their final
   /// processing to now initialized parts of the logs processing pipeline such as workflows engine
   /// or various ring buffers.
-  Initialized(InitializedLoggingContext),
+  Initialized(InitializedLoggingContext<R>),
 }
 
 impl<T: MemorySized + Debug> LoggingState<T> {
@@ -87,7 +89,7 @@ impl<T: MemorySized + Debug> LoggingState<T> {
 //
 // UninitializedLoggingContext
 //
-pub struct UninitializedLoggingContext<T: MemorySized + Debug> {
+pub struct UninitializedLoggingContext<T: MemorySized + Debug, R: LogReplay> {
   pub(crate) pre_config_log_buffer: PreConfigBuffer<T>,
 
   data_upload_tx: Sender<DataUpload>,
@@ -185,13 +187,14 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
 //
 // InitializedLoggingContext
 //
-pub struct InitializedLoggingContext {
+pub struct InitializedLoggingContext<R: LogReplay> {
   pub(crate) buffer_producers: BufferProducers,
   pub(crate) buffer_selector: BufferSelector,
   pub(crate) data_upload_tx: Sender<DataUpload>,
   pub(crate) flush_buffers_tx: Sender<BuffersWithAck>,
   pub(crate) flush_stats_trigger: Option<FlushTrigger>,
 
+  pub(crate) replay: R,
   pub(crate) workflows_engine: Option<WorkflowsEngine>,
 
   pub(crate) tail_configs: TailConfigurations,
@@ -219,7 +222,7 @@ impl Debug for InitializedLoggingContext {
   }
 }
 
-impl InitializedLoggingContext {
+impl<R: LogReplay> InitializedLoggingContext<R> {
   fn new(
     buffer_producers: BufferProducers,
     buffer_selector: BufferSelector,
@@ -227,6 +230,7 @@ impl InitializedLoggingContext {
     data_upload_tx: Sender<DataUpload>,
     flush_buffers_tx: Sender<BuffersWithAck>,
     flush_stats_trigger: Option<FlushTrigger>,
+    replay: R,
     workflows_engine: Option<WorkflowsEngine>,
     trigger_upload_tx: Sender<TriggerUpload>,
     buffers_to_flush_rx: Option<Receiver<BuffersToFlush>>,
@@ -240,6 +244,7 @@ impl InitializedLoggingContext {
       data_upload_tx,
       flush_buffers_tx,
       flush_stats_trigger,
+      replay,
       workflows_engine,
       tail_configs,
       trigger_upload_tx,
@@ -401,6 +406,7 @@ pub(crate) struct ConfigUpdate {
   pub(crate) buffer_selector: BufferSelector,
   pub(crate) workflows_configuration: WorkflowsConfiguration,
   pub(crate) tail_configs: TailConfigurations,
+  pub(crate) filters_config: FiltersCon,
 }
 
 pub(crate) struct BufferProducers {
