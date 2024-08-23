@@ -1,6 +1,6 @@
 .PHONY: build
 build: setup
-	cargo build --workspace
+	SKIP_PROTO_GEN=1 cargo build --workspace
 
 .PHONY: setup
 setup:
@@ -9,8 +9,8 @@ setup:
 .PHONY: clippy
 clippy: setup
 	ci/check_license.sh
-	cargo clippy --workspace --bins --examples --tests -- --no-deps
+	SKIP_PROTO_GEN=1 cargo clippy --workspace --bins --examples --tests -- --no-deps
 
 .PHONY: test
 test: setup
-	RUST_LOG=off cargo test --workspace
+	SKIP_PROTO_GEN=1 RUST_LOG=off cargo test --workspace
