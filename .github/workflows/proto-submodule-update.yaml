@@ -11,13 +11,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     # Get a token that can be used for org read-only clones.
+    # TODO(mattklein123): Remove this once public.
     - name: org-read-only-install token
       id: org-read-only
       uses: getsentry/action-github-app-token@v2
       with:
         app_id: ${{ secrets.ORG_READ_ONLY_APP_ID }}
         private_key: ${{ secrets.ORG_READ_ONLY_APP_PRIVATE_KEY }}
+
     # Install the token so all ssh pulls are rewritten to use the token from the previous step.
+    # TODO(mattklein123): Remove this once public.
     - name: setup git credentials
       uses: de-vri-es/setup-git-credentials@v2
       with:
@@ -28,12 +31,10 @@ jobs:
       with:
         submodules: true
         token: ${{ steps.org-read-only.outputs.token }}
-    - name: CI Setup
-      run: if [[ -f ci/setup.sh ]]; then ci/setup.sh; fi
 
-    - name: Fetch latest submodule
-      run: |
-        git submodule update --init --recursive --remote
+    - name: CI Setup
+      run: ci/setup_submodule_update.sh
+
     - name: Check for changes
       id: state
       run: |
@@ -49,8 +50,10 @@ jobs:
         toolchain: stable
         override: true
         profile: minimal
+
     - name: Cache
-      uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43
+      uses: Swatinem/rust-cache@v2.7.3
+
     - name: Run "cargo build --package bd-proto"
       id: cargo-build-bd-proto
       if: steps.state.outputs.dirty == 'true'
@@ -62,6 +65,7 @@ jobs:
       with:
         app_id: ${{ secrets.ORG_PROTO_SYNC_APP_ID }}
         private_key: ${{ secrets.ORG_PROTO_SYNC_APP_KEY }}
+
     - name: Create PR
       id: create-pr
       if: steps.state.outputs.dirty == 'true'
@@ -76,6 +80,7 @@ jobs:
         branch: update-proto-submodule-${{ env.PROTO_SHA }}
       env:
         PROTO_SHA: ${{ steps.state.outputs.proto_submodule_sha }}
+
     - name: Enable Pull Request Automerge
       if: steps.create-pr.outputs.pull-request-operation == 'created'
       run: gh pr merge $PR_NUMBER --auto -s
