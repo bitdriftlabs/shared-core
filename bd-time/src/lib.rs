@@ -149,17 +149,17 @@ impl ProtoDurationExt for protobuf::well_known_types::duration::Duration {
 //
 
 pub trait ToProtoDuration {
-  fn to_proto(self) -> MessageField<protobuf::well_known_types::duration::Duration>;
+  fn into_proto(self) -> MessageField<protobuf::well_known_types::duration::Duration>;
 }
 
 impl ToProtoDuration for Duration {
-  fn to_proto(self) -> MessageField<protobuf::well_known_types::duration::Duration> {
+  fn into_proto(self) -> MessageField<protobuf::well_known_types::duration::Duration> {
     Some(self.into()).into()
   }
 }
 
 impl ToProtoDuration for time::Duration {
-  fn to_proto(self) -> MessageField<protobuf::well_known_types::duration::Duration> {
+  fn into_proto(self) -> MessageField<protobuf::well_known_types::duration::Duration> {
     Some(protobuf::well_known_types::duration::Duration {
       seconds: self.whole_seconds(),
       nanos: self.subsec_nanoseconds(),

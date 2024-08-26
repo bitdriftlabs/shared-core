@@ -147,7 +147,7 @@ impl RequestProcessor {
           .stream_state
           .ping_interval
           .map(|d| StreamSettings {
-            ping_interval: d.to_proto(),
+            ping_interval: d.into_proto(),
             ..Default::default()
           })
           .into();

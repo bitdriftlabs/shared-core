@@ -54,7 +54,7 @@ fn duration() {
     "negative proto duration not supported");
 
   let message = Duration {
-    field: 1.seconds().to_proto(),
+    field: 1.seconds().into_proto(),
     ..Default::default()
   };
   assert!(validate(&message).is_ok());
