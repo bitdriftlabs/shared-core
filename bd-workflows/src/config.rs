@@ -243,9 +243,11 @@ pub(crate) enum Execution {
 
 impl Execution {
   pub fn new(value: &protobuf::MessageField<ExecutionProto>) -> anyhow::Result<Self> {
-    match value.execution_type.as_ref().ok_or(anyhow!(
-      "invalid execution configuration: missing execution_type"
-    ))? {
+    match value
+      .execution_type
+      .as_ref()
+      .ok_or_else(|| anyhow!("invalid execution configuration: missing execution_type"))?
+    {
       Execution_type::ExecutionExclusive(_) => Ok(Self::Exclusive),
       Execution_type::ExecutionParallel(_) => Ok(Self::Parallel),
     }
@@ -268,11 +270,13 @@ impl Transition {
     let rule = transition
       .rule
       .as_ref()
-      .ok_or(anyhow!("invalid transition configuration: missing rule"))?;
+      .ok_or_else(|| anyhow!("invalid transition configuration: missing rule"))?;
 
-    let rule = match rule.rule_type.as_ref().ok_or(anyhow!(
-      "invalid transition configuration: missing rule type"
-    ))? {
+    let rule = match rule
+      .rule_type
+      .as_ref()
+      .ok_or_else(|| anyhow!("invalid transition configuration: missing rule type"))?
+    {
       Rule_type::RuleLogMatch(rule) => {
         Predicate::LogMatch(Tree::new(&rule.log_matcher)?, rule.count)
       },
@@ -326,7 +330,7 @@ impl Action {
     match proto
       .action_type
       .as_ref()
-      .ok_or(anyhow!("invalid action configuration: missing action type"))?
+      .ok_or_else(|| anyhow!("invalid action configuration: missing action type"))?
     {
       Action_type::ActionFlushBuffers(action) => {
         let streaming = match action.streaming.clone().into_option() {

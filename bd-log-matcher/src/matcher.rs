@@ -56,7 +56,7 @@ impl Tree {
     match config
       .matcher
       .as_ref()
-      .ok_or(anyhow!("missing log matcher"))?
+      .ok_or_else(|| anyhow!("missing log matcher"))?
     {
       Matcher::BaseMatcher(matcher) => Ok(Self::Base(Leaf::new(matcher)?)),
       Matcher::OrMatcher(sub_matchers) => Ok(Self::Or(
@@ -247,7 +247,7 @@ impl Leaf {
     match log_matcher
       .match_type
       .as_ref()
-      .ok_or(anyhow!("missing log_matcher"))?
+      .ok_or_else(|| anyhow!("missing log_matcher"))?
     {
       MessageMatch(message_match) => Ok(Self::StringValue(
         InputType::Message,
@@ -263,7 +263,7 @@ impl Leaf {
       TagMatch(tag_match) => match tag_match
         .value_match
         .as_ref()
-        .ok_or(anyhow!("missing tag_match value_match"))?
+        .ok_or_else(|| anyhow!("missing tag_match value_match"))?
       {
         IntValueMatch(int_value_match) => match tag_match.tag_key.as_str() {
           // Special case for key="log_level"
