@@ -19,7 +19,7 @@ use tower::retry::Policy;
 
 #[tokio::test(start_paused = true)]
 async fn test_retry_backoff() {
-  let directory = tempdir::TempDir::new("backoff_test").unwrap();
+  let directory = tempfile::TempDir::with_prefix("backoff_test").unwrap();
   let runtime = bd_runtime::runtime::ConfigLoader::new(directory.path());
   let max_retries = runtime.register_watch().unwrap();
   let retry_limit_exceeded_dropped_logs = Counter::default();

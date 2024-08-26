@@ -7,7 +7,7 @@
 
 use bd_server_stats::stats::Collector;
 use std::io::prelude::*;
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 #[ctor::ctor]
 fn test_global_init() {
@@ -26,7 +26,7 @@ impl Helper {
     let stats = crate::loader::Stats::new(&scope);
 
     Self {
-      temp_dir: TempDir::new("test").unwrap(),
+      temp_dir: TempDir::with_prefix("test").unwrap(),
       stats,
     }
   }

@@ -19,8 +19,8 @@ fn fake_counter() -> Counter {
   Collector::default().scope("test").counter("test")
 }
 
-fn tmp_dir() -> tempdir::TempDir {
-  tempdir::TempDir::new("ring-buffer-").unwrap()
+fn tmp_dir() -> tempfile::TempDir {
+  tempfile::TempDir::with_prefix("ring-buffer-").unwrap()
 }
 
 #[tokio::test]
@@ -170,7 +170,7 @@ async fn test_ring_buffer_manager() {
 
 #[tokio::test]
 async fn test_ring_buffer_stats() {
-  let diretory = tempdir::TempDir::new("ringbuffer").unwrap();
+  let diretory = tempfile::TempDir::with_prefix("ringbuffer").unwrap();
 
   let collector = Collector::default();
   let (ring_buffer_manager, mut buffer_update_rx) = Manager::new(
@@ -270,7 +270,7 @@ async fn test_ring_buffer_stats() {
 
 #[tokio::test]
 async fn write_failure_stats() {
-  let diretory = tempdir::TempDir::new("ringbuffer").unwrap();
+  let diretory = tempfile::TempDir::with_prefix("ringbuffer").unwrap();
 
   let collector = Collector::default();
   let (ring_buffer_manager, mut buffer_update_rx) = Manager::new(
@@ -316,7 +316,7 @@ async fn write_failure_stats() {
 // Verifies that buffer sizes don't change once a buffer has been initialized, even if we get
 // a configuration update for the buffers with a new buffer size.
 async fn buffer_never_resizes() {
-  let buffer_directory = tempdir::TempDir::new("sdk").unwrap();
+  let buffer_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
   let (ring_buffer_manager, mut buffer_update_rx) = Manager::new(
     buffer_directory.path().to_path_buf(),
     &Collector::default().scope(""),

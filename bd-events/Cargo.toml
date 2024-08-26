@@ -16,6 +16,6 @@ tokio.workspace  = true
 bd-test-helpers.path        = "../bd-test-helpers"
 bd-time.path                = "../bd-time"
 parking_lot.workspace       = true
-tempdir.workspace           = true
+tempfile.workspace          = true
 time.workspace              = true
 tokio-test.workspace        = true

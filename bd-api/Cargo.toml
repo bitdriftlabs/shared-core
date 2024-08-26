@@ -32,4 +32,4 @@ assert_matches.workspace = true
 bd-stats-common.path     = "../bd-stats-common"
 bd-test-helpers          = { path = "../bd-test-helpers", default-features = false }
 ctor.workspace           = true
-tempdir.workspace        = true
+tempfile.workspace       = true

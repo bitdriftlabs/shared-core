@@ -73,7 +73,7 @@ mod tests {
   use std::ops::Add;
   use std::sync::Arc;
   use std::time::Instant;
-  use tempdir::TempDir;
+  use tempfile::TempDir;
   use time::ext::{NumericalDuration, NumericalStdDuration};
 
   #[ctor::ctor]
@@ -94,7 +94,7 @@ mod tests {
   impl Setup {
     fn new() -> Self {
       Self::new_with_directory(
-        Arc::new(TempDir::new("sdk").unwrap()),
+        Arc::new(TempDir::with_prefix("sdk").unwrap()),
         LogMetadata {
           timestamp: time::OffsetDateTime::now_utc(),
           fields: Vec::new(),
@@ -103,7 +103,10 @@ mod tests {
     }
 
     fn new_with_metadata(metadata_provider: LogMetadata) -> Self {
-      Self::new_with_directory(Arc::new(TempDir::new("sdk").unwrap()), metadata_provider)
+      Self::new_with_directory(
+        Arc::new(TempDir::with_prefix("sdk").unwrap()),
+        metadata_provider,
+      )
     }
 
     fn new_with_directory(sdk_directory: Arc<TempDir>, metadata_provider: LogMetadata) -> Self {
@@ -557,7 +560,7 @@ mod tests {
 
   #[test]
   fn configuration_caching() {
-    let directory = Arc::new(tempdir::TempDir::new("sdk").unwrap());
+    let directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
 
     // Initialize the logger once, sending it a configuration that will upload all logs.
     {
@@ -1880,7 +1883,7 @@ mod tests {
 
   #[test]
   fn logs_before_cache_load() {
-    let directory = Arc::new(tempdir::TempDir::new("sdk").unwrap());
+    let directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
     let mut server = bd_test_helpers::test_api_server::start_server(false, None);
 
     let shutdown = ComponentShutdownTrigger::default();

@@ -47,7 +47,7 @@ impl tower::Service<&str> for TestService {
 
 #[tokio::test(start_paused = true)]
 async fn ratelimit() {
-  let directory = tempdir::TempDir::new("ratelimit_test").unwrap();
+  let directory = tempfile::TempDir::with_prefix("ratelimit_test").unwrap();
   let runtime_loader = ConfigLoader::new(directory.path());
 
   // Set the ratelimit parameters to 10 characters per minute.
@@ -89,7 +89,7 @@ async fn ratelimit() {
 
 #[tokio::test(start_paused = true)]
 async fn shared_quota() {
-  let directory = tempdir::TempDir::new("ratelimit-test").unwrap();
+  let directory = tempfile::TempDir::with_prefix("ratelimit-test").unwrap();
   let runtime_loader = ConfigLoader::new(directory.path());
 
   // Set the ratelimit parameters to 2 characters per second.

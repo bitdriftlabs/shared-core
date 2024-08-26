@@ -352,15 +352,15 @@ impl std::ops::Drop for AnnotatedWorkflowsEngine {
 struct Setup {
   runtime: Arc<ConfigLoader>,
   collector: Collector,
-  sdk_directory: Arc<tempdir::TempDir>,
+  sdk_directory: Arc<tempfile::TempDir>,
 }
 
 impl Setup {
   fn new() -> Self {
-    Self::new_with_sdk_directory(&Arc::new(tempdir::TempDir::new("root-").unwrap()))
+    Self::new_with_sdk_directory(&Arc::new(tempfile::TempDir::with_prefix("root-").unwrap()))
   }
 
-  fn new_with_sdk_directory(sdk_directory: &Arc<tempdir::TempDir>) -> Self {
+  fn new_with_sdk_directory(sdk_directory: &Arc<tempfile::TempDir>) -> Self {
     let runtime = ConfigLoader::new(sdk_directory.path());
     let collector = Collector::default();
 
@@ -2883,6 +2883,6 @@ async fn test_exclusive_workflow_potential_fork() {
 }
 
 fn make_runtime() -> std::sync::Arc<ConfigLoader> {
-  let dir = tempdir::TempDir::new(".").unwrap();
+  let dir = tempfile::TempDir::with_prefix(".").unwrap();
   ConfigLoader::new(dir.path())
 }

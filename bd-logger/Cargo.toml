@@ -52,6 +52,6 @@ bd-noop-network             = { path = "../bd-noop-network" }
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
 ctor.workspace              = true
 pretty_assertions.workspace = true
-tempdir.workspace           = true
+tempfile.workspace          = true
 tokio-test.workspace        = true
 uuid.workspace              = true

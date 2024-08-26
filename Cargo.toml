@@ -108,7 +108,7 @@ sketches-rust = { git = "https://github.com/mattklein123/sketches-rust.git", bra
 
 snap              = "1.1.1"
 static_assertions = "1.1.0"
-tempdir           = "0.3.7"
+tempfile          = "3.11.0"
 thiserror         = "1.0.63"
 tikv-jemalloc-ctl = "0.6.0"
 time              = { version = "0.3.36", features = ["serde-well-known", "macros"] }

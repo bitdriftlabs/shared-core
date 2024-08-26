@@ -52,12 +52,12 @@ struct Setup {
   runtime: Arc<ConfigLoader>,
   stats: Collector,
   dynamic_counter_stats: Arc<DynamicStats>,
-  tmp_dir: Arc<tempdir::TempDir>,
+  tmp_dir: Arc<tempfile::TempDir>,
 }
 
 impl Setup {
   fn new() -> Self {
-    let tmp_dir = Arc::new(tempdir::TempDir::new("root-").unwrap());
+    let tmp_dir = Arc::new(tempfile::TempDir::with_prefix("root-").unwrap());
     let runtime = &Self::make_runtime(&tmp_dir);
     let helper = Collector::default();
     let dynamic_counter_stats = Arc::new(DynamicStats::new(&helper.scope(""), runtime));
@@ -112,7 +112,7 @@ impl Setup {
     )]));
   }
 
-  fn make_runtime(tmp_dir: &Arc<tempdir::TempDir>) -> std::sync::Arc<ConfigLoader> {
+  fn make_runtime(tmp_dir: &Arc<tempfile::TempDir>) -> std::sync::Arc<ConfigLoader> {
     ConfigLoader::new(tmp_dir.path())
   }
 }
