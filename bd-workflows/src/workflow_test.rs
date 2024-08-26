@@ -14,8 +14,6 @@ use crate::config::{
   ValueIncrement,
 };
 use crate::workflow::{Run, Workflow, WorkflowResult, WorkflowResultStats};
-use crate::Error;
-use assert_matches::assert_matches;
 use bd_log_primitives::{log_level, FieldsRef, LogFields, LogMessage};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_stats_common::labels;
@@ -247,9 +245,9 @@ fn unknown_state_reference_workflow() {
   );
 
   let config = workflow_proto!(exclusive with a);
-  assert_matches!(
-    Config::new(&config),
-    Err(Error::InvalidConfig("reference to an unexisting state"))
+  assert_eq!(
+    Config::new(&config).err().unwrap().to_string(),
+    "invalid workflow state configuration: reference to an unexisting state"
   );
 }
 

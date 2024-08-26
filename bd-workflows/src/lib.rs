@@ -8,32 +8,28 @@
 pub mod actions_flush_buffers;
 pub mod config;
 pub mod engine;
-pub mod matcher;
 pub mod metrics;
 pub mod workflow;
 
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-  #[error("Invalid regex: {0}")]
-  Regex(#[from] regex::Error),
+// #[derive(thiserror::Error, Debug)]
+// pub enum Error {
+//   #[error("Invalid workflow configuration: {0}")]
+//   InvalidConfig(&'static str),
 
-  #[error("Invalid workflow configuration: {0}")]
-  InvalidConfig(&'static str),
+//   #[error("An io error ocurred: {0}")]
+//   Io(#[from] std::io::Error),
 
-  #[error("An io error ocurred: {0}")]
-  Io(#[from] std::io::Error),
+//   #[error("Configuration has unknown fields or enum")]
+//   UnknownFieldOrEnum,
 
-  #[error("Configuration has unknown fields or enum")]
-  UnknownFieldOrEnum,
+//   #[error("An unexpected int conversion error occurred: {0}")]
+//   TryFromInt(#[from] std::num::TryFromIntError),
 
-  #[error("An unexpected int conversion error occurred: {0}")]
-  TryFromInt(#[from] std::num::TryFromIntError),
+//   #[error("Serialization Error: {0}")]
+//   SerializationError(#[from] std::boxed::Box<bincode::ErrorKind>),
 
-  #[error("Serialization Error: {0}")]
-  SerializationError(#[from] std::boxed::Box<bincode::ErrorKind>),
+//   #[error("Tokio Send Error: {0}")]
+//   TokioSend(&'static str),
+// }
 
-  #[error("Tokio Send Error: {0}")]
-  TokioSend(&'static str),
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
+// pub type Result<T> = std::result::Result<T, Error>;

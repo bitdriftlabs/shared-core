@@ -285,7 +285,7 @@ impl ApplyConfig for LoggerUpdate {
 // TailConfigurations.
 struct Inner {
   // List of active tail configurations with their optional log matcher.
-  active_streams: Vec<(Chars, Option<bd_workflows::matcher::Tree>)>,
+  active_streams: Vec<(Chars, Option<bd_log_matcher::matcher::Tree>)>,
 
   // The buffer producer to write streamd logs to. When there are no active streams the streaming
   // buffer is deallocated.
@@ -353,7 +353,7 @@ impl TailConfigurations {
     let mut active_streams = Vec::new();
     for stream in config.active_streams {
       let matcher = if let Some(matcher_config) = stream.matcher.into_option() {
-        match bd_workflows::matcher::Tree::new(&matcher_config) {
+        match bd_log_matcher::matcher::Tree::new(&matcher_config) {
           Ok(matcher) => Some(matcher),
           Err(e) => {
             // If the are unable to parse the config, ignore the stream config but do not fail

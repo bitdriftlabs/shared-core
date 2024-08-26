@@ -9,9 +9,8 @@
 #[path = "./matcher_test.rs"]
 mod matcher_test;
 
-mod version;
-
-use crate::{Error, Result};
+use crate::version;
+use anyhow::{anyhow, Result};
 use base_log_matcher::tag_match::Value_match::{
   IntValueMatch,
   IsSetMatch,
@@ -57,7 +56,7 @@ impl Tree {
     match config
       .matcher
       .as_ref()
-      .ok_or(Error::InvalidConfig("missing log matcher"))?
+      .ok_or(anyhow!("missing log matcher"))?
     {
       Matcher::BaseMatcher(matcher) => Ok(Self::Base(Leaf::new(matcher)?)),
       Matcher::OrMatcher(sub_matchers) => Ok(Self::Or(
@@ -122,10 +121,10 @@ pub struct IntMatch {
 
 /// Supports comparison between two integers
 impl IntMatch {
-  const fn new(operator: Operator, value: i32) -> Result<Self> {
+  fn new(operator: Operator, value: i32) -> Result<Self> {
     match operator {
       // Regex operator is not valid for int32
-      Operator::OPERATOR_REGEX => Err(Error::InvalidConfig("regex does not support int32")),
+      Operator::OPERATOR_REGEX => Err(anyhow!("regex does not support int32")),
       _ => Ok(Self { operator, value }),
     }
   }
@@ -170,12 +169,15 @@ impl std::cmp::Eq for StringMatch {}
 impl StringMatch {
   fn new(operator: Operator, value: &str) -> Result<Self> {
     if operator == Operator::OPERATOR_UNSPECIFIED {
-      return Err(Error::InvalidConfig("UNSPECIFIED operator"));
+      return Err(anyhow!("UNSPECIFIED operator"));
     }
 
     // Compile the regex on tree creation to avoid recompiling it on every match.
     let regex = match operator {
-      Operator::OPERATOR_REGEX => Some(Regex::new(value)?),
+      Operator::OPERATOR_REGEX => Some(match Regex::new(value) {
+        Ok(regex) => regex,
+        Err(e) => return Err(anyhow::Error::new(e).context("invalid regex")),
+      }),
       _ => None,
     };
     Ok(Self {
@@ -245,7 +247,7 @@ impl Leaf {
     match log_matcher
       .match_type
       .as_ref()
-      .ok_or(Error::InvalidConfig("missing log_matcher"))?
+      .ok_or(anyhow!("missing log_matcher"))?
     {
       MessageMatch(message_match) => Ok(Self::StringValue(
         InputType::Message,
@@ -254,14 +256,14 @@ impl Leaf {
             .string_value_match
             .operator
             .enum_value()
-            .map_err(|_| Error::UnknownFieldOrEnum)?,
+            .map_err(|_| anyhow!("unknown field or enum"))?,
           message_match.string_value_match.match_value.as_str(),
         )?,
       )),
       TagMatch(tag_match) => match tag_match
         .value_match
         .as_ref()
-        .ok_or(Error::InvalidConfig("Missing tag_match value_match"))?
+        .ok_or(anyhow!("missing tag_match value_match"))?
       {
         IntValueMatch(int_value_match) => match tag_match.tag_key.as_str() {
           // Special case for key="log_level"
@@ -272,7 +274,7 @@ impl Leaf {
             int_value_match
               .operator
               .enum_value()
-              .map_err(|_| Error::UnknownFieldOrEnum)?,
+              .map_err(|_| anyhow!("unknown field or enum"))?,
             int_value_match.match_value,
           )?)),
           // Special case for key="log_type"
@@ -287,7 +289,7 @@ impl Leaf {
               int_value_match
                 .operator
                 .enum_value()
-                .map_err(|_| Error::UnknownFieldOrEnum)?,
+                .map_err(|_| anyhow!("unknown field or enum"))?,
               int_value_match.match_value,
             )?,
           )),
@@ -298,7 +300,7 @@ impl Leaf {
             string_value_match
               .operator
               .enum_value()
-              .map_err(|_| Error::UnknownFieldOrEnum)?,
+              .map_err(|_| anyhow!("unknown field or enum"))?,
             string_value_match.match_value.as_str(),
           )?,
         )),
@@ -308,7 +310,7 @@ impl Leaf {
             sem_ver_value_match
               .operator
               .enum_value()
-              .map_err(|_| Error::UnknownFieldOrEnum)?,
+              .map_err(|_| anyhow!("unknown field or enum"))?,
             sem_ver_value_match.match_value.as_str(),
           )?,
         )),
