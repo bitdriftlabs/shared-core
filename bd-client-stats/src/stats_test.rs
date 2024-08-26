@@ -42,7 +42,7 @@ use tokio::task::JoinError;
 struct Setup<F: SerializedFileSystem + Send + 'static> {
   stats: Arc<Stats>,
   dynamic_stats: Arc<DynamicStats>,
-  _directory: tempdir::TempDir,
+  _directory: tempfile::TempDir,
   shutdown_trigger: ComponentShutdownTrigger,
   _runtime_loader: Arc<ConfigLoader>,
   upload_handle: tokio::task::JoinHandle<()>,
@@ -58,7 +58,7 @@ impl Setup<TestSerializedFileSystem> {
   }
 }
 impl Setup<RealSerializedFileSystem> {
-  fn new_with_directory(directory: tempdir::TempDir) -> Self {
+  fn new_with_directory(directory: tempfile::TempDir) -> Self {
     Self::new_with_filesystem(
       Arc::new(RealSerializedFileSystem::new(
         directory.path().to_path_buf(),
@@ -88,8 +88,8 @@ impl Setup<RealSerializedFileSystem> {
 }
 
 impl<F: SerializedFileSystem + Send + 'static> Setup<F> {
-  fn new_with_filesystem(fs: Arc<F>, directory: Option<tempdir::TempDir>) -> Self {
-    let directory = directory.unwrap_or_else(|| tempdir::TempDir::new("sdk").unwrap());
+  fn new_with_filesystem(fs: Arc<F>, directory: Option<tempfile::TempDir>) -> Self {
+    let directory = directory.unwrap_or_else(|| tempfile::TempDir::with_prefix("sdk").unwrap());
     let test_time = TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH);
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let runtime_loader = ConfigLoader::new(directory.path());
@@ -320,7 +320,7 @@ async fn earliest_aggregation_start_maintained() {
   // that the aggregation start window is set according to when an aggregation period starts and is
   // not updated every time more data is merged into the aggregated data.
 
-  let directory = tempdir::TempDir::new("stats").unwrap();
+  let directory = tempfile::TempDir::with_prefix("stats").unwrap();
 
   let mut setup = Setup::new_with_directory(directory);
 
@@ -381,7 +381,7 @@ async fn earliest_aggregation_start_maintained() {
 
 #[tokio::test(start_paused = true)]
 async fn existing_pending_upload() {
-  let directory = tempdir::TempDir::new("stats").unwrap();
+  let directory = tempfile::TempDir::with_prefix("stats").unwrap();
 
   let req = StatsUploadRequest {
     upload_uuid: "test".to_string(),
@@ -405,7 +405,7 @@ async fn existing_pending_upload() {
 
 #[tokio::test(start_paused = true)]
 async fn existing_corrupted_pending_upload() {
-  let directory = tempdir::TempDir::new("stats").unwrap();
+  let directory = tempfile::TempDir::with_prefix("stats").unwrap();
 
   // Write garbage data to the upload file. This should then be ignored on startup, so the first
   // upload should be based on fresh stats.
@@ -426,7 +426,7 @@ async fn existing_corrupted_pending_upload() {
 
 #[tokio::test(start_paused = true)]
 async fn existing_aggregated_file() {
-  let directory = tempdir::TempDir::new("stats").unwrap();
+  let directory = tempfile::TempDir::with_prefix("stats").unwrap();
 
   let snapshot = StatsSnapshot {
     snapshot_type: Some(Snapshot_type::Metrics(MetricsList {
@@ -463,7 +463,7 @@ async fn existing_aggregated_file() {
 
 #[tokio::test(start_paused = true)]
 async fn corrupted_aggregated_file() {
-  let directory = tempdir::TempDir::new("stats").unwrap();
+  let directory = tempfile::TempDir::with_prefix("stats").unwrap();
 
   Setup::write_aggregated_file(directory.path(), b"not a proto");
 

@@ -366,7 +366,7 @@ impl AnnotatedWorkflowsEngine {
 }
 
 struct Setup {
-  directory: Arc<tempdir::TempDir>,
+  directory: Arc<tempfile::TempDir>,
   runtime_loader: Arc<ConfigLoader>,
   dynamic_stats: Arc<DynamicStats>,
   stats: Arc<Stats>,
@@ -374,7 +374,7 @@ struct Setup {
 
 impl Setup {
   fn new() -> Self {
-    let directory = Arc::new(tempdir::TempDir::new("stats-benches-").unwrap());
+    let directory = Arc::new(tempfile::TempDir::with_prefix("stats-benches-").unwrap());
     let runtime_loader = ConfigLoader::new(directory.path());
 
     let dynamic_stats = Arc::new(DynamicStats::new(

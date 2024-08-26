@@ -28,7 +28,7 @@ use bd_client_stats_store::Collector;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::sync::Arc;
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 pub mod buffer_corruption_fuzz_test;
 pub mod mpsc_buffer_fuzz_test;
@@ -221,7 +221,7 @@ pub struct BufferFuzzTest {
 impl BufferFuzzTest {
   #[must_use]
   pub fn new(test_case: BufferFuzzTestCase) -> Self {
-    let temp_dir = TempDir::new("buffer_fuzz").unwrap();
+    let temp_dir = TempDir::with_prefix("buffer_fuzz").unwrap();
     let stats = StatsHelper::new(&Collector::default().scope(""));
     let buffer_state = BufferState::new(&test_case, &temp_dir, stats.stats.clone(), false);
     assert!(buffer_state.is_some());

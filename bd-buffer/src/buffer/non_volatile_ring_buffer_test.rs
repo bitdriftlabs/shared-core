@@ -15,7 +15,7 @@ use bd_client_stats_store::Collector;
 use intrusive_collections::offset_of;
 use std::fs::File;
 use std::io::{Read, Write};
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 struct Helper {
   size: u32,
@@ -29,7 +29,7 @@ struct Helper {
 
 impl Helper {
   fn new(size: u32, allow_overwrite: AllowOverwrite, cursor: Cursor) -> Self {
-    let temp_dir = TempDir::new("buffer_test").unwrap();
+    let temp_dir = TempDir::with_prefix("buffer_test").unwrap();
     let stats = StatsHelper::new(&Collector::default().scope(""));
     let buffer = RingBufferImpl::new(
       "test".to_string(),

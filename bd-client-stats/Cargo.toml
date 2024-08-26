@@ -31,4 +31,4 @@ bd-stats-common.path     = "../bd-stats-common"
 bd-test-helpers.path     = "../bd-test-helpers"
 ctor.workspace           = true
 futures-util.workspace   = true
-tempdir.workspace        = true
+tempfile.workspace       = true

@@ -18,14 +18,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 struct Setup {
-  sdk_directory: Arc<tempdir::TempDir>,
+  sdk_directory: Arc<tempfile::TempDir>,
   collector: Collector,
 }
 
 impl Setup {
   fn new() -> Self {
     Self {
-      sdk_directory: Arc::new(tempdir::TempDir::new("bd-metrics_collector").unwrap()),
+      sdk_directory: Arc::new(tempfile::TempDir::with_prefix("bd-metrics_collector").unwrap()),
       collector: Collector::default(),
     }
   }

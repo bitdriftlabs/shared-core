@@ -24,7 +24,7 @@ use futures_util::poll;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use tempdir::TempDir;
+use tempfile::TempDir;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
@@ -39,13 +39,13 @@ struct SetupSingleConsumer {
   runtime_loader: Arc<ConfigLoader>,
   collector: Collector,
 
-  _sdk_directory: tempdir::TempDir,
+  _sdk_directory: tempfile::TempDir,
 }
 
 impl SetupSingleConsumer {
   fn new() -> Self {
     tokio::time::pause();
-    let sdk_directory = tempdir::TempDir::new("sdk").unwrap();
+    let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
 
     let records_written_counter = Counter::default();
 
@@ -405,14 +405,14 @@ struct SetupMultiConsumer {
   buffer_event_tx: Sender<BufferEventWithResponse>,
   trigger_upload_tx: Sender<TriggerUpload>,
 
-  temp_directory: tempdir::TempDir,
+  temp_directory: tempfile::TempDir,
 }
 
 impl SetupMultiConsumer {
   fn new(batch_size: u32, byte_limit: u32) -> Self {
     tokio::time::pause();
 
-    let temp_directory = TempDir::new("consumertest").unwrap();
+    let temp_directory = TempDir::with_prefix("consumertest").unwrap();
     let (buffer_event_tx, buffer_event_rx) = channel(1);
 
     let (log_upload_tx, log_upload_rx) = tokio::sync::mpsc::channel(1);
@@ -481,7 +481,7 @@ impl SetupMultiConsumer {
 
 #[tokio::test]
 async fn upload_multiple_continuous_buffers() {
-  let directory = tempdir::TempDir::new("consumer-").unwrap();
+  let directory = tempfile::TempDir::with_prefix("consumer-").unwrap();
   let mut setup = SetupMultiConsumer::new(1, 1000);
 
   let (buffer_a, mut producer_a) = create_continuous_buffer(

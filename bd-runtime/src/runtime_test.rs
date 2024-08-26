@@ -17,7 +17,7 @@ fn feature_flag_registration() {
   int_feature_flag!(TestFlag, "test.path", 1);
   bool_feature_flag!(BoolFlag, "test.bool", false);
 
-  let sdk_directory = tempdir::TempDir::new("sdk").unwrap();
+  let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
   let loader = ConfigLoader::new(sdk_directory.path());
 
   let mut int_feature_flag = loader.register_watch::<u32, TestFlag>().unwrap();
@@ -53,7 +53,7 @@ fn feature_flag_registration() {
 fn registration_after_update() {
   int_feature_flag!(TestFlag, "test.path", 1);
 
-  let sdk_directory = tempdir::TempDir::new("sdk").unwrap();
+  let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
   let loader = ConfigLoader::new(sdk_directory.path());
 
   loader.update_snapshot(&make_update(
@@ -73,7 +73,7 @@ fn incompatible_registration() {
   int_feature_flag!(IntTestFlag, "test.path", 1);
   bool_feature_flag!(BoolTestFlag, "test.path", false);
 
-  let sdk_directory = tempdir::TempDir::new("sdk").unwrap();
+  let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
   let loader = ConfigLoader::new(sdk_directory.path());
 
   let _int_feature_flag: Watch<u32, IntTestFlag> = loader.register_watch().unwrap();
@@ -85,14 +85,14 @@ fn incompatible_registration() {
 }
 
 struct SetupDiskPersistence {
-  directory: tempdir::TempDir,
+  directory: tempfile::TempDir,
   protobuf_file: PathBuf,
   retry_file: PathBuf,
 }
 
 impl SetupDiskPersistence {
   fn new() -> Self {
-    let directory = tempdir::TempDir::new("runtime").unwrap();
+    let directory = tempfile::TempDir::with_prefix("runtime").unwrap();
 
     let loader = ConfigLoader::new(directory.path());
     Self {

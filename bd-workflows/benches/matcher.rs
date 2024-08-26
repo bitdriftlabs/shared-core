@@ -21,14 +21,14 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 
 struct Setup {
-  tmp_dir: tempdir::TempDir,
+  tmp_dir: tempfile::TempDir,
   data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
   _data_upload_rx: tokio::sync::mpsc::Receiver<DataUpload>,
 }
 
 impl Setup {
   fn new() -> Self {
-    let tmp_dir = tempdir::TempDir::new("bd_workflows").unwrap();
+    let tmp_dir = tempfile::TempDir::with_prefix("bd_workflows").unwrap();
     let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1000);
 
     Self {

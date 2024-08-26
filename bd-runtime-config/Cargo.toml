@@ -19,6 +19,6 @@ thiserror.workspace   = true
 tokio.workspace       = true
 
 [dev-dependencies]
-bd-test-helpers   = { path = "../bd-test-helpers", default-features = false }
-ctor.workspace    = true
-tempdir.workspace = true
+bd-test-helpers    = { path = "../bd-test-helpers", default-features = false }
+ctor.workspace     = true
+tempfile.workspace = true
