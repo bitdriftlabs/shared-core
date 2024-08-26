@@ -51,7 +51,7 @@ impl MetadataProvider for TestMetadataProvider {
 }
 
 struct Setup {
-  _sdk_directory: tempdir::TempDir,
+  _sdk_directory: tempfile::TempDir,
   upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
   server: Box<bd_test_helpers::test_api_server::ServerHandle>,
   logger: Logger,
@@ -63,7 +63,7 @@ impl Setup {
     let server = bd_test_helpers::test_api_server::start_server(false, None);
 
     let shutdown = ComponentShutdownTrigger::default();
-    let sdk_directory = tempdir::TempDir::new("embedded_logger").unwrap();
+    let sdk_directory = tempfile::TempDir::with_prefix("embedded_logger").unwrap();
     let (network, handle) = bd_hyper_network::HyperNetwork::new(
       &format!("http://localhost:{}", server.port),
       shutdown.make_shutdown(),

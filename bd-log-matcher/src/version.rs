@@ -9,7 +9,7 @@
 #[path = "./version_test.rs"]
 mod test;
 
-use crate::{Error, Result};
+use anyhow::{anyhow, Result};
 use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Operator;
 use itertools::Itertools;
 use regex::Regex;
@@ -199,7 +199,7 @@ pub enum SimpleComparator {
 }
 
 impl SimpleComparator {
-  const fn from_operator(operator: Operator) -> Result<Self> {
+  fn from_operator(operator: Operator) -> Result<Self> {
     Ok(match operator {
       Operator::OPERATOR_LESS_THAN => Self::LessThan,
       Operator::OPERATOR_LESS_THAN_OR_EQUAL => Self::LessThanOrEqual,
@@ -207,7 +207,7 @@ impl SimpleComparator {
       Operator::OPERATOR_GREATER_THAN_OR_EQUAL => Self::GreaterThanOrEqual,
       Operator::OPERATOR_NOT_EQUALS => Self::NotEquals,
       Operator::OPERATOR_EQUALS => Self::Equals,
-      _ => return Err(Error::InvalidConfig("Invalid operator for version")),
+      _ => return Err(anyhow!("Invalid operator for version")),
     })
   }
 
@@ -254,7 +254,7 @@ impl Eq for VersionMatch {}
 impl VersionMatch {
   pub fn new(operator: Operator, value: &str) -> Result<Self> {
     if operator == Operator::OPERATOR_UNSPECIFIED {
-      return Err(Error::InvalidConfig("UNSPECIFIED operator"));
+      return Err(anyhow!("UNSPECIFIED operator"));
     }
 
     Ok(match operator {

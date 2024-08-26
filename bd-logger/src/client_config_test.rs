@@ -13,7 +13,7 @@ use bd_proto::protos::client::api::ConfigurationUpdate;
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use pretty_assertions::assert_eq;
 use std::path::Path;
-use tempdir::TempDir;
+use tempfile::TempDir;
 use tokio::sync::mpsc::channel;
 
 struct TestUpdate {
@@ -47,7 +47,7 @@ async fn process_and_load() {
   let stats = Collector::default();
   let (configuration_tx, mut configuration_rx) = channel(2);
   let update = TestUpdate { configuration_tx };
-  let directory = TempDir::new("sdk").unwrap();
+  let directory = TempDir::with_prefix("sdk").unwrap();
   let mut config = Config::new(directory.path(), update, &stats.scope("")).unwrap();
 
   config
@@ -81,7 +81,7 @@ async fn load_bad_file() {
 async fn cache_write_fails() {
   let (configuration_tx, mut configuration_rx) = channel(2);
   let update = TestUpdate { configuration_tx };
-  let directory = TempDir::new("sdk").unwrap();
+  let directory = TempDir::with_prefix("sdk").unwrap();
   let stats = Collector::default();
   let mut config = Config::new(directory.path(), update, &stats.scope("")).unwrap();
 

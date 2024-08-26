@@ -11,7 +11,7 @@ use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use bd_time::TimeDurationExt;
 use std::sync::Arc;
-use tempdir::TempDir;
+use tempfile::TempDir;
 use time::ext::NumericalDuration;
 use time::Duration;
 use tokio_test::assert_ok;
@@ -27,7 +27,7 @@ struct Setup {
 
 impl Setup {
   fn new() -> Self {
-    let directory = Arc::new(tempdir::TempDir::new("bd-resource-utilization").unwrap());
+    let directory = Arc::new(tempfile::TempDir::with_prefix("bd-resource-utilization").unwrap());
     let runtime = ConfigLoader::new(directory.path());
     Self {
       _directory: directory,

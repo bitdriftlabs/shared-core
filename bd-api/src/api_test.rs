@@ -116,7 +116,7 @@ impl PlatformNetworkStream for Stream {
 }
 
 struct Setup {
-  _sdk_directory: tempdir::TempDir,
+  _sdk_directory: tempfile::TempDir,
   data_tx: Sender<DataUpload>,
   send_data_rx: Receiver<Vec<u8>>,
   start_stream_rx: Receiver<()>,
@@ -136,7 +136,7 @@ impl bd_internal_logging::Logger for TestLog {
 
 impl Setup {
   fn new() -> Self {
-    let sdk_directory = tempdir::TempDir::new("sdk").unwrap();
+    let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
 
     let (start_stream_tx, start_stream_rx) = channel(1);
     let (send_data_tx, send_data_rx) = channel(1);

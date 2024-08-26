@@ -227,12 +227,12 @@ impl RetryPolicy {
 }
 
 impl tower::retry::Policy<UploadRequest, UploadResult, Infallible> for RetryPolicy {
-  type Future = futures_util::future::BoxFuture<'static, Self>;
+  type Future = futures_util::future::BoxFuture<'static, ()>;
 
   fn retry(
-    &self,
-    req: &UploadRequest,
-    result: std::result::Result<&UploadResult, &Infallible>,
+    &mut self,
+    req: &mut UploadRequest,
+    result: &mut std::result::Result<UploadResult, Infallible>,
   ) -> Option<Self::Future> {
     log::debug!(
       "considering request with {} logs, {} attempts left",
@@ -248,27 +248,11 @@ impl tower::retry::Policy<UploadRequest, UploadResult, Infallible> for RetryPoli
       return None;
     }
 
-    // Either clone the existing backoff instance or allocate a new one (this should happen on the
-    // first retry).
-    let mut backoff = self
+    let backoff = self
       .backoff
-      .clone()
-      .take()
-      .unwrap_or_else(|| self.backoff_provider.backoff());
-
-    // This must be called before we move the backoff in order to use the updated backoff on
-    // subsequent retries.
+      .get_or_insert_with(|| self.backoff_provider.backoff());
     let backoff_delay = backoff.next_backoff().unwrap();
-
-    // Prepare the retry policy here in order to allow the returned future to not be bound to &self.
-    let next_retry = Self {
-      attempts: self.attempts + 1,
-      max_retries: self.max_retries.clone(),
-      retry_limit_exceeded: self.retry_limit_exceeded.clone(),
-      retry_limit_exceeded_dropped_logs: self.retry_limit_exceeded_dropped_logs.clone(),
-      backoff: Some(backoff),
-      backoff_provider: self.backoff_provider.clone(),
-    };
+    self.attempts += 1;
 
     match result {
       Ok(UploadResult::Failure) => Some(Box::pin(async move {
@@ -277,14 +261,12 @@ impl tower::retry::Policy<UploadRequest, UploadResult, Infallible> for RetryPoli
           backoff_delay.as_millis()
         );
         tokio::time::sleep(backoff_delay).await;
-
-        next_retry
       })),
       _ => None,
     }
   }
 
-  fn clone_request(&self, req: &UploadRequest) -> Option<UploadRequest> {
+  fn clone_request(&mut self, req: &UploadRequest) -> Option<UploadRequest> {
     Some(req.clone())
   }
 }

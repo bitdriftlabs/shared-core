@@ -30,7 +30,7 @@ use bd_client_stats_store::Collector;
 use parameterized::parameterized;
 use std::any::Any;
 use std::sync::Arc;
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 #[derive(Clone, Copy)]
 enum TestType {
@@ -70,7 +70,7 @@ struct Helper {
 
 impl Helper {
   fn new(size: u32, test_type: TestType) -> Self {
-    let temp_dir = TempDir::new("buffer_test").unwrap();
+    let temp_dir = TempDir::with_prefix("buffer_test").unwrap();
     let stats = StatsHelper::new(&Collector::default().scope(""));
     let buffer = match test_type {
       TestType::Volatile => VolatileRingBuffer::new("test".to_string(), size, stats.stats.clone())

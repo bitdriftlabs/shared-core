@@ -23,6 +23,7 @@ bd-key-value.path            = "../bd-key-value"
 bd-log-metadata.path         = "../bd-log-metadata"
 bd-log-primitives.path       = "../bd-log-primitives"
 bd-log.path                  = "../bd-log"
+bd-log-matcher.path          = "../bd-log-matcher"
 bd-matcher.path              = "../bd-matcher"
 bd-proto.path                = "../bd-proto"
 bd-resource-utilization.path = "../bd-resource-utilization"
@@ -53,6 +54,6 @@ bd-noop-network             = { path = "../bd-noop-network" }
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
 ctor.workspace              = true
 pretty_assertions.workspace = true
-tempdir.workspace           = true
+tempfile.workspace          = true
 tokio-test.workspace        = true
 uuid.workspace              = true

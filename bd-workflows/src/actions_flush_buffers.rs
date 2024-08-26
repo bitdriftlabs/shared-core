@@ -10,7 +10,7 @@
 mod actions_flush_buffers_test;
 
 use crate::config::ActionFlushBuffers;
-use crate::Result;
+use anyhow::anyhow;
 use bd_api::upload::{Decision, Intent_type, LogUploadIntent};
 use bd_api::DataUpload;
 use bd_client_stats_store::{Counter, Scope};
@@ -232,7 +232,7 @@ impl Negotiator {
   async fn perform_action_intent_negotiation(
     &self,
     action: &PendingFlushBuffersAction,
-  ) -> Result<bool> {
+  ) -> anyhow::Result<bool> {
     let intent_uuid = LogUploadIntent::upload_uuid();
 
     let intent_request = LogUploadIntentRequest {
@@ -292,7 +292,7 @@ impl Negotiator {
   async fn perform_intent_negotiation(
     &self,
     intent_request: LogUploadIntentRequest,
-  ) -> Result<bool> {
+  ) -> anyhow::Result<bool> {
     let intent_uuid = intent_request.intent_uuid.clone();
 
     log::debug!("issuing log intent upload ({:?}) for trigger", intent_uuid);
@@ -308,7 +308,7 @@ impl Negotiator {
         .data_upload_tx
         .send(DataUpload::LogsUploadIntentRequest(intent))
         .await
-        .map_err(|_| crate::Error::TokioSend("intent upload"))?;
+        .map_err(|_| anyhow!("tokio send error: intent upload"))?;
 
       log::debug!("intent sent, awaiting response");
 

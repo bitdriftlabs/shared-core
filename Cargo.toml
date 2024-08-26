@@ -15,6 +15,7 @@ members = [
   "bd-hyper-network",
   "bd-metadata",
   "bd-logger",
+  "bd-log-matcher",
   "bd-internal-logging",
   "bd-noop-network",
   "bd-panic",
@@ -53,7 +54,7 @@ base64ct        = { version = "1.6.0", features = ["alloc", "std"] }
 base64-url      = "3.0.0"
 bincode         = "1.3.3"
 bytes           = "1.7.1"
-clap            = { version = "4.5.13", features = ["derive", "env"] }
+clap            = { version = "4.5.16", features = ["derive", "env"] }
 color-backtrace = "0.6.1"
 concat-string   = "1.0.1"
 crc32fast       = "1.4.2"
@@ -61,7 +62,7 @@ ctor            = "0.2.8"
 dashmap         = "6.0.1"
 flatbuffers     = "24.3.25"
 flatc-rust      = "0.2.0"
-flate2          = { version = "1.0.31", default-features = false }
+flate2          = { version = "1.0.32", default-features = false }
 fs2             = "0.4.3"
 futures         = "0.3.30"
 futures-core    = "0.3.30"
@@ -71,9 +72,9 @@ http-body       = "1.0.1"
 http-body-util  = "0.1.2"
 hyper           = "1.4.1"
 
-hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "ring", "webpki-tokio"] }
+hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "aws-lc-rs", "webpki-tokio"] }
 
-hyper-util            = { version = "0.1.6", features = ["client", "client-legacy"] }
+hyper-util            = { version = "0.1.7", features = ["client", "client-legacy"] }
 intrusive-collections = "0.9.6"
 itertools             = "0.13.0"
 jni                   = "0.21.1"
@@ -109,14 +110,14 @@ sketches-rust = { git = "https://github.com/mattklein123/sketches-rust.git", bra
 
 snap              = "1.1.1"
 static_assertions = "1.1.0"
-tempdir           = "0.3.7"
+tempfile          = "3.11.0"
 thiserror         = "1.0.63"
 tikv-jemalloc-ctl = "0.6.0"
 time              = { version = "0.3.36", features = ["serde-well-known", "macros"] }
-tokio             = { version = "1.39.2", features = ["full", "test-util"] }
+tokio             = { version = "1.39.3", features = ["full", "test-util"] }
 tokio-stream      = "0.1.15"
 tokio-test        = "0.4.4"
-tower             = { version = "0.4.13", features = ["retry", "util"] }
+tower             = { version = "0.5.0", features = ["retry", "util"] }
 tracing-error     = "0.2.0"
 unwrap-infallible = "0.1.5"
 urlencoding       = "2.1.3"

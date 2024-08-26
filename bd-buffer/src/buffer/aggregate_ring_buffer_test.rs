@@ -22,7 +22,7 @@ use crate::Result;
 use bd_client_stats_store::Collector;
 use futures::poll;
 use std::sync::Arc;
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 struct Helper {
   volatile_size: u32,
@@ -42,7 +42,7 @@ impl Helper {
     allow_overwrite: AllowOverwrite,
     cursor: Cursor,
   ) -> Self {
-    let temp_dir = TempDir::new("buffer_test").unwrap();
+    let temp_dir = TempDir::with_prefix("buffer_test").unwrap();
     let stats = StatsHelper::new(&Collector::default().scope(""));
     let buffer = RingBufferImpl::new(
       "test",

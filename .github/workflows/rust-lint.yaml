@@ -38,19 +38,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Get a token that can be used for org read-only clones.
-      - name: org-read-only-install token
-        id: org-read-only
-        uses: getsentry/action-github-app-token@v2
-        with:
-          app_id: ${{ secrets.ORG_READ_ONLY_APP_ID }}
-          private_key: ${{ secrets.ORG_READ_ONLY_APP_PRIVATE_KEY }}
-
-      # Install the token so all ssh pulls are rewritten to use the token from the previous step.
-      - name: setup git credentials
-        uses: de-vri-es/setup-git-credentials@v2
-        with:
-          credentials: https://x-access-token:${{ steps.org-read-only.outputs.token }}@github.com/
+      
 
       - name: Cache
         uses: Swatinem/rust-cache@v2.7.3
@@ -66,14 +54,6 @@ jobs:
       - name: Clippy
         # Typically: cargo clippy --workspace --bins --examples --tests -- --no-deps
         run: make clippy
-
-  fmt:
-    needs: rust-changes
-    if: needs.rust-changes.outputs.rust-changes == 'true' && github.actor != 'bitdriftlabs-terraform[bot]'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
       - name: Rust Toolchain
         uses: actions-rs/toolchain@v1
