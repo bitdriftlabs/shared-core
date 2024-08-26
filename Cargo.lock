@@ -609,6 +609,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-log-matcher"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "bd-log-primitives",
+ "bd-matcher",
+ "bd-proto",
+ "bd-test-helpers",
+ "itertools 0.13.0",
+ "matches",
+ "pretty_assertions",
+ "protobuf",
+ "regex",
+ "time",
+]
+
+[[package]]
 name = "bd-log-metadata"
 version = "1.0.0"
 dependencies = [
@@ -646,6 +664,7 @@ dependencies = [
  "bd-internal-logging",
  "bd-key-value",
  "bd-log",
+ "bd-log-matcher",
  "bd-log-metadata",
  "bd-log-primitives",
  "bd-matcher",
@@ -683,6 +702,7 @@ dependencies = [
 name = "bd-matcher"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
  "assert_matches",
  "bd-log-primitives",
  "bd-proto",
@@ -952,6 +972,7 @@ dependencies = [
  "bd-client-stats-store",
  "bd-completion",
  "bd-log",
+ "bd-log-matcher",
  "bd-log-primitives",
  "bd-matcher",
  "bd-proto",

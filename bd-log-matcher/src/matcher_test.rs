@@ -6,7 +6,6 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::matcher::Tree;
-use assert_matches::assert_matches;
 use bd_log_primitives::{
   log_level,
   FieldsRef,
@@ -29,6 +28,7 @@ use log_matcher::base_log_matcher::tag_match::Value_match::{
 use log_matcher::base_log_matcher::Match_type::{MessageMatch, TagMatch};
 use log_matcher::base_log_matcher::Operator;
 use log_matcher::{base_log_matcher, BaseLogMatcher, Matcher, MatcherList};
+use pretty_assertions::assert_eq;
 use protobuf::MessageField;
 
 type Input<'a> = (LogType, LogLevel, LogMessage, LogFields);
@@ -207,7 +207,10 @@ fn test_message_string_regex_matcher() {
 fn test_message_string_invalid_regex_config() {
   let config = simple_log_matcher(make_message_match(Operator::OPERATOR_REGEX, "*r"));
 
-  assert_matches!(Tree::new(&config), Err(crate::Error::Regex(_)));
+  assert_eq!(
+    Tree::new(&config).err().unwrap().to_string(),
+    "invalid regex"
+  );
 }
 
 #[test]
@@ -326,7 +329,10 @@ fn test_tag_int_invalid_regex_matcher() {
     ..Default::default()
   }));
 
-  assert_matches!(Tree::new(&config), Err(crate::Error::InvalidConfig(_)));
+  assert_eq!(
+    Tree::new(&config).err().unwrap().to_string(),
+    "regex does not support int32"
+  );
 }
 
 #[test]
@@ -341,7 +347,10 @@ fn test_tag_log_type_invalid_config_value() {
     ..Default::default()
   }));
 
-  assert_matches!(Tree::new(&config), Err(crate::Error::TryFromInt(_)));
+  assert_eq!(
+    Tree::new(&config).err().unwrap().to_string(),
+    "out of range integral type conversion attempted"
+  );
 }
 
 #[test]

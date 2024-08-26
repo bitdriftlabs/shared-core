@@ -21,7 +21,6 @@ use crate::actions_flush_buffers::{
 use crate::config::{Action, ActionEmitMetric, ActionFlushBuffers, Config, WorkflowsConfiguration};
 use crate::metrics::MetricsCollector;
 use crate::workflow::Workflow;
-use crate::Result;
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_stats::DynamicStats;
@@ -876,7 +875,7 @@ impl StateStore {
     workflows_state
   }
 
-  pub(self) fn load_state(&self) -> Result<WorkflowsState> {
+  pub(self) fn load_state(&self) -> anyhow::Result<WorkflowsState> {
     let file = File::open(self.state_path.as_path())?;
     // Wrap file in buffer to deserialize efficiently in place
     let buf_reader = BufReader::new(file);
@@ -932,7 +931,7 @@ impl StateStore {
     true
   }
 
-  fn store(state_path: &Path, state: &WorkflowsState) -> Result<()> {
+  fn store(state_path: &Path, state: &WorkflowsState) -> anyhow::Result<()> {
     let file = File::create(state_path)?;
     // Wrap the file in a BufWriter for better performance
     let mut writer = BufWriter::new(file);

@@ -5,9 +5,9 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::matcher::Tree;
 use crate::workflow::Traversal;
-use crate::{Error, Result};
+use anyhow::anyhow;
+use bd_log_matcher::matcher::Tree;
 use bd_proto::protos::insight::insight::insight::Insight_type;
 use bd_proto::protos::insight::insight::{
   Insight as InsightProto,
@@ -92,7 +92,7 @@ pub struct Config {
 }
 
 impl Config {
-  pub fn new(config: &WorkflowConfigProto) -> Result<Self> {
+  pub fn new(config: &WorkflowConfigProto) -> anyhow::Result<Self> {
     Ok(Self {
       id: config.id.clone(),
       states: State::try_from_proto(&config.states)?,
@@ -126,20 +126,22 @@ impl Config {
 
   fn try_duration_limit_from_proto(
     value: &MessageField<LimitDurationProto>,
-  ) -> Result<Option<Duration>> {
+  ) -> anyhow::Result<Option<Duration>> {
     value.as_ref().map_or(Ok(None), |duration_proto| {
       let duration_ms = duration_proto.duration_ms;
       if duration_ms > 0 {
         Ok(Some(Duration::from_millis(duration_ms)))
       } else {
-        Err(Error::InvalidConfig("duration_ms limit is equal to 0"))
+        Err(anyhow!(
+          "invalid duration limit configuration: duration_ms limit is equal to 0"
+        ))
       }
     })
   }
 
   fn try_matched_logs_count_limit_from_proto(
     value: &MessageField<LimitMatchedLogsCount>,
-  ) -> Result<Option<u32>> {
+  ) -> anyhow::Result<Option<u32>> {
     value
       .as_ref()
       .map_or(Ok(None), |matched_logs_count_limit_proto| {
@@ -147,8 +149,8 @@ impl Config {
         if count > 0 {
           Ok(Some(count))
         } else {
-          Err(Error::InvalidConfig(
-            "matched logs count limit is equal to 0",
+          Err(anyhow!(
+            "invalid logs count limit configuration: matched logs count limit is equal to 0",
           ))
         }
       })
@@ -182,7 +184,7 @@ pub(crate) struct State {
 }
 
 impl State {
-  fn new(state: &StateProto, state_index_by_id: &HashMap<StateID, usize>) -> Result<Self> {
+  fn new(state: &StateProto, state_index_by_id: &HashMap<StateID, usize>) -> anyhow::Result<Self> {
     Ok(Self {
       id: state.id.clone(),
       transitions: state
@@ -190,12 +192,14 @@ impl State {
         .iter()
         .map(|transition| {
           if !state_index_by_id.contains_key(&transition.target_state_id) {
-            return Err(Error::InvalidConfig("reference to an unexisting state"));
+            return Err(anyhow!(
+              "invalid workflow state configuration: reference to an unexisting state"
+            ));
           }
 
           Transition::new(transition, state_index_by_id[&transition.target_state_id])
         })
-        .collect::<Result<Vec<_>>>()?,
+        .collect::<anyhow::Result<Vec<_>>>()?,
     })
   }
 
@@ -208,10 +212,12 @@ impl State {
     &self.transitions
   }
 
-  pub fn try_from_proto(values: &[StateProto]) -> Result<Vec<Self>> {
+  pub fn try_from_proto(values: &[StateProto]) -> anyhow::Result<Vec<Self>> {
     // Validate that there is an initial workflow.
     if values.is_empty() {
-      return Err(Error::InvalidConfig("states list is empty"));
+      return Err(anyhow!(
+        "invalid workflow states configuration: states list is empty"
+      ));
     }
 
     let mut state_index_by_id: HashMap<StateID, usize> = HashMap::new();
@@ -236,11 +242,11 @@ pub(crate) enum Execution {
 }
 
 impl Execution {
-  pub fn new(value: &protobuf::MessageField<ExecutionProto>) -> Result<Self> {
+  pub fn new(value: &protobuf::MessageField<ExecutionProto>) -> anyhow::Result<Self> {
     match value
       .execution_type
       .as_ref()
-      .ok_or(Error::InvalidConfig("missing execution"))?
+      .ok_or_else(|| anyhow!("invalid execution configuration: missing execution_type"))?
     {
       Execution_type::ExecutionExclusive(_) => Ok(Self::Exclusive),
       Execution_type::ExecutionParallel(_) => Ok(Self::Parallel),
@@ -260,16 +266,16 @@ pub(crate) struct Transition {
 }
 
 impl Transition {
-  fn new(transition: &TransitionProto, target_state_index: usize) -> Result<Self> {
+  fn new(transition: &TransitionProto, target_state_index: usize) -> anyhow::Result<Self> {
     let rule = transition
       .rule
       .as_ref()
-      .ok_or(Error::InvalidConfig("missing rule"))?;
+      .ok_or_else(|| anyhow!("invalid transition configuration: missing rule"))?;
 
     let rule = match rule
       .rule_type
       .as_ref()
-      .ok_or(Error::InvalidConfig("missing rule type"))?
+      .ok_or_else(|| anyhow!("invalid transition configuration: missing rule type"))?
     {
       Rule_type::RuleLogMatch(rule) => {
         Predicate::LogMatch(Tree::new(&rule.log_matcher)?, rule.count)
@@ -283,7 +289,7 @@ impl Transition {
       .actions
       .iter()
       .map(Action::new)
-      .collect::<Result<Vec<_>>>()?;
+      .collect::<anyhow::Result<Vec<_>>>()?;
 
     Ok(Self {
       target_state_index,
@@ -320,11 +326,11 @@ pub enum Action {
 }
 
 impl Action {
-  fn new(proto: &ActionProto) -> Result<Self> {
+  fn new(proto: &ActionProto) -> anyhow::Result<Self> {
     match proto
       .action_type
       .as_ref()
-      .ok_or(Error::InvalidConfig("missing action type"))?
+      .ok_or_else(|| anyhow!("invalid action configuration: missing action type"))?
     {
       Action_type::ActionFlushBuffers(action) => {
         let streaming = match action.streaming.clone().into_option() {
@@ -381,7 +387,7 @@ pub struct Streaming {
 impl Streaming {
   fn new(
     streaming_proto: workflow::workflow::action::action_flush_buffers::Streaming,
-  ) -> Result<Self> {
+  ) -> anyhow::Result<Self> {
     let destination_continuous_buffer_ids = streaming_proto
       .destination_streaming_buffer_ids
       .into_iter()
@@ -403,8 +409,8 @@ impl Streaming {
 
     if let Some(max_logs_count) = max_logs_count {
       if max_logs_count == 0 {
-        return Err(Error::InvalidConfig(
-          "max_logs_count has to be greater than 0",
+        return Err(anyhow!(
+          "invalid streaming configuration: max_logs_count has to be greater than 0",
         ));
       }
     }
@@ -434,7 +440,7 @@ pub struct ActionEmitMetric {
 impl ActionEmitMetric {
   /// Attempts to create a `Metric` from the protobuf description, failing if the
   /// provided configuration contains unknown oneof values.
-  fn new(proto: &ActionEmitMetricProto) -> Result<Self> {
+  fn new(proto: &ActionEmitMetricProto) -> anyhow::Result<Self> {
     let tags: BTreeMap<String, TagValue> = proto
       .tags
       .iter()
@@ -444,12 +450,14 @@ impl ActionEmitMetric {
           Some(Tag_type::FieldExtracted(extracted)) => {
             TagValue::Extract(extracted.field_name.to_string())
           },
-          _ => return Err(Error::InvalidConfig("unknown tag_type")),
+          _ => {
+            anyhow::bail!("invalid action emit metric configuration: unknown tag_type")
+          },
         };
 
         Ok((t.name.clone(), value))
       })
-      .collect::<Result<BTreeMap<String, TagValue>>>()?;
+      .collect::<anyhow::Result<BTreeMap<String, TagValue>>>()?;
 
     let metric_type = match &proto.metric_type {
       Some(proto) => match proto {
@@ -460,7 +468,9 @@ impl ActionEmitMetric {
           MetricType::Histogram
         },
       },
-      None => return Err(Error::InvalidConfig("missing metric_type")),
+      None => {
+        anyhow::bail!("invalid action emit metric configuration: missing metric_type")
+      },
     };
 
     match &proto.value_extractor_type {
@@ -476,7 +486,9 @@ impl ActionEmitMetric {
         increment: ValueIncrement::Extract(extracted.field_name.to_string()),
         metric_type,
       }),
-      _ => Err(Error::InvalidConfig("unknown value_extractor_type")),
+      _ => Err(anyhow!(
+        "invalid action emit metric configuration: unknown value_extractor_type"
+      )),
     }
   }
 }
@@ -540,10 +552,10 @@ impl InsightsDimensions {
     }
   }
 
-  fn try_from_insight_proto(config: &InsightProto) -> Result<String> {
+  fn try_from_insight_proto(config: &InsightProto) -> anyhow::Result<String> {
     match &config.insight_type {
       Some(Insight_type::LogField(insight)) => Ok(insight.name.clone()),
-      _ => Err(Error::InvalidConfig("unknown insight type")),
+      _ => Err(anyhow!("invalid insights dimension: unknown insight type")),
     }
   }
 

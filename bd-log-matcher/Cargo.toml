@@ -1,18 +1,23 @@
 [package]
 edition      = "2021"
 license-file = "../LICENSE"
-name         = "bd-matcher"
+name         = "bd-log-matcher"
 publish      = false
 version      = "1.0.0"
 
 [dependencies]
 anyhow.workspace       = true
+bd-matcher.path        = "../bd-matcher"
 bd-log-primitives.path = "../bd-log-primitives"
 bd-proto.path          = "../bd-proto"
+itertools.workspace    = true
 protobuf.workspace     = true
 regex.workspace        = true
-thiserror.workspace    = true
+
 
 [dev-dependencies]
-assert_matches.workspace = true
-matches.workspace        = true
+assert_matches.workspace    = true
+bd-test-helpers.path        = "../bd-test-helpers"
+matches.workspace           = true
+pretty_assertions.workspace = true
+time.workspace              = true

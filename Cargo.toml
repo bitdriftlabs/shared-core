@@ -14,6 +14,7 @@ members = [
   "bd-hyper-network",
   "bd-metadata",
   "bd-logger",
+  "bd-log-matcher",
   "bd-internal-logging",
   "bd-noop-network",
   "bd-panic",
