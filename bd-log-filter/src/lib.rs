@@ -120,11 +120,9 @@ struct CaptureField {
 
 impl CaptureField {
   fn new(config: filter::transform::CaptureFields) -> Result<Self> {
-    let Some(ref fields_type) = config.fields.fields_type else {
-      anyhow::bail!("no fields_type")
+    let Some(Fields_type::Single(ref field)) = config.fields.fields_type else {
+      anyhow::bail!("unknown fields_type")
     };
-
-    let Fields_type::Single(field) = fields_type;
 
     Ok(Self {
       field_name: field.name.clone(),
@@ -172,10 +170,7 @@ struct SetField {
 
 impl SetField {
   fn new(config: filter::transform::SetField) -> Result<Self> {
-    let field_type = config
-      .field_type
-      .enum_value()
-      .unwrap_or_default();
+    let field_type = config.field_type.enum_value().unwrap_or_default();
 
     Ok(Self {
       field_name: config.name,
