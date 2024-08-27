@@ -24,6 +24,7 @@ impl FilterChain {
         // rest of the filters remain intact. This approach strikes a balance between
         // consistency (either applying the entire filter or not applying it at all) and
         // maintaining some tolerance for errors.
+        // TODO(Augustyniak): Add visibility into the failures from here.
         Filter::new(f).ok()
       })
       .collect();
