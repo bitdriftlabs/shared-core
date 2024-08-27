@@ -11,7 +11,7 @@ mod app_version_test;
 
 use std::sync::Arc;
 
-static APP_VERSIONS_KEY: bd_key_value::Key<AppVersion> =
+static APP_VERSION_KEY: bd_key_value::Key<AppVersion> =
   bd_key_value::Key::new("app_version.state.1");
 
 //
@@ -64,7 +64,11 @@ impl Repository {
   }
 
   pub(crate) fn has_changed(&self, app_version: &AppVersion) -> bool {
-    let Some(previous_app_version) = self.store.get(&APP_VERSIONS_KEY) else {
+    let Some(previous_app_version) = self.store.get(&APP_VERSION_KEY) else {
+      // Initialize app version change detection logic by setting the current app version,
+      // making it available for comparison after a user updates their app.
+      self.store.set(&APP_VERSION_KEY, app_version);
+
       // We do not know what the previous app version was so we assume it has not changed.
       return false;
     };
@@ -74,8 +78,10 @@ impl Repository {
 
   // Sets the current app version and returns the previous app version if it changed.
   pub(crate) fn set(&self, app_version: &AppVersion) -> Option<AppVersion> {
-    let Some(previous_app_version) = self.store.get(&APP_VERSIONS_KEY) else {
-      self.store.set(&APP_VERSIONS_KEY, app_version);
+    let Some(previous_app_version) = self.store.get(&APP_VERSION_KEY) else {
+      // Initialize app version change detection logic by setting the current app version,
+      // making it available for comparison after a user updates their app.
+      self.store.set(&APP_VERSION_KEY, app_version);
       return None;
     };
 
@@ -84,7 +90,9 @@ impl Repository {
       return None;
     }
 
-    self.store.set(&APP_VERSIONS_KEY, app_version);
+    // Version changed. Update the stored app version to effectively mark the current version as
+    // "seen".
+    self.store.set(&APP_VERSION_KEY, app_version);
 
     // Version changed. Return previous app version.
     Some(previous_app_version)
