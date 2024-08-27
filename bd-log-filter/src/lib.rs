@@ -129,13 +129,14 @@ struct CaptureField {
 }
 
 impl CaptureField {
-  fn new(config: filter::transform::CaptureFields) -> Result<Self> {
-    let Some(Fields_type::Single(ref field)) = config.fields.fields_type else {
+  fn new(mut config: filter::transform::CaptureFields) -> Result<Self> {
+    let Some(Fields_type::Single(field)) = config.fields.take().unwrap_or_default().fields_type
+    else {
       anyhow::bail!("unknown fields_type")
     };
 
     Ok(Self {
-      field_name: field.name.clone(),
+      field_name: field.name,
     })
   }
 
@@ -155,7 +156,7 @@ impl CaptureField {
     // If a field that's supposed to be captured exists, remove it from the list of captured fields
     // before adding it.
     log.fields.retain(|field| field.key != self.field_name);
-    log.fields.push(field)
+    log.fields.push(field);
   }
 }
 
@@ -206,11 +207,11 @@ impl SetField {
         log
           .matching_fields
           .retain(|field| field.key != self.field_name);
-        log.matching_fields.push(field)
+        log.matching_fields.push(field);
       },
       FieldType::Captured => {
         log.fields.retain(|field| field.key != self.field_name);
-        log.fields.push(field)
+        log.fields.push(field);
       },
     }
   }
