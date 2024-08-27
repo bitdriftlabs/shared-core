@@ -17,3 +17,6 @@ time.workspace    = true
 
 [build-dependencies]
 protobuf-codegen.workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tarpaulin_include)"] }

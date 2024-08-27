@@ -6,5 +6,6 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 pub mod error;
+#[cfg(not(tarpaulin_include))]
 pub mod generated;
 pub mod proto_validate;

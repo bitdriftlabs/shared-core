@@ -17,3 +17,6 @@ matches.workspace = true
 [build-dependencies]
 flatc-rust.workspace       = true
 protobuf-codegen.workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tarpaulin_include)"] }
