@@ -8,7 +8,7 @@ use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::{AbslCode, BuffersWithAck, Error};
 use bd_client_common::fb::make_log;
 use bd_client_stats::FlushTrigger;
-use bd_filters::FiltersChain;
+use bd_filters::FilterChain;
 use bd_log_primitives::{log_level, FieldsRef, Log, LogRef, LogType};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::workflows::WorkflowsEnabledFlag;
@@ -60,7 +60,7 @@ pub struct ProcessingPipeline {
   buffer_selector: BufferSelector,
   pub(crate) workflows_engine: Option<WorkflowsEngine>,
   tail_configs: TailConfigurations,
-  filters_chain: FiltersChain,
+  filter_chain: FilterChain,
 
   data_upload_tx: Sender<DataUpload>,
   pub(crate) flush_buffers_tx: Sender<BuffersWithAck>,
@@ -117,7 +117,7 @@ impl ProcessingPipeline {
       buffer_selector: config.buffer_selector,
       workflows_engine,
       tail_configs: config.tail_configs,
-      filters_chain: config.filters_chain,
+      filter_chain: config.filter_chain,
 
       data_upload_tx,
       flush_buffers_tx,
@@ -172,7 +172,7 @@ impl ProcessingPipeline {
   ) -> anyhow::Result<()> {
     self.stats.log_level_counters.record(log.log_level);
 
-    self.filters_chain.process(&mut log);
+    self.filter_chain.process(&mut log);
 
     let log = &LogRef {
       log_type: log.log_type,

@@ -20,7 +20,7 @@ use assert_matches::assert_matches;
 use bd_client_stats::{DynamicStats, FlushTrigger};
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
-use bd_filters::FiltersChain;
+use bd_filters::FilterChain;
 use bd_key_value::Store;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
 use bd_log_primitives::{log_level, AnnotatedLogField, Log, LogField, LogFields, StringOrBytes};
@@ -104,7 +104,7 @@ impl Setup {
       buffer_selector: BufferSelector::new(&BufferConfigList::default()).unwrap(),
       workflows_configuration,
       tail_configs: TailConfigurations::default(),
-      filters_chain: FiltersChain::new(FiltersConfiguration::default()),
+      filter_chain: FilterChain::new(FiltersConfiguration::default()),
     }
   }
 
@@ -578,7 +578,7 @@ fn enqueuing_log_blocks() {
           buffer_selector: BufferSelector::new(&BufferConfigList::default()).unwrap(),
           workflows_configuration: WorkflowsConfiguration::default(),
           tail_configs: TailConfigurations::default(),
-          filters_chain: FiltersChain::new(FiltersConfiguration::default()),
+          filter_chain: FilterChain::new(FiltersConfiguration::default()),
         })
         .await
     );

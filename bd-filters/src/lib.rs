@@ -6,14 +6,15 @@ use bd_proto::protos::filter::filter::{Filter as FilterProto, FiltersConfigurati
 use filter::transform::Transform_type;
 
 //
-// FiltersChain
+// FilterChain
 //
 
-pub struct FiltersChain {
+// A top-level object that encompasses filters to apply to emitted logs.
+pub struct FilterChain {
   filters: Vec<Filter>,
 }
 
-impl FiltersChain {
+impl FilterChain {
   pub fn new(configs: FiltersConfiguration) -> Self {
     let filters = configs
       .filters
