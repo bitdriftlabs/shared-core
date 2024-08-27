@@ -161,10 +161,12 @@ impl ProcessingPipeline {
 
   async fn process_log(
     &mut self,
-    log: LogLine,
+    mut log: LogLine,
     log_processing_completed_tx: Option<oneshot::Sender<()>>,
   ) -> anyhow::Result<()> {
     self.stats.log_level_counters.record(log.log_level);
+
+    self.filters_chain.process(&mut log);
 
     let log = &LogRef {
       log_type: log.log_type,
