@@ -491,7 +491,8 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "assert_matches",
- "bd-matcher",
+ "bd-log-matcher",
+ "bd-log-primitives",
  "bd-proto",
  "bd-test-helpers",
  "bd-time",
