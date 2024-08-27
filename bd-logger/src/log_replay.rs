@@ -11,7 +11,8 @@ use bd_client_stats::FlushTrigger;
 use bd_filters::FiltersChain;
 use bd_log_primitives::{log_level, FieldsRef, Log, LogRef, LogType};
 use bd_matcher::buffer_selector::BufferSelector;
-use bd_runtime::runtime::ConfigLoader;
+use bd_runtime::runtime::workflows::WorkflowsEnabledFlag;
+use bd_runtime::runtime::{ConfigLoader, Watch};
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use std::borrow::Cow;
@@ -55,22 +56,24 @@ impl LogReplay for LoggerReplay {
 //
 
 pub struct ProcessingPipeline {
-  pub(crate) buffer_producers: BufferProducers,
-  pub(crate) buffer_selector: BufferSelector,
+  buffer_producers: BufferProducers,
+  buffer_selector: BufferSelector,
   pub(crate) workflows_engine: Option<WorkflowsEngine>,
-  pub(crate) tail_configs: TailConfigurations,
-  pub filters_chain: FiltersChain,
+  tail_configs: TailConfigurations,
+  filters_chain: FiltersChain,
 
-  pub(crate) data_upload_tx: Sender<DataUpload>,
+  data_upload_tx: Sender<DataUpload>,
   pub(crate) flush_buffers_tx: Sender<BuffersWithAck>,
   pub(crate) flush_stats_trigger: Option<FlushTrigger>,
 
-  pub(crate) trigger_upload_tx: Sender<TriggerUpload>,
-  pub(crate) buffers_to_flush_rx: Option<Receiver<BuffersToFlush>>,
+  trigger_upload_tx: Sender<TriggerUpload>,
+  buffers_to_flush_rx: Option<Receiver<BuffersToFlush>>,
+
+  workflows_enabled_flag: Watch<bool, WorkflowsEnabledFlag>,
 
   runtime: Arc<ConfigLoader>,
   sdk_directory: PathBuf,
-  pub(crate) stats: InitializedLoggingContextStats,
+  stats: InitializedLoggingContextStats,
 }
 
 impl ProcessingPipeline {
@@ -81,12 +84,14 @@ impl ProcessingPipeline {
     trigger_upload_tx: Sender<TriggerUpload>,
 
     config: ConfigUpdate,
-    workflows_enabled: bool,
 
     sdk_directory: PathBuf,
     runtime: Arc<ConfigLoader>,
     stats: InitializedLoggingContextStats,
   ) -> Self {
+    let mut workflows_enabled_flag = runtime.register_watch().unwrap();
+    let workflows_enabled = workflows_enabled_flag.read_mark_update();
+
     let (workflows_engine, buffers_to_flush_rx) = if workflows_enabled {
       let (mut workflows_engine, flush_buffers_tx) = WorkflowsEngine::new(
         &stats.root_scope,
@@ -120,18 +125,20 @@ impl ProcessingPipeline {
       trigger_upload_tx,
       buffers_to_flush_rx,
 
+      workflows_enabled_flag,
+
       runtime,
       sdk_directory,
       stats,
     }
   }
 
-  pub(crate) fn update(&mut self, config: ConfigUpdate, workflows_enabled: bool) {
+  pub(crate) fn update(&mut self, config: ConfigUpdate) {
     self.buffer_selector = config.buffer_selector;
     self.buffer_producers = config.buffer_producers;
     self.tail_configs = config.tail_configs;
 
-    if workflows_enabled {
+    if self.workflows_enabled_flag.read_mark_update() {
       let workflows_engine_config = WorkflowsEngineConfig::new(
         config.workflows_configuration,
         self.buffer_producers.trigger_buffer_ids.clone(),
@@ -439,6 +446,10 @@ impl ProcessingPipeline {
     None
   }
 
+  pub(crate) fn should_run(&self) -> bool {
+    self.workflows_engine.is_some()
+  }
+
   pub(crate) async fn run(&mut self) {
     tokio::select! {
       () = async {
@@ -471,6 +482,11 @@ impl ProcessingPipeline {
               log::debug!("failed to send trigger flush: {e}");
               self.stats.trigger_upload_stats.record(&e);
             }
+          }
+        },
+        _ = self.workflows_enabled_flag.changed() => {
+          if !self.workflows_enabled_flag.read_mark_update() {
+            self.workflows_engine = None;
           }
         },
     }

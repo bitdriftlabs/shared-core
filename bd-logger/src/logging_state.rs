@@ -143,7 +143,6 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
   pub(crate) async fn updated(
     self,
     config: ConfigUpdate,
-    workflows_enabled: bool,
   ) -> (InitializedLoggingContext, PreConfigBuffer<T>) {
     let processing_pipeline = ProcessingPipeline::new(
       self.data_upload_tx,
@@ -151,7 +150,6 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
       self.flush_stats_trigger,
       self.trigger_upload_tx,
       config,
-      workflows_enabled,
       self.sdk_directory.clone(),
       self.runtime,
       InitializedLoggingContextStats::new(&self.stats),
@@ -186,8 +184,13 @@ impl InitializedLoggingContext {
     }
   }
 
-  pub(crate) async fn update(&mut self, config: ConfigUpdate, workflows_enabled: bool) {
-    self.processing_pipeline.update(config, workflows_enabled);
+  pub(crate) async fn update(&mut self, config: ConfigUpdate) {
+    self.processing_pipeline.update(config);
+  }
+
+  #[cfg(test)]
+  pub(crate) fn workflows_engine(&self) -> Option<&WorkflowsEngine> {
+    self.processing_pipeline.workflows_engine.as_ref()
   }
 }
 

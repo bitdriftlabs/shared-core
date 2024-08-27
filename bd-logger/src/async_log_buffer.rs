@@ -21,8 +21,7 @@ use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_de
 use bd_log_metadata::{AnnotatedLogFields, MetadataProvider};
 use bd_log_primitives::{Log, LogField, LogFieldValue, LogLevel, LogMessage};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
-use bd_runtime::runtime::workflows::WorkflowsEnabledFlag;
-use bd_runtime::runtime::{ConfigLoader, Watch};
+use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use std::mem::size_of_val;
 use std::sync::Arc;
@@ -159,7 +158,6 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   interceptors: Vec<Arc<dyn LogInterceptor>>,
 
   logging_state: LoggingState<bd_log_primitives::Log>,
-  workflows_enabled_flag: Watch<bool, WorkflowsEnabledFlag>,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -208,7 +206,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         // The size of the pre-config buffer matches the size of the enclosing
         // async log buffer.
         logging_state: LoggingState::Uninitialized(uninitialized_logging_context),
-        workflows_enabled_flag: runtime_loader.register_watch().unwrap(),
       },
       async_log_buffer_communication_tx,
     )
@@ -447,22 +444,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  async fn update(
-    mut self,
-    config: ConfigUpdate,
-    workflows_enabled: bool,
-  ) -> (Self, Option<PreConfigBuffer<Log>>) {
+  async fn update(mut self, config: ConfigUpdate) -> (Self, Option<PreConfigBuffer<Log>>) {
     let (initialized_logging_context, maybe_pre_config_log_buffer) = match self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
-        let (initialized_logging_context, pre_config_log_buffer) = uninitialized_logging_context
-          .updated(config, workflows_enabled)
-          .await;
+        let (initialized_logging_context, pre_config_log_buffer) =
+          uninitialized_logging_context.updated(config).await;
         (initialized_logging_context, Some(pre_config_log_buffer))
       },
       LoggingState::Initialized(mut initialized_logging_context) => {
-        initialized_logging_context
-          .update(config, workflows_enabled)
-          .await;
+        initialized_logging_context.update(config).await;
         (initialized_logging_context, None)
       },
     };
@@ -493,10 +483,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         log::debug!("failed to reply pre-config log buffer logs: {e}");
       }
     }
-  }
-
-  fn workflows_enabled(&self) -> bool {
-    self.workflows_enabled_flag.read()
   }
 
   pub async fn run(self) -> Self {
@@ -532,9 +518,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
       tokio::select! {
         Some(config) = self.config_update_rx.recv() => {
-          let workflows_enabled = self.workflows_enabled();
           let (updated_self, maybe_pre_config_buffer)
-            = self.update(config, workflows_enabled).await;
+            = self.update(config).await;
 
           self = updated_self;
           if let Some(pre_config_log_buffer) = maybe_pre_config_buffer {
@@ -603,7 +588,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           }
         },
         _ = async { initialized_logging_context.unwrap().processing_pipeline.run().await },
-          if initialized_logging_context.is_some() => {},
+          if initialized_logging_context.as_ref().map_or(
+            false, |c| c.processing_pipeline.should_run()
+          ) => {},
         () = self.resource_utilization_reporter.run() => {},
         () = self.events_listener.run() => {},
         () = &mut local_shutdown => {
