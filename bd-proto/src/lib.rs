@@ -13,6 +13,7 @@
 
 #[rustfmt::skip]
 #[allow(clippy::nursery, clippy::pedantic, clippy::style)]
+#[cfg(not(tarpaulin_include))]
 pub mod flatbuffers;
 #[allow(
   clippy::nursery,
@@ -20,4 +21,5 @@ pub mod flatbuffers;
   clippy::style,
   renamed_and_removed_lints
 )]
+#[cfg(not(tarpaulin_include))]
 pub mod protos;

@@ -60,3 +60,21 @@ SKIP_PROTO_GEN=1 PATH=/usr/lib/linux-tools/*-generic:$PATH cargo bench --bench {
 
 - `SKIP_PROTO_GEN=1` skips the protobuf generation step, which is not necessary for benchmarking and avoids having to install the protobuf compiler on the VM.
 - ` PATH=/usr/lib/linux-tools/6.5.0-35-generic:$PATH` adds the Linux perf tools to the path. The default perf on Ubuntu tries to find the distribution-specific version of perf, which doesn't exist under orb. Putting the path to the perf tools in front of the path allows the perf tools to be found instead of the Ubuntu-specific wrapper script. Note that the version in the path must match whichever linux-tools package is installed on the VM.
+
+### Coverage
+
+To generate a coverage report, use the following command:
+
+```bash
+SKIP_PROTO_GEN=1 cargo tarpaulin --engine llvm -o html
+```
+
+This should output a coverage report `./tarpaulin-report.html` in the current directory.
+
+`cargo tarpaulin` can be installed using the following command:
+
+```bash
+cargo install cargo-tarpaulin
+```
+
+Alternatively you can invoke `tarpaulin` via Docker as explained in the [tarpaulin documentation](https://github.com/xd009642/tarpaulin?tab=readme-ov-file#docker)
