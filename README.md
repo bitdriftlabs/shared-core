@@ -66,7 +66,7 @@ SKIP_PROTO_GEN=1 PATH=/usr/lib/linux-tools/*-generic:$PATH cargo bench --bench {
 To generate a coverage report, use the following command:
 
 ```bash
-SKIP_PROTO_GEN=1 cargo tarpaulin -o html --engine llvm
+SKIP_PROTO_GEN=1 cargo tarpaulin --engine llvm
 ```
 
 This should output a coverage report `./tarpaulin-report.html` in the current directory.
