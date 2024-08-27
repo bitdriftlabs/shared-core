@@ -1,5 +1,0 @@
-[default-config]
-workspace = true
-
-[report]
-output = "html"
