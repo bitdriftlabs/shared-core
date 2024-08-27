@@ -65,10 +65,13 @@ impl Repository {
 
   pub(crate) fn has_changed(&self, app_version: &AppVersion) -> bool {
     let Some(previous_app_version) = self.store.get(&APP_VERSIONS_KEY) else {
+      log::error!("early return, no value stored for app version");
       // We do not know what the previous app version was so we assume it has not changed.
       return false;
     };
 
+    log::error!("previous app version: {:?}", previous_app_version);
+    log::error!("app version: {:?}", app_version);
     app_version != &previous_app_version
   }
 
