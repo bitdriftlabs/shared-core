@@ -14,6 +14,7 @@ use bd_client_stats::FlushTrigger;
 use bd_log_filter::FilterChain;
 use bd_log_primitives::{log_level, FieldsRef, Log, LogRef, LogType};
 use bd_matcher::buffer_selector::BufferSelector;
+use bd_runtime::runtime::filters::FilterChainEnabledFlag;
 use bd_runtime::runtime::workflows::WorkflowsEnabledFlag;
 use bd_runtime::runtime::{ConfigLoader, Watch};
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
@@ -89,6 +90,8 @@ pub struct ProcessingPipeline {
   buffers_to_flush_rx: Option<Receiver<BuffersToFlush>>,
 
   workflows_enabled_flag: Watch<bool, WorkflowsEnabledFlag>,
+  filter_chain_enabled_flag: Watch<bool, FilterChainEnabledFlag>,
+  filter_chain_enabled: bool,
 
   runtime: Arc<ConfigLoader>,
   sdk_directory: PathBuf,
@@ -110,6 +113,9 @@ impl ProcessingPipeline {
   ) -> Self {
     let mut workflows_enabled_flag = runtime.register_watch().unwrap();
     let workflows_enabled = workflows_enabled_flag.read_mark_update();
+
+    let mut filter_chain_enabled_flag = runtime.register_watch().unwrap();
+    let filter_chain_enabled = filter_chain_enabled_flag.read_mark_update();
 
     let (workflows_engine, buffers_to_flush_rx) = if workflows_enabled {
       let (mut workflows_engine, flush_buffers_tx) = WorkflowsEngine::new(
@@ -145,6 +151,8 @@ impl ProcessingPipeline {
       buffers_to_flush_rx,
 
       workflows_enabled_flag,
+      filter_chain_enabled_flag,
+      filter_chain_enabled,
 
       runtime,
       sdk_directory,
@@ -191,7 +199,9 @@ impl ProcessingPipeline {
   ) -> anyhow::Result<()> {
     self.stats.log_level_counters.record(log.log_level);
 
-    self.filter_chain.process(&mut log);
+    if self.filter_chain_enabled {
+      self.filter_chain.process(&mut log);
+    }
 
     let log = &LogRef {
       log_type: log.log_type,
@@ -503,11 +513,14 @@ impl ProcessingPipeline {
             }
           }
         },
-        _ = self.workflows_enabled_flag.changed() => {
+        Ok(_) = self.workflows_enabled_flag.changed() => {
           if !self.workflows_enabled_flag.read_mark_update() {
             self.workflows_engine = None;
           }
         },
+        Ok(_) = self.filter_chain_enabled_flag.changed() => {
+          self.filter_chain_enabled = self.filter_chain_enabled_flag.read_mark_update();
+        }
     }
   }
 }
