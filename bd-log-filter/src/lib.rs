@@ -121,6 +121,9 @@ impl Transform {
 // CaptureField
 //
 
+// Captures a given field by changing its type from matching to captured.
+// This effectively removes a given fields from the list of matching fields and adds it to
+// the list of captured fields.
 struct CaptureField {
   field_name: String,
 }
@@ -169,6 +172,8 @@ enum FieldType {
 // SetField
 //
 
+// Sets a given value for a given field. It overrides existing value in case of a field name
+// conflict.
 struct SetField {
   field_name: String,
   value: String,
