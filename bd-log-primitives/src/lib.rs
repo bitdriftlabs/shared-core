@@ -138,8 +138,9 @@ pub enum LogFieldKind {
   Custom,
 }
 
-///
-/// Log
+//
+// Log
+//
 
 ///  A copy of an incoming log line.
 #[derive(Debug)]
