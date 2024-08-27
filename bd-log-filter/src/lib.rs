@@ -175,7 +175,7 @@ impl SetField {
     let field_type = config
       .field_type
       .enum_value()
-      .map_err(|e| anyhow!(format!("invalid enum value {e}")))?;
+      .unwrap_or_default();
 
     Ok(Self {
       field_name: config.name,
