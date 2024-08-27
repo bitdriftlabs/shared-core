@@ -1,0 +1,6 @@
+[default-config]
+workspace = true
+exclude = ["bd-proto"]
+
+[report]
+output = "html"
