@@ -475,10 +475,6 @@ impl ProcessingPipeline {
     None
   }
 
-  pub(crate) fn should_run(&self) -> bool {
-    self.workflows_engine.is_some()
-  }
-
   pub(crate) async fn run(&mut self) {
     tokio::select! {
       () = async {

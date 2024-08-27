@@ -588,9 +588,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           }
         },
         _ = async { initialized_logging_context.unwrap().processing_pipeline.run().await },
-          if initialized_logging_context.as_ref().map_or(
-            false, |c| c.processing_pipeline.should_run()
-          ) => {},
+          if initialized_logging_context.is_some() => {},
         () = self.resource_utilization_reporter.run() => {},
         () = self.events_listener.run() => {},
         () = &mut local_shutdown => {
