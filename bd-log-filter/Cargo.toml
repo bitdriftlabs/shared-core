@@ -1,7 +1,7 @@
 [package]
 edition      = "2021"
 license-file = "../LICENSE"
-name         = "bd-filters"
+name         = "bd-log-filter"
 publish      = false
 version      = "1.0.0"
 

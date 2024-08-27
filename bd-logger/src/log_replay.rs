@@ -4,7 +4,7 @@ use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::{AbslCode, BuffersWithAck, Error};
 use bd_client_common::fb::make_log;
 use bd_client_stats::FlushTrigger;
-use bd_filters::FilterChain;
+use bd_log_filter::FilterChain;
 use bd_log_primitives::{log_level, FieldsRef, Log, LogRef, LogType};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::workflows::WorkflowsEnabledFlag;

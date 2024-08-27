@@ -486,21 +486,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bd-filters"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "assert_matches",
- "bd-log-matcher",
- "bd-log-primitives",
- "bd-proto",
- "bd-test-helpers",
- "bd-time",
- "ctor",
- "time",
-]
-
-[[package]]
 name = "bd-grpc"
 version = "1.0.0"
 dependencies = [
@@ -624,6 +609,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-log-filter"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "bd-log-matcher",
+ "bd-log-primitives",
+ "bd-proto",
+ "bd-test-helpers",
+ "bd-time",
+ "ctor",
+ "time",
+]
+
+[[package]]
 name = "bd-log-matcher"
 version = "1.0.0"
 dependencies = [
@@ -675,11 +675,11 @@ dependencies = [
  "bd-completion",
  "bd-device",
  "bd-events",
- "bd-filters",
  "bd-hyper-network",
  "bd-internal-logging",
  "bd-key-value",
  "bd-log",
+ "bd-log-filter",
  "bd-log-matcher",
  "bd-log-metadata",
  "bd-log-primitives",

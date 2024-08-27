@@ -14,7 +14,7 @@ use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::BuffersWithAck;
 use bd_client_stats::{DynamicStats, FlushTrigger};
 use bd_client_stats_store::{Counter, Scope};
-use bd_filters::FilterChain;
+use bd_log_filter::FilterChain;
 use bd_log_primitives::{log_level, LogLevel};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::ConfigLoader;
