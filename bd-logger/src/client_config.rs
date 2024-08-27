@@ -53,7 +53,6 @@ pub struct Configuration {
   workflows: WorkflowsConfigurationProto,
   insights: InsightsConfiguration,
   bdtail: BdTailConfigurations,
-  #[allow(dead_code)]
   filters: FiltersConfiguration,
 }
 
