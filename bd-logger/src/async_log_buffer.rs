@@ -9,32 +9,18 @@
 #[path = "./async_log_buffer_test.rs"]
 mod async_log_buffer_test;
 
+use crate::log_replay::LogReplay;
 use crate::logger::with_thread_local_logger_guard;
-use crate::logging_state::{
-  ConfigUpdate,
-  InitializedLoggingContext,
-  LoggingState,
-  UninitializedLoggingContext,
-};
+use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::memory_bound::{channel, MemorySized, Receiver, Sender, TrySendError};
 use crate::metadata::MetadataCollector;
 use crate::pre_config_buffer::PreConfigBuffer;
-use crate::thread_local::write_log_with_logging_context;
 use crate::{internal_report, network};
-use bd_api::TriggerUpload;
 use bd_buffer::BuffersWithAck;
 use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_log_metadata::{AnnotatedLogFields, MetadataProvider};
-use bd_log_primitives::{
-  FieldsRef,
-  LogField,
-  LogFieldValue,
-  LogFields,
-  LogLevel,
-  LogMessage,
-  LogRef,
-  StringOrBytes,
-};
+use bd_log_primitives::owned::LogLine as OwnedLogLine;
+use bd_log_primitives::{LogField, LogFieldValue, LogLevel, LogMessage};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::workflows::WorkflowsEnabledFlag;
 use bd_runtime::runtime::{ConfigLoader, Watch};
@@ -126,29 +112,7 @@ impl MemorySized for LogLine {
   }
 }
 
-//
-// AnnotatedLogLine
-//
-
-/// A copy of an incoming log line.
-///
-/// Contrary to `LogLine` it contains group, timestamp
-/// and all of the fields that are supposed to be logged with a given log.
-#[derive(Debug)]
-pub struct AnnotatedLogLine {
-  // Remember to update the implementation
-  // of the `MemorySized` trait every
-  // time the struct is modified!!!
-  pub log_level: LogLevel,
-  pub log_type: LogType,
-  pub message: StringOrBytes<String, Vec<u8>>,
-  pub fields: LogFields,
-  pub matching_fields: LogFields,
-  pub session_id: String,
-  pub occurred_at: time::OffsetDateTime,
-}
-
-impl MemorySized for AnnotatedLogLine {
+impl MemorySized for OwnedLogLine {
   fn size(&self) -> usize {
     // The size cannot be computed by just calling a `size_of_val(self)` in here
     // as that does not account for various heap allocations.
@@ -181,7 +145,7 @@ pub(crate) trait LogInterceptor: Send + Sync {
 
 // Orchestrates buffering of incoming logs and offloading their processing to
 // a run loop in an async way.
-pub struct AsyncLogBuffer<L: LogReplay> {
+pub struct AsyncLogBuffer<R: LogReplay> {
   communication_rx: Receiver<AsyncLogBufferMessage>,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
   shutdown_trigger_handle: ComponentShutdownTriggerHandle,
@@ -191,16 +155,18 @@ pub struct AsyncLogBuffer<L: LogReplay> {
   resource_utilization_reporter: bd_resource_utilization::Reporter,
   events_listener: bd_events::Listener,
 
+  replayer: R,
+
   interceptors: Vec<Arc<dyn LogInterceptor>>,
 
-  logging_state: LoggingState<AnnotatedLogLine>,
+  logging_state: LoggingState<bd_log_primitives::owned::LogLine>,
   workflows_enabled_flag: Watch<bool, WorkflowsEnabledFlag>,
 }
 
-impl<L: LogReplay + Send + 'static> AsyncLogBuffer<L> {
+impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   pub(crate) fn new(
-    uninitialized_logging_context: UninitializedLoggingContext<AnnotatedLogLine>,
-    replayer: L,
+    uninitialized_logging_context: UninitializedLoggingContext<bd_log_primitives::owned::LogLine>,
+    replayer: R,
     session_strategy: Arc<bd_session::Strategy>,
     metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
     resource_utilization_target: Box<dyn bd_resource_utilization::Target + Send + Sync>,
@@ -228,6 +194,8 @@ impl<L: LogReplay + Send + 'static> AsyncLogBuffer<L> {
         config_update_rx,
         shutdown_trigger_handle,
 
+        replayer,
+
         session_strategy,
         metadata_collector: MetadataCollector::new(metadata_provider),
         resource_utilization_reporter: bd_resource_utilization::Reporter::new(
@@ -242,8 +210,6 @@ impl<L: LogReplay + Send + 'static> AsyncLogBuffer<L> {
         // async log buffer.
         logging_state: LoggingState::Uninitialized(uninitialized_logging_context),
         workflows_enabled_flag: runtime_loader.register_watch().unwrap(),
-
-        replayer,
       },
       async_log_buffer_communication_tx,
     )
@@ -414,7 +380,7 @@ impl<L: LogReplay + Send + 'static> AsyncLogBuffer<L> {
             )
           };
 
-        let annotated_log = AnnotatedLogLine {
+        let annotated_log = bd_log_primitives::owned::LogLine {
           log_level: log.log_level,
           log_type: log.log_type,
           message: log.message,
@@ -461,7 +427,7 @@ impl<L: LogReplay + Send + 'static> AsyncLogBuffer<L> {
               .replay_log(
                 annotated_log,
                 log.log_processing_completed_tx,
-                initialized_logging_context,
+                &mut initialized_logging_context.processing_pipeline,
               )
               .await
             {
@@ -486,7 +452,7 @@ impl<L: LogReplay + Send + 'static> AsyncLogBuffer<L> {
     mut self,
     config: ConfigUpdate,
     workflows_enabled: bool,
-  ) -> (Self, Option<PreConfigBuffer<AnnotatedLogLine>>) {
+  ) -> (Self, Option<PreConfigBuffer<OwnedLogLine>>) {
     let (initialized_logging_context, maybe_pre_config_log_buffer) = match self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
         let (initialized_logging_context, pre_config_log_buffer) = uninitialized_logging_context
@@ -509,7 +475,7 @@ impl<L: LogReplay + Send + 'static> AsyncLogBuffer<L> {
 
   async fn maybe_replay_pre_config_buffer_logs(
     &mut self,
-    pre_config_log_buffer: PreConfigBuffer<AnnotatedLogLine>,
+    pre_config_log_buffer: PreConfigBuffer<bd_log_primitives::owned::LogLine>,
   ) {
     let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state else {
       return;
@@ -518,7 +484,11 @@ impl<L: LogReplay + Send + 'static> AsyncLogBuffer<L> {
     for log_line in pre_config_log_buffer.pop_all() {
       if let Err(e) = self
         .replayer
-        .replay_log(log_line, None, initialized_logging_context)
+        .replay_log(
+          log_line,
+          None,
+          &mut initialized_logging_context.processing_pipeline,
+        )
         .await
       {
         log::debug!("failed to reply pre-config log buffer logs: {e}");
@@ -554,14 +524,11 @@ impl<L: LogReplay + Send + 'static> AsyncLogBuffer<L> {
     let self_shutdown = self_shutdown.cancelled();
     tokio::pin!(self_shutdown);
     loop {
-      let (workflows_engine, buffers_to_flush_rx) =
+      let initialized_logging_context =
         if let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state {
-          (
-            initialized_logging_context.workflows_engine.as_mut(),
-            initialized_logging_context.buffers_to_flush_rx.as_mut(),
-          )
+          Some(initialized_logging_context)
         } else {
-          (None, None)
+          None
         };
 
       tokio::select! {
@@ -636,42 +603,8 @@ impl<L: LogReplay + Send + 'static> AsyncLogBuffer<L> {
             }
           }
         },
-        _ = self.workflows_enabled_flag.changed() => {
-          if !self.workflows_enabled() {
-            if let LoggingState::Initialized(initialized_logging_context)
-              = &mut self.logging_state {
-              initialized_logging_context.workflows_engine = None;
-            }
-          }
-        }
-        () = async { workflows_engine.unwrap().run().await }, if workflows_engine.is_some() => {},
-        Some(buffers_to_flush) = async { buffers_to_flush_rx.unwrap().recv().await },
-          if buffers_to_flush_rx.is_some() => {
-
-          log::debug!("received flush buffers action signal, buffer IDs to flush: \"{:?}\"", buffers_to_flush.buffer_ids);
-          let LoggingState::Initialized(initialized_context) = &self.logging_state else {
-            debug_assert!(false, "received flush buffers action signal, but the logging context is not initialized");
-            continue;
-          };
-
-          let trigger_upload = TriggerUpload::new(
-            buffers_to_flush.buffer_ids
-              .into_iter()
-              .map(|buffer_id| buffer_id.to_string())
-              .collect()
-            );
-
-          let result = initialized_context.trigger_upload_tx.try_send(trigger_upload.clone());
-          match result {
-            Ok(()) => {
-              log::debug!("triggered flush buffers action with buffer IDs: \"{:?}\"", trigger_upload.buffer_ids);
-            },
-            Err(e) => {
-              log::debug!("failed to send trigger flush: {e}");
-              initialized_context.stats.trigger_upload_stats.record(&e);
-            }
-          }
-        },
+        _ = async { initialized_logging_context.unwrap().processing_pipeline.run().await },
+          if initialized_logging_context.is_some() => {},
         () = self.resource_utilization_reporter.run() => {},
         () = self.events_listener.run() => {},
         () = &mut local_shutdown => {

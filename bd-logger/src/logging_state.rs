@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::client_config::TailConfigurations;
-use crate::logger_replay::LogReplay;
+use crate::log_replay::ProcessingPipeline;
 use crate::memory_bound::MemorySized;
 use crate::pre_config_buffer::{self, PreConfigBuffer};
 use anyhow::anyhow;
@@ -14,14 +14,13 @@ use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::BuffersWithAck;
 use bd_client_stats::{DynamicStats, FlushTrigger};
 use bd_client_stats_store::{Counter, Scope};
-use bd_filters::FiltersConfiguration;
+use bd_filters::FiltersChain;
 use bd_log_primitives::{log_level, LogLevel};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::ConfigLoader;
 use bd_stats_common::labels;
-use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::config::WorkflowsConfiguration;
-use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
+use bd_workflows::engine::WorkflowsEngine;
 use flatbuffers::FlatBufferBuilder;
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
@@ -29,7 +28,7 @@ use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::mpsc::error::TrySendError;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::Sender;
 
 //
 // LoggingState
@@ -38,7 +37,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 /// The logging state used by the `AsyncLogBuffer` to encapsulate objects
 /// that are needed to process incoming logs.
 #[derive(Debug)]
-pub enum LoggingState<T: MemorySized + Debug, R: LogReplay> {
+pub enum LoggingState<T: MemorySized + Debug> {
   /// The initial state that each `AsyncLogBuffer` starts in. While in this state
   /// the buffer takes incoming logs, populates them with extra information using
   /// its metadata provider and puts them on hold for further processing inside of
@@ -51,7 +50,7 @@ pub enum LoggingState<T: MemorySized + Debug, R: LogReplay> {
   /// the cached version of the configuration is not always available and in these
   /// cases the `AsyncLogBuffer` waits for the configuration to be fetched
   /// from the Bitdrift control plane (can potentially take seconds or even minutes).
-  Uninitialized(UninitializedLoggingContext<T, R>),
+  Uninitialized(UninitializedLoggingContext<T>),
   /// The state that `AsyncLogBuffer` moves to as soon as it receives any configuration
   /// update.
   /// While in this state the `AsyncLogBuffer` takes incoming logs, populates them with
@@ -60,28 +59,28 @@ pub enum LoggingState<T: MemorySized + Debug, R: LogReplay> {
   /// logs stored inside of its `PreConfigBuffer`. All replayed logs are sent for their final
   /// processing to now initialized parts of the logs processing pipeline such as workflows engine
   /// or various ring buffers.
-  Initialized(InitializedLoggingContext<R>),
+  Initialized(InitializedLoggingContext),
 }
 
 impl<T: MemorySized + Debug> LoggingState<T> {
   pub(crate) const fn flush_buffers_trigger(&self) -> &Sender<BuffersWithAck> {
     match self {
       Self::Uninitialized(context) => &context.flush_buffers_tx,
-      Self::Initialized(context) => &context.flush_buffers_tx,
+      Self::Initialized(context) => &context.processing_pipeline.flush_buffers_tx,
     }
   }
 
   pub(crate) const fn flush_stats_trigger(&self) -> &Option<FlushTrigger> {
     match self {
       Self::Uninitialized(context) => &context.flush_stats_trigger,
-      Self::Initialized(context) => &context.flush_stats_trigger,
+      Self::Initialized(context) => &context.processing_pipeline.flush_stats_trigger,
     }
   }
 
   pub(crate) fn workflows_engine(&mut self) -> Option<&mut WorkflowsEngine> {
     match self {
       Self::Uninitialized(_) => None,
-      Self::Initialized(context) => context.workflows_engine.as_mut(),
+      Self::Initialized(context) => context.processing_pipeline.workflows_engine.as_mut(),
     }
   }
 }
@@ -89,7 +88,8 @@ impl<T: MemorySized + Debug> LoggingState<T> {
 //
 // UninitializedLoggingContext
 //
-pub struct UninitializedLoggingContext<T: MemorySized + Debug, R: LogReplay> {
+
+pub struct UninitializedLoggingContext<T: MemorySized + Debug> {
   pub(crate) pre_config_log_buffer: PreConfigBuffer<T>,
 
   data_upload_tx: Sender<DataUpload>,
@@ -145,40 +145,19 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
     config: ConfigUpdate,
     workflows_enabled: bool,
   ) -> (InitializedLoggingContext, PreConfigBuffer<T>) {
-    let (workflows_engine, buffers_to_flush_rx) = if workflows_enabled {
-      let (mut workflows_engine, flush_buffers_tx) = WorkflowsEngine::new(
-        &self.stats.root_scope,
-        &self.sdk_directory,
-        &self.runtime,
-        self.data_upload_tx.clone(),
-        self.stats.dynamic_stats.clone(),
-      );
-
-      workflows_engine.start(WorkflowsEngineConfig::new(
-        config.workflows_configuration,
-        config.buffer_producers.trigger_buffer_ids.clone(),
-        config.buffer_producers.continuous_buffer_ids.clone(),
-      ));
-
-      (Some(workflows_engine), Some(flush_buffers_tx))
-    } else {
-      (None, None)
-    };
-
-    let context = InitializedLoggingContext::new(
-      config.buffer_producers,
-      config.buffer_selector,
-      config.tail_configs,
+    let processing_pipeline = ProcessingPipeline::new(
       self.data_upload_tx,
-      self.flush_buffers_tx.clone(),
+      self.flush_buffers_tx,
       self.flush_stats_trigger,
-      workflows_engine,
-      self.trigger_upload_tx.clone(),
-      buffers_to_flush_rx,
-      &self.runtime,
-      &self.sdk_directory,
-      &self.stats,
+      self.trigger_upload_tx,
+      config,
+      workflows_enabled,
+      self.sdk_directory.clone(),
+      self.runtime,
+      InitializedLoggingContextStats::new(&self.stats),
     );
+
+    let context = InitializedLoggingContext::new(processing_pipeline);
 
     (context, self.pre_config_log_buffer)
   }
@@ -187,24 +166,8 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
 //
 // InitializedLoggingContext
 //
-pub struct InitializedLoggingContext<R: LogReplay> {
-  pub(crate) buffer_producers: BufferProducers,
-  pub(crate) buffer_selector: BufferSelector,
-  pub(crate) data_upload_tx: Sender<DataUpload>,
-  pub(crate) flush_buffers_tx: Sender<BuffersWithAck>,
-  pub(crate) flush_stats_trigger: Option<FlushTrigger>,
-
-  pub(crate) replay: R,
-  pub(crate) workflows_engine: Option<WorkflowsEngine>,
-
-  pub(crate) tail_configs: TailConfigurations,
-
-  pub(crate) trigger_upload_tx: Sender<TriggerUpload>,
-  pub(crate) buffers_to_flush_rx: Option<Receiver<BuffersToFlush>>,
-
-  runtime: Arc<ConfigLoader>,
-  sdk_directory: PathBuf,
-  pub(crate) stats: InitializedLoggingContextStats,
+pub struct InitializedLoggingContext {
+  pub(crate) processing_pipeline: ProcessingPipeline,
 }
 
 // Skip `buffer_producers`, `trigger_matcher`, `runtime`, and `stats` fields that don't implement
@@ -212,79 +175,19 @@ pub struct InitializedLoggingContext<R: LogReplay> {
 impl Debug for InitializedLoggingContext {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("InitializedLoggingContext")
-      .field("workflows_engine", &self.workflows_engine)
-      .field("buffer_selector", &self.buffer_selector)
-      .field("flush_buffers_tx", &self.flush_buffers_tx)
-      .field("flush_stats_trigger", &self.flush_stats_trigger)
-      .field("trigger_upload_tx", &self.trigger_upload_tx)
-      .field("sdk_directory", &self.sdk_directory)
       .finish_non_exhaustive()
   }
 }
 
-impl<R: LogReplay> InitializedLoggingContext<R> {
-  fn new(
-    buffer_producers: BufferProducers,
-    buffer_selector: BufferSelector,
-    tail_configs: TailConfigurations,
-    data_upload_tx: Sender<DataUpload>,
-    flush_buffers_tx: Sender<BuffersWithAck>,
-    flush_stats_trigger: Option<FlushTrigger>,
-    replay: R,
-    workflows_engine: Option<WorkflowsEngine>,
-    trigger_upload_tx: Sender<TriggerUpload>,
-    buffers_to_flush_rx: Option<Receiver<BuffersToFlush>>,
-    runtime: &Arc<ConfigLoader>,
-    sdk_directory: &Path,
-    stats: &UninitializedLoggingContextStats,
-  ) -> Self {
+impl InitializedLoggingContext {
+  fn new(processing_pipeline: ProcessingPipeline) -> Self {
     Self {
-      buffer_producers,
-      buffer_selector,
-      data_upload_tx,
-      flush_buffers_tx,
-      flush_stats_trigger,
-      replay,
-      workflows_engine,
-      tail_configs,
-      trigger_upload_tx,
-      buffers_to_flush_rx,
-      runtime: runtime.clone(),
-      sdk_directory: sdk_directory.to_owned(),
-      stats: InitializedLoggingContextStats::new(stats),
+      processing_pipeline,
     }
   }
 
   pub(crate) async fn update(&mut self, config: ConfigUpdate, workflows_enabled: bool) {
-    self.buffer_selector = config.buffer_selector;
-    self.buffer_producers = config.buffer_producers;
-    self.tail_configs = config.tail_configs;
-
-    if workflows_enabled {
-      let workflows_engine_config = WorkflowsEngineConfig::new(
-        config.workflows_configuration,
-        self.buffer_producers.trigger_buffer_ids.clone(),
-        self.buffer_producers.continuous_buffer_ids.clone(),
-      );
-
-      match &mut self.workflows_engine {
-        Some(workflows_engine) => workflows_engine.update(workflows_engine_config),
-        None => {
-          let (mut engine, buffers_to_flush_rx) = WorkflowsEngine::new(
-            &self.stats.root_scope,
-            &self.sdk_directory,
-            &self.runtime,
-            self.data_upload_tx.clone(),
-            self.stats.dynamic_stats.clone(),
-          );
-          engine.start(workflows_engine_config);
-          self.workflows_engine = Some(engine);
-          self.buffers_to_flush_rx = Some(buffers_to_flush_rx);
-        },
-      }
-    } else {
-      self.workflows_engine = None;
-    }
+    self.processing_pipeline.update(config, workflows_enabled);
   }
 }
 
@@ -406,7 +309,7 @@ pub(crate) struct ConfigUpdate {
   pub(crate) buffer_selector: BufferSelector,
   pub(crate) workflows_configuration: WorkflowsConfiguration,
   pub(crate) tail_configs: TailConfigurations,
-  pub(crate) filters_config: FiltersCon,
+  pub(crate) filters_chain: FiltersChain,
 }
 
 pub(crate) struct BufferProducers {

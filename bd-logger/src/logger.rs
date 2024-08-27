@@ -14,8 +14,8 @@ use crate::async_log_buffer::{
   AsyncLogBuffer,
   AsyncLogBufferMessage,
   LogAttributesOverridesPreviousRunSessionID,
-  LoggerReplay,
 };
+use crate::log_replay::LoggerReplay;
 use crate::memory_bound::{self, Sender as MemoryBoundSender};
 use crate::{app_version, MetadataProvider};
 use bd_api::{Metadata, Platform};

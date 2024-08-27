@@ -15,6 +15,7 @@ use bd_api::{ClientConfigurationUpdate, FromResponse, IntoRequest};
 use bd_buffer::{AbslCode, RingBuffer as _};
 use bd_client_common::fb::make_log;
 use bd_client_stats_store::{Counter, Scope};
+use bd_filters::FiltersChain;
 use bd_log_primitives::LogRef;
 use bd_proto::protos::bdtail::bdtail_config::BdTailConfigurations;
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
@@ -287,6 +288,7 @@ impl ApplyConfig for LoggerUpdate {
           },
           || self.stream_config_parse_failure.inc(),
         )?,
+        filters_chain: FiltersChain::new(configuration.filters),
       })
       .await
     {
@@ -411,7 +413,9 @@ impl TailConfigurations {
       .filter_map(|(id, matcher)| {
         matcher
           .as_ref()
-          .map_or(true, |matcher| matcher.do_match(*log))
+          .map_or(true, |matcher| {
+            matcher.do_match(log.log_level, log.log_type, log.message, log.fields)
+          })
           .then_some(id.as_str())
       })
       .collect_vec();

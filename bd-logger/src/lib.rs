@@ -12,8 +12,8 @@ mod client_config;
 mod consumer;
 pub mod internal;
 mod internal_report;
+mod log_replay;
 mod logger;
-mod logger_replay;
 mod logging_state;
 mod memory_bound;
 mod metadata;
@@ -21,7 +21,6 @@ mod network;
 mod pre_config_buffer;
 mod service;
 mod size;
-mod thread_local;
 
 pub use crate::logger::{ChannelPair, InitParams};
 pub use app_version::AppVersionExtra;
