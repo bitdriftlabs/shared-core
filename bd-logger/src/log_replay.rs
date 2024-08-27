@@ -1,7 +1,3 @@
-//
-// LogReplay
-//
-
 use crate::client_config::TailConfigurations;
 use crate::logging_state::{BufferProducers, ConfigUpdate, InitializedLoggingContextStats};
 use bd_api::{DataUpload, TriggerUpload};
@@ -22,9 +18,19 @@ use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::oneshot;
 
-// An abstraction for logger replay. Introduced to make testing easier.
+//
+// LogReplay
+//
+
+// An abstraction for logger replay. It's a layer of indirection that's supposed to make testing
+// easier.
 #[async_trait::async_trait]
 pub trait LogReplay {
+  // Replays logs for further processing.
+  // In production code, this method acts as an indirection layer that
+  // takes in a log and a processing pipeline, using the pipeline to process the log.
+  // In tests, this method can be used to capture replayed logs for confirmation that they look as
+  // expected.
   async fn replay_log(
     &mut self,
     log: Log,
@@ -55,6 +61,12 @@ impl LogReplay for LoggerReplay {
 // ProcessingPipeline
 //
 
+// Maintains the machinery required to process incoming logs.
+// Processing a log involves (not a full list):
+//  * modifying it according to active filter chain.
+//  * processing it using workflows engine.
+//  * potentially streaming it according to bd tail configuration.
+//  * writing it to buffers according to active buffer selector(s).
 pub struct ProcessingPipeline {
   buffer_producers: BufferProducers,
   buffer_selector: BufferSelector,
