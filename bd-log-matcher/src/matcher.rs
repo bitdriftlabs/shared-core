@@ -84,8 +84,8 @@ impl Tree {
     &self,
     log_level: LogLevel,
     log_type: LogType,
-    message: &'_ LogMessage,
-    fields: &'_ impl FieldProvider,
+    message: &LogMessage,
+    fields: &impl FieldProvider,
   ) -> bool {
     match self {
       Self::Base(base_matcher) => match base_matcher {
