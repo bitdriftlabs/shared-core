@@ -22,7 +22,13 @@ fn app_version_repo() {
     app_version: "1.0.0".to_string(),
     app_version_extra: AppVersionExtra::BuildNumber("1".to_string()),
   }));
-  // Initial update
+  // Consecutive check after app update
+  assert!(repo.has_changed(&AppVersion {
+    app_version: "1.0.0".to_string(),
+    app_version_extra: AppVersionExtra::BuildNumber("2".to_string()),
+  }));
+
+  // Initial app version
   assert!(repo
     .set(&AppVersion {
       app_version: "1.0.0".to_string(),
