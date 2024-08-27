@@ -76,3 +76,5 @@ This should output a coverage report `./tarpaulin-report.html` in the current di
 ```bash
 cargo install cargo-tarpaulin
 ```
+
+Alternatively you can invoke `tarpaulin` via Docker as explained in the [tarpaulin documentation](https://github.com/xd009642/tarpaulin?tab=readme-ov-file#docker)
