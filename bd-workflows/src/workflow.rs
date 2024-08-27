@@ -747,7 +747,7 @@ impl Traversal {
     for (index, transition) in transitions.iter().enumerate() {
       match &transition.rule() {
         Predicate::LogMatch(log_match, count) => {
-          if log_match.do_match(*log) {
+          if log_match.do_match(log.log_level, log.log_type, log.message, log.fields) {
             self.matched_logs_counts[index] += 1;
 
             // We do mark the log being matched on the `Run` level even if
