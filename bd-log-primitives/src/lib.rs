@@ -5,8 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-pub mod owned;
-
 pub use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 /// A union type that allows representing either a UTF-8 string or an opaque series of bytes. This
 /// is generic over the underlying String type to support different ownership models.
@@ -138,6 +136,24 @@ impl From<AnnotatedLogField> for LogField {
 pub enum LogFieldKind {
   Ootb,
   Custom,
+}
+
+///
+/// Log
+
+///  A copy of an incoming log line.
+#[derive(Debug)]
+pub struct Log {
+  // Remember to update the implementation
+  // of the `MemorySized` trait every
+  // time the struct is modified!!!
+  pub log_level: LogLevel,
+  pub log_type: LogType,
+  pub message: StringOrBytes<String, Vec<u8>>,
+  pub fields: LogFields,
+  pub matching_fields: LogFields,
+  pub session_id: String,
+  pub occurred_at: time::OffsetDateTime,
 }
 
 //

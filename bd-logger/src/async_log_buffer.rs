@@ -19,8 +19,7 @@ use crate::{internal_report, network};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_log_metadata::{AnnotatedLogFields, MetadataProvider};
-use bd_log_primitives::owned::LogLine as OwnedLogLine;
-use bd_log_primitives::{LogField, LogFieldValue, LogLevel, LogMessage};
+use bd_log_primitives::{Log, LogField, LogFieldValue, LogLevel, LogMessage};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::workflows::WorkflowsEnabledFlag;
 use bd_runtime::runtime::{ConfigLoader, Watch};
@@ -112,7 +111,7 @@ impl MemorySized for LogLine {
   }
 }
 
-impl MemorySized for OwnedLogLine {
+impl MemorySized for bd_log_primitives::Log {
   fn size(&self) -> usize {
     // The size cannot be computed by just calling a `size_of_val(self)` in here
     // as that does not account for various heap allocations.
@@ -159,13 +158,13 @@ pub struct AsyncLogBuffer<R: LogReplay> {
 
   interceptors: Vec<Arc<dyn LogInterceptor>>,
 
-  logging_state: LoggingState<bd_log_primitives::owned::LogLine>,
+  logging_state: LoggingState<bd_log_primitives::Log>,
   workflows_enabled_flag: Watch<bool, WorkflowsEnabledFlag>,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   pub(crate) fn new(
-    uninitialized_logging_context: UninitializedLoggingContext<bd_log_primitives::owned::LogLine>,
+    uninitialized_logging_context: UninitializedLoggingContext<bd_log_primitives::Log>,
     replayer: R,
     session_strategy: Arc<bd_session::Strategy>,
     metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
@@ -380,7 +379,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             )
           };
 
-        let annotated_log = bd_log_primitives::owned::LogLine {
+        let annotated_log = bd_log_primitives::Log {
           log_level: log.log_level,
           log_type: log.log_type,
           message: log.message,
@@ -452,7 +451,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     mut self,
     config: ConfigUpdate,
     workflows_enabled: bool,
-  ) -> (Self, Option<PreConfigBuffer<OwnedLogLine>>) {
+  ) -> (Self, Option<PreConfigBuffer<Log>>) {
     let (initialized_logging_context, maybe_pre_config_log_buffer) = match self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
         let (initialized_logging_context, pre_config_log_buffer) = uninitialized_logging_context
@@ -475,7 +474,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
   async fn maybe_replay_pre_config_buffer_logs(
     &mut self,
-    pre_config_log_buffer: PreConfigBuffer<bd_log_primitives::owned::LogLine>,
+    pre_config_log_buffer: PreConfigBuffer<bd_log_primitives::Log>,
   ) {
     let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state else {
       return;

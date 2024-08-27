@@ -9,8 +9,7 @@ use bd_buffer::{AbslCode, BuffersWithAck, Error};
 use bd_client_common::fb::make_log;
 use bd_client_stats::FlushTrigger;
 use bd_filters::FiltersChain;
-use bd_log_primitives::owned::LogLine;
-use bd_log_primitives::{log_level, FieldsRef, LogRef, LogType};
+use bd_log_primitives::{log_level, FieldsRef, Log, LogRef, LogType};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::ConfigLoader;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
@@ -27,7 +26,7 @@ use tokio::sync::oneshot;
 pub trait LogReplay {
   async fn replay_log(
     &mut self,
-    log: LogLine,
+    log: Log,
     log_processing_completed_tx: Option<oneshot::Sender<()>>,
     pipeline: &mut ProcessingPipeline,
   ) -> anyhow::Result<()>;
@@ -43,7 +42,7 @@ pub struct LoggerReplay;
 impl LogReplay for LoggerReplay {
   async fn replay_log(
     &mut self,
-    log: LogLine,
+    log: Log,
     log_processing_completed_tx: Option<oneshot::Sender<()>>,
     pipeline: &mut ProcessingPipeline,
   ) -> anyhow::Result<()> {
@@ -161,7 +160,7 @@ impl ProcessingPipeline {
 
   async fn process_log(
     &mut self,
-    mut log: LogLine,
+    mut log: Log,
     log_processing_completed_tx: Option<oneshot::Sender<()>>,
   ) -> anyhow::Result<()> {
     self.stats.log_level_counters.record(log.log_level);

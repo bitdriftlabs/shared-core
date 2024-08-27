@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Result};
-use bd_log_primitives::owned::LogLine;
-use bd_log_primitives::FieldsRef;
+use bd_log_primitives::{FieldsRef, Log};
 use bd_proto::protos::filter::filter::filter::transform::capture_fields::fields::Fields_type;
 use bd_proto::protos::filter::filter::filter::{self};
 use bd_proto::protos::filter::filter::{Filter as FilterProto, FiltersConfiguration};
@@ -31,7 +30,7 @@ impl FiltersChain {
     Self { filters }
   }
 
-  pub fn process(&self, log: &mut LogLine) {
+  pub fn process(&self, log: &mut Log) {
     for filter in &self.filters {
       let fields_ref = FieldsRef::new(&log.fields, &log.matching_fields);
       if !filter
@@ -101,7 +100,7 @@ impl Transform {
     })
   }
 
-  fn apply(&self, log: &mut LogLine) {
+  fn apply(&self, log: &mut Log) {
     match self {
       Self::CaptureField(capture_field) => capture_field.apply(log),
       Self::SetField(set_field) => set_field.apply(log),
@@ -130,7 +129,7 @@ impl CaptureField {
     })
   }
 
-  fn apply(&self, log: &mut LogLine) {
+  fn apply(&self, log: &mut Log) {
     // Look for a field that's supposed to be captured.
     let Some(field_position) = log
       .matching_fields
@@ -187,7 +186,7 @@ impl SetField {
     })
   }
 
-  fn apply(&self, log: &mut LogLine) {
+  fn apply(&self, log: &mut Log) {
     let field = bd_log_primitives::LogField {
       key: self.field_name.clone(),
       value: self.value.clone().into(),
