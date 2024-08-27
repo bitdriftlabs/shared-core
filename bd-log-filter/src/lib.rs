@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use bd_log_primitives::{FieldsRef, Log};
 use bd_proto::protos::filter::filter::filter::transform::capture_fields::fields::Fields_type;
 use bd_proto::protos::filter::filter::filter::{self};
@@ -93,11 +93,11 @@ impl Transform {
       .transform_type
       .ok_or_else(|| anyhow!("invalid transform configuration: no transform_type"))?;
     Ok(match transform_type {
-      Transform_type::CaptureFields(config) => {
-        Self::CaptureField(CaptureField::new(config).map_err(|e| e.context("CaptureFields"))?)
-      },
+      Transform_type::CaptureFields(config) => Self::CaptureField(
+        CaptureField::new(config).context("invalid CaptureFields configuration")?,
+      ),
       Transform_type::SetField(config) => {
-        Self::SetField(SetField::new(config).map_err(|e| e.context("SetField"))?)
+        Self::SetField(SetField::new(config).context("invalid SetField configuration")?)
       },
     })
   }
