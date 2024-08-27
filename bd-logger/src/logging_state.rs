@@ -178,7 +178,7 @@ impl Debug for InitializedLoggingContext {
 }
 
 impl InitializedLoggingContext {
-  fn new(processing_pipeline: ProcessingPipeline) -> Self {
+  const fn new(processing_pipeline: ProcessingPipeline) -> Self {
     Self {
       processing_pipeline,
     }
@@ -189,7 +189,7 @@ impl InitializedLoggingContext {
   }
 
   #[cfg(test)]
-  pub(crate) fn workflows_engine(&self) -> Option<&WorkflowsEngine> {
+  pub(crate) const fn workflows_engine(&self) -> Option<&WorkflowsEngine> {
     self.processing_pipeline.workflows_engine.as_ref()
   }
 }

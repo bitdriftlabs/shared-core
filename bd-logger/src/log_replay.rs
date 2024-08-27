@@ -509,12 +509,12 @@ impl ProcessingPipeline {
             }
           }
         },
-        Ok(_) = self.workflows_enabled_flag.changed() => {
+        Ok(()) = self.workflows_enabled_flag.changed() => {
           if !self.workflows_enabled_flag.read_mark_update() {
             self.workflows_engine = None;
           }
         },
-        Ok(_) = self.filter_chain_enabled_flag.changed() => {
+        Ok(()) = self.filter_chain_enabled_flag.changed() => {
           self.filter_chain_enabled = self.filter_chain_enabled_flag.read_mark_update();
         }
     }
