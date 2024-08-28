@@ -7,9 +7,11 @@ version      = "1.0.0"
 
 [dependencies]
 anyhow.workspace            = true
+bd-client-stats-store.path  = "../bd-client-stats-store"
 bd-log-matcher.path         = "../bd-log-matcher"
 bd-log-primitives.path      = "../bd-log-primitives"
 bd-proto.path               = "../bd-proto"
+log.workspace               = true
 time.workspace              = true
 
 [dev-dependencies]

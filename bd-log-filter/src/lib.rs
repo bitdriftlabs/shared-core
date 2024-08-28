@@ -26,7 +26,10 @@ pub struct FilterChain {
 }
 
 impl FilterChain {
-  pub fn new(configs: FiltersConfiguration) -> Self {
+  // Returns the creates `FilterChain` instance and the number of filters that could not be created
+  // due to config parsing failures.
+  pub fn new(configs: FiltersConfiguration) -> (Self, u64) {
+    let mut failures_count = 0;
     let filters = configs
       .filters
       .into_iter()
@@ -36,11 +39,16 @@ impl FilterChain {
         // consistency (either applying the entire filter or not applying it at all) and
         // maintaining some tolerance for errors.
         // TODO(Augustyniak): Add visibility into the failures from here.
-        Filter::new(f).ok()
+        Filter::new(f)
+          .inspect_err(|e| {
+            failures_count += 1;
+            log::debug!("{}", e);
+          })
+          .ok()
       })
       .collect();
 
-    Self { filters }
+    (Self { filters }, failures_count)
   }
 
   pub fn process(&self, log: &mut Log) {

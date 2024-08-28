@@ -104,7 +104,7 @@ impl Setup {
       buffer_selector: BufferSelector::new(&BufferConfigList::default()).unwrap(),
       workflows_configuration,
       tail_configs: TailConfigurations::default(),
-      filter_chain: FilterChain::new(FiltersConfiguration::default()),
+      filter_chain: FilterChain::new(FiltersConfiguration::default()).0,
     }
   }
 
@@ -578,7 +578,7 @@ fn enqueuing_log_blocks() {
           buffer_selector: BufferSelector::new(&BufferConfigList::default()).unwrap(),
           workflows_configuration: WorkflowsConfiguration::default(),
           tail_configs: TailConfigurations::default(),
-          filter_chain: FilterChain::new(FiltersConfiguration::default()),
+          filter_chain: FilterChain::new(FiltersConfiguration::default()).0,
         })
         .await
     );

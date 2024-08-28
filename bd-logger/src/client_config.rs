@@ -222,6 +222,7 @@ pub struct LoggerUpdate {
   config_update_tx: Sender<ConfigUpdate>,
   workflows_enabled_flag: Watch<bool, WorkflowsEnabledFlag>,
   stream_config_parse_failure: Counter,
+  filter_config_parse_failure: Counter,
 }
 
 impl LoggerUpdate {
@@ -236,6 +237,7 @@ impl LoggerUpdate {
       config_update_tx,
       workflows_enabled_flag: runtime.register_watch().unwrap(),
       stream_config_parse_failure: scope.counter("stream_config_parse_failure"),
+      filter_config_parse_failure: scope.counter("filter_config_parse_failure"),
     }
   }
 }
@@ -270,6 +272,11 @@ impl ApplyConfig for LoggerUpdate {
       WorkflowsConfiguration::default()
     };
 
+    let (filter_chain, filter_config_parse_failure_count) = FilterChain::new(configuration.filters);
+    self
+      .filter_config_parse_failure
+      .inc_by(filter_config_parse_failure_count);
+
     if let Err(e) = self
       .config_update_tx
       .send(ConfigUpdate {
@@ -287,7 +294,7 @@ impl ApplyConfig for LoggerUpdate {
           },
           || self.stream_config_parse_failure.inc(),
         )?,
-        filter_chain: FilterChain::new(configuration.filters),
+        filter_chain,
       })
       .await
     {
