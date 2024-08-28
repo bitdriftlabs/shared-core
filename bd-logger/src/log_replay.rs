@@ -200,6 +200,7 @@ impl ProcessingPipeline {
     self.stats.log_level_counters.record(log.log_level);
 
     if self.filter_chain_enabled {
+      // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
       self.filter_chain.process(&mut log);
     }
 
