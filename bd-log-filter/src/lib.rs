@@ -5,6 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(test)]
+#[path = "./filter_chain_test.rs"]
+mod filter_chain_test;
+
 use anyhow::{anyhow, Context, Result};
 use bd_log_primitives::{FieldsRef, Log};
 use bd_proto::protos::filter::filter::filter::transform::capture_fields::fields::Fields_type;

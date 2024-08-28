@@ -13,7 +13,8 @@ bd-proto.path               = "../bd-proto"
 time.workspace              = true
 
 [dev-dependencies]
-assert_matches.workspace = true
-bd-test-helpers.path     = "../bd-test-helpers"
-bd-time.path             = "../bd-time"
-ctor.workspace           = true
+assert_matches.workspace    = true
+bd-test-helpers.path        = "../bd-test-helpers"
+bd-time.path                = "../bd-time"
+ctor.workspace              = true
+pretty_assertions.workspace = true

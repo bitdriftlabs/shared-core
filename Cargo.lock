@@ -620,6 +620,7 @@ dependencies = [
  "bd-test-helpers",
  "bd-time",
  "ctor",
+ "pretty_assertions",
  "time",
 ]
 
