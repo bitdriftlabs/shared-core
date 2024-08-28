@@ -29,6 +29,7 @@ mod tests {
   use bd_noop_network::NoopNetwork;
   use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::root_as_log;
   use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
+  use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
   use bd_proto::protos::client::api::configuration_update_ack::Nack;
   use bd_proto::protos::client::api::ConfigurationUpdate;
   use bd_proto::protos::config::v1::config::buffer_config::Type;
@@ -498,17 +499,17 @@ mod tests {
 
     setup.send_configuration_update(configuration_update(
       "",
-      Some(BufferConfigList {
-        buffer_config: vec![default_buffer_config(
-          Type::CONTINUOUS,
-          make_buffer_matcher_matching_everything().into(),
-        )],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![default_buffer_config(
+            Type::CONTINUOUS,
+            make_buffer_matcher_matching_everything().into(),
+          )],
+          ..Default::default()
+        })
+        .into(),
         ..Default::default()
-      }),
-      None,
-      None,
-      None,
-      None,
+      },
     ));
 
     for _ in 0 .. 10 {
@@ -529,14 +530,14 @@ mod tests {
     // Now update the configuration to drop all logs.
     setup.send_configuration_update(configuration_update(
       "update",
-      Some(BufferConfigList {
-        buffer_config: vec![default_buffer_config(Type::CONTINUOUS, None)],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![default_buffer_config(Type::CONTINUOUS, None)],
+          ..Default::default()
+        })
+        .into(),
         ..Default::default()
-      }),
-      None,
-      None,
-      None,
-      None,
+      },
     ));
 
     for _ in 0 .. 10 {
@@ -581,17 +582,17 @@ mod tests {
 
       setup.send_configuration_update(configuration_update(
         "",
-        Some(BufferConfigList {
-          buffer_config: vec![default_buffer_config(
-            Type::CONTINUOUS,
-            make_buffer_matcher_matching_everything().into(),
-          )],
+        StateOfTheWorld {
+          buffer_config_list: Some(BufferConfigList {
+            buffer_config: vec![default_buffer_config(
+              Type::CONTINUOUS,
+              make_buffer_matcher_matching_everything().into(),
+            )],
+            ..Default::default()
+          })
+          .into(),
           ..Default::default()
-        }),
-        None,
-        None,
-        None,
-        None,
+        },
       ));
     }
 
@@ -640,17 +641,17 @@ mod tests {
 
     let maybe_nack = setup.send_configuration_update(configuration_update(
       "",
-      Some(BufferConfigList {
-        buffer_config: vec![default_buffer_config(
-          Type::TRIGGER,
-          make_buffer_matcher_matching_everything().into(),
-        )],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![default_buffer_config(
+            Type::TRIGGER,
+            make_buffer_matcher_matching_everything().into(),
+          )],
+          ..Default::default()
+        })
+        .into(),
         ..Default::default()
-      }),
-      None,
-      None,
-      None,
-      None,
+      },
     ));
     assert!(maybe_nack.is_none());
 
@@ -680,20 +681,22 @@ mod tests {
     // to this action th engine will persist workflows state to disk.
     let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
       "",
-      Some(BufferConfigList {
-        buffer_config: vec![config_helper::default_buffer_config(
-          Type::TRIGGER,
-          make_buffer_matcher_matching_everything().into(),
-        )],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![config_helper::default_buffer_config(
+            Type::TRIGGER,
+            make_buffer_matcher_matching_everything().into(),
+          )],
+          ..Default::default()
+        })
+        .into(),
+        workflows_configuration: Some(make_workflow_config_flushing_buffer(
+          "default",
+          log_matches!(message == "foo"),
+        ))
+        .into(),
         ..Default::default()
-      }),
-      Some(make_workflow_config_flushing_buffer(
-        "default",
-        log_matches!(message == "foo"),
-      )),
-      None,
-      None,
-      None,
+      },
     ));
     assert!(maybe_nack.is_none());
 
@@ -717,17 +720,17 @@ mod tests {
     // Send down a configuration with a single 'default' buffer.
     let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
       "",
-      Some(BufferConfigList {
-        buffer_config: vec![config_helper::default_buffer_config(
-          Type::TRIGGER,
-          make_buffer_matcher_matching_everything().into(),
-        )],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![config_helper::default_buffer_config(
+            Type::TRIGGER,
+            make_buffer_matcher_matching_everything().into(),
+          )],
+          ..Default::default()
+        })
+        .into(),
         ..Default::default()
-      }),
-      None,
-      None,
-      None,
-      None,
+      },
     ));
     assert!(maybe_nack.is_none());
 
@@ -749,20 +752,22 @@ mod tests {
     // Send down a configuration with a single 'default' buffer.
     let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
       "",
-      Some(BufferConfigList {
-        buffer_config: vec![config_helper::default_buffer_config(
-          Type::TRIGGER,
-          make_buffer_matcher_matching_everything().into(),
-        )],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![config_helper::default_buffer_config(
+            Type::TRIGGER,
+            make_buffer_matcher_matching_everything().into(),
+          )],
+          ..Default::default()
+        })
+        .into(),
+        workflows_configuration: Some(make_workflow_config_flushing_buffer(
+          "default",
+          log_matches!(message == "foo"),
+        ))
+        .into(),
         ..Default::default()
-      }),
-      Some(make_workflow_config_flushing_buffer(
-        "default",
-        log_matches!(message == "foo"),
-      )),
-      None,
-      None,
-      None,
+      },
     ));
     assert!(maybe_nack.is_none());
 
@@ -812,18 +817,18 @@ mod tests {
 
     let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
       "",
-      None,
-      None,
-      None,
-      Some(BdTailConfigurations {
-        active_streams: vec![BdTailStream {
-          stream_id: "all".into(),
-          matcher: None.into(),
+      StateOfTheWorld {
+        bdtail_configuration: Some(BdTailConfigurations {
+          active_streams: vec![BdTailStream {
+            stream_id: "all".into(),
+            matcher: None.into(),
+            ..Default::default()
+          }],
           ..Default::default()
-        }],
+        })
+        .into(),
         ..Default::default()
-      }),
-      None,
+      },
     ));
     assert!(maybe_nack.is_none());
 
@@ -846,25 +851,25 @@ mod tests {
 
     let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
       "",
-      None,
-      None,
-      None,
-      Some(BdTailConfigurations {
-        active_streams: vec![
-          BdTailStream {
-            stream_id: "all".into(),
-            matcher: None.into(),
-            ..Default::default()
-          },
-          BdTailStream {
-            stream_id: "some".into(),
-            matcher: Some(log_matches!(message == "something")).into(),
-            ..Default::default()
-          },
-        ],
+      StateOfTheWorld {
+        bdtail_configuration: Some(BdTailConfigurations {
+          active_streams: vec![
+            BdTailStream {
+              stream_id: "all".into(),
+              matcher: None.into(),
+              ..Default::default()
+            },
+            BdTailStream {
+              stream_id: "some".into(),
+              matcher: Some(log_matches!(message == "something")).into(),
+              ..Default::default()
+            },
+          ],
+          ..Default::default()
+        })
+        .into(),
         ..Default::default()
-      }),
-      None,
+      },
     ));
     assert!(maybe_nack.is_none());
 
@@ -898,20 +903,22 @@ mod tests {
     // with the 'fire workflow action!' message in order to flush all buffers.
     let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
       "",
-      Some(BufferConfigList {
-        buffer_config: vec![config_helper::default_buffer_config(
-          Type::TRIGGER,
-          make_buffer_matcher_matching_everything().into(),
-        )],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![config_helper::default_buffer_config(
+            Type::TRIGGER,
+            make_buffer_matcher_matching_everything().into(),
+          )],
+          ..Default::default()
+        })
+        .into(),
+        workflows_configuration: Some(make_workflow_config_flushing_buffer(
+          "default",
+          log_matches!(message == "fire workflow action!"),
+        ))
+        .into(),
         ..Default::default()
-      }),
-      Some(make_workflow_config_flushing_buffer(
-        "default",
-        log_matches!(message == "fire workflow action!"),
-      )),
-      None,
-      None,
-      None,
+      },
     ));
     assert!(maybe_nack.is_none());
 
@@ -998,34 +1005,38 @@ mod tests {
     // in order to flush all buffers.
     let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
       "",
-      Some(BufferConfigList {
-        buffer_config: vec![
-          default_buffer_config(
-            Type::CONTINUOUS,
-            make_buffer_matcher_matching_resource_logs().into(),
-          ),
-          BufferConfigBuilder {
-            name: "trigger_buffer_id",
-            buffer_type: Type::TRIGGER,
-            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-            non_volatile_size: 100_000,
-            volatile_size: 10_000,
-          }
-          .build(),
-        ],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![
+            default_buffer_config(
+              Type::CONTINUOUS,
+              make_buffer_matcher_matching_resource_logs().into(),
+            ),
+            BufferConfigBuilder {
+              name: "trigger_buffer_id",
+              buffer_type: Type::TRIGGER,
+              filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+              non_volatile_size: 100_000,
+              volatile_size: 10_000,
+            }
+            .build(),
+          ],
+          ..Default::default()
+        })
+        .into(),
+        workflows_configuration: Some(workflows_configuration!(vec![
+          workflow_proto!("workflow"; exclusive with a, b, c)
+        ]))
+        .into(),
+        insights_configuration: Some(insights!(
+          insight!("insight_1"),
+          insight!("insight_2"),
+          // "insight_3" doesn't exist on emitted logs, should be ignored.
+          insight!("insight_3")
+        ))
+        .into(),
         ..Default::default()
-      }),
-      Some(workflows_configuration!(vec![
-        workflow_proto!("workflow"; exclusive with a, b, c)
-      ])),
-      Some(insights!(
-        insight!("insight_1"),
-        insight!("insight_2"),
-        // "insight_3" doesn't exist on emitted logs, should be ignored.
-        insight!("insight_3")
-      )),
-      None,
-      None,
+      },
     ));
     assert!(maybe_nack.is_none());
 
@@ -1172,25 +1183,29 @@ mod tests {
     // and our workflow that matches on "fire workflow action!" log.
     let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
       "",
-      Some(BufferConfigList {
-        buffer_config: vec![config_helper::default_buffer_config(
-          Type::TRIGGER,
-          make_buffer_matcher_matching_everything().into(),
-        )],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![config_helper::default_buffer_config(
+            Type::TRIGGER,
+            make_buffer_matcher_matching_everything().into(),
+          )],
+          ..Default::default()
+        })
+        .into(),
+        workflows_configuration: Some(workflows_configuration!(vec![
+          workflow_proto!("workflow_1"; exclusive with a, b),
+          workflow_proto!("workflow_2"; exclusive with a, b),
+        ]))
+        .into(),
+        insights_configuration: Some(insights!(
+          insight!("insight_1"),
+          insight!("insight_2"),
+          // "insight_3" doesn't exist on emitted logs, should be ignored.
+          insight!("insight_3")
+        ))
+        .into(),
         ..Default::default()
-      }),
-      Some(workflows_configuration!(vec![
-        workflow_proto!("workflow_1"; exclusive with a, b),
-        workflow_proto!("workflow_2"; exclusive with a, b),
-      ])),
-      Some(insights!(
-        insight!("insight_1"),
-        insight!("insight_2"),
-        // "insight_3" doesn't exist on emitted logs, should be ignored.
-        insight!("insight_3")
-      )),
-      None,
-      None,
+      },
     ));
     assert!(maybe_nack.is_none());
 
@@ -1291,11 +1306,10 @@ mod tests {
 
     let maybe_nack = setup.send_configuration_update(configuration_update(
       "",
-      None,
-      Some(workflows_configuration!(vec![workflow])),
-      None,
-      None,
-      None,
+      StateOfTheWorld {
+        workflows_configuration: Some(workflows_configuration!(vec![workflow])).into(),
+        ..Default::default()
+      },
     ));
     assert!(maybe_nack.is_none());
 
@@ -1354,28 +1368,33 @@ mod tests {
     //  * a filter that adds a field "foo" with value 'fire workflow action!'
     let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
       "",
-      Some(BufferConfigList {
-        buffer_config: vec![config_helper::default_buffer_config(
-          Type::TRIGGER,
-          make_buffer_matcher_matching_everything().into(),
-        )],
-        ..Default::default()
-      }),
-      Some(make_workflow_config_flushing_buffer(
-        "default",
-        log_matches!(tag("foo") == "fire workflow action!"),
-      )),
-      None,
-      None,
-      Some(FiltersConfiguration {
-        filters: vec![Filter {
-          matcher: Some(log_matches!(message == "message")).into(),
-          transforms: vec![set_field!(captured("foo") = "fire workflow action!")],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![config_helper::default_buffer_config(
+            Type::TRIGGER,
+            make_buffer_matcher_matching_everything().into(),
+          )],
           ..Default::default()
-        }],
+        })
+        .into(),
+        workflows_configuration: Some(make_workflow_config_flushing_buffer(
+          "default",
+          log_matches!(tag("foo") == "fire workflow action!"),
+        ))
+        .into(),
+        filters_configuration: Some(FiltersConfiguration {
+          filters: vec![Filter {
+            matcher: Some(log_matches!(message == "message")).into(),
+            transforms: vec![set_field!(captured("foo") = "fire workflow action!")],
+            ..Default::default()
+          }],
+          ..Default::default()
+        })
+        .into(),
         ..Default::default()
-      }),
+      },
     ));
+
     assert!(maybe_nack.is_none());
 
     for _ in 0 .. 9 {
@@ -1422,21 +1441,21 @@ mod tests {
     // local listeners that would cause it to trigger.
     let maybe_nack = setup.send_configuration_update(configuration_update(
       "",
-      Some(BufferConfigList {
-        buffer_config: vec![BufferConfigBuilder {
-          name: "default",
-          buffer_type: Type::TRIGGER,
-          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-          non_volatile_size: 100_000,
-          volatile_size: 10_000,
-        }
-        .build()],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![BufferConfigBuilder {
+            name: "default",
+            buffer_type: Type::TRIGGER,
+            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+            non_volatile_size: 100_000,
+            volatile_size: 10_000,
+          }
+          .build()],
+          ..Default::default()
+        })
+        .into(),
         ..Default::default()
-      }),
-      None,
-      None,
-      None,
-      None,
+      },
     ));
 
     assert!(maybe_nack.is_none());
@@ -1478,30 +1497,32 @@ mod tests {
     // Also send down a continuous buffer which matches a smaller subset of the logs.
     let maybe_nack = setup.send_configuration_update(configuration_update(
       "",
-      Some(BufferConfigList {
-        buffer_config: vec![
-          default_buffer_config(
-            Type::CONTINUOUS,
-            make_buffer_matcher_matching_everything_except_internal_logs().into(),
-          ),
-          BufferConfigBuilder {
-            name: "trigger",
-            buffer_type: Type::TRIGGER,
-            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-            non_volatile_size: 100_000,
-            volatile_size: 10_000,
-          }
-          .build(),
-        ],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![
+            default_buffer_config(
+              Type::CONTINUOUS,
+              make_buffer_matcher_matching_everything_except_internal_logs().into(),
+            ),
+            BufferConfigBuilder {
+              name: "trigger",
+              buffer_type: Type::TRIGGER,
+              filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+              non_volatile_size: 100_000,
+              volatile_size: 10_000,
+            }
+            .build(),
+          ],
+          ..Default::default()
+        })
+        .into(),
+        workflows_configuration: Some(make_workflow_config_flushing_buffer(
+          "trigger",
+          log_matches!(message == "fire!"),
+        ))
+        .into(),
         ..Default::default()
-      }),
-      Some(make_workflow_config_flushing_buffer(
-        "trigger",
-        log_matches!(message == "fire!"),
-      )),
-      None,
-      None,
-      None,
+      },
     ));
     assert!(maybe_nack.is_none());
 
@@ -1579,24 +1600,26 @@ mod tests {
     // default buffer.
     let maybe_nack = setup.send_configuration_update(configuration_update(
       "",
-      Some(BufferConfigList {
-        buffer_config: vec![BufferConfigBuilder {
-          name: "trigger",
-          buffer_type: Type::TRIGGER,
-          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-          non_volatile_size: 100_000,
-          volatile_size: 10_000,
-        }
-        .build()],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![BufferConfigBuilder {
+            name: "trigger",
+            buffer_type: Type::TRIGGER,
+            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+            non_volatile_size: 100_000,
+            volatile_size: 10_000,
+          }
+          .build()],
+          ..Default::default()
+        })
+        .into(),
+        workflows_configuration: Some(make_workflow_config_flushing_buffer(
+          "trigger",
+          log_matches!(tag("_phantom_key") == "_phantom_value"),
+        ))
+        .into(),
         ..Default::default()
-      }),
-      Some(make_workflow_config_flushing_buffer(
-        "trigger",
-        log_matches!(tag("_phantom_key") == "_phantom_value"),
-      )),
-      None,
-      None,
-      None,
+      },
     ));
     assert!(maybe_nack.is_none());
 
@@ -1680,17 +1703,17 @@ mod tests {
 
     setup.send_configuration_update(configuration_update(
       "",
-      Some(BufferConfigList {
-        buffer_config: vec![default_buffer_config(
-          Type::CONTINUOUS,
-          make_buffer_matcher_matching_everything_except_internal_logs().into(),
-        )],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![default_buffer_config(
+            Type::CONTINUOUS,
+            make_buffer_matcher_matching_everything_except_internal_logs().into(),
+          )],
+          ..Default::default()
+        })
+        .into(),
         ..Default::default()
-      }),
-      None,
-      None,
-      None,
-      None,
+      },
     ));
 
     setup.logger_handle.log_app_update(
@@ -1741,21 +1764,21 @@ mod tests {
     // relatively small capacity.
     let maybe_nack = setup.send_configuration_update(configuration_update(
       "",
-      Some(BufferConfigList {
-        buffer_config: vec![BufferConfigBuilder {
-          name: "continuous",
-          buffer_type: Type::CONTINUOUS,
-          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-          non_volatile_size: 240,
-          volatile_size: 200,
-        }
-        .build()],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![BufferConfigBuilder {
+            name: "continuous",
+            buffer_type: Type::CONTINUOUS,
+            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+            non_volatile_size: 240,
+            volatile_size: 200,
+          }
+          .build()],
+          ..Default::default()
+        })
+        .into(),
         ..Default::default()
-      }),
-      None,
-      None,
-      None,
-      None,
+      },
     ));
     assert!(maybe_nack.is_none());
 
@@ -1856,17 +1879,17 @@ mod tests {
     // error logs. As we add better suppport for log tagging this can probably be improved.
     let maybe_nack = setup.send_configuration_update(configuration_update(
       "",
-      Some(BufferConfigList {
-        buffer_config: vec![default_buffer_config(
-          Type::TRIGGER,
-          make_buffer_matcher_matching_everything().into(),
-        )],
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![default_buffer_config(
+            Type::TRIGGER,
+            make_buffer_matcher_matching_everything().into(),
+          )],
+          ..Default::default()
+        })
+        .into(),
         ..Default::default()
-      }),
-      None,
-      None,
-      None,
-      None,
+      },
     ));
     assert!(maybe_nack.is_none());
 
@@ -2049,30 +2072,32 @@ mod tests {
       active_stream_id,
       StreamAction::SendConfiguration(configuration_update(
         "test",
-        Some(BufferConfigList {
-          buffer_config: vec![
-            default_buffer_config(
-              Type::CONTINUOUS,
-              make_buffer_matcher_matching_everything().into(),
-            ),
-            BufferConfigBuilder {
-              name: "trigger",
-              buffer_type: Type::TRIGGER,
-              non_volatile_size: 100_000,
-              volatile_size: 10_000,
-              filter: match_message("trigger").into(),
-            }
-            .build(),
-          ],
+        StateOfTheWorld {
+          buffer_config_list: Some(BufferConfigList {
+            buffer_config: vec![
+              default_buffer_config(
+                Type::CONTINUOUS,
+                make_buffer_matcher_matching_everything().into(),
+              ),
+              BufferConfigBuilder {
+                name: "trigger",
+                buffer_type: Type::TRIGGER,
+                non_volatile_size: 100_000,
+                volatile_size: 10_000,
+                filter: match_message("trigger").into(),
+              }
+              .build(),
+            ],
+            ..Default::default()
+          })
+          .into(),
+          workflows_configuration: Some(make_workflow_config_flushing_buffer(
+            "trigger",
+            log_matches!(message == "trigger"),
+          ))
+          .into(),
           ..Default::default()
-        }),
-        Some(make_workflow_config_flushing_buffer(
-          "trigger",
-          log_matches!(message == "trigger"),
-        )),
-        None,
-        None,
-        None,
+        },
       )),
     );
 

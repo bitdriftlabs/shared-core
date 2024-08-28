@@ -7,7 +7,6 @@
 
 use base_log_matcher::{AnyMatch, MessageMatch, StringMatchType, TypeMatch};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
-use bd_proto::protos::bdtail::bdtail_config::BdTailConfigurations;
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::ConfigurationUpdate;
 use bd_proto::protos::client::matcher::root_matcher::{self, ClientTarget};
@@ -19,8 +18,6 @@ use bd_proto::protos::config::v1::config::log_matcher::{
   BaseLogMatcher,
   Match_type,
 };
-use bd_proto::protos::filter::filter::FiltersConfiguration;
-use bd_proto::protos::insight::insight::InsightsConfiguration;
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration;
 #[rustfmt::skip]
 use crate::declare_transition;
@@ -130,24 +127,10 @@ pub fn default_buffer_drop_all_logs(buffer_type: buffer_config::Type) -> BufferC
 }
 
 #[must_use]
-pub fn configuration_update(
-  version: &str,
-  buffer_config_list: Option<BufferConfigList>,
-  workflows_configuration: Option<WorkflowsConfiguration>,
-  insights_configuration: Option<InsightsConfiguration>,
-  bdtail_config: Option<BdTailConfigurations>,
-  filters_config: Option<FiltersConfiguration>,
-) -> ConfigurationUpdate {
+pub fn configuration_update(version: &str, sow: StateOfTheWorld) -> ConfigurationUpdate {
   ConfigurationUpdate {
     version_nonce: version.to_string(),
-    update_type: Some(Update_type::StateOfTheWorld(StateOfTheWorld {
-      buffer_config_list: buffer_config_list.into(),
-      workflows_configuration: workflows_configuration.into(),
-      insights_configuration: insights_configuration.into(),
-      bdtail_configuration: bdtail_config.into(),
-      filters_configuration: filters_config.into(),
-      ..Default::default()
-    })),
+    update_type: Some(Update_type::StateOfTheWorld(sow)),
     ..Default::default()
   }
 }
@@ -168,11 +151,10 @@ pub fn make_benchmarking_buffers_config() -> BufferConfigList {
 pub fn make_benchmarking_configuration_update() -> ConfigurationUpdate {
   configuration_update(
     "1",
-    Some(make_benchmarking_buffers_config()),
-    None,
-    None,
-    None,
-    None,
+    StateOfTheWorld {
+      buffer_config_list: Some(make_benchmarking_buffers_config()).into(),
+      ..Default::default()
+    },
   )
 }
 
@@ -218,11 +200,11 @@ pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationU
 
   configuration_update(
     "1",
-    Some(make_benchmarking_buffers_config()),
-    Some(workflows_configuration!(vec![workflow1, workflow2])),
-    None,
-    None,
-    None,
+    StateOfTheWorld {
+      buffer_config_list: Some(make_benchmarking_buffers_config()).into(),
+      workflows_configuration: Some(workflows_configuration!(vec![workflow1, workflow2])).into(),
+      ..Default::default()
+    },
   )
 }
 
@@ -311,11 +293,15 @@ pub fn make_configuration_update_with_workflow_flushing_buffer_on_anything(
 
   configuration_update(
     "1",
-    make_buffer_config_matching_everything(buffer_id, buffer_type).into(),
-    Some(workflows_configuration!(vec![workflow])),
-    None,
-    None,
-    None,
+    StateOfTheWorld {
+      buffer_config_list: Some(make_buffer_config_matching_everything(
+        buffer_id,
+        buffer_type,
+      ))
+      .into(),
+      workflows_configuration: Some(workflows_configuration!(vec![workflow])).into(),
+      ..Default::default()
+    },
   )
 }
 
@@ -341,11 +327,11 @@ pub fn make_configuration_update_with_workflow_flushing_buffer(
 
   configuration_update(
     "1",
-    make_buffer_config(buffer_id, buffer_type, buffer_matcher).into(),
-    Some(workflows_configuration!(vec![workflow])),
-    None,
-    None,
-    None,
+    StateOfTheWorld {
+      buffer_config_list: Some(make_buffer_config(buffer_id, buffer_type, buffer_matcher)).into(),
+      workflows_configuration: Some(workflows_configuration!(vec![workflow])).into(),
+      ..Default::default()
+    },
   )
 }
 
