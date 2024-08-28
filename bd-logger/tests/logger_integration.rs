@@ -34,7 +34,7 @@ mod tests {
   use bd_proto::protos::config::v1::config::buffer_config::Type;
   use bd_proto::protos::config::v1::config::BufferConfigList;
   use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
-use bd_runtime::runtime::FeatureFlag;
+  use bd_runtime::runtime::FeatureFlag;
   use bd_session::fixed::{State, UUIDCallbacks};
   use bd_session::{fixed, Strategy};
   use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
@@ -1347,9 +1347,11 @@ use bd_runtime::runtime::FeatureFlag;
 
     setup.send_runtime_update(true, true, false);
 
-    // Send down a configuration with a single buffer ('default')
-    // which accepts all logs and a single workflow which matches for logs
-    // with the 'fire workflow action!' message in order to flush all buffers.
+    // Send down a configuration:
+    //  * with a single buffer ('default') which accepts all logs
+    //  * a single workflow which flushes all buffers when it sees a log with field "foo" equal to
+    //    'fire workflow action!'
+    //  * a filter that adds a field "foo" with value 'fire workflow action!'
     let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
       "",
       Some(BufferConfigList {
@@ -1365,20 +1367,14 @@ use bd_runtime::runtime::FeatureFlag;
       )),
       None,
       None,
-      Some(
-        FiltersConfiguration {
-          filters: vec![
-            Filter {
-              matcher: Some(log_matches!(message == "message")).into(),
-              transforms: vec![
-                set_field!(captured "foo", "fire workflow action!")
-              ],
-              ..Default::default()
-            },
-          ],
+      Some(FiltersConfiguration {
+        filters: vec![Filter {
+          matcher: Some(log_matches!(message == "message")).into(),
+          transforms: vec![set_field!(captured "foo", "fire workflow action!")],
           ..Default::default()
-        }
-      )
+        }],
+        ..Default::default()
+      }),
     ));
     assert!(maybe_nack.is_none());
 
