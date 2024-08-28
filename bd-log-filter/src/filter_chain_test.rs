@@ -11,7 +11,7 @@ use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
 use bd_test_helpers::{capture_fields, log_matches, set_field};
 
 #[test]
-fn test_filters_are_not_applied_to_non_matching_logs_only() {
+fn filters_are_not_applied_to_non_matching_logs_only() {
   let chain = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
@@ -34,7 +34,7 @@ fn test_filters_are_not_applied_to_non_matching_logs_only() {
 }
 
 #[test]
-fn test_filter_transforms_are_applied_in_order() {
+fn filter_transforms_are_applied_in_order() {
   let chain = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
@@ -96,7 +96,7 @@ fn filters_are_applied_in_order() {
 }
 
 #[test]
-fn test_capture_fields_transform() {
+fn capture_fields_transform() {
   let chain = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
@@ -126,7 +126,7 @@ fn test_capture_fields_transform() {
 }
 
 #[test]
-fn test_set_captured_field_transform_overrides_existing_field() {
+fn set_captured_field_transform_overrides_existing_field() {
   let chain = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
@@ -155,7 +155,7 @@ fn test_set_captured_field_transform_overrides_existing_field() {
 }
 
 #[test]
-fn test_set_captured_field_transform_adds_new_field() {
+fn set_captured_field_transform_adds_new_field() {
   let chain = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
@@ -190,7 +190,7 @@ fn test_set_captured_field_transform_adds_new_field() {
 }
 
 #[test]
-fn test_set_matching_field_transform_overrides_existing_field() {
+fn set_matching_field_transform_overrides_existing_field() {
   let chain = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
@@ -219,7 +219,7 @@ fn test_set_matching_field_transform_overrides_existing_field() {
 }
 
 #[test]
-fn test_set_matching_field_transform_adds_new_field() {
+fn set_matching_field_transform_adds_new_field() {
   let chain = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
