@@ -180,6 +180,10 @@ mod tests {
     fn get_default_runtime_values() -> Vec<(&'static str, ValueKind)> {
       vec![
         (
+          bd_runtime::runtime::filters::FilterChainEnabledFlag::path(),
+          ValueKind::Bool(true),
+        ),
+        (
           bd_runtime::runtime::platform_events::ListenerEnabledFlag::path(),
           ValueKind::Bool(true),
         ),
@@ -481,8 +485,8 @@ mod tests {
         // If these numbers end up being too variable we do something more generic.
         assert_eq!(upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}), Some(120));
         assert!(upload.get_counter("api:bandwidth_tx", labels! {}).unwrap() > 100);
-        assert_eq!(upload.get_counter("api:bandwidth_rx", labels! {}), Some(347));
-        assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(332));
+        assert_eq!(upload.get_counter("api:bandwidth_rx", labels! {}), Some(375));
+        assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(360));
         assert_eq!(upload.get_counter("api:stream_total", labels! {}), Some(1));
     });
   }
