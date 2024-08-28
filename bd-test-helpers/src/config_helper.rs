@@ -19,6 +19,7 @@ use bd_proto::protos::config::v1::config::log_matcher::{
   BaseLogMatcher,
   Match_type,
 };
+use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::insight::insight::InsightsConfiguration;
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration;
 #[rustfmt::skip]
@@ -135,6 +136,7 @@ pub fn configuration_update(
   workflows_configuration: Option<WorkflowsConfiguration>,
   insights_configuration: Option<InsightsConfiguration>,
   bdtail_config: Option<BdTailConfigurations>,
+  filters_config: Option<FiltersConfiguration>,
 ) -> ConfigurationUpdate {
   ConfigurationUpdate {
     version_nonce: version.to_string(),
@@ -143,6 +145,7 @@ pub fn configuration_update(
       workflows_configuration: workflows_configuration.into(),
       insights_configuration: insights_configuration.into(),
       bdtail_configuration: bdtail_config.into(),
+      filters_configuration: filters_config.into(),
       ..Default::default()
     })),
     ..Default::default()
@@ -166,6 +169,7 @@ pub fn make_benchmarking_configuration_update() -> ConfigurationUpdate {
   configuration_update(
     "1",
     Some(make_benchmarking_buffers_config()),
+    None,
     None,
     None,
     None,
@@ -216,6 +220,7 @@ pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationU
     "1",
     Some(make_benchmarking_buffers_config()),
     Some(workflows_configuration!(vec![workflow1, workflow2])),
+    None,
     None,
     None,
   )
@@ -310,6 +315,7 @@ pub fn make_configuration_update_with_workflow_flushing_buffer_on_anything(
     Some(workflows_configuration!(vec![workflow])),
     None,
     None,
+    None,
   )
 }
 
@@ -337,6 +343,7 @@ pub fn make_configuration_update_with_workflow_flushing_buffer(
     "1",
     make_buffer_config(buffer_id, buffer_type, buffer_matcher).into(),
     Some(workflows_configuration!(vec![workflow])),
+    None,
     None,
     None,
   )

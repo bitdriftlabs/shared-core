@@ -33,7 +33,8 @@ mod tests {
   use bd_proto::protos::client::api::ConfigurationUpdate;
   use bd_proto::protos::config::v1::config::buffer_config::Type;
   use bd_proto::protos::config::v1::config::BufferConfigList;
-  use bd_runtime::runtime::FeatureFlag;
+  use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
+use bd_runtime::runtime::FeatureFlag;
   use bd_session::fixed::{State, UUIDCallbacks};
   use bd_session::{fixed, Strategy};
   use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
@@ -69,7 +70,7 @@ mod tests {
     workflow_proto,
     workflows_configuration,
   };
-  use bd_test_helpers::{metric_tag, metric_value, RecordingErrorReporter};
+  use bd_test_helpers::{metric_tag, metric_value, set_field, RecordingErrorReporter};
   use std::ops::Add;
   use std::sync::Arc;
   use std::time::Instant;
@@ -507,6 +508,7 @@ mod tests {
       None,
       None,
       None,
+      None,
     ));
 
     for _ in 0 .. 10 {
@@ -531,6 +533,7 @@ mod tests {
         buffer_config: vec![default_buffer_config(Type::CONTINUOUS, None)],
         ..Default::default()
       }),
+      None,
       None,
       None,
       None,
@@ -585,6 +588,7 @@ mod tests {
           )],
           ..Default::default()
         }),
+        None,
         None,
         None,
         None,
@@ -646,6 +650,7 @@ mod tests {
       None,
       None,
       None,
+      None,
     ));
     assert!(maybe_nack.is_none());
 
@@ -688,6 +693,7 @@ mod tests {
       )),
       None,
       None,
+      None,
     ));
     assert!(maybe_nack.is_none());
 
@@ -718,6 +724,7 @@ mod tests {
         )],
         ..Default::default()
       }),
+      None,
       None,
       None,
       None,
@@ -753,6 +760,7 @@ mod tests {
         "default",
         log_matches!(message == "foo"),
       )),
+      None,
       None,
       None,
     ));
@@ -815,6 +823,7 @@ mod tests {
         }],
         ..Default::default()
       }),
+      None,
     ));
     assert!(maybe_nack.is_none());
 
@@ -855,6 +864,7 @@ mod tests {
         ],
         ..Default::default()
       }),
+      None,
     ));
     assert!(maybe_nack.is_none());
 
@@ -899,6 +909,7 @@ mod tests {
         "default",
         log_matches!(message == "fire workflow action!"),
       )),
+      None,
       None,
       None,
     ));
@@ -1013,6 +1024,7 @@ mod tests {
         // "insight_3" doesn't exist on emitted logs, should be ignored.
         insight!("insight_3")
       )),
+      None,
       None,
     ));
     assert!(maybe_nack.is_none());
@@ -1178,6 +1190,7 @@ mod tests {
         insight!("insight_3")
       )),
       None,
+      None,
     ));
     assert!(maybe_nack.is_none());
 
@@ -1282,6 +1295,7 @@ mod tests {
       Some(workflows_configuration!(vec![workflow])),
       None,
       None,
+      None,
     ));
     assert!(maybe_nack.is_none());
 
@@ -1328,6 +1342,83 @@ mod tests {
   }
 
   #[test]
+  fn transforms_emitted_logs_according_to_filters() {
+    let mut setup = Setup::new();
+
+    setup.send_runtime_update(true, true, false);
+
+    // Send down a configuration with a single buffer ('default')
+    // which accepts all logs and a single workflow which matches for logs
+    // with the 'fire workflow action!' message in order to flush all buffers.
+    let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
+      "",
+      Some(BufferConfigList {
+        buffer_config: vec![config_helper::default_buffer_config(
+          Type::TRIGGER,
+          make_buffer_matcher_matching_everything().into(),
+        )],
+        ..Default::default()
+      }),
+      Some(make_workflow_config_flushing_buffer(
+        "default",
+        log_matches!(tag("foo") == "fire workflow action!"),
+      )),
+      None,
+      None,
+      Some(
+        FiltersConfiguration {
+          filters: vec![
+            Filter {
+              matcher: Some(log_matches!(message == "message")).into(),
+              transforms: vec![
+                set_field!(captured "foo", "fire workflow action!")
+              ],
+              ..Default::default()
+            },
+          ],
+          ..Default::default()
+        }
+      )
+    ));
+    assert!(maybe_nack.is_none());
+
+    for _ in 0 .. 9 {
+      setup.log(
+        log_level::DEBUG,
+        LogType::Normal,
+        "message".into(),
+        vec![],
+        vec![],
+        None,
+      );
+    }
+
+    setup.log(
+      log_level::DEBUG,
+      LogType::Normal,
+      "yet another message!".into(),
+      vec![AnnotatedLogField {
+        field: LogField {
+          key: "foo".into(),
+          value: "fire workflow action!".into(),
+        },
+        kind: LogFieldKind::Custom,
+      }],
+      vec![],
+      None,
+    );
+
+    // Since there are 10 logs in the buffer at this point, we should now see an upload containing
+    // 10 logs.
+    assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+      assert_eq!(log_upload.buffer_uuid.as_str(), "default");
+      assert_eq!(log_upload.logs.len(), 10);
+      assert_eq!("fire workflow action!", expected_field_value(&log_upload.logs[9], "foo"));
+      assert_eq!(vec!["flush_action_id"], expected_workflow_action_ids(&log_upload.logs[9]));
+    });
+  }
+
+  #[test]
   fn remote_buffer_upload() {
     let mut setup = Setup::new();
 
@@ -1346,6 +1437,7 @@ mod tests {
         .build()],
         ..Default::default()
       }),
+      None,
       None,
       None,
       None,
@@ -1411,6 +1503,7 @@ mod tests {
         "trigger",
         log_matches!(message == "fire!"),
       )),
+      None,
       None,
       None,
     ));
@@ -1507,6 +1600,7 @@ mod tests {
       )),
       None,
       None,
+      None,
     ));
     assert!(maybe_nack.is_none());
 
@@ -1600,6 +1694,7 @@ mod tests {
       None,
       None,
       None,
+      None,
     ));
 
     setup.logger_handle.log_app_update(
@@ -1661,6 +1756,7 @@ mod tests {
         .build()],
         ..Default::default()
       }),
+      None,
       None,
       None,
       None,
@@ -1771,6 +1867,7 @@ mod tests {
         )],
         ..Default::default()
       }),
+      None,
       None,
       None,
       None,
@@ -1977,6 +2074,7 @@ mod tests {
           "trigger",
           log_matches!(message == "trigger"),
         )),
+        None,
         None,
         None,
       )),

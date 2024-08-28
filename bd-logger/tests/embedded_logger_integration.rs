@@ -214,6 +214,7 @@ async fn configuration_update_with_log_uploads() {
         None,
         None,
         None,
+        None,
       )),
     )
     .await;
