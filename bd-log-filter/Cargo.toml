@@ -1,0 +1,22 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-log-filter"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+anyhow.workspace            = true
+bd-client-stats-store.path  = "../bd-client-stats-store"
+bd-log-matcher.path         = "../bd-log-matcher"
+bd-log-primitives.path      = "../bd-log-primitives"
+bd-proto.path               = "../bd-proto"
+log.workspace               = true
+time.workspace              = true
+
+[dev-dependencies]
+assert_matches.workspace    = true
+bd-test-helpers.path        = "../bd-test-helpers"
+bd-time.path                = "../bd-time"
+ctor.workspace              = true
+pretty_assertions.workspace = true

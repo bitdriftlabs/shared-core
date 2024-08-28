@@ -5,10 +5,11 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::async_log_buffer::{AsyncLogBuffer, LoggerReplay};
+use crate::async_log_buffer::AsyncLogBuffer;
 use crate::client_config::{self, LoggerUpdate};
 use crate::consumer::BufferUploadManager;
 use crate::internal::InternalLogger;
+use crate::log_replay::LoggerReplay;
 use crate::logger::{ChannelPair, Logger};
 use crate::logging_state::UninitializedLoggingContext;
 use crate::InitParams;
@@ -146,7 +147,7 @@ impl LoggerBuilder {
       (None, None, None)
     };
 
-    let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::new(
+    let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
         &self.params.sdk_directory,
         &runtime_loader,

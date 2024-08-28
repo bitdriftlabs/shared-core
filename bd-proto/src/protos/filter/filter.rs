@@ -1039,6 +1039,8 @@ pub mod filter {
             pub name: ::std::string::String,
             // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.value)
             pub value: ::std::string::String,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.field_type)
+            pub field_type: ::protobuf::EnumOrUnknown<set_field::FieldType>,
             // special fields
             // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.special_fields)
             pub special_fields: ::protobuf::SpecialFields,
@@ -1056,7 +1058,7 @@ pub mod filter {
             }
 
             pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                let mut fields = ::std::vec::Vec::with_capacity(2);
+                let mut fields = ::std::vec::Vec::with_capacity(3);
                 let mut oneofs = ::std::vec::Vec::with_capacity(0);
                 fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                     "name",
@@ -1067,6 +1069,11 @@ pub mod filter {
                     "value",
                     |m: &SetField| { &m.value },
                     |m: &mut SetField| { &mut m.value },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "field_type",
+                    |m: &SetField| { &m.field_type },
+                    |m: &mut SetField| { &mut m.field_type },
                 ));
                 ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SetField>(
                     "Filter.Transform.SetField",
@@ -1092,6 +1099,9 @@ pub mod filter {
                         18 => {
                             self.value = is.read_string()?;
                         },
+                        24 => {
+                            self.field_type = is.read_enum_or_unknown()?;
+                        },
                         tag => {
                             ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                         },
@@ -1110,6 +1120,9 @@ pub mod filter {
                 if !self.value.is_empty() {
                     my_size += ::protobuf::rt::string_size(2, &self.value);
                 }
+                if self.field_type != ::protobuf::EnumOrUnknown::new(set_field::FieldType::UNKNOWN) {
+                    my_size += ::protobuf::rt::int32_size(3, self.field_type.value());
+                }
                 my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
                 self.special_fields.cached_size().set(my_size as u32);
                 my_size
@@ -1121,6 +1134,9 @@ pub mod filter {
                 }
                 if !self.value.is_empty() {
                     os.write_string(2, &self.value)?;
+                }
+                if self.field_type != ::protobuf::EnumOrUnknown::new(set_field::FieldType::UNKNOWN) {
+                    os.write_enum(3, ::protobuf::EnumOrUnknown::value(&self.field_type))?;
                 }
                 os.write_unknown_fields(self.special_fields.unknown_fields())?;
                 ::std::result::Result::Ok(())
@@ -1141,6 +1157,7 @@ pub mod filter {
             fn clear(&mut self) {
                 self.name.clear();
                 self.value.clear();
+                self.field_type = ::protobuf::EnumOrUnknown::new(set_field::FieldType::UNKNOWN);
                 self.special_fields.clear();
             }
 
@@ -1148,6 +1165,7 @@ pub mod filter {
                 static instance: SetField = SetField {
                     name: ::std::string::String::new(),
                     value: ::std::string::String::new(),
+                    field_type: ::protobuf::EnumOrUnknown::from_i32(0),
                     special_fields: ::protobuf::SpecialFields::new(),
                 };
                 &instance
@@ -1170,6 +1188,76 @@ pub mod filter {
         impl ::protobuf::reflect::ProtobufValue for SetField {
             type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
         }
+
+        /// Nested message and enums of message `SetField`
+        pub mod set_field {
+            #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+            // @@protoc_insertion_point(enum:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.FieldType)
+            pub enum FieldType {
+                // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.FieldType.UNKNOWN)
+                UNKNOWN = 0,
+                // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.FieldType.CAPTURED)
+                CAPTURED = 1,
+                // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.FieldType.MATCHING_ONLY)
+                MATCHING_ONLY = 2,
+            }
+
+            impl ::protobuf::Enum for FieldType {
+                const NAME: &'static str = "FieldType";
+
+                fn value(&self) -> i32 {
+                    *self as i32
+                }
+
+                fn from_i32(value: i32) -> ::std::option::Option<FieldType> {
+                    match value {
+                        0 => ::std::option::Option::Some(FieldType::UNKNOWN),
+                        1 => ::std::option::Option::Some(FieldType::CAPTURED),
+                        2 => ::std::option::Option::Some(FieldType::MATCHING_ONLY),
+                        _ => ::std::option::Option::None
+                    }
+                }
+
+                fn from_str(str: &str) -> ::std::option::Option<FieldType> {
+                    match str {
+                        "UNKNOWN" => ::std::option::Option::Some(FieldType::UNKNOWN),
+                        "CAPTURED" => ::std::option::Option::Some(FieldType::CAPTURED),
+                        "MATCHING_ONLY" => ::std::option::Option::Some(FieldType::MATCHING_ONLY),
+                        _ => ::std::option::Option::None
+                    }
+                }
+
+                const VALUES: &'static [FieldType] = &[
+                    FieldType::UNKNOWN,
+                    FieldType::CAPTURED,
+                    FieldType::MATCHING_ONLY,
+                ];
+            }
+
+            impl ::protobuf::EnumFull for FieldType {
+                fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+                    descriptor.get(|| super::super::super::file_descriptor().enum_by_package_relative_name("Filter.Transform.SetField.FieldType").unwrap()).clone()
+                }
+
+                fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+                    let index = *self as usize;
+                    Self::enum_descriptor().value_by_index(index)
+                }
+            }
+
+            impl ::std::default::Default for FieldType {
+                fn default() -> Self {
+                    FieldType::UNKNOWN
+                }
+            }
+
+            impl FieldType {
+                pub(in super::super::super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+                    ::protobuf::reflect::GeneratedEnumDescriptorData::new::<FieldType>("Filter.Transform.SetField.FieldType")
+                }
+            }
+        }
     }
 }
 
@@ -1178,11 +1266,11 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     protobuf.filter.v1\x1a\x17validate/validate.proto\x1a5bitdrift_public/pr\
     otobuf/matcher/v1/log_matcher.proto\"\\\n\x14FiltersConfiguration\x12D\n\
     \x07filters\x18\x01\x20\x03(\x0b2*.bitdrift_public.protobuf.filter.v1.Fi\
-    lterR\x07filters\"\xa6\x06\n\x06Filter\x12S\n\x07matcher\x18\x01\x20\x01\
+    lterR\x07filters\"\xd6\x07\n\x06Filter\x12S\n\x07matcher\x18\x01\x20\x01\
     (\x0b2/.bitdrift_public.protobuf.matcher.v1.LogMatcherR\x07matcherB\x08\
     \xfaB\x05\x8a\x01\x02\x10\x01\x12^\n\ntransforms\x18\x02\x20\x03(\x0b24.\
     bitdrift_public.protobuf.filter.v1.Filter.TransformR\ntransformsB\x08\
-    \xfaB\x05\x92\x01\x02\x08\x01\x1a\xe6\x04\n\tTransform\x12k\n\x0ecapture\
+    \xfaB\x05\x92\x01\x02\x08\x01\x1a\x96\x06\n\tTransform\x12k\n\x0ecapture\
     _fields\x18\x01\x20\x01(\x0b2B.bitdrift_public.protobuf.filter.v1.Filter\
     .Transform.CaptureFieldsH\0R\rcaptureFields\x12\\\n\tset_field\x18\x02\
     \x20\x01(\x0b2=.bitdrift_public.protobuf.filter.v1.Filter.Transform.SetF\
@@ -1192,10 +1280,14 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x18\x01\x20\x01(\x0b2U.bitdrift_public.protobuf.filter.v1.Filter.Transf\
     orm.CaptureFields.Fields.SingleFieldH\0R\x06single\x1a*\n\x0bSingleField\
     \x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\
-    \x01B\x12\n\x0bfields_type\x12\x03\xf8B\x01\x1aF\n\x08SetField\x12\x1b\n\
-    \x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x12\x1d\
-    \n\x05value\x18\x02\x20\x01(\tR\x05valueB\x07\xfaB\x04r\x02\x10\x01B\x15\
-    \n\x0etransform_type\x12\x03\xf8B\x01b\x06proto3\
+    \x01B\x12\n\x0bfields_type\x12\x03\xf8B\x01\x1a\xf5\x01\n\x08SetField\
+    \x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\
+    \x01\x12\x1d\n\x05value\x18\x02\x20\x01(\tR\x05valueB\x07\xfaB\x04r\x02\
+    \x10\x01\x12r\n\nfield_type\x18\x03\x20\x01(\x0e2G.bitdrift_public.proto\
+    buf.filter.v1.Filter.Transform.SetField.FieldTypeR\tfieldTypeB\n\xfaB\
+    \x07\x82\x01\x04\x10\x01\x20\0\"9\n\tFieldType\x12\x0b\n\x07UNKNOWN\x10\
+    \0\x12\x0c\n\x08CAPTURED\x10\x01\x12\x11\n\rMATCHING_ONLY\x10\x02B\x15\n\
+    \x0etransform_type\x12\x03\xf8B\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1223,7 +1315,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(filter::transform::SetField::generated_message_descriptor_data());
             messages.push(filter::transform::capture_fields::Fields::generated_message_descriptor_data());
             messages.push(filter::transform::capture_fields::fields::SingleField::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(0);
+            let mut enums = ::std::vec::Vec::with_capacity(1);
+            enums.push(filter::transform::set_field::FieldType::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
                 deps,

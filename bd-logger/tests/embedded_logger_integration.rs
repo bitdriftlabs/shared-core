@@ -204,16 +204,17 @@ async fn configuration_update_with_log_uploads() {
       stream_id,
       StreamAction::SendConfiguration(configuration_update(
         "test",
-        Some(BufferConfigList {
-          buffer_config: vec![default_buffer_config(
-            Type::CONTINUOUS,
-            make_buffer_matcher_matching_everything().into(),
-          )],
+        bd_proto::protos::client::api::configuration_update::StateOfTheWorld {
+          buffer_config_list: Some(BufferConfigList {
+            buffer_config: vec![default_buffer_config(
+              Type::CONTINUOUS,
+              make_buffer_matcher_matching_everything().into(),
+            )],
+            ..Default::default()
+          })
+          .into(),
           ..Default::default()
-        }),
-        None,
-        None,
-        None,
+        },
       )),
     )
     .await;

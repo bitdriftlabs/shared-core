@@ -6,12 +6,12 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::AsyncLogBufferMessage;
-use crate::async_log_buffer::{AnnotatedLogLine, AsyncLogBuffer, LogLine, LogReplay, LoggerReplay};
+use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay};
 use crate::client_config::TailConfigurations;
+use crate::log_replay::{LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{
   BufferProducers,
   ConfigUpdate,
-  InitializedLoggingContext,
   LoggingState,
   UninitializedLoggingContext,
 };
@@ -21,11 +21,13 @@ use bd_client_stats::{DynamicStats, FlushTrigger};
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
 use bd_key_value::Store;
+use bd_log_filter::FilterChain;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
-use bd_log_primitives::{log_level, AnnotatedLogField, LogField, LogFields, StringOrBytes};
+use bd_log_primitives::{log_level, AnnotatedLogField, Log, LogField, LogFields, StringOrBytes};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::config::v1::config::BufferConfigList;
+use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::fixed::UUIDCallbacks;
 use bd_session::{fixed, Strategy};
@@ -76,7 +78,7 @@ impl Setup {
     }
   }
 
-  fn make_logging_context(&self) -> UninitializedLoggingContext<AnnotatedLogLine> {
+  fn make_logging_context(&self) -> UninitializedLoggingContext<Log> {
     let (trigger_upload_tx, _) = tokio::sync::mpsc::channel(1);
     let (data_upload_tx, _) = tokio::sync::mpsc::channel(1);
     let (flush_buffers_tx, _) = tokio::sync::mpsc::channel(1);
@@ -102,6 +104,7 @@ impl Setup {
       buffer_selector: BufferSelector::new(&BufferConfigList::default()).unwrap(),
       workflows_configuration,
       tail_configs: TailConfigurations::default(),
+      filter_chain: FilterChain::new(FiltersConfiguration::default()).0,
     }
   }
 
@@ -137,9 +140,9 @@ impl TestReplay {
 impl LogReplay for TestReplay {
   async fn replay_log(
     &mut self,
-    log: AnnotatedLogLine,
+    log: Log,
     _log_processing_completed_tx: Option<Sender<()>>,
-    _logging_context: &mut InitializedLoggingContext,
+    _processing_pipeline: &mut ProcessingPipeline,
   ) -> anyhow::Result<()> {
     self.logs_count.fetch_add(1, Ordering::SeqCst);
     if let StringOrBytes::String(message) = &log.message {
@@ -230,8 +233,8 @@ fn log_line_size_is_computed_correctly() {
 
 #[test]
 fn annotated_log_line_size_is_computed_correctly() {
-  fn create_baseline_log() -> AnnotatedLogLine {
-    AnnotatedLogLine {
+  fn create_baseline_log() -> Log {
+    Log {
       log_level: 0,
       log_type: LogType::Normal,
       message: "foo".into(),
@@ -575,6 +578,7 @@ fn enqueuing_log_blocks() {
           buffer_selector: BufferSelector::new(&BufferConfigList::default()).unwrap(),
           workflows_configuration: WorkflowsConfiguration::default(),
           tail_configs: TailConfigurations::default(),
+          filter_chain: FilterChain::new(FiltersConfiguration::default()).0,
         })
         .await
     );
@@ -641,7 +645,7 @@ async fn creates_workflows_engine_in_response_to_config_update() {
   assert_matches!(
     buffer.logging_state,
     LoggingState::Initialized(initialized_logging_state)
-      if initialized_logging_state.workflows_engine.is_some()
+      if initialized_logging_state.workflows_engine().is_some()
   );
 }
 
@@ -681,7 +685,7 @@ async fn does_not_create_workflows_engine_in_response_to_config_update_if_workfl
   assert_matches!(
     buffer.logging_state,
     LoggingState::Initialized(initialized_logging_state)
-      if initialized_logging_state.workflows_engine.is_none()
+      if initialized_logging_state.processing_pipeline.workflows_engine.is_none()
   );
 }
 
@@ -740,7 +744,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   assert_matches!(
     &buffer.logging_state,
     LoggingState::Initialized(initialized_logging_state)
-      if initialized_logging_state.workflows_engine.is_some()
+      if initialized_logging_state.processing_pipeline.workflows_engine.is_some()
   );
 
   setup.stats.assert_counter_eq(
@@ -769,7 +773,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   assert_matches!(
     &buffer.logging_state,
     LoggingState::Initialized(state)
-      if state.workflows_engine.is_some()
+      if state.processing_pipeline.workflows_engine.is_some()
   );
 
   setup.stats.assert_counter_eq(
@@ -825,7 +829,7 @@ async fn stops_workflows_engine_if_workflows_runtime_flag_is_disabled() {
   assert_matches!(
     &buffer.logging_state,
     LoggingState::Initialized(state)
-      if state.workflows_engine.is_some()
+      if state.workflows_engine().is_some()
   );
 
   setup.enable_workflows(false);
@@ -841,7 +845,7 @@ async fn stops_workflows_engine_if_workflows_runtime_flag_is_disabled() {
   assert_matches!(
     &buffer.logging_state,
     LoggingState::Initialized(state)
-      if state.workflows_engine.is_none()
+      if state.workflows_engine().is_none()
   );
 }
 

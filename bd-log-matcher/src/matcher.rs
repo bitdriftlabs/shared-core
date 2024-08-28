@@ -19,7 +19,7 @@ use base_log_matcher::tag_match::Value_match::{
 };
 use base_log_matcher::Match_type::{MessageMatch, TagMatch};
 use base_log_matcher::Operator;
-use bd_log_primitives::{LogMessage, LogRef};
+use bd_log_primitives::{LogLevel, LogMessage, LogType};
 pub use bd_matcher::FieldProvider;
 use bd_proto::protos::log_matcher::log_matcher::log_matcher::{
   base_log_matcher,
@@ -80,34 +80,43 @@ impl Tree {
   // Evaluates the match tree against a set of inputs. Return false if payload is invalid (e.g.
   // wrong type)
   #[must_use]
-  pub fn do_match(&self, log: LogRef<'_>) -> bool {
+  pub fn do_match(
+    &self,
+    log_level: LogLevel,
+    log_type: LogType,
+    message: &LogMessage,
+    fields: &impl FieldProvider,
+  ) -> bool {
     match self {
       Self::Base(base_matcher) => match base_matcher {
-        Leaf::LogLevel(log_level_matcher) => log
-          .log_level
+        Leaf::LogLevel(log_level_matcher) => log_level
           .try_into()
           .map_or(false, |log_level| log_level_matcher.evaluate(log_level)),
-        Leaf::LogType(l_type) => *l_type == log.log_type.0,
+        Leaf::LogType(l_type) => *l_type == log_type.0,
         Leaf::IntValue(input, criteria) =>
         {
           #[allow(clippy::cast_possible_truncation)]
-          input.get(log.message, log.fields).map_or(false, |input| {
+          input.get(message, fields).map_or(false, |input| {
             input
               .parse::<f64>()
               .map_or(false, |v| criteria.evaluate(v as i32))
           })
         },
         Leaf::StringValue(input, criteria) => input
-          .get(log.message, log.fields)
+          .get(message, fields)
           .map_or(false, |input| criteria.evaluate(input)),
         Leaf::VersionValue(input, criteria) => input
-          .get(log.message, log.fields)
+          .get(message, fields)
           .map_or(false, |input| criteria.evaluate(input)),
-        Leaf::IsSetValue(input) => input.get(log.message, log.fields).is_some(),
+        Leaf::IsSetValue(input) => input.get(message, fields).is_some(),
       },
-      Self::Or(or_matchers) => or_matchers.iter().any(|matcher| matcher.do_match(log)),
-      Self::And(and_matchers) => and_matchers.iter().all(|matcher| matcher.do_match(log)),
-      Self::Not(matcher) => !matcher.do_match(log),
+      Self::Or(or_matchers) => or_matchers
+        .iter()
+        .any(|matcher| matcher.do_match(log_level, log_type, message, fields)),
+      Self::And(and_matchers) => and_matchers
+        .iter()
+        .all(|matcher| matcher.do_match(log_level, log_type, message, fields)),
+      Self::Not(matcher) => !matcher.do_match(log_level, log_type, message, fields),
     }
   }
 }

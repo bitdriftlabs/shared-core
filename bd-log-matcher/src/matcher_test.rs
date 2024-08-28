@@ -13,7 +13,6 @@ use bd_log_primitives::{
   LogFields,
   LogLevel,
   LogMessage,
-  LogRef,
   LogType,
   StringOrBytes,
 };
@@ -695,14 +694,12 @@ fn match_test_runner(config: LogMatcher, cases: Vec<(Input<'_>, bool)>) {
 
     assert_eq!(
       should_match,
-      match_tree.do_match(LogRef {
-        log_type,
+      match_tree.do_match(
         log_level,
-        message: &message,
-        fields: &fields,
-        session_id: "foo",
-        occurred_at: time::OffsetDateTime::now_utc(),
-      }),
+        bd_log_primitives::LogType(log_type.0),
+        &message,
+        &fields
+      ),
       "{input:?} should result in {should_match} but did not",
     );
   }

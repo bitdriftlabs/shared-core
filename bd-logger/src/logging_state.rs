@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::client_config::TailConfigurations;
+use crate::log_replay::ProcessingPipeline;
 use crate::memory_bound::MemorySized;
 use crate::pre_config_buffer::{self, PreConfigBuffer};
 use anyhow::anyhow;
@@ -13,13 +14,13 @@ use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::BuffersWithAck;
 use bd_client_stats::{DynamicStats, FlushTrigger};
 use bd_client_stats_store::{Counter, Scope};
+use bd_log_filter::FilterChain;
 use bd_log_primitives::{log_level, LogLevel};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::ConfigLoader;
 use bd_stats_common::labels;
-use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::config::WorkflowsConfiguration;
-use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
+use bd_workflows::engine::WorkflowsEngine;
 use flatbuffers::FlatBufferBuilder;
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
@@ -27,7 +28,7 @@ use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::mpsc::error::TrySendError;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::Sender;
 
 //
 // LoggingState
@@ -65,21 +66,21 @@ impl<T: MemorySized + Debug> LoggingState<T> {
   pub(crate) const fn flush_buffers_trigger(&self) -> &Sender<BuffersWithAck> {
     match self {
       Self::Uninitialized(context) => &context.flush_buffers_tx,
-      Self::Initialized(context) => &context.flush_buffers_tx,
+      Self::Initialized(context) => &context.processing_pipeline.flush_buffers_tx,
     }
   }
 
   pub(crate) const fn flush_stats_trigger(&self) -> &Option<FlushTrigger> {
     match self {
       Self::Uninitialized(context) => &context.flush_stats_trigger,
-      Self::Initialized(context) => &context.flush_stats_trigger,
+      Self::Initialized(context) => &context.processing_pipeline.flush_stats_trigger,
     }
   }
 
   pub(crate) fn workflows_engine(&mut self) -> Option<&mut WorkflowsEngine> {
     match self {
       Self::Uninitialized(_) => None,
-      Self::Initialized(context) => context.workflows_engine.as_mut(),
+      Self::Initialized(context) => context.processing_pipeline.workflows_engine.as_mut(),
     }
   }
 }
@@ -87,6 +88,7 @@ impl<T: MemorySized + Debug> LoggingState<T> {
 //
 // UninitializedLoggingContext
 //
+
 pub struct UninitializedLoggingContext<T: MemorySized + Debug> {
   pub(crate) pre_config_log_buffer: PreConfigBuffer<T>,
 
@@ -141,42 +143,19 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
   pub(crate) async fn updated(
     self,
     config: ConfigUpdate,
-    workflows_enabled: bool,
   ) -> (InitializedLoggingContext, PreConfigBuffer<T>) {
-    let (workflows_engine, buffers_to_flush_rx) = if workflows_enabled {
-      let (mut workflows_engine, flush_buffers_tx) = WorkflowsEngine::new(
-        &self.stats.root_scope,
-        &self.sdk_directory,
-        &self.runtime,
-        self.data_upload_tx.clone(),
-        self.stats.dynamic_stats.clone(),
-      );
-
-      workflows_engine.start(WorkflowsEngineConfig::new(
-        config.workflows_configuration,
-        config.buffer_producers.trigger_buffer_ids.clone(),
-        config.buffer_producers.continuous_buffer_ids.clone(),
-      ));
-
-      (Some(workflows_engine), Some(flush_buffers_tx))
-    } else {
-      (None, None)
-    };
-
-    let context = InitializedLoggingContext::new(
-      config.buffer_producers,
-      config.buffer_selector,
-      config.tail_configs,
+    let processing_pipeline = ProcessingPipeline::new(
       self.data_upload_tx,
-      self.flush_buffers_tx.clone(),
+      self.flush_buffers_tx,
       self.flush_stats_trigger,
-      workflows_engine,
-      self.trigger_upload_tx.clone(),
-      buffers_to_flush_rx,
-      &self.runtime,
-      &self.sdk_directory,
-      &self.stats,
+      self.trigger_upload_tx,
+      config,
+      self.sdk_directory.clone(),
+      self.runtime,
+      InitializedLoggingContextStats::new(&self.stats),
     );
+
+    let context = InitializedLoggingContext::new(processing_pipeline);
 
     (context, self.pre_config_log_buffer)
   }
@@ -186,22 +165,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
 // InitializedLoggingContext
 //
 pub struct InitializedLoggingContext {
-  pub(crate) buffer_producers: BufferProducers,
-  pub(crate) buffer_selector: BufferSelector,
-  pub(crate) data_upload_tx: Sender<DataUpload>,
-  pub(crate) flush_buffers_tx: Sender<BuffersWithAck>,
-  pub(crate) flush_stats_trigger: Option<FlushTrigger>,
-
-  pub(crate) workflows_engine: Option<WorkflowsEngine>,
-
-  pub(crate) tail_configs: TailConfigurations,
-
-  pub(crate) trigger_upload_tx: Sender<TriggerUpload>,
-  pub(crate) buffers_to_flush_rx: Option<Receiver<BuffersToFlush>>,
-
-  runtime: Arc<ConfigLoader>,
-  sdk_directory: PathBuf,
-  pub(crate) stats: InitializedLoggingContextStats,
+  pub(crate) processing_pipeline: ProcessingPipeline,
 }
 
 // Skip `buffer_producers`, `trigger_matcher`, `runtime`, and `stats` fields that don't implement
@@ -209,77 +173,24 @@ pub struct InitializedLoggingContext {
 impl Debug for InitializedLoggingContext {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("InitializedLoggingContext")
-      .field("workflows_engine", &self.workflows_engine)
-      .field("buffer_selector", &self.buffer_selector)
-      .field("flush_buffers_tx", &self.flush_buffers_tx)
-      .field("flush_stats_trigger", &self.flush_stats_trigger)
-      .field("trigger_upload_tx", &self.trigger_upload_tx)
-      .field("sdk_directory", &self.sdk_directory)
       .finish_non_exhaustive()
   }
 }
 
 impl InitializedLoggingContext {
-  fn new(
-    buffer_producers: BufferProducers,
-    buffer_selector: BufferSelector,
-    tail_configs: TailConfigurations,
-    data_upload_tx: Sender<DataUpload>,
-    flush_buffers_tx: Sender<BuffersWithAck>,
-    flush_stats_trigger: Option<FlushTrigger>,
-    workflows_engine: Option<WorkflowsEngine>,
-    trigger_upload_tx: Sender<TriggerUpload>,
-    buffers_to_flush_rx: Option<Receiver<BuffersToFlush>>,
-    runtime: &Arc<ConfigLoader>,
-    sdk_directory: &Path,
-    stats: &UninitializedLoggingContextStats,
-  ) -> Self {
+  const fn new(processing_pipeline: ProcessingPipeline) -> Self {
     Self {
-      buffer_producers,
-      buffer_selector,
-      data_upload_tx,
-      flush_buffers_tx,
-      flush_stats_trigger,
-      workflows_engine,
-      tail_configs,
-      trigger_upload_tx,
-      buffers_to_flush_rx,
-      runtime: runtime.clone(),
-      sdk_directory: sdk_directory.to_owned(),
-      stats: InitializedLoggingContextStats::new(stats),
+      processing_pipeline,
     }
   }
 
-  pub(crate) async fn update(&mut self, config: ConfigUpdate, workflows_enabled: bool) {
-    self.buffer_selector = config.buffer_selector;
-    self.buffer_producers = config.buffer_producers;
-    self.tail_configs = config.tail_configs;
+  pub(crate) async fn update(&mut self, config: ConfigUpdate) {
+    self.processing_pipeline.update(config);
+  }
 
-    if workflows_enabled {
-      let workflows_engine_config = WorkflowsEngineConfig::new(
-        config.workflows_configuration,
-        self.buffer_producers.trigger_buffer_ids.clone(),
-        self.buffer_producers.continuous_buffer_ids.clone(),
-      );
-
-      match &mut self.workflows_engine {
-        Some(workflows_engine) => workflows_engine.update(workflows_engine_config),
-        None => {
-          let (mut engine, buffers_to_flush_rx) = WorkflowsEngine::new(
-            &self.stats.root_scope,
-            &self.sdk_directory,
-            &self.runtime,
-            self.data_upload_tx.clone(),
-            self.stats.dynamic_stats.clone(),
-          );
-          engine.start(workflows_engine_config);
-          self.workflows_engine = Some(engine);
-          self.buffers_to_flush_rx = Some(buffers_to_flush_rx);
-        },
-      }
-    } else {
-      self.workflows_engine = None;
-    }
+  #[cfg(test)]
+  pub(crate) const fn workflows_engine(&self) -> Option<&WorkflowsEngine> {
+    self.processing_pipeline.workflows_engine.as_ref()
   }
 }
 
@@ -401,6 +312,7 @@ pub(crate) struct ConfigUpdate {
   pub(crate) buffer_selector: BufferSelector,
   pub(crate) workflows_configuration: WorkflowsConfiguration,
   pub(crate) tail_configs: TailConfigurations,
+  pub(crate) filter_chain: FilterChain,
 }
 
 pub(crate) struct BufferProducers {
