@@ -39,7 +39,7 @@ fn test_filter_transforms_are_applied_in_order() {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
       transforms: vec![
-        set_field!(matching "foo", "bar"),
+        set_field!(matching("foo") = "bar"),
         capture_fields!(single "foo"),
       ],
       ..Default::default()
@@ -68,7 +68,7 @@ fn filters_are_applied_in_order() {
     filters: vec![
       Filter {
         matcher: Some(log_matches!(message == "matching")).into(),
-        transforms: vec![set_field!(matching "foo", "bar")],
+        transforms: vec![set_field!(matching("foo") = "bar")],
         ..Default::default()
       },
       Filter {
@@ -130,7 +130,7 @@ fn test_set_captured_field_transform_overrides_existing_field() {
   let chain = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
-      transforms: vec![set_field!(captured "foo", "bar")],
+      transforms: vec![set_field!(captured("foo") = "bar")],
       ..Default::default()
     }],
     ..Default::default()
@@ -159,7 +159,7 @@ fn test_set_captured_field_transform_adds_new_field() {
   let chain = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
-      transforms: vec![set_field!(captured "new_foo", "bar")],
+      transforms: vec![set_field!(captured("new_foo") = "bar")],
       ..Default::default()
     }],
     ..Default::default()
@@ -194,7 +194,7 @@ fn test_set_matching_field_transform_overrides_existing_field() {
   let chain = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
-      transforms: vec![set_field!(matching "foo", "bar")],
+      transforms: vec![set_field!(matching("foo") = "bar")],
       ..Default::default()
     }],
     ..Default::default()
@@ -223,7 +223,7 @@ fn test_set_matching_field_transform_adds_new_field() {
   let chain = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
-      transforms: vec![set_field!(matching "new_foo", "bar")],
+      transforms: vec![set_field!(matching("new_foo") = "bar")],
       ..Default::default()
     }],
     ..Default::default()

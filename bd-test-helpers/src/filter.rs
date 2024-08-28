@@ -20,14 +20,14 @@ pub mod macros {
 
   #[macro_export]
   macro_rules! set_field {
-    (captured $name:expr, $value:expr) => {
+    (captured($name:expr) = $value:expr) => {
       $crate::filter::make_set_field_transform(
         $name,
         $value,
         bd_proto::protos::filter::filter::filter::transform::set_field::FieldType::CAPTURED,
       )
     };
-    (matching $name:expr, $value:expr) => {
+    (matching($name:expr) = $value:expr) => {
       $crate::filter::make_set_field_transform(
         $name,
         $value,

@@ -1370,7 +1370,7 @@ mod tests {
       Some(FiltersConfiguration {
         filters: vec![Filter {
           matcher: Some(log_matches!(message == "message")).into(),
-          transforms: vec![set_field!(captured "foo", "fire workflow action!")],
+          transforms: vec![set_field!(captured("foo") = "fire workflow action!")],
           ..Default::default()
         }],
         ..Default::default()
