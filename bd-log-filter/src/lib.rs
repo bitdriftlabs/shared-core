@@ -10,7 +10,7 @@
 mod filter_chain_test;
 
 use anyhow::{anyhow, Context, Result};
-use bd_log_primitives::{FieldsRef, Log};
+use bd_log_primitives::{FieldsRef, Log, LogField, LogFields};
 use bd_proto::protos::filter::filter::filter::transform::capture_fields::fields::Fields_type;
 use bd_proto::protos::filter::filter::filter::{self};
 use bd_proto::protos::filter::filter::{Filter as FilterProto, FiltersConfiguration};
@@ -156,11 +156,7 @@ impl CaptureField {
     };
 
     let field = log.matching_fields.remove(field_position);
-
-    // If a field that's supposed to be captured exists, remove it from the list of captured fields
-    // before adding it.
-    log.fields.retain(|field| field.key != self.field_name);
-    log.fields.push(field);
+    set_field(&mut log.fields, field);
   }
 }
 
@@ -207,16 +203,15 @@ impl SetField {
     };
 
     match self.field_type {
-      FieldType::MatchingOnly => {
-        log
-          .matching_fields
-          .retain(|field| field.key != self.field_name);
-        log.matching_fields.push(field);
-      },
-      FieldType::Captured => {
-        log.fields.retain(|field| field.key != self.field_name);
-        log.fields.push(field);
-      },
+      FieldType::MatchingOnly => set_field(&mut log.matching_fields, field),
+      FieldType::Captured => set_field(&mut log.fields, field),
     }
   }
+}
+
+fn set_field(fields: &mut LogFields, field: LogField) {
+  // If a field that's supposed to be captured exists, remove it from the list of captured fields
+  // before adding it.
+  fields.retain(|f| f.key != field.key);
+  fields.push(field);
 }
