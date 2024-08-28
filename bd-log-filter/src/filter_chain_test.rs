@@ -9,6 +9,7 @@ use crate::FilterChain;
 use bd_log_primitives::{log_level, Log, LogField, LogFields, LogType};
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
 use bd_test_helpers::{capture_fields, log_matches, set_field};
+use time::macros::datetime;
 
 #[test]
 fn filters_are_not_applied_to_non_matching_logs_only() {
@@ -261,6 +262,6 @@ fn make_log(message: &str, fields: LogFields, matching_fields: LogFields) -> Log
     fields,
     matching_fields,
     session_id: "session_id".to_string(),
-    occurred_at: time::OffsetDateTime::from_unix_timestamp(123).unwrap(),
+    occurred_at: datetime!(2020-01-01 0:00 UTC),
   }
 }
