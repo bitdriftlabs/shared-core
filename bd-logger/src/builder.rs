@@ -285,7 +285,7 @@ impl LoggerBuilder {
           .block_on(async {
             handle_unexpected(future.await, "logger top level run loop");
           });
-      });
+      })?;
 
     Ok((logger, ch))
   }
