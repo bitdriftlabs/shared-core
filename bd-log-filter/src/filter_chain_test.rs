@@ -8,7 +8,7 @@
 use crate::FilterChain;
 use bd_log_primitives::{log_level, Log, LogField, LogFields, LogType};
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
-use bd_test_helpers::{capture_fields, log_matches, set_field};
+use bd_test_helpers::{capture_fields, field_value, log_matches, set_field};
 use time::macros::datetime;
 
 #[test]
@@ -40,7 +40,7 @@ fn filter_transforms_are_applied_in_order() {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
       transforms: vec![
-        set_field!(matching("foo") = "bar"),
+        set_field!(matching("foo") = field_value!("bar")),
         capture_fields!(single "foo"),
       ],
       ..Default::default()
@@ -69,7 +69,7 @@ fn filters_are_applied_in_order() {
     filters: vec![
       Filter {
         matcher: Some(log_matches!(message == "matching")).into(),
-        transforms: vec![set_field!(matching("foo") = "bar")],
+        transforms: vec![set_field!(matching("foo") = field_value!("bar"))],
         ..Default::default()
       },
       Filter {
@@ -97,7 +97,7 @@ fn filters_are_applied_in_order() {
 }
 
 #[test]
-fn capture_fields_transform() {
+fn capture_field_transform() {
   let (chain, _) = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
@@ -131,7 +131,7 @@ fn set_captured_field_transform_overrides_existing_field() {
   let (chain, _) = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
-      transforms: vec![set_field!(captured("foo") = "bar")],
+      transforms: vec![set_field!(captured("foo") = field_value!("bar"))],
       ..Default::default()
     }],
     ..Default::default()
@@ -156,11 +156,75 @@ fn set_captured_field_transform_overrides_existing_field() {
 }
 
 #[test]
+fn set_captured_field_transform_does_not_override_existing_field() {
+  let (chain, _) = FilterChain::new(FiltersConfiguration {
+    filters: vec![Filter {
+      matcher: Some(log_matches!(message == "matching")).into(),
+      transforms: vec![set_field!(captured("foo") = field_value!("bar"), false)],
+      ..Default::default()
+    }],
+    ..Default::default()
+  });
+
+  let mut log = make_log(
+    "matching",
+    vec![LogField {
+      key: "foo".to_string(),
+      value: "baz".into(),
+    }],
+    vec![],
+  );
+  chain.process(&mut log);
+  assert_eq!(
+    vec![LogField {
+      key: "foo".to_string(),
+      value: "baz".into(),
+    }],
+    log.fields
+  );
+}
+
+#[test]
 fn set_captured_field_transform_adds_new_field() {
   let (chain, _) = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
-      transforms: vec![set_field!(captured("new_foo") = "bar")],
+      transforms: vec![set_field!(captured("new_foo") = field_value!("bar"))],
+      ..Default::default()
+    }],
+    ..Default::default()
+  });
+
+  let mut log = make_log(
+    "matching",
+    vec![LogField {
+      key: "foo".to_string(),
+      value: "bar".into(),
+    }],
+    vec![],
+  );
+  chain.process(&mut log);
+  assert_eq!(
+    vec![
+      LogField {
+        key: "foo".to_string(),
+        value: "bar".into(),
+      },
+      LogField {
+        key: "new_foo".to_string(),
+        value: "bar".into(),
+      }
+    ],
+    log.fields
+  );
+}
+
+#[test]
+fn set_captured_field_transform_copies_existing_field_value() {
+  let (chain, _) = FilterChain::new(FiltersConfiguration {
+    filters: vec![Filter {
+      matcher: Some(log_matches!(message == "matching")).into(),
+      transforms: vec![set_field!(captured("new_foo") = field_value!(field "foo"))],
       ..Default::default()
     }],
     ..Default::default()
@@ -195,7 +259,7 @@ fn set_matching_field_transform_overrides_existing_field() {
   let (chain, _) = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
-      transforms: vec![set_field!(matching("foo") = "bar")],
+      transforms: vec![set_field!(matching("foo") = field_value!("bar"))],
       ..Default::default()
     }],
     ..Default::default()
@@ -224,7 +288,7 @@ fn set_matching_field_transform_adds_new_field() {
   let (chain, _) = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
-      transforms: vec![set_field!(matching("new_foo") = "bar")],
+      transforms: vec![set_field!(matching("new_foo") = field_value!("bar"))],
       ..Default::default()
     }],
     ..Default::default()
@@ -252,6 +316,32 @@ fn set_matching_field_transform_adds_new_field() {
     ],
     log.matching_fields
   );
+}
+
+#[test]
+fn remove_field_transform_removes_existing_fields() {
+  let (chain, _) = FilterChain::new(FiltersConfiguration {
+    filters: vec![Filter {
+      matcher: Some(log_matches!(message == "matching")).into(),
+      transforms: vec![set_field!(matching("new_foo") = field_value!("bar"))],
+      ..Default::default()
+    }],
+    ..Default::default()
+  });
+
+  let mut log = make_log(
+    "matching",
+    vec![LogField {
+      key: "foo".to_string(),
+      value: "bar".into(),
+    }],
+    vec![LogField {
+      key: "foo".to_string(),
+      value: "bar".into(),
+    }],
+  );
+
+  chain.process(&mut log);
 }
 
 fn make_log(message: &str, fields: LogFields, matching_fields: LogFields) -> Log {
