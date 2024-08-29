@@ -21,7 +21,6 @@ use bd_runtime::runtime;
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_time::SystemTimeProvider;
 use futures_util::{try_join, Future};
-use std::ffi::CString;
 use std::pin::Pin;
 use std::sync::Arc;
 
