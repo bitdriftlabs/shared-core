@@ -339,7 +339,7 @@ impl RegexMatchAndSubstitute {
 
       // TODO(Augustyniak): This makes an assumption that regex match and substitution applies to
       // the first field with a given name only. This is going to be simplified once we
-      // change `LogFields`  to be a map instead of a list.
+      // change `LogFields` to be a map instead of a list.
       return;
     }
 
