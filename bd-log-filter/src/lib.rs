@@ -132,7 +132,7 @@ impl Transform {
       Transform_type::RemoveField(config) => {
         Self::RemoveField(RemoveField::new(config).context("invalid RemoveField configuration")?)
       },
-      Transform_type::RegexMatchAndSubstitute(config) => Self::RegexMatchAndSubstitute(
+      Transform_type::RegexMatchAndSubstituteField(config) => Self::RegexMatchAndSubstitute(
         RegexMatchAndSubstitute::new(config)
           .context("invalid RegexMatchAndSubstitute configuration")?,
       ),
@@ -317,7 +317,7 @@ struct RegexMatchAndSubstitute {
 }
 
 impl RegexMatchAndSubstitute {
-  fn new(config: filter::transform::RegexMatchAndSubstitute) -> Result<Self> {
+  fn new(config: filter::transform::RegexMatchAndSubstituteField) -> Result<Self> {
     Ok(Self {
       field_name: config.name,
       pattern: Regex::new(&config.pattern)?,

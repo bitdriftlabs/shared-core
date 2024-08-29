@@ -467,52 +467,52 @@ pub mod filter {
             }
         }
 
-        // .bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstitute regex_match_and_substitute = 4;
+        // .bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField regex_match_and_substitute_field = 4;
 
-        pub fn regex_match_and_substitute(&self) -> &transform::RegexMatchAndSubstitute {
+        pub fn regex_match_and_substitute_field(&self) -> &transform::RegexMatchAndSubstituteField {
             match self.transform_type {
-                ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstitute(ref v)) => v,
-                _ => <transform::RegexMatchAndSubstitute as ::protobuf::Message>::default_instance(),
+                ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(ref v)) => v,
+                _ => <transform::RegexMatchAndSubstituteField as ::protobuf::Message>::default_instance(),
             }
         }
 
-        pub fn clear_regex_match_and_substitute(&mut self) {
+        pub fn clear_regex_match_and_substitute_field(&mut self) {
             self.transform_type = ::std::option::Option::None;
         }
 
-        pub fn has_regex_match_and_substitute(&self) -> bool {
+        pub fn has_regex_match_and_substitute_field(&self) -> bool {
             match self.transform_type {
-                ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstitute(..)) => true,
+                ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(..)) => true,
                 _ => false,
             }
         }
 
         // Param is passed by value, moved
-        pub fn set_regex_match_and_substitute(&mut self, v: transform::RegexMatchAndSubstitute) {
-            self.transform_type = ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstitute(v))
+        pub fn set_regex_match_and_substitute_field(&mut self, v: transform::RegexMatchAndSubstituteField) {
+            self.transform_type = ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(v))
         }
 
         // Mutable pointer to the field.
-        pub fn mut_regex_match_and_substitute(&mut self) -> &mut transform::RegexMatchAndSubstitute {
-            if let ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstitute(_)) = self.transform_type {
+        pub fn mut_regex_match_and_substitute_field(&mut self) -> &mut transform::RegexMatchAndSubstituteField {
+            if let ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(_)) = self.transform_type {
             } else {
-                self.transform_type = ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstitute(transform::RegexMatchAndSubstitute::new()));
+                self.transform_type = ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(transform::RegexMatchAndSubstituteField::new()));
             }
             match self.transform_type {
-                ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstitute(ref mut v)) => v,
+                ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(ref mut v)) => v,
                 _ => panic!(),
             }
         }
 
         // Take field
-        pub fn take_regex_match_and_substitute(&mut self) -> transform::RegexMatchAndSubstitute {
-            if self.has_regex_match_and_substitute() {
+        pub fn take_regex_match_and_substitute_field(&mut self) -> transform::RegexMatchAndSubstituteField {
+            if self.has_regex_match_and_substitute_field() {
                 match self.transform_type.take() {
-                    ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstitute(v)) => v,
+                    ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(v)) => v,
                     _ => panic!(),
                 }
             } else {
-                transform::RegexMatchAndSubstitute::new()
+                transform::RegexMatchAndSubstituteField::new()
             }
         }
 
@@ -540,12 +540,12 @@ pub mod filter {
                 Transform::mut_remove_field,
                 Transform::set_remove_field,
             ));
-            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, transform::RegexMatchAndSubstitute>(
-                "regex_match_and_substitute",
-                Transform::has_regex_match_and_substitute,
-                Transform::regex_match_and_substitute,
-                Transform::mut_regex_match_and_substitute,
-                Transform::set_regex_match_and_substitute,
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, transform::RegexMatchAndSubstituteField>(
+                "regex_match_and_substitute_field",
+                Transform::has_regex_match_and_substitute_field,
+                Transform::regex_match_and_substitute_field,
+                Transform::mut_regex_match_and_substitute_field,
+                Transform::set_regex_match_and_substitute_field,
             ));
             oneofs.push(transform::Transform_type::generated_oneof_descriptor_data());
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Transform>(
@@ -576,7 +576,7 @@ pub mod filter {
                         self.transform_type = ::std::option::Option::Some(transform::Transform_type::RemoveField(is.read_message()?));
                     },
                     34 => {
-                        self.transform_type = ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstitute(is.read_message()?));
+                        self.transform_type = ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(is.read_message()?));
                     },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -604,7 +604,7 @@ pub mod filter {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
-                    &transform::Transform_type::RegexMatchAndSubstitute(ref v) => {
+                    &transform::Transform_type::RegexMatchAndSubstituteField(ref v) => {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
@@ -627,7 +627,7 @@ pub mod filter {
                     &transform::Transform_type::RemoveField(ref v) => {
                         ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
                     },
-                    &transform::Transform_type::RegexMatchAndSubstitute(ref v) => {
+                    &transform::Transform_type::RegexMatchAndSubstituteField(ref v) => {
                         ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
                     },
                 };
@@ -694,8 +694,8 @@ pub mod filter {
             SetField(SetField),
             // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.remove_field)
             RemoveField(RemoveField),
-            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.regex_match_and_substitute)
-            RegexMatchAndSubstitute(RegexMatchAndSubstitute),
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.regex_match_and_substitute_field)
+            RegexMatchAndSubstituteField(RegexMatchAndSubstituteField),
         }
 
         impl ::protobuf::Oneof for Transform_type {
@@ -1601,29 +1601,29 @@ pub mod filter {
             type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
         }
 
-        // @@protoc_insertion_point(message:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstitute)
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField)
         #[derive(PartialEq,Clone,Default,Debug)]
-        pub struct RegexMatchAndSubstitute {
+        pub struct RegexMatchAndSubstituteField {
             // message fields
-            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstitute.name)
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.name)
             pub name: ::std::string::String,
-            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstitute.pattern)
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.pattern)
             pub pattern: ::std::string::String,
-            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstitute.substitution)
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.substitution)
             pub substitution: ::std::string::String,
             // special fields
-            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstitute.special_fields)
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.special_fields)
             pub special_fields: ::protobuf::SpecialFields,
         }
 
-        impl<'a> ::std::default::Default for &'a RegexMatchAndSubstitute {
-            fn default() -> &'a RegexMatchAndSubstitute {
-                <RegexMatchAndSubstitute as ::protobuf::Message>::default_instance()
+        impl<'a> ::std::default::Default for &'a RegexMatchAndSubstituteField {
+            fn default() -> &'a RegexMatchAndSubstituteField {
+                <RegexMatchAndSubstituteField as ::protobuf::Message>::default_instance()
             }
         }
 
-        impl RegexMatchAndSubstitute {
-            pub fn new() -> RegexMatchAndSubstitute {
+        impl RegexMatchAndSubstituteField {
+            pub fn new() -> RegexMatchAndSubstituteField {
                 ::std::default::Default::default()
             }
 
@@ -1632,29 +1632,29 @@ pub mod filter {
                 let mut oneofs = ::std::vec::Vec::with_capacity(0);
                 fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                     "name",
-                    |m: &RegexMatchAndSubstitute| { &m.name },
-                    |m: &mut RegexMatchAndSubstitute| { &mut m.name },
+                    |m: &RegexMatchAndSubstituteField| { &m.name },
+                    |m: &mut RegexMatchAndSubstituteField| { &mut m.name },
                 ));
                 fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                     "pattern",
-                    |m: &RegexMatchAndSubstitute| { &m.pattern },
-                    |m: &mut RegexMatchAndSubstitute| { &mut m.pattern },
+                    |m: &RegexMatchAndSubstituteField| { &m.pattern },
+                    |m: &mut RegexMatchAndSubstituteField| { &mut m.pattern },
                 ));
                 fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                     "substitution",
-                    |m: &RegexMatchAndSubstitute| { &m.substitution },
-                    |m: &mut RegexMatchAndSubstitute| { &mut m.substitution },
+                    |m: &RegexMatchAndSubstituteField| { &m.substitution },
+                    |m: &mut RegexMatchAndSubstituteField| { &mut m.substitution },
                 ));
-                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<RegexMatchAndSubstitute>(
-                    "Filter.Transform.RegexMatchAndSubstitute",
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<RegexMatchAndSubstituteField>(
+                    "Filter.Transform.RegexMatchAndSubstituteField",
                     fields,
                     oneofs,
                 )
             }
         }
 
-        impl ::protobuf::Message for RegexMatchAndSubstitute {
-            const NAME: &'static str = "RegexMatchAndSubstitute";
+        impl ::protobuf::Message for RegexMatchAndSubstituteField {
+            const NAME: &'static str = "RegexMatchAndSubstituteField";
 
             fn is_initialized(&self) -> bool {
                 true
@@ -1720,8 +1720,8 @@ pub mod filter {
                 &mut self.special_fields
             }
 
-            fn new() -> RegexMatchAndSubstitute {
-                RegexMatchAndSubstitute::new()
+            fn new() -> RegexMatchAndSubstituteField {
+                RegexMatchAndSubstituteField::new()
             }
 
             fn clear(&mut self) {
@@ -1731,8 +1731,8 @@ pub mod filter {
                 self.special_fields.clear();
             }
 
-            fn default_instance() -> &'static RegexMatchAndSubstitute {
-                static instance: RegexMatchAndSubstitute = RegexMatchAndSubstitute {
+            fn default_instance() -> &'static RegexMatchAndSubstituteField {
+                static instance: RegexMatchAndSubstituteField = RegexMatchAndSubstituteField {
                     name: ::std::string::String::new(),
                     pattern: ::std::string::String::new(),
                     substitution: ::std::string::String::new(),
@@ -1742,20 +1742,20 @@ pub mod filter {
             }
         }
 
-        impl ::protobuf::MessageFull for RegexMatchAndSubstitute {
+        impl ::protobuf::MessageFull for RegexMatchAndSubstituteField {
             fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
                 static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Filter.Transform.RegexMatchAndSubstitute").unwrap()).clone()
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Filter.Transform.RegexMatchAndSubstituteField").unwrap()).clone()
             }
         }
 
-        impl ::std::fmt::Display for RegexMatchAndSubstitute {
+        impl ::std::fmt::Display for RegexMatchAndSubstituteField {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 ::protobuf::text_format::fmt(self, f)
             }
         }
 
-        impl ::protobuf::reflect::ProtobufValue for RegexMatchAndSubstitute {
+        impl ::protobuf::reflect::ProtobufValue for RegexMatchAndSubstituteField {
             type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
         }
     }
@@ -1766,40 +1766,40 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     protobuf.filter.v1\x1a\x17validate/validate.proto\x1a5bitdrift_public/pr\
     otobuf/matcher/v1/log_matcher.proto\"\\\n\x14FiltersConfiguration\x12D\n\
     \x07filters\x18\x01\x20\x03(\x0b2*.bitdrift_public.protobuf.filter.v1.Fi\
-    lterR\x07filters\"\xe6\x0b\n\x06Filter\x12S\n\x07matcher\x18\x01\x20\x01\
+    lterR\x07filters\"\xfb\x0b\n\x06Filter\x12S\n\x07matcher\x18\x01\x20\x01\
     (\x0b2/.bitdrift_public.protobuf.matcher.v1.LogMatcherR\x07matcherB\x08\
     \xfaB\x05\x8a\x01\x02\x10\x01\x12^\n\ntransforms\x18\x02\x20\x03(\x0b24.\
     bitdrift_public.protobuf.filter.v1.Filter.TransformR\ntransformsB\x08\
-    \xfaB\x05\x92\x01\x02\x08\x01\x1a\xa6\n\n\tTransform\x12h\n\rcapture_fie\
+    \xfaB\x05\x92\x01\x02\x08\x01\x1a\xbb\n\n\tTransform\x12h\n\rcapture_fie\
     ld\x18\x01\x20\x01(\x0b2A.bitdrift_public.protobuf.filter.v1.Filter.Tran\
     sform.CaptureFieldH\0R\x0ccaptureField\x12\\\n\tset_field\x18\x02\x20\
     \x01(\x0b2=.bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField\
     H\0R\x08setField\x12e\n\x0cremove_field\x18\x03\x20\x01(\x0b2@.bitdrift_\
     public.protobuf.filter.v1.Filter.Transform.RemoveFieldH\0R\x0bremoveFiel\
-    d\x12\x8b\x01\n\x1aregex_match_and_substitute\x18\x04\x20\x01(\x0b2L.bit\
-    drift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstitute\
-    H\0R\x17regexMatchAndSubstitute\x1a+\n\x0cCaptureField\x12\x1b\n\x04name\
-    \x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x1a\xe2\x04\n\
-    \x08SetField\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04\
-    r\x02\x10\x01\x12k\n\x05value\x18\x02\x20\x01(\x0b2K.bitdrift_public.pro\
-    tobuf.filter.v1.Filter.Transform.SetField.SetFieldValueR\x05valueB\x08\
-    \xfaB\x05\x8a\x01\x02\x10\x01\x12r\n\nfield_type\x18\x03\x20\x01(\x0e2G.\
-    bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.FieldTypeR\
-    \tfieldTypeB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12%\n\x0eallow_overri\
-    de\x18\x04\x20\x01(\x08R\rallowOverride\x1a\xf5\x01\n\rSetFieldValue\x12\
-    #\n\x0cstring_value\x18\x01\x20\x01(\tH\0R\x0bstringValue\x12\x82\x01\n\
-    \x0eexisting_field\x18\x02\x20\x01(\x0b2Y.bitdrift_public.protobuf.filte\
-    r.v1.Filter.Transform.SetField.SetFieldValue.ExistingFieldH\0R\rexisting\
-    Field\x1a,\n\rExistingField\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nam\
-    eB\x07\xfaB\x04r\x02\x10\x01B\x0c\n\x05value\x12\x03\xf8B\x01\"9\n\tFiel\
-    dType\x12\x0b\n\x07UNKNOWN\x10\0\x12\x0c\n\x08CAPTURED\x10\x01\x12\x11\n\
-    \rMATCHING_ONLY\x10\x02\x1a*\n\x0bRemoveField\x12\x1b\n\x04name\x18\x01\
-    \x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x1a\x86\x01\n\x17RegexMa\
-    tchAndSubstitute\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\
-    \x04r\x02\x10\x01\x12!\n\x07pattern\x18\x02\x20\x01(\tR\x07patternB\x07\
-    \xfaB\x04r\x02\x10\x01\x12+\n\x0csubstitution\x18\x03\x20\x01(\tR\x0csub\
-    stitutionB\x07\xfaB\x04r\x02\x10\x01B\x15\n\x0etransform_type\x12\x03\
-    \xf8B\x01b\x06proto3\
+    d\x12\x9b\x01\n\x20regex_match_and_substitute_field\x18\x04\x20\x01(\x0b\
+    2Q.bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubs\
+    tituteFieldH\0R\x1cregexMatchAndSubstituteField\x1a+\n\x0cCaptureField\
+    \x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\
+    \x01\x1a\xe2\x04\n\x08SetField\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04\
+    nameB\x07\xfaB\x04r\x02\x10\x01\x12k\n\x05value\x18\x02\x20\x01(\x0b2K.b\
+    itdrift_public.protobuf.filter.v1.Filter.Transform.SetField.SetFieldValu\
+    eR\x05valueB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12r\n\nfield_type\x18\x03\
+    \x20\x01(\x0e2G.bitdrift_public.protobuf.filter.v1.Filter.Transform.SetF\
+    ield.FieldTypeR\tfieldTypeB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12%\n\
+    \x0eallow_override\x18\x04\x20\x01(\x08R\rallowOverride\x1a\xf5\x01\n\rS\
+    etFieldValue\x12#\n\x0cstring_value\x18\x01\x20\x01(\tH\0R\x0bstringValu\
+    e\x12\x82\x01\n\x0eexisting_field\x18\x02\x20\x01(\x0b2Y.bitdrift_public\
+    .protobuf.filter.v1.Filter.Transform.SetField.SetFieldValue.ExistingFiel\
+    dH\0R\rexistingField\x1a,\n\rExistingField\x12\x1b\n\x04name\x18\x01\x20\
+    \x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01B\x0c\n\x05value\x12\x03\xf8B\
+    \x01\"9\n\tFieldType\x12\x0b\n\x07UNKNOWN\x10\0\x12\x0c\n\x08CAPTURED\
+    \x10\x01\x12\x11\n\rMATCHING_ONLY\x10\x02\x1a*\n\x0bRemoveField\x12\x1b\
+    \n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x1a\
+    \x8b\x01\n\x1cRegexMatchAndSubstituteField\x12\x1b\n\x04name\x18\x01\x20\
+    \x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x12!\n\x07pattern\x18\x02\
+    \x20\x01(\tR\x07patternB\x07\xfaB\x04r\x02\x10\x01\x12+\n\x0csubstitutio\
+    n\x18\x03\x20\x01(\tR\x0csubstitutionB\x07\xfaB\x04r\x02\x10\x01B\x15\n\
+    \x0etransform_type\x12\x03\xf8B\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1826,7 +1826,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(filter::transform::CaptureField::generated_message_descriptor_data());
             messages.push(filter::transform::SetField::generated_message_descriptor_data());
             messages.push(filter::transform::RemoveField::generated_message_descriptor_data());
-            messages.push(filter::transform::RegexMatchAndSubstitute::generated_message_descriptor_data());
+            messages.push(filter::transform::RegexMatchAndSubstituteField::generated_message_descriptor_data());
             messages.push(filter::transform::set_field::SetFieldValue::generated_message_descriptor_data());
             messages.push(filter::transform::set_field::set_field_value::ExistingField::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(1);

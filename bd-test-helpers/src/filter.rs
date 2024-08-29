@@ -148,8 +148,8 @@ pub fn make_regex_match_and_substitute_field(
   pattern: &str,
   substitution: &str,
 ) -> filter::transform::Transform_type {
-  filter::transform::Transform_type::RegexMatchAndSubstitute(
-    filter::transform::RegexMatchAndSubstitute {
+  filter::transform::Transform_type::RegexMatchAndSubstituteField(
+    filter::transform::RegexMatchAndSubstituteField {
       name: field_name.to_string(),
       pattern: pattern.to_string(),
       substitution: substitution.to_string(),
