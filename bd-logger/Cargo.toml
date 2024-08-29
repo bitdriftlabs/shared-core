@@ -36,6 +36,7 @@ bd-workflows.path            = "../bd-workflows"
 flatbuffers.workspace        = true
 futures-util.workspace       = true
 itertools.workspace          = true
+libc.workspace               = true
 log.workspace                = true
 parking_lot.workspace        = true
 protobuf.workspace           = true

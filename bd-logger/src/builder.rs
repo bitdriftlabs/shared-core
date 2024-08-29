@@ -21,6 +21,8 @@ use bd_runtime::runtime;
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_time::SystemTimeProvider;
 use futures_util::{try_join, Future};
+use libc::pthread_setname_np;
+use std::ffi::CString;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -280,6 +282,10 @@ impl LoggerBuilder {
           .thread_name("io.bitdrift.capture.logger")
           .thread_name_fn(|| "io.bitdrift.capture.logger.worker".to_string())
           .enable_all()
+          .on_thread_start(|| {
+            let _ = CString::new("io.bitdrift.capture.logger")
+              .map(|name| unsafe { pthread_setname_np(name.as_ptr()) });
+          })
           .build()
           .unwrap()
           .block_on(async {
