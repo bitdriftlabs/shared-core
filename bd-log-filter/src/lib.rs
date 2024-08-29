@@ -11,10 +11,17 @@ mod filter_chain_test;
 
 use anyhow::{anyhow, Context, Result};
 use bd_log_primitives::{FieldsRef, Log, LogField, LogFields};
-use bd_proto::protos::filter::filter::filter::transform::capture_fields::fields::Fields_type;
 use bd_proto::protos::filter::filter::filter::{self};
 use bd_proto::protos::filter::filter::{Filter as FilterProto, FiltersConfiguration};
 use filter::transform::Transform_type;
+use regex::Regex;
+use std::borrow::Cow;
+
+#[cfg(test)]
+#[ctor::ctor]
+fn test_global_init() {
+  bd_test_helpers::test_global_init();
+}
 
 //
 // FilterChain
@@ -40,6 +47,7 @@ impl FilterChain {
         // maintaining some tolerance for errors.
         // TODO(Augustyniak): Add visibility into the failures from here.
         Filter::new(f)
+          .context("invalid filter configuration")
           .inspect_err(|e| {
             failures_count += 1;
             log::debug!("{}", e);
@@ -80,7 +88,7 @@ pub struct Filter {
 impl Filter {
   pub fn new(config: FilterProto) -> Result<Self> {
     let Some(matcher) = config.matcher.into_option() else {
-      anyhow::bail!("invalid filter configuration: no log matcher");
+      anyhow::bail!("no log matcher");
     };
 
     let matcher = bd_log_matcher::matcher::Tree::new(&matcher)?;
@@ -88,7 +96,8 @@ impl Filter {
       .transforms
       .into_iter()
       .map(Transform::new)
-      .collect::<Result<Vec<_>>>()?;
+      .collect::<Result<Vec<_>>>()
+      .context("invalid transform configuration")?;
 
     Ok(Self {
       matcher,
@@ -104,20 +113,29 @@ impl Filter {
 enum Transform {
   CaptureField(CaptureField),
   SetField(SetField),
+  RemoveField(RemoveField),
+  RegexMatchAndSubstitute(RegexMatchAndSubstitute),
 }
 
 impl Transform {
   fn new(config: filter::Transform) -> Result<Self> {
     let transform_type = config
       .transform_type
-      .ok_or_else(|| anyhow!("invalid transform configuration: no transform_type"))?;
+      .ok_or_else(|| anyhow!("no transform_type"))?;
     Ok(match transform_type {
-      Transform_type::CaptureFields(config) => Self::CaptureField(
+      Transform_type::CaptureField(config) => Self::CaptureField(
         CaptureField::new(config).context("invalid CaptureFields configuration")?,
       ),
       Transform_type::SetField(config) => {
         Self::SetField(SetField::new(config).context("invalid SetField configuration")?)
       },
+      Transform_type::RemoveField(config) => {
+        Self::RemoveField(RemoveField::new(config).context("invalid RemoveField configuration")?)
+      },
+      Transform_type::RegexMatchAndSubstituteField(config) => Self::RegexMatchAndSubstitute(
+        RegexMatchAndSubstitute::new(config)
+          .context("invalid RegexMatchAndSubstitute configuration")?,
+      ),
     })
   }
 
@@ -125,6 +143,10 @@ impl Transform {
     match self {
       Self::CaptureField(capture_field) => capture_field.apply(log),
       Self::SetField(set_field) => set_field.apply(log),
+      Self::RemoveField(remove_field) => remove_field.apply(log),
+      Self::RegexMatchAndSubstitute(regex_match_and_substitute) => {
+        regex_match_and_substitute.apply(log);
+      },
     }
   }
 }
@@ -141,14 +163,9 @@ struct CaptureField {
 }
 
 impl CaptureField {
-  fn new(mut config: filter::transform::CaptureFields) -> Result<Self> {
-    let Some(Fields_type::Single(field)) = config.fields.take().unwrap_or_default().fields_type
-    else {
-      anyhow::bail!("unknown fields_type")
-    };
-
+  fn new(config: filter::transform::CaptureField) -> Result<Self> {
     Ok(Self {
-      field_name: field.name,
+      field_name: config.name,
     })
   }
 
@@ -178,6 +195,32 @@ enum FieldType {
 }
 
 //
+// SetFieldValue
+//
+
+enum SetFieldValue {
+  StringValue(String),
+  ExistingField(String),
+}
+
+impl SetFieldValue {
+  fn new(config: filter::transform::set_field::SetFieldValue) -> Result<Self> {
+    let Some(value) = config.value else {
+      anyhow::bail!("no value field set");
+    };
+
+    match value {
+      filter::transform::set_field::set_field_value::Value::StringValue(value) => {
+        Ok(Self::StringValue(value))
+      },
+      filter::transform::set_field::set_field_value::Value::ExistingField(config) => {
+        Ok(Self::ExistingField(config.name))
+      },
+    }
+  }
+}
+
+//
 // SetField
 //
 
@@ -185,29 +228,54 @@ enum FieldType {
 // conflict.
 struct SetField {
   field_name: String,
-  value: String,
+  value: SetFieldValue,
   field_type: FieldType,
+  is_override_allowed: bool,
 }
 
 impl SetField {
   fn new(config: filter::transform::SetField) -> Result<Self> {
     let field_type = config.field_type.enum_value().unwrap_or_default();
 
+    let Some(set_field_value) = config.value.into_option() else {
+      anyhow::bail!("no value field set");
+    };
+
     Ok(Self {
       field_name: config.name,
-      value: config.value,
+      value: SetFieldValue::new(set_field_value).context("invalid SetFieldValue configuration")?,
       field_type: match field_type {
         filter::transform::set_field::FieldType::UNKNOWN => anyhow::bail!("unknown field_type"),
         filter::transform::set_field::FieldType::CAPTURED => FieldType::Captured,
         filter::transform::set_field::FieldType::MATCHING_ONLY => FieldType::MatchingOnly,
       },
+      is_override_allowed: config.allow_override,
     })
   }
 
   fn apply(&self, log: &mut Log) {
+    if !self.is_override_allowed && log.field_value(&self.field_name).is_some() {
+      // Return if a field with the desired field name already exists and the transform is not
+      // allowed to override existing values.
+      return;
+    }
+
+    // Get the desired new value for the field.
+    let value = match &self.value {
+      SetFieldValue::StringValue(value) => value,
+      SetFieldValue::ExistingField(field_name) => {
+        let Some(value) = log.field_value(field_name) else {
+          // The field to copy from doesn't exist, the transform is a no-op.
+          return;
+        };
+
+        value
+      },
+    };
+
     let field = bd_log_primitives::LogField {
       key: self.field_name.clone(),
-      value: self.value.clone().into(),
+      value: value.into(),
     };
 
     match self.field_type {
@@ -217,9 +285,106 @@ impl SetField {
   }
 }
 
+//
+// RemoveField
+//
+
+// Removes a field from the list of fields (both captured and matching fields).
+struct RemoveField {
+  field_name: String,
+}
+
+impl RemoveField {
+  fn new(config: filter::transform::RemoveField) -> Result<Self> {
+    Ok(Self {
+      field_name: config.name,
+    })
+  }
+
+  fn apply(&self, log: &mut Log) {
+    log.matching_fields.retain(|f| f.key != self.field_name);
+    log.fields.retain(|f| f.key != self.field_name);
+  }
+}
+
+//
+// RegexMatchAndSubstitute
+//
+
+struct RegexMatchAndSubstitute {
+  field_name: String,
+  pattern: Regex,
+  substitution: String,
+}
+
+impl RegexMatchAndSubstitute {
+  fn new(config: filter::transform::RegexMatchAndSubstituteField) -> Result<Self> {
+    Ok(Self {
+      field_name: config.name,
+      pattern: Regex::new(&config.pattern)?,
+      substitution: config.substitution,
+    })
+  }
+
+  fn apply(&self, log: &mut Log) {
+    for field in &mut log.fields {
+      if field.key != self.field_name {
+        continue;
+      }
+      if let Some(field_string_value) = field.value.as_str() {
+        field.value = self
+          .produce_new_value(field_string_value)
+          .to_string()
+          .into();
+      }
+
+      // TODO(Augustyniak): This makes an assumption that regex match and substitution applies to
+      // the first field with a given name only. This is going to be simplified once we
+      // change `LogFields` to be a map instead of a list.
+      return;
+    }
+
+    for field in &mut log.matching_fields {
+      if field.key != self.field_name {
+        continue;
+      }
+      if let Some(field_string_value) = field.value.as_str() {
+        field.value = self
+          .produce_new_value(field_string_value)
+          .to_string()
+          .into();
+      }
+
+      // TODO(Augustyniak): This makes an assumption that regex match and substitution applies to
+      // the first field with a given name only. This is going to be simplified once we
+      // change `LogFields`  to be a map instead of a list.
+      return;
+    }
+  }
+
+  fn produce_new_value<'a>(&self, input: &'a str) -> Cow<'a, str> {
+    self.pattern.replace_all(input, &self.substitution)
+  }
+}
+
 fn set_field(fields: &mut LogFields, field: LogField) {
   // If a field that's supposed to be captured exists, remove it from the list of captured fields
   // before adding it.
   fields.retain(|f| f.key != field.key);
   fields.push(field);
+}
+
+trait FieldProvider {
+  fn field_value(&self, key: &str) -> Option<&str>;
+}
+
+impl FieldProvider for Log {
+  fn field_value(&self, key: &str) -> Option<&str> {
+    self
+      .fields
+      .iter()
+      .chain(self.matching_fields.iter())
+      .find(|f| f.key == key)
+      .and_then(|f| f.value.as_str())
+  }
 }

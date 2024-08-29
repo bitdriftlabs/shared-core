@@ -320,52 +320,52 @@ pub mod filter {
             ::std::default::Default::default()
         }
 
-        // .bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureFields capture_fields = 1;
+        // .bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureField capture_field = 1;
 
-        pub fn capture_fields(&self) -> &transform::CaptureFields {
+        pub fn capture_field(&self) -> &transform::CaptureField {
             match self.transform_type {
-                ::std::option::Option::Some(transform::Transform_type::CaptureFields(ref v)) => v,
-                _ => <transform::CaptureFields as ::protobuf::Message>::default_instance(),
+                ::std::option::Option::Some(transform::Transform_type::CaptureField(ref v)) => v,
+                _ => <transform::CaptureField as ::protobuf::Message>::default_instance(),
             }
         }
 
-        pub fn clear_capture_fields(&mut self) {
+        pub fn clear_capture_field(&mut self) {
             self.transform_type = ::std::option::Option::None;
         }
 
-        pub fn has_capture_fields(&self) -> bool {
+        pub fn has_capture_field(&self) -> bool {
             match self.transform_type {
-                ::std::option::Option::Some(transform::Transform_type::CaptureFields(..)) => true,
+                ::std::option::Option::Some(transform::Transform_type::CaptureField(..)) => true,
                 _ => false,
             }
         }
 
         // Param is passed by value, moved
-        pub fn set_capture_fields(&mut self, v: transform::CaptureFields) {
-            self.transform_type = ::std::option::Option::Some(transform::Transform_type::CaptureFields(v))
+        pub fn set_capture_field(&mut self, v: transform::CaptureField) {
+            self.transform_type = ::std::option::Option::Some(transform::Transform_type::CaptureField(v))
         }
 
         // Mutable pointer to the field.
-        pub fn mut_capture_fields(&mut self) -> &mut transform::CaptureFields {
-            if let ::std::option::Option::Some(transform::Transform_type::CaptureFields(_)) = self.transform_type {
+        pub fn mut_capture_field(&mut self) -> &mut transform::CaptureField {
+            if let ::std::option::Option::Some(transform::Transform_type::CaptureField(_)) = self.transform_type {
             } else {
-                self.transform_type = ::std::option::Option::Some(transform::Transform_type::CaptureFields(transform::CaptureFields::new()));
+                self.transform_type = ::std::option::Option::Some(transform::Transform_type::CaptureField(transform::CaptureField::new()));
             }
             match self.transform_type {
-                ::std::option::Option::Some(transform::Transform_type::CaptureFields(ref mut v)) => v,
+                ::std::option::Option::Some(transform::Transform_type::CaptureField(ref mut v)) => v,
                 _ => panic!(),
             }
         }
 
         // Take field
-        pub fn take_capture_fields(&mut self) -> transform::CaptureFields {
-            if self.has_capture_fields() {
+        pub fn take_capture_field(&mut self) -> transform::CaptureField {
+            if self.has_capture_field() {
                 match self.transform_type.take() {
-                    ::std::option::Option::Some(transform::Transform_type::CaptureFields(v)) => v,
+                    ::std::option::Option::Some(transform::Transform_type::CaptureField(v)) => v,
                     _ => panic!(),
                 }
             } else {
-                transform::CaptureFields::new()
+                transform::CaptureField::new()
             }
         }
 
@@ -418,15 +418,113 @@ pub mod filter {
             }
         }
 
+        // .bitdrift_public.protobuf.filter.v1.Filter.Transform.RemoveField remove_field = 3;
+
+        pub fn remove_field(&self) -> &transform::RemoveField {
+            match self.transform_type {
+                ::std::option::Option::Some(transform::Transform_type::RemoveField(ref v)) => v,
+                _ => <transform::RemoveField as ::protobuf::Message>::default_instance(),
+            }
+        }
+
+        pub fn clear_remove_field(&mut self) {
+            self.transform_type = ::std::option::Option::None;
+        }
+
+        pub fn has_remove_field(&self) -> bool {
+            match self.transform_type {
+                ::std::option::Option::Some(transform::Transform_type::RemoveField(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_remove_field(&mut self, v: transform::RemoveField) {
+            self.transform_type = ::std::option::Option::Some(transform::Transform_type::RemoveField(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_remove_field(&mut self) -> &mut transform::RemoveField {
+            if let ::std::option::Option::Some(transform::Transform_type::RemoveField(_)) = self.transform_type {
+            } else {
+                self.transform_type = ::std::option::Option::Some(transform::Transform_type::RemoveField(transform::RemoveField::new()));
+            }
+            match self.transform_type {
+                ::std::option::Option::Some(transform::Transform_type::RemoveField(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_remove_field(&mut self) -> transform::RemoveField {
+            if self.has_remove_field() {
+                match self.transform_type.take() {
+                    ::std::option::Option::Some(transform::Transform_type::RemoveField(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                transform::RemoveField::new()
+            }
+        }
+
+        // .bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField regex_match_and_substitute_field = 4;
+
+        pub fn regex_match_and_substitute_field(&self) -> &transform::RegexMatchAndSubstituteField {
+            match self.transform_type {
+                ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(ref v)) => v,
+                _ => <transform::RegexMatchAndSubstituteField as ::protobuf::Message>::default_instance(),
+            }
+        }
+
+        pub fn clear_regex_match_and_substitute_field(&mut self) {
+            self.transform_type = ::std::option::Option::None;
+        }
+
+        pub fn has_regex_match_and_substitute_field(&self) -> bool {
+            match self.transform_type {
+                ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_regex_match_and_substitute_field(&mut self, v: transform::RegexMatchAndSubstituteField) {
+            self.transform_type = ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_regex_match_and_substitute_field(&mut self) -> &mut transform::RegexMatchAndSubstituteField {
+            if let ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(_)) = self.transform_type {
+            } else {
+                self.transform_type = ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(transform::RegexMatchAndSubstituteField::new()));
+            }
+            match self.transform_type {
+                ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_regex_match_and_substitute_field(&mut self) -> transform::RegexMatchAndSubstituteField {
+            if self.has_regex_match_and_substitute_field() {
+                match self.transform_type.take() {
+                    ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                transform::RegexMatchAndSubstituteField::new()
+            }
+        }
+
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut fields = ::std::vec::Vec::with_capacity(4);
             let mut oneofs = ::std::vec::Vec::with_capacity(1);
-            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, transform::CaptureFields>(
-                "capture_fields",
-                Transform::has_capture_fields,
-                Transform::capture_fields,
-                Transform::mut_capture_fields,
-                Transform::set_capture_fields,
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, transform::CaptureField>(
+                "capture_field",
+                Transform::has_capture_field,
+                Transform::capture_field,
+                Transform::mut_capture_field,
+                Transform::set_capture_field,
             ));
             fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, transform::SetField>(
                 "set_field",
@@ -434,6 +532,20 @@ pub mod filter {
                 Transform::set_field,
                 Transform::mut_set_field,
                 Transform::set_set_field,
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, transform::RemoveField>(
+                "remove_field",
+                Transform::has_remove_field,
+                Transform::remove_field,
+                Transform::mut_remove_field,
+                Transform::set_remove_field,
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, transform::RegexMatchAndSubstituteField>(
+                "regex_match_and_substitute_field",
+                Transform::has_regex_match_and_substitute_field,
+                Transform::regex_match_and_substitute_field,
+                Transform::mut_regex_match_and_substitute_field,
+                Transform::set_regex_match_and_substitute_field,
             ));
             oneofs.push(transform::Transform_type::generated_oneof_descriptor_data());
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Transform>(
@@ -455,10 +567,16 @@ pub mod filter {
             while let Some(tag) = is.read_raw_tag_or_eof()? {
                 match tag {
                     10 => {
-                        self.transform_type = ::std::option::Option::Some(transform::Transform_type::CaptureFields(is.read_message()?));
+                        self.transform_type = ::std::option::Option::Some(transform::Transform_type::CaptureField(is.read_message()?));
                     },
                     18 => {
                         self.transform_type = ::std::option::Option::Some(transform::Transform_type::SetField(is.read_message()?));
+                    },
+                    26 => {
+                        self.transform_type = ::std::option::Option::Some(transform::Transform_type::RemoveField(is.read_message()?));
+                    },
+                    34 => {
+                        self.transform_type = ::std::option::Option::Some(transform::Transform_type::RegexMatchAndSubstituteField(is.read_message()?));
                     },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -474,11 +592,19 @@ pub mod filter {
             let mut my_size = 0;
             if let ::std::option::Option::Some(ref v) = self.transform_type {
                 match v {
-                    &transform::Transform_type::CaptureFields(ref v) => {
+                    &transform::Transform_type::CaptureField(ref v) => {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
                     &transform::Transform_type::SetField(ref v) => {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                    },
+                    &transform::Transform_type::RemoveField(ref v) => {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                    },
+                    &transform::Transform_type::RegexMatchAndSubstituteField(ref v) => {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
@@ -492,11 +618,17 @@ pub mod filter {
         fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
             if let ::std::option::Option::Some(ref v) = self.transform_type {
                 match v {
-                    &transform::Transform_type::CaptureFields(ref v) => {
+                    &transform::Transform_type::CaptureField(ref v) => {
                         ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
                     },
                     &transform::Transform_type::SetField(ref v) => {
                         ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                    },
+                    &transform::Transform_type::RemoveField(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                    },
+                    &transform::Transform_type::RegexMatchAndSubstituteField(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
                     },
                 };
             }
@@ -517,6 +649,8 @@ pub mod filter {
         }
 
         fn clear(&mut self) {
+            self.transform_type = ::std::option::Option::None;
+            self.transform_type = ::std::option::Option::None;
             self.transform_type = ::std::option::Option::None;
             self.transform_type = ::std::option::Option::None;
             self.special_fields.clear();
@@ -554,10 +688,14 @@ pub mod filter {
         #[derive(Clone,PartialEq,Debug)]
         // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.filter.v1.Filter.Transform.transform_type)
         pub enum Transform_type {
-            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.capture_fields)
-            CaptureFields(CaptureFields),
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.capture_field)
+            CaptureField(CaptureField),
             // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.set_field)
             SetField(SetField),
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.remove_field)
+            RemoveField(RemoveField),
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.regex_match_and_substitute_field)
+            RegexMatchAndSubstituteField(RegexMatchAndSubstituteField),
         }
 
         impl ::protobuf::Oneof for Transform_type {
@@ -575,46 +713,46 @@ pub mod filter {
                 ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Transform_type>("transform_type")
             }
         }
-        // @@protoc_insertion_point(message:bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureFields)
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureField)
         #[derive(PartialEq,Clone,Default,Debug)]
-        pub struct CaptureFields {
+        pub struct CaptureField {
             // message fields
-            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureFields.fields)
-            pub fields: ::protobuf::MessageField<capture_fields::Fields>,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureField.name)
+            pub name: ::std::string::String,
             // special fields
-            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureFields.special_fields)
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureField.special_fields)
             pub special_fields: ::protobuf::SpecialFields,
         }
 
-        impl<'a> ::std::default::Default for &'a CaptureFields {
-            fn default() -> &'a CaptureFields {
-                <CaptureFields as ::protobuf::Message>::default_instance()
+        impl<'a> ::std::default::Default for &'a CaptureField {
+            fn default() -> &'a CaptureField {
+                <CaptureField as ::protobuf::Message>::default_instance()
             }
         }
 
-        impl CaptureFields {
-            pub fn new() -> CaptureFields {
+        impl CaptureField {
+            pub fn new() -> CaptureField {
                 ::std::default::Default::default()
             }
 
             pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
                 let mut fields = ::std::vec::Vec::with_capacity(1);
                 let mut oneofs = ::std::vec::Vec::with_capacity(0);
-                fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, capture_fields::Fields>(
-                    "fields",
-                    |m: &CaptureFields| { &m.fields },
-                    |m: &mut CaptureFields| { &mut m.fields },
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "name",
+                    |m: &CaptureField| { &m.name },
+                    |m: &mut CaptureField| { &mut m.name },
                 ));
-                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<CaptureFields>(
-                    "Filter.Transform.CaptureFields",
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<CaptureField>(
+                    "Filter.Transform.CaptureField",
                     fields,
                     oneofs,
                 )
             }
         }
 
-        impl ::protobuf::Message for CaptureFields {
-            const NAME: &'static str = "CaptureFields";
+        impl ::protobuf::Message for CaptureField {
+            const NAME: &'static str = "CaptureField";
 
             fn is_initialized(&self) -> bool {
                 true
@@ -623,8 +761,8 @@ pub mod filter {
             fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
                 while let Some(tag) = is.read_raw_tag_or_eof()? {
                     match tag {
-                        18 => {
-                            ::protobuf::rt::read_singular_message_into_field(is, &mut self.fields)?;
+                        10 => {
+                            self.name = is.read_string()?;
                         },
                         tag => {
                             ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -638,9 +776,8 @@ pub mod filter {
             #[allow(unused_variables)]
             fn compute_size(&self) -> u64 {
                 let mut my_size = 0;
-                if let Some(v) = self.fields.as_ref() {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                if !self.name.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.name);
                 }
                 my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
                 self.special_fields.cached_size().set(my_size as u32);
@@ -648,8 +785,8 @@ pub mod filter {
             }
 
             fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-                if let Some(v) = self.fields.as_ref() {
-                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                if !self.name.is_empty() {
+                    os.write_string(1, &self.name)?;
                 }
                 os.write_unknown_fields(self.special_fields.unknown_fields())?;
                 ::std::result::Result::Ok(())
@@ -663,134 +800,366 @@ pub mod filter {
                 &mut self.special_fields
             }
 
-            fn new() -> CaptureFields {
-                CaptureFields::new()
+            fn new() -> CaptureField {
+                CaptureField::new()
             }
 
             fn clear(&mut self) {
-                self.fields.clear();
+                self.name.clear();
                 self.special_fields.clear();
             }
 
-            fn default_instance() -> &'static CaptureFields {
-                static instance: CaptureFields = CaptureFields {
-                    fields: ::protobuf::MessageField::none(),
+            fn default_instance() -> &'static CaptureField {
+                static instance: CaptureField = CaptureField {
+                    name: ::std::string::String::new(),
                     special_fields: ::protobuf::SpecialFields::new(),
                 };
                 &instance
             }
         }
 
-        impl ::protobuf::MessageFull for CaptureFields {
+        impl ::protobuf::MessageFull for CaptureField {
             fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
                 static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Filter.Transform.CaptureFields").unwrap()).clone()
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Filter.Transform.CaptureField").unwrap()).clone()
             }
         }
 
-        impl ::std::fmt::Display for CaptureFields {
+        impl ::std::fmt::Display for CaptureField {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 ::protobuf::text_format::fmt(self, f)
             }
         }
 
-        impl ::protobuf::reflect::ProtobufValue for CaptureFields {
+        impl ::protobuf::reflect::ProtobufValue for CaptureField {
             type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
         }
 
-        /// Nested message and enums of message `CaptureFields`
-        pub mod capture_fields {
-            // @@protoc_insertion_point(message:bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureFields.Fields)
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct SetField {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.name)
+            pub name: ::std::string::String,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.value)
+            pub value: ::protobuf::MessageField<set_field::SetFieldValue>,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.field_type)
+            pub field_type: ::protobuf::EnumOrUnknown<set_field::FieldType>,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.allow_override)
+            pub allow_override: bool,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a SetField {
+            fn default() -> &'a SetField {
+                <SetField as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl SetField {
+            pub fn new() -> SetField {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(4);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "name",
+                    |m: &SetField| { &m.name },
+                    |m: &mut SetField| { &mut m.name },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, set_field::SetFieldValue>(
+                    "value",
+                    |m: &SetField| { &m.value },
+                    |m: &mut SetField| { &mut m.value },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "field_type",
+                    |m: &SetField| { &m.field_type },
+                    |m: &mut SetField| { &mut m.field_type },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "allow_override",
+                    |m: &SetField| { &m.allow_override },
+                    |m: &mut SetField| { &mut m.allow_override },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SetField>(
+                    "Filter.Transform.SetField",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for SetField {
+            const NAME: &'static str = "SetField";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.name = is.read_string()?;
+                        },
+                        18 => {
+                            ::protobuf::rt::read_singular_message_into_field(is, &mut self.value)?;
+                        },
+                        24 => {
+                            self.field_type = is.read_enum_or_unknown()?;
+                        },
+                        32 => {
+                            self.allow_override = is.read_bool()?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.name.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.name);
+                }
+                if let Some(v) = self.value.as_ref() {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                }
+                if self.field_type != ::protobuf::EnumOrUnknown::new(set_field::FieldType::UNKNOWN) {
+                    my_size += ::protobuf::rt::int32_size(3, self.field_type.value());
+                }
+                if self.allow_override != false {
+                    my_size += 1 + 1;
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.name.is_empty() {
+                    os.write_string(1, &self.name)?;
+                }
+                if let Some(v) = self.value.as_ref() {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                }
+                if self.field_type != ::protobuf::EnumOrUnknown::new(set_field::FieldType::UNKNOWN) {
+                    os.write_enum(3, ::protobuf::EnumOrUnknown::value(&self.field_type))?;
+                }
+                if self.allow_override != false {
+                    os.write_bool(4, self.allow_override)?;
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> SetField {
+                SetField::new()
+            }
+
+            fn clear(&mut self) {
+                self.name.clear();
+                self.value.clear();
+                self.field_type = ::protobuf::EnumOrUnknown::new(set_field::FieldType::UNKNOWN);
+                self.allow_override = false;
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static SetField {
+                static instance: SetField = SetField {
+                    name: ::std::string::String::new(),
+                    value: ::protobuf::MessageField::none(),
+                    field_type: ::protobuf::EnumOrUnknown::from_i32(0),
+                    allow_override: false,
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for SetField {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Filter.Transform.SetField").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for SetField {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for SetField {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
+        /// Nested message and enums of message `SetField`
+        pub mod set_field {
+            // @@protoc_insertion_point(message:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.SetFieldValue)
             #[derive(PartialEq,Clone,Default,Debug)]
-            pub struct Fields {
+            pub struct SetFieldValue {
                 // message oneof groups
-                pub fields_type: ::std::option::Option<fields::Fields_type>,
+                pub value: ::std::option::Option<set_field_value::Value>,
                 // special fields
-                // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureFields.Fields.special_fields)
+                // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.SetFieldValue.special_fields)
                 pub special_fields: ::protobuf::SpecialFields,
             }
 
-            impl<'a> ::std::default::Default for &'a Fields {
-                fn default() -> &'a Fields {
-                    <Fields as ::protobuf::Message>::default_instance()
+            impl<'a> ::std::default::Default for &'a SetFieldValue {
+                fn default() -> &'a SetFieldValue {
+                    <SetFieldValue as ::protobuf::Message>::default_instance()
                 }
             }
 
-            impl Fields {
-                pub fn new() -> Fields {
+            impl SetFieldValue {
+                pub fn new() -> SetFieldValue {
                     ::std::default::Default::default()
                 }
 
-                // .bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureFields.Fields.SingleField single = 1;
+                // string string_value = 1;
 
-                pub fn single(&self) -> &fields::SingleField {
-                    match self.fields_type {
-                        ::std::option::Option::Some(fields::Fields_type::Single(ref v)) => v,
-                        _ => <fields::SingleField as ::protobuf::Message>::default_instance(),
+                pub fn string_value(&self) -> &str {
+                    match self.value {
+                        ::std::option::Option::Some(set_field_value::Value::StringValue(ref v)) => v,
+                        _ => "",
                     }
                 }
 
-                pub fn clear_single(&mut self) {
-                    self.fields_type = ::std::option::Option::None;
+                pub fn clear_string_value(&mut self) {
+                    self.value = ::std::option::Option::None;
                 }
 
-                pub fn has_single(&self) -> bool {
-                    match self.fields_type {
-                        ::std::option::Option::Some(fields::Fields_type::Single(..)) => true,
+                pub fn has_string_value(&self) -> bool {
+                    match self.value {
+                        ::std::option::Option::Some(set_field_value::Value::StringValue(..)) => true,
                         _ => false,
                     }
                 }
 
                 // Param is passed by value, moved
-                pub fn set_single(&mut self, v: fields::SingleField) {
-                    self.fields_type = ::std::option::Option::Some(fields::Fields_type::Single(v))
+                pub fn set_string_value(&mut self, v: ::std::string::String) {
+                    self.value = ::std::option::Option::Some(set_field_value::Value::StringValue(v))
                 }
 
                 // Mutable pointer to the field.
-                pub fn mut_single(&mut self) -> &mut fields::SingleField {
-                    if let ::std::option::Option::Some(fields::Fields_type::Single(_)) = self.fields_type {
+                pub fn mut_string_value(&mut self) -> &mut ::std::string::String {
+                    if let ::std::option::Option::Some(set_field_value::Value::StringValue(_)) = self.value {
                     } else {
-                        self.fields_type = ::std::option::Option::Some(fields::Fields_type::Single(fields::SingleField::new()));
+                        self.value = ::std::option::Option::Some(set_field_value::Value::StringValue(::std::string::String::new()));
                     }
-                    match self.fields_type {
-                        ::std::option::Option::Some(fields::Fields_type::Single(ref mut v)) => v,
+                    match self.value {
+                        ::std::option::Option::Some(set_field_value::Value::StringValue(ref mut v)) => v,
                         _ => panic!(),
                     }
                 }
 
                 // Take field
-                pub fn take_single(&mut self) -> fields::SingleField {
-                    if self.has_single() {
-                        match self.fields_type.take() {
-                            ::std::option::Option::Some(fields::Fields_type::Single(v)) => v,
+                pub fn take_string_value(&mut self) -> ::std::string::String {
+                    if self.has_string_value() {
+                        match self.value.take() {
+                            ::std::option::Option::Some(set_field_value::Value::StringValue(v)) => v,
                             _ => panic!(),
                         }
                     } else {
-                        fields::SingleField::new()
+                        ::std::string::String::new()
+                    }
+                }
+
+                // .bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.SetFieldValue.ExistingField existing_field = 2;
+
+                pub fn existing_field(&self) -> &set_field_value::ExistingField {
+                    match self.value {
+                        ::std::option::Option::Some(set_field_value::Value::ExistingField(ref v)) => v,
+                        _ => <set_field_value::ExistingField as ::protobuf::Message>::default_instance(),
+                    }
+                }
+
+                pub fn clear_existing_field(&mut self) {
+                    self.value = ::std::option::Option::None;
+                }
+
+                pub fn has_existing_field(&self) -> bool {
+                    match self.value {
+                        ::std::option::Option::Some(set_field_value::Value::ExistingField(..)) => true,
+                        _ => false,
+                    }
+                }
+
+                // Param is passed by value, moved
+                pub fn set_existing_field(&mut self, v: set_field_value::ExistingField) {
+                    self.value = ::std::option::Option::Some(set_field_value::Value::ExistingField(v))
+                }
+
+                // Mutable pointer to the field.
+                pub fn mut_existing_field(&mut self) -> &mut set_field_value::ExistingField {
+                    if let ::std::option::Option::Some(set_field_value::Value::ExistingField(_)) = self.value {
+                    } else {
+                        self.value = ::std::option::Option::Some(set_field_value::Value::ExistingField(set_field_value::ExistingField::new()));
+                    }
+                    match self.value {
+                        ::std::option::Option::Some(set_field_value::Value::ExistingField(ref mut v)) => v,
+                        _ => panic!(),
+                    }
+                }
+
+                // Take field
+                pub fn take_existing_field(&mut self) -> set_field_value::ExistingField {
+                    if self.has_existing_field() {
+                        match self.value.take() {
+                            ::std::option::Option::Some(set_field_value::Value::ExistingField(v)) => v,
+                            _ => panic!(),
+                        }
+                    } else {
+                        set_field_value::ExistingField::new()
                     }
                 }
 
                 pub(in super::super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                    let mut fields = ::std::vec::Vec::with_capacity(1);
+                    let mut fields = ::std::vec::Vec::with_capacity(2);
                     let mut oneofs = ::std::vec::Vec::with_capacity(1);
-                    fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, fields::SingleField>(
-                        "single",
-                        Fields::has_single,
-                        Fields::single,
-                        Fields::mut_single,
-                        Fields::set_single,
+                    fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+                        "string_value",
+                        SetFieldValue::has_string_value,
+                        SetFieldValue::string_value,
+                        SetFieldValue::set_string_value,
                     ));
-                    oneofs.push(fields::Fields_type::generated_oneof_descriptor_data());
-                    ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Fields>(
-                        "Filter.Transform.CaptureFields.Fields",
+                    fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, set_field_value::ExistingField>(
+                        "existing_field",
+                        SetFieldValue::has_existing_field,
+                        SetFieldValue::existing_field,
+                        SetFieldValue::mut_existing_field,
+                        SetFieldValue::set_existing_field,
+                    ));
+                    oneofs.push(set_field_value::Value::generated_oneof_descriptor_data());
+                    ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SetFieldValue>(
+                        "Filter.Transform.SetField.SetFieldValue",
                         fields,
                         oneofs,
                     )
                 }
             }
 
-            impl ::protobuf::Message for Fields {
-                const NAME: &'static str = "Fields";
+            impl ::protobuf::Message for SetFieldValue {
+                const NAME: &'static str = "SetFieldValue";
 
                 fn is_initialized(&self) -> bool {
                     true
@@ -800,7 +1169,10 @@ pub mod filter {
                     while let Some(tag) = is.read_raw_tag_or_eof()? {
                         match tag {
                             10 => {
-                                self.fields_type = ::std::option::Option::Some(fields::Fields_type::Single(is.read_message()?));
+                                self.value = ::std::option::Option::Some(set_field_value::Value::StringValue(is.read_string()?));
+                            },
+                            18 => {
+                                self.value = ::std::option::Option::Some(set_field_value::Value::ExistingField(is.read_message()?));
                             },
                             tag => {
                                 ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -814,9 +1186,12 @@ pub mod filter {
                 #[allow(unused_variables)]
                 fn compute_size(&self) -> u64 {
                     let mut my_size = 0;
-                    if let ::std::option::Option::Some(ref v) = self.fields_type {
+                    if let ::std::option::Option::Some(ref v) = self.value {
                         match v {
-                            &fields::Fields_type::Single(ref v) => {
+                            &set_field_value::Value::StringValue(ref v) => {
+                                my_size += ::protobuf::rt::string_size(1, &v);
+                            },
+                            &set_field_value::Value::ExistingField(ref v) => {
                                 let len = v.compute_size();
                                 my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                             },
@@ -828,10 +1203,13 @@ pub mod filter {
                 }
 
                 fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-                    if let ::std::option::Option::Some(ref v) = self.fields_type {
+                    if let ::std::option::Option::Some(ref v) = self.value {
                         match v {
-                            &fields::Fields_type::Single(ref v) => {
-                                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                            &set_field_value::Value::StringValue(ref v) => {
+                                os.write_string(1, v)?;
+                            },
+                            &set_field_value::Value::ExistingField(ref v) => {
+                                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
                             },
                         };
                     }
@@ -847,85 +1225,88 @@ pub mod filter {
                     &mut self.special_fields
                 }
 
-                fn new() -> Fields {
-                    Fields::new()
+                fn new() -> SetFieldValue {
+                    SetFieldValue::new()
                 }
 
                 fn clear(&mut self) {
-                    self.fields_type = ::std::option::Option::None;
+                    self.value = ::std::option::Option::None;
+                    self.value = ::std::option::Option::None;
                     self.special_fields.clear();
                 }
 
-                fn default_instance() -> &'static Fields {
-                    static instance: Fields = Fields {
-                        fields_type: ::std::option::Option::None,
+                fn default_instance() -> &'static SetFieldValue {
+                    static instance: SetFieldValue = SetFieldValue {
+                        value: ::std::option::Option::None,
                         special_fields: ::protobuf::SpecialFields::new(),
                     };
                     &instance
                 }
             }
 
-            impl ::protobuf::MessageFull for Fields {
+            impl ::protobuf::MessageFull for SetFieldValue {
                 fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
                     static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                    descriptor.get(|| super::super::super::file_descriptor().message_by_package_relative_name("Filter.Transform.CaptureFields.Fields").unwrap()).clone()
+                    descriptor.get(|| super::super::super::file_descriptor().message_by_package_relative_name("Filter.Transform.SetField.SetFieldValue").unwrap()).clone()
                 }
             }
 
-            impl ::std::fmt::Display for Fields {
+            impl ::std::fmt::Display for SetFieldValue {
                 fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                     ::protobuf::text_format::fmt(self, f)
                 }
             }
 
-            impl ::protobuf::reflect::ProtobufValue for Fields {
+            impl ::protobuf::reflect::ProtobufValue for SetFieldValue {
                 type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
             }
 
-            /// Nested message and enums of message `Fields`
-            pub mod fields {
+            /// Nested message and enums of message `SetFieldValue`
+            pub mod set_field_value {
 
                 #[derive(Clone,PartialEq,Debug)]
-                // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureFields.Fields.fields_type)
-                pub enum Fields_type {
-                    // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureFields.Fields.single)
-                    Single(SingleField),
+                // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.SetFieldValue.value)
+                pub enum Value {
+                    // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.SetFieldValue.string_value)
+                    StringValue(::std::string::String),
+                    // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.SetFieldValue.existing_field)
+                    ExistingField(ExistingField),
                 }
 
-                impl ::protobuf::Oneof for Fields_type {
+                impl ::protobuf::Oneof for Value {
                 }
 
-                impl ::protobuf::OneofFull for Fields_type {
+                impl ::protobuf::OneofFull for Value {
                     fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
                         static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
-                        descriptor.get(|| <super::Fields as ::protobuf::MessageFull>::descriptor().oneof_by_name("fields_type").unwrap()).clone()
+                        descriptor.get(|| <super::SetFieldValue as ::protobuf::MessageFull>::descriptor().oneof_by_name("value").unwrap()).clone()
                     }
                 }
 
-                impl Fields_type {
+                impl Value {
                     pub(in super::super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
-                        ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Fields_type>("fields_type")
+                        ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Value>("value")
                     }
                 }
-                // @@protoc_insertion_point(message:bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureFields.Fields.SingleField)
+                // @@protoc_insertion_point(message:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.SetFieldValue.ExistingField)
                 #[derive(PartialEq,Clone,Default,Debug)]
-                pub struct SingleField {
+                pub struct ExistingField {
                     // message fields
-                    // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureFields.Fields.SingleField.name)
+                    // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.SetFieldValue.ExistingField.name)
                     pub name: ::std::string::String,
                     // special fields
-                    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.CaptureFields.Fields.SingleField.special_fields)
+                    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.SetFieldValue.ExistingField.special_fields)
                     pub special_fields: ::protobuf::SpecialFields,
                 }
 
-                impl<'a> ::std::default::Default for &'a SingleField {
-                    fn default() -> &'a SingleField {
-                        <SingleField as ::protobuf::Message>::default_instance()
+                impl<'a> ::std::default::Default for &'a ExistingField {
+                    fn default() -> &'a ExistingField {
+                        <ExistingField as ::protobuf::Message>::default_instance()
                     }
                 }
 
-                impl SingleField {
-                    pub fn new() -> SingleField {
+                impl ExistingField {
+                    pub fn new() -> ExistingField {
                         ::std::default::Default::default()
                     }
 
@@ -934,19 +1315,19 @@ pub mod filter {
                         let mut oneofs = ::std::vec::Vec::with_capacity(0);
                         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                             "name",
-                            |m: &SingleField| { &m.name },
-                            |m: &mut SingleField| { &mut m.name },
+                            |m: &ExistingField| { &m.name },
+                            |m: &mut ExistingField| { &mut m.name },
                         ));
-                        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SingleField>(
-                            "Filter.Transform.CaptureFields.Fields.SingleField",
+                        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ExistingField>(
+                            "Filter.Transform.SetField.SetFieldValue.ExistingField",
                             fields,
                             oneofs,
                         )
                     }
                 }
 
-                impl ::protobuf::Message for SingleField {
-                    const NAME: &'static str = "SingleField";
+                impl ::protobuf::Message for ExistingField {
+                    const NAME: &'static str = "ExistingField";
 
                     fn is_initialized(&self) -> bool {
                         true
@@ -994,8 +1375,8 @@ pub mod filter {
                         &mut self.special_fields
                     }
 
-                    fn new() -> SingleField {
-                        SingleField::new()
+                    fn new() -> ExistingField {
+                        ExistingField::new()
                     }
 
                     fn clear(&mut self) {
@@ -1003,8 +1384,8 @@ pub mod filter {
                         self.special_fields.clear();
                     }
 
-                    fn default_instance() -> &'static SingleField {
-                        static instance: SingleField = SingleField {
+                    fn default_instance() -> &'static ExistingField {
+                        static instance: ExistingField = ExistingField {
                             name: ::std::string::String::new(),
                             special_fields: ::protobuf::SpecialFields::new(),
                         };
@@ -1012,185 +1393,24 @@ pub mod filter {
                     }
                 }
 
-                impl ::protobuf::MessageFull for SingleField {
+                impl ::protobuf::MessageFull for ExistingField {
                     fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
                         static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                        descriptor.get(|| super::super::super::super::file_descriptor().message_by_package_relative_name("Filter.Transform.CaptureFields.Fields.SingleField").unwrap()).clone()
+                        descriptor.get(|| super::super::super::super::file_descriptor().message_by_package_relative_name("Filter.Transform.SetField.SetFieldValue.ExistingField").unwrap()).clone()
                     }
                 }
 
-                impl ::std::fmt::Display for SingleField {
+                impl ::std::fmt::Display for ExistingField {
                     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                         ::protobuf::text_format::fmt(self, f)
                     }
                 }
 
-                impl ::protobuf::reflect::ProtobufValue for SingleField {
+                impl ::protobuf::reflect::ProtobufValue for ExistingField {
                     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
                 }
             }
-        }
 
-        // @@protoc_insertion_point(message:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField)
-        #[derive(PartialEq,Clone,Default,Debug)]
-        pub struct SetField {
-            // message fields
-            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.name)
-            pub name: ::std::string::String,
-            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.value)
-            pub value: ::std::string::String,
-            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.field_type)
-            pub field_type: ::protobuf::EnumOrUnknown<set_field::FieldType>,
-            // special fields
-            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.special_fields)
-            pub special_fields: ::protobuf::SpecialFields,
-        }
-
-        impl<'a> ::std::default::Default for &'a SetField {
-            fn default() -> &'a SetField {
-                <SetField as ::protobuf::Message>::default_instance()
-            }
-        }
-
-        impl SetField {
-            pub fn new() -> SetField {
-                ::std::default::Default::default()
-            }
-
-            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                let mut fields = ::std::vec::Vec::with_capacity(3);
-                let mut oneofs = ::std::vec::Vec::with_capacity(0);
-                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                    "name",
-                    |m: &SetField| { &m.name },
-                    |m: &mut SetField| { &mut m.name },
-                ));
-                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                    "value",
-                    |m: &SetField| { &m.value },
-                    |m: &mut SetField| { &mut m.value },
-                ));
-                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                    "field_type",
-                    |m: &SetField| { &m.field_type },
-                    |m: &mut SetField| { &mut m.field_type },
-                ));
-                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SetField>(
-                    "Filter.Transform.SetField",
-                    fields,
-                    oneofs,
-                )
-            }
-        }
-
-        impl ::protobuf::Message for SetField {
-            const NAME: &'static str = "SetField";
-
-            fn is_initialized(&self) -> bool {
-                true
-            }
-
-            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-                while let Some(tag) = is.read_raw_tag_or_eof()? {
-                    match tag {
-                        10 => {
-                            self.name = is.read_string()?;
-                        },
-                        18 => {
-                            self.value = is.read_string()?;
-                        },
-                        24 => {
-                            self.field_type = is.read_enum_or_unknown()?;
-                        },
-                        tag => {
-                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                        },
-                    };
-                }
-                ::std::result::Result::Ok(())
-            }
-
-            // Compute sizes of nested messages
-            #[allow(unused_variables)]
-            fn compute_size(&self) -> u64 {
-                let mut my_size = 0;
-                if !self.name.is_empty() {
-                    my_size += ::protobuf::rt::string_size(1, &self.name);
-                }
-                if !self.value.is_empty() {
-                    my_size += ::protobuf::rt::string_size(2, &self.value);
-                }
-                if self.field_type != ::protobuf::EnumOrUnknown::new(set_field::FieldType::UNKNOWN) {
-                    my_size += ::protobuf::rt::int32_size(3, self.field_type.value());
-                }
-                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-                self.special_fields.cached_size().set(my_size as u32);
-                my_size
-            }
-
-            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-                if !self.name.is_empty() {
-                    os.write_string(1, &self.name)?;
-                }
-                if !self.value.is_empty() {
-                    os.write_string(2, &self.value)?;
-                }
-                if self.field_type != ::protobuf::EnumOrUnknown::new(set_field::FieldType::UNKNOWN) {
-                    os.write_enum(3, ::protobuf::EnumOrUnknown::value(&self.field_type))?;
-                }
-                os.write_unknown_fields(self.special_fields.unknown_fields())?;
-                ::std::result::Result::Ok(())
-            }
-
-            fn special_fields(&self) -> &::protobuf::SpecialFields {
-                &self.special_fields
-            }
-
-            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-                &mut self.special_fields
-            }
-
-            fn new() -> SetField {
-                SetField::new()
-            }
-
-            fn clear(&mut self) {
-                self.name.clear();
-                self.value.clear();
-                self.field_type = ::protobuf::EnumOrUnknown::new(set_field::FieldType::UNKNOWN);
-                self.special_fields.clear();
-            }
-
-            fn default_instance() -> &'static SetField {
-                static instance: SetField = SetField {
-                    name: ::std::string::String::new(),
-                    value: ::std::string::String::new(),
-                    field_type: ::protobuf::EnumOrUnknown::from_i32(0),
-                    special_fields: ::protobuf::SpecialFields::new(),
-                };
-                &instance
-            }
-        }
-
-        impl ::protobuf::MessageFull for SetField {
-            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Filter.Transform.SetField").unwrap()).clone()
-            }
-        }
-
-        impl ::std::fmt::Display for SetField {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                ::protobuf::text_format::fmt(self, f)
-            }
-        }
-
-        impl ::protobuf::reflect::ProtobufValue for SetField {
-            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-        }
-
-        /// Nested message and enums of message `SetField`
-        pub mod set_field {
             #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
             // @@protoc_insertion_point(enum:bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.FieldType)
             pub enum FieldType {
@@ -1258,6 +1478,286 @@ pub mod filter {
                 }
             }
         }
+
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.filter.v1.Filter.Transform.RemoveField)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct RemoveField {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RemoveField.name)
+            pub name: ::std::string::String,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RemoveField.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a RemoveField {
+            fn default() -> &'a RemoveField {
+                <RemoveField as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl RemoveField {
+            pub fn new() -> RemoveField {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(1);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "name",
+                    |m: &RemoveField| { &m.name },
+                    |m: &mut RemoveField| { &mut m.name },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<RemoveField>(
+                    "Filter.Transform.RemoveField",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for RemoveField {
+            const NAME: &'static str = "RemoveField";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.name = is.read_string()?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.name.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.name);
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.name.is_empty() {
+                    os.write_string(1, &self.name)?;
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> RemoveField {
+                RemoveField::new()
+            }
+
+            fn clear(&mut self) {
+                self.name.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static RemoveField {
+                static instance: RemoveField = RemoveField {
+                    name: ::std::string::String::new(),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for RemoveField {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Filter.Transform.RemoveField").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for RemoveField {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for RemoveField {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct RegexMatchAndSubstituteField {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.name)
+            pub name: ::std::string::String,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.pattern)
+            pub pattern: ::std::string::String,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.substitution)
+            pub substitution: ::std::string::String,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a RegexMatchAndSubstituteField {
+            fn default() -> &'a RegexMatchAndSubstituteField {
+                <RegexMatchAndSubstituteField as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl RegexMatchAndSubstituteField {
+            pub fn new() -> RegexMatchAndSubstituteField {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(3);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "name",
+                    |m: &RegexMatchAndSubstituteField| { &m.name },
+                    |m: &mut RegexMatchAndSubstituteField| { &mut m.name },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "pattern",
+                    |m: &RegexMatchAndSubstituteField| { &m.pattern },
+                    |m: &mut RegexMatchAndSubstituteField| { &mut m.pattern },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "substitution",
+                    |m: &RegexMatchAndSubstituteField| { &m.substitution },
+                    |m: &mut RegexMatchAndSubstituteField| { &mut m.substitution },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<RegexMatchAndSubstituteField>(
+                    "Filter.Transform.RegexMatchAndSubstituteField",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for RegexMatchAndSubstituteField {
+            const NAME: &'static str = "RegexMatchAndSubstituteField";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.name = is.read_string()?;
+                        },
+                        18 => {
+                            self.pattern = is.read_string()?;
+                        },
+                        26 => {
+                            self.substitution = is.read_string()?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.name.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.name);
+                }
+                if !self.pattern.is_empty() {
+                    my_size += ::protobuf::rt::string_size(2, &self.pattern);
+                }
+                if !self.substitution.is_empty() {
+                    my_size += ::protobuf::rt::string_size(3, &self.substitution);
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.name.is_empty() {
+                    os.write_string(1, &self.name)?;
+                }
+                if !self.pattern.is_empty() {
+                    os.write_string(2, &self.pattern)?;
+                }
+                if !self.substitution.is_empty() {
+                    os.write_string(3, &self.substitution)?;
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> RegexMatchAndSubstituteField {
+                RegexMatchAndSubstituteField::new()
+            }
+
+            fn clear(&mut self) {
+                self.name.clear();
+                self.pattern.clear();
+                self.substitution.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static RegexMatchAndSubstituteField {
+                static instance: RegexMatchAndSubstituteField = RegexMatchAndSubstituteField {
+                    name: ::std::string::String::new(),
+                    pattern: ::std::string::String::new(),
+                    substitution: ::std::string::String::new(),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for RegexMatchAndSubstituteField {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Filter.Transform.RegexMatchAndSubstituteField").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for RegexMatchAndSubstituteField {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for RegexMatchAndSubstituteField {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
     }
 }
 
@@ -1266,27 +1766,39 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     protobuf.filter.v1\x1a\x17validate/validate.proto\x1a5bitdrift_public/pr\
     otobuf/matcher/v1/log_matcher.proto\"\\\n\x14FiltersConfiguration\x12D\n\
     \x07filters\x18\x01\x20\x03(\x0b2*.bitdrift_public.protobuf.filter.v1.Fi\
-    lterR\x07filters\"\xd6\x07\n\x06Filter\x12S\n\x07matcher\x18\x01\x20\x01\
+    lterR\x07filters\"\xfb\x0b\n\x06Filter\x12S\n\x07matcher\x18\x01\x20\x01\
     (\x0b2/.bitdrift_public.protobuf.matcher.v1.LogMatcherR\x07matcherB\x08\
     \xfaB\x05\x8a\x01\x02\x10\x01\x12^\n\ntransforms\x18\x02\x20\x03(\x0b24.\
     bitdrift_public.protobuf.filter.v1.Filter.TransformR\ntransformsB\x08\
-    \xfaB\x05\x92\x01\x02\x08\x01\x1a\x96\x06\n\tTransform\x12k\n\x0ecapture\
-    _fields\x18\x01\x20\x01(\x0b2B.bitdrift_public.protobuf.filter.v1.Filter\
-    .Transform.CaptureFieldsH\0R\rcaptureFields\x12\\\n\tset_field\x18\x02\
-    \x20\x01(\x0b2=.bitdrift_public.protobuf.filter.v1.Filter.Transform.SetF\
-    ieldH\0R\x08setField\x1a\xae\x02\n\rCaptureFields\x12a\n\x06fields\x18\
-    \x02\x20\x01(\x0b2I.bitdrift_public.protobuf.filter.v1.Filter.Transform.\
-    CaptureFields.FieldsR\x06fields\x1a\xb9\x01\n\x06Fields\x12o\n\x06single\
-    \x18\x01\x20\x01(\x0b2U.bitdrift_public.protobuf.filter.v1.Filter.Transf\
-    orm.CaptureFields.Fields.SingleFieldH\0R\x06single\x1a*\n\x0bSingleField\
+    \xfaB\x05\x92\x01\x02\x08\x01\x1a\xbb\n\n\tTransform\x12h\n\rcapture_fie\
+    ld\x18\x01\x20\x01(\x0b2A.bitdrift_public.protobuf.filter.v1.Filter.Tran\
+    sform.CaptureFieldH\0R\x0ccaptureField\x12\\\n\tset_field\x18\x02\x20\
+    \x01(\x0b2=.bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField\
+    H\0R\x08setField\x12e\n\x0cremove_field\x18\x03\x20\x01(\x0b2@.bitdrift_\
+    public.protobuf.filter.v1.Filter.Transform.RemoveFieldH\0R\x0bremoveFiel\
+    d\x12\x9b\x01\n\x20regex_match_and_substitute_field\x18\x04\x20\x01(\x0b\
+    2Q.bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubs\
+    tituteFieldH\0R\x1cregexMatchAndSubstituteField\x1a+\n\x0cCaptureField\
     \x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\
-    \x01B\x12\n\x0bfields_type\x12\x03\xf8B\x01\x1a\xf5\x01\n\x08SetField\
-    \x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\
-    \x01\x12\x1d\n\x05value\x18\x02\x20\x01(\tR\x05valueB\x07\xfaB\x04r\x02\
-    \x10\x01\x12r\n\nfield_type\x18\x03\x20\x01(\x0e2G.bitdrift_public.proto\
-    buf.filter.v1.Filter.Transform.SetField.FieldTypeR\tfieldTypeB\n\xfaB\
-    \x07\x82\x01\x04\x10\x01\x20\0\"9\n\tFieldType\x12\x0b\n\x07UNKNOWN\x10\
-    \0\x12\x0c\n\x08CAPTURED\x10\x01\x12\x11\n\rMATCHING_ONLY\x10\x02B\x15\n\
+    \x01\x1a\xe2\x04\n\x08SetField\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04\
+    nameB\x07\xfaB\x04r\x02\x10\x01\x12k\n\x05value\x18\x02\x20\x01(\x0b2K.b\
+    itdrift_public.protobuf.filter.v1.Filter.Transform.SetField.SetFieldValu\
+    eR\x05valueB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12r\n\nfield_type\x18\x03\
+    \x20\x01(\x0e2G.bitdrift_public.protobuf.filter.v1.Filter.Transform.SetF\
+    ield.FieldTypeR\tfieldTypeB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12%\n\
+    \x0eallow_override\x18\x04\x20\x01(\x08R\rallowOverride\x1a\xf5\x01\n\rS\
+    etFieldValue\x12#\n\x0cstring_value\x18\x01\x20\x01(\tH\0R\x0bstringValu\
+    e\x12\x82\x01\n\x0eexisting_field\x18\x02\x20\x01(\x0b2Y.bitdrift_public\
+    .protobuf.filter.v1.Filter.Transform.SetField.SetFieldValue.ExistingFiel\
+    dH\0R\rexistingField\x1a,\n\rExistingField\x12\x1b\n\x04name\x18\x01\x20\
+    \x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01B\x0c\n\x05value\x12\x03\xf8B\
+    \x01\"9\n\tFieldType\x12\x0b\n\x07UNKNOWN\x10\0\x12\x0c\n\x08CAPTURED\
+    \x10\x01\x12\x11\n\rMATCHING_ONLY\x10\x02\x1a*\n\x0bRemoveField\x12\x1b\
+    \n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x1a\
+    \x8b\x01\n\x1cRegexMatchAndSubstituteField\x12\x1b\n\x04name\x18\x01\x20\
+    \x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x12!\n\x07pattern\x18\x02\
+    \x20\x01(\tR\x07patternB\x07\xfaB\x04r\x02\x10\x01\x12+\n\x0csubstitutio\
+    n\x18\x03\x20\x01(\tR\x0csubstitutionB\x07\xfaB\x04r\x02\x10\x01B\x15\n\
     \x0etransform_type\x12\x03\xf8B\x01b\x06proto3\
 ";
 
@@ -1307,14 +1819,16 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             let mut deps = ::std::vec::Vec::with_capacity(2);
             deps.push(super::validate::file_descriptor().clone());
             deps.push(super::log_matcher::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(7);
+            let mut messages = ::std::vec::Vec::with_capacity(9);
             messages.push(FiltersConfiguration::generated_message_descriptor_data());
             messages.push(Filter::generated_message_descriptor_data());
             messages.push(filter::Transform::generated_message_descriptor_data());
-            messages.push(filter::transform::CaptureFields::generated_message_descriptor_data());
+            messages.push(filter::transform::CaptureField::generated_message_descriptor_data());
             messages.push(filter::transform::SetField::generated_message_descriptor_data());
-            messages.push(filter::transform::capture_fields::Fields::generated_message_descriptor_data());
-            messages.push(filter::transform::capture_fields::fields::SingleField::generated_message_descriptor_data());
+            messages.push(filter::transform::RemoveField::generated_message_descriptor_data());
+            messages.push(filter::transform::RegexMatchAndSubstituteField::generated_message_descriptor_data());
+            messages.push(filter::transform::set_field::SetFieldValue::generated_message_descriptor_data());
+            messages.push(filter::transform::set_field::set_field_value::ExistingField::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(1);
             enums.push(filter::transform::set_field::FieldType::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
