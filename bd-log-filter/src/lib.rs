@@ -17,6 +17,12 @@ use filter::transform::Transform_type;
 use regex::Regex;
 use std::borrow::Cow;
 
+#[cfg(test)]
+#[ctor::ctor]
+fn test_global_init() {
+  bd_test_helpers::test_global_init();
+}
+
 //
 // FilterChain
 //
@@ -328,6 +334,10 @@ impl RegexMatchAndSubstitute {
             .to_string()
             .into();
         }
+
+        // TODO(Augustyniak): This makes an assumption that regex match and substitution applies to
+        // the first field with a given name only. This is going to be simplified once we
+        // change `LogFields`  to be a map instead of a list.
         return;
       }
     });
@@ -340,6 +350,10 @@ impl RegexMatchAndSubstitute {
             .to_string()
             .into();
         }
+
+        // TODO(Augustyniak): This makes an assumption that regex match and substitution applies to
+        // the first field with a given name only. This is going to be simplified once we
+        // change `LogFields`  to be a map instead of a list.
         return;
       }
     });
@@ -347,9 +361,17 @@ impl RegexMatchAndSubstitute {
 
   fn produce_new_value<'a>(&self, input: Cow<'a, str>) -> Cow<'a, str> {
     let mut current = input;
+    let mut iterations = 0;
 
     loop {
+      // This loop is designed to protect against infinite loops when a user provides a
+      // substitution cycle that would result in endless processing.
+      if iterations >= 5 {
+        return current;
+      }
       let replace_result = self.pattern.replace(&current, &self.substitution);
+      iterations += 1;
+
       // Protect ourselves from a case where there is a match but after the replacement the string
       // looks exactly the same as prior to it.
       if replace_result == current {

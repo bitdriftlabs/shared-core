@@ -68,7 +68,18 @@ pub mod macros {
     };
   }
 
-  pub use {capture_field, field_value, remove_field, set_field};
+  #[macro_export]
+  macro_rules! regex_match_and_substitute_field {
+    ($field_name:expr, $regex:expr, $replacement:expr) => {
+      $crate::filter::make_transform($crate::filter::make_regex_match_and_substitute_field(
+        $field_name,
+        $regex,
+        $replacement,
+      ))
+    };
+  }
+
+  pub use {capture_field, field_value, regex_match_and_substitute_field, remove_field, set_field};
 }
 
 #[must_use]
@@ -128,6 +139,23 @@ pub fn make_remove_field(field_name: &str) -> filter::transform::Transform_type 
     name: field_name.to_string(),
     ..Default::default()
   })
+}
+
+
+#[must_use]
+pub fn make_regex_match_and_substitute_field(
+  field_name: &str,
+  pattern: &str,
+  substitution: &str,
+) -> filter::transform::Transform_type {
+  filter::transform::Transform_type::RegexMatchAndSubstitute(
+    filter::transform::RegexMatchAndSubstitute {
+      name: field_name.to_string(),
+      pattern: pattern.to_string(),
+      substitution: substitution.to_string(),
+      ..Default::default()
+    },
+  )
 }
 
 #[must_use]

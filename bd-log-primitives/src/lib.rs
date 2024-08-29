@@ -151,11 +151,11 @@ pub struct Log {
   pub log_level: LogLevel,
   pub log_type: LogType,
   pub message: StringOrBytes<String, Vec<u8>>,
-  // TODO (Augustyniak): Change the type to `HashMap` to improve performance when matching on fields and 
-  // reduce ambiguity by ensuring the uniqueness of field names.
+  // TODO (Augustyniak): Change the type to `HashMap` to improve performance when matching on
+  // fields and reduce ambiguity by ensuring the uniqueness of field names.
   pub fields: LogFields,
-  // TODO (Augustyniak): Change the type to `HashMap` to improve performance when matching on fields and 
-  // reduce ambiguity by ensuring the uniqueness of field names.
+  // TODO (Augustyniak): Change the type to `HashMap` to improve performance when matching on
+  // fields and reduce ambiguity by ensuring the uniqueness of field names.
   pub matching_fields: LogFields,
   pub session_id: String,
   pub occurred_at: time::OffsetDateTime,
