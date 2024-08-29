@@ -702,7 +702,6 @@ dependencies = [
  "flatbuffers",
  "futures-util",
  "itertools 0.13.0",
- "libc",
  "log",
  "parking_lot",
  "pretty_assertions",
