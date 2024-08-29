@@ -8,7 +8,7 @@
 use crate::FilterChain;
 use bd_log_primitives::{log_level, Log, LogField, LogFields, LogType};
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
-use bd_test_helpers::{capture_field, field_value, log_matches, set_field};
+use bd_test_helpers::{capture_field, field_value, log_matches, remove_field, set_field};
 use time::macros::datetime;
 
 #[test]
@@ -323,7 +323,7 @@ fn remove_field_transform_removes_existing_fields() {
   let (chain, _) = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
-      transforms: vec![set_field!(matching("new_foo") = field_value!("bar"))],
+      transforms: vec![remove_field!("remove_me")],
       ..Default::default()
     }],
     ..Default::default()
@@ -331,17 +331,44 @@ fn remove_field_transform_removes_existing_fields() {
 
   let mut log = make_log(
     "matching",
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "bar".into(),
-    }],
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "bar".into(),
-    }],
+    vec![
+      LogField {
+        key: "remove_me".to_string(),
+        value: "bar".into(),
+      },
+      LogField {
+        key: "foo".to_string(),
+        value: "bar".into(),
+      },
+    ],
+    vec![
+      LogField {
+        key: "remove_me".to_string(),
+        value: "bar".into(),
+      },
+      LogField {
+        key: "foo".to_string(),
+        value: "bar".into(),
+      },
+    ],
   );
 
   chain.process(&mut log);
+
+  assert_eq!(
+    vec![LogField {
+      key: "foo".to_string(),
+      value: "bar".into(),
+    }],
+    log.fields
+  );
+  assert_eq!(
+    vec![LogField {
+      key: "foo".to_string(),
+      value: "bar".into(),
+    }],
+    log.matching_fields
+  );
 }
 
 fn make_log(message: &str, fields: LogFields, matching_fields: LogFields) -> Log {
