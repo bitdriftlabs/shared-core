@@ -333,7 +333,7 @@ impl RegexMatchAndSubstitute {
       }
       if let Some(field_string_value) = field.value.as_str() {
         field.value = self
-          .produce_new_value(field_string_value.into())
+          .produce_new_value(field_string_value)
           .to_string()
           .into();
       }
@@ -350,7 +350,7 @@ impl RegexMatchAndSubstitute {
       }
       if let Some(field_string_value) = field.value.as_str() {
         field.value = self
-          .produce_new_value(field_string_value.into())
+          .produce_new_value(field_string_value)
           .to_string()
           .into();
       }
