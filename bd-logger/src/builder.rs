@@ -278,6 +278,7 @@ impl LoggerBuilder {
       .name("io.bitdrift.capture.logger".to_string())
       .spawn(move || {
         tokio::runtime::Builder::new_current_thread()
+          .thread_name("io.bitdrift.capture.logger")
           .thread_name_fn(|| "io.bitdrift.capture.logger.worker".to_string())
           .enable_all()
           .build()
