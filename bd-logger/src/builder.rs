@@ -274,15 +274,18 @@ impl LoggerBuilder {
 
     let (logger, ch, future) = self.build()?;
 
-    std::thread::spawn(move || {
-      tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(async {
-          handle_unexpected(future.await, "logger top level run loop");
-        });
-    });
+    std::thread::Builder::new()
+      .name("io.bitdrift.capture.logger".to_string())
+      .spawn(move || {
+        tokio::runtime::Builder::new_current_thread()
+          .thread_name("io.bitdrift.capture.logger.worker")
+          .enable_all()
+          .build()
+          .unwrap()
+          .block_on(async {
+            handle_unexpected(future.await, "logger top level run loop");
+          });
+      });
 
     Ok((logger, ch))
   }
