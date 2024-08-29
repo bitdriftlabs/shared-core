@@ -361,30 +361,8 @@ impl RegexMatchAndSubstitute {
     }
   }
 
-  fn produce_new_value<'a>(&self, input: Cow<'a, str>) -> Cow<'a, str> {
-    let mut current = input;
-    let mut iterations = 0;
-
-    loop {
-      // This loop is designed to protect against infinite loops when a user provides a
-      // substitution cycle that would result in endless processing.
-      if iterations >= 10 {
-        return current;
-      }
-      let replace_result = self.pattern.replace(&current, &self.substitution);
-      iterations += 1;
-
-      // Protect ourselves from a case where there is a match but after the replacement the string
-      // looks exactly the same as prior to it.
-      if replace_result == current {
-        return current;
-      }
-
-      match replace_result {
-        Cow::Borrowed(_) => return current,
-        Cow::Owned(new_url_path) => current = Cow::Owned(new_url_path),
-      }
-    }
+  fn produce_new_value<'a>(&self, input: &'a str) -> Cow<'a, str> {
+    self.pattern.replace_all(input, &self.substitution)
   }
 }
 

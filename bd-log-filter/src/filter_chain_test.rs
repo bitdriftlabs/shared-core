@@ -334,39 +334,58 @@ fn remove_field_transform_removes_existing_fields() {
 
 #[test]
 fn regex_match_and_substitute() {
-  let filter_chain = make_filter_chain(
+  let filter_chain: FilterChain = make_filter_chain(
     log_matches!(message == "matching"),
-    vec![regex_match_and_substitute_field!(
-      "foo",
-      "^(.*)([0-9a-f]{8}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?\
-       [0-9a-f]{12})(.*)$",
-      "${1}<id>${3}"
-    )],
+    vec![
+      regex_match_and_substitute_field!(
+        "foo",
+        "[0-9a-f]{8}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{12}",
+        "<id>"
+      ),
+      regex_match_and_substitute_field!(
+        "bar",
+        "[0-9a-f]{8}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{12}",
+        "${1}<id>${3}"
+      ),
+    ],
   );
 
   let mut log = make_log(
     "matching",
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "/foo/885fa9b2-97f1-435b-8fe3-a461d3235924/test/885fa9b2-97f1-435b-8fe3-a461d3235924"
-        .into(),
-    }],
+    vec![
+      LogField {
+        key: "foo".to_string(),
+        value: "/foo/885fa9b2-97f1-435b-8fe3-a461d3235924/test/\
+                885fa9b2-97f1-435b-8fe3-a461d3235924"
+          .into(),
+      },
+      LogField {
+        key: "bar".to_string(),
+        value: "/885fa9b2-97f1-435b-8fe3-a461d3235924".into(),
+      },
+    ],
     vec![],
   );
 
   filter_chain.process(&mut log);
 
   assert_eq!(
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "/foo/<id>/test/<id>".into(),
-    }],
+    vec![
+      LogField {
+        key: "foo".to_string(),
+        value: "/foo/<id>/test/<id>".into(),
+      },
+      LogField {
+        key: "bar".to_string(),
+        value: "/<id>".into(),
+      }
+    ],
     log.fields
   );
 }
 
 #[test]
-fn invalid_regex_match_and_substitute() {
+fn regex_match_and_invalid_substitute() {
   let filter_chain = make_filter_chain(
     log_matches!(message == "matching"),
     vec![regex_match_and_substitute_field!(
@@ -393,11 +412,25 @@ fn invalid_regex_match_and_substitute() {
     vec![LogField {
       key: "foo".to_string(),
       value: "/foo/885fa9b2-97f1-435b-8fe3-a461d3235924/test/\
-              <id><id><id><id><id><id><id><id><id><id>885fa9b2-97f1-435b-8fe3-a461d3235924"
+              <id>885fa9b2-97f1-435b-8fe3-a461d3235924"
         .into(),
     }],
     log.fields
   );
+}
+
+#[test]
+fn invalid_regex_match() {
+  let filter_chain = make_filter_chain(
+    log_matches!(message == "matching"),
+    vec![regex_match_and_substitute_field!(
+      "foo",
+      "([])([])([])", // invalid regex
+      "${1}<id>${2}${4}"
+    )],
+  );
+
+  assert!(filter_chain.filters.is_empty());
 }
 
 fn make_filter_chain(
