@@ -393,7 +393,7 @@ fn invalid_regex_match_and_substitute() {
     vec![LogField {
       key: "foo".to_string(),
       value: "/foo/885fa9b2-97f1-435b-8fe3-a461d3235924/test/\
-              <id><id><id><id><id>885fa9b2-97f1-435b-8fe3-a461d3235924"
+              <id><id><id><id><id><id><id><id><id><id>885fa9b2-97f1-435b-8fe3-a461d3235924"
         .into(),
     }],
     log.fields
