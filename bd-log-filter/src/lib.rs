@@ -145,7 +145,7 @@ impl Transform {
       Self::SetField(set_field) => set_field.apply(log),
       Self::RemoveField(remove_field) => remove_field.apply(log),
       Self::RegexMatchAndSubstitute(regex_match_and_substitute) => {
-        regex_match_and_substitute.apply(log)
+        regex_match_and_substitute.apply(log);
       },
     }
   }
@@ -326,37 +326,39 @@ impl RegexMatchAndSubstitute {
   }
 
   fn apply(&self, log: &mut Log) {
-    log.fields.iter_mut().for_each(|field| {
-      if field.key == self.field_name {
-        if let Some(field_string_value) = field.value.as_str() {
-          field.value = self
-            .produce_new_value(field_string_value.into())
-            .to_string()
-            .into();
-        }
-
-        // TODO(Augustyniak): This makes an assumption that regex match and substitution applies to
-        // the first field with a given name only. This is going to be simplified once we
-        // change `LogFields`  to be a map instead of a list.
-        return;
+    for field in &mut log.fields {
+      if field.key != self.field_name {
+        continue;
       }
-    });
-
-    log.matching_fields.iter_mut().for_each(|field| {
-      if field.key == self.field_name {
-        if let Some(field_string_value) = field.value.as_str() {
-          field.value = self
-            .produce_new_value(field_string_value.into())
-            .to_string()
-            .into();
-        }
-
-        // TODO(Augustyniak): This makes an assumption that regex match and substitution applies to
-        // the first field with a given name only. This is going to be simplified once we
-        // change `LogFields`  to be a map instead of a list.
-        return;
+      if let Some(field_string_value) = field.value.as_str() {
+        field.value = self
+          .produce_new_value(field_string_value.into())
+          .to_string()
+          .into();
       }
-    });
+
+      // TODO(Augustyniak): This makes an assumption that regex match and substitution applies to
+      // the first field with a given name only. This is going to be simplified once we
+      // change `LogFields`  to be a map instead of a list.
+      return;
+    }
+
+    for field in &mut log.matching_fields {
+      if field.key != self.field_name {
+        continue;
+      }
+      if let Some(field_string_value) = field.value.as_str() {
+        field.value = self
+          .produce_new_value(field_string_value.into())
+          .to_string()
+          .into();
+      }
+
+      // TODO(Augustyniak): This makes an assumption that regex match and substitution applies to
+      // the first field with a given name only. This is going to be simplified once we
+      // change `LogFields`  to be a map instead of a list.
+      return;
+    }
   }
 
   fn produce_new_value<'a>(&self, input: Cow<'a, str>) -> Cow<'a, str> {
@@ -404,7 +406,6 @@ impl FieldProvider for Log {
       .iter()
       .chain(self.matching_fields.iter())
       .find(|f| f.key == key)
-      .map(|f| f.value.as_str())
-      .flatten()
+      .and_then(|f| f.value.as_str())
   }
 }
