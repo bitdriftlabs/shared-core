@@ -5,6 +5,11 @@ name         = "bd-hyper-network"
 publish      = false
 version      = "1.0.0"
 
+[features]
+aws-lc-rs = ["hyper-rustls/aws-lc-rs"]
+default   = ["ring"]
+ring      = ["hyper-rustls/ring"]
+
 [dependencies]
 anyhow.workspace         = true
 async-trait.workspace    = true
