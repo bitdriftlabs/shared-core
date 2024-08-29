@@ -208,7 +208,6 @@ impl LoggerBuilder {
       LoggerUpdate::new(
         buffer_manager.clone(),
         config_update_tx,
-        &runtime_loader,
         &scope.scope("config"),
       ),
       &scope,
