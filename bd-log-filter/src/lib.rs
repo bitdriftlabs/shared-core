@@ -368,7 +368,7 @@ impl RegexMatchAndSubstitute {
     loop {
       // This loop is designed to protect against infinite loops when a user provides a
       // substitution cycle that would result in endless processing.
-      if iterations >= 5 {
+      if iterations >= 10 {
         return current;
       }
       let replace_result = self.pattern.replace(&current, &self.substitution);
