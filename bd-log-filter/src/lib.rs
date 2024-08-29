@@ -255,8 +255,8 @@ impl SetField {
 
   fn apply(&self, log: &mut Log) {
     if !self.is_override_allowed && log.field_value(&self.field_name).is_some() {
-      // Return if a field with the desired field name already exists and the transform is not allowed
-      // to override existing values.
+      // Return if a field with the desired field name already exists and the transform is not
+      // allowed to override existing values.
       return;
     }
 
