@@ -8,7 +8,7 @@
 use crate::FilterChain;
 use bd_log_primitives::{log_level, Log, LogField, LogFields, LogType};
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
-use bd_test_helpers::{capture_fields, field_value, log_matches, set_field};
+use bd_test_helpers::{capture_field, field_value, log_matches, set_field};
 use time::macros::datetime;
 
 #[test]
@@ -16,7 +16,7 @@ fn filters_are_not_applied_to_non_matching_logs_only() {
   let (chain, _) = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
-      transforms: vec![capture_fields!(single "foo")],
+      transforms: vec![capture_field!(single "foo")],
       ..Default::default()
     }],
     ..Default::default()
@@ -41,7 +41,7 @@ fn filter_transforms_are_applied_in_order() {
       matcher: Some(log_matches!(message == "matching")).into(),
       transforms: vec![
         set_field!(matching("foo") = field_value!("bar")),
-        capture_fields!(single "foo"),
+        capture_field!(single "foo"),
       ],
       ..Default::default()
     }],
@@ -74,7 +74,7 @@ fn filters_are_applied_in_order() {
       },
       Filter {
         matcher: Some(log_matches!(message == "matching")).into(),
-        transforms: vec![capture_fields!(single "foo")],
+        transforms: vec![capture_field!(single "foo")],
         ..Default::default()
       },
     ],
@@ -101,7 +101,7 @@ fn capture_field_transform() {
   let (chain, _) = FilterChain::new(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(log_matches!(message == "matching")).into(),
-      transforms: vec![capture_fields!(single "foo")],
+      transforms: vec![capture_field!(single "foo")],
       ..Default::default()
     }],
     ..Default::default()

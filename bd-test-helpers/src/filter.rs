@@ -10,7 +10,7 @@ use filter::Transform;
 
 pub mod macros {
   #[macro_export]
-  macro_rules! capture_fields {
+  macro_rules! capture_field {
     (single $name:expr) => {
       $crate::filter::make_capture_fields($name);
     };
@@ -62,7 +62,7 @@ pub mod macros {
     };
   }
 
-  pub use {capture_fields, field_value, set_field};
+  pub use {capture_field, field_value, set_field};
 }
 
 #[must_use]
