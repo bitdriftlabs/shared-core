@@ -275,7 +275,6 @@ impl LoggerBuilder {
     let (logger, ch, future) = self.build()?;
 
     std::thread::Builder::new()
-      .name("io.bitdrift.capture.logger".to_string())
       .spawn(move || {
         tokio::runtime::Builder::new_current_thread()
           .thread_name("io.bitdrift.capture.logger")
