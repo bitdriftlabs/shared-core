@@ -71,7 +71,7 @@ mod tests {
     workflow_proto,
     workflows_configuration,
   };
-  use bd_test_helpers::{metric_tag, metric_value, set_field, RecordingErrorReporter};
+  use bd_test_helpers::{field_value, metric_tag, metric_value, set_field, RecordingErrorReporter};
   use std::ops::Add;
   use std::sync::Arc;
   use std::time::Instant;
@@ -1385,7 +1385,10 @@ mod tests {
         filters_configuration: Some(FiltersConfiguration {
           filters: vec![Filter {
             matcher: Some(log_matches!(message == "message")).into(),
-            transforms: vec![set_field!(captured("foo") = "fire workflow action!")],
+            transforms: vec![set_field!(
+              captured("foo") = field_value!("fire workflow action!"),
+              true
+            )],
             ..Default::default()
           }],
           ..Default::default()
