@@ -181,9 +181,12 @@ impl RingBufferImpl {
     });
 
     let cloned_shared_data = shared_data.clone();
-    let flush_thread = std::thread::spawn(move || {
-      cloned_shared_data.flush_thread_func();
-    });
+    let flush_thread = std::thread::Builder::new()
+      .name(format!("io.bitdrift.capture.ring_buffer.{name}"))
+      .spawn(move || {
+        cloned_shared_data.flush_thread_func();
+      })
+      .map_err(|e| Error::ThreadStartFailure(e.to_string()))?;
 
     Ok(Arc::new(Self {
       shared_data,

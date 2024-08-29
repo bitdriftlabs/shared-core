@@ -40,6 +40,8 @@ pub enum Error {
   BufferCreation(PathBuf, Box<Error>),
   #[error("Failed to convert a Path into a valid String")]
   InvalidFileName,
+  #[error("Failed to start a thread: {0}")]
+  ThreadStartFailure(String),
 }
 
 type Result<T> = std::result::Result<T, Error>;
