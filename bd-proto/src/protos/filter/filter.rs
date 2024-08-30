@@ -161,6 +161,8 @@ pub struct Filter {
     // message fields
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.matcher)
     pub matcher: ::protobuf::MessageField<super::log_matcher::LogMatcher>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.context_matcher)
+    pub context_matcher: ::protobuf::MessageField<super::matcher::RootMatcher>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.transforms)
     pub transforms: ::std::vec::Vec<filter::Transform>,
     // special fields
@@ -180,12 +182,17 @@ impl Filter {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut fields = ::std::vec::Vec::with_capacity(3);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::log_matcher::LogMatcher>(
             "matcher",
             |m: &Filter| { &m.matcher },
             |m: &mut Filter| { &mut m.matcher },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::matcher::RootMatcher>(
+            "context_matcher",
+            |m: &Filter| { &m.context_matcher },
+            |m: &mut Filter| { &mut m.context_matcher },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "transforms",
@@ -213,6 +220,9 @@ impl ::protobuf::Message for Filter {
                 10 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.matcher)?;
                 },
+                42 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.context_matcher)?;
+                },
                 18 => {
                     self.transforms.push(is.read_message()?);
                 },
@@ -232,6 +242,10 @@ impl ::protobuf::Message for Filter {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
+        if let Some(v) = self.context_matcher.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
         for value in &self.transforms {
             let len = value.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
@@ -244,6 +258,9 @@ impl ::protobuf::Message for Filter {
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
         if let Some(v) = self.matcher.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        }
+        if let Some(v) = self.context_matcher.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
         }
         for v in &self.transforms {
             ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
@@ -266,6 +283,7 @@ impl ::protobuf::Message for Filter {
 
     fn clear(&mut self) {
         self.matcher.clear();
+        self.context_matcher.clear();
         self.transforms.clear();
         self.special_fields.clear();
     }
@@ -273,6 +291,7 @@ impl ::protobuf::Message for Filter {
     fn default_instance() -> &'static Filter {
         static instance: Filter = Filter {
             matcher: ::protobuf::MessageField::none(),
+            context_matcher: ::protobuf::MessageField::none(),
             transforms: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
@@ -1763,43 +1782,45 @@ pub mod filter {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n/bitdrift_public/protobuf/filter/v1/filter.proto\x12\"bitdrift_public.\
-    protobuf.filter.v1\x1a\x17validate/validate.proto\x1a5bitdrift_public/pr\
-    otobuf/matcher/v1/log_matcher.proto\"\\\n\x14FiltersConfiguration\x12D\n\
-    \x07filters\x18\x01\x20\x03(\x0b2*.bitdrift_public.protobuf.filter.v1.Fi\
-    lterR\x07filters\"\xfb\x0b\n\x06Filter\x12S\n\x07matcher\x18\x01\x20\x01\
-    (\x0b2/.bitdrift_public.protobuf.matcher.v1.LogMatcherR\x07matcherB\x08\
-    \xfaB\x05\x8a\x01\x02\x10\x01\x12^\n\ntransforms\x18\x02\x20\x03(\x0b24.\
-    bitdrift_public.protobuf.filter.v1.Filter.TransformR\ntransformsB\x08\
-    \xfaB\x05\x92\x01\x02\x08\x01\x1a\xbb\n\n\tTransform\x12h\n\rcapture_fie\
-    ld\x18\x01\x20\x01(\x0b2A.bitdrift_public.protobuf.filter.v1.Filter.Tran\
-    sform.CaptureFieldH\0R\x0ccaptureField\x12\\\n\tset_field\x18\x02\x20\
-    \x01(\x0b2=.bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField\
-    H\0R\x08setField\x12e\n\x0cremove_field\x18\x03\x20\x01(\x0b2@.bitdrift_\
-    public.protobuf.filter.v1.Filter.Transform.RemoveFieldH\0R\x0bremoveFiel\
-    d\x12\x9b\x01\n\x20regex_match_and_substitute_field\x18\x04\x20\x01(\x0b\
-    2Q.bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubs\
-    tituteFieldH\0R\x1cregexMatchAndSubstituteField\x1a+\n\x0cCaptureField\
-    \x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\
-    \x01\x1a\xe2\x04\n\x08SetField\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04\
-    nameB\x07\xfaB\x04r\x02\x10\x01\x12k\n\x05value\x18\x02\x20\x01(\x0b2K.b\
-    itdrift_public.protobuf.filter.v1.Filter.Transform.SetField.SetFieldValu\
-    eR\x05valueB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12r\n\nfield_type\x18\x03\
-    \x20\x01(\x0e2G.bitdrift_public.protobuf.filter.v1.Filter.Transform.SetF\
-    ield.FieldTypeR\tfieldTypeB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12%\n\
-    \x0eallow_override\x18\x04\x20\x01(\x08R\rallowOverride\x1a\xf5\x01\n\rS\
-    etFieldValue\x12#\n\x0cstring_value\x18\x01\x20\x01(\tH\0R\x0bstringValu\
-    e\x12\x82\x01\n\x0eexisting_field\x18\x02\x20\x01(\x0b2Y.bitdrift_public\
-    .protobuf.filter.v1.Filter.Transform.SetField.SetFieldValue.ExistingFiel\
-    dH\0R\rexistingField\x1a,\n\rExistingField\x12\x1b\n\x04name\x18\x01\x20\
-    \x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01B\x0c\n\x05value\x12\x03\xf8B\
-    \x01\"9\n\tFieldType\x12\x0b\n\x07UNKNOWN\x10\0\x12\x0c\n\x08CAPTURED\
-    \x10\x01\x12\x11\n\rMATCHING_ONLY\x10\x02\x1a*\n\x0bRemoveField\x12\x1b\
-    \n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x1a\
-    \x8b\x01\n\x1cRegexMatchAndSubstituteField\x12\x1b\n\x04name\x18\x01\x20\
-    \x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x12!\n\x07pattern\x18\x02\
-    \x20\x01(\tR\x07patternB\x07\xfaB\x04r\x02\x10\x01\x12+\n\x0csubstitutio\
-    n\x18\x03\x20\x01(\tR\x0csubstitutionB\x07\xfaB\x04r\x02\x10\x01B\x15\n\
-    \x0etransform_type\x12\x03\xf8B\x01b\x06proto3\
+    protobuf.filter.v1\x1a\x17validate/validate.proto\x1a0bitdrift_public/pr\
+    otobuf/client/v1/matcher.proto\x1a5bitdrift_public/protobuf/matcher/v1/l\
+    og_matcher.proto\"\\\n\x14FiltersConfiguration\x12D\n\x07filters\x18\x01\
+    \x20\x03(\x0b2*.bitdrift_public.protobuf.filter.v1.FilterR\x07filters\"\
+    \xd5\x0c\n\x06Filter\x12S\n\x07matcher\x18\x01\x20\x01(\x0b2/.bitdrift_p\
+    ublic.protobuf.matcher.v1.LogMatcherR\x07matcherB\x08\xfaB\x05\x8a\x01\
+    \x02\x10\x01\x12X\n\x0fcontext_matcher\x18\x05\x20\x01(\x0b2/.bitdrift_p\
+    ublic.protobuf.client.v1.RootMatcherR\x0econtextMatcher\x12^\n\ntransfor\
+    ms\x18\x02\x20\x03(\x0b24.bitdrift_public.protobuf.filter.v1.Filter.Tran\
+    sformR\ntransformsB\x08\xfaB\x05\x92\x01\x02\x08\x01\x1a\xbb\n\n\tTransf\
+    orm\x12h\n\rcapture_field\x18\x01\x20\x01(\x0b2A.bitdrift_public.protobu\
+    f.filter.v1.Filter.Transform.CaptureFieldH\0R\x0ccaptureField\x12\\\n\ts\
+    et_field\x18\x02\x20\x01(\x0b2=.bitdrift_public.protobuf.filter.v1.Filte\
+    r.Transform.SetFieldH\0R\x08setField\x12e\n\x0cremove_field\x18\x03\x20\
+    \x01(\x0b2@.bitdrift_public.protobuf.filter.v1.Filter.Transform.RemoveFi\
+    eldH\0R\x0bremoveField\x12\x9b\x01\n\x20regex_match_and_substitute_field\
+    \x18\x04\x20\x01(\x0b2Q.bitdrift_public.protobuf.filter.v1.Filter.Transf\
+    orm.RegexMatchAndSubstituteFieldH\0R\x1cregexMatchAndSubstituteField\x1a\
+    +\n\x0cCaptureField\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\
+    \xfaB\x04r\x02\x10\x01\x1a\xe2\x04\n\x08SetField\x12\x1b\n\x04name\x18\
+    \x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x12k\n\x05value\x18\
+    \x02\x20\x01(\x0b2K.bitdrift_public.protobuf.filter.v1.Filter.Transform.\
+    SetField.SetFieldValueR\x05valueB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12r\
+    \n\nfield_type\x18\x03\x20\x01(\x0e2G.bitdrift_public.protobuf.filter.v1\
+    .Filter.Transform.SetField.FieldTypeR\tfieldTypeB\n\xfaB\x07\x82\x01\x04\
+    \x10\x01\x20\0\x12%\n\x0eallow_override\x18\x04\x20\x01(\x08R\rallowOver\
+    ride\x1a\xf5\x01\n\rSetFieldValue\x12#\n\x0cstring_value\x18\x01\x20\x01\
+    (\tH\0R\x0bstringValue\x12\x82\x01\n\x0eexisting_field\x18\x02\x20\x01(\
+    \x0b2Y.bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField.SetF\
+    ieldValue.ExistingFieldH\0R\rexistingField\x1a,\n\rExistingField\x12\x1b\
+    \n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01B\x0c\n\
+    \x05value\x12\x03\xf8B\x01\"9\n\tFieldType\x12\x0b\n\x07UNKNOWN\x10\0\
+    \x12\x0c\n\x08CAPTURED\x10\x01\x12\x11\n\rMATCHING_ONLY\x10\x02\x1a*\n\
+    \x0bRemoveField\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\
+    \x04r\x02\x10\x01\x1a\x8b\x01\n\x1cRegexMatchAndSubstituteField\x12\x1b\
+    \n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x12!\n\
+    \x07pattern\x18\x02\x20\x01(\tR\x07patternB\x07\xfaB\x04r\x02\x10\x01\
+    \x12+\n\x0csubstitution\x18\x03\x20\x01(\tR\x0csubstitutionB\x07\xfaB\
+    \x04r\x02\x10\x01B\x15\n\x0etransform_type\x12\x03\xf8B\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1816,8 +1837,9 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(2);
+            let mut deps = ::std::vec::Vec::with_capacity(3);
             deps.push(super::validate::file_descriptor().clone());
+            deps.push(super::matcher::file_descriptor().clone());
             deps.push(super::log_matcher::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(9);
             messages.push(FiltersConfiguration::generated_message_descriptor_data());
