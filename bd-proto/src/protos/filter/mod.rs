@@ -7,6 +7,5 @@
 
 pub mod filter;
 
-use super::client::matcher;
 use super::log_matcher::log_matcher;
 use bd_pgv::generated::protos::validate;
