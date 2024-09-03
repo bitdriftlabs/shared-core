@@ -69,7 +69,7 @@ impl OffsetDateTimeExt for OffsetDateTime {
 
     let unix_timestamp = self.unix_timestamp();
     let rounded_down = unix_timestamp - unix_timestamp.rem_euclid(interval.whole_seconds());
-    OffsetDateTime::from_unix_timestamp(rounded_down).unwrap()
+    Self::from_unix_timestamp(rounded_down).unwrap()
   }
 
   fn ceil(&self, interval: time::Duration) -> OffsetDateTime {
@@ -83,7 +83,7 @@ impl OffsetDateTimeExt for OffsetDateTime {
 
     let rounded_up = unix_timestamp + interval.whole_seconds()
       - unix_timestamp.rem_euclid(interval.whole_seconds());
-    OffsetDateTime::from_unix_timestamp(rounded_up).unwrap()
+    Self::from_unix_timestamp(rounded_up).unwrap()
   }
 }
 
