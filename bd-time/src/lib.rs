@@ -5,6 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(test)]
+#[path = "./lib_test.rs"]
+mod test;
+
 use parking_lot::Mutex;
 use protobuf::well_known_types::timestamp::Timestamp;
 use protobuf::MessageField;
@@ -19,8 +23,25 @@ use tokio::time::{interval, interval_at, Interval, Timeout};
 //
 
 pub trait OffsetDateTimeExt {
+  /// Convert into a protobuf Timestamp.
   fn into_proto(self) -> MessageField<Timestamp>;
+
+  /// Convert into a unix timestamp in milliseconds with millisecond precision.
   fn unix_timestamp_ms(&self) -> i64;
+
+  /// Rounds down the given timestamp to the nearest interval.
+  ///
+  /// For example, if the interval is 5 minutes, then 12:03:00 would be rounded down to 12:00:00.
+  ///
+  /// Note that `interval` will be rounded down to the nearest second and should be positive.
+  fn floor(&self, interval: time::Duration) -> OffsetDateTime;
+
+  /// Rounds up the given timestamp to the nearest interval.
+  ///
+  /// For example, if the interval is 5 minutes, then 12:03:00 would be rounded up to 12:05:00.
+  ///
+  /// Note that `interval` will be rounded down to the nearest second and should be positive.
+  fn ceil(&self, interval: time::Duration) -> OffsetDateTime;
 }
 
 impl OffsetDateTimeExt for OffsetDateTime {
@@ -41,6 +62,28 @@ impl OffsetDateTimeExt for OffsetDateTime {
   #[must_use]
   fn unix_timestamp_ms(&self) -> i64 {
     self.unix_timestamp() * 1_000 + i64::from(self.nanosecond() / 1_000_000)
+  }
+
+  fn floor(&self, interval: time::Duration) -> OffsetDateTime {
+    debug_assert!(interval.whole_seconds() >= 0);
+
+    let unix_timestamp = self.unix_timestamp();
+    let rounded_down = unix_timestamp - unix_timestamp.rem_euclid(interval.whole_seconds());
+    OffsetDateTime::from_unix_timestamp(rounded_down).unwrap()
+  }
+
+  fn ceil(&self, interval: time::Duration) -> OffsetDateTime {
+    debug_assert!(interval.whole_seconds() >= 0);
+
+    let unix_timestamp = self.unix_timestamp();
+    let rem = unix_timestamp.rem_euclid(interval.whole_seconds());
+    if rem == 0 {
+      return *self;
+    }
+
+    let rounded_up = unix_timestamp + interval.whole_seconds()
+      - unix_timestamp.rem_euclid(interval.whole_seconds());
+    OffsetDateTime::from_unix_timestamp(rounded_up).unwrap()
   }
 }
 
