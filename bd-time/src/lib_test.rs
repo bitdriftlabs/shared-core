@@ -38,10 +38,7 @@ fn timestamp_floor() {
     assert_eq!(
       input.floor(*interval),
       *expected,
-      "{} should round to {} with interval {}",
-      input,
-      expected,
-      interval
+      "{input} should round to {expected} with interval {interval}",
     );
   }
 }
@@ -75,10 +72,7 @@ fn timestamp_ceil() {
     assert_eq!(
       input.ceil(*interval),
       *expected,
-      "{} should ceil to {} with interval {}",
-      input,
-      expected,
-      interval
+      "{input} should ceil to {expected} with interval {interval}",
     );
   }
 }
