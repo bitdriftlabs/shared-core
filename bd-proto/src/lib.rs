@@ -8,11 +8,12 @@
 #![allow(
   elided_lifetimes_in_paths,
   unused_extern_crates,
-  explicit_outlives_requirements
+  explicit_outlives_requirements,
+  renamed_and_removed_lints
 )]
 
 #[rustfmt::skip]
-#[allow(clippy::box_pointers, clippy::nursery, clippy::pedantic, clippy::style)]
+#[allow(clippy::nursery, clippy::pedantic, clippy::style)]
 #[cfg(not(tarpaulin_include))]
 pub mod flatbuffers;
 #[allow(
