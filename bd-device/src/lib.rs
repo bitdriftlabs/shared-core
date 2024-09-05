@@ -27,7 +27,7 @@ pub struct Device {
 
 impl Device {
   #[must_use]
-  pub fn new(store: Arc<Store>) -> Self {
+  pub const fn new(store: Arc<Store>) -> Self {
     Self {
       store,
       id: parking_lot::Mutex::new(None),
