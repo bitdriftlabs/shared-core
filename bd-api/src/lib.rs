@@ -132,7 +132,7 @@ pub struct TriggerUpload {
 
 impl TriggerUpload {
   #[must_use]
-  pub fn new(buffer_ids: Vec<String>) -> Self {
+  pub const fn new(buffer_ids: Vec<String>) -> Self {
     Self { buffer_ids }
   }
 }

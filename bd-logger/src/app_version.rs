@@ -59,7 +59,7 @@ pub(crate) struct Repository {
 }
 
 impl Repository {
-  pub(crate) fn new(store: Arc<bd_key_value::Store>) -> Self {
+  pub(crate) const fn new(store: Arc<bd_key_value::Store>) -> Self {
     Self { store }
   }
 

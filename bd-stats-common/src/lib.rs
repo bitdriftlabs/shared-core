@@ -42,7 +42,7 @@ pub struct Id {
 
 impl Id {
   #[must_use]
-  pub fn new(name: String, labels: BTreeMap<String, String>) -> Self {
+  pub const fn new(name: String, labels: BTreeMap<String, String>) -> Self {
     Self { name, labels }
   }
 }

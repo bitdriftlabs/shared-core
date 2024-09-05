@@ -86,7 +86,7 @@ impl State {
 
 impl<T> RateLimit<T> {
   /// Create a new rate limiter
-  fn new(inner: T, shared_state: Arc<Mutex<SharedState>>) -> Self {
+  const fn new(inner: T, shared_state: Arc<Mutex<SharedState>>) -> Self {
     Self {
       inner,
       shared_state,

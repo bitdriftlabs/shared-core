@@ -884,9 +884,8 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
   let (tx, rx) = mpsc::channel(1);
   let (headers, extensions, message) = decode_request::<RequestType>(request, validate_request)
     .await
-    .map_err(|err| {
+    .inspect_err(|_| {
       stream_stats.stream_completion_failures_total.inc();
-      err
     })?;
 
   tokio::spawn(async move {
