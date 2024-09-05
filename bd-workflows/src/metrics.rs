@@ -32,7 +32,7 @@ pub(crate) struct MetricsCollector {
 }
 
 impl MetricsCollector {
-  pub(crate) fn new(dynamic_stats: Arc<DynamicStats>) -> Self {
+  pub(crate) const fn new(dynamic_stats: Arc<DynamicStats>) -> Self {
     Self {
       dynamic_stats,
       insights_dimensions: None,

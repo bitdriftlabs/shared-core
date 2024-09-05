@@ -120,12 +120,12 @@ impl Version {
     // clearly isn't valid semver, but seems like a reasonable approximation to how people might
     // use versions in practice.
     let (s, revision) = s
-      .split_once(|c| c == '-')
+      .split_once('-')
       .map(|(s, suffix)| (s, Some(suffix.to_string())))
       .unwrap_or((s, None));
 
     let (s, build_metadata) = s
-      .split_once(|c| c == '+')
+      .split_once('+')
       .map(|(s, suffix)| (s, Some(suffix.to_string())))
       .unwrap_or((s, None));
 

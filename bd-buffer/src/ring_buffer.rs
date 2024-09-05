@@ -117,7 +117,7 @@ pub struct BuffersWithAck {
 impl BuffersWithAck {
   // Flush specific buffers. Empty list of buffers means flush all buffers.
   #[must_use]
-  pub fn new(buffers: Vec<String>, completed_tx: Option<bd_completion::Sender<()>>) -> Self {
+  pub const fn new(buffers: Vec<String>, completed_tx: Option<bd_completion::Sender<()>>) -> Self {
     Self {
       buffers,
       completed_tx,
@@ -126,7 +126,7 @@ impl BuffersWithAck {
 
   // Flush all buffers.
   #[must_use]
-  pub fn new_all_buffers(completed_tx: Option<bd_completion::Sender<()>>) -> Self {
+  pub const fn new_all_buffers(completed_tx: Option<bd_completion::Sender<()>>) -> Self {
     Self {
       buffers: Vec::new(),
       completed_tx,

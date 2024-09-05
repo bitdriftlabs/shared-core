@@ -331,7 +331,7 @@ pub struct Flusher<T: TimeProvider, F: SerializedFileSystem> {
 }
 
 impl<T: TimeProvider, F: SerializedFileSystem> Flusher<T, F> {
-  pub fn new(
+  pub const fn new(
     stats: Arc<Stats>,
     shutdown: ComponentShutdown,
     flush_interval_flag: Watch<u32, DirectStatFlushIntervalFlag>,

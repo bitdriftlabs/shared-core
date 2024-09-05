@@ -50,7 +50,7 @@ impl Workflow {
     }
   }
 
-  pub(crate) fn new_with_runs(config_id: String, runs: Vec<Run>) -> Self {
+  pub(crate) const fn new_with_runs(config_id: String, runs: Vec<Run>) -> Self {
     Self {
       id: config_id,
       runs,

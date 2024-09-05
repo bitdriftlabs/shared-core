@@ -850,9 +850,8 @@ impl StateStore {
       // State is cached
       self
         .load_state()
-        .map(|workflows_state| {
+        .inspect(|_| {
           self.stats.state_load_successes_total.inc();
-          workflows_state
         })
         .map_err(|e| {
           log::debug!("failed to deserialize workflows: {e}");
@@ -968,7 +967,7 @@ pub(crate) struct WorkflowsState {
 }
 
 impl WorkflowsState {
-  fn new_uninitialized() -> Self {
+  const fn new_uninitialized() -> Self {
     Self {
       session_id: String::new(),
       workflows: vec![],
