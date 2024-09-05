@@ -35,7 +35,7 @@ pub struct RuntimeManager {
 impl RuntimeManager {
   /// Creates a new `RuntimeManager` which is responsible for applying configuration updates and a
   /// handle to the config loader which can be used to read runtime values.
-  pub fn new(loader: Arc<ConfigLoader>) -> Self {
+  pub const fn new(loader: Arc<ConfigLoader>) -> Self {
     Self { loader }
   }
 
