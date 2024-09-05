@@ -5,5 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[allow(clippy::nursery, clippy::pedantic, clippy::style, renamed_and_removed_lints)]
+#[allow(
+  clippy::nursery,
+  clippy::pedantic,
+  clippy::style,
+  renamed_and_removed_lints
+)]
 pub mod proto;
