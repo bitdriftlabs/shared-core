@@ -8,8 +8,7 @@
 #![allow(
   elided_lifetimes_in_paths,
   unused_extern_crates,
-  explicit_outlives_requirements,
-  renamed_and_removed_lints
+  explicit_outlives_requirements
 )]
 
 #[rustfmt::skip]
