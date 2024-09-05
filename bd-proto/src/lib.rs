@@ -12,7 +12,7 @@
 )]
 
 #[rustfmt::skip]
-#[allow(clippy::nursery, clippy::pedantic, clippy::style)]
+#[allow(clippy::box_pointers, clippy::nursery, clippy::pedantic, clippy::style)]
 #[cfg(not(tarpaulin_include))]
 pub mod flatbuffers;
 #[allow(
