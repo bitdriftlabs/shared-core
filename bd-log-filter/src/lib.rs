@@ -14,6 +14,7 @@ use bd_log_primitives::{FieldsRef, Log, LogField, LogFields};
 use bd_proto::protos::filter::filter::filter::{self};
 use bd_proto::protos::filter::filter::{Filter as FilterProto, FiltersConfiguration};
 use filter::transform::Transform_type;
+use itertools::Itertools;
 use regex::Regex;
 use std::borrow::Cow;
 
@@ -36,7 +37,6 @@ impl FilterChain {
   // Returns the creates `FilterChain` instance and the number of filters that could not be created
   // due to config parsing failures.
   pub fn new(configs: FiltersConfiguration) -> (Self, u64) {
-    log::error!("creating new filters {:?}", configs);
     let mut failures_count = 0;
     let filters = configs
       .filters
@@ -55,7 +55,13 @@ impl FilterChain {
           })
           .ok()
       })
-      .collect();
+      .collect_vec();
+
+    log::debug!(
+      "{} filters created, {} failed",
+      filters.len(),
+      failures_count
+    );
 
     (Self { filters }, failures_count)
   }
@@ -69,6 +75,12 @@ impl FilterChain {
       {
         continue;
       }
+
+      log::trace!(
+        "filter matched {:?} log, applying {} transforms",
+        log.message,
+        filter.transforms.len()
+      );
 
       for transform in &filter.transforms {
         transform.apply(log);
