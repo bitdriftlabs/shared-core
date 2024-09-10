@@ -37,8 +37,6 @@ impl FilterChain {
   // Returns the creates `FilterChain` instance and the number of filters that could not be created
   // due to config parsing failures.
   pub fn new(configs: FiltersConfiguration) -> (Self, u64) {
-    log::error!("filter chain config: {:?}", configs);
-
     let mut failures_count = 0;
     let filters = configs
       .filters
