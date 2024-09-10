@@ -298,7 +298,7 @@ impl ApplyConfig for LoggerUpdate {
       })
       .await
     {
-      log::debug!("failed to inform push workflows config update to a channel: {e:?}");
+      log::debug!("failed to push config update to a channel: {e:?}");
     }
 
     Ok(())
