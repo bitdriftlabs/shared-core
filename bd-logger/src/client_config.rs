@@ -250,7 +250,7 @@ impl ApplyConfig for LoggerUpdate {
       workflows,
       insights,
       bdtail,
-      ..
+      filters,
     } = configuration;
 
     let maybe_stream_buffer = self
@@ -272,7 +272,7 @@ impl ApplyConfig for LoggerUpdate {
       WorkflowsConfiguration::default()
     };
 
-    let (filter_chain, filter_config_parse_failure_count) = FilterChain::new(configuration.filters);
+    let (filter_chain, filter_config_parse_failure_count) = FilterChain::new(filters);
     self
       .filter_config_parse_failure
       .inc_by(filter_config_parse_failure_count);
@@ -298,7 +298,7 @@ impl ApplyConfig for LoggerUpdate {
       })
       .await
     {
-      log::debug!("failed to inform push workflows config update to a channel: {e:?}");
+      log::debug!("failed to push config update to a channel: {e:?}");
     }
 
     Ok(())

@@ -621,6 +621,7 @@ dependencies = [
  "bd-test-helpers",
  "bd-time",
  "ctor",
+ "itertools 0.13.0",
  "log",
  "pretty_assertions",
  "regex",

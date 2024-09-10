@@ -164,6 +164,7 @@ impl ProcessingPipeline {
     self.buffer_selector = config.buffer_selector;
     self.buffer_producers = config.buffer_producers;
     self.tail_configs = config.tail_configs;
+    self.filter_chain = config.filter_chain;
 
     if self.workflows_enabled_flag.read_mark_update() {
       let workflows_engine_config = WorkflowsEngineConfig::new(
