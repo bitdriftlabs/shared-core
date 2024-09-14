@@ -41,7 +41,7 @@ const SEP: &str = ":";
 // 10 of the same value is 22 bytes encoded. A sketch with 10 values ranging in steps from 10 to
 // 100 is 39 bytes encoded. Given that 5 double sent directly is 40 bytes, starting with 5 seems
 // reasonable and we can further refine later.
-const MAX_INLINE_HISTOGRAM_VALUES: usize = 5;
+const MAX_INLINE_HISTOGRAM_VALUES: usize = 500;
 
 #[must_use]
 pub fn make_sketch() -> DDSketch {

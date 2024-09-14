@@ -411,7 +411,7 @@ impl Api {
       ]);
 
       let compression_enabled = self.compression_enabled.read();
-      let compression = compression_enabled.then_some(Compression::Zlib);
+      let compression = None;
       if compression.is_some() {
         headers.insert("x-grpc-encoding", "deflate");
       }
