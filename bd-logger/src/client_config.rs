@@ -330,7 +330,7 @@ impl Inner {
       log.message,
       log.fields.captured_fields,
       log.session_id,
-      &log.occurred_at,
+      log.occurred_at,
       std::iter::empty(),
       stream_ids,
       |data| {

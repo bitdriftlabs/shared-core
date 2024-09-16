@@ -51,7 +51,7 @@ unwrap-infallible.workspace  = true
 assert_matches.workspace    = true
 bd-hyper-network            = { path = "../bd-hyper-network" }
 bd-noop-network             = { path = "../bd-noop-network" }
-bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
+bd-test-helpers             = { path = "../bd-test-helpers", default-features = false, features = ["test_logger"] }
 ctor.workspace              = true
 pretty_assertions.workspace = true
 tempfile.workspace          = true

@@ -56,7 +56,7 @@ pub fn make_log<'a: 'b, 'b>(
   message: &LogMessage,
   fields: &LogFields,
   session_id: &str,
-  timestamp: &time::OffsetDateTime,
+  timestamp: time::OffsetDateTime,
   workflow_flush_buffer_action_ids: impl Iterator<Item = &'b str>,
   stream_ids: impl Iterator<Item = &'b str>,
   log_output: impl FnOnce(&[u8]) -> anyhow::Result<()>,

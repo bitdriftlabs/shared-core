@@ -11,8 +11,10 @@ use assert_matches::assert_matches;
 use bd_api::upload::Tracked;
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::{Buffer, BufferEvent, BufferEventWithResponse, RingBuffer, RingBufferStats};
+use bd_client_common::fb::make_log;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
+use bd_log_primitives::{log_level, LogType};
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::client::api::ApiRequest;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
@@ -20,6 +22,7 @@ use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use bd_time::TimeDurationExt;
+use flatbuffers::FlatBufferBuilder;
 use futures_util::poll;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -75,6 +78,7 @@ impl SetupSingleConsumer {
         max_batch_size_logs: runtime_loader_clone.register_watch().unwrap(),
         max_match_size_bytes: runtime_loader_clone.register_watch().unwrap(),
         batch_deadline_watch: runtime_loader_clone.register_watch().unwrap(),
+        upload_lookback_window_feature_flag: runtime_loader_clone.register_watch().unwrap(),
       },
       shutdown_trigger.make_shutdown(),
       "buffer".to_string(),
@@ -214,9 +218,9 @@ async fn upload_retries() {
     .assert_counter_eq(20, "uploader:retry_limit_exceeded_dropped_logs", labels! {});
 }
 
-#[tokio::test]
 // Validates that we are limiting the total byte size of the batch upload for the continuous
 // buffers.
+#[tokio::test]
 async fn continuous_buffer_upload_byte_limit() {
   let mut setup = SetupSingleConsumer::new();
 
@@ -399,11 +403,94 @@ async fn uploading_never_succeeds() {
   setup.shutdown().await;
 }
 
+#[tokio::test]
+async fn age_limit_log_uploads() {
+  let mut setup = SetupMultiConsumer::new(1, 1000);
+  let (buffer, mut producer) =
+    create_trigger_buffer(setup.temp_directory.path().join("buffer").as_path());
+
+  setup
+    .buffer_event_tx
+    .send(
+      BufferEventWithResponse::new(BufferEvent::TriggerBufferCreated(
+        "buffer".to_string(),
+        buffer.clone(),
+      ))
+      .0,
+    )
+    .await
+    .unwrap();
+
+  // Yield to allow processing the above buffer creation event at the right time.
+  tokio::task::yield_now().await;
+
+  setup
+    .runtime_loader
+    .update_snapshot(&make_simple_update(vec![
+      (
+        bd_runtime::runtime::log_upload::FlushBufferLookbackWindow::path(),
+        ValueKind::Int(5.minutes().whole_milliseconds().try_into().unwrap()),
+      ),
+      (
+        bd_runtime::runtime::log_upload::BatchDeadlineFlag::path(),
+        ValueKind::Int(10),
+      ),
+    ]));
+
+  let now = time::OffsetDateTime::now_utc();
+  for i in (0 .. 10).rev() {
+    producer
+      .write(&make_test_log(now - time::Duration::minutes(i)))
+      .unwrap();
+  }
+
+  setup.trigger_buffer_upload("buffer").await;
+
+  // Wait for the logs to get flushed to disk.
+  let log_upload = setup.next_upload().await;
+  assert_eq!(log_upload.payload.log_upload().logs.len(), 5);
+
+
+  setup
+    .stats
+    .assert_counter_eq(5, "consumer:old_logs_dropped", labels! {});
+
+  // Tear down the structure
+  setup.shutdown().await;
+}
+
+fn make_test_log(t: time::OffsetDateTime) -> Vec<u8> {
+  let mut fbb = FlatBufferBuilder::new();
+
+  let mut log = Vec::new();
+
+  make_log(
+    &mut fbb,
+    log_level::INFO,
+    LogType::Normal,
+    &"".into(),
+    &vec![],
+    "",
+    t,
+    std::iter::empty(),
+    std::iter::empty(),
+    |l| {
+      log = l.to_vec();
+      Ok(())
+    },
+  )
+  .unwrap();
+
+  log
+}
+
 struct SetupMultiConsumer {
   log_upload_rx: Receiver<DataUpload>,
   shutdown_trigger: ComponentShutdownTrigger,
   buffer_event_tx: Sender<BufferEventWithResponse>,
   trigger_upload_tx: Sender<TriggerUpload>,
+  runtime_loader: Arc<ConfigLoader>,
+  stats: Collector,
 
   temp_directory: tempfile::TempDir,
 }
@@ -412,6 +499,7 @@ impl SetupMultiConsumer {
   fn new(batch_size: u32, byte_limit: u32) -> Self {
     tokio::time::pause();
 
+    let stats = Collector::default();
     let temp_directory = TempDir::with_prefix("consumertest").unwrap();
     let (buffer_event_tx, buffer_event_rx) = channel(1);
 
@@ -431,14 +519,16 @@ impl SetupMultiConsumer {
       ),
     ]));
     let shutdown = shutdown_trigger.make_shutdown();
+    let config_loader_clone = config_loader.clone();
+    let collector_clone = stats.clone();
     tokio::spawn(async move {
       BufferUploadManager::new(
         log_upload_tx,
-        &config_loader,
+        &config_loader_clone,
         shutdown,
         buffer_event_rx,
         trigger_upload_rx,
-        &Collector::default().scope(""),
+        &collector_clone.scope("consumer"),
         bd_internal_logging::NoopLogger::new(),
       )
       .unwrap()
@@ -453,6 +543,8 @@ impl SetupMultiConsumer {
       buffer_event_tx,
       trigger_upload_tx,
       temp_directory,
+      runtime_loader: config_loader,
+      stats,
     }
   }
 

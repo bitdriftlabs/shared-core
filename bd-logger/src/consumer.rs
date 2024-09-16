@@ -16,7 +16,7 @@ use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
 use bd_client_common::error::handle_unexpected_error_with_details;
 use bd_client_common::fb::root_as_log;
-use bd_client_stats_store::Scope;
+use bd_client_stats_store::{Counter, Scope};
 use bd_runtime::runtime::{ConfigLoader, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use std::collections::{HashMap, HashSet};
@@ -44,7 +44,7 @@ struct Flags {
 
   // The lookback window for the flush buffer uploads.
   upload_lookback_window_feature_flag:
-    Watch<u32, bd_runtime::runtime::workflows::FlushBufferLookbackWindow>,
+    Watch<u32, bd_runtime::runtime::log_upload::FlushBufferLookbackWindow>,
 }
 
 // Responsible for managing the lifetime of upload tasks as buffers are added/removed via dynamic
@@ -84,6 +84,8 @@ pub struct BufferUploadManager {
   // Shutdown trigger for the stream buffer upload task, allowing us to cancel the task once the
   // buffer is no longer needed.
   stream_buffer_shutdown_trigger: Option<ComponentShutdownTrigger>,
+
+  old_logs_dropped: Counter,
 }
 
 impl BufferUploadManager {
@@ -112,6 +114,7 @@ impl BufferUploadManager {
       active_trigger_uploads: HashSet::new(),
       logging,
       stream_buffer_shutdown_trigger: None,
+      old_logs_dropped: stats.counter("old_logs_dropped"),
     })
   }
 
@@ -337,6 +340,7 @@ impl BufferUploadManager {
       self.feature_flags.clone(),
       self.log_upload_service.clone(),
       buffer_name.to_string(),
+      self.old_logs_dropped.clone(),
     ))
   }
 }
@@ -583,6 +587,8 @@ struct CompleteBufferUpload {
   buffer_id: String,
 
   lookback_window: Option<time::OffsetDateTime>,
+
+  old_logs_dropped: Counter,
 }
 
 impl CompleteBufferUpload {
@@ -591,6 +597,7 @@ impl CompleteBufferUpload {
     runtime_flags: Flags,
     log_upload_service: service::Upload,
     buffer_id: String,
+    old_logs_dropped: Counter,
   ) -> Self {
     let lookback_window_limit = runtime_flags
       .upload_lookback_window_feature_flag
@@ -609,6 +616,7 @@ impl CompleteBufferUpload {
       log_upload_service,
       buffer_id,
       lookback_window,
+      old_logs_dropped,
     }
   }
 
@@ -626,13 +634,13 @@ impl CompleteBufferUpload {
         // Log available, add to batch and flush if batch size hit.
         Ok(log) => {
           if let Ok(log) = root_as_log(&log) {
-            log::debug!("received log: {:?}", log);
             if let Some(lookback_window) = self.lookback_window {
               if let Some(ts) = log.timestamp() {
                 let ts = OffsetDateTime::from_unix_timestamp(ts.seconds()).unwrap()
                   + time::Duration::nanoseconds(ts.nanos() as i64);
                 if ts < lookback_window {
                   log::debug!("skipping log, outside lookback window");
+                  self.old_logs_dropped.inc();
                   continue;
                 }
               }

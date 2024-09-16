@@ -374,7 +374,7 @@ impl ProcessingPipeline {
       log.message,
       log.fields.captured_fields,
       log.session_id,
-      &log.occurred_at,
+      log.occurred_at,
       workflow_flush_buffer_action_ids,
       std::iter::empty(),
       |data| {
@@ -451,7 +451,7 @@ impl ProcessingPipeline {
         log.message,
         log.fields.captured_fields,
         log.session_id,
-        &log.occurred_at,
+        log.occurred_at,
         triggered_flush_buffers_action_ids.clone().into_iter(),
         std::iter::empty(),
         |synthetic_log| {
