@@ -788,6 +788,15 @@ pub mod workflows {
     "workflows.state_periodic_write_interval_ms",
     5000
   ); // 5s
+
+  // Normally when logs are flushed from the trigger buffer we upload all logs in the buffer. This
+  // flag allows adding a maximum lookback period, which has us drop all logs older than the
+  // specified time. This is useful for limiting the amount of logs uploaded per trigger upload.
+  int_feature_flag!(
+    FlushBufferLookbackWindow,
+    "workflows.flush_buffer_lookback_ms",
+    0
+  ); // 0, disabled
 }
 
 pub mod filters {

@@ -15,12 +15,14 @@ use bd_api::upload::LogBatch;
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
 use bd_client_common::error::handle_unexpected_error_with_details;
+use bd_client_common::fb::root_as_log;
 use bd_client_stats_store::Scope;
 use bd_runtime::runtime::{ConfigLoader, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
+use time::OffsetDateTime;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::Instant;
 use tower::{Service, ServiceExt};
@@ -39,7 +41,10 @@ struct Flags {
   // The duration to wait before uploading an incomplete batch. The batch will be uploaded
   // at this point regardless of log activity.
   batch_deadline_watch: Watch<u32, bd_runtime::runtime::log_upload::BatchDeadlineFlag>,
-  // The interval at which to check the buffer for new records.
+
+  // The lookback window for the flush buffer uploads.
+  upload_lookback_window_feature_flag:
+    Watch<u32, bd_runtime::runtime::workflows::FlushBufferLookbackWindow>,
 }
 
 // Responsible for managing the lifetime of upload tasks as buffers are added/removed via dynamic
@@ -97,6 +102,7 @@ impl BufferUploadManager {
         max_batch_size_logs: runtime_loader.register_watch()?,
         max_match_size_bytes: runtime_loader.register_watch()?,
         batch_deadline_watch: runtime_loader.register_watch()?,
+        upload_lookback_window_feature_flag: runtime_loader.register_watch()?,
       },
       shutdown,
       buffer_event_rx,
@@ -575,20 +581,34 @@ struct CompleteBufferUpload {
 
   // The buffer that is being uploaded.
   buffer_id: String,
+
+  lookback_window: Option<time::OffsetDateTime>,
 }
 
 impl CompleteBufferUpload {
-  const fn new(
+  fn new(
     consumer: Consumer,
     runtime_flags: Flags,
     log_upload_service: service::Upload,
     buffer_id: String,
   ) -> Self {
+    let lookback_window_limit = runtime_flags
+      .upload_lookback_window_feature_flag
+      .read()
+      .into();
+
+    let lookback_window = if lookback_window_limit == 0 {
+      None
+    } else {
+      Some(OffsetDateTime::now_utc() - Duration::from_millis(lookback_window_limit))
+    };
+
     Self {
       consumer,
       batch_builder: BatchBuilder::new(runtime_flags),
       log_upload_service,
       buffer_id,
+      lookback_window,
     }
   }
 
@@ -601,9 +621,24 @@ impl CompleteBufferUpload {
     let mut total_logs = 0;
     loop {
       let entry = self.consumer.try_read();
+
       match entry {
         // Log available, add to batch and flush if batch size hit.
         Ok(log) => {
+          if let Ok(log) = root_as_log(&log) {
+            log::debug!("received log: {:?}", log);
+            if let Some(lookback_window) = self.lookback_window {
+              if let Some(ts) = log.timestamp() {
+                let ts = OffsetDateTime::from_unix_timestamp(ts.seconds()).unwrap()
+                  + time::Duration::nanoseconds(ts.nanos() as i64);
+                if ts < lookback_window {
+                  log::debug!("skipping log, outside lookback window");
+                  continue;
+                }
+              }
+            }
+          }
+
           total_logs += 1;
           self.batch_builder.add_log(log);
         },
