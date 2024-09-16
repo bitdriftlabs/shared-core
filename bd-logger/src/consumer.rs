@@ -637,7 +637,7 @@ impl CompleteBufferUpload {
             if let Some(lookback_window) = self.lookback_window {
               if let Some(ts) = log.timestamp() {
                 let ts = OffsetDateTime::from_unix_timestamp(ts.seconds()).unwrap()
-                  + time::Duration::nanoseconds(ts.nanos() as i64);
+                  + time::Duration::nanoseconds(i64::from(ts.nanos()));
                 if ts < lookback_window {
                   log::debug!("skipping log, outside lookback window");
                   self.old_logs_dropped.inc();
