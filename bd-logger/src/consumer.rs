@@ -366,7 +366,7 @@ impl BatchBuilder {
       return false;
     }
 
-    let max_batch_size_logs = self.flags.max_batch_size_logs.read() as usize;
+    let max_batch_size_logs = 10 as usize;
     let max_batch_size_bytes = self.flags.max_match_size_bytes.read() as usize;
 
     max_batch_size_bytes <= self.total_bytes || max_batch_size_logs <= self.logs.len()
@@ -458,7 +458,7 @@ impl ContinuousBufferUploader {
       if !self.batch_builder.logs.is_empty() && self.flush_batch_deadline.is_none() {
         self.flush_batch_deadline = Some(
           Instant::now()
-            + Duration::from_millis(self.feature_flags.batch_deadline_watch.read().into()),
+            + Duration::from_millis(5 * 1000),
         );
       }
     }

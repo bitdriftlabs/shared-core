@@ -174,7 +174,7 @@ impl<F: SerializedFileSystem> Uploader<F> {
   pub async fn upload_stats(mut self) -> anyhow::Result<()> {
     loop {
       let upload_in = tokio::time::sleep(Duration::from_millis(
-        self.upload_interval_flag.read().into(),
+        5 * 1000,
       ));
 
       tokio::select! {
@@ -354,7 +354,7 @@ impl<T: TimeProvider, F: SerializedFileSystem> Flusher<T, F> {
   pub async fn periodic_flush(mut self) -> anyhow::Result<()> {
     loop {
       let flush_in = tokio::time::sleep(Duration::from_millis(
-        self.flush_interval_flag.read().into(),
+        5 * 1000
       ));
 
       // If the flush interval changes, reset the timer. This ensures that if we are currently

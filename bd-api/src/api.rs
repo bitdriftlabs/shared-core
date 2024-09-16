@@ -410,7 +410,7 @@ impl Api {
         ("content-type", "application/grpc"),
       ]);
 
-      let compression_enabled = self.compression_enabled.read();
+      let _compression_enabled = self.compression_enabled.read();
       let compression = None;
       if compression.is_some() {
         headers.insert("x-grpc-encoding", "deflate");
