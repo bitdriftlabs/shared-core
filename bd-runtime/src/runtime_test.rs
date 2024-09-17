@@ -5,10 +5,11 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::runtime::{BoolWatch, ConfigLoader, FeatureFlag, IntWatch};
-use crate::{bool_feature_flag, int_feature_flag};
+use crate::runtime::{BoolWatch, ConfigLoader, DurationWatch, FeatureFlag, IntWatch};
+use crate::{bool_feature_flag, duration_feature_flag, int_feature_flag};
 use bd_test_helpers::runtime::{make_update, ValueKind};
 use bd_test_helpers::RecordingErrorReporter;
+use std::borrow::Borrow;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -82,6 +83,25 @@ fn incompatible_registration() {
     bool_feature_flag.err().unwrap().to_string(),
     anyhow::anyhow!("Incompatible runtime subscription").to_string(),
   );
+}
+
+#[test]
+fn duration_flag() {
+  duration_feature_flag!(DurationFlag, "test.duration_ms", time::Duration::seconds(5));
+
+  let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
+  let loader = ConfigLoader::new(sdk_directory.path());
+
+  let flag: DurationWatch<DurationFlag> = loader.register_watch().unwrap();
+
+  assert_eq!(flag.borrow().read(), time::Duration::seconds(5));
+
+  loader.update_snapshot(&make_update(
+    vec![(DurationFlag::path(), ValueKind::Int(100))],
+    "1".to_string(),
+  ));
+
+  assert_eq!(flag.borrow().read(), time::Duration::milliseconds(100));
 }
 
 struct SetupDiskPersistence {
