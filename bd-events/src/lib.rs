@@ -51,7 +51,7 @@ impl Listener {
     target: Box<dyn ListenerTarget + Send + Sync>,
     runtime_loader: &Arc<ConfigLoader>,
   ) -> Self {
-    let is_enabled_flag: BoolWatch<ListenerEnabledFlag> = runtime_loader.register_watch().unwrap();
+    let is_enabled_flag = ListenerEnabledFlag::register(runtime_loader).unwrap();
 
     Self {
       target,

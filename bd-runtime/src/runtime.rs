@@ -272,7 +272,7 @@ impl ConfigLoader {
     if let Some(existing_watch) = l.watches.get(C::path()) {
       return Ok(Watch {
         watch: existing_watch.typed_watch()?,
-        _type: PhantomData::<C> {},
+        _type: PhantomData,
       });
     }
 
@@ -286,7 +286,7 @@ impl ConfigLoader {
 
     Ok(Watch {
       watch: watch_rx,
-      _type: PhantomData::<C> {},
+      _type: PhantomData,
     })
   }
 
@@ -521,6 +521,15 @@ macro_rules! feature_flag {
   ($name:tt, $flag_type:ty, $path:literal, $default:expr) => {
     #[derive(Clone, Debug)]
     pub struct $name;
+
+    impl $name {
+      #[allow(unused)]
+      pub fn register(
+        loader: &$crate::runtime::ConfigLoader,
+      ) -> anyhow::Result<$crate::runtime::Watch<$flag_type, Self>> {
+        loader.register_watch()
+      }
+    }
 
     // Define the FeatureFlag trait, allowing us to embed the path and the default value into the
     // type.
