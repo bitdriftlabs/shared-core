@@ -9,7 +9,7 @@
 #[path = "./runtime_test.rs"]
 mod runtime_test;
 
-use anyhow::Context as _;
+use anyhow::anyhow;
 use bd_client_common::error::handle_unexpected;
 use bd_proto::protos::client::api::RuntimeUpdate;
 use bd_proto::protos::client::runtime::runtime::Value;
@@ -176,7 +176,7 @@ impl ConfigLoader {
     // This could fail, but by being defensive when we read this we should ideally worst case just
     // fall back to not reading from cache.
     std::fs::write(&self.retry_count_file, format!("{retry_count}").as_bytes())
-      .context("failed to write retry count file")
+      .map_err(|e| anyhow!("an io error occurred: {e}"))
   }
 
   pub fn handle_cached_config(&self) {
@@ -220,7 +220,7 @@ impl ConfigLoader {
     // value. If we were to treat an empty file as count=0 we could theoretically find ourselves in
     // a loop where the file is not properly updated.
     let Ok(retry_count) = Self::parse_retry_count(
-      &std::fs::read(&self.retry_count_file).context("failed to read retry count file")?,
+      &std::fs::read(&self.retry_count_file).map_err(|e| anyhow!("an io error ocurred: {e}"))?,
     ) else {
       return Ok(true);
     };
@@ -243,7 +243,7 @@ impl ConfigLoader {
     // TODO(snowp): Add stats for how often the read fails beyond ENOENT.
     // TODO(snowp): When we add a callback, only trigger it if we successfully loaded the config.
     let runtime = RuntimeUpdate::parse_from_bytes(&std::fs::read(&self.protobuf_file)?)
-      .context("failed to parse runtime protobuf")?;
+      .map_err(|e| anyhow!("A protobuf error occurred: {e}"))?;
 
     self.update_snapshot_inner(&runtime);
 
@@ -406,7 +406,7 @@ impl<T: Copy, P: FeatureFlag<T>> Watch<T, P> {
       .watch
       .changed()
       .await
-      .context("failed to wait for runtime watch change")
+      .map_err(|_| anyhow!("runtime watch"))
   }
 
   /// Returns the inner watch, for use in code that can't depend on this crate.
