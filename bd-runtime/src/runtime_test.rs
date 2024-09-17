@@ -101,7 +101,7 @@ fn duration_flag() {
     "1".to_string(),
   ));
 
-  assert_eq!(flag.borrow().read(), time::Duration::milliseconds(5));
+  assert_eq!(flag.borrow().read(), time::Duration::milliseconds(100));
 }
 
 struct SetupDiskPersistence {
