@@ -11,7 +11,7 @@ use assert_matches::assert_matches;
 use bd_api::upload::Tracked;
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::{Buffer, BufferEvent, BufferEventWithResponse, RingBuffer, RingBufferStats};
-use bd_client_common::fb::make_log;
+use bd_client_common::fb::{make_log, root_as_log};
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
 use bd_log_primitives::{log_level, LogType};
@@ -21,7 +21,7 @@ use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
-use bd_time::TimeDurationExt;
+use bd_time::{OffsetDateTimeExt as _, TimeDurationExt};
 use flatbuffers::FlatBufferBuilder;
 use futures_util::poll;
 use std::path::{Path, PathBuf};
@@ -437,7 +437,7 @@ async fn age_limit_log_uploads() {
       ),
     ]));
 
-  let now = time::OffsetDateTime::now_utc();
+  let now = time::OffsetDateTime::now_utc().floor(1.minutes());
   for i in (0 .. 10).rev() {
     producer
       .write(&make_test_log(now - time::Duration::minutes(i)))
@@ -446,10 +446,20 @@ async fn age_limit_log_uploads() {
 
   setup.trigger_buffer_upload("buffer").await;
 
-  // Wait for the logs to get flushed to disk.
+  // We should only get the 5 most recent logs.
   let log_upload = setup.next_upload().await;
   assert_eq!(log_upload.payload.log_upload().logs.len(), 5);
-
+  assert_eq!(
+    time::OffsetDateTime::from_unix_timestamp(
+      root_as_log(&log_upload.payload.log_upload().logs[0])
+        .unwrap()
+        .timestamp()
+        .unwrap()
+        .seconds()
+    )
+    .unwrap(),
+    now - time::Duration::minutes(4)
+  );
 
   setup
     .stats
