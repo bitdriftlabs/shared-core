@@ -113,7 +113,7 @@ struct LoaderState {
   snapshot: Arc<Snapshot>,
 
   /// Tracks watches for each runtime key.
-  watches: HashMap<String, InternalWatchKind>,
+  watches: HashMap<&'static str, InternalWatchKind>,
 }
 
 impl LoaderState {
@@ -280,8 +280,7 @@ impl ConfigLoader {
     let (watch_tx, watch_rx) =
       tokio::sync::watch::channel(l.snapshot.read_value(C::path(), C::default()));
 
-    l.watches
-      .insert(C::path().to_string(), (C::default(), watch_tx).into());
+    l.watches.insert(C::path(), (C::default(), watch_tx).into());
     drop(l);
 
     Ok(Watch {
@@ -335,10 +334,10 @@ impl ConfigLoader {
       // Update the value for each active watch if the data changed.
       for (k, mut watch) in &mut l.watches {
         match &mut watch {
-          InternalWatchKind::Int(watch) => Self::send_if_modified(k.as_str(), &snapshot, watch),
-          InternalWatchKind::Bool(watch) => Self::send_if_modified(k.as_str(), &snapshot, watch),
+          InternalWatchKind::Int(watch) => Self::send_if_modified(k, &snapshot, watch),
+          InternalWatchKind::Bool(watch) => Self::send_if_modified(k, &snapshot, watch),
           InternalWatchKind::Duration(watch) => {
-            Self::send_if_modified(k.as_str(), &snapshot, watch);
+            Self::send_if_modified(k, &snapshot, watch);
           },
         }
       }
