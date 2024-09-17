@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::runtime::{ConfigLoader, FeatureFlag, IntWatch};
+use crate::runtime::{ConfigLoader, FeatureFlag};
 use crate::{bool_feature_flag, duration_feature_flag, int_feature_flag};
 use bd_test_helpers::runtime::{make_update, ValueKind};
 use bd_test_helpers::RecordingErrorReporter;
