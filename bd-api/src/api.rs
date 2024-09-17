@@ -46,13 +46,12 @@ use bd_proto::protos::client::api::{
 };
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::Data as ProtoData;
-use bd_runtime::runtime::{RuntimeManager, Watch};
+use bd_runtime::runtime::{DurationWatch, RuntimeManager, Watch};
 use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use protobuf::Message;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
 
@@ -308,8 +307,8 @@ pub struct Api {
 
   static_metadata: Arc<dyn Metadata + Send + Sync>,
 
-  max_backoff_interval: Watch<u32, bd_runtime::runtime::api::MaxBackoffInterval>,
-  initial_backoff_interval: Watch<u32, bd_runtime::runtime::api::InitialBackoffInterval>,
+  max_backoff_interval: DurationWatch<bd_runtime::runtime::api::MaxBackoffInterval>,
+  initial_backoff_interval: DurationWatch<bd_runtime::runtime::api::InitialBackoffInterval>,
   compression_enabled: Watch<bool, bd_runtime::runtime::api::CompressionEnabled>,
   configuration_pipelines: Vec<Box<dyn ConfigurationUpdate>>,
   runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
@@ -707,12 +706,13 @@ impl Api {
   /// Constructs a new `ExponentialBackoff` based on the current runtime values.
   fn backoff_policy(&mut self) -> ExponentialBackoff<SystemClock> {
     ExponentialBackoffBuilder::<SystemClock>::new()
-      .with_initial_interval(Duration::from_millis(
-        self.initial_backoff_interval.read_mark_update().into(),
-      ))
-      .with_max_interval(Duration::from_millis(
-        self.max_backoff_interval.read_mark_update().into(),
-      ))
+      .with_initial_interval(
+        self
+          .initial_backoff_interval
+          .read_mark_update()
+          .unsigned_abs(),
+      )
+      .with_max_interval(self.max_backoff_interval.read_mark_update().unsigned_abs())
       .with_max_elapsed_time(None)
       .build()
   }

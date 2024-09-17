@@ -713,21 +713,20 @@ pub mod api {
   // This controls the maximum backoff used when connecting to the API backend. The backoff delay
   // will never exceed the value configured here, though note that if the client has not yet
   // received a runtime configuration the default will always apply.
-  int_feature_flag!(
+  duration_feature_flag!(
     MaxBackoffInterval,
     "api.max_backoff_interval_ms",
-    // This cast is safe since 5 minutes in ms fits within u32.
-    5.minutes().whole_milliseconds() as u32
+    5.minutes()
   );
 
   // This controls the initial backoff used when connecting to the API backend after a sucessful
   // handshake or initial attempt. A handshake resets the exponential back off, starting at this
   // value. Note that this is not the exact value it starts at, but the upper limit to the
   // randomized interval used initially.
-  int_feature_flag!(
+  duration_feature_flag!(
     InitialBackoffInterval,
     "api.initial_backoff_interval_ms",
-    500
+    500.milliseconds()
   );
 
   // Controls whether clients should compress uploaded payloads and advertise support for
@@ -736,22 +735,23 @@ pub mod api {
 }
 
 pub mod stats {
+  use time::ext::NumericalDuration as _;
   // This controls how often we flush periodic stats to the local aggregate file. Stats will be
   // aggregated to this file, pending an upload event controlled by the below flag.
-  int_feature_flag!(
+  duration_feature_flag!(
     DirectStatFlushIntervalFlag,
     "stats.disk_flush_interval_ms",
-    60 * 1000
+    60.seconds()
   );
 
   // This controls how often we attempt to read from the aggregrated file in order to prepare and
   // send a stats upload request. Note that this only comes into play whenever we are not actively
   // trying to upload a stats request (which can take longer if we are retrying or there is no
   // active API stream)
-  int_feature_flag!(
+  duration_feature_flag!(
     UploadStatFlushIntervalFlag,
     "stats.upload_flush_interval_ms",
-    60 * 1000
+    60.seconds()
   );
 
   // This controls how many unique counters we allow before rejecting new metrics. This limit
@@ -770,6 +770,8 @@ pub mod buffers {
 }
 
 pub mod workflows {
+  use time::ext::NumericalDuration as _;
+
   // Controls whether workflows are enabled. This feature flag should never be enabled to any
   // real users. Its key is will be changed once workflows are ready to be shipped and only
   // then we can start rolling out this variable to real users.
@@ -785,11 +787,11 @@ pub mod workflows {
   // This controls how often we attempt to persist the complete state of the workflows to disk.
   // Note that this is not used as a consistent interval but instead sets a minimum amount of time
   // that must have elapsed between writing attempts.
-  int_feature_flag!(
+  duration_feature_flag!(
     PersistenceWriteIntervalFlag,
     "workflows.persistence_write_interval_ms",
-    1000
-  ); // 1s
+    1.seconds()
+  );
 
   // The maximum number of workflow traversals that may be active.
   int_feature_flag!(
@@ -799,11 +801,11 @@ pub mod workflows {
   );
 
   // The interval at which workflows state persistence attempts to disk are made.
-  int_feature_flag!(
+  duration_feature_flag!(
     StatePeriodicWriteIntervalFlag,
     "workflows.state_periodic_write_interval_ms",
-    5000
-  ); // 5s
+    5.seconds()
+  );
 }
 
 pub mod filters {

@@ -20,6 +20,7 @@ bd-proto.path              = "../bd-proto"
 bd-runtime.path            = "../bd-runtime"
 bd-shutdown.path           = "../bd-shutdown"
 bd-stats-common.path       = "../bd-stats-common"
+bd-time.path               = "../bd-time"
 bincode.workspace          = true
 itertools.workspace        = true
 log.workspace              = true

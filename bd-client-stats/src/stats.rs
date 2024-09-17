@@ -25,17 +25,16 @@ use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapsh
 use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::metric::{Metric as ProtoMetric, MetricsList};
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
-use bd_runtime::runtime::Watch;
+use bd_runtime::runtime::DurationWatch;
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::Id;
-use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
+use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
 use flate2::read::{ZlibDecoder, ZlibEncoder};
 use flate2::Compression;
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
-use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::Semaphore;
@@ -151,7 +150,7 @@ impl SerializedFileSystem for RealSerializedFileSystem {
 /// a "pending upload" file and periodically retrying this upload.
 pub struct Uploader<F: SerializedFileSystem> {
   shutdown: ComponentShutdown,
-  upload_interval_flag: Watch<u32, UploadStatFlushIntervalFlag>,
+  upload_interval_flag: DurationWatch<UploadStatFlushIntervalFlag>,
   data_flush_tx: Sender<DataUpload>,
   fs: Arc<F>,
 }
@@ -159,7 +158,7 @@ pub struct Uploader<F: SerializedFileSystem> {
 impl<F: SerializedFileSystem> Uploader<F> {
   pub const fn new(
     shutdown: ComponentShutdown,
-    upload_interval_flag: Watch<u32, UploadStatFlushIntervalFlag>,
+    upload_interval_flag: DurationWatch<UploadStatFlushIntervalFlag>,
     data_flush_tx: Sender<DataUpload>,
     fs: Arc<F>,
   ) -> Self {
@@ -173,9 +172,7 @@ impl<F: SerializedFileSystem> Uploader<F> {
 
   pub async fn upload_stats(mut self) -> anyhow::Result<()> {
     loop {
-      let upload_in = tokio::time::sleep(Duration::from_millis(
-        self.upload_interval_flag.read().into(),
-      ));
+      let upload_in = self.upload_interval_flag.read().sleep();
 
       tokio::select! {
         _ = self.upload_interval_flag.changed() => continue,
@@ -323,7 +320,7 @@ impl<F: SerializedFileSystem> Uploader<F> {
 pub struct Flusher<T: TimeProvider, F: SerializedFileSystem> {
   stats: Arc<Stats>,
   shutdown: ComponentShutdown,
-  flush_interval_flag: Watch<u32, DirectStatFlushIntervalFlag>,
+  flush_interval_flag: DurationWatch<DirectStatFlushIntervalFlag>,
   flush_rx: tokio::sync::mpsc::Receiver<FlushTriggerCompletionSender>,
   time_provider: T,
   flush_time_histogram: Histogram,
@@ -334,7 +331,7 @@ impl<T: TimeProvider, F: SerializedFileSystem> Flusher<T, F> {
   pub const fn new(
     stats: Arc<Stats>,
     shutdown: ComponentShutdown,
-    flush_interval_flag: Watch<u32, DirectStatFlushIntervalFlag>,
+    flush_interval_flag: DurationWatch<DirectStatFlushIntervalFlag>,
     flush_rx: tokio::sync::mpsc::Receiver<FlushTriggerCompletionSender>,
     time_provider: T,
     flush_time_histogram: Histogram,
@@ -353,9 +350,7 @@ impl<T: TimeProvider, F: SerializedFileSystem> Flusher<T, F> {
 
   pub async fn periodic_flush(mut self) -> anyhow::Result<()> {
     loop {
-      let flush_in = tokio::time::sleep(Duration::from_millis(
-        self.flush_interval_flag.read().into(),
-      ));
+      let flush_in = self.flush_interval_flag.read().sleep();
 
       // If the flush interval changes, reset the timer. This ensures that if we are currently
       // operating at a high timeout, we can reset it down to a lower one with runtime. This is

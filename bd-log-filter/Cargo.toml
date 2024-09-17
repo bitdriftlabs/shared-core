@@ -6,15 +6,15 @@ publish      = false
 version      = "1.0.0"
 
 [dependencies]
-anyhow.workspace            = true
-bd-client-stats-store.path  = "../bd-client-stats-store"
-bd-log-matcher.path         = "../bd-log-matcher"
-bd-log-primitives.path      = "../bd-log-primitives"
-bd-proto.path               = "../bd-proto"
-itertools.workspace         = true
-regex.workspace             = true
-log.workspace               = true
-time.workspace              = true
+anyhow.workspace           = true
+bd-client-stats-store.path = "../bd-client-stats-store"
+bd-log-matcher.path        = "../bd-log-matcher"
+bd-log-primitives.path     = "../bd-log-primitives"
+bd-proto.path              = "../bd-proto"
+itertools.workspace        = true
+log.workspace              = true
+regex.workspace            = true
+time.workspace             = true
 
 [dev-dependencies]
 assert_matches.workspace    = true

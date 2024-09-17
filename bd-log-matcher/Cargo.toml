@@ -7,8 +7,8 @@ version      = "1.0.0"
 
 [dependencies]
 anyhow.workspace       = true
-bd-matcher.path        = "../bd-matcher"
 bd-log-primitives.path = "../bd-log-primitives"
+bd-matcher.path        = "../bd-matcher"
 bd-proto.path          = "../bd-proto"
 itertools.workspace    = true
 protobuf.workspace     = true

@@ -10,7 +10,6 @@ anyhow.workspace         = true
 async-trait.workspace    = true
 axum-server.workspace    = true
 axum.workspace           = true
-bd-metadata.path         = "../bd-metadata"
 bd-client-common.path    = "../bd-client-common"
 bd-events.path           = "../bd-events"
 bd-grpc.path             = "../bd-grpc"
@@ -19,6 +18,7 @@ bd-log                   = { path = "../bd-log", optional = true }
 bd-log-metadata.path     = "../bd-log-metadata"
 bd-log-primitives.path   = "../bd-log-primitives"
 bd-matcher.path          = "../bd-matcher"
+bd-metadata.path         = "../bd-metadata"
 bd-proto.path            = "../bd-proto"
 bd-resource-utilization  = { path = "../bd-resource-utilization" }
 bd-runtime-config        = { path = "../bd-runtime-config", optional = true }

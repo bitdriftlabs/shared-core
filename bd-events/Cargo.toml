@@ -13,9 +13,9 @@ log.workspace    = true
 tokio.workspace  = true
 
 [dev-dependencies]
-bd-test-helpers.path        = "../bd-test-helpers"
-bd-time.path                = "../bd-time"
-parking_lot.workspace       = true
-tempfile.workspace          = true
-time.workspace              = true
-tokio-test.workspace        = true
+bd-test-helpers.path  = "../bd-test-helpers"
+bd-time.path          = "../bd-time"
+parking_lot.workspace = true
+tempfile.workspace    = true
+time.workspace        = true
+tokio-test.workspace  = true
