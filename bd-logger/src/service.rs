@@ -15,7 +15,7 @@ use bd_api::upload::{LogBatch, TrackedLogBatch};
 use bd_api::DataUpload;
 use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::LogUploadRequest;
-use bd_runtime::runtime::{ConfigLoader, DurationWatch, Watch};
+use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::labels;
 use futures_util::future::BoxFuture;
@@ -205,7 +205,7 @@ impl tower::Service<UploadRequest> for Uploader {
 #[derive(Clone, Debug)]
 struct RetryPolicy {
   attempts: u32,
-  max_retries: Watch<u32, bd_runtime::runtime::log_upload::RetryCountFlag>,
+  max_retries: IntWatch<bd_runtime::runtime::log_upload::RetryCountFlag>,
   backoff: Option<backoff::ExponentialBackoff>,
   backoff_provider: BackoffProvider,
 
@@ -284,15 +284,15 @@ struct BackoffProvider {
 impl BackoffProvider {
   fn new(runtime: &ConfigLoader) -> anyhow::Result<Self> {
     Ok(Self {
-      initial_backoff: DurationWatch::wrap(runtime.register_watch()?),
-      max_backoff: DurationWatch::wrap(runtime.register_watch()?),
+      initial_backoff: runtime.register_watch()?,
+      max_backoff: runtime.register_watch()?,
     })
   }
 
   fn backoff(&self) -> backoff::ExponentialBackoff {
     backoff::ExponentialBackoffBuilder::new()
-      .with_initial_interval(self.initial_backoff.duration())
-      .with_max_interval(self.max_backoff.duration())
+      .with_initial_interval(self.initial_backoff.read().unsigned_abs())
+      .with_max_interval(self.max_backoff.read().unsigned_abs())
       .with_max_elapsed_time(None)
       .build()
   }

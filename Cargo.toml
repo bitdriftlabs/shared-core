@@ -72,11 +72,7 @@ http-body       = "1.0.1"
 http-body-util  = "0.1.2"
 hyper           = "1.4.1"
 
-hyper-rustls = { version = "0.27.3", default-features = false, features = [
-  "http1",
-  "http2",
-  "webpki-tokio",
-] }
+hyper-rustls = { version = "0.27.3", default-features = false, features = ["http1", "http2", "webpki-tokio"] }
 
 hyper-util            = { version = "0.1.7", features = ["client", "client-legacy"] }
 intrusive-collections = "0.9.7"

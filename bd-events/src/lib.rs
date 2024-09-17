@@ -10,7 +10,7 @@
 mod listener_test;
 
 use bd_runtime::runtime::platform_events::ListenerEnabledFlag;
-use bd_runtime::runtime::{ConfigLoader, Watch};
+use bd_runtime::runtime::{BoolWatch, ConfigLoader};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use std::sync::Arc;
 
@@ -43,7 +43,7 @@ pub struct Listener {
   // flag.
   has_seen_is_enabled_flag_update: bool,
 
-  is_enabled_flag: Watch<bool, ListenerEnabledFlag>,
+  is_enabled_flag: BoolWatch<ListenerEnabledFlag>,
 }
 
 impl Listener {
@@ -51,8 +51,7 @@ impl Listener {
     target: Box<dyn ListenerTarget + Send + Sync>,
     runtime_loader: &Arc<ConfigLoader>,
   ) -> Self {
-    let is_enabled_flag: Watch<bool, ListenerEnabledFlag> =
-      runtime_loader.register_watch().unwrap();
+    let is_enabled_flag: BoolWatch<ListenerEnabledFlag> = runtime_loader.register_watch().unwrap();
 
     Self {
       target,

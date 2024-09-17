@@ -19,11 +19,11 @@ bd-device.path               = "../bd-device"
 bd-events.path               = "../bd-events"
 bd-internal-logging.path     = "../bd-internal-logging"
 bd-key-value.path            = "../bd-key-value"
+bd-log-filter.path           = "../bd-log-filter"
+bd-log-matcher.path          = "../bd-log-matcher"
 bd-log-metadata.path         = "../bd-log-metadata"
 bd-log-primitives.path       = "../bd-log-primitives"
 bd-log.path                  = "../bd-log"
-bd-log-filter.path           = "../bd-log-filter"
-bd-log-matcher.path          = "../bd-log-matcher"
 bd-matcher.path              = "../bd-matcher"
 bd-proto.path                = "../bd-proto"
 bd-resource-utilization.path = "../bd-resource-utilization"
@@ -51,7 +51,7 @@ unwrap-infallible.workspace  = true
 assert_matches.workspace    = true
 bd-hyper-network            = { path = "../bd-hyper-network" }
 bd-noop-network             = { path = "../bd-noop-network" }
-bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
+bd-test-helpers             = { path = "../bd-test-helpers", default-features = false, features = ["test_logger"] }
 ctor.workspace              = true
 pretty_assertions.workspace = true
 tempfile.workspace          = true

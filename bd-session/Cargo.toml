@@ -15,8 +15,8 @@ log.workspace          = true
 parking_lot.workspace  = true
 serde.workspace        = true
 serde_yaml.workspace   = true
-time.workspace         = true
 thread_local.workspace = true
+time.workspace         = true
 tokio.workspace        = true
 uuid.workspace         = true
 

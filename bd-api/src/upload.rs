@@ -124,10 +124,6 @@ impl<PayloadType: Send + Sync, R> Tracked<PayloadType, R> {
     Uuid::new_v4().to_string()
   }
 
-  // 154 |   const fn into_parts(self) -> (PayloadType, tokio::sync::oneshot::Sender<R>) {
-  // |                       ^^^^ the destructor for this type cannot be evaluated in constant
-  // functions
-  #[allow(clippy::missing_const_for_fn)]
   fn into_parts(self) -> (PayloadType, tokio::sync::oneshot::Sender<R>) {
     (self.payload, self.response_tx)
   }

@@ -33,8 +33,9 @@ use bd_runtime::runtime::workflows::{
   TraversalsCountLimitFlag,
   WorkflowsInsightsEnabledFlag,
 };
-use bd_runtime::runtime::{ConfigLoader, Watch};
+use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch, IntWatch};
 use bd_stats_common::labels;
+use bd_time::TimeDurationExt as _;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
@@ -44,7 +45,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
-use tokio::time::{Duration, Instant};
+use tokio::time::Instant;
 
 //
 // WorkflowsEngine
@@ -73,14 +74,14 @@ pub struct WorkflowsEngine {
   /// know how many traversals are there but this could turn out to
   /// be expensive for cases when we have a lot of workflows/traversals/runs.
   traversals_count_limit: u32,
-  state_periodic_write_interval: u32,
+  state_periodic_write_interval: time::Duration,
 
   flush_buffers_actions_resolver: Resolver,
   flush_buffers_negotiator_input_tx: Sender<PendingFlushBuffersAction>,
   flush_buffers_negotiator_output_rx: Receiver<NegotiatorOutput>,
   flush_buffers_negotiator_join_handle: JoinHandle<()>,
 
-  insights_enabled_flag: Watch<bool, WorkflowsInsightsEnabledFlag>,
+  insights_enabled_flag: BoolWatch<WorkflowsInsightsEnabledFlag>,
   insights_enabled: bool,
   metrics_collector: MetricsCollector,
 
@@ -97,9 +98,9 @@ impl WorkflowsEngine {
   ) -> (Self, Receiver<BuffersToFlush>) {
     let scope = stats.scope("workflows");
 
-    let traversals_count_limit_flag: Watch<u32, TraversalsCountLimitFlag> =
+    let traversals_count_limit_flag: IntWatch<TraversalsCountLimitFlag> =
       runtime.register_watch().unwrap();
-    let state_periodic_write_interval_flag: Watch<u32, StatePeriodicWriteIntervalFlag> =
+    let state_periodic_write_interval_flag: DurationWatch<StatePeriodicWriteIntervalFlag> =
       runtime.register_watch().unwrap();
     let mut insights_enabled_flag = runtime.register_watch().unwrap();
 
@@ -446,9 +447,7 @@ impl WorkflowsEngine {
   pub(crate) async fn run_once(&mut self, persist_periodically: bool) {
     // TODO(Augustyniak): Fix periodic state persistence as it's effectively a no-op now due to the
     // way `run` method is being called.
-    let state_persistence_in = tokio::time::sleep(Duration::from_millis(
-      self.state_periodic_write_interval.into(),
-    ));
+    let state_persistence_in = self.state_periodic_write_interval.sleep();
 
     tokio::select! {
       () = state_persistence_in, if persist_periodically => {
@@ -816,7 +815,7 @@ struct StateStore {
   state_path: PathBuf,
   last_persisted: Option<Instant>,
   stats: StateStoreStats,
-  persistence_write_interval_flag: Watch<u32, PersistenceWriteIntervalFlag>,
+  persistence_write_interval_flag: DurationWatch<PersistenceWriteIntervalFlag>,
 }
 
 impl StateStore {
@@ -896,8 +895,7 @@ impl StateStore {
     if force {
       log::debug!("forcing persisting workflows state to disk");
     } else if let Some(last_save_time) = self.last_persisted {
-      let persistence_write_interval_ms =
-        Duration::from_millis(self.persistence_write_interval_flag.read().into());
+      let persistence_write_interval_ms = self.persistence_write_interval_flag.read();
       if now.duration_since(last_save_time) < persistence_write_interval_ms {
         return false;
       }

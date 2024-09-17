@@ -32,7 +32,7 @@ use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::insight::insight::InsightsConfiguration;
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
 use bd_runtime::runtime::workflows::WorkflowsEnabledFlag;
-use bd_runtime::runtime::{ConfigLoader, Watch};
+use bd_runtime::runtime::{BoolWatch, ConfigLoader};
 use bd_workflows::config::WorkflowsConfiguration;
 use itertools::Itertools;
 use protobuf::{Chars, Message};
@@ -220,7 +220,7 @@ impl<A: ApplyConfig + Send + Sync> bd_api::ConfigurationUpdate for Config<A> {
 pub struct LoggerUpdate {
   buffer_manager: Arc<bd_buffer::Manager>,
   config_update_tx: Sender<ConfigUpdate>,
-  workflows_enabled_flag: Watch<bool, WorkflowsEnabledFlag>,
+  workflows_enabled_flag: BoolWatch<WorkflowsEnabledFlag>,
   stream_config_parse_failure: Counter,
   filter_config_parse_failure: Counter,
 }
@@ -330,7 +330,7 @@ impl Inner {
       log.message,
       log.fields.captured_fields,
       log.session_id,
-      &log.occurred_at,
+      log.occurred_at,
       std::iter::empty(),
       stream_ids,
       |data| {

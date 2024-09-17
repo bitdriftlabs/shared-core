@@ -12,7 +12,7 @@ use bd_runtime::runtime::resource_utilization::{
   ResourceUtilizationEnabledFlag,
   ResourceUtilizationReportingIntervalFlag,
 };
-use bd_runtime::runtime::{ConfigLoader, Watch};
+use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use std::sync::Arc;
 use std::time::Duration;
@@ -46,24 +46,24 @@ pub struct Reporter {
   reporting_interval_rate: Duration,
   reporting_interval: Option<Interval>,
 
-  is_enabled_flag: Watch<bool, ResourceUtilizationEnabledFlag>,
-  reporting_interval_flag: Watch<u32, ResourceUtilizationReportingIntervalFlag>,
+  is_enabled_flag: BoolWatch<ResourceUtilizationEnabledFlag>,
+  reporting_interval_flag: DurationWatch<ResourceUtilizationReportingIntervalFlag>,
 }
 
 impl Reporter {
   pub fn new(target: Box<dyn Target + Send + Sync>, runtime_loader: &Arc<ConfigLoader>) -> Self {
-    let mut is_enabled_flag: Watch<bool, ResourceUtilizationEnabledFlag> =
+    let mut is_enabled_flag: BoolWatch<ResourceUtilizationEnabledFlag> =
       runtime_loader.register_watch().unwrap();
-    let mut reporting_interval_flag: Watch<u32, ResourceUtilizationReportingIntervalFlag> =
+    let mut reporting_interval_flag: DurationWatch<ResourceUtilizationReportingIntervalFlag> =
       runtime_loader.register_watch().unwrap();
 
-    let rate = Duration::from_millis(reporting_interval_flag.read_mark_update().into());
+    let rate = reporting_interval_flag.read_mark_update();
 
     Self {
       target,
 
       is_enabled: is_enabled_flag.read_mark_update(),
-      reporting_interval_rate: rate,
+      reporting_interval_rate: rate.unsigned_abs(),
 
       reporting_interval: None,
 
@@ -116,7 +116,7 @@ impl Reporter {
         _ = self.reporting_interval_flag.changed() => {
           self.reporting_interval = Some(
             Self::create_interval(
-              Duration::from_millis(self.reporting_interval_flag.read().into()),
+              self.reporting_interval_flag.read().unsigned_abs(),
               false
             )
           );

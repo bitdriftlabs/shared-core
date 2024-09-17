@@ -714,7 +714,7 @@ async fn dynamic_stats() {
 }
 
 async fn wait_for_next_flush() {
-  Duration::milliseconds(bd_runtime::runtime::stats::DirectStatFlushIntervalFlag::default().into())
+  bd_runtime::runtime::stats::DirectStatFlushIntervalFlag::default()
     .advance()
     .await;
 }

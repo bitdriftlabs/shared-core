@@ -11,7 +11,8 @@ use assert_matches::assert_matches;
 use bd_api::upload::LogBatch;
 use bd_client_stats_store::Counter;
 use bd_runtime::runtime::log_upload::RetryBackoffInitialFlag;
-use bd_runtime::runtime::{DurationWatch, FeatureFlag};
+use bd_runtime::runtime::FeatureFlag;
+use bd_time::TimeDurationExt;
 use std::task::Poll;
 use std::time::Duration;
 use tokio_test::assert_pending;
@@ -26,8 +27,8 @@ async fn test_retry_backoff() {
   let retry_limit_exceeded = Counter::default();
 
   let provider = BackoffProvider {
-    initial_backoff: DurationWatch::wrap(runtime.register_watch().unwrap()),
-    max_backoff: DurationWatch::wrap(runtime.register_watch().unwrap()),
+    initial_backoff: runtime.register_watch().unwrap(),
+    max_backoff: runtime.register_watch().unwrap(),
   };
 
   let mut retry = RetryPolicy {
@@ -51,17 +52,16 @@ async fn test_retry_backoff() {
 
   assert_pending!(retry_task.poll());
 
-  tokio::time::sleep(Duration::from_millis(
-    bd_runtime::runtime::log_upload::RetryBackoffMaxFlag::default().into(),
-  ))
-  .await;
+  bd_runtime::runtime::log_upload::RetryBackoffMaxFlag::default()
+    .sleep()
+    .await;
 
   // After the first retry the interval should be 1.5 the initial.
   assert_matches!(retry_task.poll(), Poll::Ready(()));
 
   assert_matches!(&retry.backoff, Some(backoff) => {
     assert_eq!(backoff.initial_interval,
-               Duration::from_millis(RetryBackoffInitialFlag::default().into()));
+               RetryBackoffInitialFlag::default().unsigned_abs());
     assert_eq!(backoff.current_interval, Duration::from_secs(45));
   });
 
@@ -73,10 +73,9 @@ async fn test_retry_backoff() {
 
   assert_pending!(second_retry.poll());
 
-  tokio::time::sleep(Duration::from_millis(
-    bd_runtime::runtime::log_upload::RetryBackoffMaxFlag::default().into(),
-  ))
-  .await;
+  bd_runtime::runtime::log_upload::RetryBackoffMaxFlag::default()
+    .sleep()
+    .await;
 
   // After the second retry the interval should be 1.5^2 the initial.
   assert_matches!(second_retry.poll(), Poll::Ready(()));

@@ -16,7 +16,7 @@ use bd_log_primitives::{log_level, FieldsRef, Log, LogRef, LogType};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::filters::FilterChainEnabledFlag;
 use bd_runtime::runtime::workflows::WorkflowsEnabledFlag;
-use bd_runtime::runtime::{ConfigLoader, Watch};
+use bd_runtime::runtime::{BoolWatch, ConfigLoader};
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use std::borrow::Cow;
@@ -89,8 +89,8 @@ pub struct ProcessingPipeline {
   trigger_upload_tx: Sender<TriggerUpload>,
   buffers_to_flush_rx: Option<Receiver<BuffersToFlush>>,
 
-  workflows_enabled_flag: Watch<bool, WorkflowsEnabledFlag>,
-  filter_chain_enabled_flag: Watch<bool, FilterChainEnabledFlag>,
+  workflows_enabled_flag: BoolWatch<WorkflowsEnabledFlag>,
+  filter_chain_enabled_flag: BoolWatch<FilterChainEnabledFlag>,
   filter_chain_enabled: bool,
 
   runtime: Arc<ConfigLoader>,
@@ -374,7 +374,7 @@ impl ProcessingPipeline {
       log.message,
       log.fields.captured_fields,
       log.session_id,
-      &log.occurred_at,
+      log.occurred_at,
       workflow_flush_buffer_action_ids,
       std::iter::empty(),
       |data| {
@@ -451,7 +451,7 @@ impl ProcessingPipeline {
         log.message,
         log.fields.captured_fields,
         log.session_id,
-        &log.occurred_at,
+        log.occurred_at,
         triggered_flush_buffers_action_ids.clone().into_iter(),
         std::iter::empty(),
         |synthetic_log| {

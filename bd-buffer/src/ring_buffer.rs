@@ -160,7 +160,7 @@ pub struct Manager {
   scope: Scope,
 
   stream_buffer_size_flag:
-    bd_runtime::runtime::Watch<u32, bd_runtime::runtime::buffers::StreamBufferSizeBytes>,
+    bd_runtime::runtime::IntWatch<bd_runtime::runtime::buffers::StreamBufferSizeBytes>,
 }
 
 impl Manager {

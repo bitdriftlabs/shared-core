@@ -9,19 +9,18 @@
 #[path = "./ratelimit_test.rs"]
 mod ratelimit_test;
 
-use bd_runtime::runtime::{ConfigLoader, DurationWatch, Watch};
+use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch};
 use futures_util::future::BoxFuture;
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
-use std::time::Duration;
 use tokio::time::Instant;
 use tower::{Layer, Service};
 
 /// A rate of requests per time period backed by feature flags.
 #[derive(Debug, Clone)]
 pub struct Rate {
-  num: Watch<u32, bd_runtime::runtime::log_upload::RatelimitByteCountPerPeriodFlag>,
+  num: IntWatch<bd_runtime::runtime::log_upload::RatelimitByteCountPerPeriodFlag>,
   per: DurationWatch<bd_runtime::runtime::log_upload::RatelimitPeriodFlag>,
 }
 
@@ -30,7 +29,7 @@ impl Rate {
   pub fn new(runtime_loader: &ConfigLoader) -> anyhow::Result<Self> {
     Ok(Self {
       num: runtime_loader.register_watch()?,
-      per: DurationWatch::wrap(runtime_loader.register_watch()?),
+      per: runtime_loader.register_watch()?,
     })
   }
 
@@ -38,8 +37,8 @@ impl Rate {
     self.num.read()
   }
 
-  pub(crate) fn per(&self) -> Duration {
-    self.per.duration()
+  pub(crate) fn per(&self) -> time::Duration {
+    self.per.read()
   }
 }
 
@@ -151,7 +150,7 @@ fn try_acquire_ratelimit_permit(request_size: u32, state: &Mutex<SharedState>) -
   let now = Instant::now();
   if l.sleep_until < now {
     l.state = State::Ready { rem: l.rate.num() };
-    l.sleep_until = now + l.rate.per();
+    l.sleep_until = now + l.rate.per().unsigned_abs();
   }
 
   match &mut l.state {

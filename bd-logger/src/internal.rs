@@ -22,7 +22,7 @@ use itertools::Itertools;
 pub struct InternalLogger {
   logger_handle: LoggerHandle,
   logging_enabled:
-    bd_runtime::runtime::Watch<bool, bd_runtime::runtime::debugging::InternalLoggingFlag>,
+    bd_runtime::runtime::BoolWatch<bd_runtime::runtime::debugging::InternalLoggingFlag>,
 }
 
 impl InternalLogger {

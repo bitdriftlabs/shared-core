@@ -15,12 +15,14 @@ use bd_api::upload::LogBatch;
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
 use bd_client_common::error::handle_unexpected_error_with_details;
-use bd_client_stats_store::Scope;
-use bd_runtime::runtime::{ConfigLoader, Watch};
+use bd_client_common::fb::root_as_log;
+use bd_client_stats_store::{Counter, Scope};
+use bd_runtime::runtime::{ConfigLoader, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
+use time::OffsetDateTime;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::Instant;
 use tower::{Service, ServiceExt};
@@ -31,15 +33,18 @@ use unwrap_infallible::UnwrapInfallible;
 #[derive(Clone)]
 struct Flags {
   // The maximum number of logs allowed per batch size.
-  max_batch_size_logs: Watch<u32, bd_runtime::runtime::log_upload::BatchSizeFlag>,
+  max_batch_size_logs: IntWatch<bd_runtime::runtime::log_upload::BatchSizeFlag>,
 
   // The maximum number of bytes allowed per batch size.
-  max_match_size_bytes: Watch<u32, bd_runtime::runtime::log_upload::BatchSizeBytesFlag>,
+  max_match_size_bytes: IntWatch<bd_runtime::runtime::log_upload::BatchSizeBytesFlag>,
 
   // The duration to wait before uploading an incomplete batch. The batch will be uploaded
   // at this point regardless of log activity.
-  batch_deadline_watch: Watch<u32, bd_runtime::runtime::log_upload::BatchDeadlineFlag>,
-  // The interval at which to check the buffer for new records.
+  batch_deadline_watch: IntWatch<bd_runtime::runtime::log_upload::BatchDeadlineFlag>,
+
+  // The lookback window for the flush buffer uploads.
+  upload_lookback_window_feature_flag:
+    Watch<time::Duration, bd_runtime::runtime::log_upload::FlushBufferLookbackWindow>,
 }
 
 // Responsible for managing the lifetime of upload tasks as buffers are added/removed via dynamic
@@ -79,6 +84,8 @@ pub struct BufferUploadManager {
   // Shutdown trigger for the stream buffer upload task, allowing us to cancel the task once the
   // buffer is no longer needed.
   stream_buffer_shutdown_trigger: Option<ComponentShutdownTrigger>,
+
+  old_logs_dropped: Counter,
 }
 
 impl BufferUploadManager {
@@ -97,6 +104,7 @@ impl BufferUploadManager {
         max_batch_size_logs: runtime_loader.register_watch()?,
         max_match_size_bytes: runtime_loader.register_watch()?,
         batch_deadline_watch: runtime_loader.register_watch()?,
+        upload_lookback_window_feature_flag: runtime_loader.register_watch()?,
       },
       shutdown,
       buffer_event_rx,
@@ -106,6 +114,7 @@ impl BufferUploadManager {
       active_trigger_uploads: HashSet::new(),
       logging,
       stream_buffer_shutdown_trigger: None,
+      old_logs_dropped: stats.counter("old_logs_dropped"),
     })
   }
 
@@ -331,6 +340,7 @@ impl BufferUploadManager {
       self.feature_flags.clone(),
       self.log_upload_service.clone(),
       buffer_name.to_string(),
+      self.old_logs_dropped.clone(),
     ))
   }
 }
@@ -575,20 +585,35 @@ struct CompleteBufferUpload {
 
   // The buffer that is being uploaded.
   buffer_id: String,
+
+  lookback_window: Option<time::OffsetDateTime>,
+
+  old_logs_dropped: Counter,
 }
 
 impl CompleteBufferUpload {
-  const fn new(
+  fn new(
     consumer: Consumer,
     runtime_flags: Flags,
     log_upload_service: service::Upload,
     buffer_id: String,
+    old_logs_dropped: Counter,
   ) -> Self {
+    let lookback_window_limit = runtime_flags.upload_lookback_window_feature_flag.read();
+
+    let lookback_window = if lookback_window_limit.is_zero() {
+      None
+    } else {
+      Some(OffsetDateTime::now_utc() - lookback_window_limit)
+    };
+
     Self {
       consumer,
       batch_builder: BatchBuilder::new(runtime_flags),
       log_upload_service,
       buffer_id,
+      lookback_window,
+      old_logs_dropped,
     }
   }
 
@@ -601,9 +626,29 @@ impl CompleteBufferUpload {
     let mut total_logs = 0;
     loop {
       let entry = self.consumer.try_read();
+
       match entry {
         // Log available, add to batch and flush if batch size hit.
         Ok(log) => {
+          if let Some(lookback_window) = self.lookback_window {
+            // The buffer producer/consumer API doesn't limit the input to flatbuffer logs, so we
+            // defensively check that we get back a valid log before trying to access the
+            // timestamp.
+            if let Ok(log) = root_as_log(&log) {
+              // There should always be a timestamp on the log, but this relies on the log being
+              // correctly constructed so we stay on the safe side and check for None.
+              if let Some(ts) = log.timestamp() {
+                let ts = OffsetDateTime::from_unix_timestamp(ts.seconds()).unwrap()
+                  + time::Duration::nanoseconds(i64::from(ts.nanos()));
+                if ts < lookback_window {
+                  log::debug!("skipping log, outside lookback window");
+                  self.old_logs_dropped.inc();
+                  continue;
+                }
+              }
+            }
+          }
+
           total_logs += 1;
           self.batch_builder.add_log(log);
         },

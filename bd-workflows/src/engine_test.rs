@@ -1210,14 +1210,12 @@ async fn persistence_to_disk_is_rate_limited() {
   engine_assert_active_run_traversals!(other_workflows_engine; 0 => 0; "B", "D");
 
   // Advance clock to allow rate limiting to kick in.
-  let elapsed = Duration::from_millis(
-    workflows_engine
-      .state_store
-      .persistence_write_interval_flag
-      .read()
-      .into(),
-  ) + Duration::from_millis(50);
-  tokio::time::advance(elapsed).await;
+  let elapsed = workflows_engine
+    .state_store
+    .persistence_write_interval_flag
+    .read()
+    + 50.milliseconds();
+  elapsed.advance().await;
 
   workflows_engine.maybe_persist(false).await;
 

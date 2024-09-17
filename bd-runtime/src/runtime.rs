@@ -21,7 +21,6 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 //
 // RuntimeManager
@@ -90,6 +89,15 @@ impl Snapshot {
       .map_or(default, Value::uint_value)
   }
 
+  pub fn get_duration(&self, name: &str, default: time::Duration) -> time::Duration {
+    self
+      .runtime
+      .values
+      .get(name)
+      .map(Value::uint_value)
+      .map_or(default, |v| time::Duration::milliseconds(v.into()))
+  }
+
   pub fn get_string<'a>(&'a self, name: &'static str, default: &'static str) -> &'a str {
     self
       .runtime
@@ -129,10 +137,6 @@ pub struct ConfigLoader {
   /// The file containing the cached runtime update protobuf.
   protobuf_file: PathBuf,
 
-  /// The file that previously contained the runtime protobuf. We attempt to clean this up to
-  /// remove stale data from the SDK directory.
-  legacy_protobuf_file: PathBuf,
-
   /// Flag used to guard resetting the retry count file more than necessary.
   cached_config_validated: AtomicBool,
 }
@@ -149,7 +153,6 @@ impl ConfigLoader {
       state: Mutex::new(LoaderState::new(Runtime::default(), None)),
       retry_count_file: runtime_directory.join("retry_count"),
       protobuf_file: runtime_directory.join("update.pb"),
-      legacy_protobuf_file: runtime_directory.join("protobuf.pb"),
       runtime_directory,
       cached_config_validated: AtomicBool::new(false),
     })
@@ -334,6 +337,9 @@ impl ConfigLoader {
         match &mut watch {
           InternalWatchKind::Int(watch) => Self::send_if_modified(k.as_str(), &snapshot, watch),
           InternalWatchKind::Bool(watch) => Self::send_if_modified(k.as_str(), &snapshot, watch),
+          InternalWatchKind::Duration(watch) => {
+            Self::send_if_modified(k.as_str(), &snapshot, watch);
+          },
         }
       }
 
@@ -347,9 +353,6 @@ impl ConfigLoader {
   }
 
   fn cache_update(&self, runtime: &RuntimeUpdate) {
-    // Remove the stale legacy file that we're no longer using.
-    // TODO(snowp): Remove this once this has been live for a while.
-    let _ignored = std::fs::remove_file(&self.legacy_protobuf_file);
     let _ignored = std::fs::write(&self.protobuf_file, runtime.write_to_bytes().unwrap());
   }
 }
@@ -373,7 +376,6 @@ pub struct Watch<T, P: FeatureFlag<T>> {
   _type: PhantomData<P>,
 }
 
-// TODO(snowp): We'll want a different implementation for String
 impl<T: Copy, P: FeatureFlag<T>> Watch<T, P> {
   /// Reads the latest record, and marks the watch as having seen the update. This can be used in
   /// conjunction with `changed()` to let the caller check if the flag has changed since the last
@@ -415,21 +417,9 @@ impl<T: Copy, P: FeatureFlag<T>> Watch<T, P> {
   }
 }
 
-// Helper around a Watch<u32> that converts a millisecond integer flag into a Duration.
-#[derive(Clone, Debug)]
-pub struct DurationWatch<P: FeatureFlag<u32>>(Watch<u32, P>);
-
-impl<P: FeatureFlag<u32>> DurationWatch<P> {
-  #[must_use]
-  pub const fn wrap(watch: Watch<u32, P>) -> Self {
-    Self(watch)
-  }
-
-  #[must_use]
-  pub fn duration(&self) -> Duration {
-    Duration::from_millis(self.0.read().into())
-  }
-}
+pub type BoolWatch<P> = Watch<bool, P>;
+pub type IntWatch<P> = Watch<u32, P>;
+pub type DurationWatch<P> = Watch<time::Duration, P>;
 
 //
 // FeatureFlag
@@ -462,6 +452,7 @@ pub struct InternalWatch<T> {
 pub enum InternalWatchKind {
   Int(InternalWatch<u32>),
   Bool(InternalWatch<bool>),
+  Duration(InternalWatch<time::Duration>),
 }
 
 //
@@ -516,6 +507,7 @@ macro_rules! define_primitive_flag_type {
 
 define_primitive_flag_type!(u32, Int, get_integer);
 define_primitive_flag_type!(bool, Bool, get_bool);
+define_primitive_flag_type!(time::Duration, Duration, get_duration);
 
 /// Defines a statically typed feature flag that reads runtime from a specific path, returning a
 /// default value if the path is not set.
@@ -562,6 +554,13 @@ macro_rules! bool_feature_flag {
   };
 }
 
+#[macro_export]
+macro_rules! duration_feature_flag {
+  ($name:tt, $path:literal, $default:expr) => {
+    $crate::feature_flag!($name, time::Duration, $path, $default);
+  };
+}
+
 // Below we keep track of all the feature flags used by the SDK. While we could declare them where
 // they are used, this makes it easier to skim them at a glance and requiers less acrobatics in test
 // to refer to these constants.
@@ -585,6 +584,8 @@ pub mod debugging {
 }
 
 pub mod log_upload {
+  use time::ext::NumericalDuration as _;
+
   // This controls the limit for how many logs to include in each log upload. This has slightly
   // different implications for the two buffer types:
   // - For continuous buffers, when logs are consumed, but we are below the batch size for the
@@ -656,38 +657,53 @@ pub mod log_upload {
   // Note that the quota is only refreshed when log uploads are being attempted, so if uploads are
   // done infrequently the refresh might happen less often than it should, resulting in more
   // aggressive limits than what the configured value would imply.
-  int_feature_flag!(RatelimitPeriodFlag, "upload_ratelimit.period_ms", 6 * 1000); // 60s
+  duration_feature_flag!(
+    RatelimitPeriodFlag,
+    "upload_ratelimit.period_ms",
+    1.minutes()
+  );
 
   // Controls the initial backoff interval used by the uploader when attempting to retry an upload.
   //
   // Note that the backoff is implemented as jittered backoff, meaning the each attempt is executed
   // in [0, current_backoff].
-  int_feature_flag!(
+  duration_feature_flag!(
     RetryBackoffInitialFlag,
     "log_uploader.initial_retry_backoff_ms",
-    30 * 1000
-  ); // 30s
+    30.seconds()
+  );
 
   // Controls the maximum backoff interval used by the uploader when attempting to retry an upload.
-  int_feature_flag!(
+  duration_feature_flag!(
     RetryBackoffMaxFlag,
     "log_uploader.max_retry_backoff_ms",
-    30 * 60 * 1000
-  ); // 30 min
+    30.minutes()
+  );
+
+  // Normally when logs are flushed from the trigger buffer we upload all logs in the buffer. This
+  // flag allows adding a maximum lookback period, which has us drop all logs older than the
+  // specified time. This is useful for limiting the amount of logs uploaded per trigger upload.
+  duration_feature_flag!(
+    FlushBufferLookbackWindow,
+    "workflows.flush_buffer_lookback_ms",
+    time::Duration::ZERO
+  );
 }
 
 pub mod resource_utilization {
+  use time::ext::NumericalDuration as _;
+
   bool_feature_flag!(
     ResourceUtilizationEnabledFlag,
     "resource_utilization.enabled",
     false
   );
 
-  int_feature_flag!(
+  duration_feature_flag!(
     ResourceUtilizationReportingIntervalFlag,
     "resource_utilization.reporting_interval_ms",
-    6_000
-  ); // 6s
+    6.seconds()
+  );
 }
 
 #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
@@ -697,21 +713,20 @@ pub mod api {
   // This controls the maximum backoff used when connecting to the API backend. The backoff delay
   // will never exceed the value configured here, though note that if the client has not yet
   // received a runtime configuration the default will always apply.
-  int_feature_flag!(
+  duration_feature_flag!(
     MaxBackoffInterval,
     "api.max_backoff_interval_ms",
-    // This cast is safe since 5 minutes in ms fits within u32.
-    5.minutes().whole_milliseconds() as u32
+    5.minutes()
   );
 
   // This controls the initial backoff used when connecting to the API backend after a sucessful
   // handshake or initial attempt. A handshake resets the exponential back off, starting at this
   // value. Note that this is not the exact value it starts at, but the upper limit to the
   // randomized interval used initially.
-  int_feature_flag!(
+  duration_feature_flag!(
     InitialBackoffInterval,
     "api.initial_backoff_interval_ms",
-    500
+    500.milliseconds()
   );
 
   // Controls whether clients should compress uploaded payloads and advertise support for
@@ -720,22 +735,23 @@ pub mod api {
 }
 
 pub mod stats {
+  use time::ext::NumericalDuration as _;
   // This controls how often we flush periodic stats to the local aggregate file. Stats will be
   // aggregated to this file, pending an upload event controlled by the below flag.
-  int_feature_flag!(
+  duration_feature_flag!(
     DirectStatFlushIntervalFlag,
     "stats.disk_flush_interval_ms",
-    60 * 1000
+    60.seconds()
   );
 
   // This controls how often we attempt to read from the aggregrated file in order to prepare and
   // send a stats upload request. Note that this only comes into play whenever we are not actively
   // trying to upload a stats request (which can take longer if we are retrying or there is no
   // active API stream)
-  int_feature_flag!(
+  duration_feature_flag!(
     UploadStatFlushIntervalFlag,
     "stats.upload_flush_interval_ms",
-    60 * 1000
+    60.seconds()
   );
 
   // This controls how many unique counters we allow before rejecting new metrics. This limit
@@ -754,6 +770,8 @@ pub mod buffers {
 }
 
 pub mod workflows {
+  use time::ext::NumericalDuration as _;
+
   // Controls whether workflows are enabled. This feature flag should never be enabled to any
   // real users. Its key is will be changed once workflows are ready to be shipped and only
   // then we can start rolling out this variable to real users.
@@ -769,11 +787,11 @@ pub mod workflows {
   // This controls how often we attempt to persist the complete state of the workflows to disk.
   // Note that this is not used as a consistent interval but instead sets a minimum amount of time
   // that must have elapsed between writing attempts.
-  int_feature_flag!(
+  duration_feature_flag!(
     PersistenceWriteIntervalFlag,
     "workflows.persistence_write_interval_ms",
-    1000
-  ); // 1s
+    1.seconds()
+  );
 
   // The maximum number of workflow traversals that may be active.
   int_feature_flag!(
@@ -783,11 +801,11 @@ pub mod workflows {
   );
 
   // The interval at which workflows state persistence attempts to disk are made.
-  int_feature_flag!(
+  duration_feature_flag!(
     StatePeriodicWriteIntervalFlag,
     "workflows.state_periodic_write_interval_ms",
-    5000
-  ); // 5s
+    5.seconds()
+  );
 }
 
 pub mod filters {
