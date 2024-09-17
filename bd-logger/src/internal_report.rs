@@ -8,14 +8,14 @@
 use crate::async_log_buffer::LogInterceptor;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
 use bd_log_primitives::{AnnotatedLogField, LogField, LogLevel, LogMessage, LogType};
-use bd_runtime::runtime::{debugging, ConfigLoader, Watch};
+use bd_runtime::runtime::{debugging, BoolWatch, ConfigLoader};
 
 //
 // Reporter
 //
 
 pub struct Reporter {
-  is_enabled_flag: Watch<bool, debugging::PeriodicInternalLoggingFlag>,
+  is_enabled_flag: BoolWatch<debugging::PeriodicInternalLoggingFlag>,
 
   state: parking_lot::Mutex<State>,
 }

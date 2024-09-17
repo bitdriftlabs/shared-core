@@ -19,7 +19,7 @@ use bd_client_stats_store::{
   Error as StatsError,
   Scope,
 };
-use bd_runtime::runtime::{ConfigLoader, Watch};
+use bd_runtime::runtime::{ConfigLoader, IntWatch};
 use bd_shutdown::ComponentShutdown;
 use bd_time::{SystemTimeProvider, TimeProvider};
 use std::collections::BTreeMap;
@@ -104,7 +104,7 @@ impl DynamicStats {
   pub fn new(stats: &Scope, runtime: &bd_runtime::runtime::ConfigLoader) -> Self {
     let dynamic_stats_overflow = stats.scope("stats").counter("dynamic_stats_overflow");
 
-    let max_dynamic_stats: Watch<u32, bd_runtime::runtime::stats::MaxDynamicCountersFlag> =
+    let max_dynamic_stats: IntWatch<bd_runtime::runtime::stats::MaxDynamicCountersFlag> =
       runtime.register_watch().unwrap();
     let dynamic_collector = BoundedCollector::new(Some(max_dynamic_stats.into_inner()));
     let dynamic_scope = dynamic_collector.scope("");

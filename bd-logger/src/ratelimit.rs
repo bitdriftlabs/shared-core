@@ -9,7 +9,7 @@
 #[path = "./ratelimit_test.rs"]
 mod ratelimit_test;
 
-use bd_runtime::runtime::{ConfigLoader, DurationWatch, Watch};
+use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch};
 use futures_util::future::BoxFuture;
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
@@ -20,7 +20,7 @@ use tower::{Layer, Service};
 /// A rate of requests per time period backed by feature flags.
 #[derive(Debug, Clone)]
 pub struct Rate {
-  num: Watch<u32, bd_runtime::runtime::log_upload::RatelimitByteCountPerPeriodFlag>,
+  num: IntWatch<bd_runtime::runtime::log_upload::RatelimitByteCountPerPeriodFlag>,
   per: DurationWatch<bd_runtime::runtime::log_upload::RatelimitPeriodFlag>,
 }
 

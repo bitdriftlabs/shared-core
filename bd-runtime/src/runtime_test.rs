@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::runtime::{ConfigLoader, FeatureFlag, Watch};
+use crate::runtime::{BoolWatch, ConfigLoader, FeatureFlag, IntWatch};
 use crate::{bool_feature_flag, int_feature_flag};
 use bd_test_helpers::runtime::{make_update, ValueKind};
 use bd_test_helpers::RecordingErrorReporter;
@@ -76,8 +76,8 @@ fn incompatible_registration() {
   let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
   let loader = ConfigLoader::new(sdk_directory.path());
 
-  let _int_feature_flag: Watch<u32, IntTestFlag> = loader.register_watch().unwrap();
-  let bool_feature_flag: anyhow::Result<Watch<bool, BoolTestFlag>> = loader.register_watch();
+  let _int_feature_flag: IntWatch<IntTestFlag> = loader.register_watch().unwrap();
+  let bool_feature_flag: anyhow::Result<BoolWatch<BoolTestFlag>> = loader.register_watch();
   assert_eq!(
     bool_feature_flag.err().unwrap().to_string(),
     anyhow::anyhow!("Incompatible runtime subscription").to_string(),
@@ -130,7 +130,7 @@ fn disk_persistence_happy_path() {
 
   loader.handle_cached_config();
 
-  let flag: Watch<u32, TestFlag> = loader.register_watch().unwrap();
+  let flag: IntWatch<TestFlag> = loader.register_watch().unwrap();
   assert_eq!(flag.read(), 10);
   assert_eq!(loader.snapshot().nonce, Some("1".to_string()));
 }
@@ -161,7 +161,7 @@ fn disk_persistence_config_corruption() {
     "runtime cache load: A protobuf error occurred: Incorrect tag".to_string(),
     unexpected_error,
   );
-  let flag: Watch<u32, TestFlag> = loader.register_watch().unwrap();
+  let flag: IntWatch<TestFlag> = loader.register_watch().unwrap();
   assert_eq!(flag.read(), 1);
   assert_eq!(loader.snapshot().nonce, None);
 }
@@ -187,7 +187,7 @@ fn disk_persistence_retry_corruption() {
   let loader = setup.new_loader();
   loader.handle_cached_config();
 
-  let flag: Watch<u32, TestFlag> = loader.register_watch().unwrap();
+  let flag: IntWatch<TestFlag> = loader.register_watch().unwrap();
   assert_eq!(flag.read(), 1);
   assert_eq!(loader.snapshot().nonce, None);
 }
@@ -210,14 +210,14 @@ fn disk_persistence_retry_limit() {
   for _ in 0 .. 6 {
     let loader = setup.new_loader();
     loader.handle_cached_config();
-    let flag: Watch<u32, TestFlag> = loader.register_watch().unwrap();
+    let flag: IntWatch<TestFlag> = loader.register_watch().unwrap();
     assert_eq!(flag.read(), 10);
   }
 
   // On the 6th go we hit the limit and will treat it as an error, wiping all state.
   let loader = setup.new_loader();
   loader.handle_cached_config();
-  let flag: Watch<u32, TestFlag> = loader.register_watch().unwrap();
+  let flag: IntWatch<TestFlag> = loader.register_watch().unwrap();
   assert_eq!(flag.read(), 1);
   assert!(!loader.protobuf_file.exists());
   assert!(!loader.retry_count_file.exists());
@@ -241,7 +241,7 @@ fn disk_persistence_retry_marked_safe() {
   for _ in 0 .. 6 {
     let loader = setup.new_loader();
     loader.handle_cached_config();
-    let flag: Watch<u32, TestFlag> = loader.register_watch().unwrap();
+    let flag: IntWatch<TestFlag> = loader.register_watch().unwrap();
     assert_eq!(flag.read(), 10);
 
     loader.mark_safe();
@@ -250,7 +250,7 @@ fn disk_persistence_retry_marked_safe() {
   // On the 6th we would have hit the limit but we've been marking the uploads as safe.
   let loader = setup.new_loader();
   loader.handle_cached_config();
-  let flag: Watch<u32, TestFlag> = loader.register_watch().unwrap();
+  let flag: IntWatch<TestFlag> = loader.register_watch().unwrap();
   assert_eq!(flag.read(), 10);
   assert_eq!(std::fs::read(&setup.retry_file).unwrap(), b"1");
 }
@@ -278,7 +278,7 @@ fn disk_persistence_missing_config_file() {
   // falling back to the default.
   let loader = setup.new_loader();
   loader.handle_cached_config();
-  let flag: Watch<u32, TestFlag> = loader.register_watch().unwrap();
+  let flag: IntWatch<TestFlag> = loader.register_watch().unwrap();
   assert_eq!(flag.read(), 1);
 
   assert!(!setup.retry_file.exists());
@@ -307,7 +307,7 @@ fn disk_persistence_missing_retry_file() {
   // falling back to the default.
   let loader = setup.new_loader();
   loader.handle_cached_config();
-  let flag: Watch<u32, TestFlag> = loader.register_watch().unwrap();
+  let flag: IntWatch<TestFlag> = loader.register_watch().unwrap();
   assert_eq!(flag.read(), 1);
 
   assert!(!setup.protobuf_file.exists());
@@ -341,7 +341,7 @@ fn disk_persistence_cannot_update_retry() {
     "runtime cache load: an io error occurred: Permission denied (os error 13)",
     error
   );
-  let flag: Watch<u32, TestFlag> = loader.register_watch().unwrap();
+  let flag: IntWatch<TestFlag> = loader.register_watch().unwrap();
   assert_eq!(flag.read(), 1);
 
   assert!(!setup.protobuf_file.exists());

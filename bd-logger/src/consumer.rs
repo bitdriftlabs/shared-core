@@ -17,7 +17,7 @@ use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer
 use bd_client_common::error::handle_unexpected_error_with_details;
 use bd_client_common::fb::root_as_log;
 use bd_client_stats_store::{Counter, Scope};
-use bd_runtime::runtime::{ConfigLoader, Watch};
+use bd_runtime::runtime::{ConfigLoader, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -33,14 +33,14 @@ use unwrap_infallible::UnwrapInfallible;
 #[derive(Clone)]
 struct Flags {
   // The maximum number of logs allowed per batch size.
-  max_batch_size_logs: Watch<u32, bd_runtime::runtime::log_upload::BatchSizeFlag>,
+  max_batch_size_logs: IntWatch<bd_runtime::runtime::log_upload::BatchSizeFlag>,
 
   // The maximum number of bytes allowed per batch size.
-  max_match_size_bytes: Watch<u32, bd_runtime::runtime::log_upload::BatchSizeBytesFlag>,
+  max_match_size_bytes: IntWatch<bd_runtime::runtime::log_upload::BatchSizeBytesFlag>,
 
   // The duration to wait before uploading an incomplete batch. The batch will be uploaded
   // at this point regardless of log activity.
-  batch_deadline_watch: Watch<u32, bd_runtime::runtime::log_upload::BatchDeadlineFlag>,
+  batch_deadline_watch: IntWatch<bd_runtime::runtime::log_upload::BatchDeadlineFlag>,
 
   // The lookback window for the flush buffer uploads.
   upload_lookback_window_feature_flag:

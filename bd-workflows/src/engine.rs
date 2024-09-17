@@ -33,7 +33,7 @@ use bd_runtime::runtime::workflows::{
   TraversalsCountLimitFlag,
   WorkflowsInsightsEnabledFlag,
 };
-use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
+use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch, IntWatch};
 use bd_stats_common::labels;
 use bd_time::TimeDurationExt as _;
 use serde::{Deserialize, Serialize};
@@ -81,7 +81,7 @@ pub struct WorkflowsEngine {
   flush_buffers_negotiator_output_rx: Receiver<NegotiatorOutput>,
   flush_buffers_negotiator_join_handle: JoinHandle<()>,
 
-  insights_enabled_flag: Watch<bool, WorkflowsInsightsEnabledFlag>,
+  insights_enabled_flag: BoolWatch<WorkflowsInsightsEnabledFlag>,
   insights_enabled: bool,
   metrics_collector: MetricsCollector,
 

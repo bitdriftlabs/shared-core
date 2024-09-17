@@ -46,7 +46,7 @@ use bd_proto::protos::client::api::{
 };
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::Data as ProtoData;
-use bd_runtime::runtime::{DurationWatch, RuntimeManager, Watch};
+use bd_runtime::runtime::{BoolWatch, DurationWatch, RuntimeManager};
 use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use protobuf::Message;
@@ -309,7 +309,7 @@ pub struct Api {
 
   max_backoff_interval: DurationWatch<bd_runtime::runtime::api::MaxBackoffInterval>,
   initial_backoff_interval: DurationWatch<bd_runtime::runtime::api::InitialBackoffInterval>,
-  compression_enabled: Watch<bool, bd_runtime::runtime::api::CompressionEnabled>,
+  compression_enabled: BoolWatch<bd_runtime::runtime::api::CompressionEnabled>,
   configuration_pipelines: Vec<Box<dyn ConfigurationUpdate>>,
   runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
 
