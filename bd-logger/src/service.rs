@@ -284,15 +284,15 @@ struct BackoffProvider {
 impl BackoffProvider {
   fn new(runtime: &ConfigLoader) -> anyhow::Result<Self> {
     Ok(Self {
-      initial_backoff: DurationWatch::wrap(runtime.register_watch()?),
-      max_backoff: DurationWatch::wrap(runtime.register_watch()?),
+      initial_backoff: runtime.register_watch()?,
+      max_backoff: runtime.register_watch()?,
     })
   }
 
   fn backoff(&self) -> backoff::ExponentialBackoff {
     backoff::ExponentialBackoffBuilder::new()
-      .with_initial_interval(self.initial_backoff.duration())
-      .with_max_interval(self.max_backoff.duration())
+      .with_initial_interval(self.initial_backoff.read().unsigned_abs())
+      .with_max_interval(self.max_backoff.read().unsigned_abs())
       .with_max_elapsed_time(None)
       .build()
   }

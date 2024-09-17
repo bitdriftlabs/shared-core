@@ -44,7 +44,7 @@ struct Flags {
 
   // The lookback window for the flush buffer uploads.
   upload_lookback_window_feature_flag:
-    Watch<u32, bd_runtime::runtime::log_upload::FlushBufferLookbackWindow>,
+    Watch<time::Duration, bd_runtime::runtime::log_upload::FlushBufferLookbackWindow>,
 }
 
 // Responsible for managing the lifetime of upload tasks as buffers are added/removed via dynamic
@@ -599,15 +599,12 @@ impl CompleteBufferUpload {
     buffer_id: String,
     old_logs_dropped: Counter,
   ) -> Self {
-    let lookback_window_limit = runtime_flags
-      .upload_lookback_window_feature_flag
-      .read()
-      .into();
+    let lookback_window_limit = runtime_flags.upload_lookback_window_feature_flag.read();
 
-    let lookback_window = if lookback_window_limit == 0 {
+    let lookback_window = if lookback_window_limit.is_zero() {
       None
     } else {
-      Some(OffsetDateTime::now_utc() - Duration::from_millis(lookback_window_limit))
+      Some(OffsetDateTime::now_utc() - lookback_window_limit)
     };
 
     Self {
