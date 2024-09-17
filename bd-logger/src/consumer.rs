@@ -630,8 +630,13 @@ impl CompleteBufferUpload {
       match entry {
         // Log available, add to batch and flush if batch size hit.
         Ok(log) => {
-          if let Ok(log) = root_as_log(&log) {
-            if let Some(lookback_window) = self.lookback_window {
+          if let Some(lookback_window) = self.lookback_window {
+            // The buffer producer/consumer API doesn't limit the input to flatbuffer logs, so we
+            // defensively check that we get back a valid log before trying to access the
+            // timestamp.
+            if let Ok(log) = root_as_log(&log) {
+              // There should always be a timestamp on the log, but this relies on the log being
+              // correctly constructed so we stay on the safe side and check for None.
               if let Some(ts) = log.timestamp() {
                 let ts = OffsetDateTime::from_unix_timestamp(ts.seconds()).unwrap()
                   + time::Duration::nanoseconds(i64::from(ts.nanos()));
