@@ -52,10 +52,9 @@ pub struct Reporter {
 
 impl Reporter {
   pub fn new(target: Box<dyn Target + Send + Sync>, runtime_loader: &Arc<ConfigLoader>) -> Self {
-    let mut is_enabled_flag: BoolWatch<ResourceUtilizationEnabledFlag> =
-      runtime_loader.register_watch().unwrap();
-    let mut reporting_interval_flag: DurationWatch<ResourceUtilizationReportingIntervalFlag> =
-      runtime_loader.register_watch().unwrap();
+    let mut is_enabled_flag = ResourceUtilizationEnabledFlag::register(runtime_loader).unwrap();
+    let mut reporting_interval_flag =
+      ResourceUtilizationReportingIntervalFlag::register(runtime_loader).unwrap();
 
     let rate = reporting_interval_flag.read_mark_update();
 

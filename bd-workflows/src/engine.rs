@@ -33,7 +33,7 @@ use bd_runtime::runtime::workflows::{
   TraversalsCountLimitFlag,
   WorkflowsInsightsEnabledFlag,
 };
-use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch, IntWatch};
+use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch};
 use bd_stats_common::labels;
 use bd_time::TimeDurationExt as _;
 use serde::{Deserialize, Serialize};
@@ -98,10 +98,9 @@ impl WorkflowsEngine {
   ) -> (Self, Receiver<BuffersToFlush>) {
     let scope = stats.scope("workflows");
 
-    let traversals_count_limit_flag: IntWatch<TraversalsCountLimitFlag> =
-      runtime.register_watch().unwrap();
-    let state_periodic_write_interval_flag: DurationWatch<StatePeriodicWriteIntervalFlag> =
-      runtime.register_watch().unwrap();
+    let traversals_count_limit_flag = TraversalsCountLimitFlag::register(runtime).unwrap();
+    let state_periodic_write_interval_flag =
+      StatePeriodicWriteIntervalFlag::register(runtime).unwrap();
     let mut insights_enabled_flag = runtime.register_watch().unwrap();
 
     let insights_enabled = insights_enabled_flag.read_mark_update();
