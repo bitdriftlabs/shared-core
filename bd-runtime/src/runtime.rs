@@ -338,7 +338,7 @@ impl ConfigLoader {
           InternalWatchKind::Int(watch) => Self::send_if_modified(k.as_str(), &snapshot, watch),
           InternalWatchKind::Bool(watch) => Self::send_if_modified(k.as_str(), &snapshot, watch),
           InternalWatchKind::Duration(watch) => {
-            Self::send_if_modified(k.as_str(), &snapshot, watch)
+            Self::send_if_modified(k.as_str(), &snapshot, watch);
           },
         }
       }
