@@ -739,7 +739,11 @@ pub mod api {
 
   // Controls whether clients should compress uploaded payloads and advertise support for
   // compression to the API. To be removed once we prove that compression works fine.
-  bool_feature_flag!(CompressionEnabled, "api.requests_compression_enabled", true);
+  bool_feature_flag!(
+    CompressionEnabled,
+    "api.requests_compression_enabled",
+    false
+  );
 }
 
 pub mod stats {
