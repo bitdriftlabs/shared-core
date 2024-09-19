@@ -87,6 +87,15 @@ pub trait SerializedFileSystem: Sync {
     // For now we just read the entire thing and then decompress it in memory. We can consider
     // streaming later.
     let compressed_bytes = self.read_file(path).await?;
+
+    // We should never write empty files. If there is no data this was a partial write, full disk
+    // issue, or some other problem.
+    // TODO(mattklein123): Compression gives some protection against further corruption but we
+    // should also be writing and reading some type of CRC has part of this process.
+    if compressed_bytes.is_empty() {
+      return Err(anyhow::anyhow!("unexpected empty file"));
+    }
+
     let mut decoder = ZlibDecoder::new(&compressed_bytes[..]);
     // In the future if/when we switch to using Bytes/Chars in the compiled proto it may be more
     // efficient to read out the uncompressed into Bytes and then parse from that.
@@ -191,25 +200,33 @@ impl<F: SerializedFileSystem> Uploader<F> {
 
     // If there is a pending upload, first attempt to re-upload.
     let pending_upload = if self.fs.exists(&*PENDING_STATS_UPLOAD_FILE).await {
-      if let Ok(pending_request) = self
+      match self
         .fs
         .read_compressed_protobuf_file::<StatsUploadRequest>(&*PENDING_STATS_UPLOAD_FILE)
         .await
       {
-        Some(pending_request)
-      } else {
-        // We failed to read the data, so the file must be bad. This could happen if we change
-        // the schema in an incompatible way or if the file is corrupt. Delete the file and
-        // accept the loss of this upload.
+        Ok(pending_request) => {
+          log::debug!(
+            "found pending stats upload, attempting to re-upload: {}",
+            pending_request
+          );
+          Some(pending_request)
+        },
+        Err(e) => {
+          // We failed to read the data, so the file must be bad. This could happen if we change
+          // the schema in an incompatible way or if the file is corrupt. Delete the file and
+          // accept the loss of this upload.
 
-        // TODO(snowp): Technically we could end up in a situation here where we are stuck
-        // trying to delete a bad file which then spams the error handler.
-        // TODO(snowp): Track how often we delete the file here.
-        handle_unexpected(
-          self.fs.delete_file(&*PENDING_STATS_UPLOAD_FILE).await,
-          "delete pending stats upload",
-        );
-        None
+          // TODO(snowp): Technically we could end up in a situation here where we are stuck
+          // trying to delete a bad file which then spams the error handler.
+          // TODO(snowp): Track how often we delete the file here.
+          log::warn!("deleting corrupted pending stats upload file: {e}");
+          handle_unexpected(
+            self.fs.delete_file(&*PENDING_STATS_UPLOAD_FILE).await,
+            "delete pending stats upload",
+          );
+          None
+        },
       }
     } else {
       None
@@ -226,14 +243,19 @@ impl<F: SerializedFileSystem> Uploader<F> {
       return Ok(());
     }
 
-    let Ok(aggregated_stats) = self
+    let aggregated_stats = match self
       .fs
       .read_compressed_protobuf_file::<StatsSnapshot>(&*AGGREGATED_STATS_FILE)
       .await
-    else {
-      log::warn!("failed to read aggregated stats file due to data corruption, deleting file");
-      let _ignored = self.fs.delete_file(&*AGGREGATED_STATS_FILE).await;
-      return Ok(());
+    {
+      Ok(stats) => stats,
+      Err(e) => {
+        log::warn!(
+          "failed to read aggregated stats file due to data corruption, deleting file: {e}"
+        );
+        let _ignored = self.fs.delete_file(&*AGGREGATED_STATS_FILE).await;
+        return Ok(());
+      },
     };
 
     let stats_request = StatsUploadRequest {
@@ -386,6 +408,7 @@ impl<T: TimeProvider, F: SerializedFileSystem> Flusher<T, F> {
       .fs
       .read_compressed_protobuf_file::<StatsSnapshot>(&*AGGREGATED_STATS_FILE)
       .await
+      .inspect_err(|e| log::debug!("error reading snapshot from disk: {e}"))
       .ok()
       .and_then(|snapshot| {
         log::debug!("found existing snapshot, merging in delta");
