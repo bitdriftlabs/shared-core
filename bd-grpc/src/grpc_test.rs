@@ -235,6 +235,7 @@ async fn server_streaming() {
     |_| {},
     stream_stats,
     true,
+    None,
   );
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let local_address = listener.local_addr().unwrap();
@@ -285,6 +286,7 @@ async fn server_streaming_error_handler() {
     },
     stream_stats,
     false,
+    None,
   );
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let local_address = listener.local_addr().unwrap();

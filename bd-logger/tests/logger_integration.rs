@@ -487,7 +487,7 @@ mod tests {
         // If these numbers end up being too variable we do something more generic.
         assert_eq!(upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}), Some(120));
         assert!(upload.get_counter("api:bandwidth_tx", labels! {}).unwrap() > 100);
-        assert_eq!(upload.get_counter("api:bandwidth_rx", labels! {}), Some(375));
+        assert!(upload.get_counter("api:bandwidth_rx", labels! {}).unwrap() < 260);
         assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(360));
         assert_eq!(upload.get_counter("api:stream_total", labels! {}), Some(1));
     });

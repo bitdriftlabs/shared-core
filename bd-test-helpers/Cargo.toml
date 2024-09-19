@@ -12,6 +12,7 @@ axum-server.workspace    = true
 axum.workspace           = true
 bd-client-common.path    = "../bd-client-common"
 bd-events.path           = "../bd-events"
+bd-grpc-codec.path       = "../bd-grpc-codec"
 bd-grpc.path             = "../bd-grpc"
 bd-key-value.path        = "../bd-key-value"
 bd-log                   = { path = "../bd-log", optional = true }

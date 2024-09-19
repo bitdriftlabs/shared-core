@@ -22,7 +22,7 @@ use axum::routing::post;
 use axum::{BoxError, Router};
 use base64ct::Encoding;
 use bd_grpc_codec::stats::DeferredCounter;
-use bd_grpc_codec::{Decoder, Encoder};
+use bd_grpc_codec::{Decoder, Encoder, GRPC_ENCODING_DEFLATE, GRPC_ENCODING_HEADER};
 use bd_log::rate_limit_log::WarnTracker;
 use bd_server_stats::stats::{CounterWrapper, Scope};
 use bd_stats_common::DynCounter;
@@ -464,11 +464,23 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
   pub async fn streaming<OutgoingType: MessageFull, IncomingType: MessageFull>(
     &self,
     service_method: &ServiceMethod<OutgoingType, IncomingType>,
-    extra_headers: Option<HeaderMap>,
+    mut extra_headers: Option<HeaderMap>,
     validate: bool,
+    compression: Option<bd_grpc_codec::Compression>,
   ) -> Result<StreamingApi<OutgoingType, IncomingType>> {
     let (tx, rx) = mpsc::channel(1);
     let body = StreamBody::new(ReceiverStream::new(rx));
+
+    match compression {
+      None => {},
+      Some(bd_grpc_codec::Compression::Zlib(_)) => {
+        extra_headers.get_or_insert_with(HeaderMap::default).insert(
+          GRPC_ENCODING_HEADER,
+          GRPC_ENCODING_DEFLATE.try_into().unwrap(),
+        );
+      },
+    }
+
     let response = self
       .common_request(service_method, extra_headers, Body::new(body))
       .await?;
@@ -479,6 +491,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       parts.headers,
       Body::new(body),
       validate,
+      compression,
     ))
   }
 
@@ -535,8 +548,14 @@ pub struct StreamingApi<OutgoingType: Message, IncomingType: Message> {
 impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType, IncomingType> {
   // Create a new streaming API handler.
   #[must_use]
-  pub fn new(tx: BodySender, headers: HeaderMap, body: Body, validate: bool) -> Self {
-    let sender = StreamingApiSender::new(tx);
+  pub fn new(
+    tx: BodySender,
+    headers: HeaderMap,
+    body: Body,
+    validate: bool,
+    compression: Option<bd_grpc_codec::Compression>,
+  ) -> Self {
+    let sender = StreamingApiSender::new(tx, compression);
     Self {
       sender,
       streaming_api: ServerStreamingApi::new(headers, body, validate),
@@ -690,9 +709,9 @@ pub struct StreamingApiSender<ResponseType: Message> {
 
 impl<ResponseType: Message> StreamingApiSender<ResponseType> {
   #[must_use]
-  pub fn new(tx: BodySender) -> Self {
+  pub fn new(tx: BodySender, compression: Option<bd_grpc_codec::Compression>) -> Self {
     Self {
-      encoder: Encoder::new(None),
+      encoder: Encoder::new(compression),
       tx,
       tx_messages_total: DeferredCounter::default(),
       _type: PhantomData,
@@ -869,6 +888,20 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   ))))
 }
 
+#[must_use]
+pub fn finalize_compression(
+  compression: Option<bd_grpc_codec::Compression>,
+  headers: &HeaderMap,
+) -> Option<bd_grpc_codec::Compression> {
+  match compression {
+    None => None,
+    Some(bd_grpc_codec::Compression::Zlib(level)) => headers
+      .get(GRPC_ENCODING_HEADER)
+      .filter(|v| *v == GRPC_ENCODING_DEFLATE)
+      .map(|_| bd_grpc_codec::Compression::Zlib(level)),
+  }
+}
+
 async fn server_streaming_handler<ResponseType: MessageFull, RequestType: MessageFull>(
   handler: Arc<dyn ServerStreamingHandler<ResponseType, RequestType>>,
   request: Request,
@@ -876,6 +909,9 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
   stream_stats: StreamStats,
   validate_request: bool,
   warn_tracker: Arc<WarnTracker>,
+  // This indicates if response compression is desired. It will still be gated on whether the
+  // client sets the compression header.
+  compression: Option<bd_grpc_codec::Compression>,
 ) -> Result<Response> {
   stream_stats.stream_initiations_total.inc();
 
@@ -889,7 +925,7 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
     })?;
 
   tokio::spawn(async move {
-    let sender = &mut StreamingApiSender::new(tx);
+    let sender = &mut StreamingApiSender::new(tx, finalize_compression(compression, &headers));
     sender.initialize_stats(
       stream_stats.tx_messages_total,
       stream_stats.tx_bytes_total,
@@ -941,6 +977,7 @@ pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: Mess
   error_handler: impl Fn(&crate::Error) + Clone + Send + 'static,
   stream_stats: StreamStats,
   validate_request: bool,
+  compression: Option<bd_grpc_codec::Compression>,
 ) -> Router {
   let warn_tracker = Arc::new(WarnTracker::default());
   Router::new().route(
@@ -953,6 +990,7 @@ pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: Mess
         stream_stats,
         validate_request,
         warn_tracker.clone(),
+        compression,
       )
       .await
     }),
