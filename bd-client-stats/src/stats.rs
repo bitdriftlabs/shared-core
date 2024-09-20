@@ -10,7 +10,6 @@
 mod stats_test;
 
 use crate::{FlushTriggerCompletionSender, Stats};
-use anyhow::Context;
 use async_trait::async_trait;
 use bd_api::upload::TrackedStatsUploadRequest;
 use bd_api::DataUpload;
@@ -63,7 +62,7 @@ pub trait SerializedFileSystem: Sync {
     path: impl AsRef<Path> + Send,
     data: impl AsRef<[u8]> + Send,
   ) -> anyhow::Result<()>;
-  async fn delete_file(&self, path: impl AsRef<Path> + Send) -> anyhow::Result<()>;
+  async fn delete_file(&self, path: impl AsRef<Path> + Send);
   async fn exists(&self, path: impl AsRef<Path> + Send) -> bool;
 
   async fn write_compressed_protobuf_file<T: protobuf::Message>(
@@ -93,7 +92,7 @@ pub trait SerializedFileSystem: Sync {
     // TODO(mattklein123): Compression gives some protection against further corruption but we
     // should also be writing and reading some type of CRC has part of this process.
     if compressed_bytes.is_empty() {
-      return Err(anyhow::anyhow!("unexpected empty file"));
+      anyhow::bail!("unexpected empty file");
     }
 
     let mut decoder = ZlibDecoder::new(&compressed_bytes[..]);
@@ -140,9 +139,12 @@ impl SerializedFileSystem for RealSerializedFileSystem {
     Ok(tokio::fs::write(self.directory.join(path), data).await?)
   }
 
-  async fn delete_file(&self, path: impl AsRef<Path> + Send) -> anyhow::Result<()> {
+  async fn delete_file(&self, path: impl AsRef<Path> + Send) {
     let _permit = self.semaphore.acquire().await;
-    Ok(tokio::fs::remove_file(self.directory.join(path)).await?)
+    handle_unexpected(
+      tokio::fs::remove_file(self.directory.join(path)).await,
+      "delete file",
+    );
   }
 
   async fn exists(&self, path: impl AsRef<Path> + Send) -> bool {
@@ -179,19 +181,19 @@ impl<F: SerializedFileSystem> Uploader<F> {
     }
   }
 
-  pub async fn upload_stats(mut self) -> anyhow::Result<()> {
+  pub async fn upload_stats(mut self) {
     loop {
       let upload_in = self.upload_interval_flag.read().sleep();
 
       tokio::select! {
         _ = self.upload_interval_flag.changed() => continue,
-        () = upload_in => self.upload_from_disk().await?,
-        () = self.shutdown.cancelled() => return Ok(()),
+        () = upload_in => self.upload_from_disk().await,
+        () = self.shutdown.cancelled() => return,
       }
     }
   }
 
-  async fn upload_from_disk(&mut self) -> anyhow::Result<()> {
+  async fn upload_from_disk(&mut self) {
     // Note on error handling: while we could probably gracefully handle some of the failing I/O
     // operations, it is likely to result in inaccurate stats (double submission of stats, missing
     // aggregations, etc.), so we bail on failure. As we start seeing this out in the wild we may
@@ -216,15 +218,8 @@ impl<F: SerializedFileSystem> Uploader<F> {
           // We failed to read the data, so the file must be bad. This could happen if we change
           // the schema in an incompatible way or if the file is corrupt. Delete the file and
           // accept the loss of this upload.
-
-          // TODO(snowp): Technically we could end up in a situation here where we are stuck
-          // trying to delete a bad file which then spams the error handler.
-          // TODO(snowp): Track how often we delete the file here.
           log::warn!("deleting corrupted pending stats upload file: {e}");
-          handle_unexpected(
-            self.fs.delete_file(&*PENDING_STATS_UPLOAD_FILE).await,
-            "delete pending stats upload",
-          );
+          self.fs.delete_file(&*PENDING_STATS_UPLOAD_FILE).await;
           None
         },
       }
@@ -240,7 +235,7 @@ impl<F: SerializedFileSystem> Uploader<F> {
 
     // TODO(snowp): Consider doing an open -> read vs exist check -> open and read.
     if !self.fs.exists(&*AGGREGATED_STATS_FILE).await {
-      return Ok(());
+      return;
     }
 
     let aggregated_stats = match self
@@ -253,8 +248,8 @@ impl<F: SerializedFileSystem> Uploader<F> {
         log::warn!(
           "failed to read aggregated stats file due to data corruption, deleting file: {e}"
         );
-        let _ignored = self.fs.delete_file(&*AGGREGATED_STATS_FILE).await;
-        return Ok(());
+        self.fs.delete_file(&*AGGREGATED_STATS_FILE).await;
+        return;
       },
     };
 
@@ -269,31 +264,27 @@ impl<F: SerializedFileSystem> Uploader<F> {
     // out, leaving the aggregated stats file on disk for the next iteration.
     // TODO(snowp): Consider how we might record stats for this - if stats flushing is broken we
     // might not be able to propagate the stats values.
-    if self
+    if let Err(e) = self
       .fs
       .write_compressed_protobuf_file(&*PENDING_STATS_UPLOAD_FILE, &stats_request)
       .await
-      .is_err()
     {
-      return Ok(());
+      log::warn!("failed to write pending stats upload file: {e}");
+      return;
     }
 
     // Once the pending data has been written, wipe the aggregated stats file.
     // TODO(snowp): Technically if we shut down right here we'll end up double reporting. We could
     // avoid this by doing a file move, but then we need some mechanism to associated the pending
     // upload with a uuid, which we now embed into pending upload file.
-    self
-      .fs
-      .delete_file(&*AGGREGATED_STATS_FILE)
-      .await
-      .context("deleting {AGGREGATED_STATS_FILE}")?;
+    self.fs.delete_file(&*AGGREGATED_STATS_FILE).await;
 
-    self.process_pending_upload(stats_request).await
+    self.process_pending_upload(stats_request).await;
   }
 
   // Attempts to upload the provided stats request. Upon success, the file containing the pending
   // request will be deleted.
-  async fn process_pending_upload(&mut self, request: StatsUploadRequest) -> anyhow::Result<()> {
+  async fn process_pending_upload(&mut self, request: StatsUploadRequest) {
     let (stats, response_rx) = TrackedStatsUploadRequest::new(request.upload_uuid.clone(), request);
 
     log::debug!(
@@ -312,25 +303,19 @@ impl<F: SerializedFileSystem> Uploader<F> {
     // If this errors out the other end of the channel has closed, indicating that we are shutting
     // down.
     if self.data_flush_tx.send(tracked_upload).await.is_err() {
-      return Ok(());
+      return;
     }
 
     let stats_uploaded = tokio::select! {
       r = response_rx => r.unwrap_or(false),
-      () = self.shutdown.cancelled() => return Ok(()),
+      () = self.shutdown.cancelled() => return,
     };
 
     log::debug!("stat upload attempt complete, success: {}", stats_uploaded);
 
     if stats_uploaded {
-      self
-        .fs
-        .delete_file(&*PENDING_STATS_UPLOAD_FILE)
-        .await
-        .context("deleting {PENDING_STATS_UPLOAD_FILE}")?;
+      self.fs.delete_file(&*PENDING_STATS_UPLOAD_FILE).await;
     }
-
-    Ok(())
   }
 }
 
@@ -370,7 +355,7 @@ impl<T: TimeProvider, F: SerializedFileSystem> Flusher<T, F> {
     }
   }
 
-  pub async fn periodic_flush(mut self) -> anyhow::Result<()> {
+  pub async fn periodic_flush(mut self) {
     loop {
       let flush_in = self.flush_interval_flag.read().sleep();
 
@@ -381,15 +366,15 @@ impl<T: TimeProvider, F: SerializedFileSystem> Flusher<T, F> {
         _ = self.flush_interval_flag.changed() => continue,
         Some(completion_tx) = self.flush_rx.recv() => {
           log::debug!("received a signal to flush stats to disk");
-          self.flush_to_disk().await?;
+          self.flush_to_disk().await;
           log::debug!("stats flushed");
 
           if let Some(completion_tx) = completion_tx {
             completion_tx.send(());
           }
         },
-        () = self.shutdown.cancelled() => return Ok(()),
-        () = flush_in => self.flush_to_disk().await?,
+        () = self.shutdown.cancelled() => return,
+        () = flush_in => self.flush_to_disk().await,
       };
     }
   }
@@ -472,7 +457,7 @@ impl<T: TimeProvider, F: SerializedFileSystem> Flusher<T, F> {
       .await
   }
 
-  async fn flush_to_disk(&self) -> anyhow::Result<()> {
+  async fn flush_to_disk(&self) {
     let _timer = self.flush_time_histogram.start_timer();
     // To support flushing stats between multiple process lifetimes, we go through a few steps to
     // apply the diff to the disk-cached snapshot:
@@ -491,8 +476,6 @@ impl<T: TimeProvider, F: SerializedFileSystem> Flusher<T, F> {
         "writing stats to disk",
       );
     }
-
-    Ok(())
   }
 
   fn create_delta_snapshot(&self) -> SnapshotHelper {

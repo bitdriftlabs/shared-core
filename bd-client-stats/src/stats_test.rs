@@ -110,11 +110,10 @@ impl<F: SerializedFileSystem + Send + 'static> Setup<F> {
       .unwrap();
 
     let flush_handle = tokio::spawn(async move {
-      flush_handles.flusher.periodic_flush().await.unwrap();
+      flush_handles.flusher.periodic_flush().await;
     });
 
-    let upload_handle =
-      tokio::spawn(async move { flush_handles.uploader.upload_stats().await.unwrap() });
+    let upload_handle = tokio::spawn(async move { flush_handles.uploader.upload_stats().await });
 
     Self {
       test_time,
@@ -199,10 +198,8 @@ impl SerializedFileSystem for TestSerializedFileSystem {
     Ok(())
   }
 
-  async fn delete_file(&self, path: impl AsRef<Path> + Send) -> anyhow::Result<()> {
+  async fn delete_file(&self, path: impl AsRef<Path> + Send) {
     self.files.lock().unwrap().remove(&Self::path_as_str(path));
-
-    Ok(())
   }
 
   async fn exists(&self, path: impl AsRef<Path> + Send) -> bool {

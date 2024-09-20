@@ -473,7 +473,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
 
     match compression {
       None => {},
-      Some(bd_grpc_codec::Compression::Zlib(_)) => {
+      Some(bd_grpc_codec::Compression::Zlib { .. }) => {
         extra_headers.get_or_insert_with(HeaderMap::default).insert(
           GRPC_ENCODING_HEADER,
           GRPC_ENCODING_DEFLATE.try_into().unwrap(),
@@ -895,10 +895,10 @@ pub fn finalize_compression(
 ) -> Option<bd_grpc_codec::Compression> {
   match compression {
     None => None,
-    Some(bd_grpc_codec::Compression::Zlib(level)) => headers
+    Some(bd_grpc_codec::Compression::Zlib { level }) => headers
       .get(GRPC_ENCODING_HEADER)
       .filter(|v| *v == GRPC_ENCODING_DEFLATE)
-      .map(|_| bd_grpc_codec::Compression::Zlib(level)),
+      .map(|_| bd_grpc_codec::Compression::Zlib { level }),
   }
 }
 

@@ -24,7 +24,9 @@ use std::marker::PhantomData;
 #[derive(Debug, Clone, Copy)]
 pub enum Compression {
   // Parameter is the compression level in the range of 0-9.
-  Zlib(u32),
+  // Note as of 9/24 this was switched from new type format to struct format as new type seemed to
+  // break RA occasionally.
+  Zlib { level: u32 },
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -67,7 +69,7 @@ pub struct Encoder<MessageType: protobuf::Message> {
 impl<MessageType: protobuf::Message> Encoder<MessageType> {
   #[must_use]
   pub fn new(compression: Option<Compression>) -> Self {
-    let compressor = compression.map(|Compression::Zlib(level)| {
+    let compressor = compression.map(|Compression::Zlib { level }| {
       flate2::write::ZlibEncoder::new(BytesMut::new().writer(), flate2::Compression::new(level))
     });
 
