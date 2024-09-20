@@ -10,6 +10,8 @@ use axum::extract::{Request, State};
 use axum::routing::post;
 use axum_server::tls_rustls::RustlsConfig;
 use axum_server::Handle;
+use bd_grpc::finalize_compression;
+use bd_grpc_codec::Compression;
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::client::api::api_response::Response_type;
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
@@ -296,7 +298,9 @@ async fn mux(
     .cloned()
     .map(|m| m.to_str().unwrap().to_string());
 
-  let mut api = bd_grpc::StreamingApi::new(tx, request_parts.headers, request_body, true);
+  let compression = finalize_compression(Some(Compression::Zlib(3)), &request_parts.headers);
+  let mut api =
+    bd_grpc::StreamingApi::new(tx, request_parts.headers, request_body, true, compression);
 
   // Allocate a new id for the new stream + notify consumers about the creation.
   let stream_id = stream_state

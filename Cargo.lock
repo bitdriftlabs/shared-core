@@ -938,6 +938,7 @@ dependencies = [
  "bd-client-common",
  "bd-events",
  "bd-grpc",
+ "bd-grpc-codec",
  "bd-key-value",
  "bd-log",
  "bd-log-metadata",

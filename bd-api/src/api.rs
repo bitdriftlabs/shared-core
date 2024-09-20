@@ -28,7 +28,13 @@ use backoff::backoff::Backoff;
 use backoff::exponential::{ExponentialBackoff, ExponentialBackoffBuilder};
 use backoff::SystemClock;
 use bd_client_stats_store::{Counter, CounterWrapper, Scope};
-use bd_grpc_codec::{Compression, Encoder};
+use bd_grpc_codec::{
+  Compression,
+  Encoder,
+  DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
+  GRPC_ENCODING_DEFLATE,
+  GRPC_ENCODING_HEADER,
+};
 use bd_metadata::Metadata;
 pub use bd_proto::protos::client::api::log_upload_intent_response::{
   Decision,
@@ -410,9 +416,10 @@ impl Api {
       ]);
 
       let compression_enabled = self.compression_enabled.read();
-      let compression = compression_enabled.then_some(Compression::Zlib);
+      let compression =
+        compression_enabled.then_some(Compression::Zlib(DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL));
       if compression.is_some() {
-        headers.insert("x-grpc-encoding", "deflate");
+        headers.insert(GRPC_ENCODING_HEADER, GRPC_ENCODING_DEFLATE);
       }
 
       // Set the size to 16 to avoid blocking if we get back to back upstream events.

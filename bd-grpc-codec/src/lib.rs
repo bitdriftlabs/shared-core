@@ -21,9 +21,10 @@ use std::io::{Read, Write};
 use std::marker::PhantomData;
 
 // Compression algorithms supported by crate's codes.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Compression {
-  Zlib,
+  // Parameter is the compression level in the range of 0-9.
+  Zlib(u32),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -46,7 +47,10 @@ const GRPC_MIN_MESSAGE_SIZE_COMPRESSION_THRESHOLD: usize = 100;
 // this particular compression level: "This compression level provides a good balance
 // between compression speed and compression ratio.".
 // Source: https://developer.apple.com/documentation/compression/algorithm/zlib
-const ZLIB_COMPRESSION_LEVEL: u32 = 5;
+pub const DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL: u32 = 5;
+
+pub const GRPC_ENCODING_HEADER: &str = "x-grpc-encoding";
+pub const GRPC_ENCODING_DEFLATE: &str = "deflate";
 
 //
 // Encoder
@@ -63,11 +67,8 @@ pub struct Encoder<MessageType: protobuf::Message> {
 impl<MessageType: protobuf::Message> Encoder<MessageType> {
   #[must_use]
   pub fn new(compression: Option<Compression>) -> Self {
-    let compressor = compression.map(|_| {
-      flate2::write::ZlibEncoder::new(
-        BytesMut::new().writer(),
-        flate2::Compression::new(ZLIB_COMPRESSION_LEVEL),
-      )
+    let compressor = compression.map(|Compression::Zlib(level)| {
+      flate2::write::ZlibEncoder::new(BytesMut::new().writer(), flate2::Compression::new(level))
     });
 
     Self {

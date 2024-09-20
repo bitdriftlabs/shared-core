@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{Compression, Decoder, Encoder};
+use crate::{Compression, Decoder, Encoder, DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL};
 use protobuf::well_known_types::any::Any;
 use protobuf::well_known_types::struct_::{Struct, Value};
 
@@ -17,7 +17,9 @@ fn test_global_init() {
 #[test]
 fn decoder_does_not_panic_on_invalid_input_data() {
   let mut encoder = Encoder::<Struct>::new(None);
-  let mut compressing_encoder = Encoder::<Struct>::new(Some(Compression::Zlib));
+  let mut compressing_encoder = Encoder::<Struct>::new(Some(Compression::Zlib(
+    DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
+  )));
 
   let message = &create_compressable_message();
   let bytes = &encoder.encode(message);
@@ -31,7 +33,9 @@ fn decoder_does_not_panic_on_invalid_input_data() {
 
 #[test]
 fn encoding_decoding_flow() {
-  let mut encoder = Encoder::<Struct>::new(Some(Compression::Zlib));
+  let mut encoder = Encoder::<Struct>::new(Some(Compression::Zlib(
+    DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
+  )));
   let mut decoder = Decoder::<Struct>::default();
 
   // Check various message sizes to make sure that compressor and decompressor
@@ -59,7 +63,9 @@ fn encoding_decoding_flow() {
 
 #[test]
 fn compression_decompression_is_stateful() {
-  let mut encoder = Encoder::<Struct>::new(Some(Compression::Zlib));
+  let mut encoder = Encoder::<Struct>::new(Some(Compression::Zlib(
+    DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
+  )));
   let mut decoder = Decoder::<Struct>::default();
 
   _ = create_compressable_message();
@@ -79,8 +85,12 @@ fn compression_decompression_is_stateful() {
 
 #[test]
 fn compression_gets_more_effective_as_streaming_progresses() {
-  let mut encoder1 = Encoder::<Struct>::new(Some(Compression::Zlib));
-  let mut encoder2 = Encoder::<Struct>::new(Some(Compression::Zlib));
+  let mut encoder1 = Encoder::<Struct>::new(Some(Compression::Zlib(
+    DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
+  )));
+  let mut encoder2 = Encoder::<Struct>::new(Some(Compression::Zlib(
+    DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
+  )));
 
   let message1 = create_compressable_message();
   let message2 = create_compressable_message();
