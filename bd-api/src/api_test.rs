@@ -180,7 +180,7 @@ impl Setup {
       shutdown_trigger,
       collector,
       time_provider,
-      requests_decoder: bd_grpc_codec::Decoder::default(),
+      requests_decoder: bd_grpc_codec::Decoder::new(None),
     }
   }
 

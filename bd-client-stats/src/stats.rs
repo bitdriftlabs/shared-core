@@ -15,6 +15,7 @@ use bd_api::upload::TrackedStatsUploadRequest;
 use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
 use bd_client_stats_store::{BoundedCollector, Histogram, MetricData};
+use bd_grpc_codec::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{
   Aggregated,
   Occurred_at,
@@ -71,7 +72,10 @@ pub trait SerializedFileSystem: Sync {
     message: &T,
   ) -> anyhow::Result<()> {
     let bytes = message.write_to_bytes().unwrap();
-    let mut encoder = ZlibEncoder::new(&bytes[..], Compression::new(5));
+    let mut encoder = ZlibEncoder::new(
+      &bytes[..],
+      Compression::new(DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL),
+    );
     let mut compressed_bytes = Vec::new();
     encoder.read_to_end(&mut compressed_bytes).unwrap();
     self.write_file(path, compressed_bytes).await?;
@@ -88,9 +92,8 @@ pub trait SerializedFileSystem: Sync {
     let compressed_bytes = self.read_file(path).await?;
 
     // We should never write empty files. If there is no data this was a partial write, full disk
-    // issue, or some other problem.
-    // TODO(mattklein123): Compression gives some protection against further corruption but we
-    // should also be writing and reading some type of CRC has part of this process.
+    // issue, or some other problem. We use zlib for compression which includes a CRC at the end
+    // so as long as the file is not empty we can be sure that the data is not corrupted.
     if compressed_bytes.is_empty() {
       anyhow::bail!("unexpected empty file");
     }

@@ -10,7 +10,7 @@ use axum::extract::{Request, State};
 use axum::routing::post;
 use axum_server::tls_rustls::RustlsConfig;
 use axum_server::Handle;
-use bd_grpc::finalize_compression;
+use bd_grpc::finalize_response_compression;
 use bd_grpc_codec::Compression;
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::client::api::api_response::Response_type;
@@ -298,8 +298,10 @@ async fn mux(
     .cloned()
     .map(|m| m.to_str().unwrap().to_string());
 
-  let compression =
-    finalize_compression(Some(Compression::Zlib { level: 3 }), &request_parts.headers);
+  let compression = finalize_response_compression(
+    Some(Compression::StatelessZlib { level: 3 }),
+    &request_parts.headers,
+  );
   let mut api =
     bd_grpc::StreamingApi::new(tx, request_parts.headers, request_body, true, compression);
 
@@ -396,7 +398,10 @@ async fn mux(
       .expect("event channel should not fail");
   });
 
-  bd_grpc::new_grpc_response(Body::new(StreamBody::new(ReceiverStream::new(rx))))
+  bd_grpc::new_grpc_response(
+    Body::new(StreamBody::new(ReceiverStream::new(rx))),
+    compression,
+  )
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
