@@ -32,6 +32,7 @@ use bd_grpc_codec::{
   Compression,
   Encoder,
   DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
+  GRPC_ACCEPT_ENCODING_HEADER,
   GRPC_ENCODING_DEFLATE,
   GRPC_ENCODING_HEADER,
 };
@@ -142,7 +143,12 @@ impl StreamState {
     time_provider: Arc<dyn TimeProvider>,
     stats: Stats,
   ) -> Self {
-    let mut decoder = bd_grpc_codec::Decoder::default();
+    // TODO(mattklein123): We should be pivoting based on the grpc-encoding response header, but
+    // currently we are not passing the response headers back to Rust. Given that we currently
+    // have prior knowledge of what the server will do this is OK but we should fix this in the
+    // future.
+    let mut decoder =
+      bd_grpc_codec::Decoder::new(Some(bd_grpc_codec::Decompression::StatelessZlib));
     decoder.initialize_stats(
       CounterWrapper::make_dyn(stats.rx_bytes.clone()),
       CounterWrapper::make_dyn(stats.rx_bytes_decompressed.clone()),
@@ -416,11 +422,12 @@ impl Api {
       ]);
 
       let compression_enabled = self.compression_enabled.read();
-      let compression = compression_enabled.then_some(Compression::Zlib {
+      let compression = compression_enabled.then_some(Compression::StatelessZlib {
         level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
       });
       if compression.is_some() {
         headers.insert(GRPC_ENCODING_HEADER, GRPC_ENCODING_DEFLATE);
+        headers.insert(GRPC_ACCEPT_ENCODING_HEADER, GRPC_ENCODING_DEFLATE);
       }
 
       // Set the size to 16 to avoid blocking if we get back to back upstream events.
@@ -490,7 +497,7 @@ impl Api {
 
       log::debug!("handshake received, resetting connection backoff");
 
-      // Reset the backoff on a sucessful handshake.
+      // Reset the backoff on a successful handshake.
       backoff.reset();
 
       // At this point we have established the stream, so we should start the general

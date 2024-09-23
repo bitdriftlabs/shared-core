@@ -14,25 +14,40 @@ pub mod stats;
 use crate::stats::DeferredCounter;
 use bd_client_common::error::handle_unexpected_error_with_details;
 use bd_stats_common::DynCounter;
+use bytes::buf::Writer;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use flate2::write::ZlibEncoder;
+use flate2::write::{ZlibDecoder, ZlibEncoder};
 use protobuf::{CodedOutputStream, Message};
-use std::io::{Read, Write};
+use std::cell::RefCell;
+use std::io::Write;
 use std::marker::PhantomData;
 
-// Compression algorithms supported by crate's codes.
+// Compression algorithms supported by crate's code.
 #[derive(Debug, Clone, Copy)]
 pub enum Compression {
   // Parameter is the compression level in the range of 0-9.
   // Note as of 9/24 this was switched from new type format to struct format as new type seemed to
   // break RA occasionally.
-  Zlib { level: u32 },
+  StatelessZlib { level: u32 },
+  // Parameter is the compression level in the range of 0-9.
+  // Note: This is only included for testing legacy clients. New clients always use stateless
+  // which requires less RAM on the server.
+  StatefulZlib { level: u32 },
+}
+
+// Decompression algorithms supported by crate's code.
+pub enum Decompression {
+  StatelessZlib,
+  // Supported for legacy clients.
+  StatefulZlib,
 }
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
   #[error("protobuf error: {0}")]
   Protobuf(#[from] protobuf::Error),
+  #[error("gRPC protocol error: {0}")]
+  Protocol(&'static str),
   #[error("An io error ocurred: {0}")]
   Io(#[from] std::io::Error),
 }
@@ -51,16 +66,26 @@ const GRPC_MIN_MESSAGE_SIZE_COMPRESSION_THRESHOLD: usize = 100;
 // Source: https://developer.apple.com/documentation/compression/algorithm/zlib
 pub const DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL: u32 = 5;
 
-pub const GRPC_ENCODING_HEADER: &str = "x-grpc-encoding";
+pub const LEGACY_GRPC_ENCODING_HEADER: &str = "x-grpc-encoding";
+pub const GRPC_ENCODING_HEADER: &str = "grpc-encoding";
+pub const GRPC_ACCEPT_ENCODING_HEADER: &str = "grpc-accept-encoding";
 pub const GRPC_ENCODING_DEFLATE: &str = "deflate";
+
+//
+// Compressor
+//
+
+enum Compressor {
+  StatelessZlib { level: u32 },
+  StatefulZlib(ZlibEncoder<Writer<BytesMut>>),
+}
 
 //
 // Encoder
 //
 
-#[derive(Debug)]
 pub struct Encoder<MessageType: protobuf::Message> {
-  compressor: Option<flate2::write::ZlibEncoder<bytes::buf::Writer<BytesMut>>>,
+  compressor: Option<Compressor>,
   tx_bytes: DeferredCounter,
   tx_bytes_uncompressed: DeferredCounter,
   _type: PhantomData<MessageType>,
@@ -69,12 +94,14 @@ pub struct Encoder<MessageType: protobuf::Message> {
 impl<MessageType: protobuf::Message> Encoder<MessageType> {
   #[must_use]
   pub fn new(compression: Option<Compression>) -> Self {
-    let compressor = compression.map(|Compression::Zlib { level }| {
-      flate2::write::ZlibEncoder::new(BytesMut::new().writer(), flate2::Compression::new(level))
-    });
-
     Self {
-      compressor,
+      compressor: compression.map(|compression| match compression {
+        Compression::StatelessZlib { level } => Compressor::StatelessZlib { level },
+        Compression::StatefulZlib { level } => Compressor::StatefulZlib(ZlibEncoder::new(
+          BytesMut::new().writer(),
+          flate2::Compression::new(level),
+        )),
+      }),
       tx_bytes: DeferredCounter::default(),
       tx_bytes_uncompressed: DeferredCounter::default(),
       _type: PhantomData,
@@ -137,26 +164,50 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
     self.tx_bytes_uncompressed.initialize(tx_bytes_uncompressed);
   }
 
-  fn encode_compressed(
-    compressor: &mut ZlibEncoder<bytes::buf::Writer<BytesMut>>,
-    message: &MessageType,
-  ) -> Result<Bytes> {
-    message.write_to_writer(compressor)?;
+  fn encode_compressed(compression: &mut Compressor, message: &MessageType) -> Result<Bytes> {
+    let mut buffer = match compression {
+      Compressor::StatelessZlib { level } => {
+        fn make_writer() -> Writer<BytesMut> {
+          let mut buffer = BytesMut::new();
+          buffer.put_u8(1); // Compression byte, message compressed.
+          buffer.put_u32(0); // We will fill this in later.
+          buffer.writer()
+        }
 
-    compressor.flush()?;
+        thread_local! {
+          static COMPRESSOR: RefCell<Option<ZlibEncoder<Writer<BytesMut>>>> =
+            const { RefCell::new(None) };
+        }
+
+        // TODO(mattklein123): For mobile we only ever use a single thread for communication, though
+        // this will still keep the memory allocated. We could consider doing on demand allocation
+        // for that case.
+        // TODO(mattklein123): Using Compress here directly should remove some copies that are
+        // required by using the writer interface.
+        // Note that when using the thread local compressor the first level will win. We could
+        // likely fix this if needed but it's not needed currently.
+        COMPRESSOR.with_borrow_mut(|compressor| {
+          let compressor = compressor.get_or_insert_with(|| {
+            ZlibEncoder::new(make_writer(), flate2::Compression::new(*level))
+          });
+
+          message.write_to_writer(compressor)?;
+          Ok::<_, Error>(compressor.reset(make_writer())?.into_inner())
+        })
+      },
+      Compressor::StatefulZlib(compressor) => {
+        compressor.get_mut().get_mut().put_u8(1);
+        compressor.get_mut().get_mut().put_u32(0); // We will fill this in later.
+        message.write_to_writer(compressor)?;
+        compressor.flush()?;
+        Ok(compressor.get_mut().get_mut().split())
+      },
+    }?;
 
     #[allow(clippy::cast_possible_truncation)]
-    let compressed_message_size = compressor.get_ref().get_ref().len() as u32;
-
-    let mut buffer = BytesMut::new();
-    buffer.put_u8(1); // Compression byte, message compressed.
-    buffer.put_u32(compressed_message_size);
-
-    let mut buffer_writter = buffer.writer();
-    std::io::copy(
-      &mut compressor.get_mut().get_mut().reader(),
-      &mut buffer_writter,
-    )?;
+    // Subtract off the 5 bytes of the prefix and then write it into the appropriate place.
+    let compressed_message_size: u32 = (buffer.len() - GRPC_MESSAGE_PREFIX_LEN) as u32;
+    buffer[1 .. 5].copy_from_slice(&compressed_message_size.to_be_bytes());
 
     // This assumes that `compute_size()` was called first. It's called as part
     // of the `write_to_writer` method call.
@@ -170,7 +221,7 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
       ratio
     );
 
-    Ok(buffer_writter.into_inner().freeze())
+    Ok(buffer.freeze())
   }
 
   fn encode_uncompressed(message: &MessageType) -> Bytes {
@@ -201,6 +252,15 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
 }
 
 //
+// Decompressor
+//
+
+enum Decompressor {
+  StatelessZlib,
+  StatefulZlib(ZlibDecoder<Writer<BytesMut>>),
+}
+
+//
 // Decoder
 //
 
@@ -209,9 +269,9 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
 // will be retained combined with the data added when decode is next called. This allows for online
 // processing of a data stream which might does not align with gRPC message boundaries (e.g. a
 // single gRPC message split between multiple DATA frames).
-#[derive(Debug)]
 pub struct Decoder<MessageType: Message> {
-  decompressor: flate2::read::ZlibDecoder<bytes::buf::Reader<BytesMut>>,
+  input_buffer: BytesMut,
+  decompressor: Option<Decompressor>,
   current_message_compressed: bool,
   current_message_size: Option<usize>,
   _type: PhantomData<MessageType>,
@@ -221,6 +281,24 @@ pub struct Decoder<MessageType: Message> {
 
 impl<MessageType: Message> Decoder<MessageType> {
   #[must_use]
+  pub fn new(decompression: Option<Decompression>) -> Self {
+    Self {
+      input_buffer: BytesMut::new(),
+      decompressor: decompression.map(|decompression| match decompression {
+        Decompression::StatefulZlib => {
+          Decompressor::StatefulZlib(ZlibDecoder::new(BytesMut::new().writer()))
+        },
+        Decompression::StatelessZlib => Decompressor::StatelessZlib,
+      }),
+      current_message_compressed: false,
+      current_message_size: None,
+      rx: DeferredCounter::default(),
+      rx_decompressed: DeferredCounter::default(),
+      _type: PhantomData,
+    }
+  }
+
+  #[must_use]
   pub const fn bandwidth_stats(&self) -> (u64, u64) {
     (self.rx.count(), self.rx_decompressed.count())
   }
@@ -228,7 +306,7 @@ impl<MessageType: Message> Decoder<MessageType> {
   // Decodes data, returning all complete messages parsed from the incoming data + any leftover
   // data from a previous chunk of data.
   pub fn decode_data(&mut self, data: &[u8]) -> Result<Vec<MessageType>> {
-    self.buffer().extend_from_slice(data);
+    self.input_buffer.extend_from_slice(data);
 
     self.rx.inc_by(data.len());
 
@@ -250,11 +328,11 @@ impl<MessageType: Message> Decoder<MessageType> {
     loop {
       match self.current_message_size {
         None => {
-          if self.buffer().len() >= GRPC_MESSAGE_PREFIX_LEN {
+          if self.input_buffer.len() >= GRPC_MESSAGE_PREFIX_LEN {
             // Read compression byte. `1` means compressed, `0` uncompressed.
-            self.current_message_compressed = self.buffer().get_u8() == 1;
+            self.current_message_compressed = self.input_buffer.get_u8() == 1;
             // Read the message size as big endian.
-            self.current_message_size = Some(self.buffer().get_u32().try_into().unwrap());
+            self.current_message_size = Some(self.input_buffer.get_u32().try_into().unwrap());
             log::trace!("next message len={}", self.current_message_size.unwrap());
 
             continue;
@@ -263,11 +341,11 @@ impl<MessageType: Message> Decoder<MessageType> {
           return Ok(messages);
         },
         Some(message_size) => {
-          if self.buffer().len() >= message_size {
+          if self.input_buffer.len() >= message_size {
             let message_buffer = if self.current_message_compressed {
               self.decompress(message_size)?
             } else {
-              self.buffer().split_to(message_size).freeze()
+              self.input_buffer.split_to(message_size).freeze()
             };
 
             self.rx_decompressed.inc_by(message_buffer.len());
@@ -283,12 +361,35 @@ impl<MessageType: Message> Decoder<MessageType> {
   }
 
   fn decompress(&mut self, message_size: usize) -> Result<Bytes> {
-    // Leave in a buffer only these bytes that belong to the currently processed message.
-    // O(1) operation.
-    let remaining_bytes_buffer = self.buffer().split_off(message_size);
+    let compressed = self.input_buffer.split_to(message_size);
 
-    let mut bytes = Vec::<u8>::new();
-    self.decompressor.read_to_end(&mut bytes)?;
+    let bytes = match self.decompressor {
+      None => return Err(Error::Protocol("compressed frame with no decompressor")),
+      Some(Decompressor::StatefulZlib(ref mut decompressor)) => {
+        decompressor.write_all(&compressed)?;
+        decompressor.flush()?;
+        decompressor.get_mut().get_mut().split().freeze()
+      },
+      Some(Decompressor::StatelessZlib) => {
+        thread_local! {
+          static DECOMPRESSOR: RefCell<ZlibDecoder<Writer<BytesMut>>> =
+            RefCell::new(ZlibDecoder::new(BytesMut::new().writer()));
+        }
+
+        // TODO(mattklein123): For mobile we only ever use a single thread for communication, though
+        // this will still keep the memory allocated. We could consider doing on demand allocation
+        // for that case.
+        // TODO(mattklein123): Using Decompress here directly should remove some copies that are
+        // required by using the writer interface.
+        DECOMPRESSOR
+          .with_borrow_mut(|decompressor| {
+            decompressor.write_all(&compressed)?;
+            decompressor.reset(BytesMut::new().writer())
+          })?
+          .into_inner()
+          .into()
+      },
+    };
 
     #[allow(clippy::cast_precision_loss)]
     let ratio = message_size as f64 * 1.0 / bytes.len() as f64;
@@ -299,33 +400,11 @@ impl<MessageType: Message> Decoder<MessageType> {
       ratio
     );
 
-    // Put into the buffer all of the bytes removed from it at the beginning of the
-    // method. This data (if any) belongs to next message(s) to be processed by the decoder.
-    // O(1) operation.
-    self.buffer().unsplit(remaining_bytes_buffer);
-
-    Ok(Bytes::from(bytes))
+    Ok(bytes)
   }
 
   pub fn initialize_stats(&mut self, rx: DynCounter, rx_decompressed: DynCounter) {
     self.rx.initialize(rx);
     self.rx_decompressed.initialize(rx_decompressed);
-  }
-
-  fn buffer(&mut self) -> &mut BytesMut {
-    self.decompressor.get_mut().get_mut()
-  }
-}
-
-impl<MessageType: Message> Default for Decoder<MessageType> {
-  fn default() -> Self {
-    Self {
-      decompressor: flate2::read::ZlibDecoder::new(BytesMut::new().reader()),
-      current_message_compressed: false,
-      current_message_size: None,
-      rx: DeferredCounter::default(),
-      rx_decompressed: DeferredCounter::default(),
-      _type: PhantomData,
-    }
   }
 }

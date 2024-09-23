@@ -22,7 +22,14 @@ use axum::routing::post;
 use axum::{BoxError, Router};
 use base64ct::Encoding;
 use bd_grpc_codec::stats::DeferredCounter;
-use bd_grpc_codec::{Decoder, Encoder, GRPC_ENCODING_DEFLATE, GRPC_ENCODING_HEADER};
+use bd_grpc_codec::{
+  Decoder,
+  Encoder,
+  GRPC_ACCEPT_ENCODING_HEADER,
+  GRPC_ENCODING_DEFLATE,
+  GRPC_ENCODING_HEADER,
+  LEGACY_GRPC_ENCODING_HEADER,
+};
 use bd_log::rate_limit_log::WarnTracker;
 use bd_server_stats::stats::{CounterWrapper, Scope};
 use bd_stats_common::DynCounter;
@@ -442,7 +449,8 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       Ok(response) => response?,
       Err(_) => return Err(Error::RequestTimeout),
     };
-    let mut decoder = Decoder::default();
+    // TODO(mattklein123): Support response decompression for unary requests.
+    let mut decoder = Decoder::new(None);
     let body = response
       .into_body()
       .collect()
@@ -473,9 +481,19 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
 
     match compression {
       None => {},
-      Some(bd_grpc_codec::Compression::Zlib { .. }) => {
-        extra_headers.get_or_insert_with(HeaderMap::default).insert(
+      Some(bd_grpc_codec::Compression::StatefulZlib { .. }) => {
+        // This is kept around for legacy clients where we only support server side. Tests
+        // are covered in codec tests.
+        unimplemented!()
+      },
+      Some(bd_grpc_codec::Compression::StatelessZlib { .. }) => {
+        let headers = extra_headers.get_or_insert_with(HeaderMap::default);
+        headers.insert(
           GRPC_ENCODING_HEADER,
+          GRPC_ENCODING_DEFLATE.try_into().unwrap(),
+        );
+        headers.insert(
+          GRPC_ACCEPT_ENCODING_HEADER,
           GRPC_ENCODING_DEFLATE.try_into().unwrap(),
         );
       },
@@ -537,7 +555,6 @@ pub struct BandwidthStatsSummary {
 
 // Handle around a bidirectional streaming API. Allows for both sending outgoing messages and
 // receiving response messages.
-#[derive(Debug)]
 pub struct StreamingApi<OutgoingType: Message, IncomingType: Message> {
   sender: StreamingApiSender<OutgoingType>,
 
@@ -615,7 +632,6 @@ impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType
 //
 
 // Handle around an API stream where the server is streaming responses.
-#[derive(Debug)]
 pub struct ServerStreamingApi<OutgoingType: Message, IncomingType: Message> {
   headers: HeaderMap,
   body: Body,
@@ -630,10 +646,28 @@ impl<OutgoingType: Message, IncomingType: MessageFull>
   // Create a new streaming API handler.
   #[must_use]
   pub fn new(headers: HeaderMap, body: Body, validate: bool) -> Self {
+    let decompression = if headers
+      .get(GRPC_ENCODING_HEADER)
+      .filter(|v| *v == GRPC_ENCODING_DEFLATE)
+      .is_some()
+    {
+      Some(bd_grpc_codec::Decompression::StatelessZlib)
+    } else if headers
+      .get(LEGACY_GRPC_ENCODING_HEADER)
+      .filter(|v| *v == GRPC_ENCODING_DEFLATE)
+      .is_some()
+    {
+      // This is not to spec but is kept around for legacy clients.
+      // TODO(mattklein123): Add a metric for this.
+      Some(bd_grpc_codec::Decompression::StatefulZlib)
+    } else {
+      None
+    };
+
     Self {
       headers,
       body,
-      decoder: Decoder::default(),
+      decoder: Decoder::new(decompression),
       validate,
       _type: PhantomData,
     }
@@ -699,7 +733,6 @@ impl<OutgoingType: Message, IncomingType: MessageFull>
 }
 
 // Handle around a streaming sender. Allows for sending outgoing messages.
-#[derive(Debug)]
 pub struct StreamingApiSender<ResponseType: Message> {
   encoder: Encoder<ResponseType>,
   tx: BodySender,
@@ -791,11 +824,21 @@ impl<ResponseType: Message> StreamingApiSender<ResponseType> {
 
 // Create a new successful axum gRPC response with a given body.
 #[must_use]
-pub fn new_grpc_response(body: Body) -> Response {
-  Response::builder()
-    .header(CONTENT_TYPE, CONTENT_TYPE_GRPC)
-    .body(body)
-    .unwrap()
+pub fn new_grpc_response(body: Body, compression: Option<bd_grpc_codec::Compression>) -> Response {
+  let mut builder = Response::builder().header(CONTENT_TYPE, CONTENT_TYPE_GRPC);
+
+  match compression {
+    None => {},
+    Some(bd_grpc_codec::Compression::StatefulZlib { .. }) => {
+      // Verified in response compression selection.
+      unreachable!()
+    },
+    Some(bd_grpc_codec::Compression::StatelessZlib { .. }) => {
+      builder = builder.header(GRPC_ENCODING_HEADER, GRPC_ENCODING_DEFLATE);
+    },
+  }
+
+  builder.body(body).unwrap()
 }
 
 // Handler for a unary API. Allows for mocking.
@@ -829,7 +872,9 @@ async fn decode_request<Message: MessageFull>(
   validate_request: bool,
 ) -> Result<(HeaderMap<HeaderValue>, Extensions, Message)> {
   let (parts, body) = request.into_parts();
-  let mut grpc_decoder = Decoder::default();
+  // TODO(mattklein123): Support decompression/compression for unary and server-side streaming
+  // requests.
+  let mut grpc_decoder = Decoder::new(None);
   let body_bytes = to_bytes(body, usize::MAX)
     .await
     .map_err(|e| Error::BodyStream(e.into()))?;
@@ -874,6 +919,7 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
 
   let (tx, rx) = mpsc::channel::<std::result::Result<_, Infallible>>(2);
 
+  // TODO(mattklein123): Response compression.
   let mut encoder = Encoder::new(None);
   let encoded_data = encoder.encode(&response);
 
@@ -883,22 +929,31 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   trailers.insert(GRPC_STATUS, HeaderValue::from_str("0").unwrap());
   tx.send(Ok(Frame::trailers(trailers))).await.unwrap();
 
-  Ok(new_grpc_response(Body::new(StreamBody::new(
-    ReceiverStream::new(rx),
-  ))))
+  Ok(new_grpc_response(
+    Body::new(StreamBody::new(ReceiverStream::new(rx))),
+    None,
+  ))
 }
 
 #[must_use]
-pub fn finalize_compression(
+pub fn finalize_response_compression(
   compression: Option<bd_grpc_codec::Compression>,
   headers: &HeaderMap,
 ) -> Option<bd_grpc_codec::Compression> {
   match compression {
     None => None,
-    Some(bd_grpc_codec::Compression::Zlib { level }) => headers
-      .get(GRPC_ENCODING_HEADER)
+    Some(bd_grpc_codec::Compression::StatefulZlib { .. }) => {
+      // Currently for memory usage reasons we do not support this.
+      debug_assert!(
+        false,
+        "StatefulZlib is not supported for response compression"
+      );
+      None
+    },
+    Some(bd_grpc_codec::Compression::StatelessZlib { level }) => headers
+      .get(GRPC_ACCEPT_ENCODING_HEADER)
       .filter(|v| *v == GRPC_ENCODING_DEFLATE)
-      .map(|_| bd_grpc_codec::Compression::Zlib { level }),
+      .map(|_| bd_grpc_codec::Compression::StatelessZlib { level }),
   }
 }
 
@@ -924,8 +979,9 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
       stream_stats.stream_completion_failures_total.inc();
     })?;
 
+  let compression = finalize_response_compression(compression, &headers);
   tokio::spawn(async move {
-    let sender = &mut StreamingApiSender::new(tx, finalize_compression(compression, &headers));
+    let sender = &mut StreamingApiSender::new(tx, compression);
     sender.initialize_stats(
       stream_stats.tx_messages_total,
       stream_stats.tx_bytes_total,
@@ -965,9 +1021,10 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
     };
   });
 
-  Ok(new_grpc_response(Body::new(StreamBody::new(
-    ReceiverStream::new(rx),
-  ))))
+  Ok(new_grpc_response(
+    Body::new(StreamBody::new(ReceiverStream::new(rx))),
+    compression,
+  ))
 }
 
 // Create an axum router for a one directional streaming handler.
