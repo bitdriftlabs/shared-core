@@ -244,14 +244,14 @@ impl LoggerBuilder {
         async move { buffer_manager.process_flushes(flush_buffers_rx).await },
         async move {
           if let Some(stats_flusher) = maybe_stats_flusher {
-            return stats_flusher.periodic_flush().await;
+            stats_flusher.periodic_flush().await;
           };
 
           Ok(())
         },
         async move {
           if let Some(stats_uploader) = maybe_stats_uploader {
-            return stats_uploader.upload_stats().await;
+            stats_uploader.upload_stats().await;
           }
 
           Ok(())

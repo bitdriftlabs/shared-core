@@ -110,11 +110,10 @@ impl<F: SerializedFileSystem + Send + 'static> Setup<F> {
       .unwrap();
 
     let flush_handle = tokio::spawn(async move {
-      flush_handles.flusher.periodic_flush().await.unwrap();
+      flush_handles.flusher.periodic_flush().await;
     });
 
-    let upload_handle =
-      tokio::spawn(async move { flush_handles.uploader.upload_stats().await.unwrap() });
+    let upload_handle = tokio::spawn(async move { flush_handles.uploader.upload_stats().await });
 
     Self {
       test_time,
@@ -199,10 +198,8 @@ impl SerializedFileSystem for TestSerializedFileSystem {
     Ok(())
   }
 
-  async fn delete_file(&self, path: impl AsRef<Path> + Send) -> anyhow::Result<()> {
+  async fn delete_file(&self, path: impl AsRef<Path> + Send) {
     self.files.lock().unwrap().remove(&Self::path_as_str(path));
-
-    Ok(())
   }
 
   async fn exists(&self, path: impl AsRef<Path> + Send) -> bool {
@@ -404,6 +401,27 @@ async fn existing_pending_upload() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn existing_empty_pending_upload() {
+  let directory = tempfile::TempDir::with_prefix("stats").unwrap();
+
+  // Write empty data to the upload file. This should then be ignored on startup, so the first
+  // upload should be based on fresh stats.
+  std::fs::write(directory.path().join("pending_stats_upload.pb"), []).unwrap();
+
+  let mut setup = Setup::new_with_directory(directory);
+
+  let counter = setup.stats.collector.scope("test").counter("test");
+  counter.inc();
+
+  setup
+    .with_next_stats_upload(|upload| {
+      assert_eq!(upload.get_counter("test:test", labels! {}), Some(1));
+    })
+    .await;
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
 async fn existing_corrupted_pending_upload() {
   let directory = tempfile::TempDir::with_prefix("stats").unwrap();
 
@@ -458,6 +476,25 @@ async fn existing_aggregated_file() {
     })
     .await;
 
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn empty_aggregated_file() {
+  let directory = tempfile::TempDir::with_prefix("stats").unwrap();
+
+  std::fs::write(directory.path().join("aggregated_stats.pb"), []).unwrap();
+
+  let mut setup = Setup::new_with_directory(directory);
+
+  let counter = setup.stats.collector.scope("test").counter("foo");
+  counter.inc();
+
+  setup
+    .with_next_stats_upload(|upload| {
+      assert_eq!(upload.get_counter("test:foo", labels! {}), Some(1));
+    })
+    .await;
   setup.shutdown().await.unwrap();
 }
 

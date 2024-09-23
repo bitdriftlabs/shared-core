@@ -298,7 +298,8 @@ async fn mux(
     .cloned()
     .map(|m| m.to_str().unwrap().to_string());
 
-  let compression = finalize_compression(Some(Compression::Zlib(3)), &request_parts.headers);
+  let compression =
+    finalize_compression(Some(Compression::Zlib { level: 3 }), &request_parts.headers);
   let mut api =
     bd_grpc::StreamingApi::new(tx, request_parts.headers, request_body, true, compression);
 

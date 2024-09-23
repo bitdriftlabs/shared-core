@@ -416,7 +416,7 @@ impl Setup {
       .unwrap();
 
     let flush_handle = tokio::spawn(async move {
-      flush_handles.flusher.periodic_flush().await.unwrap();
+      flush_handles.flusher.periodic_flush().await;
     });
 
     1.seconds().sleep().await;

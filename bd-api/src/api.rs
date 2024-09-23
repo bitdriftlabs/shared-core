@@ -416,8 +416,9 @@ impl Api {
       ]);
 
       let compression_enabled = self.compression_enabled.read();
-      let compression =
-        compression_enabled.then_some(Compression::Zlib(DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL));
+      let compression = compression_enabled.then_some(Compression::Zlib {
+        level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
+      });
       if compression.is_some() {
         headers.insert(GRPC_ENCODING_HEADER, GRPC_ENCODING_DEFLATE);
       }
