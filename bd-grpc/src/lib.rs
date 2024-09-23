@@ -25,6 +25,7 @@ use bd_grpc_codec::stats::DeferredCounter;
 use bd_grpc_codec::{
   Decoder,
   Encoder,
+  OptimizeFor,
   GRPC_ACCEPT_ENCODING_HEADER,
   GRPC_ENCODING_DEFLATE,
   GRPC_ENCODING_HEADER,
@@ -450,7 +451,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       Err(_) => return Err(Error::RequestTimeout),
     };
     // TODO(mattklein123): Support response decompression for unary requests.
-    let mut decoder = Decoder::new(None);
+    let mut decoder = Decoder::new(None, OptimizeFor::Cpu);
     let body = response
       .into_body()
       .collect()
@@ -475,6 +476,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
     mut extra_headers: Option<HeaderMap>,
     validate: bool,
     compression: Option<bd_grpc_codec::Compression>,
+    optimize_for: OptimizeFor,
   ) -> Result<StreamingApi<OutgoingType, IncomingType>> {
     let (tx, rx) = mpsc::channel(1);
     let body = StreamBody::new(ReceiverStream::new(rx));
@@ -510,16 +512,19 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       Body::new(body),
       validate,
       compression,
+      optimize_for,
     ))
   }
 
   // Perform a unary streaming request.
+  // TODO(mattklein123): Support compression.
   pub async fn server_streaming<OutgoingType: MessageFull, IncomingType: MessageFull>(
     &self,
     service_method: &ServiceMethod<OutgoingType, IncomingType>,
     extra_headers: Option<HeaderMap>,
     request: OutgoingType,
     validate: bool,
+    optimize_for: OptimizeFor,
   ) -> Result<ServerStreamingApi<OutgoingType, IncomingType>> {
     let mut encoder = Encoder::new(None);
     let response = self
@@ -534,6 +539,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       parts.headers,
       Body::new(body),
       validate,
+      optimize_for,
     ))
   }
 }
@@ -571,11 +577,12 @@ impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType
     body: Body,
     validate: bool,
     compression: Option<bd_grpc_codec::Compression>,
+    optimize_for: OptimizeFor,
   ) -> Self {
     let sender = StreamingApiSender::new(tx, compression);
     Self {
       sender,
-      streaming_api: ServerStreamingApi::new(headers, body, validate),
+      streaming_api: ServerStreamingApi::new(headers, body, validate, optimize_for),
     }
   }
 
@@ -645,7 +652,7 @@ impl<OutgoingType: Message, IncomingType: MessageFull>
 {
   // Create a new streaming API handler.
   #[must_use]
-  pub fn new(headers: HeaderMap, body: Body, validate: bool) -> Self {
+  pub fn new(headers: HeaderMap, body: Body, validate: bool, optimize_for: OptimizeFor) -> Self {
     let decompression = if headers
       .get(GRPC_ENCODING_HEADER)
       .filter(|v| *v == GRPC_ENCODING_DEFLATE)
@@ -667,7 +674,7 @@ impl<OutgoingType: Message, IncomingType: MessageFull>
     Self {
       headers,
       body,
-      decoder: Decoder::new(decompression),
+      decoder: Decoder::new(decompression, optimize_for),
       validate,
       _type: PhantomData,
     }
@@ -874,7 +881,7 @@ async fn decode_request<Message: MessageFull>(
   let (parts, body) = request.into_parts();
   // TODO(mattklein123): Support decompression/compression for unary and server-side streaming
   // requests.
-  let mut grpc_decoder = Decoder::new(None);
+  let mut grpc_decoder = Decoder::new(None, OptimizeFor::Cpu);
   let body_bytes = to_bytes(body, usize::MAX)
     .await
     .map_err(|e| Error::BodyStream(e.into()))?;

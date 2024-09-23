@@ -24,6 +24,7 @@ use crate::{
 use assert_matches::assert_matches;
 use async_trait::async_trait;
 use bd_grpc_codec::stats::DeferredCounter;
+use bd_grpc_codec::OptimizeFor;
 use bd_server_stats::stats::CounterWrapper;
 use bd_server_stats::test::util::stats::{self, Helper};
 use bd_time::TimeDurationExt;
@@ -248,6 +249,7 @@ async fn server_streaming() {
       None,
       EchoRequest::default(),
       false,
+      OptimizeFor::Memory,
     )
     .await
     .unwrap();
@@ -300,6 +302,7 @@ async fn server_streaming_error_handler() {
       None,
       EchoRequest::default(),
       false,
+      OptimizeFor::Cpu,
     )
     .await
     .unwrap();

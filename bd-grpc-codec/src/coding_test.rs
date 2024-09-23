@@ -5,7 +5,14 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{Compression, Decoder, Decompression, Encoder, DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL};
+use crate::{
+  Compression,
+  Decoder,
+  Decompression,
+  Encoder,
+  OptimizeFor,
+  DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
+};
 use protobuf::well_known_types::any::Any;
 use protobuf::well_known_types::struct_::{Struct, Value};
 use rstest::rstest;
@@ -32,7 +39,7 @@ fn decoder_does_not_panic_on_invalid_input_data(
   let bytes = &encoder.encode(message);
   let compressed_bytes = &compressing_encoder.encode(message);
 
-  let mut decoder = Decoder::<Any>::new(Some(decompression));
+  let mut decoder = Decoder::<Any>::new(Some(decompression), OptimizeFor::Cpu);
 
   assert!(decoder.decode_data(bytes).is_err());
   assert!(decoder.decode_data(compressed_bytes).is_err());
@@ -41,13 +48,15 @@ fn decoder_does_not_panic_on_invalid_input_data(
 #[rstest]
 #[case((Compression::StatefulZlib {
   level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
-}, Decompression::StatefulZlib))]
+}, Decompression::StatefulZlib, OptimizeFor::Cpu))]
 #[case((Compression::StatelessZlib {
   level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
-}, Decompression::StatelessZlib))]
-fn encoding_decoding_flow(#[case] (compression, decompression): (Compression, Decompression)) {
+}, Decompression::StatelessZlib, OptimizeFor::Memory))]
+fn encoding_decoding_flow(
+  #[case] (compression, decompression, optimize_for): (Compression, Decompression, OptimizeFor),
+) {
   let mut encoder = Encoder::<Struct>::new(Some(compression));
-  let mut decoder = Decoder::<Struct>::new(Some(decompression));
+  let mut decoder = Decoder::<Struct>::new(Some(decompression), optimize_for);
 
   // Check various message sizes to make sure that compressor and decompressor
   // work with diff message lengths. Verify that buffering done internally by
@@ -78,7 +87,7 @@ fn compression_decompression_is_stateful() {
   let mut encoder = Encoder::<Struct>::new(Some(Compression::StatefulZlib {
     level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
   }));
-  let mut decoder = Decoder::<Struct>::new(Some(Decompression::StatefulZlib));
+  let mut decoder = Decoder::<Struct>::new(Some(Decompression::StatefulZlib), OptimizeFor::Cpu);
 
   let message1 = create_compressable_message();
   let message2 = create_compressable_message();

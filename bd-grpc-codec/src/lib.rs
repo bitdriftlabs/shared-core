@@ -14,7 +14,6 @@ pub mod stats;
 use crate::stats::DeferredCounter;
 use bd_client_common::error::handle_unexpected_error_with_details;
 use bd_stats_common::DynCounter;
-use bytes::buf::Writer;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use flate2::write::{ZlibDecoder, ZlibEncoder};
 use protobuf::{CodedOutputStream, Message};
@@ -77,7 +76,7 @@ pub const GRPC_ENCODING_DEFLATE: &str = "deflate";
 
 enum Compressor {
   StatelessZlib { level: u32 },
-  StatefulZlib(ZlibEncoder<Writer<BytesMut>>),
+  StatefulZlib(ZlibEncoder<Vec<u8>>),
 }
 
 //
@@ -98,7 +97,7 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
       compressor: compression.map(|compression| match compression {
         Compression::StatelessZlib { level } => Compressor::StatelessZlib { level },
         Compression::StatefulZlib { level } => Compressor::StatefulZlib(ZlibEncoder::new(
-          BytesMut::new().writer(),
+          Vec::new(),
           flate2::Compression::new(level),
         )),
       }),
@@ -111,7 +110,7 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
   // Converts a Protobuf message into a gRPC frame, potentially compressing the message.
   pub fn encode(&mut self, message: &MessageType) -> Bytes {
     // Serialize the Protobuf message then prefix it with the compression byte and the length in big
-    // endian (the default for BytesMut).
+    // endian (the default for BufMut).
     // See https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#requests for an
     // explanation of the gRPC wire format.
 
@@ -167,16 +166,15 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
   fn encode_compressed(compression: &mut Compressor, message: &MessageType) -> Result<Bytes> {
     let mut buffer = match compression {
       Compressor::StatelessZlib { level } => {
-        fn make_writer() -> Writer<BytesMut> {
-          let mut buffer = BytesMut::new();
+        fn make_writer() -> Vec<u8> {
+          let mut buffer = Vec::new();
           buffer.put_u8(1); // Compression byte, message compressed.
           buffer.put_u32(0); // We will fill this in later.
-          buffer.writer()
+          buffer
         }
 
         thread_local! {
-          static COMPRESSOR: RefCell<Option<ZlibEncoder<Writer<BytesMut>>>> =
-            const { RefCell::new(None) };
+          static COMPRESSOR: RefCell<Option<ZlibEncoder<Vec<u8>>>> = const { RefCell::new(None) };
         }
 
         // TODO(mattklein123): For mobile we only ever use a single thread for communication, though
@@ -192,15 +190,15 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
           });
 
           message.write_to_writer(compressor)?;
-          Ok::<_, Error>(compressor.reset(make_writer())?.into_inner())
+          Ok::<_, Error>(compressor.reset(make_writer())?)
         })
       },
       Compressor::StatefulZlib(compressor) => {
-        compressor.get_mut().get_mut().put_u8(1);
-        compressor.get_mut().get_mut().put_u32(0); // We will fill this in later.
+        compressor.get_mut().put_u8(1);
+        compressor.get_mut().put_u32(0); // We will fill this in later.
         message.write_to_writer(compressor)?;
         compressor.flush()?;
-        Ok(compressor.get_mut().get_mut().split())
+        Ok(std::mem::take(compressor.get_mut()))
       },
     }?;
 
@@ -221,7 +219,7 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
       ratio
     );
 
-    Ok(buffer.freeze())
+    Ok(buffer.into())
   }
 
   fn encode_uncompressed(message: &MessageType) -> Bytes {
@@ -257,7 +255,18 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
 
 enum Decompressor {
   StatelessZlib,
-  StatefulZlib(ZlibDecoder<Writer<BytesMut>>),
+  StatefulZlib(ZlibDecoder<Vec<u8>>),
+}
+
+//
+// OptimizeFor
+//
+
+pub enum OptimizeFor {
+  // Will attempt to reduce CPU usage at the expense of memory usage.
+  Cpu,
+  // Will attempt to reduce memory usage at the expense of CPU usage.
+  Memory,
 }
 
 //
@@ -277,17 +286,16 @@ pub struct Decoder<MessageType: Message> {
   _type: PhantomData<MessageType>,
   rx: DeferredCounter,
   rx_decompressed: DeferredCounter,
+  optimize_for: OptimizeFor,
 }
 
 impl<MessageType: Message> Decoder<MessageType> {
   #[must_use]
-  pub fn new(decompression: Option<Decompression>) -> Self {
+  pub fn new(decompression: Option<Decompression>, optimize_for: OptimizeFor) -> Self {
     Self {
       input_buffer: BytesMut::new(),
       decompressor: decompression.map(|decompression| match decompression {
-        Decompression::StatefulZlib => {
-          Decompressor::StatefulZlib(ZlibDecoder::new(BytesMut::new().writer()))
-        },
+        Decompression::StatefulZlib => Decompressor::StatefulZlib(ZlibDecoder::new(Vec::new())),
         Decompression::StatelessZlib => Decompressor::StatelessZlib,
       }),
       current_message_compressed: false,
@@ -295,6 +303,7 @@ impl<MessageType: Message> Decoder<MessageType> {
       rx: DeferredCounter::default(),
       rx_decompressed: DeferredCounter::default(),
       _type: PhantomData,
+      optimize_for,
     }
   }
 
@@ -325,7 +334,7 @@ impl<MessageType: Message> Decoder<MessageType> {
     //
     // See https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#requests for an
     // explanation of the gRPC wire format.
-    loop {
+    let messages = loop {
       match self.current_message_size {
         None => {
           if self.input_buffer.len() >= GRPC_MESSAGE_PREFIX_LEN {
@@ -338,7 +347,7 @@ impl<MessageType: Message> Decoder<MessageType> {
             continue;
           }
 
-          return Ok(messages);
+          break messages;
         },
         Some(message_size) => {
           if self.input_buffer.len() >= message_size {
@@ -353,27 +362,36 @@ impl<MessageType: Message> Decoder<MessageType> {
             self.current_message_size = None;
             messages.push(MessageType::parse_from_tokio_bytes(&message_buffer)?);
           } else {
-            return Ok(messages);
+            break messages;
           }
         },
       }
+    };
+
+    if matches!(self.optimize_for, OptimizeFor::Memory) && self.input_buffer.is_empty() {
+      // BytesMut will keep capacity around even if it's empty. If we are trying to reduce memory
+      // usage (as in the case of many long lived low throughput connections) we will swap out
+      // the buffer for an empty buffer with no backing allocations.
+      std::mem::take(&mut self.input_buffer);
     }
+
+    Ok(messages)
   }
 
   fn decompress(&mut self, message_size: usize) -> Result<Bytes> {
     let compressed = self.input_buffer.split_to(message_size);
 
-    let bytes = match self.decompressor {
+    let bytes: Vec<u8> = match self.decompressor {
       None => return Err(Error::Protocol("compressed frame with no decompressor")),
       Some(Decompressor::StatefulZlib(ref mut decompressor)) => {
         decompressor.write_all(&compressed)?;
         decompressor.flush()?;
-        decompressor.get_mut().get_mut().split().freeze()
+        std::mem::take(decompressor.get_mut())
       },
       Some(Decompressor::StatelessZlib) => {
         thread_local! {
-          static DECOMPRESSOR: RefCell<ZlibDecoder<Writer<BytesMut>>> =
-            RefCell::new(ZlibDecoder::new(BytesMut::new().writer()));
+          static DECOMPRESSOR: RefCell<ZlibDecoder<Vec<u8>>> =
+            RefCell::new(ZlibDecoder::new(Vec::new()));
         }
 
         // TODO(mattklein123): For mobile we only ever use a single thread for communication, though
@@ -381,13 +399,10 @@ impl<MessageType: Message> Decoder<MessageType> {
         // for that case.
         // TODO(mattklein123): Using Decompress here directly should remove some copies that are
         // required by using the writer interface.
-        DECOMPRESSOR
-          .with_borrow_mut(|decompressor| {
-            decompressor.write_all(&compressed)?;
-            decompressor.reset(BytesMut::new().writer())
-          })?
-          .into_inner()
-          .into()
+        DECOMPRESSOR.with_borrow_mut(|decompressor| {
+          decompressor.write_all(&compressed)?;
+          decompressor.reset(Vec::new())
+        })?
       },
     };
 
@@ -400,7 +415,7 @@ impl<MessageType: Message> Decoder<MessageType> {
       ratio
     );
 
-    Ok(bytes)
+    Ok(bytes.into())
   }
 
   pub fn initialize_stats(&mut self, rx: DynCounter, rx_decompressed: DynCounter) {
