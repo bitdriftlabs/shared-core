@@ -13,7 +13,7 @@ use anyhow::anyhow;
 use assert_matches::assert_matches;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
-use bd_grpc_codec::Encoder;
+use bd_grpc_codec::{Encoder, OptimizeFor};
 use bd_internal_logging::{LogFields, LogLevel, LogType};
 use bd_metadata::{Metadata, Platform};
 use bd_proto::protos::client::api::api_request::Request_type;
@@ -180,7 +180,7 @@ impl Setup {
       shutdown_trigger,
       collector,
       time_provider,
-      requests_decoder: bd_grpc_codec::Decoder::new(None),
+      requests_decoder: bd_grpc_codec::Decoder::new(None, OptimizeFor::Memory),
     }
   }
 

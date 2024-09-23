@@ -31,6 +31,7 @@ use bd_client_stats_store::{Counter, CounterWrapper, Scope};
 use bd_grpc_codec::{
   Compression,
   Encoder,
+  OptimizeFor,
   DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
   GRPC_ACCEPT_ENCODING_HEADER,
   GRPC_ENCODING_DEFLATE,
@@ -147,8 +148,10 @@ impl StreamState {
     // currently we are not passing the response headers back to Rust. Given that we currently
     // have prior knowledge of what the server will do this is OK but we should fix this in the
     // future.
-    let mut decoder =
-      bd_grpc_codec::Decoder::new(Some(bd_grpc_codec::Decompression::StatelessZlib));
+    let mut decoder = bd_grpc_codec::Decoder::new(
+      Some(bd_grpc_codec::Decompression::StatelessZlib),
+      OptimizeFor::Cpu,
+    );
     decoder.initialize_stats(
       CounterWrapper::make_dyn(stats.rx_bytes.clone()),
       CounterWrapper::make_dyn(stats.rx_bytes_decompressed.clone()),
