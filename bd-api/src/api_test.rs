@@ -35,6 +35,7 @@ use std::sync::{Arc, Mutex};
 use time::ext::NumericalDuration;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::task::JoinHandle;
 
 struct EmptyMetadata;
 
@@ -116,7 +117,7 @@ impl PlatformNetworkStream for Stream {
 }
 
 struct Setup {
-  _sdk_directory: tempfile::TempDir,
+  sdk_directory: tempfile::TempDir,
   data_tx: Sender<DataUpload>,
   send_data_rx: Receiver<Vec<u8>>,
   start_stream_rx: Receiver<()>,
@@ -124,8 +125,9 @@ struct Setup {
   collector: Collector,
   requests_decoder: bd_grpc_codec::Decoder<ApiRequest>,
   time_provider: Arc<bd_time::TestTimeProvider>,
-
   current_stream_tx: Arc<Mutex<Option<Sender<StreamEvent>>>>,
+  api_task: Option<JoinHandle<anyhow::Result<()>>>,
+  api_key: String,
 }
 
 struct TestLog {}
@@ -150,30 +152,35 @@ impl Setup {
     let (data_tx, data_rx) = channel(1);
     let (trigger_upload_tx, _trigger_upload_rx) = channel(1);
 
-    let time_provider = Arc::new(bd_time::TestTimeProvider::new(OffsetDateTime::now_utc()));
+    let time_provider = Arc::new(bd_time::TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
 
     let collector = Collector::default();
 
+    let runtime_loader = ConfigLoader::new(sdk_directory.path());
+    let api_key = "api-key-test".to_string();
     let api = Api::new(
-      "api-key-test".to_string(),
+      sdk_directory.path().to_path_buf(),
+      api_key.clone(),
       manager,
       shutdown_trigger.make_shutdown(),
       data_rx,
       trigger_upload_tx,
       Arc::new(EmptyMetadata),
-      ConfigLoader::new(sdk_directory.path()),
-      Vec::new(),
+      runtime_loader.clone(),
+      vec![Box::new(bd_runtime::runtime::RuntimeManager::new(
+        runtime_loader,
+      ))],
       time_provider.clone(),
       Arc::new(TestLog {}),
       &collector.scope("api"),
     )
     .unwrap();
 
-    tokio::task::spawn(api.start());
+    let api_task = tokio::task::spawn(api.start());
 
     Self {
       current_stream_tx,
-      _sdk_directory: sdk_directory,
+      sdk_directory,
       start_stream_rx,
       data_tx,
       send_data_rx,
@@ -181,7 +188,51 @@ impl Setup {
       collector,
       time_provider,
       requests_decoder: bd_grpc_codec::Decoder::new(None, OptimizeFor::Memory),
+      api_task: Some(api_task),
+      api_key,
     }
+  }
+
+  async fn restart(&mut self) {
+    let old_shutdown = std::mem::take(&mut self.shutdown_trigger);
+    old_shutdown.shutdown().await;
+    self.api_task.take().unwrap().await.unwrap().unwrap();
+
+    let (start_stream_tx, start_stream_rx) = channel(1);
+    let (send_data_tx, send_data_rx) = channel(1);
+    let current_stream_tx = Arc::new(Mutex::new(None));
+    let manager = Box::new(PlatformNetwork::new(
+      start_stream_tx,
+      send_data_tx,
+      current_stream_tx.clone(),
+    ));
+    let (data_tx, data_rx) = channel(1);
+    let (trigger_upload_tx, _trigger_upload_rx) = channel(1);
+
+    let runtime_loader = ConfigLoader::new(self.sdk_directory.path());
+    let api = Api::new(
+      self.sdk_directory.path().to_path_buf(),
+      self.api_key.clone(),
+      manager,
+      self.shutdown_trigger.make_shutdown(),
+      data_rx,
+      trigger_upload_tx,
+      Arc::new(EmptyMetadata),
+      runtime_loader.clone(),
+      vec![Box::new(bd_runtime::runtime::RuntimeManager::new(
+        runtime_loader,
+      ))],
+      self.time_provider.clone(),
+      Arc::new(TestLog {}),
+      &self.collector.scope("api"),
+    )
+    .unwrap();
+
+    self.api_task = Some(tokio::task::spawn(api.start()));
+    self.start_stream_rx = start_stream_rx;
+    self.data_tx = data_tx;
+    self.send_data_rx = send_data_rx;
+    self.current_stream_tx = current_stream_tx;
   }
 
   async fn handshake_response(&self) {
@@ -228,6 +279,7 @@ impl Setup {
       .unwrap();
   }
 
+  #[must_use]
   async fn next_stream(&mut self, wait: Duration) -> bool {
     tokio::select! {
       _ = self.start_stream_rx.recv() => {},
@@ -288,6 +340,71 @@ async fn api_retry_stream() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn client_kill() {
+  let mut setup = Setup::new();
+
+  assert!(setup.next_stream(1.seconds()).await);
+  setup.handshake_response().await;
+
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::RuntimeUpdate(RuntimeUpdate {
+        version_nonce: "test".to_string(),
+        runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
+          bd_runtime::runtime::client_kill::GenericKillDuration::path(),
+          bd_test_helpers::runtime::ValueKind::Int(
+            1.days().whole_milliseconds().try_into().unwrap(),
+          ),
+        )]))
+        .into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })
+    .await;
+
+  // Wait for the ACK to make sure the runtime update is processed.
+  setup.next_request(1.seconds()).await.unwrap();
+
+  // Restart to make sure we are killed.
+  setup.restart().await;
+  assert!(!setup.next_stream(1.seconds()).await);
+
+  // Advance 12 hours, we should still be killed.
+  setup.time_provider.advance(12.hours());
+  setup.restart().await;
+  assert!(!setup.next_stream(1.seconds()).await);
+
+  // Advance another 13 hours, we should come back up.
+  setup.time_provider.advance(13.hours());
+  setup.restart().await;
+  assert!(setup.next_stream(1.seconds()).await);
+
+  // The client should be killed again.
+  setup.restart().await;
+  assert!(!setup.next_stream(1.seconds()).await);
+
+  // Change the API key which without advancing time should allow the client to come up.
+  setup.api_key = "other".to_string();
+  setup.restart().await;
+  assert!(setup.next_stream(1.seconds()).await);
+}
+
+#[tokio::test(start_paused = true)]
+async fn bad_client_kill_file() {
+  let mut setup = Setup::new();
+
+  assert!(setup.next_stream(1.seconds()).await);
+
+  tokio::fs::write(setup.sdk_directory.path().join("client_kill_until"), b"bad")
+    .await
+    .unwrap();
+  setup.restart().await;
+
+  assert!(setup.next_stream(1.seconds()).await);
+}
+
+#[tokio::test(start_paused = true)]
 async fn api_retry_stream_runtime_override() {
   let mut setup = Setup::new();
 
@@ -300,7 +417,7 @@ async fn api_retry_stream_runtime_override() {
         version_nonce: "test".to_string(),
         runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
           bd_runtime::runtime::api::MaxBackoffInterval::path(),
-          bd_test_helpers::runtime::ValueKind::Int(1),
+          bd_test_helpers::runtime::ValueKind::Int(1000),
         )]))
         .into(),
         ..Default::default()
@@ -310,10 +427,10 @@ async fn api_retry_stream_runtime_override() {
     .await;
 
   // Reconnect 10 times, asserting that it never takes more than 1s to connect. This proves that the
-  // backoff never exceeds 1, per the runtime override.
+  // backoff never exceeds 1.5s, per the runtime override and default 50% randomization.
   for _ in 0 .. 10 {
     setup.close_stream().await;
-    setup.next_stream(1.seconds()).await;
+    assert!(setup.next_stream(1500.milliseconds()).await);
   }
 
   setup.shutdown_trigger.shutdown().await;
@@ -323,7 +440,7 @@ async fn api_retry_stream_runtime_override() {
 async fn error_response() {
   let mut setup = Setup::new();
 
-  setup.next_stream(1.seconds()).await;
+  assert!(setup.next_stream(1.seconds()).await);
   setup.handshake_response().await;
 
   setup
@@ -342,7 +459,7 @@ async fn error_response() {
   // event is processed via the same channel as the response, we know that the response must have
   // been processed.
   setup.close_stream().await;
-  setup.next_stream(1.seconds()).await;
+  assert!(setup.next_stream(1.seconds()).await);
 
   setup
     .collector
@@ -353,7 +470,7 @@ async fn error_response() {
 async fn error_response_before_handshake() {
   let mut setup = Setup::new();
 
-  setup.next_stream(1.seconds()).await;
+  assert!(setup.next_stream(1.seconds()).await);
 
   setup
     .send_response(ApiResponse {
@@ -371,7 +488,7 @@ async fn error_response_before_handshake() {
   // event is processed via the same channel as the response, we know that the response must have
   // been processed.
   setup.close_stream().await;
-  setup.next_stream(1.seconds()).await;
+  assert!(setup.next_stream(1.seconds()).await);
 
   setup
     .collector
@@ -385,7 +502,7 @@ async fn error_response_before_handshake() {
 async fn unauthenticated_response_before_handshake() {
   let mut setup = Setup::new();
 
-  setup.next_stream(1.seconds()).await;
+  assert!(setup.next_stream(1.seconds()).await);
 
   setup
     .send_response(ApiResponse {
@@ -398,23 +515,30 @@ async fn unauthenticated_response_before_handshake() {
     })
     .await;
 
-  // Processing the error message has no side effects, so we just make sure that we process is to
-  // provide code coverage. To do so, we close the stream and wait for the next one. Since the close
-  // event is processed via the same channel as the response, we know that the response must have
-  // been processed.
+  // The unauthenticated response will kill the client for the default 1 day period. Make sure that
+  // we don't reconnect.
   setup.close_stream().await;
-  setup.next_stream(1.seconds()).await;
+  assert!(!setup.next_stream(1.seconds()).await);
 
   setup
     .collector
     .assert_counter_eq(0, "api:error_shutdown_total", labels! {});
+
+  // Restart to make sure the client is still killed. We should not see any stream requests.
+  setup.restart().await;
+  assert!(!setup.next_stream(1.seconds()).await);
+
+  // Now let's wait a day and make sure the client comes back online.
+  setup.time_provider.advance(1.days());
+  setup.restart().await;
+  assert!(setup.next_stream(1.seconds()).await);
 }
 
 #[tokio::test]
 async fn set_stats_upload_request_sent_at_field() {
   let mut setup = Setup::new();
 
-  setup.next_stream(1.seconds()).await;
+  assert!(setup.next_stream(1.seconds()).await);
   setup.handshake_response().await;
 
   let (tracked, _) = Tracked::new("123".to_string(), StatsUploadRequest::default());

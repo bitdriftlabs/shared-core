@@ -59,11 +59,6 @@ const GRPC_MESSAGE_PREFIX_LEN: usize = 5;
 // compressable. Used to avoid compression of small messages whose compressed
 // version is often greater in size than orginal.
 const GRPC_MIN_MESSAGE_SIZE_COMPRESSION_THRESHOLD: usize = 100;
-// zlib has 10 compression levels (0-9). We use level 5 as this is what Apple says about
-// this particular compression level: "This compression level provides a good balance
-// between compression speed and compression ratio.".
-// Source: https://developer.apple.com/documentation/compression/algorithm/zlib
-pub const DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL: u32 = 5;
 
 pub const LEGACY_GRPC_ENCODING_HEADER: &str = "x-grpc-encoding";
 pub const GRPC_ENCODING_HEADER: &str = "grpc-encoding";

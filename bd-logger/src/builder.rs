@@ -215,6 +215,7 @@ impl LoggerBuilder {
     )?);
 
     let api = bd_api::api::Api::new(
+      self.params.sdk_directory,
       self.params.api_key,
       self.params.network,
       shutdown_handle.make_shutdown(),

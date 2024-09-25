@@ -178,7 +178,7 @@ fn disk_persistence_config_corruption() {
     RecordingErrorReporter::record_error(|| loader.handle_cached_config());
 
   assert_eq!(
-    "runtime cache load: A protobuf error occurred: Incorrect tag".to_string(),
+    "runtime cache load: Incorrect tag".to_string(),
     unexpected_error,
   );
   let flag = TestFlag::register(&loader).unwrap();

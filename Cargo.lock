@@ -381,6 +381,7 @@ dependencies = [
  "bd-metadata",
  "bd-proto",
  "flatbuffers",
+ "flate2",
  "log",
  "parking_lot",
  "protobuf",

@@ -11,6 +11,7 @@ mod runtime_test;
 
 use anyhow::anyhow;
 use bd_client_common::error::handle_unexpected;
+use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_proto::protos::client::api::RuntimeUpdate;
 use bd_proto::protos::client::runtime::runtime::Value;
 use bd_proto::protos::client::runtime::Runtime;
@@ -21,6 +22,9 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+
+// TODO(mattklein123): This entire file should use async IO but this is not so simple given all the
+// call sites so we can consider this in the future.
 
 //
 // RuntimeManager
@@ -206,7 +210,7 @@ impl ConfigLoader {
     // We expect at most two files in this directory: a protobuf.pb which contains the cached
     // runtime protobuf and a retry_count file which contains the number of times this cached
     // runtime has been attempted applied during startup. The idea behind the retry count is
-    // allow a client that received bad configuration to eventually recover, avoiding an infinte
+    // allow a client that received bad configuration to eventually recover, avoiding an infinite
     // crash loop.
 
     // If either of the files don't exist, we're not going to try to load the config and we'll wipe
@@ -237,13 +241,19 @@ impl ConfigLoader {
     // runtime config to accidentally set this really high, but right now this is not
     // configurable at all.
     if retry_count > 5 {
+      // Note that eventually if the client is killed this is going to kick in and delete cached
+      // runtime. This is OK since we are still covered by the kill file, and ultimately we would
+      // like the client to come up and get fresh config anyway.
       return Ok(true);
     }
 
     // TODO(snowp): Add stats for how often the read fails beyond ENOENT.
     // TODO(snowp): When we add a callback, only trigger it if we successfully loaded the config.
-    let runtime = RuntimeUpdate::parse_from_bytes(&std::fs::read(&self.protobuf_file)?)
-      .map_err(|e| anyhow!("A protobuf error occurred: {e}"))?;
+    // TODO(mattklein123): This tries to read the compressed format with CRC and if it fails tries
+    // to fall back to the uncompressed format.
+    let bytes = std::fs::read(&self.protobuf_file)?;
+    let runtime =
+      read_compressed_protobuf(&bytes).or_else(|_| RuntimeUpdate::parse_from_bytes(&bytes))?;
 
     self.update_snapshot_inner(&runtime);
 
@@ -352,7 +362,7 @@ impl ConfigLoader {
   }
 
   fn cache_update(&self, runtime: &RuntimeUpdate) {
-    let _ignored = std::fs::write(&self.protobuf_file, runtime.write_to_bytes().unwrap());
+    let _ignored = std::fs::write(&self.protobuf_file, write_compressed_protobuf(runtime));
   }
 }
 
@@ -438,7 +448,7 @@ pub trait FeatureFlag<T> {
 //
 
 /// An internal representation of a registered watch, allowing for subscriptions to be made
-/// agaisnt the watch channel.
+/// against the watch channel.
 pub struct InternalWatch<T> {
   default: T,
   watch: tokio::sync::watch::Sender<T>,
@@ -695,6 +705,29 @@ pub mod log_upload {
     FlushBufferLookbackWindow,
     "workflows.flush_buffer_lookback_ms",
     time::Duration::ZERO
+  );
+}
+
+pub mod client_kill {
+  use time::ext::NumericalDuration as _;
+
+  // This flag is used to target specific sets of clients for kill/shutdown. The default is 0ms
+  // which is a no-op. This flag can be used to shut down specific SDK versions, or anything else
+  // the matching system supports.
+  duration_feature_flag!(
+    GenericKillDuration,
+    "client_kill.generic_kill_duration_ms",
+    time::Duration::ZERO
+  );
+
+  // This flag is specifically used when the client fails to authenticate with an unauthenticated
+  // error. Generally this case will not be recoverable, but to account for the case in which
+  // the SaaS sends unauthenticated by accident, we will kill the client for a certain amount of
+  // time and then allow it to try again.
+  duration_feature_flag!(
+    UnauthenticatedKillDuration,
+    "client_kill.unauthenticated_kill_duration_ms",
+    1.days()
   );
 }
 

@@ -14,8 +14,8 @@ use async_trait::async_trait;
 use bd_api::upload::TrackedStatsUploadRequest;
 use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
+use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_stats_store::{BoundedCollector, Histogram, MetricData};
-use bd_grpc_codec::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{
   Aggregated,
   Occurred_at,
@@ -29,10 +29,7 @@ use bd_runtime::runtime::DurationWatch;
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::Id;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
-use flate2::read::{ZlibDecoder, ZlibEncoder};
-use flate2::Compression;
 use std::collections::HashMap;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 use time::OffsetDateTime;
@@ -66,42 +63,22 @@ pub trait SerializedFileSystem: Sync {
   async fn delete_file(&self, path: impl AsRef<Path> + Send);
   async fn exists(&self, path: impl AsRef<Path> + Send) -> bool;
 
-  async fn write_compressed_protobuf_file<T: protobuf::Message>(
+  async fn write_compressed_protobuf<T: protobuf::Message>(
     &self,
     path: impl AsRef<Path> + Send,
     message: &T,
   ) -> anyhow::Result<()> {
-    let bytes = message.write_to_bytes().unwrap();
-    let mut encoder = ZlibEncoder::new(
-      &bytes[..],
-      Compression::new(DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL),
-    );
-    let mut compressed_bytes = Vec::new();
-    encoder.read_to_end(&mut compressed_bytes).unwrap();
+    let compressed_bytes = write_compressed_protobuf(message);
     self.write_file(path, compressed_bytes).await?;
     Ok(())
   }
 
-  async fn read_compressed_protobuf_file<T: protobuf::Message>(
+  async fn read_compressed_protobuf<T: protobuf::Message>(
     &self,
     path: impl AsRef<Path> + Send,
   ) -> anyhow::Result<T> {
-    // The files are likely not large enough to deal with streaming decompression on top of flate2.
-    // For now we just read the entire thing and then decompress it in memory. We can consider
-    // streaming later.
     let compressed_bytes = self.read_file(path).await?;
-
-    // We should never write empty files. If there is no data this was a partial write, full disk
-    // issue, or some other problem. We use zlib for compression which includes a CRC at the end
-    // so as long as the file is not empty we can be sure that the data is not corrupted.
-    if compressed_bytes.is_empty() {
-      anyhow::bail!("unexpected empty file");
-    }
-
-    let mut decoder = ZlibDecoder::new(&compressed_bytes[..]);
-    // In the future if/when we switch to using Bytes/Chars in the compiled proto it may be more
-    // efficient to read out the uncompressed into Bytes and then parse from that.
-    Ok(T::parse_from_reader(&mut decoder)?)
+    Ok(read_compressed_protobuf(&compressed_bytes)?)
   }
 }
 
@@ -210,7 +187,7 @@ impl<F: SerializedFileSystem> Uploader<F> {
     let pending_upload = if self.fs.exists(&*PENDING_STATS_UPLOAD_FILE).await {
       match self
         .fs
-        .read_compressed_protobuf_file::<StatsUploadRequest>(&*PENDING_STATS_UPLOAD_FILE)
+        .read_compressed_protobuf::<StatsUploadRequest>(&*PENDING_STATS_UPLOAD_FILE)
         .await
       {
         Ok(pending_request) => {
@@ -246,7 +223,7 @@ impl<F: SerializedFileSystem> Uploader<F> {
 
     let aggregated_stats = match self
       .fs
-      .read_compressed_protobuf_file::<StatsSnapshot>(&*AGGREGATED_STATS_FILE)
+      .read_compressed_protobuf::<StatsSnapshot>(&*AGGREGATED_STATS_FILE)
       .await
     {
       Ok(stats) => stats,
@@ -272,7 +249,7 @@ impl<F: SerializedFileSystem> Uploader<F> {
     // might not be able to propagate the stats values.
     if let Err(e) = self
       .fs
-      .write_compressed_protobuf_file(&*PENDING_STATS_UPLOAD_FILE, &stats_request)
+      .write_compressed_protobuf(&*PENDING_STATS_UPLOAD_FILE, &stats_request)
       .await
     {
       log::warn!("failed to write pending stats upload file: {e}");
@@ -400,7 +377,7 @@ impl<T: TimeProvider, F: SerializedFileSystem> Flusher<T, F> {
     log::debug!("starting merge of delta snapshot to disk");
     let mut new_or_existing_snapshot = self
       .fs
-      .read_compressed_protobuf_file::<StatsSnapshot>(&*AGGREGATED_STATS_FILE)
+      .read_compressed_protobuf::<StatsSnapshot>(&*AGGREGATED_STATS_FILE)
       .await
       .inspect_err(|e| log::debug!("error reading snapshot from disk: {e}"))
       .ok()
@@ -459,7 +436,7 @@ impl<T: TimeProvider, F: SerializedFileSystem> Flusher<T, F> {
     // might not be able to propagate the stats values.
     self
       .fs
-      .write_compressed_protobuf_file(
+      .write_compressed_protobuf(
         &*AGGREGATED_STATS_FILE,
         &new_or_existing_snapshot.into_proto(),
       )

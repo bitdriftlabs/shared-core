@@ -13,6 +13,7 @@ bd-matcher.path            = "../bd-matcher"
 bd-metadata.path           = "../bd-metadata"
 bd-proto.path              = "../bd-proto"
 flatbuffers.workspace      = true
+flate2                     = { workspace = true, default-features = false, features = ["zlib"] }
 log.workspace              = true
 parking_lot.workspace      = true
 protobuf.workspace         = true

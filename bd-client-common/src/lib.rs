@@ -10,6 +10,8 @@ use std::future::Future;
 
 pub mod error;
 pub mod fb;
+pub mod file;
+pub mod zlib;
 
 pub fn spawn_error_handling_task<E: std::error::Error + Sync + Send + 'static>(
   f: impl Future<Output = std::result::Result<(), E>> + Send + 'static,

@@ -5,14 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{
-  Compression,
-  Decoder,
-  Decompression,
-  Encoder,
-  OptimizeFor,
-  DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
-};
+use crate::{Compression, Decoder, Decompression, Encoder, OptimizeFor};
+use bd_client_common::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use protobuf::well_known_types::any::Any;
 use protobuf::well_known_types::struct_::{Struct, Value};
 use rstest::rstest;

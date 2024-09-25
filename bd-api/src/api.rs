@@ -27,12 +27,13 @@ use anyhow::anyhow;
 use backoff::backoff::Backoff;
 use backoff::exponential::{ExponentialBackoff, ExponentialBackoffBuilder};
 use backoff::SystemClock;
+use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
+use bd_client_common::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use bd_client_stats_store::{Counter, CounterWrapper, Scope};
 use bd_grpc_codec::{
   Compression,
   Encoder,
   OptimizeFor,
-  DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
   GRPC_ACCEPT_ENCODING_HEADER,
   GRPC_ENCODING_DEFLATE,
   GRPC_ENCODING_HEADER,
@@ -47,6 +48,7 @@ use bd_proto::protos::client::api::{
   handshake_response,
   ApiRequest,
   ApiResponse,
+  ClientKillFile,
   ConfigurationUpdateAck,
   HandshakeRequest,
   PingRequest,
@@ -56,10 +58,13 @@ use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::Data as ProtoData;
 use bd_runtime::runtime::{BoolWatch, DurationWatch, RuntimeManager};
 use bd_shutdown::ComponentShutdown;
-use bd_time::{OffsetDateTimeExt, TimeProvider};
+use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
 use protobuf::Message;
 use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::path::PathBuf;
 use std::sync::Arc;
+use time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
 
@@ -69,6 +74,7 @@ use tokio::time::Instant;
 impl ConfigurationUpdate for RuntimeManager {
   async fn try_apply_config(&mut self, response: &ApiResponse) -> Option<ApiRequest> {
     let update = RuntimeUpdate::from_response(response)?;
+    log::debug!("applying runtime update: {}", update);
     self.process_update(update);
 
     Some(
@@ -112,6 +118,9 @@ enum HandshakeResult {
 
   /// We gave up waiting for the handshake due to shutdown.
   ShuttingDown,
+
+  /// Server responded specifically with an unauthenticated error.
+  Unauthenticated,
 }
 
 //
@@ -224,6 +233,7 @@ impl StreamState {
         log::trace!("received {} bytes", data.len());
 
         let frames = self.response_decoder.decode_data(&data)?;
+        log::trace!("decoded {} frames", frames.len());
         Ok(UpstreamEvent::UpstreamMessages(frames))
       },
       // We observed a close event, propagate this back up.
@@ -314,6 +324,7 @@ impl Stats {
 /// number of channels, both for sending data (e.g. log/stats upload) or receiving updates
 /// (configuration updates, upload acks).
 pub struct Api {
+  sdk_directory: PathBuf,
   api_key: String,
   manager: Box<dyn PlatformNetworkManager<bd_runtime::runtime::ConfigLoader>>,
   shutdown: ComponentShutdown,
@@ -332,10 +343,21 @@ pub struct Api {
   time_provider: Arc<dyn TimeProvider>,
 
   stats: Stats,
+
+  // This indicates whether this client has been placed into a "killed" state in which it will not
+  // initiate any communication with the server. In order to simplify how this works, when in this
+  // state, all API futures related to networking will just stay in pending. This allows the rest
+  // of the system to keep functioning per normal. Obviously the various queues will fill up and
+  // things will start to be dropped but that is the expected behavior.
+  client_killed: bool,
+  generic_kill_duration: DurationWatch<bd_runtime::runtime::client_kill::GenericKillDuration>,
+  unauthenticated_kill_duration:
+    DurationWatch<bd_runtime::runtime::client_kill::UnauthenticatedKillDuration>,
 }
 
 impl Api {
   pub fn new(
+    sdk_directory: PathBuf,
     api_key: String,
     manager: Box<dyn PlatformNetworkManager<bd_runtime::runtime::ConfigLoader>>,
     shutdown: ComponentShutdown,
@@ -351,8 +373,11 @@ impl Api {
     let max_backoff_interval = runtime_loader.register_watch()?;
     let initial_backoff_interval = runtime_loader.register_watch()?;
     let compression_enabled = runtime_loader.register_watch()?;
+    let generic_kill_duration = runtime_loader.register_watch()?;
+    let unauthenticated_kill_duration = runtime_loader.register_watch()?;
 
     Ok(Self {
+      sdk_directory,
       api_key,
       manager,
       shutdown,
@@ -367,6 +392,9 @@ impl Api {
       compression_enabled,
       configuration_pipelines,
       stats: Stats::new(stats),
+      client_killed: false,
+      generic_kill_duration,
+      unauthenticated_kill_duration,
     })
   }
 
@@ -377,7 +405,101 @@ impl Api {
       pipeline.try_load_persisted_config().await;
     }
 
+    // To make the client kill process as simple as possible we won't watch for runtime updates
+    // during operation. We will assume that runtime gets cached during the update process, and
+    // the next time the client starts it will have the new configuration. We can consider
+    // adding additional logic to handle this in the future. We can also send a synthetic
+    // unauthenticated response to the client to trigger a kill if we need to.
+    self.maybe_kill_client().await;
+
     self.maintain_active_stream().await
+  }
+
+  fn kill_file_path(&self) -> PathBuf {
+    self.sdk_directory.join("client_kill_until")
+  }
+
+  fn hash_api_key(&self) -> Vec<u8> {
+    // This hash is not guaranteed to be stable across different Rust releases, but it should be
+    // stable for the lifetime of this SDK version, which is good enough for our use case. We
+    // are primarily trying to not write the actual API key into the kill file if somehow it is
+    // delivered some other way.
+    let mut hasher = DefaultHasher::new();
+    self.api_key.hash(&mut hasher);
+    hasher.finish().to_be_bytes().to_vec()
+  }
+
+  async fn maybe_kill_client(&mut self) {
+    // First we will try to read the kill file to see if it exists and we are within the kill
+    // duration.
+    let kill_until = match self.read_kill_file().await {
+      Ok(kill_until) => kill_until,
+      Err(e) => {
+        log::warn!("failed to read kill file: {}", e);
+        None
+      },
+    };
+
+    if let Some(kill_until) = kill_until {
+      let kill_until_time = kill_until.kill_until.to_offset_date_time();
+      if kill_until_time > self.time_provider.now()
+        && self.hash_api_key() == kill_until.api_key_hash
+      {
+        log::debug!(
+          "kill file exists and is still active ({} remaining), killing client",
+          kill_until_time - self.time_provider.now()
+        );
+        log::warn!(
+          "Attention: The SDK has been force disabled due to either a previous authentication \
+           failure or a remote server configuration. Double check your API key or contact support."
+        );
+        self.client_killed = true;
+      } else {
+        // Delete the kill file if the kill duration has passed. This will allow the client to
+        // come up and contact the server again to see if anything has changed. It will likely get
+        // killed again on the next startup.
+        log::debug!("kill file has expired, removing");
+        if let Err(e) = tokio::fs::remove_file(self.kill_file_path()).await {
+          log::warn!("failed to remove kill file: {}", e);
+        }
+      }
+    } else if !self.generic_kill_duration.read().is_zero() {
+      log::debug!("client has been killed, writing kill file");
+      if let Err(e) = self
+        .write_kill_file(self.generic_kill_duration.read())
+        .await
+      {
+        log::warn!("failed to write kill file: {}", e);
+      }
+    }
+  }
+
+  async fn read_kill_file(&self) -> anyhow::Result<Option<ClientKillFile>> {
+    if !tokio::fs::try_exists(self.kill_file_path()).await? {
+      return Ok(None);
+    }
+
+    // In order to have basic protection around IO errors we will zlib "decompress" the kill file
+    // primarily as a free way to get the CRC.
+    let compressed = tokio::fs::read(self.kill_file_path()).await?;
+    Ok(Some(read_compressed_protobuf(&compressed)?))
+  }
+
+  async fn write_kill_file(&mut self, duration: Duration) -> anyhow::Result<()> {
+    self.client_killed = true;
+
+    // In order to have basic protection around IO errors we will zlib "compress" the kill file
+    // primarily as a free way to get the CRC.
+    let kill_until = self.time_provider.now() + duration;
+    let kill_file = ClientKillFile {
+      api_key_hash: self.hash_api_key(),
+      kill_until: kill_until.into_proto(),
+      ..Default::default()
+    };
+    let compressed = write_compressed_protobuf(&kill_file);
+    tokio::fs::write(self.kill_file_path(), compressed).await?;
+
+    Ok(())
   }
 
   // Maintains an active stream by re-establishing a stream whenever we disconnect (with backoff),
@@ -405,8 +527,17 @@ impl Api {
       .collect();
 
     loop {
+      // If we have been killed, just put ourselves into a permanent pending state until the
+      // process restarts. We will wait for the shutdown notification.
+      if self.client_killed {
+        log::debug!("client has been killed, entering pending state");
+        self.shutdown.cancelled().await;
+        return Ok(());
+      }
+
       // Construct a new backoff policy if the runtime values have changed since last time.
       if self.max_backoff_interval.has_changed() || self.initial_backoff_interval.has_changed() {
+        log::debug!("backoff policy has changed, recreating");
         backoff = self.backoff_policy();
       }
 
@@ -478,7 +609,7 @@ impl Api {
 
           // Pause execution until we are ready to reconnect, or the task is canceled.
           tokio::select! {
-            () = tokio::time::sleep(backoff.next_backoff().unwrap()) => continue,
+            () = tokio::time::sleep(reconnect_delay) => continue,
             () = self.shutdown.cancelled() => {
               log::debug!("received shutdown while waiting for reconnect, shutting down");
 
@@ -488,6 +619,17 @@ impl Api {
         },
         // We received the shutdown notification, so exit out.
         HandshakeResult::ShuttingDown => return Ok(()),
+        // Unauthenticated, we need to perform a kill action to stop the API.
+        HandshakeResult::Unauthenticated => {
+          log::debug!("unauthenticated, killing client");
+          if let Err(e) = self
+            .write_kill_file(self.unauthenticated_kill_duration.read())
+            .await
+          {
+            log::warn!("failed to write kill file: {}", e);
+          }
+          continue;
+        },
       }
 
       // Let the all the configuration pipelines know that we are able to connect to the
@@ -612,6 +754,7 @@ impl Api {
           .await
           .map_err(|_| anyhow!("remote trigger upload tx"))?,
         Some(ResponseKind::Untyped) => {
+          log::debug!("received untyped response: {}", response);
           for pipeline in &mut self.configuration_pipelines {
             if let Some(request) = pipeline.try_apply_config(&response).await {
               stream_state.send_request(request).await?;
@@ -643,7 +786,7 @@ impl Api {
     )
   }
 
-  /// Waits for enough data to be collected to parse the initial handshake, handeling various error
+  /// Waits for enough data to be collected to parse the initial handshake, handling various error
   /// conditions we might run into at the start of the stream.
   async fn wait_for_handshake(
     &mut self,
@@ -660,7 +803,7 @@ impl Api {
 
       match stream_state.handle_upstream_event(event).await? {
         UpstreamEvent::UpstreamMessages(responses) => {
-          // This happens if we received data, but enough enough to form a full gRPC message.
+          // This happens if we received data, but not enough to form a full gRPC message.
           if responses.is_empty() {
             continue;
           }
@@ -694,9 +837,7 @@ impl Api {
                   error.grpc_message
                 );
 
-                // TODO(snowp): Consider handling a failure to auth in some way - right now we'll
-                // continue to retry even though we are unlikely to be able to recover from this.
-                return Ok(HandshakeResult::StreamClosure);
+                return Ok(HandshakeResult::Unauthenticated);
               }
 
               // Only count non-auth errors here as an auth error is effectively a misconfiguration
