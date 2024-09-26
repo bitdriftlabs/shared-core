@@ -185,12 +185,15 @@ impl<F: SerializedFileSystem> Uploader<F> {
   }
 
   pub async fn upload_stats(mut self) {
+    let mut upload_interval = self.upload_interval_flag.read().interval_at();
     loop {
-      let upload_in = self.upload_interval_flag.read().sleep();
-
       tokio::select! {
-        _ = self.upload_interval_flag.changed() => continue,
-        () = upload_in => self.upload_from_disk().await,
+        _ = self.upload_interval_flag.changed() => {
+          // If the interval changes make sure to not sync all the devices to the same time.
+          upload_interval = self.upload_interval_flag.read().jittered_interval_at();
+          continue
+        },
+        _ = upload_interval.tick() => self.upload_from_disk().await,
         () = self.shutdown.cancelled() => return,
       }
     }
@@ -359,14 +362,17 @@ impl<T: TimeProvider, F: SerializedFileSystem> Flusher<T, F> {
   }
 
   pub async fn periodic_flush(mut self) {
+    let mut flush_interval = self.flush_interval_flag.read().interval_at();
     loop {
-      let flush_in = self.flush_interval_flag.read().sleep();
-
       // If the flush interval changes, reset the timer. This ensures that if we are currently
       // operating at a high timeout, we can reset it down to a lower one with runtime. This is
       // helpful for testing.
       tokio::select! {
-        _ = self.flush_interval_flag.changed() => continue,
+        _ = self.flush_interval_flag.changed() => {
+          // If the interval changes make sure to not sync all devices to the same time.
+          flush_interval = self.flush_interval_flag.read().jittered_interval_at();
+          continue
+        },
         Some(completion_tx) = self.flush_rx.recv() => {
           log::debug!("received a signal to flush stats to disk");
           self.flush_to_disk().await;
@@ -377,7 +383,7 @@ impl<T: TimeProvider, F: SerializedFileSystem> Flusher<T, F> {
           }
         },
         () = self.shutdown.cancelled() => return,
-        () = flush_in => self.flush_to_disk().await,
+        _ = flush_interval.tick() => self.flush_to_disk().await,
       };
     }
   }
