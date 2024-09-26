@@ -20,11 +20,11 @@ use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapsh
 use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::metric::metric::Data as MetricData;
 use bd_proto::protos::client::metric::{Counter, Metric, MetricsList};
-use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
+use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::float_eq;
-use bd_time::{TestTimeProvider, TimeDurationExt, TimeProvider, TimestampExt};
+use bd_time::{TestTimeProvider, TimeProvider, TimestampExt};
 use flate2::read::ZlibEncoder;
 use flate2::Compression;
 use futures_util::poll;
@@ -134,8 +134,6 @@ impl<F: SerializedFileSystem + Send + 'static> Setup<F> {
     upload_ok: bool,
     f: impl FnOnce(StatRequestHelper),
   ) {
-    wait_for_next_flush().await;
-    wait_for_next_flush().await;
     let stats_upload = self.data_rx.recv().await.unwrap();
 
     let DataUpload::StatsUploadRequest(stats) = stats_upload else {
@@ -748,12 +746,6 @@ async fn dynamic_stats() {
     .await;
 
   setup.shutdown().await.unwrap();
-}
-
-async fn wait_for_next_flush() {
-  bd_runtime::runtime::stats::DirectStatFlushIntervalFlag::default()
-    .advance()
-    .await;
 }
 
 #[derive(Debug)]

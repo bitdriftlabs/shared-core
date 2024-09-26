@@ -12,6 +12,7 @@ mod test;
 use parking_lot::Mutex;
 use protobuf::well_known_types::timestamp::Timestamp;
 use protobuf::MessageField;
+use rand::{thread_rng, Rng};
 use std::future::{Future, IntoFuture};
 use std::sync::Arc;
 use std::time::Duration;
@@ -111,6 +112,7 @@ pub trait TimeDurationExt {
   fn sleep(self) -> impl Future<Output = ()>;
   fn interval(self) -> Interval;
   fn interval_at(self) -> Interval;
+  fn jittered_interval_at(self) -> Interval;
   fn timeout<F: IntoFuture>(self, f: F) -> Timeout<F::IntoFuture>;
   fn add_tokio_now(self) -> tokio::time::Instant;
   fn add_tokio_instant(self, instant: tokio::time::Instant) -> tokio::time::Instant;
@@ -131,6 +133,12 @@ impl TimeDurationExt for time::Duration {
 
   fn interval_at(self) -> Interval {
     interval_at(self.add_tokio_now(), self.unsigned_abs())
+  }
+
+  fn jittered_interval_at(self) -> Interval {
+    let millis: u64 = self.whole_milliseconds().try_into().unwrap();
+    let jittered = Duration::from_millis(thread_rng().gen_range(0 ..= millis));
+    interval_at(tokio::time::Instant::now() + jittered, self.unsigned_abs())
   }
 
   fn timeout<F: IntoFuture>(self, f: F) -> Timeout<F::IntoFuture> {

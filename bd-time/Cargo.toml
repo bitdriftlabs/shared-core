@@ -9,5 +9,6 @@ version      = "1.0.0"
 async-trait.workspace = true
 parking_lot.workspace = true
 protobuf.workspace    = true
+rand.workspace        = true
 time.workspace        = true
 tokio.workspace       = true
