@@ -5,40 +5,42 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::make_mut;
 use bd_runtime_config::feature_flags::FeatureFlags;
 use bd_runtime_config::loader::{ConfigPtr, Loader};
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::Arc;
 use tokio::sync::watch;
 
 // Fake for external Loader trait.
 pub struct FakeLoader<T: FeatureFlags> {
-  _snapshot_sender: watch::Sender<ConfigPtr<dyn FeatureFlags>>,
+  snapshot_sender: watch::Sender<ConfigPtr<dyn FeatureFlags>>,
   snapshot_receiver: watch::Receiver<ConfigPtr<dyn FeatureFlags>>,
-  snapshot: Arc<T>,
+  phantom: PhantomData<T>,
 }
 
 impl<T: FeatureFlags + Default + 'static> Default for FakeLoader<T> {
   fn default() -> Self {
-    Self::new(T::default())
+    Self::new(Arc::new(T::default()))
   }
 }
 
 impl<T: FeatureFlags + 'static> FakeLoader<T> {
-  pub fn new(feature_flags: T) -> Self {
-    let snapshot = Arc::new(feature_flags);
+  pub fn new(feature_flags: Arc<T>) -> Self {
     let (snapshot_sender, snapshot_receiver) =
-      watch::channel(Some(snapshot.clone() as Arc<dyn FeatureFlags>));
+      watch::channel(Some(feature_flags as Arc<dyn FeatureFlags>));
     Self {
-      _snapshot_sender: snapshot_sender,
+      snapshot_sender,
       snapshot_receiver,
-      snapshot,
+      phantom: PhantomData,
     }
   }
 
-  pub fn mut_snapshot(&mut self) -> &mut T {
-    make_mut(&mut self.snapshot)
+  pub fn update(&self, feature_flags: Arc<T>) {
+    self
+      .snapshot_sender
+      .send(Some(feature_flags as Arc<dyn FeatureFlags>))
+      .unwrap();
   }
 }
 
