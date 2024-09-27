@@ -19,10 +19,11 @@ use crate::{internal_report, network};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_log_metadata::{AnnotatedLogFields, MetadataProvider};
-use bd_log_primitives::{Log, LogField, LogFieldValue, LogLevel, LogMessage};
+use bd_log_primitives::{log_level, Log, LogField, LogFieldValue, LogFields, LogLevel, LogMessage};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
+use itertools::Itertools;
 use std::mem::size_of_val;
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -331,7 +332,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     });
 
     match result {
-      Ok(log_metadata) => {
+      Ok(metadata) => {
         let (session_id, timestamp, extra_fields) =
           if let Some(overrides) = log.attributes_overrides {
             if Some(overrides.expected_previous_process_session_id.clone())
@@ -344,7 +345,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 overrides.occurred_at,
                 Some(vec![LogField {
                   key: "_logged_at".to_string(),
-                  value: LogFieldValue::String(log_metadata.timestamp.to_string()),
+                  value: LogFieldValue::String(metadata.timestamp.to_string()),
                 }]),
               )
             } else {
@@ -360,88 +361,120 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   "original_session_id {session_id:?}, override attribute session ID {:?} \
                    original timestamp {:?}, override timestamp {:?}",
                   overrides.expected_previous_process_session_id,
-                  log_metadata.timestamp,
+                  metadata.timestamp,
                   overrides.occurred_at
                 ),
                 || None,
               );
 
+              // We log an internal log and continue processing the log.
+              let _ignored = self
+                .write_log_internal(
+                  "failed to override log attributes, provided override attributes do not match \
+                   expectations",
+                  metadata
+                    .fields
+                    .clone()
+                    .into_iter()
+                    .chain(vec![
+                      LogField {
+                        key: "_original_session_id".to_string(),
+                        value: LogFieldValue::String(session_id.clone()),
+                      },
+                      LogField {
+                        key: "_override_session_id".to_string(),
+                        value: LogFieldValue::String(
+                          overrides.expected_previous_process_session_id.clone(),
+                        ),
+                      },
+                    ])
+                    .collect_vec(),
+                  metadata.matching_fields.clone(),
+                  session_id.clone(),
+                  metadata.timestamp,
+                )
+                .await;
+
+              // We drop the log as the provided override attributes do not match our expectations.
               return Ok(());
             }
           } else {
-            (
-              self.session_strategy.session_id(),
-              log_metadata.timestamp,
-              None,
-            )
+            (self.session_strategy.session_id(), metadata.timestamp, None)
           };
 
-        let annotated_log = bd_log_primitives::Log {
+        let processed_log = bd_log_primitives::Log {
           log_level: log.log_level,
           log_type: log.log_type,
           message: log.message,
           fields: if let Some(extra_fields) = extra_fields {
-            log_metadata
+            metadata
               .fields
               .iter()
               .chain(extra_fields.iter())
               .cloned()
               .collect()
           } else {
-            log_metadata.fields
+            metadata.fields
           },
-          matching_fields: log_metadata.matching_fields,
+          matching_fields: metadata.matching_fields,
           occurred_at: timestamp,
           session_id,
         };
 
-        match &mut self.logging_state {
-          LoggingState::Uninitialized(uninitialized_logging_context) => {
-            let result = uninitialized_logging_context
-              .pre_config_log_buffer
-              .push(annotated_log);
-
-            uninitialized_logging_context
-              .stats
-              .pre_config_log_buffer
-              .record(&result);
-            if let Err(e) = result {
-              log::debug!("failed to push log to a pre-config buffer: {e}");
-            }
-
-            if let Some(tx) = log.log_processing_completed_tx {
-              if let Err(e) = tx.send(()) {
-                log::debug!("failed to send log processing completion message: {e:?}");
-              }
-            }
-
-            return Ok(());
-          },
-          LoggingState::Initialized(initialized_logging_context) => {
-            if let Err(e) = self
-              .replayer
-              .replay_log(
-                annotated_log,
-                log.log_processing_completed_tx,
-                &mut initialized_logging_context.processing_pipeline,
-              )
-              .await
-            {
-              log::debug!("failed to replay async log buffer log: {e}");
-            }
-          },
-        }
-
-        Ok(())
+        self
+          .write_log(processed_log, log.log_processing_completed_tx)
+          .await
       },
       Err(e) => {
         // TODO(Augustyniak): Consider logging as error so that SDK customers can see these
         // errors which are mostly emitted as the result of calls into platform-provided metadata
         // provider.
-        log::debug!("failed to process a log inside of thread_local_logging section: {e}");
-        Ok(())
+        anyhow::bail!("failed to process a log inside of process_log section: {e}")
       },
     }
+  }
+
+  async fn write_log(
+    &mut self,
+    log: Log,
+    log_processing_completed_tx: Option<oneshot::Sender<()>>,
+  ) -> anyhow::Result<()> {
+    match &mut self.logging_state {
+      LoggingState::Uninitialized(uninitialized_logging_context) => {
+        let result = uninitialized_logging_context
+          .pre_config_log_buffer
+          .push(log);
+
+        uninitialized_logging_context
+          .stats
+          .pre_config_log_buffer
+          .record(&result);
+        if let Err(e) = result {
+          anyhow::bail!("failed to push log to a pre-config buffer: {e}");
+        }
+
+        if let Some(tx) = log_processing_completed_tx {
+          if let Err(e) = tx.send(()) {
+            anyhow::bail!("failed to send log processing completion message: {e:?}");
+          }
+        }
+      },
+      LoggingState::Initialized(initialized_logging_context) => {
+        if let Err(e) = self
+          .replayer
+          .replay_log(
+            log,
+            log_processing_completed_tx,
+            &mut initialized_logging_context.processing_pipeline,
+          )
+          .await
+        {
+          anyhow::bail!("failed to replay async log buffer log: {e}");
+        }
+      },
+    }
+
+    Ok(())
   }
 
   async fn update(mut self, config: ConfigUpdate) -> (Self, Option<PreConfigBuffer<Log>>) {
@@ -599,5 +632,29 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         },
       }
     }
+  }
+
+  async fn write_log_internal(
+    &mut self,
+    msg: &str,
+    fields: LogFields,
+    matching_fields: LogFields,
+    session_id: String,
+    occurred_at: time::OffsetDateTime,
+  ) -> anyhow::Result<()> {
+    self
+      .write_log(
+        Log {
+          log_level: log_level::WARNING,
+          log_type: LogType::InternalSDK,
+          message: msg.into(),
+          fields,
+          matching_fields,
+          session_id,
+          occurred_at,
+        },
+        None,
+      )
+      .await
   }
 }
