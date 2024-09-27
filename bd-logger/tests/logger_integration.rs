@@ -399,35 +399,39 @@ mod tests {
     setup.store.set(
       &fixed::STATE_KEY,
       &State {
-        session_id: "foo_overriden".to_string(),
+        session_id: "foo_overridden".to_string(),
       },
     );
 
+    let current_session_id = setup.logger.new_logger_handle().session_id();
+
+    // This log should end up being emitted with an overridden session ID and timestamp.
     setup.log(
       log_level::DEBUG,
       LogType::Normal,
-      "log with overriden attributes".into(),
+      "log with overridden attributes".into(),
       vec![],
       vec![],
       Some(LogAttributesOverridesPreviousRunSessionID {
-        expected_previous_process_session_id: "foo_overriden".to_string(),
+        expected_previous_process_session_id: "foo_overridden".to_string(),
         occurred_at: time_second,
       }),
     );
 
+    // This log should end up being dropped.
     setup.log(
       log_level::DEBUG,
       LogType::Normal,
-      "log with overriden attributes".into(),
+      "log with overridden attributes".into(),
       vec![],
       vec![],
       Some(LogAttributesOverridesPreviousRunSessionID {
-        expected_previous_process_session_id: "bar_overriden".to_string(),
+        expected_previous_process_session_id: "bar_overridden".to_string(),
         occurred_at: time_second,
       }),
     );
 
-    for _ in 0 .. 9 {
+    for _ in 0 .. 8 {
       setup.log(
         log_level::DEBUG,
         LogType::Normal,
@@ -443,14 +447,18 @@ mod tests {
       uuid::Uuid::parse_str(log_upload.upload_uuid.as_str()).unwrap();
       assert_eq!(log_upload.logs.len(), 10);
 
-      // Confirm both session ID and timestamp are overriden.
+      // Confirm both session ID and timestamp are overridden.
       let first_uploaded_log = &log_upload.logs[0];
-      assert_eq!(expected_session_id(first_uploaded_log), "foo_overriden");
+      assert_eq!(expected_session_id(first_uploaded_log), "foo_overridden");
       assert_eq!(expected_timestamp(first_uploaded_log), time_second);
       assert_eq!(expected_field_value(first_uploaded_log, "_logged_at"), time_first.to_string());
-      assert_eq!(expected_message(first_uploaded_log), "log with overriden attributes");
+      assert_eq!(expected_message(first_uploaded_log), "log with overridden attributes");
 
       // Confirm that second log was dropped and error was emitted.
+      let second_uploaded_log = &log_upload.logs[1];
+      assert_eq!(expected_session_id(second_uploaded_log), current_session_id);
+      assert_eq!(expected_field_value(second_uploaded_log, "_override_session_id"), "bar_overridden");
+
       assert!(error_reporter.error().is_some());
     });
   }
@@ -485,11 +493,9 @@ mod tests {
         let upload = StatsRequestHelper::new(upload);
 
         // If these numbers end up being too variable we do something more generic.
-        let bandwidth_tx = upload.get_counter("api:bandwidth_tx", labels! {}).unwrap();
-        let bandwidth_rx = upload.get_counter("api:bandwidth_rx", labels! {}).unwrap();
         assert_eq!(upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}), Some(120));
-        assert!(bandwidth_tx > 100, "bandwidth_tx = {bandwidth_tx}");
-        assert!(bandwidth_rx < 300, "bandwidth_rx = {bandwidth_rx}");
+        assert!(upload.get_counter("api:bandwidth_tx", labels! {}).unwrap() > 100);
+        assert_eq!(upload.get_counter("api:bandwidth_rx", labels! {}), Some(375));
         assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(360));
         assert_eq!(upload.get_counter("api:stream_total", labels! {}), Some(1));
     });
@@ -1388,8 +1394,7 @@ mod tests {
           filters: vec![Filter {
             matcher: Some(log_matches!(message == "message")).into(),
             transforms: vec![set_field!(
-              captured("foo") = field_value!("fire workflow action!"),
-              true
+              captured("foo") = field_value!("fire workflow action!")
             )],
             ..Default::default()
           }],
