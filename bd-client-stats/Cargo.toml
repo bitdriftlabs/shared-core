@@ -18,7 +18,6 @@ bd-runtime.path            = "../bd-runtime"
 bd-shutdown.path           = "../bd-shutdown"
 bd-stats-common.path       = "../bd-stats-common"
 bd-time.path               = "../bd-time"
-flate2                     = { workspace = true, default-features = false, features = ["zlib"] }
 log.workspace              = true
 parking_lot.workspace      = true
 protobuf.workspace         = true
@@ -31,5 +30,6 @@ bd-log.path              = "../bd-log"
 bd-stats-common.path     = "../bd-stats-common"
 bd-test-helpers.path     = "../bd-test-helpers"
 ctor.workspace           = true
+flate2                   = { workspace = true, default-features = false, features = ["zlib"] }
 futures-util.workspace   = true
 tempfile.workspace       = true

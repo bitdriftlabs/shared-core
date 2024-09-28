@@ -45,8 +45,8 @@ anyhow          = "1.0.89"
 arbitrary       = { version = "1.3.2", features = ["derive"] }
 arc-swap        = "1.7.1"
 assert_matches  = "1.5.0"
-async-trait     = "0.1.82"
-axum            = { version = "0.7.6", features = ["http2"] }
+async-trait     = "0.1.83"
+axum            = { version = "0.7.7", features = ["http2"] }
 axum-server     = { version = "0.7.1", features = ["tls-rustls-no-provider"] }
 backoff         = "0.4.0"
 base64          = "0.22.1"
@@ -62,7 +62,7 @@ ctor            = "0.2.8"
 dashmap         = "6.1.0"
 flatbuffers     = "24.3.25"
 flatc-rust      = "0.2.0"
-flate2          = { version = "1.0.33", default-features = false }
+flate2          = { version = "1.0.34", default-features = false }
 fs2             = "0.4.3"
 futures         = "0.3.30"
 futures-core    = "0.3.30"
@@ -78,7 +78,7 @@ hyper-rustls = { version = "0.27.3", default-features = false, features = [
   "webpki-tokio",
 ] }
 
-hyper-util            = { version = "0.1.8", features = ["client", "client-legacy"] }
+hyper-util            = { version = "0.1.9", features = ["client", "client-legacy"] }
 intrusive-collections = "0.9.7"
 itertools             = "0.13.0"
 jni                   = "0.21.1"
@@ -115,7 +115,7 @@ sketches-rust = { git = "https://github.com/mattklein123/sketches-rust.git", bra
 
 snap              = "1.1.1"
 static_assertions = "1.1.0"
-tempfile          = "3.12.0"
+tempfile          = "3.13.0"
 thiserror         = "1.0.64"
 tikv-jemalloc-ctl = "0.6.0"
 time              = { version = "0.3.36", features = ["serde-well-known", "macros"] }
