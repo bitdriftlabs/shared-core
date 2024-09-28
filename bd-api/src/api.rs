@@ -450,15 +450,16 @@ impl Api {
           kill_until_time - self.time_provider.now()
         );
         log::warn!(
-          "Attention: The SDK has been force disabled due to either a previous authentication \
-           failure or a remote server configuration. Double check your API key or contact support."
+          "Attention: The Capture SDK has been force disabled due to either a previous \
+           authentication failure or a remote server configuration. Double check your API key or \
+           contact support."
         );
         self.client_killed = true;
       } else {
-        // Delete the kill file if the kill duration has passed. This will allow the client to
-        // come up and contact the server again to see if anything has changed. It will likely get
-        // killed again on the next startup.
-        log::debug!("kill file has expired, removing");
+        // Delete the kill file if the kill duration has passed or the API key has changed. This
+        // will allow the client to come up and contact the server again to see if anything
+        // has changed. It will likely get killed again on the next startup.
+        log::debug!("kill file has expired or the API key has changed, removing");
         if let Err(e) = tokio::fs::remove_file(self.kill_file_path()).await {
           log::warn!("failed to remove kill file: {}", e);
         }
