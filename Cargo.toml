@@ -105,8 +105,8 @@ protobuf-codegen = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", 
 protobuf-json-mapping = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack" }
 
 rand       = "0.8.5"
-regex      = "1.10.6"
-rstest     = "0.22.0"
+regex      = "1.11.0"
+rstest     = "0.23.0"
 serde      = { version = "1", features = ["derive"] }
 serde_yaml = "0.9.34"
 sha2       = "0.10.8"
