@@ -152,6 +152,11 @@ impl UnexpectedErrorHandler {
     ERROR_HANDLER.lock().reporter = reporter;
   }
 
+  // Disables by setting remaining reports to 0.
+  pub fn disable() {
+    ERROR_HANDLER.lock().remaining_reports = 0;
+  }
+
   #[must_use]
   pub fn with_reporter<T>(reporter: Arc<dyn Reporter>, f: impl FnOnce() -> T) -> T {
     PER_THREAD_REPORTER.with(|per_thread_reporter| {

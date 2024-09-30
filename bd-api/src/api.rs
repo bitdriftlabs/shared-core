@@ -27,6 +27,7 @@ use anyhow::anyhow;
 use backoff::backoff::Backoff;
 use backoff::exponential::{ExponentialBackoff, ExponentialBackoffBuilder};
 use backoff::SystemClock;
+use bd_client_common::error::UnexpectedErrorHandler;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use bd_client_stats_store::{Counter, CounterWrapper, Scope};
@@ -429,6 +430,11 @@ impl Api {
     hasher.finish().to_be_bytes().to_vec()
   }
 
+  fn set_client_killed(&mut self) {
+    self.client_killed = true;
+    UnexpectedErrorHandler::disable();
+  }
+
   async fn maybe_kill_client(&mut self) {
     // First we will try to read the kill file to see if it exists and we are within the kill
     // duration.
@@ -454,7 +460,7 @@ impl Api {
            authentication failure or a remote server configuration. Double check your API key or \
            contact support."
         );
-        self.client_killed = true;
+        self.set_client_killed();
       } else {
         // Delete the kill file if the kill duration has passed or the API key has changed. This
         // will allow the client to come up and contact the server again to see if anything
@@ -487,7 +493,7 @@ impl Api {
   }
 
   async fn write_kill_file(&mut self, duration: Duration) -> anyhow::Result<()> {
-    self.client_killed = true;
+    self.set_client_killed();
 
     // In order to have basic protection around IO errors we will zlib "compress" the kill file
     // primarily as a free way to get the CRC.
