@@ -9,7 +9,6 @@ use bd_api::DataUpload;
 use bd_client_stats::DynamicStats;
 use bd_client_stats_store::Collector;
 use bd_log_primitives::{log_level, FieldsRef, LogFields, LogRef, LogType};
-use bd_proto::protos::insight::insight::InsightsConfiguration;
 use bd_proto::protos::workflow::workflow::Workflow;
 use bd_runtime::runtime::ConfigLoader;
 use bd_test_helpers::{action, declare_transition, log_matches, rule, state, workflow_proto};
@@ -56,7 +55,6 @@ impl Setup {
           workflows,
           ..Default::default()
         },
-        &InsightsConfiguration::default(),
       ),
       BTreeSet::default(),
       BTreeSet::default(),

@@ -818,13 +818,6 @@ pub mod workflows {
   // then we can start rolling out this variable to real users.
   bool_feature_flag!(WorkflowsEnabledFlag, "workflows.enabled", false);
 
-  // Controls whether workflows insights are collected for triggering workflow actions.
-  bool_feature_flag!(
-    WorkflowsInsightsEnabledFlag,
-    "workflows.insights_enabled",
-    false
-  );
-
   // This controls how often we attempt to persist the complete state of the workflows to disk.
   // Note that this is not used as a consistent interval but instead sets a minimum amount of time
   // that must have elapsed between writing attempts.

@@ -369,41 +369,12 @@ pub mod macros {
     };
   }
 
-  #[macro_export]
-  macro_rules! insight {
-    ($name:expr) => {
-      bd_proto::protos::insight::insight::Insight {
-        insight_type: Some(
-          bd_proto::protos::insight::insight::insight::Insight_type::LogField(
-            bd_proto::protos::insight::insight::insight::LogField {
-              name: $name.to_string(),
-              ..Default::default()
-            },
-          ),
-        ),
-        ..Default::default()
-      };
-    };
-  }
-
-  #[macro_export]
-  macro_rules! insights {
-    ($($e:expr),+) => {
-      bd_proto::protos::insight::insight::InsightsConfiguration {
-        insights: vec![$($e),+],
-        ..Default::default()
-      }
-    }
-  }
-
   #[allow(clippy::module_name_repetitions)]
   pub use {
     action,
     all,
     any,
     declare_transition,
-    insight,
-    insights,
     limit,
     log_matches,
     metric_tag,

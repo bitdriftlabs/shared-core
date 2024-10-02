@@ -9,7 +9,7 @@
 #[path = "./metrics_test.rs"]
 mod metrics_test;
 
-use crate::config::{ActionEmitMetric, InsightsDimensions};
+use crate::config::ActionEmitMetric;
 use bd_client_stats::DynamicStats;
 use bd_log_primitives::LogRef;
 use bd_matcher::FieldProvider;
@@ -21,35 +21,15 @@ use std::sync::Arc;
 // MetricsCollector
 //
 
-// Responsible for emitting statistics related to workflow action metrics and gathering insights
-// for all types of actions. This encompasses insights into triggers for flushing buffer actions
-// (recording sessions).
+// Responsible for emitting statistics related to workflow action metrics.
 #[derive(Debug)]
 pub(crate) struct MetricsCollector {
   dynamic_stats: Arc<DynamicStats>,
-  // `None` means insights disabled.
-  insights_dimensions: Option<InsightsDimensions>,
 }
 
 impl MetricsCollector {
   pub(crate) const fn new(dynamic_stats: Arc<DynamicStats>) -> Self {
-    Self {
-      dynamic_stats,
-      insights_dimensions: None,
-    }
-  }
-
-  pub(crate) fn update(&mut self, insights_dimensions: Option<InsightsDimensions>) {
-    match &insights_dimensions {
-      Some(insights_dimensions) => {
-        log::debug!("insights enabled, configuration: {:?}", insights_dimensions);
-      },
-      None => {
-        log::debug!("insights disabled");
-      },
-    }
-
-    self.insights_dimensions = insights_dimensions;
+    Self { dynamic_stats }
   }
 
   pub(crate) fn emit_metrics(
@@ -57,16 +37,10 @@ impl MetricsCollector {
     emit_metric_actions: &BTreeSet<&ActionEmitMetric>,
     log: &LogRef<'_>,
   ) {
-    let tags = self.get_insights_tags(log.fields);
-    self.emit_metric_actions(emit_metric_actions, &tags, log);
+    self.emit_metric_actions(emit_metric_actions, log);
   }
 
-  fn emit_metric_actions(
-    &self,
-    actions: &BTreeSet<&ActionEmitMetric>,
-    insights_tags: &BTreeMap<String, String>,
-    log: &LogRef<'_>,
-  ) {
+  fn emit_metric_actions(&self, actions: &BTreeSet<&ActionEmitMetric>, log: &LogRef<'_>) {
     if actions.is_empty() {
       return;
     }
@@ -75,7 +49,7 @@ impl MetricsCollector {
     // If `counter_increment` values are identical, consider deduping metrics even if their
     // `counter_increment` fields have different values.
     for action in actions {
-      let mut tags = insights_tags.clone();
+      let mut tags = BTreeMap::new();
 
       for (key, value) in &action.tags {
         if let Some(extracted_value) = match value {
@@ -130,30 +104,5 @@ impl MetricsCollector {
       "log_type" => Some(log.log_type.0.to_string().into()),
       key => log.fields.field_value(key).map(Into::into),
     }
-  }
-
-  fn get_insights_tags(&self, fields: &dyn FieldProvider) -> BTreeMap<String, String> {
-    let Some(insights_dimensions) = &self.insights_dimensions else {
-      return BTreeMap::new();
-    };
-
-    if insights_dimensions.is_empty() {
-      return BTreeMap::new();
-    }
-
-    let mut tags = BTreeMap::new();
-
-    for insight_dimension in insights_dimensions.iter() {
-      let Some(value) = fields.field_value(insight_dimension) else {
-        continue;
-      };
-
-
-      tags.insert(insight_dimension.to_string(), value.to_string());
-    }
-
-    tags.insert("_insights".to_string(), "true".to_string());
-
-    tags
   }
 }

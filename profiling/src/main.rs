@@ -26,8 +26,6 @@ use bd_stats_common::labels;
 use bd_test_helpers::workflow::macros::{
   action,
   declare_transition,
-  insight,
-  insights,
   log_matches,
   metric_tag,
   metric_value,
@@ -110,20 +108,7 @@ impl AnnotatedWorkflowsEngine {
     Self::create_networking_workflows(&mut workflow_configurations);
 
     engine.start(WorkflowsEngineConfig::new(
-      WorkflowsConfiguration::new(
-        &workflows_configuration!(workflow_configurations.configs()),
-        &insights!(
-          insight!("app_id"),
-          insight!("app_version"),
-          insight!("os"),
-          insight!("os_version"),
-          insight!("foreground"),
-          insight!("model"),
-          insight!("radio_type"),
-          insight!("network_type"),
-          insight!("_locale")
-        ),
-      ),
+      WorkflowsConfiguration::new(&workflows_configuration!(workflow_configurations.configs())),
       BTreeSet::default(),
       BTreeSet::default(),
     ));
@@ -447,16 +432,10 @@ fn run_profiling<T: Fn(&mut AnnotatedWorkflowsEngine) + std::marker::Send + 'sta
       .block_on(async {
         setup.runtime_loader.update_snapshot(&RuntimeUpdate {
           version_nonce: "123".to_string(),
-          runtime: Some(bd_test_helpers::runtime::make_proto(vec![
-            (
-              bd_runtime::runtime::stats::DirectStatFlushIntervalFlag::path(),
-              bd_test_helpers::runtime::ValueKind::Int(900),
-            ),
-            (
-              bd_runtime::runtime::workflows::WorkflowsInsightsEnabledFlag::path(),
-              bd_test_helpers::runtime::ValueKind::Bool(true),
-            ),
-          ]))
+          runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
+            bd_runtime::runtime::stats::DirectStatFlushIntervalFlag::path(),
+            bd_test_helpers::runtime::ValueKind::Int(900),
+          )]))
           .into(),
           ..Default::default()
         });
