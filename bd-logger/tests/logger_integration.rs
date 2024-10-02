@@ -63,8 +63,6 @@ mod tests {
   use bd_test_helpers::workflow::macros::{
     action,
     declare_transition,
-    insight,
-    insights,
     log_matches,
     rule,
     state,
@@ -202,10 +200,6 @@ mod tests {
           ValueKind::Bool(true),
         ),
         (
-          bd_runtime::runtime::workflows::WorkflowsInsightsEnabledFlag::path(),
-          ValueKind::Bool(true),
-        ),
-        (
           bd_runtime::runtime::resource_utilization::ResourceUtilizationEnabledFlag::path(),
           ValueKind::Bool(false),
         ),
@@ -262,12 +256,7 @@ mod tests {
       ack.nack.take()
     }
 
-    fn send_runtime_update(
-      &self,
-      workflows_enabled: bool,
-      workflows_insights_enabled: bool,
-      immediate_stats_upload_enabled: bool,
-    ) {
+    fn send_runtime_update(&self, workflows_enabled: bool, immediate_stats_upload_enabled: bool) {
       let mut values = Self::get_default_runtime_values();
 
       if immediate_stats_upload_enabled {
@@ -286,11 +275,6 @@ mod tests {
       values.push((
         bd_runtime::runtime::workflows::WorkflowsEnabledFlag::path(),
         ValueKind::Bool(workflows_enabled),
-      ));
-
-      values.push((
-        bd_runtime::runtime::workflows::WorkflowsInsightsEnabledFlag::path(),
-        ValueKind::Bool(workflows_insights_enabled),
       ));
 
       self.server.blocking_stream_action(
@@ -498,7 +482,7 @@ mod tests {
         assert_eq!(upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}), Some(120));
         assert!(bandwidth_tx > 100, "bandwidth_tx = {bandwidth_tx}");
         assert!(bandwidth_rx < 300, "bandwidth_rx = {bandwidth_rx}");
-        assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(360));
+        assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(326));
         assert_eq!(upload.get_counter("api:stream_total", labels! {}), Some(1));
     });
   }
@@ -683,7 +667,7 @@ mod tests {
   fn blocking_log() {
     let mut setup = Setup::new();
 
-    setup.send_runtime_update(true, true, false);
+    setup.send_runtime_update(true, false);
 
     // Send down a configuration with a single 'default' buffer and a workflow that matches on 'foo'
     // log message.
@@ -906,7 +890,7 @@ mod tests {
   fn workflow_flush_buffers_action_uploads_buffer() {
     let mut setup = Setup::new();
 
-    setup.send_runtime_update(true, true, false);
+    setup.send_runtime_update(true, false);
 
     // Send down a configuration with a single buffer ('default')
     // which accepts all logs and a single workflow which matches for logs
@@ -1038,20 +1022,13 @@ mod tests {
           workflow_proto!("workflow"; exclusive with a, b, c)
         ]))
         .into(),
-        insights_configuration: Some(insights!(
-          insight!("insight_1"),
-          insight!("insight_2"),
-          // "insight_3" doesn't exist on emitted logs, should be ignored.
-          insight!("insight_3")
-        ))
-        .into(),
         ..Default::default()
       },
     ));
     assert!(maybe_nack.is_none());
 
     // Enable immediate stats upload.
-    setup.send_runtime_update(true, true, true);
+    setup.send_runtime_update(true, true);
 
     for _ in 0 .. 9 {
       setup.log(
@@ -1068,20 +1045,10 @@ mod tests {
       log_level::DEBUG,
       LogType::Normal,
       "fire flush trigger buffer and start streaming action!".into(),
-      vec![
-        LogField {
-          key: "k3".into(),
-          value: StringOrBytes::String("value_3".into()),
-        },
-        LogField {
-          key: "insight_1".to_string(),
-          value: StringOrBytes::String("value_1".to_string()),
-        },
-        LogField {
-          key: "insight_2".to_string(),
-          value: StringOrBytes::String("value_2".to_string()),
-        },
-      ]
+      vec![LogField {
+        key: "k3".into(),
+        value: StringOrBytes::String("value_3".into()),
+      }]
       .into_iter()
       .map(|field| AnnotatedLogField {
         field,
@@ -1092,16 +1059,12 @@ mod tests {
       None,
     );
 
-    // Confirm that we emit an insight for a triggered workflow action.
     let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
     assert_eq!(
       stat_upload.get_counter(
         "workflows_dyn:action",
         labels! {
           "_id" => "insight_action_id",
-          "_insights" => "true",
-          "insight_1" => "value_1",
-          "insight_2" => "value_2"
         }
       ),
       Some(1),
@@ -1171,7 +1134,7 @@ mod tests {
   fn workflow_emit_metric_action_emits_metric() {
     let mut setup = Setup::new();
 
-    setup.send_runtime_update(true, true, true);
+    setup.send_runtime_update(true, true);
 
     let mut a = state!("A");
     let b = state!("B");
@@ -1207,13 +1170,6 @@ mod tests {
           workflow_proto!("workflow_2"; exclusive with a, b),
         ]))
         .into(),
-        insights_configuration: Some(insights!(
-          insight!("insight_1"),
-          insight!("insight_2"),
-          // "insight_3" doesn't exist on emitted logs, should be ignored.
-          insight!("insight_3")
-        ))
-        .into(),
         ..Default::default()
       },
     ));
@@ -1223,20 +1179,10 @@ mod tests {
       log_level::DEBUG,
       LogType::Normal,
       "fire workflow action!".into(),
-      vec![
-        LogField {
-          key: "extraction_key_from".into(),
-          value: StringOrBytes::String("extracted_value".into()),
-        },
-        LogField {
-          key: "insight_1".to_string(),
-          value: StringOrBytes::String("value_1".to_string()),
-        },
-        LogField {
-          key: "insight_2".to_string(),
-          value: StringOrBytes::String("value_2".to_string()),
-        },
-      ]
+      vec![LogField {
+        key: "extraction_key_from".into(),
+        value: StringOrBytes::String("extracted_value".into()),
+      }]
       .into_iter()
       .map(|field| AnnotatedLogField {
         field,
@@ -1252,11 +1198,8 @@ mod tests {
         "workflows_dyn:action",
         labels! {
           "_id" => "foo_id",
-          "_insights" => "true",
           "fixed_key" => "fixed_value",
           "extraction_key_to" => "extracted_value",
-          "insight_1" => "value_1",
-          "insight_2" => "value_2",
         }
       ),
       // There are 2 emit metric actions that increment a counter with `_id=foo_id` by 123
@@ -1339,7 +1282,7 @@ mod tests {
       vec![],
     );
 
-    setup.send_runtime_update(false, false, true);
+    setup.send_runtime_update(false, true);
 
     let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
 
@@ -1369,7 +1312,7 @@ mod tests {
   fn transforms_emitted_logs_according_to_filters() {
     let mut setup = Setup::new();
 
-    setup.send_runtime_update(true, true, false);
+    setup.send_runtime_update(true, false);
 
     // Send down a configuration:
     //  * with a single buffer ('default') which accepts all logs
@@ -1926,7 +1869,7 @@ mod tests {
     // Create one stat that is incremented.
     stats.scope("test").counter("used").inc();
 
-    setup.send_runtime_update(false, false, true);
+    setup.send_runtime_update(false, true);
 
     let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
     assert_eq!(

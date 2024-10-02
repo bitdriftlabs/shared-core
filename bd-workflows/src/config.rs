@@ -8,11 +8,6 @@
 use crate::workflow::Traversal;
 use anyhow::anyhow;
 use bd_log_matcher::matcher::Tree;
-use bd_proto::protos::insight::insight::insight::Insight_type;
-use bd_proto::protos::insight::insight::{
-  Insight as InsightProto,
-  InsightsConfiguration as InsightsConfigurationProto,
-};
 use bd_proto::protos::workflow::workflow;
 use bd_proto::protos::workflow::workflow::workflow::execution::Execution_type;
 use bd_proto::protos::workflow::workflow::workflow::{
@@ -46,34 +41,24 @@ pub(crate) type StateID = String;
 #[derive(Debug, Default)]
 pub struct WorkflowsConfiguration {
   pub(crate) workflows: Vec<Config>,
-  pub(crate) insights: InsightsDimensions,
 }
 
 impl WorkflowsConfiguration {
-  pub fn new(
-    workflows_configuration: &WorkflowsConfigurationProto,
-    insights_configuration: &InsightsConfigurationProto,
-  ) -> Self {
+  pub fn new(workflows_configuration: &WorkflowsConfigurationProto) -> Self {
     let workflows = workflows_configuration
       .workflows
       .iter()
       .filter_map(|config| Config::new(config).ok())
       .collect();
 
-    Self {
-      workflows,
-      insights: InsightsDimensions::new(insights_configuration),
-    }
+    Self { workflows }
   }
 
   // This method should be used in tests only but cannot be attributed with cfg(test) as there are
   // tests outside of the current crate that use it.
   #[must_use]
-  pub fn new_with_workflow_configurations_for_test(workflows: Vec<Config>) -> Self {
-    Self {
-      workflows,
-      insights: InsightsDimensions::default(),
-    }
+  pub const fn new_with_workflow_configurations_for_test(workflows: Vec<Config>) -> Self {
+    Self { workflows }
   }
 }
 
@@ -529,41 +514,4 @@ pub enum TagValue {
   Extract(String),
   // Use a fixed value.
   Fixed(FieldKey),
-}
-
-//
-// InsightsDimensions
-//
-
-#[cfg_attr(test, derive(Clone))]
-#[derive(Debug, Default)]
-pub(crate) struct InsightsDimensions {
-  dimensions: BTreeSet<String>,
-}
-
-impl InsightsDimensions {
-  pub(crate) fn new(config: &InsightsConfigurationProto) -> Self {
-    Self {
-      dimensions: config
-        .insights
-        .iter()
-        .filter_map(|c| Self::try_from_insight_proto(c).ok())
-        .collect(),
-    }
-  }
-
-  fn try_from_insight_proto(config: &InsightProto) -> anyhow::Result<String> {
-    match &config.insight_type {
-      Some(Insight_type::LogField(insight)) => Ok(insight.name.clone()),
-      _ => Err(anyhow!("invalid insights dimension: unknown insight type")),
-    }
-  }
-
-  pub(crate) fn is_empty(&self) -> bool {
-    self.dimensions.is_empty()
-  }
-
-  pub(crate) fn iter(&self) -> std::collections::btree_set::Iter<'_, String> {
-    self.dimensions.iter()
-  }
 }

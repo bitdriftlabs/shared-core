@@ -6,15 +6,14 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::MetricsCollector;
-use crate::config::{ActionEmitMetric, InsightsDimensions, MetricType, TagValue};
+use crate::config::{ActionEmitMetric, MetricType, TagValue};
 use bd_client_stats::DynamicStats;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{BoundedCollector, Collector};
 use bd_log_primitives::{log_level, FieldsRef, LogField, LogRef, LogType};
 use bd_runtime::runtime::ConfigLoader;
 use bd_stats_common::labels;
-use bd_test_helpers::workflow::macros::{insight, insights};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 struct Setup {
@@ -104,7 +103,6 @@ fn metric_increment_value_extraction() {
       },
     ]
     .into(),
-    &BTreeMap::new(),
     &LogRef {
       message: &"message".into(),
       session_id: "session_id",
@@ -210,7 +208,6 @@ fn counter_label_extraction() {
       metric_type: MetricType::Counter,
     }]
     .into(),
-    &BTreeMap::new(),
     &LogRef {
       message: &"message".into(),
       session_id: "session_id",
@@ -232,109 +229,6 @@ fn counter_label_extraction() {
         "tag_4" => "5",
         "tag_5" => "1",
         "tag_6" => "0",
-    },
-  );
-}
-
-#[test]
-fn collecting_insights_for_synthetic_metrics() {
-  let fields = &vec![
-    LogField {
-      key: "insight_1".to_string(),
-      value: "value_1".into(),
-    },
-    LogField {
-      key: "insight_2".to_string(),
-      value: "value_2".into(),
-    },
-  ];
-
-  let setup = Setup::new();
-  let (mut metrics_collector, dynamic_stats_collector) = setup.make_metrics_collector();
-
-  metrics_collector.emit_metrics(
-    &BTreeSet::from([&ActionEmitMetric {
-      id: "action_id_1".to_string(),
-      tags: BTreeMap::new(),
-      increment: crate::config::ValueIncrement::Fixed(1),
-      metric_type: MetricType::Counter,
-    }]),
-    &LogRef {
-      message: &"message".into(),
-      session_id: "session_id",
-      occurred_at: time::OffsetDateTime::now_utc(),
-      log_level: log_level::DEBUG,
-      log_type: LogType::Normal,
-      fields: &FieldsRef::new(fields, fields),
-    },
-  );
-
-  // No insights collected as no insights dimensions.
-  assert!(dynamic_stats_collector
-    .find_counter(
-      "workflows_dyn:action",
-      labels! {
-        "_id" => "action_id_1",
-        "_insights" => "true",
-        "insight_1" => "value_1",
-        "insight_2" => "value_2",
-        "key_1" => "value_1",
-      }
-    )
-    .is_none());
-
-  // Provide insight dimensions.
-  metrics_collector.update(Some(InsightsDimensions::new(&insights!(
-    insight!("insight_1"),
-    insight!("insight_2"),
-    // This insight should be ignored as it doesn't exist on emitted logs.
-    insight!("insight_3")
-  ))));
-
-  // No insights collected as insights disabled.
-  metrics_collector.emit_metrics(
-    &BTreeSet::from([&ActionEmitMetric {
-      id: "action_id_1".to_string(),
-      tags: BTreeMap::new(),
-      increment: crate::config::ValueIncrement::Fixed(1),
-      metric_type: MetricType::Counter,
-    }]),
-    &LogRef {
-      message: &"message".into(),
-      session_id: "session_id",
-      occurred_at: time::OffsetDateTime::now_utc(),
-      log_level: log_level::DEBUG,
-      log_type: LogType::Normal,
-      fields: &FieldsRef::new(fields, fields),
-    },
-  );
-
-  metrics_collector.emit_metrics(
-    &BTreeSet::from([&ActionEmitMetric {
-      id: "action_id_1".to_string(),
-      tags: BTreeMap::from([("key_1".to_string(), TagValue::Fixed("value_1".to_string()))]),
-      increment: crate::config::ValueIncrement::Fixed(1),
-      metric_type: MetricType::Counter,
-    }]),
-    &LogRef {
-      message: &"message".into(),
-      session_id: "session_id",
-      occurred_at: time::OffsetDateTime::now_utc(),
-      log_level: log_level::DEBUG,
-      log_type: LogType::Normal,
-      fields: &FieldsRef::new(fields, fields),
-    },
-  );
-
-  dynamic_stats_collector.assert_counter_eq(
-    1,
-    "workflows_dyn:action",
-    labels! {
-      "_id" => "action_id_1",
-      "_insights" => "true",
-      "insight_1" => "value_1",
-      "insight_2" => "value_2",
-      "key_1" => "value_1",
     },
   );
 }

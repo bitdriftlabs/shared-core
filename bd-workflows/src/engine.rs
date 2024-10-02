@@ -31,9 +31,8 @@ use bd_runtime::runtime::workflows::{
   PersistenceWriteIntervalFlag,
   StatePeriodicWriteIntervalFlag,
   TraversalsCountLimitFlag,
-  WorkflowsInsightsEnabledFlag,
 };
-use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch};
+use bd_runtime::runtime::{ConfigLoader, DurationWatch};
 use bd_stats_common::labels;
 use bd_time::TimeDurationExt as _;
 use serde::{Deserialize, Serialize};
@@ -81,8 +80,6 @@ pub struct WorkflowsEngine {
   flush_buffers_negotiator_output_rx: Receiver<NegotiatorOutput>,
   flush_buffers_negotiator_join_handle: JoinHandle<()>,
 
-  insights_enabled_flag: BoolWatch<WorkflowsInsightsEnabledFlag>,
-  insights_enabled: bool,
   metrics_collector: MetricsCollector,
 
   buffers_to_flush_tx: Sender<BuffersToFlush>,
@@ -101,9 +98,6 @@ impl WorkflowsEngine {
     let traversals_count_limit_flag = TraversalsCountLimitFlag::register(runtime).unwrap();
     let state_periodic_write_interval_flag =
       StatePeriodicWriteIntervalFlag::register(runtime).unwrap();
-    let mut insights_enabled_flag = runtime.register_watch().unwrap();
-
-    let insights_enabled = insights_enabled_flag.read_mark_update();
 
     // An arbitrary size for the channel that should be sufficient to handle incoming flush buffer
     // triggers. It should be acceptable to drop events if the size limit is exceeded.
@@ -131,8 +125,6 @@ impl WorkflowsEngine {
       flush_buffers_negotiator_join_handle,
       flush_buffers_negotiator_input_tx: input_tx,
       flush_buffers_negotiator_output_rx: output_rx,
-      insights_enabled_flag,
-      insights_enabled,
       metrics_collector: MetricsCollector::new(dynamic_stats),
       buffers_to_flush_tx,
     };
@@ -176,12 +168,6 @@ impl WorkflowsEngine {
         self.stats.intent_negotiation_channel_send_failures.inc();
       }
     }
-
-    self.metrics_collector.update(
-      self
-        .insights_enabled
-        .then_some(config.workflows_configuration.insights),
-    );
 
     log::debug!(
       "started workflows engine with {} workflow(s); {} pending processing action(s); {} \
@@ -279,12 +265,6 @@ impl WorkflowsEngine {
     self.state.streaming_actions = self
       .flush_buffers_actions_resolver
       .standardize_streaming_buffers(self.state.streaming_actions.clone());
-
-    self.metrics_collector.update(
-      self
-        .insights_enabled
-        .then_some(config.workflows_configuration.insights),
-    );
 
     log::debug!(
       "consumed received workflows config update; workflows engine contains {} workflow(s)",
@@ -482,13 +462,6 @@ impl WorkflowsEngine {
           }
         }
       },
-      _ = self.insights_enabled_flag.changed() => {
-        log::debug!("insights status changed, enabled: {:?}", self.insights_enabled);
-        self.insights_enabled = self.insights_enabled_flag.read();
-        if !self.insights_enabled {
-          self.metrics_collector.update(None);
-        }
-      }
     }
   }
 
@@ -796,7 +769,7 @@ impl WorkflowsEngineConfig {
 
   #[cfg(test)]
   #[must_use]
-  pub fn new_with_workflow_configurations(workflow_configs: Vec<Config>) -> Self {
+  pub const fn new_with_workflow_configurations(workflow_configs: Vec<Config>) -> Self {
     Self::new(
       WorkflowsConfiguration::new_with_workflow_configurations_for_test(workflow_configs),
       BTreeSet::new(),

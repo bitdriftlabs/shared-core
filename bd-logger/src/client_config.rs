@@ -29,7 +29,6 @@ use bd_proto::protos::client::api::{
 };
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
-use bd_proto::protos::insight::insight::InsightsConfiguration;
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
 use bd_runtime::runtime::workflows::WorkflowsEnabledFlag;
 use bd_runtime::runtime::{BoolWatch, ConfigLoader};
@@ -51,7 +50,6 @@ pub trait ApplyConfig {
 pub struct Configuration {
   buffer: BufferConfigList,
   workflows: WorkflowsConfigurationProto,
-  insights: InsightsConfiguration,
   bdtail: BdTailConfigurations,
   filters: FiltersConfiguration,
 }
@@ -61,7 +59,6 @@ impl Configuration {
     Self {
       buffer: sow.buffer_config_list.clone().unwrap_or_default(),
       workflows: sow.workflows_configuration.clone().unwrap_or_default(),
-      insights: sow.insights_configuration.clone().unwrap_or_default(),
       bdtail: sow.bdtail_configuration.clone().unwrap_or_default(),
       filters: sow.filters_configuration.clone().unwrap_or_default(),
     }
@@ -248,7 +245,6 @@ impl ApplyConfig for LoggerUpdate {
     let Configuration {
       buffer,
       workflows,
-      insights,
       bdtail,
       filters,
     } = configuration;
@@ -267,7 +263,7 @@ impl ApplyConfig for LoggerUpdate {
     // are disabled.
     // TODO(Augustyniak): Consider removing this feature flag once workflows APIs are stable.
     let workflows_configuration = if self.workflows_enabled_flag.read() {
-      WorkflowsConfiguration::new(&workflows, &insights)
+      WorkflowsConfiguration::new(&workflows)
     } else {
       WorkflowsConfiguration::default()
     };
