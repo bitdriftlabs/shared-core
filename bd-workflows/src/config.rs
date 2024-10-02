@@ -57,7 +57,7 @@ impl WorkflowsConfiguration {
   // This method should be used in tests only but cannot be attributed with cfg(test) as there are
   // tests outside of the current crate that use it.
   #[must_use]
-  pub fn new_with_workflow_configurations_for_test(workflows: Vec<Config>) -> Self {
+  pub const fn new_with_workflow_configurations_for_test(workflows: Vec<Config>) -> Self {
     Self { workflows }
   }
 }

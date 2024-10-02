@@ -769,7 +769,7 @@ impl WorkflowsEngineConfig {
 
   #[cfg(test)]
   #[must_use]
-  pub fn new_with_workflow_configurations(workflow_configs: Vec<Config>) -> Self {
+  pub const fn new_with_workflow_configurations(workflow_configs: Vec<Config>) -> Self {
     Self::new(
       WorkflowsConfiguration::new_with_workflow_configurations_for_test(workflow_configs),
       BTreeSet::new(),
