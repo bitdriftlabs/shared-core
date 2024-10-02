@@ -143,20 +143,6 @@ fn main() {
     .out_dir("src/protos/workflow/")
     .capture_stderr()
     .run_from_script();
-  std::fs::create_dir_all("src/protos/insight").unwrap();
-  protobuf_codegen::Codegen::new()
-    .protoc()
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .oneofs_non_exhaustive(false)
-        .file_header(GENERATED_HEADER.to_string()),
-    )
-    .includes(["../api/thirdparty", "../api/src"])
-    .inputs(["../api/src/bitdrift_public/protobuf/insight/v1/insight.proto"])
-    .out_dir("src/protos/insight/")
-    .capture_stderr()
-    .run_from_script();
   std::fs::create_dir_all("src/protos/filter").unwrap();
   protobuf_codegen::Codegen::new()
     .protoc()
