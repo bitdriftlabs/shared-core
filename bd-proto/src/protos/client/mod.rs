@@ -13,7 +13,6 @@ pub mod runtime;
 use super::bdtail::bdtail_config;
 use super::config::v1::config;
 use super::filter::filter;
-use super::insight::insight;
 use super::logging::payload;
 use super::workflow::workflow;
 use bd_pgv::generated::protos::validate;
