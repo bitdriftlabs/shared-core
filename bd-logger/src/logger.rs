@@ -202,7 +202,7 @@ impl LoggerHandle {
       .observe(duration.as_seconds_f64());
   }
 
-  pub fn log_sdk_configured(&self, fields: AnnotatedLogFields, duration: time::Duration) {
+  pub fn log_sdk_start(&self, fields: AnnotatedLogFields, duration: time::Duration) {
     let mut fields = fields;
     fields.push(AnnotatedLogField {
       field: LogField {
