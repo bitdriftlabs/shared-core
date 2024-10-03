@@ -142,8 +142,6 @@ struct StreamState {
   stream_event_rx: tokio::sync::mpsc::Receiver<StreamEvent>,
 
   time_provider: Arc<dyn TimeProvider>,
-
-  stats: Stats,
 }
 
 impl StreamState {
@@ -152,7 +150,7 @@ impl StreamState {
     stream_handle: Box<dyn PlatformNetworkStream>,
     stream_event_rx: tokio::sync::mpsc::Receiver<StreamEvent>,
     time_provider: Arc<dyn TimeProvider>,
-    stats: Stats,
+    stats: &Stats,
   ) -> Self {
     // TODO(mattklein123): We should be pivoting based on the grpc-encoding response header, but
     // currently we are not passing the response headers back to Rust. Given that we currently
@@ -182,7 +180,6 @@ impl StreamState {
       stream_handle,
       stream_event_rx,
       time_provider,
-      stats,
     }
   }
 
@@ -210,9 +207,6 @@ impl StreamState {
 
   async fn send_request<R: IntoRequest>(&mut self, request: R) -> anyhow::Result<()> {
     let framed_message = self.request_encoder.encode(&request.into_request());
-
-    self.stats.tx_bytes.inc_by(framed_message.len() as u64);
-
     self.stream_handle.send_data(&framed_message).await
   }
 
@@ -581,7 +575,7 @@ impl Api {
           .await?,
         stream_event_rx,
         self.time_provider.clone(),
-        self.stats.clone(),
+        &self.stats,
       );
 
       log::debug!("sending handshake");
