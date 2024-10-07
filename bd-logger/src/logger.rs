@@ -19,7 +19,6 @@ use crate::log_replay::LoggerReplay;
 use crate::memory_bound::{self, Sender as MemoryBoundSender};
 use crate::{app_version, MetadataProvider};
 use bd_api::{Metadata, Platform};
-use bd_client_common::error::handle_unexpected;
 use bd_client_stats_store::Scope;
 use bd_log::warn_every;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
