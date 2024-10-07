@@ -19,7 +19,6 @@ use crate::log_replay::LoggerReplay;
 use crate::memory_bound::{self, Sender as MemoryBoundSender};
 use crate::{app_version, MetadataProvider};
 use bd_api::{Metadata, Platform};
-use bd_client_common::error::handle_unexpected;
 use bd_client_stats_store::Scope;
 use bd_log::warn_every;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
@@ -454,16 +453,15 @@ impl Logger {
     }
   }
 
-  /// Create the SDK and corresponding buffer directory if it doesn't already exist. This is
-  /// performed on the event loop thread to avoid blocking syscalls in the init-path.
-  pub(crate) fn initialize_buffer_directory(directory: &Path) -> PathBuf {
+  /// Create the SDK and corresponding buffer directory if it doesn't already exist.
+  pub(crate) fn initialize_buffer_directory(directory: &Path) -> anyhow::Result<PathBuf> {
     let buffer_directory = directory.join("buffers");
-    handle_unexpected::<(), anyhow::Error>(
-      std::fs::create_dir_all(&buffer_directory).map_err(Into::into),
-      "create sdk directory",
-    );
 
-    buffer_directory
+    if let Err(e) = std::fs::create_dir_all(&buffer_directory) {
+      anyhow::bail!("failed to create sdk buffer(s) directory: {:?}", e);
+    }
+
+    Ok(buffer_directory)
   }
 
   pub fn shutdown(&self, blocking: bool) {
