@@ -453,8 +453,7 @@ impl Logger {
     }
   }
 
-  /// Create the SDK and corresponding buffer directory if it doesn't already exist. This is
-  /// performed on the event loop thread to avoid blocking syscalls in the init-path.
+  /// Create the SDK and corresponding buffer directory if it doesn't already exist.
   pub(crate) fn initialize_buffer_directory(directory: &Path) -> anyhow::Result<PathBuf> {
     let buffer_directory = directory.join("buffers");
 
