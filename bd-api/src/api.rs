@@ -503,6 +503,23 @@ impl Api {
     Ok(())
   }
 
+  #[must_use]
+  async fn do_reconnect_backoff(&mut self, backoff: &mut ExponentialBackoff<SystemClock>) -> bool {
+    // We have no max timeout, hence this should always return a backoff value.
+    // Before moving to the next iteration, sleep according to the backoff strategy.
+    let reconnect_delay = backoff.next_backoff().unwrap();
+    log::debug!("reconnecting in {} ms", reconnect_delay.as_millis());
+
+    // Pause execution until we are ready to reconnect, or the task is canceled.
+    tokio::select! {
+      () = tokio::time::sleep(reconnect_delay) => true,
+      () = self.shutdown.cancelled() => {
+        log::debug!("received shutdown while waiting for reconnect, shutting down");
+        false
+      },
+    }
+  }
+
   // Maintains an active stream by re-establishing a stream whenever we disconnect (with backoff),
   // until shutdown has been signaled.
   #[tracing::instrument(skip(self), level = "debug", name = "api")]
@@ -602,21 +619,10 @@ impl Api {
           // The network manager API doesn't expose the underlying issue in a type-safe manner,
           // so just treat all failures to handshake as a connect failure.
           self.stats.remote_connect_failure.inc();
-
-          // We have no max timeout, hence this should always return a backoff value.
-          // Before moving to the next iteration, sleep according to the backoff strategy.
-          let reconnect_delay = backoff.next_backoff().unwrap();
-          log::debug!("reconnecting in {} ms", reconnect_delay.as_millis());
-
-          // Pause execution until we are ready to reconnect, or the task is canceled.
-          tokio::select! {
-            () = tokio::time::sleep(reconnect_delay) => continue,
-            () = self.shutdown.cancelled() => {
-              log::debug!("received shutdown while waiting for reconnect, shutting down");
-
-              return Ok(())
-            },
+          if self.do_reconnect_backoff(&mut backoff).await {
+            continue;
           }
+          return Ok(());
         },
         // We received the shutdown notification, so exit out.
         HandshakeResult::ShuttingDown => return Ok(()),
@@ -641,10 +647,8 @@ impl Api {
         pipeline.on_handshake_complete();
       }
 
-      log::debug!("handshake received, resetting connection backoff");
-
-      // Reset the backoff on a successful handshake.
-      backoff.reset();
+      log::debug!("handshake received, entering main loop");
+      let handshake_established = Instant::now();
 
       // At this point we have established the stream, so we should start the general
       // request/response handling.
@@ -676,6 +680,16 @@ impl Api {
             self.handle_responses(responses, &mut stream_state).await?;
           },
           UpstreamEvent::StreamClosed => {
+            // We want to avoid a case in which we spin on an error shutdown. We do this by just
+            // checking to see if the stream lived for longer than 1 minute, and if so reset the
+            // backoff. If the process restarts everything starts over again anyway.
+            if Instant::now() - handshake_established > Duration::minutes(1) {
+              log::debug!("stream lived for more than 1 minute, resetting backoff");
+              backoff.reset();
+            } else if !self.do_reconnect_backoff(&mut backoff).await {
+              return Ok(());
+            }
+
             break;
           },
           UpstreamEvent::Shutdown => return Ok(()),

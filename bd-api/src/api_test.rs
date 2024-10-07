@@ -325,16 +325,29 @@ async fn api_retry_stream() {
   }
 
   // At this point we've verified that we've taken over 60s to get a new stream. Now let a stream
-  // finalize the handshake and then verify that it resets the interval.
+  // finalize the handshake and then verify that it resets the interval after being alive for 1m.
 
   5.minutes().advance().await;
 
   assert!(setup.next_stream(1.seconds()).await);
 
   setup.handshake_response().await;
+  61.seconds().sleep().await;
   setup.close_stream().await;
 
   assert!(setup.next_stream(1.seconds()).await);
+  setup.close_stream().await;
+
+  // Now ramp up the backoff again to 1m, do the handshake and immediate shutdown, and verify the
+  // backoff is not reset.
+  while setup.next_stream(1.minutes()).await {
+    setup.close_stream().await;
+  }
+  5.minutes().advance().await;
+  assert!(setup.next_stream(1.seconds()).await);
+  setup.handshake_response().await;
+  setup.close_stream().await;
+  assert!(!setup.next_stream(10.seconds()).await);
 
   setup.shutdown_trigger.shutdown().await;
 }
