@@ -190,8 +190,8 @@ impl LoggerBuilder {
       Arc::new(NoopLogger) as Arc<dyn bd_internal_logging::Logger>
     };
 
-    // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to improve
-    // the perceived performance of the logger initialization.
+    // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
+    // improve the perceived performance of the logger initialization.
     let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;
     let (buffer_manager, buffer_event_rx) =
       bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader);
