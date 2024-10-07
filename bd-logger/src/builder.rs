@@ -190,7 +190,7 @@ impl LoggerBuilder {
       Arc::new(NoopLogger) as Arc<dyn bd_internal_logging::Logger>
     };
 
-    let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory);
+    let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;
     let (buffer_manager, buffer_event_rx) =
       bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader);
     let buffer_uploader = BufferUploadManager::new(
