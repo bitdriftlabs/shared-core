@@ -28,6 +28,7 @@ use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_log_primitives::LogRef;
 pub use bd_matcher::FieldProvider;
 use bd_runtime::runtime::workflows::{
+  self,
   PersistenceWriteIntervalFlag,
   StatePeriodicWriteIntervalFlag,
   TraversalsCountLimitFlag,
@@ -138,9 +139,7 @@ impl WorkflowsEngine {
         config.continuous_buffer_ids,
       ));
 
-    let workflows_state = self.state_store.load();
-
-    if let Some(engine_state) = workflows_state {
+    if let Some(mut engine_state) = self.state_store.load() {
       self.state.pending_actions = self
         .flush_buffers_actions_resolver
         .standardize_pending_actions(engine_state.pending_actions);
@@ -148,14 +147,35 @@ impl WorkflowsEngine {
         .flush_buffers_actions_resolver
         .standardize_streaming_buffers(engine_state.streaming_actions);
 
+      // TODO(Augustyniak): Check whether we need this.
       // self.state.session_id.clone_from(&state.session_id);
-      self.add_workflows(
-        config.workflows_configuration.workflows,
-        Some(state.workflows),
-      );
+      for workflows_state in &mut engine_state.states {
+        Self::add_workflows(
+          &mut workflows_state.workflows,
+          &config.workflows_configuration.workflows,
+          &mut self.state.current_traversals_count,
+          self.traversals_count_limit,
+          &self.stats
+        );
+      }
+
+      self.state = engine_state;
     } else {
-      self.add_workflows(config.workflows_configuration.workflows, None);
+      let mut current_traversals_count = self.state.current_traversals_count;
+      let workflows_state = self.state.get_state("");
+
+      Self::add_workflows(
+        &mut workflows_state.workflows,
+        &config.workflows_configuration.workflows,
+        &mut current_traversals_count,
+        self.traversals_count_limit,
+        &self.stats
+      );
+
+      self.state.current_traversals_count = current_traversals_count;
     }
+
+    self.configs = config.workflows_configuration.workflows;
 
     for action in &self.state.pending_actions {
       if let Err(e) = self
@@ -170,10 +190,10 @@ impl WorkflowsEngine {
     log::debug!(
       "started workflows engine with {} workflow(s); {} pending processing action(s); {} \
        streaming action(s); session ID: \"{}\"; traversals count limit: {}",
-      self.state.workflows.len(),
+      self.state.current_state().workflows.len(),
       self.state.pending_actions.len(),
       self.state.streaming_actions.len(),
-      self.state.session_id,
+      self.state.current_session_id(),
       self.traversals_count_limit,
     );
   }
@@ -270,21 +290,24 @@ impl WorkflowsEngine {
     );
   }
 
-  fn add_workflows(&mut self, workflows: Vec<Config>, existing_workflows: Option<Vec<Workflow>>) {
-    // `workflows` is the source of truth for workflow configurations from the server
+  fn add_workflows(
+    existing_workflows: &mut Vec<Workflow>,
+    configs: &Vec<Config>,
+    current_traversals_count: &mut u32,
+    traversals_count_limit: u32,
+    stats: &WorkflowsEngineStats,
+  ) {
+    // `configs` is the source of truth for workflow configurations from the server
     // while `existing_workflows` contains state of workflow who have been running on a device.
     //  * Combine the two by iterating over the list of configs from the server and associating
     //    configs with relevant workflow state (if any).
     //  * Discard workflow states that don't have a corresponding server-side config.
-    let mut existing_workflow_ids_to_workflows =
-      existing_workflows.map_or_else(HashMap::new, |workflows| {
-        workflows
-          .into_iter()
-          .map(|workflow| (workflow.id().to_string(), workflow))
-          .collect()
-      });
+    let mut existing_workflow_ids_to_workflows: HashMap<_, _> = existing_workflows
+    .into_iter()
+    .map(|workflow| (workflow.id().to_string(), workflow))
+    .collect();
 
-    let workflows_and_configs = workflows.into_iter().map(|config| {
+    let workflows = configs.into_iter().map(|config| {
       let workflow = existing_workflow_ids_to_workflows
         .remove(config.id())
         .map_or_else(
@@ -293,26 +316,31 @@ impl WorkflowsEngine {
           //   No cached state for a given workflow ID, start from scratch.
           |workflow| workflow,
         );
-      (workflow, config)
+      workflow
     });
 
-    for (workflow, config) in workflows_and_configs {
-      self.add_workflow(workflow, config);
+    for workflow in workflows {
+      Self::add_workflow(workflow, existing_workflows, current_traversals_count, traversals_count_limit, stats);
     }
   }
 
-  fn add_workflow(&mut self, workflow: Workflow, config: Config) {
+  fn add_workflow(
+    workflow: Workflow,
+    workflows: &mut Vec<Workflow>,
+    current_traversals_count: &mut u32,
+    traversals_count_limit: u32,
+    stats: &WorkflowsEngineStats,
+  ) {
     let mut workflow = workflow;
 
     let workflow_traversals_count = workflow.traversals_count();
-    if workflow_traversals_count + self.state.current_traversals_count > self.traversals_count_limit
-    {
+    if workflow_traversals_count + current_traversals_count > traversals_count_limit {
       log::debug!(
         "failed to add workflow with {} traversal(s) due to traversals count limit being hit \
          ({}); current traversals count {}",
         workflow_traversals_count,
-        self.traversals_count_limit,
-        self.state.current_traversals_count
+        traversals_count_limit,
+        current_traversals_count
       );
 
       // Workflow being added has too many traversal for the engine to not exceed
@@ -332,24 +360,19 @@ impl WorkflowsEngine {
         );
 
         remaining_workflow_traversals_count -= run_traversals_count;
-        self.stats.traversals_count_limit_hit_total.inc();
+        stats.traversals_count_limit_hit_total.inc();
         workflow.remove_run(index);
 
-        if remaining_workflow_traversals_count + self.state.current_traversals_count
-          <= self.traversals_count_limit
+        if remaining_workflow_traversals_count + current_traversals_count <= traversals_count_limit
         {
           break;
         }
       }
     }
 
-    self.stats.workflow_starts_total.inc();
-    self
-      .stats
-      .run_starts_total
-      .inc_by(workflow.runs().len() as u64);
-    self
-      .stats
+    stats.workflow_starts_total.inc();
+    stats.run_starts_total.inc_by(workflow.runs().len() as u64);
+    stats
       .traversal_starts_total
       .inc_by(workflow_traversals_count.into());
 
@@ -360,10 +383,9 @@ impl WorkflowsEngine {
       workflow_traversals_count,
     );
 
-    self.state.current_traversals_count += workflow.traversals_count();
+    *current_traversals_count += workflow.traversals_count();
 
-    self.configs.push(config);
-    self.state.workflows.push(workflow);
+    workflows.push(workflow);
   }
 
   fn remove_workflow(&mut self, workflow_index: usize) {
