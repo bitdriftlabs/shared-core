@@ -59,14 +59,13 @@ pub struct WorkflowsEngine {
   // A config at index `i` corresponds to a workflow (state.workflows list)
   // at index `i`.
   configs: Vec<Config>,
-  state: WorkflowsState,
+  state: EngineState,
   state_store: StateStore,
 
   needs_state_persistence: bool,
 
   stats: WorkflowsEngineStats,
 
-  current_traversals_count: u32,
   /// Used to keep track of the current number of traversals.
   /// The other way to do this would be to iterate over all workflows
   /// and their runs and their traversals every time we want to
@@ -114,11 +113,10 @@ impl WorkflowsEngine {
 
     let workflows_engine = Self {
       configs: vec![],
-      state: WorkflowsState::new_uninitialized(),
+      state: EngineState::default(),
       stats: WorkflowsEngineStats::new(&scope),
       state_store: StateStore::new(sdk_directory, &scope, runtime),
       needs_state_persistence: false,
-      current_traversals_count: 0,
       traversals_count_limit: traversals_count_limit_flag.read(),
       state_periodic_write_interval: state_periodic_write_interval_flag.read(),
       flush_buffers_actions_resolver,
@@ -142,15 +140,15 @@ impl WorkflowsEngine {
 
     let workflows_state = self.state_store.load();
 
-    if let Some(state) = workflows_state {
+    if let Some(engine_state) = workflows_state {
       self.state.pending_actions = self
         .flush_buffers_actions_resolver
-        .standardize_pending_actions(state.pending_actions);
+        .standardize_pending_actions(engine_state.pending_actions);
       self.state.streaming_actions = self
         .flush_buffers_actions_resolver
-        .standardize_streaming_buffers(state.streaming_actions);
+        .standardize_streaming_buffers(engine_state.streaming_actions);
 
-      self.state.session_id.clone_from(&state.session_id);
+      // self.state.session_id.clone_from(&state.session_id);
       self.add_workflows(
         config.workflows_configuration.workflows,
         Some(state.workflows),
@@ -307,13 +305,14 @@ impl WorkflowsEngine {
     let mut workflow = workflow;
 
     let workflow_traversals_count = workflow.traversals_count();
-    if workflow_traversals_count + self.current_traversals_count > self.traversals_count_limit {
+    if workflow_traversals_count + self.state.current_traversals_count > self.traversals_count_limit
+    {
       log::debug!(
         "failed to add workflow with {} traversal(s) due to traversals count limit being hit \
          ({}); current traversals count {}",
         workflow_traversals_count,
         self.traversals_count_limit,
-        self.current_traversals_count
+        self.state.current_traversals_count
       );
 
       // Workflow being added has too many traversal for the engine to not exceed
@@ -336,7 +335,7 @@ impl WorkflowsEngine {
         self.stats.traversals_count_limit_hit_total.inc();
         workflow.remove_run(index);
 
-        if remaining_workflow_traversals_count + self.current_traversals_count
+        if remaining_workflow_traversals_count + self.state.current_traversals_count
           <= self.traversals_count_limit
         {
           break;
@@ -361,7 +360,7 @@ impl WorkflowsEngine {
       workflow_traversals_count,
     );
 
-    self.current_traversals_count += workflow.traversals_count();
+    self.state.current_traversals_count += workflow.traversals_count();
 
     self.configs.push(config);
     self.state.workflows.push(workflow);
@@ -475,43 +474,15 @@ impl WorkflowsEngine {
     // Measure duration in here even if the list of workflows is empty.
     let _timer = self.stats.process_log_duration.start_timer();
 
-    if self.state.session_id.is_empty() {
-      log::debug!(
-        "workflows engine: moving from no session to session \"{}\"",
-        log.session_id
-      );
-      // There was no state on a disk when workflows engine was started
-      // and engine just observed first session ID.
-      // We do not have to rush to persist it to disk until any of the
-      // workflows makes progress. That's because in the context of cleaning workflows
-      // state on session change, having empty session ID
-      // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
-      // all workflows in their initial states.
-      self.state.session_id = log.session_id.to_string();
-    } else if self.state.session_id != log.session_id {
-      log::debug!(
-        "workflows engine: moving from \"{}\" to new session \"{}\", cleaning workflows state",
-        self.state.session_id,
-        log.session_id
-      );
-      // We are lazy and don't say that state needs persistance.
-      // That may result in new session ID not being stored to disk
-      // (if the app is killed before the next time we store state)
-      // which means that the next time SDK launches we start with empty
-      // session ID (""). It should be OK as in the context of cleaning workflows
-      // state on session change, having empty session ID
-      // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
-      // all workflows in their initial states.
-      self.clean_state();
-      self.state.session_id = log.session_id.to_string();
-    }
+    let mut current_traversals_count = self.state.current_traversals_count;
+    let state = self.state.get_state(log.session_id);
 
     // Return early if there are no workflows.
-    if self.state.workflows.is_empty() {
+    if state.workflows.is_empty() {
       self
         .stats
         .active_traversals_total
-        .observe(self.current_traversals_count.into());
+        .observe(current_traversals_count.into());
 
       return WorkflowsEngineResult {
         log_destination_buffer_ids: Cow::Borrowed(log_destination_buffer_ids),
@@ -521,12 +492,12 @@ impl WorkflowsEngine {
     }
 
     let mut actions: Vec<&Action> = vec![];
-    for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
+    for (index, workflow) in &mut state.workflows.iter_mut().enumerate() {
       let was_in_initial_state = workflow.is_in_initial_state();
       let result = workflow.process_log(
         &self.configs[index],
         log,
-        &mut self.current_traversals_count,
+        &mut current_traversals_count,
         self.traversals_count_limit,
       );
 
@@ -606,22 +577,24 @@ impl WorkflowsEngine {
       actions.extend(t);
     }
 
-    self
-      .stats
-      .active_traversals_total
-      .observe(self.current_traversals_count.into());
-
     debug_assert!(
-      self
-        .state
+      state
         .workflows
         .iter()
         .map(Workflow::traversals_count)
         .sum::<u32>()
-        == self.current_traversals_count,
+        == self.state.current_traversals_count,
       "current_traversals_count is not equal to computed traversals count"
     );
 
+    self.state.current_traversals_count = current_traversals_count;
+
+    self
+      .stats
+      .active_traversals_total
+      .observe(self.state.current_traversals_count.into());
+
+    let session_id = self.state.current_session_id();
     let (flush_buffers_actions, emit_metric_actions) = Self::prepare_actions(&actions);
 
     let result = self
@@ -629,7 +602,7 @@ impl WorkflowsEngine {
       .process_streaming_actions(
         &mut self.state.streaming_actions,
         log_destination_buffer_ids,
-        &self.state.session_id,
+        &session_id,
       );
 
     self.needs_state_persistence |= result.has_changed_streaming_actions;
@@ -638,7 +611,7 @@ impl WorkflowsEngine {
       .flush_buffers_actions_resolver
       .process_flush_buffer_actions(
         flush_buffers_actions,
-        &self.state.session_id,
+        &session_id,
         &self.state.pending_actions,
         &self.state.streaming_actions,
       );
@@ -664,17 +637,6 @@ impl WorkflowsEngine {
       triggered_flushes_buffer_ids: flush_buffers_actions_processing_result
         .triggered_flushes_buffer_ids,
     }
-  }
-
-  fn clean_state(&mut self) {
-    self.current_traversals_count = 0;
-    // We clear the ongoing workflows state as opposed to the whole state because:
-    // * pending actions (uploads) are not affected by the session change, and ongoing logs uploads
-    //   should continue even as the session ID changes.
-    // * streaming actions after the session ID change are cleared on the next call to the
-    //   Resolver's resolve method.
-    self.state.clear_ongoing_workflows_state();
-    self.needs_state_persistence = true;
   }
 
   /// Handles deduping metrics based on their tags, ensuring that the same emit metric
@@ -814,9 +776,9 @@ impl StateStore {
     }
   }
 
-  fn load(&self) -> Option<WorkflowsState> {
+  fn load(&self) -> Option<EngineState> {
     // Try to deserialize any persisted workflows state into a map
-    let workflows_state = if self.state_path.exists() {
+    let engine_state = if self.state_path.exists() {
       let _timer = self.stats.state_load_duration.start_timer();
       // State is cached
       self
@@ -836,20 +798,20 @@ impl StateStore {
       None
     };
 
-    if workflows_state.is_some() {
-      log::debug!("read workflows state from disk: {workflows_state:?}");
+    if engine_state.is_some() {
+      log::debug!("read workflows engine state from disk: {engine_state:?}");
     } else {
-      log::debug!("no workflows state available");
+      log::debug!("no workflows engine state available");
     }
 
-    workflows_state
+    engine_state
   }
 
-  pub(self) fn load_state(&self) -> anyhow::Result<WorkflowsState> {
+  pub(self) fn load_state(&self) -> anyhow::Result<EngineState> {
     let file = File::open(self.state_path.as_path())?;
     // Wrap file in buffer to deserialize efficiently in place
     let buf_reader = BufReader::new(file);
-    Ok(bincode::deserialize_from::<_, WorkflowsState>(buf_reader)?)
+    Ok(bincode::deserialize_from::<_, EngineState>(buf_reader)?)
   }
 
   /// Stores states of the passed workflows if all pre-conditions are met.
@@ -857,15 +819,15 @@ impl StateStore {
   ///
   /// # Arguments
   ///
-  /// * `workflows_state` - The workflows state to store.
+  /// * `engine_state` - The engine state to store.
   /// * `force` - If `true`, the state will be stored regardless of the time since the last save. If
   ///   `false`, the state will be stored only if the time since the last save is greater than the
   ///   configured interval.
-  async fn maybe_store(&mut self, workflows_state: &WorkflowsState, force: bool) -> bool {
+  async fn maybe_store(&mut self, engine_state: &EngineState, force: bool) -> bool {
     // Check if enough time has passed since the last save
     let now = Instant::now();
     if force {
-      log::debug!("forcing persisting workflows state to disk");
+      log::debug!("forcing persisting workflows engine state to disk");
     } else if let Some(last_save_time) = self.last_persisted {
       let persistence_write_interval_ms = self.persistence_write_interval_flag.read();
       if now.duration_since(last_save_time) < persistence_write_interval_ms {
@@ -877,11 +839,11 @@ impl StateStore {
 
     let _timer = self.stats.state_persistence_duration.start_timer();
 
-    let workflows_state = workflows_state.optimized();
+    let engine_state = engine_state.optimized();
 
     // Serialize state snapshot and write to disk
     let state_path = self.state_path.clone();
-    match tokio::task::spawn_blocking(move || Self::store(&state_path, &workflows_state)).await {
+    match tokio::task::spawn_blocking(move || Self::store(&state_path, &engine_state)).await {
       Ok(Ok(())) => {
         log::trace!("finished persisting workflows state to disk");
         self.last_persisted = Some(now);
@@ -900,7 +862,7 @@ impl StateStore {
     true
   }
 
-  fn store(state_path: &Path, state: &WorkflowsState) -> anyhow::Result<()> {
+  fn store(state_path: &Path, state: &EngineState) -> anyhow::Result<()> {
     let file = File::create(state_path)?;
     // Wrap the file in a BufWriter for better performance
     let mut writer = BufWriter::new(file);
@@ -917,8 +879,101 @@ impl StateStore {
     }
 
     if let Err(e) = std::fs::remove_file(&self.state_path) {
-      log::debug!("failed to remove workflows state file: {e}");
+      log::debug!("failed to remove workflows engine state file: {e}");
     }
+  }
+}
+
+//
+// EngineState
+//
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub(crate) struct EngineState {
+  states: Vec<WorkflowsState>,
+
+  pending_actions: BTreeSet<PendingFlushBuffersAction>,
+  streaming_actions: Vec<StreamingBuffersAction>,
+
+  #[serde(skip_serializing)]
+  current_traversals_count: u32,
+  #[serde(skip_serializing)]
+  needs_state_persistence: bool,
+}
+
+impl EngineState {
+  fn optimized(&self) -> Self {
+    Self {
+      states: self.states.iter().map(WorkflowsState::optimized).collect(),
+      current_traversals_count: 0,    // TODO(Augustyniak): IMPLEMENT
+      needs_state_persistence: false, // TODO(Augustyniak): IMPLEMENT
+      pending_actions: self.pending_actions.clone(),
+      streaming_actions: self.streaming_actions.clone(),
+    }
+  }
+
+  fn current_session_id(&self) -> String {
+    self
+      .states
+      .first()
+      .map_or_else(String::new, |state| state.session_id.clone())
+  }
+
+  fn current_state(&mut self) -> &mut WorkflowsState {
+    if self.states.is_empty() {
+      let state = WorkflowsState::default();
+      self.states.push(state);
+    }
+
+    self.states.first_mut().unwrap()
+  }
+
+  fn get_state(&mut self, session_id: &str) -> &mut WorkflowsState {
+    if self
+      .states
+      .iter()
+      .find(|state| state.session_id == session_id)
+      .is_none()
+    {
+      if let Some(previous_session) = self.states.first() {
+        // We are lazy and don't say that state needs persistance.
+        // That may result in new session ID not being stored to disk
+        // (if the app is killed before the next time we store state)
+        // which means that the next time SDK launches we start with empty
+        // session ID (""). It should be OK as in the context of cleaning workflows
+        // state on session change, having empty session ID
+        // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
+        // all workflows in their initial states.
+        log::debug!(
+          "workflows engine: moving from \"{}\" to new session \"{}\", cleaning workflows state",
+          previous_session.session_id,
+          session_id
+        );
+        self.current_traversals_count = 0;
+        self.needs_state_persistence = true;
+      } else {
+        // There was no state on a disk when workflows engine was started
+        // and engine just observed first session ID.
+        // We do not have to rush to persist it to disk until any of the
+        // workflows makes progress. That's because in the context of cleaning workflows
+        // state on session change, having empty session ID
+        // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
+        // all workflows in their initial states.
+        log::debug!(
+          "workflows engine: moving from no session to session \"{}\"",
+          session_id
+        );
+      }
+
+      let state = WorkflowsState::new(session_id);
+      self.states.insert(0, state);
+    }
+
+    self
+      .states
+      .iter_mut()
+      .find(|state| state.session_id == session_id)
+      .unwrap()
   }
 }
 
@@ -926,23 +981,18 @@ impl StateStore {
 // WorkflowsState
 //
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 /// Holds a complete representation of all the active Workflows' state.
 pub(crate) struct WorkflowsState {
   session_id: String,
   workflows: Vec<Workflow>,
-
-  pending_actions: BTreeSet<PendingFlushBuffersAction>,
-  streaming_actions: Vec<StreamingBuffersAction>,
 }
 
 impl WorkflowsState {
-  const fn new_uninitialized() -> Self {
+  fn new(session_id: &str) -> Self {
     Self {
-      session_id: String::new(),
+      session_id: session_id.to_string(),
       workflows: vec![],
-      pending_actions: BTreeSet::new(),
-      streaming_actions: vec![],
     }
   }
 
@@ -968,17 +1018,7 @@ impl WorkflowsState {
           }
         })
         .collect(),
-      pending_actions: self.pending_actions.clone(),
-      streaming_actions: self.streaming_actions.clone(),
     }
-  }
-
-  // Clear ongoing workflows state without clearing the state of pending and streaming actions.
-  fn clear_ongoing_workflows_state(&mut self) {
-    for workflow in &mut self.workflows {
-      workflow.remove_all_runs();
-    }
-    self.session_id = String::new();
   }
 }
 
