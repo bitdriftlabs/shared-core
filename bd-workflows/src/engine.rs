@@ -957,7 +957,7 @@ impl EngineState {
       .find(|state| state.session_id == session_id)
       .is_none()
     {
-      if let Some(previous_session) = self.states.first() {
+      if let Some(previous_session) = self.states.first_mut() {
         // We are lazy and don't say that state needs persistance.
         // That may result in new session ID not being stored to disk
         // (if the app is killed before the next time we store state)
@@ -971,6 +971,11 @@ impl EngineState {
           previous_session.session_id,
           session_id
         );
+
+        for workflow in &mut previous_session.workflows {
+          workflow.remove_all_runs();
+        }
+        
         self.current_traversals_count = 0;
         self.needs_state_persistence = true;
       } else {
@@ -991,6 +996,8 @@ impl EngineState {
       self.states.insert(0, state);
     }
 
+    // # Safety
+    // Unwrapping is safe since we are adding the state that we search for a few lines above.
     self
       .states
       .iter_mut()
