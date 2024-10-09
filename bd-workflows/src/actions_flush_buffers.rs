@@ -723,7 +723,7 @@ pub(crate) struct StreamingBuffersActionsProcessingResult<'a> {
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct PendingFlushBuffersAction {
   pub(crate) id: String,
-  session_id: String,
+  pub(crate) session_id: String,
 
   trigger_buffer_ids: BTreeSet<Cow<'static, str>>,
 

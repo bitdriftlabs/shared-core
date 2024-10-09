@@ -37,7 +37,7 @@ use bd_stats_common::labels;
 use bd_time::TimeDurationExt as _;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -54,15 +54,12 @@ use tokio::time::Instant;
 /// Orchestrates the execution and management of workflows. It is also responsible for
 /// persisting and restoring its state in disk when any workflow has changed.
 pub struct WorkflowsEngine {
-  // Number of elements in configs and
-  // state.workflows should be always the same.
-  // A config at index `i` corresponds to a workflow (state.workflows list)
-  // at index `i`.
-  configs: Vec<Config>,
+  configs: BTreeMap<String, Config>,
   state: EngineState,
   remote_config_mediator: RemoteConfigMediator,
   state_store: StateStore,
 
+  current_traversals_count: u32,
   needs_state_persistence: bool,
 
   stats: WorkflowsEngineStats,
@@ -115,11 +112,12 @@ impl WorkflowsEngine {
     let (stats, remote_config_mediator_stats) = WorkflowsEngineStats::new(&scope);
 
     let workflows_engine = Self {
-      configs: vec![],
+      configs: BTreeMap::new(),
       state: EngineState::default(),
       remote_config_mediator: RemoteConfigMediator::new(remote_config_mediator_stats),
       stats,
       state_store: StateStore::new(sdk_directory, &scope, runtime),
+      current_traversals_count: 0,
       needs_state_persistence: false,
       traversals_count_limit: traversals_count_limit_flag.read(),
       state_periodic_write_interval: state_periodic_write_interval_flag.read(),
@@ -146,7 +144,7 @@ impl WorkflowsEngine {
       for loaded_workflows_state in engine_state.into_iter() {
         let workflows_state = self
           .state
-          .get_or_insert_state(&loaded_workflows_state.session_id);
+          .get_or_insert_session_state(&loaded_workflows_state.session_id);
 
         workflows_state.pending_actions = self
           .flush_buffers_actions_resolver
@@ -159,26 +157,28 @@ impl WorkflowsEngine {
           &mut workflows_state.workflows,
           loaded_workflows_state.workflows,
           &config.workflows_configuration.workflows,
-          &mut self.state.current_traversals_count,
+          &mut self.current_traversals_count,
           self.traversals_count_limit,
         );
       }
     } else {
-      let mut current_traversals_count = self.state.current_traversals_count;
-      let workflows_state = self.state.get_or_insert_state("");
+      let workflows_state = self.state.get_or_insert_session_state("");
 
       self.remote_config_mediator.add_workflows(
         &mut workflows_state.workflows,
         vec![],
         &config.workflows_configuration.workflows,
-        &mut current_traversals_count,
+        &mut self.current_traversals_count,
         self.traversals_count_limit,
       );
-
-      self.state.current_traversals_count = current_traversals_count;
     }
 
-    self.configs = config.workflows_configuration.workflows;
+    self.configs = config
+      .workflows_configuration
+      .workflows
+      .into_iter()
+      .map(|config| (config.id().to_string(), config))
+      .collect();
 
     for workflows_state in self.state.iter() {
       for action in &workflows_state.pending_actions {
@@ -195,9 +195,9 @@ impl WorkflowsEngine {
     log::debug!(
       "started workflows engine with {} workflow(s); {} pending processing action(s); {} \
        streaming action(s); session ID: \"{}\"; traversals count limit: {}",
-      self.state.current_state().workflows.len(),
-      self.state.current_state().pending_actions.len(),
-      self.state.current_state().streaming_actions.len(),
+      self.state.current_session_state().workflows.len(),
+      self.state.current_session_state().pending_actions.len(),
+      self.state.current_session_state().streaming_actions.len(),
       self.state.current_session_id(),
       self.traversals_count_limit,
     );
@@ -219,37 +219,37 @@ impl WorkflowsEngine {
       config.workflows_configuration.workflows.len()
     );
 
-    // Introduce hash look ups to avoid N^2 complexity later in this method.
-    let latest_workflow_ids_to_index: HashMap<&str, usize> = config
-      .workflows_configuration
-      .workflows
-      .iter()
-      .enumerate()
-      .map(|(index, config)| (config.id(), index))
-      .collect();
-
-    // Process workflows in reversed order as we may end up removing workflows
-    // while iterating.
     for state in self.state.states.iter_mut() {
+            // Introduce hash look ups to avoid N^2 complexity later in this method.
+            let latest_workflow_ids_to_index: HashMap<&str, usize> = config
+            .workflows_configuration
+            .workflows
+            .iter()
+            .enumerate()
+            .map(|(index, config)| (config.id(), index))
+            .collect();
+
+      // Process workflows in reversed order as we may end up removing workflows
+      // while iterating.
       for index in (0 .. state.workflows.len()).rev() {
-        let should_remove_existing_workflow = match latest_workflow_ids_to_index
-          .get(state.workflows[index].id())
-        {
-          Some(latest_workflows_index) => {
-            // Handle an edge case where a client receives a config update containing a workflow
-            // with a config field unknown to the client, which is later updated to
-            // understand this field. In such cases, the server's config is converted to
-            // the client's representation and cached for future use.
-            // If the client is later updated to understand the previously unsupported field,
-            // we check for a config mismatch between the cached client representation and
-            // the fresh client representation from the server. If there's a mismatch, we discard
-            // the cached version and replace it with the fresh one later on.
-            config.workflows_configuration.workflows[*latest_workflows_index] != self.configs[index]
-          },
-          // The latest config update doesn't contain a workflow with an ID of the existing
-          // workflow. Remove existing workflow.
-          None => true,
-        };
+        let should_remove_existing_workflow =
+          match latest_workflow_ids_to_index.get(state.workflows[index].id()) {
+            Some(latest_workflows_index) => {
+              let workflow_id = config.workflows_configuration.workflows[*latest_workflows_index].id();
+              // Handle an edge case where a client receives a config update containing a workflow
+              // with a config field unknown to the client, which is later updated to
+              // understand this field. In such cases, the server's config is converted to
+              // the client's representation and cached for future use.
+              // If the client is later updated to understand the previously unsupported field,
+              // we check for a config mismatch between the cached client representation and
+              // the fresh client representation from the server. If there's a mismatch, we discard
+              // the cached version and replace it with the fresh one later on.
+              Some(&config.workflows_configuration.workflows[*latest_workflows_index]) != self.configs.get(workflow_id)
+            },
+            // The latest config update doesn't contain a workflow with an ID of the existing
+            // workflow. Remove existing workflow.
+            None => true,
+          };
 
         if should_remove_existing_workflow {
           self.remote_config_mediator.remove_workflow(
@@ -262,12 +262,14 @@ impl WorkflowsEngine {
       }
     }
 
+    self.configs = config.workflows_configuration.workflows.into_iter().map(|config| (config.id().to_string(), config)).collect();
+
     self
-    .flush_buffers_actions_resolver
-    .update(ResolverConfig::new(
-      config.trigger_buffer_ids,
-      config.continuous_buffer_ids,
-    ));
+      .flush_buffers_actions_resolver
+      .update(ResolverConfig::new(
+        config.trigger_buffer_ids,
+        config.continuous_buffer_ids,
+      ));
 
     for state in self.state.states.iter_mut() {
       // Introduce hash look ups to avoid N^2 complexity later in this method.
@@ -281,12 +283,12 @@ impl WorkflowsEngine {
       // Iterate over the list of configs from the latest update and
       // create workflows for the ones that do not have their representation
       // on the client yet.
-      for workflow_config in config.workflows_configuration.workflows {
+      for (_, workflow_config) in &self.configs {
         if !existing_workflow_ids_to_index.contains_key(workflow_config.id()) {
           self.remote_config_mediator.add_workflow(
             Workflow::new(workflow_config.id().to_string()),
             &mut state.workflows,
-            &mut self.state.current_traversals_count,
+            &mut self.current_traversals_count,
             self.traversals_count_limit,
           );
         }
@@ -302,7 +304,7 @@ impl WorkflowsEngine {
 
     log::debug!(
       "consumed received workflows config update; workflows engine contains {} workflow(s)",
-      self.state.current_state().workflows.len()
+      self.state.current_session_state().workflows.len()
     );
   }
 
@@ -343,7 +345,9 @@ impl WorkflowsEngine {
 
         match negotiator_output {
           NegotiatorOutput::UploadApproved(action) => {
-            self.state.pending_actions.remove(&action);
+            if let Some(state) = self.state.get_session_state(action.session_id.as_str()) {
+              state.pending_actions.remove(&action);
+            };
 
             if let Err(e) = self.buffers_to_flush_tx.try_send(BuffersToFlush::new(&action)) {
               self.stats.buffers_to_flush_channel_send_failures.inc();
@@ -353,7 +357,9 @@ impl WorkflowsEngine {
             match self.flush_buffers_actions_resolver.make_streaming_action(action.clone()) {
               Some(streaming_action) => {
                 log::debug!("streaming started: \"{streaming_action:?}\"");
-                self.state.streaming_actions.push(streaming_action);
+                if let Some(state) = self.state.get_session_state(action.session_id.as_str()) {
+                  state.streaming_actions.push(streaming_action);
+                };
               },
               None => {
                 log::debug!("no streaming configuration defined for action: \"{action:?}\"");
@@ -363,7 +369,9 @@ impl WorkflowsEngine {
             self.needs_state_persistence = true;
           },
           NegotiatorOutput::UploadRejected(action) => {
-            self.state.pending_actions.remove(&action);
+            if let Some(state) = self.state.get_session_state(action.session_id.as_str()) {
+              state.pending_actions.remove(&action);
+            };
             self.needs_state_persistence = true;
           }
         }
@@ -381,15 +389,14 @@ impl WorkflowsEngine {
     // Measure duration in here even if the list of workflows is empty.
     let _timer = self.stats.process_log_duration.start_timer();
 
-    let mut current_traversals_count = self.state.current_traversals_count;
-    let state = self.state.get_or_insert_state(log.session_id);
+    let state = self.state.get_or_insert_session_state(log.session_id);
 
     // Return early if there are no workflows.
     if state.workflows.is_empty() {
       self
         .stats
         .active_traversals_total
-        .observe(current_traversals_count.into());
+        .observe(self.current_traversals_count.into());
 
       return WorkflowsEngineResult {
         log_destination_buffer_ids: Cow::Borrowed(log_destination_buffer_ids),
@@ -399,12 +406,21 @@ impl WorkflowsEngine {
     }
 
     let mut actions: Vec<&Action> = vec![];
-    for (index, workflow) in &mut state.workflows.iter_mut().enumerate() {
+    for workflow in &mut state.workflows.iter_mut() {
       let was_in_initial_state = workflow.is_in_initial_state();
+
+      let Some(config) = self.configs.get(workflow.id()) else {
+        log::debug!(
+          "attempted to evaluate not existing workflow: {:?}",
+          workflow.id()
+        );
+        continue;
+      };
+
       let result = workflow.process_log(
-        &self.configs[index],
+        &config,
         log,
-        &mut current_traversals_count,
+        &mut self.current_traversals_count,
         self.traversals_count_limit,
       );
 
@@ -490,26 +506,23 @@ impl WorkflowsEngine {
         .iter()
         .map(Workflow::traversals_count)
         .sum::<u32>()
-        == self.state.current_traversals_count,
+        == self.current_traversals_count,
       "current_traversals_count is not equal to computed traversals count"
     );
-
-    self.state.current_traversals_count = current_traversals_count;
 
     self
       .stats
       .active_traversals_total
-      .observe(self.state.current_traversals_count.into());
+      .observe(self.current_traversals_count.into());
 
-    let session_id = self.state.current_session_id();
     let (flush_buffers_actions, emit_metric_actions) = Self::prepare_actions(&actions);
 
     let result = self
       .flush_buffers_actions_resolver
       .process_streaming_actions(
-        &mut self.state.streaming_actions,
+        &mut state.streaming_actions,
         log_destination_buffer_ids,
-        &session_id,
+        log.session_id,
       );
 
     self.needs_state_persistence |= result.has_changed_streaming_actions;
@@ -518,9 +531,9 @@ impl WorkflowsEngine {
       .flush_buffers_actions_resolver
       .process_flush_buffer_actions(
         flush_buffers_actions,
-        &session_id,
-        &self.state.pending_actions,
-        &self.state.streaming_actions,
+        log.session_id,
+        &state.pending_actions,
+        &state.streaming_actions,
       );
 
     self
@@ -528,7 +541,7 @@ impl WorkflowsEngine {
       .emit_metrics(&emit_metric_actions, log);
 
     for action in flush_buffers_actions_processing_result.new_pending_actions_to_add {
-      self.state.pending_actions.insert(action.clone());
+      state.pending_actions.insert(action.clone());
       if let Err(e) = self.flush_buffers_negotiator_input_tx.try_send(action) {
         log::debug!("failed to send flush buffers action intent for intent negotiation: {e}");
         self.stats.intent_negotiation_channel_send_failures.inc();
@@ -599,6 +612,7 @@ impl Drop for WorkflowsEngine {
 // RemoteConfigMediatorStats
 //
 
+#[allow(clippy::struct_field_names)]
 #[derive(Debug)]
 struct RemoteConfigMediatorStats {
   /// The number of started workflows. Workflows are started on SDK configuration
@@ -780,10 +794,10 @@ impl RemoteConfigMediator {
     &self,
     state: &mut WorkflowsState,
     workflow_index: usize,
-    configs: &mut Vec<Config>,
+    configs: &mut BTreeMap<String, Config>,
     current_traversals_count: &mut u32,
   ) {
-    configs.remove(workflow_index);
+    configs.remove_entry(state.workflows[workflow_index].id());
     let workflow = state.workflows.remove(workflow_index);
 
     let workflow_traversals_count = workflow.traversals_count();
@@ -1018,19 +1032,14 @@ impl StateStore {
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct EngineState {
   states: Vec<WorkflowsState>,
-
-  #[serde(skip_serializing)]
-  current_traversals_count: u32,
-  #[serde(skip_serializing)]
-  needs_state_persistence: bool,
 }
 
 impl EngineState {
   fn optimized(&self) -> Self {
     Self {
       states: self.states.iter().map(WorkflowsState::optimized).collect(),
-      current_traversals_count: 0,    // TODO(Augustyniak): IMPLEMENT
-      needs_state_persistence: false, // TODO(Augustyniak): IMPLEMENT
+      // current_traversals_count: 0,    // TODO(Augustyniak): IMPLEMENT
+      // needs_state_persistence: false, // TODO(Augustyniak): IMPLEMENT
     }
   }
 
@@ -1049,7 +1058,7 @@ impl EngineState {
       .map_or_else(String::new, |state| state.session_id.clone())
   }
 
-  fn current_state(&mut self) -> &mut WorkflowsState {
+  fn current_session_state(&mut self) -> &mut WorkflowsState {
     if self.states.is_empty() {
       let state = WorkflowsState::default();
       self.states.push(state);
@@ -1058,7 +1067,14 @@ impl EngineState {
     self.states.first_mut().unwrap()
   }
 
-  fn get_or_insert_state(&mut self, session_id: &str) -> &mut WorkflowsState {
+  fn get_session_state(&mut self, session_id: &str) -> Option<&mut WorkflowsState> {
+    self
+      .states
+      .iter_mut()
+      .find(|state| state.session_id == session_id)
+  }
+
+  fn get_or_insert_session_state(&mut self, session_id: &str) -> &mut WorkflowsState {
     if self
       .states
       .iter()
@@ -1084,8 +1100,9 @@ impl EngineState {
           workflow.remove_all_runs();
         }
 
-        self.current_traversals_count = 0;
-        self.needs_state_persistence = true;
+        // TODO(Augustyniak): Implement in other place.
+        // self.current_traversals_count = 0;
+        // self.needs_state_persistence = true;
       } else {
         // There was no state on a disk when workflows engine was started
         // and engine just observed first session ID.
