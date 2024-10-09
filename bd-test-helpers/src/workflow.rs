@@ -318,19 +318,19 @@ pub mod macros {
   macro_rules! metric_value {
     ($value:expr) => {
       bd_proto::protos::workflow::workflow::workflow::action::action_emit_metric
-                    ::Value_extractor_type::Fixed(
-                      $value
-                  )
+                                                        ::Value_extractor_type::Fixed(
+                                                          $value
+                                                      )
     };
     (extract $from:expr) => {
       bd_proto::protos::workflow::workflow::workflow::action::action_emit_metric
-                      ::Value_extractor_type::FieldExtracted(
-                        bd_proto::protos::workflow::workflow::workflow::action::action_emit_metric
-                          ::FieldExtracted {
-                            field_name: $from.to_string(),
-                            ..Default::default()
-                          }
-                    )
+                                                          ::Value_extractor_type::FieldExtracted(
+                                                            bd_proto::protos::workflow::workflow
+                                                              ::FieldExtracted {
+                                                                field_name: $from.to_string(),
+                                                                ..Default::default()
+                                                              }
+                                                        )
     };
   }
 
@@ -339,33 +339,32 @@ pub mod macros {
   macro_rules! metric_tag {
     (extract $from:expr => $to:expr) => {
       bd_proto::protos::workflow::workflow::workflow::action::action_emit_metric::Tag {
-                    name: $to.into(),
-                    tag_type: Some(bd_proto::protos::workflow::workflow::workflow
-                      ::action::action_emit_metric::tag::Tag_type::FieldExtracted(
-                        bd_proto::protos::workflow::workflow::workflow
-                        ::action::action_emit_metric::FieldExtracted {
-                          field_name: $from.into(),
-                          extraction_type: Some(bd_proto::protos::workflow::workflow::workflow
-                            ::action::action_emit_metric::field_extracted::Extraction_type::Exact(
-                              bd_proto::protos::workflow::workflow::workflow
-                              ::action::action_emit_metric
-                              ::field_extracted::Exact::default(),
+                          name: $to.into(),
+                          tag_type: Some(bd_proto::protos::workflow::workflow::workflow
+                            ::action::action_emit_metric::tag::Tag_type::FieldExtracted(
+                              bd_proto::protos::workflow::workflow
+                              ::FieldExtracted {
+                                field_name: $from.into(),
+                                extraction_type: Some(bd_proto::protos::workflow::workflow
+                                  ::field_extracted::Extraction_type::Exact(
+                                    bd_proto::protos::workflow::workflow::field_extracted
+                                    ::Exact::default(),
+                                  )
+                                ),
+                                ..Default::default()
+                              },
                             )
                           ),
                           ..Default::default()
-                        },
-                      )
-                    ),
-                    ..Default::default()
-                  }
+                        }
     };
     (fix $key:expr => $value:expr) => {
       bd_proto::protos::workflow::workflow::workflow::action::action_emit_metric::Tag {
-                    name: $key.into(),
-                    tag_type: Some(bd_proto::protos::workflow::workflow::workflow
-                      ::action::action_emit_metric::tag::Tag_type::FixedValue($value.into())),
-                    ..Default::default()
-                  }
+                          name: $key.into(),
+                          tag_type: Some(bd_proto::protos::workflow::workflow::workflow
+                            ::action::action_emit_metric::tag::Tag_type::FixedValue($value.into())),
+                          ..Default::default()
+                        }
     };
   }
 

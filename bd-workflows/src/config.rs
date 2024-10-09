@@ -334,6 +334,9 @@ impl Action {
         }))
       },
       Action_type::ActionEmitMetric(metric) => Ok(Self::EmitMetric(ActionEmitMetric::new(metric)?)),
+      Action_type::ActionSankeyDiagram(_) => Err(anyhow!(
+        "invalid action configuration: unsupported action type"
+      )),
     }
   }
 }
