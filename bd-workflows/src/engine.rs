@@ -28,7 +28,6 @@ use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_log_primitives::LogRef;
 pub use bd_matcher::FieldProvider;
 use bd_runtime::runtime::workflows::{
-  self,
   PersistenceWriteIntervalFlag,
   StatePeriodicWriteIntervalFlag,
   TraversalsCountLimitFlag,
@@ -155,7 +154,7 @@ impl WorkflowsEngine {
           &config.workflows_configuration.workflows,
           &mut self.state.current_traversals_count,
           self.traversals_count_limit,
-          &self.stats
+          &self.stats,
         );
       }
 
@@ -169,7 +168,7 @@ impl WorkflowsEngine {
         &config.workflows_configuration.workflows,
         &mut current_traversals_count,
         self.traversals_count_limit,
-        &self.stats
+        &self.stats,
       );
 
       self.state.current_traversals_count = current_traversals_count;
@@ -303,9 +302,9 @@ impl WorkflowsEngine {
     //    configs with relevant workflow state (if any).
     //  * Discard workflow states that don't have a corresponding server-side config.
     let mut existing_workflow_ids_to_workflows: HashMap<_, _> = existing_workflows
-    .into_iter()
-    .map(|workflow| (workflow.id().to_string(), workflow))
-    .collect();
+      .into_iter()
+      .map(|workflow| (workflow.id().to_string(), workflow))
+      .collect();
 
     let workflows = configs.into_iter().map(|config| {
       let workflow = existing_workflow_ids_to_workflows
@@ -320,104 +319,13 @@ impl WorkflowsEngine {
     });
 
     for workflow in workflows {
-      Self::add_workflow(workflow, existing_workflows, current_traversals_count, traversals_count_limit, stats);
-    }
-  }
-
-  fn add_workflow(
-    workflow: Workflow,
-    workflows: &mut Vec<Workflow>,
-    current_traversals_count: &mut u32,
-    traversals_count_limit: u32,
-    stats: &WorkflowsEngineStats,
-  ) {
-    let mut workflow = workflow;
-
-    let workflow_traversals_count = workflow.traversals_count();
-    if workflow_traversals_count + current_traversals_count > traversals_count_limit {
-      log::debug!(
-        "failed to add workflow with {} traversal(s) due to traversals count limit being hit \
-         ({}); current traversals count {}",
-        workflow_traversals_count,
+      Self::add_workflow(
+        workflow,
+        existing_workflows,
+        current_traversals_count,
         traversals_count_limit,
-        current_traversals_count
+        stats,
       );
-
-      // Workflow being added has too many traversal for the engine to not exceed
-      // the configured traversals count limit. Keep removing workflow's run until
-      // its addition to the engine is possible.
-      // Process traversals in reversed order as we may end up modifying the array
-      // starting at `index` in any given iteration of the loop + we want to start
-      // removing runs starting from the "latest" ones and they are at the end of
-      // the enumerated array.
-      let mut remaining_workflow_traversals_count = workflow_traversals_count;
-      for index in (0 .. workflow.runs().len()).rev() {
-        let run_traversals_count = workflow.runs()[index].traversals_count();
-
-        log::debug!(
-          "removing workflow run with {} traversal(s)",
-          run_traversals_count
-        );
-
-        remaining_workflow_traversals_count -= run_traversals_count;
-        stats.traversals_count_limit_hit_total.inc();
-        workflow.remove_run(index);
-
-        if remaining_workflow_traversals_count + current_traversals_count <= traversals_count_limit
-        {
-          break;
-        }
-      }
-    }
-
-    stats.workflow_starts_total.inc();
-    stats.run_starts_total.inc_by(workflow.runs().len() as u64);
-    stats
-      .traversal_starts_total
-      .inc_by(workflow_traversals_count.into());
-
-    log::debug!(
-      "workflow={}: workflow added, runs count {}, traversal count {}",
-      workflow.id(),
-      workflow.runs().len(),
-      workflow_traversals_count,
-    );
-
-    *current_traversals_count += workflow.traversals_count();
-
-    workflows.push(workflow);
-  }
-
-  fn remove_workflow(&mut self, workflow_index: usize) {
-    self.configs.remove(workflow_index);
-    let workflow = self.state.workflows.remove(workflow_index);
-
-    let workflow_traversals_count = workflow.traversals_count();
-    self.stats.workflow_stops_total.inc();
-    self
-      .stats
-      .run_stops_total
-      .inc_by(workflow.runs().len() as u64);
-    self
-      .stats
-      .traversal_stops_total
-      .inc_by(workflow_traversals_count.into());
-
-    self.current_traversals_count = self
-      .current_traversals_count
-      .saturating_sub(workflow_traversals_count);
-
-    log::debug!("workflow={}: workflow removed", workflow.id());
-
-    // If there exists a run that is not in an initial state.
-    if !workflow.is_in_initial_state() {
-      log::debug!(
-        "workflow={}: workflow removed, marking state as dirty",
-        workflow.id()
-      );
-      // Mark the state as dirty so that the state associated with
-      // the workflow that was just removed can be removed from disk.
-      self.needs_state_persistence = true;
     }
   }
 
@@ -711,6 +619,220 @@ impl Drop for WorkflowsEngine {
 }
 
 //
+// RemoteConfigMediatorStats
+//
+
+#[derive(Debug)]
+struct RemoteConfigMediatorStats {
+  /// The number of started workflows. Workflows are started on SDK configuration
+  /// and in response to workflow config updates from a server.
+  workflow_starts_total: Counter,
+  /// The number of workflows on the client that were stopped due to an update from a
+  /// server that removed them from the list of workflows.
+  workflow_stops_total: Counter,
+
+  /// The number of started runs. Each workflow has at least one and can
+  /// have significantly more runs.
+  run_starts_total: Counter,
+  /// A number of runs stopped in response to config update from a server or exceeding
+  /// one of the workflows-related limits controlled with either a workflows config or
+  /// SDK runtime settings.
+  run_stops_total: Counter,
+
+  /// The number of started traversals. See `Traversal` for more details.
+  traversal_starts_total: Counter,
+  /// A number of traversals stopped in response to config update from a server or exceeding
+  /// one of the workflows-related limits controlled with either a workflows config or
+  /// SDK runtime settings.
+  traversal_stops_total: Counter,
+}
+
+impl RemoteConfigMediatorStats {
+  fn new(
+    scope: &Scope,
+    run_starts_total: Counter,
+    run_stops_total: Counter,
+    traversal_starts_total: Counter,
+    traversal_stops_total: Counter,
+  ) -> Self {
+    Self {
+      workflow_starts_total: scope
+        .counter_with_labels("workflows_total", labels!("operation" => "start")),
+      workflow_stops_total: scope
+        .counter_with_labels("workflows_total", labels!("operation" => "stop")),
+
+      run_starts_total,
+      run_stops_total,
+
+      traversal_starts_total,
+      traversal_stops_total,
+    }
+  }
+}
+
+//
+//
+//
+
+#[derive(Debug)]
+struct RemoteConfigMediator {
+  stats: RemoteConfigMediatorStats,
+}
+
+impl RemoteConfigMediator {
+  fn new(scope: &Scope, run_starts_total: Counter, traversal_starts_total: Counter) -> Self {
+    Self {
+      stats: RemoteConfigMediatorStats::new(scope, run_starts_total, traversal_starts_total),
+    }
+  }
+
+  fn add_workflows(
+    &self,
+    existing_workflows: &mut Vec<Workflow>,
+    configs: &Vec<Config>,
+    current_traversals_count: &mut u32,
+    traversals_count_limit: u32,
+  ) {
+    // `configs` is the source of truth for workflow configurations from the server
+    // while `existing_workflows` contains state of workflow who have been running on a device.
+    //  * Combine the two by iterating over the list of configs from the server and associating
+    //    configs with relevant workflow state (if any).
+    //  * Discard workflow states that don't have a corresponding server-side config.
+    let mut existing_workflow_ids_to_workflows: HashMap<_, _> = existing_workflows
+      .into_iter()
+      .map(|workflow| (workflow.id().to_string(), workflow))
+      .collect();
+
+    let workflows = configs.into_iter().map(|config| {
+      let workflow = existing_workflow_ids_to_workflows
+        .remove(config.id())
+        .map_or_else(
+          // We have cache state for a given workflow ID.
+          || Workflow::new(config.id().to_string()),
+          //   No cached state for a given workflow ID, start from scratch.
+          |workflow| workflow,
+        );
+      workflow
+    });
+
+    for workflow in workflows {
+      self.add_workflow(
+        workflow,
+        existing_workflows,
+        current_traversals_count,
+        traversals_count_limit,
+      );
+    }
+  }
+
+  fn add_workflow(
+    &self,
+    workflow: Workflow,
+    workflows: &mut Vec<Workflow>,
+    current_traversals_count: &mut u32,
+    traversals_count_limit: u32,
+  ) {
+    let mut workflow = workflow;
+
+    let workflow_traversals_count = workflow.traversals_count();
+    if workflow_traversals_count + *current_traversals_count > traversals_count_limit {
+      log::debug!(
+        "failed to add workflow with {} traversal(s) due to traversals count limit being hit \
+         ({}); current traversals count {}",
+        workflow_traversals_count,
+        traversals_count_limit,
+        current_traversals_count
+      );
+
+      // Workflow being added has too many traversal for the engine to not exceed
+      // the configured traversals count limit. Keep removing workflow's run until
+      // its addition to the engine is possible.
+      // Process traversals in reversed order as we may end up modifying the array
+      // starting at `index` in any given iteration of the loop + we want to start
+      // removing runs starting from the "latest" ones and they are at the end of
+      // the enumerated array.
+      let mut remaining_workflow_traversals_count = workflow_traversals_count;
+      for index in (0 .. workflow.runs().len()).rev() {
+        let run_traversals_count = workflow.runs()[index].traversals_count();
+
+        log::debug!(
+          "removing workflow run with {} traversal(s)",
+          run_traversals_count
+        );
+
+        remaining_workflow_traversals_count -= run_traversals_count;
+        stats.traversals_count_limit_hit_total.inc();
+        workflow.remove_run(index);
+
+        if remaining_workflow_traversals_count + *current_traversals_count <= traversals_count_limit
+        {
+          break;
+        }
+      }
+    }
+
+    self.stats.workflow_starts_total.inc();
+    self
+      .stats
+      .run_starts_total
+      .inc_by(workflow.runs().len() as u64);
+    self
+      .stats
+      .traversal_starts_total
+      .inc_by(workflow_traversals_count.into());
+
+    log::debug!(
+      "workflow={}: workflow added, runs count {}, traversal count {}",
+      workflow.id(),
+      workflow.runs().len(),
+      workflow_traversals_count,
+    );
+
+    *current_traversals_count += workflow.traversals_count();
+
+    workflows.push(workflow);
+  }
+
+  fn remove_workflow(
+    &self,
+    state: &mut WorkflowsState,
+    workflow_index: usize,
+    configs: &mut Vec<Config>,
+    current_traversals_count: &mut u32,
+  ) {
+    configs.remove(workflow_index);
+    let workflow = state.workflows.remove(workflow_index);
+
+    let workflow_traversals_count = workflow.traversals_count();
+    self.stats.workflow_stops_total.inc();
+    self
+      .stats
+      .run_stops_total
+      .inc_by(workflow.runs().len() as u64);
+    self
+      .stats
+      .traversal_stops_total
+      .inc_by(workflow_traversals_count.into());
+
+    *current_traversals_count = current_traversals_count.saturating_sub(workflow_traversals_count);
+
+    log::debug!("workflow={}: workflow removed", workflow.id());
+
+    // If there exists a run that is not in an initial state.
+    if !workflow.is_in_initial_state() {
+      log::debug!(
+        "workflow={}: workflow removed, marking state as dirty",
+        workflow.id()
+      );
+      // Mark the state as dirty so that the state associated with
+      // the workflow that was just removed can be removed from disk.
+      // TODO(Augustyniak): Implement this.
+      // self.needs_state_persistence = true;
+    }
+  }
+}
+
+//
 // WorkflowsEngineResult
 //
 
@@ -934,6 +1056,10 @@ impl EngineState {
     }
   }
 
+  fn iter_mut(&mut self) -> impl Iterator<Item = &mut WorkflowsState> {
+    self.states.iter_mut()
+  }
+
   fn current_session_id(&self) -> String {
     self
       .states
@@ -975,7 +1101,7 @@ impl EngineState {
         for workflow in &mut previous_session.workflows {
           workflow.remove_all_runs();
         }
-        
+
         self.current_traversals_count = 0;
         self.needs_state_persistence = true;
       } else {
@@ -1058,13 +1184,6 @@ impl WorkflowsState {
 /// A simple wrapper for various workflows-related stats.
 #[derive(Debug)]
 struct WorkflowsEngineStats {
-  /// The number of started workflows. Workflows are started on SDK configuration
-  /// and in response to workflow config updates from a server.
-  workflow_starts_total: Counter,
-  /// The number of workflows on the client that were stopped due to an update from a
-  /// server that removed them from the list of workflows.
-  workflow_stops_total: Counter,
-
   /// The number of times the state of an exclusive was reset and the workflow moved back to its
   /// initial state.
   exclusive_workflow_resets_total: Counter,
@@ -1120,12 +1239,6 @@ struct WorkflowsEngineStats {
 
 impl WorkflowsEngineStats {
   fn new(scope: &Scope) -> Self {
-    // TODO(Augustyniak): Consider adding "workflow advance" stat.
-    let workflow_starts_total =
-      scope.counter_with_labels("workflows_total", labels!("operation" => "start"));
-    let workflow_stops_total =
-      scope.counter_with_labels("workflows_total", labels!("operation" => "stop"));
-
     let exclusive_workflow_resets_total =
       scope.counter_with_labels("workflow_resets_total", labels!("type" => "exclusive"));
 
@@ -1151,9 +1264,6 @@ impl WorkflowsEngineStats {
       scope.counter_with_labels("traversals_total", labels!("operation" => "stop"));
 
     Self {
-      workflow_starts_total,
-      workflow_stops_total,
-
       exclusive_workflow_resets_total,
       exclusive_workflow_potential_forks_total,
 
