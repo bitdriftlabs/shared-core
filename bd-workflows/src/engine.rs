@@ -60,6 +60,7 @@ pub struct WorkflowsEngine {
   // at index `i`.
   configs: Vec<Config>,
   state: EngineState,
+  remote_config_mediator: RemoteConfigMediator,
   state_store: StateStore,
 
   needs_state_persistence: bool,
@@ -111,10 +112,13 @@ impl WorkflowsEngine {
 
     let flush_buffers_actions_resolver = Resolver::new(&actions_scope);
 
+    let (stats, remote_config_mediator_stats) = WorkflowsEngineStats::new(&scope);
+
     let workflows_engine = Self {
       configs: vec![],
       state: EngineState::default(),
-      stats: WorkflowsEngineStats::new(&scope),
+      remote_config_mediator: RemoteConfigMediator::new(remote_config_mediator_stats),
+      stats,
       state_store: StateStore::new(sdk_directory, &scope, runtime),
       needs_state_persistence: false,
       traversals_count_limit: traversals_count_limit_flag.read(),
@@ -138,37 +142,37 @@ impl WorkflowsEngine {
         config.continuous_buffer_ids,
       ));
 
-    if let Some(mut engine_state) = self.state_store.load() {
-      self.state.pending_actions = self
-        .flush_buffers_actions_resolver
-        .standardize_pending_actions(engine_state.pending_actions);
-      self.state.streaming_actions = self
-        .flush_buffers_actions_resolver
-        .standardize_streaming_buffers(engine_state.streaming_actions);
+    if let Some(engine_state) = self.state_store.load() {
+      for loaded_workflows_state in engine_state.into_iter() {
+        let workflows_state = self
+          .state
+          .get_or_insert_state(&loaded_workflows_state.session_id);
 
-      // TODO(Augustyniak): Check whether we need this.
-      // self.state.session_id.clone_from(&state.session_id);
-      for workflows_state in &mut engine_state.states {
-        Self::add_workflows(
+        workflows_state.pending_actions = self
+          .flush_buffers_actions_resolver
+          .standardize_pending_actions(loaded_workflows_state.pending_actions);
+        workflows_state.streaming_actions = self
+          .flush_buffers_actions_resolver
+          .standardize_streaming_buffers(loaded_workflows_state.streaming_actions);
+
+        self.remote_config_mediator.add_workflows(
           &mut workflows_state.workflows,
+          loaded_workflows_state.workflows,
           &config.workflows_configuration.workflows,
           &mut self.state.current_traversals_count,
           self.traversals_count_limit,
-          &self.stats,
         );
       }
-
-      self.state = engine_state;
     } else {
       let mut current_traversals_count = self.state.current_traversals_count;
-      let workflows_state = self.state.get_state("");
+      let workflows_state = self.state.get_or_insert_state("");
 
-      Self::add_workflows(
+      self.remote_config_mediator.add_workflows(
         &mut workflows_state.workflows,
+        vec![],
         &config.workflows_configuration.workflows,
         &mut current_traversals_count,
         self.traversals_count_limit,
-        &self.stats,
       );
 
       self.state.current_traversals_count = current_traversals_count;
@@ -176,13 +180,15 @@ impl WorkflowsEngine {
 
     self.configs = config.workflows_configuration.workflows;
 
-    for action in &self.state.pending_actions {
-      if let Err(e) = self
-        .flush_buffers_negotiator_input_tx
-        .try_send(action.clone())
-      {
-        log::debug!("failed to send pending action for intent negotiation: {e}");
-        self.stats.intent_negotiation_channel_send_failures.inc();
+    for workflows_state in self.state.iter() {
+      for action in &workflows_state.pending_actions {
+        if let Err(e) = self
+          .flush_buffers_negotiator_input_tx
+          .try_send(action.clone())
+        {
+          log::debug!("failed to send pending action for intent negotiation: {e}");
+          self.stats.intent_negotiation_channel_send_failures.inc();
+        }
       }
     }
 
@@ -190,8 +196,8 @@ impl WorkflowsEngine {
       "started workflows engine with {} workflow(s); {} pending processing action(s); {} \
        streaming action(s); session ID: \"{}\"; traversals count limit: {}",
       self.state.current_state().workflows.len(),
-      self.state.pending_actions.len(),
-      self.state.streaming_actions.len(),
+      self.state.current_state().pending_actions.len(),
+      self.state.current_state().streaming_actions.len(),
       self.state.current_session_id(),
       self.traversals_count_limit,
     );
@@ -224,9 +230,11 @@ impl WorkflowsEngine {
 
     // Process workflows in reversed order as we may end up removing workflows
     // while iterating.
-    for index in (0 .. self.state.workflows.len()).rev() {
-      let should_remove_existing_workflow =
-        match latest_workflow_ids_to_index.get(self.state.workflows[index].id()) {
+    for state in self.state.states.iter_mut() {
+      for index in (0 .. state.workflows.len()).rev() {
+        let should_remove_existing_workflow = match latest_workflow_ids_to_index
+          .get(state.workflows[index].id())
+        {
           Some(latest_workflows_index) => {
             // Handle an edge case where a client receives a config update containing a workflow
             // with a config field unknown to the client, which is later updated to
@@ -243,90 +251,59 @@ impl WorkflowsEngine {
           None => true,
         };
 
-      if should_remove_existing_workflow {
-        self.remove_workflow(index);
-      }
-    }
-
-    // Introduce hash look ups to avoid N^2 complexity later in this method.
-    let existing_workflow_ids_to_index: HashMap<String, usize> = self
-      .state
-      .workflows
-      .iter()
-      .enumerate()
-      .map(|(index, workflow)| (workflow.id().to_string(), index))
-      .collect();
-
-    // Iterate over the list of configs from the latest update and
-    // create workflows for the ones that do not have their representation
-    // on the client yet.
-    for workflow_config in config.workflows_configuration.workflows {
-      if !existing_workflow_ids_to_index.contains_key(workflow_config.id()) {
-        self.add_workflow(
-          Workflow::new(workflow_config.id().to_string()),
-          workflow_config,
-        );
+        if should_remove_existing_workflow {
+          self.remote_config_mediator.remove_workflow(
+            state,
+            index,
+            &mut self.configs,
+            &mut self.traversals_count_limit,
+          );
+        }
       }
     }
 
     self
-      .flush_buffers_actions_resolver
-      .update(ResolverConfig::new(
-        config.trigger_buffer_ids,
-        config.continuous_buffer_ids,
-      ));
+    .flush_buffers_actions_resolver
+    .update(ResolverConfig::new(
+      config.trigger_buffer_ids,
+      config.continuous_buffer_ids,
+    ));
 
-    self.state.pending_actions = self
-      .flush_buffers_actions_resolver
-      .standardize_pending_actions(self.state.pending_actions.clone());
-    self.state.streaming_actions = self
-      .flush_buffers_actions_resolver
-      .standardize_streaming_buffers(self.state.streaming_actions.clone());
+    for state in self.state.states.iter_mut() {
+      // Introduce hash look ups to avoid N^2 complexity later in this method.
+      let existing_workflow_ids_to_index: HashMap<String, usize> = state
+        .workflows
+        .iter()
+        .enumerate()
+        .map(|(index, workflow)| (workflow.id().to_string(), index))
+        .collect();
+
+      // Iterate over the list of configs from the latest update and
+      // create workflows for the ones that do not have their representation
+      // on the client yet.
+      for workflow_config in config.workflows_configuration.workflows {
+        if !existing_workflow_ids_to_index.contains_key(workflow_config.id()) {
+          self.remote_config_mediator.add_workflow(
+            Workflow::new(workflow_config.id().to_string()),
+            &mut state.workflows,
+            &mut self.state.current_traversals_count,
+            self.traversals_count_limit,
+          );
+        }
+      }
+
+      state.pending_actions = self
+        .flush_buffers_actions_resolver
+        .standardize_pending_actions(state.pending_actions.clone());
+      state.streaming_actions = self
+        .flush_buffers_actions_resolver
+        .standardize_streaming_buffers(state.streaming_actions.clone());
+    }
 
     log::debug!(
       "consumed received workflows config update; workflows engine contains {} workflow(s)",
-      self.state.workflows.len()
+      self.state.current_state().workflows.len()
     );
-  }
-
-  fn add_workflows(
-    existing_workflows: &mut Vec<Workflow>,
-    configs: &Vec<Config>,
-    current_traversals_count: &mut u32,
-    traversals_count_limit: u32,
-    stats: &WorkflowsEngineStats,
-  ) {
-    // `configs` is the source of truth for workflow configurations from the server
-    // while `existing_workflows` contains state of workflow who have been running on a device.
-    //  * Combine the two by iterating over the list of configs from the server and associating
-    //    configs with relevant workflow state (if any).
-    //  * Discard workflow states that don't have a corresponding server-side config.
-    let mut existing_workflow_ids_to_workflows: HashMap<_, _> = existing_workflows
-      .into_iter()
-      .map(|workflow| (workflow.id().to_string(), workflow))
-      .collect();
-
-    let workflows = configs.into_iter().map(|config| {
-      let workflow = existing_workflow_ids_to_workflows
-        .remove(config.id())
-        .map_or_else(
-          // We have cache state for a given workflow ID.
-          || Workflow::new(config.id().to_string()),
-          //   No cached state for a given workflow ID, start from scratch.
-          |workflow| workflow,
-        );
-      workflow
-    });
-
-    for workflow in workflows {
-      Self::add_workflow(
-        workflow,
-        existing_workflows,
-        current_traversals_count,
-        traversals_count_limit,
-        stats,
-      );
-    }
   }
 
   /// Attempts to persist the client-side state of the workflows to disk while ignoring any errors.
@@ -405,7 +382,7 @@ impl WorkflowsEngine {
     let _timer = self.stats.process_log_duration.start_timer();
 
     let mut current_traversals_count = self.state.current_traversals_count;
-    let state = self.state.get_state(log.session_id);
+    let state = self.state.get_or_insert_state(log.session_id);
 
     // Return early if there are no workflows.
     if state.workflows.is_empty() {
@@ -645,6 +622,10 @@ struct RemoteConfigMediatorStats {
   /// one of the workflows-related limits controlled with either a workflows config or
   /// SDK runtime settings.
   traversal_stops_total: Counter,
+
+  /// The number of times the engine prevented a run and/or traversal from being
+  /// created due to a configured traversals count limit.
+  traversals_count_limit_hit_total: Counter,
 }
 
 impl RemoteConfigMediatorStats {
@@ -654,6 +635,7 @@ impl RemoteConfigMediatorStats {
     run_stops_total: Counter,
     traversal_starts_total: Counter,
     traversal_stops_total: Counter,
+    traversals_count_limit_hit_total: Counter,
   ) -> Self {
     Self {
       workflow_starts_total: scope
@@ -666,6 +648,8 @@ impl RemoteConfigMediatorStats {
 
       traversal_starts_total,
       traversal_stops_total,
+
+      traversals_count_limit_hit_total,
     }
   }
 }
@@ -680,15 +664,14 @@ struct RemoteConfigMediator {
 }
 
 impl RemoteConfigMediator {
-  fn new(scope: &Scope, run_starts_total: Counter, traversal_starts_total: Counter) -> Self {
-    Self {
-      stats: RemoteConfigMediatorStats::new(scope, run_starts_total, traversal_starts_total),
-    }
+  fn new(stats: RemoteConfigMediatorStats) -> Self {
+    Self { stats }
   }
 
   fn add_workflows(
     &self,
-    existing_workflows: &mut Vec<Workflow>,
+    workflows: &mut Vec<Workflow>,
+    existing_workflows: Vec<Workflow>,
     configs: &Vec<Config>,
     current_traversals_count: &mut u32,
     traversals_count_limit: u32,
@@ -703,22 +686,22 @@ impl RemoteConfigMediator {
       .map(|workflow| (workflow.id().to_string(), workflow))
       .collect();
 
-    let workflows = configs.into_iter().map(|config| {
+    let workflows_to_add = configs.into_iter().map(|config| {
       let workflow = existing_workflow_ids_to_workflows
         .remove(config.id())
         .map_or_else(
-          // We have cache state for a given workflow ID.
+          // No cached state for a given workflow ID, start from scratch.
           || Workflow::new(config.id().to_string()),
-          //   No cached state for a given workflow ID, start from scratch.
+          // We have cache state for a given workflow ID.
           |workflow| workflow,
         );
       workflow
     });
 
-    for workflow in workflows {
+    for workflow in workflows_to_add {
       self.add_workflow(
         workflow,
-        existing_workflows,
+        workflows,
         current_traversals_count,
         traversals_count_limit,
       );
@@ -761,7 +744,7 @@ impl RemoteConfigMediator {
         );
 
         remaining_workflow_traversals_count -= run_traversals_count;
-        stats.traversals_count_limit_hit_total.inc();
+        self.stats.traversals_count_limit_hit_total.inc();
         workflow.remove_run(index);
 
         if remaining_workflow_traversals_count + *current_traversals_count <= traversals_count_limit
@@ -1036,9 +1019,6 @@ impl StateStore {
 pub(crate) struct EngineState {
   states: Vec<WorkflowsState>,
 
-  pending_actions: BTreeSet<PendingFlushBuffersAction>,
-  streaming_actions: Vec<StreamingBuffersAction>,
-
   #[serde(skip_serializing)]
   current_traversals_count: u32,
   #[serde(skip_serializing)]
@@ -1051,13 +1031,15 @@ impl EngineState {
       states: self.states.iter().map(WorkflowsState::optimized).collect(),
       current_traversals_count: 0,    // TODO(Augustyniak): IMPLEMENT
       needs_state_persistence: false, // TODO(Augustyniak): IMPLEMENT
-      pending_actions: self.pending_actions.clone(),
-      streaming_actions: self.streaming_actions.clone(),
     }
   }
 
-  fn iter_mut(&mut self) -> impl Iterator<Item = &mut WorkflowsState> {
-    self.states.iter_mut()
+  fn into_iter(self) -> impl Iterator<Item = WorkflowsState> {
+    self.states.into_iter()
+  }
+
+  fn iter(&self) -> impl Iterator<Item = &WorkflowsState> {
+    self.states.iter()
   }
 
   fn current_session_id(&self) -> String {
@@ -1076,7 +1058,7 @@ impl EngineState {
     self.states.first_mut().unwrap()
   }
 
-  fn get_state(&mut self, session_id: &str) -> &mut WorkflowsState {
+  fn get_or_insert_state(&mut self, session_id: &str) -> &mut WorkflowsState {
     if self
       .states
       .iter()
@@ -1120,6 +1102,10 @@ impl EngineState {
 
       let state = WorkflowsState::new(session_id);
       self.states.insert(0, state);
+
+      if self.states.len() > 2 {
+        self.states.remove(self.states.len() - 1);
+      }
     }
 
     // # Safety
@@ -1141,6 +1127,9 @@ impl EngineState {
 pub(crate) struct WorkflowsState {
   session_id: String,
   workflows: Vec<Workflow>,
+
+  pending_actions: BTreeSet<PendingFlushBuffersAction>,
+  streaming_actions: Vec<StreamingBuffersAction>,
 }
 
 impl WorkflowsState {
@@ -1148,6 +1137,8 @@ impl WorkflowsState {
     Self {
       session_id: session_id.to_string(),
       workflows: vec![],
+      pending_actions: BTreeSet::new(),
+      streaming_actions: vec![],
     }
   }
 
@@ -1173,6 +1164,8 @@ impl WorkflowsState {
           }
         })
         .collect(),
+      pending_actions: self.pending_actions.clone(),
+      streaming_actions: self.streaming_actions.clone(),
     }
   }
 }
@@ -1238,7 +1231,7 @@ struct WorkflowsEngineStats {
 }
 
 impl WorkflowsEngineStats {
-  fn new(scope: &Scope) -> Self {
+  fn new(scope: &Scope) -> (Self, RemoteConfigMediatorStats) {
     let exclusive_workflow_resets_total =
       scope.counter_with_labels("workflow_resets_total", labels!("type" => "exclusive"));
 
@@ -1263,31 +1256,45 @@ impl WorkflowsEngineStats {
     let traversal_stops_total =
       scope.counter_with_labels("traversals_total", labels!("operation" => "stop"));
 
-    Self {
-      exclusive_workflow_resets_total,
-      exclusive_workflow_potential_forks_total,
+    let traversals_count_limit_hit_total = scope.counter("traversals_count_limit_hit_total");
 
-      run_starts_total,
-      run_advances_total,
-      run_completions_total,
-      run_stops_total,
+    let remote_config_mediator_stats = RemoteConfigMediatorStats::new(
+      scope,
+      run_starts_total.clone(),
+      run_stops_total.clone(),
+      traversal_starts_total.clone(),
+      traversal_stops_total.clone(),
+      traversals_count_limit_hit_total.clone(),
+    );
 
-      traversal_starts_total,
-      traversal_advances_total,
-      traversal_completions_total,
-      traversal_stops_total,
+    (
+      Self {
+        exclusive_workflow_resets_total,
+        exclusive_workflow_potential_forks_total,
 
-      active_traversals_total: scope.histogram("traversal_active_total"),
-      traversals_count_limit_hit_total: scope.counter("traversals_count_limit_hit_total"),
-      matched_logs_total: scope.counter("matched_logs_total"),
+        run_starts_total,
+        run_advances_total,
+        run_completions_total,
+        run_stops_total,
 
-      process_log_duration: scope.histogram("engine_process_log_duration_s"),
+        traversal_starts_total,
+        traversal_advances_total,
+        traversal_completions_total,
+        traversal_stops_total,
 
-      buffers_to_flush_channel_send_failures: scope
-        .counter("buffers_to_flush_channel_send_failures_total"),
-      intent_negotiation_channel_send_failures: scope
-        .counter("intent_negotiation_channel_send_failures_total"),
-    }
+        active_traversals_total: scope.histogram("traversal_active_total"),
+        traversals_count_limit_hit_total: scope.counter("traversals_count_limit_hit_total"),
+        matched_logs_total: scope.counter("matched_logs_total"),
+
+        process_log_duration: scope.histogram("engine_process_log_duration_s"),
+
+        buffers_to_flush_channel_send_failures: scope
+          .counter("buffers_to_flush_channel_send_failures_total"),
+        intent_negotiation_channel_send_failures: scope
+          .counter("intent_negotiation_channel_send_failures_total"),
+      },
+      remote_config_mediator_stats,
+    )
   }
 }
 
