@@ -315,7 +315,7 @@ impl Transition {
     let actions = transition
       .actions
       .iter()
-      .map(Action::new)
+      .map(Action::try_from_proto)
       .collect::<anyhow::Result<Vec<_>>>()?;
 
     let sankey_diagram_value_extractions = transition
@@ -378,7 +378,7 @@ pub enum Action {
 }
 
 impl Action {
-  fn new(proto: &ActionProto) -> anyhow::Result<Self> {
+  fn try_from_proto(proto: &ActionProto) -> anyhow::Result<Self> {
     match proto
       .action_type
       .as_ref()
