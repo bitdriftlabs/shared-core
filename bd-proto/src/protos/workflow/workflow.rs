@@ -956,7 +956,7 @@ pub mod workflow {
     #[derive(PartialEq,Clone,Default,Debug)]
     pub struct TransitionExtension {
         // message oneof groups
-        pub annotation_type: ::std::option::Option<transition_extension::Annotation_type>,
+        pub extension_type: ::std::option::Option<transition_extension::Extension_type>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -976,36 +976,36 @@ pub mod workflow {
         // .bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SankeyDiagramValueExtraction sankey_diagram_value_extraction = 1;
 
         pub fn sankey_diagram_value_extraction(&self) -> &transition_extension::SankeyDiagramValueExtraction {
-            match self.annotation_type {
-                ::std::option::Option::Some(transition_extension::Annotation_type::SankeyDiagramValueExtraction(ref v)) => v,
+            match self.extension_type {
+                ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(ref v)) => v,
                 _ => <transition_extension::SankeyDiagramValueExtraction as ::protobuf::Message>::default_instance(),
             }
         }
 
         pub fn clear_sankey_diagram_value_extraction(&mut self) {
-            self.annotation_type = ::std::option::Option::None;
+            self.extension_type = ::std::option::Option::None;
         }
 
         pub fn has_sankey_diagram_value_extraction(&self) -> bool {
-            match self.annotation_type {
-                ::std::option::Option::Some(transition_extension::Annotation_type::SankeyDiagramValueExtraction(..)) => true,
+            match self.extension_type {
+                ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(..)) => true,
                 _ => false,
             }
         }
 
         // Param is passed by value, moved
         pub fn set_sankey_diagram_value_extraction(&mut self, v: transition_extension::SankeyDiagramValueExtraction) {
-            self.annotation_type = ::std::option::Option::Some(transition_extension::Annotation_type::SankeyDiagramValueExtraction(v))
+            self.extension_type = ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(v))
         }
 
         // Mutable pointer to the field.
         pub fn mut_sankey_diagram_value_extraction(&mut self) -> &mut transition_extension::SankeyDiagramValueExtraction {
-            if let ::std::option::Option::Some(transition_extension::Annotation_type::SankeyDiagramValueExtraction(_)) = self.annotation_type {
+            if let ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(_)) = self.extension_type {
             } else {
-                self.annotation_type = ::std::option::Option::Some(transition_extension::Annotation_type::SankeyDiagramValueExtraction(transition_extension::SankeyDiagramValueExtraction::new()));
+                self.extension_type = ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(transition_extension::SankeyDiagramValueExtraction::new()));
             }
-            match self.annotation_type {
-                ::std::option::Option::Some(transition_extension::Annotation_type::SankeyDiagramValueExtraction(ref mut v)) => v,
+            match self.extension_type {
+                ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(ref mut v)) => v,
                 _ => panic!(),
             }
         }
@@ -1013,8 +1013,8 @@ pub mod workflow {
         // Take field
         pub fn take_sankey_diagram_value_extraction(&mut self) -> transition_extension::SankeyDiagramValueExtraction {
             if self.has_sankey_diagram_value_extraction() {
-                match self.annotation_type.take() {
-                    ::std::option::Option::Some(transition_extension::Annotation_type::SankeyDiagramValueExtraction(v)) => v,
+                match self.extension_type.take() {
+                    ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(v)) => v,
                     _ => panic!(),
                 }
             } else {
@@ -1032,7 +1032,7 @@ pub mod workflow {
                 TransitionExtension::mut_sankey_diagram_value_extraction,
                 TransitionExtension::set_sankey_diagram_value_extraction,
             ));
-            oneofs.push(transition_extension::Annotation_type::generated_oneof_descriptor_data());
+            oneofs.push(transition_extension::Extension_type::generated_oneof_descriptor_data());
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<TransitionExtension>(
                 "Workflow.TransitionExtension",
                 fields,
@@ -1052,7 +1052,7 @@ pub mod workflow {
             while let Some(tag) = is.read_raw_tag_or_eof()? {
                 match tag {
                     10 => {
-                        self.annotation_type = ::std::option::Option::Some(transition_extension::Annotation_type::SankeyDiagramValueExtraction(is.read_message()?));
+                        self.extension_type = ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(is.read_message()?));
                     },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -1066,9 +1066,9 @@ pub mod workflow {
         #[allow(unused_variables)]
         fn compute_size(&self) -> u64 {
             let mut my_size = 0;
-            if let ::std::option::Option::Some(ref v) = self.annotation_type {
+            if let ::std::option::Option::Some(ref v) = self.extension_type {
                 match v {
-                    &transition_extension::Annotation_type::SankeyDiagramValueExtraction(ref v) => {
+                    &transition_extension::Extension_type::SankeyDiagramValueExtraction(ref v) => {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
@@ -1080,9 +1080,9 @@ pub mod workflow {
         }
 
         fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-            if let ::std::option::Option::Some(ref v) = self.annotation_type {
+            if let ::std::option::Option::Some(ref v) = self.extension_type {
                 match v {
-                    &transition_extension::Annotation_type::SankeyDiagramValueExtraction(ref v) => {
+                    &transition_extension::Extension_type::SankeyDiagramValueExtraction(ref v) => {
                         ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
                     },
                 };
@@ -1104,13 +1104,13 @@ pub mod workflow {
         }
 
         fn clear(&mut self) {
-            self.annotation_type = ::std::option::Option::None;
+            self.extension_type = ::std::option::Option::None;
             self.special_fields.clear();
         }
 
         fn default_instance() -> &'static TransitionExtension {
             static instance: TransitionExtension = TransitionExtension {
-                annotation_type: ::std::option::Option::None,
+                extension_type: ::std::option::Option::None,
                 special_fields: ::protobuf::SpecialFields::new(),
             };
             &instance
@@ -1138,25 +1138,25 @@ pub mod workflow {
     pub mod transition_extension {
 
         #[derive(Clone,PartialEq,Debug)]
-        // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.annotation_type)
-        pub enum Annotation_type {
+        // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.extension_type)
+        pub enum Extension_type {
             // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.sankey_diagram_value_extraction)
             SankeyDiagramValueExtraction(SankeyDiagramValueExtraction),
         }
 
-        impl ::protobuf::Oneof for Annotation_type {
+        impl ::protobuf::Oneof for Extension_type {
         }
 
-        impl ::protobuf::OneofFull for Annotation_type {
+        impl ::protobuf::OneofFull for Extension_type {
             fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
                 static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
-                descriptor.get(|| <super::TransitionExtension as ::protobuf::MessageFull>::descriptor().oneof_by_name("annotation_type").unwrap()).clone()
+                descriptor.get(|| <super::TransitionExtension as ::protobuf::MessageFull>::descriptor().oneof_by_name("extension_type").unwrap()).clone()
             }
         }
 
-        impl Annotation_type {
+        impl Extension_type {
             pub(in super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
-                ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Annotation_type>("annotation_type")
+                ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Extension_type>("extension_type")
             }
         }
         // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SankeyDiagramValueExtraction)
@@ -4863,7 +4863,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ic.protobuf.workflow.v1\x1a\x17validate/validate.proto\x1a5bitdrift_publ\
     ic/protobuf/matcher/v1/log_matcher.proto\"f\n\x16WorkflowsConfiguration\
     \x12L\n\tworkflows\x18\x01\x20\x03(\x0b2..bitdrift_public.protobuf.workf\
-    low.v1.WorkflowR\tworkflows\"\x9e\x20\n\x08Workflow\x12\x17\n\x02id\x18\
+    low.v1.WorkflowR\tworkflows\"\x9d\x20\n\x08Workflow\x12\x17\n\x02id\x18\
     \x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12V\n\x06states\x18\
     \x02\x20\x03(\x0b24.bitdrift_public.protobuf.workflow.v1.Workflow.StateR\
     \x06statesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12V\n\texecution\x18\x03\
@@ -4885,7 +4885,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     _match\x18\x01\x20\x01(\x0b2;.bitdrift_public.protobuf.workflow.v1.Workf\
     low.RuleLogMatchH\0R\x0cruleLogMatch\x12_\n\x0crule_timeout\x18\x02\x20\
     \x01(\x0b2:.bitdrift_public.protobuf.workflow.v1.Workflow.RuleTimeoutH\0\
-    R\x0bruleTimeoutB\x10\n\trule_type\x12\x03\xf8B\x01\x1a\xd9\x03\n\x13Tra\
+    R\x0bruleTimeoutB\x10\n\trule_type\x12\x03\xf8B\x01\x1a\xd8\x03\n\x13Tra\
     nsitionExtension\x12\xa8\x01\n\x1fsankey_diagram_value_extraction\x18\
     \x01\x20\x01(\x0b2_.bitdrift_public.protobuf.workflow.v1.Workflow.Transi\
     tionExtension.SankeyDiagramValueExtractionH\0R\x1csankeyDiagramValueExtr\
@@ -4895,9 +4895,9 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x18\x03\x20\x01(\tH\0R\x05fixedB\x07\xfaB\x04r\x02\x10\x01\x12_\n\x0ffi\
     eld_extracted\x18\x04\x20\x01(\x0b24.bitdrift_public.protobuf.workflow.v\
     1.FieldExtractedH\0R\x0efieldExtractedB\x11\n\nvalue_type\x12\x03\xf8B\
-    \x01B\x16\n\x0fannotation_type\x12\x03\xf8B\x01\x1a\x89\x01\n\x0cRuleLog\
-    Match\x12Z\n\x0blog_matcher\x18\x01\x20\x01(\x0b2/.bitdrift_public.proto\
-    buf.matcher.v1.LogMatcherR\nlogMatcherB\x08\xfaB\x05\x8a\x01\x02\x10\x01\
+    \x01B\x15\n\x0eextension_type\x12\x03\xf8B\x01\x1a\x89\x01\n\x0cRuleLogM\
+    atch\x12Z\n\x0blog_matcher\x18\x01\x20\x01(\x0b2/.bitdrift_public.protob\
+    uf.matcher.v1.LogMatcherR\nlogMatcherB\x08\xfaB\x05\x8a\x01\x02\x10\x01\
     \x12\x1d\n\x05count\x18\x02\x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\
     \0\x1a7\n\x0bRuleTimeout\x12(\n\x0bduration_ms\x18\x01\x20\x01(\x04R\ndu\
     rationMsB\x07\xfaB\x042\x02(\0\x1a\xe0\x0e\n\x06Action\x12|\n\x14action_\

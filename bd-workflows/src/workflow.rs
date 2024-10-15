@@ -13,6 +13,7 @@ use crate::config::{Action, Config, Execution, Predicate};
 use bd_log_primitives::LogRef;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::time::SystemTime;
 
 //
@@ -457,6 +458,8 @@ pub(crate) struct Run {
   /// The time at which run left its initial state. Used to implement
   /// duration limit.
   first_progress_occurred_at: Option<SystemTime>,
+  /// Captured values for Sankey diagram.
+  sankey_diagram_captured_values: Option<BTreeMap<String, Vec<String>>>,
 }
 
 impl Run {
@@ -467,6 +470,7 @@ impl Run {
       traversals,
       matched_logs_count: 0,
       first_progress_occurred_at: None,
+      sankey_diagram_captured_values: None,
     }
   }
 
@@ -576,6 +580,26 @@ impl Run {
 
       for transition_index in traversal_result.advanced_transitions_indices {
         let traversal_actions = config.actions_for_traversal(traversal, transition_index);
+        let value_extractions =
+          config.sankey_diagram_value_extractions(traversal, transition_index);
+
+        for extraction in value_extractions {
+          let Some(extracted_value) = extraction.value.extract_value(log) else {
+            continue;
+          };
+
+          if self.sankey_diagram_captured_values.is_none() {
+            self.sankey_diagram_captured_values = Some(BTreeMap::new());
+          }
+
+          if let Some(sankey_diagram_value_extraction) = &mut self.sankey_diagram_captured_values {
+            sankey_diagram_value_extraction
+              .entry(extraction.sankey_diagram_id.to_string())
+              .or_insert(vec![])
+              .push(extracted_value.into_owned());
+          }
+        }
+
         actions_to_perform.extend(traversal_actions.iter());
 
         let next_state_index = config.next_state_index_for_traversal(traversal, transition_index);
@@ -705,14 +729,28 @@ impl RunResult<'_> {
   }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct SankeyDiagramState {
+  extracted_values: Vec<String>,
+}
+
+//
+// TraversalState
+//
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct TraversalState {
+  sankey_diagrams: Option<BTreeMap<String, SankeyDiagramState>>,
+}
+
 //
 // Traversal
 //
 
 /// A traversal points at a specific workflow state. Most workflow runs
-/// have one traversals but it's possible for a workflow run to have multiple
+/// have one traversal but it's possible for a workflow run to have multiple
 /// traversals. That can happen when a given workflow traversal is forked when
-/// multiple transitions outgoing from a given state matched on the
+/// multiple transitions outgoing from a given state match on the
 /// same event (i.e., log).
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub(crate) struct Traversal {
