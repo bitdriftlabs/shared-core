@@ -374,7 +374,7 @@ pub(crate) enum Predicate {
 pub enum Action {
   FlushBuffers(ActionFlushBuffers),
   EmitMetric(ActionEmitMetric),
-  SankeyDiagram(ActionSankeyDiagram),
+  SankeyDiagram(ActionEmitSankeyDiagram),
 }
 
 impl Action {
@@ -401,9 +401,11 @@ impl Action {
         }))
       },
       Action_type::ActionEmitMetric(metric) => Ok(Self::EmitMetric(ActionEmitMetric::new(metric)?)),
-      Action_type::ActionSankeyDiagram(diagram) => Ok(Self::SankeyDiagram(ActionSankeyDiagram {
-        id: diagram.id.clone(),
-      })),
+      Action_type::ActionSankeyDiagram(diagram) => {
+        Ok(Self::SankeyDiagram(ActionEmitSankeyDiagram {
+          id: diagram.id.clone(),
+        }))
+      },
     }
   }
 }
@@ -552,8 +554,8 @@ impl ActionEmitMetric {
 // ActionSankeyDiagram
 //
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ActionSankeyDiagram {
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ActionEmitSankeyDiagram {
   id: String,
 }
 

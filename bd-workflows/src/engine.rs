@@ -18,7 +18,14 @@ use crate::actions_flush_buffers::{
   ResolverConfig,
   StreamingBuffersAction,
 };
-use crate::config::{Action, ActionEmitMetric, ActionFlushBuffers, Config, WorkflowsConfiguration};
+use crate::config::{
+  Action,
+  ActionEmitMetric,
+  ActionEmitSankeyDiagram,
+  ActionFlushBuffers,
+  Config,
+  WorkflowsConfiguration,
+};
 use crate::metrics::MetricsCollector;
 use crate::workflow::Workflow;
 use anyhow::anyhow;
@@ -622,7 +629,8 @@ impl WorkflowsEngine {
       "current_traversals_count is not equal to computed traversals count"
     );
 
-    let (flush_buffers_actions, emit_metric_actions) = Self::prepare_actions(&actions);
+    let (flush_buffers_actions, emit_metric_actions, _emit_sankey_diagram_actions) =
+      Self::prepare_actions(&actions);
 
     let result = self
       .flush_buffers_actions_resolver
@@ -688,9 +696,10 @@ impl WorkflowsEngine {
   ) -> (
     BTreeSet<&'a ActionFlushBuffers>,
     BTreeSet<&'a ActionEmitMetric>,
+    BTreeSet<&'a ActionEmitSankeyDiagram>,
   ) {
     if actions.is_empty() {
-      return (BTreeSet::new(), BTreeSet::new());
+      return (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
     }
 
     let flush_buffers_actions: BTreeSet<&ActionFlushBuffers> = actions
@@ -716,7 +725,23 @@ impl WorkflowsEngine {
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
 
-    (flush_buffers_actions, emit_metric_actions)
+    let emit_sankey_diagram_actions: BTreeSet<&ActionEmitSankeyDiagram> = actions
+      .iter()
+      .filter_map(|action| {
+        if let Action::SankeyDiagram(emit_sankey_diagram_action) = action {
+          Some(emit_sankey_diagram_action)
+        } else {
+          None
+        }
+      })
+      // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
+      .collect();
+
+    (
+      flush_buffers_actions,
+      emit_metric_actions,
+      emit_sankey_diagram_actions,
+    )
   }
 }
 
