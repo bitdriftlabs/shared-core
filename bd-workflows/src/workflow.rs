@@ -818,7 +818,7 @@ impl Traversal {
 
                 sankey_diagram_states
                   .get_or_insert_with(BTreeMap::new)
-                  .entry(extraction.sankey_diagram_id.clone())
+                  .entry(extraction.sankey_id.clone())
                   .or_insert(SankeyDiagramState::new())
                   .push(extracted_value.into_owned());
               }
@@ -838,7 +838,7 @@ impl Traversal {
                       .push(CompletedAction::EmitMetric(action));
                   },
                   Action::SankeyDiagram(action) => {
-                    let Some(sankey_diagram_states) = &mut self.sankey_diagram_states else {
+                    let Some(sankey_diagram_states) = &mut self.sankey_states else {
                       debug_assert!(false, "sankey_diagram_states should be present");
                       continue;
                     };

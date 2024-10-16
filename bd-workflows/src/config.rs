@@ -161,9 +161,8 @@ impl Config {
     &self,
     traversal: &Traversal,
     transition_index: usize,
-  ) -> &[SankeyDiagramValueExtraction] {
-    &self.states[traversal.state_index].transitions[transition_index]
-      .sankey_diagram_value_extractions
+  ) -> &[SankeyValueExtraction] {
+    &self.states[traversal.state_index].transitions[transition_index].sankey_value_extractions
   }
 
   pub(crate) fn next_state_index_for_traversal(
@@ -254,8 +253,7 @@ impl Execution {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct SankeyValueExtraction {
-  pub(crate) sankey_diagram_id: String,
-  pub(crate) limit: u32,
+  pub(crate) sankey_id: String,
   pub(crate) value: TagValue,
 }
 
@@ -268,8 +266,7 @@ impl SankeyValueExtraction {
     };
 
     Ok(Self {
-      sankey_diagram_id: proto.sankey_diagram_id.to_string(),
-      limit: proto.limit,
+      sankey_id: proto.sankey_diagram_id.to_string(),
       value: match value {
         sankey_diagram_value_extraction::Value_type::Fixed(value) => TagValue::Fixed(value.clone()),
         sankey_diagram_value_extraction::Value_type::FieldExtracted(extracted) => {
@@ -318,7 +315,7 @@ impl Transition {
       .map(Action::try_from_proto)
       .collect::<anyhow::Result<Vec<_>>>()?;
 
-    let sankey_diagram_value_extractions = transition
+    let sankey_value_extractions = transition
       .extensions
       .iter()
       .map(|extension| {
@@ -328,7 +325,7 @@ impl Transition {
 
         match extension_type {
           Extension_type::SankeyDiagramValueExtraction(extension) => {
-            anyhow::Ok(Some(SankeyDiagramValueExtraction::new(extension)))
+            anyhow::Ok(Some(SankeyValueExtraction::new(extension)))
           },
           #[allow(unreachable_patterns)]
           _ => anyhow::bail!("invalid transition configuration: unknown extension type"),
@@ -345,7 +342,7 @@ impl Transition {
       target_state_index,
       rule,
       actions,
-      sankey_diagram_value_extractions,
+      sankey_value_extractions,
     })
   }
 
@@ -401,7 +398,7 @@ impl Action {
         }))
       },
       Action_type::ActionEmitMetric(metric) => Ok(Self::EmitMetric(ActionEmitMetric::new(metric)?)),
-      Action_type::ActionSankeyDiagram(diagram) => {
+      Action_type::ActionEmitSankeyDiagram(diagram) => {
         Ok(Self::SankeyDiagram(ActionEmitSankeyDiagram {
           id: diagram.id.clone(),
         }))
