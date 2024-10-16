@@ -12,7 +12,11 @@ pub use bd_proto::protos::client::api::log_upload_intent_request::{
 };
 pub use bd_proto::protos::client::api::log_upload_intent_response::Decision;
 pub use bd_proto::protos::client::api::LogUploadIntentRequest;
-use bd_proto::protos::client::api::{LogUploadRequest, StatsUploadRequest};
+use bd_proto::protos::client::api::{
+  LogUploadRequest,
+  SankeyDiagramUploadRequest,
+  StatsUploadRequest,
+};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -148,10 +152,12 @@ pub struct LogBatch {
   pub buffer_id: String,
 }
 
-/// A batch of logs sent to be uploaded. The upload is wrapped in an Arc to allow for cheap retries.
+/// A batch of logs sent to be uploaded.
 pub type TrackedLogBatch = Tracked<LogUploadRequest, bool>;
 
 pub type TrackedStatsUploadRequest = Tracked<StatsUploadRequest, bool>;
+
+pub type TrackedSankeyDiagramUploadRequest = Tracked<SankeyDiagramUploadRequest, bool>;
 
 /// An intent to upload a buffer due to a listener triggering. This is communicated to the backend
 /// in order to allow the server to make decisions on whether a buffer should be uploaded in

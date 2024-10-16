@@ -32,15 +32,7 @@ impl MetricsCollector {
     Self { dynamic_stats }
   }
 
-  pub(crate) fn emit_metrics(
-    &self,
-    emit_metric_actions: &BTreeSet<&ActionEmitMetric>,
-    log: &LogRef<'_>,
-  ) {
-    self.emit_metric_actions(emit_metric_actions, log);
-  }
-
-  fn emit_metric_actions(&self, actions: &BTreeSet<&ActionEmitMetric>, log: &LogRef<'_>) {
+  pub(crate) fn emit_metrics(&self, actions: &BTreeSet<&ActionEmitMetric>, log: &LogRef<'_>) {
     if actions.is_empty() {
       return;
     }

@@ -258,6 +258,10 @@ impl StreamState {
         let req = self.upload_state_tracker.track_upload(request);
         self.send_request(req).await
       },
+      DataUpload::SankeyDiagramPathUpload(request) => {
+        let req = self.upload_state_tracker.track_upload(request);
+        self.send_request(req).await
+      },
       DataUpload::OpaqueRequest(request) => {
         let req = self.upload_state_tracker.track_upload(request);
         self.send_request(req).await

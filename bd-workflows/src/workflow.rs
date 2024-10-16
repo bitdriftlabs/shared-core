@@ -437,6 +437,28 @@ impl WorkflowResultStats {
   }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct SankeyDiagramState {
+  extracted_values: Vec<String>,
+  limit: usize,
+}
+
+impl SankeyDiagramState {
+  pub(crate) const fn new() -> Self {
+    Self {
+      extracted_values: vec![],
+      limit: 10,
+    }
+  }
+
+  pub(crate) fn push(&mut self, value: String) {
+    self.extracted_values.push(value);
+    if self.extracted_values.len() > self.limit {
+      self.extracted_values.remove(0);
+    }
+  }
+}
+
 //
 // Run
 //
@@ -458,8 +480,8 @@ pub(crate) struct Run {
   /// The time at which run left its initial state. Used to implement
   /// duration limit.
   first_progress_occurred_at: Option<SystemTime>,
-  /// Captured values for Sankey diagram.
-  sankey_diagram_captured_values: Option<BTreeMap<String, Vec<String>>>,
+  /// Captured states for Sankey diagram.
+  sankey_diagram_states: Option<BTreeMap<String, SankeyDiagramState>>,
 }
 
 impl Run {
@@ -470,7 +492,7 @@ impl Run {
       traversals,
       matched_logs_count: 0,
       first_progress_occurred_at: None,
-      sankey_diagram_captured_values: None,
+      sankey_diagram_states: None,
     }
   }
 
@@ -588,14 +610,14 @@ impl Run {
             continue;
           };
 
-          if self.sankey_diagram_captured_values.is_none() {
-            self.sankey_diagram_captured_values = Some(BTreeMap::new());
+          if self.sankey_diagram_states.is_none() {
+            self.sankey_diagram_states = Some(BTreeMap::new());
           }
 
-          if let Some(sankey_diagram_value_extraction) = &mut self.sankey_diagram_captured_values {
+          if let Some(sankey_diagram_value_extraction) = &mut self.sankey_diagram_states {
             sankey_diagram_value_extraction
               .entry(extraction.sankey_diagram_id.to_string())
-              .or_insert(vec![])
+              .or_insert(SankeyDiagramState::new())
               .push(extracted_value.into_owned());
           }
         }
@@ -711,6 +733,9 @@ pub(crate) struct RunResult<'a> {
   /// The actions to be taken in the result of all performed
   /// transitions.
   actions: Vec<&'a Action>,
+  /// The sankey diagram states.
+  // TODO(Augustyniak): Implement sankey diagram states.
+  // sankey_diagram_states: Option<BTreeMap<String, SankeyDiagramState>>,
   /// The number of newly created traversals.
   created_traversals_count: u32,
   /// The number of advanced traversals. The traversal is considered
@@ -727,20 +752,6 @@ impl RunResult<'_> {
   const fn did_make_progress(&self) -> bool {
     self.matched_logs_count > 0
   }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct SankeyDiagramState {
-  extracted_values: Vec<String>,
-}
-
-//
-// TraversalState
-//
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct TraversalState {
-  sankey_diagrams: Option<BTreeMap<String, SankeyDiagramState>>,
 }
 
 //

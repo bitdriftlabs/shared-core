@@ -559,6 +559,13 @@ pub struct ActionEmitSankeyDiagram {
   id: String,
 }
 
+impl ActionEmitSankeyDiagram {
+  #[must_use]
+  pub fn id(&self) -> &str {
+    &self.id
+  }
+}
+
 //
 // MetricType
 //

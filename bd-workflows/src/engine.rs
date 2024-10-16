@@ -629,7 +629,7 @@ impl WorkflowsEngine {
       "current_traversals_count is not equal to computed traversals count"
     );
 
-    let (flush_buffers_actions, emit_metric_actions, _emit_sankey_diagram_actions) =
+    let (flush_buffers_actions, emit_metric_actions, emit_sankey_diagram_actions) =
       Self::prepare_actions(&actions);
 
     let result = self
