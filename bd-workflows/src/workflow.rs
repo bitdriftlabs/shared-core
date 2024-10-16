@@ -816,7 +816,7 @@ impl Traversal {
                 };
 
                 sankey_diagram_states
-                  .get_or_insert_with(|| BTreeMap::new())
+                  .get_or_insert_with(BTreeMap::new)
                   .entry(extraction.sankey_diagram_id.clone())
                   .or_insert(SankeyDiagramState::new())
                   .push(extracted_value.into_owned());
@@ -862,7 +862,7 @@ impl Traversal {
               // Create next traversal.
               let next_state_index = config.next_state_index_for_traversal(self, index);
               if let Some(traversal) =
-                Traversal::new(config, next_state_index, sankey_diagram_states)
+                Self::new(config, next_state_index, sankey_diagram_states)
               {
                 result.output_traversals.push(traversal);
               }
