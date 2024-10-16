@@ -75,7 +75,7 @@ impl Processor {
 
     self
       .data_upload_tx
-      .send(DataUpload::SankeyDiagramPathUpload(upload_request))
+      .send(DataUpload::SankeyPathUpload(upload_request))
       .await
       .unwrap();
 
