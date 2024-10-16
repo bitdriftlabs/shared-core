@@ -157,7 +157,7 @@ impl Config {
     &self.states[traversal.state_index].transitions[transition_index].actions
   }
 
-  pub(crate) fn sankey_diagram_value_extractions(
+  pub(crate) fn sankey_value_extractions(
     &self,
     traversal: &Traversal,
     transition_index: usize,
@@ -253,13 +253,13 @@ impl Execution {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SankeyDiagramValueExtraction {
+pub(crate) struct SankeyValueExtraction {
   pub(crate) sankey_diagram_id: String,
   pub(crate) limit: u32,
   pub(crate) value: TagValue,
 }
 
-impl SankeyDiagramValueExtraction {
+impl SankeyValueExtraction {
   fn new(
     proto: &workflow::workflow::transition_extension::SankeyDiagramValueExtraction,
   ) -> anyhow::Result<Self> {
@@ -289,7 +289,7 @@ pub(crate) struct Transition {
   target_state_index: usize,
   rule: Predicate,
   actions: Vec<Action>,
-  sankey_diagram_value_extractions: Vec<SankeyDiagramValueExtraction>,
+  sankey_value_extractions: Vec<SankeyValueExtraction>,
 }
 
 impl Transition {

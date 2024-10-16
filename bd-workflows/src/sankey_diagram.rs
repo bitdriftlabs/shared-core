@@ -24,6 +24,11 @@ impl SankeyDiagram {
   }
 }
 
+
+//
+// Processor
+//
+
 #[derive(Debug)]
 pub(crate) struct Processor {
   dynamic_stats: Arc<DynamicStats>,
@@ -48,17 +53,17 @@ impl Processor {
     tokio::task::spawn(async move {
       loop {
         if let Some(sankey_diagram) = self.input_rx.recv().await {
-          self.process_sankey_diagram(sankey_diagram).await;
+          self.process_sankey(sankey_diagram).await;
         }
       }
     })
   }
 
-  pub(crate) async fn process_sankey_diagram(&self, sankey_diagram: SankeyDiagram) {
-    // for action in actions {
+  pub(crate) async fn process_sankey(&self, sankey: SankeyDiagram) {
+    let path_id = "_path_id".to_string();
     let upload_request = SankeyDiagramUploadRequest {
-      id: sankey_diagram.id.clone(),
-      path_id: "path_id".to_string(),
+      id: sankey.id.clone(),
+      path_id: path_id.clone(),
       nodes: vec![],
       ..Default::default()
     };
@@ -68,21 +73,20 @@ impl Processor {
       upload_request,
     );
 
-    // let (intent, response) = LogUploadIntent::new(intent_uuid.clone(), upload_request.clone());
     self
       .data_upload_tx
       .send(DataUpload::SankeyDiagramPathUpload(upload_request))
       .await
       .unwrap();
-    // }
 
-    // for action in actions {
-    let tags = BTreeMap::from([("_id".to_string(), sankey_diagram.id)]);
+    let tags = BTreeMap::from([
+      ("_id".to_string(), sankey.id),
+      ("_path_id".to_string(), path_id),
+    ]);
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     self
       .dynamic_stats
-      .record_dynamic_counter("workflows_dyn:sankey", tags, 1);
-    // }
+      .record_dynamic_counter("workflows_dyn:action", tags, 1);
   }
 }

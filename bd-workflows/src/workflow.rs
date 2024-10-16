@@ -765,8 +765,9 @@ pub(crate) struct Traversal {
   /// The number of logs matched by traversal's transitions.
   /// Each element in an array corresponds to one transition.
   pub(crate) matched_logs_counts: Vec<u32>,
-
-  pub(crate) sankey_diagram_states: Option<BTreeMap<String, SankeyDiagramState>>,
+  /// States of Sankey diagrams. It's a `None` when traversal is initialized and is set
+  /// to `Some` after the first value for a Sankey diagram and a given traversal is extracted.
+  pub(crate) sankey_states: Option<BTreeMap<String, SankeyDiagramState>>,
 }
 
 impl Traversal {
@@ -776,7 +777,7 @@ impl Traversal {
   pub fn new(
     config: &Config,
     state_index: usize,
-    sankey_diagram_states: Option<BTreeMap<String, SankeyDiagramState>>,
+    sankey_states: Option<BTreeMap<String, SankeyDiagramState>>,
   ) -> Option<Self> {
     if config.states()[state_index].transitions().is_empty() {
       None
@@ -786,7 +787,7 @@ impl Traversal {
         // The number of logs matched by a given traversal.
         // Start at 0 for a new traversal.
         matched_logs_counts: vec![0; config.states()[state_index].transitions().len()],
-        sankey_diagram_states,
+        sankey_states,
       })
     }
   }
@@ -807,9 +808,9 @@ impl Traversal {
             result.matched_logs_count += 1;
 
             if self.matched_logs_counts[index] == *count {
-              // Extract values for Sankey Diagrams.
-              let mut sankey_diagram_states = self.sankey_diagram_states.clone();
-              let extractions = config.sankey_diagram_value_extractions(self, index);
+              // Extract values for Sankey diagrams.
+              let mut sankey_diagram_states = self.sankey_states.clone();
+              let extractions = config.sankey_value_extractions(self, index);
               for extraction in extractions {
                 let Some(extracted_value) = extraction.value.extract_value(log) else {
                   continue;
@@ -861,9 +862,7 @@ impl Traversal {
 
               // Create next traversal.
               let next_state_index = config.next_state_index_for_traversal(self, index);
-              if let Some(traversal) =
-                Self::new(config, next_state_index, sankey_diagram_states)
-              {
+              if let Some(traversal) = Self::new(config, next_state_index, sankey_diagram_states) {
                 result.output_traversals.push(traversal);
               }
 
