@@ -10,6 +10,7 @@ use anyhow::anyhow;
 use bd_log_matcher::matcher::Tree;
 use bd_matcher::FieldProvider;
 use bd_proto::protos::workflow::workflow;
+use bd_proto::protos::workflow::workflow::workflow::action::tag::Tag_type;
 use bd_proto::protos::workflow::workflow::workflow::execution::Execution_type;
 use bd_proto::protos::workflow::workflow::workflow::transition_extension::Extension_type;
 use bd_proto::protos::workflow::workflow::workflow::{
@@ -22,7 +23,6 @@ use protobuf::MessageField;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Duration;
-use workflow::workflow::action::action_emit_metric::tag::Tag_type;
 use workflow::workflow::action::action_emit_metric::Value_extractor_type;
 use workflow::workflow::action::action_flush_buffers::streaming::termination_criterion;
 use workflow::workflow::action::{ActionEmitMetric as ActionEmitMetricProto, Action_type};
