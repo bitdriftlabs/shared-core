@@ -18,15 +18,9 @@ use crate::actions_flush_buffers::{
   ResolverConfig,
   StreamingBuffersAction,
 };
-use crate::config::{
-  Action,
-  ActionEmitMetric,
-  ActionEmitSankeyDiagram,
-  ActionFlushBuffers,
-  Config,
-  WorkflowsConfiguration,
-};
+use crate::config::{ActionEmitMetric, ActionFlushBuffers, Config, WorkflowsConfiguration};
 use crate::metrics::MetricsCollector;
+use crate::sankey_diagram::{self, SankeyDiagram};
 use crate::workflow::{CompletedAction, Workflow};
 use anyhow::anyhow;
 use bd_api::DataUpload;
@@ -87,6 +81,9 @@ pub struct WorkflowsEngine {
   flush_buffers_negotiator_output_rx: Receiver<NegotiatorOutput>,
   flush_buffers_negotiator_join_handle: JoinHandle<()>,
 
+  sankey_processor_input_tx: Sender<SankeyDiagram>,
+  sankey_processor_join_handle: JoinHandle<()>,
+
   metrics_collector: MetricsCollector,
 
   buffers_to_flush_tx: Sender<BuffersToFlush>,
@@ -114,10 +111,15 @@ impl WorkflowsEngine {
 
     let (input_tx, input_rx) = tokio::sync::mpsc::channel(10);
     let (flush_buffers_actions_negotiator, output_rx) =
-      Negotiator::new(input_rx, data_upload_tx, &actions_scope);
+      Negotiator::new(input_rx, data_upload_tx.clone(), &actions_scope);
     let flush_buffers_negotiator_join_handle = flush_buffers_actions_negotiator.run();
 
     let flush_buffers_actions_resolver = Resolver::new(&actions_scope);
+
+    let (sankey_input_tx, sankey_input_rx) = tokio::sync::mpsc::channel(10);
+    let sankey_diagram_processor =
+      sankey_diagram::Processor::new(sankey_input_rx, data_upload_tx, dynamic_stats.clone());
+    let sankey_processor_join_handle = sankey_diagram_processor.run();
 
     let workflows_engine = Self {
       configs: vec![],
@@ -132,6 +134,8 @@ impl WorkflowsEngine {
       flush_buffers_negotiator_join_handle,
       flush_buffers_negotiator_input_tx: input_tx,
       flush_buffers_negotiator_output_rx: output_rx,
+      sankey_processor_input_tx: sankey_input_tx,
+      sankey_processor_join_handle,
       metrics_collector: MetricsCollector::new(dynamic_stats),
       buffers_to_flush_tx,
     };
@@ -629,7 +633,7 @@ impl WorkflowsEngine {
       "current_traversals_count is not equal to computed traversals count"
     );
 
-    let (flush_buffers_actions, emit_metric_actions, _emit_sankey_diagram_actions) =
+    let (flush_buffers_actions, emit_metric_actions, sankey_diagrams) =
       Self::prepare_actions(&actions);
 
     let result = self
@@ -654,6 +658,12 @@ impl WorkflowsEngine {
     self
       .metrics_collector
       .emit_metrics(&emit_metric_actions, log);
+
+    for action in sankey_diagrams {
+      if let Err(e) = self.sankey_processor_input_tx.try_send(action) {
+        log::debug!("failed to process sankey diagram: {e}");
+      }
+    }
 
     for action in flush_buffers_actions_processing_result.new_pending_actions_to_add {
       self.state.pending_actions.insert(action.clone());
@@ -696,7 +706,7 @@ impl WorkflowsEngine {
   ) -> (
     BTreeSet<&'a ActionFlushBuffers>,
     BTreeSet<&'a ActionEmitMetric>,
-    BTreeSet<&'a ActionEmitSankeyDiagram>,
+    BTreeSet<SankeyDiagram>,
   ) {
     if actions.is_empty() {
       return (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
@@ -725,11 +735,14 @@ impl WorkflowsEngine {
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
 
-    let emit_sankey_diagram_actions: BTreeSet<&ActionEmitSankeyDiagram> = actions
+    let sankey_diagrams: BTreeSet<SankeyDiagram> = actions
       .iter()
       .filter_map(|action| {
         if let CompletedAction::SankeyDiagram(emit_sankey_diagram_action, _) = action {
-          Some(*emit_sankey_diagram_action)
+          Some(SankeyDiagram::new(
+            emit_sankey_diagram_action.id().to_string(),
+            vec![],
+          ))
         } else {
           None
         }
@@ -737,17 +750,14 @@ impl WorkflowsEngine {
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
 
-    (
-      flush_buffers_actions,
-      emit_metric_actions,
-      emit_sankey_diagram_actions,
-    )
+    (flush_buffers_actions, emit_metric_actions, sankey_diagrams)
   }
 }
 
 impl Drop for WorkflowsEngine {
   fn drop(&mut self) {
     self.flush_buffers_negotiator_join_handle.abort();
+    self.sankey_processor_join_handle.abort();
   }
 }
 

@@ -905,7 +905,7 @@ impl Traversal {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 /// The action to perform.
-pub enum CompletedAction<'a> {
+pub(crate) enum CompletedAction<'a> {
   FlushBuffers(&'a ActionFlushBuffers),
   EmitMetric(&'a ActionEmitMetric),
   SankeyDiagram(&'a ActionEmitSankeyDiagram, SankeyDiagramState),

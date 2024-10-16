@@ -2,16 +2,30 @@ use bd_api::upload::TrackedSankeyDiagramUploadRequest;
 use bd_api::DataUpload;
 use bd_client_stats::DynamicStats;
 use bd_proto::protos::client::api::SankeyDiagramUploadRequest;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
 
+//
+// SankeyDiagram
+//
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, PartialOrd, Ord, Eq)]
 pub(crate) struct SankeyDiagram {
   id: String,
   path: Vec<String>,
+  // TODO: add information about whether the limit was hit or not.
 }
 
-struct Processor {
+impl SankeyDiagram {
+  pub(crate) const fn new(id: String, path: Vec<String>) -> Self {
+    Self { id, path }
+  }
+}
+
+#[derive(Debug)]
+pub(crate) struct Processor {
   dynamic_stats: Arc<DynamicStats>,
   data_upload_tx: Sender<DataUpload>,
   input_rx: Receiver<SankeyDiagram>,
@@ -24,9 +38,9 @@ impl Processor {
     dynamic_stats: Arc<DynamicStats>,
   ) -> Self {
     Self {
+      dynamic_stats,
       data_upload_tx,
       input_rx,
-      dynamic_stats,
     }
   }
 
