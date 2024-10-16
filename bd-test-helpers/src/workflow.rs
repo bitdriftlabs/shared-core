@@ -13,6 +13,7 @@ use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers
   TerminationCriterion,
 };
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::Streaming;
+use bd_proto::protos::workflow::workflow::workflow::action::Tag;
 use protobuf::MessageField;
 use protos::log_matcher::log_matcher::log_matcher::base_log_matcher::tag_match::Value_match;
 use protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type::{
@@ -326,7 +327,7 @@ pub mod macros {
       bd_proto::protos::workflow::workflow::workflow::action::action_emit_metric
                                                           ::Value_extractor_type::FieldExtracted(
                                                             bd_proto::protos::workflow::workflow
-                                                              ::FieldExtracted {
+                                                              ::workflow::FieldExtracted {
                                                                 field_name: $from.to_string(),
                                                                 ..Default::default()
                                                               }
@@ -338,16 +339,16 @@ pub mod macros {
   #[macro_export]
   macro_rules! metric_tag {
     (extract $from:expr => $to:expr) => {
-      bd_proto::protos::workflow::workflow::workflow::action::action_emit_metric::Tag {
+      bd_proto::protos::workflow::workflow::workflow::action::Tag {
                           name: $to.into(),
                           tag_type: Some(bd_proto::protos::workflow::workflow::workflow
-                            ::action::action_emit_metric::tag::Tag_type::FieldExtracted(
+                            ::action::tag::Tag_type::FieldExtracted(
                               bd_proto::protos::workflow::workflow
-                              ::FieldExtracted {
+                              ::workflow::FieldExtracted {
                                 field_name: $from.into(),
                                 extraction_type: Some(bd_proto::protos::workflow::workflow
-                                  ::field_extracted::Extraction_type::Exact(
-                                    bd_proto::protos::workflow::workflow::field_extracted
+                                  ::workflow::field_extracted::Extraction_type::Exact(
+                                    bd_proto::protos::workflow::workflow::workflow::field_extracted
                                     ::Exact::default(),
                                   )
                                 ),
@@ -359,10 +360,10 @@ pub mod macros {
                         }
     };
     (fix $key:expr => $value:expr) => {
-      bd_proto::protos::workflow::workflow::workflow::action::action_emit_metric::Tag {
+      bd_proto::protos::workflow::workflow::workflow::action::Tag {
                           name: $key.into(),
                           tag_type: Some(bd_proto::protos::workflow::workflow::workflow
-                            ::action::action_emit_metric::tag::Tag_type::FixedValue($value.into())),
+                            ::action::tag::Tag_type::FixedValue($value.into())),
                           ..Default::default()
                         }
     };
@@ -467,7 +468,7 @@ pub fn make_emit_metric_action(
   id: &str,
   metric_type: action_emit_metric::Metric_type,
   value: Value_extractor_type,
-  tags: Vec<action_emit_metric::Tag>,
+  tags: Vec<Tag>,
 ) -> Action_type {
   Action_type::ActionEmitMetric(ActionEmitMetricProto {
     id: id.to_string(),

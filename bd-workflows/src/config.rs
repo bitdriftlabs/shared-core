@@ -9,6 +9,7 @@ use crate::workflow::Traversal;
 use anyhow::anyhow;
 use bd_log_matcher::matcher::Tree;
 use bd_proto::protos::workflow::workflow;
+use bd_proto::protos::workflow::workflow::workflow::action::tag::Tag_type;
 use bd_proto::protos::workflow::workflow::workflow::execution::Execution_type;
 use bd_proto::protos::workflow::workflow::workflow::{
   Execution as ExecutionProto,
@@ -19,7 +20,6 @@ use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsCon
 use protobuf::MessageField;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Duration;
-use workflow::workflow::action::action_emit_metric::tag::Tag_type;
 use workflow::workflow::action::action_emit_metric::Value_extractor_type;
 use workflow::workflow::action::action_flush_buffers::streaming::termination_criterion;
 use workflow::workflow::action::{ActionEmitMetric as ActionEmitMetricProto, Action_type};
@@ -334,7 +334,7 @@ impl Action {
         }))
       },
       Action_type::ActionEmitMetric(metric) => Ok(Self::EmitMetric(ActionEmitMetric::new(metric)?)),
-      Action_type::ActionSankeyDiagram(_) => Err(anyhow!(
+      Action_type::ActionEmitSankeyDiagram(_) => Err(anyhow!(
         "invalid action configuration: unsupported action type"
       )),
     }
