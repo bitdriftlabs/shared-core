@@ -824,7 +824,7 @@ impl Traversal {
 
               // Retrieve actions to perform as part of the transition.
               let traversal_actions = config.actions_for_traversal(self, index);
-              for action in traversal_actions.iter() {
+              for action in traversal_actions {
                 match action {
                   Action::FlushBuffers(action) => {
                     result
@@ -838,13 +838,13 @@ impl Traversal {
                   },
                   Action::SankeyDiagram(action) => {
                     let Some(sankey_diagram_states) = &mut self.sankey_diagram_states else {
-                      assert!(false, "sankey_diagram_states should be present");
+                      debug_assert!(false, "sankey_diagram_states should be present");
                       continue;
                     };
 
                     let Some(sankey_diagram_state) = sankey_diagram_states.remove(action.id())
                     else {
-                      assert!(
+                      debug_assert!(
                         false,
                         "sankey_diagram_state for Sankey with {:?} ID should be present",
                         action.id()
