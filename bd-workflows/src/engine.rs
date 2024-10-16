@@ -27,7 +27,7 @@ use crate::config::{
   WorkflowsConfiguration,
 };
 use crate::metrics::MetricsCollector;
-use crate::workflow::Workflow;
+use crate::workflow::{CompletedAction, Workflow};
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_stats::DynamicStats;
@@ -527,7 +527,7 @@ impl WorkflowsEngine {
       };
     }
 
-    let mut actions: Vec<&Action> = vec![];
+    let mut actions: Vec<CompletedAction<'_>> = vec![];
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let was_in_initial_state = workflow.is_in_initial_state();
       let result = workflow.process_log(
@@ -629,7 +629,7 @@ impl WorkflowsEngine {
       "current_traversals_count is not equal to computed traversals count"
     );
 
-    let (flush_buffers_actions, emit_metric_actions, emit_sankey_diagram_actions) =
+    let (flush_buffers_actions, emit_metric_actions, _emit_sankey_diagram_actions) =
       Self::prepare_actions(&actions);
 
     let result = self
@@ -692,7 +692,7 @@ impl WorkflowsEngine {
   /// for `exclusive` workflows). Currently, multiple metric emission actions triggered by runs of
   /// the same workflow result in only one metric emission, which is incorrect behavior.
   fn prepare_actions<'a>(
-    actions: &[&'a Action],
+    actions: &[CompletedAction<'a>],
   ) -> (
     BTreeSet<&'a ActionFlushBuffers>,
     BTreeSet<&'a ActionEmitMetric>,
@@ -705,8 +705,8 @@ impl WorkflowsEngine {
     let flush_buffers_actions: BTreeSet<&ActionFlushBuffers> = actions
       .iter()
       .filter_map(|action| {
-        if let Action::FlushBuffers(flush_buffers_action) = action {
-          Some(flush_buffers_action)
+        if let CompletedAction::FlushBuffers(flush_buffers_action) = action {
+          Some(*flush_buffers_action)
         } else {
           None
         }
@@ -716,8 +716,8 @@ impl WorkflowsEngine {
     let emit_metric_actions: BTreeSet<&ActionEmitMetric> = actions
       .iter()
       .filter_map(|action| {
-        if let Action::EmitMetric(emit_metric_action) = action {
-          Some(emit_metric_action)
+        if let CompletedAction::EmitMetric(emit_metric_action) = action {
+          Some(*emit_metric_action)
         } else {
           None
         }
@@ -728,8 +728,8 @@ impl WorkflowsEngine {
     let emit_sankey_diagram_actions: BTreeSet<&ActionEmitSankeyDiagram> = actions
       .iter()
       .filter_map(|action| {
-        if let Action::SankeyDiagram(emit_sankey_diagram_action) = action {
-          Some(emit_sankey_diagram_action)
+        if let CompletedAction::SankeyDiagram(emit_sankey_diagram_action, _) = action {
+          Some(*emit_sankey_diagram_action)
         } else {
           None
         }
