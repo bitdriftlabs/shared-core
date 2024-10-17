@@ -161,12 +161,12 @@ impl Config {
     &self.states[traversal.state_index].transitions[transition_index].actions
   }
 
-  pub(crate) fn sankey_value_extractions(
+  pub(crate) fn sankey_extractions(
     &self,
     traversal: &Traversal,
     transition_index: usize,
-  ) -> &[SankeyValueExtraction] {
-    &self.states[traversal.state_index].transitions[transition_index].sankey_value_extractions
+  ) -> &[SankeyExtraction] {
+    &self.states[traversal.state_index].transitions[transition_index].sankey_extractions
   }
 
   pub(crate) fn next_state_index_for_traversal(
@@ -256,12 +256,12 @@ impl Execution {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SankeyValueExtraction {
+pub(crate) struct SankeyExtraction {
   pub(crate) sankey_id: String,
   pub(crate) value: TagValue,
 }
 
-impl SankeyValueExtraction {
+impl SankeyExtraction {
   fn new(
     proto: &workflow::workflow::transition_extension::SankeyDiagramValueExtraction,
   ) -> anyhow::Result<Self> {
@@ -290,7 +290,7 @@ pub(crate) struct Transition {
   target_state_index: usize,
   rule: Predicate,
   actions: Vec<Action>,
-  sankey_value_extractions: Vec<SankeyValueExtraction>,
+  sankey_extractions: Vec<SankeyExtraction>,
 }
 
 impl Transition {
@@ -319,7 +319,7 @@ impl Transition {
       .map(Action::try_from_proto)
       .collect::<anyhow::Result<Vec<_>>>()?;
 
-    let sankey_value_extractions = transition
+    let sankey_extractions = transition
       .extensions
       .iter()
       .map(|extension| {
@@ -329,7 +329,7 @@ impl Transition {
 
         match extension_type {
           Extension_type::SankeyDiagramValueExtraction(extension) => {
-            anyhow::Ok(Some(SankeyValueExtraction::new(extension)))
+            anyhow::Ok(Some(SankeyExtraction::new(extension)))
           },
           #[allow(unreachable_patterns)]
           _ => anyhow::bail!("invalid transition configuration: unknown extension type"),
@@ -346,7 +346,7 @@ impl Transition {
       target_state_index,
       rule,
       actions,
-      sankey_value_extractions,
+      sankey_extractions,
     })
   }
 

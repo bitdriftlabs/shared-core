@@ -874,7 +874,7 @@ impl Traversal {
     log: &LogRef<'_>,
   ) -> Option<BTreeMap<String, SankeyDiagramState>> {
     let mut sankey_diagram_states = self.sankey_states.clone();
-    let extractions = config.sankey_value_extractions(self, index);
+    let extractions = config.sankey_extractions(self, index);
     for extraction in extractions {
       let Some(extracted_value) = extraction.value.extract_value(log) else {
         continue;
