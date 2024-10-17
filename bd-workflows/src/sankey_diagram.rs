@@ -1,9 +1,10 @@
+use crate::workflow::SankeyDiagramPath;
 use bd_api::upload::TrackedSankeyDiagramUploadRequest;
 use bd_api::DataUpload;
-use bd_client_stats::DynamicStats;
+use bd_proto::protos::client::api::sankey_diagram_upload_request::Node;
 use bd_proto::protos::client::api::SankeyDiagramUploadRequest;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 //
@@ -13,16 +14,14 @@ use tokio::sync::mpsc::{Receiver, Sender};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, PartialOrd, Ord, Eq)]
 pub(crate) struct SankeyDiagram {
   id: String,
-  path: Vec<String>,
-  // TODO: add information about whether the limit was hit or not.
+  path: SankeyDiagramPath,
 }
 
 impl SankeyDiagram {
-  pub(crate) const fn new(id: String, path: Vec<String>) -> Self {
+  pub(crate) const fn new(id: String, path: SankeyDiagramPath) -> Self {
     Self { id, path }
   }
 }
-
 
 //
 // Processor
@@ -30,7 +29,6 @@ impl SankeyDiagram {
 
 #[derive(Debug)]
 pub(crate) struct Processor {
-  dynamic_stats: Arc<DynamicStats>,
   data_upload_tx: Sender<DataUpload>,
   input_rx: Receiver<SankeyDiagram>,
 }
@@ -39,10 +37,8 @@ impl Processor {
   pub(crate) const fn new(
     input_rx: Receiver<SankeyDiagram>,
     data_upload_tx: Sender<DataUpload>,
-    dynamic_stats: Arc<DynamicStats>,
   ) -> Self {
     Self {
-      dynamic_stats,
       data_upload_tx,
       input_rx,
     }
@@ -59,11 +55,18 @@ impl Processor {
   }
 
   pub(crate) async fn process_sankey(&self, sankey: SankeyDiagram) {
-    let path_id = "_path_id".to_string();
     let upload_request = SankeyDiagramUploadRequest {
       id: sankey.id.clone(),
-      path_id: path_id.clone(),
-      nodes: vec![],
+      path_id: sankey.path.path_id.clone(),
+      nodes: sankey
+        .path
+        .nodes
+        .into_iter()
+        .map(|n| Node {
+          extracted_value: n,
+          ..Default::default()
+        })
+        .collect_vec(),
       ..Default::default()
     };
 

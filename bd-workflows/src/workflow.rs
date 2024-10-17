@@ -450,9 +450,11 @@ impl WorkflowResultStats {
 // SankeyDiagramPath
 //
 
-struct SankeyDiagramPath {
-  nodes: Vec<String>,
-  path_id: String
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct SankeyDiagramPath {
+  pub(crate) nodes: Vec<String>,
+  pub(crate) path_id: String,
+  pub(crate) is_trimmed: bool,
 }
 
 impl SankeyDiagramPath {
@@ -462,6 +464,7 @@ impl SankeyDiagramPath {
     Self {
       nodes: sankey_diagram_state.extracted_values,
       path_id,
+      is_trimmed: sankey_diagram_state.is_trimmed,
     }
   }
 
@@ -486,7 +489,6 @@ impl SankeyDiagramPath {
 pub(crate) struct SankeyDiagramState {
   extracted_values: Vec<String>,
   is_trimmed: bool,
-
 }
 
 impl SankeyDiagramState {
@@ -890,7 +892,12 @@ impl Traversal {
 
                     result
                       .actions_to_perform
-                      .push(CompletedAction::SankeyDiagram(action, sankey_diagram_state));
+                      .push(CompletedAction::SankeyDiagram(
+                        TriggeredActionEmitSankeyDiagram {
+                          action,
+                          path: SankeyDiagramPath::new(sankey_diagram_state),
+                        },
+                      ));
                   },
                 }
               }
@@ -942,7 +949,17 @@ impl Traversal {
 pub(crate) enum CompletedAction<'a> {
   FlushBuffers(&'a ActionFlushBuffers),
   EmitMetric(&'a ActionEmitMetric),
-  SankeyDiagram(&'a ActionEmitSankeyDiagram, SankeyDiagramState),
+  SankeyDiagram(TriggeredActionEmitSankeyDiagram<'a>),
+}
+
+//
+// TriggeredActionEmitSankeyDiagram
+//
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TriggeredActionEmitSankeyDiagram<'a> {
+  pub(crate) action: &'a ActionEmitSankeyDiagram,
+  pub(crate) path: SankeyDiagramPath,
 }
 
 //

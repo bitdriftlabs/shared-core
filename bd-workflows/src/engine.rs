@@ -18,16 +18,10 @@ use crate::actions_flush_buffers::{
   ResolverConfig,
   StreamingBuffersAction,
 };
-use crate::config::{
-  ActionEmitMetric,
-  ActionEmitSankeyDiagram,
-  ActionFlushBuffers,
-  Config,
-  WorkflowsConfiguration,
-};
+use crate::config::{ActionEmitMetric, ActionFlushBuffers, Config, WorkflowsConfiguration};
 use crate::metrics::MetricsCollector;
 use crate::sankey_diagram::{self, SankeyDiagram};
-use crate::workflow::{CompletedAction, SankeyDiagramState, Workflow};
+use crate::workflow::{CompletedAction, TriggeredActionEmitSankeyDiagram, Workflow};
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_stats::DynamicStats;
@@ -44,7 +38,6 @@ use bd_stats_common::labels;
 use bd_time::TimeDurationExt as _;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
@@ -124,8 +117,7 @@ impl WorkflowsEngine {
     let flush_buffers_actions_resolver = Resolver::new(&actions_scope);
 
     let (sankey_input_tx, sankey_input_rx) = tokio::sync::mpsc::channel(10);
-    let sankey_diagram_processor =
-      sankey_diagram::Processor::new(sankey_input_rx, data_upload_tx, dynamic_stats.clone());
+    let sankey_diagram_processor = sankey_diagram::Processor::new(sankey_input_rx, data_upload_tx);
     let sankey_processor_join_handle = sankey_diagram_processor.run();
 
     let workflows_engine = Self {
@@ -639,7 +631,7 @@ impl WorkflowsEngine {
       "current_traversals_count is not equal to computed traversals count"
     );
 
-    let (flush_buffers_actions, emit_metric_actions, sankey_diagrams) =
+    let (flush_buffers_actions, emit_metric_actions, emit_sankey_diagrams_actions) =
       Self::prepare_actions(actions);
 
     let result = self
@@ -665,10 +657,14 @@ impl WorkflowsEngine {
       .metrics_collector
       .emit_metrics(&emit_metric_actions, log);
 
-    for (action, state) in sankey_diagrams {
+    self
+      .metrics_collector
+      .emit_sankeys(&emit_sankey_diagrams_actions, log);
+
+    for action in emit_sankey_diagrams_actions {
       if let Err(e) = self.sankey_processor_input_tx.try_send(SankeyDiagram::new(
-        action.id().to_string(),
-        state.extracted_values,
+        action.action.id().to_string(),
+        action.path,
       )) {
         log::debug!("failed to process sankey diagram: {e}");
       }
@@ -715,7 +711,7 @@ impl WorkflowsEngine {
   ) -> (
     BTreeSet<&'a ActionFlushBuffers>,
     BTreeSet<&'a ActionEmitMetric>,
-    BTreeSet<(&'a ActionEmitSankeyDiagram, SankeyDiagramState)>,
+    BTreeSet<TriggeredActionEmitSankeyDiagram<'a>>,
   ) {
     if actions.is_empty() {
       return (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
@@ -744,11 +740,11 @@ impl WorkflowsEngine {
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
 
-    let sankey_diagrams: BTreeSet<(&ActionEmitSankeyDiagram, SankeyDiagramState)> = actions
+    let sankey_diagrams: BTreeSet<TriggeredActionEmitSankeyDiagram<'a>> = actions
       .into_iter()
       .filter_map(|action| {
-        if let CompletedAction::SankeyDiagram(emit_sankey_diagram_action, state) = action {
-          Some((emit_sankey_diagram_action, state))
+        if let CompletedAction::SankeyDiagram(action) = action {
+          Some(action)
         } else {
           None
         }

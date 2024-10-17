@@ -10,6 +10,7 @@
 mod metrics_test;
 
 use crate::config::ActionEmitMetric;
+use crate::workflow::TriggeredActionEmitSankeyDiagram;
 use bd_client_stats::DynamicStats;
 use bd_log_primitives::LogRef;
 use bd_matcher::FieldProvider;
@@ -90,16 +91,21 @@ impl MetricsCollector {
     }
   }
 
-  fn emit_sankeys(&self) {
-    // let tags = BTreeMap::from([
-    //   ("_id".to_string(), sankey.id),
-    //   ("_path_id".to_string(), path_id),
-    // ]);
+  pub(crate) fn emit_sankeys(
+    &self,
+    actions: &BTreeSet<TriggeredActionEmitSankeyDiagram<'_>>,
+    _log: &LogRef<'_>,
+  ) {
+    // TODO(Augustyniak): extract appropriate field values.
+    for action in actions {
+      let mut tags = BTreeMap::new();
+      tags.insert("_id".to_string(), action.action.id().to_string());
+      tags.insert("_path_id".to_string(), action.path.path_id.to_string());
 
-    // #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    // self
-    //   .dynamic_stats
-    //   .record_dynamic_counter("workflows_dyn:action", tags, 1);
+      self
+        .dynamic_stats
+        .record_dynamic_counter("workflows_dyn:action", tags, 1);
+    }
   }
 
   fn resolve_field_name<'a>(key: &str, log: &'a LogRef<'a>) -> Option<Cow<'a, str>> {
