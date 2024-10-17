@@ -86,9 +86,28 @@ pub struct Config {
 
 impl Config {
   pub fn new(config: &WorkflowConfigProto) -> anyhow::Result<Self> {
+    if config.states.is_empty() {
+      return Err(anyhow!(
+        "invalid workflow states configuration: states list is empty"
+      ));
+    }
+
+    let state_index_by_id = config
+      .states
+      .iter()
+      .enumerate()
+      .map(|(index, s)| (s.id.clone(), index))
+      .collect();
+
+    let states = config
+      .states
+      .iter()
+      .map(|s| State::try_from_proto(s, &state_index_by_id))
+      .collect::<anyhow::Result<Vec<_>>>()?;
+
     Ok(Self {
       id: config.id.clone(),
-      states: State::try_from_proto(&config.states)?,
+      states,
       execution: Execution::new(&config.execution)?,
       duration_limit: Self::try_duration_limit_from_proto(&config.limit_duration)?,
       matched_logs_count_limit: Self::try_matched_logs_count_limit_from_proto(
@@ -185,7 +204,10 @@ pub(crate) struct State {
 }
 
 impl State {
-  fn new(state: &StateProto, state_index_by_id: &HashMap<StateID, usize>) -> anyhow::Result<Self> {
+  fn try_from_proto(
+    state: &StateProto,
+    state_index_by_id: &HashMap<StateID, usize>,
+  ) -> anyhow::Result<Self> {
     Ok(Self {
       id: state.id.clone(),
       transitions: state
@@ -211,28 +233,6 @@ impl State {
 
   pub(crate) fn transitions(&self) -> &[Transition] {
     &self.transitions
-  }
-
-  pub fn try_from_proto(values: &[StateProto]) -> anyhow::Result<Vec<Self>> {
-    // Validate that there is an initial workflow.
-    if values.is_empty() {
-      return Err(anyhow!(
-        "invalid workflow states configuration: states list is empty"
-      ));
-    }
-
-    let mut state_index_by_id: HashMap<StateID, usize> = HashMap::new();
-    for (index, state) in values.iter().enumerate() {
-      state_index_by_id.insert(state.id.clone(), index);
-    }
-
-    let mut states: Vec<Self> = Vec::with_capacity(values.len());
-    for state_value in values {
-      let new_state = Self::new(state_value, &state_index_by_id)?;
-      states.push(new_state);
-    }
-
-    Ok(states)
   }
 }
 
@@ -340,7 +340,7 @@ impl Transition {
         Err(err) => Some(Err(err)),
         _ => None,
       })
-      .collect::<Result<_, _>>()?;
+      .collect::<anyhow::Result<_>>()?;
 
     Ok(Self {
       target_state_index,
