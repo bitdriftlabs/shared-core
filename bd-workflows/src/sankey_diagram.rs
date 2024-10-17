@@ -3,7 +3,6 @@ use bd_api::DataUpload;
 use bd_client_stats::DynamicStats;
 use bd_proto::protos::client::api::SankeyDiagramUploadRequest;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
 
@@ -73,20 +72,13 @@ impl Processor {
       upload_request,
     );
 
-    self
+    if let Err(e) = self
       .data_upload_tx
       .send(DataUpload::SankeyPathUpload(upload_request))
       .await
-      .unwrap();
-
-    let tags = BTreeMap::from([
-      ("_id".to_string(), sankey.id),
-      ("_path_id".to_string(), path_id),
-    ]);
-
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    self
-      .dynamic_stats
-      .record_dynamic_counter("workflows_dyn:action", tags, 1);
+    {
+      // TODO(Augustyniak): Add a counter stat in here.
+      log::debug!("failed to send sankey diagram upload request: {e}");
+    }
   }
 }

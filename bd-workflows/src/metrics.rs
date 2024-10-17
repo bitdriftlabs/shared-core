@@ -90,6 +90,18 @@ impl MetricsCollector {
     }
   }
 
+  fn emit_sankeys(&self) {
+    // let tags = BTreeMap::from([
+    //   ("_id".to_string(), sankey.id),
+    //   ("_path_id".to_string(), path_id),
+    // ]);
+
+    // #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    // self
+    //   .dynamic_stats
+    //   .record_dynamic_counter("workflows_dyn:action", tags, 1);
+  }
+
   fn resolve_field_name<'a>(key: &str, log: &'a LogRef<'a>) -> Option<Cow<'a, str>> {
     match key {
       "log_level" => Some(log.log_level.to_string().into()),

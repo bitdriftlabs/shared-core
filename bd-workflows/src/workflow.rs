@@ -22,6 +22,7 @@ use bd_log_primitives::LogRef;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::hash::Hasher;
 use std::time::SystemTime;
 
 //
@@ -445,25 +446,59 @@ impl WorkflowResultStats {
   }
 }
 
+//
+// SankeyDiagramPath
+//
+
+struct SankeyDiagramPath {
+  nodes: Vec<String>,
+  path_id: String
+}
+
+impl SankeyDiagramPath {
+  fn new(sankey_diagram_state: SankeyDiagramState) -> Self {
+    let path_id = Self::calculate_path_id(&sankey_diagram_state);
+
+    Self {
+      nodes: sankey_diagram_state.extracted_values,
+      path_id,
+    }
+  }
+
+  fn calculate_path_id(state: &SankeyDiagramState) -> String {
+    let mut hasher = std::hash::DefaultHasher::new();
+
+    hasher.write(if state.is_trimmed { &[1] } else { &[0] });
+
+    for node in &state.extracted_values {
+      hasher.write(node.as_str().as_bytes());
+    }
+
+    hasher.finish().to_string()
+  }
+}
+
+//
+// SankeyDiagramState
+//
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub(crate) struct SankeyDiagramState {
   extracted_values: Vec<String>,
-  limit: usize,
+  is_trimmed: bool,
+
 }
 
 impl SankeyDiagramState {
   pub(crate) const fn new() -> Self {
     Self {
       extracted_values: vec![],
-      limit: 10,
+      is_trimmed: false,
     }
   }
 
   pub(crate) fn push(&mut self, value: String) {
     self.extracted_values.push(value);
-    if self.extracted_values.len() > self.limit {
-      self.extracted_values.remove(0);
-    }
   }
 }
 
