@@ -632,7 +632,7 @@ impl Run {
       }
 
       // Check if the traversal should advance.
-      if traversal_result.output_traversals.is_empty() {
+      if traversal_result.followed_transitions_count == 0 {
         // Go to processing the next traversal.
         continue;
       }
@@ -826,6 +826,7 @@ impl Traversal {
             result.matched_logs_count += 1;
 
             if self.matched_logs_counts[index] == *count {
+              result.followed_transitions_count += 1;
               // Update Sankey diagrams' states.
               let mut updated_sankey_states = self.sankey_states(config, index, log);
 
@@ -973,6 +974,8 @@ struct TraversalResult<'a> {
   /// i.e., when multiple transitions coming out of a given state all match the
   /// same log.
   matched_logs_count: u32,
+  // The number of transitions that were followed in response to processing a log.
+  followed_transitions_count: u32,
 }
 
 impl TraversalResult<'_> {
@@ -982,7 +985,7 @@ impl TraversalResult<'_> {
   fn did_make_progress(&self) -> bool {
     debug_assert!(
       if self.matched_logs_count == 0 {
-        self.output_traversals.is_empty()
+        self.followed_transitions_count == 0
       } else {
         true
       }
@@ -990,14 +993,3 @@ impl TraversalResult<'_> {
     self.matched_logs_count > 0
   }
 }
-
-//
-// TraversalAdvancement
-//
-
-// #[derive(Debug, Default)]
-// struct TraversalAdvancement {
-//   /// The index of the transition that should be advanced.
-//   transition_index: usize,
-//   sankey_diagram_states: Option<BTreeMap<String, SankeyDiagramState>>,
-// }
