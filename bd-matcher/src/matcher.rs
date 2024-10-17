@@ -17,6 +17,7 @@ use protos::config::v1::config::log_matcher::base_log_matcher::{self, StringMatc
 use protos::config::v1::config::log_matcher::{BaseLogMatcher, Match_type};
 use protos::config::v1::config::LogMatcher;
 use regex::Regex;
+use std::borrow::Cow;
 
 /// A compiled matching tree that supports evaluating a an input log. Matching involves
 /// evaluating the match criteria starting from the top, possibly recursing into subtree matching.
@@ -74,7 +75,7 @@ impl Tree {
         Leaf::LogType(level) => *level == log_type.0,
         Leaf::String(input, criteria) => input
           .get(message, fields)
-          .map_or(false, |input| criteria.evaluate(input)),
+          .map_or(false, |input| criteria.evaluate(input.as_ref())),
         Leaf::Any => true,
       },
       Self::Or(or_matchers) => or_matchers
@@ -149,9 +150,13 @@ pub enum InputType {
 }
 
 impl InputType {
-  fn get<'a>(&self, message: &'a LogMessage, fields: &'a impl FieldProvider) -> Option<&'a str> {
+  fn get<'a>(
+    &self,
+    message: &'a LogMessage,
+    fields: &'a impl FieldProvider,
+  ) -> Option<Cow<'a, str>> {
     match self {
-      Self::Message => message.as_str(),
+      Self::Message => message.as_str().map(Cow::Borrowed),
       Self::Field(field_key) => fields.field_value(field_key),
     }
   }

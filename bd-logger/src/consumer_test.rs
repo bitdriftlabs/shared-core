@@ -22,6 +22,7 @@ use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use bd_time::{OffsetDateTimeExt as _, TimeDurationExt};
+use core::panic;
 use flatbuffers::FlatBufferBuilder;
 use futures_util::poll;
 use std::path::{Path, PathBuf};
@@ -122,6 +123,7 @@ impl SetupSingleConsumer {
       }),
       DataUpload::LogsUploadIntentRequest(_) => panic!("unexpected intent"),
       DataUpload::OpaqueRequest(_) => panic!("unexpected opaque upload"),
+      DataUpload::SankeyPathUpload(_) => panic!("unexpected sankey upload"),
     }
   }
 

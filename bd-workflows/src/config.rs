@@ -8,9 +8,9 @@
 use crate::workflow::Traversal;
 use anyhow::anyhow;
 use bd_log_matcher::matcher::Tree;
+use bd_matcher::FieldProvider;
 use bd_proto::protos::workflow::workflow;
-use bd_proto::protos::workflow::workflow::workflow::action::tag::Tag_type;
-use bd_proto::protos::workflow::workflow::workflow::execution::Execution_type;
+use bd_proto::protos::workflow::workflow::workflow::transition_extension::Extension_type;
 use bd_proto::protos::workflow::workflow::workflow::{
   Execution as ExecutionProto,
   LimitDuration as LimitDurationProto,
@@ -18,12 +18,20 @@ use bd_proto::protos::workflow::workflow::workflow::{
 };
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
 use protobuf::MessageField;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Duration;
 use workflow::workflow::action::action_emit_metric::Value_extractor_type;
 use workflow::workflow::action::action_flush_buffers::streaming::termination_criterion;
-use workflow::workflow::action::{ActionEmitMetric as ActionEmitMetricProto, Action_type};
+use workflow::workflow::action::tag::Tag_type;
+use workflow::workflow::action::{
+  ActionEmitMetric as ActionEmitMetricProto,
+  ActionEmitSankeyDiagram as ActionEmitSankeyDiagramProto,
+  Action_type,
+};
+use workflow::workflow::execution::Execution_type;
 use workflow::workflow::rule::Rule_type;
+use workflow::workflow::transition_extension::sankey_diagram_value_extraction;
 use workflow::workflow::{
   Action as ActionProto,
   State as StateProto,
@@ -153,6 +161,14 @@ impl Config {
     &self.states[traversal.state_index].transitions[transition_index].actions
   }
 
+  pub(crate) fn sankey_extractions(
+    &self,
+    traversal: &Traversal,
+    transition_index: usize,
+  ) -> &[SankeyExtraction] {
+    &self.states[traversal.state_index].transitions[transition_index].sankey_extractions
+  }
+
   pub(crate) fn next_state_index_for_traversal(
     &self,
     traversal: &Traversal,
@@ -239,6 +255,32 @@ impl Execution {
   }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct SankeyExtraction {
+  pub(crate) sankey_id: String,
+  pub(crate) value: TagValue,
+}
+
+impl SankeyExtraction {
+  fn new(
+    proto: &workflow::workflow::transition_extension::SankeyDiagramValueExtraction,
+  ) -> anyhow::Result<Self> {
+    let Some(value) = &proto.value_type else {
+      anyhow::bail!("invalid sankey diagram value extraction configuration: missing value type")
+    };
+
+    Ok(Self {
+      sankey_id: proto.sankey_diagram_id.to_string(),
+      value: match value {
+        sankey_diagram_value_extraction::Value_type::Fixed(value) => TagValue::Fixed(value.clone()),
+        sankey_diagram_value_extraction::Value_type::FieldExtracted(extracted) => {
+          TagValue::Extract(extracted.field_name.clone())
+        },
+      },
+    })
+  }
+}
+
 //
 // Transition
 //
@@ -248,6 +290,7 @@ pub(crate) struct Transition {
   target_state_index: usize,
   rule: Predicate,
   actions: Vec<Action>,
+  sankey_extractions: Vec<SankeyExtraction>,
 }
 
 impl Transition {
@@ -273,13 +316,37 @@ impl Transition {
     let actions = transition
       .actions
       .iter()
-      .map(Action::new)
+      .map(Action::try_from_proto)
       .collect::<anyhow::Result<Vec<_>>>()?;
+
+    let sankey_extractions = transition
+      .extensions
+      .iter()
+      .map(|extension| {
+        let Some(extension_type) = &extension.extension_type else {
+          return anyhow::Ok(None);
+        };
+
+        match extension_type {
+          Extension_type::SankeyDiagramValueExtraction(extension) => {
+            anyhow::Ok(Some(SankeyExtraction::new(extension)))
+          },
+          #[allow(unreachable_patterns)]
+          _ => anyhow::bail!("invalid transition configuration: unknown extension type"),
+        }
+      })
+      .filter_map(|result| match result {
+        Ok(Some(value)) => Some(value),
+        Err(err) => Some(Err(err)),
+        _ => None,
+      })
+      .collect::<Result<_, _>>()?;
 
     Ok(Self {
       target_state_index,
       rule,
       actions,
+      sankey_extractions,
     })
   }
 
@@ -308,10 +375,11 @@ pub(crate) enum Predicate {
 pub enum Action {
   FlushBuffers(ActionFlushBuffers),
   EmitMetric(ActionEmitMetric),
+  SankeyDiagram(ActionEmitSankeyDiagram),
 }
 
 impl Action {
-  fn new(proto: &ActionProto) -> anyhow::Result<Self> {
+  fn try_from_proto(proto: &ActionProto) -> anyhow::Result<Self> {
     match proto
       .action_type
       .as_ref()
@@ -334,8 +402,8 @@ impl Action {
         }))
       },
       Action_type::ActionEmitMetric(metric) => Ok(Self::EmitMetric(ActionEmitMetric::new(metric)?)),
-      Action_type::ActionEmitSankeyDiagram(_) => Err(anyhow!(
-        "invalid action configuration: unsupported action type"
+      Action_type::ActionEmitSankeyDiagram(diagram) => Ok(Self::SankeyDiagram(
+        ActionEmitSankeyDiagram::try_from_proto(diagram)?,
       )),
     }
   }
@@ -482,6 +550,35 @@ impl ActionEmitMetric {
 }
 
 //
+// ActionEmitSankeyDiagram
+//
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ActionEmitSankeyDiagram {
+  id: String,
+  limit: u32,
+}
+
+impl ActionEmitSankeyDiagram {
+  fn try_from_proto(proto: &ActionEmitSankeyDiagramProto) -> anyhow::Result<Self> {
+    Ok(Self {
+      id: proto.id.to_string(),
+      limit: proto.limit,
+    })
+  }
+
+  #[must_use]
+  pub fn id(&self) -> &str {
+    &self.id
+  }
+
+  #[must_use]
+  pub const fn limit(&self) -> u32 {
+    self.limit
+  }
+}
+
+//
 // MetricType
 //
 
@@ -517,4 +614,13 @@ pub enum TagValue {
   Extract(String),
   // Use a fixed value.
   Fixed(FieldKey),
+}
+
+impl TagValue {
+  pub(crate) fn extract_value<'a>(&self, fields: &'a impl FieldProvider) -> Option<Cow<'a, str>> {
+    match self {
+      Self::Extract(field_key) => fields.field_value(field_key),
+      Self::Fixed(value) => Some(Cow::Owned(value.to_string())),
+    }
+  }
 }

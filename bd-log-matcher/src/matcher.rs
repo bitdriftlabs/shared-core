@@ -28,6 +28,7 @@ use bd_proto::protos::log_matcher::log_matcher::log_matcher::{
 };
 use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
 use regex::Regex;
+use std::borrow::Cow;
 
 const LOG_LEVEL_KEY: &str = "log_level";
 const LOG_TYPE_KEY: &str = "log_type";
@@ -104,10 +105,10 @@ impl Tree {
         },
         Leaf::StringValue(input, criteria) => input
           .get(message, fields)
-          .map_or(false, |input| criteria.evaluate(input)),
+          .map_or(false, |input| criteria.evaluate(input.as_ref())),
         Leaf::VersionValue(input, criteria) => input
           .get(message, fields)
-          .map_or(false, |input| criteria.evaluate(input)),
+          .map_or(false, |input| criteria.evaluate(input.as_ref())),
         Leaf::IsSetValue(input) => input.get(message, fields).is_some(),
       },
       Self::Or(or_matchers) => or_matchers
@@ -220,9 +221,13 @@ pub enum InputType {
 }
 
 impl InputType {
-  fn get<'a>(&self, message: &'a LogMessage, fields: &'a impl FieldProvider) -> Option<&'a str> {
+  fn get<'a>(
+    &self,
+    message: &'a LogMessage,
+    fields: &'a impl FieldProvider,
+  ) -> Option<Cow<'a, str>> {
     match self {
-      Self::Message => message.as_str(),
+      Self::Message => message.as_str().map(Cow::Borrowed),
       Self::Field(field_key) => fields.field_value(field_key),
     }
   }

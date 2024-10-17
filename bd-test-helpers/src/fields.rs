@@ -7,6 +7,7 @@
 
 use bd_log_primitives::LogField;
 use bd_matcher::FieldProvider;
+use std::borrow::Cow;
 
 //
 // FieldsContainer
@@ -17,11 +18,11 @@ pub struct FieldsContainer<'a> {
 }
 
 impl FieldProvider for FieldsContainer<'_> {
-  fn field_value(&self, field_key: &str) -> Option<&str> {
+  fn field_value(&self, field_key: &str) -> Option<Cow<'_, str>> {
     self
       .fields
       .iter()
       .find(|field| field.key == field_key)
-      .and_then(|field| field.value.as_str())
+      .and_then(|field| field.value.as_str().map(Cow::Borrowed))
   }
 }

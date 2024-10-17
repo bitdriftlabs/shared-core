@@ -26,6 +26,7 @@ use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::{
 };
 use bd_proto::protos::config::v1::config::log_matcher::{BaseLogMatcher, MatcherList};
 use bd_proto::protos::config::v1::config::{log_matcher, LogMatcher};
+use std::borrow::Cow;
 
 type Input<'a> = (LogType, LogLevel, LogMessage, LogFields);
 
@@ -362,10 +363,10 @@ fn simple_log_matcher(match_type: base_log_matcher::Match_type) -> LogMatcher {
 }
 
 impl FieldProvider for LogFields {
-  fn field_value(&self, field_key: &str) -> Option<&str> {
+  fn field_value(&self, field_key: &str) -> Option<Cow<'_, str>> {
     self
       .iter()
       .find(|field| field.key == field_key)
-      .and_then(|field| field.value.as_str())
+      .and_then(|field| field.value.as_str().map(Cow::Borrowed))
   }
 }

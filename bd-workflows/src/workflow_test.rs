@@ -5,15 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::config::{
-  Action,
-  ActionEmitMetric,
-  ActionFlushBuffers,
-  Config,
-  MetricType,
-  ValueIncrement,
-};
-use crate::workflow::{Run, Workflow, WorkflowResult, WorkflowResultStats};
+use crate::config::{ActionEmitMetric, ActionFlushBuffers, Config, MetricType, ValueIncrement};
+use crate::workflow::{Run, TriggeredAction, Workflow, WorkflowResult, WorkflowResultStats};
 use bd_log_primitives::{log_level, FieldsRef, LogFields, LogMessage};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_stats_common::labels;
@@ -290,7 +283,7 @@ fn multiple_start_nodes_initial_fork() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![],
+      triggered_actions: vec![],
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -313,7 +306,7 @@ fn multiple_start_nodes_initial_fork() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![],
+      triggered_actions: vec![],
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 1,
         potential_fork_exclusive_workflows_count: 0,
@@ -337,7 +330,7 @@ fn multiple_start_nodes_initial_fork() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![&Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
         id: "foo".to_string(),
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
@@ -399,7 +392,7 @@ fn multiple_start_nodes_initial_branching() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![],
+      triggered_actions: vec![],
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -423,7 +416,7 @@ fn multiple_start_nodes_initial_branching() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![],
+      triggered_actions: vec![],
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 1,
         potential_fork_exclusive_workflows_count: 0,
@@ -446,7 +439,7 @@ fn multiple_start_nodes_initial_branching() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![&Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
         id: "foo".to_string(),
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
@@ -504,13 +497,13 @@ fn basic_exclusive_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![
-        &Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![
+        TriggeredAction::FlushBuffers(&ActionFlushBuffers {
           id: "foo".to_string(),
           buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
           streaming: None,
         }),
-        &Action::EmitMetric(ActionEmitMetric {
+        TriggeredAction::EmitMetric(&ActionEmitMetric {
           id: "foo_metric".to_string(),
           tags: BTreeMap::new(),
           increment: ValueIncrement::Fixed(123),
@@ -542,7 +535,7 @@ fn basic_exclusive_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![&Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
         id: "bar".to_string(),
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
@@ -607,7 +600,7 @@ fn basic_parallel_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![&Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
         id: "foo".to_string(),
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
@@ -637,7 +630,7 @@ fn basic_parallel_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![&Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
         id: "bar".to_string(),
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
@@ -702,7 +695,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![],
+      triggered_actions: vec![],
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -730,7 +723,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![],
+      triggered_actions: vec![],
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -755,11 +748,11 @@ fn exclusive_workflow_matched_logs_count_limit() {
   // * The match causes the run to exceed the limit of allowed matches.
   // * The second run is removed.
   let result = workflow_process_log!(workflow; "bar");
-  assert!(result.actions.is_empty());
+  assert!(result.triggered_actions.is_empty());
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![],
+      triggered_actions: vec![],
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -824,7 +817,7 @@ fn parallel_workflow_matched_logs_count_limit() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![],
+      triggered_actions: vec![],
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -852,7 +845,7 @@ fn parallel_workflow_matched_logs_count_limit() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![],
+      triggered_actions: vec![],
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -881,7 +874,7 @@ fn parallel_workflow_matched_logs_count_limit() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![],
+      triggered_actions: vec![],
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -932,7 +925,7 @@ fn exclusive_workflow_log_rule_count() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![],
+      triggered_actions: vec![],
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -958,7 +951,7 @@ fn exclusive_workflow_log_rule_count() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![&Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
         id: "foo".to_string(),
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
@@ -984,7 +977,7 @@ fn exclusive_workflow_log_rule_count() {
 
   // None of the runs advance as they do not match the log.
   let result = workflow_process_log!(workflow; "not matching");
-  assert!(result.actions.is_empty());
+  assert!(result.triggered_actions.is_empty());
   assert_eq!(WorkflowResultStats::default(), result.stats);
   assert_active_runs!(workflow; "A", "B");
 
@@ -994,7 +987,7 @@ fn exclusive_workflow_log_rule_count() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![&Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
         id: "bar".to_string(),
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
@@ -1049,7 +1042,7 @@ fn parallel_workflow_log_rule_count() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![],
+      triggered_actions: vec![],
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1076,7 +1069,7 @@ fn parallel_workflow_log_rule_count() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![&Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
         id: "foo".to_string(),
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
@@ -1107,7 +1100,7 @@ fn parallel_workflow_log_rule_count() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![&Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
         id: "foo".to_string(),
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
@@ -1139,13 +1132,13 @@ fn parallel_workflow_log_rule_count() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![
-        &Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![
+        TriggeredAction::FlushBuffers(&ActionFlushBuffers {
           id: "bar".to_string(),
           buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
           streaming: None,
         }),
-        &Action::FlushBuffers(ActionFlushBuffers {
+        TriggeredAction::FlushBuffers(&ActionFlushBuffers {
           id: "bar".to_string(),
           buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
           streaming: None,
@@ -1216,7 +1209,7 @@ fn branching_exclusive_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![&Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
         id: "foo".to_string(),
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
@@ -1245,7 +1238,7 @@ fn branching_exclusive_workflow() {
   // initial state.
   // 2. None of the run match the log.
   let result = workflow_process_log!(workflow; "fooo");
-  assert!(result.actions.is_empty());
+  assert!(result.triggered_actions.is_empty());
   assert_eq!(
     WorkflowResultStats {
       reset_exclusive_workflows_count: 0,
@@ -1271,7 +1264,7 @@ fn branching_exclusive_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![&Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
         id: "zoo".to_string(),
         buffer_ids: BTreeSet::from(["zoo_buffer_id".to_string()]),
         streaming: None,
@@ -1301,13 +1294,13 @@ fn branching_exclusive_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![
-        &Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![
+        TriggeredAction::FlushBuffers(&ActionFlushBuffers {
           id: "foo".to_string(),
           buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
           streaming: None,
         }),
-        &Action::FlushBuffers(ActionFlushBuffers {
+        TriggeredAction::FlushBuffers(&ActionFlushBuffers {
           id: "bar".to_string(),
           buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
           streaming: None,
@@ -1380,7 +1373,7 @@ fn branching_parallel_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![&Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
         id: "foo".to_string(),
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
@@ -1411,7 +1404,7 @@ fn branching_parallel_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![&Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
         id: "bar".to_string(),
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
@@ -1443,7 +1436,7 @@ fn branching_parallel_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![&Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
         id: "zoo".to_string(),
         buffer_ids: BTreeSet::from(["zoo_buffer_id".to_string()]),
         streaming: None,
@@ -1471,7 +1464,7 @@ fn branching_parallel_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![&Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
         id: "zar".to_string(),
         buffer_ids: BTreeSet::from(["zar_buffer_id".to_string()]),
         streaming: None,
@@ -1501,13 +1494,13 @@ fn branching_parallel_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![
-        &Action::FlushBuffers(ActionFlushBuffers {
+      triggered_actions: vec![
+        TriggeredAction::FlushBuffers(&ActionFlushBuffers {
           id: "foo".to_string(),
           buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
           streaming: None,
         }),
-        &Action::FlushBuffers(ActionFlushBuffers {
+        TriggeredAction::FlushBuffers(&ActionFlushBuffers {
           id: "bar".to_string(),
           buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
           streaming: None,
@@ -1537,7 +1530,7 @@ fn branching_parallel_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      actions: vec![],
+      triggered_actions: vec![],
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
