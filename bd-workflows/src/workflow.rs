@@ -563,7 +563,9 @@ impl Run {
     // starting at `index` in any given iteration of the loop.
     for index in (0 .. self.traversals.len()).rev() {
       let traversal = &mut self.traversals[index];
-      let traversal_result = traversal.process_log(config, log);
+      let mut traversal_result = traversal.process_log(config, log);
+
+      run_triggered_actions.append(&mut traversal_result.triggered_actions);
 
       // Increase the counter of logs matched by a given workflow run.
       self.matched_logs_count += traversal_result.matched_logs_count;
@@ -649,12 +651,6 @@ impl Run {
         created_traversals_count += output_traversals_count - 1;
       }
 
-      let TraversalResult {
-        output_traversals,
-        mut triggered_actions,
-        ..
-      } = traversal_result;
-
       // Replace advanced traversals with their successors.
       // Each advanced traversal may have 0 or more successors.
       // Notes:
@@ -664,9 +660,9 @@ impl Run {
       //    one of workflow's final states and can be removed.
       //  * if after advancing traversals there are 0 traversals left then a given workflow run is
       //    finished and can be removed.
-      self.traversals.splice(index ..= index, output_traversals);
-
-      run_triggered_actions.append(&mut triggered_actions);
+      self
+        .traversals
+        .splice(index ..= index, traversal_result.output_traversals);
     }
 
     let state = if self.traversals.is_empty() {
@@ -830,66 +826,18 @@ impl Traversal {
             result.matched_logs_count += 1;
 
             if self.matched_logs_counts[index] == *count {
-              // Extract values for Sankey diagrams.
-              let mut sankey_diagram_states = self.sankey_states.clone();
-              let extractions = config.sankey_value_extractions(self, index);
-              for extraction in extractions {
-                let Some(extracted_value) = extraction.value.extract_value(log) else {
-                  continue;
-                };
+              // Update Sankey diagrams' states.
+              let mut updated_sankey_states = self.sankey_states(config, index, log);
 
-                sankey_diagram_states
-                  .get_or_insert_with(BTreeMap::new)
-                  .entry(extraction.sankey_id.clone())
-                  .or_insert(SankeyDiagramState::new())
-                  .push(extracted_value.into_owned());
-              }
+              // Collect triggered actions.
+              let actions = config.actions_for_traversal(self, index);
+              let triggered_actions = self.triggered_actions(actions, &mut updated_sankey_states);
 
-              // Retrieve actions to perform as part of the transition.
-              let traversal_actions = config.actions_for_traversal(self, index);
-              for action in traversal_actions {
-                match action {
-                  Action::FlushBuffers(action) => {
-                    result
-                      .triggered_actions
-                      .push(TriggeredAction::FlushBuffers(action));
-                  },
-                  Action::EmitMetric(action) => {
-                    result
-                      .triggered_actions
-                      .push(TriggeredAction::EmitMetric(action));
-                  },
-                  Action::SankeyDiagram(action) => {
-                    let Some(sankey_diagram_states) = &mut self.sankey_states else {
-                      debug_assert!(false, "sankey_diagram_states should be present");
-                      continue;
-                    };
-
-                    let Some(sankey_diagram_state) = sankey_diagram_states.remove(action.id())
-                    else {
-                      debug_assert!(
-                        false,
-                        "sankey_diagram_state for Sankey with {:?} ID should be present",
-                        action.id()
-                      );
-                      continue;
-                    };
-
-                    result
-                      .triggered_actions
-                      .push(TriggeredAction::SankeyDiagram(
-                        TriggeredActionEmitSankeyDiagram {
-                          action,
-                          path: SankeyDiagramPath::new(sankey_diagram_state),
-                        },
-                      ));
-                  },
-                }
-              }
+              result.triggered_actions.extend(triggered_actions);
 
               // Create next traversal.
               let next_state_index = config.next_state_index_for_traversal(self, index);
-              if let Some(traversal) = Self::new(config, next_state_index, sankey_diagram_states) {
+              if let Some(traversal) = Self::new(config, next_state_index, updated_sankey_states) {
                 result.output_traversals.push(traversal);
               }
 
@@ -917,6 +865,70 @@ impl Traversal {
     }
 
     result
+  }
+
+  fn sankey_states(
+    &self,
+    config: &Config,
+    index: usize,
+    log: &LogRef<'_>,
+  ) -> Option<BTreeMap<String, SankeyDiagramState>> {
+    let mut sankey_diagram_states = self.sankey_states.clone();
+    let extractions = config.sankey_value_extractions(self, index);
+    for extraction in extractions {
+      let Some(extracted_value) = extraction.value.extract_value(log) else {
+        continue;
+      };
+
+      sankey_diagram_states
+        .get_or_insert_with(BTreeMap::new)
+        .entry(extraction.sankey_id.clone())
+        .or_insert(SankeyDiagramState::new())
+        .push(extracted_value.into_owned());
+    }
+
+    sankey_diagram_states
+  }
+
+  fn triggered_actions<'a>(
+    &mut self,
+    actions: &'a [Action],
+    sankey_states: &mut Option<BTreeMap<String, SankeyDiagramState>>,
+  ) -> Vec<TriggeredAction<'a>> {
+    let mut triggered_actions = vec![];
+    for action in actions {
+      match action {
+        Action::FlushBuffers(action) => {
+          triggered_actions.push(TriggeredAction::FlushBuffers(action));
+        },
+        Action::EmitMetric(action) => {
+          triggered_actions.push(TriggeredAction::EmitMetric(action));
+        },
+        Action::SankeyDiagram(action) => {
+          let Some(sankey_diagram_states) = sankey_states else {
+            debug_assert!(false, "sankey_diagram_states should be present");
+            continue;
+          };
+
+          let Some(sankey_diagram_state) = sankey_diagram_states.remove(action.id()) else {
+            debug_assert!(
+              false,
+              "sankey_diagram_state for Sankey with {:?} ID should be present",
+              action.id()
+            );
+            continue;
+          };
+
+          triggered_actions.push(TriggeredAction::SankeyDiagram(
+            TriggeredActionEmitSankeyDiagram {
+              action,
+              path: SankeyDiagramPath::new(sankey_diagram_state),
+            },
+          ));
+        },
+      }
+    }
+    triggered_actions
   }
 
   // Whether a given traversal is an initial state.
