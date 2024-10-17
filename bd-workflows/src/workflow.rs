@@ -831,7 +831,7 @@ impl Traversal {
 
               // Collect triggered actions.
               let actions = config.actions_for_traversal(self, index);
-              let triggered_actions = self.triggered_actions(actions, &mut updated_sankey_states);
+              let triggered_actions = Self::triggered_actions(actions, &mut updated_sankey_states);
 
               result.triggered_actions.extend(triggered_actions);
 
@@ -891,7 +891,6 @@ impl Traversal {
   }
 
   fn triggered_actions<'a>(
-    &mut self,
     actions: &'a [Action],
     sankey_states: &mut Option<BTreeMap<String, SankeyDiagramState>>,
   ) -> Vec<TriggeredAction<'a>> {
