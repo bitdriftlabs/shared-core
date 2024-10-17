@@ -556,18 +556,25 @@ impl ActionEmitMetric {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ActionEmitSankeyDiagram {
   id: String,
+  limit: u32,
 }
 
 impl ActionEmitSankeyDiagram {
   fn try_from_proto(proto: &ActionEmitSankeyDiagramProto) -> anyhow::Result<Self> {
     Ok(Self {
       id: proto.id.to_string(),
+      limit: proto.limit,
     })
   }
 
   #[must_use]
   pub fn id(&self) -> &str {
     &self.id
+  }
+
+  #[must_use]
+  pub const fn limit(&self) -> u32 {
+    self.limit
   }
 }
 

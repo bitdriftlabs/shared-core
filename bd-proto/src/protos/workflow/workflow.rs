@@ -4882,7 +4882,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ic.protobuf.workflow.v1\x1a\x17validate/validate.proto\x1a5bitdrift_publ\
     ic/protobuf/matcher/v1/log_matcher.proto\"f\n\x16WorkflowsConfiguration\
     \x12L\n\tworkflows\x18\x01\x20\x03(\x0b2..bitdrift_public.protobuf.workf\
-    low.v1.WorkflowR\tworkflows\"\x9d\x20\n\x08Workflow\x12\x17\n\x02id\x18\
+    low.v1.WorkflowR\tworkflows\"\xcb\"\n\x08Workflow\x12\x17\n\x02id\x18\
     \x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12V\n\x06states\x18\
     \x02\x20\x03(\x0b24.bitdrift_public.protobuf.workflow.v1.Workflow.StateR\
     \x06statesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12V\n\texecution\x18\x03\
@@ -4904,56 +4904,51 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     _match\x18\x01\x20\x01(\x0b2;.bitdrift_public.protobuf.workflow.v1.Workf\
     low.RuleLogMatchH\0R\x0cruleLogMatch\x12_\n\x0crule_timeout\x18\x02\x20\
     \x01(\x0b2:.bitdrift_public.protobuf.workflow.v1.Workflow.RuleTimeoutH\0\
-    R\x0bruleTimeoutB\x10\n\trule_type\x12\x03\xf8B\x01\x1a\xd8\x03\n\x13Tra\
+    R\x0bruleTimeoutB\x10\n\trule_type\x12\x03\xf8B\x01\x1a\xcb\x03\n\x13Tra\
     nsitionExtension\x12\xa8\x01\n\x1fsankey_diagram_value_extraction\x18\
     \x01\x20\x01(\x0b2_.bitdrift_public.protobuf.workflow.v1.Workflow.Transi\
     tionExtension.SankeyDiagramValueExtractionH\0R\x1csankeyDiagramValueExtr\
     action\x1a\xf1\x01\n\x1cSankeyDiagramValueExtraction\x123\n\x11sankey_di\
     agram_id\x18\x01\x20\x01(\tR\x0fsankeyDiagramIdB\x07\xfaB\x04r\x02\x10\
-    \x01\x12\x14\n\x05limit\x18\x02\x20\x01(\rR\x05limit\x12\x1f\n\x05fixed\
-    \x18\x03\x20\x01(\tH\0R\x05fixedB\x07\xfaB\x04r\x02\x10\x01\x12_\n\x0ffi\
-    eld_extracted\x18\x04\x20\x01(\x0b24.bitdrift_public.protobuf.workflow.v\
-    1.FieldExtractedH\0R\x0efieldExtractedB\x11\n\nvalue_type\x12\x03\xf8B\
-    \x01B\x15\n\x0eextension_type\x12\x03\xf8B\x01\x1a\x89\x01\n\x0cRuleLogM\
-    atch\x12Z\n\x0blog_matcher\x18\x01\x20\x01(\x0b2/.bitdrift_public.protob\
-    uf.matcher.v1.LogMatcherR\nlogMatcherB\x08\xfaB\x05\x8a\x01\x02\x10\x01\
-    \x12\x1d\n\x05count\x18\x02\x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\
-    \0\x1a7\n\x0bRuleTimeout\x12(\n\x0bduration_ms\x18\x01\x20\x01(\x04R\ndu\
-    rationMsB\x07\xfaB\x042\x02(\0\x1a\xe0\x0e\n\x06Action\x12|\n\x14action_\
-    flush_buffers\x18\x01\x20\x01(\x0b2H.bitdrift_public.protobuf.workflow.v\
-    1.Workflow.Action.ActionFlushBuffersH\0R\x12actionFlushBuffers\x12v\n\
-    \x12action_emit_metric\x18\x02\x20\x01(\x0b2F.bitdrift_public.protobuf.w\
-    orkflow.v1.Workflow.Action.ActionEmitMetricH\0R\x10actionEmitMetric\x12\
-    \x7f\n\x15action_sankey_diagram\x18\x03\x20\x01(\x0b2I.bitdrift_public.p\
-    rotobuf.workflow.v1.Workflow.Action.ActionSankeyDiagramH\0R\x13actionSan\
-    keyDiagram\x1a\xa9\x05\n\x12ActionFlushBuffers\x12\x1d\n\nbuffer_ids\x18\
-    \x01\x20\x03(\tR\tbufferIds\x12\x17\n\x02id\x18\x02\x20\x01(\tR\x02idB\
-    \x07\xfaB\x04r\x02\x10\x01\x12p\n\tstreaming\x18\x03\x20\x01(\x0b2R.bitd\
-    rift_public.protobuf.workflow.v1.Workflow.Action.ActionFlushBuffers.Stre\
-    amingR\tstreaming\x1a\xe8\x03\n\tStreaming\x12G\n\x20destination_streami\
-    ng_buffer_ids\x18\x01\x20\x03(\tR\x1ddestinationStreamingBufferIds\x12\
-    \x9a\x01\n\x14termination_criteria\x18\x02\x20\x03(\x0b2g.bitdrift_publi\
-    c.protobuf.workflow.v1.Workflow.Action.ActionFlushBuffers.Streaming.Term\
-    inationCriterionR\x13terminationCriteria\x1a\xf4\x01\n\x14TerminationCri\
-    terion\x12\x92\x01\n\nlogs_count\x18\x01\x20\x01(\x0b2q.bitdrift_public.\
-    protobuf.workflow.v1.Workflow.Action.ActionFlushBuffers.Streaming.Termin\
-    ationCriterion.LogsCountH\0R\tlogsCount\x1a:\n\tLogsCount\x12-\n\x0emax_\
-    logs_count\x18\x01\x20\x01(\x04R\x0cmaxLogsCountB\x07\xfaB\x042\x02\x20\
-    \0B\x0b\n\x04type\x12\x03\xf8B\x01\x1a\xee\x05\n\x10ActionEmitMetric\x12\
-    \x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12j\n\
-    \x07counter\x18\x02\x20\x01(\x0b2N.bitdrift_public.protobuf.workflow.v1.\
-    Workflow.Action.ActionEmitMetric.CounterH\0R\x07counter\x12p\n\thistogra\
-    m\x18\x05\x20\x01(\x0b2P.bitdrift_public.protobuf.workflow.v1.Workflow.A\
-    ction.ActionEmitMetric.HistogramH\0R\thistogram\x12\x16\n\x05fixed\x18\
-    \x03\x20\x01(\rH\x01R\x05fixed\x12_\n\x0ffield_extracted\x18\x06\x20\x01\
-    (\x0b24.bitdrift_public.protobuf.workflow.v1.FieldExtractedH\x01R\x0efie\
-    ldExtracted\x12^\n\x04tags\x18\x04\x20\x03(\x0b2J.bitdrift_public.protob\
-    uf.workflow.v1.Workflow.Action.ActionEmitMetric.TagR\x04tags\x1a\xc0\x01\
-    \n\x03Tag\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\
-    \x02\x10\x01\x12*\n\x0bfixed_value\x18\x02\x20\x01(\tH\0R\nfixedValueB\
-    \x07\xfaB\x04r\x02\x10\x01\x12_\n\x0ffield_extracted\x18\x03\x20\x01(\
-    \x0b24.bitdrift_public.protobuf.workflow.v1.FieldExtractedH\0R\x0efieldE\
-    xtractedB\x0f\n\x08tag_type\x12\x03\xf8B\x01\x1a\t\n\x07Counter\x1a\x0b\
+    \x01\x12\x1f\n\x05fixed\x18\x02\x20\x01(\tH\0R\x05fixedB\x07\xfaB\x04r\
+    \x02\x10\x01\x12h\n\x0ffield_extracted\x18\x03\x20\x01(\x0b2=.bitdrift_p\
+    ublic.protobuf.workflow.v1.Workflow.FieldExtractedH\0R\x0efieldExtracted\
+    B\x11\n\nvalue_type\x12\x03\xf8B\x01B\x15\n\x0eextension_type\x12\x03\
+    \xf8B\x01\x1a\x89\x01\n\x0cRuleLogMatch\x12Z\n\x0blog_matcher\x18\x01\
+    \x20\x01(\x0b2/.bitdrift_public.protobuf.matcher.v1.LogMatcherR\nlogMatc\
+    herB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x1d\n\x05count\x18\x02\x20\x01\
+    (\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a7\n\x0bRuleTimeout\x12(\n\x0bd\
+    uration_ms\x18\x01\x20\x01(\x04R\ndurationMsB\x07\xfaB\x042\x02(\0\x1a\
+    \xe2\x0f\n\x06Action\x12|\n\x14action_flush_buffers\x18\x01\x20\x01(\x0b\
+    2H.bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionFlushBuffe\
+    rsH\0R\x12actionFlushBuffers\x12v\n\x12action_emit_metric\x18\x02\x20\
+    \x01(\x0b2F.bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionE\
+    mitMetricH\0R\x10actionEmitMetric\x12\x8c\x01\n\x1aaction_emit_sankey_di\
+    agram\x18\x03\x20\x01(\x0b2M.bitdrift_public.protobuf.workflow.v1.Workfl\
+    ow.Action.ActionEmitSankeyDiagramH\0R\x17actionEmitSankeyDiagram\x1a\xa9\
+    \x05\n\x12ActionFlushBuffers\x12\x1d\n\nbuffer_ids\x18\x01\x20\x03(\tR\t\
+    bufferIds\x12\x17\n\x02id\x18\x02\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\
+    \x10\x01\x12p\n\tstreaming\x18\x03\x20\x01(\x0b2R.bitdrift_public.protob\
+    uf.workflow.v1.Workflow.Action.ActionFlushBuffers.StreamingR\tstreaming\
+    \x1a\xe8\x03\n\tStreaming\x12G\n\x20destination_streaming_buffer_ids\x18\
+    \x01\x20\x03(\tR\x1ddestinationStreamingBufferIds\x12\x9a\x01\n\x14termi\
+    nation_criteria\x18\x02\x20\x03(\x0b2g.bitdrift_public.protobuf.workflow\
+    .v1.Workflow.Action.ActionFlushBuffers.Streaming.TerminationCriterionR\
+    \x13terminationCriteria\x1a\xf4\x01\n\x14TerminationCriterion\x12\x92\
+    \x01\n\nlogs_count\x18\x01\x20\x01(\x0b2q.bitdrift_public.protobuf.workf\
+    low.v1.Workflow.Action.ActionFlushBuffers.Streaming.TerminationCriterion\
+    .LogsCountH\0R\tlogsCount\x1a:\n\tLogsCount\x12-\n\x0emax_logs_count\x18\
+    \x01\x20\x01(\x04R\x0cmaxLogsCountB\x07\xfaB\x042\x02\x20\0B\x0b\n\x04ty\
+    pe\x12\x03\xf8B\x01\x1a\xa3\x04\n\x10ActionEmitMetric\x12\x17\n\x02id\
+    \x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12j\n\x07counter\
+    \x18\x02\x20\x01(\x0b2N.bitdrift_public.protobuf.workflow.v1.Workflow.Ac\
+    tion.ActionEmitMetric.CounterH\0R\x07counter\x12p\n\thistogram\x18\x05\
+    \x20\x01(\x0b2P.bitdrift_public.protobuf.workflow.v1.Workflow.Action.Act\
+    ionEmitMetric.HistogramH\0R\thistogram\x12\x16\n\x05fixed\x18\x03\x20\
+    \x01(\rH\x01R\x05fixed\x12h\n\x0ffield_extracted\x18\x06\x20\x01(\x0b2=.\
+    bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtractedH\x01R\x0efi\
+    eldExtracted\x12M\n\x04tags\x18\x04\x20\x03(\x0b29.bitdrift_public.proto\
+    buf.workflow.v1.Workflow.Action.TagR\x04tags\x1a\t\n\x07Counter\x1a\x0b\
     \n\tHistogramB\x12\n\x0bmetric_type\x12\x03\xf8B\x01B\x1b\n\x14value_ext\
     ractor_type\x12\x03\xf8B\x01\x1a\xa0\x01\n\x17ActionEmitSankeyDiagram\
     \x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\
