@@ -795,6 +795,16 @@ pub mod stats {
     60.seconds()
   );
 
+  // The maximum number of pending stat upload files to keep on disk.
+  int_feature_flag!(MaxAggregatedFilesFlag, "stats.max_aggregated_files", 10);
+
+  // The maximum aggregation window of each pending file, in minutes.
+  duration_feature_flag!(
+    MaxAggregationWindowPerFileFlag,
+    "stats.max_aggregation_window_per_file",
+    5.minutes()
+  );
+
   // This controls how many unique counters we allow before rejecting new metrics. This limit
   // prevents unbounded growth of metrics, which could result in the system running out of memory.
   int_feature_flag!(MaxDynamicCountersFlag, "stats.max_dynamic_stats", 500);

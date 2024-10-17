@@ -8,11 +8,13 @@
 mod paths;
 
 use crate::paths::PATHS;
+use bd_client_common::file::read_compressed_protobuf;
 use bd_client_stats::{DynamicStats, Stats};
 use bd_client_stats_store::{Collector, Scope};
 use bd_log_primitives::{log_level, FieldsRef, LogField, LogLevel, LogMessage, LogRef};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
-use bd_proto::protos::client::api::RuntimeUpdate;
+use bd_proto::protos::client::api::{RuntimeUpdate, StatsUploadRequest};
+use bd_proto::protos::client::metric::PendingAggregationIndex;
 use bd_proto::protos::workflow::workflow;
 use bd_proto::protos::workflow::workflow::workflow::execution::{
   ExecutionExclusive,
@@ -36,15 +38,13 @@ use bd_test_helpers::workflow::macros::{
 use bd_time::TimeDurationExt;
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
-use flate2::bufread::ZlibEncoder;
-use flate2::Compression;
+use protobuf::Message;
 use rand::Rng;
 use sha2::Digest;
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{self, File};
-use std::io::{BufReader, Read};
+use std::fs::{self};
 use std::os::unix::fs::MetadataExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use time::ext::NumericalDuration;
 use time::OffsetDateTime;
@@ -406,16 +406,16 @@ impl Setup {
 
     1.seconds().sleep().await;
 
-    // Need to drop to allow for the shutdown to complete.
-    drop(flush_handles.uploader);
-
     shutdown_trigger.shutdown().await;
 
     flush_handle.await.unwrap();
   }
 
-  fn aggregated_stats_file_path(&self) -> PathBuf {
-    self.directory.path().join("aggregated_stats.pb")
+  fn pending_aggregation_index_file_path(&self) -> std::path::PathBuf {
+    self
+      .directory
+      .path()
+      .join("stats_uploads/pending_aggregation_index.pb")
   }
 }
 
@@ -449,23 +449,30 @@ fn run_profiling<T: Fn(&mut AnnotatedWorkflowsEngine) + std::marker::Send + 'sta
         // Let the stats flush to disk to run.
         setup.run_stats_flush_handler().await;
 
-        // Query the size of the file on a disk.
-        let file_path = setup.aggregated_stats_file_path();
-        let metadata = fs::metadata(file_path.clone()).unwrap();
+        // Load the index from disk.
+        let index = read_compressed_protobuf::<PendingAggregationIndex>(
+          &std::fs::read(setup.pending_aggregation_index_file_path()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(index.pending_files.len(), 1);
 
-        // Compress the file too check its size of the data after the compression.
-        let file = File::open(file_path).unwrap();
-        let buffer = BufReader::new(file);
-        // `5` is the compression level we use for compressing traffic in prod.
-        let mut encoder = ZlibEncoder::new(buffer, Compression::new(5));
-        let mut buffer = Vec::new();
-        encoder.read_to_end(&mut buffer).unwrap();
+        // Query the size of the file on a disk.
+        let file_path = setup
+          .directory
+          .path()
+          .join("stats_uploads")
+          .join(&index.pending_files[0].name);
+        let metadata = fs::metadata(&file_path).unwrap();
+
+        // Decompress the file to check the size of the data before compression.
+        let request =
+          read_compressed_protobuf::<StatsUploadRequest>(&std::fs::read(&file_path).unwrap())
+            .unwrap();
 
         log::info!(
-          "++ The size of the `aggregated_stats.pb` file {:?} bytes (after compression {:?} \
-           bytes).",
+          "++ The size of the file {:?} bytes (after compression {:?} bytes).",
+          request.compute_size(),
           metadata.size(),
-          buffer.len(),
         );
       });
   })

@@ -173,20 +173,19 @@ impl ProcessingPipeline {
         self.buffer_producers.continuous_buffer_ids.clone(),
       );
 
-      match &mut self.workflows_engine {
-        Some(workflows_engine) => workflows_engine.update(workflows_engine_config),
-        None => {
-          let (mut engine, buffers_to_flush_rx) = WorkflowsEngine::new(
-            &self.stats.root_scope,
-            &self.sdk_directory,
-            &self.runtime,
-            self.data_upload_tx.clone(),
-            self.stats.dynamic_stats.clone(),
-          );
-          engine.start(workflows_engine_config);
-          self.workflows_engine = Some(engine);
-          self.buffers_to_flush_rx = Some(buffers_to_flush_rx);
-        },
+      if let Some(workflows_engine) = &mut self.workflows_engine {
+        workflows_engine.update(workflows_engine_config);
+      } else {
+        let (mut engine, buffers_to_flush_rx) = WorkflowsEngine::new(
+          &self.stats.root_scope,
+          &self.sdk_directory,
+          &self.runtime,
+          self.data_upload_tx.clone(),
+          self.stats.dynamic_stats.clone(),
+        );
+        engine.start(workflows_engine_config);
+        self.workflows_engine = Some(engine);
+        self.buffers_to_flush_rx = Some(buffers_to_flush_rx);
       }
     } else {
       self.workflows_engine = None;

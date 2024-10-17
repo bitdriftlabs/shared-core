@@ -8,7 +8,7 @@
 use super::{service, BufferUploadManager, ContinuousBufferUploader, Flags};
 use crate::consumer::StreamedBufferUpload;
 use assert_matches::assert_matches;
-use bd_api::upload::Tracked;
+use bd_api::upload::{Tracked, UploadResponse};
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::{Buffer, BufferEvent, BufferEventWithResponse, RingBuffer, RingBufferStats};
 use bd_client_common::fb::{make_log, root_as_log};
@@ -110,7 +110,7 @@ impl SetupSingleConsumer {
     }
   }
 
-  async fn next_upload(&mut self) -> Tracked<ApiRequest, bool> {
+  async fn next_upload(&mut self) -> Tracked<ApiRequest, UploadResponse> {
     match self.data_upload_rx.recv().await.unwrap() {
       DataUpload::LogsUploadRequest(upload) => upload.map_payload(|payload| ApiRequest {
         request_type: Request_type::LogUpload(payload).into(),
@@ -157,7 +157,13 @@ async fn upload_retries() {
   for _ in 0 .. 11 {
     let log_upload = setup.next_upload().await;
     assert_eq!(log_upload.payload.log_upload().logs.len(), 10);
-    log_upload.response_tx.send(false).unwrap();
+    log_upload
+      .response_tx
+      .send(UploadResponse {
+        success: false,
+        uuid: log_upload.uuid,
+      })
+      .unwrap();
   }
 
   tokio::select! {
@@ -175,7 +181,13 @@ async fn upload_retries() {
   // the first one.
   let log_upload = setup.next_upload().await;
   assert_eq!(log_upload.payload.log_upload().logs[0], b"b");
-  log_upload.response_tx.send(true).unwrap();
+  log_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: log_upload.uuid,
+    })
+    .unwrap();
 
   // Now update the max retries to 1 via runtime. The next upload should only retry once.
   setup
@@ -192,7 +204,13 @@ async fn upload_retries() {
 
   for _ in 0 .. 2 {
     let log_upload = setup.next_upload().await;
-    log_upload.response_tx.send(false).unwrap();
+    log_upload
+      .response_tx
+      .send(UploadResponse {
+        success: false,
+        uuid: log_upload.uuid,
+      })
+      .unwrap();
   }
 
   tokio::select! {
@@ -241,7 +259,13 @@ async fn continuous_buffer_upload_byte_limit() {
   assert_eq!(log_upload.payload.log_upload().logs.len(), 1);
   assert_eq!(log_upload.payload.log_upload().logs[0].len(), 150);
 
-  log_upload.response_tx.send(true).unwrap();
+  log_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: log_upload.uuid,
+    })
+    .unwrap();
 
   // We should then receive a second upload with the second log line.
   let log_upload = setup.next_upload().await;
@@ -299,7 +323,13 @@ async fn uploading_full_batch_failure() {
   let first_uuid = log_upload.uuid.clone();
 
   // We signal that the upload failed, which should cause the uploader to re-upload the same logs.
-  log_upload.response_tx.send(false).unwrap();
+  log_upload
+    .response_tx
+    .send(UploadResponse {
+      success: false,
+      uuid: log_upload.uuid,
+    })
+    .unwrap();
 
   // The second upload should be the same as the previous one, with the same uuid as before.
   let log_upload = setup.next_upload().await;
@@ -308,7 +338,13 @@ async fn uploading_full_batch_failure() {
   assert_eq!(log_upload.uuid, first_uuid);
 
   // This time we signal that the upload was ack'd.
-  log_upload.response_tx.send(true).unwrap();
+  log_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: log_upload.uuid,
+    })
+    .unwrap();
 
   // At this point the uploader is preparing another batch, but this batch is not big enough to
   // flush on its own. Advance the time beyond the deadline period to trigger a partial batch
@@ -323,7 +359,13 @@ async fn uploading_full_batch_failure() {
   // Since this is not retrying the first one, ensure that the uuid is different.
   assert_ne!(log_upload.uuid, first_uuid);
 
-  log_upload.response_tx.send(true).unwrap();
+  log_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: log_upload.uuid,
+    })
+    .unwrap();
 
   setup.shutdown().await;
 }
@@ -352,13 +394,25 @@ async fn uploading_partial_batch_failure() {
 
   10.seconds().advance().await;
 
-  log_upload.response_tx.send(false).unwrap();
+  log_upload
+    .response_tx
+    .send(UploadResponse {
+      success: false,
+      uuid: uuid.clone(),
+    })
+    .unwrap();
 
   let log_upload = setup.next_upload().await;
   assert_eq!(log_upload.uuid, uuid);
   assert_eq!(log_upload.payload.log_upload().logs.len(), 4);
 
-  log_upload.response_tx.send(true).unwrap();
+  log_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: log_upload.uuid,
+    })
+    .unwrap();
 
   setup.shutdown().await;
 }
@@ -393,11 +447,23 @@ async fn uploading_never_succeeds() {
 
   // Fail the first upload.
   let log_upload = setup.next_upload().await;
-  log_upload.response_tx.send(false).unwrap();
+  log_upload
+    .response_tx
+    .send(UploadResponse {
+      success: false,
+      uuid: log_upload.uuid,
+    })
+    .unwrap();
 
   // Fail the second upload.
   let log_upload = setup.next_upload().await;
-  log_upload.response_tx.send(false).unwrap();
+  log_upload
+    .response_tx
+    .send(UploadResponse {
+      success: false,
+      uuid: log_upload.uuid,
+    })
+    .unwrap();
 
   // Tear down the structure
   setup.shutdown().await;
@@ -570,7 +636,7 @@ impl SetupMultiConsumer {
       .unwrap();
   }
 
-  async fn next_upload(&mut self) -> Tracked<ApiRequest, bool> {
+  async fn next_upload(&mut self) -> Tracked<ApiRequest, UploadResponse> {
     match self.log_upload_rx.recv().await.unwrap() {
       DataUpload::LogsUploadRequest(upload) => upload.map_payload(|p| ApiRequest {
         request_type: Some(Request_type::LogUpload(p)),
@@ -632,11 +698,23 @@ async fn upload_multiple_continuous_buffers() {
   // The order is unspecified, so figure out which one is which.
   if *upload_1_payload.log_upload().logs == vec![b"a".to_vec()] {
     assert_eq!(*upload_2.payload.log_upload().logs, vec![b"b".to_vec()]);
-    upload_1.response_tx.send(true).unwrap();
+    upload_1
+      .response_tx
+      .send(UploadResponse {
+        success: true,
+        uuid: upload_1.uuid,
+      })
+      .unwrap();
   } else {
     assert_eq!(*upload_1_payload.log_upload().logs, vec![b"b".to_vec()]);
     assert_eq!(*upload_2.payload.log_upload().logs, vec![b"a".to_vec()]);
-    upload_2.response_tx.send(true).unwrap();
+    upload_2
+      .response_tx
+      .send(UploadResponse {
+        success: true,
+        uuid: upload_2.uuid,
+      })
+      .unwrap();
   }
 
   // Remove one of the buffers, making sure that uploads still work.
@@ -807,11 +885,17 @@ async fn log_streaming() {
 
   assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::LogsUploadRequest(upload) => {
     assert_eq!(upload.payload.logs[0], b"data");
-    upload.response_tx.send(true).unwrap();
+    upload.response_tx.send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    }).unwrap();
   });
   assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::LogsUploadRequest(upload) => {
     assert_eq!(upload.payload.logs[0], b"more data");
-    upload.response_tx.send(true).unwrap();
+    upload.response_tx.send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    }).unwrap();
   });
 }
 
