@@ -10,8 +10,6 @@ use anyhow::anyhow;
 use bd_log_matcher::matcher::Tree;
 use bd_matcher::FieldProvider;
 use bd_proto::protos::workflow::workflow;
-use bd_proto::protos::workflow::workflow::workflow::action::tag::Tag_type;
-use bd_proto::protos::workflow::workflow::workflow::execution::Execution_type;
 use bd_proto::protos::workflow::workflow::workflow::transition_extension::Extension_type;
 use bd_proto::protos::workflow::workflow::workflow::{
   Execution as ExecutionProto,
@@ -25,7 +23,13 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Duration;
 use workflow::workflow::action::action_emit_metric::Value_extractor_type;
 use workflow::workflow::action::action_flush_buffers::streaming::termination_criterion;
-use workflow::workflow::action::{ActionEmitMetric as ActionEmitMetricProto, Action_type};
+use workflow::workflow::action::tag::Tag_type;
+use workflow::workflow::action::{
+  ActionEmitMetric as ActionEmitMetricProto,
+  ActionEmitSankeyDiagram as ActionEmitSankeyDiagramProto,
+  Action_type,
+};
+use workflow::workflow::execution::Execution_type;
 use workflow::workflow::rule::Rule_type;
 use workflow::workflow::transition_extension::sankey_diagram_value_extraction;
 use workflow::workflow::{
@@ -398,11 +402,9 @@ impl Action {
         }))
       },
       Action_type::ActionEmitMetric(metric) => Ok(Self::EmitMetric(ActionEmitMetric::new(metric)?)),
-      Action_type::ActionEmitSankeyDiagram(diagram) => {
-        Ok(Self::SankeyDiagram(ActionEmitSankeyDiagram {
-          id: diagram.id.clone(),
-        }))
-      },
+      Action_type::ActionEmitSankeyDiagram(diagram) => Ok(Self::SankeyDiagram(
+        ActionEmitSankeyDiagram::try_from_proto(diagram)?,
+      )),
     }
   }
 }
@@ -548,7 +550,7 @@ impl ActionEmitMetric {
 }
 
 //
-// ActionSankeyDiagram
+// ActionEmitSankeyDiagram
 //
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -557,6 +559,12 @@ pub struct ActionEmitSankeyDiagram {
 }
 
 impl ActionEmitSankeyDiagram {
+  fn try_from_proto(proto: &ActionEmitSankeyDiagramProto) -> anyhow::Result<Self> {
+    Ok(Self {
+      id: proto.id.to_string(),
+    })
+  }
+
   #[must_use]
   pub fn id(&self) -> &str {
     &self.id
