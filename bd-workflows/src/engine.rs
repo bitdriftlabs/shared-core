@@ -21,7 +21,7 @@ use crate::actions_flush_buffers::{
 use crate::config::{ActionEmitMetric, ActionFlushBuffers, Config, WorkflowsConfiguration};
 use crate::metrics::MetricsCollector;
 use crate::sankey_diagram::{self, SankeyDiagram};
-use crate::workflow::{CompletedAction, TriggeredActionEmitSankeyDiagram, Workflow};
+use crate::workflow::{TriggeredAction, TriggeredActionEmitSankeyDiagram, Workflow};
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_stats::DynamicStats;
@@ -530,7 +530,7 @@ impl WorkflowsEngine {
       };
     }
 
-    let mut actions: Vec<CompletedAction<'_>> = vec![];
+    let mut actions: Vec<TriggeredAction<'_>> = vec![];
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let was_in_initial_state = workflow.is_in_initial_state();
       let result = workflow.process_log(
@@ -612,7 +612,7 @@ impl WorkflowsEngine {
         self.needs_state_persistence = true;
       }
 
-      actions.extend(result.actions());
+      actions.extend(result.triggered_actions());
     }
 
     self
@@ -707,7 +707,7 @@ impl WorkflowsEngine {
   /// for `exclusive` workflows). Currently, multiple metric emission actions triggered by runs of
   /// the same workflow result in only one metric emission, which is incorrect behavior.
   fn prepare_actions<'a>(
-    actions: Vec<CompletedAction<'a>>,
+    actions: Vec<TriggeredAction<'a>>,
   ) -> (
     BTreeSet<&'a ActionFlushBuffers>,
     BTreeSet<&'a ActionEmitMetric>,
@@ -720,7 +720,7 @@ impl WorkflowsEngine {
     let flush_buffers_actions: BTreeSet<&ActionFlushBuffers> = actions
       .iter()
       .filter_map(|action| {
-        if let CompletedAction::FlushBuffers(flush_buffers_action) = action {
+        if let TriggeredAction::FlushBuffers(flush_buffers_action) = action {
           Some(*flush_buffers_action)
         } else {
           None
@@ -731,7 +731,7 @@ impl WorkflowsEngine {
     let emit_metric_actions: BTreeSet<&ActionEmitMetric> = actions
       .iter()
       .filter_map(|action| {
-        if let CompletedAction::EmitMetric(emit_metric_action) = action {
+        if let TriggeredAction::EmitMetric(emit_metric_action) = action {
           Some(*emit_metric_action)
         } else {
           None
@@ -743,7 +743,7 @@ impl WorkflowsEngine {
     let sankey_diagrams: BTreeSet<TriggeredActionEmitSankeyDiagram<'a>> = actions
       .into_iter()
       .filter_map(|action| {
-        if let CompletedAction::SankeyDiagram(action) = action {
+        if let TriggeredAction::SankeyDiagram(action) = action {
           Some(action)
         } else {
           None

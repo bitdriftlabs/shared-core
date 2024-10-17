@@ -380,13 +380,13 @@ impl Workflow {
 /// when it processed a given log.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct WorkflowResult<'a> {
-  actions: Vec<CompletedAction<'a>>,
+  triggered_actions: Vec<TriggeredAction<'a>>,
   stats: WorkflowResultStats,
 }
 
 impl<'a> WorkflowResult<'a> {
-  pub fn actions(self) -> Vec<CompletedAction<'a>> {
-    self.actions
+  pub fn triggered_actions(self) -> Vec<TriggeredAction<'a>> {
+    self.triggered_actions
   }
 
   pub const fn stats(&self) -> &WorkflowResultStats {
@@ -394,7 +394,9 @@ impl<'a> WorkflowResult<'a> {
   }
 
   fn incorporate_run_result(&mut self, run_result: &RunResult<'a>) {
-    self.actions.extend_from_slice(&run_result.actions);
+    self
+      .triggered_actions
+      .extend_from_slice(&run_result.triggered_actions);
     self.stats.created_traversals_count += run_result.created_traversals_count;
     self.stats.advanced_traversals_count += run_result.advanced_traversals_count;
     self.stats.completed_traversals_count += run_result.completed_traversals_count;
@@ -550,7 +552,7 @@ impl Run {
 
     // TODO(Augustyniak): Check for duration limit in here.
 
-    let mut actions = Vec::<CompletedAction<'_>>::new();
+    let mut run_triggered_actions = Vec::<TriggeredAction<'_>>::new();
 
     let mut created_traversals_count = 0;
     let mut advanced_traversals_count = 0;
@@ -575,7 +577,7 @@ impl Run {
         if self.matched_logs_count > matched_logs_count_limit {
           return RunResult {
             state: RunState::Stopped,
-            actions: vec![],
+            triggered_actions: vec![],
             created_traversals_count: 0,
             advanced_traversals_count: 0,
             completed_traversals_count: 0,
@@ -599,7 +601,7 @@ impl Run {
                 );
                 return RunResult {
                   state: RunState::Stopped,
-                  actions: vec![],
+                  triggered_actions: vec![],
                   created_traversals_count: 0,
                   advanced_traversals_count: 0,
                   completed_traversals_count: 0,
@@ -636,26 +638,6 @@ impl Run {
       // The currently processed traversal is about to advance.
       advanced_traversals_count += 1;
 
-      // In majority of cases each traversal has 0 or 1 successor. A case when
-      // more than 1 successor is created is possible if a state corresponding to
-      // currently processed traversal has multiple outgoing transitions and a
-      // processed log ends up fulfills conditions for more than 1 of these transitions.
-      // let mut output_traversals = config.
-      // let mut actions_to_perform = vec![];
-
-      // for traversal in traversal_result.output_traversals {
-      //   let traversal_actions = config.actions_for_traversal(traversal, transition_index);
-
-      //   actions_to_perform.extend(traversal_actions.iter());
-
-      //   let next_state_index = config.next_state_index_for_traversal(traversal,
-      // transition_index);
-
-      //   if let Some(traversal) = Traversal::new(config, next_state_index) {
-      //     output_traversals.push(traversal);
-      //   }
-      // }
-
       if traversal_result.output_traversals.is_empty() {
         // Traversal has no successors so it's been completed.
         completed_traversals_count += 1;
@@ -669,7 +651,7 @@ impl Run {
 
       let TraversalResult {
         output_traversals,
-        mut actions_to_perform,
+        mut triggered_actions,
         ..
       } = traversal_result;
 
@@ -684,7 +666,7 @@ impl Run {
       //    finished and can be removed.
       self.traversals.splice(index ..= index, output_traversals);
 
-      actions.append(&mut actions_to_perform);
+      run_triggered_actions.append(&mut triggered_actions);
     }
 
     let state = if self.traversals.is_empty() {
@@ -695,7 +677,7 @@ impl Run {
 
     RunResult {
       state,
-      actions,
+      triggered_actions: run_triggered_actions,
       created_traversals_count,
       advanced_traversals_count,
       completed_traversals_count,
@@ -762,10 +744,9 @@ pub(crate) enum RunState {
 pub(crate) struct RunResult<'a> {
   /// The state of the workflow run.
   state: RunState,
-  /// The actions to be taken in the result of all performed
-  /// transitions.
-  actions: Vec<CompletedAction<'a>>,
-  /// The sankey diagram states.
+  /// The list of triggered actions.
+  triggered_actions: Vec<TriggeredAction<'a>>,
+  /// The Sankey diagram states.
   // TODO(Augustyniak): Implement sankey diagram states.
   // sankey_diagram_states: Option<BTreeMap<String, SankeyDiagramState>>,
   /// The number of newly created traversals.
@@ -833,6 +814,10 @@ impl Traversal {
     let transitions = config.transitions_for_traversal(self);
 
     let mut result = TraversalResult::default();
+    // In majority of cases each traversal has 0 or 1 successor. A case when
+    // more than 1 successor is created is possible if a state corresponding to
+    // currently processed traversal has multiple outgoing transitions and a
+    // processed log ends up fulfills conditions for more than 1 of these transitions.
     for (index, transition) in transitions.iter().enumerate() {
       match &transition.rule() {
         Predicate::LogMatch(log_match, count) => {
@@ -866,13 +851,13 @@ impl Traversal {
                 match action {
                   Action::FlushBuffers(action) => {
                     result
-                      .actions_to_perform
-                      .push(CompletedAction::FlushBuffers(action));
+                      .triggered_actions
+                      .push(TriggeredAction::FlushBuffers(action));
                   },
                   Action::EmitMetric(action) => {
                     result
-                      .actions_to_perform
-                      .push(CompletedAction::EmitMetric(action));
+                      .triggered_actions
+                      .push(TriggeredAction::EmitMetric(action));
                   },
                   Action::SankeyDiagram(action) => {
                     let Some(sankey_diagram_states) = &mut self.sankey_states else {
@@ -891,8 +876,8 @@ impl Traversal {
                     };
 
                     result
-                      .actions_to_perform
-                      .push(CompletedAction::SankeyDiagram(
+                      .triggered_actions
+                      .push(TriggeredAction::SankeyDiagram(
                         TriggeredActionEmitSankeyDiagram {
                           action,
                           path: SankeyDiagramPath::new(sankey_diagram_state),
@@ -941,12 +926,12 @@ impl Traversal {
 }
 
 //
-// CompletedAction
+// TriggeredAction
 //
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 /// The action to perform.
-pub(crate) enum CompletedAction<'a> {
+pub(crate) enum TriggeredAction<'a> {
   FlushBuffers(&'a ActionFlushBuffers),
   EmitMetric(&'a ActionEmitMetric),
   SankeyDiagram(TriggeredActionEmitSankeyDiagram<'a>),
@@ -971,8 +956,8 @@ pub struct TriggeredActionEmitSankeyDiagram<'a> {
 struct TraversalResult<'a> {
   /// The indices of transitions that should be advanced.
   output_traversals: Vec<Traversal>,
-
-  actions_to_perform: Vec<CompletedAction<'a>>,
+  /// The list of triggered actions.
+  triggered_actions: Vec<TriggeredAction<'a>>,
   /// The number of matched logs. A single log can be matched multiple times
   /// i.e., when multiple transitions coming out of a given state all match the
   /// same log.
