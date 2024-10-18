@@ -1,0 +1,6 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-network-quality"
+publish      = false
+version      = "1.0.0"

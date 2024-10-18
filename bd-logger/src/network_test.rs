@@ -5,9 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::TimeProvider;
+use super::{NetworkQualityInterceptor, TimeProvider};
 use crate::async_log_buffer::LogInterceptor;
 use crate::network::HTTPTrafficDataUsageTracker;
+use bd_api::api::SimpleNetworkQualityProvider;
 use bd_log_metadata::AnnotatedLogFields;
 use bd_log_primitives::{
   log_level,
@@ -18,6 +19,7 @@ use bd_log_primitives::{
   LogType,
   StringOrBytes,
 };
+use bd_network_quality::NetworkQuality;
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
 
@@ -47,6 +49,37 @@ impl MockTimeProvider {
   fn advance_by(&self, duration: std::time::Duration) {
     let mut guard = self.now.lock();
     *guard = guard.checked_add(duration).unwrap();
+  }
+}
+
+#[test]
+fn network_quality() {
+  let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
+  let interceptor = NetworkQualityInterceptor::new(network_quality_provider.clone());
+  {
+    let mut fields = vec![];
+    interceptor.process(log_level::DEBUG, LogType::Normal, &"".into(), &mut fields);
+    assert!(fields.is_empty());
+    network_quality_provider.set_for_test(NetworkQuality::Online);
+    interceptor.process(log_level::DEBUG, LogType::Normal, &"".into(), &mut fields);
+    assert!(fields.is_empty());
+    network_quality_provider.set_for_test(NetworkQuality::Offline);
+    interceptor.process(log_level::DEBUG, LogType::Normal, &"".into(), &mut fields);
+    assert_eq!(
+      fields[0],
+      AnnotatedLogField {
+        field: LogField {
+          key: "_network_quality".to_string(),
+          value: StringOrBytes::String("offline".to_string()),
+        },
+        kind: LogFieldKind::Ootb,
+      }
+    );
+  }
+  {
+    let mut fields = vec![];
+    interceptor.process(log_level::DEBUG, LogType::Replay, &"".into(), &mut fields);
+    assert!(fields.is_empty());
   }
 }
 

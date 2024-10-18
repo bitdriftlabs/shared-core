@@ -13,6 +13,7 @@ use crate::log_replay::LoggerReplay;
 use crate::logger::{ChannelPair, Logger};
 use crate::logging_state::UninitializedLoggingContext;
 use crate::InitParams;
+use bd_api::api::SimpleNetworkQualityProvider;
 use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
 use bd_client_stats_store::{Collector, Scope};
@@ -147,6 +148,7 @@ impl LoggerBuilder {
       (None, None, None)
     };
 
+    let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
         &self.params.sdk_directory,
@@ -168,6 +170,7 @@ impl LoggerBuilder {
       config_update_rx,
       shutdown_handle.clone(),
       &runtime_loader,
+      network_quality_provider.clone(),
     );
 
     let logger = Logger::new(
@@ -230,6 +233,7 @@ impl LoggerBuilder {
         updater,
       ],
       Arc::new(SystemTimeProvider {}),
+      network_quality_provider,
       log.clone(),
       &scope.scope("api"),
     )?;

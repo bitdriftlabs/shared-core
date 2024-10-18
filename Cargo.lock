@@ -320,6 +320,7 @@ dependencies = [
  "bd-grpc-codec",
  "bd-internal-logging",
  "bd-metadata",
+ "bd-network-quality",
  "bd-pgv",
  "bd-proto",
  "bd-runtime",
@@ -329,6 +330,7 @@ dependencies = [
  "bd-time",
  "ctor",
  "log",
+ "parking_lot",
  "protobuf",
  "tempfile",
  "time",
@@ -686,6 +688,7 @@ dependencies = [
  "bd-log-metadata",
  "bd-log-primitives",
  "bd-matcher",
+ "bd-network-quality",
  "bd-noop-network",
  "bd-proto",
  "bd-resource-utilization",
@@ -747,6 +750,10 @@ dependencies = [
  "time",
  "tokio",
 ]
+
+[[package]]
+name = "bd-network-quality"
+version = "1.0.0"
 
 [[package]]
 name = "bd-noop-network"

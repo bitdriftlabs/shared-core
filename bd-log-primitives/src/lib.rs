@@ -103,7 +103,7 @@ pub type LogFields = Vec<LogField>;
 // AnnotatedLogField
 //
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnnotatedLogField {
   pub field: LogField,
   pub kind: LogFieldKind,
@@ -132,7 +132,7 @@ impl From<AnnotatedLogField> for LogField {
 // LogFieldKind
 //
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogFieldKind {
   Ootb,
   Custom,
@@ -142,7 +142,7 @@ pub enum LogFieldKind {
 // Log
 //
 
-///  A copy of an incoming log line.
+/// A copy of an incoming log line.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Log {
   // Remember to update the implementation

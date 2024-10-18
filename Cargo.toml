@@ -17,6 +17,7 @@ members = [
   "bd-log-filter",
   "bd-log-matcher",
   "bd-internal-logging",
+  "bd-network-quality",
   "bd-noop-network",
   "bd-panic",
   "bd-pgv",
