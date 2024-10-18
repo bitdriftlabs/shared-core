@@ -72,7 +72,13 @@ impl FileSystem for RealFileSystem {
   }
 
   async fn delete_file(&self, path: &Path) -> anyhow::Result<()> {
-    Ok(tokio::fs::remove_file(self.directory.join(path)).await?)
+    // There are edge cases where the index might have been written but the file was not. We don't
+    // fail if the file is not found.
+    match tokio::fs::remove_file(self.directory.join(path)).await {
+      Ok(()) => Ok(()),
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+      Err(e) => Err(e.into()),
+    }
   }
 
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {
@@ -230,8 +236,8 @@ impl FileManager {
     let mut inner = self.inner.lock().await;
     let initialized_inner = inner.get_initialized().await?;
 
-    let use_existing = if initialized_inner.index.back().map_or(true, |file| {
-      if file.ready_to_upload {
+    let create_new_snapshot = initialized_inner.index.back_mut().map_or(true, |file| {
+      if file.period_end.is_some() {
         log::debug!("snapshot is ready to upload, creating new snapshot");
         true
       } else if file.period_start.to_offset_date_time()
@@ -239,11 +245,14 @@ impl FileManager {
         <= self.time_provider.now()
       {
         log::debug!("snapshot is too old, creating new snapshot");
+        file.period_end = self.time_provider.now().into_proto();
         true
       } else {
         false
       }
-    }) {
+    });
+
+    if create_new_snapshot {
       if self.max_aggregated_files.read() <= u32::try_from(initialized_inner.index.len()).unwrap() {
         log::debug!("max files reached, popping oldest snapshot");
         initialized_inner.delete_oldest_snapshot().await?;
@@ -252,21 +261,19 @@ impl FileManager {
       let pending_file = PendingFile {
         name: TrackedStatsUploadRequest::upload_uuid(),
         period_start: self.time_provider.now().into_proto(),
-        ready_to_upload: false,
         ..Default::default()
       };
       log::debug!("creating new snapshot in index: {}", pending_file.name);
       initialized_inner.index.push_back(pending_file);
       initialized_inner.write_index().await?;
-      false
-    } else {
-      true
-    };
+    }
 
     // Read the file back or make a new one. We don't count an error reading the file or file
     // corruption as a fatal error.
     let path = STATS_DIRECTORY.join(&initialized_inner.index.back().unwrap().name);
-    let stats_upload_request = if use_existing {
+    let stats_upload_request = if create_new_snapshot {
+      None
+    } else {
       initialized_inner
         .file_system
         .read_file(&path)
@@ -279,8 +286,6 @@ impl FileManager {
           );
         })
         .ok()
-    } else {
-      None
     }
     .unwrap_or_else(|| StatsUploadRequest {
       upload_uuid: initialized_inner.index.back().unwrap().name.clone(),
@@ -299,7 +304,7 @@ impl FileManager {
     let mut inner = self.inner.lock().await;
     let initialized_inner = inner.get_initialized().await?;
 
-    debug_assert!(!initialized_inner.index.back().unwrap().ready_to_upload);
+    debug_assert!(!initialized_inner.index.back().unwrap().period_end.is_some());
     log::debug!(
       "removing empty snapshot from index: {}",
       initialized_inner.index.back().unwrap().name
@@ -314,19 +319,12 @@ impl FileManager {
   pub async fn write_snapshot(
     &self,
     mut handle: StatsUploadRequestHandle,
-    mut snapshot: Snapshot,
+    snapshot: Snapshot,
   ) -> anyhow::Result<()> {
     let mut inner = self.inner.lock().await;
     let initialized_inner = inner.get_initialized().await?;
 
-    // Even for a pre-existing snapshot, we are being passed back a new snapshot so we need to
-    // initialized the period start again.
-    snapshot.occurred_at = Some(Occurred_at::Aggregated(Aggregated {
-      period_start: initialized_inner.index[handle.index].period_start.clone(),
-      ..Default::default()
-    }));
     handle.stats_upload_request.snapshot = vec![snapshot];
-
     let path = STATS_DIRECTORY.join(&initialized_inner.index[handle.index].name);
     log::debug!("writing snapshot: {}", path.display());
     let compressed = write_compressed_protobuf(&handle.stats_upload_request);
@@ -364,12 +362,12 @@ impl FileManager {
 
       // If there is a pending upload, first attempt to re-upload. Otherwise, mark the first entry
       // as ready to upload and return it.
-      if !initialized_inner.index[0].ready_to_upload {
+      if initialized_inner.index[0].period_end.is_none() {
         log::debug!(
           "marking entry as ready to upload: {}",
           initialized_inner.index[0].name
         );
-        initialized_inner.index[0].ready_to_upload = true;
+        initialized_inner.index[0].period_end = self.time_provider.now().into_proto();
         initialized_inner.write_index().await?;
       }
 
@@ -381,7 +379,21 @@ impl FileManager {
         .await
         .and_then(|contents| read_compressed_protobuf::<StatsUploadRequest>(&contents))
       {
-        Ok(pending_request) => return Ok(Some(pending_request)),
+        Ok(mut pending_request) => {
+          // At the time of creation period_end was not known so we set both start end end here.
+          // In the future if we support multiple snapshots per upload we would need to handle that
+          // here as well.
+          debug_assert_eq!(1, pending_request.snapshot.len());
+          if !pending_request.snapshot.is_empty() {
+            pending_request.snapshot[0].occurred_at = Some(Occurred_at::Aggregated(Aggregated {
+              period_start: initialized_inner.index[0].period_start.clone(),
+              period_end: initialized_inner.index[0].period_end.clone(),
+              ..Default::default()
+            }));
+          }
+
+          return Ok(Some(pending_request));
+        },
         Err(e) => {
           // We failed to read the data, so the file must be bad. This could happen if we change
           // the schema in an incompatible way or if the file is corrupt. Delete the file and
@@ -417,7 +429,7 @@ impl FileManager {
       "completing pending upload: {}",
       initialized_inner.index[0].name
     );
-    debug_assert!(initialized_inner.index[0].ready_to_upload);
+    debug_assert!(initialized_inner.index[0].period_end.is_some());
     initialized_inner.delete_pending_upload().await?;
     Ok(())
   }

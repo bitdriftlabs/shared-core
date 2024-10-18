@@ -61,6 +61,8 @@ impl RuntimeWatchTicker {
 #[async_trait]
 impl Ticker for RuntimeWatchTicker {
   async fn tick(&mut self) {
+    // We use jittered_interval_at() to make sure we stagger the start time to avoid synchronization
+    // during mass reconnect.
     if self.interval.is_none() {
       self.interval = Some(self.receiver.borrow_and_update().jittered_interval_at());
     }

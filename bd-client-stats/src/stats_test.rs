@@ -36,10 +36,9 @@ use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::float_eq;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
-use bd_time::{TestTimeProvider, TimeProvider, TimestampExt};
+use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeProvider, TimestampExt};
 use futures_util::poll;
 use parking_lot::Mutex;
-use protobuf::Message;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -55,7 +54,11 @@ async fn write_test_index(fs: &dyn FileSystem, ready_to_upload: bool) {
   let index = PendingAggregationIndex {
     pending_files: vec![PendingFile {
       name: "test".to_string(),
-      ready_to_upload,
+      period_end: if ready_to_upload {
+        OffsetDateTime::UNIX_EPOCH.into_proto()
+      } else {
+        None.into()
+      },
       ..Default::default()
     }],
     ..Default::default()
@@ -501,59 +504,64 @@ async fn max_files() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn earliest_aggregation_start_maintained() {
+async fn earliest_aggregation_start_end_maintained() {
   // This test simulates a few upload failures interleaved with stats being recorded, and verifies
-  // that the aggregation start window is set according to when an aggregation period starts and is
-  // not updated every time more data is merged into the aggregated data.
+  // that the aggregation start/end window is set according to when an aggregation period starts and
+  // is not updated every time more data is merged into the aggregated data.
   let mut setup = Setup::new();
 
+  let t0 = setup.test_time.now();
   let counter = setup.stats.collector.scope("test").counter("test");
   counter.inc();
 
-  let t0 = setup.test_time.now();
+  let t1 = setup.test_time.now();
   // Fail the first attempt to upload. At this point we'll have one cached upload request and an
   // empty aggregated snapshot. We know this since both aggregation and uploads will have been
   // processed by the time we get the upload.
   setup
     .with_next_stats_upload_with_result(false, |upload| {
       assert_eq!(upload.aggregation_window_start(), t0);
-      assert_eq!(upload.number_of_metrics(), 1);
-    })
-    .await;
-
-  setup.test_time.advance(Duration::seconds(1));
-  let t1 = setup.test_time.now();
-
-  counter.inc();
-
-  // Fail the second attempt. This attempt should still report for t0, as it's a retry of the old
-  // one. At this point we should have started another aggregation window starting at t1.
-  setup
-    .with_next_stats_upload_with_result(false, |upload| {
-      assert_eq!(upload.aggregation_window_start(), t0);
+      assert_eq!(upload.aggregation_window_end(), t1);
       assert_eq!(upload.number_of_metrics(), 1);
     })
     .await;
 
   setup.test_time.advance(Duration::seconds(1));
   let t2 = setup.test_time.now();
-  assert_ne!(t2, t1);
+
+  counter.inc();
+
+  // Fail the second attempt. This attempt should still report for t0, as it's a retry of the old
+  // one. At this point we should have started another aggregation window starting at t2.
+  setup
+    .with_next_stats_upload_with_result(false, |upload| {
+      assert_eq!(upload.aggregation_window_start(), t0);
+      assert_eq!(upload.aggregation_window_end(), t1);
+      assert_eq!(upload.number_of_metrics(), 1);
+    })
+    .await;
+
+  setup.test_time.advance(Duration::seconds(1));
+  let t3 = setup.test_time.now();
+  assert_ne!(t3, t2);
   counter.inc();
 
   // The first stat upload is yet another retry of the one from t0.
   setup
     .with_next_stats_upload(|upload| {
       assert_eq!(upload.aggregation_window_start(), t0);
+      assert_eq!(upload.aggregation_window_end(), t1);
       assert_eq!(upload.number_of_metrics(), 1);
       assert_eq!(upload.get_counter("test:test", labels! {}), Some(1));
     })
     .await;
 
-  // The next upload should contain the aggregation window which started at t1, but contains the
-  // increments that happened at t2.
+  // The next upload should contain the aggregation window which started at t2, but contains the
+  // increments that happened at t3.
   setup
     .with_next_stats_upload(|upload| {
-      assert_eq!(upload.aggregation_window_start(), t1);
+      assert_eq!(upload.aggregation_window_start(), t2);
+      assert_eq!(upload.aggregation_window_end(), t3);
       assert_eq!(upload.number_of_metrics(), 2);
       assert_eq!(upload.get_counter("test:test", labels! {}), Some(2));
     })
@@ -569,6 +577,7 @@ async fn existing_pending_upload() {
   write_test_index(&fs, true).await;
   let req = StatsUploadRequest {
     upload_uuid: "test".to_string(),
+    snapshot: vec![StatsSnapshot::default()],
     ..Default::default()
   };
   let compressed = write_compressed_protobuf(&req);
@@ -596,23 +605,7 @@ async fn existing_empty_pending_upload() {
   // Write empty data to the upload file. This should then be ignored on startup, so the first
   // upload should be based on fresh stats.
   let fs = RealFileSystem::new(directory.path().to_path_buf());
-
-  let index = PendingAggregationIndex {
-    pending_files: vec![PendingFile {
-      name: "test".to_string(),
-      ready_to_upload: true,
-      ..Default::default()
-    }],
-    ..Default::default()
-  };
-  fs.create_dir(&STATS_DIRECTORY).await.unwrap();
-  fs.write_file(
-    &STATS_DIRECTORY.join(&*PENDING_AGGREGATION_INDEX_FILE),
-    &index.write_to_bytes().unwrap(),
-  )
-  .await
-  .unwrap();
-
+  write_test_index(&fs, true).await;
   fs.write_file(&STATS_DIRECTORY.join("test"), &[])
     .await
     .unwrap();
@@ -995,8 +988,19 @@ impl StatRequestHelper {
       &self.request.snapshot[0].occurred_at,
       Some(Occurred_at::Aggregated(Aggregated {
         period_start,
-        special_fields: _
+        ..
       })) => period_start.to_offset_date_time()
+    )
+  }
+
+  fn aggregation_window_end(&self) -> OffsetDateTime {
+    assert_eq!(self.request.snapshot.len(), 1);
+    assert_matches!(
+      &self.request.snapshot[0].occurred_at,
+      Some(Occurred_at::Aggregated(Aggregated {
+        period_end,
+        ..
+      })) => period_end.to_offset_date_time()
     )
   }
 
