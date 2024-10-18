@@ -131,7 +131,7 @@ async fn opaque_uploads() {
 
   assert_eq!(uploaded_payload, tracked_request);
 
-  assert!(response.await.unwrap());
+  assert!(response.await.unwrap().success);
 
   setup.shutdown.shutdown().await;
 }
