@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{Api, PlatformNetworkManager, PlatformNetworkStream, SimpleNetworkQualityProvider};
-use crate::api::StreamEvent;
+use crate::api::{StreamEvent, DISCONNECTED_OFFLINE_GRACE_PERIOD};
 use crate::upload::Tracked;
 use crate::DataUpload;
 use anyhow::anyhow;
@@ -33,7 +33,7 @@ use bd_stats_common::labels;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use time::ext::{NumericalDuration, NumericalStdDuration};
+use time::ext::NumericalDuration;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::task::JoinHandle;
@@ -333,7 +333,7 @@ async fn api_retry_stream() {
   );
   let now = Instant::now();
   while setup.next_stream(1.minutes()).await {
-    if now + 15.std_seconds() > Instant::now() {
+    if now + DISCONNECTED_OFFLINE_GRACE_PERIOD > Instant::now() {
       assert_eq!(
         NetworkQuality::Unknown,
         setup.network_quality_provider.get_network_quality()
@@ -374,7 +374,7 @@ async fn api_retry_stream() {
   // backoff is not reset.
   let now = Instant::now();
   while setup.next_stream(1.minutes()).await {
-    if now + 15.std_seconds() > Instant::now() {
+    if now + DISCONNECTED_OFFLINE_GRACE_PERIOD > Instant::now() {
       assert_eq!(
         NetworkQuality::Unknown,
         setup.network_quality_provider.get_network_quality()

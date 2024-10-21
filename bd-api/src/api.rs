@@ -67,10 +67,13 @@ use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
-use time::ext::NumericalStdDuration;
 use time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
+
+// The amount of time the API has to be in the disconnected state before network quality will be
+// switched to "offline".
+const DISCONNECTED_OFFLINE_GRACE_PERIOD: std::time::Duration = std::time::Duration::from_secs(15);
 
 // TODO(snowp): This shouldn't be in this file, but runtime depends on api so we run into a
 // circular dependency. Maybe we should split the runtime read path from the updater?
@@ -584,7 +587,9 @@ impl Api {
       // If we have been disconnected for more than 15s switch our network quality to offline. We
       // don't want to do this immediately as we might be in a transient state during a normal
       // reconnect.
-      if *disconnected_at.get_or_insert_with(Instant::now) + 15.std_seconds() < Instant::now() {
+      if *disconnected_at.get_or_insert_with(Instant::now) + DISCONNECTED_OFFLINE_GRACE_PERIOD
+        < Instant::now()
+      {
         *self.network_quality_provider.network_quality.write() = NetworkQuality::Offline;
       } else {
         *self.network_quality_provider.network_quality.write() = NetworkQuality::Unknown;
