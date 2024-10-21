@@ -501,11 +501,9 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       },
     }
 
-    log::debug!("sending streaming request");
     let response = self
       .common_request(service_method, extra_headers, Body::new(body))
       .await?;
-    log::debug!("received streaming response");
     let (parts, body) = response.into_parts();
 
     Ok(StreamingApi::new(
