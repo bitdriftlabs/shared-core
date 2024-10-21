@@ -40,6 +40,7 @@ use bd_grpc_codec::{
   GRPC_ENCODING_HEADER,
 };
 use bd_metadata::Metadata;
+use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
 pub use bd_proto::protos::client::api::log_upload_intent_response::{
   Decision,
   Drop as DropDecision,
@@ -60,6 +61,7 @@ use bd_proto::protos::logging::payload::Data as ProtoData;
 use bd_runtime::runtime::{BoolWatch, DurationWatch, RuntimeManager};
 use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
+use parking_lot::RwLock;
 use protobuf::Message;
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -68,6 +70,10 @@ use std::sync::Arc;
 use time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
+
+// The amount of time the API has to be in the disconnected state before network quality will be
+// switched to "offline".
+const DISCONNECTED_OFFLINE_GRACE_PERIOD: std::time::Duration = std::time::Duration::from_secs(15);
 
 // TODO(snowp): This shouldn't be in this file, but runtime depends on api so we run into a
 // circular dependency. Maybe we should split the runtime read path from the updater?
@@ -101,6 +107,34 @@ impl ConfigurationUpdate for RuntimeManager {
 
   fn on_handshake_complete(&self) {
     self.server_is_available();
+  }
+}
+
+//
+// SimpleNetworkQualityProvider
+//
+
+pub struct SimpleNetworkQualityProvider {
+  network_quality: RwLock<NetworkQuality>,
+}
+
+impl Default for SimpleNetworkQualityProvider {
+  fn default() -> Self {
+    Self {
+      network_quality: RwLock::new(NetworkQuality::Unknown),
+    }
+  }
+}
+
+impl SimpleNetworkQualityProvider {
+  pub fn set_for_test(&self, quality: NetworkQuality) {
+    *self.network_quality.write() = quality;
+  }
+}
+
+impl NetworkQualityProvider for SimpleNetworkQualityProvider {
+  fn get_network_quality(&self) -> NetworkQuality {
+    *self.network_quality.read()
   }
 }
 
@@ -336,6 +370,7 @@ pub struct Api {
 
   internal_logger: Arc<dyn bd_internal_logging::Logger>,
   time_provider: Arc<dyn TimeProvider>,
+  network_quality_provider: Arc<SimpleNetworkQualityProvider>,
 
   stats: Stats,
 
@@ -362,6 +397,7 @@ impl Api {
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
     configuration_pipelines: Vec<Box<dyn ConfigurationUpdate>>,
     time_provider: Arc<dyn TimeProvider>,
+    network_quality_provider: Arc<SimpleNetworkQualityProvider>,
     self_logger: Arc<dyn bd_internal_logging::Logger>,
     stats: &Scope,
   ) -> anyhow::Result<Self> {
@@ -380,6 +416,7 @@ impl Api {
       data_upload_rx,
       trigger_upload_tx,
       time_provider,
+      network_quality_provider,
       runtime_loader,
       max_backoff_interval,
       initial_backoff_interval,
@@ -544,7 +581,20 @@ impl Api {
       })
       .collect();
 
+    let mut disconnected_at = None;
+
     loop {
+      // If we have been disconnected for more than 15s switch our network quality to offline. We
+      // don't want to do this immediately as we might be in a transient state during a normal
+      // reconnect.
+      if *disconnected_at.get_or_insert_with(Instant::now) + DISCONNECTED_OFFLINE_GRACE_PERIOD
+        < Instant::now()
+      {
+        *self.network_quality_provider.network_quality.write() = NetworkQuality::Offline;
+      } else {
+        *self.network_quality_provider.network_quality.write() = NetworkQuality::Unknown;
+      }
+
       // If we have been killed, just put ourselves into a permanent pending state until the
       // process restarts. We will wait for the shutdown notification.
       if self.client_killed {
@@ -649,6 +699,8 @@ impl Api {
 
       log::debug!("handshake received, entering main loop");
       let handshake_established = Instant::now();
+      *self.network_quality_provider.network_quality.write() = NetworkQuality::Online;
+      disconnected_at = None;
 
       // At this point we have established the stream, so we should start the general
       // request/response handling.

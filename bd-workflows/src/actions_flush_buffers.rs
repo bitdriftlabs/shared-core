@@ -245,7 +245,7 @@ impl Negotiator {
       buffer_id: action
         .trigger_buffer_ids
         .first()
-        .unwrap_or(&"no_buffer".into())
+        .map_or("no_buffer", |id| id.as_ref())
         .to_string(),
       intent_uuid: intent_uuid.clone(),
       intent_type: Some(Intent_type::WorkflowActionUpload(

@@ -5,8 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{Api, PlatformNetworkManager, PlatformNetworkStream};
-use crate::api::StreamEvent;
+use super::{Api, PlatformNetworkManager, PlatformNetworkStream, SimpleNetworkQualityProvider};
+use crate::api::{StreamEvent, DISCONNECTED_OFFLINE_GRACE_PERIOD};
 use crate::upload::Tracked;
 use crate::DataUpload;
 use anyhow::anyhow;
@@ -16,6 +16,7 @@ use bd_client_stats_store::Collector;
 use bd_grpc_codec::{Encoder, OptimizeFor};
 use bd_internal_logging::{LogFields, LogLevel, LogType};
 use bd_metadata::{Metadata, Platform};
+use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::client::api::api_response::Response_type;
 use bd_proto::protos::client::api::{
@@ -36,6 +37,7 @@ use time::ext::NumericalDuration;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 
 struct EmptyMetadata;
 
@@ -128,6 +130,7 @@ struct Setup {
   current_stream_tx: Arc<Mutex<Option<Sender<StreamEvent>>>>,
   api_task: Option<JoinHandle<anyhow::Result<()>>>,
   api_key: String,
+  network_quality_provider: Arc<SimpleNetworkQualityProvider>,
 }
 
 struct TestLog {}
@@ -158,6 +161,7 @@ impl Setup {
 
     let runtime_loader = ConfigLoader::new(sdk_directory.path());
     let api_key = "api-key-test".to_string();
+    let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let api = Api::new(
       sdk_directory.path().to_path_buf(),
       api_key.clone(),
@@ -171,6 +175,7 @@ impl Setup {
         runtime_loader,
       ))],
       time_provider.clone(),
+      network_quality_provider.clone(),
       Arc::new(TestLog {}),
       &collector.scope("api"),
     )
@@ -190,6 +195,7 @@ impl Setup {
       requests_decoder: bd_grpc_codec::Decoder::new(None, OptimizeFor::Memory),
       api_task: Some(api_task),
       api_key,
+      network_quality_provider,
     }
   }
 
@@ -223,6 +229,7 @@ impl Setup {
         runtime_loader,
       ))],
       self.time_provider.clone(),
+      self.network_quality_provider.clone(),
       Arc::new(TestLog {}),
       &self.collector.scope("api"),
     )
@@ -320,7 +327,24 @@ async fn api_retry_stream() {
   // Since the backoff uses random values we have no control over, we loop multiple attempts
   // until it takes over a minute before we get a new stream. This demonstrates that the delay
   // grows past our initial delay of 500ms.
+  assert_eq!(
+    NetworkQuality::Unknown,
+    setup.network_quality_provider.get_network_quality()
+  );
+  let now = Instant::now();
   while setup.next_stream(1.minutes()).await {
+    if now + DISCONNECTED_OFFLINE_GRACE_PERIOD > Instant::now() {
+      assert_eq!(
+        NetworkQuality::Unknown,
+        setup.network_quality_provider.get_network_quality()
+      );
+    } else {
+      assert_eq!(
+        NetworkQuality::Offline,
+        setup.network_quality_provider.get_network_quality()
+      );
+    }
+
     setup.close_stream().await;
   }
 
@@ -333,14 +357,35 @@ async fn api_retry_stream() {
 
   setup.handshake_response().await;
   61.seconds().sleep().await;
+  assert_eq!(
+    NetworkQuality::Online,
+    setup.network_quality_provider.get_network_quality()
+  );
   setup.close_stream().await;
 
   assert!(setup.next_stream(1.seconds()).await);
+  assert_eq!(
+    NetworkQuality::Unknown,
+    setup.network_quality_provider.get_network_quality()
+  );
   setup.close_stream().await;
 
   // Now ramp up the backoff again to 1m, do the handshake and immediate shutdown, and verify the
   // backoff is not reset.
+  let now = Instant::now();
   while setup.next_stream(1.minutes()).await {
+    if now + DISCONNECTED_OFFLINE_GRACE_PERIOD > Instant::now() {
+      assert_eq!(
+        NetworkQuality::Unknown,
+        setup.network_quality_provider.get_network_quality()
+      );
+    } else {
+      assert_eq!(
+        NetworkQuality::Offline,
+        setup.network_quality_provider.get_network_quality()
+      );
+    }
+
     setup.close_stream().await;
   }
   5.minutes().advance().await;
@@ -348,6 +393,10 @@ async fn api_retry_stream() {
   setup.handshake_response().await;
   setup.close_stream().await;
   assert!(!setup.next_stream(10.seconds()).await);
+  assert_eq!(
+    NetworkQuality::Online,
+    setup.network_quality_provider.get_network_quality()
+  );
 
   setup.shutdown_trigger.shutdown().await;
 }

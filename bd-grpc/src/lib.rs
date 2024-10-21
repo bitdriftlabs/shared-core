@@ -265,7 +265,7 @@ impl std::fmt::Display for Status {
       f,
       "code: {}, message: {}",
       self.code.to_int(),
-      self.message.as_ref().unwrap_or(&"<none>".to_string())
+      self.message.as_ref().map_or("<none>", |s| s.as_str())
     )
   }
 }

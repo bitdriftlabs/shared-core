@@ -18,6 +18,7 @@ use bd_log_primitives::{
   LogType,
   StringOrBytes,
 };
+use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
 use itertools::Itertools;
 use std::cmp::Ordering;
 use std::sync::Arc;
@@ -317,5 +318,53 @@ struct SystemTimeProvider;
 impl TimeProvider for SystemTimeProvider {
   fn now(&self) -> std::time::Instant {
     std::time::Instant::now()
+  }
+}
+
+//
+// NetworkQualityInterceptor
+//
+
+pub struct NetworkQualityInterceptor {
+  network_quality_provider: Arc<dyn NetworkQualityProvider>,
+}
+
+impl NetworkQualityInterceptor {
+  pub fn new(network_quality_provider: Arc<dyn NetworkQualityProvider>) -> Self {
+    Self {
+      network_quality_provider,
+    }
+  }
+}
+
+impl LogInterceptor for NetworkQualityInterceptor {
+  fn process(
+    &self,
+    _log_level: LogLevel,
+    log_type: LogType,
+    _msg: &LogMessage,
+    fields: &mut AnnotatedLogFields,
+  ) {
+    if log_type == LogType::Resource
+      || log_type == LogType::Replay
+      || log_type == LogType::InternalSDK
+    {
+      return;
+    }
+
+    // Currently we only attach the field attribute if we think we are offline. In the future when
+    // we have a more complex definition of network quality we can revisit this.
+    let network_quality = self.network_quality_provider.get_network_quality();
+    if network_quality != NetworkQuality::Offline {
+      return;
+    }
+
+    fields.push(AnnotatedLogField {
+      field: LogField {
+        key: "_network_quality".to_string(),
+        value: StringOrBytes::String("offline".to_string()),
+      },
+      kind: LogFieldKind::Ootb,
+    });
   }
 }
