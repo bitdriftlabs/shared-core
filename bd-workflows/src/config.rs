@@ -17,9 +17,10 @@ use bd_proto::protos::workflow::workflow::workflow::{
   LimitMatchedLogsCount,
 };
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
+use itertools::Itertools;
 use protobuf::MessageField;
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::time::Duration;
 use workflow::workflow::action::action_emit_metric::Value_extractor_type;
 use workflow::workflow::action::action_flush_buffers::streaming::termination_criterion;
@@ -70,6 +71,99 @@ impl WorkflowsConfiguration {
   }
 }
 
+struct SankeyInfo {
+  state_index: usize,
+  limit: usize,
+}
+
+pub struct GraphHelper {
+  state_index_by_id: HashMap<String, usize>,
+  sankey_info_by_sankey_id: HashMap<String, SankeyInfo>,
+
+  incoming_transitions_by_index: Vec<Vec<usize>>,
+  outgoing_transitions_by_index: Vec<Vec<usize>>,
+}
+
+impl GraphHelper {
+  pub fn new(config: &WorkflowConfigProto) -> anyhow::Result<Self> {
+    let state_index_by_id: HashMap<_, _> = config
+      .states
+      .iter()
+      .enumerate()
+      .map(|(id, index)| (id, index))
+      .collect();
+
+    let mut incoming_transitions_by_index: Vec<Vec<_>> = Vec::with_capacity(config.states.len());
+    let mut outgoing_transitions_by_index: Vec<Vec<_>> = Vec::with_capacity(config.states.len());
+
+    let mut state_index_by_sankey_id = HashMap::new();
+    let mut sankey_extraction_limit_by_sankey_id = HashMap::new();
+
+    for state in &config.states {
+      for transition in &state.transitions {
+        let Some(current_state_index) = state_index_by_id.get(&state.id) else {
+          anyhow::bail!("invalid workflow configuration: reference to an unexisting state");
+        };
+
+        let Some(target_state_index) = state_index_by_id.get(&transition.target_state_id) else {
+          anyhow::bail!("invalid workflow configuration: reference to an unexisting target state");
+        };
+
+        for action in transition.actions {
+          if let Some(Action::SankeyDiagram(action)) = action.action_type {
+            state_index_by_sankey_id.insert(transition.target_state_id, action.id.clone());
+            sankey_extraction_limit_by_sankey_id.insert()
+          }
+        }
+
+        incoming_transitions_by_index[*target_state_index].push(*current_state_index);
+        outgoing_transitions_by_index[*current_state_index].push(*target_state_index);
+      }
+    }
+
+    Ok(Self {
+      state_index_by_id,
+      state_index_by_sankey_id,
+
+      incoming_transitions_by_index,
+      outgoing_transitions_by_index,
+    })
+  }
+
+  fn path_to_state(&self, state: &State) -> anyhow::Result<Vec<usize>> {
+    // An assumption is make that any given matcher node cannot have more than one incoming edge.
+    let Some(state_index) = self.state_index_by_id.get(&state.id) else {
+      anyhow::bail!("invalid workflow state configuration: reference to an unexisting state");
+    };
+
+    let mut visited: HashSet<usize> = HashSet::new();
+    let mut queue = vec![*state_index];
+    let mut path = Vec::new();
+
+    while !queue.is_empty() {
+      let state_index = queue.remove(0);
+
+      // This protects us from infinite loops caused by cycles in the graph.
+      if visited.contains(&state_index) {
+        continue;
+      }
+
+      visited.insert(state_index);
+      path.push(state_index);
+
+      let states_previous_on_path = &self.incoming_transitions_by_index[state_index];
+      queue.extend(states_previous_on_path);
+    }
+
+    debug_assert!(
+      !path.is_empty() && path[0] == 0,
+      "the first state on the path should be the root state which is always at index 0"
+    );
+
+    Ok(path.into_iter().rev().collect_vec())
+  }
+}
+
 //
 // Config
 //
@@ -92,6 +186,8 @@ impl Config {
       ));
     }
 
+    let graph_helper = GraphHelper::new(&config)?;
+
     let state_index_by_id = config
       .states
       .iter()
@@ -99,10 +195,10 @@ impl Config {
       .map(|(index, s)| (s.id.clone(), index))
       .collect();
 
-    let states = config
+    let mut states = config
       .states
       .iter()
-      .map(|s| State::try_from_proto(s, &state_index_by_id))
+      .map(|s| State::try_from_proto(s, &state_index_by_id, &graph_helper))
       .collect::<anyhow::Result<Vec<_>>>()?;
 
     Ok(Self {
@@ -207,6 +303,7 @@ impl State {
   fn try_from_proto(
     state: &StateProto,
     state_index_by_id: &HashMap<StateID, usize>,
+    graph_helper: &GraphHelper,
   ) -> anyhow::Result<Self> {
     Ok(Self {
       id: state.id.clone(),
@@ -220,7 +317,11 @@ impl State {
             ));
           }
 
-          Transition::new(transition, state_index_by_id[&transition.target_state_id])
+          Transition::new(
+            transition,
+            state_index_by_id[&transition.target_state_id],
+            graph_helper,
+          )
         })
         .collect::<anyhow::Result<Vec<_>>>()?,
     })
@@ -294,7 +395,11 @@ pub(crate) struct Transition {
 }
 
 impl Transition {
-  fn new(transition: &TransitionProto, target_state_index: usize) -> anyhow::Result<Self> {
+  fn new(
+    transition: &TransitionProto,
+    target_state_index: usize,
+    graph_helper: &GraphHelper,
+  ) -> anyhow::Result<Self> {
     let rule = transition
       .rule
       .as_ref()
