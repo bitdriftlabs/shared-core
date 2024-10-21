@@ -17,6 +17,7 @@ use crate::logging_state::{
 };
 use crate::memory_bound::MemorySized;
 use assert_matches::assert_matches;
+use bd_api::api::SimpleNetworkQualityProvider;
 use bd_client_stats::{DynamicStats, FlushTrigger};
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
@@ -319,6 +320,7 @@ async fn no_logs_are_lost() {
     config_update_rx,
     make_shutdown(1.seconds()),
     &setup.runtime,
+    Arc::new(SimpleNetworkQualityProvider::default()),
   );
 
   let written_logs_count = Arc::new(AtomicUsize::new(0));
@@ -423,6 +425,7 @@ async fn logs_are_replayed_in_order() {
     config_update_rx,
     make_shutdown(5.seconds()),
     &setup.runtime,
+    Arc::new(SimpleNetworkQualityProvider::default()),
   );
 
   let written_logs = Arc::new(Mutex::new(vec![]));
@@ -527,6 +530,7 @@ fn enqueuing_log_does_not_block() {
     config_update_rx,
     shutdown_trigger.make_handle(),
     &setup.runtime,
+    Arc::new(SimpleNetworkQualityProvider::default()),
   );
 
   let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
@@ -567,6 +571,7 @@ fn enqueuing_log_blocks() {
     config_update_rx,
     shutdown_trigger.make_handle(),
     &setup.runtime,
+    Arc::new(SimpleNetworkQualityProvider::default()),
   );
 
   let rt = tokio::runtime::Runtime::new().unwrap();
@@ -627,6 +632,7 @@ async fn creates_workflows_engine_in_response_to_config_update() {
     config_update_rx,
     make_shutdown(1.seconds()),
     &setup.runtime,
+    Arc::new(SimpleNetworkQualityProvider::default()),
   );
 
   // Simulate config update.
@@ -671,6 +677,7 @@ async fn does_not_create_workflows_engine_in_response_to_config_update_if_workfl
     config_update_rx,
     make_shutdown(1.seconds()),
     &setup.runtime,
+    Arc::new(SimpleNetworkQualityProvider::default()),
   );
 
   // Simulate config update.
@@ -712,6 +719,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
     config_update_rx,
     shutdown_trigger.make_handle(),
     &setup.runtime,
+    Arc::new(SimpleNetworkQualityProvider::default()),
   );
 
   let setup_clone = setup.clone();
@@ -807,6 +815,7 @@ async fn stops_workflows_engine_if_workflows_runtime_flag_is_disabled() {
     config_update_rx,
     shutdown_trigger.make_handle(),
     &setup.runtime,
+    Arc::new(SimpleNetworkQualityProvider::default()),
   );
 
   let setup_clone = setup.clone();
@@ -878,6 +887,7 @@ async fn logs_resource_utilization_log() {
     config_update_rx,
     shutdown_trigger.make_handle(),
     &setup.runtime,
+    Arc::new(SimpleNetworkQualityProvider::default()),
   );
 
   setup
