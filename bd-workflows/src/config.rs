@@ -75,6 +75,7 @@ impl WorkflowsConfiguration {
 // SankeyInfo
 //
 
+#[derive(Debug, PartialEq, Eq)]
 struct SankeyInfo {
   state_index: usize,
   limit: u32,
@@ -94,7 +95,7 @@ pub struct Config {
   duration_limit: Option<Duration>,
   matched_logs_count_limit: Option<u32>,
 
-  graph_helper: GraphHelper,
+  sankey_helper: Option<SankeyHelper>,
 }
 
 impl Config {
@@ -105,8 +106,6 @@ impl Config {
       ));
     }
 
-    let graph_helper = GraphHelper::new(&config)?;
-
     let state_index_by_id = config
       .states
       .iter()
@@ -114,10 +113,12 @@ impl Config {
       .map(|(index, s)| (s.id.clone(), index))
       .collect();
 
+    let sankey_helper = SankeyHelper::new(config)?;
+
     let states = config
       .states
       .iter()
-      .map(|s| State::try_from_proto(s, &state_index_by_id, &graph_helper))
+      .map(|s| State::try_from_proto(s, &state_index_by_id, &sankey_helper))
       .collect::<anyhow::Result<Vec<_>>>()?;
 
     Ok(Self {
@@ -128,7 +129,7 @@ impl Config {
       matched_logs_count_limit: Self::try_matched_logs_count_limit_from_proto(
         &config.limit_matched_logs_count,
       )?,
-      graph_helper: GraphHelper::new(config)?,
+      sankey_helper,
     })
   }
 
@@ -204,14 +205,20 @@ impl Config {
     &self.states[traversal.state_index].transitions[transition_index].sankey_extractions
   }
 
-  pub(crate) fn sankey_limit(
-    &self,
-    sankey_id: &str,
-  ) -> anyhow::Result<u32> {
-    if let Some(info) = self.graph_helper.sankey_info_by_sankey_id.get(sankey_id) {
+  pub(crate) fn sankey_limit(&self, sankey_id: &str) -> anyhow::Result<u32> {
+    let Some(sankey_helper) = &self.sankey_helper else {
+      return Err(anyhow!(
+        "sankey_limit: no sankey helper available, sankey id {:?}",
+        sankey_id
+      ));
+    };
+
+    if let Some(info) = sankey_helper.sankey_info_by_sankey_id.get(sankey_id) {
       Ok(info.limit)
     } else {
-      Err(anyhow!("invalid workflow configuration: no limit for an unexisting sankey diagram"))
+      Err(anyhow!(
+        "invalid workflow configuration: no limit for an unexisting sankey diagram"
+      ))
     }
   }
 
@@ -228,16 +235,17 @@ impl Config {
 // SankeyHelper
 //
 
-pub struct SankeyhHelper {
+#[derive(Debug, PartialEq, Eq)]
+pub struct SankeyHelper {
   state_index_by_id: HashMap<String, usize>,
   sankey_info_by_sankey_id: HashMap<String, SankeyInfo>,
 
   incoming_transitions_by_index: Vec<Vec<usize>>,
-  outgoing_transitions_by_index: Vec<Vec<usize>>
+  outgoing_transitions_by_index: Vec<Vec<usize>>,
 }
 
-impl GraphHelper {
-  pub fn new(config: &WorkflowConfigProto) -> anyhow::Result<Self> {
+impl SankeyHelper {
+  pub fn new(config: &WorkflowConfigProto) -> anyhow::Result<Option<Self>> {
     let state_index_by_id: HashMap<_, _> = config
       .states
       .iter()
@@ -245,8 +253,8 @@ impl GraphHelper {
       .map(|(index, state)| (state.id.clone(), index))
       .collect();
 
-    let mut incoming_transitions_by_index: Vec<Vec<_>> = Vec::with_capacity(config.states.len());
-    let mut outgoing_transitions_by_index: Vec<Vec<_>> = Vec::with_capacity(config.states.len());
+    let mut incoming_transitions_by_index: Vec<Vec<_>> = vec![vec![]; config.states.len()];
+    let mut outgoing_transitions_by_index: Vec<Vec<_>> = vec![vec![]; config.states.len()];
 
     let mut sankey_info_by_sankey_id = HashMap::new();
 
@@ -278,18 +286,22 @@ impl GraphHelper {
       }
     }
 
+    if sankey_info_by_sankey_id.is_empty() {
+      return Ok(None);
+    }
+
     for info in sankey_info_by_sankey_id.values_mut() {
       info.root_to_action_path =
         Self::path_to_state(info.state_index, &incoming_transitions_by_index)?;
     }
 
-    Ok(Self {
+    Ok(Some(Self {
       state_index_by_id,
       sankey_info_by_sankey_id,
 
       incoming_transitions_by_index,
-      outgoing_transitions_by_index
-    })
+      outgoing_transitions_by_index,
+    }))
   }
 
   pub fn is_included_in_sankey_diagram_limit(
@@ -371,7 +383,7 @@ impl State {
   fn try_from_proto(
     state: &StateProto,
     state_index_by_id: &HashMap<StateID, usize>,
-    graph_helper: &GraphHelper,
+    sankey_helper: &Option<SankeyHelper>,
   ) -> anyhow::Result<Self> {
     Ok(Self {
       id: state.id.clone(),
@@ -388,7 +400,7 @@ impl State {
           Transition::new(
             transition,
             state_index_by_id[&transition.target_state_id],
-            graph_helper,
+            sankey_helper,
           )
         })
         .collect::<anyhow::Result<Vec<_>>>()?,
@@ -469,7 +481,7 @@ impl Transition {
   fn new(
     transition: &TransitionProto,
     target_state_index: usize,
-    graph_helper: &GraphHelper,
+    sankey_helper: &Option<SankeyHelper>,
   ) -> anyhow::Result<Self> {
     let rule = transition
       .rule
@@ -505,7 +517,11 @@ impl Transition {
 
         match extension_type {
           Extension_type::SankeyDiagramValueExtraction(extension) => {
-            let is_included_in_sankey_limits = graph_helper.is_included_in_sankey_diagram_limit(
+            let Some(sankey_helper) = sankey_helper else {
+              anyhow::bail!("invalid transition configuration: missing sankey helper");
+            };
+
+            let is_included_in_sankey_limits = sankey_helper.is_included_in_sankey_diagram_limit(
               &extension.sankey_diagram_id,
               target_state_index,
             )?;

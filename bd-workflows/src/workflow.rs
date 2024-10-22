@@ -506,7 +506,9 @@ impl SankeyDiagramState {
   pub(crate) fn push(&mut self, value: String, is_included_in_sankey_diagram_limit: bool) {
     self.extracted_values.push(value);
 
-    if is_included_in_sankey_diagram_limit && self.extracted_values.len() > self.sankey_values_extraction_limit as usize {
+    if is_included_in_sankey_diagram_limit
+      && self.extracted_values.len() > self.sankey_values_extraction_limit as usize
+    {
       self.is_trimmed = true;
 
       if !self.extracted_values.is_empty() {
@@ -888,7 +890,10 @@ impl Traversal {
     let extractions = config.sankey_extractions(self, index);
     for extraction in extractions {
       let Ok(sankey_extraction_values_limit) = config.sankey_limit(&extraction.sankey_id) else {
-        log::debug!("no extraction values limit for sankey {:?}", extraction.sankey_id);
+        log::debug!(
+          "no extraction values limit for sankey {:?}",
+          extraction.sankey_id
+        );
         continue;
       };
 
@@ -899,10 +904,11 @@ impl Traversal {
       sankey_states
         .get_or_insert_with(BTreeMap::new)
         .entry(extraction.sankey_id.clone())
-        .or_insert_with(|| {
-          SankeyDiagramState::new(sankey_extraction_values_limit)
-        })
-        .push(extracted_value.into_owned(), extraction.is_included_in_sankey_limits);
+        .or_insert_with(|| SankeyDiagramState::new(sankey_extraction_values_limit))
+        .push(
+          extracted_value.into_owned(),
+          extraction.is_included_in_sankey_limits,
+        );
     }
 
     sankey_states
