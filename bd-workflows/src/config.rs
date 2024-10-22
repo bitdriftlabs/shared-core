@@ -78,102 +78,7 @@ impl WorkflowsConfiguration {
 struct SankeyInfo {
   state_index: usize,
   limit: u32,
-}
-
-//
-// GraphHelper
-//
-
-pub struct GraphHelper {
-  state_index_by_id: HashMap<String, usize>,
-  sankey_info_by_sankey_id: HashMap<String, SankeyInfo>,
-
-  incoming_transitions_by_index: Vec<Vec<usize>>,
-  outgoing_transitions_by_index: Vec<Vec<usize>>,
-}
-
-impl GraphHelper {
-  pub fn new(config: &WorkflowConfigProto) -> anyhow::Result<Self> {
-    let state_index_by_id: HashMap<_, _> = config
-      .states
-      .iter()
-      .enumerate()
-      .map(|(index, state)| (state.id.clone(), index))
-      .collect();
-
-    let mut incoming_transitions_by_index: Vec<Vec<_>> = Vec::with_capacity(config.states.len());
-    let mut outgoing_transitions_by_index: Vec<Vec<_>> = Vec::with_capacity(config.states.len());
-
-    let mut sankey_info_by_sankey_id = HashMap::new();
-
-    for state in &config.states {
-      for transition in &state.transitions {
-        let Some(current_state_index) = state_index_by_id.get(&state.id) else {
-          anyhow::bail!("invalid workflow configuration: reference to an unexisting state");
-        };
-
-        let Some(target_state_index) = state_index_by_id.get(&transition.target_state_id) else {
-          anyhow::bail!("invalid workflow configuration: reference to an unexisting target state");
-        };
-
-        for action in &transition.actions {
-          if let Some(Action_type::ActionEmitSankeyDiagram(action)) = &action.action_type {
-            sankey_info_by_sankey_id.insert(
-              action.id.clone(),
-              SankeyInfo {
-                state_index: *target_state_index,
-                limit: action.limit,
-              },
-            );
-          }
-        }
-
-        incoming_transitions_by_index[*target_state_index].push(*current_state_index);
-        outgoing_transitions_by_index[*current_state_index].push(*target_state_index);
-      }
-    }
-
-    Ok(Self {
-      state_index_by_id,
-      sankey_info_by_sankey_id,
-
-      incoming_transitions_by_index,
-      outgoing_transitions_by_index,
-    })
-  }
-
-  pub fn path_to_state(&self, state: &State) -> anyhow::Result<Vec<usize>> {
-    // An assumption is make that any given matcher node cannot have more than one incoming edge.
-    let Some(state_index) = self.state_index_by_id.get(&state.id) else {
-      anyhow::bail!("invalid workflow state configuration: reference to an unexisting state");
-    };
-
-    let mut visited: HashSet<usize> = HashSet::new();
-    let mut queue = vec![*state_index];
-    let mut path = Vec::new();
-
-    while !queue.is_empty() {
-      let state_index = queue.remove(0);
-
-      // This protects us from infinite loops caused by cycles in the graph.
-      if visited.contains(&state_index) {
-        continue;
-      }
-
-      visited.insert(state_index);
-      path.push(state_index);
-
-      let states_previous_on_path = &self.incoming_transitions_by_index[state_index];
-      queue.extend(states_previous_on_path);
-    }
-
-    debug_assert!(
-      !path.is_empty() && path[0] == 0,
-      "the first state on the path should be the root state which is always at index 0"
-    );
-
-    Ok(path.into_iter().rev().collect_vec())
-  }
+  root_to_action_path: Vec<usize>,
 }
 
 //
@@ -188,6 +93,8 @@ pub struct Config {
   execution: Execution,
   duration_limit: Option<Duration>,
   matched_logs_count_limit: Option<u32>,
+
+  graph_helper: GraphHelper,
 }
 
 impl Config {
@@ -221,6 +128,7 @@ impl Config {
       matched_logs_count_limit: Self::try_matched_logs_count_limit_from_proto(
         &config.limit_matched_logs_count,
       )?,
+      graph_helper: GraphHelper::new(config)?,
     })
   }
 
@@ -296,12 +204,160 @@ impl Config {
     &self.states[traversal.state_index].transitions[transition_index].sankey_extractions
   }
 
+  pub(crate) fn sankey_limit(
+    &self,
+    sankey_id: &str,
+  ) -> anyhow::Result<u32> {
+    if let Some(info) = self.graph_helper.sankey_info_by_sankey_id.get(sankey_id) {
+      Ok(info.limit)
+    } else {
+      Err(anyhow!("invalid workflow configuration: no limit for an unexisting sankey diagram"))
+    }
+  }
+
   pub(crate) fn next_state_index_for_traversal(
     &self,
     traversal: &Traversal,
     transition_index: usize,
   ) -> usize {
     self.states[traversal.state_index].transitions[transition_index].target_state_index
+  }
+}
+
+//
+// SankeyHelper
+//
+
+pub struct SankeyhHelper {
+  state_index_by_id: HashMap<String, usize>,
+  sankey_info_by_sankey_id: HashMap<String, SankeyInfo>,
+
+  incoming_transitions_by_index: Vec<Vec<usize>>,
+  outgoing_transitions_by_index: Vec<Vec<usize>>
+}
+
+impl GraphHelper {
+  pub fn new(config: &WorkflowConfigProto) -> anyhow::Result<Self> {
+    let state_index_by_id: HashMap<_, _> = config
+      .states
+      .iter()
+      .enumerate()
+      .map(|(index, state)| (state.id.clone(), index))
+      .collect();
+
+    let mut incoming_transitions_by_index: Vec<Vec<_>> = Vec::with_capacity(config.states.len());
+    let mut outgoing_transitions_by_index: Vec<Vec<_>> = Vec::with_capacity(config.states.len());
+
+    let mut sankey_info_by_sankey_id = HashMap::new();
+
+    for state in &config.states {
+      for transition in &state.transitions {
+        let Some(current_state_index) = state_index_by_id.get(&state.id) else {
+          anyhow::bail!("invalid workflow configuration: reference to an unexisting state");
+        };
+
+        let Some(target_state_index) = state_index_by_id.get(&transition.target_state_id) else {
+          anyhow::bail!("invalid workflow configuration: reference to an unexisting target state");
+        };
+
+        for action in &transition.actions {
+          if let Some(Action_type::ActionEmitSankeyDiagram(action)) = &action.action_type {
+            sankey_info_by_sankey_id.insert(
+              action.id.clone(),
+              SankeyInfo {
+                state_index: *target_state_index,
+                limit: action.limit,
+                root_to_action_path: Vec::new(),
+              },
+            );
+          }
+        }
+
+        incoming_transitions_by_index[*target_state_index].push(*current_state_index);
+        outgoing_transitions_by_index[*current_state_index].push(*target_state_index);
+      }
+    }
+
+    for info in sankey_info_by_sankey_id.values_mut() {
+      info.root_to_action_path =
+        Self::path_to_state(info.state_index, &incoming_transitions_by_index)?;
+    }
+
+    Ok(Self {
+      state_index_by_id,
+      sankey_info_by_sankey_id,
+
+      incoming_transitions_by_index,
+      outgoing_transitions_by_index
+    })
+  }
+
+  pub fn is_included_in_sankey_diagram_limit(
+    &self,
+    sankey_id: &str,
+    target_state_index: usize,
+  ) -> anyhow::Result<bool> {
+    let path = &self
+      .sankey_info_by_sankey_id
+      .get(sankey_id)
+      .ok_or_else(|| {
+        anyhow!("invalid workflow configuration: reference to an unexisting sankey diagram")
+      })?
+      .root_to_action_path;
+
+    for index in path {
+      if self.incoming_transitions_by_index[*index].len() > 1 {
+        return Ok(false);
+      }
+
+      if *index == target_state_index {
+        break;
+      }
+    }
+
+    for index in path.iter().rev() {
+      if self.outgoing_transitions_by_index[*index].len() > 1 {
+        return Ok(false);
+      }
+
+      if *index == target_state_index {
+        break;
+      }
+    }
+
+    Ok(true)
+  }
+
+  fn path_to_state(
+    state_index: usize,
+    incoming_transitions_by_index: &[Vec<usize>],
+  ) -> anyhow::Result<Vec<usize>> {
+    // An assumption is make that any given matcher node cannot have more than one incoming edge.
+    let mut visited: HashSet<usize> = HashSet::new();
+    let mut queue = vec![state_index];
+    let mut path = Vec::new();
+
+    while !queue.is_empty() {
+      let state_index = queue.remove(0);
+
+      // This protects us from infinite loops caused by cycles in the graph.
+      if visited.contains(&state_index) {
+        continue;
+      }
+
+      visited.insert(state_index);
+      path.push(state_index);
+
+      let states_previous_on_path = &incoming_transitions_by_index[state_index];
+      queue.extend(states_previous_on_path);
+    }
+
+    debug_assert!(
+      !path.is_empty() && path[0] == 0,
+      "the first state on the path should be the root state which is always at index 0"
+    );
+
+    Ok(path.into_iter().rev().collect_vec())
   }
 }
 
@@ -372,12 +428,13 @@ impl Execution {
 pub(crate) struct SankeyExtraction {
   pub(crate) sankey_id: String,
   pub(crate) value: TagValue,
+  pub(crate) is_included_in_sankey_limits: bool,
 }
 
 impl SankeyExtraction {
   fn new(
     proto: &workflow::workflow::transition_extension::SankeyDiagramValueExtraction,
-    _graph_helper: &GraphHelper,
+    is_included_in_sankey_limits: bool,
   ) -> anyhow::Result<Self> {
     let Some(value) = &proto.value_type else {
       anyhow::bail!("invalid sankey diagram value extraction configuration: missing value type")
@@ -391,6 +448,7 @@ impl SankeyExtraction {
           TagValue::Extract(extracted.field_name.clone())
         },
       },
+      is_included_in_sankey_limits,
     })
   }
 }
@@ -447,7 +505,14 @@ impl Transition {
 
         match extension_type {
           Extension_type::SankeyDiagramValueExtraction(extension) => {
-            Ok(Some(SankeyExtraction::new(extension, graph_helper)))
+            let is_included_in_sankey_limits = graph_helper.is_included_in_sankey_diagram_limit(
+              &extension.sankey_diagram_id,
+              target_state_index,
+            )?;
+            Ok(Some(SankeyExtraction::new(
+              extension,
+              is_included_in_sankey_limits,
+            )))
           },
           #[allow(unreachable_patterns)]
           _ => anyhow::bail!("invalid transition configuration: unknown extension type"),

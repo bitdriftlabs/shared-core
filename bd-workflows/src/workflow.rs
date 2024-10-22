@@ -491,18 +491,28 @@ impl SankeyDiagramPath {
 pub(crate) struct SankeyDiagramState {
   extracted_values: Vec<String>,
   is_trimmed: bool,
+  sankey_values_extraction_limit: u32,
 }
 
 impl SankeyDiagramState {
-  pub(crate) const fn new() -> Self {
+  pub(crate) const fn new(sankey_values_extraction_limit: u32) -> Self {
     Self {
       extracted_values: vec![],
       is_trimmed: false,
+      sankey_values_extraction_limit,
     }
   }
 
-  pub(crate) fn push(&mut self, value: String) {
+  pub(crate) fn push(&mut self, value: String, is_included_in_sankey_diagram_limit: bool) {
     self.extracted_values.push(value);
+
+    if is_included_in_sankey_diagram_limit && self.extracted_values.len() > self.sankey_values_extraction_limit as usize {
+      self.is_trimmed = true;
+
+      if !self.extracted_values.is_empty() {
+        self.extracted_values.remove(0);
+      }
+    }
   }
 }
 
@@ -874,21 +884,28 @@ impl Traversal {
     index: usize,
     log: &LogRef<'_>,
   ) -> Option<BTreeMap<String, SankeyDiagramState>> {
-    let mut sankey_diagram_states = self.sankey_states.clone();
+    let mut sankey_states = self.sankey_states.clone();
     let extractions = config.sankey_extractions(self, index);
     for extraction in extractions {
+      let Ok(sankey_extraction_values_limit) = config.sankey_limit(&extraction.sankey_id) else {
+        log::debug!("no extraction values limit for sankey {:?}", extraction.sankey_id);
+        continue;
+      };
+
       let Some(extracted_value) = extraction.value.extract_value(log) else {
         continue;
       };
 
-      sankey_diagram_states
+      sankey_states
         .get_or_insert_with(BTreeMap::new)
         .entry(extraction.sankey_id.clone())
-        .or_insert(SankeyDiagramState::new())
-        .push(extracted_value.into_owned());
+        .or_insert_with(|| {
+          SankeyDiagramState::new(sankey_extraction_values_limit)
+        })
+        .push(extracted_value.into_owned(), extraction.is_included_in_sankey_limits);
     }
 
-    sankey_diagram_states
+    sankey_states
   }
 
   fn triggered_actions<'a>(
