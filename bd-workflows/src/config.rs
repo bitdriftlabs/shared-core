@@ -77,8 +77,13 @@ impl WorkflowsConfiguration {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct SankeyInfo {
+  // The index of the state from which the Sankey diagram is emitted.
   state_index: usize,
+  // The limit on the number of values that can be extracted for a given Sankey diagram.
+  // See the `SankeyDiagramValueExtraction` documentation for more details.
   limit: u32,
+  // The shortest path from the first state of the workflow to the state that emits the Sankey
+  // diagram. The path does not include cycles.
   root_to_action_path: Vec<usize>,
 }
 
@@ -95,7 +100,7 @@ pub struct Config {
   duration_limit: Option<Duration>,
   matched_logs_count_limit: Option<u32>,
 
-  // Present only if a given workflow contains at least one Sankey diagram.
+  // Exists only if the workflow contains at least one Sankey diagram.
   sankey_helper: Option<SankeyHelper>,
 }
 
@@ -218,7 +223,8 @@ impl Config {
       Ok(info.limit)
     } else {
       Err(anyhow!(
-        "invalid workflow configuration: no limit for an unexisting sankey diagram"
+        "sankey_limit: unexisting sankey diagram, sankey id {:?}",
+        sankey_id
       ))
     }
   }
@@ -247,6 +253,20 @@ pub struct SankeyHelper {
 
 impl SankeyHelper {
   fn new(config: &WorkflowConfigProto) -> anyhow::Result<Option<Self>> {
+    // We could check for Sankey diagrams within the other loop implemented in this method,
+    // but for safety, we check for them first to avoid unnecessary work on workflows without Sankey
+    // diagrams.
+    let has_sankey = config
+      .states
+      .iter()
+      .flat_map(|state| state.transitions)
+      .flat_map(|transition| transition.actions)
+      .any(|transition| transition.has_action_emit_sankey_diagram());
+
+    if has_sankey {
+      return Ok(None);
+    }
+
     let state_index_by_id: HashMap<_, _> = config
       .states
       .iter()
@@ -262,11 +282,17 @@ impl SankeyHelper {
     for state in &config.states {
       for transition in &state.transitions {
         let Some(current_state_index) = state_index_by_id.get(&state.id) else {
-          anyhow::bail!("invalid workflow configuration: reference to an unexisting state");
+          anyhow::bail!(
+            "invalid workflow configuration: reference to an unexisting state, state id: {:?}",
+            state.id
+          );
         };
 
         let Some(target_state_index) = state_index_by_id.get(&transition.target_state_id) else {
-          anyhow::bail!("invalid workflow configuration: reference to an unexisting target state");
+          anyhow::bail!(
+            "invalid workflow configuration: reference to an unexisting target state: {:?}",
+            state.id
+          );
         };
 
         for action in &transition.actions {
@@ -285,10 +311,6 @@ impl SankeyHelper {
         incoming_transitions_by_index[*target_state_index].push(*current_state_index);
         outgoing_transitions_by_index[*current_state_index].push(*target_state_index);
       }
-    }
-
-    if sankey_info_by_sankey_id.is_empty() {
-      return Ok(None);
     }
 
     for info in sankey_info_by_sankey_id.values_mut() {
