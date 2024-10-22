@@ -95,6 +95,7 @@ pub struct Config {
   duration_limit: Option<Duration>,
   matched_logs_count_limit: Option<u32>,
 
+  // Present only if a given workflow contains at least one Sankey diagram.
   sankey_helper: Option<SankeyHelper>,
 }
 
@@ -440,13 +441,13 @@ impl Execution {
 pub(crate) struct SankeyExtraction {
   pub(crate) sankey_id: String,
   pub(crate) value: TagValue,
-  pub(crate) is_included_in_sankey_limits: bool,
+  pub(crate) is_included_in_sankey_values_extraction_limit: bool,
 }
 
 impl SankeyExtraction {
   fn new(
     proto: &workflow::workflow::transition_extension::SankeyDiagramValueExtraction,
-    is_included_in_sankey_limits: bool,
+    is_included_in_sankey_values_extraction_limit: bool,
   ) -> anyhow::Result<Self> {
     let Some(value) = &proto.value_type else {
       anyhow::bail!("invalid sankey diagram value extraction configuration: missing value type")
@@ -460,7 +461,7 @@ impl SankeyExtraction {
           TagValue::Extract(extracted.field_name.clone())
         },
       },
-      is_included_in_sankey_limits,
+      is_included_in_sankey_values_extraction_limit,
     })
   }
 }
@@ -521,13 +522,14 @@ impl Transition {
               anyhow::bail!("invalid transition configuration: missing sankey helper");
             };
 
-            let is_included_in_sankey_limits = sankey_helper.is_included_in_sankey_diagram_limit(
-              &extension.sankey_diagram_id,
-              target_state_index,
-            )?;
+            let is_included_in_sankey_values_extraction_limit = sankey_helper
+              .is_included_in_sankey_diagram_limit(
+                &extension.sankey_diagram_id,
+                target_state_index,
+              )?;
             Ok(Some(SankeyExtraction::new(
               extension,
-              is_included_in_sankey_limits,
+              is_included_in_sankey_values_extraction_limit,
             )))
           },
           #[allow(unreachable_patterns)]

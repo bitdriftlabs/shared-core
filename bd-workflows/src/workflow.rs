@@ -889,9 +889,9 @@ impl Traversal {
     let mut sankey_states = self.sankey_states.clone();
     let extractions = config.sankey_extractions(self, index);
     for extraction in extractions {
-      let Ok(sankey_extraction_values_limit) = config.sankey_limit(&extraction.sankey_id) else {
+      let Ok(sankey_values_extraction_limit) = config.sankey_limit(&extraction.sankey_id) else {
         log::debug!(
-          "no extraction values limit for sankey {:?}",
+          "no values extraction limit for sankey {:?}",
           extraction.sankey_id
         );
         continue;
@@ -904,10 +904,10 @@ impl Traversal {
       sankey_states
         .get_or_insert_with(BTreeMap::new)
         .entry(extraction.sankey_id.clone())
-        .or_insert_with(|| SankeyDiagramState::new(sankey_extraction_values_limit))
+        .or_insert_with(|| SankeyDiagramState::new(sankey_values_extraction_limit))
         .push(
           extracted_value.into_owned(),
-          extraction.is_included_in_sankey_limits,
+          extraction.is_included_in_sankey_values_extraction_limit,
         );
     }
 
