@@ -801,7 +801,7 @@ pub mod stats {
   // The maximum aggregation window of each pending file, in minutes.
   duration_feature_flag!(
     MaxAggregationWindowPerFileFlag,
-    "stats.max_aggregation_window_per_file",
+    "stats.max_aggregation_window_per_file_ms",
     5.minutes()
   );
 
