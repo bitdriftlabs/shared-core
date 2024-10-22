@@ -380,7 +380,7 @@ impl FileManager {
         .and_then(|contents| read_compressed_protobuf::<StatsUploadRequest>(&contents))
       {
         Ok(mut pending_request) => {
-          // At the time of creation period_end was not known so we set both start end end here.
+          // At the time of creation period_end was not known so we set both start and end here.
           // In the future if we support multiple snapshots per upload we would need to handle that
           // here as well.
           debug_assert_eq!(1, pending_request.snapshot.len());
