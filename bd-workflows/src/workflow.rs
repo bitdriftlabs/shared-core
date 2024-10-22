@@ -907,7 +907,7 @@ impl Traversal {
         .or_insert_with(|| SankeyDiagramState::new(sankey_values_extraction_limit))
         .push(
           extracted_value.into_owned(),
-          extraction.is_included_in_sankey_values_extraction_limit,
+          extraction.counts_toward_sankey_values_extraction_limit,
         );
     }
 
