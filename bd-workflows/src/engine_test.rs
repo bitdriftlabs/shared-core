@@ -18,9 +18,9 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{BoundedCollector, Collector};
 use bd_log_primitives::{log_level, FieldsRef, LogFields, LogMessage, LogRef};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
-use bd_proto::protos::client::api::log_upload_intent_request;
 use bd_proto::protos::client::api::log_upload_intent_request::Intent_type::WorkflowActionUpload;
 use bd_proto::protos::client::api::log_upload_intent_response::{Drop, UploadImmediately};
+use bd_proto::protos::client::api::{log_upload_intent_request, SankeyDiagramUploadRequest};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_stats_common::labels;
 use bd_test_helpers::metric_value;
@@ -221,6 +221,7 @@ struct AnnotatedWorkflowsEngine {
   received_logs_upload_intents:
     Arc<parking_lot::Mutex<Vec<log_upload_intent_request::WorkflowActionUpload>>>,
   awaiting_logs_upload_intent_decisions: Arc<parking_lot::Mutex<Vec<Decision>>>,
+  sankey_uploads: Arc<parking_lot::Mutex<Vec<SankeyDiagramUploadRequest>>>,
 
   dynamic_stats_collector: BoundedCollector,
 
@@ -235,6 +236,7 @@ impl AnnotatedWorkflowsEngine {
       parking_lot::Mutex<Vec<log_upload_intent_request::WorkflowActionUpload>>,
     >,
     awaiting_logs_upload_intent_decisions: Arc<parking_lot::Mutex<Vec<Decision>>>,
+    sankey_uploads: Arc<parking_lot::Mutex<Vec<SankeyDiagramUploadRequest>>>,
     dynamic_stats_collector: BoundedCollector,
     task_handle: JoinHandle<()>,
   ) -> Self {
@@ -247,6 +249,7 @@ impl AnnotatedWorkflowsEngine {
       flushed_buffers,
       received_logs_upload_intents,
       awaiting_logs_upload_intent_decisions,
+      sankey_uploads,
 
       dynamic_stats_collector,
 
@@ -268,6 +271,7 @@ impl AnnotatedWorkflowsEngine {
       parking_lot::Mutex<Vec<log_upload_intent_request::WorkflowActionUpload>>,
     >,
     awaiting_logs_upload_intent_decisions: Arc<parking_lot::Mutex<Vec<Decision>>>,
+    sankey_uploads: Arc<parking_lot::Mutex<Vec<SankeyDiagramUploadRequest>>>,
   ) -> JoinHandle<()> {
     let mut buffers_to_flush_rx = buffers_to_flush_rx;
     let mut data_upload_rx = data_upload_rx;
@@ -282,24 +286,33 @@ impl AnnotatedWorkflowsEngine {
               log::debug!("received new buffers to flush {:?}", buffers_to_flush);
               flushed_buffers.lock().push(buffers_to_flush);
             },
-            Some(DataUpload::LogsUploadIntentRequest(logs_upload_intent)) = data_upload_rx.recv(),
-              if !awaiting_logs_upload_intent_decisions.lock().is_empty() => {
-              let Some(WorkflowActionUpload(upload)) =
-                logs_upload_intent.payload.intent_type.clone() else
-              {
-                panic!("unexpected intent type");
-              };
+            Some(data_upload) = data_upload_rx.recv(), if !awaiting_logs_upload_intent_decisions.lock().is_empty() => {
+              match data_upload {
+                DataUpload::LogsUploadIntentRequest(logs_upload_intent) => {
+                  let Some(WorkflowActionUpload(upload)) =
+                  logs_upload_intent.payload.intent_type.clone() else
+                {
+                  panic!("unexpected intent type");
+                };
 
-            let decision = awaiting_logs_upload_intent_decisions.lock().remove(0);
-            log::debug!("responding \"{:?}\" to \"{}\" intent", decision, logs_upload_intent.uuid);
+                let decision = awaiting_logs_upload_intent_decisions.lock().remove(0);
+                log::debug!("responding \"{:?}\" to \"{}\" intent", decision, logs_upload_intent.uuid);
 
-            received_logs_upload_intents.lock().push(upload.clone());
+                received_logs_upload_intents.lock().push(upload.clone());
 
-            if let Err(e) = logs_upload_intent
-              .response_tx
-              .send(decision)
-              {
-                panic!("failed to send response: {e:?}");
+                if let Err(e) = logs_upload_intent
+                  .response_tx
+                  .send(decision)
+                  {
+                    panic!("failed to send response: {e:?}");
+                  }
+                },
+                DataUpload::SankeyPathUpload(upload) => {
+                  sankey_uploads.lock().push(upload.payload.clone());
+                },
+                default => {
+                  log::error!("received unhandled data upload: {:?}", default);
+                }
               }
             }
         };
@@ -383,6 +396,7 @@ impl Setup {
     let flushed_buffers = Arc::new(parking_lot::Mutex::new(vec![]));
     let received_logs_upload_intents = Arc::new(parking_lot::Mutex::new(vec![]));
     let awaiting_logs_upload_intent_decisions = Arc::new(parking_lot::Mutex::new(vec![]));
+    let sankey_uploads = Arc::new(parking_lot::Mutex::new(vec![]));
 
     let dynamic_stats = Arc::new(bd_client_stats::DynamicStats::new(
       &self.collector.scope(""),
@@ -404,6 +418,7 @@ impl Setup {
       flushed_buffers.clone(),
       received_logs_upload_intents.clone(),
       awaiting_logs_upload_intent_decisions.clone(),
+      sankey_uploads.clone(),
     );
 
     workflows_engine.start(workflows_engine_config);
@@ -413,6 +428,7 @@ impl Setup {
       flushed_buffers,
       received_logs_upload_intents,
       awaiting_logs_upload_intent_decisions,
+      sankey_uploads,
       dynamic_stats_collector,
       task_handle,
     )
@@ -2877,6 +2893,40 @@ async fn test_exclusive_workflow_potential_fork() {
     1,
     "workflows:workflow_potential_forks_total",
     labels! { "type" => "exclusive" },
+  );
+}
+
+#[tokio::test]
+async fn sankey_action() {
+  let mut a = state!("A");
+  let mut b = state!("B");
+  let mut c = state!("C");
+  let d = state!("D");
+
+  let b_clone = b.clone();
+
+  declare_transition!(
+    &mut a => &b;
+    when rule!(log_matches!(message == "foo"))
+  );
+  declare_transition!(
+    &mut b => &c;
+    when rule!(log_matches!(message == "bar"))
+  );
+  declare_transition!(
+    &mut b => &b_clone;
+    when rule!(log_matches!(message == "bar"))
+  );
+  declare_transition!(
+    &mut c => &d;
+    when rule!(log_matches!(message == "dar"))
+  );
+
+  let workflow = workflow!(exclusive with a, b, c, d);
+  let setup = Setup::new();
+
+  let mut engine = setup.make_workflows_engine(
+    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
   );
 }
 
