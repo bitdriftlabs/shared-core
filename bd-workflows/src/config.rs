@@ -259,9 +259,9 @@ impl SankeyHelper {
     let has_sankey = config
       .states
       .iter()
-      .flat_map(|state| state.transitions)
-      .flat_map(|transition| transition.actions)
-      .any(|transition| transition.has_action_emit_sankey_diagram());
+      .flat_map(|state| &state.transitions)
+      .flat_map(|transition| &transition.actions)
+      .any(bd_proto::protos::workflow::workflow::workflow::Action::has_action_emit_sankey_diagram);
 
     if has_sankey {
       return Ok(None);

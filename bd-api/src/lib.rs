@@ -116,7 +116,7 @@ pub enum DataUpload {
   StatsUploadRequest(Tracked<StatsUploadRequest, UploadResponse>),
 
   /// A Sankey diagram path upload request.
-  SankeyPathUpload(Tracked<SankeyDiagramUploadRequest, bool>),
+  SankeyPathUpload(Tracked<SankeyDiagramUploadRequest, UploadResponse>),
 
   /// An opaque request with an associated tracking id that is used to ensure delivery. This allows
   /// for uploading of payloads which are not directly typed to the mux.
