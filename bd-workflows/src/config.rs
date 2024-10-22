@@ -71,10 +71,18 @@ impl WorkflowsConfiguration {
   }
 }
 
+//
+// SankeyInfo
+//
+
 struct SankeyInfo {
   state_index: usize,
-  limit: usize,
+  limit: u32,
 }
+
+//
+// GraphHelper
+//
 
 pub struct GraphHelper {
   state_index_by_id: HashMap<String, usize>,
@@ -90,14 +98,13 @@ impl GraphHelper {
       .states
       .iter()
       .enumerate()
-      .map(|(id, index)| (id, index))
+      .map(|(index, state)| (state.id.clone(), index))
       .collect();
 
     let mut incoming_transitions_by_index: Vec<Vec<_>> = Vec::with_capacity(config.states.len());
     let mut outgoing_transitions_by_index: Vec<Vec<_>> = Vec::with_capacity(config.states.len());
 
-    let mut state_index_by_sankey_id = HashMap::new();
-    let mut sankey_extraction_limit_by_sankey_id = HashMap::new();
+    let mut sankey_info_by_sankey_id = HashMap::new();
 
     for state in &config.states {
       for transition in &state.transitions {
@@ -109,10 +116,15 @@ impl GraphHelper {
           anyhow::bail!("invalid workflow configuration: reference to an unexisting target state");
         };
 
-        for action in transition.actions {
-          if let Some(Action::SankeyDiagram(action)) = action.action_type {
-            state_index_by_sankey_id.insert(transition.target_state_id, action.id.clone());
-            sankey_extraction_limit_by_sankey_id.insert()
+        for action in &transition.actions {
+          if let Some(Action_type::ActionEmitSankeyDiagram(action)) = &action.action_type {
+            sankey_info_by_sankey_id.insert(
+              action.id.clone(),
+              SankeyInfo {
+                state_index: *target_state_index,
+                limit: action.limit,
+              },
+            );
           }
         }
 
@@ -123,14 +135,14 @@ impl GraphHelper {
 
     Ok(Self {
       state_index_by_id,
-      state_index_by_sankey_id,
+      sankey_info_by_sankey_id,
 
       incoming_transitions_by_index,
       outgoing_transitions_by_index,
     })
   }
 
-  fn path_to_state(&self, state: &State) -> anyhow::Result<Vec<usize>> {
+  pub fn path_to_state(&self, state: &State) -> anyhow::Result<Vec<usize>> {
     // An assumption is make that any given matcher node cannot have more than one incoming edge.
     let Some(state_index) = self.state_index_by_id.get(&state.id) else {
       anyhow::bail!("invalid workflow state configuration: reference to an unexisting state");
@@ -195,7 +207,7 @@ impl Config {
       .map(|(index, s)| (s.id.clone(), index))
       .collect();
 
-    let mut states = config
+    let states = config
       .states
       .iter()
       .map(|s| State::try_from_proto(s, &state_index_by_id, &graph_helper))
@@ -365,6 +377,7 @@ pub(crate) struct SankeyExtraction {
 impl SankeyExtraction {
   fn new(
     proto: &workflow::workflow::transition_extension::SankeyDiagramValueExtraction,
+    _graph_helper: &GraphHelper,
   ) -> anyhow::Result<Self> {
     let Some(value) = &proto.value_type else {
       anyhow::bail!("invalid sankey diagram value extraction configuration: missing value type")
@@ -429,12 +442,12 @@ impl Transition {
       .iter()
       .map(|extension| {
         let Some(extension_type) = &extension.extension_type else {
-          return anyhow::Ok(None);
+          return Ok(None);
         };
 
         match extension_type {
           Extension_type::SankeyDiagramValueExtraction(extension) => {
-            anyhow::Ok(Some(SankeyExtraction::new(extension)))
+            Ok(Some(SankeyExtraction::new(extension, graph_helper)))
           },
           #[allow(unreachable_patterns)]
           _ => anyhow::bail!("invalid transition configuration: unknown extension type"),
