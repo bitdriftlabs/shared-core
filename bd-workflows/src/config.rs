@@ -75,7 +75,7 @@ impl WorkflowsConfiguration {
 // SankeyInfo
 //
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct SankeyInfo {
   state_index: usize,
   limit: u32,
@@ -236,7 +236,7 @@ impl Config {
 // SankeyHelper
 //
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SankeyHelper {
   state_index_by_id: HashMap<String, usize>,
   sankey_info_by_sankey_id: HashMap<String, SankeyInfo>,
@@ -246,7 +246,7 @@ pub struct SankeyHelper {
 }
 
 impl SankeyHelper {
-  pub fn new(config: &WorkflowConfigProto) -> anyhow::Result<Option<Self>> {
+  fn new(config: &WorkflowConfigProto) -> anyhow::Result<Option<Self>> {
     let state_index_by_id: HashMap<_, _> = config
       .states
       .iter()
