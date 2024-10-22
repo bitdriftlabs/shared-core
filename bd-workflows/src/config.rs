@@ -335,7 +335,10 @@ impl Action {
       },
       Action_type::ActionEmitMetric(metric) => Ok(Self::EmitMetric(ActionEmitMetric::new(metric)?)),
       Action_type::ActionEmitSankeyDiagram(_) => Err(anyhow!(
-        "invalid action configuration: unsupported action type"
+        "invalid action configuration: unsupported action type emit Sankey"
+      )),
+      Action_type::ActionTakeScreenshot(_) => Err(anyhow!(
+        "invalid action configuration: unsupported action type take screenshot"
       )),
     }
   }
