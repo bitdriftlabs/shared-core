@@ -283,8 +283,11 @@ mod tests {
       );
     }
 
-    fn aggregated_stats_file_path(&self) -> std::path::PathBuf {
-      self.sdk_directory.path().join("aggregated_stats.pb")
+    fn pending_aggregation_index_file_path(&self) -> std::path::PathBuf {
+      self
+        .sdk_directory
+        .path()
+        .join("stats_uploads/pending_aggregation_index.pb")
     }
 
     fn workflows_state_file_path(&self) -> std::path::PathBuf {
@@ -704,7 +707,7 @@ mod tests {
 
     // Confim that workflows state is persisted to disk after the processing of log completes.
     assert!(setup.workflows_state_file_path().exists());
-    assert!(setup.aggregated_stats_file_path().exists());
+    assert!(setup.pending_aggregation_index_file_path().exists());
   }
 
   #[test]
@@ -731,12 +734,12 @@ mod tests {
     setup.logger_handle.flush_state(false);
 
     // File should not exist immediately after flush_state call.
-    assert!(!setup.aggregated_stats_file_path().exists());
+    assert!(!setup.pending_aggregation_index_file_path().exists());
 
     // Wait a bit for the event loop to be able to process `flush_state` request.
     std::thread::sleep(1.std_seconds());
 
-    assert!(setup.aggregated_stats_file_path().exists());
+    assert!(setup.pending_aggregation_index_file_path().exists());
   }
 
   #[test]
@@ -777,7 +780,7 @@ mod tests {
     setup.logger_handle.flush_state(true);
 
     assert!(setup.workflows_state_file_path().exists());
-    assert!(setup.aggregated_stats_file_path().exists());
+    assert!(setup.pending_aggregation_index_file_path().exists());
   }
 
   #[test]
@@ -787,12 +790,12 @@ mod tests {
     setup.logger_handle.flush_state(false);
 
     // File should not exist immediately after flush_state call.
-    assert!(!setup.aggregated_stats_file_path().exists());
+    assert!(!setup.pending_aggregation_index_file_path().exists());
 
     // Wait a bit for the event loop to be able to process `flush_state` request.
     std::thread::sleep(1.std_seconds());
 
-    assert!(setup.aggregated_stats_file_path().exists());
+    assert!(setup.pending_aggregation_index_file_path().exists());
   }
 
   #[test]
@@ -802,7 +805,7 @@ mod tests {
     setup.logger_handle.flush_state(true);
 
     assert!(!setup.workflows_state_file_path().exists());
-    assert!(setup.aggregated_stats_file_path().exists());
+    assert!(setup.pending_aggregation_index_file_path().exists());
   }
 
   #[test]

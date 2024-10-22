@@ -2989,6 +2989,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "base64-url",
+ "bd-client-common",
  "bd-client-stats",
  "bd-client-stats-store",
  "bd-log",
@@ -3001,8 +3002,8 @@ dependencies = [
  "bd-time",
  "bd-workflows",
  "clap",
- "flate2",
  "log",
+ "protobuf",
  "rand",
  "sha2",
  "tempfile",
