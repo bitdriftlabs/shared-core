@@ -20,6 +20,12 @@ use bd_proto::protos::client::api::{
 use std::collections::HashMap;
 use uuid::Uuid;
 
+#[derive(Debug)]
+pub struct UploadResponse {
+  pub success: bool,
+  pub uuid: String,
+}
+
 /// Used to track pending upload requests. Requests are identified by a UUID recorded at
 /// upload time, which is used to correlate it with incoming response. Each pending request
 /// maintains a oneshot channel which is used to signal back to the uploader the result of the
@@ -27,7 +33,7 @@ use uuid::Uuid;
 pub struct StateTracker {
   // A map of pending uploads to their response channel. This is used to
   // communicate back the result of a log or stats upload back to the upload task.
-  pending_uploads: HashMap<String, tokio::sync::oneshot::Sender<bool>>,
+  pending_uploads: HashMap<String, tokio::sync::oneshot::Sender<UploadResponse>>,
 
   // A map of pending log intents to their response channel. This is used to communicate back the
   // result of a log intent request back to the upload task.
@@ -53,7 +59,7 @@ impl StateTracker {
   }
 
   /// Track the upload object, converting it into an upload request.
-  pub fn track_upload<T: Send + Sync>(&mut self, upload: Tracked<T, bool>) -> T {
+  pub fn track_upload<T: Send + Sync>(&mut self, upload: Tracked<T, UploadResponse>) -> T {
     let uuid = upload.uuid.clone();
     let (request, response_tx) = upload.into_parts();
     self.pending_uploads.insert(uuid, response_tx);
@@ -69,7 +75,10 @@ impl StateTracker {
       .pending_uploads
       .remove(uuid)
       .ok_or_else(|| anyhow!("Log upload state for uuid {uuid:?} was inconsistent"))?
-      .send(error.is_empty());
+      .send(UploadResponse {
+        success: error.is_empty(),
+        uuid: uuid.to_string(),
+      });
 
     Ok(())
   }
@@ -152,12 +161,12 @@ pub struct LogBatch {
   pub buffer_id: String,
 }
 
-/// A batch of logs sent to be uploaded.
-pub type TrackedLogBatch = Tracked<LogUploadRequest, bool>;
+/// A batch of logs sent to be uploaded. The upload is wrapped in an Arc to allow for cheap retries.
+pub type TrackedLogBatch = Tracked<LogUploadRequest, UploadResponse>;
 
-pub type TrackedStatsUploadRequest = Tracked<StatsUploadRequest, bool>;
+pub type TrackedStatsUploadRequest = Tracked<StatsUploadRequest, UploadResponse>;
 
-pub type TrackedSankeyDiagramUploadRequest = Tracked<SankeyDiagramUploadRequest, bool>;
+pub type TrackedSankeyDiagramUploadRequest = Tracked<SankeyDiagramUploadRequest, UploadResponse>;
 
 /// An intent to upload a buffer due to a listener triggering. This is communicated to the backend
 /// in order to allow the server to make decisions on whether a buffer should be uploaded in

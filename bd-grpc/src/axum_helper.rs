@@ -12,6 +12,7 @@ use futures::future::FutureExt;
 use http::Request;
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto::Builder;
 use prometheus::{IntCounter, IntGauge};
 use std::future::Future;
 use std::net::SocketAddr;
@@ -20,15 +21,29 @@ use tower::util::ServiceExt;
 use tower::Service;
 use unwrap_infallible::UnwrapInfallible;
 
-// This is a manual implementation of the axum accept loop with graceful shutdown. It adds:
-// 1) Connection count tracking.
-// In the future there are likely to be further customizations indicated by the TODOs below.
 pub async fn serve_with_connect_info(
   router: Router,
   listener: TcpListener,
   cx_total: IntCounter,
   cx_active: IntGauge,
   shutdown: impl Future<Output = ()>,
+) -> anyhow::Result<()> {
+  serve_with_connect_info_ex(router, listener, cx_total, cx_active, shutdown, || {
+    Builder::new(TokioExecutor::new())
+  })
+  .await
+}
+
+// This is a manual implementation of the axum accept loop with graceful shutdown. It adds:
+// 1) Connection count tracking.
+// In the future there are likely to be further customizations indicated by the TODOs below.
+pub async fn serve_with_connect_info_ex(
+  router: Router,
+  listener: TcpListener,
+  cx_total: IntCounter,
+  cx_active: IntGauge,
+  shutdown: impl Future<Output = ()>,
+  builder_fn: impl Fn() -> Builder<TokioExecutor>,
 ) -> anyhow::Result<()> {
   let mut make_service = router.into_make_service_with_connect_info::<SocketAddr>();
   tokio::pin!(shutdown);
@@ -54,6 +69,7 @@ pub async fn serve_with_connect_info(
     let mut cx_shutdown = cx_shutdown_trigger.make_shutdown();
     cx_total.inc();
     let cx_active = AutoGauge::new(cx_active.clone());
+    let builder = builder_fn();
 
     tokio::spawn(async move {
       let socket = TokioIo::new(socket);
@@ -62,7 +78,6 @@ pub async fn serve_with_connect_info(
         tower_service.clone().oneshot(request)
       });
 
-      let builder = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new());
       let cx = builder.serve_connection_with_upgrades(socket, hyper_service);
       tokio::pin!(cx);
       let start_shutdown = cx_shutdown.cancelled().fuse();

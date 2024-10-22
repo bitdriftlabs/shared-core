@@ -8,6 +8,7 @@ version      = "1.0.0"
 [dependencies]
 anyhow.workspace           = true
 base64-url.workspace       = true
+bd-client-common.path      = "../bd-client-common"
 bd-client-stats-store.path = "../bd-client-stats-store"
 bd-client-stats.path       = "../bd-client-stats"
 bd-log-primitives.path     = "../bd-log-primitives"
@@ -20,8 +21,8 @@ bd-test-helpers.path       = "../bd-test-helpers"
 bd-time.path               = "../bd-time"
 bd-workflows.path          = "../bd-workflows"
 clap.workspace             = true
-flate2.workspace           = true
 log.workspace              = true
+protobuf.workspace         = true
 rand.workspace             = true
 sha2.workspace             = true
 tempfile.workspace         = true

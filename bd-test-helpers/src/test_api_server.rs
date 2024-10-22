@@ -309,6 +309,7 @@ async fn mux(
     true,
     compression,
     OptimizeFor::Memory,
+    None,
   );
 
   // Allocate a new id for the new stream + notify consumers about the creation.

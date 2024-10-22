@@ -52,7 +52,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use time::ext::NumericalDuration;
 use time::Duration;
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::{mpsc, watch, Semaphore};
 use tokio_stream::wrappers::ReceiverStream;
 
 const GRPC_STATUS: &str = "grpc-status";
@@ -265,7 +265,7 @@ impl std::fmt::Display for Status {
       f,
       "code: {}, message: {}",
       self.code.to_int(),
-      self.message.as_ref().unwrap_or(&"<none>".to_string())
+      self.message.as_ref().map_or("<none>", |s| s.as_str())
     )
   }
 }
@@ -513,6 +513,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       validate,
       compression,
       optimize_for,
+      None,
     ))
   }
 
@@ -540,6 +541,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       Body::new(body),
       validate,
       optimize_for,
+      None,
     ))
   }
 }
@@ -578,11 +580,12 @@ impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType
     validate: bool,
     compression: Option<bd_grpc_codec::Compression>,
     optimize_for: OptimizeFor,
+    read_stop: Option<watch::Receiver<bool>>,
   ) -> Self {
     let sender = StreamingApiSender::new(tx, compression);
     Self {
       sender,
-      streaming_api: ServerStreamingApi::new(headers, body, validate, optimize_for),
+      streaming_api: ServerStreamingApi::new(headers, body, validate, optimize_for, read_stop),
     }
   }
 
@@ -644,6 +647,7 @@ pub struct ServerStreamingApi<OutgoingType: Message, IncomingType: Message> {
   body: Body,
   decoder: Decoder<IncomingType>,
   validate: bool,
+  read_stop: Option<watch::Receiver<bool>>,
   _type: PhantomData<(OutgoingType, IncomingType)>,
 }
 
@@ -652,7 +656,13 @@ impl<OutgoingType: Message, IncomingType: MessageFull>
 {
   // Create a new streaming API handler.
   #[must_use]
-  pub fn new(headers: HeaderMap, body: Body, validate: bool, optimize_for: OptimizeFor) -> Self {
+  pub fn new(
+    headers: HeaderMap,
+    body: Body,
+    validate: bool,
+    optimize_for: OptimizeFor,
+    read_stop: Option<watch::Receiver<bool>>,
+  ) -> Self {
     let decompression = if headers
       .get(GRPC_ENCODING_HEADER)
       .filter(|v| *v == GRPC_ENCODING_DEFLATE)
@@ -676,6 +686,7 @@ impl<OutgoingType: Message, IncomingType: MessageFull>
       body,
       decoder: Decoder::new(decompression, optimize_for),
       validate,
+      read_stop,
       _type: PhantomData,
     }
   }
@@ -683,7 +694,30 @@ impl<OutgoingType: Message, IncomingType: MessageFull>
   // indicates the stream is complete.
   pub async fn next(&mut self) -> Result<Option<Vec<IncomingType>>> {
     loop {
-      if let Some(frame) = self.body.frame().await {
+      if let Some(read_stop) = &mut self.read_stop {
+        if *read_stop.borrow_and_update() {
+          log::trace!("read stop triggered");
+          if let Err(e) = read_stop.changed().await {
+            // This is a programming error and reasonably might only happen during shutdown.
+            // Issue a debug assert and end the stream.
+            debug_assert!(false, "read stop watch error: {e}");
+            return Ok(None);
+          }
+          log::trace!("read stop cleared");
+          continue;
+        }
+      }
+
+      let frame = tokio::select! {
+        frame = self.body.frame() => frame,
+        _ = async {
+              self.read_stop.as_mut().unwrap().changed().await
+            }, if self.read_stop.is_some() => {
+          continue;
+        },
+      };
+
+      if let Some(frame) = frame {
         let frame = frame.map_err(|e| Error::BodyStream(e.into()))?;
         if frame.is_data() {
           let messages = self.decoder.decode_data(frame.data_ref().unwrap())?;

@@ -25,7 +25,7 @@ use bd_proto::protos::client::api::{
   StatsUploadResponse,
 };
 use std::collections::HashMap;
-use upload::Tracked;
+use upload::{Tracked, UploadResponse};
 
 pub mod api;
 mod payload_conversion;
@@ -110,17 +110,17 @@ pub enum DataUpload {
   LogsUploadIntentRequest(Tracked<LogUploadIntentRequest, Decision>),
 
   /// A logs upload request with an associated tracking id that is used to ensure delivery.
-  LogsUploadRequest(Tracked<LogUploadRequest, bool>),
+  LogsUploadRequest(Tracked<LogUploadRequest, UploadResponse>),
 
   /// A stats upload request with an associated tracking id that is used to ensure delivery.
-  StatsUploadRequest(Tracked<StatsUploadRequest, bool>),
+  StatsUploadRequest(Tracked<StatsUploadRequest, UploadResponse>),
 
   /// A Sankey diagram path upload request.
   SankeyPathUpload(Tracked<SankeyDiagramUploadRequest, bool>),
 
   /// An opaque request with an associated tracking id that is used to ensure delivery. This allows
   /// for uploading of payloads which are not directly typed to the mux.
-  OpaqueRequest(Tracked<OpaqueRequest, bool>),
+  OpaqueRequest(Tracked<OpaqueRequest, UploadResponse>),
 }
 
 //

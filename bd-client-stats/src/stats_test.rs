@@ -5,11 +5,21 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{RealSerializedFileSystem, SerializedFileSystem};
+use super::Ticker;
+use crate::file_manager::{
+  FileManager,
+  FileSystem,
+  RealFileSystem,
+  PENDING_AGGREGATION_INDEX_FILE,
+  STATS_DIRECTORY,
+};
 use crate::{DynamicStats, Stats};
+use anyhow::anyhow;
 use assert_matches::assert_matches;
 use async_trait::async_trait;
+use bd_api::upload::{Tracked, UploadResponse};
 use bd_api::DataUpload;
+use bd_client_common::file::write_compressed_protobuf;
 use bd_client_stats_store::{make_sketch, Collector};
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{
   Aggregated,
@@ -19,101 +29,170 @@ use bd_proto::protos::client::api::stats_upload_request::snapshot::{
 use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapshot;
 use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::metric::metric::Data as MetricData;
-use bd_proto::protos::client::metric::{Counter, Metric, MetricsList};
-use bd_runtime::runtime::ConfigLoader;
+use bd_proto::protos::client::metric::pending_aggregation_index::PendingFile;
+use bd_proto::protos::client::metric::{Counter, Metric, MetricsList, PendingAggregationIndex};
+use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::float_eq;
-use bd_time::{TestTimeProvider, TimeProvider, TimestampExt};
-use flate2::read::ZlibEncoder;
-use flate2::Compression;
+use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeProvider, TimestampExt};
 use futures_util::poll;
-use protobuf::Message;
+use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
-use std::io::Read;
-use std::marker::PhantomData;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tempfile::TempDir;
+use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::{Duration, OffsetDateTime};
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc;
 use tokio::task::JoinError;
+use tokio::time::timeout;
 
-struct Setup<F: SerializedFileSystem + Send + 'static> {
-  stats: Arc<Stats>,
-  dynamic_stats: Arc<DynamicStats>,
-  _directory: tempfile::TempDir,
-  shutdown_trigger: ComponentShutdownTrigger,
-  _runtime_loader: Arc<ConfigLoader>,
-  upload_handle: tokio::task::JoinHandle<()>,
-  flush_handle: tokio::task::JoinHandle<()>,
-  data_rx: Receiver<DataUpload>,
-  test_time: TestTimeProvider,
-  phantom: PhantomData<F>,
+async fn write_test_index(fs: &dyn FileSystem, ready_to_upload: bool) {
+  let index = PendingAggregationIndex {
+    pending_files: vec![PendingFile {
+      name: "test".to_string(),
+      period_end: if ready_to_upload {
+        OffsetDateTime::UNIX_EPOCH.into_proto()
+      } else {
+        None.into()
+      },
+      ..Default::default()
+    }],
+    ..Default::default()
+  };
+  fs.create_dir(&STATS_DIRECTORY).await.unwrap();
+  let compressed = write_compressed_protobuf(&index);
+  fs.write_file(
+    &STATS_DIRECTORY.join(&*PENDING_AGGREGATION_INDEX_FILE),
+    &compressed,
+  )
+  .await
+  .unwrap();
 }
 
-impl Setup<TestSerializedFileSystem> {
-  fn new() -> Self {
-    Self::new_with_filesystem(Arc::new(TestSerializedFileSystem::new()), None)
+//
+// TestHooks
+//
+
+pub struct TestHooksSender {
+  pub upload_complete_tx: mpsc::Sender<()>,
+  pub flush_complete_tx: mpsc::Sender<()>,
+}
+pub struct TestHooksReceiver {
+  pub upload_complete_rx: mpsc::Receiver<()>,
+  pub flush_complete_rx: mpsc::Receiver<()>,
+}
+pub struct TestHooks {
+  pub sender: TestHooksSender,
+  pub receiver: Option<TestHooksReceiver>,
+}
+
+impl Default for TestHooks {
+  fn default() -> Self {
+    let (upload_complete_tx, upload_complete_rx) = mpsc::channel(1);
+    let (flush_complete_tx, flush_complete_rx) = mpsc::channel(1);
+    Self {
+      sender: TestHooksSender {
+        upload_complete_tx,
+        flush_complete_tx,
+      },
+      receiver: Some(TestHooksReceiver {
+        upload_complete_rx,
+        flush_complete_rx,
+      }),
+    }
   }
 }
-impl Setup<RealSerializedFileSystem> {
-  fn new_with_directory(directory: tempfile::TempDir) -> Self {
+
+//
+// TestTicker
+//
+
+struct TestTicker {
+  receiver: mpsc::Receiver<()>,
+}
+
+#[async_trait]
+impl Ticker for TestTicker {
+  async fn tick(&mut self) {
+    self.receiver.recv().await.unwrap();
+  }
+}
+
+impl TestTicker {
+  fn new() -> (mpsc::Sender<()>, Self) {
+    let (tx, rx) = mpsc::channel(1);
+    (tx, Self { receiver: rx })
+  }
+}
+
+//
+// Setup
+//
+
+struct Setup {
+  stats: Arc<Stats>,
+  dynamic_stats: Arc<DynamicStats>,
+  _directory: TempDir,
+  shutdown_trigger: ComponentShutdownTrigger,
+  _runtime_loader: Arc<ConfigLoader>,
+  flush_handle: tokio::task::JoinHandle<()>,
+  data_rx: mpsc::Receiver<DataUpload>,
+  test_time: Arc<TestTimeProvider>,
+  flush_tick_tx: mpsc::Sender<()>,
+  upload_tick_tx: mpsc::Sender<()>,
+  test_hooks: TestHooksReceiver,
+}
+
+impl Setup {
+  fn new() -> Self {
+    Self::new_with_filesystem(Box::new(TestFileSystem::new()), None)
+  }
+
+  fn new_with_directory(directory: TempDir) -> Self {
     Self::new_with_filesystem(
-      Arc::new(RealSerializedFileSystem::new(
-        directory.path().to_path_buf(),
-      )),
+      Box::new(RealFileSystem::new(directory.path().to_path_buf())),
       Some(directory),
     )
   }
-
-  fn compress(bytes: &[u8]) -> Vec<u8> {
-    let mut encoder = ZlibEncoder::new(bytes, Compression::new(5));
-    let mut compressed_bytes = Vec::new();
-    encoder.read_to_end(&mut compressed_bytes).unwrap();
-    compressed_bytes
-  }
-
-  fn write_pending_upload_file(directory: &Path, bytes: &[u8]) {
-    std::fs::write(
-      directory.join("pending_stats_upload.pb"),
-      Self::compress(bytes),
-    )
-    .unwrap();
-  }
-
-  fn write_aggregated_file(directory: &Path, bytes: &[u8]) {
-    std::fs::write(directory.join("aggregated_stats.pb"), Self::compress(bytes)).unwrap();
-  }
 }
 
-impl<F: SerializedFileSystem + Send + 'static> Setup<F> {
-  fn new_with_filesystem(fs: Arc<F>, directory: Option<tempfile::TempDir>) -> Self {
-    let directory = directory.unwrap_or_else(|| tempfile::TempDir::with_prefix("sdk").unwrap());
-    let test_time = TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH);
+impl Setup {
+  fn new_with_filesystem(fs: Box<dyn FileSystem>, directory: Option<TempDir>) -> Self {
+    let directory = directory.unwrap_or_else(|| TempDir::new().unwrap());
+    let test_time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let runtime_loader = ConfigLoader::new(directory.path());
+    runtime_loader.update_snapshot(&make_simple_update(vec![(
+      bd_runtime::runtime::stats::MaxAggregatedFilesFlag::path(),
+      ValueKind::Int(2),
+    )]));
+
     let dynamic_stats = Arc::new(DynamicStats::new(
       &Collector::default().scope(""),
       &runtime_loader,
     ));
     let stats = Stats::new(Collector::default(), dynamic_stats.clone());
-    let (data_tx, data_rx) = tokio::sync::mpsc::channel(1);
-    let flush_handles = stats
+    let (data_tx, data_rx) = mpsc::channel(1);
+    let (flush_tick_tx, flush_ticker) = TestTicker::new();
+    let (upload_tick_tx, upload_ticker) = TestTicker::new();
+    let mut flush_handles = stats
       .flush_handle_helper(
-        &runtime_loader,
+        flush_ticker,
+        upload_ticker,
         shutdown_trigger.make_shutdown(),
-        test_time.clone(),
         data_tx,
-        fs,
+        Arc::new(FileManager::new(fs, test_time.clone(), &runtime_loader).unwrap()),
       )
       .unwrap();
 
+    let test_hooks = flush_handles.flusher.test_hooks();
     let flush_handle = tokio::spawn(async move {
       flush_handles.flusher.periodic_flush().await;
     });
-
-    let upload_handle = tokio::spawn(async move { flush_handles.uploader.upload_stats().await });
 
     Self {
       test_time,
@@ -122,11 +201,27 @@ impl<F: SerializedFileSystem + Send + 'static> Setup<F> {
       _directory: directory,
       shutdown_trigger,
       _runtime_loader: runtime_loader,
-      upload_handle,
       flush_handle,
       data_rx,
-      phantom: PhantomData,
+      flush_tick_tx,
+      upload_tick_tx,
+      test_hooks,
     }
+  }
+
+  async fn do_flush(&mut self) {
+    self.flush_tick_tx.send(()).await.unwrap();
+    self.test_hooks.flush_complete_rx.recv().await.unwrap();
+  }
+
+  async fn next_stat_upload(&mut self) -> Tracked<StatsUploadRequest, UploadResponse> {
+    let stats_upload = self.data_rx.recv().await.unwrap();
+
+    let DataUpload::StatsUploadRequest(stats) = stats_upload else {
+      panic!("unexpected upload type");
+    };
+
+    stats
   }
 
   async fn with_next_stats_upload_with_result(
@@ -134,55 +229,57 @@ impl<F: SerializedFileSystem + Send + 'static> Setup<F> {
     upload_ok: bool,
     f: impl FnOnce(StatRequestHelper),
   ) {
-    let stats_upload = self.data_rx.recv().await.unwrap();
+    // In order for the tests to be deterministic we have to do this dance carefully to make sure
+    // that the events are fully complete before continuing. This is the basic sequence. Some tests
+    // use more complicated interleavings.
+    self.do_flush().await;
 
-    let DataUpload::StatsUploadRequest(stats) = stats_upload else {
-      panic!("unexpected upload type");
-    };
-
+    self.upload_tick_tx.send(()).await.unwrap();
+    let stats = self.next_stat_upload().await;
     f(StatRequestHelper::new(stats.payload.clone()));
 
-    stats.response_tx.send(upload_ok).unwrap();
+    stats
+      .response_tx
+      .send(UploadResponse {
+        success: upload_ok,
+        uuid: stats.uuid,
+      })
+      .unwrap();
+    self.test_hooks.upload_complete_rx.recv().await.unwrap();
   }
 
   async fn with_next_stats_upload(&mut self, f: impl FnOnce(StatRequestHelper)) {
     self.with_next_stats_upload_with_result(true, f).await;
   }
 
-  async fn shutdown(self) -> Result<((), ()), JoinError> {
+  async fn shutdown(self) -> Result<(), JoinError> {
     self.shutdown_trigger.shutdown().await;
-
-    tokio::try_join!(self.flush_handle, self.upload_handle)
+    self.flush_handle.await
   }
 }
 
 //
-// TestSerializedFileSystem
+// TestFileSystem
 //
 
 /// An in-memory test implementation of a file system, meant to somewhat mimic the behavior of a
 /// real filesystem.
-#[derive(Clone)]
-struct TestSerializedFileSystem {
-  files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
-  disk_full: Arc<AtomicBool>,
+struct TestFileSystem {
+  files: Mutex<HashMap<String, Vec<u8>>>,
+  disk_full: AtomicBool,
 }
 
 #[async_trait]
-impl SerializedFileSystem for TestSerializedFileSystem {
-  async fn read_file(&self, path: impl AsRef<Path> + Send) -> anyhow::Result<Vec<u8>> {
-    let l = self.files.lock().unwrap();
+impl FileSystem for TestFileSystem {
+  async fn read_file(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
+    let l = self.files.lock();
 
     l.get(&Self::path_as_str(path))
       .cloned()
-      .ok_or_else(|| anyhow::anyhow!("file not found"))
+      .ok_or_else(|| anyhow!("not found"))
   }
 
-  async fn write_file(
-    &self,
-    path: impl AsRef<Path> + Send,
-    data: impl AsRef<[u8]> + Send,
-  ) -> anyhow::Result<()> {
+  async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
     if self.disk_full.load(Ordering::Relaxed) {
       anyhow::bail!("disk full");
     }
@@ -190,30 +287,38 @@ impl SerializedFileSystem for TestSerializedFileSystem {
     self
       .files
       .lock()
-      .unwrap()
       .insert(Self::path_as_str(path), data.as_ref().to_vec());
 
     Ok(())
   }
 
-  async fn delete_file(&self, path: impl AsRef<Path> + Send) {
-    self.files.lock().unwrap().remove(&Self::path_as_str(path));
+  async fn delete_file(&self, path: &Path) -> anyhow::Result<()> {
+    self.files.lock().remove(&Self::path_as_str(path));
+
+    Ok(())
   }
 
-  async fn exists(&self, path: impl AsRef<Path> + Send) -> bool {
+  async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {
     self
       .files
       .lock()
-      .unwrap()
-      .contains_key(&Self::path_as_str(path))
+      .retain(|k, _| !k.starts_with(path.to_str().unwrap()));
+
+    Ok(())
+  }
+
+  async fn create_dir(&self, _path: &Path) -> anyhow::Result<()> {
+    // Technically we should only allow creating files if the directory already exists, but we
+    // ignore that for now.
+    Ok(())
   }
 }
 
-impl TestSerializedFileSystem {
+impl TestFileSystem {
   fn new() -> Self {
     Self {
-      files: Arc::new(Mutex::new(HashMap::new())),
-      disk_full: Arc::new(AtomicBool::new(false)),
+      files: Mutex::new(HashMap::new()),
+      disk_full: AtomicBool::new(false),
     }
   }
 
@@ -310,62 +415,153 @@ async fn report() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn earliest_aggregation_start_maintained() {
-  // This test simulates a few upload failures interleaved with stats being recorded, and verifies
-  // that the aggregation start window is set according to when an aggregation period starts and is
-  // not updated every time more data is merged into the aggregated data.
+async fn max_files_upload_race() {
+  let mut setup = Setup::new();
 
-  let directory = tempfile::TempDir::with_prefix("stats").unwrap();
+  let counter = setup.stats.collector.scope("test").counter("test");
+  counter.inc();
+  setup.do_flush().await;
 
-  let mut setup = Setup::new_with_directory(directory);
+  // Advance 5 minutes and flush. This will start a new file.
+  setup.test_time.advance(5.minutes());
+  counter.inc_by(10);
+  setup.do_flush().await;
+
+  // Start the upload but don't complete it.
+  setup.upload_tick_tx.send(()).await.unwrap();
+  let stats = setup.next_stat_upload().await;
+
+  // Advance 5 minutes and flush. This will remove the file that is currently being uploaded.
+  setup.test_time.advance(5.minutes());
+  counter.inc_by(100);
+  setup.do_flush().await;
+
+  // Complete the upload and make sure we ignore the removed file from previous overflow.
+  stats
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: stats.uuid,
+    })
+    .unwrap();
+
+  // Since we have a "too old" snapshot sitting around, it should get sent immediately.
+  let stats = setup.next_stat_upload().await;
+  assert_eq!(
+    StatRequestHelper::new(stats.payload).get_counter("test:test", labels! {}),
+    Some(10)
+  );
+
+  // Responding to this one should not kick off a new upload of the last snapshot.
+  stats
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: stats.uuid,
+    })
+    .unwrap();
+  assert!(timeout(1.std_seconds(), setup.next_stat_upload())
+    .await
+    .is_err());
+}
+
+#[tokio::test(start_paused = true)]
+async fn max_files() {
+  let mut setup = Setup::new();
 
   let counter = setup.stats.collector.scope("test").counter("test");
   counter.inc();
 
+  // Fail the first upload then increment and flush again which will make a second file because
+  // the first file is ready for upload.
+  setup
+    .with_next_stats_upload_with_result(false, |upload| {
+      assert_eq!(upload.number_of_metrics(), 1);
+    })
+    .await;
+
+  counter.inc_by(10);
+  setup.do_flush().await;
+
+  // Now advance 5 minutes, increment, and flush again. This will exceed max files.
+  setup.test_time.advance(5.minutes());
+  counter.inc_by(100);
+  setup.do_flush().await;
+
+  // Now upload, we should get the 2nd counter increment.
+  setup
+    .with_next_stats_upload(|upload| {
+      assert_eq!(upload.get_counter("test:test", labels! {}), Some(10));
+    })
+    .await;
+
+  // Upload again. We should get the 3rd counter increment.
+  setup
+    .with_next_stats_upload(|upload| {
+      assert_eq!(upload.get_counter("test:test", labels! {}), Some(100));
+    })
+    .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn earliest_aggregation_start_end_maintained() {
+  // This test simulates a few upload failures interleaved with stats being recorded, and verifies
+  // that the aggregation start/end window is set according to when an aggregation period starts and
+  // is not updated every time more data is merged into the aggregated data.
+  let mut setup = Setup::new();
+
   let t0 = setup.test_time.now();
+  let counter = setup.stats.collector.scope("test").counter("test");
+  counter.inc();
+
+  let t1 = setup.test_time.now();
   // Fail the first attempt to upload. At this point we'll have one cached upload request and an
   // empty aggregated snapshot. We know this since both aggregation and uploads will have been
   // processed by the time we get the upload.
   setup
     .with_next_stats_upload_with_result(false, |upload| {
       assert_eq!(upload.aggregation_window_start(), t0);
-      assert_eq!(upload.number_of_metrics(), 1);
-    })
-    .await;
-
-  setup.test_time.advance(Duration::seconds(1));
-  let t1 = setup.test_time.now();
-
-  counter.inc();
-
-  // Fail the second attempt. This attempt should still report for t0, as it's a retry of the old
-  // one. At this point we should have started another aggregation window starting at t1.
-  setup
-    .with_next_stats_upload_with_result(false, |upload| {
-      assert_eq!(upload.aggregation_window_start(), t0);
+      assert_eq!(upload.aggregation_window_end(), t1);
       assert_eq!(upload.number_of_metrics(), 1);
     })
     .await;
 
   setup.test_time.advance(Duration::seconds(1));
   let t2 = setup.test_time.now();
-  assert_ne!(t2, t1);
+
+  counter.inc();
+
+  // Fail the second attempt. This attempt should still report for t0, as it's a retry of the old
+  // one. At this point we should have started another aggregation window starting at t2.
+  setup
+    .with_next_stats_upload_with_result(false, |upload| {
+      assert_eq!(upload.aggregation_window_start(), t0);
+      assert_eq!(upload.aggregation_window_end(), t1);
+      assert_eq!(upload.number_of_metrics(), 1);
+    })
+    .await;
+
+  setup.test_time.advance(Duration::seconds(1));
+  let t3 = setup.test_time.now();
+  assert_ne!(t3, t2);
   counter.inc();
 
   // The first stat upload is yet another retry of the one from t0.
   setup
     .with_next_stats_upload(|upload| {
       assert_eq!(upload.aggregation_window_start(), t0);
+      assert_eq!(upload.aggregation_window_end(), t1);
       assert_eq!(upload.number_of_metrics(), 1);
       assert_eq!(upload.get_counter("test:test", labels! {}), Some(1));
     })
     .await;
 
-  // The next upload should contain the aggregation window which started at t1, but contains the
-  // increments that happened at t2.
+  // The next upload should contain the aggregation window which started at t2, but contains the
+  // increments that happened at t3.
   setup
     .with_next_stats_upload(|upload| {
-      assert_eq!(upload.aggregation_window_start(), t1);
+      assert_eq!(upload.aggregation_window_start(), t2);
+      assert_eq!(upload.aggregation_window_end(), t3);
       assert_eq!(upload.number_of_metrics(), 2);
       assert_eq!(upload.get_counter("test:test", labels! {}), Some(2));
     })
@@ -376,14 +572,18 @@ async fn earliest_aggregation_start_maintained() {
 
 #[tokio::test(start_paused = true)]
 async fn existing_pending_upload() {
-  let directory = tempfile::TempDir::with_prefix("stats").unwrap();
-
+  let directory = TempDir::new().unwrap();
+  let fs = RealFileSystem::new(directory.path().to_path_buf());
+  write_test_index(&fs, true).await;
   let req = StatsUploadRequest {
     upload_uuid: "test".to_string(),
+    snapshot: vec![StatsSnapshot::default()],
     ..Default::default()
   };
-
-  Setup::write_pending_upload_file(directory.path(), &req.write_to_bytes().unwrap());
+  let compressed = write_compressed_protobuf(&req);
+  fs.write_file(&STATS_DIRECTORY.join("test"), &compressed)
+    .await
+    .unwrap();
 
   let mut setup = Setup::new_with_directory(directory);
 
@@ -391,7 +591,7 @@ async fn existing_pending_upload() {
     .with_next_stats_upload(|upload| {
       assert_eq!(upload.request.upload_uuid, "test");
       // Normally we won't get an empty snapshot list, but because this was already written as a
-      // pending upload we get an uncondtional upload.
+      // pending upload we get an unconditional upload.
       assert_eq!(upload.number_of_metrics(), 0);
     })
     .await;
@@ -400,11 +600,15 @@ async fn existing_pending_upload() {
 
 #[tokio::test(start_paused = true)]
 async fn existing_empty_pending_upload() {
-  let directory = tempfile::TempDir::with_prefix("stats").unwrap();
+  let directory = TempDir::new().unwrap();
 
   // Write empty data to the upload file. This should then be ignored on startup, so the first
   // upload should be based on fresh stats.
-  std::fs::write(directory.path().join("pending_stats_upload.pb"), []).unwrap();
+  let fs = RealFileSystem::new(directory.path().to_path_buf());
+  write_test_index(&fs, true).await;
+  fs.write_file(&STATS_DIRECTORY.join("test"), &[])
+    .await
+    .unwrap();
 
   let mut setup = Setup::new_with_directory(directory);
 
@@ -421,11 +625,14 @@ async fn existing_empty_pending_upload() {
 
 #[tokio::test(start_paused = true)]
 async fn existing_corrupted_pending_upload() {
-  let directory = tempfile::TempDir::with_prefix("stats").unwrap();
-
+  let directory = TempDir::new().unwrap();
+  let fs = RealFileSystem::new(directory.path().to_path_buf());
+  write_test_index(&fs, true).await;
   // Write garbage data to the upload file. This should then be ignored on startup, so the first
   // upload should be based on fresh stats.
-  Setup::write_pending_upload_file(directory.path(), b"not a proto");
+  fs.write_file(&STATS_DIRECTORY.join("test"), b"not a proto")
+    .await
+    .unwrap();
 
   let mut setup = Setup::new_with_directory(directory);
 
@@ -442,8 +649,9 @@ async fn existing_corrupted_pending_upload() {
 
 #[tokio::test(start_paused = true)]
 async fn existing_aggregated_file() {
-  let directory = tempfile::TempDir::with_prefix("stats").unwrap();
-
+  let directory = TempDir::new().unwrap();
+  let fs = RealFileSystem::new(directory.path().to_path_buf());
+  write_test_index(&fs, false).await;
   let snapshot = StatsSnapshot {
     snapshot_type: Some(Snapshot_type::Metrics(MetricsList {
       metric: vec![Metric {
@@ -460,8 +668,15 @@ async fn existing_aggregated_file() {
     occurred_at: Some(Occurred_at::Aggregated(Aggregated::default())),
     ..Default::default()
   };
-
-  Setup::write_aggregated_file(directory.path(), &snapshot.write_to_bytes().unwrap());
+  let req = StatsUploadRequest {
+    upload_uuid: "test".to_string(),
+    snapshot: vec![snapshot],
+    ..Default::default()
+  };
+  let compressed = write_compressed_protobuf(&req);
+  fs.write_file(&STATS_DIRECTORY.join("test"), &compressed)
+    .await
+    .unwrap();
 
   let mut setup = Setup::new_with_directory(directory);
 
@@ -479,9 +694,12 @@ async fn existing_aggregated_file() {
 
 #[tokio::test(start_paused = true)]
 async fn empty_aggregated_file() {
-  let directory = tempfile::TempDir::with_prefix("stats").unwrap();
-
-  std::fs::write(directory.path().join("aggregated_stats.pb"), []).unwrap();
+  let directory = TempDir::new().unwrap();
+  let fs = RealFileSystem::new(directory.path().to_path_buf());
+  write_test_index(&fs, false).await;
+  fs.write_file(&STATS_DIRECTORY.join("test"), &[])
+    .await
+    .unwrap();
 
   let mut setup = Setup::new_with_directory(directory);
 
@@ -498,9 +716,12 @@ async fn empty_aggregated_file() {
 
 #[tokio::test(start_paused = true)]
 async fn corrupted_aggregated_file() {
-  let directory = tempfile::TempDir::with_prefix("stats").unwrap();
-
-  Setup::write_aggregated_file(directory.path(), b"not a proto");
+  let directory = TempDir::new().unwrap();
+  let fs = RealFileSystem::new(directory.path().to_path_buf());
+  write_test_index(&fs, false).await;
+  fs.write_file(&STATS_DIRECTORY.join("test"), b"not a proto")
+    .await
+    .unwrap();
 
   let mut setup = Setup::new_with_directory(directory);
 
@@ -518,7 +739,7 @@ async fn corrupted_aggregated_file() {
 // Basic test which exercises happy path flushing with test filesystem.
 #[tokio::test(start_paused = true)]
 async fn stat_flush_test_fs() {
-  let mut setup = Setup::<TestSerializedFileSystem>::new();
+  let mut setup = Setup::new();
 
   let counter = setup.stats.collector.scope("test").counter("foo");
 
@@ -767,8 +988,19 @@ impl StatRequestHelper {
       &self.request.snapshot[0].occurred_at,
       Some(Occurred_at::Aggregated(Aggregated {
         period_start,
-        special_fields: _
+        ..
       })) => period_start.to_offset_date_time()
+    )
+  }
+
+  fn aggregation_window_end(&self) -> OffsetDateTime {
+    assert_eq!(self.request.snapshot.len(), 1);
+    assert_matches!(
+      &self.request.snapshot[0].occurred_at,
+      Some(Occurred_at::Aggregated(Aggregated {
+        period_end,
+        ..
+      })) => period_end.to_offset_date_time()
     )
   }
 

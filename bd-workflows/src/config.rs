@@ -628,6 +628,9 @@ impl Action {
       Action_type::ActionEmitSankeyDiagram(diagram) => Ok(Self::SankeyDiagram(
         ActionEmitSankeyDiagram::try_from_proto(diagram)?,
       )),
+      Action_type::ActionTakeScreenshot(_) => Err(anyhow!(
+        "invalid action configuration: unsupported action type take screenshot"
+      )),
     }
   }
 }

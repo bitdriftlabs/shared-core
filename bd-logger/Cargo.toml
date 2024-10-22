@@ -25,6 +25,7 @@ bd-log-metadata.path         = "../bd-log-metadata"
 bd-log-primitives.path       = "../bd-log-primitives"
 bd-log.path                  = "../bd-log"
 bd-matcher.path              = "../bd-matcher"
+bd-network-quality.path      = "../bd-network-quality"
 bd-proto.path                = "../bd-proto"
 bd-resource-utilization.path = "../bd-resource-utilization"
 bd-runtime.path              = "../bd-runtime"
@@ -48,12 +49,14 @@ tracing.workspace            = true
 unwrap-infallible.workspace  = true
 
 [dev-dependencies]
-assert_matches.workspace    = true
-bd-hyper-network            = { path = "../bd-hyper-network" }
-bd-noop-network             = { path = "../bd-noop-network" }
-bd-test-helpers             = { path = "../bd-test-helpers", default-features = false, features = ["test_logger"] }
-ctor.workspace              = true
+assert_matches.workspace = true
+bd-hyper-network = { path = "../bd-hyper-network" }
+bd-noop-network = { path = "../bd-noop-network" }
+bd-test-helpers = { path = "../bd-test-helpers", default-features = false, features = [
+  "test_logger",
+] }
+ctor.workspace = true
 pretty_assertions.workspace = true
-tempfile.workspace          = true
-tokio-test.workspace        = true
-uuid.workspace              = true
+tempfile.workspace = true
+tokio-test.workspace = true
+uuid.workspace = true
