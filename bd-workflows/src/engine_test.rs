@@ -20,6 +20,7 @@ use bd_log_primitives::{log_level, FieldsRef, LogFields, LogMessage, LogRef};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::client::api::log_upload_intent_request::Intent_type::WorkflowActionUpload;
 use bd_proto::protos::client::api::log_upload_intent_response::{Drop, UploadImmediately};
+use bd_proto::protos::client::api::sankey_diagram_upload_request::Node;
 use bd_proto::protos::client::api::{log_upload_intent_request, SankeyDiagramUploadRequest};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_stats_common::labels;
@@ -35,7 +36,7 @@ use bd_test_helpers::workflow::macros::{
 };
 use bd_test_helpers::{metric_value, sankey_value};
 use bd_time::TimeDurationExt;
-use itertools::Itertools;
+use pretty_assertions::assert_eq;
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
@@ -2933,18 +2934,43 @@ async fn sankey_action() {
 
   assert_eq!(1, engine.sankey_uploads().len());
   assert_eq!(
-    vec![
-      "first_extracted",
-      "loop",
-      "loop",
-      "loop",
-      "field_to_extract_value"
-    ],
+    SankeyDiagramUploadRequest {
+      id: "sankey".to_string(),
+      path_id: "15490059581308370765".to_string(),
+      nodes: vec![
+        Node {
+          extracted_value: "first_extracted".to_string(),
+          ..Default::default()
+        },
+        Node {
+          extracted_value: "loop".to_string(),
+          ..Default::default()
+        },
+        Node {
+          extracted_value: "loop".to_string(),
+          ..Default::default()
+        },
+        Node {
+          extracted_value: "loop".to_string(),
+          ..Default::default()
+        },
+        Node {
+          extracted_value: "field_to_extract_value".to_string(),
+          ..Default::default()
+        },
+      ],
+      ..Default::default()
+    },
     engine.sankey_uploads()[0]
-      .nodes
-      .iter()
-      .map(|value| value.extracted_value.clone())
-      .collect_vec()
+  );
+
+  engine.dynamic_stats_collector.assert_counter_eq(
+    1,
+    "workflows_dyn:action",
+    labels! {
+      "_id" => "sankey",
+      "_path_id" => "15490059581308370765",
+    },
   );
 }
 
