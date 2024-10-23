@@ -74,7 +74,7 @@ impl StateTracker {
     let _ignored = self
       .pending_uploads
       .remove(uuid)
-      .ok_or_else(|| anyhow!("Log upload state for uuid {uuid:?} was inconsistent"))?
+      .ok_or_else(|| anyhow!("State for request with uuid {uuid:?} was inconsistent"))?
       .send(UploadResponse {
         success: error.is_empty(),
         uuid: uuid.to_string(),
