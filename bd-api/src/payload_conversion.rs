@@ -63,7 +63,7 @@ mod client {
     OpaqueRequest,
     PingRequest,
     RuntimeUpdate,
-    SankeyDiagramUploadRequest,
+    SankeyPathUploadRequest,
     StatsUploadRequest,
   };
 
@@ -85,10 +85,7 @@ mod client {
   into_api_request!(PingRequest, Request_type::Ping);
   into_api_request!(HandshakeRequest, Request_type::Handshake);
   into_api_request!(LogUploadIntentRequest, Request_type::LogUploadIntent);
-  into_api_request!(
-    SankeyDiagramUploadRequest,
-    Request_type::SankeyDiagramUpload
-  );
+  into_api_request!(SankeyPathUploadRequest, Request_type::SankeyPathUpload);
   into_api_request!(OpaqueRequest, Request_type::OpaqueUpload);
 
   impl crate::IntoRequest for super::RuntimeConfigurationUpdate {

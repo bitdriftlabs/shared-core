@@ -6,10 +6,10 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::workflow::SankeyPath;
-use bd_api::upload::TrackedSankeyUploadRequest;
+use bd_api::upload::TrackedSankeyPathUploadRequest;
 use bd_api::DataUpload;
-use bd_proto::protos::client::api::sankey_diagram_upload_request::Node;
-use bd_proto::protos::client::api::SankeyDiagramUploadRequest;
+use bd_proto::protos::client::api::sankey_path_upload_request::Node;
+use bd_proto::protos::client::api::SankeyPathUploadRequest;
 use itertools::Itertools;
 use tokio::sync::mpsc::{Receiver, Sender};
 
@@ -45,7 +45,10 @@ impl Processor {
   }
 
   pub(crate) async fn process_sankey(&self, sankey_path: SankeyPath) {
-    let upload_request = SankeyDiagramUploadRequest {
+    let upload_uuid = TrackedSankeyPathUploadRequest::upload_uuid();
+
+    let upload_request = SankeyPathUploadRequest {
+      upload_uuid: upload_uuid.clone(),
       id: sankey_path.sankey_id.clone(),
       path_id: sankey_path.path_id.clone(),
       nodes: sankey_path
@@ -59,8 +62,10 @@ impl Processor {
       ..Default::default()
     };
 
-    let (upload_request, _response) =
-      TrackedSankeyUploadRequest::new(TrackedSankeyUploadRequest::upload_uuid(), upload_request);
+    let (upload_request, _response) = TrackedSankeyPathUploadRequest::new(
+      upload_uuid,
+      upload_request,
+    );
 
     if let Err(e) = self
       .data_upload_tx

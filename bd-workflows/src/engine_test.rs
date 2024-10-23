@@ -20,8 +20,8 @@ use bd_log_primitives::{log_level, FieldsRef, LogFields, LogMessage, LogRef};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::client::api::log_upload_intent_request::Intent_type::WorkflowActionUpload;
 use bd_proto::protos::client::api::log_upload_intent_response::{Drop, UploadImmediately};
-use bd_proto::protos::client::api::sankey_diagram_upload_request::Node;
-use bd_proto::protos::client::api::{log_upload_intent_request, SankeyDiagramUploadRequest};
+use bd_proto::protos::client::api::sankey_path_upload_request::Node;
+use bd_proto::protos::client::api::{log_upload_intent_request, SankeyPathUploadRequest};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_stats_common::labels;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
@@ -218,7 +218,7 @@ struct Hooks {
   flushed_buffers: Vec<BuffersToFlush>,
   received_logs_upload_intents: Vec<log_upload_intent_request::WorkflowActionUpload>,
   awaiting_logs_upload_intent_decisions: Vec<Decision>,
-  sankey_uploads: Vec<SankeyDiagramUploadRequest>,
+  sankey_uploads: Vec<SankeyPathUploadRequest>,
 }
 
 struct AnnotatedWorkflowsEngine {
@@ -323,7 +323,7 @@ impl AnnotatedWorkflowsEngine {
     self.hooks.lock().received_logs_upload_intents.clone()
   }
 
-  fn sankey_uploads(&self) -> Vec<SankeyDiagramUploadRequest> {
+  fn sankey_path_uploads(&self) -> Vec<SankeyPathUploadRequest> {
     self.hooks.lock().sankey_uploads.clone()
   }
 
@@ -2932,9 +2932,9 @@ async fn sankey_action() {
 
   1.milliseconds().sleep().await;
 
-  assert_eq!(1, engine.sankey_uploads().len());
+  assert_eq!(1, engine.sankey_path_uploads().len());
   assert_eq!(
-    SankeyDiagramUploadRequest {
+    SankeyPathUploadRequest {
       id: "sankey".to_string(),
       path_id: "1ce0b8284b9681de466d4b55b1487a9b2ab4da07711b0ad99ce059f21e4a9b84".to_string(),
       nodes: vec![
@@ -2961,7 +2961,7 @@ async fn sankey_action() {
       ],
       ..Default::default()
     },
-    engine.sankey_uploads()[0]
+    engine.sankey_path_uploads()[0]
   );
 
   engine.dynamic_stats_collector.assert_counter_eq(
