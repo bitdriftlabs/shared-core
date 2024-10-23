@@ -841,7 +841,7 @@ impl StateStore {
     );
 
     Self {
-      state_path: sdk_directory.join("workflows_state_snapshot.3.bin"),
+      state_path: sdk_directory.join("workflows_state_snapshot.4.bin"),
       last_persisted: None,
       stats,
       persistence_write_interval_flag: runtime.register_watch().unwrap(),

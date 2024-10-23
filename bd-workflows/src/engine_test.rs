@@ -434,7 +434,7 @@ impl Setup {
     self
       .sdk_directory
       .path()
-      .join("workflows_state_snapshot.3.bin")
+      .join("workflows_state_snapshot.4.bin")
   }
 }
 
