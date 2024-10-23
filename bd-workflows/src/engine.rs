@@ -20,8 +20,8 @@ use crate::actions_flush_buffers::{
 };
 use crate::config::{ActionEmitMetric, ActionFlushBuffers, Config, WorkflowsConfiguration};
 use crate::metrics::MetricsCollector;
-use crate::sankey_diagram::{self, SankeyDiagram};
-use crate::workflow::{TriggeredAction, TriggeredActionEmitSankeyDiagram, Workflow};
+use crate::sankey_diagram;
+use crate::workflow::{SankeyPath, TriggeredAction, TriggeredActionEmitSankey, Workflow};
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_stats::DynamicStats;
@@ -81,7 +81,7 @@ pub struct WorkflowsEngine {
   flush_buffers_negotiator_output_rx: Receiver<NegotiatorOutput>,
   flush_buffers_negotiator_join_handle: JoinHandle<()>,
 
-  sankey_processor_input_tx: Sender<SankeyDiagram>,
+  sankey_processor_input_tx: Sender<SankeyPath>,
   sankey_processor_join_handle: JoinHandle<()>,
 
   metrics_collector: MetricsCollector,
@@ -662,10 +662,7 @@ impl WorkflowsEngine {
       .emit_sankeys(&emit_sankey_diagrams_actions, log);
 
     for action in emit_sankey_diagrams_actions {
-      if let Err(e) = self.sankey_processor_input_tx.try_send(SankeyDiagram::new(
-        action.action.id().to_string(),
-        action.path,
-      )) {
+      if let Err(e) = self.sankey_processor_input_tx.try_send(action.path) {
         log::debug!("failed to process sankey diagram: {e}");
       }
     }
@@ -711,7 +708,7 @@ impl WorkflowsEngine {
   ) -> (
     BTreeSet<&'a ActionFlushBuffers>,
     BTreeSet<&'a ActionEmitMetric>,
-    BTreeSet<TriggeredActionEmitSankeyDiagram<'a>>,
+    BTreeSet<TriggeredActionEmitSankey<'a>>,
   ) {
     if actions.is_empty() {
       return (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
@@ -740,7 +737,7 @@ impl WorkflowsEngine {
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
 
-    let sankey_diagrams: BTreeSet<TriggeredActionEmitSankeyDiagram<'a>> = actions
+    let sankey_diagrams: BTreeSet<TriggeredActionEmitSankey<'a>> = actions
       .into_iter()
       .filter_map(|action| {
         if let TriggeredAction::SankeyDiagram(action) = action {

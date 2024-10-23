@@ -454,25 +454,28 @@ impl WorkflowResultStats {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct SankeyPath {
+  pub(crate) sankey_id: String,
   pub(crate) nodes: Vec<String>,
   pub(crate) path_id: String,
   pub(crate) is_trimmed: bool,
 }
 
 impl SankeyPath {
-  fn new(sankey_state: SankeyState) -> Self {
-    let path_id = Self::calculate_path_id(&sankey_state);
+  fn new(sankey_id: &str, sankey_state: SankeyState) -> Self {
+    let path_id = Self::calculate_path_id(sankey_id, &sankey_state);
 
     Self {
+      sankey_id: sankey_id.to_string(),
       nodes: sankey_state.nodes.into_iter().map(|n| n.value).collect(),
       path_id,
       is_trimmed: sankey_state.is_trimmed,
     }
   }
 
-  fn calculate_path_id(state: &SankeyState) -> String {
+  fn calculate_path_id(sankey_id: &str, state: &SankeyState) -> String {
     let mut hasher = std::hash::DefaultHasher::new();
 
+    hasher.write(sankey_id.as_bytes());
     hasher.write(&state.sankey_values_extraction_limit.to_le_bytes());
     hasher.write(if state.is_trimmed { &[1] } else { &[0] });
 
@@ -946,26 +949,24 @@ impl Traversal {
           triggered_actions.push(TriggeredAction::EmitMetric(action));
         },
         Action::SankeyDiagram(action) => {
-          let Some(sankey_diagram_states) = sankey_states else {
-            debug_assert!(false, "sankey_diagram_states should be present");
+          let Some(sankey_states) = sankey_states else {
+            debug_assert!(false, "sankey_states should be present");
             continue;
           };
 
-          let Some(sankey_diagram_state) = sankey_diagram_states.remove(action.id()) else {
+          let Some(sankey_state) = sankey_states.remove(action.id()) else {
             debug_assert!(
               false,
-              "sankey_diagram_state for Sankey with {:?} ID should be present",
+              "sankey_states for Sankey with {:?} ID should be present",
               action.id()
             );
             continue;
           };
 
-          triggered_actions.push(TriggeredAction::SankeyDiagram(
-            TriggeredActionEmitSankeyDiagram {
-              action,
-              path: SankeyPath::new(sankey_diagram_state),
-            },
-          ));
+          triggered_actions.push(TriggeredAction::SankeyDiagram(TriggeredActionEmitSankey {
+            action,
+            path: SankeyPath::new(action.id(), sankey_state),
+          }));
         },
       }
     }
@@ -987,15 +988,15 @@ impl Traversal {
 pub(crate) enum TriggeredAction<'a> {
   FlushBuffers(&'a ActionFlushBuffers),
   EmitMetric(&'a ActionEmitMetric),
-  SankeyDiagram(TriggeredActionEmitSankeyDiagram<'a>),
+  SankeyDiagram(TriggeredActionEmitSankey<'a>),
 }
 
 //
-// TriggeredActionEmitSankeyDiagram
+// TriggeredActionEmitSankey
 //
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TriggeredActionEmitSankeyDiagram<'a> {
+pub struct TriggeredActionEmitSankey<'a> {
   pub(crate) action: &'a ActionEmitSankeyDiagram,
   pub(crate) path: SankeyPath,
 }

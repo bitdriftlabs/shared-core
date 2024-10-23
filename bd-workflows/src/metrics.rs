@@ -10,7 +10,7 @@
 mod metrics_test;
 
 use crate::config::ActionEmitMetric;
-use crate::workflow::TriggeredActionEmitSankeyDiagram;
+use crate::workflow::TriggeredActionEmitSankey;
 use bd_client_stats::DynamicStats;
 use bd_log_primitives::LogRef;
 use bd_matcher::FieldProvider;
@@ -93,7 +93,7 @@ impl MetricsCollector {
 
   pub(crate) fn emit_sankeys(
     &self,
-    actions: &BTreeSet<TriggeredActionEmitSankeyDiagram<'_>>,
+    actions: &BTreeSet<TriggeredActionEmitSankey<'_>>,
     _log: &LogRef<'_>,
   ) {
     // TODO(Augustyniak): extract appropriate field values.

@@ -11,24 +11,7 @@ use bd_api::DataUpload;
 use bd_proto::protos::client::api::sankey_diagram_upload_request::Node;
 use bd_proto::protos::client::api::SankeyDiagramUploadRequest;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver, Sender};
-
-//
-// SankeyDiagram
-//
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, PartialOrd, Ord, Eq)]
-pub(crate) struct SankeyDiagram {
-  id: String,
-  path: SankeyPath,
-}
-
-impl SankeyDiagram {
-  pub(crate) const fn new(id: String, path: SankeyPath) -> Self {
-    Self { id, path }
-  }
-}
 
 //
 // Processor
@@ -37,12 +20,12 @@ impl SankeyDiagram {
 #[derive(Debug)]
 pub(crate) struct Processor {
   data_upload_tx: Sender<DataUpload>,
-  input_rx: Receiver<SankeyDiagram>,
+  input_rx: Receiver<SankeyPath>,
 }
 
 impl Processor {
   pub(crate) const fn new(
-    input_rx: Receiver<SankeyDiagram>,
+    input_rx: Receiver<SankeyPath>,
     data_upload_tx: Sender<DataUpload>,
   ) -> Self {
     Self {
@@ -61,12 +44,11 @@ impl Processor {
     })
   }
 
-  pub(crate) async fn process_sankey(&self, sankey: SankeyDiagram) {
+  pub(crate) async fn process_sankey(&self, sankey_path: SankeyPath) {
     let upload_request = SankeyDiagramUploadRequest {
-      id: sankey.id.clone(),
-      path_id: sankey.path.path_id.clone(),
-      nodes: sankey
-        .path
+      id: sankey_path.sankey_id.clone(),
+      path_id: sankey_path.path_id.clone(),
+      nodes: sankey_path
         .nodes
         .into_iter()
         .map(|n| Node {
