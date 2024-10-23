@@ -21,8 +21,8 @@ use crate::config::{
 use bd_log_primitives::LogRef;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 use std::collections::BTreeMap;
-use std::hash::Hasher;
 use std::time::SystemTime;
 
 //
@@ -473,30 +473,16 @@ impl SankeyPath {
   }
 
   fn calculate_path_id(sankey_id: &str, state: &SankeyState) -> String {
-    let mut hasher = std::hash::DefaultHasher::new();
+    let mut hasher = sha2::Sha256::new();
 
-    hasher.write(sankey_id.as_bytes());
-    hasher.write(&state.sankey_values_extraction_limit.to_le_bytes());
-    hasher.write(
-      if state.is_trimmed {
-        b"__trimmed"
-      } else {
-        b"__not_trimmed"
-      },
-    );
+    hasher.update(sankey_id.as_bytes());
+    hasher.update(state.sankey_values_extraction_limit.to_le_bytes());
 
     for node in &state.nodes {
-      hasher.write(node.value.as_bytes());
-      hasher.write(
-        if state.is_trimmed {
-          b"__counts_towards_limit"
-        } else {
-          b"__does_not_count_towards_limit"
-        },
-      );
+      hasher.update(node.value.as_bytes());
     }
 
-    format!("{:x}", hasher.finish())
+    format!("{:x}", hasher.finalize())
   }
 }
 
