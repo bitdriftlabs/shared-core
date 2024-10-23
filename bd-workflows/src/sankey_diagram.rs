@@ -70,7 +70,7 @@ impl Processor {
       .await
     {
       // TODO(Augustyniak): Add a counter stat in here.
-      log::debug!("failed to send sankey diagram upload request: {e}");
+      log::debug!("failed to send sankey upload request: {e}");
     }
   }
 }

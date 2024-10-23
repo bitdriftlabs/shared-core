@@ -115,7 +115,7 @@ pub enum DataUpload {
   /// A stats upload request with an associated tracking id that is used to ensure delivery.
   StatsUploadRequest(Tracked<StatsUploadRequest, UploadResponse>),
 
-  /// A Sankey diagram path upload request.
+  /// A Sankey path upload request.
   SankeyPathUpload(Tracked<SankeyDiagramUploadRequest, UploadResponse>),
 
   /// An opaque request with an associated tracking id that is used to ensure delivery. This allows

@@ -663,7 +663,7 @@ impl WorkflowsEngine {
 
     for action in emit_sankey_diagrams_actions {
       if let Err(e) = self.sankey_processor_input_tx.try_send(action.path) {
-        log::debug!("failed to process sankey diagram: {e}");
+        log::debug!("failed to process sankey: {e}");
       }
     }
 

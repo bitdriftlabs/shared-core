@@ -208,12 +208,7 @@ impl Config {
     self
       .sankey_values_extraction_limit_by_id
       .get(sankey_id)
-      .ok_or_else(|| {
-        anyhow!(
-          "sankey_limit: unexisting sankey diagram, sankey id {:?}",
-          sankey_id
-        )
-      })
+      .ok_or_else(|| anyhow!("sankey_limit: unexisting sankey, sankey id {:?}", sankey_id))
       .copied()
   }
 
@@ -296,7 +291,7 @@ impl SankeyExtraction {
     proto: &workflow::workflow::transition_extension::SankeyDiagramValueExtraction,
   ) -> anyhow::Result<Self> {
     let Some(value) = &proto.value_type else {
-      anyhow::bail!("invalid sankey diagram value extraction configuration: missing value type")
+      anyhow::bail!("invalid sankey value extraction configuration: missing value type")
     };
 
     Ok(Self {

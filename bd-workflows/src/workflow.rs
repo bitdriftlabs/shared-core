@@ -787,9 +787,6 @@ pub(crate) struct RunResult<'a> {
   state: RunState,
   /// The list of triggered actions.
   triggered_actions: Vec<TriggeredAction<'a>>,
-  /// The Sankey diagram states.
-  // TODO(Augustyniak): Implement sankey diagram states.
-  // sankey_diagram_states: Option<BTreeMap<String, SankeyDiagramState>>,
   /// The number of newly created traversals.
   created_traversals_count: u32,
   /// The number of advanced traversals. The traversal is considered
@@ -825,7 +822,7 @@ pub(crate) struct Traversal {
   /// Each element in an array corresponds to one transition.
   pub(crate) matched_logs_counts: Vec<u32>,
   /// States of Sankey diagrams. It's a `None` when traversal is initialized and is set
-  /// to `Some` after the first value for a Sankey diagram and a given traversal is extracted.
+  /// to `Some` after the first value for a Sankey and a given traversal is extracted.
   pub(crate) sankey_states: Option<BTreeMap<String, SankeyState>>,
 }
 
@@ -872,7 +869,7 @@ impl Traversal {
 
             if self.matched_logs_counts[index] == *count {
               result.followed_transitions_count += 1;
-              // Update Sankey diagrams' states.
+              // Update Sankey states.
               let mut updated_sankey_states = self.sankey_states(config, index, log);
 
               // Collect triggered actions.
