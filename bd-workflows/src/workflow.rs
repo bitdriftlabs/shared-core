@@ -477,11 +477,23 @@ impl SankeyPath {
 
     hasher.write(sankey_id.as_bytes());
     hasher.write(&state.sankey_values_extraction_limit.to_le_bytes());
-    hasher.write(if state.is_trimmed { &[1] } else { &[0] });
+    hasher.write(
+      if state.is_trimmed {
+        b"__trimmed"
+      } else {
+        b"__not_trimmed"
+      },
+    );
 
     for node in &state.nodes {
       hasher.write(node.value.as_bytes());
-      hasher.write(if node.counts_toward_limit { &[1] } else { &[0] });
+      hasher.write(
+        if state.is_trimmed {
+          b"__counts_towards_limit"
+        } else {
+          b"__does_not_count_towards_limit"
+        },
+      );
     }
 
     format!("{:x}", hasher.finish())

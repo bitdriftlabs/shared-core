@@ -2936,7 +2936,7 @@ async fn sankey_action() {
   assert_eq!(
     SankeyDiagramUploadRequest {
       id: "sankey".to_string(),
-      path_id: "515026cd56b941f5".to_string(),
+      path_id: "7753f2baef7b2c3c".to_string(),
       nodes: vec![
         Node {
           extracted_value: "first_extracted".to_string(),
@@ -2969,7 +2969,7 @@ async fn sankey_action() {
     "workflows_dyn:action",
     labels! {
       "_id" => "sankey",
-      "_path_id" => "515026cd56b941f5",
+      "_path_id" => "7753f2baef7b2c3c",
     },
   );
 }
