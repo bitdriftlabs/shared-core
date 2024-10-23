@@ -14,6 +14,13 @@ use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers
 };
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::Streaming;
 use bd_proto::protos::workflow::workflow::workflow::action::Tag;
+use bd_proto::protos::workflow::workflow::workflow::field_extracted::{Exact, Extraction_type};
+use bd_proto::protos::workflow::workflow::workflow::transition_extension::{
+  sankey_diagram_value_extraction,
+  Extension_type,
+  SankeyDiagramValueExtraction,
+};
+use bd_proto::protos::workflow::workflow::workflow::{FieldExtracted, TransitionExtension};
 use protobuf::MessageField;
 use protos::log_matcher::log_matcher::log_matcher::base_log_matcher::tag_match::Value_match;
 use protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type::{
@@ -31,6 +38,7 @@ use protos::workflow::workflow::workflow::action::action_emit_metric::Value_extr
 use protos::workflow::workflow::workflow::action::{
   action_emit_metric,
   ActionEmitMetric as ActionEmitMetricProto,
+  ActionEmitSankeyDiagram as ActionEmitSankeyDiagramProto,
   ActionFlushBuffers as ActionFlushBuffersProto,
   Action_type,
 };
@@ -168,10 +176,13 @@ pub mod macros {
   #[macro_export]
   macro_rules! declare_transition {
     ($from:expr => $to:expr; when $rule:expr) => {
-      $crate::workflow::add_transition($from, $to, $rule, &[])
+      $crate::workflow::add_transition($from, $to, $rule, &[], vec![])
     };
     ($from:expr => $to:expr; when $rule:expr; do $($action:expr),+) => {
-      $crate::workflow::add_transition($from, $to, $rule, &[$($action),+])
+      $crate::workflow::add_transition($from, $to, $rule, &[$($action),+], vec![])
+    };
+    ($from:expr => $to:expr; when $rule:expr, with { $($extraction:expr),+ }) => {
+      $crate::workflow::add_transition($from, $to, $rule, &[], vec![$($extraction),+])
     };
   }
 
@@ -312,6 +323,12 @@ pub mod macros {
         vec![$($tag,)+]
       )
     };
+    (emit_sankey $id:expr; limit $limit: expr) => {
+      $crate::workflow::make_sankey_action(
+        $id,
+        $limit,
+      )
+    };
   }
 
   /// Creates metric value.
@@ -369,6 +386,25 @@ pub mod macros {
     };
   }
 
+  #[macro_export]
+  macro_rules! sankey_value {
+    (fixed $sankey_id:expr => $value:expr) => {
+      $crate::workflow::make_sankey_extraction(
+                          $sankey_id,
+                          false,
+                          bd_proto::protos::workflow::workflow::workflow::transition_extension
+                          ::sankey_diagram_value_extraction::Value_type::Fixed($value.to_string())
+                        )
+    };
+    (extract_field $sankey_id:expr => $field_name:expr) => {
+      $crate::workflow::make_sankey_extraction(
+        $sankey_id,
+        false,
+        $crate::workflow::make_sankey_value_field_extracted($field_name),
+      )
+    };
+  }
+
   #[allow(clippy::module_name_repetitions)]
   pub use {
     action,
@@ -381,6 +417,7 @@ pub mod macros {
     metric_value,
     not,
     rule,
+    sankey_value,
     state,
     workflow,
     workflow_proto,
@@ -415,6 +452,7 @@ pub fn add_transition(
   to_state: &State,
   rule: Rule,
   actions: &[Action_type],
+  extensions: Vec<TransitionExtension>,
 ) {
   let mut transitions = from_state.transitions.clone();
   transitions.push(protos::workflow::workflow::workflow::Transition {
@@ -427,6 +465,7 @@ pub fn add_transition(
         ..Default::default()
       })
       .collect(),
+    extensions,
     ..Default::default()
   });
 
@@ -459,6 +498,45 @@ pub fn make_flush_buffers_action(
         }
       })
     }),
+    ..Default::default()
+  })
+}
+
+#[must_use]
+pub fn make_sankey_action(id: &str, limit: u32) -> Action_type {
+  Action_type::ActionEmitSankeyDiagram(ActionEmitSankeyDiagramProto {
+    id: id.to_string(),
+    limit,
+    ..Default::default()
+  })
+}
+
+#[must_use]
+pub fn make_sankey_extraction(
+  id: &str,
+  counts_toward_sankey_extraction_limit: bool,
+  value: sankey_diagram_value_extraction::Value_type,
+) -> TransitionExtension {
+  TransitionExtension {
+    extension_type: Some(Extension_type::SankeyDiagramValueExtraction(
+      SankeyDiagramValueExtraction {
+        sankey_diagram_id: id.to_string(),
+        counts_toward_sankey_extraction_limit,
+        value_type: Some(value),
+        ..Default::default()
+      },
+    )),
+    ..Default::default()
+  }
+}
+
+#[must_use]
+pub fn make_sankey_value_field_extracted(
+  field_name: &str,
+) -> sankey_diagram_value_extraction::Value_type {
+  sankey_diagram_value_extraction::Value_type::FieldExtracted(FieldExtracted {
+    field_name: field_name.to_string(),
+    extraction_type: Some(Extraction_type::Exact(Exact::default())),
     ..Default::default()
   })
 }
