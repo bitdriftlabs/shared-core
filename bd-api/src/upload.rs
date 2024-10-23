@@ -87,7 +87,7 @@ impl StateTracker {
     let _ignored = self
       .pending_intents
       .remove(uuid)
-      .ok_or_else(|| anyhow!("state for requests with uuid {uuid:?} was inconsistent"))?
+      .ok_or_else(|| anyhow!("Log upload state for uuid {uuid:?} was inconsistent"))?
       .send(response);
 
     Ok(())
