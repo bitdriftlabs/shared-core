@@ -2580,52 +2580,52 @@ impl ApiRequest {
         }
     }
 
-    // .bitdrift_public.protobuf.client.v1.SankeyDiagramUploadRequest sankey_diagram_upload = 10;
+    // .bitdrift_public.protobuf.client.v1.SankeyPathUploadRequest sankey_path_upload = 10;
 
-    pub fn sankey_diagram_upload(&self) -> &SankeyDiagramUploadRequest {
+    pub fn sankey_path_upload(&self) -> &SankeyPathUploadRequest {
         match self.request_type {
-            ::std::option::Option::Some(api_request::Request_type::SankeyDiagramUpload(ref v)) => v,
-            _ => <SankeyDiagramUploadRequest as ::protobuf::Message>::default_instance(),
+            ::std::option::Option::Some(api_request::Request_type::SankeyPathUpload(ref v)) => v,
+            _ => <SankeyPathUploadRequest as ::protobuf::Message>::default_instance(),
         }
     }
 
-    pub fn clear_sankey_diagram_upload(&mut self) {
+    pub fn clear_sankey_path_upload(&mut self) {
         self.request_type = ::std::option::Option::None;
     }
 
-    pub fn has_sankey_diagram_upload(&self) -> bool {
+    pub fn has_sankey_path_upload(&self) -> bool {
         match self.request_type {
-            ::std::option::Option::Some(api_request::Request_type::SankeyDiagramUpload(..)) => true,
+            ::std::option::Option::Some(api_request::Request_type::SankeyPathUpload(..)) => true,
             _ => false,
         }
     }
 
     // Param is passed by value, moved
-    pub fn set_sankey_diagram_upload(&mut self, v: SankeyDiagramUploadRequest) {
-        self.request_type = ::std::option::Option::Some(api_request::Request_type::SankeyDiagramUpload(v))
+    pub fn set_sankey_path_upload(&mut self, v: SankeyPathUploadRequest) {
+        self.request_type = ::std::option::Option::Some(api_request::Request_type::SankeyPathUpload(v))
     }
 
     // Mutable pointer to the field.
-    pub fn mut_sankey_diagram_upload(&mut self) -> &mut SankeyDiagramUploadRequest {
-        if let ::std::option::Option::Some(api_request::Request_type::SankeyDiagramUpload(_)) = self.request_type {
+    pub fn mut_sankey_path_upload(&mut self) -> &mut SankeyPathUploadRequest {
+        if let ::std::option::Option::Some(api_request::Request_type::SankeyPathUpload(_)) = self.request_type {
         } else {
-            self.request_type = ::std::option::Option::Some(api_request::Request_type::SankeyDiagramUpload(SankeyDiagramUploadRequest::new()));
+            self.request_type = ::std::option::Option::Some(api_request::Request_type::SankeyPathUpload(SankeyPathUploadRequest::new()));
         }
         match self.request_type {
-            ::std::option::Option::Some(api_request::Request_type::SankeyDiagramUpload(ref mut v)) => v,
+            ::std::option::Option::Some(api_request::Request_type::SankeyPathUpload(ref mut v)) => v,
             _ => panic!(),
         }
     }
 
     // Take field
-    pub fn take_sankey_diagram_upload(&mut self) -> SankeyDiagramUploadRequest {
-        if self.has_sankey_diagram_upload() {
+    pub fn take_sankey_path_upload(&mut self) -> SankeyPathUploadRequest {
+        if self.has_sankey_path_upload() {
             match self.request_type.take() {
-                ::std::option::Option::Some(api_request::Request_type::SankeyDiagramUpload(v)) => v,
+                ::std::option::Option::Some(api_request::Request_type::SankeyPathUpload(v)) => v,
                 _ => panic!(),
             }
         } else {
-            SankeyDiagramUploadRequest::new()
+            SankeyPathUploadRequest::new()
         }
     }
 
@@ -2744,12 +2744,12 @@ impl ApiRequest {
             ApiRequest::mut_opaque_upload,
             ApiRequest::set_opaque_upload,
         ));
-        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, SankeyDiagramUploadRequest>(
-            "sankey_diagram_upload",
-            ApiRequest::has_sankey_diagram_upload,
-            ApiRequest::sankey_diagram_upload,
-            ApiRequest::mut_sankey_diagram_upload,
-            ApiRequest::set_sankey_diagram_upload,
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, SankeyPathUploadRequest>(
+            "sankey_path_upload",
+            ApiRequest::has_sankey_path_upload,
+            ApiRequest::sankey_path_upload,
+            ApiRequest::mut_sankey_path_upload,
+            ApiRequest::set_sankey_path_upload,
         ));
         fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, SankeyIntentRequest>(
             "sankey_intent",
@@ -2805,7 +2805,7 @@ impl ::protobuf::Message for ApiRequest {
                     self.request_type = ::std::option::Option::Some(api_request::Request_type::OpaqueUpload(is.read_message()?));
                 },
                 82 => {
-                    self.request_type = ::std::option::Option::Some(api_request::Request_type::SankeyDiagramUpload(is.read_message()?));
+                    self.request_type = ::std::option::Option::Some(api_request::Request_type::SankeyPathUpload(is.read_message()?));
                 },
                 90 => {
                     self.request_type = ::std::option::Option::Some(api_request::Request_type::SankeyIntent(is.read_message()?));
@@ -2860,7 +2860,7 @@ impl ::protobuf::Message for ApiRequest {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
-                &api_request::Request_type::SankeyDiagramUpload(ref v) => {
+                &api_request::Request_type::SankeyPathUpload(ref v) => {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
@@ -2905,7 +2905,7 @@ impl ::protobuf::Message for ApiRequest {
                 &api_request::Request_type::OpaqueUpload(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(9, v, os)?;
                 },
-                &api_request::Request_type::SankeyDiagramUpload(ref v) => {
+                &api_request::Request_type::SankeyPathUpload(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(10, v, os)?;
                 },
                 &api_request::Request_type::SankeyIntent(ref v) => {
@@ -2994,8 +2994,8 @@ pub mod api_request {
         OpaqueConfigurationUpdateAck(super::OpaqueConfigurationUpdateAck),
         // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiRequest.opaque_upload)
         OpaqueUpload(super::OpaqueRequest),
-        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiRequest.sankey_diagram_upload)
-        SankeyDiagramUpload(super::SankeyDiagramUploadRequest),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiRequest.sankey_path_upload)
+        SankeyPathUpload(super::SankeyPathUploadRequest),
         // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiRequest.sankey_intent)
         SankeyIntent(super::SankeyIntentRequest),
     }
@@ -3017,60 +3017,67 @@ pub mod api_request {
     }
 }
 
-// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.SankeyDiagramUploadRequest)
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.SankeyPathUploadRequest)
 #[derive(PartialEq,Clone,Default,Debug)]
-pub struct SankeyDiagramUploadRequest {
+pub struct SankeyPathUploadRequest {
     // message fields
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.SankeyDiagramUploadRequest.id)
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.SankeyPathUploadRequest.upload_uuid)
+    pub upload_uuid: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.SankeyPathUploadRequest.id)
     pub id: ::std::string::String,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.SankeyDiagramUploadRequest.path_id)
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.SankeyPathUploadRequest.path_id)
     pub path_id: ::std::string::String,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.SankeyDiagramUploadRequest.nodes)
-    pub nodes: ::std::vec::Vec<sankey_diagram_upload_request::Node>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.SankeyPathUploadRequest.nodes)
+    pub nodes: ::std::vec::Vec<sankey_path_upload_request::Node>,
     // special fields
-    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.SankeyDiagramUploadRequest.special_fields)
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.SankeyPathUploadRequest.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
 }
 
-impl<'a> ::std::default::Default for &'a SankeyDiagramUploadRequest {
-    fn default() -> &'a SankeyDiagramUploadRequest {
-        <SankeyDiagramUploadRequest as ::protobuf::Message>::default_instance()
+impl<'a> ::std::default::Default for &'a SankeyPathUploadRequest {
+    fn default() -> &'a SankeyPathUploadRequest {
+        <SankeyPathUploadRequest as ::protobuf::Message>::default_instance()
     }
 }
 
-impl SankeyDiagramUploadRequest {
-    pub fn new() -> SankeyDiagramUploadRequest {
+impl SankeyPathUploadRequest {
+    pub fn new() -> SankeyPathUploadRequest {
         ::std::default::Default::default()
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut fields = ::std::vec::Vec::with_capacity(4);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "upload_uuid",
+            |m: &SankeyPathUploadRequest| { &m.upload_uuid },
+            |m: &mut SankeyPathUploadRequest| { &mut m.upload_uuid },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "id",
-            |m: &SankeyDiagramUploadRequest| { &m.id },
-            |m: &mut SankeyDiagramUploadRequest| { &mut m.id },
+            |m: &SankeyPathUploadRequest| { &m.id },
+            |m: &mut SankeyPathUploadRequest| { &mut m.id },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "path_id",
-            |m: &SankeyDiagramUploadRequest| { &m.path_id },
-            |m: &mut SankeyDiagramUploadRequest| { &mut m.path_id },
+            |m: &SankeyPathUploadRequest| { &m.path_id },
+            |m: &mut SankeyPathUploadRequest| { &mut m.path_id },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "nodes",
-            |m: &SankeyDiagramUploadRequest| { &m.nodes },
-            |m: &mut SankeyDiagramUploadRequest| { &mut m.nodes },
+            |m: &SankeyPathUploadRequest| { &m.nodes },
+            |m: &mut SankeyPathUploadRequest| { &mut m.nodes },
         ));
-        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SankeyDiagramUploadRequest>(
-            "SankeyDiagramUploadRequest",
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SankeyPathUploadRequest>(
+            "SankeyPathUploadRequest",
             fields,
             oneofs,
         )
     }
 }
 
-impl ::protobuf::Message for SankeyDiagramUploadRequest {
-    const NAME: &'static str = "SankeyDiagramUploadRequest";
+impl ::protobuf::Message for SankeyPathUploadRequest {
+    const NAME: &'static str = "SankeyPathUploadRequest";
 
     fn is_initialized(&self) -> bool {
         true
@@ -3079,6 +3086,9 @@ impl ::protobuf::Message for SankeyDiagramUploadRequest {
     fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
         while let Some(tag) = is.read_raw_tag_or_eof()? {
             match tag {
+                34 => {
+                    self.upload_uuid = is.read_string()?;
+                },
                 10 => {
                     self.id = is.read_string()?;
                 },
@@ -3100,6 +3110,9 @@ impl ::protobuf::Message for SankeyDiagramUploadRequest {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u64 {
         let mut my_size = 0;
+        if !self.upload_uuid.is_empty() {
+            my_size += ::protobuf::rt::string_size(4, &self.upload_uuid);
+        }
         if !self.id.is_empty() {
             my_size += ::protobuf::rt::string_size(1, &self.id);
         }
@@ -3116,6 +3129,9 @@ impl ::protobuf::Message for SankeyDiagramUploadRequest {
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.upload_uuid.is_empty() {
+            os.write_string(4, &self.upload_uuid)?;
+        }
         if !self.id.is_empty() {
             os.write_string(1, &self.id)?;
         }
@@ -3137,19 +3153,21 @@ impl ::protobuf::Message for SankeyDiagramUploadRequest {
         &mut self.special_fields
     }
 
-    fn new() -> SankeyDiagramUploadRequest {
-        SankeyDiagramUploadRequest::new()
+    fn new() -> SankeyPathUploadRequest {
+        SankeyPathUploadRequest::new()
     }
 
     fn clear(&mut self) {
+        self.upload_uuid.clear();
         self.id.clear();
         self.path_id.clear();
         self.nodes.clear();
         self.special_fields.clear();
     }
 
-    fn default_instance() -> &'static SankeyDiagramUploadRequest {
-        static instance: SankeyDiagramUploadRequest = SankeyDiagramUploadRequest {
+    fn default_instance() -> &'static SankeyPathUploadRequest {
+        static instance: SankeyPathUploadRequest = SankeyPathUploadRequest {
+            upload_uuid: ::std::string::String::new(),
             id: ::std::string::String::new(),
             path_id: ::std::string::String::new(),
             nodes: ::std::vec::Vec::new(),
@@ -3159,33 +3177,33 @@ impl ::protobuf::Message for SankeyDiagramUploadRequest {
     }
 }
 
-impl ::protobuf::MessageFull for SankeyDiagramUploadRequest {
+impl ::protobuf::MessageFull for SankeyPathUploadRequest {
     fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
         static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-        descriptor.get(|| file_descriptor().message_by_package_relative_name("SankeyDiagramUploadRequest").unwrap()).clone()
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("SankeyPathUploadRequest").unwrap()).clone()
     }
 }
 
-impl ::std::fmt::Display for SankeyDiagramUploadRequest {
+impl ::std::fmt::Display for SankeyPathUploadRequest {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         ::protobuf::text_format::fmt(self, f)
     }
 }
 
-impl ::protobuf::reflect::ProtobufValue for SankeyDiagramUploadRequest {
+impl ::protobuf::reflect::ProtobufValue for SankeyPathUploadRequest {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
-/// Nested message and enums of message `SankeyDiagramUploadRequest`
-pub mod sankey_diagram_upload_request {
-    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.SankeyDiagramUploadRequest.Node)
+/// Nested message and enums of message `SankeyPathUploadRequest`
+pub mod sankey_path_upload_request {
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.SankeyPathUploadRequest.Node)
     #[derive(PartialEq,Clone,Default,Debug)]
     pub struct Node {
         // message fields
-        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.SankeyDiagramUploadRequest.Node.extracted_value)
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.SankeyPathUploadRequest.Node.extracted_value)
         pub extracted_value: ::std::string::String,
         // special fields
-        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.SankeyDiagramUploadRequest.Node.special_fields)
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.SankeyPathUploadRequest.Node.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
     }
 
@@ -3209,7 +3227,7 @@ pub mod sankey_diagram_upload_request {
                 |m: &mut Node| { &mut m.extracted_value },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Node>(
-                "SankeyDiagramUploadRequest.Node",
+                "SankeyPathUploadRequest.Node",
                 fields,
                 oneofs,
             )
@@ -3286,7 +3304,7 @@ pub mod sankey_diagram_upload_request {
     impl ::protobuf::MessageFull for Node {
         fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
             static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("SankeyDiagramUploadRequest.Node").unwrap()).clone()
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("SankeyPathUploadRequest.Node").unwrap()).clone()
         }
     }
 
@@ -5954,38 +5972,53 @@ impl ::protobuf::reflect::ProtobufValue for FlushBuffers {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
-// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.SankeyDiagramUploadResponse)
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.SankeyPathUploadResponse)
 #[derive(PartialEq,Clone,Default,Debug)]
-pub struct SankeyDiagramUploadResponse {
+pub struct SankeyPathUploadResponse {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.SankeyPathUploadResponse.upload_uuid)
+    pub upload_uuid: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.SankeyPathUploadResponse.error)
+    pub error: ::std::string::String,
     // special fields
-    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.SankeyDiagramUploadResponse.special_fields)
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.SankeyPathUploadResponse.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
 }
 
-impl<'a> ::std::default::Default for &'a SankeyDiagramUploadResponse {
-    fn default() -> &'a SankeyDiagramUploadResponse {
-        <SankeyDiagramUploadResponse as ::protobuf::Message>::default_instance()
+impl<'a> ::std::default::Default for &'a SankeyPathUploadResponse {
+    fn default() -> &'a SankeyPathUploadResponse {
+        <SankeyPathUploadResponse as ::protobuf::Message>::default_instance()
     }
 }
 
-impl SankeyDiagramUploadResponse {
-    pub fn new() -> SankeyDiagramUploadResponse {
+impl SankeyPathUploadResponse {
+    pub fn new() -> SankeyPathUploadResponse {
         ::std::default::Default::default()
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(0);
+        let mut fields = ::std::vec::Vec::with_capacity(2);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
-        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SankeyDiagramUploadResponse>(
-            "SankeyDiagramUploadResponse",
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "upload_uuid",
+            |m: &SankeyPathUploadResponse| { &m.upload_uuid },
+            |m: &mut SankeyPathUploadResponse| { &mut m.upload_uuid },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "error",
+            |m: &SankeyPathUploadResponse| { &m.error },
+            |m: &mut SankeyPathUploadResponse| { &mut m.error },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SankeyPathUploadResponse>(
+            "SankeyPathUploadResponse",
             fields,
             oneofs,
         )
     }
 }
 
-impl ::protobuf::Message for SankeyDiagramUploadResponse {
-    const NAME: &'static str = "SankeyDiagramUploadResponse";
+impl ::protobuf::Message for SankeyPathUploadResponse {
+    const NAME: &'static str = "SankeyPathUploadResponse";
 
     fn is_initialized(&self) -> bool {
         true
@@ -5994,6 +6027,12 @@ impl ::protobuf::Message for SankeyDiagramUploadResponse {
     fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
         while let Some(tag) = is.read_raw_tag_or_eof()? {
             match tag {
+                10 => {
+                    self.upload_uuid = is.read_string()?;
+                },
+                18 => {
+                    self.error = is.read_string()?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -6006,12 +6045,24 @@ impl ::protobuf::Message for SankeyDiagramUploadResponse {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u64 {
         let mut my_size = 0;
+        if !self.upload_uuid.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.upload_uuid);
+        }
+        if !self.error.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.error);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.upload_uuid.is_empty() {
+            os.write_string(1, &self.upload_uuid)?;
+        }
+        if !self.error.is_empty() {
+            os.write_string(2, &self.error)?;
+        }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -6024,36 +6075,40 @@ impl ::protobuf::Message for SankeyDiagramUploadResponse {
         &mut self.special_fields
     }
 
-    fn new() -> SankeyDiagramUploadResponse {
-        SankeyDiagramUploadResponse::new()
+    fn new() -> SankeyPathUploadResponse {
+        SankeyPathUploadResponse::new()
     }
 
     fn clear(&mut self) {
+        self.upload_uuid.clear();
+        self.error.clear();
         self.special_fields.clear();
     }
 
-    fn default_instance() -> &'static SankeyDiagramUploadResponse {
-        static instance: SankeyDiagramUploadResponse = SankeyDiagramUploadResponse {
+    fn default_instance() -> &'static SankeyPathUploadResponse {
+        static instance: SankeyPathUploadResponse = SankeyPathUploadResponse {
+            upload_uuid: ::std::string::String::new(),
+            error: ::std::string::String::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
     }
 }
 
-impl ::protobuf::MessageFull for SankeyDiagramUploadResponse {
+impl ::protobuf::MessageFull for SankeyPathUploadResponse {
     fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
         static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-        descriptor.get(|| file_descriptor().message_by_package_relative_name("SankeyDiagramUploadResponse").unwrap()).clone()
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("SankeyPathUploadResponse").unwrap()).clone()
     }
 }
 
-impl ::std::fmt::Display for SankeyDiagramUploadResponse {
+impl ::std::fmt::Display for SankeyPathUploadResponse {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         ::protobuf::text_format::fmt(self, f)
     }
 }
 
-impl ::protobuf::reflect::ProtobufValue for SankeyDiagramUploadResponse {
+impl ::protobuf::reflect::ProtobufValue for SankeyPathUploadResponse {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
@@ -6822,12 +6877,12 @@ impl ApiResponse {
         }
     }
 
-    // .bitdrift_public.protobuf.client.v1.SankeyDiagramUploadResponse sankey_diagram_upload = 12;
+    // .bitdrift_public.protobuf.client.v1.SankeyPathUploadResponse sankey_diagram_upload = 12;
 
-    pub fn sankey_diagram_upload(&self) -> &SankeyDiagramUploadResponse {
+    pub fn sankey_diagram_upload(&self) -> &SankeyPathUploadResponse {
         match self.response_type {
             ::std::option::Option::Some(api_response::Response_type::SankeyDiagramUpload(ref v)) => v,
-            _ => <SankeyDiagramUploadResponse as ::protobuf::Message>::default_instance(),
+            _ => <SankeyPathUploadResponse as ::protobuf::Message>::default_instance(),
         }
     }
 
@@ -6843,15 +6898,15 @@ impl ApiResponse {
     }
 
     // Param is passed by value, moved
-    pub fn set_sankey_diagram_upload(&mut self, v: SankeyDiagramUploadResponse) {
+    pub fn set_sankey_diagram_upload(&mut self, v: SankeyPathUploadResponse) {
         self.response_type = ::std::option::Option::Some(api_response::Response_type::SankeyDiagramUpload(v))
     }
 
     // Mutable pointer to the field.
-    pub fn mut_sankey_diagram_upload(&mut self) -> &mut SankeyDiagramUploadResponse {
+    pub fn mut_sankey_diagram_upload(&mut self) -> &mut SankeyPathUploadResponse {
         if let ::std::option::Option::Some(api_response::Response_type::SankeyDiagramUpload(_)) = self.response_type {
         } else {
-            self.response_type = ::std::option::Option::Some(api_response::Response_type::SankeyDiagramUpload(SankeyDiagramUploadResponse::new()));
+            self.response_type = ::std::option::Option::Some(api_response::Response_type::SankeyDiagramUpload(SankeyPathUploadResponse::new()));
         }
         match self.response_type {
             ::std::option::Option::Some(api_response::Response_type::SankeyDiagramUpload(ref mut v)) => v,
@@ -6860,14 +6915,14 @@ impl ApiResponse {
     }
 
     // Take field
-    pub fn take_sankey_diagram_upload(&mut self) -> SankeyDiagramUploadResponse {
+    pub fn take_sankey_diagram_upload(&mut self) -> SankeyPathUploadResponse {
         if self.has_sankey_diagram_upload() {
             match self.response_type.take() {
                 ::std::option::Option::Some(api_response::Response_type::SankeyDiagramUpload(v)) => v,
                 _ => panic!(),
             }
         } else {
-            SankeyDiagramUploadResponse::new()
+            SankeyPathUploadResponse::new()
         }
     }
 
@@ -7000,7 +7055,7 @@ impl ApiResponse {
             ApiResponse::mut_opaque_upload,
             ApiResponse::set_opaque_upload,
         ));
-        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, SankeyDiagramUploadResponse>(
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, SankeyPathUploadResponse>(
             "sankey_diagram_upload",
             ApiResponse::has_sankey_diagram_upload,
             ApiResponse::sankey_diagram_upload,
@@ -7277,7 +7332,7 @@ pub mod api_response {
         // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiResponse.opaque_upload)
         OpaqueUpload(super::OpaqueResponse),
         // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiResponse.sankey_diagram_upload)
-        SankeyDiagramUpload(super::SankeyDiagramUploadResponse),
+        SankeyDiagramUpload(super::SankeyPathUploadResponse),
         // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiResponse.sankey_intent_response)
         SankeyIntentResponse(super::SankeyIntentResponse),
     }
@@ -7351,7 +7406,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     Nonce\x12S\n\x04nack\x18\x02\x20\x01(\x0b2?.bitdrift_public.protobuf.cli\
     ent.v1.ConfigurationUpdateAck.NackR\x04nack\x1aP\n\x04Nack\x12#\n\rversi\
     on_nonce\x18\x01\x20\x01(\tR\x0cversionNonce\x12#\n\rerror_details\x18\
-    \x02\x20\x01(\tR\x0cerrorDetails\"\xfc\x08\n\nApiRequest\x12T\n\thandsha\
+    \x02\x20\x01(\tR\x0cerrorDetails\"\xf3\x08\n\nApiRequest\x12T\n\thandsha\
     ke\x18\x01\x20\x01(\x0b24.bitdrift_public.protobuf.client.v1.HandshakeRe\
     questH\0R\thandshake\x12h\n\x11log_upload_intent\x18\x07\x20\x01(\x0b2:.\
     bitdrift_public.protobuf.client.v1.LogUploadIntentRequestH\0R\x0flogUplo\
@@ -7367,22 +7422,23 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ion_update_ack\x18\x08\x20\x01(\x0b2@.bitdrift_public.protobuf.client.v1\
     .OpaqueConfigurationUpdateAckH\0R\x1copaqueConfigurationUpdateAck\x12X\n\
     \ropaque_upload\x18\t\x20\x01(\x0b21.bitdrift_public.protobuf.client.v1.\
-    OpaqueRequestH\0R\x0copaqueUpload\x12t\n\x15sankey_diagram_upload\x18\n\
-    \x20\x01(\x0b2>.bitdrift_public.protobuf.client.v1.SankeyDiagramUploadRe\
-    questH\0R\x13sankeyDiagramUpload\x12^\n\rsankey_intent\x18\x0b\x20\x01(\
-    \x0b27.bitdrift_public.protobuf.client.v1.SankeyIntentRequestH\0R\x0csan\
-    keyIntentB\x13\n\x0crequest_type\x12\x03\xf8B\x01\"\xf6\x01\n\x1aSankeyD\
-    iagramUploadRequest\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\
+    OpaqueRequestH\0R\x0copaqueUpload\x12k\n\x12sankey_path_upload\x18\n\x20\
+    \x01(\x0b2;.bitdrift_public.protobuf.client.v1.SankeyPathUploadRequestH\
+    \0R\x10sankeyPathUpload\x12^\n\rsankey_intent\x18\x0b\x20\x01(\x0b27.bit\
+    drift_public.protobuf.client.v1.SankeyIntentRequestH\0R\x0csankeyIntentB\
+    \x13\n\x0crequest_type\x12\x03\xf8B\x01\"\x9a\x02\n\x17SankeyPathUploadR\
+    equest\x12(\n\x0bupload_uuid\x18\x04\x20\x01(\tR\nuploadUuidB\x07\xfaB\
+    \x04r\x02\x10\x01\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\
     \x04r\x02\x10\x01\x12\x20\n\x07path_id\x18\x02\x20\x01(\tR\x06pathIdB\
-    \x07\xfaB\x04r\x02\x10\x01\x12c\n\x05nodes\x18\x03\x20\x03(\x0b2C.bitdri\
-    ft_public.protobuf.client.v1.SankeyDiagramUploadRequest.NodeR\x05nodesB\
-    \x08\xfaB\x05\x92\x01\x02\x08\x01\x1a8\n\x04Node\x120\n\x0fextracted_val\
-    ue\x18\x01\x20\x01(\tR\x0eextractedValueB\x07\xfaB\x04r\x02\x10\x01\"\
-    \x96\x01\n\x13SankeyIntentRequest\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\
-    \tR\nintentUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x20\n\x07path_id\x18\x02\
-    \x20\x01(\tR\x06pathIdB\x07\xfaB\x04r\x02\x10\x01\x123\n\x11sankey_diagr\
-    am_id\x18\x03\x20\x01(\tR\x0fsankeyDiagramIdB\x07\xfaB\x04r\x02\x10\x01\
-    \"\xd4\x01\n\x11HandshakeResponse\x12m\n\x0fstream_settings\x18\x01\x20\
+    \x07\xfaB\x04r\x02\x10\x01\x12`\n\x05nodes\x18\x03\x20\x03(\x0b2@.bitdri\
+    ft_public.protobuf.client.v1.SankeyPathUploadRequest.NodeR\x05nodesB\x08\
+    \xfaB\x05\x92\x01\x02\x08\x01\x1a8\n\x04Node\x120\n\x0fextracted_value\
+    \x18\x01\x20\x01(\tR\x0eextractedValueB\x07\xfaB\x04r\x02\x10\x01\"\x96\
+    \x01\n\x13SankeyIntentRequest\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\
+    \nintentUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x20\n\x07path_id\x18\x02\x20\
+    \x01(\tR\x06pathIdB\x07\xfaB\x04r\x02\x10\x01\x123\n\x11sankey_diagram_i\
+    d\x18\x03\x20\x01(\tR\x0fsankeyDiagramIdB\x07\xfaB\x04r\x02\x10\x01\"\
+    \xd4\x01\n\x11HandshakeResponse\x12m\n\x0fstream_settings\x18\x01\x20\
     \x01(\x0b2D.bitdrift_public.protobuf.client.v1.HandshakeResponse.StreamS\
     ettingsR\x0estreamSettings\x1aP\n\x0eStreamSettings\x12>\n\rping_interva\
     l\x18\x01\x20\x01(\x0b2\x19.google.protobuf.DurationR\x0cpingInterval\"\
@@ -7430,37 +7486,39 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ient.v1.RuntimeR\x07runtime\"S\n\rErrorShutdown\x12\x1f\n\x0bgrpc_status\
     \x18\x01\x20\x01(\x05R\ngrpcStatus\x12!\n\x0cgrpc_message\x18\x02\x20\
     \x01(\tR\x0bgrpcMessage\"4\n\x0cFlushBuffers\x12$\n\x0ebuffer_id_list\
-    \x18\x01\x20\x03(\tR\x0cbufferIdList\"\x1d\n\x1bSankeyDiagramUploadRespo\
-    nse\"\xc1\x01\n\x14SankeyIntentResponse\x12(\n\x0bintent_uuid\x18\x01\
-    \x20\x01(\tR\nintentUuidB\x07\xfaB\x04r\x02\x10\x01\x12]\n\x08decision\
-    \x18\x02\x20\x01(\x0e2A.bitdrift_public.protobuf.client.v1.SankeyIntentR\
-    esponse.DecisionR\x08decision\"\x20\n\x08Decision\x12\n\n\x06UPLOAD\x10\
-    \0\x12\x08\n\x04DROP\x10\x01\"\xa7\n\n\x0bApiResponse\x12U\n\thandshake\
-    \x18\x01\x20\x01(\x0b25.bitdrift_public.protobuf.client.v1.HandshakeResp\
-    onseH\0R\thandshake\x12V\n\nlog_upload\x18\x02\x20\x01(\x0b25.bitdrift_p\
-    ublic.protobuf.client.v1.LogUploadResponseH\0R\tlogUpload\x12i\n\x11log_\
-    upload_intent\x18\x08\x20\x01(\x0b2;.bitdrift_public.protobuf.client.v1.\
-    LogUploadIntentResponseH\0R\x0flogUploadIntent\x12\\\n\x0cstats_upload\
-    \x18\x07\x20\x01(\x0b27.bitdrift_public.protobuf.client.v1.StatsUploadRe\
-    sponseH\0R\x0bstatsUpload\x12F\n\x04pong\x18\x03\x20\x01(\x0b20.bitdrift\
-    _public.protobuf.client.v1.PongResponseH\0R\x04pong\x12l\n\x14configurat\
-    ion_update\x18\x04\x20\x01(\x0b27.bitdrift_public.protobuf.client.v1.Con\
-    figurationUpdateH\0R\x13configurationUpdate\x12Z\n\x0eruntime_update\x18\
-    \x05\x20\x01(\x0b21.bitdrift_public.protobuf.client.v1.RuntimeUpdateH\0R\
-    \rruntimeUpdate\x12Z\n\x0eerror_shutdown\x18\x06\x20\x01(\x0b21.bitdrift\
-    _public.protobuf.client.v1.ErrorShutdownH\0R\rerrorShutdown\x12W\n\rflus\
-    h_buffers\x18\t\x20\x01(\x0b20.bitdrift_public.protobuf.client.v1.FlushB\
-    uffersH\0R\x0cflushBuffers\x12\x7f\n\x1bopaque_configuration_update\x18\
-    \n\x20\x01(\x0b2=.bitdrift_public.protobuf.client.v1.OpaqueConfiguration\
-    UpdateH\0R\x19opaqueConfigurationUpdate\x12Y\n\ropaque_upload\x18\x0b\
-    \x20\x01(\x0b22.bitdrift_public.protobuf.client.v1.OpaqueResponseH\0R\
-    \x0copaqueUpload\x12u\n\x15sankey_diagram_upload\x18\x0c\x20\x01(\x0b2?.\
-    bitdrift_public.protobuf.client.v1.SankeyDiagramUploadResponseH\0R\x13sa\
-    nkeyDiagramUpload\x12p\n\x16sankey_intent_response\x18\r\x20\x01(\x0b28.\
-    bitdrift_public.protobuf.client.v1.SankeyIntentResponseH\0R\x14sankeyInt\
-    entResponseB\x14\n\rresponse_type\x12\x03\xf8B\x012x\n\nApiService\x12j\
-    \n\x03Mux\x12..bitdrift_public.protobuf.client.v1.ApiRequest\x1a/.bitdri\
-    ft_public.protobuf.client.v1.ApiResponse(\x010\x01b\x06proto3\
+    \x18\x01\x20\x03(\tR\x0cbufferIdList\"Z\n\x18SankeyPathUploadResponse\
+    \x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\
+    \x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\"\xc1\x01\n\
+    \x14SankeyIntentResponse\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\ninte\
+    ntUuidB\x07\xfaB\x04r\x02\x10\x01\x12]\n\x08decision\x18\x02\x20\x01(\
+    \x0e2A.bitdrift_public.protobuf.client.v1.SankeyIntentResponse.DecisionR\
+    \x08decision\"\x20\n\x08Decision\x12\n\n\x06UPLOAD\x10\0\x12\x08\n\x04DR\
+    OP\x10\x01\"\xa4\n\n\x0bApiResponse\x12U\n\thandshake\x18\x01\x20\x01(\
+    \x0b25.bitdrift_public.protobuf.client.v1.HandshakeResponseH\0R\thandsha\
+    ke\x12V\n\nlog_upload\x18\x02\x20\x01(\x0b25.bitdrift_public.protobuf.cl\
+    ient.v1.LogUploadResponseH\0R\tlogUpload\x12i\n\x11log_upload_intent\x18\
+    \x08\x20\x01(\x0b2;.bitdrift_public.protobuf.client.v1.LogUploadIntentRe\
+    sponseH\0R\x0flogUploadIntent\x12\\\n\x0cstats_upload\x18\x07\x20\x01(\
+    \x0b27.bitdrift_public.protobuf.client.v1.StatsUploadResponseH\0R\x0bsta\
+    tsUpload\x12F\n\x04pong\x18\x03\x20\x01(\x0b20.bitdrift_public.protobuf.\
+    client.v1.PongResponseH\0R\x04pong\x12l\n\x14configuration_update\x18\
+    \x04\x20\x01(\x0b27.bitdrift_public.protobuf.client.v1.ConfigurationUpda\
+    teH\0R\x13configurationUpdate\x12Z\n\x0eruntime_update\x18\x05\x20\x01(\
+    \x0b21.bitdrift_public.protobuf.client.v1.RuntimeUpdateH\0R\rruntimeUpda\
+    te\x12Z\n\x0eerror_shutdown\x18\x06\x20\x01(\x0b21.bitdrift_public.proto\
+    buf.client.v1.ErrorShutdownH\0R\rerrorShutdown\x12W\n\rflush_buffers\x18\
+    \t\x20\x01(\x0b20.bitdrift_public.protobuf.client.v1.FlushBuffersH\0R\
+    \x0cflushBuffers\x12\x7f\n\x1bopaque_configuration_update\x18\n\x20\x01(\
+    \x0b2=.bitdrift_public.protobuf.client.v1.OpaqueConfigurationUpdateH\0R\
+    \x19opaqueConfigurationUpdate\x12Y\n\ropaque_upload\x18\x0b\x20\x01(\x0b\
+    22.bitdrift_public.protobuf.client.v1.OpaqueResponseH\0R\x0copaqueUpload\
+    \x12r\n\x15sankey_diagram_upload\x18\x0c\x20\x01(\x0b2<.bitdrift_public.\
+    protobuf.client.v1.SankeyPathUploadResponseH\0R\x13sankeyDiagramUpload\
+    \x12p\n\x16sankey_intent_response\x18\r\x20\x01(\x0b28.bitdrift_public.p\
+    rotobuf.client.v1.SankeyIntentResponseH\0R\x14sankeyIntentResponseB\x14\
+    \n\rresponse_type\x12\x03\xf8B\x012x\n\nApiService\x12j\n\x03Mux\x12..bi\
+    tdrift_public.protobuf.client.v1.ApiRequest\x1a/.bitdrift_public.protobu\
+    f.client.v1.ApiResponse(\x010\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -7500,7 +7558,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(PingRequest::generated_message_descriptor_data());
             messages.push(ConfigurationUpdateAck::generated_message_descriptor_data());
             messages.push(ApiRequest::generated_message_descriptor_data());
-            messages.push(SankeyDiagramUploadRequest::generated_message_descriptor_data());
+            messages.push(SankeyPathUploadRequest::generated_message_descriptor_data());
             messages.push(SankeyIntentRequest::generated_message_descriptor_data());
             messages.push(HandshakeResponse::generated_message_descriptor_data());
             messages.push(RateLimited::generated_message_descriptor_data());
@@ -7514,14 +7572,14 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(RuntimeUpdate::generated_message_descriptor_data());
             messages.push(ErrorShutdown::generated_message_descriptor_data());
             messages.push(FlushBuffers::generated_message_descriptor_data());
-            messages.push(SankeyDiagramUploadResponse::generated_message_descriptor_data());
+            messages.push(SankeyPathUploadResponse::generated_message_descriptor_data());
             messages.push(SankeyIntentResponse::generated_message_descriptor_data());
             messages.push(ApiResponse::generated_message_descriptor_data());
             messages.push(log_upload_intent_request::WorkflowActionUpload::generated_message_descriptor_data());
             messages.push(log_upload_intent_response::UploadImmediately::generated_message_descriptor_data());
             messages.push(log_upload_intent_response::Drop::generated_message_descriptor_data());
             messages.push(configuration_update_ack::Nack::generated_message_descriptor_data());
-            messages.push(sankey_diagram_upload_request::Node::generated_message_descriptor_data());
+            messages.push(sankey_path_upload_request::Node::generated_message_descriptor_data());
             messages.push(handshake_response::StreamSettings::generated_message_descriptor_data());
             messages.push(stats_upload_request::Snapshot::generated_message_descriptor_data());
             messages.push(stats_upload_request::snapshot::Aggregated::generated_message_descriptor_data());
