@@ -2933,6 +2933,13 @@ async fn sankey_action() {
   1.milliseconds().sleep().await;
 
   assert_eq!(1, engine.sankey_path_uploads().len());
+
+  let mut first_upload = engine.sankey_path_uploads()[0].clone();
+
+  // Confirm upload uuid is present and remove it from further comparisons.
+  assert!(!first_upload.upload_uuid.is_empty());
+  first_upload.upload_uuid = String::new();
+
   assert_eq!(
     SankeyPathUploadRequest {
       id: "sankey".to_string(),

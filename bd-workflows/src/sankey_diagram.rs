@@ -62,10 +62,8 @@ impl Processor {
       ..Default::default()
     };
 
-    let (upload_request, _response) = TrackedSankeyPathUploadRequest::new(
-      upload_uuid,
-      upload_request,
-    );
+    let (upload_request, _response) =
+      TrackedSankeyPathUploadRequest::new(upload_uuid, upload_request);
 
     if let Err(e) = self
       .data_upload_tx
