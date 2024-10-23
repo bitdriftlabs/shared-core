@@ -481,7 +481,7 @@ impl SankeyPath {
       hasher.write(if node.counts_toward_limit { &[1] } else { &[0] });
     }
 
-    hasher.finish().to_string()
+    format!("{:x}", hasher.finish())
   }
 }
 
