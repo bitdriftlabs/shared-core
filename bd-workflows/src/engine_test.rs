@@ -2968,7 +2968,7 @@ async fn sankey_action() {
       ],
       ..Default::default()
     },
-    engine.sankey_path_uploads()[0]
+    first_upload
   );
 
   engine.dynamic_stats_collector.assert_counter_eq(
