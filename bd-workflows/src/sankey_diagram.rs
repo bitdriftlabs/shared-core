@@ -51,8 +51,8 @@ impl Processor {
       nodes: sankey_path
         .nodes
         .into_iter()
-        .map(|n| Node {
-          extracted_value: n,
+        .map(|value| Node {
+          extracted_value: value,
           ..Default::default()
         })
         .collect_vec(),
