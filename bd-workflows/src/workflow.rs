@@ -492,20 +492,13 @@ struct SankeyNodeState {
   counts_toward_limit: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub(crate) struct SankeyState {
   nodes: Vec<SankeyNodeState>,
   is_trimmed: bool,
 }
 
 impl SankeyState {
-  pub(crate) const fn new() -> Self {
-    Self {
-      nodes: vec![],
-      is_trimmed: false,
-    }
-  }
-
   pub(crate) fn push(&mut self, value: String, limit: usize, counts_toward_limit: bool) {
     self.nodes.push(SankeyNodeState {
       value,
@@ -904,7 +897,7 @@ impl Traversal {
       sankey_states
         .get_or_insert_with(BTreeMap::new)
         .entry(extraction.sankey_id.clone())
-        .or_insert_with(|| SankeyState::new())
+        .or_default()
         .push(
           extracted_value.into_owned(),
           extraction.limit,
