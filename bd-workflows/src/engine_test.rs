@@ -35,6 +35,7 @@ use bd_test_helpers::workflow::macros::{
 };
 use bd_test_helpers::{metric_value, sankey_value};
 use bd_time::TimeDurationExt;
+use itertools::Itertools;
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
@@ -274,10 +275,15 @@ impl AnnotatedWorkflowsEngine {
               log::debug!("received new buffers to flush {:?}", buffers_to_flush);
               hooks.lock().flushed_buffers.push(buffers_to_flush);
             },
-            Some(data_upload) = data_upload_rx.recv(), if !hooks.lock().awaiting_logs_upload_intent_decisions.is_empty() => {
+            Some(data_upload) = data_upload_rx.recv() => {
               match data_upload {
                 DataUpload::LogsUploadIntentRequest(logs_upload_intent) => {
-                  let Some(WorkflowActionUpload(upload)) =
+
+                if hooks.lock().awaiting_logs_upload_intent_decisions.is_empty() {
+                  continue;
+                }
+
+                let Some(WorkflowActionUpload(upload)) =
                   logs_upload_intent.payload.intent_type.clone() else
                 {
                   panic!("unexpected intent type");
@@ -2889,22 +2895,22 @@ async fn sankey_action() {
   declare_transition!(
     &mut a => &b;
     when rule!(log_matches!(message == "foo")),
-    with { sankey_value!(fixed "sankey" => "first_extracted") }
+    with { sankey_value!(fixed "sankey" => "first_extracted", counts_toward_limit false) }
   );
   declare_transition!(
     &mut b => &c;
     when rule!(log_matches!(message == "bar")),
-    with { sankey_value!(fixed "sankey" => "last_extracted") }
+    with { sankey_value!(extract_field "sankey" => "field_to_extract_key", counts_toward_limit false) }
   );
   declare_transition!(
     &mut b => &b_clone;
     when rule!(log_matches!(message == "bar_loop")),
-    with { sankey_value!(fixed "sankey" => "loop") }
+    with { sankey_value!(fixed "sankey" => "loop", counts_toward_limit true) }
   );
   declare_transition!(
     &mut c => &d;
     when rule!(log_matches!(message == "dar"));
-    do action!(emit_sankey "sankey"; limit 10)
+    do action!(emit_sankey "sankey"; limit 3)
   );
 
   let workflow = workflow!(exclusive with a, b, c, d);
@@ -2917,12 +2923,29 @@ async fn sankey_action() {
   engine_process_log!(engine; "foo");
   engine_process_log!(engine; "bar_loop");
   engine_process_log!(engine; "bar_loop");
-  engine_process_log!(engine; "bar");
+  engine_process_log!(engine; "bar_loop");
+  engine_process_log!(engine; "bar_loop");
+  engine_process_log!(engine; "bar_loop");
+  engine_process_log!(engine; "bar"; with labels! { "field_to_extract_key" => "field_to_extract_value" });
   engine_process_log!(engine; "dar");
 
-  engine.run_once_for_test(false).await;
+  1.milliseconds().sleep().await;
 
-  assert!(engine.sankey_uploads().is_empty());
+  assert_eq!(1, engine.sankey_uploads().len());
+  assert_eq!(
+    vec![
+      "first_extracted",
+      "loop",
+      "loop",
+      "loop",
+      "field_to_extract_value"
+    ],
+    engine.sankey_uploads()[0]
+      .nodes
+      .iter()
+      .map(|value| value.extracted_value.clone())
+      .collect_vec()
+  );
 }
 
 fn make_runtime() -> std::sync::Arc<ConfigLoader> {

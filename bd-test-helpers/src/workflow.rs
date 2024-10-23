@@ -388,18 +388,22 @@ pub mod macros {
 
   #[macro_export]
   macro_rules! sankey_value {
-    (fixed $sankey_id:expr => $value:expr) => {
+    (fixed $sankey_id:expr => $value:expr, counts_toward_limit $counts_toward_limit:expr)
+      => {
       $crate::workflow::make_sankey_extraction(
                           $sankey_id,
-                          false,
+                          $counts_toward_limit,
                           bd_proto::protos::workflow::workflow::workflow::transition_extension
                           ::sankey_diagram_value_extraction::Value_type::Fixed($value.to_string())
                         )
     };
-    (extract_field $sankey_id:expr => $field_name:expr) => {
+    (extract_field $sankey_id:expr => $field_name:expr,
+      counts_toward_limit $counts_toward_limit:expr
+    )
+      => {
       $crate::workflow::make_sankey_extraction(
         $sankey_id,
-        false,
+        $counts_toward_limit,
         $crate::workflow::make_sankey_value_field_extracted($field_name),
       )
     };

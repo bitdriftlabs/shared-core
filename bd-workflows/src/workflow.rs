@@ -449,34 +449,36 @@ impl WorkflowResultStats {
 }
 
 //
-// SankeyDiagramPath
+// SankeyPath
 //
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct SankeyDiagramPath {
+pub(crate) struct SankeyPath {
   pub(crate) nodes: Vec<String>,
   pub(crate) path_id: String,
   pub(crate) is_trimmed: bool,
 }
 
-impl SankeyDiagramPath {
-  fn new(sankey_diagram_state: SankeyDiagramState) -> Self {
-    let path_id = Self::calculate_path_id(&sankey_diagram_state);
+impl SankeyPath {
+  fn new(sankey_state: SankeyState) -> Self {
+    let path_id = Self::calculate_path_id(&sankey_state);
 
     Self {
-      nodes: sankey_diagram_state.extracted_values,
+      nodes: sankey_state.nodes.into_iter().map(|n| n.value).collect(),
       path_id,
-      is_trimmed: sankey_diagram_state.is_trimmed,
+      is_trimmed: sankey_state.is_trimmed,
     }
   }
 
-  fn calculate_path_id(state: &SankeyDiagramState) -> String {
+  fn calculate_path_id(state: &SankeyState) -> String {
     let mut hasher = std::hash::DefaultHasher::new();
 
+    hasher.write(&state.sankey_values_extraction_limit.to_le_bytes());
     hasher.write(if state.is_trimmed { &[1] } else { &[0] });
 
-    for node in &state.extracted_values {
-      hasher.write(node.as_str().as_bytes());
+    for node in &state.nodes {
+      hasher.write(node.value.as_bytes());
+      hasher.write(if node.counts_toward_limit { &[1] } else { &[0] });
     }
 
     hasher.finish().to_string()
@@ -484,35 +486,51 @@ impl SankeyDiagramPath {
 }
 
 //
-// SankeyDiagramState
+// SankeyState
 //
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub(crate) struct SankeyDiagramState {
-  extracted_values: Vec<String>,
+struct SankeyNodeState {
+  value: String,
+  counts_toward_limit: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub(crate) struct SankeyState {
+  nodes: Vec<SankeyNodeState>,
   is_trimmed: bool,
   sankey_values_extraction_limit: u32,
 }
 
-impl SankeyDiagramState {
+impl SankeyState {
   pub(crate) const fn new(sankey_values_extraction_limit: u32) -> Self {
     Self {
-      extracted_values: vec![],
+      nodes: vec![],
       is_trimmed: false,
       sankey_values_extraction_limit,
     }
   }
 
-  pub(crate) fn push(&mut self, value: String, is_included_in_sankey_diagram_limit: bool) {
-    self.extracted_values.push(value);
+  pub(crate) fn push(&mut self, value: String, counts_toward_limit: bool) {
+    self.nodes.push(SankeyNodeState {
+      value,
+      counts_toward_limit,
+    });
 
-    if is_included_in_sankey_diagram_limit
-      && self.extracted_values.len() > self.sankey_values_extraction_limit as usize
+    if !counts_toward_limit {
+      return;
+    }
+
+    if self.nodes.iter().filter(|n| n.counts_toward_limit).count()
+      > self.sankey_values_extraction_limit as usize
     {
-      self.is_trimmed = true;
-
-      if !self.extracted_values.is_empty() {
-        self.extracted_values.remove(0);
+      if let Some((index, _)) = self
+        .nodes
+        .iter()
+        .find_position(|node| node.counts_toward_limit)
+      {
+        self.is_trimmed = true;
+        self.nodes.remove(index);
       }
     }
   }
@@ -793,7 +811,7 @@ pub(crate) struct Traversal {
   pub(crate) matched_logs_counts: Vec<u32>,
   /// States of Sankey diagrams. It's a `None` when traversal is initialized and is set
   /// to `Some` after the first value for a Sankey diagram and a given traversal is extracted.
-  pub(crate) sankey_states: Option<BTreeMap<String, SankeyDiagramState>>,
+  pub(crate) sankey_states: Option<BTreeMap<String, SankeyState>>,
 }
 
 impl Traversal {
@@ -803,7 +821,7 @@ impl Traversal {
   pub fn new(
     config: &Config,
     state_index: usize,
-    sankey_states: Option<BTreeMap<String, SankeyDiagramState>>,
+    sankey_states: Option<BTreeMap<String, SankeyState>>,
   ) -> Option<Self> {
     if config.states()[state_index].transitions().is_empty() {
       None
@@ -885,7 +903,7 @@ impl Traversal {
     config: &Config,
     index: usize,
     log: &LogRef<'_>,
-  ) -> Option<BTreeMap<String, SankeyDiagramState>> {
+  ) -> Option<BTreeMap<String, SankeyState>> {
     let mut sankey_states = self.sankey_states.clone();
     let extractions = config.sankey_extractions(self, index);
     for extraction in extractions {
@@ -904,7 +922,7 @@ impl Traversal {
       sankey_states
         .get_or_insert_with(BTreeMap::new)
         .entry(extraction.sankey_id.clone())
-        .or_insert_with(|| SankeyDiagramState::new(sankey_values_extraction_limit))
+        .or_insert_with(|| SankeyState::new(sankey_values_extraction_limit))
         .push(
           extracted_value.into_owned(),
           extraction.counts_toward_sankey_values_extraction_limit,
@@ -916,7 +934,7 @@ impl Traversal {
 
   fn triggered_actions<'a>(
     actions: &'a [Action],
-    sankey_states: &mut Option<BTreeMap<String, SankeyDiagramState>>,
+    sankey_states: &mut Option<BTreeMap<String, SankeyState>>,
   ) -> Vec<TriggeredAction<'a>> {
     let mut triggered_actions = vec![];
     for action in actions {
@@ -945,7 +963,7 @@ impl Traversal {
           triggered_actions.push(TriggeredAction::SankeyDiagram(
             TriggeredActionEmitSankeyDiagram {
               action,
-              path: SankeyDiagramPath::new(sankey_diagram_state),
+              path: SankeyPath::new(sankey_diagram_state),
             },
           ));
         },
@@ -979,7 +997,7 @@ pub(crate) enum TriggeredAction<'a> {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TriggeredActionEmitSankeyDiagram<'a> {
   pub(crate) action: &'a ActionEmitSankeyDiagram,
-  pub(crate) path: SankeyDiagramPath,
+  pub(crate) path: SankeyPath,
 }
 
 //

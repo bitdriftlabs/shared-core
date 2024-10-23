@@ -1,4 +1,4 @@
-use crate::workflow::SankeyDiagramPath;
+use crate::workflow::SankeyPath;
 use bd_api::upload::TrackedSankeyDiagramUploadRequest;
 use bd_api::DataUpload;
 use bd_proto::protos::client::api::sankey_diagram_upload_request::Node;
@@ -14,11 +14,11 @@ use tokio::sync::mpsc::{Receiver, Sender};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, PartialOrd, Ord, Eq)]
 pub(crate) struct SankeyDiagram {
   id: String,
-  path: SankeyDiagramPath,
+  path: SankeyPath,
 }
 
 impl SankeyDiagram {
-  pub(crate) const fn new(id: String, path: SankeyDiagramPath) -> Self {
+  pub(crate) const fn new(id: String, path: SankeyPath) -> Self {
     Self { id, path }
   }
 }
