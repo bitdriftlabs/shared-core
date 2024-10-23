@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::workflow::SankeyPath;
-use bd_api::upload::TrackedSankeyDiagramUploadRequest;
+use bd_api::upload::TrackedSankeyUploadRequest;
 use bd_api::DataUpload;
 use bd_proto::protos::client::api::sankey_diagram_upload_request::Node;
 use bd_proto::protos::client::api::SankeyDiagramUploadRequest;
@@ -59,10 +59,8 @@ impl Processor {
       ..Default::default()
     };
 
-    let (upload_request, _response) = TrackedSankeyDiagramUploadRequest::new(
-      TrackedSankeyDiagramUploadRequest::upload_uuid(),
-      upload_request,
-    );
+    let (upload_request, _response) =
+      TrackedSankeyUploadRequest::new(TrackedSankeyUploadRequest::upload_uuid(), upload_request);
 
     if let Err(e) = self
       .data_upload_tx
