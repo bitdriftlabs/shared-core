@@ -116,6 +116,7 @@ mod client {
         Response_type::Pong(pong) => Some(ResponseKind::Pong(pong)),
         Response_type::ErrorShutdown(e) => Some(ResponseKind::ErrorShutdown(e)),
         Response_type::FlushBuffers(f) => Some(ResponseKind::FlushBuffers(f)),
+        Response_type::SankeyDiagramUpload(s) => Some(ResponseKind::SankeyPathUpload(s)),
         Response_type::OpaqueUpload(o) => Some(ResponseKind::Opaque(o)),
         _ => Some(ResponseKind::Untyped),
       }

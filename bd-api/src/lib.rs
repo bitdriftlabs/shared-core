@@ -21,6 +21,7 @@ use bd_proto::protos::client::api::{
   OpaqueResponse,
   PongResponse,
   SankeyPathUploadRequest,
+  SankeyPathUploadResponse,
   StatsUploadRequest,
   StatsUploadResponse,
 };
@@ -89,6 +90,7 @@ pub enum ResponseKind<'a> {
   LogUploadIntent(&'a LogUploadIntentResponse),
   StatsUpload(&'a StatsUploadResponse),
   FlushBuffers(&'a FlushBuffers),
+  SankeyPathUpload(&'a SankeyPathUploadResponse),
   Opaque(&'a OpaqueResponse),
   Untyped,
 }

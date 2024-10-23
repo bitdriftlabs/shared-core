@@ -824,6 +824,17 @@ impl Api {
           .send(TriggerUpload::new(flush_buffers.buffer_id_list.clone()))
           .await
           .map_err(|_| anyhow!("remote trigger upload tx"))?,
+        Some(ResponseKind::SankeyPathUpload(sankey_path_upload)) => {
+          log::debug!(
+            "received ack for sankey path upload {}, error: {}",
+            sankey_path_upload.upload_uuid,
+            sankey_path_upload.error
+          );
+
+          stream_state
+            .upload_state_tracker
+            .resolve_pending_upload(&sankey_path_upload.upload_uuid, &sankey_path_upload.error)?;
+        },
         Some(ResponseKind::Untyped) => {
           log::debug!("received untyped response: {}", response);
           for pipeline in &mut self.configuration_pipelines {
