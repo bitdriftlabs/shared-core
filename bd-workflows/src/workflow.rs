@@ -462,7 +462,7 @@ pub(crate) struct SankeyPath {
 
 impl SankeyPath {
   fn new(sankey_id: &str, sankey_state: SankeyState) -> Self {
-    let path_id = Self::calculate_path_id(sankey_id, &sankey_state);
+    let path_id = Self::calculate_path_id(&sankey_state);
 
     Self {
       sankey_id: sankey_id.to_string(),
@@ -472,12 +472,8 @@ impl SankeyPath {
     }
   }
 
-  fn calculate_path_id(sankey_id: &str, state: &SankeyState) -> String {
+  fn calculate_path_id(state: &SankeyState) -> String {
     let mut hasher = sha2::Sha256::new();
-
-    hasher.update(sankey_id.as_bytes());
-    hasher.update(state.sankey_values_extraction_limit.to_le_bytes());
-
     for node in &state.nodes {
       hasher.update(node.value.as_bytes());
     }
@@ -500,19 +496,17 @@ struct SankeyNodeState {
 pub(crate) struct SankeyState {
   nodes: Vec<SankeyNodeState>,
   is_trimmed: bool,
-  sankey_values_extraction_limit: u32,
 }
 
 impl SankeyState {
-  pub(crate) const fn new(sankey_values_extraction_limit: u32) -> Self {
+  pub(crate) const fn new() -> Self {
     Self {
       nodes: vec![],
       is_trimmed: false,
-      sankey_values_extraction_limit,
     }
   }
 
-  pub(crate) fn push(&mut self, value: String, counts_toward_limit: bool) {
+  pub(crate) fn push(&mut self, value: String, limit: usize, counts_toward_limit: bool) {
     self.nodes.push(SankeyNodeState {
       value,
       counts_toward_limit,
@@ -522,9 +516,7 @@ impl SankeyState {
       return;
     }
 
-    if self.nodes.iter().filter(|n| n.counts_toward_limit).count()
-      > self.sankey_values_extraction_limit as usize
-    {
+    if self.nodes.iter().filter(|n| n.counts_toward_limit).count() > limit {
       if let Some((index, _)) = self
         .nodes
         .iter()
@@ -905,14 +897,6 @@ impl Traversal {
     let mut sankey_states = self.sankey_states.clone();
     let extractions = config.sankey_extractions(self, index);
     for extraction in extractions {
-      let Ok(sankey_values_extraction_limit) = config.sankey_limit(&extraction.sankey_id) else {
-        log::debug!(
-          "no values extraction limit for sankey {:?}",
-          extraction.sankey_id
-        );
-        continue;
-      };
-
       let Some(extracted_value) = extraction.value.extract_value(log) else {
         continue;
       };
@@ -920,9 +904,10 @@ impl Traversal {
       sankey_states
         .get_or_insert_with(BTreeMap::new)
         .entry(extraction.sankey_id.clone())
-        .or_insert_with(|| SankeyState::new(sankey_values_extraction_limit))
+        .or_insert_with(|| SankeyState::new())
         .push(
           extracted_value.into_owned(),
+          extraction.limit,
           extraction.counts_toward_sankey_values_extraction_limit,
         );
     }
@@ -944,8 +929,8 @@ impl Traversal {
           triggered_actions.push(TriggeredAction::EmitMetric(action));
         },
         Action::SankeyDiagram(action) => {
+          debug_assert!(sankey_states.is_some(), "sankey_states should be present");
           let Some(sankey_states) = sankey_states else {
-            debug_assert!(false, "sankey_states should be present");
             continue;
           };
 

@@ -82,7 +82,6 @@ pub struct Config {
   execution: Execution,
   duration_limit: Option<Duration>,
   matched_logs_count_limit: Option<u32>,
-  sankey_values_extraction_limit_by_id: HashMap<String, u32>,
 }
 
 impl Config {
@@ -117,7 +116,7 @@ impl Config {
     let states = config
       .states
       .iter()
-      .map(|s| State::try_from_proto(s, &state_index_by_id))
+      .map(|s| State::try_from_proto(s, &state_index_by_id, &sankey_values_extraction_limit_by_id))
       .collect::<anyhow::Result<Vec<_>>>()?;
 
     Ok(Self {
@@ -128,7 +127,6 @@ impl Config {
       matched_logs_count_limit: Self::try_matched_logs_count_limit_from_proto(
         &config.limit_matched_logs_count,
       )?,
-      sankey_values_extraction_limit_by_id,
     })
   }
 
@@ -204,14 +202,6 @@ impl Config {
     &self.states[traversal.state_index].transitions[transition_index].sankey_extractions
   }
 
-  pub(crate) fn sankey_limit(&self, sankey_id: &str) -> anyhow::Result<u32> {
-    self
-      .sankey_values_extraction_limit_by_id
-      .get(sankey_id)
-      .ok_or_else(|| anyhow!("sankey_limit: unexisting sankey, sankey id {:?}", sankey_id))
-      .copied()
-  }
-
   pub(crate) fn next_state_index_for_traversal(
     &self,
     traversal: &Traversal,
@@ -231,6 +221,7 @@ impl State {
   fn try_from_proto(
     state: &StateProto,
     state_index_by_id: &HashMap<StateID, usize>,
+    sankey_values_extraction_limit_by_id: &HashMap<String, u32>,
   ) -> anyhow::Result<Self> {
     Ok(Self {
       id: state.id.clone(),
@@ -244,7 +235,11 @@ impl State {
             ));
           }
 
-          Transition::new(transition, state_index_by_id[&transition.target_state_id])
+          Transition::new(
+            transition,
+            state_index_by_id[&transition.target_state_id],
+            sankey_values_extraction_limit_by_id,
+          )
         })
         .collect::<anyhow::Result<Vec<_>>>()?,
     })
@@ -284,11 +279,13 @@ pub(crate) struct SankeyExtraction {
   pub(crate) sankey_id: String,
   pub(crate) value: TagValue,
   pub(crate) counts_toward_sankey_values_extraction_limit: bool,
+  pub(crate) limit: usize,
 }
 
 impl SankeyExtraction {
   fn new(
     proto: &workflow::workflow::transition_extension::SankeyDiagramValueExtraction,
+    limit: usize,
   ) -> anyhow::Result<Self> {
     let Some(value) = &proto.value_type else {
       anyhow::bail!("invalid sankey value extraction configuration: missing value type")
@@ -303,6 +300,7 @@ impl SankeyExtraction {
         },
       },
       counts_toward_sankey_values_extraction_limit: proto.counts_toward_sankey_extraction_limit,
+      limit,
     })
   }
 }
@@ -320,7 +318,11 @@ pub(crate) struct Transition {
 }
 
 impl Transition {
-  fn new(transition: &TransitionProto, target_state_index: usize) -> anyhow::Result<Self> {
+  fn new(
+    transition: &TransitionProto,
+    target_state_index: usize,
+    sankey_values_extraction_limit_by_id: &HashMap<String, u32>,
+  ) -> anyhow::Result<Self> {
     let rule = transition
       .rule
       .as_ref()
@@ -355,10 +357,21 @@ impl Transition {
 
         match extension_type {
           Extension_type::SankeyDiagramValueExtraction(extension) => {
-            Ok(Some(SankeyExtraction::new(extension)))
+            let Some(sankey_limit) =
+              sankey_values_extraction_limit_by_id.get(&extension.sankey_diagram_id)
+            else {
+              anyhow::bail!(
+                "invalid transition configuration: missing sankey limit for sankey id {:?}",
+                extension.sankey_diagram_id
+              );
+            };
+
+            let Ok(limit) = <u32 as TryInto<usize>>::try_into(*sankey_limit) else {
+              anyhow::bail!("sankey limit: conversion to usize failed");
+            };
+
+            Ok(Some(SankeyExtraction::new(extension, limit)))
           },
-          #[allow(unreachable_patterns)]
-          _ => anyhow::bail!("invalid transition configuration: unknown extension type"),
         }
       })
       .filter_map(|result| match result {
