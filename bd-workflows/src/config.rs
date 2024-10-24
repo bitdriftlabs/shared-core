@@ -12,7 +12,6 @@ use bd_matcher::FieldProvider;
 use bd_proto::protos::workflow::workflow;
 use bd_proto::protos::workflow::workflow::workflow::transition_extension::Extension_type;
 use bd_proto::protos::workflow::workflow::workflow::{
-  ActionTakeScreenshot as ActionTakeScreenshotProto,
   Execution as ExecutionProto,
   LimitDuration as LimitDurationProto,
   LimitMatchedLogsCount,
@@ -28,6 +27,7 @@ use workflow::workflow::action::tag::Tag_type;
 use workflow::workflow::action::{
   ActionEmitMetric as ActionEmitMetricProto,
   ActionEmitSankeyDiagram as ActionEmitSankeyDiagramProto,
+  ActionTakeScreenshot as ActionTakeScreenshotProto,
   Action_type,
 };
 use workflow::workflow::execution::Execution_type;

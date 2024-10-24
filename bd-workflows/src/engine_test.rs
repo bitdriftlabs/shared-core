@@ -2983,6 +2983,29 @@ async fn sankey_action() {
   );
 }
 
+#[tokio::test]
+async fn take_screenshot_action() {
+  let mut a = state!("A");
+  let b = state!("B");
+
+  declare_transition!(
+    &mut a => &b;
+    when rule!(log_matches!(message == "foo"));
+    do action!(screenshot "screenshot_action_id")
+  );
+
+  let workflow = workflow!(exclusive with a, b);
+  let setup = Setup::new();
+
+  let mut engine = setup.make_workflows_engine(
+    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
+  );
+
+  let result = engine_process_log!(engine; "foo");
+
+  assert!(result.take_screenshot);
+}
+
 fn make_runtime() -> std::sync::Arc<ConfigLoader> {
   let dir = tempfile::TempDir::with_prefix(".").unwrap();
   ConfigLoader::new(dir.path())

@@ -325,13 +325,13 @@ pub mod macros {
       )
     };
     (emit_sankey $id:expr; limit $limit: expr) => {
-      $crate::workflow::make_sankey_action(
+      $crate::workflow::make_emit_sankey_action(
         $id,
         $limit,
       )
     };
     (screenshot $id:expr) => {
-
+      $crate::workflow::make_take_screenshot_action($id)
     }
   }
 
@@ -521,10 +521,9 @@ pub fn make_emit_sankey_action(id: &str, limit: u32) -> Action_type {
 }
 
 #[must_use]
-pub fn make_take_screenshot_action(id: &str, limit: u32) -> Action_type {
-  Action_type::ActionTakeScreenshot(ActionTakeScreenshot {
+pub fn make_take_screenshot_action(id: &str) -> Action_type {
+  Action_type::ActionTakeScreenshot(ActionTakeScreenshotProto {
     id: id.to_string(),
-    limit,
     ..Default::default()
   })
 }

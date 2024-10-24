@@ -81,6 +81,22 @@ mod tests {
     bd_test_helpers::test_global_init();
   }
 
+  #[derive(Default)]
+  struct MockSessionReplayTarget {
+    capture_wireframe_count: Arc<parking_lot::Mutex<usize>>,
+    take_screenshot_count: Arc<parking_lot::Mutex<usize>>,
+  }
+
+  impl bd_session_replay::Target for MockSessionReplayTarget {
+    fn capture_wireframes(&self) {
+      *self.capture_wireframe_count.lock() += 1;
+    }
+
+    fn take_screenshot(&self) {
+      *self.take_screenshot_count.lock() += 1;
+    }
+  }
+
   struct Setup {
     logger: Logger,
     logger_handle: bd_logger::LoggerHandle,
@@ -88,6 +104,10 @@ mod tests {
     server: Box<bd_test_helpers::test_api_server::ServerHandle>,
     current_api_stream: i32,
     store: Arc<Store>,
+
+    capture_wireframe_count: Arc<parking_lot::Mutex<usize>>,
+    take_screenshot_count: Arc<parking_lot::Mutex<usize>>,
+
     _shutdown: ComponentShutdownTrigger,
   }
 
@@ -116,6 +136,10 @@ mod tests {
       let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
       let device = Arc::new(bd_device::Device::new(store.clone()));
 
+      let session_replay_target = Box::new(MockSessionReplayTarget::default());
+      let capture_wireframe_count = session_replay_target.capture_wireframe_count.clone();
+      let take_screenshot_count = session_replay_target.take_screenshot_count.clone();
+
       let logger = bd_logger::LoggerBuilder::new(InitParams {
         sdk_directory: sdk_directory.path().into(),
         api_key: "foo-api-key".to_string(),
@@ -125,7 +149,7 @@ mod tests {
         ))),
         metadata_provider: Arc::new(metadata_provider),
         resource_utilization_target: Box::new(EmptyTarget),
-        session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
+        session_replay_target,
         events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
         device,
         store: store.clone(),
@@ -148,6 +172,8 @@ mod tests {
         server,
         current_api_stream,
         store,
+        capture_wireframe_count,
+        take_screenshot_count,
         _shutdown: shutdown,
       }
     }
@@ -717,6 +743,54 @@ mod tests {
     // Confim that workflows state is persisted to disk after the processing of log completes.
     assert!(setup.workflows_state_file_path().exists());
     assert!(setup.pending_aggregation_index_file_path().exists());
+  }
+
+  #[test]
+  fn session_replay_actions() {
+    let mut setup = Setup::new();
+    setup.send_runtime_update(true, false);
+
+    let mut a = state!("A");
+    let b = state!("B");
+    declare_transition!(
+      &mut a => &b;
+      when rule!(log_matches!(message == "foo"));
+      do action!(screenshot "screenshot_id")
+    );
+
+    // Send a configuration that takes a screenshot on "foo" message.
+    let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
+      "",
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![config_helper::default_buffer_config(
+            Type::TRIGGER,
+            make_buffer_matcher_matching_everything().into(),
+          )],
+          ..Default::default()
+        })
+        .into(),
+        workflows_configuration: Some(workflows_configuration!(vec![
+          workflow_proto!("workflow"; exclusive with a, b)
+        ]))
+        .into(),
+        ..Default::default()
+      },
+    ));
+    assert!(maybe_nack.is_none());
+
+    setup.blocking_log(
+      log_level::DEBUG,
+      LogType::Normal,
+      "foo".into(),
+      vec![],
+      vec![],
+    );
+
+    std::thread::sleep(1.std_seconds());
+
+    assert!(*setup.take_screenshot_count.lock() == 1);
+    assert!(*setup.capture_wireframe_count.lock() == 1);
   }
 
   #[test]

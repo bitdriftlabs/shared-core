@@ -551,6 +551,48 @@ fn enqueuing_log_does_not_block() {
 }
 
 #[test]
+fn take_screenshot_action() {
+  let setup = Setup::new();
+  setup.enable_workflows(true);
+
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let (mut _buffer, buffer_tx) = AsyncLogBuffer::new(
+    setup.make_logging_context(),
+    TestReplay::new(),
+    Arc::new(Strategy::Fixed(fixed::Strategy::new(
+      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
+      Arc::new(UUIDCallbacks),
+    ))),
+    Arc::new(LogMetadata {
+      timestamp: time::OffsetDateTime::now_utc(),
+      fields: vec![],
+    }),
+    Box::new(EmptyTarget),
+    Box::new(bd_test_helpers::session_replay::NoOpTarget),
+    Box::new(NoOpListenerTarget),
+    config_update_rx,
+    shutdown_trigger.make_handle(),
+    &setup.runtime,
+    Arc::new(SimpleNetworkQualityProvider::default()),
+  );
+
+  let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
+    &buffer_tx,
+    0,
+    LogType::Normal,
+    "test".into(),
+    vec![],
+    vec![],
+    None,
+    false,
+  );
+
+  assert_ok!(result);
+}
+
+#[test]
 fn enqueuing_log_blocks() {
   let setup = Setup::new();
   setup.enable_workflows(true);
