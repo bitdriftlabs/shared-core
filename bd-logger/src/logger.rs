@@ -175,7 +175,24 @@ impl LoggerHandle {
     );
   }
 
-  pub fn log_session_replay(&self, fields: AnnotatedLogFields, duration: time::Duration) {
+  pub fn log_session_replay_wireframe(&self, fields: AnnotatedLogFields, duration: time::Duration) {
+    self.log_session_replay("Screen captured", fields, duration);
+  }
+
+  pub fn log_session_replay_screenshot(
+    &self,
+    fields: AnnotatedLogFields,
+    duration: time::Duration,
+  ) {
+    self.log_session_replay("Screenshot captured", fields, duration);
+  }
+
+  fn log_session_replay(
+    &self,
+    message: &str,
+    fields: AnnotatedLogFields,
+    duration: time::Duration,
+  ) {
     let mut fields = fields;
     fields.push(AnnotatedLogField {
       field: LogField {
@@ -188,7 +205,7 @@ impl LoggerHandle {
     self.log(
       log_level::INFO,
       LogType::Replay,
-      "Screen captured".into(),
+      message.into(),
       fields,
       vec![],
       None,
