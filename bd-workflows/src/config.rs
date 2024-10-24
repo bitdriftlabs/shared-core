@@ -12,6 +12,7 @@ use bd_matcher::FieldProvider;
 use bd_proto::protos::workflow::workflow;
 use bd_proto::protos::workflow::workflow::workflow::transition_extension::Extension_type;
 use bd_proto::protos::workflow::workflow::workflow::{
+  ActionTakeScreenshot as ActionTakeScreenshotProto,
   Execution as ExecutionProto,
   LimitDuration as LimitDurationProto,
   LimitMatchedLogsCount,
@@ -415,6 +416,7 @@ pub enum Action {
   FlushBuffers(ActionFlushBuffers),
   EmitMetric(ActionEmitMetric),
   EmitSankey(ActionEmitSankey),
+  TakeScreenshot(ActionTakeScreenshot),
 }
 
 impl Action {
@@ -444,8 +446,8 @@ impl Action {
       Action_type::ActionEmitSankeyDiagram(diagram) => {
         Ok(Self::EmitSankey(ActionEmitSankey::try_from_proto(diagram)?))
       },
-      Action_type::ActionTakeScreenshot(_) => Err(anyhow!(
-        "invalid action configuration: unsupported action type take screenshot"
+      Action_type::ActionTakeScreenshot(action) => Ok(Self::TakeScreenshot(
+        ActionTakeScreenshot::try_from_proto(action)?,
       )),
     }
   }
@@ -617,6 +619,23 @@ impl ActionEmitSankey {
   #[must_use]
   pub const fn limit(&self) -> u32 {
     self.limit
+  }
+}
+
+//
+// ActionTakeScreenshot
+//
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ActionTakeScreenshot {
+  id: String,
+}
+
+impl ActionTakeScreenshot {
+  fn try_from_proto(proto: &ActionTakeScreenshotProto) -> anyhow::Result<Self> {
+    Ok(Self {
+      id: proto.id.to_string(),
+    })
   }
 }
 

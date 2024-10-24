@@ -125,6 +125,7 @@ mod tests {
         ))),
         metadata_provider: Arc::new(metadata_provider),
         resource_utilization_target: Box::new(EmptyTarget),
+        session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
         events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
         device,
         store: store.clone(),
@@ -1983,6 +1984,7 @@ mod tests {
       }),
       store,
       resource_utilization_target: Box::new(EmptyTarget),
+      session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
       events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
       device,
       network,
@@ -2129,6 +2131,7 @@ mod tests {
         static_metadata: Arc::new(EmptyMetadata),
         store,
         resource_utilization_target: Box::new(EmptyTarget),
+        session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
         events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
         sdk_directory: directory.path().into(),
         metadata_provider: Arc::new(LogMetadata {

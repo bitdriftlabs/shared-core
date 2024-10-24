@@ -1591,6 +1591,7 @@ async fn engine_processing_log() {
       log_destination_buffer_ids: Cow::Owned(BTreeSet::from(["foo_buffer_id".into()])),
       triggered_flush_buffers_action_ids: BTreeSet::from(["foo_action_id"]),
       triggered_flushes_buffer_ids: BTreeSet::from(["foo_buffer_id".into()]),
+      take_screenshot: false,
     },
     result
   );
@@ -1854,6 +1855,7 @@ async fn log_without_destination() {
       log_destination_buffer_ids: Cow::Owned(BTreeSet::new()),
       triggered_flush_buffers_action_ids: BTreeSet::from(["action"]),
       triggered_flushes_buffer_ids: BTreeSet::from(["trigger_buffer_id".into()]),
+      take_screenshot: false,
     },
     result
   );

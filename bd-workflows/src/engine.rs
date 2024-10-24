@@ -18,7 +18,13 @@ use crate::actions_flush_buffers::{
   ResolverConfig,
   StreamingBuffersAction,
 };
-use crate::config::{ActionEmitMetric, ActionFlushBuffers, Config, WorkflowsConfiguration};
+use crate::config::{
+  ActionEmitMetric,
+  ActionFlushBuffers,
+  ActionTakeScreenshot,
+  Config,
+  WorkflowsConfiguration,
+};
 use crate::metrics::MetricsCollector;
 use crate::sankey_diagram;
 use crate::workflow::{SankeyPath, TriggeredAction, TriggeredActionEmitSankey, Workflow};
@@ -632,8 +638,12 @@ impl WorkflowsEngine {
       "current_traversals_count is not equal to computed traversals count"
     );
 
-    let (flush_buffers_actions, emit_metric_actions, emit_sankey_diagrams_actions) =
-      Self::prepare_actions(actions);
+    let (
+      flush_buffers_actions,
+      emit_metric_actions,
+      emit_sankey_diagrams_actions,
+      take_screenshot_actions,
+    ) = Self::prepare_actions(actions);
 
     let result = self
       .flush_buffers_actions_resolver
@@ -684,7 +694,7 @@ impl WorkflowsEngine {
         .triggered_flush_buffers_action_ids,
       triggered_flushes_buffer_ids: flush_buffers_actions_processing_result
         .triggered_flushes_buffer_ids,
-      take_screenshot: false,
+      take_screenshot: !take_screenshot_actions.is_empty(),
     }
   }
 
@@ -711,9 +721,15 @@ impl WorkflowsEngine {
     BTreeSet<&'a ActionFlushBuffers>,
     BTreeSet<&'a ActionEmitMetric>,
     BTreeSet<TriggeredActionEmitSankey<'a>>,
+    BTreeSet<&'a ActionTakeScreenshot>,
   ) {
     if actions.is_empty() {
-      return (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
+      return (
+        BTreeSet::new(),
+        BTreeSet::new(),
+        BTreeSet::new(),
+        BTreeSet::new(),
+      );
     }
 
     let flush_buffers_actions: BTreeSet<&ActionFlushBuffers> = actions
@@ -739,7 +755,18 @@ impl WorkflowsEngine {
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
 
-    let sankey_diagrams: BTreeSet<TriggeredActionEmitSankey<'a>> = actions
+    let take_screenshot_actions = actions
+      .iter()
+      .filter_map(|action| {
+        if let TriggeredAction::TakeScreenshot(action) = action {
+          Some(*action)
+        } else {
+          None
+        }
+      })
+      .collect();
+
+    let sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>> = actions
       .into_iter()
       .filter_map(|action| {
         if let TriggeredAction::SankeyDiagram(action) = action {
@@ -751,7 +778,12 @@ impl WorkflowsEngine {
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
 
-    (flush_buffers_actions, emit_metric_actions, sankey_diagrams)
+    (
+      flush_buffers_actions,
+      emit_metric_actions,
+      sankey_diagrams_actions,
+      take_screenshot_actions,
+    )
   }
 }
 

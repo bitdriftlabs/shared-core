@@ -980,6 +980,7 @@ dependencies = [
  "bd-resource-utilization",
  "bd-runtime-config",
  "bd-session",
+ "bd-session-replay",
  "bd-time",
  "futures-core",
  "http-body-util",

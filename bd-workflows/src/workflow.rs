@@ -14,6 +14,7 @@ use crate::config::{
   ActionEmitMetric,
   ActionEmitSankey,
   ActionFlushBuffers,
+  ActionTakeScreenshot,
   Config,
   Execution,
   Predicate,
@@ -941,6 +942,9 @@ impl Traversal {
             path: SankeyPath::new(action.id(), sankey_state),
           }));
         },
+        Action::TakeScreenshot(action) => {
+          triggered_actions.push(TriggeredAction::TakeScreenshot(action));
+        },
       }
     }
     triggered_actions
@@ -962,6 +966,7 @@ pub(crate) enum TriggeredAction<'a> {
   FlushBuffers(&'a ActionFlushBuffers),
   EmitMetric(&'a ActionEmitMetric),
   SankeyDiagram(TriggeredActionEmitSankey<'a>),
+  TakeScreenshot(&'a ActionTakeScreenshot),
 }
 
 //
