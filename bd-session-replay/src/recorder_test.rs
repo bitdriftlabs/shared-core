@@ -66,7 +66,7 @@ struct MockTarget {
 }
 
 impl Target for MockTarget {
-  fn capture_wireframes(&self) {
+  fn capture_wireframe(&self) {
     *self.capture_wireframe_count.lock() += 1;
   }
 

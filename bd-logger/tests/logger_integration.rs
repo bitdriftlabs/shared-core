@@ -88,7 +88,7 @@ mod tests {
   }
 
   impl bd_session_replay::Target for MockSessionReplayTarget {
-    fn capture_wireframes(&self) {
+    fn capture_wireframe(&self) {
       *self.capture_wireframe_count.lock() += 1;
     }
 

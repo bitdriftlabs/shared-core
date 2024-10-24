@@ -26,9 +26,20 @@ fn test_global_init() {
 // Target
 //
 
+// An interface implementing the act of capturing user screens.
 pub trait Target {
-  fn capture_wireframes(&self);
+  // Instrument the target to capture a privacy-preserving and bandwidth-efficient representation
+  // of the user's screen. The target should capture the wireframe and send it using the
+  // `logger::log_session_replay_wireframe` method. The target is expected to operate
+  // asynchronously, as accessing the application view hierarchy requires executing on the main
+  // thread, and the `capture_wireframe` method is always called from a non-main thread.
+  fn capture_wireframe(&self);
 
+  // Instrument the target to capture a pixel-perfect representation of the user's screen.
+  // The target should capture the wireframe and send it using the
+  // `logger::log_session_screenshot` method. The target is expected to operate asynchronously,
+  // as accessing the application view hierarchy requires executing on the main thread, and the
+  // `take_screenshot` method is always called from a non-main thread.
   fn take_screenshot(&self);
 }
 
@@ -56,7 +67,11 @@ impl Recorder {
     target: Box<dyn Target + Send + Sync>,
     runtime_loader: &Arc<ConfigLoader>,
   ) -> (Self, Sender<()>) {
-    let (take_screenshot_tx, take_screenshot_rx) = channel(2);
+    // Limit the buffer size to 1 to reduce the risk of putting too much pressure on the
+    // application's main thread when dequeuing the screenshot actions from the channel and
+    // passing them to the platform layer, which performs the actual screenshotting on the main
+    // thread.
+    let (take_screenshot_tx, take_screenshot_rx) = channel(1);
 
     let mut is_periodic_reporting_enabled =
       session_replay::PeriodicWireframesEnabledFlag::register(runtime_loader).unwrap();
@@ -92,7 +107,10 @@ impl Recorder {
       tokio::time::interval_at(Instant::now() + interval, interval)
     };
 
-    log::debug!("session replay recorder interval is {:?}", interval.period());
+    log::debug!(
+      "session replay recorder interval is {:?}",
+      interval.period()
+    );
 
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     interval
@@ -121,7 +139,7 @@ impl Recorder {
           }
         }, if self.reporting_interval.is_some() && self.is_periodic_reporting_enabled => {
           log::debug!("session replay recorder capturing wireframe");
-          self.target.capture_wireframes();
+          self.target.capture_wireframe();
         },
         _ = self.reporting_interval_flag.changed() => {
           self.reporting_interval = Some(
@@ -138,10 +156,12 @@ impl Recorder {
           }
         },
         _ = self.is_periodic_reporting_enabled_flag.changed() => {
-          self.is_periodic_reporting_enabled = self.is_periodic_reporting_enabled_flag.read();
+          self.is_periodic_reporting_enabled
+            = self.is_periodic_reporting_enabled_flag.read_mark_update();
         },
         _ = self.is_screenshotting_enabled_flag.changed() => {
-          self.is_screenshotting_enabled = self.is_screenshotting_enabled_flag.read();
+          self.is_screenshotting_enabled
+            = self.is_screenshotting_enabled_flag.read_mark_update();
         },
         () = &mut local_shutdown => {
           return;

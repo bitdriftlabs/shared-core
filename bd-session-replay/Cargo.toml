@@ -11,8 +11,10 @@ bd-internal-logging.path = "../bd-internal-logging"
 bd-log-primitives.path   = "../bd-log-primitives"
 bd-runtime.path          = "../bd-runtime"
 bd-shutdown.path         = "../bd-shutdown"
+bd-time.path             = "../bd-time"
 ctor.workspace           = true
 log.workspace            = true
+time.workspace           = true
 tokio.workspace          = true
 
 [dev-dependencies]

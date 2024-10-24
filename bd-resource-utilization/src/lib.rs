@@ -104,11 +104,8 @@ impl Reporter {
 
     loop {
       tokio::select! {
-        () = async {
-          if let Some(reporting_interval) = &mut self.reporting_interval {
-            reporting_interval.tick().await;
-          }
-        }, if self.reporting_interval.is_some() && self.is_enabled => {
+        () = async { self.reporting_interval.as_mut().unwrap().tick().await; },
+          if self.reporting_interval.is_some() && self.is_enabled => {
           log::debug!("resource utilization reporter tick");
           self.target.tick();
         },
@@ -121,7 +118,7 @@ impl Reporter {
           );
         },
         _ = self.is_enabled_flag.changed() => {
-          self.is_enabled = self.is_enabled_flag.read();
+          self.is_enabled = self.is_enabled_flag.read_mark_update();
         },
         () = &mut local_shutdown => {
           return;
