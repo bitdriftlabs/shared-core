@@ -161,7 +161,10 @@ async fn taking_screenshots_is_wired() {
   100.milliseconds().sleep().await;
 
   // No screenshot taken since screenshot feature is disabled.
-  assert!(take_screenshot_count.load(std::sync::atomic::Ordering::Relaxed) == 0);
+  assert_eq!(
+    0,
+    take_screenshot_count.load(std::sync::atomic::Ordering::Relaxed)
+  );
 
   setup.runtime.update_snapshot(&make_simple_update(vec![(
     bd_runtime::runtime::session_replay::ScreenshotsEnabledFlag::path(),
@@ -178,5 +181,8 @@ async fn taking_screenshots_is_wired() {
   assert_ok!(reporter_task.await);
 
   // Screenshot taken.
-  assert!(take_screenshot_count.load(std::sync::atomic::Ordering::Relaxed) == 1);
+  assert_eq!(
+    1,
+    take_screenshot_count.load(std::sync::atomic::Ordering::Relaxed)
+  );
 }

@@ -71,6 +71,7 @@ mod tests {
   };
   use bd_test_helpers::{field_value, metric_tag, metric_value, set_field, RecordingErrorReporter};
   use std::ops::Add;
+  use std::sync::atomic::AtomicUsize;
   use std::sync::Arc;
   use std::time::Instant;
   use tempfile::TempDir;
@@ -83,17 +84,21 @@ mod tests {
 
   #[derive(Default)]
   struct MockSessionReplayTarget {
-    capture_wireframe_count: Arc<parking_lot::Mutex<usize>>,
-    take_screenshot_count: Arc<parking_lot::Mutex<usize>>,
+    capture_wireframe_count: Arc<AtomicUsize>,
+    take_screenshot_count: Arc<AtomicUsize>,
   }
 
   impl bd_session_replay::Target for MockSessionReplayTarget {
     fn capture_wireframe(&self) {
-      *self.capture_wireframe_count.lock() += 1;
+      self
+        .capture_wireframe_count
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     fn take_screenshot(&self) {
-      *self.take_screenshot_count.lock() += 1;
+      self
+        .take_screenshot_count
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
   }
 
@@ -105,8 +110,8 @@ mod tests {
     current_api_stream: i32,
     store: Arc<Store>,
 
-    capture_wireframe_count: Arc<parking_lot::Mutex<usize>>,
-    take_screenshot_count: Arc<parking_lot::Mutex<usize>>,
+    capture_wireframe_count: Arc<AtomicUsize>,
+    take_screenshot_count: Arc<AtomicUsize>,
 
     _shutdown: ComponentShutdownTrigger,
   }
@@ -789,8 +794,18 @@ mod tests {
 
     std::thread::sleep(1.std_seconds());
 
-    assert!(*setup.take_screenshot_count.lock() == 1);
-    assert!(*setup.capture_wireframe_count.lock() == 1);
+    assert_eq!(
+      1,
+      setup
+        .take_screenshot_count
+        .load(std::sync::atomic::Ordering::Relaxed)
+    );
+    assert_eq!(
+      1,
+      setup
+        .capture_wireframe_count
+        .load(std::sync::atomic::Ordering::Relaxed)
+    );
   }
 
   #[test]
