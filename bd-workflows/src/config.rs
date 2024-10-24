@@ -27,6 +27,7 @@ use workflow::workflow::action::tag::Tag_type;
 use workflow::workflow::action::{
   ActionEmitMetric as ActionEmitMetricProto,
   ActionEmitSankeyDiagram as ActionEmitSankeyDiagramProto,
+  ActionTakeScreenshot as ActionTakeScreenshotProto,
   Action_type,
 };
 use workflow::workflow::execution::Execution_type;
@@ -415,6 +416,7 @@ pub enum Action {
   FlushBuffers(ActionFlushBuffers),
   EmitMetric(ActionEmitMetric),
   EmitSankey(ActionEmitSankey),
+  TakeScreenshot(ActionTakeScreenshot),
 }
 
 impl Action {
@@ -444,8 +446,8 @@ impl Action {
       Action_type::ActionEmitSankeyDiagram(diagram) => {
         Ok(Self::EmitSankey(ActionEmitSankey::try_from_proto(diagram)?))
       },
-      Action_type::ActionTakeScreenshot(_) => Err(anyhow!(
-        "invalid action configuration: unsupported action type take screenshot"
+      Action_type::ActionTakeScreenshot(action) => Ok(Self::TakeScreenshot(
+        ActionTakeScreenshot::try_from_proto(action)?,
       )),
     }
   }
@@ -617,6 +619,23 @@ impl ActionEmitSankey {
   #[must_use]
   pub const fn limit(&self) -> u32 {
     self.limit
+  }
+}
+
+//
+// ActionTakeScreenshot
+//
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ActionTakeScreenshot {
+  id: String,
+}
+
+impl ActionTakeScreenshot {
+  fn try_from_proto(proto: &ActionTakeScreenshotProto) -> anyhow::Result<Self> {
+    Ok(Self {
+      id: proto.id.to_string(),
+    })
   }
 }
 

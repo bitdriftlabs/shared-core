@@ -24,6 +24,7 @@ bd-proto.path            = "../bd-proto"
 bd-resource-utilization  = { path = "../bd-resource-utilization" }
 bd-runtime-config        = { path = "../bd-runtime-config", optional = true }
 bd-session               = { path = "../bd-session" }
+bd-session-replay        = { path = "../bd-session-replay" }
 bd-time.path             = "../bd-time"
 futures-core.workspace   = true
 http-body-util.workspace = true

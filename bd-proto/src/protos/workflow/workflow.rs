@@ -1904,12 +1904,12 @@ pub mod workflow {
             }
         }
 
-        // .bitdrift_public.protobuf.workflow.v1.Workflow.ActionTakeScreenshot action_take_screenshot = 4;
+        // .bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionTakeScreenshot action_take_screenshot = 4;
 
-        pub fn action_take_screenshot(&self) -> &ActionTakeScreenshot {
+        pub fn action_take_screenshot(&self) -> &action::ActionTakeScreenshot {
             match self.action_type {
                 ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(ref v)) => v,
-                _ => <ActionTakeScreenshot as ::protobuf::Message>::default_instance(),
+                _ => <action::ActionTakeScreenshot as ::protobuf::Message>::default_instance(),
             }
         }
 
@@ -1925,15 +1925,15 @@ pub mod workflow {
         }
 
         // Param is passed by value, moved
-        pub fn set_action_take_screenshot(&mut self, v: ActionTakeScreenshot) {
+        pub fn set_action_take_screenshot(&mut self, v: action::ActionTakeScreenshot) {
             self.action_type = ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(v))
         }
 
         // Mutable pointer to the field.
-        pub fn mut_action_take_screenshot(&mut self) -> &mut ActionTakeScreenshot {
+        pub fn mut_action_take_screenshot(&mut self) -> &mut action::ActionTakeScreenshot {
             if let ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(_)) = self.action_type {
             } else {
-                self.action_type = ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(ActionTakeScreenshot::new()));
+                self.action_type = ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(action::ActionTakeScreenshot::new()));
             }
             match self.action_type {
                 ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(ref mut v)) => v,
@@ -1942,14 +1942,14 @@ pub mod workflow {
         }
 
         // Take field
-        pub fn take_action_take_screenshot(&mut self) -> ActionTakeScreenshot {
+        pub fn take_action_take_screenshot(&mut self) -> action::ActionTakeScreenshot {
             if self.has_action_take_screenshot() {
                 match self.action_type.take() {
                     ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(v)) => v,
                     _ => panic!(),
                 }
             } else {
-                ActionTakeScreenshot::new()
+                action::ActionTakeScreenshot::new()
             }
         }
 
@@ -1977,7 +1977,7 @@ pub mod workflow {
                 Action::mut_action_emit_sankey_diagram,
                 Action::set_action_emit_sankey_diagram,
             ));
-            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, ActionTakeScreenshot>(
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, action::ActionTakeScreenshot>(
                 "action_take_screenshot",
                 Action::has_action_take_screenshot,
                 Action::action_take_screenshot,
@@ -2132,7 +2132,7 @@ pub mod workflow {
             // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.action_emit_sankey_diagram)
             ActionEmitSankeyDiagram(ActionEmitSankeyDiagram),
             // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.action_take_screenshot)
-            ActionTakeScreenshot(super::ActionTakeScreenshot),
+            ActionTakeScreenshot(ActionTakeScreenshot),
         }
 
         impl ::protobuf::Oneof for Action_type {
@@ -3904,128 +3904,128 @@ pub mod workflow {
                 }
             }
         }
-    }
 
-    // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.ActionTakeScreenshot)
-    #[derive(PartialEq,Clone,Default,Debug)]
-    pub struct ActionTakeScreenshot {
-        // message fields
-        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.ActionTakeScreenshot.id)
-        pub id: ::std::string::String,
-        // special fields
-        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.ActionTakeScreenshot.special_fields)
-        pub special_fields: ::protobuf::SpecialFields,
-    }
-
-    impl<'a> ::std::default::Default for &'a ActionTakeScreenshot {
-        fn default() -> &'a ActionTakeScreenshot {
-            <ActionTakeScreenshot as ::protobuf::Message>::default_instance()
-        }
-    }
-
-    impl ActionTakeScreenshot {
-        pub fn new() -> ActionTakeScreenshot {
-            ::std::default::Default::default()
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionTakeScreenshot)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct ActionTakeScreenshot {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionTakeScreenshot.id)
+            pub id: ::std::string::String,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionTakeScreenshot.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
         }
 
-        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(1);
-            let mut oneofs = ::std::vec::Vec::with_capacity(0);
-            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                "id",
-                |m: &ActionTakeScreenshot| { &m.id },
-                |m: &mut ActionTakeScreenshot| { &mut m.id },
-            ));
-            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ActionTakeScreenshot>(
-                "Workflow.ActionTakeScreenshot",
-                fields,
-                oneofs,
-            )
-        }
-    }
-
-    impl ::protobuf::Message for ActionTakeScreenshot {
-        const NAME: &'static str = "ActionTakeScreenshot";
-
-        fn is_initialized(&self) -> bool {
-            true
+        impl<'a> ::std::default::Default for &'a ActionTakeScreenshot {
+            fn default() -> &'a ActionTakeScreenshot {
+                <ActionTakeScreenshot as ::protobuf::Message>::default_instance()
+            }
         }
 
-        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-            while let Some(tag) = is.read_raw_tag_or_eof()? {
-                match tag {
-                    10 => {
-                        self.id = is.read_string()?;
-                    },
-                    tag => {
-                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                    },
+        impl ActionTakeScreenshot {
+            pub fn new() -> ActionTakeScreenshot {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(1);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "id",
+                    |m: &ActionTakeScreenshot| { &m.id },
+                    |m: &mut ActionTakeScreenshot| { &mut m.id },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ActionTakeScreenshot>(
+                    "Workflow.Action.ActionTakeScreenshot",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for ActionTakeScreenshot {
+            const NAME: &'static str = "ActionTakeScreenshot";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.id = is.read_string()?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.id.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.id);
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.id.is_empty() {
+                    os.write_string(1, &self.id)?;
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> ActionTakeScreenshot {
+                ActionTakeScreenshot::new()
+            }
+
+            fn clear(&mut self) {
+                self.id.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static ActionTakeScreenshot {
+                static instance: ActionTakeScreenshot = ActionTakeScreenshot {
+                    id: ::std::string::String::new(),
+                    special_fields: ::protobuf::SpecialFields::new(),
                 };
+                &instance
             }
-            ::std::result::Result::Ok(())
         }
 
-        // Compute sizes of nested messages
-        #[allow(unused_variables)]
-        fn compute_size(&self) -> u64 {
-            let mut my_size = 0;
-            if !self.id.is_empty() {
-                my_size += ::protobuf::rt::string_size(1, &self.id);
+        impl ::protobuf::MessageFull for ActionTakeScreenshot {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Workflow.Action.ActionTakeScreenshot").unwrap()).clone()
             }
-            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-            self.special_fields.cached_size().set(my_size as u32);
-            my_size
         }
 
-        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-            if !self.id.is_empty() {
-                os.write_string(1, &self.id)?;
+        impl ::std::fmt::Display for ActionTakeScreenshot {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
             }
-            os.write_unknown_fields(self.special_fields.unknown_fields())?;
-            ::std::result::Result::Ok(())
         }
 
-        fn special_fields(&self) -> &::protobuf::SpecialFields {
-            &self.special_fields
+        impl ::protobuf::reflect::ProtobufValue for ActionTakeScreenshot {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
         }
-
-        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-            &mut self.special_fields
-        }
-
-        fn new() -> ActionTakeScreenshot {
-            ActionTakeScreenshot::new()
-        }
-
-        fn clear(&mut self) {
-            self.id.clear();
-            self.special_fields.clear();
-        }
-
-        fn default_instance() -> &'static ActionTakeScreenshot {
-            static instance: ActionTakeScreenshot = ActionTakeScreenshot {
-                id: ::std::string::String::new(),
-                special_fields: ::protobuf::SpecialFields::new(),
-            };
-            &instance
-        }
-    }
-
-    impl ::protobuf::MessageFull for ActionTakeScreenshot {
-        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("Workflow.ActionTakeScreenshot").unwrap()).clone()
-        }
-    }
-
-    impl ::std::fmt::Display for ActionTakeScreenshot {
-        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-            ::protobuf::text_format::fmt(self, f)
-        }
-    }
-
-    impl ::protobuf::reflect::ProtobufValue for ActionTakeScreenshot {
-        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
     }
 
     // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Execution)
@@ -5091,7 +5091,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ic.protobuf.workflow.v1\x1a\x17validate/validate.proto\x1a5bitdrift_publ\
     ic/protobuf/matcher/v1/log_matcher.proto\"f\n\x16WorkflowsConfiguration\
     \x12L\n\tworkflows\x18\x01\x20\x03(\x0b2..bitdrift_public.protobuf.workf\
-    low.v1.WorkflowR\tworkflows\"\xcb$\n\x08Workflow\x12\x17\n\x02id\x18\x01\
+    low.v1.WorkflowR\tworkflows\"\xd3$\n\x08Workflow\x12\x17\n\x02id\x18\x01\
     \x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12V\n\x06states\x18\x02\
     \x20\x03(\x0b24.bitdrift_public.protobuf.workflow.v1.Workflow.StateR\x06\
     statesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12V\n\texecution\x18\x03\x20\
@@ -5129,64 +5129,64 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     v1.LogMatcherR\nlogMatcherB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x1d\n\
     \x05count\x18\x02\x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a7\n\
     \x0bRuleTimeout\x12(\n\x0bduration_ms\x18\x01\x20\x01(\x04R\ndurationMsB\
-    \x07\xfaB\x042\x02(\0\x1a\xdf\x10\n\x06Action\x12|\n\x14action_flush_buf\
+    \x07\xfaB\x042\x02(\0\x1a\x98\x11\n\x06Action\x12|\n\x14action_flush_buf\
     fers\x18\x01\x20\x01(\x0b2H.bitdrift_public.protobuf.workflow.v1.Workflo\
     w.Action.ActionFlushBuffersH\0R\x12actionFlushBuffers\x12v\n\x12action_e\
     mit_metric\x18\x02\x20\x01(\x0b2F.bitdrift_public.protobuf.workflow.v1.W\
     orkflow.Action.ActionEmitMetricH\0R\x10actionEmitMetric\x12\x8c\x01\n\
     \x1aaction_emit_sankey_diagram\x18\x03\x20\x01(\x0b2M.bitdrift_public.pr\
     otobuf.workflow.v1.Workflow.Action.ActionEmitSankeyDiagramH\0R\x17action\
-    EmitSankeyDiagram\x12{\n\x16action_take_screenshot\x18\x04\x20\x01(\x0b2\
-    C.bitdrift_public.protobuf.workflow.v1.Workflow.ActionTakeScreenshotH\0R\
-    \x14actionTakeScreenshot\x1a\xa9\x05\n\x12ActionFlushBuffers\x12\x1d\n\n\
-    buffer_ids\x18\x01\x20\x03(\tR\tbufferIds\x12\x17\n\x02id\x18\x02\x20\
-    \x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12p\n\tstreaming\x18\x03\x20\
-    \x01(\x0b2R.bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionF\
-    lushBuffers.StreamingR\tstreaming\x1a\xe8\x03\n\tStreaming\x12G\n\x20des\
-    tination_streaming_buffer_ids\x18\x01\x20\x03(\tR\x1ddestinationStreamin\
-    gBufferIds\x12\x9a\x01\n\x14termination_criteria\x18\x02\x20\x03(\x0b2g.\
-    bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionFlushBuffers.\
-    Streaming.TerminationCriterionR\x13terminationCriteria\x1a\xf4\x01\n\x14\
-    TerminationCriterion\x12\x92\x01\n\nlogs_count\x18\x01\x20\x01(\x0b2q.bi\
-    tdrift_public.protobuf.workflow.v1.Workflow.Action.ActionFlushBuffers.St\
-    reaming.TerminationCriterion.LogsCountH\0R\tlogsCount\x1a:\n\tLogsCount\
-    \x12-\n\x0emax_logs_count\x18\x01\x20\x01(\x04R\x0cmaxLogsCountB\x07\xfa\
-    B\x042\x02\x20\0B\x0b\n\x04type\x12\x03\xf8B\x01\x1a\xa3\x04\n\x10Action\
-    EmitMetric\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\
-    \x10\x01\x12j\n\x07counter\x18\x02\x20\x01(\x0b2N.bitdrift_public.protob\
-    uf.workflow.v1.Workflow.Action.ActionEmitMetric.CounterH\0R\x07counter\
-    \x12p\n\thistogram\x18\x05\x20\x01(\x0b2P.bitdrift_public.protobuf.workf\
-    low.v1.Workflow.Action.ActionEmitMetric.HistogramH\0R\thistogram\x12\x16\
-    \n\x05fixed\x18\x03\x20\x01(\rH\x01R\x05fixed\x12h\n\x0ffield_extracted\
-    \x18\x06\x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v1.Workflow.Fi\
-    eldExtractedH\x01R\x0efieldExtracted\x12M\n\x04tags\x18\x04\x20\x03(\x0b\
-    29.bitdrift_public.protobuf.workflow.v1.Workflow.Action.TagR\x04tags\x1a\
-    \t\n\x07Counter\x1a\x0b\n\tHistogramB\x12\n\x0bmetric_type\x12\x03\xf8B\
-    \x01B\x1b\n\x14value_extractor_type\x12\x03\xf8B\x01\x1a\xa0\x01\n\x17Ac\
-    tionEmitSankeyDiagram\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfa\
-    B\x04r\x02\x10\x01\x12\x1d\n\x05limit\x18\x02\x20\x01(\rR\x05limitB\x07\
-    \xfaB\x04*\x02\x20\0\x12M\n\x04tags\x18\x03\x20\x03(\x0b29.bitdrift_publ\
-    ic.protobuf.workflow.v1.Workflow.Action.TagR\x04tags\x1a\xc9\x01\n\x03Ta\
-    g\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\
-    \x01\x12*\n\x0bfixed_value\x18\x02\x20\x01(\tH\0R\nfixedValueB\x07\xfaB\
-    \x04r\x02\x10\x01\x12h\n\x0ffield_extracted\x18\x03\x20\x01(\x0b2=.bitdr\
-    ift_public.protobuf.workflow.v1.Workflow.FieldExtractedH\0R\x0efieldExtr\
-    actedB\x0f\n\x08tag_type\x12\x03\xf8B\x01B\x12\n\x0baction_type\x12\x03\
-    \xf8B\x01\x1a/\n\x14ActionTakeScreenshot\x12\x17\n\x02id\x18\x01\x20\x01\
-    (\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x1a\xc5\x02\n\tExecution\x12~\n\
-    \x13execution_exclusive\x18\x01\x20\x01(\x0b2K.bitdrift_public.protobuf.\
-    workflow.v1.Workflow.Execution.ExecutionExclusiveH\0R\x12executionExclus\
-    ive\x12{\n\x12execution_parallel\x18\x02\x20\x01(\x0b2J.bitdrift_public.\
-    protobuf.workflow.v1.Workflow.Execution.ExecutionParallelH\0R\x11executi\
-    onParallel\x1a\x14\n\x12ExecutionExclusive\x1a\x13\n\x11ExecutionParalle\
-    lB\x10\n\x0eexecution_type\x1a6\n\x15LimitMatchedLogsCount\x12\x1d\n\x05\
-    count\x18\x01\x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a9\n\rLimi\
-    tDuration\x12(\n\x0bduration_ms\x18\x02\x20\x01(\x04R\ndurationMsB\x07\
-    \xfaB\x042\x02\x20\0\x1a\xb6\x01\n\x0eFieldExtracted\x12&\n\nfield_name\
-    \x18\x01\x20\x01(\tR\tfieldNameB\x07\xfaB\x04r\x02\x10\x01\x12[\n\x05exa\
-    ct\x18\x02\x20\x01(\x0b2C.bitdrift_public.protobuf.workflow.v1.Workflow.\
-    FieldExtracted.ExactH\0R\x05exact\x1a\x07\n\x05ExactB\x16\n\x0fextractio\
-    n_type\x12\x03\xf8B\x01b\x06proto3\
+    EmitSankeyDiagram\x12\x82\x01\n\x16action_take_screenshot\x18\x04\x20\
+    \x01(\x0b2J.bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionT\
+    akeScreenshotH\0R\x14actionTakeScreenshot\x1a\xa9\x05\n\x12ActionFlushBu\
+    ffers\x12\x1d\n\nbuffer_ids\x18\x01\x20\x03(\tR\tbufferIds\x12\x17\n\x02\
+    id\x18\x02\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12p\n\tstreamin\
+    g\x18\x03\x20\x01(\x0b2R.bitdrift_public.protobuf.workflow.v1.Workflow.A\
+    ction.ActionFlushBuffers.StreamingR\tstreaming\x1a\xe8\x03\n\tStreaming\
+    \x12G\n\x20destination_streaming_buffer_ids\x18\x01\x20\x03(\tR\x1ddesti\
+    nationStreamingBufferIds\x12\x9a\x01\n\x14termination_criteria\x18\x02\
+    \x20\x03(\x0b2g.bitdrift_public.protobuf.workflow.v1.Workflow.Action.Act\
+    ionFlushBuffers.Streaming.TerminationCriterionR\x13terminationCriteria\
+    \x1a\xf4\x01\n\x14TerminationCriterion\x12\x92\x01\n\nlogs_count\x18\x01\
+    \x20\x01(\x0b2q.bitdrift_public.protobuf.workflow.v1.Workflow.Action.Act\
+    ionFlushBuffers.Streaming.TerminationCriterion.LogsCountH\0R\tlogsCount\
+    \x1a:\n\tLogsCount\x12-\n\x0emax_logs_count\x18\x01\x20\x01(\x04R\x0cmax\
+    LogsCountB\x07\xfaB\x042\x02\x20\0B\x0b\n\x04type\x12\x03\xf8B\x01\x1a\
+    \xa3\x04\n\x10ActionEmitMetric\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02id\
+    B\x07\xfaB\x04r\x02\x10\x01\x12j\n\x07counter\x18\x02\x20\x01(\x0b2N.bit\
+    drift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.Count\
+    erH\0R\x07counter\x12p\n\thistogram\x18\x05\x20\x01(\x0b2P.bitdrift_publ\
+    ic.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.HistogramH\0R\t\
+    histogram\x12\x16\n\x05fixed\x18\x03\x20\x01(\rH\x01R\x05fixed\x12h\n\
+    \x0ffield_extracted\x18\x06\x20\x01(\x0b2=.bitdrift_public.protobuf.work\
+    flow.v1.Workflow.FieldExtractedH\x01R\x0efieldExtracted\x12M\n\x04tags\
+    \x18\x04\x20\x03(\x0b29.bitdrift_public.protobuf.workflow.v1.Workflow.Ac\
+    tion.TagR\x04tags\x1a\t\n\x07Counter\x1a\x0b\n\tHistogramB\x12\n\x0bmetr\
+    ic_type\x12\x03\xf8B\x01B\x1b\n\x14value_extractor_type\x12\x03\xf8B\x01\
+    \x1a\xa0\x01\n\x17ActionEmitSankeyDiagram\x12\x17\n\x02id\x18\x01\x20\
+    \x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12\x1d\n\x05limit\x18\x02\x20\
+    \x01(\rR\x05limitB\x07\xfaB\x04*\x02\x20\0\x12M\n\x04tags\x18\x03\x20\
+    \x03(\x0b29.bitdrift_public.protobuf.workflow.v1.Workflow.Action.TagR\
+    \x04tags\x1a\xc9\x01\n\x03Tag\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04n\
+    ameB\x07\xfaB\x04r\x02\x10\x01\x12*\n\x0bfixed_value\x18\x02\x20\x01(\tH\
+    \0R\nfixedValueB\x07\xfaB\x04r\x02\x10\x01\x12h\n\x0ffield_extracted\x18\
+    \x03\x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v1.Workflow.FieldE\
+    xtractedH\0R\x0efieldExtractedB\x0f\n\x08tag_type\x12\x03\xf8B\x01\x1a/\
+    \n\x14ActionTakeScreenshot\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\
+    \x07\xfaB\x04r\x02\x10\x01B\x12\n\x0baction_type\x12\x03\xf8B\x01\x1a\
+    \xc5\x02\n\tExecution\x12~\n\x13execution_exclusive\x18\x01\x20\x01(\x0b\
+    2K.bitdrift_public.protobuf.workflow.v1.Workflow.Execution.ExecutionExcl\
+    usiveH\0R\x12executionExclusive\x12{\n\x12execution_parallel\x18\x02\x20\
+    \x01(\x0b2J.bitdrift_public.protobuf.workflow.v1.Workflow.Execution.Exec\
+    utionParallelH\0R\x11executionParallel\x1a\x14\n\x12ExecutionExclusive\
+    \x1a\x13\n\x11ExecutionParallelB\x10\n\x0eexecution_type\x1a6\n\x15Limit\
+    MatchedLogsCount\x12\x1d\n\x05count\x18\x01\x20\x01(\rR\x05countB\x07\
+    \xfaB\x04*\x02\x20\0\x1a9\n\rLimitDuration\x12(\n\x0bduration_ms\x18\x02\
+    \x20\x01(\x04R\ndurationMsB\x07\xfaB\x042\x02\x20\0\x1a\xb6\x01\n\x0eFie\
+    ldExtracted\x12&\n\nfield_name\x18\x01\x20\x01(\tR\tfieldNameB\x07\xfaB\
+    \x04r\x02\x10\x01\x12[\n\x05exact\x18\x02\x20\x01(\x0b2C.bitdrift_public\
+    .protobuf.workflow.v1.Workflow.FieldExtracted.ExactH\0R\x05exact\x1a\x07\
+    \n\x05ExactB\x16\n\x0fextraction_type\x12\x03\xf8B\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -5216,7 +5216,6 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(workflow::RuleLogMatch::generated_message_descriptor_data());
             messages.push(workflow::RuleTimeout::generated_message_descriptor_data());
             messages.push(workflow::Action::generated_message_descriptor_data());
-            messages.push(workflow::ActionTakeScreenshot::generated_message_descriptor_data());
             messages.push(workflow::Execution::generated_message_descriptor_data());
             messages.push(workflow::LimitMatchedLogsCount::generated_message_descriptor_data());
             messages.push(workflow::LimitDuration::generated_message_descriptor_data());
@@ -5226,6 +5225,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(workflow::action::ActionEmitMetric::generated_message_descriptor_data());
             messages.push(workflow::action::ActionEmitSankeyDiagram::generated_message_descriptor_data());
             messages.push(workflow::action::Tag::generated_message_descriptor_data());
+            messages.push(workflow::action::ActionTakeScreenshot::generated_message_descriptor_data());
             messages.push(workflow::action::action_flush_buffers::Streaming::generated_message_descriptor_data());
             messages.push(workflow::action::action_flush_buffers::streaming::TerminationCriterion::generated_message_descriptor_data());
             messages.push(workflow::action::action_flush_buffers::streaming::termination_criterion::LogsCount::generated_message_descriptor_data());

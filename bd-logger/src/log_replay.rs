@@ -88,6 +88,7 @@ pub struct ProcessingPipeline {
 
   trigger_upload_tx: Sender<TriggerUpload>,
   buffers_to_flush_rx: Option<Receiver<BuffersToFlush>>,
+  take_screenshot_tx: Sender<()>,
 
   workflows_enabled_flag: BoolWatch<WorkflowsEnabledFlag>,
   filter_chain_enabled_flag: BoolWatch<FilterChainEnabledFlag>,
@@ -104,6 +105,7 @@ impl ProcessingPipeline {
     flush_buffers_tx: Sender<BuffersWithAck>,
     flush_stats_trigger: Option<FlushTrigger>,
     trigger_upload_tx: Sender<TriggerUpload>,
+    take_screenshot_tx: Sender<()>,
 
     config: ConfigUpdate,
 
@@ -149,6 +151,7 @@ impl ProcessingPipeline {
       flush_stats_trigger,
       trigger_upload_tx,
       buffers_to_flush_rx,
+      take_screenshot_tx,
 
       workflows_enabled_flag,
       filter_chain_enabled_flag,
@@ -249,6 +252,12 @@ impl ProcessingPipeline {
           "triggered flush buffer action IDs: {:?}",
           result.triggered_flush_buffers_action_ids
         );
+      }
+
+      if result.take_screenshot {
+        if let Err(e) = self.take_screenshot_tx.send(()).await {
+          log::debug!("failed to send take screenshot signal: {e}");
+        }
       }
 
       Self::write_to_buffers(

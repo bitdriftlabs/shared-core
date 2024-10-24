@@ -154,6 +154,10 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   session_strategy: Arc<bd_session::Strategy>,
   metadata_collector: MetadataCollector,
   resource_utilization_reporter: bd_resource_utilization::Reporter,
+
+  session_replay_recorder: bd_session_replay::Recorder,
+  session_replay_recorder_tx: mpsc::Sender<()>,
+
   events_listener: bd_events::Listener,
 
   replayer: R,
@@ -170,6 +174,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     session_strategy: Arc<bd_session::Strategy>,
     metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
     resource_utilization_target: Box<dyn bd_resource_utilization::Target + Send + Sync>,
+    session_replay_target: Box<dyn bd_session_replay::Target + Send + Sync>,
     events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
     config_update_rx: mpsc::Receiver<ConfigUpdate>,
     shutdown_trigger_handle: ComponentShutdownTriggerHandle,
@@ -184,6 +189,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         .pre_config_log_buffer
         .max_size(),
     );
+
+    let (session_replay_recorder, take_screenshot_rx) =
+      bd_session_replay::Recorder::new(session_replay_target, runtime_loader);
 
     let internal_periodic_fields_reporter =
       Arc::new(internal_report::Reporter::new(runtime_loader));
@@ -205,6 +213,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           resource_utilization_target,
           runtime_loader,
         ),
+
+        session_replay_recorder,
+        session_replay_recorder_tx: take_screenshot_rx,
+
         events_listener: bd_events::Listener::new(events_listener_target, runtime_loader),
 
         interceptors: vec![
@@ -489,8 +501,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn update(mut self, config: ConfigUpdate) -> (Self, Option<PreConfigBuffer<Log>>) {
     let (initialized_logging_context, maybe_pre_config_log_buffer) = match self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
-        let (initialized_logging_context, pre_config_log_buffer) =
-          uninitialized_logging_context.updated(config).await;
+        let (initialized_logging_context, pre_config_log_buffer) = uninitialized_logging_context
+          .updated(config, self.session_replay_recorder_tx.clone())
+          .await;
         (initialized_logging_context, Some(pre_config_log_buffer))
       },
       LoggingState::Initialized(mut initialized_logging_context) => {
@@ -632,6 +645,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         () = async { initialized_logging_context.unwrap().processing_pipeline.run().await },
           if initialized_logging_context.is_some() => {},
         () = self.resource_utilization_reporter.run() => {},
+        () = self.session_replay_recorder.run() => {},
         () = self.events_listener.run() => {},
         () = &mut local_shutdown => {
           return self;
