@@ -62,8 +62,13 @@ impl Processor {
       ..Default::default()
     };
 
-    let (upload_request, _response) =
+    let (upload_request, response) =
       TrackedSankeyPathUploadRequest::new(upload_uuid, upload_request);
+
+    log::debug!(
+      "sending sankey upload request with id {:?}",
+      upload_request.uuid
+    );
 
     if let Err(e) = self
       .data_upload_tx
@@ -72,6 +77,10 @@ impl Processor {
     {
       // TODO(Augustyniak): Add a counter stat in here.
       log::debug!("failed to send sankey upload request: {e}");
+    }
+
+    if let Err(error) = response.await {
+      log::debug!("failed to wait for sankey upload response: {error}");
     }
   }
 }

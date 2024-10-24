@@ -364,7 +364,7 @@ impl WorkflowsEngine {
       .traversal_starts_total
       .inc_by(workflow_traversals_count.into());
 
-    log::debug!(
+    log::trace!(
       "workflow={}: workflow added, runs count {}, traversal count {}",
       workflow.id(),
       workflow.runs().len(),

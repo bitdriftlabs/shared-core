@@ -252,7 +252,7 @@ impl Workflow {
     result: &mut WorkflowResult<'_>,
   ) -> bool {
     if run.traversals_count() + *current_traversals_count <= traversals_count_limit {
-      log::debug!("workflow={}: creating a new run", self.id);
+      log::trace!("workflow={}: creating a new run", self.id);
 
       result.stats.created_runs_count += 1;
       result.stats.created_traversals_count += run.traversals_count();
