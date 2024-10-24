@@ -414,7 +414,7 @@ pub(crate) enum Predicate {
 pub enum Action {
   FlushBuffers(ActionFlushBuffers),
   EmitMetric(ActionEmitMetric),
-  SankeyDiagram(ActionEmitSankeyDiagram),
+  EmitSankey(ActionEmitSankey),
 }
 
 impl Action {
@@ -441,9 +441,9 @@ impl Action {
         }))
       },
       Action_type::ActionEmitMetric(metric) => Ok(Self::EmitMetric(ActionEmitMetric::new(metric)?)),
-      Action_type::ActionEmitSankeyDiagram(diagram) => Ok(Self::SankeyDiagram(
-        ActionEmitSankeyDiagram::try_from_proto(diagram)?,
-      )),
+      Action_type::ActionEmitSankeyDiagram(diagram) => {
+        Ok(Self::EmitSankey(ActionEmitSankey::try_from_proto(diagram)?))
+      },
       Action_type::ActionTakeScreenshot(_) => Err(anyhow!(
         "invalid action configuration: unsupported action type take screenshot"
       )),
@@ -592,16 +592,16 @@ impl ActionEmitMetric {
 }
 
 //
-// ActionEmitSankeyDiagram
+// ActionEmitSankey
 //
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ActionEmitSankeyDiagram {
+pub struct ActionEmitSankey {
   id: String,
   limit: u32,
 }
 
-impl ActionEmitSankeyDiagram {
+impl ActionEmitSankey {
   fn try_from_proto(proto: &ActionEmitSankeyDiagramProto) -> anyhow::Result<Self> {
     Ok(Self {
       id: proto.id.to_string(),

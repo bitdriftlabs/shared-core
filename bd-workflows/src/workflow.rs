@@ -12,7 +12,7 @@ mod workflow_test;
 use crate::config::{
   Action,
   ActionEmitMetric,
-  ActionEmitSankeyDiagram,
+  ActionEmitSankey,
   ActionFlushBuffers,
   Config,
   Execution,
@@ -921,7 +921,7 @@ impl Traversal {
         Action::EmitMetric(action) => {
           triggered_actions.push(TriggeredAction::EmitMetric(action));
         },
-        Action::SankeyDiagram(action) => {
+        Action::EmitSankey(action) => {
           debug_assert!(sankey_states.is_some(), "sankey_states should be present");
           let Some(sankey_states) = sankey_states else {
             continue;
@@ -970,7 +970,7 @@ pub(crate) enum TriggeredAction<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TriggeredActionEmitSankey<'a> {
-  pub(crate) action: &'a ActionEmitSankeyDiagram,
+  pub(crate) action: &'a ActionEmitSankey,
   pub(crate) path: SankeyPath,
 }
 

@@ -386,6 +386,7 @@ pub mod macros {
     };
   }
 
+  /// Creates a Sankey value extraction extension.
   #[macro_export]
   macro_rules! sankey_value {
     (fixed $sankey_id:expr => $value:expr, counts_toward_limit $counts_toward_limit:expr)
