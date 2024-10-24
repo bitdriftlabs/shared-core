@@ -162,6 +162,8 @@ async fn taking_screenshots_is_wired() {
 
   take_screenshot_tx.send(()).await.unwrap();
 
+  100.milliseconds().sleep().await;
+
   shutdown_trigger.shutdown().await;
   assert_ok!(reporter_task.await);
 
