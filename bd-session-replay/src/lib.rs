@@ -92,7 +92,7 @@ impl Recorder {
       tokio::time::interval_at(Instant::now() + interval, interval)
     };
 
-    log::debug!("session replay interval is {:?}", interval.period());
+    log::debug!("session replay recorder interval is {:?}", interval.period());
 
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     interval
