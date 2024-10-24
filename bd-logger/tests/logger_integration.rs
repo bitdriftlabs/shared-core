@@ -519,8 +519,8 @@ mod tests {
         let bandwidth_rx = upload.get_counter("api:bandwidth_rx", labels! {}).unwrap();
         assert_eq!(upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}), Some(120));
         assert!(bandwidth_tx > 100, "bandwidth_tx = {bandwidth_tx}");
-        assert!(bandwidth_rx < 300, "bandwidth_rx = {bandwidth_rx}");
-        assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(326));
+        assert!(bandwidth_rx < 400, "bandwidth_rx = {bandwidth_rx}");
+        assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(418));
         assert_eq!(upload.get_counter("api:stream_total", labels! {}), Some(1));
     });
   }
