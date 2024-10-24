@@ -18,9 +18,10 @@ use crate::actions_flush_buffers::{
   ResolverConfig,
   StreamingBuffersAction,
 };
-use crate::config::{Action, ActionEmitMetric, ActionFlushBuffers, Config, WorkflowsConfiguration};
+use crate::config::{ActionEmitMetric, ActionFlushBuffers, Config, WorkflowsConfiguration};
 use crate::metrics::MetricsCollector;
-use crate::workflow::Workflow;
+use crate::sankey_diagram;
+use crate::workflow::{SankeyPath, TriggeredAction, TriggeredActionEmitSankey, Workflow};
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_stats::DynamicStats;
@@ -80,6 +81,9 @@ pub struct WorkflowsEngine {
   flush_buffers_negotiator_output_rx: Receiver<NegotiatorOutput>,
   flush_buffers_negotiator_join_handle: JoinHandle<()>,
 
+  sankey_processor_input_tx: Sender<SankeyPath>,
+  sankey_processor_join_handle: JoinHandle<()>,
+
   metrics_collector: MetricsCollector,
 
   buffers_to_flush_tx: Sender<BuffersToFlush>,
@@ -107,10 +111,14 @@ impl WorkflowsEngine {
 
     let (input_tx, input_rx) = tokio::sync::mpsc::channel(10);
     let (flush_buffers_actions_negotiator, output_rx) =
-      Negotiator::new(input_rx, data_upload_tx, &actions_scope);
+      Negotiator::new(input_rx, data_upload_tx.clone(), &actions_scope);
     let flush_buffers_negotiator_join_handle = flush_buffers_actions_negotiator.run();
 
     let flush_buffers_actions_resolver = Resolver::new(&actions_scope);
+
+    let (sankey_input_tx, sankey_input_rx) = tokio::sync::mpsc::channel(10);
+    let sankey_diagram_processor = sankey_diagram::Processor::new(sankey_input_rx, data_upload_tx);
+    let sankey_processor_join_handle = sankey_diagram_processor.run();
 
     let workflows_engine = Self {
       configs: vec![],
@@ -125,6 +133,8 @@ impl WorkflowsEngine {
       flush_buffers_negotiator_join_handle,
       flush_buffers_negotiator_input_tx: input_tx,
       flush_buffers_negotiator_output_rx: output_rx,
+      sankey_processor_input_tx: sankey_input_tx,
+      sankey_processor_join_handle,
       metrics_collector: MetricsCollector::new(dynamic_stats),
       buffers_to_flush_tx,
     };
@@ -354,7 +364,7 @@ impl WorkflowsEngine {
       .traversal_starts_total
       .inc_by(workflow_traversals_count.into());
 
-    log::debug!(
+    log::trace!(
       "workflow={}: workflow added, runs count {}, traversal count {}",
       workflow.id(),
       workflow.runs().len(),
@@ -520,7 +530,7 @@ impl WorkflowsEngine {
       };
     }
 
-    let mut actions: Vec<&Action> = vec![];
+    let mut actions: Vec<TriggeredAction<'_>> = vec![];
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let was_in_initial_state = workflow.is_in_initial_state();
       let result = workflow.process_log(
@@ -602,8 +612,7 @@ impl WorkflowsEngine {
         self.needs_state_persistence = true;
       }
 
-      let t = result.actions();
-      actions.extend(t);
+      actions.extend(result.triggered_actions());
     }
 
     self
@@ -622,7 +631,8 @@ impl WorkflowsEngine {
       "current_traversals_count is not equal to computed traversals count"
     );
 
-    let (flush_buffers_actions, emit_metric_actions) = Self::prepare_actions(&actions);
+    let (flush_buffers_actions, emit_metric_actions, emit_sankey_diagrams_actions) =
+      Self::prepare_actions(actions);
 
     let result = self
       .flush_buffers_actions_resolver
@@ -646,6 +656,16 @@ impl WorkflowsEngine {
     self
       .metrics_collector
       .emit_metrics(&emit_metric_actions, log);
+
+    self
+      .metrics_collector
+      .emit_sankeys(&emit_sankey_diagrams_actions, log);
+
+    for action in emit_sankey_diagrams_actions {
+      if let Err(e) = self.sankey_processor_input_tx.try_send(action.path) {
+        log::debug!("failed to process sankey: {e}");
+      }
+    }
 
     for action in flush_buffers_actions_processing_result.new_pending_actions_to_add {
       self.state.pending_actions.insert(action.clone());
@@ -684,20 +704,21 @@ impl WorkflowsEngine {
   /// for `exclusive` workflows). Currently, multiple metric emission actions triggered by runs of
   /// the same workflow result in only one metric emission, which is incorrect behavior.
   fn prepare_actions<'a>(
-    actions: &[&'a Action],
+    actions: Vec<TriggeredAction<'a>>,
   ) -> (
     BTreeSet<&'a ActionFlushBuffers>,
     BTreeSet<&'a ActionEmitMetric>,
+    BTreeSet<TriggeredActionEmitSankey<'a>>,
   ) {
     if actions.is_empty() {
-      return (BTreeSet::new(), BTreeSet::new());
+      return (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
     }
 
     let flush_buffers_actions: BTreeSet<&ActionFlushBuffers> = actions
       .iter()
       .filter_map(|action| {
-        if let Action::FlushBuffers(flush_buffers_action) = action {
-          Some(flush_buffers_action)
+        if let TriggeredAction::FlushBuffers(flush_buffers_action) = action {
+          Some(*flush_buffers_action)
         } else {
           None
         }
@@ -707,8 +728,8 @@ impl WorkflowsEngine {
     let emit_metric_actions: BTreeSet<&ActionEmitMetric> = actions
       .iter()
       .filter_map(|action| {
-        if let Action::EmitMetric(emit_metric_action) = action {
-          Some(emit_metric_action)
+        if let TriggeredAction::EmitMetric(emit_metric_action) = action {
+          Some(*emit_metric_action)
         } else {
           None
         }
@@ -716,13 +737,26 @@ impl WorkflowsEngine {
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
 
-    (flush_buffers_actions, emit_metric_actions)
+    let sankey_diagrams: BTreeSet<TriggeredActionEmitSankey<'a>> = actions
+      .into_iter()
+      .filter_map(|action| {
+        if let TriggeredAction::SankeyDiagram(action) = action {
+          Some(action)
+        } else {
+          None
+        }
+      })
+      // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
+      .collect();
+
+    (flush_buffers_actions, emit_metric_actions, sankey_diagrams)
   }
 }
 
 impl Drop for WorkflowsEngine {
   fn drop(&mut self) {
     self.flush_buffers_negotiator_join_handle.abort();
+    self.sankey_processor_join_handle.abort();
   }
 }
 
@@ -807,7 +841,7 @@ impl StateStore {
     );
 
     Self {
-      state_path: sdk_directory.join("workflows_state_snapshot.3.bin"),
+      state_path: sdk_directory.join("workflows_state_snapshot.4.bin"),
       last_persisted: None,
       stats,
       persistence_write_interval_flag: runtime.register_watch().unwrap(),

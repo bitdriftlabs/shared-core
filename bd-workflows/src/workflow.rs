@@ -9,10 +9,20 @@
 #[path = "./workflow_test.rs"]
 mod workflow_test;
 
-use crate::config::{Action, Config, Execution, Predicate};
+use crate::config::{
+  Action,
+  ActionEmitMetric,
+  ActionEmitSankey,
+  ActionFlushBuffers,
+  Config,
+  Execution,
+  Predicate,
+};
 use bd_log_primitives::LogRef;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
+use std::collections::BTreeMap;
 use std::time::SystemTime;
 
 //
@@ -242,7 +252,7 @@ impl Workflow {
     result: &mut WorkflowResult<'_>,
   ) -> bool {
     if run.traversals_count() + *current_traversals_count <= traversals_count_limit {
-      log::debug!("workflow={}: creating a new run", self.id);
+      log::trace!("workflow={}: creating a new run", self.id);
 
       result.stats.created_runs_count += 1;
       result.stats.created_traversals_count += run.traversals_count();
@@ -370,13 +380,13 @@ impl Workflow {
 /// when it processed a given log.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct WorkflowResult<'a> {
-  actions: Vec<&'a Action>,
+  triggered_actions: Vec<TriggeredAction<'a>>,
   stats: WorkflowResultStats,
 }
 
 impl<'a> WorkflowResult<'a> {
-  pub fn actions(self) -> Vec<&'a Action> {
-    self.actions
+  pub fn triggered_actions(self) -> Vec<TriggeredAction<'a>> {
+    self.triggered_actions
   }
 
   pub const fn stats(&self) -> &WorkflowResultStats {
@@ -384,7 +394,9 @@ impl<'a> WorkflowResult<'a> {
   }
 
   fn incorporate_run_result(&mut self, run_result: &RunResult<'a>) {
-    self.actions.extend_from_slice(&run_result.actions);
+    self
+      .triggered_actions
+      .extend_from_slice(&run_result.triggered_actions);
     self.stats.created_traversals_count += run_result.created_traversals_count;
     self.stats.advanced_traversals_count += run_result.advanced_traversals_count;
     self.stats.completed_traversals_count += run_result.completed_traversals_count;
@@ -437,6 +449,80 @@ impl WorkflowResultStats {
 }
 
 //
+// SankeyPath
+//
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct SankeyPath {
+  pub(crate) sankey_id: String,
+  pub(crate) nodes: Vec<String>,
+  pub(crate) path_id: String,
+  pub(crate) is_trimmed: bool,
+}
+
+impl SankeyPath {
+  fn new(sankey_id: &str, sankey_state: SankeyState) -> Self {
+    let path_id = Self::calculate_path_id(&sankey_state);
+
+    Self {
+      sankey_id: sankey_id.to_string(),
+      nodes: sankey_state.nodes.into_iter().map(|n| n.value).collect(),
+      path_id,
+      is_trimmed: sankey_state.is_trimmed,
+    }
+  }
+
+  fn calculate_path_id(state: &SankeyState) -> String {
+    let mut hasher = sha2::Sha256::new();
+    for node in &state.nodes {
+      hasher.update(node.value.as_bytes());
+    }
+
+    format!("{:x}", hasher.finalize())
+  }
+}
+
+//
+// SankeyState
+//
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+struct SankeyNodeState {
+  value: String,
+  counts_toward_limit: bool,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub(crate) struct SankeyState {
+  nodes: Vec<SankeyNodeState>,
+  is_trimmed: bool,
+}
+
+impl SankeyState {
+  pub(crate) fn push(&mut self, value: String, limit: usize, counts_toward_limit: bool) {
+    self.nodes.push(SankeyNodeState {
+      value,
+      counts_toward_limit,
+    });
+
+    if !counts_toward_limit {
+      return;
+    }
+
+    if self.nodes.iter().filter(|n| n.counts_toward_limit).count() > limit {
+      if let Some((index, _)) = self
+        .nodes
+        .iter()
+        .find_position(|node| node.counts_toward_limit)
+      {
+        self.is_trimmed = true;
+        self.nodes.remove(index);
+      }
+    }
+  }
+}
+
+//
 // Run
 //
 
@@ -461,7 +547,8 @@ pub(crate) struct Run {
 
 impl Run {
   pub(crate) fn new(config: &Config) -> Self {
-    let traversals = Traversal::new(config, 0).map_or_else(Vec::new, |traversal| vec![traversal]);
+    let traversals =
+      Traversal::new(config, 0, None).map_or_else(Vec::new, |traversal| vec![traversal]);
 
     Self {
       traversals,
@@ -481,7 +568,7 @@ impl Run {
 
     // TODO(Augustyniak): Check for duration limit in here.
 
-    let mut actions = Vec::<&Action>::new();
+    let mut run_triggered_actions = Vec::<TriggeredAction<'_>>::new();
 
     let mut created_traversals_count = 0;
     let mut advanced_traversals_count = 0;
@@ -492,7 +579,9 @@ impl Run {
     // starting at `index` in any given iteration of the loop.
     for index in (0 .. self.traversals.len()).rev() {
       let traversal = &mut self.traversals[index];
-      let traversal_result = traversal.process_log(config, log);
+      let mut traversal_result = traversal.process_log(config, log);
+
+      run_triggered_actions.append(&mut traversal_result.triggered_actions);
 
       // Increase the counter of logs matched by a given workflow run.
       self.matched_logs_count += traversal_result.matched_logs_count;
@@ -506,7 +595,7 @@ impl Run {
         if self.matched_logs_count > matched_logs_count_limit {
           return RunResult {
             state: RunState::Stopped,
-            actions: vec![],
+            triggered_actions: vec![],
             created_traversals_count: 0,
             advanced_traversals_count: 0,
             completed_traversals_count: 0,
@@ -530,7 +619,7 @@ impl Run {
                 );
                 return RunResult {
                   state: RunState::Stopped,
-                  actions: vec![],
+                  triggered_actions: vec![],
                   created_traversals_count: 0,
                   advanced_traversals_count: 0,
                   completed_traversals_count: 0,
@@ -559,7 +648,7 @@ impl Run {
       }
 
       // Check if the traversal should advance.
-      if traversal_result.advanced_transitions_indices.is_empty() {
+      if traversal_result.followed_transitions_count == 0 {
         // Go to processing the next traversal.
         continue;
       }
@@ -567,29 +656,12 @@ impl Run {
       // The currently processed traversal is about to advance.
       advanced_traversals_count += 1;
 
-      // In majority of cases each traversal has 0 or 1 successor. A case when
-      // more than 1 successor is created is possible if a state corresponding to
-      // currently processed traversal has multiple outgoing transitions and a
-      // processed log ends up fulfills conditions for more than 1 of these transitions.
-      let mut output_traversals = vec![];
-      let mut actions_to_perform = vec![];
-
-      for transition_index in traversal_result.advanced_transitions_indices {
-        let traversal_actions = config.actions_for_traversal(traversal, transition_index);
-        actions_to_perform.extend(traversal_actions.iter());
-
-        let next_state_index = config.next_state_index_for_traversal(traversal, transition_index);
-        if let Some(traversal) = Traversal::new(config, next_state_index) {
-          output_traversals.push(traversal);
-        }
-      }
-
-      if output_traversals.is_empty() {
+      if traversal_result.output_traversals.is_empty() {
         // Traversal has no successors so it's been completed.
         completed_traversals_count += 1;
       } else {
         #[allow(clippy::cast_possible_truncation)]
-        let output_traversals_count = output_traversals.len() as u32;
+        let output_traversals_count = traversal_result.output_traversals.len() as u32;
         // The number of created traversals is the number of output traversals
         // minus the input traversal.
         created_traversals_count += output_traversals_count - 1;
@@ -604,9 +676,9 @@ impl Run {
       //    one of workflow's final states and can be removed.
       //  * if after advancing traversals there are 0 traversals left then a given workflow run is
       //    finished and can be removed.
-      self.traversals.splice(index ..= index, output_traversals);
-
-      actions.append(&mut actions_to_perform);
+      self
+        .traversals
+        .splice(index ..= index, traversal_result.output_traversals);
     }
 
     let state = if self.traversals.is_empty() {
@@ -617,7 +689,7 @@ impl Run {
 
     RunResult {
       state,
-      actions,
+      triggered_actions: run_triggered_actions,
       created_traversals_count,
       advanced_traversals_count,
       completed_traversals_count,
@@ -684,9 +756,8 @@ pub(crate) enum RunState {
 pub(crate) struct RunResult<'a> {
   /// The state of the workflow run.
   state: RunState,
-  /// The actions to be taken in the result of all performed
-  /// transitions.
-  actions: Vec<&'a Action>,
+  /// The list of triggered actions.
+  triggered_actions: Vec<TriggeredAction<'a>>,
   /// The number of newly created traversals.
   created_traversals_count: u32,
   /// The number of advanced traversals. The traversal is considered
@@ -710,9 +781,9 @@ impl RunResult<'_> {
 //
 
 /// A traversal points at a specific workflow state. Most workflow runs
-/// have one traversals but it's possible for a workflow run to have multiple
+/// have one traversal but it's possible for a workflow run to have multiple
 /// traversals. That can happen when a given workflow traversal is forked when
-/// multiple transitions outgoing from a given state matched on the
+/// multiple transitions outgoing from a given state match on the
 /// same event (i.e., log).
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub(crate) struct Traversal {
@@ -721,13 +792,20 @@ pub(crate) struct Traversal {
   /// The number of logs matched by traversal's transitions.
   /// Each element in an array corresponds to one transition.
   pub(crate) matched_logs_counts: Vec<u32>,
+  /// States of Sankey diagrams. It's a `None` when traversal is initialized and is set
+  /// to `Some` after the first value for a Sankey and a given traversal is extracted.
+  pub(crate) sankey_states: Option<BTreeMap<String, SankeyState>>,
 }
 
 impl Traversal {
   /// Creates a new traversal for a given state. The method returns `None`
   /// for cases when a given state is a final state and doesn't have
   /// any outgoing transitions.
-  pub fn new(config: &Config, state_index: usize) -> Option<Self> {
+  pub fn new(
+    config: &Config,
+    state_index: usize,
+    sankey_states: Option<BTreeMap<String, SankeyState>>,
+  ) -> Option<Self> {
     if config.states()[state_index].transitions().is_empty() {
       None
     } else {
@@ -736,14 +814,19 @@ impl Traversal {
         // The number of logs matched by a given traversal.
         // Start at 0 for a new traversal.
         matched_logs_counts: vec![0; config.states()[state_index].transitions().len()],
+        sankey_states,
       })
     }
   }
 
-  fn process_log(&mut self, config: &Config, log: &LogRef<'_>) -> TraversalResult {
+  fn process_log<'a>(&mut self, config: &'a Config, log: &LogRef<'_>) -> TraversalResult<'a> {
     let transitions = config.transitions_for_traversal(self);
 
     let mut result = TraversalResult::default();
+    // In majority of cases each traversal has 0 or 1 successor. A case when
+    // more than 1 successor is created is possible if a state corresponding to
+    // currently processed traversal has multiple outgoing transitions and a
+    // processed log ends up fulfills conditions for more than 1 of these transitions.
     for (index, transition) in transitions.iter().enumerate() {
       match &transition.rule() {
         Predicate::LogMatch(log_match, count) => {
@@ -756,7 +839,22 @@ impl Traversal {
             result.matched_logs_count += 1;
 
             if self.matched_logs_counts[index] == *count {
-              result.advanced_transitions_indices.push(index);
+              result.followed_transitions_count += 1;
+              // Update Sankey states.
+              let mut updated_sankey_states = self.sankey_states(config, index, log);
+
+              // Collect triggered actions.
+              let actions = config.actions_for_traversal(self, index);
+              let triggered_actions = Self::triggered_actions(actions, &mut updated_sankey_states);
+
+              result.triggered_actions.extend(triggered_actions);
+
+              // Create next traversal.
+              let next_state_index = config.next_state_index_for_traversal(self, index);
+              if let Some(traversal) = Self::new(config, next_state_index, updated_sankey_states) {
+                result.output_traversals.push(traversal);
+              }
+
               log::trace!(
                 "traversal's transition matched log ({} matches in total) and is advancing, \
                  workflow id={:?}",
@@ -783,10 +881,97 @@ impl Traversal {
     result
   }
 
+  fn sankey_states(
+    &self,
+    config: &Config,
+    index: usize,
+    log: &LogRef<'_>,
+  ) -> Option<BTreeMap<String, SankeyState>> {
+    let mut sankey_states = self.sankey_states.clone();
+    let extractions = config.sankey_extractions(self, index);
+    for extraction in extractions {
+      let Some(extracted_value) = extraction.value.extract_value(log) else {
+        continue;
+      };
+
+      sankey_states
+        .get_or_insert_with(BTreeMap::new)
+        .entry(extraction.sankey_id.clone())
+        .or_default()
+        .push(
+          extracted_value.into_owned(),
+          extraction.limit,
+          extraction.counts_toward_sankey_values_extraction_limit,
+        );
+    }
+
+    sankey_states
+  }
+
+  fn triggered_actions<'a>(
+    actions: &'a [Action],
+    sankey_states: &mut Option<BTreeMap<String, SankeyState>>,
+  ) -> Vec<TriggeredAction<'a>> {
+    let mut triggered_actions = vec![];
+    for action in actions {
+      match action {
+        Action::FlushBuffers(action) => {
+          triggered_actions.push(TriggeredAction::FlushBuffers(action));
+        },
+        Action::EmitMetric(action) => {
+          triggered_actions.push(TriggeredAction::EmitMetric(action));
+        },
+        Action::EmitSankey(action) => {
+          debug_assert!(sankey_states.is_some(), "sankey_states should be present");
+          let Some(sankey_states) = sankey_states else {
+            continue;
+          };
+
+          let Some(sankey_state) = sankey_states.remove(action.id()) else {
+            debug_assert!(
+              false,
+              "sankey_states for Sankey with {:?} ID should be present",
+              action.id()
+            );
+            continue;
+          };
+
+          triggered_actions.push(TriggeredAction::SankeyDiagram(TriggeredActionEmitSankey {
+            action,
+            path: SankeyPath::new(action.id(), sankey_state),
+          }));
+        },
+      }
+    }
+    triggered_actions
+  }
+
   // Whether a given traversal is an initial state.
   fn is_in_initial_state(&self) -> bool {
     self.state_index == 0 && self.matched_logs_counts.iter().all(|&e| e == 0)
   }
+}
+
+//
+// TriggeredAction
+//
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+/// The action to perform.
+pub(crate) enum TriggeredAction<'a> {
+  FlushBuffers(&'a ActionFlushBuffers),
+  EmitMetric(&'a ActionEmitMetric),
+  SankeyDiagram(TriggeredActionEmitSankey<'a>),
+}
+
+//
+// TriggeredActionEmitSankey
+//
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TriggeredActionEmitSankey<'a> {
+  pub(crate) action: &'a ActionEmitSankey,
+  pub(crate) path: SankeyPath,
 }
 
 //
@@ -795,23 +980,27 @@ impl Traversal {
 
 /// The traversal result.
 #[derive(Debug, Default)]
-struct TraversalResult {
+struct TraversalResult<'a> {
   /// The indices of transitions that should be advanced.
-  advanced_transitions_indices: Vec<usize>,
+  output_traversals: Vec<Traversal>,
+  /// The list of triggered actions.
+  triggered_actions: Vec<TriggeredAction<'a>>,
   /// The number of matched logs. A single log can be matched multiple times
   /// i.e., when multiple transitions coming out of a given state all match the
   /// same log.
   matched_logs_count: u32,
+  // The number of transitions that were followed in response to processing a log.
+  followed_transitions_count: u32,
 }
 
-impl TraversalResult {
+impl TraversalResult<'_> {
   /// Whether traversal made any progress. As it is now, the check could be reduced
   /// to checking whether any log was matched but the check is abstracted away to improve
   /// readability.
   fn did_make_progress(&self) -> bool {
     debug_assert!(
       if self.matched_logs_count == 0 {
-        self.advanced_transitions_indices.is_empty()
+        self.followed_transitions_count == 0
       } else {
         true
       }

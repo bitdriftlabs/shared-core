@@ -294,7 +294,7 @@ mod tests {
       self
         .sdk_directory
         .path()
-        .join("workflows_state_snapshot.3.bin")
+        .join("workflows_state_snapshot.4.bin")
     }
   }
 
@@ -1340,7 +1340,7 @@ mod tests {
         .into(),
         filters_configuration: Some(FiltersConfiguration {
           filters: vec![Filter {
-            matcher: Some(log_matches!(message == "message")).into(),
+            matcher: Some(log_matches!(message == "yet another message!")).into(),
             transforms: vec![set_field!(
               captured("foo") = field_value!("fire workflow action!")
             )],
@@ -1373,7 +1373,7 @@ mod tests {
       vec![AnnotatedLogField {
         field: LogField {
           key: "foo".into(),
-          value: "fire workflow action!".into(),
+          value: "do not fire workflow action!".into(),
         },
         kind: LogFieldKind::Custom,
       }],

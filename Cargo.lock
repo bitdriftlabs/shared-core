@@ -1019,6 +1019,7 @@ dependencies = [
  "protobuf",
  "regex",
  "serde",
+ "sha2",
  "tempfile",
  "thiserror",
  "time",
