@@ -204,6 +204,14 @@ mod tests {
           bd_runtime::runtime::resource_utilization::ResourceUtilizationEnabledFlag::path(),
           ValueKind::Bool(false),
         ),
+        (
+          bd_runtime::runtime::session_replay::ScreenshotsEnabledFlag::path(),
+          ValueKind::Bool(true),
+        ),
+        (
+          bd_runtime::runtime::session_replay::PeriodicWireframesEnabledFlag::path(),
+          ValueKind::Bool(true),
+        ),
       ]
     }
 

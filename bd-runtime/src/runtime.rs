@@ -750,11 +750,21 @@ pub mod resource_utilization {
 pub mod session_replay {
   use time::ext::NumericalDuration as _;
 
-  bool_feature_flag!(EnabledFlag, "session_replay.enabled", false);
+  bool_feature_flag!(
+    PeriodicWireframesEnabledFlag,
+    "session_replay.periodic_wireframes.enabled",
+    false
+  );
+
+  bool_feature_flag!(
+    ScreenshotsEnabledFlag,
+    "session_replay.screenshots.enabled",
+    false
+  );
 
   duration_feature_flag!(
     ReportingIntervalFlag,
-    "session_replay.reporting_interval_ms",
+    "session_replay.periodic_wireframes.reporting_interval_ms",
     3.seconds()
   );
 }
