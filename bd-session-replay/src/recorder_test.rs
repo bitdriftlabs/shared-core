@@ -14,6 +14,7 @@ use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use bd_time::TimeDurationExt;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::ext::NumericalDuration;
@@ -61,17 +62,21 @@ impl Setup {
 
 #[derive(Default)]
 struct MockTarget {
-  capture_wireframe_count: Arc<parking_lot::Mutex<usize>>,
-  take_screenshot_count: Arc<parking_lot::Mutex<usize>>,
+  capture_wireframe_count: Arc<AtomicUsize>,
+  take_screenshot_count: Arc<AtomicUsize>,
 }
 
 impl Target for MockTarget {
   fn capture_wireframe(&self) {
-    *self.capture_wireframe_count.lock() += 1;
+    self
+      .take_screenshot_count
+      .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
   }
 
   fn take_screenshot(&self) {
-    *self.take_screenshot_count.lock() += 1;
+    self
+      .take_screenshot_count
+      .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
   }
 }
 
@@ -105,7 +110,10 @@ async fn does_not_report_if_disabled() {
   shutdown_trigger.shutdown().await;
   assert_ok!(recorder_task.await);
 
-  assert_eq!(0, *capture_wireframe_count.lock());
+  assert_eq!(
+    0,
+    capture_wireframe_count.load(std::sync::atomic::Ordering::Relaxed)
+  );
 }
 
 #[tokio::test]
@@ -129,7 +137,7 @@ async fn does_not_report_if_there_are_no_fields() {
   shutdown_trigger.shutdown().await;
   assert_ok!(recorder_task.await);
 
-  assert!(*capture_wireframe_count.lock() > 0);
+  assert!(capture_wireframe_count.load(std::sync::atomic::Ordering::Relaxed) > 0);
 }
 
 #[tokio::test]
@@ -153,7 +161,7 @@ async fn taking_screenshots_is_wired() {
   100.milliseconds().sleep().await;
 
   // No screenshot taken since screenshot feature is disabled.
-  assert!(*take_screenshot_count.lock() == 0);
+  assert!(take_screenshot_count.load(std::sync::atomic::Ordering::Relaxed) == 0);
 
   setup.runtime.update_snapshot(&make_simple_update(vec![(
     bd_runtime::runtime::session_replay::ScreenshotsEnabledFlag::path(),
@@ -170,5 +178,5 @@ async fn taking_screenshots_is_wired() {
   assert_ok!(reporter_task.await);
 
   // Screenshot taken.
-  assert!(*take_screenshot_count.lock() == 1);
+  assert!(take_screenshot_count.load(std::sync::atomic::Ordering::Relaxed) == 1);
 }
