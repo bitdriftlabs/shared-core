@@ -143,12 +143,14 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
   pub(crate) async fn updated(
     self,
     config: ConfigUpdate,
+    take_screenshot_tx: Sender<()>,
   ) -> (InitializedLoggingContext, PreConfigBuffer<T>) {
     let processing_pipeline = ProcessingPipeline::new(
       self.data_upload_tx,
       self.flush_buffers_tx,
       self.flush_stats_trigger,
       self.trigger_upload_tx,
+      take_screenshot_tx,
       config,
       self.sdk_directory.clone(),
       self.runtime,

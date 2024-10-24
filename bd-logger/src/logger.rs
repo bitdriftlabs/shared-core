@@ -391,6 +391,7 @@ pub struct InitParams {
 
   pub metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
   pub resource_utilization_target: Box<dyn bd_resource_utilization::Target + Send + Sync>,
+  pub session_replay_target: Box<dyn bd_session_replay::Target + Send + Sync>,
   pub events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
 
   pub device: Arc<bd_device::Device>,

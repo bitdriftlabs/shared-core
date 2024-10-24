@@ -747,6 +747,18 @@ pub mod resource_utilization {
   );
 }
 
+pub mod session_replay {
+  use time::ext::NumericalDuration as _;
+
+  bool_feature_flag!(EnabledFlag, "session_replay.enabled", false);
+
+  duration_feature_flag!(
+    ReportingIntervalFlag,
+    "session_replay.reporting_interval_ms",
+    3.seconds()
+  );
+}
+
 #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
 pub mod api {
   use time::ext::NumericalDuration;

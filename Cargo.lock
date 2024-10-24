@@ -694,6 +694,7 @@ dependencies = [
  "bd-resource-utilization",
  "bd-runtime",
  "bd-session",
+ "bd-session-replay",
  "bd-shutdown",
  "bd-stats-common",
  "bd-test-helpers",
@@ -923,6 +924,26 @@ dependencies = [
  "time",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "bd-session-replay"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "bd-internal-logging",
+ "bd-log-primitives",
+ "bd-runtime",
+ "bd-shutdown",
+ "bd-test-helpers",
+ "bd-time",
+ "ctor",
+ "log",
+ "parking_lot",
+ "tempfile",
+ "time",
+ "tokio",
+ "tokio-test",
 ]
 
 [[package]]

@@ -527,6 +527,7 @@ impl WorkflowsEngine {
         log_destination_buffer_ids: Cow::Borrowed(log_destination_buffer_ids),
         triggered_flushes_buffer_ids: BTreeSet::new(),
         triggered_flush_buffers_action_ids: BTreeSet::new(),
+        take_screenshot: false,
       };
     }
 
@@ -683,6 +684,7 @@ impl WorkflowsEngine {
         .triggered_flush_buffers_action_ids,
       triggered_flushes_buffer_ids: flush_buffers_actions_processing_result
         .triggered_flushes_buffer_ids,
+      take_screenshot: false,
     }
   }
 
@@ -772,6 +774,9 @@ pub struct WorkflowsEngineResult<'a> {
   pub triggered_flush_buffers_action_ids: BTreeSet<&'a str>,
   // The identifier of trigger buffers that should be flushed.
   pub triggered_flushes_buffer_ids: BTreeSet<Cow<'static, str>>,
+
+  // Whether a screenshot should be taken in response to processing the log.
+  pub take_screenshot: bool,
 }
 
 //
