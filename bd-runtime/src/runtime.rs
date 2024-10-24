@@ -756,16 +756,16 @@ pub mod session_replay {
     false
   );
 
+  duration_feature_flag!(
+    ReportingIntervalFlag,
+    "session_replay.periodic_wireframes.interval_ms",
+    3.seconds()
+  );
+
   bool_feature_flag!(
     ScreenshotsEnabledFlag,
     "session_replay.screenshots.enabled",
     false
-  );
-
-  duration_feature_flag!(
-    ReportingIntervalFlag,
-    "session_replay.periodic_wireframes.reporting_interval_ms",
-    3.seconds()
   );
 }
 
