@@ -69,7 +69,7 @@ struct MockTarget {
 impl Target for MockTarget {
   fn capture_wireframe(&self) {
     self
-      .take_screenshot_count
+      .capture_wireframe_count
       .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
   }
 
