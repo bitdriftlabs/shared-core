@@ -160,6 +160,8 @@ async fn taking_screenshots_is_wired() {
     ValueKind::Bool(true),
   )]));
 
+  100.milliseconds().sleep().await;
+
   take_screenshot_tx.send(()).await.unwrap();
 
   100.milliseconds().sleep().await;
