@@ -10,6 +10,7 @@
 mod metrics_test;
 
 use crate::config::ActionEmitMetric;
+use crate::workflow::TriggeredActionEmitSankey;
 use bd_client_stats::DynamicStats;
 use bd_log_primitives::LogRef;
 use bd_matcher::FieldProvider;
@@ -32,15 +33,7 @@ impl MetricsCollector {
     Self { dynamic_stats }
   }
 
-  pub(crate) fn emit_metrics(
-    &self,
-    emit_metric_actions: &BTreeSet<&ActionEmitMetric>,
-    log: &LogRef<'_>,
-  ) {
-    self.emit_metric_actions(emit_metric_actions, log);
-  }
-
-  fn emit_metric_actions(&self, actions: &BTreeSet<&ActionEmitMetric>, log: &LogRef<'_>) {
+  pub(crate) fn emit_metrics(&self, actions: &BTreeSet<&ActionEmitMetric>, log: &LogRef<'_>) {
     if actions.is_empty() {
       return;
     }
@@ -95,6 +88,23 @@ impl MetricsCollector {
             .record_dynamic_histogram("workflows_dyn:histogram", tags, value);
         },
       }
+    }
+  }
+
+  pub(crate) fn emit_sankeys(
+    &self,
+    actions: &BTreeSet<TriggeredActionEmitSankey<'_>>,
+    _log: &LogRef<'_>,
+  ) {
+    // TODO(Augustyniak): extract appropriate field values.
+    for action in actions {
+      let mut tags = BTreeMap::new();
+      tags.insert("_id".to_string(), action.action.id().to_string());
+      tags.insert("_path_id".to_string(), action.path.path_id.to_string());
+
+      self
+        .dynamic_stats
+        .record_dynamic_counter("workflows_dyn:action", tags, 1);
     }
   }
 

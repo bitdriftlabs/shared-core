@@ -12,7 +12,11 @@ pub use bd_proto::protos::client::api::log_upload_intent_request::{
 };
 pub use bd_proto::protos::client::api::log_upload_intent_response::Decision;
 pub use bd_proto::protos::client::api::LogUploadIntentRequest;
-use bd_proto::protos::client::api::{LogUploadRequest, StatsUploadRequest};
+use bd_proto::protos::client::api::{
+  LogUploadRequest,
+  SankeyPathUploadRequest,
+  StatsUploadRequest,
+};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -70,7 +74,7 @@ impl StateTracker {
     let _ignored = self
       .pending_uploads
       .remove(uuid)
-      .ok_or_else(|| anyhow!("Log upload state for uuid {uuid:?} was inconsistent"))?
+      .ok_or_else(|| anyhow!("State for request with uuid {uuid:?} was inconsistent"))?
       .send(UploadResponse {
         success: error.is_empty(),
         uuid: uuid.to_string(),
@@ -161,6 +165,8 @@ pub struct LogBatch {
 pub type TrackedLogBatch = Tracked<LogUploadRequest, UploadResponse>;
 
 pub type TrackedStatsUploadRequest = Tracked<StatsUploadRequest, UploadResponse>;
+
+pub type TrackedSankeyPathUploadRequest = Tracked<SankeyPathUploadRequest, UploadResponse>;
 
 /// An intent to upload a buffer due to a listener triggering. This is communicated to the backend
 /// in order to allow the server to make decisions on whether a buffer should be uploaded in

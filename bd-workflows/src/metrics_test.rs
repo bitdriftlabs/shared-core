@@ -63,7 +63,7 @@ fn metric_increment_value_extraction() {
   let setup = Setup::new();
   let (metrics_collector, dynamic_stats_collector) = setup.make_metrics_collector();
 
-  metrics_collector.emit_metric_actions(
+  metrics_collector.emit_metrics(
     &[
       &ActionEmitMetric {
         id: "action_id_1".to_string(),
@@ -186,7 +186,7 @@ fn counter_label_extraction() {
   let setup = Setup::new();
   let (metrics_collector, dynamic_stats_collector) = setup.make_metrics_collector();
 
-  metrics_collector.emit_metric_actions(
+  metrics_collector.emit_metrics(
     &[&ActionEmitMetric {
       id: "action_id_1".to_string(),
       tags: [

@@ -20,6 +20,8 @@ use bd_proto::protos::client::api::{
   OpaqueRequest,
   OpaqueResponse,
   PongResponse,
+  SankeyPathUploadRequest,
+  SankeyPathUploadResponse,
   StatsUploadRequest,
   StatsUploadResponse,
 };
@@ -88,6 +90,7 @@ pub enum ResponseKind<'a> {
   LogUploadIntent(&'a LogUploadIntentResponse),
   StatsUpload(&'a StatsUploadResponse),
   FlushBuffers(&'a FlushBuffers),
+  SankeyPathUpload(&'a SankeyPathUploadResponse),
   Opaque(&'a OpaqueResponse),
   Untyped,
 }
@@ -113,6 +116,9 @@ pub enum DataUpload {
 
   /// A stats upload request with an associated tracking id that is used to ensure delivery.
   StatsUploadRequest(Tracked<StatsUploadRequest, UploadResponse>),
+
+  /// A Sankey path upload request.
+  SankeyPathUpload(Tracked<SankeyPathUploadRequest, UploadResponse>),
 
   /// An opaque request with an associated tracking id that is used to ensure delivery. This allows
   /// for uploading of payloads which are not directly typed to the mux.

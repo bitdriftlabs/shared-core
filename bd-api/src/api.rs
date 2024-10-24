@@ -292,6 +292,10 @@ impl StreamState {
         let req = self.upload_state_tracker.track_upload(request);
         self.send_request(req).await
       },
+      DataUpload::SankeyPathUpload(request) => {
+        let req = self.upload_state_tracker.track_upload(request);
+        self.send_request(req).await
+      },
       DataUpload::OpaqueRequest(request) => {
         let req = self.upload_state_tracker.track_upload(request);
         self.send_request(req).await
@@ -765,7 +769,7 @@ impl Api {
         Some(ResponseKind::Pong(_)) => stream_state.maybe_schedule_ping(),
         Some(ResponseKind::ErrorShutdown(error)) => {
           log::debug!(
-            "close with status '{}', message '{}'",
+            "close with status {:?}, message {:?}",
             error.grpc_status,
             error.grpc_message
           );
@@ -785,7 +789,7 @@ impl Api {
         },
         Some(ResponseKind::LogUpload(log_upload)) => {
           log::debug!(
-            "received ack for log upload {} ({} dropped), error: {}",
+            "received ack for log upload {:?} ({} dropped), error: {:?}",
             log_upload.upload_uuid,
             log_upload.logs_dropped,
             log_upload.error
@@ -806,7 +810,7 @@ impl Api {
         },
         Some(ResponseKind::StatsUpload(stats_upload)) => {
           log::debug!(
-            "received ack for stats upload {}, error: {}",
+            "received ack for stats upload {:?}, error: {:?}",
             stats_upload.upload_uuid,
             stats_upload.error
           );
@@ -820,6 +824,17 @@ impl Api {
           .send(TriggerUpload::new(flush_buffers.buffer_id_list.clone()))
           .await
           .map_err(|_| anyhow!("remote trigger upload tx"))?,
+        Some(ResponseKind::SankeyPathUpload(sankey_path_upload)) => {
+          log::debug!(
+            "received ack for sankey path upload {:?}, error: {:?}",
+            sankey_path_upload.upload_uuid,
+            sankey_path_upload.error
+          );
+
+          stream_state
+            .upload_state_tracker
+            .resolve_pending_upload(&sankey_path_upload.upload_uuid, &sankey_path_upload.error)?;
+        },
         Some(ResponseKind::Untyped) => {
           log::debug!("received untyped response: {}", response);
           for pipeline in &mut self.configuration_pipelines {

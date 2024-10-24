@@ -5,7 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_log_primitives::FieldsRef;
+use bd_log_primitives::{FieldsRef, LogRef};
+use std::borrow::Cow;
 
 pub mod buffer_selector;
 pub mod matcher;
@@ -32,11 +33,11 @@ type Result<T> = std::result::Result<T, Error>;
 pub trait FieldProvider {
   /// Looks up the field value corresponding to the provided key. If the field doesn't exist or
   /// contains a binary value, None is returned.
-  fn field_value(&self, key: &str) -> Option<&str>;
+  fn field_value(&self, key: &str) -> Option<Cow<'_, str>>;
 }
 
 impl FieldProvider for FieldsRef<'_> {
-  fn field_value(&self, field_key: &str) -> Option<&str> {
+  fn field_value(&self, field_key: &str) -> Option<Cow<'_, str>> {
     // In cases where there are conflicts between the keys of captured and matching fields, captured
     // fields take precedence, as they are potentially stored and uploaded to the remote server.
     if let Some(value) = self
@@ -45,9 +46,19 @@ impl FieldProvider for FieldsRef<'_> {
       .find_map(|field| (field.key == field_key).then(|| field.value.as_str()))
       .flatten()
     {
-      return Some(value);
+      return Some(Cow::Borrowed(value));
     }
 
-    self.matching_field_value(field_key)
+    self.matching_field_value(field_key).map(Cow::Borrowed)
+  }
+}
+
+impl FieldProvider for LogRef<'_> {
+  fn field_value(&self, key: &str) -> Option<Cow<'_, str>> {
+    match key {
+      "log_level" => Some(Cow::Owned(self.log_level.to_string())),
+      "log_type" => Some(Cow::Owned(self.log_type.0.to_string())),
+      key => self.fields.field_value(key).map(Into::into),
+    }
   }
 }
