@@ -769,7 +769,7 @@ impl Api {
         Some(ResponseKind::Pong(_)) => stream_state.maybe_schedule_ping(),
         Some(ResponseKind::ErrorShutdown(error)) => {
           log::debug!(
-            "close with status '{}', message '{}'",
+            "close with status {:?}, message {:?}",
             error.grpc_status,
             error.grpc_message
           );
@@ -789,7 +789,7 @@ impl Api {
         },
         Some(ResponseKind::LogUpload(log_upload)) => {
           log::debug!(
-            "received ack for log upload {} ({} dropped), error: {}",
+            "received ack for log upload {:?} ({} dropped), error: {:?}",
             log_upload.upload_uuid,
             log_upload.logs_dropped,
             log_upload.error
@@ -810,7 +810,7 @@ impl Api {
         },
         Some(ResponseKind::StatsUpload(stats_upload)) => {
           log::debug!(
-            "received ack for stats upload {}, error: {}",
+            "received ack for stats upload {:?}, error: {:?}",
             stats_upload.upload_uuid,
             stats_upload.error
           );
@@ -826,7 +826,7 @@ impl Api {
           .map_err(|_| anyhow!("remote trigger upload tx"))?,
         Some(ResponseKind::SankeyPathUpload(sankey_path_upload)) => {
           log::debug!(
-            "received ack for sankey path upload {}, error: {}",
+            "received ack for sankey path upload {:?}, error: {:?}",
             sankey_path_upload.upload_uuid,
             sankey_path_upload.error
           );
