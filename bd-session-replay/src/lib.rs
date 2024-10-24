@@ -22,6 +22,10 @@ fn test_global_init() {
   bd_test_helpers::test_global_init();
 }
 
+//
+// Target
+//
+
 pub trait Target {
   fn capture_wireframes(&self);
 
