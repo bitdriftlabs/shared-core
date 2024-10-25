@@ -234,7 +234,7 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
     labels!("type" => "channel_full"),
   );
 
-  100.milliseconds().sleep().await;
+  300.milliseconds().sleep().await;
 
   // One screenshot is taken. Other requests are ignored, as only one concurrent screenshot
   // operation is allowed.
