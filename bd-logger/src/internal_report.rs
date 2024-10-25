@@ -38,7 +38,7 @@ impl Reporter {
 
 impl LogInterceptor for Reporter {
   fn process(
-    &mut self,
+    &self,
     _log_level: LogLevel,
     log_type: LogType,
     msg: &LogMessage,

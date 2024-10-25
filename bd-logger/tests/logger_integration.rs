@@ -38,6 +38,7 @@ mod tests {
   use bd_runtime::runtime::FeatureFlag;
   use bd_session::fixed::{State, UUIDCallbacks};
   use bd_session::{fixed, Strategy};
+  use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
   use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
   use bd_stats_common::labels;
   use bd_test_helpers::config_helper::{
@@ -792,10 +793,29 @@ mod tests {
       vec![],
     );
 
-    std::thread::sleep(1.std_seconds());
+    std::thread::sleep(100.std_milliseconds());
+
+    // Simulate a capture of a screenshot.
+    setup.blocking_log(
+      log_level::DEBUG,
+      LogType::Replay,
+      SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE.into(),
+      vec![],
+      vec![],
+    );
+
+    setup.blocking_log(
+      log_level::DEBUG,
+      LogType::Normal,
+      "foo".into(),
+      vec![],
+      vec![],
+    );
+
+    std::thread::sleep(100.std_milliseconds());
 
     assert_eq!(
-      1,
+      2,
       setup
         .take_screenshot_count
         .load(std::sync::atomic::Ordering::Relaxed)

@@ -138,7 +138,7 @@ impl HTTPTrafficDataUsageTracker {
 #[allow(clippy::cognitive_complexity)]
 impl LogInterceptor for HTTPTrafficDataUsageTracker {
   fn process(
-    &mut self,
+    &self,
     _log_level: LogLevel,
     log_type: LogType,
     msg: &LogMessage,
@@ -339,7 +339,7 @@ impl NetworkQualityInterceptor {
 
 impl LogInterceptor for NetworkQualityInterceptor {
   fn process(
-    &mut self,
+    &self,
     _log_level: LogLevel,
     log_type: LogType,
     _msg: &LogMessage,

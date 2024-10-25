@@ -216,7 +216,7 @@ impl<'a> FieldsRef<'a> {
 
 pub trait LogInterceptor: Send + Sync {
   fn process(
-    &mut self,
+    &self,
     log_level: LogLevel,
     log_type: LogType,
     msg: &LogMessage,

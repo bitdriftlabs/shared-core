@@ -9,7 +9,7 @@
 // Setup
 //
 
-use crate::{Recorder, Target, SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE};
+use crate::{Recorder, ScreenshotLogInterceptor, Target, SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE};
 use bd_log_primitives::{log_level, LogInterceptor, LogType};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
@@ -20,7 +20,7 @@ use std::sync::Arc;
 use tempfile::TempDir;
 use time::ext::NumericalDuration;
 use time::Duration;
-use tokio::sync::mpsc::{channel, Sender};
+use tokio::sync::mpsc::Sender;
 use tokio_test::assert_ok;
 
 struct Setup {
@@ -38,7 +38,10 @@ impl Setup {
     }
   }
 
-  fn create_recorder(&self, target: Box<dyn Target + Send + Sync>) -> (Recorder, Sender<()>) {
+  fn create_recorder(
+    &self,
+    target: Box<dyn Target + Send + Sync>,
+  ) -> (Recorder, Sender<()>, ScreenshotLogInterceptor) {
     Recorder::new(target, &self.runtime)
   }
 
@@ -97,7 +100,7 @@ async fn does_not_report_if_disabled() {
 
   let target = Box::<MockTarget>::default();
   let capture_wireframe_count = target.capture_wireframe_count.clone();
-  let (mut reporter, _) = setup.create_recorder(target);
+  let (mut reporter, ..) = setup.create_recorder(target);
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
   let shutdown = shutdown_trigger.make_shutdown();
@@ -124,7 +127,7 @@ async fn does_not_report_if_there_are_no_fields() {
 
   let target = Box::<MockTarget>::default();
   let capture_wireframe_count = target.capture_wireframe_count.clone();
-  let (mut reporter, _) = setup.create_recorder(target);
+  let (mut reporter, ..) = setup.create_recorder(target);
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
   let shutdown = shutdown_trigger.make_shutdown();
@@ -147,7 +150,7 @@ async fn taking_screenshots_is_wired_up() {
 
   let target = Box::<MockTarget>::default();
   let take_screenshot_count = target.take_screenshot_count.clone();
-  let (mut recorder, take_screenshot_tx) = setup.create_recorder(target);
+  let (mut recorder, take_screenshot_tx, _) = setup.create_recorder(target);
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
   let shutdown = shutdown_trigger.make_shutdown();
@@ -198,31 +201,14 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
 
   let target = Box::<MockTarget>::default();
   let take_screenshot_count = target.take_screenshot_count.clone();
-  let (mut recorder, take_screenshot_tx) = setup.create_recorder(target);
+  let (mut recorder, take_screenshot_tx, screenshot_log_interceptor) =
+    setup.create_recorder(target);
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
   let shutdown = shutdown_trigger.make_shutdown();
 
-  let (simulate_screenshot_tx, mut simulate_screenshot_rx) = channel(10);
-
   let recorder_task = tokio::task::spawn(async move {
-    loop {
-      let mut local_shutdown = shutdown.clone();
-      let cancelled = local_shutdown.cancelled();
-
-      tokio::select! {
-        () = recorder.run_with_shutdown(shutdown.clone()) => {},
-        Some(()) = simulate_screenshot_rx.recv() => {
-          recorder.process(
-            log_level::INFO,
-            LogType::Replay,
-            &SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE.into(),
-            &mut vec![],
-          );
-        },
-        () = cancelled => { break; }
-      }
-    }
+    recorder.run_with_shutdown(shutdown.clone()).await;
   });
 
   take_screenshot_tx.send(()).await.unwrap();
@@ -239,13 +225,23 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
   );
 
   // Simulate a screenshot log.
-  simulate_screenshot_tx.send(()).await.unwrap();
+  screenshot_log_interceptor.process(
+    log_level::INFO,
+    LogType::Replay,
+    &SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE.into(),
+    &mut vec![],
+  );
 
   take_screenshot_tx.send(()).await.unwrap();
   take_screenshot_tx.send(()).await.unwrap();
   take_screenshot_tx.send(()).await.unwrap();
 
-  simulate_screenshot_tx.send(()).await.unwrap();
+  screenshot_log_interceptor.process(
+    log_level::INFO,
+    LogType::Replay,
+    &SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE.into(),
+    &mut vec![],
+  );
 
   100.milliseconds().sleep().await;
 

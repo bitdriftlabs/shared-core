@@ -43,6 +43,9 @@ pub trait Target {
   // `logger::log_session_screenshot` method. The target is expected to operate asynchronously,
   // as accessing the application view hierarchy requires executing on the main thread, and the
   // `take_screenshot` method is always called from a non-main thread.
+  //
+  // The recorder implementation guarantees that the consecutive `take_screenshot` method calls are
+  // not made after the previous screenshot is taken.
   fn take_screenshot(&self);
 }
 
@@ -66,25 +69,23 @@ pub struct Recorder {
   // A flag indicating whether the recorder is ready to take a screenshot. This flag ensures
   // that the recorder does not request a screenshot from the platform layer while it is still
   // processing a previously requested screenshot.
-  // The recorder uses a one-shot channel to achieve this, which sends a signal each time it
-  // intercepts a "screenshot" log. Each time a screenshot is requested, the flag is set to
-  // `false`, and it is set back to `true` when the signal is received.
+  // Each time a screenshot is requested, the flag is set to `false`, and it is set back to `true`
+  // when the screenshot log is intercepted.
   is_ready_to_take_screenshot: bool,
-  next_screenshot_tx: Option<tokio::sync::oneshot::Sender<()>>,
-  next_screenshot_rx: Option<tokio::sync::oneshot::Receiver<()>>,
+  next_screenshot_rx: Receiver<()>,
 }
 
 impl Recorder {
   pub fn new(
     target: Box<dyn Target + Send + Sync>,
     runtime_loader: &Arc<ConfigLoader>,
-  ) -> (Self, Sender<()>) {
+  ) -> (Self, Sender<()>, ScreenshotLogInterceptor) {
     // Limit the buffer size to 1 to reduce the risk of putting too much pressure on the
     // application's main thread when dequeuing the screenshot actions from the channel and
     // passing them to the platform layer, which performs the actual screenshotting on the main
     // thread.
     let (take_screenshot_tx, take_screenshot_rx) = channel(1);
-    let (next_screenshot_tx, next_screenshot_rx) = tokio::sync::oneshot::channel();
+    let (next_screenshot_tx, next_screenshot_rx) = channel(1);
 
     let mut is_periodic_reporting_enabled_flag: bd_runtime::runtime::Watch<
       bool,
@@ -115,10 +116,10 @@ impl Recorder {
         is_take_screenshots_enabled,
         take_screenshot_rx,
         is_ready_to_take_screenshot: true,
-        next_screenshot_tx: Some(next_screenshot_tx),
-        next_screenshot_rx: Some(next_screenshot_rx),
+        next_screenshot_rx,
       },
       take_screenshot_tx,
+      ScreenshotLogInterceptor { next_screenshot_tx },
     )
   }
 
@@ -186,16 +187,10 @@ impl Recorder {
           // Reset the flag to indicate that the recorder is not ready to take a screenshot until it sees
           // a log containing a screenshot that it just requested.
           self.is_ready_to_take_screenshot = false;
-
-          let (next_screenshot_tx, next_screenshot_rx) = tokio::sync::oneshot::channel::<>();
-          self.next_screenshot_tx = Some(next_screenshot_tx);
-          self.next_screenshot_rx = Some(next_screenshot_rx);
         },
-        _ = async { self.next_screenshot_rx.as_mut().unwrap().await },
-          if self.next_screenshot_rx.is_some() => {
+        _ = async { self.next_screenshot_rx.recv().await } => {
           log::debug!("session replay recorder received screenshot");
           self.is_ready_to_take_screenshot = true;
-          self.next_screenshot_rx = None;
         },
         _ = self.is_periodic_reporting_enabled_flag.changed() => {
           self.is_periodic_reporting_enabled
@@ -213,9 +208,17 @@ impl Recorder {
   }
 }
 
-impl bd_log_primitives::LogInterceptor for Recorder {
+//
+// ScreenshotLogInterceptor
+//
+
+pub struct ScreenshotLogInterceptor {
+  next_screenshot_tx: Sender<()>,
+}
+
+impl bd_log_primitives::LogInterceptor for ScreenshotLogInterceptor {
   fn process(
-    &mut self,
+    &self,
     _log_level: bd_log_primitives::LogLevel,
     log_type: bd_log_primitives::LogType,
     msg: &bd_log_primitives::LogMessage,
@@ -226,15 +229,7 @@ impl bd_log_primitives::LogInterceptor for Recorder {
       return;
     }
 
-    debug_assert!(
-      self.next_screenshot_tx.is_some(),
-      "unexpected screenshot log received"
-    );
-    let Some(next_screenshot_tx) = self.next_screenshot_tx.take() else {
-      return;
-    };
-
-    if next_screenshot_tx.send(()).is_err() {
+    if self.next_screenshot_tx.try_send(()).is_err() {
       log::debug!("failed to send ready for next screenshot signal");
     }
   }

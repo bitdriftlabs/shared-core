@@ -55,7 +55,7 @@ impl MockTimeProvider {
 #[test]
 fn network_quality() {
   let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
-  let mut interceptor = NetworkQualityInterceptor::new(network_quality_provider.clone());
+  let interceptor = NetworkQualityInterceptor::new(network_quality_provider.clone());
   {
     let mut fields = vec![];
     interceptor.process(log_level::DEBUG, LogType::Normal, &"".into(), &mut fields);
@@ -86,7 +86,7 @@ fn network_quality() {
 #[tokio::test]
 async fn collects_bandwidth_sample() {
   let time_provider = Arc::new(MockTimeProvider::default());
-  let mut tracker = HTTPTrafficDataUsageTracker::new_with_time_provider(time_provider.clone());
+  let tracker = HTTPTrafficDataUsageTracker::new_with_time_provider(time_provider.clone());
 
   // The tracker reports bandwidth usage on per minute basis.
   // Since we inform the tracker that the rate at which we ask it for fields is equal to 3 seconds,

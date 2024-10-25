@@ -157,7 +157,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
 
   replayer: R,
 
-  interceptors: Vec<Box<dyn LogInterceptor>>,
+  interceptors: Vec<Arc<dyn LogInterceptor>>,
 
   logging_state: LoggingState<bd_log_primitives::Log>,
 }
@@ -185,14 +185,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         .max_size(),
     );
 
-    let (session_replay_recorder, take_screenshot_rx) =
+    let (session_replay_recorder, take_screenshot_rx, screenshot_log_interceptor) =
       bd_session_replay::Recorder::new(session_replay_target, runtime_loader);
 
     let internal_periodic_fields_reporter =
-      Box::new(internal_report::Reporter::new(runtime_loader));
-    let bandwidth_usage_tracker = Box::new(network::HTTPTrafficDataUsageTracker::new());
+      Arc::new(internal_report::Reporter::new(runtime_loader));
+    let bandwidth_usage_tracker = Arc::new(network::HTTPTrafficDataUsageTracker::new());
     let network_quality_interceptor =
-      Box::new(NetworkQualityInterceptor::new(network_quality_provider));
+      Arc::new(NetworkQualityInterceptor::new(network_quality_provider));
 
     (
       Self {
@@ -218,6 +218,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           internal_periodic_fields_reporter,
           bandwidth_usage_tracker,
           network_quality_interceptor,
+          Arc::new(screenshot_log_interceptor),
         ],
 
         // The size of the pre-config buffer matches the size of the enclosing
