@@ -253,19 +253,19 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
 
   // Request taking a screenshot goes through successfully as the previous screenshot log was
   // received.
-  100.milliseconds().sleep().await;
+  300.milliseconds().sleep().await;
   take_screenshot_handler.take_screenshot();
 
   // Request taking a screenshot fails as only one concurrent take screenshot operation is allowed.
-  100.milliseconds().sleep().await;
+  300.milliseconds().sleep().await;
   take_screenshot_handler.take_screenshot();
 
   // Request taking a screenshot fails again as only one concurrent take screenshot operation is
   // allowed.
-  100.milliseconds().sleep().await;
+  300.milliseconds().sleep().await;
   take_screenshot_handler.take_screenshot();
 
-  100.milliseconds().sleep().await;
+  300.milliseconds().sleep().await;
   setup.collector.assert_counter_eq(
     2,
     "screenshots:requests_total",
@@ -284,7 +284,7 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
     &mut vec![],
   );
 
-  500.milliseconds().sleep().await;
+  300.milliseconds().sleep().await;
 
   // Another screenshot is taken. Other requests are ignored, as only one concurrent screenshot
   // operation is allowed.
