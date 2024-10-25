@@ -11,10 +11,10 @@ mod recorder_test;
 
 use bd_runtime::runtime::{session_replay, BoolWatch, ConfigLoader, DurationWatch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
+use bd_time::TimeDurationExt;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tokio::time::{Instant, Interval};
+use tokio::time::Interval;
 
 #[cfg(test)]
 #[ctor::ctor]
@@ -51,7 +51,7 @@ pub struct Recorder {
   target: Box<dyn Target + Send + Sync>,
 
   is_periodic_reporting_enabled: bool,
-  reporting_interval_rate: Duration,
+  reporting_interval_rate: time::Duration,
   reporting_interval: Option<Interval>,
 
   is_screenshotting_enabled: bool,
@@ -86,7 +86,7 @@ impl Recorder {
       Self {
         target,
         is_periodic_reporting_enabled: is_periodic_reporting_enabled.read_mark_update(),
-        reporting_interval_rate: reporting_interval_rate.unsigned_abs(),
+        reporting_interval_rate,
         reporting_interval: None,
         is_screenshotting_enabled: is_screenshotting_enabled_flag.read_mark_update(),
         take_screenshot_rx,
@@ -100,11 +100,11 @@ impl Recorder {
     )
   }
 
-  fn create_interval(interval: Duration, fire_immediately: bool) -> tokio::time::Interval {
+  fn create_interval(interval: time::Duration, fire_immediately: bool) -> tokio::time::Interval {
     let mut interval = if fire_immediately {
-      tokio::time::interval(interval)
+      interval.interval()
     } else {
-      tokio::time::interval_at(Instant::now() + interval, interval)
+      interval.interval_at()
     };
 
     log::debug!(
@@ -141,16 +141,14 @@ impl Recorder {
         _ = self.reporting_interval_flag.changed() => {
           self.reporting_interval = Some(
             Self::create_interval(
-              self.reporting_interval_flag.read_mark_update().unsigned_abs(),
+              self.reporting_interval_flag.read_mark_update(),
               false
             )
           );
         },
-        _ = self.take_screenshot_rx.recv() => {
-          if self.is_screenshotting_enabled {
-            log::debug!("session replay recorder taking screenshot");
-            self.target.take_screenshot();
-          }
+        _ = self.take_screenshot_rx.recv(), if self.is_screenshotting_enabled => {
+          log::debug!("session replay recorder taking screenshot");
+          self.target.take_screenshot();
         },
         _ = self.is_periodic_reporting_enabled_flag.changed() => {
           self.is_periodic_reporting_enabled
