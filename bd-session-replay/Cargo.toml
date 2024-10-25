@@ -7,6 +7,7 @@ version      = "1.0.0"
 
 [dependencies]
 anyhow.workspace         = true
+bd-client-common.path    = "../bd-client-common"
 bd-internal-logging.path = "../bd-internal-logging"
 bd-log-primitives.path   = "../bd-log-primitives"
 bd-runtime.path          = "../bd-runtime"

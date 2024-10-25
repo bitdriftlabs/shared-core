@@ -931,6 +931,7 @@ name = "bd-session-replay"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "bd-client-common",
  "bd-internal-logging",
  "bd-log-primitives",
  "bd-runtime",

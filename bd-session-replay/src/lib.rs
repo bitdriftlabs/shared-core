@@ -79,7 +79,7 @@ impl Recorder {
   pub fn new(
     target: Box<dyn Target + Send + Sync>,
     runtime_loader: &Arc<ConfigLoader>,
-  ) -> (Self, Sender<()>, ScreenshotLogInterceptor) {
+  ) -> (Self, TakeScreenshotHandler, ScreenshotLogInterceptor) {
     // Limit the buffer size to 1 to reduce the risk of putting too much pressure on the
     // application's main thread when dequeuing the screenshot actions from the channel and
     // passing them to the platform layer, which performs the actual screenshotting on the main
@@ -118,7 +118,7 @@ impl Recorder {
         is_ready_to_take_screenshot: true,
         next_screenshot_rx,
       },
-      take_screenshot_tx,
+      TakeScreenshotHandler { take_screenshot_tx },
       ScreenshotLogInterceptor { next_screenshot_tx },
     )
   }
@@ -213,6 +213,28 @@ impl Recorder {
 }
 
 //
+// TakeScreenshotHandler
+//
+
+#[derive(Clone)]
+pub struct TakeScreenshotHandler {
+  take_screenshot_tx: Sender<()>,
+}
+
+impl TakeScreenshotHandler {
+  pub fn take_screenshot(&self) {
+    // We use a channel with a capacity of one and employ `try_send` to avoid waiting for space in
+    // the channel before sending a new signal. This is especially important as the method is
+    // expected to be called on logging hot path.
+    // The channel may become full if "take screenshot" requests arrive faster than the platform
+    // layer can process them. In such cases, new requests are ignored.
+    if let Err(e) = self.take_screenshot_tx.try_send(()) {
+      log::debug!("failed to send take screenshot signal: {:?}", e);
+    }
+  }
+}
+
+//
 // ScreenshotLogInterceptor
 //
 
@@ -233,8 +255,9 @@ impl bd_log_primitives::LogInterceptor for ScreenshotLogInterceptor {
       return;
     }
 
-    if self.next_screenshot_tx.try_send(()).is_err() {
-      log::debug!("failed to send ready for next screenshot signal");
-    }
+    bd_client_common::error::handle_unexpected(
+      self.next_screenshot_tx.try_send(()),
+      "failed to send ready for next screenshot signal",
+    );
   }
 }

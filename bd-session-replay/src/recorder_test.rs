@@ -9,7 +9,13 @@
 // Setup
 //
 
-use crate::{Recorder, ScreenshotLogInterceptor, Target, SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE};
+use crate::{
+  Recorder,
+  ScreenshotLogInterceptor,
+  TakeScreenshotHandler,
+  Target,
+  SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE,
+};
 use bd_log_primitives::{log_level, LogInterceptor, LogType};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
@@ -20,7 +26,6 @@ use std::sync::Arc;
 use tempfile::TempDir;
 use time::ext::NumericalDuration;
 use time::Duration;
-use tokio::sync::mpsc::Sender;
 use tokio_test::assert_ok;
 
 struct Setup {
@@ -41,7 +46,7 @@ impl Setup {
   fn create_recorder(
     &self,
     target: Box<dyn Target + Send + Sync>,
-  ) -> (Recorder, Sender<()>, ScreenshotLogInterceptor) {
+  ) -> (Recorder, TakeScreenshotHandler, ScreenshotLogInterceptor) {
     Recorder::new(target, &self.runtime)
   }
 
@@ -150,7 +155,7 @@ async fn taking_screenshots_is_wired_up() {
 
   let target = Box::<MockTarget>::default();
   let take_screenshot_count = target.take_screenshot_count.clone();
-  let (mut recorder, take_screenshot_tx, _) = setup.create_recorder(target);
+  let (mut recorder, take_screenshot_handler, _) = setup.create_recorder(target);
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
   let shutdown = shutdown_trigger.make_shutdown();
@@ -159,7 +164,7 @@ async fn taking_screenshots_is_wired_up() {
     () = recorder.run_with_shutdown(shutdown).await;
   });
 
-  take_screenshot_tx.send(()).await.unwrap();
+  take_screenshot_handler.take_screenshot();
 
   100.milliseconds().sleep().await;
 
@@ -176,7 +181,7 @@ async fn taking_screenshots_is_wired_up() {
 
   100.milliseconds().sleep().await;
 
-  take_screenshot_tx.send(()).await.unwrap();
+  take_screenshot_handler.take_screenshot();
 
   100.milliseconds().sleep().await;
 
@@ -201,7 +206,7 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
 
   let target = Box::<MockTarget>::default();
   let take_screenshot_count = target.take_screenshot_count.clone();
-  let (mut recorder, take_screenshot_tx, screenshot_log_interceptor) =
+  let (mut recorder, take_screenshot_handler, screenshot_log_interceptor) =
     setup.create_recorder(target);
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
@@ -211,9 +216,9 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
     recorder.run_with_shutdown(shutdown.clone()).await;
   });
 
-  take_screenshot_tx.send(()).await.unwrap();
-  take_screenshot_tx.send(()).await.unwrap();
-  take_screenshot_tx.send(()).await.unwrap();
+  take_screenshot_handler.take_screenshot();
+  take_screenshot_handler.take_screenshot();
+  take_screenshot_handler.take_screenshot();
 
   100.milliseconds().sleep().await;
 
@@ -232,9 +237,11 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
     &mut vec![],
   );
 
-  take_screenshot_tx.send(()).await.unwrap();
-  take_screenshot_tx.send(()).await.unwrap();
-  take_screenshot_tx.send(()).await.unwrap();
+  100.milliseconds().sleep().await;
+
+  take_screenshot_handler.take_screenshot();
+  take_screenshot_handler.take_screenshot();
+  take_screenshot_handler.take_screenshot();
 
   screenshot_log_interceptor.process(
     log_level::INFO,

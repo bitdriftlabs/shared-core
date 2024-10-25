@@ -18,6 +18,7 @@ use bd_log_filter::FilterChain;
 use bd_log_primitives::{log_level, LogLevel};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::ConfigLoader;
+use bd_session_replay::TakeScreenshotHandler;
 use bd_stats_common::labels;
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::WorkflowsEngine;
@@ -143,14 +144,14 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
   pub(crate) async fn updated(
     self,
     config: ConfigUpdate,
-    take_screenshot_tx: Sender<()>,
+    take_screenshot_handler: TakeScreenshotHandler,
   ) -> (InitializedLoggingContext, PreConfigBuffer<T>) {
     let processing_pipeline = ProcessingPipeline::new(
       self.data_upload_tx,
       self.flush_buffers_tx,
       self.flush_stats_trigger,
       self.trigger_upload_tx,
-      take_screenshot_tx,
+      take_screenshot_handler,
       config,
       self.sdk_directory.clone(),
       self.runtime,
