@@ -255,7 +255,7 @@ impl ProcessingPipeline {
       }
 
       if result.take_screenshot {
-        if let Err(e) = self.take_screenshot_tx.send(()).await {
+        if let Err(e) = self.take_screenshot_tx.try_send(()) {
           log::debug!("failed to send take screenshot signal: {e}");
         }
       }

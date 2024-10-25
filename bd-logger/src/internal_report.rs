@@ -5,9 +5,15 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::async_log_buffer::LogInterceptor;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
-use bd_log_primitives::{AnnotatedLogField, LogField, LogLevel, LogMessage, LogType};
+use bd_log_primitives::{
+  AnnotatedLogField,
+  LogField,
+  LogInterceptor,
+  LogLevel,
+  LogMessage,
+  LogType,
+};
 use bd_runtime::runtime::{debugging, BoolWatch, ConfigLoader};
 
 //
@@ -32,7 +38,7 @@ impl Reporter {
 
 impl LogInterceptor for Reporter {
   fn process(
-    &self,
+    &mut self,
     _log_level: LogLevel,
     log_type: LogType,
     msg: &LogMessage,

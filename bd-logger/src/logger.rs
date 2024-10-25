@@ -25,6 +25,7 @@ use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
 use bd_log_primitives::{log_level, AnnotatedLogField, LogField, LogLevel, LogMessage};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::Snapshot;
+use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_shutdown::ComponentShutdownTrigger;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -184,7 +185,7 @@ impl LoggerHandle {
     fields: AnnotatedLogFields,
     duration: time::Duration,
   ) {
-    self.log_session_replay("Screenshot captured", fields, duration);
+    self.log_session_replay(SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE, fields, duration);
   }
 
   fn log_session_replay(

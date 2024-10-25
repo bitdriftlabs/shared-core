@@ -8,11 +8,11 @@
 #[cfg(test)]
 #[path = "./network_test.rs"]
 mod network_test;
-use crate::async_log_buffer::LogInterceptor;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
 use bd_log_primitives::{
   AnnotatedLogField,
   LogField,
+  LogInterceptor,
   LogLevel,
   LogMessage,
   LogType,
@@ -138,7 +138,7 @@ impl HTTPTrafficDataUsageTracker {
 #[allow(clippy::cognitive_complexity)]
 impl LogInterceptor for HTTPTrafficDataUsageTracker {
   fn process(
-    &self,
+    &mut self,
     _log_level: LogLevel,
     log_type: LogType,
     msg: &LogMessage,
@@ -339,7 +339,7 @@ impl NetworkQualityInterceptor {
 
 impl LogInterceptor for NetworkQualityInterceptor {
   fn process(
-    &self,
+    &mut self,
     _log_level: LogLevel,
     log_type: LogType,
     _msg: &LogMessage,

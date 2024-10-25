@@ -6,7 +6,6 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{NetworkQualityInterceptor, TimeProvider};
-use crate::async_log_buffer::LogInterceptor;
 use crate::network::HTTPTrafficDataUsageTracker;
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_log_metadata::AnnotatedLogFields;
@@ -15,6 +14,7 @@ use bd_log_primitives::{
   AnnotatedLogField,
   LogField,
   LogFieldKind,
+  LogInterceptor,
   LogMessage,
   LogType,
   StringOrBytes,
@@ -55,7 +55,7 @@ impl MockTimeProvider {
 #[test]
 fn network_quality() {
   let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
-  let interceptor = NetworkQualityInterceptor::new(network_quality_provider.clone());
+  let mut interceptor = NetworkQualityInterceptor::new(network_quality_provider.clone());
   {
     let mut fields = vec![];
     interceptor.process(log_level::DEBUG, LogType::Normal, &"".into(), &mut fields);
@@ -86,7 +86,7 @@ fn network_quality() {
 #[tokio::test]
 async fn collects_bandwidth_sample() {
   let time_provider = Arc::new(MockTimeProvider::default());
-  let tracker = HTTPTrafficDataUsageTracker::new_with_time_provider(time_provider.clone());
+  let mut tracker = HTTPTrafficDataUsageTracker::new_with_time_provider(time_provider.clone());
 
   // The tracker reports bandwidth usage on per minute basis.
   // Since we inform the tracker that the rate at which we ask it for fields is equal to 3 seconds,

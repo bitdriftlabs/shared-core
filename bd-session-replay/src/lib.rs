@@ -9,12 +9,15 @@
 #[path = "./recorder_test.rs"]
 mod recorder_test;
 
+use bd_log_primitives::LogType;
 use bd_runtime::runtime::{session_replay, BoolWatch, ConfigLoader, DurationWatch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_time::TimeDurationExt;
 use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::Interval;
+
+pub const SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE: &str = "Screenshot captured";
 
 #[cfg(test)]
 #[ctor::ctor]
@@ -59,6 +62,16 @@ pub struct Recorder {
   is_take_screenshots_enabled_flag: BoolWatch<session_replay::ScreenshotsEnabledFlag>,
   is_take_screenshots_enabled: bool,
   take_screenshot_rx: Receiver<()>,
+
+  // A flag indicating whether the recorder is ready to take a screenshot. This flag ensures
+  // that the recorder does not request a screenshot from the platform layer while it is still
+  // processing a previously requested screenshot.
+  // The recorder uses a one-shot channel to achieve this, which sends a signal each time it
+  // intercepts a "screenshot" log. Each time a screenshot is requested, the flag is set to
+  // `false`, and it is set back to `true` when the signal is received.
+  is_ready_to_take_screenshot: bool,
+  next_screenshot_tx: Option<tokio::sync::oneshot::Sender<()>>,
+  next_screenshot_rx: Option<tokio::sync::oneshot::Receiver<()>>,
 }
 
 impl Recorder {
@@ -71,6 +84,7 @@ impl Recorder {
     // passing them to the platform layer, which performs the actual screenshotting on the main
     // thread.
     let (take_screenshot_tx, take_screenshot_rx) = channel(1);
+    let (next_screenshot_tx, next_screenshot_rx) = tokio::sync::oneshot::channel();
 
     let mut is_periodic_reporting_enabled_flag: bd_runtime::runtime::Watch<
       bool,
@@ -100,6 +114,9 @@ impl Recorder {
         is_take_screenshots_enabled_flag,
         is_take_screenshots_enabled,
         take_screenshot_rx,
+        is_ready_to_take_screenshot: true,
+        next_screenshot_tx: Some(next_screenshot_tx),
+        next_screenshot_rx: Some(next_screenshot_rx),
       },
       take_screenshot_tx,
     )
@@ -151,9 +168,34 @@ impl Recorder {
             )
           );
         },
-        _ = self.take_screenshot_rx.recv(), if self.is_take_screenshots_enabled => {
+        _ = self.take_screenshot_rx.recv() => {
+          if !self.is_take_screenshots_enabled {
+            log::debug!("session replay recorder ignored screenshot: taking screenshots is disabled");
+            continue;
+          }
+
+          if !self.is_ready_to_take_screenshot {
+            log::debug!("session replay recorder ignored screenshot: not ready to take screenshot");
+            continue;
+          }
+
           log::debug!("session replay recorder taking screenshot");
+
           self.target.take_screenshot();
+
+          // Reset the flag to indicate that the recorder is not ready to take a screenshot until it sees
+          // a log containing a screenshot that it just requested.
+          self.is_ready_to_take_screenshot = false;
+
+          let (next_screenshot_tx, next_screenshot_rx) = tokio::sync::oneshot::channel::<>();
+          self.next_screenshot_tx = Some(next_screenshot_tx);
+          self.next_screenshot_rx = Some(next_screenshot_rx);
+        },
+        _ = async { self.next_screenshot_rx.as_mut().unwrap().await },
+          if self.next_screenshot_rx.is_some() => {
+          log::debug!("session replay recorder received screenshot");
+          self.is_ready_to_take_screenshot = true;
+          self.next_screenshot_rx = None;
         },
         _ = self.is_periodic_reporting_enabled_flag.changed() => {
           self.is_periodic_reporting_enabled
@@ -167,6 +209,33 @@ impl Recorder {
           return;
         },
       }
+    }
+  }
+}
+
+impl bd_log_primitives::LogInterceptor for Recorder {
+  fn process(
+    &mut self,
+    _log_level: bd_log_primitives::LogLevel,
+    log_type: bd_log_primitives::LogType,
+    msg: &bd_log_primitives::LogMessage,
+    _fields: &mut bd_log_primitives::AnnotatedLogFields,
+  ) {
+    if !(log_type == LogType::Replay && msg.as_str() == Some(SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE))
+    {
+      return;
+    }
+
+    debug_assert!(
+      self.next_screenshot_tx.is_some(),
+      "unexpected screenshot log received"
+    );
+    let Some(next_screenshot_tx) = self.next_screenshot_tx.take() else {
+      return;
+    };
+
+    if next_screenshot_tx.send(()).is_err() {
+      log::debug!("failed to send ready for next screenshot signal");
     }
   }
 }

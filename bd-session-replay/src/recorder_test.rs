@@ -9,7 +9,8 @@
 // Setup
 //
 
-use crate::{Recorder, Target};
+use crate::{Recorder, Target, SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE};
+use bd_log_primitives::{log_level, LogInterceptor, LogType};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
@@ -19,7 +20,7 @@ use std::sync::Arc;
 use tempfile::TempDir;
 use time::ext::NumericalDuration;
 use time::Duration;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{channel, Sender};
 use tokio_test::assert_ok;
 
 struct Setup {
@@ -141,19 +142,18 @@ async fn does_not_report_if_there_are_no_fields() {
 }
 
 #[tokio::test]
-async fn taking_screenshots_is_wired() {
+async fn taking_screenshots_is_wired_up() {
   let setup = Setup::new();
-  setup.update_reporting_interval(10.milliseconds());
 
   let target = Box::<MockTarget>::default();
   let take_screenshot_count = target.take_screenshot_count.clone();
-  let (mut reporter, take_screenshot_tx) = setup.create_recorder(target);
+  let (mut recorder, take_screenshot_tx) = setup.create_recorder(target);
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
   let shutdown = shutdown_trigger.make_shutdown();
 
-  let reporter_task = tokio::task::spawn(async move {
-    () = reporter.run_with_shutdown(shutdown).await;
+  let recorder_task = tokio::task::spawn(async move {
+    () = recorder.run_with_shutdown(shutdown).await;
   });
 
   take_screenshot_tx.send(()).await.unwrap();
@@ -178,11 +178,84 @@ async fn taking_screenshots_is_wired() {
   100.milliseconds().sleep().await;
 
   shutdown_trigger.shutdown().await;
-  assert_ok!(reporter_task.await);
+  assert_ok!(recorder_task.await);
 
   // Screenshot taken.
   assert_eq!(
     1,
     take_screenshot_count.load(std::sync::atomic::Ordering::Relaxed)
   );
+}
+
+#[tokio::test]
+async fn limits_the_number_of_concurrent_screenshots_to_one() {
+  let setup = Setup::new();
+
+  setup.runtime.update_snapshot(&make_simple_update(vec![(
+    bd_runtime::runtime::session_replay::ScreenshotsEnabledFlag::path(),
+    ValueKind::Bool(true),
+  )]));
+
+  let target = Box::<MockTarget>::default();
+  let take_screenshot_count = target.take_screenshot_count.clone();
+  let (mut recorder, take_screenshot_tx) = setup.create_recorder(target);
+
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let shutdown = shutdown_trigger.make_shutdown();
+
+  let (simulate_screenshot_tx, mut simulate_screenshot_rx) = channel(10);
+
+  let recorder_task = tokio::task::spawn(async move {
+    loop {
+      let mut local_shutdown = shutdown.clone();
+      let cancelled = local_shutdown.cancelled();
+
+      tokio::select! {
+        () = recorder.run_with_shutdown(shutdown.clone()) => {},
+        Some(()) = simulate_screenshot_rx.recv() => {
+          recorder.process(
+            log_level::INFO,
+            LogType::Replay,
+            &SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE.into(),
+            &mut vec![],
+          );
+        },
+        () = cancelled => { break; }
+      }
+    }
+  });
+
+  take_screenshot_tx.send(()).await.unwrap();
+  take_screenshot_tx.send(()).await.unwrap();
+  take_screenshot_tx.send(()).await.unwrap();
+
+  100.milliseconds().sleep().await;
+
+  // One screenshot is taken. Other requests are ignored, as only one concurrent screenshot
+  // operation is allowed.
+  assert_eq!(
+    1,
+    take_screenshot_count.load(std::sync::atomic::Ordering::Relaxed)
+  );
+
+  // Simulate a screenshot log.
+  simulate_screenshot_tx.send(()).await.unwrap();
+
+  take_screenshot_tx.send(()).await.unwrap();
+  take_screenshot_tx.send(()).await.unwrap();
+  take_screenshot_tx.send(()).await.unwrap();
+
+  simulate_screenshot_tx.send(()).await.unwrap();
+
+  100.milliseconds().sleep().await;
+
+  // Another screenshot is taken. Other requests are ignored, as only one concurrent screenshot
+  // operation is allowed.
+  assert_eq!(
+    2,
+    take_screenshot_count.load(std::sync::atomic::Ordering::Relaxed)
+  );
+
+  shutdown_trigger.shutdown().await;
+  assert_ok!(recorder_task.await);
 }

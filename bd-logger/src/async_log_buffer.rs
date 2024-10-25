@@ -20,7 +20,16 @@ use crate::{internal_report, network};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_log_metadata::{AnnotatedLogFields, MetadataProvider};
-use bd_log_primitives::{log_level, Log, LogField, LogFieldValue, LogFields, LogLevel, LogMessage};
+use bd_log_primitives::{
+  log_level,
+  Log,
+  LogField,
+  LogFieldValue,
+  LogFields,
+  LogInterceptor,
+  LogLevel,
+  LogMessage,
+};
 use bd_network_quality::NetworkQualityProvider;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::ConfigLoader;
@@ -125,20 +134,6 @@ impl MemorySized for bd_log_primitives::Log {
   }
 }
 
-//
-// LogInterceptor
-//
-
-pub(crate) trait LogInterceptor: Send + Sync {
-  fn process(
-    &self,
-    log_level: LogLevel,
-    log_type: LogType,
-    msg: &LogMessage,
-    fields: &mut AnnotatedLogFields,
-  );
-}
-
 
 //
 // AsyncLogBuffer
@@ -162,7 +157,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
 
   replayer: R,
 
-  interceptors: Vec<Arc<dyn LogInterceptor>>,
+  interceptors: Vec<Box<dyn LogInterceptor>>,
 
   logging_state: LoggingState<bd_log_primitives::Log>,
 }
@@ -194,10 +189,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       bd_session_replay::Recorder::new(session_replay_target, runtime_loader);
 
     let internal_periodic_fields_reporter =
-      Arc::new(internal_report::Reporter::new(runtime_loader));
-    let bandwidth_usage_tracker = Arc::new(network::HTTPTrafficDataUsageTracker::new());
+      Box::new(internal_report::Reporter::new(runtime_loader));
+    let bandwidth_usage_tracker = Box::new(network::HTTPTrafficDataUsageTracker::new());
     let network_quality_interceptor =
-      Arc::new(NetworkQualityInterceptor::new(network_quality_provider));
+      Box::new(NetworkQualityInterceptor::new(network_quality_provider));
 
     (
       Self {
@@ -584,7 +579,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         Some(async_log_buffer_message) = self.communication_rx.recv() => {
           match async_log_buffer_message {
             AsyncLogBufferMessage::EmitLog(mut log) => {
-              for interceptor in &self.interceptors {
+              for interceptor in &mut self.interceptors {
                 interceptor.process(
                   log.log_level,
                   log.log_type,
