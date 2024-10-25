@@ -159,6 +159,10 @@ impl Recorder {
         () = async { self.reporting_interval.as_mut().unwrap().tick().await; },
           if self.reporting_interval.is_some() && self.is_periodic_reporting_enabled => {
           log::debug!("session replay recorder capturing wireframe");
+          // We capture a wireframe once per 3s so backlogging shouldn't be a problem here (since taking
+          // a screenshot takes not more than ~tens of ms).
+          // TODO(Augustyniak): Consider changing the implementation so that we do not ask platform layer
+          // for more wireframes until we receive the previous one.
           self.target.capture_wireframe();
         },
         _ = self.reporting_interval_rate_flag.changed() => {
