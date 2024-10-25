@@ -184,8 +184,8 @@ impl Recorder {
 
           self.target.take_screenshot();
 
-          // Reset the flag to indicate that the recorder is not ready to take a screenshot until it sees
-          // a log containing a screenshot that it just requested.
+          // Reset the flag to indicate that the recorder is not ready to take a screenshot until
+          // `ScreenshotLogInterceptor` intercepts a log containing a screenshot that was just requested.
           self.is_ready_to_take_screenshot = false;
         },
         _ = async { self.next_screenshot_rx.recv().await } => {
