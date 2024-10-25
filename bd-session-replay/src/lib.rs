@@ -54,12 +54,12 @@ pub struct Recorder {
   reporting_interval_rate: time::Duration,
   reporting_interval: Option<Interval>,
 
-  is_screenshotting_enabled: bool,
+  is_take_screenshots_enabled: bool,
   take_screenshot_rx: Receiver<()>,
 
   is_periodic_reporting_enabled_flag: BoolWatch<session_replay::PeriodicWireframesEnabledFlag>,
   reporting_interval_flag: DurationWatch<session_replay::ReportingIntervalFlag>,
-  is_screenshotting_enabled_flag: BoolWatch<session_replay::ScreenshotsEnabledFlag>,
+  is_take_screenshots_enabled_flag: BoolWatch<session_replay::ScreenshotsEnabledFlag>,
 }
 
 impl Recorder {
@@ -79,7 +79,7 @@ impl Recorder {
       .unwrap()
       .read_mark_update();
 
-    let mut is_screenshotting_enabled_flag =
+    let mut is_take_screenshots_enabled_flag =
       session_replay::ScreenshotsEnabledFlag::register(runtime_loader).unwrap();
 
     (
@@ -88,13 +88,13 @@ impl Recorder {
         is_periodic_reporting_enabled: is_periodic_reporting_enabled.read_mark_update(),
         reporting_interval_rate,
         reporting_interval: None,
-        is_screenshotting_enabled: is_screenshotting_enabled_flag.read_mark_update(),
+        is_take_screenshots_enabled: is_take_screenshots_enabled_flag.read_mark_update(),
         take_screenshot_rx,
         is_periodic_reporting_enabled_flag:
           session_replay::PeriodicWireframesEnabledFlag::register(runtime_loader).unwrap(),
         reporting_interval_flag: session_replay::ReportingIntervalFlag::register(runtime_loader)
           .unwrap(),
-        is_screenshotting_enabled_flag,
+        is_take_screenshots_enabled_flag,
       },
       take_screenshot_tx,
     )
@@ -146,7 +146,7 @@ impl Recorder {
             )
           );
         },
-        _ = self.take_screenshot_rx.recv(), if self.is_screenshotting_enabled => {
+        _ = self.take_screenshot_rx.recv(), if self.is_take_screenshots_enabled => {
           log::debug!("session replay recorder taking screenshot");
           self.target.take_screenshot();
         },
@@ -154,9 +154,9 @@ impl Recorder {
           self.is_periodic_reporting_enabled
             = self.is_periodic_reporting_enabled_flag.read_mark_update();
         },
-        _ = self.is_screenshotting_enabled_flag.changed() => {
-          self.is_screenshotting_enabled
-            = self.is_screenshotting_enabled_flag.read_mark_update();
+        _ = self.is_take_screenshots_enabled_flag.changed() => {
+          self.is_take_screenshots_enabled
+            = self.is_take_screenshots_enabled_flag.read_mark_update();
         },
         () = &mut local_shutdown => {
           return;
