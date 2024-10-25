@@ -16,9 +16,12 @@ use crate::{
   Target,
   SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE,
 };
+use bd_client_stats_store::test::StatsHelper;
+use bd_client_stats_store::Collector;
 use bd_log_primitives::{log_level, LogInterceptor, LogType};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
+use bd_stats_common::labels;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use bd_time::TimeDurationExt;
 use std::sync::atomic::AtomicUsize;
@@ -31,6 +34,7 @@ use tokio_test::assert_ok;
 struct Setup {
   _directory: Arc<TempDir>,
   runtime: Arc<ConfigLoader>,
+  collector: Collector,
 }
 
 impl Setup {
@@ -40,6 +44,7 @@ impl Setup {
     Self {
       _directory: directory,
       runtime,
+      collector: Collector::default(),
     }
   }
 
@@ -47,7 +52,7 @@ impl Setup {
     &self,
     target: Box<dyn Target + Send + Sync>,
   ) -> (Recorder, TakeScreenshotHandler, ScreenshotLogInterceptor) {
-    Recorder::new(target, &self.runtime)
+    Recorder::new(target, &self.runtime, &self.collector.scope(""))
   }
 
   fn update_reporting_interval(&self, interval: Duration) {
@@ -220,6 +225,12 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
   take_screenshot_handler.take_screenshot();
   take_screenshot_handler.take_screenshot();
 
+  setup.collector.assert_counter_eq(
+    2,
+    "screenshots:requests_total",
+    labels!("type" => "channel_full"),
+  );
+
   100.milliseconds().sleep().await;
 
   // One screenshot is taken. Other requests are ignored, as only one concurrent screenshot
@@ -243,6 +254,12 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
   take_screenshot_handler.take_screenshot();
   take_screenshot_handler.take_screenshot();
 
+  setup.collector.assert_counter_eq(
+    4,
+    "screenshots:requests_total",
+    labels!("type" => "channel_full"),
+  );
+
   screenshot_log_interceptor.process(
     log_level::INFO,
     LogType::Replay,
@@ -257,6 +274,12 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
   assert_eq!(
     2,
     take_screenshot_count.load(std::sync::atomic::Ordering::Relaxed)
+  );
+
+  setup.collector.assert_counter_eq(
+    2,
+    "screenshots:requests_total",
+    labels!("type" => "success"),
   );
 
   shutdown_trigger.shutdown().await;

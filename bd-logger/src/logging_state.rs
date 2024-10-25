@@ -203,7 +203,7 @@ impl InitializedLoggingContext {
 
 pub(crate) struct UninitializedLoggingContextStats {
   pub(crate) pre_config_log_buffer: pre_config_buffer::PushCounters,
-  scope: Scope,
+  pub(crate) scope: Scope,
   root_scope: Scope,
   dynamic_stats: Arc<DynamicStats>,
 }

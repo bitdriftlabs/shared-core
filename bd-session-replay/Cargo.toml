@@ -6,18 +6,20 @@ publish      = false
 version      = "1.0.0"
 
 [dependencies]
-anyhow.workspace         = true
-bd-client-common.path    = "../bd-client-common"
-bd-internal-logging.path = "../bd-internal-logging"
-bd-log-primitives.path   = "../bd-log-primitives"
-bd-runtime.path          = "../bd-runtime"
-bd-shutdown.path         = "../bd-shutdown"
-bd-time.path             = "../bd-time"
-ctor.workspace           = true
-log.workspace            = true
-parking_lot.workspace    = true
-time.workspace           = true
-tokio.workspace          = true
+anyhow.workspace           = true
+bd-client-common.path      = "../bd-client-common"
+bd-client-stats-store.path = "../bd-client-stats-store"
+bd-internal-logging.path   = "../bd-internal-logging"
+bd-log-primitives.path     = "../bd-log-primitives"
+bd-runtime.path            = "../bd-runtime"
+bd-shutdown.path           = "../bd-shutdown"
+bd-stats-common.path       = "../bd-stats-common"
+bd-time.path               = "../bd-time"
+ctor.workspace             = true
+log.workspace              = true
+parking_lot.workspace      = true
+time.workspace             = true
+tokio.workspace            = true
 
 [dev-dependencies]
 bd-test-helpers.path  = "../bd-test-helpers"

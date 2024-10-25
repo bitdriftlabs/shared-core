@@ -932,10 +932,12 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "bd-client-common",
+ "bd-client-stats-store",
  "bd-internal-logging",
  "bd-log-primitives",
  "bd-runtime",
  "bd-shutdown",
+ "bd-stats-common",
  "bd-test-helpers",
  "bd-time",
  "ctor",

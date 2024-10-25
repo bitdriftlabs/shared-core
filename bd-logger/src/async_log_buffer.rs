@@ -190,7 +190,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       session_replay_recorder,
       session_replay_take_screenshot_handler,
       screenshot_log_interceptor,
-    ) = bd_session_replay::Recorder::new(session_replay_target, runtime_loader);
+    ) = bd_session_replay::Recorder::new(
+      session_replay_target,
+      runtime_loader,
+      &uninitialized_logging_context.stats.scope,
+    );
 
     let internal_periodic_fields_reporter =
       Arc::new(internal_report::Reporter::new(runtime_loader));

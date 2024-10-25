@@ -9,9 +9,11 @@
 #[path = "./recorder_test.rs"]
 mod recorder_test;
 
+use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::LogType;
 use bd_runtime::runtime::{session_replay, BoolWatch, ConfigLoader, DurationWatch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
+use bd_stats_common::labels;
 use bd_time::TimeDurationExt;
 use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
@@ -73,12 +75,15 @@ pub struct Recorder {
   // when the screenshot log is intercepted.
   is_ready_to_take_screenshot: bool,
   next_screenshot_rx: Receiver<()>,
+
+  stats: Stats,
 }
 
 impl Recorder {
   pub fn new(
     target: Box<dyn Target + Send + Sync>,
     runtime_loader: &Arc<ConfigLoader>,
+    scope: &Scope,
   ) -> (Self, TakeScreenshotHandler, ScreenshotLogInterceptor) {
     // Limit the buffer size to 1 to reduce the risk of putting too much pressure on the
     // application's main thread when dequeuing the screenshot actions from the channel and
@@ -101,6 +106,13 @@ impl Recorder {
       session_replay::ScreenshotsEnabledFlag::register(runtime_loader).unwrap();
     let is_take_screenshots_enabled = is_take_screenshots_enabled_flag.read_mark_update();
 
+    let stats = Stats::new(scope);
+
+    let take_screenshot_handler = TakeScreenshotHandler {
+      take_screenshot_tx,
+      channel_full: stats.channel_full.clone(),
+    };
+
     (
       Self {
         target,
@@ -117,8 +129,9 @@ impl Recorder {
         take_screenshot_rx,
         is_ready_to_take_screenshot: true,
         next_screenshot_rx,
+        stats,
       },
-      TakeScreenshotHandler { take_screenshot_tx },
+      take_screenshot_handler,
       ScreenshotLogInterceptor { next_screenshot_tx },
     )
   }
@@ -175,17 +188,20 @@ impl Recorder {
         },
         _ = self.take_screenshot_rx.recv() => {
           if !self.is_take_screenshots_enabled {
+            self.stats.disabled.inc();
             log::debug!("session replay recorder ignored screenshot: taking screenshots is disabled");
             continue;
           }
 
           if !self.is_ready_to_take_screenshot {
+            self.stats.not_ready.inc();
             log::debug!("session replay recorder ignored screenshot: not ready to take screenshot");
             continue;
           }
 
           log::debug!("session replay recorder taking screenshot");
 
+          self.stats.success.inc();
           self.target.take_screenshot();
 
           // Reset the flag to indicate that the recorder is not ready to take a screenshot until
@@ -213,12 +229,37 @@ impl Recorder {
 }
 
 //
+// Stats
+//
+
+#[allow(clippy::struct_field_names)]
+struct Stats {
+  success: Counter,
+  channel_full: Counter,
+  disabled: Counter,
+  not_ready: Counter,
+}
+
+impl Stats {
+  fn new(scope: &Scope) -> Self {
+    let scope = scope.scope("screenshots");
+    Self {
+      success: scope.counter_with_labels("requests_total", labels!("type" => "success")),
+      channel_full: scope.counter_with_labels("requests_total", labels!("type" => "channel_full")),
+      disabled: scope.counter_with_labels("requests_total", labels!("type" => "disabled")),
+      not_ready: scope.counter_with_labels("requests_total", labels!("type" => "not_ready")),
+    }
+  }
+}
+
+//
 // TakeScreenshotHandler
 //
 
 #[derive(Clone)]
 pub struct TakeScreenshotHandler {
   take_screenshot_tx: Sender<()>,
+  channel_full: Counter,
 }
 
 impl TakeScreenshotHandler {
@@ -229,6 +270,7 @@ impl TakeScreenshotHandler {
     // The channel may become full if "take screenshot" requests arrive faster than the platform
     // layer can process them. In such cases, new requests are ignored.
     if let Err(e) = self.take_screenshot_tx.try_send(()) {
+      self.channel_full.inc();
       log::debug!("failed to send take screenshot signal: {:?}", e);
     }
   }
