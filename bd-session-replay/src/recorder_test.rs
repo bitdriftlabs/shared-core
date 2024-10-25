@@ -221,7 +221,10 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
     recorder.run_with_shutdown(shutdown.clone()).await;
   });
 
+  // First request to take a screenshot goes through successfully.
   take_screenshot_handler.take_screenshot();
+  // The next two requests fail because the channel is full, as we did not allow the recorder to
+  // process signals from the channel.
   take_screenshot_handler.take_screenshot();
   take_screenshot_handler.take_screenshot();
 
@@ -248,16 +251,30 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
     &mut vec![],
   );
 
+  // Request taking a screenshot goes through successfully as the previous screenshot log was
+  // received.
   100.milliseconds().sleep().await;
-
-  take_screenshot_handler.take_screenshot();
-  take_screenshot_handler.take_screenshot();
   take_screenshot_handler.take_screenshot();
 
+  // Request taking a screenshot fails as only one concurrent take screenshot operation is allowed.
+  100.milliseconds().sleep().await;
+  take_screenshot_handler.take_screenshot();
+
+  // Request taking a screenshot fails again as only one concurrent take screenshot operation is
+  // allowed.
+  100.milliseconds().sleep().await;
+  take_screenshot_handler.take_screenshot();
+
+  100.milliseconds().sleep().await;
   setup.collector.assert_counter_eq(
-    4,
+    2,
     "screenshots:requests_total",
     labels!("type" => "channel_full"),
+  );
+  setup.collector.assert_counter_eq(
+    2,
+    "screenshots:requests_total",
+    labels!("type" => "not_ready"),
   );
 
   screenshot_log_interceptor.process(
@@ -267,7 +284,7 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
     &mut vec![],
   );
 
-  100.milliseconds().sleep().await;
+  500.milliseconds().sleep().await;
 
   // Another screenshot is taken. Other requests are ignored, as only one concurrent screenshot
   // operation is allowed.
@@ -281,6 +298,9 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
     "screenshots:requests_total",
     labels!("type" => "success"),
   );
+  setup
+    .collector
+    .assert_counter_eq(2, "screenshots:received_total", labels!());
 
   shutdown_trigger.shutdown().await;
   assert_ok!(recorder_task.await);

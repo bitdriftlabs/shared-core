@@ -113,6 +113,11 @@ impl Recorder {
       channel_full: stats.channel_full.clone(),
     };
 
+    let screenshot_log_interceptor = ScreenshotLogInterceptor {
+      next_screenshot_tx,
+      received: stats.received.clone(),
+    };
+
     (
       Self {
         target,
@@ -132,7 +137,7 @@ impl Recorder {
         stats,
       },
       take_screenshot_handler,
-      ScreenshotLogInterceptor { next_screenshot_tx },
+      screenshot_log_interceptor,
     )
   }
 
@@ -238,6 +243,7 @@ struct Stats {
   channel_full: Counter,
   disabled: Counter,
   not_ready: Counter,
+  received: Counter,
 }
 
 impl Stats {
@@ -248,6 +254,7 @@ impl Stats {
       channel_full: scope.counter_with_labels("requests_total", labels!("type" => "channel_full")),
       disabled: scope.counter_with_labels("requests_total", labels!("type" => "disabled")),
       not_ready: scope.counter_with_labels("requests_total", labels!("type" => "not_ready")),
+      received: scope.counter("received_total"),
     }
   }
 }
@@ -282,6 +289,7 @@ impl TakeScreenshotHandler {
 
 pub struct ScreenshotLogInterceptor {
   next_screenshot_tx: Sender<()>,
+  received: Counter,
 }
 
 impl bd_log_primitives::LogInterceptor for ScreenshotLogInterceptor {
@@ -296,6 +304,8 @@ impl bd_log_primitives::LogInterceptor for ScreenshotLogInterceptor {
     {
       return;
     }
+
+    self.received.inc();
 
     bd_client_common::error::handle_unexpected(
       self.next_screenshot_tx.try_send(()),
