@@ -256,7 +256,9 @@ impl ProcessingPipeline {
         );
       }
 
-      self.take_screenshot_handler.take_screenshot();
+      if result.take_screenshot {
+        self.take_screenshot_handler.take_screenshot();
+      }
 
       Self::write_to_buffers(
         &mut self.buffer_producers,

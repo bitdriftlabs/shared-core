@@ -785,6 +785,23 @@ mod tests {
     ));
     assert!(maybe_nack.is_none());
 
+    // Emit a log that should not result in taking a screenshot.
+    setup.blocking_log(
+      log_level::DEBUG,
+      LogType::Normal,
+      "bar".into(),
+      vec![],
+      vec![],
+    );
+    std::thread::sleep(100.std_milliseconds());
+    assert_eq!(
+      0,
+      setup
+        .take_screenshot_count
+        .load(std::sync::atomic::Ordering::Relaxed)
+    );
+
+    // Emit a log that should result in taking a screenshot.
     setup.blocking_log(
       log_level::DEBUG,
       LogType::Normal,
@@ -792,8 +809,13 @@ mod tests {
       vec![],
       vec![],
     );
-
     std::thread::sleep(100.std_milliseconds());
+    assert_eq!(
+      1,
+      setup
+        .take_screenshot_count
+        .load(std::sync::atomic::Ordering::Relaxed)
+    );
 
     // Simulate a capture of a screenshot.
     setup.blocking_log(
@@ -804,6 +826,7 @@ mod tests {
       vec![],
     );
 
+    // Emit a log that should result in taking a screenshot.
     setup.blocking_log(
       log_level::DEBUG,
       LogType::Normal,
@@ -811,9 +834,7 @@ mod tests {
       vec![],
       vec![],
     );
-
     std::thread::sleep(100.std_milliseconds());
-
     assert_eq!(
       2,
       setup
