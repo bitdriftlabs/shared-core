@@ -50,16 +50,15 @@ pub trait Target {
 pub struct Recorder {
   target: Box<dyn Target + Send + Sync>,
 
+  is_periodic_reporting_enabled_flag: BoolWatch<session_replay::PeriodicWireframesEnabledFlag>,
   is_periodic_reporting_enabled: bool,
+  reporting_interval_rate_flag: DurationWatch<session_replay::ReportingIntervalFlag>,
   reporting_interval_rate: time::Duration,
   reporting_interval: Option<Interval>,
 
+  is_take_screenshots_enabled_flag: BoolWatch<session_replay::ScreenshotsEnabledFlag>,
   is_take_screenshots_enabled: bool,
   take_screenshot_rx: Receiver<()>,
-
-  is_periodic_reporting_enabled_flag: BoolWatch<session_replay::PeriodicWireframesEnabledFlag>,
-  reporting_interval_flag: DurationWatch<session_replay::ReportingIntervalFlag>,
-  is_take_screenshots_enabled_flag: BoolWatch<session_replay::ScreenshotsEnabledFlag>,
 }
 
 impl Recorder {
@@ -73,28 +72,34 @@ impl Recorder {
     // thread.
     let (take_screenshot_tx, take_screenshot_rx) = channel(1);
 
-    let mut is_periodic_reporting_enabled =
-      session_replay::PeriodicWireframesEnabledFlag::register(runtime_loader).unwrap();
+    let mut is_periodic_reporting_enabled_flag: bd_runtime::runtime::Watch<
+      bool,
+      session_replay::PeriodicWireframesEnabledFlag,
+    > = session_replay::PeriodicWireframesEnabledFlag::register(runtime_loader).unwrap();
+    let is_periodic_reporting_enabled = is_periodic_reporting_enabled_flag.read_mark_update();
+
     let reporting_interval_rate = session_replay::ReportingIntervalFlag::register(runtime_loader)
       .unwrap()
       .read_mark_update();
 
     let mut is_take_screenshots_enabled_flag =
       session_replay::ScreenshotsEnabledFlag::register(runtime_loader).unwrap();
+    let is_take_screenshots_enabled = is_take_screenshots_enabled_flag.read_mark_update();
 
     (
       Self {
         target,
-        is_periodic_reporting_enabled: is_periodic_reporting_enabled.read_mark_update(),
+        is_periodic_reporting_enabled_flag,
+        is_periodic_reporting_enabled,
+        reporting_interval_rate_flag: session_replay::ReportingIntervalFlag::register(
+          runtime_loader,
+        )
+        .unwrap(),
         reporting_interval_rate,
         reporting_interval: None,
-        is_take_screenshots_enabled: is_take_screenshots_enabled_flag.read_mark_update(),
-        take_screenshot_rx,
-        is_periodic_reporting_enabled_flag:
-          session_replay::PeriodicWireframesEnabledFlag::register(runtime_loader).unwrap(),
-        reporting_interval_flag: session_replay::ReportingIntervalFlag::register(runtime_loader)
-          .unwrap(),
         is_take_screenshots_enabled_flag,
+        is_take_screenshots_enabled,
+        take_screenshot_rx,
       },
       take_screenshot_tx,
     )
@@ -138,10 +143,10 @@ impl Recorder {
           log::debug!("session replay recorder capturing wireframe");
           self.target.capture_wireframe();
         },
-        _ = self.reporting_interval_flag.changed() => {
+        _ = self.reporting_interval_rate_flag.changed() => {
           self.reporting_interval = Some(
             Self::create_interval(
-              self.reporting_interval_flag.read_mark_update(),
+              self.reporting_interval_rate_flag.read_mark_update(),
               false
             )
           );
