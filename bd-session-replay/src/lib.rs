@@ -133,18 +133,15 @@ impl Recorder {
 
     loop {
       tokio::select! {
-        () = async {
-          if let Some(reporting_interval) = &mut self.reporting_interval {
-            reporting_interval.tick().await;
-          }
-        }, if self.reporting_interval.is_some() && self.is_periodic_reporting_enabled => {
+        () = async { self.reporting_interval.as_mut().unwrap().tick().await; },
+          if self.reporting_interval.is_some() && self.is_periodic_reporting_enabled => {
           log::debug!("session replay recorder capturing wireframe");
           self.target.capture_wireframe();
         },
         _ = self.reporting_interval_flag.changed() => {
           self.reporting_interval = Some(
             Self::create_interval(
-              self.reporting_interval_flag.read().unsigned_abs(),
+              self.reporting_interval_flag.read_mark_update().unsigned_abs(),
               false
             )
           );

@@ -112,7 +112,7 @@ impl Reporter {
         _ = self.reporting_interval_flag.changed() => {
           self.reporting_interval = Some(
             Self::create_interval(
-              self.reporting_interval_flag.read().unsigned_abs(),
+              self.reporting_interval_flag.read_mark_update().unsigned_abs(),
               false
             )
           );
