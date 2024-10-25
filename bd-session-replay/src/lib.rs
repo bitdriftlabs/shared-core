@@ -31,14 +31,14 @@ fn test_global_init() {
 
 // An interface implementing the act of capturing user screens.
 pub trait Target {
-  // Instrument the target to capture a privacy-preserving and bandwidth-efficient representation
+  // Instruct the target to capture a privacy-preserving and bandwidth-efficient representation
   // of the user's screen. The target should capture the wireframe and send it using the
   // `logger::log_session_replay_wireframe` method. The target is expected to operate
   // asynchronously, as accessing the application view hierarchy requires executing on the main
   // thread, and the `capture_wireframe` method is always called from a non-main thread.
   fn capture_wireframe(&self);
 
-  // Instrument the target to capture a pixel-perfect representation of the user's screen.
+  // Instruct the target to capture a pixel-perfect representation of the user's screen.
   // The target should capture the wireframe and send it using the
   // `logger::log_session_screenshot` method. The target is expected to operate asynchronously,
   // as accessing the application view hierarchy requires executing on the main thread, and the
