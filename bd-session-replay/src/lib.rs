@@ -34,21 +34,21 @@ fn test_global_init() {
 // An interface implementing the act of capturing user screens.
 pub trait Target {
   // Instruct the target to capture a privacy-preserving and bandwidth-efficient representation
-  // of the user's screen. The target should capture the wireframe and send it using the
-  // `logger::log_session_replay_wireframe` method. The target is expected to operate
+  // of the user's screen. The target should capture the screen and send it using the
+  // `logger::log_session_replay_screen` method. The target is expected to operate
   // asynchronously, as accessing the application view hierarchy requires executing on the main
-  // thread, and the `capture_wireframe` method is always called from a non-main thread.
-  fn capture_wireframe(&self);
+  // thread, and the `capture_screen` method is always called from a non-main thread.
+  fn capture_screen(&self);
 
   // Instruct the target to capture a pixel-perfect representation of the user's screen.
-  // The target should capture the wireframe and send it using the
-  // `logger::log_session_screenshot` method. The target is expected to operate asynchronously,
-  // as accessing the application view hierarchy requires executing on the main thread, and the
-  // `take_screenshot` method is always called from a non-main thread.
+  // The target should capture the screenshot and send it using the
+  // `logger::log_session_replay_screenshot` method. The target is expected to operate
+  // asynchronously, as accessing the application view hierarchy requires executing on the main
+  // thread, and the `take_screenshot` method is always called from a non-main thread.
   //
   // The recorder implementation guarantees that the consecutive `take_screenshot` method calls are
   // not made after the previous screenshot is taken.
-  fn take_screenshot(&self);
+  fn capture_screenshot(&self);
 }
 
 //
@@ -58,22 +58,22 @@ pub trait Target {
 pub struct Recorder {
   target: Box<dyn Target + Send + Sync>,
 
-  is_periodic_reporting_enabled_flag: BoolWatch<session_replay::PeriodicWireframesEnabledFlag>,
+  is_periodic_reporting_enabled_flag: BoolWatch<session_replay::PeriodicScreensEnabledFlag>,
   is_periodic_reporting_enabled: bool,
   reporting_interval_rate_flag: DurationWatch<session_replay::ReportingIntervalFlag>,
   reporting_interval_rate: time::Duration,
   reporting_interval: Option<Interval>,
 
-  is_take_screenshots_enabled_flag: BoolWatch<session_replay::ScreenshotsEnabledFlag>,
-  is_take_screenshots_enabled: bool,
-  take_screenshot_rx: Receiver<()>,
+  is_capture_screenshots_enabled_flag: BoolWatch<session_replay::ScreenshotsEnabledFlag>,
+  is_capture_screenshots_enabled: bool,
+  capture_screenshot_rx: Receiver<()>,
 
   // A flag indicating whether the recorder is ready to take a screenshot. This flag ensures
   // that the recorder does not request a screenshot from the platform layer while it is still
   // processing a previously requested screenshot.
   // Each time a screenshot is requested, the flag is set to `false`, and it is set back to `true`
   // when the screenshot log is intercepted.
-  is_ready_to_take_screenshot: bool,
+  is_ready_to_capture_screenshot: bool,
   next_screenshot_rx: Receiver<()>,
 
   stats: Stats,
@@ -84,32 +84,30 @@ impl Recorder {
     target: Box<dyn Target + Send + Sync>,
     runtime_loader: &Arc<ConfigLoader>,
     scope: &Scope,
-  ) -> (Self, TakeScreenshotHandler, ScreenshotLogInterceptor) {
+  ) -> (Self, CaptureScreenshotHandler, ScreenshotLogInterceptor) {
     // Limit the buffer size to 1 to reduce the risk of putting too much pressure on the
     // application's main thread when dequeuing the screenshot actions from the channel and
     // passing them to the platform layer, which performs the actual screenshotting on the main
     // thread.
-    let (take_screenshot_tx, take_screenshot_rx) = channel(1);
+    let (capture_screenshot_tx, capture_screenshot_rx) = channel(1);
     let (next_screenshot_tx, next_screenshot_rx) = channel(1);
 
-    let mut is_periodic_reporting_enabled_flag: bd_runtime::runtime::Watch<
-      bool,
-      session_replay::PeriodicWireframesEnabledFlag,
-    > = session_replay::PeriodicWireframesEnabledFlag::register(runtime_loader).unwrap();
+    let mut is_periodic_reporting_enabled_flag =
+      session_replay::PeriodicScreensEnabledFlag::register(runtime_loader).unwrap();
     let is_periodic_reporting_enabled = is_periodic_reporting_enabled_flag.read_mark_update();
 
     let reporting_interval_rate = session_replay::ReportingIntervalFlag::register(runtime_loader)
       .unwrap()
       .read_mark_update();
 
-    let mut is_take_screenshots_enabled_flag =
+    let mut is_capture_screenshots_enabled_flag =
       session_replay::ScreenshotsEnabledFlag::register(runtime_loader).unwrap();
-    let is_take_screenshots_enabled = is_take_screenshots_enabled_flag.read_mark_update();
+    let is_capture_screenshots_enabled = is_capture_screenshots_enabled_flag.read_mark_update();
 
     let stats = Stats::new(scope);
 
-    let take_screenshot_handler = TakeScreenshotHandler {
-      take_screenshot_tx,
+    let capture_screenshot_handler = CaptureScreenshotHandler {
+      capture_screenshot_tx,
       channel_full: stats.channel_full.clone(),
     };
 
@@ -129,14 +127,14 @@ impl Recorder {
         .unwrap(),
         reporting_interval_rate,
         reporting_interval: None,
-        is_take_screenshots_enabled_flag,
-        is_take_screenshots_enabled,
-        take_screenshot_rx,
-        is_ready_to_take_screenshot: true,
+        is_capture_screenshots_enabled_flag,
+        is_capture_screenshots_enabled,
+        capture_screenshot_rx,
+        is_ready_to_capture_screenshot: true,
         next_screenshot_rx,
         stats,
       },
-      take_screenshot_handler,
+      capture_screenshot_handler,
       screenshot_log_interceptor,
     )
   }
@@ -176,12 +174,12 @@ impl Recorder {
       tokio::select! {
         () = async { self.reporting_interval.as_mut().unwrap().tick().await; },
           if self.reporting_interval.is_some() && self.is_periodic_reporting_enabled => {
-          log::debug!("session replay recorder capturing wireframe");
-          // We capture a wireframe once per 3s (by default) so backlogging shouldn't be a problem
+          log::debug!("session replay recorder capturing screen");
+          // We capture a screen once per 3s (by default) so backlogging shouldn't be a problem
           // here (since taking a screenshot takes not more than ~tens of ms).
           // TODO(Augustyniak): Consider changing the implementation so that we do not ask platform layer
-          // for more wireframes until we receive the previous one.
-          self.target.capture_wireframe();
+          // for more screens until we receive the previous one.
+          self.target.capture_screen();
         },
         _ = self.reporting_interval_rate_flag.changed() => {
           self.reporting_interval = Some(
@@ -191,39 +189,39 @@ impl Recorder {
             )
           );
         },
-        _ = self.take_screenshot_rx.recv() => {
-          if !self.is_take_screenshots_enabled {
+        _ = self.capture_screenshot_rx.recv() => {
+          if !self.is_capture_screenshots_enabled {
             self.stats.disabled.inc();
-            log::debug!("session replay recorder ignored screenshot: taking screenshots is disabled");
+            log::debug!("session replay recorder ignored screenshot: capturing screenshots is disabled");
             continue;
           }
 
-          if !self.is_ready_to_take_screenshot {
+          if !self.is_ready_to_capture_screenshot {
             self.stats.not_ready.inc();
-            log::debug!("session replay recorder ignored screenshot: not ready to take screenshot");
+            log::debug!("session replay recorder ignored screenshot: not ready to capture screenshot");
             continue;
           }
 
           log::debug!("session replay recorder taking screenshot");
 
           self.stats.success.inc();
-          self.target.take_screenshot();
+          self.target.capture_screenshot();
 
           // Reset the flag to indicate that the recorder is not ready to take a screenshot until
           // `ScreenshotLogInterceptor` intercepts a log containing a screenshot that was just requested.
-          self.is_ready_to_take_screenshot = false;
+          self.is_ready_to_capture_screenshot = false;
         },
         _ = async { self.next_screenshot_rx.recv().await } => {
           log::debug!("session replay recorder received screenshot");
-          self.is_ready_to_take_screenshot = true;
+          self.is_ready_to_capture_screenshot = true;
         },
         _ = self.is_periodic_reporting_enabled_flag.changed() => {
           self.is_periodic_reporting_enabled
             = self.is_periodic_reporting_enabled_flag.read_mark_update();
         },
-        _ = self.is_take_screenshots_enabled_flag.changed() => {
-          self.is_take_screenshots_enabled
-            = self.is_take_screenshots_enabled_flag.read_mark_update();
+        _ = self.is_capture_screenshots_enabled_flag.changed() => {
+          self.is_capture_screenshots_enabled
+            = self.is_capture_screenshots_enabled_flag.read_mark_update();
         },
         () = &mut local_shutdown => {
           return;
@@ -260,25 +258,25 @@ impl Stats {
 }
 
 //
-// TakeScreenshotHandler
+// CaptureScreenshotHandler
 //
 
 #[derive(Clone)]
-pub struct TakeScreenshotHandler {
-  take_screenshot_tx: Sender<()>,
+pub struct CaptureScreenshotHandler {
+  capture_screenshot_tx: Sender<()>,
   channel_full: Counter,
 }
 
-impl TakeScreenshotHandler {
-  pub fn take_screenshot(&self) {
+impl CaptureScreenshotHandler {
+  pub fn capture_screenshot(&self) {
     // We use a channel with a capacity of one and employ `try_send` to avoid waiting for space in
     // the channel before sending a new signal. This is especially important as the method is
     // expected to be called on logging hot path.
-    // The channel may become full if "take screenshot" requests arrive faster than the platform
+    // The channel may become full if "capture screenshot" requests arrive faster than the platform
     // layer can process them. In such cases, new requests are ignored.
-    if let Err(e) = self.take_screenshot_tx.try_send(()) {
+    if let Err(e) = self.capture_screenshot_tx.try_send(()) {
       self.channel_full.inc();
-      log::debug!("failed to send take screenshot signal: {:?}", e);
+      log::debug!("failed to send capture screenshot signal: {:?}", e);
     }
   }
 }

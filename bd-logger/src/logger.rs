@@ -176,7 +176,7 @@ impl LoggerHandle {
     );
   }
 
-  pub fn log_session_replay_wireframe(&self, fields: AnnotatedLogFields, duration: time::Duration) {
+  pub fn log_session_replay_screen(&self, fields: AnnotatedLogFields, duration: time::Duration) {
     self.log_session_replay("Screen captured", fields, duration);
   }
 

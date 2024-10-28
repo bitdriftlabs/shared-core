@@ -85,20 +85,20 @@ mod tests {
 
   #[derive(Default)]
   struct MockSessionReplayTarget {
-    capture_wireframe_count: Arc<AtomicUsize>,
-    take_screenshot_count: Arc<AtomicUsize>,
+    capture_screen_count: Arc<AtomicUsize>,
+    capture_screenshot_count: Arc<AtomicUsize>,
   }
 
   impl bd_session_replay::Target for MockSessionReplayTarget {
-    fn capture_wireframe(&self) {
+    fn capture_screen(&self) {
       self
-        .capture_wireframe_count
+        .capture_screen_count
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    fn take_screenshot(&self) {
+    fn capture_screenshot(&self) {
       self
-        .take_screenshot_count
+        .capture_screenshot_count
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
   }
@@ -111,8 +111,8 @@ mod tests {
     current_api_stream: i32,
     store: Arc<Store>,
 
-    capture_wireframe_count: Arc<AtomicUsize>,
-    take_screenshot_count: Arc<AtomicUsize>,
+    capture_screen_count: Arc<AtomicUsize>,
+    capture_screenshot_count: Arc<AtomicUsize>,
 
     _shutdown: ComponentShutdownTrigger,
   }
@@ -143,8 +143,8 @@ mod tests {
       let device = Arc::new(bd_device::Device::new(store.clone()));
 
       let session_replay_target = Box::new(MockSessionReplayTarget::default());
-      let capture_wireframe_count = session_replay_target.capture_wireframe_count.clone();
-      let take_screenshot_count = session_replay_target.take_screenshot_count.clone();
+      let capture_screen_count = session_replay_target.capture_screen_count.clone();
+      let capture_screenshot_count = session_replay_target.capture_screenshot_count.clone();
 
       let logger = bd_logger::LoggerBuilder::new(InitParams {
         sdk_directory: sdk_directory.path().into(),
@@ -178,8 +178,8 @@ mod tests {
         server,
         current_api_stream,
         store,
-        capture_wireframe_count,
-        take_screenshot_count,
+        capture_screen_count,
+        capture_screenshot_count,
         _shutdown: shutdown,
       }
     }
@@ -241,7 +241,7 @@ mod tests {
           ValueKind::Bool(true),
         ),
         (
-          bd_runtime::runtime::session_replay::PeriodicWireframesEnabledFlag::path(),
+          bd_runtime::runtime::session_replay::PeriodicScreensEnabledFlag::path(),
           ValueKind::Bool(true),
         ),
       ]
@@ -526,7 +526,7 @@ mod tests {
         assert_eq!(upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}), Some(120));
         assert!(bandwidth_tx > 100, "bandwidth_tx = {bandwidth_tx}");
         assert!(bandwidth_rx < 400, "bandwidth_rx = {bandwidth_rx}");
-        assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(418));
+        assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(406));
         assert_eq!(upload.get_counter("api:stream_total", labels! {}), Some(1));
     });
   }
@@ -797,7 +797,7 @@ mod tests {
     assert_eq!(
       0,
       setup
-        .take_screenshot_count
+        .capture_screenshot_count
         .load(std::sync::atomic::Ordering::Relaxed)
     );
 
@@ -813,7 +813,7 @@ mod tests {
     assert_eq!(
       1,
       setup
-        .take_screenshot_count
+        .capture_screenshot_count
         .load(std::sync::atomic::Ordering::Relaxed)
     );
 
@@ -838,13 +838,13 @@ mod tests {
     assert_eq!(
       2,
       setup
-        .take_screenshot_count
+        .capture_screenshot_count
         .load(std::sync::atomic::Ordering::Relaxed)
     );
     assert_eq!(
       1,
       setup
-        .capture_wireframe_count
+        .capture_screen_count
         .load(std::sync::atomic::Ordering::Relaxed)
     );
   }

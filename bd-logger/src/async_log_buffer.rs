@@ -33,7 +33,7 @@ use bd_log_primitives::{
 use bd_network_quality::NetworkQualityProvider;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::ConfigLoader;
-use bd_session_replay::TakeScreenshotHandler;
+use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use itertools::Itertools;
 use std::mem::size_of_val;
@@ -152,7 +152,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   resource_utilization_reporter: bd_resource_utilization::Reporter,
 
   session_replay_recorder: bd_session_replay::Recorder,
-  session_replay_take_screenshot_handler: TakeScreenshotHandler,
+  session_replay_capture_screenshot_handler: CaptureScreenshotHandler,
 
   events_listener: bd_events::Listener,
 
@@ -188,7 +188,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     let (
       session_replay_recorder,
-      session_replay_take_screenshot_handler,
+      session_replay_capture_screenshot_handler,
       screenshot_log_interceptor,
     ) = bd_session_replay::Recorder::new(
       session_replay_target,
@@ -218,7 +218,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         ),
 
         session_replay_recorder,
-        session_replay_take_screenshot_handler,
+        session_replay_capture_screenshot_handler,
 
         events_listener: bd_events::Listener::new(events_listener_target, runtime_loader),
 
@@ -506,7 +506,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     let (initialized_logging_context, maybe_pre_config_log_buffer) = match self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
         let (initialized_logging_context, pre_config_log_buffer) = uninitialized_logging_context
-          .updated(config, self.session_replay_take_screenshot_handler.clone())
+          .updated(
+            config,
+            self.session_replay_capture_screenshot_handler.clone(),
+          )
           .await;
         (initialized_logging_context, Some(pre_config_log_buffer))
       },

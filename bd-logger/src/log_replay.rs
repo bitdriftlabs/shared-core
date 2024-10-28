@@ -17,7 +17,7 @@ use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::filters::FilterChainEnabledFlag;
 use bd_runtime::runtime::workflows::WorkflowsEnabledFlag;
 use bd_runtime::runtime::{BoolWatch, ConfigLoader};
-use bd_session_replay::TakeScreenshotHandler;
+use bd_session_replay::CaptureScreenshotHandler;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use std::borrow::Cow;
@@ -89,7 +89,7 @@ pub struct ProcessingPipeline {
 
   trigger_upload_tx: Sender<TriggerUpload>,
   buffers_to_flush_rx: Option<Receiver<BuffersToFlush>>,
-  take_screenshot_handler: TakeScreenshotHandler,
+  capture_screenshot_handler: CaptureScreenshotHandler,
 
   workflows_enabled_flag: BoolWatch<WorkflowsEnabledFlag>,
   filter_chain_enabled_flag: BoolWatch<FilterChainEnabledFlag>,
@@ -106,7 +106,7 @@ impl ProcessingPipeline {
     flush_buffers_tx: Sender<BuffersWithAck>,
     flush_stats_trigger: Option<FlushTrigger>,
     trigger_upload_tx: Sender<TriggerUpload>,
-    take_screenshot_handler: TakeScreenshotHandler,
+    capture_screenshot_handler: CaptureScreenshotHandler,
 
     config: ConfigUpdate,
 
@@ -153,7 +153,7 @@ impl ProcessingPipeline {
       trigger_upload_tx,
       buffers_to_flush_rx,
 
-      take_screenshot_handler,
+      capture_screenshot_handler,
 
       workflows_enabled_flag,
       filter_chain_enabled_flag,
@@ -256,8 +256,8 @@ impl ProcessingPipeline {
         );
       }
 
-      if result.take_screenshot {
-        self.take_screenshot_handler.take_screenshot();
+      if result.capture_screenshot {
+        self.capture_screenshot_handler.capture_screenshot();
       }
 
       Self::write_to_buffers(

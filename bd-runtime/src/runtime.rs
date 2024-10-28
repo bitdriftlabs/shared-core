@@ -751,14 +751,14 @@ pub mod session_replay {
   use time::ext::NumericalDuration as _;
 
   bool_feature_flag!(
-    PeriodicWireframesEnabledFlag,
-    "session_replay.periodic_wireframes.enabled",
+    PeriodicScreensEnabledFlag,
+    "session_replay.screens.enabled",
     false
   );
 
   duration_feature_flag!(
     ReportingIntervalFlag,
-    "session_replay.periodic_wireframes.interval_ms",
+    "session_replay.screens.interval_ms",
     3.seconds()
   );
 

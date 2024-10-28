@@ -533,7 +533,7 @@ impl WorkflowsEngine {
         log_destination_buffer_ids: Cow::Borrowed(log_destination_buffer_ids),
         triggered_flushes_buffer_ids: BTreeSet::new(),
         triggered_flush_buffers_action_ids: BTreeSet::new(),
-        take_screenshot: false,
+        capture_screenshot: false,
       };
     }
 
@@ -642,7 +642,7 @@ impl WorkflowsEngine {
       flush_buffers_actions,
       emit_metric_actions,
       emit_sankey_diagrams_actions,
-      take_screenshot_actions,
+      capture_screenshot_actions,
     ) = Self::prepare_actions(actions);
 
     let result = self
@@ -694,7 +694,7 @@ impl WorkflowsEngine {
         .triggered_flush_buffers_action_ids,
       triggered_flushes_buffer_ids: flush_buffers_actions_processing_result
         .triggered_flushes_buffer_ids,
-      take_screenshot: !take_screenshot_actions.is_empty(),
+      capture_screenshot: !capture_screenshot_actions.is_empty(),
     }
   }
 
@@ -755,7 +755,7 @@ impl WorkflowsEngine {
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
 
-    let take_screenshot_actions = actions
+    let capture_screenshot_actions = actions
       .iter()
       .filter_map(|action| {
         if let TriggeredAction::TakeScreenshot(action) = action {
@@ -782,7 +782,7 @@ impl WorkflowsEngine {
       flush_buffers_actions,
       emit_metric_actions,
       sankey_diagrams_actions,
-      take_screenshot_actions,
+      capture_screenshot_actions,
     )
   }
 }
@@ -808,7 +808,7 @@ pub struct WorkflowsEngineResult<'a> {
   pub triggered_flushes_buffer_ids: BTreeSet<Cow<'static, str>>,
 
   // Whether a screenshot should be taken in response to processing the log.
-  pub take_screenshot: bool,
+  pub capture_screenshot: bool,
 }
 
 //

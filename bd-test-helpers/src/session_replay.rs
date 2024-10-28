@@ -12,6 +12,6 @@
 pub struct NoOpTarget;
 
 impl bd_session_replay::Target for NoOpTarget {
-  fn capture_wireframe(&self) {}
-  fn take_screenshot(&self) {}
+  fn capture_screen(&self) {}
+  fn capture_screenshot(&self) {}
 }

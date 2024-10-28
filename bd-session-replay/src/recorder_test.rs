@@ -10,9 +10,9 @@
 //
 
 use crate::{
+  CaptureScreenshotHandler,
   Recorder,
   ScreenshotLogInterceptor,
-  TakeScreenshotHandler,
   Target,
   SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE,
 };
@@ -51,14 +51,14 @@ impl Setup {
   fn create_recorder(
     &self,
     target: Box<dyn Target + Send + Sync>,
-  ) -> (Recorder, TakeScreenshotHandler, ScreenshotLogInterceptor) {
+  ) -> (Recorder, CaptureScreenshotHandler, ScreenshotLogInterceptor) {
     Recorder::new(target, &self.runtime, &self.collector.scope(""))
   }
 
   fn update_reporting_interval(&self, interval: Duration) {
     self.runtime.update_snapshot(&make_simple_update(vec![
       (
-        bd_runtime::runtime::session_replay::PeriodicWireframesEnabledFlag::path(),
+        bd_runtime::runtime::session_replay::PeriodicScreensEnabledFlag::path(),
         ValueKind::Bool(true),
       ),
       (
@@ -76,20 +76,20 @@ impl Setup {
 
 #[derive(Default)]
 struct MockTarget {
-  capture_wireframe_count: Arc<AtomicUsize>,
-  take_screenshot_count: Arc<AtomicUsize>,
+  capture_screen_count: Arc<AtomicUsize>,
+  capture_screenshot_count: Arc<AtomicUsize>,
 }
 
 impl Target for MockTarget {
-  fn capture_wireframe(&self) {
+  fn capture_screen(&self) {
     self
-      .capture_wireframe_count
+      .capture_screen_count
       .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
   }
 
-  fn take_screenshot(&self) {
+  fn capture_screenshot(&self) {
     self
-      .take_screenshot_count
+      .capture_screenshot_count
       .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
   }
 }
@@ -99,7 +99,7 @@ async fn does_not_report_if_disabled() {
   let setup = Setup::new();
   setup.runtime.update_snapshot(&make_simple_update(vec![
     (
-      bd_runtime::runtime::session_replay::PeriodicWireframesEnabledFlag::path(),
+      bd_runtime::runtime::session_replay::PeriodicScreensEnabledFlag::path(),
       ValueKind::Bool(false),
     ),
     (
@@ -109,7 +109,7 @@ async fn does_not_report_if_disabled() {
   ]));
 
   let target = Box::<MockTarget>::default();
-  let capture_wireframe_count = target.capture_wireframe_count.clone();
+  let capture_screen_count = target.capture_screen_count.clone();
   let (mut reporter, ..) = setup.create_recorder(target);
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
@@ -126,7 +126,7 @@ async fn does_not_report_if_disabled() {
 
   assert_eq!(
     0,
-    capture_wireframe_count.load(std::sync::atomic::Ordering::Relaxed)
+    capture_screen_count.load(std::sync::atomic::Ordering::Relaxed)
   );
 }
 
@@ -136,7 +136,7 @@ async fn does_not_report_if_there_are_no_fields() {
   setup.update_reporting_interval(10.milliseconds());
 
   let target = Box::<MockTarget>::default();
-  let capture_wireframe_count = target.capture_wireframe_count.clone();
+  let capture_screen_count = target.capture_screen_count.clone();
   let (mut reporter, ..) = setup.create_recorder(target);
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
@@ -151,15 +151,15 @@ async fn does_not_report_if_there_are_no_fields() {
   shutdown_trigger.shutdown().await;
   assert_ok!(recorder_task.await);
 
-  assert!(capture_wireframe_count.load(std::sync::atomic::Ordering::Relaxed) > 0);
+  assert!(capture_screen_count.load(std::sync::atomic::Ordering::Relaxed) > 0);
 }
 
 #[tokio::test]
 async fn taking_screenshots_is_wired_up() {
   let setup = Setup::new();
 
-  let target = Box::<MockTarget>::default();
-  let take_screenshot_count = target.take_screenshot_count.clone();
+  let target: Box<MockTarget> = Box::<MockTarget>::default();
+  let capture_screenshot_count = target.capture_screenshot_count.clone();
   let (mut recorder, take_screenshot_handler, _) = setup.create_recorder(target);
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
@@ -169,14 +169,14 @@ async fn taking_screenshots_is_wired_up() {
     () = recorder.run_with_shutdown(shutdown).await;
   });
 
-  take_screenshot_handler.take_screenshot();
+  take_screenshot_handler.capture_screenshot();
 
   100.milliseconds().sleep().await;
 
   // No screenshot taken since screenshot feature is disabled.
   assert_eq!(
     0,
-    take_screenshot_count.load(std::sync::atomic::Ordering::Relaxed)
+    capture_screenshot_count.load(std::sync::atomic::Ordering::Relaxed)
   );
 
   setup.runtime.update_snapshot(&make_simple_update(vec![(
@@ -186,7 +186,7 @@ async fn taking_screenshots_is_wired_up() {
 
   100.milliseconds().sleep().await;
 
-  take_screenshot_handler.take_screenshot();
+  take_screenshot_handler.capture_screenshot();
 
   100.milliseconds().sleep().await;
 
@@ -196,7 +196,7 @@ async fn taking_screenshots_is_wired_up() {
   // Screenshot taken.
   assert_eq!(
     1,
-    take_screenshot_count.load(std::sync::atomic::Ordering::Relaxed)
+    capture_screenshot_count.load(std::sync::atomic::Ordering::Relaxed)
   );
 }
 
@@ -210,7 +210,7 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
   )]));
 
   let target = Box::<MockTarget>::default();
-  let take_screenshot_count = target.take_screenshot_count.clone();
+  let capture_screenshot_count = target.capture_screenshot_count.clone();
   let (mut recorder, take_screenshot_handler, screenshot_log_interceptor) =
     setup.create_recorder(target);
 
@@ -222,11 +222,11 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
   });
 
   // First request to take a screenshot goes through successfully.
-  take_screenshot_handler.take_screenshot();
+  take_screenshot_handler.capture_screenshot();
   // The next two requests fail because the channel is full, as we did not allow the recorder to
   // process signals from the channel.
-  take_screenshot_handler.take_screenshot();
-  take_screenshot_handler.take_screenshot();
+  take_screenshot_handler.capture_screenshot();
+  take_screenshot_handler.capture_screenshot();
 
   setup.collector.assert_counter_eq(
     2,
@@ -240,7 +240,7 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
   // operation is allowed.
   assert_eq!(
     1,
-    take_screenshot_count.load(std::sync::atomic::Ordering::Relaxed)
+    capture_screenshot_count.load(std::sync::atomic::Ordering::Relaxed)
   );
 
   // Simulate a screenshot log.
@@ -254,16 +254,16 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
   // Request taking a screenshot goes through successfully as the previous screenshot log was
   // received.
   300.milliseconds().sleep().await;
-  take_screenshot_handler.take_screenshot();
+  take_screenshot_handler.capture_screenshot();
 
   // Request taking a screenshot fails as only one concurrent take screenshot operation is allowed.
   300.milliseconds().sleep().await;
-  take_screenshot_handler.take_screenshot();
+  take_screenshot_handler.capture_screenshot();
 
   // Request taking a screenshot fails again as only one concurrent take screenshot operation is
   // allowed.
   300.milliseconds().sleep().await;
-  take_screenshot_handler.take_screenshot();
+  take_screenshot_handler.capture_screenshot();
 
   300.milliseconds().sleep().await;
   setup.collector.assert_counter_eq(
@@ -290,7 +290,7 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
   // operation is allowed.
   assert_eq!(
     2,
-    take_screenshot_count.load(std::sync::atomic::Ordering::Relaxed)
+    capture_screenshot_count.load(std::sync::atomic::Ordering::Relaxed)
   );
 
   setup.collector.assert_counter_eq(
