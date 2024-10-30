@@ -126,15 +126,13 @@ impl Default for SimpleNetworkQualityProvider {
   }
 }
 
-impl SimpleNetworkQualityProvider {
-  pub fn set_for_test(&self, quality: NetworkQuality) {
-    *self.network_quality.write() = quality;
-  }
-}
-
 impl NetworkQualityProvider for SimpleNetworkQualityProvider {
   fn get_network_quality(&self) -> NetworkQuality {
     *self.network_quality.read()
+  }
+
+  fn set_network_quality(&self, quality: NetworkQuality) {
+    *self.network_quality.write() = quality;
   }
 }
 

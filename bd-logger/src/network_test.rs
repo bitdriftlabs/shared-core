@@ -19,7 +19,7 @@ use bd_log_primitives::{
   LogType,
   StringOrBytes,
 };
-use bd_network_quality::NetworkQuality;
+use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
 
@@ -60,10 +60,10 @@ fn network_quality() {
     let mut fields = vec![];
     interceptor.process(log_level::DEBUG, LogType::Normal, &"".into(), &mut fields);
     assert!(fields.is_empty());
-    network_quality_provider.set_for_test(NetworkQuality::Online);
+    network_quality_provider.set_network_quality(NetworkQuality::Online);
     interceptor.process(log_level::DEBUG, LogType::Normal, &"".into(), &mut fields);
     assert!(fields.is_empty());
-    network_quality_provider.set_for_test(NetworkQuality::Offline);
+    network_quality_provider.set_network_quality(NetworkQuality::Offline);
     interceptor.process(log_level::DEBUG, LogType::Normal, &"".into(), &mut fields);
     assert_eq!(
       fields[0],
@@ -86,7 +86,9 @@ fn network_quality() {
 #[tokio::test]
 async fn collects_bandwidth_sample() {
   let time_provider = Arc::new(MockTimeProvider::default());
-  let tracker = HTTPTrafficDataUsageTracker::new_with_time_provider(time_provider.clone());
+  let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
+  let tracker =
+    HTTPTrafficDataUsageTracker::new(time_provider.clone(), network_quality_provider.clone());
 
   // The tracker reports bandwidth usage on per minute basis.
   // Since we inform the tracker that the rate at which we ask it for fields is equal to 3 seconds,
@@ -105,11 +107,17 @@ async fn collects_bandwidth_sample() {
     LogType::Span,
     &LogMessage::String("HTTPResponse".to_string()),
     &mut vec![
+      create_int_field("_status_code", 200),
       create_int_field("_request_body_bytes_sent_count", 100),
       create_int_field("_request_headers_bytes_count", 200),
       create_int_field("_response_body_bytes_received_count", 300),
       create_int_field("_response_headers_bytes_count", 400),
     ],
+  );
+
+  assert_eq!(
+    NetworkQuality::Online,
+    network_quality_provider.get_network_quality()
   );
 
   for _ in 0 .. 20 {
