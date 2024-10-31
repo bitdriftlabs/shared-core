@@ -694,6 +694,7 @@ dependencies = [
  "bd-resource-utilization",
  "bd-runtime",
  "bd-session",
+ "bd-session-replay",
  "bd-shutdown",
  "bd-stats-common",
  "bd-test-helpers",
@@ -926,6 +927,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-session-replay"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "bd-client-common",
+ "bd-client-stats-store",
+ "bd-internal-logging",
+ "bd-log-primitives",
+ "bd-runtime",
+ "bd-shutdown",
+ "bd-stats-common",
+ "bd-test-helpers",
+ "bd-time",
+ "ctor",
+ "log",
+ "parking_lot",
+ "tempfile",
+ "time",
+ "tokio",
+ "tokio-test",
+]
+
+[[package]]
 name = "bd-shutdown"
 version = "1.0.0"
 dependencies = [
@@ -959,6 +983,7 @@ dependencies = [
  "bd-resource-utilization",
  "bd-runtime-config",
  "bd-session",
+ "bd-session-replay",
  "bd-time",
  "futures-core",
  "http-body-util",

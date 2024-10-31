@@ -40,6 +40,7 @@ use protos::workflow::workflow::workflow::action::{
   ActionEmitMetric as ActionEmitMetricProto,
   ActionEmitSankeyDiagram as ActionEmitSankeyDiagramProto,
   ActionFlushBuffers as ActionFlushBuffersProto,
+  ActionTakeScreenshot as ActionTakeScreenshotProto,
   Action_type,
 };
 use protos::workflow::workflow::workflow::rule::Rule_type;
@@ -324,11 +325,14 @@ pub mod macros {
       )
     };
     (emit_sankey $id:expr; limit $limit: expr) => {
-      $crate::workflow::make_sankey_action(
+      $crate::workflow::make_emit_sankey_action(
         $id,
         $limit,
       )
     };
+    (screenshot $id:expr) => {
+      $crate::workflow::make_take_screenshot_action($id)
+    }
   }
 
   /// Creates metric value.
@@ -508,10 +512,18 @@ pub fn make_flush_buffers_action(
 }
 
 #[must_use]
-pub fn make_sankey_action(id: &str, limit: u32) -> Action_type {
+pub fn make_emit_sankey_action(id: &str, limit: u32) -> Action_type {
   Action_type::ActionEmitSankeyDiagram(ActionEmitSankeyDiagramProto {
     id: id.to_string(),
     limit,
+    ..Default::default()
+  })
+}
+
+#[must_use]
+pub fn make_take_screenshot_action(id: &str) -> Action_type {
+  Action_type::ActionTakeScreenshot(ActionTakeScreenshotProto {
+    id: id.to_string(),
     ..Default::default()
   })
 }

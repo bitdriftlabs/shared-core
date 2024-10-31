@@ -44,6 +44,7 @@ pub use bd_log_primitives::{
 };
 pub use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 pub use bd_resource_utilization::Target as ResourceUtilizationTarget;
+pub use bd_session_replay::Target as SessionReplayTarget;
 pub use builder::LoggerBuilder;
 pub use logger::{Logger, LoggerHandle};
 pub use metadata::LogMetadata;

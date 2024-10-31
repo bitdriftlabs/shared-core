@@ -27,6 +27,7 @@ members = [
   "bd-session",
   "bd-key-value",
   "bd-matcher",
+  "bd-session-replay",
   "bd-resource-utilization",
   "bd-rt",
   "bd-runtime",

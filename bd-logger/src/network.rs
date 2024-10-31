@@ -8,11 +8,11 @@
 #[cfg(test)]
 #[path = "./network_test.rs"]
 mod network_test;
-use crate::async_log_buffer::LogInterceptor;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
 use bd_log_primitives::{
   AnnotatedLogField,
   LogField,
+  LogInterceptor,
   LogLevel,
   LogMessage,
   LogType,

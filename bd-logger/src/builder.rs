@@ -164,6 +164,7 @@ impl LoggerBuilder {
       self.params.session_strategy.clone(),
       self.params.metadata_provider.clone(),
       self.params.resource_utilization_target,
+      self.params.session_replay_target,
       self.params.events_listener_target,
       config_update_rx,
       shutdown_handle.clone(),

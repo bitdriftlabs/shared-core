@@ -316,6 +316,7 @@ async fn no_logs_are_lost() {
       fields: vec![],
     }),
     Box::new(EmptyTarget),
+    Box::new(bd_test_helpers::session_replay::NoOpTarget),
     Box::new(NoOpListenerTarget),
     config_update_rx,
     make_shutdown(1.seconds()),
@@ -421,6 +422,7 @@ async fn logs_are_replayed_in_order() {
       fields: vec![],
     }),
     Box::new(EmptyTarget),
+    Box::new(bd_test_helpers::session_replay::NoOpTarget),
     Box::new(NoOpListenerTarget),
     config_update_rx,
     make_shutdown(5.seconds()),
@@ -526,6 +528,49 @@ fn enqueuing_log_does_not_block() {
       fields: vec![],
     }),
     Box::new(EmptyTarget),
+    Box::new(bd_test_helpers::session_replay::NoOpTarget),
+    Box::new(NoOpListenerTarget),
+    config_update_rx,
+    shutdown_trigger.make_handle(),
+    &setup.runtime,
+    Arc::new(SimpleNetworkQualityProvider::default()),
+  );
+
+  let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
+    &buffer_tx,
+    0,
+    LogType::Normal,
+    "test".into(),
+    vec![],
+    vec![],
+    None,
+    false,
+  );
+
+  assert_ok!(result);
+}
+
+#[test]
+fn take_screenshot_action() {
+  let setup = Setup::new();
+  setup.enable_workflows(true);
+
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let (mut _buffer, buffer_tx) = AsyncLogBuffer::new(
+    setup.make_logging_context(),
+    TestReplay::new(),
+    Arc::new(Strategy::Fixed(fixed::Strategy::new(
+      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
+      Arc::new(UUIDCallbacks),
+    ))),
+    Arc::new(LogMetadata {
+      timestamp: time::OffsetDateTime::now_utc(),
+      fields: vec![],
+    }),
+    Box::new(EmptyTarget),
+    Box::new(bd_test_helpers::session_replay::NoOpTarget),
     Box::new(NoOpListenerTarget),
     config_update_rx,
     shutdown_trigger.make_handle(),
@@ -567,6 +612,7 @@ fn enqueuing_log_blocks() {
       fields: vec![],
     }),
     Box::new(EmptyTarget),
+    Box::new(bd_test_helpers::session_replay::NoOpTarget),
     Box::new(NoOpListenerTarget),
     config_update_rx,
     shutdown_trigger.make_handle(),
@@ -628,6 +674,7 @@ async fn creates_workflows_engine_in_response_to_config_update() {
       fields: vec![],
     }),
     Box::new(EmptyTarget),
+    Box::new(bd_test_helpers::session_replay::NoOpTarget),
     Box::new(NoOpListenerTarget),
     config_update_rx,
     make_shutdown(1.seconds()),
@@ -673,6 +720,7 @@ async fn does_not_create_workflows_engine_in_response_to_config_update_if_workfl
       fields: vec![],
     }),
     Box::new(EmptyTarget),
+    Box::new(bd_test_helpers::session_replay::NoOpTarget),
     Box::new(NoOpListenerTarget),
     config_update_rx,
     make_shutdown(1.seconds()),
@@ -715,6 +763,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
       fields: vec![],
     }),
     Box::new(EmptyTarget),
+    Box::new(bd_test_helpers::session_replay::NoOpTarget),
     Box::new(NoOpListenerTarget),
     config_update_rx,
     shutdown_trigger.make_handle(),
@@ -811,6 +860,7 @@ async fn stops_workflows_engine_if_workflows_runtime_flag_is_disabled() {
       fields: vec![],
     }),
     Box::new(EmptyTarget),
+    Box::new(bd_test_helpers::session_replay::NoOpTarget),
     Box::new(NoOpListenerTarget),
     config_update_rx,
     shutdown_trigger.make_handle(),
@@ -883,6 +933,7 @@ async fn logs_resource_utilization_log() {
       fields: vec![],
     }),
     Box::new(EmptyTarget),
+    Box::new(bd_test_helpers::session_replay::NoOpTarget),
     Box::new(NoOpListenerTarget),
     config_update_rx,
     shutdown_trigger.make_handle(),

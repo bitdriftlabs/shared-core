@@ -85,6 +85,7 @@ impl Setup {
       metadata_provider: Arc::new(TestMetadataProvider),
       store,
       resource_utilization_target: Box::new(EmptyTarget),
+      session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
       events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
       device,
       static_metadata: Arc::new(EmptyMetadata),

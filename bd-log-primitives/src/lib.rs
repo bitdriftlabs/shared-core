@@ -209,3 +209,17 @@ impl<'a> FieldsRef<'a> {
       .and_then(|field| field.value.as_str())
   }
 }
+
+//
+// LogInterceptor
+//
+
+pub trait LogInterceptor: Send + Sync {
+  fn process(
+    &self,
+    log_level: LogLevel,
+    log_type: LogType,
+    msg: &LogMessage,
+    fields: &mut AnnotatedLogFields,
+  );
+}

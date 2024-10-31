@@ -25,6 +25,7 @@ use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
 use bd_log_primitives::{log_level, AnnotatedLogField, LogField, LogLevel, LogMessage};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::Snapshot;
+use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_shutdown::ComponentShutdownTrigger;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -175,7 +176,24 @@ impl LoggerHandle {
     );
   }
 
-  pub fn log_session_replay(&self, fields: AnnotatedLogFields, duration: time::Duration) {
+  pub fn log_session_replay_screen(&self, fields: AnnotatedLogFields, duration: time::Duration) {
+    self.log_session_replay("Screen captured", fields, duration);
+  }
+
+  pub fn log_session_replay_screenshot(
+    &self,
+    fields: AnnotatedLogFields,
+    duration: time::Duration,
+  ) {
+    self.log_session_replay(SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE, fields, duration);
+  }
+
+  fn log_session_replay(
+    &self,
+    message: &str,
+    fields: AnnotatedLogFields,
+    duration: time::Duration,
+  ) {
     let mut fields = fields;
     fields.push(AnnotatedLogField {
       field: LogField {
@@ -188,7 +206,7 @@ impl LoggerHandle {
     self.log(
       log_level::INFO,
       LogType::Replay,
-      "Screen captured".into(),
+      message.into(),
       fields,
       vec![],
       None,
@@ -391,6 +409,7 @@ pub struct InitParams {
 
   pub metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
   pub resource_utilization_target: Box<dyn bd_resource_utilization::Target + Send + Sync>,
+  pub session_replay_target: Box<dyn bd_session_replay::Target + Send + Sync>,
   pub events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
 
   pub device: Arc<bd_device::Device>,

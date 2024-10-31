@@ -1591,6 +1591,7 @@ async fn engine_processing_log() {
       log_destination_buffer_ids: Cow::Owned(BTreeSet::from(["foo_buffer_id".into()])),
       triggered_flush_buffers_action_ids: BTreeSet::from(["foo_action_id"]),
       triggered_flushes_buffer_ids: BTreeSet::from(["foo_buffer_id".into()]),
+      capture_screenshot: false,
     },
     result
   );
@@ -1854,6 +1855,7 @@ async fn log_without_destination() {
       log_destination_buffer_ids: Cow::Owned(BTreeSet::new()),
       triggered_flush_buffers_action_ids: BTreeSet::from(["action"]),
       triggered_flushes_buffer_ids: BTreeSet::from(["trigger_buffer_id".into()]),
+      capture_screenshot: false,
     },
     result
   );
@@ -2979,6 +2981,29 @@ async fn sankey_action() {
       "_path_id" => "1ce0b8284b9681de466d4b55b1487a9b2ab4da07711b0ad99ce059f21e4a9b84",
     },
   );
+}
+
+#[tokio::test]
+async fn take_screenshot_action() {
+  let mut a = state!("A");
+  let b = state!("B");
+
+  declare_transition!(
+    &mut a => &b;
+    when rule!(log_matches!(message == "foo"));
+    do action!(screenshot "screenshot_action_id")
+  );
+
+  let workflow = workflow!(exclusive with a, b);
+  let setup = Setup::new();
+
+  let mut engine = setup.make_workflows_engine(
+    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
+  );
+
+  let result = engine_process_log!(engine; "foo");
+
+  assert!(result.capture_screenshot);
 }
 
 fn make_runtime() -> std::sync::Arc<ConfigLoader> {

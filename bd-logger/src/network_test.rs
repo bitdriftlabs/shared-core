@@ -6,7 +6,6 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{NetworkQualityInterceptor, TimeProvider};
-use crate::async_log_buffer::LogInterceptor;
 use crate::network::HTTPTrafficDataUsageTracker;
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_log_metadata::AnnotatedLogFields;
@@ -15,6 +14,7 @@ use bd_log_primitives::{
   AnnotatedLogField,
   LogField,
   LogFieldKind,
+  LogInterceptor,
   LogMessage,
   LogType,
   StringOrBytes,
