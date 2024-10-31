@@ -22,4 +22,5 @@ pub enum NetworkQuality {
 
 pub trait NetworkQualityProvider: Send + Sync {
   fn get_network_quality(&self) -> NetworkQuality;
+  fn set_network_quality(&self, quality: NetworkQuality);
 }

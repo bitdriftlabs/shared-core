@@ -14,7 +14,7 @@ use crate::logger::with_thread_local_logger_guard;
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::memory_bound::{channel, MemorySized, Receiver, Sender, TrySendError};
 use crate::metadata::MetadataCollector;
-use crate::network::NetworkQualityInterceptor;
+use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::PreConfigBuffer;
 use crate::{internal_report, network};
 use bd_buffer::BuffersWithAck;
@@ -198,7 +198,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     let internal_periodic_fields_reporter =
       Arc::new(internal_report::Reporter::new(runtime_loader));
-    let bandwidth_usage_tracker = Arc::new(network::HTTPTrafficDataUsageTracker::new());
+    let bandwidth_usage_tracker = Arc::new(network::HTTPTrafficDataUsageTracker::new(
+      Arc::new(SystemTimeProvider),
+      network_quality_provider.clone(),
+    ));
     let network_quality_interceptor =
       Arc::new(NetworkQualityInterceptor::new(network_quality_provider));
 
