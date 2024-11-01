@@ -812,7 +812,10 @@ dependencies = [
 name = "bd-proto-util"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
  "base64ct",
+ "bd-proto",
+ "cc",
  "itertools 0.13.0",
  "protobuf",
  "sha2",
