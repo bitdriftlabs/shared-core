@@ -10,7 +10,7 @@ use crate::client_config::{self, LoggerUpdate};
 use crate::consumer::BufferUploadManager;
 use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
-use crate::logger::{ChannelPair, Logger};
+use crate::logger::{ChannelPair, Logger, StartParams};
 use crate::logging_state::UninitializedLoggingContext;
 use crate::InitParams;
 use bd_api::api::SimpleNetworkQualityProvider;
@@ -89,7 +89,7 @@ impl LoggerBuilder {
   ) -> anyhow::Result<(
     Logger,
     tokio::sync::mpsc::Sender<DataUpload>,
-    Pin<Box<impl Future<Output = anyhow::Result<()>> + 'static>>,
+    impl FnOnce(StartParams) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'static>>,
   )> {
     if self.mobile_features && self.stats_scope.is_some() {
       anyhow::bail!(
@@ -163,9 +163,6 @@ impl LoggerBuilder {
       LoggerReplay {},
       self.params.session_strategy.clone(),
       self.params.metadata_provider.clone(),
-      self.params.resource_utilization_target,
-      self.params.session_replay_target,
-      self.params.events_listener_target,
       config_update_rx,
       shutdown_handle.clone(),
       &runtime_loader,
@@ -239,27 +236,29 @@ impl LoggerBuilder {
 
     bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
 
-    let logger_future = async {
-      try_join!(
-        async move { api.start().await },
-        async move { buffer_uploader.run().await },
-        async move {
-          async_log_buffer.run().await;
-          Ok(())
-        },
-        async move { buffer_manager.process_flushes(flush_buffers_rx).await },
-        async move {
-          if let Some(stats_flusher) = maybe_stats_flusher {
-            stats_flusher.periodic_flush().await;
-          };
-
-          Ok(())
-        },
-      )
-      .map(|_| ())
+    let logger_future = |params: StartParams| {
+      Box::pin(async {
+        try_join!(
+          async move { api.start().await },
+          async move { buffer_uploader.run().await },
+          async move {
+            async_log_buffer.run(params).await;
+            Ok(())
+          },
+          async move { buffer_manager.process_flushes(flush_buffers_rx).await },
+          async move {
+            if let Some(stats_flusher) = maybe_stats_flusher {
+              stats_flusher.periodic_flush().await;
+            };
+  
+            Ok(())
+          },
+        )
+        .map(|_| ())
+      })
     };
 
-    Ok((logger, data_upload_ch.tx, Box::pin(logger_future)))
+    Ok((logger, data_upload_ch.tx, logger_future))
   }
 
   /// Builds the builder, running the logger on a dedicated thread. This is useful for running the

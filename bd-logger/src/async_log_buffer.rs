@@ -10,7 +10,7 @@
 mod async_log_buffer_test;
 
 use crate::log_replay::LogReplay;
-use crate::logger::with_thread_local_logger_guard;
+use crate::logger::{with_thread_local_logger_guard, StartParams};
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::memory_bound::{channel, MemorySized, Receiver, Sender, TrySendError};
 use crate::metadata::MetadataCollector;
@@ -169,9 +169,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     replayer: R,
     session_strategy: Arc<bd_session::Strategy>,
     metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
-    resource_utilization_target: Box<dyn bd_resource_utilization::Target + Send + Sync>,
-    session_replay_target: Box<dyn bd_session_replay::Target + Send + Sync>,
-    events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
     config_update_rx: mpsc::Receiver<ConfigUpdate>,
     shutdown_trigger_handle: ComponentShutdownTriggerHandle,
     runtime_loader: &Arc<ConfigLoader>,
@@ -190,11 +187,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       session_replay_recorder,
       session_replay_capture_screenshot_handler,
       screenshot_log_interceptor,
-    ) = bd_session_replay::Recorder::new(
-      session_replay_target,
-      runtime_loader,
-      &uninitialized_logging_context.stats.scope,
-    );
+    ) =
+      bd_session_replay::Recorder::new(runtime_loader, &uninitialized_logging_context.stats.scope);
 
     let internal_periodic_fields_reporter =
       Arc::new(internal_report::Reporter::new(runtime_loader));
@@ -212,15 +206,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
         session_strategy,
         metadata_collector: MetadataCollector::new(metadata_provider),
-        resource_utilization_reporter: bd_resource_utilization::Reporter::new(
-          resource_utilization_target,
-          runtime_loader,
-        ),
+        resource_utilization_reporter: bd_resource_utilization::Reporter::new(runtime_loader),
 
         session_replay_recorder,
         session_replay_capture_screenshot_handler,
 
-        events_listener: bd_events::Listener::new(events_listener_target, runtime_loader),
+        events_listener: bd_events::Listener::new(runtime_loader),
 
         interceptors: vec![
           internal_periodic_fields_reporter,
@@ -547,16 +538,16 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  pub async fn run(self) -> Self {
+  pub async fn run(self, params: StartParams) -> Self {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     self
-      .run_with_shutdown(shutdown_trigger.make_shutdown())
+      .run_with_shutdown(params, shutdown_trigger.make_shutdown())
       .await
   }
 
   // TODO(mattklein123): This seems to only be used for tests. Figure out how to clean this up
   // so we don't need this just for tests.
-  pub async fn run_with_shutdown(mut self, mut shutdown: ComponentShutdown) -> Self {
+  pub async fn run_with_shutdown(mut self, params: StartParams, mut shutdown: ComponentShutdown) -> Self {
     // Processes incoming logs and reacts to workflows config updates.
     //
     // The first workflows config update makes the async log buffer disable
@@ -564,6 +555,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // by the pre-config log buffer. All of that happens in a way where logs
     // stored in pre-config log buffer are guaranteed to be replayed before
     // the async log buffer goes back to processing incoming logs.
+
+    let StartParams { resource_utilization_target, session_replay_target, events_listener_target }  = params;
 
     let local_shutdown = shutdown.cancelled();
     tokio::pin!(local_shutdown);
@@ -651,9 +644,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         },
         () = async { initialized_logging_context.unwrap().processing_pipeline.run().await },
           if initialized_logging_context.is_some() => {},
-        () = self.resource_utilization_reporter.run() => {},
-        () = self.session_replay_recorder.run() => {},
-        () = self.events_listener.run() => {},
+        () = self.resource_utilization_reporter.run(&*resource_utilization_target) => {},
+        () = self.session_replay_recorder.run(&*session_replay_target) => {},
+        () = self.events_listener.run(&*events_listener_target) => {},
         () = &mut local_shutdown => {
           return self;
         },

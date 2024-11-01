@@ -56,8 +56,6 @@ pub trait Target {
 //
 
 pub struct Recorder {
-  target: Box<dyn Target + Send + Sync>,
-
   is_periodic_reporting_enabled_flag: BoolWatch<session_replay::PeriodicScreensEnabledFlag>,
   is_periodic_reporting_enabled: bool,
   reporting_interval_rate_flag: DurationWatch<session_replay::ReportingIntervalFlag>,
@@ -81,7 +79,6 @@ pub struct Recorder {
 
 impl Recorder {
   pub fn new(
-    target: Box<dyn Target + Send + Sync>,
     runtime_loader: &Arc<ConfigLoader>,
     scope: &Scope,
   ) -> (Self, CaptureScreenshotHandler, ScreenshotLogInterceptor) {
@@ -118,7 +115,6 @@ impl Recorder {
 
     (
       Self {
-        target,
         is_periodic_reporting_enabled_flag,
         is_periodic_reporting_enabled,
         reporting_interval_rate_flag: session_replay::ReportingIntervalFlag::register(
@@ -155,14 +151,18 @@ impl Recorder {
     interval
   }
 
-  pub async fn run(&mut self) {
+  pub async fn run(&mut self, target: &(dyn Target + Send + Sync)) {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     self
-      .run_with_shutdown(shutdown_trigger.make_shutdown())
+      .run_with_shutdown(target, shutdown_trigger.make_shutdown())
       .await;
   }
 
-  pub async fn run_with_shutdown(&mut self, mut shutdown: ComponentShutdown) {
+  pub async fn run_with_shutdown(
+    &mut self,
+    target: &(dyn Target + Send + Sync),
+    mut shutdown: ComponentShutdown,
+  ) {
     if self.reporting_interval.is_none() {
       self.reporting_interval = Some(Self::create_interval(self.reporting_interval_rate, true));
     }
@@ -179,7 +179,7 @@ impl Recorder {
           // here (since taking a screenshot takes not more than ~tens of ms).
           // TODO(Augustyniak): Consider changing the implementation so that we do not ask platform layer
           // for more screens until we receive the previous one.
-          self.target.capture_screen();
+          target.capture_screen();
         },
         _ = self.reporting_interval_rate_flag.changed() => {
           self.reporting_interval = Some(
@@ -205,7 +205,7 @@ impl Recorder {
           log::debug!("session replay recorder taking screenshot");
 
           self.stats.success.inc();
-          self.target.capture_screenshot();
+          target.capture_screenshot();
 
           // Reset the flag to indicate that the recorder is not ready to take a screenshot until
           // `ScreenshotLogInterceptor` intercepts a log containing a screenshot that was just requested.

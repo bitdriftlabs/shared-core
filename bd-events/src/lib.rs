@@ -37,8 +37,6 @@ pub trait ListenerTarget {
 /// Responsible for starting and stopping the passed events listener target based on
 /// a runtime-controlled flag.
 pub struct Listener {
-  target: Box<dyn ListenerTarget + Send + Sync>,
-
   // Whether the events listener has seen at least one update to the value of the `is_enabled`
   // flag.
   has_seen_is_enabled_flag_update: bool,
@@ -47,27 +45,27 @@ pub struct Listener {
 }
 
 impl Listener {
-  pub fn new(
-    target: Box<dyn ListenerTarget + Send + Sync>,
-    runtime_loader: &Arc<ConfigLoader>,
-  ) -> Self {
+  pub fn new(runtime_loader: &Arc<ConfigLoader>) -> Self {
     let is_enabled_flag = ListenerEnabledFlag::register(runtime_loader).unwrap();
 
     Self {
-      target,
       has_seen_is_enabled_flag_update: false,
       is_enabled_flag,
     }
   }
 
-  pub async fn run(&mut self) {
+  pub async fn run(&mut self, target: &(dyn ListenerTarget + Send + Sync)) {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     self
-      .run_with_shutdown(shutdown_trigger.make_shutdown())
+      .run_with_shutdown(target, shutdown_trigger.make_shutdown())
       .await;
   }
 
-  pub async fn run_with_shutdown(&mut self, mut shutdown: ComponentShutdown) {
+  pub async fn run_with_shutdown(
+    &mut self,
+    target: &(dyn ListenerTarget + Send + Sync),
+    mut shutdown: ComponentShutdown,
+  ) {
     let local_shutdown = shutdown.cancelled();
     tokio::pin!(local_shutdown);
 
@@ -77,11 +75,11 @@ impl Listener {
           let new_is_enabled = self.is_enabled_flag.read();
           if new_is_enabled {
             log::debug!("events listener start");
-            self.target.start();
+            target.start();
           } else if self.has_seen_is_enabled_flag_update {
             // Stop only if event listener was previously started.
             log::debug!("events listener stop");
-            self.target.stop();
+            target.stop();
           }
 
           self.has_seen_is_enabled_flag_update = true;

@@ -40,8 +40,6 @@ pub trait Target {
 /// Responsible for informing the target to prepare and emit a resource utilization log at a
 /// runtime-controlled interval.
 pub struct Reporter {
-  target: Box<dyn Target + Send + Sync>,
-
   is_enabled: bool,
   reporting_interval_rate: Duration,
   reporting_interval: Option<Interval>,
@@ -51,7 +49,7 @@ pub struct Reporter {
 }
 
 impl Reporter {
-  pub fn new(target: Box<dyn Target + Send + Sync>, runtime_loader: &Arc<ConfigLoader>) -> Self {
+  pub fn new(runtime_loader: &Arc<ConfigLoader>) -> Self {
     let mut is_enabled_flag = ResourceUtilizationEnabledFlag::register(runtime_loader).unwrap();
     let mut reporting_interval_flag =
       ResourceUtilizationReportingIntervalFlag::register(runtime_loader).unwrap();
@@ -59,8 +57,6 @@ impl Reporter {
     let rate = reporting_interval_flag.read_mark_update();
 
     Self {
-      target,
-
       is_enabled: is_enabled_flag.read_mark_update(),
       reporting_interval_rate: rate.unsigned_abs(),
 
@@ -87,14 +83,18 @@ impl Reporter {
     interval
   }
 
-  pub async fn run(&mut self) {
+  pub async fn run(&mut self, target: &(dyn Target + Send + Sync)) {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     self
-      .run_with_shutdown(shutdown_trigger.make_shutdown())
+      .run_with_shutdown(target, shutdown_trigger.make_shutdown())
       .await;
   }
 
-  pub async fn run_with_shutdown(&mut self, mut shutdown: ComponentShutdown) {
+  pub async fn run_with_shutdown(
+    &mut self,
+    target: &(dyn Target + Send + Sync),
+    mut shutdown: ComponentShutdown,
+  ) {
     if self.reporting_interval.is_none() {
       self.reporting_interval = Some(Self::create_interval(self.reporting_interval_rate, true));
     }
@@ -107,7 +107,7 @@ impl Reporter {
         () = async { self.reporting_interval.as_mut().unwrap().tick().await; },
           if self.reporting_interval.is_some() && self.is_enabled => {
           log::debug!("resource utilization reporter tick");
-          self.target.tick();
+          target.tick();
         },
         _ = self.reporting_interval_flag.changed() => {
           self.reporting_interval = Some(
