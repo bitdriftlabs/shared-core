@@ -7,6 +7,7 @@ version      = "1.0.0"
 
 [dependencies]
 anyhow.workspace            = true
+assert_matches.workspace    = true
 async-trait.workspace       = true
 axum.workspace              = true
 base64ct.workspace          = true

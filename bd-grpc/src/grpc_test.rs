@@ -200,6 +200,53 @@ impl ServerStreamingHandler<EchoResponse, EchoRequest> for ErrorHandler {
   }
 }
 
+struct NormalHandler {}
+
+#[async_trait]
+impl Handler<EchoRequest, EchoResponse> for NormalHandler {
+  async fn handle(
+    &self,
+    _headers: HeaderMap,
+    _extensions: Extensions,
+    request: EchoRequest,
+  ) -> Result<EchoResponse> {
+    Ok(EchoResponse {
+      echo: request.echo,
+      ..Default::default()
+    })
+  }
+}
+
+#[tokio::test]
+async fn unary_compression() {
+  let error_counter = prometheus::IntCounter::new("error", "-").unwrap();
+  let router = make_unary_router(
+    &ServiceMethod::<EchoRequest, EchoResponse>::new("Test", "Echo"),
+    Arc::new(NormalHandler {}),
+    move |_| {},
+    error_counter,
+    true,
+  );
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let local_address = listener.local_addr().unwrap();
+  let server = axum::serve(listener, router.into_make_service());
+  tokio::spawn(async { server.await.unwrap() });
+  let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
+  let response = client
+    .unary(
+      &ServiceMethod::<EchoRequest, EchoResponse>::new("Test", "Echo"),
+      None,
+      EchoRequest {
+        echo: "a".repeat(1000),
+        ..Default::default()
+      },
+      1.seconds(),
+      Compression::GRpc(bd_grpc_codec::Compression::StatelessZlib { level: 3 }),
+    )
+    .await;
+  assert_eq!(response.unwrap().echo, "a".repeat(1000));
+}
+
 #[tokio::test]
 async fn unary_error_handler() {
   let error_counter = prometheus::IntCounter::new("error", "-").unwrap();
