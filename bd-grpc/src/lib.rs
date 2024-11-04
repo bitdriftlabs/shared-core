@@ -14,6 +14,7 @@ mod generated;
 
 pub mod axum_helper;
 
+use assert_matches::debug_assert_matches;
 use axum::body::{to_bytes, Body};
 use axum::extract::Request;
 use axum::http::HeaderValue;
@@ -189,9 +190,11 @@ impl Code {
 pub enum Compression {
   // No compression.
   None,
+  // Spec compliant gRPC compression.
+  GRpc(bd_grpc_codec::Compression),
   // Snappy raw compression. This is meant for unary requests only as it does not use the snappy
   // frame format and persist state for the duration of the stream. We can add this later if
-  // needed.
+  // needed. This is not compliant with the gRPC spec.
   Snappy,
 }
 
@@ -420,6 +423,23 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
         let mut encoder = Encoder::new(None);
         (extra_headers, encoder.encode(&request).into())
       },
+      Compression::GRpc(compression) => {
+        debug_assert_matches!(
+          compression,
+          bd_grpc_codec::Compression::StatelessZlib { .. }
+        );
+        let mut encoder = Encoder::new(Some(compression));
+        let mut extra_headers = extra_headers.unwrap_or_default();
+        extra_headers.insert(
+          GRPC_ENCODING_HEADER,
+          GRPC_ENCODING_DEFLATE.try_into().unwrap(),
+        );
+        extra_headers.insert(
+          GRPC_ACCEPT_ENCODING_HEADER,
+          GRPC_ENCODING_DEFLATE.try_into().unwrap(),
+        );
+        (Some(extra_headers), encoder.encode(&request).into())
+      },
       Compression::Snappy => {
         // Note: This is not compliant to the gRPC spec. It just compresses the entire payload
         // including the message length. We can consider making this better later but this is simple
@@ -450,8 +470,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       Ok(response) => response?,
       Err(_) => return Err(Error::RequestTimeout),
     };
-    // TODO(mattklein123): Support response decompression for unary requests.
-    let mut decoder = Decoder::new(None, OptimizeFor::Cpu);
+    let mut decoder = Decoder::new(finalize_decompression(response.headers()), OptimizeFor::Cpu);
     let body = response
       .into_body()
       .collect()
@@ -913,9 +932,7 @@ async fn decode_request<Message: MessageFull>(
   validate_request: bool,
 ) -> Result<(HeaderMap<HeaderValue>, Extensions, Message)> {
   let (parts, body) = request.into_parts();
-  // TODO(mattklein123): Support decompression/compression for unary and server-side streaming
-  // requests.
-  let mut grpc_decoder = Decoder::new(None, OptimizeFor::Cpu);
+  let mut grpc_decoder = Decoder::new(finalize_decompression(&parts.headers), OptimizeFor::Cpu);
   let body_bytes = to_bytes(body, usize::MAX)
     .await
     .map_err(|e| Error::BodyStream(e.into()))?;
@@ -955,13 +972,16 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
 ) -> Result<Response> {
   let (headers, extensions, message) =
     decode_request::<OutgoingType>(request, validate_request).await?;
+  let compression = finalize_response_compression(
+    Some(bd_grpc_codec::Compression::StatelessZlib { level: 3 }),
+    &headers,
+  );
 
   let response = handler.handle(headers, extensions, message).await?;
 
   let (tx, rx) = mpsc::channel::<std::result::Result<_, Infallible>>(2);
 
-  // TODO(mattklein123): Response compression.
-  let mut encoder = Encoder::new(None);
+  let mut encoder = Encoder::new(compression);
   let encoded_data = encoder.encode(&response);
 
   tx.send(Ok(Frame::data(encoded_data))).await.unwrap();
@@ -972,7 +992,7 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
 
   Ok(new_grpc_response(
     Body::new(StreamBody::new(ReceiverStream::new(rx))),
-    None,
+    compression,
   ))
 }
 
@@ -996,6 +1016,13 @@ pub fn finalize_response_compression(
       .filter(|v| *v == GRPC_ENCODING_DEFLATE)
       .map(|_| bd_grpc_codec::Compression::StatelessZlib { level }),
   }
+}
+
+fn finalize_decompression(headers: &HeaderMap) -> Option<bd_grpc_codec::Decompression> {
+  headers
+    .get(GRPC_ENCODING_HEADER)
+    .filter(|v| *v == GRPC_ENCODING_DEFLATE)
+    .map(|_| bd_grpc_codec::Decompression::StatelessZlib)
 }
 
 async fn server_streaming_handler<ResponseType: MessageFull, RequestType: MessageFull>(
