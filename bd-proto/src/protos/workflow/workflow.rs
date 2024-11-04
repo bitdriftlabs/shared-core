@@ -505,6 +505,8 @@ pub mod workflow {
         pub rule: ::protobuf::MessageField<Rule>,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Transition.actions)
         pub actions: ::std::vec::Vec<Action>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Transition.extensions)
+        pub extensions: ::std::vec::Vec<TransitionExtension>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.Transition.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -522,7 +524,7 @@ pub mod workflow {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(3);
+            let mut fields = ::std::vec::Vec::with_capacity(4);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "target_state_id",
@@ -538,6 +540,11 @@ pub mod workflow {
                 "actions",
                 |m: &Transition| { &m.actions },
                 |m: &mut Transition| { &mut m.actions },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "extensions",
+                |m: &Transition| { &m.extensions },
+                |m: &mut Transition| { &mut m.extensions },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Transition>(
                 "Workflow.Transition",
@@ -566,6 +573,9 @@ pub mod workflow {
                     26 => {
                         self.actions.push(is.read_message()?);
                     },
+                    34 => {
+                        self.extensions.push(is.read_message()?);
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -589,6 +599,10 @@ pub mod workflow {
                 let len = value.compute_size();
                 my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
             };
+            for value in &self.extensions {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -603,6 +617,9 @@ pub mod workflow {
             }
             for v in &self.actions {
                 ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+            };
+            for v in &self.extensions {
+                ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
             };
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
@@ -624,6 +641,7 @@ pub mod workflow {
             self.target_state_id.clear();
             self.rule.clear();
             self.actions.clear();
+            self.extensions.clear();
             self.special_fields.clear();
         }
 
@@ -632,6 +650,7 @@ pub mod workflow {
                 target_state_id: ::std::string::String::new(),
                 rule: ::protobuf::MessageField::none(),
                 actions: ::std::vec::Vec::new(),
+                extensions: ::std::vec::Vec::new(),
                 special_fields: ::protobuf::SpecialFields::new(),
             };
             &instance
@@ -929,6 +948,527 @@ pub mod workflow {
         impl Rule_type {
             pub(in super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
                 ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Rule_type>("rule_type")
+            }
+        }
+    }
+
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct TransitionExtension {
+        // message oneof groups
+        pub extension_type: ::std::option::Option<transition_extension::Extension_type>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a TransitionExtension {
+        fn default() -> &'a TransitionExtension {
+            <TransitionExtension as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl TransitionExtension {
+        pub fn new() -> TransitionExtension {
+            ::std::default::Default::default()
+        }
+
+        // .bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SankeyDiagramValueExtraction sankey_diagram_value_extraction = 1;
+
+        pub fn sankey_diagram_value_extraction(&self) -> &transition_extension::SankeyDiagramValueExtraction {
+            match self.extension_type {
+                ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(ref v)) => v,
+                _ => <transition_extension::SankeyDiagramValueExtraction as ::protobuf::Message>::default_instance(),
+            }
+        }
+
+        pub fn clear_sankey_diagram_value_extraction(&mut self) {
+            self.extension_type = ::std::option::Option::None;
+        }
+
+        pub fn has_sankey_diagram_value_extraction(&self) -> bool {
+            match self.extension_type {
+                ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_sankey_diagram_value_extraction(&mut self, v: transition_extension::SankeyDiagramValueExtraction) {
+            self.extension_type = ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_sankey_diagram_value_extraction(&mut self) -> &mut transition_extension::SankeyDiagramValueExtraction {
+            if let ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(_)) = self.extension_type {
+            } else {
+                self.extension_type = ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(transition_extension::SankeyDiagramValueExtraction::new()));
+            }
+            match self.extension_type {
+                ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_sankey_diagram_value_extraction(&mut self) -> transition_extension::SankeyDiagramValueExtraction {
+            if self.has_sankey_diagram_value_extraction() {
+                match self.extension_type.take() {
+                    ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                transition_extension::SankeyDiagramValueExtraction::new()
+            }
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(1);
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, transition_extension::SankeyDiagramValueExtraction>(
+                "sankey_diagram_value_extraction",
+                TransitionExtension::has_sankey_diagram_value_extraction,
+                TransitionExtension::sankey_diagram_value_extraction,
+                TransitionExtension::mut_sankey_diagram_value_extraction,
+                TransitionExtension::set_sankey_diagram_value_extraction,
+            ));
+            oneofs.push(transition_extension::Extension_type::generated_oneof_descriptor_data());
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<TransitionExtension>(
+                "Workflow.TransitionExtension",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for TransitionExtension {
+        const NAME: &'static str = "TransitionExtension";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.extension_type = ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(is.read_message()?));
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let ::std::option::Option::Some(ref v) = self.extension_type {
+                match v {
+                    &transition_extension::Extension_type::SankeyDiagramValueExtraction(ref v) => {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                    },
+                };
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let ::std::option::Option::Some(ref v) = self.extension_type {
+                match v {
+                    &transition_extension::Extension_type::SankeyDiagramValueExtraction(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                    },
+                };
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> TransitionExtension {
+            TransitionExtension::new()
+        }
+
+        fn clear(&mut self) {
+            self.extension_type = ::std::option::Option::None;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static TransitionExtension {
+            static instance: TransitionExtension = TransitionExtension {
+                extension_type: ::std::option::Option::None,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for TransitionExtension {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("Workflow.TransitionExtension").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for TransitionExtension {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for TransitionExtension {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `TransitionExtension`
+    pub mod transition_extension {
+
+        #[derive(Clone,PartialEq,Debug)]
+        // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.extension_type)
+        pub enum Extension_type {
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.sankey_diagram_value_extraction)
+            SankeyDiagramValueExtraction(SankeyDiagramValueExtraction),
+        }
+
+        impl ::protobuf::Oneof for Extension_type {
+        }
+
+        impl ::protobuf::OneofFull for Extension_type {
+            fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| <super::TransitionExtension as ::protobuf::MessageFull>::descriptor().oneof_by_name("extension_type").unwrap()).clone()
+            }
+        }
+
+        impl Extension_type {
+            pub(in super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+                ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Extension_type>("extension_type")
+            }
+        }
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SankeyDiagramValueExtraction)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct SankeyDiagramValueExtraction {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SankeyDiagramValueExtraction.sankey_diagram_id)
+            pub sankey_diagram_id: ::std::string::String,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SankeyDiagramValueExtraction.counts_toward_sankey_extraction_limit)
+            pub counts_toward_sankey_extraction_limit: bool,
+            // message oneof groups
+            pub value_type: ::std::option::Option<sankey_diagram_value_extraction::Value_type>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SankeyDiagramValueExtraction.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a SankeyDiagramValueExtraction {
+            fn default() -> &'a SankeyDiagramValueExtraction {
+                <SankeyDiagramValueExtraction as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl SankeyDiagramValueExtraction {
+            pub fn new() -> SankeyDiagramValueExtraction {
+                ::std::default::Default::default()
+            }
+
+            // string fixed = 2;
+
+            pub fn fixed(&self) -> &str {
+                match self.value_type {
+                    ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::Fixed(ref v)) => v,
+                    _ => "",
+                }
+            }
+
+            pub fn clear_fixed(&mut self) {
+                self.value_type = ::std::option::Option::None;
+            }
+
+            pub fn has_fixed(&self) -> bool {
+                match self.value_type {
+                    ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::Fixed(..)) => true,
+                    _ => false,
+                }
+            }
+
+            // Param is passed by value, moved
+            pub fn set_fixed(&mut self, v: ::std::string::String) {
+                self.value_type = ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::Fixed(v))
+            }
+
+            // Mutable pointer to the field.
+            pub fn mut_fixed(&mut self) -> &mut ::std::string::String {
+                if let ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::Fixed(_)) = self.value_type {
+                } else {
+                    self.value_type = ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::Fixed(::std::string::String::new()));
+                }
+                match self.value_type {
+                    ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::Fixed(ref mut v)) => v,
+                    _ => panic!(),
+                }
+            }
+
+            // Take field
+            pub fn take_fixed(&mut self) -> ::std::string::String {
+                if self.has_fixed() {
+                    match self.value_type.take() {
+                        ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::Fixed(v)) => v,
+                        _ => panic!(),
+                    }
+                } else {
+                    ::std::string::String::new()
+                }
+            }
+
+            // .bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtracted field_extracted = 3;
+
+            pub fn field_extracted(&self) -> &super::FieldExtracted {
+                match self.value_type {
+                    ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::FieldExtracted(ref v)) => v,
+                    _ => <super::FieldExtracted as ::protobuf::Message>::default_instance(),
+                }
+            }
+
+            pub fn clear_field_extracted(&mut self) {
+                self.value_type = ::std::option::Option::None;
+            }
+
+            pub fn has_field_extracted(&self) -> bool {
+                match self.value_type {
+                    ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::FieldExtracted(..)) => true,
+                    _ => false,
+                }
+            }
+
+            // Param is passed by value, moved
+            pub fn set_field_extracted(&mut self, v: super::FieldExtracted) {
+                self.value_type = ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::FieldExtracted(v))
+            }
+
+            // Mutable pointer to the field.
+            pub fn mut_field_extracted(&mut self) -> &mut super::FieldExtracted {
+                if let ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::FieldExtracted(_)) = self.value_type {
+                } else {
+                    self.value_type = ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::FieldExtracted(super::FieldExtracted::new()));
+                }
+                match self.value_type {
+                    ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::FieldExtracted(ref mut v)) => v,
+                    _ => panic!(),
+                }
+            }
+
+            // Take field
+            pub fn take_field_extracted(&mut self) -> super::FieldExtracted {
+                if self.has_field_extracted() {
+                    match self.value_type.take() {
+                        ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::FieldExtracted(v)) => v,
+                        _ => panic!(),
+                    }
+                } else {
+                    super::FieldExtracted::new()
+                }
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(4);
+                let mut oneofs = ::std::vec::Vec::with_capacity(1);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "sankey_diagram_id",
+                    |m: &SankeyDiagramValueExtraction| { &m.sankey_diagram_id },
+                    |m: &mut SankeyDiagramValueExtraction| { &mut m.sankey_diagram_id },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+                    "fixed",
+                    SankeyDiagramValueExtraction::has_fixed,
+                    SankeyDiagramValueExtraction::fixed,
+                    SankeyDiagramValueExtraction::set_fixed,
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::FieldExtracted>(
+                    "field_extracted",
+                    SankeyDiagramValueExtraction::has_field_extracted,
+                    SankeyDiagramValueExtraction::field_extracted,
+                    SankeyDiagramValueExtraction::mut_field_extracted,
+                    SankeyDiagramValueExtraction::set_field_extracted,
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "counts_toward_sankey_extraction_limit",
+                    |m: &SankeyDiagramValueExtraction| { &m.counts_toward_sankey_extraction_limit },
+                    |m: &mut SankeyDiagramValueExtraction| { &mut m.counts_toward_sankey_extraction_limit },
+                ));
+                oneofs.push(sankey_diagram_value_extraction::Value_type::generated_oneof_descriptor_data());
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SankeyDiagramValueExtraction>(
+                    "Workflow.TransitionExtension.SankeyDiagramValueExtraction",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for SankeyDiagramValueExtraction {
+            const NAME: &'static str = "SankeyDiagramValueExtraction";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.sankey_diagram_id = is.read_string()?;
+                        },
+                        18 => {
+                            self.value_type = ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::Fixed(is.read_string()?));
+                        },
+                        26 => {
+                            self.value_type = ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::FieldExtracted(is.read_message()?));
+                        },
+                        32 => {
+                            self.counts_toward_sankey_extraction_limit = is.read_bool()?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.sankey_diagram_id.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.sankey_diagram_id);
+                }
+                if self.counts_toward_sankey_extraction_limit != false {
+                    my_size += 1 + 1;
+                }
+                if let ::std::option::Option::Some(ref v) = self.value_type {
+                    match v {
+                        &sankey_diagram_value_extraction::Value_type::Fixed(ref v) => {
+                            my_size += ::protobuf::rt::string_size(2, &v);
+                        },
+                        &sankey_diagram_value_extraction::Value_type::FieldExtracted(ref v) => {
+                            let len = v.compute_size();
+                            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                        },
+                    };
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.sankey_diagram_id.is_empty() {
+                    os.write_string(1, &self.sankey_diagram_id)?;
+                }
+                if self.counts_toward_sankey_extraction_limit != false {
+                    os.write_bool(4, self.counts_toward_sankey_extraction_limit)?;
+                }
+                if let ::std::option::Option::Some(ref v) = self.value_type {
+                    match v {
+                        &sankey_diagram_value_extraction::Value_type::Fixed(ref v) => {
+                            os.write_string(2, v)?;
+                        },
+                        &sankey_diagram_value_extraction::Value_type::FieldExtracted(ref v) => {
+                            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                        },
+                    };
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> SankeyDiagramValueExtraction {
+                SankeyDiagramValueExtraction::new()
+            }
+
+            fn clear(&mut self) {
+                self.sankey_diagram_id.clear();
+                self.value_type = ::std::option::Option::None;
+                self.value_type = ::std::option::Option::None;
+                self.counts_toward_sankey_extraction_limit = false;
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static SankeyDiagramValueExtraction {
+                static instance: SankeyDiagramValueExtraction = SankeyDiagramValueExtraction {
+                    sankey_diagram_id: ::std::string::String::new(),
+                    counts_toward_sankey_extraction_limit: false,
+                    value_type: ::std::option::Option::None,
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for SankeyDiagramValueExtraction {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Workflow.TransitionExtension.SankeyDiagramValueExtraction").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for SankeyDiagramValueExtraction {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for SankeyDiagramValueExtraction {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
+        /// Nested message and enums of message `SankeyDiagramValueExtraction`
+        pub mod sankey_diagram_value_extraction {
+
+            #[derive(Clone,PartialEq,Debug)]
+            // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SankeyDiagramValueExtraction.value_type)
+            pub enum Value_type {
+                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SankeyDiagramValueExtraction.fixed)
+                Fixed(::std::string::String),
+                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SankeyDiagramValueExtraction.field_extracted)
+                FieldExtracted(super::super::FieldExtracted),
+            }
+
+            impl ::protobuf::Oneof for Value_type {
+            }
+
+            impl ::protobuf::OneofFull for Value_type {
+                fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+                    descriptor.get(|| <super::SankeyDiagramValueExtraction as ::protobuf::MessageFull>::descriptor().oneof_by_name("value_type").unwrap()).clone()
+                }
+            }
+
+            impl Value_type {
+                pub(in super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+                    ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Value_type>("value_type")
+                }
             }
         }
     }
@@ -1315,8 +1855,106 @@ pub mod workflow {
             }
         }
 
+        // .bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitSankeyDiagram action_emit_sankey_diagram = 3;
+
+        pub fn action_emit_sankey_diagram(&self) -> &action::ActionEmitSankeyDiagram {
+            match self.action_type {
+                ::std::option::Option::Some(action::Action_type::ActionEmitSankeyDiagram(ref v)) => v,
+                _ => <action::ActionEmitSankeyDiagram as ::protobuf::Message>::default_instance(),
+            }
+        }
+
+        pub fn clear_action_emit_sankey_diagram(&mut self) {
+            self.action_type = ::std::option::Option::None;
+        }
+
+        pub fn has_action_emit_sankey_diagram(&self) -> bool {
+            match self.action_type {
+                ::std::option::Option::Some(action::Action_type::ActionEmitSankeyDiagram(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_action_emit_sankey_diagram(&mut self, v: action::ActionEmitSankeyDiagram) {
+            self.action_type = ::std::option::Option::Some(action::Action_type::ActionEmitSankeyDiagram(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_action_emit_sankey_diagram(&mut self) -> &mut action::ActionEmitSankeyDiagram {
+            if let ::std::option::Option::Some(action::Action_type::ActionEmitSankeyDiagram(_)) = self.action_type {
+            } else {
+                self.action_type = ::std::option::Option::Some(action::Action_type::ActionEmitSankeyDiagram(action::ActionEmitSankeyDiagram::new()));
+            }
+            match self.action_type {
+                ::std::option::Option::Some(action::Action_type::ActionEmitSankeyDiagram(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_action_emit_sankey_diagram(&mut self) -> action::ActionEmitSankeyDiagram {
+            if self.has_action_emit_sankey_diagram() {
+                match self.action_type.take() {
+                    ::std::option::Option::Some(action::Action_type::ActionEmitSankeyDiagram(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                action::ActionEmitSankeyDiagram::new()
+            }
+        }
+
+        // .bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionTakeScreenshot action_take_screenshot = 4;
+
+        pub fn action_take_screenshot(&self) -> &action::ActionTakeScreenshot {
+            match self.action_type {
+                ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(ref v)) => v,
+                _ => <action::ActionTakeScreenshot as ::protobuf::Message>::default_instance(),
+            }
+        }
+
+        pub fn clear_action_take_screenshot(&mut self) {
+            self.action_type = ::std::option::Option::None;
+        }
+
+        pub fn has_action_take_screenshot(&self) -> bool {
+            match self.action_type {
+                ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_action_take_screenshot(&mut self, v: action::ActionTakeScreenshot) {
+            self.action_type = ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_action_take_screenshot(&mut self) -> &mut action::ActionTakeScreenshot {
+            if let ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(_)) = self.action_type {
+            } else {
+                self.action_type = ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(action::ActionTakeScreenshot::new()));
+            }
+            match self.action_type {
+                ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_action_take_screenshot(&mut self) -> action::ActionTakeScreenshot {
+            if self.has_action_take_screenshot() {
+                match self.action_type.take() {
+                    ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                action::ActionTakeScreenshot::new()
+            }
+        }
+
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut fields = ::std::vec::Vec::with_capacity(4);
             let mut oneofs = ::std::vec::Vec::with_capacity(1);
             fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, action::ActionFlushBuffers>(
                 "action_flush_buffers",
@@ -1331,6 +1969,20 @@ pub mod workflow {
                 Action::action_emit_metric,
                 Action::mut_action_emit_metric,
                 Action::set_action_emit_metric,
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, action::ActionEmitSankeyDiagram>(
+                "action_emit_sankey_diagram",
+                Action::has_action_emit_sankey_diagram,
+                Action::action_emit_sankey_diagram,
+                Action::mut_action_emit_sankey_diagram,
+                Action::set_action_emit_sankey_diagram,
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, action::ActionTakeScreenshot>(
+                "action_take_screenshot",
+                Action::has_action_take_screenshot,
+                Action::action_take_screenshot,
+                Action::mut_action_take_screenshot,
+                Action::set_action_take_screenshot,
             ));
             oneofs.push(action::Action_type::generated_oneof_descriptor_data());
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Action>(
@@ -1357,6 +2009,12 @@ pub mod workflow {
                     18 => {
                         self.action_type = ::std::option::Option::Some(action::Action_type::ActionEmitMetric(is.read_message()?));
                     },
+                    26 => {
+                        self.action_type = ::std::option::Option::Some(action::Action_type::ActionEmitSankeyDiagram(is.read_message()?));
+                    },
+                    34 => {
+                        self.action_type = ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(is.read_message()?));
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -1379,6 +2037,14 @@ pub mod workflow {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
+                    &action::Action_type::ActionEmitSankeyDiagram(ref v) => {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                    },
+                    &action::Action_type::ActionTakeScreenshot(ref v) => {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                    },
                 };
             }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -1394,6 +2060,12 @@ pub mod workflow {
                     },
                     &action::Action_type::ActionEmitMetric(ref v) => {
                         ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                    },
+                    &action::Action_type::ActionEmitSankeyDiagram(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                    },
+                    &action::Action_type::ActionTakeScreenshot(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
                     },
                 };
             }
@@ -1414,6 +2086,8 @@ pub mod workflow {
         }
 
         fn clear(&mut self) {
+            self.action_type = ::std::option::Option::None;
+            self.action_type = ::std::option::Option::None;
             self.action_type = ::std::option::Option::None;
             self.action_type = ::std::option::Option::None;
             self.special_fields.clear();
@@ -1455,6 +2129,10 @@ pub mod workflow {
             ActionFlushBuffers(ActionFlushBuffers),
             // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.action_emit_metric)
             ActionEmitMetric(ActionEmitMetric),
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.action_emit_sankey_diagram)
+            ActionEmitSankeyDiagram(ActionEmitSankeyDiagram),
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.action_take_screenshot)
+            ActionTakeScreenshot(ActionTakeScreenshot),
         }
 
         impl ::protobuf::Oneof for Action_type {
@@ -2115,7 +2793,7 @@ pub mod workflow {
             // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.id)
             pub id: ::std::string::String,
             // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.tags)
-            pub tags: ::std::vec::Vec<action_emit_metric::Tag>,
+            pub tags: ::std::vec::Vec<Tag>,
             // message oneof groups
             pub metric_type: ::std::option::Option<action_emit_metric::Metric_type>,
             pub value_extractor_type: ::std::option::Option<action_emit_metric::Value_extractor_type>,
@@ -2258,12 +2936,12 @@ pub mod workflow {
                 self.value_extractor_type = ::std::option::Option::Some(action_emit_metric::Value_extractor_type::Fixed(v))
             }
 
-            // .bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.FieldExtracted field_extracted = 6;
+            // .bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtracted field_extracted = 6;
 
-            pub fn field_extracted(&self) -> &action_emit_metric::FieldExtracted {
+            pub fn field_extracted(&self) -> &super::FieldExtracted {
                 match self.value_extractor_type {
                     ::std::option::Option::Some(action_emit_metric::Value_extractor_type::FieldExtracted(ref v)) => v,
-                    _ => <action_emit_metric::FieldExtracted as ::protobuf::Message>::default_instance(),
+                    _ => <super::FieldExtracted as ::protobuf::Message>::default_instance(),
                 }
             }
 
@@ -2279,15 +2957,15 @@ pub mod workflow {
             }
 
             // Param is passed by value, moved
-            pub fn set_field_extracted(&mut self, v: action_emit_metric::FieldExtracted) {
+            pub fn set_field_extracted(&mut self, v: super::FieldExtracted) {
                 self.value_extractor_type = ::std::option::Option::Some(action_emit_metric::Value_extractor_type::FieldExtracted(v))
             }
 
             // Mutable pointer to the field.
-            pub fn mut_field_extracted(&mut self) -> &mut action_emit_metric::FieldExtracted {
+            pub fn mut_field_extracted(&mut self) -> &mut super::FieldExtracted {
                 if let ::std::option::Option::Some(action_emit_metric::Value_extractor_type::FieldExtracted(_)) = self.value_extractor_type {
                 } else {
-                    self.value_extractor_type = ::std::option::Option::Some(action_emit_metric::Value_extractor_type::FieldExtracted(action_emit_metric::FieldExtracted::new()));
+                    self.value_extractor_type = ::std::option::Option::Some(action_emit_metric::Value_extractor_type::FieldExtracted(super::FieldExtracted::new()));
                 }
                 match self.value_extractor_type {
                     ::std::option::Option::Some(action_emit_metric::Value_extractor_type::FieldExtracted(ref mut v)) => v,
@@ -2296,14 +2974,14 @@ pub mod workflow {
             }
 
             // Take field
-            pub fn take_field_extracted(&mut self) -> action_emit_metric::FieldExtracted {
+            pub fn take_field_extracted(&mut self) -> super::FieldExtracted {
                 if self.has_field_extracted() {
                     match self.value_extractor_type.take() {
                         ::std::option::Option::Some(action_emit_metric::Value_extractor_type::FieldExtracted(v)) => v,
                         _ => panic!(),
                     }
                 } else {
-                    action_emit_metric::FieldExtracted::new()
+                    super::FieldExtracted::new()
                 }
             }
 
@@ -2335,7 +3013,7 @@ pub mod workflow {
                     ActionEmitMetric::fixed,
                     ActionEmitMetric::set_fixed,
                 ));
-                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, action_emit_metric::FieldExtracted>(
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::FieldExtracted>(
                     "field_extracted",
                     ActionEmitMetric::has_field_extracted,
                     ActionEmitMetric::field_extracted,
@@ -2548,7 +3226,7 @@ pub mod workflow {
                 // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.fixed)
                 Fixed(u32),
                 // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.field_extracted)
-                FieldExtracted(FieldExtracted),
+                FieldExtracted(super::super::FieldExtracted),
             }
 
             impl ::protobuf::Oneof for Value_extractor_type {
@@ -2566,631 +3244,6 @@ pub mod workflow {
                     ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Value_extractor_type>("value_extractor_type")
                 }
             }
-            // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.FieldExtracted)
-            #[derive(PartialEq,Clone,Default,Debug)]
-            pub struct FieldExtracted {
-                // message fields
-                // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.FieldExtracted.field_name)
-                pub field_name: ::std::string::String,
-                // message oneof groups
-                pub extraction_type: ::std::option::Option<field_extracted::Extraction_type>,
-                // special fields
-                // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.FieldExtracted.special_fields)
-                pub special_fields: ::protobuf::SpecialFields,
-            }
-
-            impl<'a> ::std::default::Default for &'a FieldExtracted {
-                fn default() -> &'a FieldExtracted {
-                    <FieldExtracted as ::protobuf::Message>::default_instance()
-                }
-            }
-
-            impl FieldExtracted {
-                pub fn new() -> FieldExtracted {
-                    ::std::default::Default::default()
-                }
-
-                // .bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.FieldExtracted.Exact exact = 2;
-
-                pub fn exact(&self) -> &field_extracted::Exact {
-                    match self.extraction_type {
-                        ::std::option::Option::Some(field_extracted::Extraction_type::Exact(ref v)) => v,
-                        _ => <field_extracted::Exact as ::protobuf::Message>::default_instance(),
-                    }
-                }
-
-                pub fn clear_exact(&mut self) {
-                    self.extraction_type = ::std::option::Option::None;
-                }
-
-                pub fn has_exact(&self) -> bool {
-                    match self.extraction_type {
-                        ::std::option::Option::Some(field_extracted::Extraction_type::Exact(..)) => true,
-                        _ => false,
-                    }
-                }
-
-                // Param is passed by value, moved
-                pub fn set_exact(&mut self, v: field_extracted::Exact) {
-                    self.extraction_type = ::std::option::Option::Some(field_extracted::Extraction_type::Exact(v))
-                }
-
-                // Mutable pointer to the field.
-                pub fn mut_exact(&mut self) -> &mut field_extracted::Exact {
-                    if let ::std::option::Option::Some(field_extracted::Extraction_type::Exact(_)) = self.extraction_type {
-                    } else {
-                        self.extraction_type = ::std::option::Option::Some(field_extracted::Extraction_type::Exact(field_extracted::Exact::new()));
-                    }
-                    match self.extraction_type {
-                        ::std::option::Option::Some(field_extracted::Extraction_type::Exact(ref mut v)) => v,
-                        _ => panic!(),
-                    }
-                }
-
-                // Take field
-                pub fn take_exact(&mut self) -> field_extracted::Exact {
-                    if self.has_exact() {
-                        match self.extraction_type.take() {
-                            ::std::option::Option::Some(field_extracted::Extraction_type::Exact(v)) => v,
-                            _ => panic!(),
-                        }
-                    } else {
-                        field_extracted::Exact::new()
-                    }
-                }
-
-                pub(in super::super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                    let mut fields = ::std::vec::Vec::with_capacity(2);
-                    let mut oneofs = ::std::vec::Vec::with_capacity(1);
-                    fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                        "field_name",
-                        |m: &FieldExtracted| { &m.field_name },
-                        |m: &mut FieldExtracted| { &mut m.field_name },
-                    ));
-                    fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, field_extracted::Exact>(
-                        "exact",
-                        FieldExtracted::has_exact,
-                        FieldExtracted::exact,
-                        FieldExtracted::mut_exact,
-                        FieldExtracted::set_exact,
-                    ));
-                    oneofs.push(field_extracted::Extraction_type::generated_oneof_descriptor_data());
-                    ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<FieldExtracted>(
-                        "Workflow.Action.ActionEmitMetric.FieldExtracted",
-                        fields,
-                        oneofs,
-                    )
-                }
-            }
-
-            impl ::protobuf::Message for FieldExtracted {
-                const NAME: &'static str = "FieldExtracted";
-
-                fn is_initialized(&self) -> bool {
-                    true
-                }
-
-                fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-                    while let Some(tag) = is.read_raw_tag_or_eof()? {
-                        match tag {
-                            10 => {
-                                self.field_name = is.read_string()?;
-                            },
-                            18 => {
-                                self.extraction_type = ::std::option::Option::Some(field_extracted::Extraction_type::Exact(is.read_message()?));
-                            },
-                            tag => {
-                                ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                            },
-                        };
-                    }
-                    ::std::result::Result::Ok(())
-                }
-
-                // Compute sizes of nested messages
-                #[allow(unused_variables)]
-                fn compute_size(&self) -> u64 {
-                    let mut my_size = 0;
-                    if !self.field_name.is_empty() {
-                        my_size += ::protobuf::rt::string_size(1, &self.field_name);
-                    }
-                    if let ::std::option::Option::Some(ref v) = self.extraction_type {
-                        match v {
-                            &field_extracted::Extraction_type::Exact(ref v) => {
-                                let len = v.compute_size();
-                                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-                            },
-                        };
-                    }
-                    my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-                    self.special_fields.cached_size().set(my_size as u32);
-                    my_size
-                }
-
-                fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-                    if !self.field_name.is_empty() {
-                        os.write_string(1, &self.field_name)?;
-                    }
-                    if let ::std::option::Option::Some(ref v) = self.extraction_type {
-                        match v {
-                            &field_extracted::Extraction_type::Exact(ref v) => {
-                                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
-                            },
-                        };
-                    }
-                    os.write_unknown_fields(self.special_fields.unknown_fields())?;
-                    ::std::result::Result::Ok(())
-                }
-
-                fn special_fields(&self) -> &::protobuf::SpecialFields {
-                    &self.special_fields
-                }
-
-                fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-                    &mut self.special_fields
-                }
-
-                fn new() -> FieldExtracted {
-                    FieldExtracted::new()
-                }
-
-                fn clear(&mut self) {
-                    self.field_name.clear();
-                    self.extraction_type = ::std::option::Option::None;
-                    self.special_fields.clear();
-                }
-
-                fn default_instance() -> &'static FieldExtracted {
-                    static instance: FieldExtracted = FieldExtracted {
-                        field_name: ::std::string::String::new(),
-                        extraction_type: ::std::option::Option::None,
-                        special_fields: ::protobuf::SpecialFields::new(),
-                    };
-                    &instance
-                }
-            }
-
-            impl ::protobuf::MessageFull for FieldExtracted {
-                fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                    descriptor.get(|| super::super::super::file_descriptor().message_by_package_relative_name("Workflow.Action.ActionEmitMetric.FieldExtracted").unwrap()).clone()
-                }
-            }
-
-            impl ::std::fmt::Display for FieldExtracted {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                    ::protobuf::text_format::fmt(self, f)
-                }
-            }
-
-            impl ::protobuf::reflect::ProtobufValue for FieldExtracted {
-                type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-            }
-
-            /// Nested message and enums of message `FieldExtracted`
-            pub mod field_extracted {
-
-                #[derive(Clone,PartialEq,Debug)]
-                // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.FieldExtracted.extraction_type)
-                pub enum Extraction_type {
-                    // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.FieldExtracted.exact)
-                    Exact(Exact),
-                }
-
-                impl ::protobuf::Oneof for Extraction_type {
-                }
-
-                impl ::protobuf::OneofFull for Extraction_type {
-                    fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
-                        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
-                        descriptor.get(|| <super::FieldExtracted as ::protobuf::MessageFull>::descriptor().oneof_by_name("extraction_type").unwrap()).clone()
-                    }
-                }
-
-                impl Extraction_type {
-                    pub(in super::super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
-                        ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Extraction_type>("extraction_type")
-                    }
-                }
-                // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.FieldExtracted.Exact)
-                #[derive(PartialEq,Clone,Default,Debug)]
-                pub struct Exact {
-                    // special fields
-                    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.FieldExtracted.Exact.special_fields)
-                    pub special_fields: ::protobuf::SpecialFields,
-                }
-
-                impl<'a> ::std::default::Default for &'a Exact {
-                    fn default() -> &'a Exact {
-                        <Exact as ::protobuf::Message>::default_instance()
-                    }
-                }
-
-                impl Exact {
-                    pub fn new() -> Exact {
-                        ::std::default::Default::default()
-                    }
-
-                    pub(in super::super::super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                        let mut fields = ::std::vec::Vec::with_capacity(0);
-                        let mut oneofs = ::std::vec::Vec::with_capacity(0);
-                        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Exact>(
-                            "Workflow.Action.ActionEmitMetric.FieldExtracted.Exact",
-                            fields,
-                            oneofs,
-                        )
-                    }
-                }
-
-                impl ::protobuf::Message for Exact {
-                    const NAME: &'static str = "Exact";
-
-                    fn is_initialized(&self) -> bool {
-                        true
-                    }
-
-                    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-                        while let Some(tag) = is.read_raw_tag_or_eof()? {
-                            match tag {
-                                tag => {
-                                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                                },
-                            };
-                        }
-                        ::std::result::Result::Ok(())
-                    }
-
-                    // Compute sizes of nested messages
-                    #[allow(unused_variables)]
-                    fn compute_size(&self) -> u64 {
-                        let mut my_size = 0;
-                        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-                        self.special_fields.cached_size().set(my_size as u32);
-                        my_size
-                    }
-
-                    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-                        os.write_unknown_fields(self.special_fields.unknown_fields())?;
-                        ::std::result::Result::Ok(())
-                    }
-
-                    fn special_fields(&self) -> &::protobuf::SpecialFields {
-                        &self.special_fields
-                    }
-
-                    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-                        &mut self.special_fields
-                    }
-
-                    fn new() -> Exact {
-                        Exact::new()
-                    }
-
-                    fn clear(&mut self) {
-                        self.special_fields.clear();
-                    }
-
-                    fn default_instance() -> &'static Exact {
-                        static instance: Exact = Exact {
-                            special_fields: ::protobuf::SpecialFields::new(),
-                        };
-                        &instance
-                    }
-                }
-
-                impl ::protobuf::MessageFull for Exact {
-                    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-                        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                        descriptor.get(|| super::super::super::super::file_descriptor().message_by_package_relative_name("Workflow.Action.ActionEmitMetric.FieldExtracted.Exact").unwrap()).clone()
-                    }
-                }
-
-                impl ::std::fmt::Display for Exact {
-                    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                        ::protobuf::text_format::fmt(self, f)
-                    }
-                }
-
-                impl ::protobuf::reflect::ProtobufValue for Exact {
-                    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-                }
-            }
-
-            // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.Tag)
-            #[derive(PartialEq,Clone,Default,Debug)]
-            pub struct Tag {
-                // message fields
-                // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.Tag.name)
-                pub name: ::std::string::String,
-                // message oneof groups
-                pub tag_type: ::std::option::Option<tag::Tag_type>,
-                // special fields
-                // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.Tag.special_fields)
-                pub special_fields: ::protobuf::SpecialFields,
-            }
-
-            impl<'a> ::std::default::Default for &'a Tag {
-                fn default() -> &'a Tag {
-                    <Tag as ::protobuf::Message>::default_instance()
-                }
-            }
-
-            impl Tag {
-                pub fn new() -> Tag {
-                    ::std::default::Default::default()
-                }
-
-                // string fixed_value = 2;
-
-                pub fn fixed_value(&self) -> &str {
-                    match self.tag_type {
-                        ::std::option::Option::Some(tag::Tag_type::FixedValue(ref v)) => v,
-                        _ => "",
-                    }
-                }
-
-                pub fn clear_fixed_value(&mut self) {
-                    self.tag_type = ::std::option::Option::None;
-                }
-
-                pub fn has_fixed_value(&self) -> bool {
-                    match self.tag_type {
-                        ::std::option::Option::Some(tag::Tag_type::FixedValue(..)) => true,
-                        _ => false,
-                    }
-                }
-
-                // Param is passed by value, moved
-                pub fn set_fixed_value(&mut self, v: ::std::string::String) {
-                    self.tag_type = ::std::option::Option::Some(tag::Tag_type::FixedValue(v))
-                }
-
-                // Mutable pointer to the field.
-                pub fn mut_fixed_value(&mut self) -> &mut ::std::string::String {
-                    if let ::std::option::Option::Some(tag::Tag_type::FixedValue(_)) = self.tag_type {
-                    } else {
-                        self.tag_type = ::std::option::Option::Some(tag::Tag_type::FixedValue(::std::string::String::new()));
-                    }
-                    match self.tag_type {
-                        ::std::option::Option::Some(tag::Tag_type::FixedValue(ref mut v)) => v,
-                        _ => panic!(),
-                    }
-                }
-
-                // Take field
-                pub fn take_fixed_value(&mut self) -> ::std::string::String {
-                    if self.has_fixed_value() {
-                        match self.tag_type.take() {
-                            ::std::option::Option::Some(tag::Tag_type::FixedValue(v)) => v,
-                            _ => panic!(),
-                        }
-                    } else {
-                        ::std::string::String::new()
-                    }
-                }
-
-                // .bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.FieldExtracted field_extracted = 3;
-
-                pub fn field_extracted(&self) -> &FieldExtracted {
-                    match self.tag_type {
-                        ::std::option::Option::Some(tag::Tag_type::FieldExtracted(ref v)) => v,
-                        _ => <FieldExtracted as ::protobuf::Message>::default_instance(),
-                    }
-                }
-
-                pub fn clear_field_extracted(&mut self) {
-                    self.tag_type = ::std::option::Option::None;
-                }
-
-                pub fn has_field_extracted(&self) -> bool {
-                    match self.tag_type {
-                        ::std::option::Option::Some(tag::Tag_type::FieldExtracted(..)) => true,
-                        _ => false,
-                    }
-                }
-
-                // Param is passed by value, moved
-                pub fn set_field_extracted(&mut self, v: FieldExtracted) {
-                    self.tag_type = ::std::option::Option::Some(tag::Tag_type::FieldExtracted(v))
-                }
-
-                // Mutable pointer to the field.
-                pub fn mut_field_extracted(&mut self) -> &mut FieldExtracted {
-                    if let ::std::option::Option::Some(tag::Tag_type::FieldExtracted(_)) = self.tag_type {
-                    } else {
-                        self.tag_type = ::std::option::Option::Some(tag::Tag_type::FieldExtracted(FieldExtracted::new()));
-                    }
-                    match self.tag_type {
-                        ::std::option::Option::Some(tag::Tag_type::FieldExtracted(ref mut v)) => v,
-                        _ => panic!(),
-                    }
-                }
-
-                // Take field
-                pub fn take_field_extracted(&mut self) -> FieldExtracted {
-                    if self.has_field_extracted() {
-                        match self.tag_type.take() {
-                            ::std::option::Option::Some(tag::Tag_type::FieldExtracted(v)) => v,
-                            _ => panic!(),
-                        }
-                    } else {
-                        FieldExtracted::new()
-                    }
-                }
-
-                pub(in super::super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                    let mut fields = ::std::vec::Vec::with_capacity(3);
-                    let mut oneofs = ::std::vec::Vec::with_capacity(1);
-                    fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                        "name",
-                        |m: &Tag| { &m.name },
-                        |m: &mut Tag| { &mut m.name },
-                    ));
-                    fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
-                        "fixed_value",
-                        Tag::has_fixed_value,
-                        Tag::fixed_value,
-                        Tag::set_fixed_value,
-                    ));
-                    fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, FieldExtracted>(
-                        "field_extracted",
-                        Tag::has_field_extracted,
-                        Tag::field_extracted,
-                        Tag::mut_field_extracted,
-                        Tag::set_field_extracted,
-                    ));
-                    oneofs.push(tag::Tag_type::generated_oneof_descriptor_data());
-                    ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Tag>(
-                        "Workflow.Action.ActionEmitMetric.Tag",
-                        fields,
-                        oneofs,
-                    )
-                }
-            }
-
-            impl ::protobuf::Message for Tag {
-                const NAME: &'static str = "Tag";
-
-                fn is_initialized(&self) -> bool {
-                    true
-                }
-
-                fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-                    while let Some(tag) = is.read_raw_tag_or_eof()? {
-                        match tag {
-                            10 => {
-                                self.name = is.read_string()?;
-                            },
-                            18 => {
-                                self.tag_type = ::std::option::Option::Some(tag::Tag_type::FixedValue(is.read_string()?));
-                            },
-                            26 => {
-                                self.tag_type = ::std::option::Option::Some(tag::Tag_type::FieldExtracted(is.read_message()?));
-                            },
-                            tag => {
-                                ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                            },
-                        };
-                    }
-                    ::std::result::Result::Ok(())
-                }
-
-                // Compute sizes of nested messages
-                #[allow(unused_variables)]
-                fn compute_size(&self) -> u64 {
-                    let mut my_size = 0;
-                    if !self.name.is_empty() {
-                        my_size += ::protobuf::rt::string_size(1, &self.name);
-                    }
-                    if let ::std::option::Option::Some(ref v) = self.tag_type {
-                        match v {
-                            &tag::Tag_type::FixedValue(ref v) => {
-                                my_size += ::protobuf::rt::string_size(2, &v);
-                            },
-                            &tag::Tag_type::FieldExtracted(ref v) => {
-                                let len = v.compute_size();
-                                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-                            },
-                        };
-                    }
-                    my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-                    self.special_fields.cached_size().set(my_size as u32);
-                    my_size
-                }
-
-                fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-                    if !self.name.is_empty() {
-                        os.write_string(1, &self.name)?;
-                    }
-                    if let ::std::option::Option::Some(ref v) = self.tag_type {
-                        match v {
-                            &tag::Tag_type::FixedValue(ref v) => {
-                                os.write_string(2, v)?;
-                            },
-                            &tag::Tag_type::FieldExtracted(ref v) => {
-                                ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
-                            },
-                        };
-                    }
-                    os.write_unknown_fields(self.special_fields.unknown_fields())?;
-                    ::std::result::Result::Ok(())
-                }
-
-                fn special_fields(&self) -> &::protobuf::SpecialFields {
-                    &self.special_fields
-                }
-
-                fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-                    &mut self.special_fields
-                }
-
-                fn new() -> Tag {
-                    Tag::new()
-                }
-
-                fn clear(&mut self) {
-                    self.name.clear();
-                    self.tag_type = ::std::option::Option::None;
-                    self.tag_type = ::std::option::Option::None;
-                    self.special_fields.clear();
-                }
-
-                fn default_instance() -> &'static Tag {
-                    static instance: Tag = Tag {
-                        name: ::std::string::String::new(),
-                        tag_type: ::std::option::Option::None,
-                        special_fields: ::protobuf::SpecialFields::new(),
-                    };
-                    &instance
-                }
-            }
-
-            impl ::protobuf::MessageFull for Tag {
-                fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                    descriptor.get(|| super::super::super::file_descriptor().message_by_package_relative_name("Workflow.Action.ActionEmitMetric.Tag").unwrap()).clone()
-                }
-            }
-
-            impl ::std::fmt::Display for Tag {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                    ::protobuf::text_format::fmt(self, f)
-                }
-            }
-
-            impl ::protobuf::reflect::ProtobufValue for Tag {
-                type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-            }
-
-            /// Nested message and enums of message `Tag`
-            pub mod tag {
-
-                #[derive(Clone,PartialEq,Debug)]
-                // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.Tag.tag_type)
-                pub enum Tag_type {
-                    // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.Tag.fixed_value)
-                    FixedValue(::std::string::String),
-                    // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.Tag.field_extracted)
-                    FieldExtracted(super::FieldExtracted),
-                }
-
-                impl ::protobuf::Oneof for Tag_type {
-                }
-
-                impl ::protobuf::OneofFull for Tag_type {
-                    fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
-                        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
-                        descriptor.get(|| <super::Tag as ::protobuf::MessageFull>::descriptor().oneof_by_name("tag_type").unwrap()).clone()
-                    }
-                }
-
-                impl Tag_type {
-                    pub(in super::super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
-                        ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Tag_type>("tag_type")
-                    }
-                }
-            }
-
             // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.Counter)
             #[derive(PartialEq,Clone,Default,Debug)]
             pub struct Counter {
@@ -3396,6 +3449,582 @@ pub mod workflow {
             impl ::protobuf::reflect::ProtobufValue for Histogram {
                 type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
             }
+        }
+
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitSankeyDiagram)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct ActionEmitSankeyDiagram {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitSankeyDiagram.id)
+            pub id: ::std::string::String,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitSankeyDiagram.limit)
+            pub limit: u32,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitSankeyDiagram.tags)
+            pub tags: ::std::vec::Vec<Tag>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitSankeyDiagram.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a ActionEmitSankeyDiagram {
+            fn default() -> &'a ActionEmitSankeyDiagram {
+                <ActionEmitSankeyDiagram as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl ActionEmitSankeyDiagram {
+            pub fn new() -> ActionEmitSankeyDiagram {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(3);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "id",
+                    |m: &ActionEmitSankeyDiagram| { &m.id },
+                    |m: &mut ActionEmitSankeyDiagram| { &mut m.id },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "limit",
+                    |m: &ActionEmitSankeyDiagram| { &m.limit },
+                    |m: &mut ActionEmitSankeyDiagram| { &mut m.limit },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                    "tags",
+                    |m: &ActionEmitSankeyDiagram| { &m.tags },
+                    |m: &mut ActionEmitSankeyDiagram| { &mut m.tags },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ActionEmitSankeyDiagram>(
+                    "Workflow.Action.ActionEmitSankeyDiagram",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for ActionEmitSankeyDiagram {
+            const NAME: &'static str = "ActionEmitSankeyDiagram";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.id = is.read_string()?;
+                        },
+                        16 => {
+                            self.limit = is.read_uint32()?;
+                        },
+                        26 => {
+                            self.tags.push(is.read_message()?);
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.id.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.id);
+                }
+                if self.limit != 0 {
+                    my_size += ::protobuf::rt::uint32_size(2, self.limit);
+                }
+                for value in &self.tags {
+                    let len = value.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                };
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.id.is_empty() {
+                    os.write_string(1, &self.id)?;
+                }
+                if self.limit != 0 {
+                    os.write_uint32(2, self.limit)?;
+                }
+                for v in &self.tags {
+                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                };
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> ActionEmitSankeyDiagram {
+                ActionEmitSankeyDiagram::new()
+            }
+
+            fn clear(&mut self) {
+                self.id.clear();
+                self.limit = 0;
+                self.tags.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static ActionEmitSankeyDiagram {
+                static instance: ActionEmitSankeyDiagram = ActionEmitSankeyDiagram {
+                    id: ::std::string::String::new(),
+                    limit: 0,
+                    tags: ::std::vec::Vec::new(),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for ActionEmitSankeyDiagram {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Workflow.Action.ActionEmitSankeyDiagram").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for ActionEmitSankeyDiagram {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for ActionEmitSankeyDiagram {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Action.Tag)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct Tag {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.Tag.name)
+            pub name: ::std::string::String,
+            // message oneof groups
+            pub tag_type: ::std::option::Option<tag::Tag_type>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.Tag.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a Tag {
+            fn default() -> &'a Tag {
+                <Tag as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl Tag {
+            pub fn new() -> Tag {
+                ::std::default::Default::default()
+            }
+
+            // string fixed_value = 2;
+
+            pub fn fixed_value(&self) -> &str {
+                match self.tag_type {
+                    ::std::option::Option::Some(tag::Tag_type::FixedValue(ref v)) => v,
+                    _ => "",
+                }
+            }
+
+            pub fn clear_fixed_value(&mut self) {
+                self.tag_type = ::std::option::Option::None;
+            }
+
+            pub fn has_fixed_value(&self) -> bool {
+                match self.tag_type {
+                    ::std::option::Option::Some(tag::Tag_type::FixedValue(..)) => true,
+                    _ => false,
+                }
+            }
+
+            // Param is passed by value, moved
+            pub fn set_fixed_value(&mut self, v: ::std::string::String) {
+                self.tag_type = ::std::option::Option::Some(tag::Tag_type::FixedValue(v))
+            }
+
+            // Mutable pointer to the field.
+            pub fn mut_fixed_value(&mut self) -> &mut ::std::string::String {
+                if let ::std::option::Option::Some(tag::Tag_type::FixedValue(_)) = self.tag_type {
+                } else {
+                    self.tag_type = ::std::option::Option::Some(tag::Tag_type::FixedValue(::std::string::String::new()));
+                }
+                match self.tag_type {
+                    ::std::option::Option::Some(tag::Tag_type::FixedValue(ref mut v)) => v,
+                    _ => panic!(),
+                }
+            }
+
+            // Take field
+            pub fn take_fixed_value(&mut self) -> ::std::string::String {
+                if self.has_fixed_value() {
+                    match self.tag_type.take() {
+                        ::std::option::Option::Some(tag::Tag_type::FixedValue(v)) => v,
+                        _ => panic!(),
+                    }
+                } else {
+                    ::std::string::String::new()
+                }
+            }
+
+            // .bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtracted field_extracted = 3;
+
+            pub fn field_extracted(&self) -> &super::FieldExtracted {
+                match self.tag_type {
+                    ::std::option::Option::Some(tag::Tag_type::FieldExtracted(ref v)) => v,
+                    _ => <super::FieldExtracted as ::protobuf::Message>::default_instance(),
+                }
+            }
+
+            pub fn clear_field_extracted(&mut self) {
+                self.tag_type = ::std::option::Option::None;
+            }
+
+            pub fn has_field_extracted(&self) -> bool {
+                match self.tag_type {
+                    ::std::option::Option::Some(tag::Tag_type::FieldExtracted(..)) => true,
+                    _ => false,
+                }
+            }
+
+            // Param is passed by value, moved
+            pub fn set_field_extracted(&mut self, v: super::FieldExtracted) {
+                self.tag_type = ::std::option::Option::Some(tag::Tag_type::FieldExtracted(v))
+            }
+
+            // Mutable pointer to the field.
+            pub fn mut_field_extracted(&mut self) -> &mut super::FieldExtracted {
+                if let ::std::option::Option::Some(tag::Tag_type::FieldExtracted(_)) = self.tag_type {
+                } else {
+                    self.tag_type = ::std::option::Option::Some(tag::Tag_type::FieldExtracted(super::FieldExtracted::new()));
+                }
+                match self.tag_type {
+                    ::std::option::Option::Some(tag::Tag_type::FieldExtracted(ref mut v)) => v,
+                    _ => panic!(),
+                }
+            }
+
+            // Take field
+            pub fn take_field_extracted(&mut self) -> super::FieldExtracted {
+                if self.has_field_extracted() {
+                    match self.tag_type.take() {
+                        ::std::option::Option::Some(tag::Tag_type::FieldExtracted(v)) => v,
+                        _ => panic!(),
+                    }
+                } else {
+                    super::FieldExtracted::new()
+                }
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(3);
+                let mut oneofs = ::std::vec::Vec::with_capacity(1);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "name",
+                    |m: &Tag| { &m.name },
+                    |m: &mut Tag| { &mut m.name },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+                    "fixed_value",
+                    Tag::has_fixed_value,
+                    Tag::fixed_value,
+                    Tag::set_fixed_value,
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::FieldExtracted>(
+                    "field_extracted",
+                    Tag::has_field_extracted,
+                    Tag::field_extracted,
+                    Tag::mut_field_extracted,
+                    Tag::set_field_extracted,
+                ));
+                oneofs.push(tag::Tag_type::generated_oneof_descriptor_data());
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Tag>(
+                    "Workflow.Action.Tag",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for Tag {
+            const NAME: &'static str = "Tag";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.name = is.read_string()?;
+                        },
+                        18 => {
+                            self.tag_type = ::std::option::Option::Some(tag::Tag_type::FixedValue(is.read_string()?));
+                        },
+                        26 => {
+                            self.tag_type = ::std::option::Option::Some(tag::Tag_type::FieldExtracted(is.read_message()?));
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.name.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.name);
+                }
+                if let ::std::option::Option::Some(ref v) = self.tag_type {
+                    match v {
+                        &tag::Tag_type::FixedValue(ref v) => {
+                            my_size += ::protobuf::rt::string_size(2, &v);
+                        },
+                        &tag::Tag_type::FieldExtracted(ref v) => {
+                            let len = v.compute_size();
+                            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                        },
+                    };
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.name.is_empty() {
+                    os.write_string(1, &self.name)?;
+                }
+                if let ::std::option::Option::Some(ref v) = self.tag_type {
+                    match v {
+                        &tag::Tag_type::FixedValue(ref v) => {
+                            os.write_string(2, v)?;
+                        },
+                        &tag::Tag_type::FieldExtracted(ref v) => {
+                            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                        },
+                    };
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> Tag {
+                Tag::new()
+            }
+
+            fn clear(&mut self) {
+                self.name.clear();
+                self.tag_type = ::std::option::Option::None;
+                self.tag_type = ::std::option::Option::None;
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static Tag {
+                static instance: Tag = Tag {
+                    name: ::std::string::String::new(),
+                    tag_type: ::std::option::Option::None,
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for Tag {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Workflow.Action.Tag").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for Tag {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for Tag {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
+        /// Nested message and enums of message `Tag`
+        pub mod tag {
+
+            #[derive(Clone,PartialEq,Debug)]
+            // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.workflow.v1.Workflow.Action.Tag.tag_type)
+            pub enum Tag_type {
+                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.Tag.fixed_value)
+                FixedValue(::std::string::String),
+                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.Tag.field_extracted)
+                FieldExtracted(super::super::FieldExtracted),
+            }
+
+            impl ::protobuf::Oneof for Tag_type {
+            }
+
+            impl ::protobuf::OneofFull for Tag_type {
+                fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+                    descriptor.get(|| <super::Tag as ::protobuf::MessageFull>::descriptor().oneof_by_name("tag_type").unwrap()).clone()
+                }
+            }
+
+            impl Tag_type {
+                pub(in super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+                    ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Tag_type>("tag_type")
+                }
+            }
+        }
+
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionTakeScreenshot)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct ActionTakeScreenshot {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionTakeScreenshot.id)
+            pub id: ::std::string::String,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionTakeScreenshot.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a ActionTakeScreenshot {
+            fn default() -> &'a ActionTakeScreenshot {
+                <ActionTakeScreenshot as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl ActionTakeScreenshot {
+            pub fn new() -> ActionTakeScreenshot {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(1);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "id",
+                    |m: &ActionTakeScreenshot| { &m.id },
+                    |m: &mut ActionTakeScreenshot| { &mut m.id },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ActionTakeScreenshot>(
+                    "Workflow.Action.ActionTakeScreenshot",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for ActionTakeScreenshot {
+            const NAME: &'static str = "ActionTakeScreenshot";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.id = is.read_string()?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.id.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.id);
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.id.is_empty() {
+                    os.write_string(1, &self.id)?;
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> ActionTakeScreenshot {
+                ActionTakeScreenshot::new()
+            }
+
+            fn clear(&mut self) {
+                self.id.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static ActionTakeScreenshot {
+                static instance: ActionTakeScreenshot = ActionTakeScreenshot {
+                    id: ::std::string::String::new(),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for ActionTakeScreenshot {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Workflow.Action.ActionTakeScreenshot").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for ActionTakeScreenshot {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for ActionTakeScreenshot {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
         }
     }
 
@@ -4125,6 +4754,336 @@ pub mod workflow {
     impl ::protobuf::reflect::ProtobufValue for LimitDuration {
         type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
     }
+
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtracted)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct FieldExtracted {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtracted.field_name)
+        pub field_name: ::std::string::String,
+        // message oneof groups
+        pub extraction_type: ::std::option::Option<field_extracted::Extraction_type>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtracted.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a FieldExtracted {
+        fn default() -> &'a FieldExtracted {
+            <FieldExtracted as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl FieldExtracted {
+        pub fn new() -> FieldExtracted {
+            ::std::default::Default::default()
+        }
+
+        // .bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtracted.Exact exact = 2;
+
+        pub fn exact(&self) -> &field_extracted::Exact {
+            match self.extraction_type {
+                ::std::option::Option::Some(field_extracted::Extraction_type::Exact(ref v)) => v,
+                _ => <field_extracted::Exact as ::protobuf::Message>::default_instance(),
+            }
+        }
+
+        pub fn clear_exact(&mut self) {
+            self.extraction_type = ::std::option::Option::None;
+        }
+
+        pub fn has_exact(&self) -> bool {
+            match self.extraction_type {
+                ::std::option::Option::Some(field_extracted::Extraction_type::Exact(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_exact(&mut self, v: field_extracted::Exact) {
+            self.extraction_type = ::std::option::Option::Some(field_extracted::Extraction_type::Exact(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_exact(&mut self) -> &mut field_extracted::Exact {
+            if let ::std::option::Option::Some(field_extracted::Extraction_type::Exact(_)) = self.extraction_type {
+            } else {
+                self.extraction_type = ::std::option::Option::Some(field_extracted::Extraction_type::Exact(field_extracted::Exact::new()));
+            }
+            match self.extraction_type {
+                ::std::option::Option::Some(field_extracted::Extraction_type::Exact(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_exact(&mut self) -> field_extracted::Exact {
+            if self.has_exact() {
+                match self.extraction_type.take() {
+                    ::std::option::Option::Some(field_extracted::Extraction_type::Exact(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                field_extracted::Exact::new()
+            }
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(1);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "field_name",
+                |m: &FieldExtracted| { &m.field_name },
+                |m: &mut FieldExtracted| { &mut m.field_name },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, field_extracted::Exact>(
+                "exact",
+                FieldExtracted::has_exact,
+                FieldExtracted::exact,
+                FieldExtracted::mut_exact,
+                FieldExtracted::set_exact,
+            ));
+            oneofs.push(field_extracted::Extraction_type::generated_oneof_descriptor_data());
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<FieldExtracted>(
+                "Workflow.FieldExtracted",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for FieldExtracted {
+        const NAME: &'static str = "FieldExtracted";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.field_name = is.read_string()?;
+                    },
+                    18 => {
+                        self.extraction_type = ::std::option::Option::Some(field_extracted::Extraction_type::Exact(is.read_message()?));
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.field_name.is_empty() {
+                my_size += ::protobuf::rt::string_size(1, &self.field_name);
+            }
+            if let ::std::option::Option::Some(ref v) = self.extraction_type {
+                match v {
+                    &field_extracted::Extraction_type::Exact(ref v) => {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                    },
+                };
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.field_name.is_empty() {
+                os.write_string(1, &self.field_name)?;
+            }
+            if let ::std::option::Option::Some(ref v) = self.extraction_type {
+                match v {
+                    &field_extracted::Extraction_type::Exact(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                    },
+                };
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> FieldExtracted {
+            FieldExtracted::new()
+        }
+
+        fn clear(&mut self) {
+            self.field_name.clear();
+            self.extraction_type = ::std::option::Option::None;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static FieldExtracted {
+            static instance: FieldExtracted = FieldExtracted {
+                field_name: ::std::string::String::new(),
+                extraction_type: ::std::option::Option::None,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for FieldExtracted {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("Workflow.FieldExtracted").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for FieldExtracted {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for FieldExtracted {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `FieldExtracted`
+    pub mod field_extracted {
+
+        #[derive(Clone,PartialEq,Debug)]
+        // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtracted.extraction_type)
+        pub enum Extraction_type {
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtracted.exact)
+            Exact(Exact),
+        }
+
+        impl ::protobuf::Oneof for Extraction_type {
+        }
+
+        impl ::protobuf::OneofFull for Extraction_type {
+            fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| <super::FieldExtracted as ::protobuf::MessageFull>::descriptor().oneof_by_name("extraction_type").unwrap()).clone()
+            }
+        }
+
+        impl Extraction_type {
+            pub(in super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+                ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Extraction_type>("extraction_type")
+            }
+        }
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtracted.Exact)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct Exact {
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtracted.Exact.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a Exact {
+            fn default() -> &'a Exact {
+                <Exact as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl Exact {
+            pub fn new() -> Exact {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(0);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Exact>(
+                    "Workflow.FieldExtracted.Exact",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for Exact {
+            const NAME: &'static str = "Exact";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> Exact {
+                Exact::new()
+            }
+
+            fn clear(&mut self) {
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static Exact {
+                static instance: Exact = Exact {
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for Exact {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Workflow.FieldExtracted.Exact").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for Exact {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for Exact {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+    }
 }
 
 static file_descriptor_proto_data: &'static [u8] = b"\
@@ -4132,81 +5091,102 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ic.protobuf.workflow.v1\x1a\x17validate/validate.proto\x1a5bitdrift_publ\
     ic/protobuf/matcher/v1/log_matcher.proto\"f\n\x16WorkflowsConfiguration\
     \x12L\n\tworkflows\x18\x01\x20\x03(\x0b2..bitdrift_public.protobuf.workf\
-    low.v1.WorkflowR\tworkflows\"\xc2\x1c\n\x08Workflow\x12\x17\n\x02id\x18\
-    \x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12V\n\x06states\x18\
-    \x02\x20\x03(\x0b24.bitdrift_public.protobuf.workflow.v1.Workflow.StateR\
-    \x06statesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12V\n\texecution\x18\x03\
-    \x20\x01(\x0b28.bitdrift_public.protobuf.workflow.v1.Workflow.ExecutionR\
-    \texecution\x12}\n\x18limit_matched_logs_count\x18\x04\x20\x01(\x0b2D.bi\
-    tdrift_public.protobuf.workflow.v1.Workflow.LimitMatchedLogsCountR\x15li\
-    mitMatchedLogsCount\x12c\n\x0elimit_duration\x18\x05\x20\x01(\x0b2<.bitd\
-    rift_public.protobuf.workflow.v1.Workflow.LimitDurationR\rlimitDuration\
-    \x1a}\n\x05State\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04\
-    r\x02\x10\x01\x12[\n\x0btransitions\x18\x02\x20\x03(\x0b29.bitdrift_publ\
-    ic.protobuf.workflow.v1.Workflow.TransitionR\x0btransitions\x1a\xe1\x01\
-    \n\nTransition\x12/\n\x0ftarget_state_id\x18\x01\x20\x01(\tR\rtargetStat\
-    eIdB\x07\xfaB\x04r\x02\x10\x01\x12Q\n\x04rule\x18\x02\x20\x01(\x0b23.bit\
-    drift_public.protobuf.workflow.v1.Workflow.RuleR\x04ruleB\x08\xfaB\x05\
-    \x8a\x01\x02\x10\x01\x12O\n\x07actions\x18\x03\x20\x03(\x0b25.bitdrift_p\
-    ublic.protobuf.workflow.v1.Workflow.ActionR\x07actions\x1a\xde\x01\n\x04\
-    Rule\x12c\n\x0erule_log_match\x18\x01\x20\x01(\x0b2;.bitdrift_public.pro\
-    tobuf.workflow.v1.Workflow.RuleLogMatchH\0R\x0cruleLogMatch\x12_\n\x0cru\
-    le_timeout\x18\x02\x20\x01(\x0b2:.bitdrift_public.protobuf.workflow.v1.W\
-    orkflow.RuleTimeoutH\0R\x0bruleTimeoutB\x10\n\trule_type\x12\x03\xf8B\
-    \x01\x1a\x89\x01\n\x0cRuleLogMatch\x12Z\n\x0blog_matcher\x18\x01\x20\x01\
-    (\x0b2/.bitdrift_public.protobuf.matcher.v1.LogMatcherR\nlogMatcherB\x08\
-    \xfaB\x05\x8a\x01\x02\x10\x01\x12\x1d\n\x05count\x18\x02\x20\x01(\rR\x05\
-    countB\x07\xfaB\x04*\x02\x20\0\x1a7\n\x0bRuleTimeout\x12(\n\x0bduration_\
-    ms\x18\x01\x20\x01(\x04R\ndurationMsB\x07\xfaB\x042\x02(\0\x1a\xc4\x0f\n\
-    \x06Action\x12|\n\x14action_flush_buffers\x18\x01\x20\x01(\x0b2H.bitdrif\
-    t_public.protobuf.workflow.v1.Workflow.Action.ActionFlushBuffersH\0R\x12\
-    actionFlushBuffers\x12v\n\x12action_emit_metric\x18\x02\x20\x01(\x0b2F.b\
-    itdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetricH\0R\
-    \x10actionEmitMetric\x1a\xa9\x05\n\x12ActionFlushBuffers\x12\x1d\n\nbuff\
-    er_ids\x18\x01\x20\x03(\tR\tbufferIds\x12\x17\n\x02id\x18\x02\x20\x01(\t\
-    R\x02idB\x07\xfaB\x04r\x02\x10\x01\x12p\n\tstreaming\x18\x03\x20\x01(\
-    \x0b2R.bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionFlushB\
-    uffers.StreamingR\tstreaming\x1a\xe8\x03\n\tStreaming\x12G\n\x20destinat\
-    ion_streaming_buffer_ids\x18\x01\x20\x03(\tR\x1ddestinationStreamingBuff\
-    erIds\x12\x9a\x01\n\x14termination_criteria\x18\x02\x20\x03(\x0b2g.bitdr\
-    ift_public.protobuf.workflow.v1.Workflow.Action.ActionFlushBuffers.Strea\
-    ming.TerminationCriterionR\x13terminationCriteria\x1a\xf4\x01\n\x14Termi\
-    nationCriterion\x12\x92\x01\n\nlogs_count\x18\x01\x20\x01(\x0b2q.bitdrif\
-    t_public.protobuf.workflow.v1.Workflow.Action.ActionFlushBuffers.Streami\
-    ng.TerminationCriterion.LogsCountH\0R\tlogsCount\x1a:\n\tLogsCount\x12-\
-    \n\x0emax_logs_count\x18\x01\x20\x01(\x04R\x0cmaxLogsCountB\x07\xfaB\x04\
-    2\x02\x20\0B\x0b\n\x04type\x12\x03\xf8B\x01\x1a\x83\x08\n\x10ActionEmitM\
-    etric\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\
-    \x01\x12j\n\x07counter\x18\x02\x20\x01(\x0b2N.bitdrift_public.protobuf.w\
-    orkflow.v1.Workflow.Action.ActionEmitMetric.CounterH\0R\x07counter\x12p\
-    \n\thistogram\x18\x05\x20\x01(\x0b2P.bitdrift_public.protobuf.workflow.v\
-    1.Workflow.Action.ActionEmitMetric.HistogramH\0R\thistogram\x12\x16\n\
-    \x05fixed\x18\x03\x20\x01(\rH\x01R\x05fixed\x12\x80\x01\n\x0ffield_extra\
-    cted\x18\x06\x20\x01(\x0b2U.bitdrift_public.protobuf.workflow.v1.Workflo\
-    w.Action.ActionEmitMetric.FieldExtractedH\x01R\x0efieldExtracted\x12^\n\
-    \x04tags\x18\x04\x20\x03(\x0b2J.bitdrift_public.protobuf.workflow.v1.Wor\
-    kflow.Action.ActionEmitMetric.TagR\x04tags\x1a\xce\x01\n\x0eFieldExtract\
-    ed\x12&\n\nfield_name\x18\x01\x20\x01(\tR\tfieldNameB\x07\xfaB\x04r\x02\
-    \x10\x01\x12s\n\x05exact\x18\x02\x20\x01(\x0b2[.bitdrift_public.protobuf\
-    .workflow.v1.Workflow.Action.ActionEmitMetric.FieldExtracted.ExactH\0R\
-    \x05exact\x1a\x07\n\x05ExactB\x16\n\x0fextraction_type\x12\x03\xf8B\x01\
-    \x1a\xe2\x01\n\x03Tag\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\
-    \xfaB\x04r\x02\x10\x01\x12*\n\x0bfixed_value\x18\x02\x20\x01(\tH\0R\nfix\
-    edValueB\x07\xfaB\x04r\x02\x10\x01\x12\x80\x01\n\x0ffield_extracted\x18\
-    \x03\x20\x01(\x0b2U.bitdrift_public.protobuf.workflow.v1.Workflow.Action\
-    .ActionEmitMetric.FieldExtractedH\0R\x0efieldExtractedB\x0f\n\x08tag_typ\
-    e\x12\x03\xf8B\x01\x1a\t\n\x07Counter\x1a\x0b\n\tHistogramB\x12\n\x0bmet\
-    ric_type\x12\x03\xf8B\x01B\x1b\n\x14value_extractor_type\x12\x03\xf8B\
-    \x01B\x12\n\x0baction_type\x12\x03\xf8B\x01\x1a\xc5\x02\n\tExecution\x12\
-    ~\n\x13execution_exclusive\x18\x01\x20\x01(\x0b2K.bitdrift_public.protob\
-    uf.workflow.v1.Workflow.Execution.ExecutionExclusiveH\0R\x12executionExc\
-    lusive\x12{\n\x12execution_parallel\x18\x02\x20\x01(\x0b2J.bitdrift_publ\
-    ic.protobuf.workflow.v1.Workflow.Execution.ExecutionParallelH\0R\x11exec\
-    utionParallel\x1a\x14\n\x12ExecutionExclusive\x1a\x13\n\x11ExecutionPara\
-    llelB\x10\n\x0eexecution_type\x1a6\n\x15LimitMatchedLogsCount\x12\x1d\n\
-    \x05count\x18\x01\x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a9\n\r\
-    LimitDuration\x12(\n\x0bduration_ms\x18\x02\x20\x01(\x04R\ndurationMsB\
-    \x07\xfaB\x042\x02\x20\0b\x06proto3\
+    low.v1.WorkflowR\tworkflows\"\xd3$\n\x08Workflow\x12\x17\n\x02id\x18\x01\
+    \x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12V\n\x06states\x18\x02\
+    \x20\x03(\x0b24.bitdrift_public.protobuf.workflow.v1.Workflow.StateR\x06\
+    statesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12V\n\texecution\x18\x03\x20\
+    \x01(\x0b28.bitdrift_public.protobuf.workflow.v1.Workflow.ExecutionR\tex\
+    ecution\x12}\n\x18limit_matched_logs_count\x18\x04\x20\x01(\x0b2D.bitdri\
+    ft_public.protobuf.workflow.v1.Workflow.LimitMatchedLogsCountR\x15limitM\
+    atchedLogsCount\x12c\n\x0elimit_duration\x18\x05\x20\x01(\x0b2<.bitdrift\
+    _public.protobuf.workflow.v1.Workflow.LimitDurationR\rlimitDuration\x1a}\
+    \n\x05State\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\
+    \x10\x01\x12[\n\x0btransitions\x18\x02\x20\x03(\x0b29.bitdrift_public.pr\
+    otobuf.workflow.v1.Workflow.TransitionR\x0btransitions\x1a\xc5\x02\n\nTr\
+    ansition\x12/\n\x0ftarget_state_id\x18\x01\x20\x01(\tR\rtargetStateIdB\
+    \x07\xfaB\x04r\x02\x10\x01\x12Q\n\x04rule\x18\x02\x20\x01(\x0b23.bitdrif\
+    t_public.protobuf.workflow.v1.Workflow.RuleR\x04ruleB\x08\xfaB\x05\x8a\
+    \x01\x02\x10\x01\x12O\n\x07actions\x18\x03\x20\x03(\x0b25.bitdrift_publi\
+    c.protobuf.workflow.v1.Workflow.ActionR\x07actions\x12b\n\nextensions\
+    \x18\x04\x20\x03(\x0b2B.bitdrift_public.protobuf.workflow.v1.Workflow.Tr\
+    ansitionExtensionR\nextensions\x1a\xde\x01\n\x04Rule\x12c\n\x0erule_log_\
+    match\x18\x01\x20\x01(\x0b2;.bitdrift_public.protobuf.workflow.v1.Workfl\
+    ow.RuleLogMatchH\0R\x0cruleLogMatch\x12_\n\x0crule_timeout\x18\x02\x20\
+    \x01(\x0b2:.bitdrift_public.protobuf.workflow.v1.Workflow.RuleTimeoutH\0\
+    R\x0bruleTimeoutB\x10\n\trule_type\x12\x03\xf8B\x01\x1a\x9d\x04\n\x13Tra\
+    nsitionExtension\x12\xa8\x01\n\x1fsankey_diagram_value_extraction\x18\
+    \x01\x20\x01(\x0b2_.bitdrift_public.protobuf.workflow.v1.Workflow.Transi\
+    tionExtension.SankeyDiagramValueExtractionH\0R\x1csankeyDiagramValueExtr\
+    action\x1a\xc3\x02\n\x1cSankeyDiagramValueExtraction\x123\n\x11sankey_di\
+    agram_id\x18\x01\x20\x01(\tR\x0fsankeyDiagramIdB\x07\xfaB\x04r\x02\x10\
+    \x01\x12\x1f\n\x05fixed\x18\x02\x20\x01(\tH\0R\x05fixedB\x07\xfaB\x04r\
+    \x02\x10\x01\x12h\n\x0ffield_extracted\x18\x03\x20\x01(\x0b2=.bitdrift_p\
+    ublic.protobuf.workflow.v1.Workflow.FieldExtractedH\0R\x0efieldExtracted\
+    \x12P\n%counts_toward_sankey_extraction_limit\x18\x04\x20\x01(\x08R!coun\
+    tsTowardSankeyExtractionLimitB\x11\n\nvalue_type\x12\x03\xf8B\x01B\x15\n\
+    \x0eextension_type\x12\x03\xf8B\x01\x1a\x89\x01\n\x0cRuleLogMatch\x12Z\n\
+    \x0blog_matcher\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf.matcher.\
+    v1.LogMatcherR\nlogMatcherB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x1d\n\
+    \x05count\x18\x02\x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a7\n\
+    \x0bRuleTimeout\x12(\n\x0bduration_ms\x18\x01\x20\x01(\x04R\ndurationMsB\
+    \x07\xfaB\x042\x02(\0\x1a\x98\x11\n\x06Action\x12|\n\x14action_flush_buf\
+    fers\x18\x01\x20\x01(\x0b2H.bitdrift_public.protobuf.workflow.v1.Workflo\
+    w.Action.ActionFlushBuffersH\0R\x12actionFlushBuffers\x12v\n\x12action_e\
+    mit_metric\x18\x02\x20\x01(\x0b2F.bitdrift_public.protobuf.workflow.v1.W\
+    orkflow.Action.ActionEmitMetricH\0R\x10actionEmitMetric\x12\x8c\x01\n\
+    \x1aaction_emit_sankey_diagram\x18\x03\x20\x01(\x0b2M.bitdrift_public.pr\
+    otobuf.workflow.v1.Workflow.Action.ActionEmitSankeyDiagramH\0R\x17action\
+    EmitSankeyDiagram\x12\x82\x01\n\x16action_take_screenshot\x18\x04\x20\
+    \x01(\x0b2J.bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionT\
+    akeScreenshotH\0R\x14actionTakeScreenshot\x1a\xa9\x05\n\x12ActionFlushBu\
+    ffers\x12\x1d\n\nbuffer_ids\x18\x01\x20\x03(\tR\tbufferIds\x12\x17\n\x02\
+    id\x18\x02\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12p\n\tstreamin\
+    g\x18\x03\x20\x01(\x0b2R.bitdrift_public.protobuf.workflow.v1.Workflow.A\
+    ction.ActionFlushBuffers.StreamingR\tstreaming\x1a\xe8\x03\n\tStreaming\
+    \x12G\n\x20destination_streaming_buffer_ids\x18\x01\x20\x03(\tR\x1ddesti\
+    nationStreamingBufferIds\x12\x9a\x01\n\x14termination_criteria\x18\x02\
+    \x20\x03(\x0b2g.bitdrift_public.protobuf.workflow.v1.Workflow.Action.Act\
+    ionFlushBuffers.Streaming.TerminationCriterionR\x13terminationCriteria\
+    \x1a\xf4\x01\n\x14TerminationCriterion\x12\x92\x01\n\nlogs_count\x18\x01\
+    \x20\x01(\x0b2q.bitdrift_public.protobuf.workflow.v1.Workflow.Action.Act\
+    ionFlushBuffers.Streaming.TerminationCriterion.LogsCountH\0R\tlogsCount\
+    \x1a:\n\tLogsCount\x12-\n\x0emax_logs_count\x18\x01\x20\x01(\x04R\x0cmax\
+    LogsCountB\x07\xfaB\x042\x02\x20\0B\x0b\n\x04type\x12\x03\xf8B\x01\x1a\
+    \xa3\x04\n\x10ActionEmitMetric\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02id\
+    B\x07\xfaB\x04r\x02\x10\x01\x12j\n\x07counter\x18\x02\x20\x01(\x0b2N.bit\
+    drift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.Count\
+    erH\0R\x07counter\x12p\n\thistogram\x18\x05\x20\x01(\x0b2P.bitdrift_publ\
+    ic.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.HistogramH\0R\t\
+    histogram\x12\x16\n\x05fixed\x18\x03\x20\x01(\rH\x01R\x05fixed\x12h\n\
+    \x0ffield_extracted\x18\x06\x20\x01(\x0b2=.bitdrift_public.protobuf.work\
+    flow.v1.Workflow.FieldExtractedH\x01R\x0efieldExtracted\x12M\n\x04tags\
+    \x18\x04\x20\x03(\x0b29.bitdrift_public.protobuf.workflow.v1.Workflow.Ac\
+    tion.TagR\x04tags\x1a\t\n\x07Counter\x1a\x0b\n\tHistogramB\x12\n\x0bmetr\
+    ic_type\x12\x03\xf8B\x01B\x1b\n\x14value_extractor_type\x12\x03\xf8B\x01\
+    \x1a\xa0\x01\n\x17ActionEmitSankeyDiagram\x12\x17\n\x02id\x18\x01\x20\
+    \x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12\x1d\n\x05limit\x18\x02\x20\
+    \x01(\rR\x05limitB\x07\xfaB\x04*\x02\x20\0\x12M\n\x04tags\x18\x03\x20\
+    \x03(\x0b29.bitdrift_public.protobuf.workflow.v1.Workflow.Action.TagR\
+    \x04tags\x1a\xc9\x01\n\x03Tag\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04n\
+    ameB\x07\xfaB\x04r\x02\x10\x01\x12*\n\x0bfixed_value\x18\x02\x20\x01(\tH\
+    \0R\nfixedValueB\x07\xfaB\x04r\x02\x10\x01\x12h\n\x0ffield_extracted\x18\
+    \x03\x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v1.Workflow.FieldE\
+    xtractedH\0R\x0efieldExtractedB\x0f\n\x08tag_type\x12\x03\xf8B\x01\x1a/\
+    \n\x14ActionTakeScreenshot\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\
+    \x07\xfaB\x04r\x02\x10\x01B\x12\n\x0baction_type\x12\x03\xf8B\x01\x1a\
+    \xc5\x02\n\tExecution\x12~\n\x13execution_exclusive\x18\x01\x20\x01(\x0b\
+    2K.bitdrift_public.protobuf.workflow.v1.Workflow.Execution.ExecutionExcl\
+    usiveH\0R\x12executionExclusive\x12{\n\x12execution_parallel\x18\x02\x20\
+    \x01(\x0b2J.bitdrift_public.protobuf.workflow.v1.Workflow.Execution.Exec\
+    utionParallelH\0R\x11executionParallel\x1a\x14\n\x12ExecutionExclusive\
+    \x1a\x13\n\x11ExecutionParallelB\x10\n\x0eexecution_type\x1a6\n\x15Limit\
+    MatchedLogsCount\x12\x1d\n\x05count\x18\x01\x20\x01(\rR\x05countB\x07\
+    \xfaB\x04*\x02\x20\0\x1a9\n\rLimitDuration\x12(\n\x0bduration_ms\x18\x02\
+    \x20\x01(\x04R\ndurationMsB\x07\xfaB\x042\x02\x20\0\x1a\xb6\x01\n\x0eFie\
+    ldExtracted\x12&\n\nfield_name\x18\x01\x20\x01(\tR\tfieldNameB\x07\xfaB\
+    \x04r\x02\x10\x01\x12[\n\x05exact\x18\x02\x20\x01(\x0b2C.bitdrift_public\
+    .protobuf.workflow.v1.Workflow.FieldExtracted.ExactH\0R\x05exact\x1a\x07\
+    \n\x05ExactB\x16\n\x0fextraction_type\x12\x03\xf8B\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -4226,30 +5206,34 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             let mut deps = ::std::vec::Vec::with_capacity(2);
             deps.push(super::validate::file_descriptor().clone());
             deps.push(super::log_matcher::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(23);
+            let mut messages = ::std::vec::Vec::with_capacity(27);
             messages.push(WorkflowsConfiguration::generated_message_descriptor_data());
             messages.push(Workflow::generated_message_descriptor_data());
             messages.push(workflow::State::generated_message_descriptor_data());
             messages.push(workflow::Transition::generated_message_descriptor_data());
             messages.push(workflow::Rule::generated_message_descriptor_data());
+            messages.push(workflow::TransitionExtension::generated_message_descriptor_data());
             messages.push(workflow::RuleLogMatch::generated_message_descriptor_data());
             messages.push(workflow::RuleTimeout::generated_message_descriptor_data());
             messages.push(workflow::Action::generated_message_descriptor_data());
             messages.push(workflow::Execution::generated_message_descriptor_data());
             messages.push(workflow::LimitMatchedLogsCount::generated_message_descriptor_data());
             messages.push(workflow::LimitDuration::generated_message_descriptor_data());
+            messages.push(workflow::FieldExtracted::generated_message_descriptor_data());
+            messages.push(workflow::transition_extension::SankeyDiagramValueExtraction::generated_message_descriptor_data());
             messages.push(workflow::action::ActionFlushBuffers::generated_message_descriptor_data());
             messages.push(workflow::action::ActionEmitMetric::generated_message_descriptor_data());
+            messages.push(workflow::action::ActionEmitSankeyDiagram::generated_message_descriptor_data());
+            messages.push(workflow::action::Tag::generated_message_descriptor_data());
+            messages.push(workflow::action::ActionTakeScreenshot::generated_message_descriptor_data());
             messages.push(workflow::action::action_flush_buffers::Streaming::generated_message_descriptor_data());
             messages.push(workflow::action::action_flush_buffers::streaming::TerminationCriterion::generated_message_descriptor_data());
             messages.push(workflow::action::action_flush_buffers::streaming::termination_criterion::LogsCount::generated_message_descriptor_data());
-            messages.push(workflow::action::action_emit_metric::FieldExtracted::generated_message_descriptor_data());
-            messages.push(workflow::action::action_emit_metric::Tag::generated_message_descriptor_data());
             messages.push(workflow::action::action_emit_metric::Counter::generated_message_descriptor_data());
             messages.push(workflow::action::action_emit_metric::Histogram::generated_message_descriptor_data());
-            messages.push(workflow::action::action_emit_metric::field_extracted::Exact::generated_message_descriptor_data());
             messages.push(workflow::execution::ExecutionExclusive::generated_message_descriptor_data());
             messages.push(workflow::execution::ExecutionParallel::generated_message_descriptor_data());
+            messages.push(workflow::field_extracted::Exact::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(0);
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
