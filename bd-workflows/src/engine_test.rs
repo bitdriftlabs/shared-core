@@ -34,7 +34,7 @@ use bd_test_helpers::workflow::macros::{
   rule,
   state,
 };
-use bd_test_helpers::{metric_value, sankey_value};
+use bd_test_helpers::{metric_tag, metric_value, sankey_value};
 use bd_time::TimeDurationExt;
 use pretty_assertions::assert_eq;
 use std::borrow::Cow;
@@ -2913,7 +2913,14 @@ async fn sankey_action() {
   declare_transition!(
     &mut c => &d;
     when rule!(log_matches!(message == "dar"));
-    do action!(emit_sankey "sankey"; limit 3)
+    do action!(
+      emit_sankey "sankey";
+      limit 3;
+      tags {
+        metric_tag!(extract "field_to_extract_from" => "extracted_field"),
+        metric_tag!(fix "fixed_field" => "fixed_value")
+      }
+    )
   );
 
   let workflow = workflow!(exclusive with a, b, c, d);
@@ -2930,7 +2937,7 @@ async fn sankey_action() {
   engine_process_log!(engine; "bar_loop");
   engine_process_log!(engine; "bar_loop");
   engine_process_log!(engine; "bar"; with labels! { "field_to_extract_key" => "field_to_extract_value" });
-  engine_process_log!(engine; "dar");
+  engine_process_log!(engine; "dar"; with labels! { "field_to_extract_from" => "extracted_value" });
 
   1.milliseconds().sleep().await;
 
@@ -2979,6 +2986,8 @@ async fn sankey_action() {
     labels! {
       "_id" => "sankey",
       "_path_id" => "1ce0b8284b9681de466d4b55b1487a9b2ab4da07711b0ad99ce059f21e4a9b84",
+      "fixed_field" => "fixed_value",
+      "extracted_field" => "extracted_value",
     },
   );
 }
