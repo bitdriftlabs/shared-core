@@ -256,6 +256,10 @@ impl State {
   }
 }
 
+//
+// Execution
+//
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Execution {
   Exclusive,
@@ -274,6 +278,10 @@ impl Execution {
     }
   }
 }
+
+//
+// SankeyExtraction
+//
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct SankeyExtraction {
@@ -601,6 +609,7 @@ impl ActionEmitMetric {
 pub struct ActionEmitSankey {
   id: String,
   limit: u32,
+  tags: BTreeMap<String, TagValue>,
 }
 
 impl ActionEmitSankey {
@@ -608,6 +617,23 @@ impl ActionEmitSankey {
     Ok(Self {
       id: proto.id.to_string(),
       limit: proto.limit,
+      tags: proto
+        .tags
+        .iter()
+        .map(|tag| {
+          let value = match &tag.tag_type {
+            Some(Tag_type::FixedValue(value)) => TagValue::Fixed(value.clone()),
+            Some(Tag_type::FieldExtracted(extracted)) => {
+              TagValue::Extract(extracted.field_name.to_string())
+            },
+            None => {
+              anyhow::bail!("invalid action emit sankey diagram configuration: unknown tag_type")
+            },
+          };
+
+          Ok((tag.name.to_string(), value))
+        })
+        .collect::<anyhow::Result<BTreeMap<_, _>>>()?,
     })
   }
 
@@ -619,6 +645,11 @@ impl ActionEmitSankey {
   #[must_use]
   pub const fn limit(&self) -> u32 {
     self.limit
+  }
+
+  #[must_use]
+  pub fn tags(&self) -> &BTreeMap<String, TagValue> {
+    &self.tags
   }
 }
 

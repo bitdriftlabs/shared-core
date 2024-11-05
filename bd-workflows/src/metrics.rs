@@ -9,7 +9,7 @@
 #[path = "./metrics_test.rs"]
 mod metrics_test;
 
-use crate::config::ActionEmitMetric;
+use crate::config::{ActionEmitMetric, TagValue};
 use crate::workflow::TriggeredActionEmitSankey;
 use bd_client_stats::DynamicStats;
 use bd_log_primitives::LogRef;
@@ -42,16 +42,7 @@ impl MetricsCollector {
     // If `counter_increment` values are identical, consider deduping metrics even if their
     // `counter_increment` fields have different values.
     for action in actions {
-      let mut tags = BTreeMap::new();
-
-      for (key, value) in &action.tags {
-        if let Some(extracted_value) = match value {
-          crate::config::TagValue::Extract(extract) => Self::resolve_field_name(extract, log),
-          crate::config::TagValue::Fixed(value) => Some(value.as_str().into()),
-        } {
-          tags.insert(key.to_string(), extracted_value.into_owned());
-        }
-      }
+      let mut tags = Self::extract_tags(log, &action.tags);
       tags.insert("_id".to_string(), action.id.clone());
 
       #[allow(clippy::cast_precision_loss)]
@@ -94,11 +85,11 @@ impl MetricsCollector {
   pub(crate) fn emit_sankeys(
     &self,
     actions: &BTreeSet<TriggeredActionEmitSankey<'_>>,
-    _log: &LogRef<'_>,
+    log: &LogRef<'_>,
   ) {
     // TODO(Augustyniak): extract appropriate field values.
     for action in actions {
-      let mut tags = BTreeMap::new();
+      let mut tags = Self::extract_tags(log, action.action.tags());
       tags.insert("_id".to_string(), action.action.id().to_string());
       tags.insert("_path_id".to_string(), action.path.path_id.to_string());
 
@@ -114,5 +105,20 @@ impl MetricsCollector {
       "log_type" => Some(log.log_type.0.to_string().into()),
       key => log.fields.field_value(key).map(Into::into),
     }
+  }
+
+  fn extract_tags(log: &LogRef<'_>, tags: &BTreeMap<String, TagValue>) -> BTreeMap<String, String> {
+    let mut extracted_tags = BTreeMap::new();
+
+    for (key, value) in tags {
+      if let Some(extracted_value) = match value {
+        crate::config::TagValue::Extract(extract) => Self::resolve_field_name(extract, log),
+        crate::config::TagValue::Fixed(value) => Some(value.as_str().into()),
+      } {
+        extracted_tags.insert(key.to_string(), extracted_value.into_owned());
+      }
+    }
+
+    extracted_tags
   }
 }
