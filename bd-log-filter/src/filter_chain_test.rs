@@ -10,6 +10,7 @@ use bd_log_primitives::{log_level, Log, LogField, LogFields, LogType};
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
 use bd_test_helpers::filter::macros::regex_match_and_substitute_field;
 use bd_test_helpers::{capture_field, field_value, log_matches, remove_field, set_field};
+use pretty_assertions::assert_eq;
 use time::macros::datetime;
 
 #[test]
@@ -434,7 +435,7 @@ fn invalid_regex_match() {
 }
 
 #[test]
-fn extracts_message_portion_and_creates_field() {
+fn extracts_message_portion_and_creates_field_with_it() {
   let filter_chain = make_filter_chain(
     log_matches!(message ~= "^I like"),
     vec![
@@ -453,6 +454,35 @@ fn extracts_message_portion_and_creates_field() {
       key: "fruit".to_string(),
       value: "apple".into(),
     }]
+  );
+}
+
+#[test]
+fn copies_log_level_and_log_type() {
+  let filter_chain = make_filter_chain(
+    log_matches!(message ~= "foo"),
+    vec![
+      set_field!(captured("new_log_level") = field_value!(field "log_level")),
+      set_field!(captured("new_log_type") = field_value!(field "log_type")),
+    ],
+  );
+
+  let mut log = make_log("foo", vec![], vec![]);
+
+  filter_chain.process(&mut log);
+
+  assert_eq!(
+    log.fields,
+    vec![
+      LogField {
+        key: "new_log_level".to_string(),
+        value: "1".into(),
+      },
+      LogField {
+        key: "new_log_type".to_string(),
+        value: "0".into(),
+      }
+    ]
   );
 }
 
