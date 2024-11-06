@@ -10,7 +10,15 @@
 mod filter_chain_test;
 
 use anyhow::{anyhow, Context, Result};
-use bd_log_primitives::{FieldsRef, Log, LogField, LogFields};
+use bd_log_primitives::{
+  FieldsRef,
+  Log,
+  LogField,
+  LogFields,
+  LOG_FIELD_NAME_LEVEL,
+  LOG_FIELD_NAME_MESSAGE,
+  LOG_FIELD_NAME_TYPE,
+};
 use bd_proto::protos::filter::filter::filter::{self};
 use bd_proto::protos::filter::filter::{Filter as FilterProto, FiltersConfiguration};
 use filter::transform::Transform_type;
@@ -275,14 +283,14 @@ impl SetField {
 
     // Get the desired new value for the field.
     let value = match &self.value {
-      SetFieldValue::StringValue(value) => value,
+      SetFieldValue::StringValue(value) => value.to_string(),
       SetFieldValue::ExistingField(field_name) => {
         let Some(value) = log.field_value(field_name) else {
           // The field to copy from doesn't exist, the transform is a no-op.
           return;
         };
 
-        value
+        value.into_owned()
       },
     };
 
@@ -388,16 +396,22 @@ fn set_field(fields: &mut LogFields, field: LogField) {
 }
 
 trait FieldProvider {
-  fn field_value(&self, key: &str) -> Option<&str>;
+  fn field_value(&self, key: &str) -> Option<Cow<'_, str>>;
 }
 
 impl FieldProvider for Log {
-  fn field_value(&self, key: &str) -> Option<&str> {
-    self
-      .fields
-      .iter()
-      .chain(self.matching_fields.iter())
-      .find(|f| f.key == key)
-      .and_then(|f| f.value.as_str())
+  fn field_value(&self, key: &str) -> Option<Cow<'_, str>> {
+    match key {
+      LOG_FIELD_NAME_MESSAGE => self.message.as_str().map(Cow::Borrowed),
+      LOG_FIELD_NAME_LEVEL => Some(Cow::Owned(self.log_level.to_string())),
+      LOG_FIELD_NAME_TYPE => Some(Cow::Owned(self.log_type.0.to_string())),
+      _ => self
+        .fields
+        .iter()
+        .chain(self.matching_fields.iter())
+        .find(|f| f.key == key)
+        .and_then(|f| f.value.as_str())
+        .map(Into::into),
+    }
   }
 }

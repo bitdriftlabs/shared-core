@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_log_primitives::{FieldsRef, LogRef};
+use bd_log_primitives::{FieldsRef, LogRef, LOG_FIELD_NAME_LEVEL, LOG_FIELD_NAME_TYPE};
 use std::borrow::Cow;
 
 pub mod buffer_selector;
@@ -56,8 +56,8 @@ impl FieldProvider for FieldsRef<'_> {
 impl FieldProvider for LogRef<'_> {
   fn field_value(&self, key: &str) -> Option<Cow<'_, str>> {
     match key {
-      "log_level" => Some(Cow::Owned(self.log_level.to_string())),
-      "log_type" => Some(Cow::Owned(self.log_type.0.to_string())),
+      LOG_FIELD_NAME_LEVEL => Some(Cow::Owned(self.log_level.to_string())),
+      LOG_FIELD_NAME_TYPE => Some(Cow::Owned(self.log_type.0.to_string())),
       key => self.fields.field_value(key).map(Into::into),
     }
   }

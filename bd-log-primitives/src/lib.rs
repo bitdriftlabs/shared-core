@@ -6,6 +6,11 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 pub use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+
+pub const LOG_FIELD_NAME_TYPE: &str = "log_type";
+pub const LOG_FIELD_NAME_LEVEL: &str = "log_level";
+pub const LOG_FIELD_NAME_MESSAGE: &str = "_message";
+
 /// A union type that allows representing either a UTF-8 string or an opaque series of bytes. This
 /// is generic over the underlying String type to support different ownership models.
 #[derive(Debug, Clone, PartialEq, Eq)]
