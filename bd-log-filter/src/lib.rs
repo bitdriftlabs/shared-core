@@ -10,7 +10,15 @@
 mod filter_chain_test;
 
 use anyhow::{anyhow, Context, Result};
-use bd_log_primitives::{FieldsRef, Log, LogField, LogFields};
+use bd_log_primitives::{
+  FieldsRef,
+  Log,
+  LogField,
+  LogFields,
+  LOG_FIELD_NAME_LEVEL,
+  LOG_FIELD_NAME_MESSAGE,
+  LOG_FIELD_NAME_TYPE,
+};
 use bd_proto::protos::filter::filter::filter::{self};
 use bd_proto::protos::filter::filter::{Filter as FilterProto, FiltersConfiguration};
 use filter::transform::Transform_type;
@@ -394,9 +402,9 @@ trait FieldProvider {
 impl FieldProvider for Log {
   fn field_value(&self, key: &str) -> Option<Cow<'_, str>> {
     match key {
-      "_message" => self.message.as_str().map(Cow::Borrowed),
-      "log_level" => Some(Cow::Owned(self.log_level.to_string())),
-      "log_type" => Some(Cow::Owned(self.log_type.0.to_string())),
+      LOG_FIELD_NAME_MESSAGE => self.message.as_str().map(Cow::Borrowed),
+      LOG_FIELD_NAME_LEVEL => Some(Cow::Owned(self.log_level.to_string())),
+      LOG_FIELD_NAME_TYPE => Some(Cow::Owned(self.log_type.0.to_string())),
       _ => self
         .fields
         .iter()
