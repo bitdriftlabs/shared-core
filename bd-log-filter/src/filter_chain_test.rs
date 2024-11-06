@@ -433,6 +433,29 @@ fn invalid_regex_match() {
   assert!(filter_chain.filters.is_empty());
 }
 
+#[test]
+fn extracts_message_portion_and_creates_field() {
+  let filter_chain = make_filter_chain(
+    log_matches!(message ~= "^I like"),
+    vec![
+      set_field!(captured("fruit") = field_value!(field "_message")),
+      regex_match_and_substitute_field!("fruit", "I like ()", "${1}"),
+    ],
+  );
+
+  let mut log = make_log("I like apple", vec![], vec![]);
+
+  filter_chain.process(&mut log);
+
+  assert_eq!(
+    log.fields,
+    vec![LogField {
+      key: "fruit".to_string(),
+      value: "apple".into(),
+    }]
+  );
+}
+
 fn make_filter_chain(
   matcher: bd_proto::protos::log_matcher::log_matcher::LogMatcher,
   transforms: std::vec::Vec<bd_proto::protos::filter::filter::filter::Transform>,

@@ -275,14 +275,14 @@ impl SetField {
 
     // Get the desired new value for the field.
     let value = match &self.value {
-      SetFieldValue::StringValue(value) => value,
+      SetFieldValue::StringValue(value) => value.to_string(),
       SetFieldValue::ExistingField(field_name) => {
         let Some(value) = log.field_value(field_name) else {
           // The field to copy from doesn't exist, the transform is a no-op.
           return;
         };
 
-        value
+        value.into_owned()
       },
     };
 
@@ -388,16 +388,22 @@ fn set_field(fields: &mut LogFields, field: LogField) {
 }
 
 trait FieldProvider {
-  fn field_value(&self, key: &str) -> Option<&str>;
+  fn field_value(&self, key: &str) -> Option<Cow<'_, str>>;
 }
 
 impl FieldProvider for Log {
-  fn field_value(&self, key: &str) -> Option<&str> {
-    self
-      .fields
-      .iter()
-      .chain(self.matching_fields.iter())
-      .find(|f| f.key == key)
-      .and_then(|f| f.value.as_str())
+  fn field_value(&self, key: &str) -> Option<Cow<'_, str>> {
+    match key {
+      "_message" => self.message.as_str().map(Cow::Borrowed),
+      "log_level" => Some(Cow::Owned(self.log_level.to_string())),
+      "log_type" => Some(Cow::Owned(self.log_type.0.to_string())),
+      _ => self
+        .fields
+        .iter()
+        .chain(self.matching_fields.iter())
+        .find(|f| f.key == key)
+        .and_then(|f| f.value.as_str())
+        .map(Into::into),
+    }
   }
 }
