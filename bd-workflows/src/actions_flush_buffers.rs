@@ -11,7 +11,7 @@ mod actions_flush_buffers_test;
 
 use crate::config::ActionFlushBuffers;
 use anyhow::anyhow;
-use bd_api::upload::{Decision, Intent_type, LogUploadIntent};
+use bd_api::upload::{Decision, Intent_type, TrackedLogUploadIntent};
 use bd_api::DataUpload;
 use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::LogUploadIntentRequest;
@@ -233,7 +233,7 @@ impl Negotiator {
     &self,
     action: &PendingFlushBuffersAction,
   ) -> anyhow::Result<bool> {
-    let intent_uuid = LogUploadIntent::upload_uuid();
+    let intent_uuid = TrackedLogUploadIntent::upload_uuid();
 
     let intent_request = LogUploadIntentRequest {
       log_count: 0,
@@ -303,7 +303,8 @@ impl Negotiator {
       // negotiation. Therefore, it's possible that the log triggering the flushing of the
       // buffer (and consequently the intent negotiation process) will not be in the buffer
       // once the intent negotiation process is complete.
-      let (intent, response) = LogUploadIntent::new(intent_uuid.clone(), intent_request.clone());
+      let (intent, response) =
+        TrackedLogUploadIntent::new(intent_uuid.clone(), intent_request.clone());
       self
         .data_upload_tx
         .send(DataUpload::LogsUploadIntentRequest(intent))

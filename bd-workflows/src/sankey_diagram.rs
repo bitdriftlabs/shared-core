@@ -6,12 +6,24 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::workflow::SankeyPath;
-use bd_api::upload::TrackedSankeyPathUploadRequest;
+use bd_api::api::Decision;
+use bd_api::upload::{TrackedSankeyPathUploadIntentRequest, TrackedSankeyPathUploadRequest};
 use bd_api::DataUpload;
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
-use bd_proto::protos::client::api::SankeyPathUploadRequest;
+use bd_proto::protos::client::api::{SankeyIntentRequest, SankeyPathUploadRequest};
 use itertools::Itertools;
+use std::collections::HashMap;
 use tokio::sync::mpsc::{Receiver, Sender};
+
+//
+// IntentDecision
+//
+
+#[derive(Debug)]
+struct IntentDecision {
+  path_id: String,
+  accepted: bool,
+}
 
 //
 // Processor
@@ -21,16 +33,18 @@ use tokio::sync::mpsc::{Receiver, Sender};
 pub(crate) struct Processor {
   data_upload_tx: Sender<DataUpload>,
   input_rx: Receiver<SankeyPath>,
+
+  // Sankey ID to path ID map.
+  #[allow(dead_code)]
+  rejected_intents: HashMap<String, Vec<IntentDecision>>,
 }
 
 impl Processor {
-  pub(crate) const fn new(
-    input_rx: Receiver<SankeyPath>,
-    data_upload_tx: Sender<DataUpload>,
-  ) -> Self {
+  pub(crate) fn new(input_rx: Receiver<SankeyPath>, data_upload_tx: Sender<DataUpload>) -> Self {
     Self {
       data_upload_tx,
       input_rx,
+      rejected_intents: HashMap::new(),
     }
   }
 
@@ -45,8 +59,25 @@ impl Processor {
   }
 
   pub(crate) async fn process_sankey(&self, sankey_path: SankeyPath) {
-    let upload_uuid = TrackedSankeyPathUploadRequest::upload_uuid();
 
+    let decision = self.perform_intent_negotiation(sankey_path).await;
+
+    match decision {
+      Ok(Decision::UploadImmediately(_)) => {
+        self.upload_sankey_path(sankey_path).await;
+      }
+      Ok(Decision::Drop(_)) => {
+        // TODO(Augustyniak): Add a counter stat in here.
+        log::debug!("sankey path rejected");
+      }
+      Err(error) => {
+        // TODO(Augustyniak): Add a counter stat in here.
+        log::debug!("failed to negotiate intent: {error}");
+      }
+    }
+
+
+    let upload_uuid = TrackedSankeyPathUploadRequest::upload_uuid();
     let upload_request = SankeyPathUploadRequest {
       upload_uuid: upload_uuid.clone(),
       id: sankey_path.sankey_id.clone(),
@@ -82,5 +113,23 @@ impl Processor {
     if let Err(error) = response.await {
       log::debug!("failed to wait for sankey upload response: {error}");
     }
+  }
+
+  async fn perform_intent_negotiation(&self, sankey_path: SankeyPath) -> anyhow::Result<Decision> {
+    let intent_upload_uuid = TrackedSankeyPathUploadRequest::upload_uuid();
+    let intent_request = SankeyIntentRequest {
+      intent_uuid: intent_upload_uuid.clone(),
+      sankey_diagram_id: sankey_path.sankey_id.clone(),
+      path_id: sankey_path.path_id.clone(),
+      ..Default::default()
+    };
+
+    let (intent_upload_request, response) = TrackedSankeyPathUploadIntentRequest::new(intent_upload_uuid, intent_request);
+
+    self
+      .data_upload_tx
+      .send(DataUpload::SankeyPathUploadIntentRequest(intent_upload_request)).await?;
+
+    Ok(response.await?)
   }
 }
