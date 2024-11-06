@@ -87,7 +87,6 @@ impl MetricsCollector {
     actions: &BTreeSet<TriggeredActionEmitSankey<'_>>,
     log: &LogRef<'_>,
   ) {
-    // TODO(Augustyniak): extract appropriate field values.
     for action in actions {
       let mut tags = Self::extract_tags(log, action.action.tags());
       tags.insert("_id".to_string(), action.action.id().to_string());
