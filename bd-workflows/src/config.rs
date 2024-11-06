@@ -648,7 +648,7 @@ impl ActionEmitSankey {
   }
 
   #[must_use]
-  pub fn tags(&self) -> &BTreeMap<String, TagValue> {
+  pub const fn tags(&self) -> &BTreeMap<String, TagValue> {
     &self.tags
   }
 }
