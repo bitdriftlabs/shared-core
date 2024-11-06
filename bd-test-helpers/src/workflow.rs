@@ -324,10 +324,11 @@ pub mod macros {
         vec![$($tag,)+]
       )
     };
-    (emit_sankey $id:expr; limit $limit: expr) => {
+    (emit_sankey $id:expr; limit $limit:expr; tags { $($tag:expr),+ }) => {
       $crate::workflow::make_emit_sankey_action(
         $id,
         $limit,
+        vec![$($tag,)+]
       )
     };
     (screenshot $id:expr) => {
@@ -512,10 +513,11 @@ pub fn make_flush_buffers_action(
 }
 
 #[must_use]
-pub fn make_emit_sankey_action(id: &str, limit: u32) -> Action_type {
+pub fn make_emit_sankey_action(id: &str, limit: u32, tags: Vec<Tag>) -> Action_type {
   Action_type::ActionEmitSankeyDiagram(ActionEmitSankeyDiagramProto {
     id: id.to_string(),
     limit,
+    tags,
     ..Default::default()
   })
 }
