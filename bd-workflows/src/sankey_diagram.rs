@@ -21,7 +21,7 @@ const PROCESSED_INTENTS_LRU_CACHE_SIZE: usize = 100;
 // ProcessedIntents
 //
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct SeenSankeyPath {
   sankey_id: String,
   path_id: String,
@@ -31,7 +31,7 @@ struct SeenSankeyPath {
 // reducing the need for repeated intent negotiation network requests.
 // The underlying vector acts as an LRU cache with the least recently seen paths stored at the
 // front.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct ProcessedIntents(Vec<SeenSankeyPath>);
 
 impl ProcessedIntents {
@@ -150,10 +150,11 @@ impl Processor {
   ) {
     match decision {
       Decision::UploadImmediately(_) => {
-        self.stats.intent_completion_uploads_total.inc();
         log::debug!(
           "sankey path upload intent accepted, upload immediately: {upload_intent_uuid:?}"
         );
+        self.stats.intent_completion_uploads_total.inc();
+        self.processed_intents.insert(sankey_path.clone());
         self.upload_sankey_path(sankey_path).await;
       },
       Decision::Drop(_) => {
