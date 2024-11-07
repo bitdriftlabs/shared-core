@@ -25,16 +25,25 @@ struct SeenSankeyPath {
 }
 
 // Stores information about a limited number of recent Sankey path upload intent results,
-// helping to reduce the number of intent negotiation network requests.
+// reducing the need for repeated intent negotiation network requests. Processed intents
+// are stored in an LRU cache.
 #[derive(Debug, Default)]
 struct ProcessedIntents(Vec<SeenSankeyPath>);
 
 impl ProcessedIntents {
-  fn contains(&self, sankey_path: &SankeyPath) -> bool {
-    self.0.contains(&SeenSankeyPath {
+  fn contains(&mut self, sankey_path: &SankeyPath) -> bool {
+    let seen_path = SeenSankeyPath {
       sankey_id: sankey_path.sankey_id.to_string(),
       path_id: sankey_path.path_id.to_string(),
-    })
+    };
+
+    let Some(index) = self.0.iter().position(|e| e == &seen_path) else {
+      return false;
+    };
+
+    self.0.remove(index);
+    self.0.push(seen_path);
+    true
   }
 
   fn insert(&mut self, sankey_path: SankeyPath) {
@@ -53,6 +62,7 @@ impl ProcessedIntents {
       },
     }
 
+    // Limit the size of our LRU cache to 100.
     if self.0.len() > 100 {
       self.0.remove(0);
     }
