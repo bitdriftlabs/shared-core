@@ -14,6 +14,8 @@ use bd_proto::protos::client::api::{SankeyIntentRequest, SankeyPathUploadRequest
 use itertools::Itertools;
 use tokio::sync::mpsc::{Receiver, Sender};
 
+const PROCESSED_INTENTS_LRU_CACHE_SIZE: usize = 100;
+
 //
 // ProcessedIntents
 //
@@ -25,8 +27,9 @@ struct SeenSankeyPath {
 }
 
 // Stores information about a limited number of recent Sankey path upload intent results,
-// reducing the need for repeated intent negotiation network requests. Processed intents
-// are stored in an LRU cache.
+// reducing the need for repeated intent negotiation network requests.
+// The underlying vector acts as an LRU cache with the least recently seen paths stored at the
+// front.
 #[derive(Debug, Default)]
 struct ProcessedIntents(Vec<SeenSankeyPath>);
 
@@ -62,8 +65,8 @@ impl ProcessedIntents {
       },
     }
 
-    // Limit the size of our LRU cache to 100.
-    if self.0.len() > 100 {
+    // Enforce the LRU cache size limit.
+    if self.0.len() > PROCESSED_INTENTS_LRU_CACHE_SIZE {
       self.0.remove(0);
     }
   }
