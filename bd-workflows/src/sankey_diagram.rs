@@ -91,6 +91,12 @@ impl Processor {
   }
 
   pub(crate) async fn process_sankey(&mut self, sankey_path: SankeyPath) {
+    log::debug!(
+      "processing sankey: sankey id {:?}, path id {:?}",
+      sankey_path.sankey_id,
+      sankey_path.path_id
+    );
+
     if self.processed_intents.contains(&sankey_path) {
       log::debug!(
         "sankey path upload intent already processed, sankey id: {:?}, path id: {:?}",
@@ -127,7 +133,7 @@ impl Processor {
       },
       Decision::Drop(_) => {
         log::debug!("sankey path upload intent rejected, drop: {upload_intent_uuid:?}");
-        self.processed_intents.insert(sankey_path)
+        self.processed_intents.insert(sankey_path);
       },
     }
   }

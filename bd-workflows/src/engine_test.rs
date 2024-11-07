@@ -21,7 +21,11 @@ use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogTy
 use bd_proto::protos::client::api::log_upload_intent_request::Intent_type::WorkflowActionUpload;
 use bd_proto::protos::client::api::log_upload_intent_response::{Drop, UploadImmediately};
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
-use bd_proto::protos::client::api::{log_upload_intent_request, SankeyPathUploadRequest};
+use bd_proto::protos::client::api::{
+  log_upload_intent_request,
+  SankeyIntentRequest,
+  SankeyPathUploadRequest,
+};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_stats_common::labels;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
@@ -218,7 +222,10 @@ struct Hooks {
   flushed_buffers: Vec<BuffersToFlush>,
   received_logs_upload_intents: Vec<log_upload_intent_request::WorkflowActionUpload>,
   awaiting_logs_upload_intent_decisions: Vec<Decision>,
+
   sankey_uploads: Vec<SankeyPathUploadRequest>,
+  received_sankey_upload_intents: Vec<SankeyIntentRequest>,
+  awaiting_sankey_upload_intent_decisions: Vec<Decision>,
 }
 
 struct AnnotatedWorkflowsEngine {
@@ -291,7 +298,7 @@ impl AnnotatedWorkflowsEngine {
                 };
 
                 let decision = hooks.lock().awaiting_logs_upload_intent_decisions.remove(0);
-                log::debug!("responding \"{:?}\" to \"{}\" intent", decision, logs_upload_intent.uuid);
+                log::debug!("responding \"{:?}\" to logs upload intent \"{}\" intent", decision, logs_upload_intent.uuid);
 
                 hooks.lock().received_logs_upload_intents.push(upload.clone());
 
@@ -301,6 +308,26 @@ impl AnnotatedWorkflowsEngine {
                   {
                     panic!("failed to send response: {e:?}");
                   }
+                },
+                DataUpload::SankeyPathUploadIntentRequest(sankey_upload_intent) => {
+                  if hooks.lock().awaiting_sankey_upload_intent_decisions.is_empty() {
+                    continue;
+                  }
+
+                  let sankey_upload_intent_payload = sankey_upload_intent.payload.clone();
+
+                  let decision = hooks.lock().awaiting_sankey_upload_intent_decisions.remove(0);
+                  log::debug!("responding \"{:?}\" to sankey upload intent \"{}\" intent", decision, sankey_upload_intent.uuid);
+
+                  hooks.lock().received_sankey_upload_intents
+                    .push(sankey_upload_intent_payload.clone());
+
+                  if let Err(e) = sankey_upload_intent
+                    .response_tx
+                    .send(decision)
+                    {
+                      panic!("failed to send response: {e:?}");
+                    }
                 },
                 DataUpload::SankeyPathUpload(upload) => {
                   hooks.lock().sankey_uploads.push(upload.payload.clone());
@@ -321,10 +348,6 @@ impl AnnotatedWorkflowsEngine {
 
   fn received_logs_upload_intents(&self) -> Vec<log_upload_intent_request::WorkflowActionUpload> {
     self.hooks.lock().received_logs_upload_intents.clone()
-  }
-
-  fn sankey_path_uploads(&self) -> Vec<SankeyPathUploadRequest> {
-    self.hooks.lock().sankey_uploads.clone()
   }
 
   fn set_awaiting_logs_upload_intent_decisions(&self, decisions: Vec<Decision>) {
@@ -2915,7 +2938,7 @@ async fn sankey_action() {
     when rule!(log_matches!(message == "dar"));
     do action!(
       emit_sankey "sankey";
-      limit 3;
+      limit 2;
       tags {
         metric_tag!(extract "field_to_extract_from" => "extracted_field"),
         metric_tag!(fix "fixed_field" => "fixed_value")
@@ -2930,9 +2953,42 @@ async fn sankey_action() {
     WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
   );
 
+  // Emit Sankey that's rejected for the upload by the server.
+
+  engine
+    .hooks
+    .lock()
+    .awaiting_sankey_upload_intent_decisions
+    .push(Decision::Drop(Drop::default()));
+
   engine_process_log!(engine; "foo");
-  engine_process_log!(engine; "bar_loop");
-  engine_process_log!(engine; "bar_loop");
+  engine_process_log!(engine; "bar");
+  engine_process_log!(engine; "dar");
+
+  1.milliseconds().sleep().await;
+
+  assert!(engine.hooks.lock().sankey_uploads.is_empty());
+  assert_eq!(1, engine.hooks.lock().received_sankey_upload_intents.len());
+
+  engine.dynamic_stats_collector.assert_counter_eq(
+    1,
+    "workflows_dyn:action",
+    labels! {
+      "_id" => "sankey",
+      "_path_id" => "8b7712a10b290c2f0a386eef5a2d2b744305df42b0d4692e1c41911c98062afe",
+      "fixed_field" => "fixed_value",
+    },
+  );
+
+  // Emit Sankey that's accepted for the upload by the server.
+
+  engine
+    .hooks
+    .lock()
+    .awaiting_sankey_upload_intent_decisions
+    .push(Decision::UploadImmediately(UploadImmediately::default()));
+
+  engine_process_log!(engine; "foo");
   engine_process_log!(engine; "bar_loop");
   engine_process_log!(engine; "bar_loop");
   engine_process_log!(engine; "bar_loop");
@@ -2941,9 +2997,10 @@ async fn sankey_action() {
 
   1.milliseconds().sleep().await;
 
-  assert_eq!(1, engine.sankey_path_uploads().len());
+  assert_eq!(1, engine.hooks.lock().sankey_uploads.len());
+  assert_eq!(2, engine.hooks.lock().received_sankey_upload_intents.len());
 
-  let mut first_upload = engine.sankey_path_uploads()[0].clone();
+  let mut first_upload = engine.hooks.lock().sankey_uploads[0].clone();
 
   // Confirm upload uuid is present and remove it from further comparisons.
   assert!(!first_upload.upload_uuid.is_empty());
@@ -2952,14 +3009,10 @@ async fn sankey_action() {
   assert_eq!(
     SankeyPathUploadRequest {
       id: "sankey".to_string(),
-      path_id: "1ce0b8284b9681de466d4b55b1487a9b2ab4da07711b0ad99ce059f21e4a9b84".to_string(),
+      path_id: "8fdd001f37bfc8125d8f4704543fd6f3c089593d1b3c277f9eaa927c899f9aaa".to_string(),
       nodes: vec![
         Node {
           extracted_value: "first_extracted".to_string(),
-          ..Default::default()
-        },
-        Node {
-          extracted_value: "loop".to_string(),
           ..Default::default()
         },
         Node {
@@ -2985,7 +3038,33 @@ async fn sankey_action() {
     "workflows_dyn:action",
     labels! {
       "_id" => "sankey",
-      "_path_id" => "1ce0b8284b9681de466d4b55b1487a9b2ab4da07711b0ad99ce059f21e4a9b84",
+      "_path_id" => "8fdd001f37bfc8125d8f4704543fd6f3c089593d1b3c277f9eaa927c899f9aaa",
+      "fixed_field" => "fixed_value",
+      "extracted_field" => "extracted_value",
+    },
+  );
+
+  // Emit exactly the same sankey path again. This time the Sankey path should not be uploaded as it
+  // was uploaded already previously.
+
+  engine_process_log!(engine; "foo");
+  engine_process_log!(engine; "bar_loop");
+  engine_process_log!(engine; "bar_loop");
+  engine_process_log!(engine; "bar_loop");
+  engine_process_log!(engine; "bar"; with labels! { "field_to_extract_key" => "field_to_extract_value" });
+  engine_process_log!(engine; "dar"; with labels! { "field_to_extract_from" => "extracted_value" });
+
+  1.milliseconds().sleep().await;
+
+  assert_eq!(1, engine.hooks.lock().sankey_uploads.len());
+  assert_eq!(2, engine.hooks.lock().received_sankey_upload_intents.len());
+
+  engine.dynamic_stats_collector.assert_counter_eq(
+    2,
+    "workflows_dyn:action",
+    labels! {
+      "_id" => "sankey",
+      "_path_id" => "8fdd001f37bfc8125d8f4704543fd6f3c089593d1b3c277f9eaa927c899f9aaa",
       "fixed_field" => "fixed_value",
       "extracted_field" => "extracted_value",
     },
