@@ -63,6 +63,7 @@ mod client {
     OpaqueRequest,
     PingRequest,
     RuntimeUpdate,
+    SankeyIntentRequest,
     SankeyPathUploadRequest,
     StatsUploadRequest,
   };
@@ -85,6 +86,7 @@ mod client {
   into_api_request!(PingRequest, Request_type::Ping);
   into_api_request!(HandshakeRequest, Request_type::Handshake);
   into_api_request!(LogUploadIntentRequest, Request_type::LogUploadIntent);
+  into_api_request!(SankeyIntentRequest, Request_type::SankeyIntent);
   into_api_request!(SankeyPathUploadRequest, Request_type::SankeyPathUpload);
   into_api_request!(OpaqueRequest, Request_type::OpaqueUpload);
 

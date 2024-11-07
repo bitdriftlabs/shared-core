@@ -14,6 +14,7 @@ pub use bd_proto::protos::client::api::log_upload_intent_response::Decision;
 pub use bd_proto::protos::client::api::LogUploadIntentRequest;
 use bd_proto::protos::client::api::{
   LogUploadRequest,
+  SankeyIntentRequest,
   SankeyPathUploadRequest,
   StatsUploadRequest,
 };
@@ -168,7 +169,9 @@ pub type TrackedStatsUploadRequest = Tracked<StatsUploadRequest, UploadResponse>
 
 pub type TrackedSankeyPathUploadRequest = Tracked<SankeyPathUploadRequest, UploadResponse>;
 
+pub type TrackedSankeyPathUploadIntentRequest = Tracked<SankeyIntentRequest, Decision>;
+
 /// An intent to upload a buffer due to a listener triggering. This is communicated to the backend
 /// in order to allow the server to make decisions on whether a buffer should be uploaded in
 /// response to a specific listener.
-pub type LogUploadIntent = Tracked<LogUploadIntentRequest, Decision>;
+pub type TrackedLogUploadIntent = Tracked<LogUploadIntentRequest, Decision>;

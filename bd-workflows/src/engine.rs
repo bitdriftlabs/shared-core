@@ -123,7 +123,8 @@ impl WorkflowsEngine {
     let flush_buffers_actions_resolver = Resolver::new(&actions_scope);
 
     let (sankey_input_tx, sankey_input_rx) = tokio::sync::mpsc::channel(10);
-    let sankey_diagram_processor = sankey_diagram::Processor::new(sankey_input_rx, data_upload_tx);
+    let sankey_diagram_processor =
+      sankey_diagram::Processor::new(sankey_input_rx, data_upload_tx, &actions_scope);
     let sankey_processor_join_handle = sankey_diagram_processor.run();
 
     let workflows_engine = Self {

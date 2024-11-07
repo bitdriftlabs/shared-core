@@ -20,6 +20,7 @@ use bd_proto::protos::client::api::{
   OpaqueRequest,
   OpaqueResponse,
   PongResponse,
+  SankeyIntentRequest,
   SankeyPathUploadRequest,
   SankeyPathUploadResponse,
   StatsUploadRequest,
@@ -116,6 +117,9 @@ pub enum DataUpload {
 
   /// A stats upload request with an associated tracking id that is used to ensure delivery.
   StatsUploadRequest(Tracked<StatsUploadRequest, UploadResponse>),
+
+  /// A Sankey upload request with associated tracking id that is used to ensure delivery.
+  SankeyPathUploadIntentRequest(Tracked<SankeyIntentRequest, Decision>),
 
   /// A Sankey path upload request.
   SankeyPathUpload(Tracked<SankeyPathUploadRequest, UploadResponse>),
