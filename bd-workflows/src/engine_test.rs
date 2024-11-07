@@ -310,9 +310,7 @@ impl AnnotatedWorkflowsEngine {
                   }
                 },
                 DataUpload::SankeyPathUploadIntentRequest(sankey_upload_intent) => {
-                  if hooks.lock().awaiting_sankey_upload_intent_decisions.is_empty() {
-                    continue;
-                  }
+                  assert!(!hooks.lock().awaiting_sankey_upload_intent_decisions.is_empty(), "received sankey upload intent when there are no awaiting intents");
 
                   let sankey_upload_intent_payload = sankey_upload_intent.payload.clone();
 
