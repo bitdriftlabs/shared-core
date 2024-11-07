@@ -12,17 +12,49 @@ use bd_api::DataUpload;
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{SankeyIntentRequest, SankeyPathUploadRequest};
 use itertools::Itertools;
-use std::collections::HashMap;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 //
-// IntentDecision
+// ProcessedIntents
 //
 
-#[derive(Debug)]
-struct IntentDecision {
+#[derive(Debug, PartialEq)]
+struct SeenSankeyPath {
+  sankey_id: String,
   path_id: String,
-  accepted: bool,
+}
+
+#[derive(Debug, Default)]
+struct ProcessedIntents(Vec<SeenSankeyPath>);
+
+impl ProcessedIntents {
+  fn contains(&self, sankey_path: &SankeyPath) -> bool {
+    self.0.contains(&SeenSankeyPath {
+      sankey_id: sankey_path.sankey_id.to_string(),
+      path_id: sankey_path.path_id.to_string(),
+    })
+  }
+
+  fn insert(&mut self, sankey_path: SankeyPath) {
+    let seen_path = SeenSankeyPath {
+      sankey_id: sankey_path.sankey_id,
+      path_id: sankey_path.path_id,
+    };
+
+    match self.0.iter().position(|e| e == &seen_path) {
+      Some(index) => {
+        self.0.remove(index);
+        self.0.push(seen_path);
+      },
+      None => {
+        self.0.push(seen_path);
+      },
+    }
+
+    if self.0.len() > 100 {
+      self.0.remove(0);
+    }
+  }
 }
 
 //
@@ -34,9 +66,7 @@ pub(crate) struct Processor {
   data_upload_tx: Sender<DataUpload>,
   input_rx: Receiver<SankeyPath>,
 
-  // Sankey ID to path ID map.
-  #[allow(dead_code)]
-  rejected_intents: HashMap<String, Vec<IntentDecision>>,
+  processed_intents: ProcessedIntents,
 }
 
 impl Processor {
@@ -44,7 +74,7 @@ impl Processor {
     Self {
       data_upload_tx,
       input_rx,
-      rejected_intents: HashMap::new(),
+      processed_intents: ProcessedIntents::default(),
     }
   }
 
@@ -58,26 +88,51 @@ impl Processor {
     })
   }
 
-  pub(crate) async fn process_sankey(&self, sankey_path: SankeyPath) {
-
-    let decision = self.perform_intent_negotiation(sankey_path).await;
-
-    match decision {
-      Ok(Decision::UploadImmediately(_)) => {
-        self.upload_sankey_path(sankey_path).await;
-      }
-      Ok(Decision::Drop(_)) => {
-        // TODO(Augustyniak): Add a counter stat in here.
-        log::debug!("sankey path rejected");
-      }
-      Err(error) => {
-        // TODO(Augustyniak): Add a counter stat in here.
-        log::debug!("failed to negotiate intent: {error}");
-      }
+  pub(crate) async fn process_sankey(&mut self, sankey_path: SankeyPath) {
+    if self.processed_intents.contains(&sankey_path) {
+      log::debug!(
+        "sankey path upload intent already processed, sankey id: {:?}, path id: {:?}",
+        sankey_path.sankey_id,
+        sankey_path.path_id
+      );
+      return;
     }
 
+    match self.perform_upload_intent_negotiation(&sankey_path).await {
+      Ok((decision, upload_intent_uuid)) => {
+        self
+          .handle_upload_intent_decision(sankey_path, decision, upload_intent_uuid)
+          .await;
+      },
+      Err(error) => {
+        log::debug!("failed to negotiate sankey path upload intent: {error}");
+      },
+    };
+  }
 
+  async fn handle_upload_intent_decision(
+    &mut self,
+    sankey_path: SankeyPath,
+    decision: Decision,
+    upload_intent_uuid: String,
+  ) {
+    match decision {
+      Decision::UploadImmediately(_) => {
+        log::debug!(
+          "sankey path upload intent accepted, upload immediately: {upload_intent_uuid:?}"
+        );
+        self.upload_sankey_path(sankey_path).await;
+      },
+      Decision::Drop(_) => {
+        log::debug!("sankey path upload intent rejected, drop: {upload_intent_uuid:?}");
+        self.processed_intents.insert(sankey_path)
+      },
+    }
+  }
+
+  async fn upload_sankey_path(&self, sankey_path: SankeyPath) {
     let upload_uuid = TrackedSankeyPathUploadRequest::upload_uuid();
+
     let upload_request = SankeyPathUploadRequest {
       upload_uuid: upload_uuid.clone(),
       id: sankey_path.sankey_id.clone(),
@@ -106,7 +161,6 @@ impl Processor {
       .send(DataUpload::SankeyPathUpload(upload_request))
       .await
     {
-      // TODO(Augustyniak): Add a counter stat in here.
       log::debug!("failed to send sankey upload request: {e}");
     }
 
@@ -115,21 +169,29 @@ impl Processor {
     }
   }
 
-  async fn perform_intent_negotiation(&self, sankey_path: SankeyPath) -> anyhow::Result<Decision> {
+  async fn perform_upload_intent_negotiation(
+    &self,
+    sankey_path: &SankeyPath,
+  ) -> anyhow::Result<(Decision, String)> {
     let intent_upload_uuid = TrackedSankeyPathUploadRequest::upload_uuid();
+
     let intent_request = SankeyIntentRequest {
-      intent_uuid: intent_upload_uuid.clone(),
+      intent_uuid: intent_upload_uuid.to_string(),
       sankey_diagram_id: sankey_path.sankey_id.clone(),
       path_id: sankey_path.path_id.clone(),
       ..Default::default()
     };
 
-    let (intent_upload_request, response) = TrackedSankeyPathUploadIntentRequest::new(intent_upload_uuid, intent_request);
+    let (intent_upload_request, response) =
+      TrackedSankeyPathUploadIntentRequest::new(intent_upload_uuid.to_string(), intent_request);
 
     self
       .data_upload_tx
-      .send(DataUpload::SankeyPathUploadIntentRequest(intent_upload_request)).await?;
+      .send(DataUpload::SankeyPathUploadIntentRequest(
+        intent_upload_request,
+      ))
+      .await?;
 
-    Ok(response.await?)
+    Ok((response.await?, intent_upload_uuid))
   }
 }

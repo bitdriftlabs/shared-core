@@ -123,6 +123,7 @@ impl SetupSingleConsumer {
       }),
       DataUpload::LogsUploadIntentRequest(_) => panic!("unexpected intent"),
       DataUpload::OpaqueRequest(_) => panic!("unexpected opaque upload"),
+      DataUpload::SankeyPathUploadIntentRequest(_) => panic!("unexpected sankey upload intent"),
       DataUpload::SankeyPathUpload(_) => panic!("unexpected sankey upload"),
     }
   }
