@@ -9,6 +9,7 @@ use crate::workflow::SankeyPath;
 use bd_api::api::Decision;
 use bd_api::upload::{TrackedSankeyPathUploadIntentRequest, TrackedSankeyPathUploadRequest};
 use bd_api::DataUpload;
+use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{SankeyIntentRequest, SankeyPathUploadRequest};
 use itertools::Itertools;
@@ -82,14 +83,21 @@ pub(crate) struct Processor {
   input_rx: Receiver<SankeyPath>,
 
   processed_intents: ProcessedIntents,
+
+  stats: Stats,
 }
 
 impl Processor {
-  pub(crate) fn new(input_rx: Receiver<SankeyPath>, data_upload_tx: Sender<DataUpload>) -> Self {
+  pub(crate) fn new(
+    input_rx: Receiver<SankeyPath>,
+    data_upload_tx: Sender<DataUpload>,
+    scope: &Scope,
+  ) -> Self {
     Self {
       data_upload_tx,
       input_rx,
       processed_intents: ProcessedIntents::default(),
+      stats: Stats::new(scope),
     }
   }
 
@@ -104,6 +112,7 @@ impl Processor {
   }
 
   pub(crate) async fn process_sankey(&mut self, sankey_path: SankeyPath) {
+    self.stats.intent_initiations_total.inc();
     log::debug!(
       "processing sankey: sankey id {:?}, path id {:?}",
       sankey_path.sankey_id,
@@ -116,6 +125,7 @@ impl Processor {
         sankey_path.sankey_id,
         sankey_path.path_id
       );
+      self.stats.intent_completion_already_processed_total.inc();
       return;
     }
 
@@ -126,6 +136,7 @@ impl Processor {
           .await;
       },
       Err(error) => {
+        self.stats.intent_request_failures_total.inc();
         log::debug!("failed to negotiate sankey path upload intent: {error}");
       },
     };
@@ -139,6 +150,7 @@ impl Processor {
   ) {
     match decision {
       Decision::UploadImmediately(_) => {
+        self.stats.intent_completion_uploads_total.inc();
         log::debug!(
           "sankey path upload intent accepted, upload immediately: {upload_intent_uuid:?}"
         );
@@ -146,6 +158,7 @@ impl Processor {
       },
       Decision::Drop(_) => {
         log::debug!("sankey path upload intent rejected, drop: {upload_intent_uuid:?}");
+        self.stats.intent_completion_drops_total.inc();
         self.processed_intents.insert(sankey_path);
       },
     }
@@ -183,11 +196,17 @@ impl Processor {
       .await
     {
       log::debug!("failed to send sankey upload request: {e}");
+      self.stats.upload_completion_failure_total.inc();
+      return;
     }
 
     if let Err(error) = response.await {
       log::debug!("failed to wait for sankey upload response: {error}");
+      self.stats.upload_completion_failure_total.inc();
+      return;
     }
+
+    self.stats.upload_completion_success_total.inc();
   }
 
   async fn perform_upload_intent_negotiation(
@@ -214,5 +233,43 @@ impl Processor {
       .await?;
 
     Ok((response.await?, intent_upload_uuid))
+  }
+}
+
+//
+// Stats
+//
+
+#[derive(Debug)]
+#[allow(clippy::struct_field_names)]
+struct Stats {
+  intent_initiations_total: Counter,
+
+  intent_completion_uploads_total: Counter,
+  intent_completion_already_processed_total: Counter,
+  intent_completion_drops_total: Counter,
+
+  intent_request_failures_total: Counter,
+
+  upload_completion_success_total: Counter,
+  upload_completion_failure_total: Counter,
+}
+
+impl Stats {
+  fn new(scope: &Scope) -> Self {
+    let scope = scope.scope("sankeys");
+    Self {
+      intent_initiations_total: scope.counter("intent_initiations_total"),
+
+      intent_completion_uploads_total: scope.counter("intent_completion_uploads_total"),
+      intent_completion_already_processed_total: scope
+        .counter("intent_completion_already_processed_total"),
+      intent_completion_drops_total: scope.counter("intent_completion_drops_total"),
+
+      intent_request_failures_total: scope.counter("intent_request_failures_total"),
+
+      upload_completion_success_total: scope.counter("upload_completion_success_total"),
+      upload_completion_failure_total: scope.counter("upload_completion_failure_total"),
+    }
   }
 }
