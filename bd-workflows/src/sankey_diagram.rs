@@ -24,6 +24,8 @@ struct SeenSankeyPath {
   path_id: String,
 }
 
+// Stores information about a limited number of recent Sankey path upload intent results,
+// helping to reduce the number of intent negotiation network requests.
 #[derive(Debug, Default)]
 struct ProcessedIntents(Vec<SeenSankeyPath>);
 
