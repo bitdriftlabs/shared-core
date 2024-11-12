@@ -17,8 +17,7 @@ use crate::actions_flush_buffers::{
 };
 use crate::config::ActionFlushBuffers;
 use assert_matches::assert_matches;
-use bd_api::api::UploadImmediately;
-use bd_api::upload::Decision;
+use bd_api::api::{LogsUploadDecision, LogsUploadDecisionUploadImmediately};
 use bd_api::DataUpload;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
@@ -37,7 +36,7 @@ struct Setup {
 }
 
 impl Setup {
-  fn make_negotiator(&self, decision: Decision) -> NegotiatorWrapper {
+  fn make_negotiator(&self, decision: LogsUploadDecision) -> NegotiatorWrapper {
     let (input_tx, input_rx) = tokio::sync::mpsc::channel(1);
     let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
 
@@ -461,8 +460,9 @@ fn process_streaming_buffers_actions() {
 #[tokio::test]
 async fn negotiator_upload_flow() {
   let setup = Setup::default();
-  let mut negotiator =
-    setup.make_negotiator(Decision::UploadImmediately(UploadImmediately::default()));
+  let mut negotiator = setup.make_negotiator(LogsUploadDecision::UploadImmediately(
+    LogsUploadDecisionUploadImmediately::default(),
+  ));
 
   let pending_action = PendingFlushBuffersAction {
     id: "action_id".to_string(),
@@ -519,7 +519,7 @@ async fn negotiator_upload_flow() {
 #[tokio::test]
 async fn negotiator_drop_flow() {
   let setup = Setup::default();
-  let mut negotiator = setup.make_negotiator(Decision::Drop(Drop::default()));
+  let mut negotiator = setup.make_negotiator(LogsUploadDecision::Drop(Drop::default()));
 
   let pending_action = PendingFlushBuffersAction {
     id: "action_id".to_string(),

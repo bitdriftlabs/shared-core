@@ -42,9 +42,14 @@ use bd_grpc_codec::{
 use bd_metadata::Metadata;
 use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
 pub use bd_proto::protos::client::api::log_upload_intent_response::{
-  Decision,
-  Drop as DropDecision,
-  UploadImmediately,
+  Decision as LogsUploadDecision,
+  Drop as LogsUploadDecisionDrop,
+  UploadImmediately as LogsUploadDecisionUploadImmediately,
+};
+pub use bd_proto::protos::client::api::sankey_intent_response::{
+  Decision as SankeyPathUploadDecision,
+  Drop as SankeyPathUploadDecisionDrop,
+  UploadImmediately as SankeyPathUploadDecisionImmediately,
 };
 use bd_proto::protos::client::api::{
   handshake_response,
@@ -278,7 +283,7 @@ impl StreamState {
   async fn handle_data_upload(&mut self, data_upload: DataUpload) -> anyhow::Result<()> {
     match data_upload {
       DataUpload::LogsUploadIntentRequest(intent) => {
-        let req = self.upload_state_tracker.track_intent(intent);
+        let req = self.upload_state_tracker.track_logs_upload_intent(intent);
         self.send_request(req).await
       },
       DataUpload::LogsUploadRequest(request) => {
@@ -291,7 +296,9 @@ impl StreamState {
         self.send_request(req).await
       },
       DataUpload::SankeyPathUploadIntentRequest(request) => {
-        let req = self.upload_state_tracker.track_intent(request);
+        let req = self
+          .upload_state_tracker
+          .track_sankey_path_upload_intent(request);
         self.send_request(req).await
       },
       DataUpload::SankeyPathUpload(request) => {
@@ -802,13 +809,15 @@ impl Api {
             .resolve_pending_upload(&log_upload.upload_uuid, &log_upload.error)?;
         },
         Some(ResponseKind::LogUploadIntent(intent)) => {
-          stream_state.upload_state_tracker.resolve_intent(
-            &intent.intent_uuid,
-            intent
-              .decision
-              .clone()
-              .unwrap_or_else(|| Decision::Drop(DropDecision::default())),
-          )?;
+          stream_state
+            .upload_state_tracker
+            .resolve_logs_upload_intent(
+              &intent.intent_uuid,
+              intent
+                .decision
+                .clone()
+                .unwrap_or_else(|| LogsUploadDecision::Drop(LogsUploadDecisionDrop::default())),
+            )?;
         },
         Some(ResponseKind::StatsUpload(stats_upload)) => {
           log::debug!(
@@ -836,6 +845,25 @@ impl Api {
           stream_state
             .upload_state_tracker
             .resolve_pending_upload(&sankey_path_upload.upload_uuid, &sankey_path_upload.error)?;
+        },
+        Some(ResponseKind::SankeyPathUploadIntent(sankey_path_upload_intent)) => {
+          log::debug!(
+            "received ack for sankey path intent upload {:?}, decision: {:?}",
+            sankey_path_upload_intent.intent_uuid,
+            sankey_path_upload_intent.decision
+          );
+
+          stream_state
+            .upload_state_tracker
+            .resolve_sankey_path_upload_intent(
+              &sankey_path_upload_intent.intent_uuid,
+              sankey_path_upload_intent
+                .decision
+                .clone()
+                .unwrap_or_else(|| {
+                  SankeyPathUploadDecision::Drop(SankeyPathUploadDecisionDrop::default())
+                }),
+            )?;
         },
         Some(ResponseKind::Untyped) => {
           log::debug!("received untyped response: {}", response);

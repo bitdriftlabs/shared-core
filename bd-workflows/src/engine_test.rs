@@ -12,7 +12,13 @@ use crate::engine::{WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::engine_assert_active_runs;
 use crate::workflow::Workflow;
 use assert_matches::assert_matches;
-use bd_api::api::Decision;
+use bd_api::api::{
+  LogsUploadDecision,
+  SankeyPathUploadDecision,
+  SankeyPathUploadDecisionDrop,
+  SankeyPathUploadDecisionImmediately,
+};
+use bd_api::upload::UploadResponse;
 use bd_api::DataUpload;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{BoundedCollector, Collector};
@@ -221,11 +227,11 @@ macro_rules! engine_process_log {
 struct Hooks {
   flushed_buffers: Vec<BuffersToFlush>,
   received_logs_upload_intents: Vec<log_upload_intent_request::WorkflowActionUpload>,
-  awaiting_logs_upload_intent_decisions: Vec<Decision>,
+  awaiting_logs_upload_intent_decisions: Vec<LogsUploadDecision>,
 
   sankey_uploads: Vec<SankeyPathUploadRequest>,
   received_sankey_upload_intents: Vec<SankeyIntentRequest>,
-  awaiting_sankey_upload_intent_decisions: Vec<Decision>,
+  awaiting_sankey_upload_intent_decisions: Vec<SankeyPathUploadDecision>,
 }
 
 struct AnnotatedWorkflowsEngine {
@@ -329,6 +335,11 @@ impl AnnotatedWorkflowsEngine {
                 },
                 DataUpload::SankeyPathUpload(upload) => {
                   hooks.lock().sankey_uploads.push(upload.payload.clone());
+
+                  upload.response_tx.send(UploadResponse {
+                    success: true,
+                    uuid: upload.uuid,
+                  }).unwrap();
                 },
                 default => {
                   log::error!("received unhandled data upload: {:?}", default);
@@ -348,7 +359,7 @@ impl AnnotatedWorkflowsEngine {
     self.hooks.lock().received_logs_upload_intents.clone()
   }
 
-  fn set_awaiting_logs_upload_intent_decisions(&self, decisions: Vec<Decision>) {
+  fn set_awaiting_logs_upload_intent_decisions(&self, decisions: Vec<LogsUploadDecision>) {
     for decision in decisions {
       self
         .hooks
@@ -1968,9 +1979,9 @@ async fn logs_streaming() {
 
   // Set up the mock logs upload intent server so that it accepts two incoming logs upload intents.
   workflows_engine.set_awaiting_logs_upload_intent_decisions(vec![
-    bd_api::api::Decision::Drop(Drop::default()),
-    bd_api::api::Decision::UploadImmediately(UploadImmediately::default()),
-    bd_api::api::Decision::UploadImmediately(UploadImmediately::default()),
+    bd_api::api::LogsUploadDecision::Drop(Drop::default()),
+    bd_api::api::LogsUploadDecision::UploadImmediately(UploadImmediately::default()),
+    bd_api::api::LogsUploadDecision::UploadImmediately(UploadImmediately::default()),
   ]);
 
   // This should trigger a flush of a buffer.
@@ -2151,8 +2162,8 @@ async fn logs_streaming() {
   workflows_engine.log_destination_buffer_ids = BTreeSet::from(["trigger_buffer_id".into()]);
 
   workflows_engine.set_awaiting_logs_upload_intent_decisions(vec![
-    bd_api::api::Decision::UploadImmediately(UploadImmediately::default()),
-    bd_api::api::Decision::UploadImmediately(UploadImmediately::default()),
+    bd_api::api::LogsUploadDecision::UploadImmediately(UploadImmediately::default()),
+    bd_api::api::LogsUploadDecision::UploadImmediately(UploadImmediately::default()),
   ]);
 
   let result = engine_process_log!(workflows_engine; "test log"; with labels!{});
@@ -2358,7 +2369,7 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   workflows_engine.log_destination_buffer_ids = BTreeSet::from(["trigger_buffer_id".into()]);
 
   workflows_engine.set_awaiting_logs_upload_intent_decisions(vec![
-    bd_api::api::Decision::UploadImmediately(UploadImmediately::default()),
+    bd_api::api::LogsUploadDecision::UploadImmediately(UploadImmediately::default()),
   ]);
 
   workflows_engine.run_once_for_test(false).await;
@@ -2957,7 +2968,9 @@ async fn sankey_action() {
     .hooks
     .lock()
     .awaiting_sankey_upload_intent_decisions
-    .push(Decision::Drop(Drop::default()));
+    .push(SankeyPathUploadDecision::Drop(
+      SankeyPathUploadDecisionDrop::default(),
+    ));
 
   engine_process_log!(engine; "foo");
   engine_process_log!(engine; "bar");
@@ -2984,7 +2997,9 @@ async fn sankey_action() {
     .hooks
     .lock()
     .awaiting_sankey_upload_intent_decisions
-    .push(Decision::UploadImmediately(UploadImmediately::default()));
+    .push(SankeyPathUploadDecision::UploadImmediately(
+      SankeyPathUploadDecisionImmediately::default(),
+    ));
 
   engine_process_log!(engine; "foo");
   engine_process_log!(engine; "bar_loop");

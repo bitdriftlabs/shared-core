@@ -11,7 +11,8 @@ mod actions_flush_buffers_test;
 
 use crate::config::ActionFlushBuffers;
 use anyhow::anyhow;
-use bd_api::upload::{Decision, Intent_type, TrackedLogUploadIntent};
+use bd_api::api::LogsUploadDecision;
+use bd_api::upload::{Intent_type, TrackedLogUploadIntent};
 use bd_api::DataUpload;
 use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::LogUploadIntentRequest;
@@ -314,14 +315,14 @@ impl Negotiator {
       log::debug!("intent sent, awaiting response");
 
       match response.await {
-        Ok(Decision::UploadImmediately(_)) => {
+        Ok(LogsUploadDecision::UploadImmediately(_)) => {
           log::debug!(
             "uploading trigger buffer, intent accepted (\"{}\")",
             intent_uuid
           );
           return Ok(true);
         },
-        Ok(Decision::Drop(_)) => {
+        Ok(LogsUploadDecision::Drop(_)) => {
           log::debug!(
             "not uploading trigger, intent dropped (\"{}\")",
             intent_uuid
