@@ -396,10 +396,13 @@ impl ProcessingPipeline {
             // TODO(snowp): Track how often logs are dropped due to locks.
             // If the buffer is out of space, drop the error.
             // TODO(mattklein123): Track this via stats.
-            Err(Error::AbslStatus(
+            e @ Err(Error::AbslStatus(
               AbslCode::FailedPrecondition | AbslCode::ResourceExhausted,
               _,
-            )) => Ok(()),
+            )) => {
+              log::debug!("failed to write log to buffer: {e:?}");
+              Ok(())
+            },
             e => e,
           }?;
         }
