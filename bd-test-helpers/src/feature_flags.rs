@@ -60,7 +60,7 @@ mockall::mock! {
     fn feature_enabled(&self, name: &str, default: bool) -> bool;
     fn get_bool(&self, name: &str, default: bool) -> bool;
     fn get_integer(&self, name: &str, default: u64) -> u64;
-    fn get_string(&self, name: &str, default: &str) -> &str;
+    fn get_string(&self, name: &str, default: &Arc<String>) -> Arc<String>;
   }
 }
 
@@ -99,7 +99,7 @@ impl FeatureFlags for DefaultFeatureFlags {
     *self.integer_flags.get(name).unwrap_or(&default)
   }
 
-  fn get_string<'a>(&'a self, _name: &'a str, default: &'a str) -> &'a str {
-    default
+  fn get_string(&self, _name: &str, default: &Arc<String>) -> Arc<String> {
+    default.clone()
   }
 }

@@ -76,6 +76,7 @@
 //! use bd_runtime_config::feature_flags::*;
 //! use bd_runtime_config::loader::*;
 //! use std::path::Path;
+//! use std::sync::Arc;
 //!
 //! let collector = bd_server_stats::stats::Collector::default();
 //! let scope = collector.scope("loader");
@@ -109,7 +110,8 @@
 //!     .borrow()
 //!     .as_ref()
 //!     .unwrap()
-//!     .get_string("bar", "world"),
+//!     .get_string("bar", &Arc::new("world".to_string()))
+//!     .as_str(),
 //!   "hello"
 //! );
 //! ```

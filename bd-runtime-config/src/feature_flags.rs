@@ -33,7 +33,29 @@ pub trait FeatureFlags: std::fmt::Debug + Send + Sync {
   fn get_integer(&self, name: &str, default: u64) -> u64;
 
   /// Get a string by name, returning a default if the name does not exist.
-  fn get_string<'a>(&'a self, name: &'a str, default: &'a str) -> &'a str;
+  fn get_string(&self, name: &str, default: &Arc<String>) -> Arc<String>;
+}
+
+impl FeatureFlags for watch::Receiver<ConfigPtr<dyn crate::feature_flags::FeatureFlags>> {
+  fn feature_enabled(&self, name: &str, default: bool) -> bool {
+    self
+      .borrow()
+      .as_ref()
+      .unwrap()
+      .feature_enabled(name, default)
+  }
+
+  fn get_bool(&self, name: &str, default: bool) -> bool {
+    self.borrow().as_ref().unwrap().get_bool(name, default)
+  }
+
+  fn get_integer(&self, name: &str, default: u64) -> u64 {
+    self.borrow().as_ref().unwrap().get_integer(name, default)
+  }
+
+  fn get_string(&self, name: &str, default: &Arc<String>) -> Arc<String> {
+    self.borrow().as_ref().unwrap().get_string(name, default)
+  }
 }
 
 // Values can either be booleans, integers, or strings.
@@ -42,7 +64,7 @@ pub trait FeatureFlags: std::fmt::Debug + Send + Sync {
 enum FeatureFlagValue {
   Bool(bool),
   Integer(u64),
-  String(String),
+  String(Arc<String>),
 }
 
 // Contains a hashmap of string name to value.
@@ -83,10 +105,10 @@ impl FeatureFlags for MemoryFeatureFlags {
     }
   }
 
-  fn get_string<'a>(&'a self, name: &'a str, default: &'a str) -> &'a str {
+  fn get_string(&self, name: &str, default: &Arc<String>) -> Arc<String> {
     match self.values.get(name) {
-      Some(FeatureFlagValue::String(s)) => s,
-      _ => default,
+      Some(FeatureFlagValue::String(s)) => s.clone(),
+      _ => default.clone(),
     }
   }
 }
