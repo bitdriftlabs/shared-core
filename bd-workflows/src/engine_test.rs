@@ -305,7 +305,7 @@ impl AnnotatedWorkflowsEngine {
                   .response_tx
                   .send(IntentResponse {
                     uuid: logs_upload_intent.uuid.clone(),
-                    decision: decision.into(),
+                    decision,
                   })
                   {
                     panic!("failed to send response: {e:?}");
@@ -326,7 +326,7 @@ impl AnnotatedWorkflowsEngine {
                     .response_tx
                     .send(IntentResponse {
                       uuid: sankey_upload_intent.uuid.clone(),
-                      decision: decision.into(),
+                      decision,
                     })
                     {
                       panic!("failed to send response: {e:?}");
