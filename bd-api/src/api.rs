@@ -848,7 +848,7 @@ impl Api {
         },
         Some(ResponseKind::SankeyPathUploadIntent(sankey_path_upload_intent)) => {
           log::debug!(
-            "received ack for sankey path intent upload {:?}, decision: {:?}",
+            "received ack for sankey path upload intent {:?}, decision: {:?}",
             sankey_path_upload_intent.intent_uuid,
             sankey_path_upload_intent.decision
           );
