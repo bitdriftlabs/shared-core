@@ -6118,8 +6118,8 @@ pub struct SankeyIntentResponse {
     // message fields
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.SankeyIntentResponse.intent_uuid)
     pub intent_uuid: ::std::string::String,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.SankeyIntentResponse.decision)
-    pub decision: ::protobuf::EnumOrUnknown<sankey_intent_response::Decision>,
+    // message oneof groups
+    pub decision: ::std::option::Option<sankey_intent_response::Decision>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.SankeyIntentResponse.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -6136,19 +6136,127 @@ impl SankeyIntentResponse {
         ::std::default::Default::default()
     }
 
+    // .bitdrift_public.protobuf.client.v1.SankeyIntentResponse.UploadImmediately upload_immediately = 3;
+
+    pub fn upload_immediately(&self) -> &sankey_intent_response::UploadImmediately {
+        match self.decision {
+            ::std::option::Option::Some(sankey_intent_response::Decision::UploadImmediately(ref v)) => v,
+            _ => <sankey_intent_response::UploadImmediately as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_upload_immediately(&mut self) {
+        self.decision = ::std::option::Option::None;
+    }
+
+    pub fn has_upload_immediately(&self) -> bool {
+        match self.decision {
+            ::std::option::Option::Some(sankey_intent_response::Decision::UploadImmediately(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_upload_immediately(&mut self, v: sankey_intent_response::UploadImmediately) {
+        self.decision = ::std::option::Option::Some(sankey_intent_response::Decision::UploadImmediately(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_upload_immediately(&mut self) -> &mut sankey_intent_response::UploadImmediately {
+        if let ::std::option::Option::Some(sankey_intent_response::Decision::UploadImmediately(_)) = self.decision {
+        } else {
+            self.decision = ::std::option::Option::Some(sankey_intent_response::Decision::UploadImmediately(sankey_intent_response::UploadImmediately::new()));
+        }
+        match self.decision {
+            ::std::option::Option::Some(sankey_intent_response::Decision::UploadImmediately(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_upload_immediately(&mut self) -> sankey_intent_response::UploadImmediately {
+        if self.has_upload_immediately() {
+            match self.decision.take() {
+                ::std::option::Option::Some(sankey_intent_response::Decision::UploadImmediately(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            sankey_intent_response::UploadImmediately::new()
+        }
+    }
+
+    // .bitdrift_public.protobuf.client.v1.SankeyIntentResponse.Drop drop = 4;
+
+    pub fn drop(&self) -> &sankey_intent_response::Drop {
+        match self.decision {
+            ::std::option::Option::Some(sankey_intent_response::Decision::Drop(ref v)) => v,
+            _ => <sankey_intent_response::Drop as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_drop(&mut self) {
+        self.decision = ::std::option::Option::None;
+    }
+
+    pub fn has_drop(&self) -> bool {
+        match self.decision {
+            ::std::option::Option::Some(sankey_intent_response::Decision::Drop(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_drop(&mut self, v: sankey_intent_response::Drop) {
+        self.decision = ::std::option::Option::Some(sankey_intent_response::Decision::Drop(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_drop(&mut self) -> &mut sankey_intent_response::Drop {
+        if let ::std::option::Option::Some(sankey_intent_response::Decision::Drop(_)) = self.decision {
+        } else {
+            self.decision = ::std::option::Option::Some(sankey_intent_response::Decision::Drop(sankey_intent_response::Drop::new()));
+        }
+        match self.decision {
+            ::std::option::Option::Some(sankey_intent_response::Decision::Drop(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_drop(&mut self) -> sankey_intent_response::Drop {
+        if self.has_drop() {
+            match self.decision.take() {
+                ::std::option::Option::Some(sankey_intent_response::Decision::Drop(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            sankey_intent_response::Drop::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(2);
-        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "intent_uuid",
             |m: &SankeyIntentResponse| { &m.intent_uuid },
             |m: &mut SankeyIntentResponse| { &mut m.intent_uuid },
         ));
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "decision",
-            |m: &SankeyIntentResponse| { &m.decision },
-            |m: &mut SankeyIntentResponse| { &mut m.decision },
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, sankey_intent_response::UploadImmediately>(
+            "upload_immediately",
+            SankeyIntentResponse::has_upload_immediately,
+            SankeyIntentResponse::upload_immediately,
+            SankeyIntentResponse::mut_upload_immediately,
+            SankeyIntentResponse::set_upload_immediately,
         ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, sankey_intent_response::Drop>(
+            "drop",
+            SankeyIntentResponse::has_drop,
+            SankeyIntentResponse::drop,
+            SankeyIntentResponse::mut_drop,
+            SankeyIntentResponse::set_drop,
+        ));
+        oneofs.push(sankey_intent_response::Decision::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SankeyIntentResponse>(
             "SankeyIntentResponse",
             fields,
@@ -6170,8 +6278,11 @@ impl ::protobuf::Message for SankeyIntentResponse {
                 10 => {
                     self.intent_uuid = is.read_string()?;
                 },
-                16 => {
-                    self.decision = is.read_enum_or_unknown()?;
+                26 => {
+                    self.decision = ::std::option::Option::Some(sankey_intent_response::Decision::UploadImmediately(is.read_message()?));
+                },
+                34 => {
+                    self.decision = ::std::option::Option::Some(sankey_intent_response::Decision::Drop(is.read_message()?));
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -6188,8 +6299,17 @@ impl ::protobuf::Message for SankeyIntentResponse {
         if !self.intent_uuid.is_empty() {
             my_size += ::protobuf::rt::string_size(1, &self.intent_uuid);
         }
-        if self.decision != ::protobuf::EnumOrUnknown::new(sankey_intent_response::Decision::UPLOAD) {
-            my_size += ::protobuf::rt::int32_size(2, self.decision.value());
+        if let ::std::option::Option::Some(ref v) = self.decision {
+            match v {
+                &sankey_intent_response::Decision::UploadImmediately(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &sankey_intent_response::Decision::Drop(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
@@ -6200,8 +6320,15 @@ impl ::protobuf::Message for SankeyIntentResponse {
         if !self.intent_uuid.is_empty() {
             os.write_string(1, &self.intent_uuid)?;
         }
-        if self.decision != ::protobuf::EnumOrUnknown::new(sankey_intent_response::Decision::UPLOAD) {
-            os.write_enum(2, ::protobuf::EnumOrUnknown::value(&self.decision))?;
+        if let ::std::option::Option::Some(ref v) = self.decision {
+            match v {
+                &sankey_intent_response::Decision::UploadImmediately(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                },
+                &sankey_intent_response::Decision::Drop(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+                },
+            };
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -6221,14 +6348,15 @@ impl ::protobuf::Message for SankeyIntentResponse {
 
     fn clear(&mut self) {
         self.intent_uuid.clear();
-        self.decision = ::protobuf::EnumOrUnknown::new(sankey_intent_response::Decision::UPLOAD);
+        self.decision = ::std::option::Option::None;
+        self.decision = ::std::option::Option::None;
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static SankeyIntentResponse {
         static instance: SankeyIntentResponse = SankeyIntentResponse {
             intent_uuid: ::std::string::String::new(),
-            decision: ::protobuf::EnumOrUnknown::from_i32(0),
+            decision: ::std::option::Option::None,
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -6254,66 +6382,235 @@ impl ::protobuf::reflect::ProtobufValue for SankeyIntentResponse {
 
 /// Nested message and enums of message `SankeyIntentResponse`
 pub mod sankey_intent_response {
-    #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
-    // @@protoc_insertion_point(enum:bitdrift_public.protobuf.client.v1.SankeyIntentResponse.Decision)
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.client.v1.SankeyIntentResponse.decision)
     pub enum Decision {
-        // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.client.v1.SankeyIntentResponse.Decision.UPLOAD)
-        UPLOAD = 0,
-        // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.client.v1.SankeyIntentResponse.Decision.DROP)
-        DROP = 1,
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.SankeyIntentResponse.upload_immediately)
+        UploadImmediately(UploadImmediately),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.SankeyIntentResponse.drop)
+        Drop(Drop),
     }
 
-    impl ::protobuf::Enum for Decision {
-        const NAME: &'static str = "Decision";
-
-        fn value(&self) -> i32 {
-            *self as i32
-        }
-
-        fn from_i32(value: i32) -> ::std::option::Option<Decision> {
-            match value {
-                0 => ::std::option::Option::Some(Decision::UPLOAD),
-                1 => ::std::option::Option::Some(Decision::DROP),
-                _ => ::std::option::Option::None
-            }
-        }
-
-        fn from_str(str: &str) -> ::std::option::Option<Decision> {
-            match str {
-                "UPLOAD" => ::std::option::Option::Some(Decision::UPLOAD),
-                "DROP" => ::std::option::Option::Some(Decision::DROP),
-                _ => ::std::option::Option::None
-            }
-        }
-
-        const VALUES: &'static [Decision] = &[
-            Decision::UPLOAD,
-            Decision::DROP,
-        ];
+    impl ::protobuf::Oneof for Decision {
     }
 
-    impl ::protobuf::EnumFull for Decision {
-        fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
-            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
-            descriptor.get(|| super::file_descriptor().enum_by_package_relative_name("SankeyIntentResponse.Decision").unwrap()).clone()
-        }
-
-        fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
-            let index = *self as usize;
-            Self::enum_descriptor().value_by_index(index)
-        }
-    }
-
-    impl ::std::default::Default for Decision {
-        fn default() -> Self {
-            Decision::UPLOAD
+    impl ::protobuf::OneofFull for Decision {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::SankeyIntentResponse as ::protobuf::MessageFull>::descriptor().oneof_by_name("decision").unwrap()).clone()
         }
     }
 
     impl Decision {
-        pub(in super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
-            ::protobuf::reflect::GeneratedEnumDescriptorData::new::<Decision>("SankeyIntentResponse.Decision")
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Decision>("decision")
         }
+    }
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.SankeyIntentResponse.UploadImmediately)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct UploadImmediately {
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.SankeyIntentResponse.UploadImmediately.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a UploadImmediately {
+        fn default() -> &'a UploadImmediately {
+            <UploadImmediately as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl UploadImmediately {
+        pub fn new() -> UploadImmediately {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(0);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<UploadImmediately>(
+                "SankeyIntentResponse.UploadImmediately",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for UploadImmediately {
+        const NAME: &'static str = "UploadImmediately";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> UploadImmediately {
+            UploadImmediately::new()
+        }
+
+        fn clear(&mut self) {
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static UploadImmediately {
+            static instance: UploadImmediately = UploadImmediately {
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for UploadImmediately {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("SankeyIntentResponse.UploadImmediately").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for UploadImmediately {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for UploadImmediately {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.SankeyIntentResponse.Drop)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Drop {
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.SankeyIntentResponse.Drop.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Drop {
+        fn default() -> &'a Drop {
+            <Drop as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Drop {
+        pub fn new() -> Drop {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(0);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Drop>(
+                "SankeyIntentResponse.Drop",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Drop {
+        const NAME: &'static str = "Drop";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Drop {
+            Drop::new()
+        }
+
+        fn clear(&mut self) {
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Drop {
+            static instance: Drop = Drop {
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Drop {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("SankeyIntentResponse.Drop").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Drop {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Drop {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
     }
 }
 
@@ -7488,37 +7785,39 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01(\tR\x0bgrpcMessage\"4\n\x0cFlushBuffers\x12$\n\x0ebuffer_id_list\
     \x18\x01\x20\x03(\tR\x0cbufferIdList\"Z\n\x18SankeyPathUploadResponse\
     \x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\
-    \x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\"\xc1\x01\n\
+    \x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\"\xcb\x02\n\
     \x14SankeyIntentResponse\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\ninte\
-    ntUuidB\x07\xfaB\x04r\x02\x10\x01\x12]\n\x08decision\x18\x02\x20\x01(\
-    \x0e2A.bitdrift_public.protobuf.client.v1.SankeyIntentResponse.DecisionR\
-    \x08decision\"\x20\n\x08Decision\x12\n\n\x06UPLOAD\x10\0\x12\x08\n\x04DR\
-    OP\x10\x01\"\xa4\n\n\x0bApiResponse\x12U\n\thandshake\x18\x01\x20\x01(\
-    \x0b25.bitdrift_public.protobuf.client.v1.HandshakeResponseH\0R\thandsha\
-    ke\x12V\n\nlog_upload\x18\x02\x20\x01(\x0b25.bitdrift_public.protobuf.cl\
-    ient.v1.LogUploadResponseH\0R\tlogUpload\x12i\n\x11log_upload_intent\x18\
-    \x08\x20\x01(\x0b2;.bitdrift_public.protobuf.client.v1.LogUploadIntentRe\
-    sponseH\0R\x0flogUploadIntent\x12\\\n\x0cstats_upload\x18\x07\x20\x01(\
-    \x0b27.bitdrift_public.protobuf.client.v1.StatsUploadResponseH\0R\x0bsta\
-    tsUpload\x12F\n\x04pong\x18\x03\x20\x01(\x0b20.bitdrift_public.protobuf.\
-    client.v1.PongResponseH\0R\x04pong\x12l\n\x14configuration_update\x18\
-    \x04\x20\x01(\x0b27.bitdrift_public.protobuf.client.v1.ConfigurationUpda\
-    teH\0R\x13configurationUpdate\x12Z\n\x0eruntime_update\x18\x05\x20\x01(\
-    \x0b21.bitdrift_public.protobuf.client.v1.RuntimeUpdateH\0R\rruntimeUpda\
-    te\x12Z\n\x0eerror_shutdown\x18\x06\x20\x01(\x0b21.bitdrift_public.proto\
-    buf.client.v1.ErrorShutdownH\0R\rerrorShutdown\x12W\n\rflush_buffers\x18\
-    \t\x20\x01(\x0b20.bitdrift_public.protobuf.client.v1.FlushBuffersH\0R\
-    \x0cflushBuffers\x12\x7f\n\x1bopaque_configuration_update\x18\n\x20\x01(\
-    \x0b2=.bitdrift_public.protobuf.client.v1.OpaqueConfigurationUpdateH\0R\
-    \x19opaqueConfigurationUpdate\x12Y\n\ropaque_upload\x18\x0b\x20\x01(\x0b\
-    22.bitdrift_public.protobuf.client.v1.OpaqueResponseH\0R\x0copaqueUpload\
-    \x12r\n\x15sankey_diagram_upload\x18\x0c\x20\x01(\x0b2<.bitdrift_public.\
-    protobuf.client.v1.SankeyPathUploadResponseH\0R\x13sankeyDiagramUpload\
-    \x12p\n\x16sankey_intent_response\x18\r\x20\x01(\x0b28.bitdrift_public.p\
-    rotobuf.client.v1.SankeyIntentResponseH\0R\x14sankeyIntentResponseB\x14\
-    \n\rresponse_type\x12\x03\xf8B\x012x\n\nApiService\x12j\n\x03Mux\x12..bi\
-    tdrift_public.protobuf.client.v1.ApiRequest\x1a/.bitdrift_public.protobu\
-    f.client.v1.ApiResponse(\x010\x01b\x06proto3\
+    ntUuidB\x07\xfaB\x04r\x02\x10\x01\x12{\n\x12upload_immediately\x18\x03\
+    \x20\x01(\x0b2J.bitdrift_public.protobuf.client.v1.SankeyIntentResponse.\
+    UploadImmediatelyH\0R\x11uploadImmediately\x12S\n\x04drop\x18\x04\x20\
+    \x01(\x0b2=.bitdrift_public.protobuf.client.v1.SankeyIntentResponse.Drop\
+    H\0R\x04drop\x1a\x13\n\x11UploadImmediately\x1a\x06\n\x04DropB\n\n\x08de\
+    cisionJ\x04\x08\x02\x10\x03R\x08decision\"\xa4\n\n\x0bApiResponse\x12U\n\
+    \thandshake\x18\x01\x20\x01(\x0b25.bitdrift_public.protobuf.client.v1.Ha\
+    ndshakeResponseH\0R\thandshake\x12V\n\nlog_upload\x18\x02\x20\x01(\x0b25\
+    .bitdrift_public.protobuf.client.v1.LogUploadResponseH\0R\tlogUpload\x12\
+    i\n\x11log_upload_intent\x18\x08\x20\x01(\x0b2;.bitdrift_public.protobuf\
+    .client.v1.LogUploadIntentResponseH\0R\x0flogUploadIntent\x12\\\n\x0csta\
+    ts_upload\x18\x07\x20\x01(\x0b27.bitdrift_public.protobuf.client.v1.Stat\
+    sUploadResponseH\0R\x0bstatsUpload\x12F\n\x04pong\x18\x03\x20\x01(\x0b20\
+    .bitdrift_public.protobuf.client.v1.PongResponseH\0R\x04pong\x12l\n\x14c\
+    onfiguration_update\x18\x04\x20\x01(\x0b27.bitdrift_public.protobuf.clie\
+    nt.v1.ConfigurationUpdateH\0R\x13configurationUpdate\x12Z\n\x0eruntime_u\
+    pdate\x18\x05\x20\x01(\x0b21.bitdrift_public.protobuf.client.v1.RuntimeU\
+    pdateH\0R\rruntimeUpdate\x12Z\n\x0eerror_shutdown\x18\x06\x20\x01(\x0b21\
+    .bitdrift_public.protobuf.client.v1.ErrorShutdownH\0R\rerrorShutdown\x12\
+    W\n\rflush_buffers\x18\t\x20\x01(\x0b20.bitdrift_public.protobuf.client.\
+    v1.FlushBuffersH\0R\x0cflushBuffers\x12\x7f\n\x1bopaque_configuration_up\
+    date\x18\n\x20\x01(\x0b2=.bitdrift_public.protobuf.client.v1.OpaqueConfi\
+    gurationUpdateH\0R\x19opaqueConfigurationUpdate\x12Y\n\ropaque_upload\
+    \x18\x0b\x20\x01(\x0b22.bitdrift_public.protobuf.client.v1.OpaqueRespons\
+    eH\0R\x0copaqueUpload\x12r\n\x15sankey_diagram_upload\x18\x0c\x20\x01(\
+    \x0b2<.bitdrift_public.protobuf.client.v1.SankeyPathUploadResponseH\0R\
+    \x13sankeyDiagramUpload\x12p\n\x16sankey_intent_response\x18\r\x20\x01(\
+    \x0b28.bitdrift_public.protobuf.client.v1.SankeyIntentResponseH\0R\x14sa\
+    nkeyIntentResponseB\x14\n\rresponse_type\x12\x03\xf8B\x012x\n\nApiServic\
+    e\x12j\n\x03Mux\x12..bitdrift_public.protobuf.client.v1.ApiRequest\x1a/.\
+    bitdrift_public.protobuf.client.v1.ApiResponse(\x010\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -7547,7 +7846,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(super::config::file_descriptor().clone());
             deps.push(super::payload::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(36);
+            let mut messages = ::std::vec::Vec::with_capacity(38);
             messages.push(ClientKillFile::generated_message_descriptor_data());
             messages.push(HandshakeRequest::generated_message_descriptor_data());
             messages.push(OpaqueConfigurationUpdate::generated_message_descriptor_data());
@@ -7584,8 +7883,9 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(stats_upload_request::Snapshot::generated_message_descriptor_data());
             messages.push(stats_upload_request::snapshot::Aggregated::generated_message_descriptor_data());
             messages.push(configuration_update::StateOfTheWorld::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(1);
-            enums.push(sankey_intent_response::Decision::generated_enum_descriptor_data());
+            messages.push(sankey_intent_response::UploadImmediately::generated_message_descriptor_data());
+            messages.push(sankey_intent_response::Drop::generated_message_descriptor_data());
+            let mut enums = ::std::vec::Vec::with_capacity(0);
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
                 deps,

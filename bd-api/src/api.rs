@@ -10,7 +10,7 @@
 mod api_test;
 
 use crate::payload_conversion::RuntimeConfigurationUpdate;
-use crate::upload::{self, StateTracker};
+use crate::upload::{self, IntentResponse, StateTracker};
 use crate::{
   ConfigurationUpdate,
   DataUpload,
@@ -42,9 +42,14 @@ use bd_grpc_codec::{
 use bd_metadata::Metadata;
 use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
 pub use bd_proto::protos::client::api::log_upload_intent_response::{
-  Decision,
-  Drop as DropDecision,
-  UploadImmediately,
+  Decision as LogsUploadDecision,
+  Drop as LogsUploadDecisionDrop,
+  UploadImmediately as LogsUploadDecisionUploadImmediately,
+};
+pub use bd_proto::protos::client::api::sankey_intent_response::{
+  Decision as SankeyPathUploadDecision,
+  Drop as SankeyPathUploadDecisionDrop,
+  UploadImmediately as SankeyPathUploadDecisionImmediately,
 };
 use bd_proto::protos::client::api::{
   handshake_response,
@@ -804,10 +809,14 @@ impl Api {
         Some(ResponseKind::LogUploadIntent(intent)) => {
           stream_state.upload_state_tracker.resolve_intent(
             &intent.intent_uuid,
-            intent
-              .decision
-              .clone()
-              .unwrap_or_else(|| Decision::Drop(DropDecision::default())),
+            IntentResponse {
+              uuid: intent.intent_uuid.clone(),
+              decision: intent
+                .decision
+                .clone()
+                .unwrap_or(LogsUploadDecision::Drop(LogsUploadDecisionDrop::default()))
+                .into(),
+            },
           )?;
         },
         Some(ResponseKind::StatsUpload(stats_upload)) => {
@@ -836,6 +845,27 @@ impl Api {
           stream_state
             .upload_state_tracker
             .resolve_pending_upload(&sankey_path_upload.upload_uuid, &sankey_path_upload.error)?;
+        },
+        Some(ResponseKind::SankeyPathUploadIntent(sankey_path_upload_intent)) => {
+          log::debug!(
+            "received ack for sankey path upload intent {:?}, decision: {:?}",
+            sankey_path_upload_intent.intent_uuid,
+            sankey_path_upload_intent.decision
+          );
+
+          stream_state.upload_state_tracker.resolve_intent(
+            &sankey_path_upload_intent.intent_uuid,
+            IntentResponse {
+              uuid: sankey_path_upload_intent.intent_uuid.clone(),
+              decision: sankey_path_upload_intent
+                .decision
+                .clone()
+                .unwrap_or(SankeyPathUploadDecision::Drop(
+                  SankeyPathUploadDecisionDrop::default(),
+                ))
+                .into(),
+            },
+          )?;
         },
         Some(ResponseKind::Untyped) => {
           log::debug!("received untyped response: {}", response);

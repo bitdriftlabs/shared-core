@@ -6,12 +6,17 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::workflow::SankeyPath;
-use bd_api::api::Decision;
-use bd_api::upload::{TrackedSankeyPathUploadIntentRequest, TrackedSankeyPathUploadRequest};
+use bd_api::upload::{
+  IntentDecision,
+  IntentResponse,
+  TrackedSankeyPathUploadIntentRequest,
+  TrackedSankeyPathUploadRequest,
+};
 use bd_api::DataUpload;
 use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{SankeyIntentRequest, SankeyPathUploadRequest};
+use bd_stats_common::labels;
 use itertools::Itertools;
 use tokio::sync::mpsc::{Receiver, Sender};
 
@@ -112,7 +117,7 @@ impl Processor {
   }
 
   pub(crate) async fn process_sankey(&mut self, sankey_path: SankeyPath) {
-    self.stats.intent_initiations_total.inc();
+    self.stats.intent_initiations.inc();
     log::debug!(
       "processing sankey: sankey id {:?}, path id {:?}",
       sankey_path.sankey_id,
@@ -125,18 +130,18 @@ impl Processor {
         sankey_path.sankey_id,
         sankey_path.path_id
       );
-      self.stats.intent_completion_already_processed_total.inc();
+      self.stats.intent_completion_already_processed.inc();
       return;
     }
 
     match self.perform_upload_intent_negotiation(&sankey_path).await {
-      Ok((decision, upload_intent_uuid)) => {
+      Ok(decision) => {
         self
-          .handle_upload_intent_decision(sankey_path, decision, upload_intent_uuid)
+          .handle_upload_intent_decision(sankey_path, decision)
           .await;
       },
       Err(error) => {
-        self.stats.intent_request_failures_total.inc();
+        self.stats.intent_request_failures.inc();
         log::debug!("failed to negotiate sankey path upload intent: {error}");
       },
     };
@@ -145,34 +150,37 @@ impl Processor {
   async fn handle_upload_intent_decision(
     &mut self,
     sankey_path: SankeyPath,
-    decision: Decision,
-    upload_intent_uuid: String,
+    decision_response: IntentResponse,
   ) {
-    match decision {
-      Decision::UploadImmediately(_) => {
+    match decision_response.decision {
+      IntentDecision::UploadImmediately => {
         log::debug!(
-          "sankey path upload intent accepted, upload immediately: {upload_intent_uuid:?}"
+          "sankey path upload intent accepted, upload immediately: {:?}",
+          decision_response.uuid
         );
-        self.stats.intent_completion_uploads_total.inc();
-        self.processed_intents.insert(sankey_path.clone());
+        self.stats.intent_completion_uploads.inc();
         self.upload_sankey_path(sankey_path).await;
       },
-      Decision::Drop(_) => {
-        log::debug!("sankey path upload intent rejected, drop: {upload_intent_uuid:?}");
-        self.stats.intent_completion_drops_total.inc();
+      IntentDecision::Drop => {
+        log::debug!(
+          "sankey path upload intent rejected, drop: {:?}",
+          decision_response.uuid
+        );
+        self.stats.intent_completion_drops.inc();
         self.processed_intents.insert(sankey_path);
       },
     }
   }
 
-  async fn upload_sankey_path(&self, sankey_path: SankeyPath) {
+  async fn upload_sankey_path(&mut self, sankey_path: SankeyPath) {
     let upload_uuid = TrackedSankeyPathUploadRequest::upload_uuid();
+    let sankey_path_clone = sankey_path.clone();
 
     let upload_request = SankeyPathUploadRequest {
       upload_uuid: upload_uuid.clone(),
-      id: sankey_path.sankey_id.clone(),
-      path_id: sankey_path.path_id.clone(),
-      nodes: sankey_path
+      id: sankey_path_clone.sankey_id.clone(),
+      path_id: sankey_path_clone.path_id.clone(),
+      nodes: sankey_path_clone
         .nodes
         .into_iter()
         .map(|value| Node {
@@ -197,24 +205,27 @@ impl Processor {
       .await
     {
       log::debug!("failed to send sankey upload request: {e}");
-      self.stats.upload_completion_failure_total.inc();
+      self.stats.upload_completion_failures.inc();
       return;
     }
 
     if let Err(error) = response.await {
       log::debug!("failed to wait for sankey upload response: {error}");
-      self.stats.upload_completion_failure_total.inc();
+      self.stats.upload_completion_failures.inc();
       return;
     }
 
-    self.stats.upload_completion_success_total.inc();
+    // Augustyniak: Is it risky to insert the path only in the case of a successful upload? maybe we
+    // should insert it prior to the upload.
+    self.processed_intents.insert(sankey_path);
+    self.stats.upload_completion_successes.inc();
   }
 
   async fn perform_upload_intent_negotiation(
     &self,
     sankey_path: &SankeyPath,
-  ) -> anyhow::Result<(Decision, String)> {
-    let intent_upload_uuid = TrackedSankeyPathUploadRequest::upload_uuid();
+  ) -> anyhow::Result<IntentResponse> {
+    let intent_upload_uuid: String = TrackedSankeyPathUploadRequest::upload_uuid();
 
     let intent_request = SankeyIntentRequest {
       intent_uuid: intent_upload_uuid.to_string(),
@@ -233,7 +244,7 @@ impl Processor {
       ))
       .await?;
 
-    Ok((response.await?, intent_upload_uuid))
+    Ok(response.await?)
   }
 }
 
@@ -242,35 +253,48 @@ impl Processor {
 //
 
 #[derive(Debug)]
-#[allow(clippy::struct_field_names)]
 struct Stats {
-  intent_initiations_total: Counter,
+  intent_initiations: Counter,
 
-  intent_completion_uploads_total: Counter,
-  intent_completion_already_processed_total: Counter,
-  intent_completion_drops_total: Counter,
+  intent_completion_uploads: Counter,
+  intent_completion_already_processed: Counter,
+  intent_completion_drops: Counter,
 
-  intent_request_failures_total: Counter,
+  intent_request_failures: Counter,
 
-  upload_completion_success_total: Counter,
-  upload_completion_failure_total: Counter,
+  upload_completion_successes: Counter,
+  upload_completion_failures: Counter,
 }
 
 impl Stats {
   fn new(scope: &Scope) -> Self {
     let scope = scope.scope("sankeys");
+
+    let intent_completion_drops =
+      scope.counter_with_labels("intent_completions_total", labels!("result" => "drop"));
+    let intent_completion_already_processed = scope.counter_with_labels(
+      "intent_completions_total",
+      labels!("result" => "already_processed"),
+    );
+    let intent_completion_uploads =
+      scope.counter_with_labels("intent_completions_total", labels!("result" => "upload"));
+
+    let upload_completion_successes =
+      scope.counter_with_labels("upload_completions_total", labels!("result" => "success"));
+    let upload_completion_failures =
+      scope.counter_with_labels("upload_completions_total", labels!("result" => "failure"));
+
     Self {
-      intent_initiations_total: scope.counter("intent_initiations_total"),
+      intent_initiations: scope.counter("intent_initiations_total"),
 
-      intent_completion_uploads_total: scope.counter("intent_completion_uploads_total"),
-      intent_completion_already_processed_total: scope
-        .counter("intent_completion_already_processed_total"),
-      intent_completion_drops_total: scope.counter("intent_completion_drops_total"),
+      intent_completion_uploads,
+      intent_completion_already_processed,
+      intent_completion_drops,
 
-      intent_request_failures_total: scope.counter("intent_request_failures_total"),
+      intent_request_failures: scope.counter("intent_request_failures_total"),
 
-      upload_completion_success_total: scope.counter("upload_completion_success_total"),
-      upload_completion_failure_total: scope.counter("upload_completion_failure_total"),
+      upload_completion_successes,
+      upload_completion_failures,
     }
   }
 }

@@ -10,7 +10,8 @@ pub use bd_proto::protos::client::api::log_upload_intent_request::{
   Intent_type,
   WorkflowActionUpload,
 };
-pub use bd_proto::protos::client::api::log_upload_intent_response::Decision;
+pub use bd_proto::protos::client::api::log_upload_intent_response::Decision as LogsUploadDecision;
+use bd_proto::protos::client::api::sankey_intent_response::Decision as SankeyPathUploadDecision;
 pub use bd_proto::protos::client::api::LogUploadIntentRequest;
 use bd_proto::protos::client::api::{
   LogUploadRequest,
@@ -21,10 +22,52 @@ use bd_proto::protos::client::api::{
 use std::collections::HashMap;
 use uuid::Uuid;
 
+//
+// UploadResponse
+//
+
 #[derive(Debug)]
 pub struct UploadResponse {
   pub success: bool,
   pub uuid: String,
+}
+
+//
+// IntentDecision
+//
+
+#[derive(Clone, Debug)]
+pub enum IntentDecision {
+  Drop,
+  UploadImmediately,
+}
+
+impl From<SankeyPathUploadDecision> for IntentDecision {
+  fn from(decision: SankeyPathUploadDecision) -> Self {
+    match decision {
+      SankeyPathUploadDecision::Drop(_) => Self::Drop,
+      SankeyPathUploadDecision::UploadImmediately(_) => Self::UploadImmediately,
+    }
+  }
+}
+
+impl From<LogsUploadDecision> for IntentDecision {
+  fn from(decision: LogsUploadDecision) -> Self {
+    match decision {
+      LogsUploadDecision::Drop(_) => Self::Drop,
+      LogsUploadDecision::UploadImmediately(_) => Self::UploadImmediately,
+    }
+  }
+}
+
+//
+// IntentResponse
+//
+
+#[derive(Clone, Debug)]
+pub struct IntentResponse {
+  pub uuid: String,
+  pub decision: IntentDecision,
 }
 
 /// Used to track pending upload requests. Requests are identified by a UUID recorded at
@@ -33,12 +76,12 @@ pub struct UploadResponse {
 /// upload attempt.
 pub struct StateTracker {
   // A map of pending uploads to their response channel. This is used to
-  // communicate back the result of a log or stats upload back to the upload task.
+  // communicate back the result of a log, sankey path or stats upload back to the upload task.
   pending_uploads: HashMap<String, tokio::sync::oneshot::Sender<UploadResponse>>,
 
   // A map of pending log intents to their response channel. This is used to communicate back the
-  // result of a log intent request back to the upload task.
-  pending_intents: HashMap<String, tokio::sync::oneshot::Sender<Decision>>,
+  // result of an intent request back to the upload task.
+  pending_intents: HashMap<String, tokio::sync::oneshot::Sender<IntentResponse>>,
 }
 
 impl StateTracker {
@@ -51,7 +94,7 @@ impl StateTracker {
   }
 
   /// Track a log upload intent, converting it into an upload intent request.
-  pub fn track_intent<T: Send + Sync>(&mut self, intent: Tracked<T, Decision>) -> T {
+  pub fn track_intent<T: Send + Sync>(&mut self, intent: Tracked<T, IntentResponse>) -> T {
     let uuid = intent.uuid.clone();
     let (request, response_tx) = intent.into_parts();
     self.pending_intents.insert(uuid, response_tx);
@@ -84,11 +127,11 @@ impl StateTracker {
     Ok(())
   }
 
-  pub fn resolve_intent(&mut self, uuid: &str, response: Decision) -> anyhow::Result<()> {
+  pub fn resolve_intent(&mut self, uuid: &str, response: IntentResponse) -> anyhow::Result<()> {
     let _ignored = self
       .pending_intents
       .remove(uuid)
-      .ok_or_else(|| anyhow!("Log upload state for uuid {uuid:?} was inconsistent"))?
+      .ok_or_else(|| anyhow!("Upload intent state for uuid {uuid:?} was inconsistent"))?
       .send(response);
 
     Ok(())
@@ -169,9 +212,9 @@ pub type TrackedStatsUploadRequest = Tracked<StatsUploadRequest, UploadResponse>
 
 pub type TrackedSankeyPathUploadRequest = Tracked<SankeyPathUploadRequest, UploadResponse>;
 
-pub type TrackedSankeyPathUploadIntentRequest = Tracked<SankeyIntentRequest, Decision>;
+pub type TrackedSankeyPathUploadIntentRequest = Tracked<SankeyIntentRequest, IntentResponse>;
 
 /// An intent to upload a buffer due to a listener triggering. This is communicated to the backend
 /// in order to allow the server to make decisions on whether a buffer should be uploaded in
 /// response to a specific listener.
-pub type TrackedLogUploadIntent = Tracked<LogUploadIntentRequest, Decision>;
+pub type TrackedLogUploadIntent = Tracked<LogUploadIntentRequest, IntentResponse>;

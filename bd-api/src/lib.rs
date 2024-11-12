@@ -5,7 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_proto::protos::client::api::log_upload_intent_response::Decision;
 use bd_proto::protos::client::api::{
   ApiRequest,
   ApiResponse,
@@ -21,13 +20,14 @@ use bd_proto::protos::client::api::{
   OpaqueResponse,
   PongResponse,
   SankeyIntentRequest,
+  SankeyIntentResponse,
   SankeyPathUploadRequest,
   SankeyPathUploadResponse,
   StatsUploadRequest,
   StatsUploadResponse,
 };
 use std::collections::HashMap;
-use upload::{Tracked, UploadResponse};
+use upload::{IntentResponse, Tracked, UploadResponse};
 
 pub mod api;
 mod payload_conversion;
@@ -92,6 +92,7 @@ pub enum ResponseKind<'a> {
   StatsUpload(&'a StatsUploadResponse),
   FlushBuffers(&'a FlushBuffers),
   SankeyPathUpload(&'a SankeyPathUploadResponse),
+  SankeyPathUploadIntent(&'a SankeyIntentResponse),
   Opaque(&'a OpaqueResponse),
   Untyped,
 }
@@ -110,7 +111,7 @@ pub trait MuxResponse {
 pub enum DataUpload {
   /// A logs upload intent request sent to the server to ask whether a specific upload should be
   /// performed.
-  LogsUploadIntentRequest(Tracked<LogUploadIntentRequest, Decision>),
+  LogsUploadIntentRequest(Tracked<LogUploadIntentRequest, IntentResponse>),
 
   /// A logs upload request with an associated tracking id that is used to ensure delivery.
   LogsUploadRequest(Tracked<LogUploadRequest, UploadResponse>),
@@ -119,7 +120,7 @@ pub enum DataUpload {
   StatsUploadRequest(Tracked<StatsUploadRequest, UploadResponse>),
 
   /// A Sankey upload request with associated tracking id that is used to ensure delivery.
-  SankeyPathUploadIntentRequest(Tracked<SankeyIntentRequest, Decision>),
+  SankeyPathUploadIntentRequest(Tracked<SankeyIntentRequest, IntentResponse>),
 
   /// A Sankey path upload request.
   SankeyPathUpload(Tracked<SankeyPathUploadRequest, UploadResponse>),

@@ -11,7 +11,7 @@ mod actions_flush_buffers_test;
 
 use crate::config::ActionFlushBuffers;
 use anyhow::anyhow;
-use bd_api::upload::{Decision, Intent_type, TrackedLogUploadIntent};
+use bd_api::upload::{IntentDecision, Intent_type, TrackedLogUploadIntent};
 use bd_api::DataUpload;
 use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::LogUploadIntentRequest;
@@ -313,24 +313,26 @@ impl Negotiator {
 
       log::debug!("intent sent, awaiting response");
 
-      match response.await {
-        Ok(Decision::UploadImmediately(_)) => {
+      let Ok(intent_response) = response.await else {
+        self.stats.intent_request_failures_total.inc();
+        log::debug!("API stream closed while waiting for intent response, retrying");
+        continue;
+      };
+
+      match intent_response.decision {
+        IntentDecision::UploadImmediately => {
           log::debug!(
             "uploading trigger buffer, intent accepted (\"{}\")",
             intent_uuid
           );
           return Ok(true);
         },
-        Ok(Decision::Drop(_)) => {
+        IntentDecision::Drop => {
           log::debug!(
             "not uploading trigger, intent dropped (\"{}\")",
             intent_uuid
           );
           return Ok(false);
-        },
-        Err(_) => {
-          self.stats.intent_request_failures_total.inc();
-          log::debug!("API stream closed while waiting for intent response, retrying");
         },
       }
     }
