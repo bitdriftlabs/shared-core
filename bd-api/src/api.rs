@@ -10,7 +10,7 @@
 mod api_test;
 
 use crate::payload_conversion::RuntimeConfigurationUpdate;
-use crate::upload::{self, StateTracker};
+use crate::upload::{self, IntentResponse, StateTracker};
 use crate::{
   ConfigurationUpdate,
   DataUpload,
@@ -283,7 +283,7 @@ impl StreamState {
   async fn handle_data_upload(&mut self, data_upload: DataUpload) -> anyhow::Result<()> {
     match data_upload {
       DataUpload::LogsUploadIntentRequest(intent) => {
-        let req = self.upload_state_tracker.track_logs_upload_intent(intent);
+        let req = self.upload_state_tracker.track_intent(intent);
         self.send_request(req).await
       },
       DataUpload::LogsUploadRequest(request) => {
@@ -296,9 +296,7 @@ impl StreamState {
         self.send_request(req).await
       },
       DataUpload::SankeyPathUploadIntentRequest(request) => {
-        let req = self
-          .upload_state_tracker
-          .track_sankey_path_upload_intent(request);
+        let req = self.upload_state_tracker.track_intent(request);
         self.send_request(req).await
       },
       DataUpload::SankeyPathUpload(request) => {
@@ -809,15 +807,17 @@ impl Api {
             .resolve_pending_upload(&log_upload.upload_uuid, &log_upload.error)?;
         },
         Some(ResponseKind::LogUploadIntent(intent)) => {
-          stream_state
-            .upload_state_tracker
-            .resolve_logs_upload_intent(
-              &intent.intent_uuid,
-              intent
+          stream_state.upload_state_tracker.resolve_intent(
+            &intent.intent_uuid,
+            IntentResponse {
+              uuid: intent.intent_uuid.clone(),
+              decision: intent
                 .decision
                 .clone()
-                .unwrap_or_else(|| LogsUploadDecision::Drop(LogsUploadDecisionDrop::default())),
-            )?;
+                .unwrap_or(LogsUploadDecision::Drop(LogsUploadDecisionDrop::default()))
+                .into(),
+            },
+          )?;
         },
         Some(ResponseKind::StatsUpload(stats_upload)) => {
           log::debug!(
@@ -853,17 +853,19 @@ impl Api {
             sankey_path_upload_intent.decision
           );
 
-          stream_state
-            .upload_state_tracker
-            .resolve_sankey_path_upload_intent(
-              &sankey_path_upload_intent.intent_uuid,
-              sankey_path_upload_intent
+          stream_state.upload_state_tracker.resolve_intent(
+            &sankey_path_upload_intent.intent_uuid,
+            IntentResponse {
+              uuid: sankey_path_upload_intent.intent_uuid.clone(),
+              decision: sankey_path_upload_intent
                 .decision
                 .clone()
-                .unwrap_or_else(|| {
-                  SankeyPathUploadDecision::Drop(SankeyPathUploadDecisionDrop::default())
-                }),
-            )?;
+                .unwrap_or(SankeyPathUploadDecision::Drop(
+                  SankeyPathUploadDecisionDrop::default(),
+                ))
+                .into(),
+            },
+          )?;
         },
         Some(ResponseKind::Untyped) => {
           log::debug!("received untyped response: {}", response);

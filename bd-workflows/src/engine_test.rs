@@ -12,20 +12,13 @@ use crate::engine::{WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::engine_assert_active_runs;
 use crate::workflow::Workflow;
 use assert_matches::assert_matches;
-use bd_api::api::{
-  LogsUploadDecision,
-  SankeyPathUploadDecision,
-  SankeyPathUploadDecisionDrop,
-  SankeyPathUploadDecisionImmediately,
-};
-use bd_api::upload::UploadResponse;
+use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
 use bd_api::DataUpload;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{BoundedCollector, Collector};
 use bd_log_primitives::{log_level, FieldsRef, LogFields, LogMessage, LogRef};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::client::api::log_upload_intent_request::Intent_type::WorkflowActionUpload;
-use bd_proto::protos::client::api::log_upload_intent_response::{Drop, UploadImmediately};
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{
   log_upload_intent_request,
@@ -227,11 +220,11 @@ macro_rules! engine_process_log {
 struct Hooks {
   flushed_buffers: Vec<BuffersToFlush>,
   received_logs_upload_intents: Vec<log_upload_intent_request::WorkflowActionUpload>,
-  awaiting_logs_upload_intent_decisions: Vec<LogsUploadDecision>,
+  awaiting_logs_upload_intent_decisions: Vec<IntentDecision>,
 
   sankey_uploads: Vec<SankeyPathUploadRequest>,
   received_sankey_upload_intents: Vec<SankeyIntentRequest>,
-  awaiting_sankey_upload_intent_decisions: Vec<SankeyPathUploadDecision>,
+  awaiting_sankey_upload_intent_decisions: Vec<IntentDecision>,
 }
 
 struct AnnotatedWorkflowsEngine {
@@ -310,7 +303,10 @@ impl AnnotatedWorkflowsEngine {
 
                 if let Err(e) = logs_upload_intent
                   .response_tx
-                  .send(decision)
+                  .send(IntentResponse {
+                    uuid: logs_upload_intent.uuid.clone(),
+                    decision: decision.into(),
+                  })
                   {
                     panic!("failed to send response: {e:?}");
                   }
@@ -328,7 +324,10 @@ impl AnnotatedWorkflowsEngine {
 
                   if let Err(e) = sankey_upload_intent
                     .response_tx
-                    .send(decision)
+                    .send(IntentResponse {
+                      uuid: sankey_upload_intent.uuid.clone(),
+                      decision: decision.into(),
+                    })
                     {
                       panic!("failed to send response: {e:?}");
                     }
@@ -359,7 +358,7 @@ impl AnnotatedWorkflowsEngine {
     self.hooks.lock().received_logs_upload_intents.clone()
   }
 
-  fn set_awaiting_logs_upload_intent_decisions(&self, decisions: Vec<LogsUploadDecision>) {
+  fn set_awaiting_logs_upload_intent_decisions(&self, decisions: Vec<IntentDecision>) {
     for decision in decisions {
       self
         .hooks
@@ -1979,9 +1978,9 @@ async fn logs_streaming() {
 
   // Set up the mock logs upload intent server so that it accepts two incoming logs upload intents.
   workflows_engine.set_awaiting_logs_upload_intent_decisions(vec![
-    bd_api::api::LogsUploadDecision::Drop(Drop::default()),
-    bd_api::api::LogsUploadDecision::UploadImmediately(UploadImmediately::default()),
-    bd_api::api::LogsUploadDecision::UploadImmediately(UploadImmediately::default()),
+    IntentDecision::Drop,
+    IntentDecision::UploadImmediately,
+    IntentDecision::UploadImmediately,
   ]);
 
   // This should trigger a flush of a buffer.
@@ -2162,8 +2161,8 @@ async fn logs_streaming() {
   workflows_engine.log_destination_buffer_ids = BTreeSet::from(["trigger_buffer_id".into()]);
 
   workflows_engine.set_awaiting_logs_upload_intent_decisions(vec![
-    bd_api::api::LogsUploadDecision::UploadImmediately(UploadImmediately::default()),
-    bd_api::api::LogsUploadDecision::UploadImmediately(UploadImmediately::default()),
+    IntentDecision::UploadImmediately,
+    IntentDecision::UploadImmediately,
   ]);
 
   let result = engine_process_log!(workflows_engine; "test log"; with labels!{});
@@ -2368,9 +2367,8 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   workflows_engine.session_id = "new session ID".to_string();
   workflows_engine.log_destination_buffer_ids = BTreeSet::from(["trigger_buffer_id".into()]);
 
-  workflows_engine.set_awaiting_logs_upload_intent_decisions(vec![
-    bd_api::api::LogsUploadDecision::UploadImmediately(UploadImmediately::default()),
-  ]);
+  workflows_engine
+    .set_awaiting_logs_upload_intent_decisions(vec![IntentDecision::UploadImmediately]);
 
   workflows_engine.run_once_for_test(false).await;
 
@@ -2968,9 +2966,7 @@ async fn sankey_action() {
     .hooks
     .lock()
     .awaiting_sankey_upload_intent_decisions
-    .push(SankeyPathUploadDecision::Drop(
-      SankeyPathUploadDecisionDrop::default(),
-    ));
+    .push(IntentDecision::Drop);
 
   engine_process_log!(engine; "foo");
   engine_process_log!(engine; "bar");
@@ -2997,9 +2993,7 @@ async fn sankey_action() {
     .hooks
     .lock()
     .awaiting_sankey_upload_intent_decisions
-    .push(SankeyPathUploadDecision::UploadImmediately(
-      SankeyPathUploadDecisionImmediately::default(),
-    ));
+    .push(IntentDecision::UploadImmediately);
 
   engine_process_log!(engine; "foo");
   engine_process_log!(engine; "bar_loop");

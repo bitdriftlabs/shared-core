@@ -22,15 +22,52 @@ use bd_proto::protos::client::api::{
 use std::collections::HashMap;
 use uuid::Uuid;
 
+//
+// UploadResponse
+//
+
 #[derive(Debug)]
 pub struct UploadResponse {
   pub success: bool,
   pub uuid: String,
 }
 
-#[derive(Debug)]
+//
+// IntentDecision
+//
+
+#[derive(Clone, Debug)]
+pub enum IntentDecision {
+  Drop,
+  UploadImmediately,
+}
+
+impl From<SankeyPathUploadDecision> for IntentDecision {
+  fn from(decision: SankeyPathUploadDecision) -> Self {
+    match decision {
+      SankeyPathUploadDecision::Drop(_) => Self::Drop,
+      SankeyPathUploadDecision::UploadImmediately(_) => Self::UploadImmediately,
+    }
+  }
+}
+
+impl From<LogsUploadDecision> for IntentDecision {
+  fn from(decision: LogsUploadDecision) -> Self {
+    match decision {
+      LogsUploadDecision::Drop(_) => Self::Drop,
+      LogsUploadDecision::UploadImmediately(_) => Self::UploadImmediately,
+    }
+  }
+}
+
+//
+// IntentResponse
+//
+
+#[derive(Clone, Debug)]
 pub struct IntentResponse {
   pub uuid: String,
+  pub decision: IntentDecision,
 }
 
 /// Used to track pending upload requests. Requests are identified by a UUID recorded at
@@ -39,15 +76,12 @@ pub struct IntentResponse {
 /// upload attempt.
 pub struct StateTracker {
   // A map of pending uploads to their response channel. This is used to
-  // communicate back the result of a log or stats upload back to the upload task.
+  // communicate back the result of a log, sankey path or stats upload back to the upload task.
   pending_uploads: HashMap<String, tokio::sync::oneshot::Sender<UploadResponse>>,
 
   // A map of pending log intents to their response channel. This is used to communicate back the
-  // result of a log intent request back to the upload task.
-  pending_logs_upload_intents: HashMap<String, tokio::sync::oneshot::Sender<LogsUploadDecision>>,
-
-  pending_sankey_path_upload_intents:
-    HashMap<String, tokio::sync::oneshot::Sender<SankeyPathUploadDecision>>,
+  // result of an intent request back to the upload task.
+  pending_intents: HashMap<String, tokio::sync::oneshot::Sender<IntentResponse>>,
 }
 
 impl StateTracker {
@@ -55,33 +89,15 @@ impl StateTracker {
   pub fn new() -> Self {
     Self {
       pending_uploads: HashMap::new(),
-      pending_logs_upload_intents: HashMap::new(),
-      pending_sankey_path_upload_intents: HashMap::new(),
+      pending_intents: HashMap::new(),
     }
   }
 
   /// Track a log upload intent, converting it into an upload intent request.
-  pub fn track_logs_upload_intent<T: Send + Sync>(
-    &mut self,
-    intent: Tracked<T, LogsUploadDecision>,
-  ) -> T {
+  pub fn track_intent<T: Send + Sync>(&mut self, intent: Tracked<T, IntentResponse>) -> T {
     let uuid = intent.uuid.clone();
     let (request, response_tx) = intent.into_parts();
-    self.pending_logs_upload_intents.insert(uuid, response_tx);
-
-    request
-  }
-
-  /// Track a log upload intent, converting it into an upload intent request.
-  pub fn track_sankey_path_upload_intent<T: Send + Sync>(
-    &mut self,
-    intent: Tracked<T, SankeyPathUploadDecision>,
-  ) -> T {
-    let uuid = intent.uuid.clone();
-    let (request, response_tx) = intent.into_parts();
-    self
-      .pending_sankey_path_upload_intents
-      .insert(uuid, response_tx);
+    self.pending_intents.insert(uuid, response_tx);
 
     request
   }
@@ -111,29 +127,11 @@ impl StateTracker {
     Ok(())
   }
 
-  pub fn resolve_logs_upload_intent(
-    &mut self,
-    uuid: &str,
-    response: LogsUploadDecision,
-  ) -> anyhow::Result<()> {
+  pub fn resolve_intent(&mut self, uuid: &str, response: IntentResponse) -> anyhow::Result<()> {
     let _ignored = self
-      .pending_logs_upload_intents
+      .pending_intents
       .remove(uuid)
-      .ok_or_else(|| anyhow!("Log upload intent state for uuid {uuid:?} was inconsistent"))?
-      .send(response);
-
-    Ok(())
-  }
-
-  pub fn resolve_sankey_path_upload_intent(
-    &mut self,
-    uuid: &str,
-    response: SankeyPathUploadDecision,
-  ) -> anyhow::Result<()> {
-    let _ignored = self
-      .pending_sankey_path_upload_intents
-      .remove(uuid)
-      .ok_or_else(|| anyhow!("Sankey upload intent state for uuid {uuid:?} was inconsistent"))?
+      .ok_or_else(|| anyhow!("Upload intent state for uuid {uuid:?} was inconsistent"))?
       .send(response);
 
     Ok(())
@@ -214,10 +212,9 @@ pub type TrackedStatsUploadRequest = Tracked<StatsUploadRequest, UploadResponse>
 
 pub type TrackedSankeyPathUploadRequest = Tracked<SankeyPathUploadRequest, UploadResponse>;
 
-pub type TrackedSankeyPathUploadIntentRequest =
-  Tracked<SankeyIntentRequest, SankeyPathUploadDecision>;
+pub type TrackedSankeyPathUploadIntentRequest = Tracked<SankeyIntentRequest, IntentResponse>;
 
 /// An intent to upload a buffer due to a listener triggering. This is communicated to the backend
 /// in order to allow the server to make decisions on whether a buffer should be uploaded in
 /// response to a specific listener.
-pub type TrackedLogUploadIntent = Tracked<LogUploadIntentRequest, LogsUploadDecision>;
+pub type TrackedLogUploadIntent = Tracked<LogUploadIntentRequest, IntentResponse>;

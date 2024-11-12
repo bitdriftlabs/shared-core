@@ -17,11 +17,10 @@ use crate::actions_flush_buffers::{
 };
 use crate::config::ActionFlushBuffers;
 use assert_matches::assert_matches;
-use bd_api::api::{LogsUploadDecision, LogsUploadDecisionUploadImmediately};
+use bd_api::upload::{IntentDecision, IntentResponse};
 use bd_api::DataUpload;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
-use bd_proto::protos::client::api::log_upload_intent_response::Drop;
 use bd_stats_common::labels;
 use pretty_assertions::assert_eq;
 use std::collections::BTreeSet;
@@ -36,7 +35,7 @@ struct Setup {
 }
 
 impl Setup {
-  fn make_negotiator(&self, decision: LogsUploadDecision) -> NegotiatorWrapper {
+  fn make_negotiator(&self, response_decision: IntentResponse) -> NegotiatorWrapper {
     let (input_tx, input_rx) = tokio::sync::mpsc::channel(1);
     let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
 
@@ -52,7 +51,7 @@ impl Setup {
         loop {
           if let Some(data_upload) = data_upload_rx.recv().await {
             if let DataUpload::LogsUploadIntentRequest(intent) = data_upload {
-              intent.response_tx.send(decision.clone()).unwrap();
+              intent.response_tx.send(response_decision.clone()).unwrap();
             } else {
               panic!("unknown request type");
             }
@@ -460,9 +459,10 @@ fn process_streaming_buffers_actions() {
 #[tokio::test]
 async fn negotiator_upload_flow() {
   let setup = Setup::default();
-  let mut negotiator = setup.make_negotiator(LogsUploadDecision::UploadImmediately(
-    LogsUploadDecisionUploadImmediately::default(),
-  ));
+  let mut negotiator = setup.make_negotiator(IntentResponse {
+    uuid: "action_id".to_string(),
+    decision: IntentDecision::UploadImmediately,
+  });
 
   let pending_action = PendingFlushBuffersAction {
     id: "action_id".to_string(),
@@ -519,7 +519,10 @@ async fn negotiator_upload_flow() {
 #[tokio::test]
 async fn negotiator_drop_flow() {
   let setup = Setup::default();
-  let mut negotiator = setup.make_negotiator(LogsUploadDecision::Drop(Drop::default()));
+  let mut negotiator = setup.make_negotiator(IntentResponse {
+    uuid: "action_id".to_string(),
+    decision: IntentDecision::Drop,
+  });
 
   let pending_action = PendingFlushBuffersAction {
     id: "action_id".to_string(),

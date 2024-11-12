@@ -6,8 +6,12 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::workflow::SankeyPath;
-use bd_api::api::SankeyPathUploadDecision;
-use bd_api::upload::{TrackedSankeyPathUploadIntentRequest, TrackedSankeyPathUploadRequest};
+use bd_api::upload::{
+  IntentDecision,
+  IntentResponse,
+  TrackedSankeyPathUploadIntentRequest,
+  TrackedSankeyPathUploadRequest,
+};
 use bd_api::DataUpload;
 use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
@@ -131,9 +135,9 @@ impl Processor {
     }
 
     match self.perform_upload_intent_negotiation(&sankey_path).await {
-      Ok((decision, upload_intent_uuid)) => {
+      Ok(decision) => {
         self
-          .handle_upload_intent_decision(sankey_path, decision, upload_intent_uuid)
+          .handle_upload_intent_decision(sankey_path, decision)
           .await;
       },
       Err(error) => {
@@ -146,19 +150,22 @@ impl Processor {
   async fn handle_upload_intent_decision(
     &mut self,
     sankey_path: SankeyPath,
-    decision: SankeyPathUploadDecision,
-    upload_intent_uuid: String,
+    decision_response: IntentResponse,
   ) {
-    match decision {
-      SankeyPathUploadDecision::UploadImmediately(_) => {
+    match decision_response.decision {
+      IntentDecision::UploadImmediately => {
         log::debug!(
-          "sankey path upload intent accepted, upload immediately: {upload_intent_uuid:?}"
+          "sankey path upload intent accepted, upload immediately: {:?}",
+          decision_response.uuid
         );
         self.stats.intent_completion_uploads.inc();
         self.upload_sankey_path(sankey_path).await;
       },
-      SankeyPathUploadDecision::Drop(_) => {
-        log::debug!("sankey path upload intent rejected, drop: {upload_intent_uuid:?}");
+      IntentDecision::Drop => {
+        log::debug!(
+          "sankey path upload intent rejected, drop: {:?}",
+          decision_response.uuid
+        );
         self.stats.intent_completion_drops.inc();
         self.processed_intents.insert(sankey_path);
       },
@@ -217,8 +224,8 @@ impl Processor {
   async fn perform_upload_intent_negotiation(
     &self,
     sankey_path: &SankeyPath,
-  ) -> anyhow::Result<(SankeyPathUploadDecision, String)> {
-    let intent_upload_uuid = TrackedSankeyPathUploadRequest::upload_uuid();
+  ) -> anyhow::Result<IntentResponse> {
+    let intent_upload_uuid: String = TrackedSankeyPathUploadRequest::upload_uuid();
 
     let intent_request = SankeyIntentRequest {
       intent_uuid: intent_upload_uuid.to_string(),
@@ -237,7 +244,7 @@ impl Processor {
       ))
       .await?;
 
-    Ok((response.await?, intent_upload_uuid))
+    Ok(response.await?)
   }
 }
 
