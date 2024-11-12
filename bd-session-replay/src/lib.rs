@@ -189,7 +189,7 @@ impl Recorder {
             )
           );
         },
-        _ = self.capture_screenshot_rx.recv() => {
+        Some(()) = self.capture_screenshot_rx.recv() => {
           if !self.is_capture_screenshots_enabled {
             self.stats.disabled.inc();
             log::debug!("session replay recorder ignored screenshot: capturing screenshots is disabled");
@@ -211,7 +211,7 @@ impl Recorder {
           // `ScreenshotLogInterceptor` intercepts a log containing a screenshot that was just requested.
           self.is_ready_to_capture_screenshot = false;
         },
-        _ = async { self.next_screenshot_rx.recv().await } => {
+        Some(()) = async { self.next_screenshot_rx.recv().await } => {
           log::debug!("session replay recorder received screenshot");
           self.is_ready_to_capture_screenshot = true;
         },
