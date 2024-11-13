@@ -124,11 +124,13 @@ impl WorkflowsEngine {
       sankey_diagram::Processor::new(sankey_input_rx, data_upload_tx, &actions_scope);
     let sankey_processor_join_handle = sankey_diagram_processor.run();
 
+    let (engine_stats, remote_config_mediator_stats) = WorkflowsEngineStats::new(&scope);
+
     let workflows_engine = Self {
       configs: BTreeMap::new(),
       state: EngineState::default(),
       remote_config_mediator: RemoteConfigMediator::new(remote_config_mediator_stats),
-      stats,
+      stats: engine_stats,
       state_store: StateStore::new(sdk_directory, &scope, runtime),
       current_traversals_count: 0,
       needs_state_persistence: false,
@@ -159,7 +161,7 @@ impl WorkflowsEngine {
       for loaded_workflows_state in engine_state.into_iter() {
         let workflows_state = self
           .state
-          .get_or_insert_session_state(&loaded_workflows_state.session_id);
+          .get_or_insert(&loaded_workflows_state.session_id);
 
         workflows_state.pending_actions = self
           .flush_buffers_actions_resolver
@@ -177,7 +179,7 @@ impl WorkflowsEngine {
         );
       }
     } else {
-      let workflows_state = self.state.get_or_insert_session_state("");
+      let workflows_state = self.state.get_or_insert("");
 
       self.remote_config_mediator.add_workflows(
         &mut workflows_state.workflows,
@@ -210,9 +212,9 @@ impl WorkflowsEngine {
     log::debug!(
       "started workflows engine with {} workflow(s); {} pending processing action(s); {} \
        streaming action(s); session ID: \"{}\"; traversals count limit: {}",
-      self.state.current_session_state().workflows.len(),
-      self.state.current_session_state().pending_actions.len(),
-      self.state.current_session_state().streaming_actions.len(),
+      self.state.current().workflows.len(),
+      self.state.current().pending_actions.len(),
+      self.state.current().streaming_actions.len(),
       self.state.current_session_id(),
       self.traversals_count_limit,
     );
@@ -319,136 +321,8 @@ impl WorkflowsEngine {
 
     log::debug!(
       "consumed received workflows config update; workflows engine contains {} workflow(s)",
-      self.state.workflows.len()
+      self.state.current().workflows.len(),
     );
-  }
-
-  fn add_workflows(&mut self, workflows: Vec<Config>, existing_workflows: Option<Vec<Workflow>>) {
-    // `workflows` is the source of truth for workflow configurations from the server
-    // while `existing_workflows` contains state of workflow who have been running on a device.
-    //  * Combine the two by iterating over the list of configs from the server and associating
-    //    configs with relevant workflow state (if any).
-    //  * Discard workflow states that don't have a corresponding server-side config.
-    let mut existing_workflow_ids_to_workflows =
-      existing_workflows.map_or_else(HashMap::new, |workflows| {
-        workflows
-          .into_iter()
-          .map(|workflow| (workflow.id().to_string(), workflow))
-          .collect()
-      });
-
-    let workflows_and_configs = workflows.into_iter().map(|config| {
-      let workflow = existing_workflow_ids_to_workflows
-        .remove(config.id())
-        .map_or_else(
-          // We have cache state for a given workflow ID.
-          || Workflow::new(config.id().to_string()),
-          //   No cached state for a given workflow ID, start from scratch.
-          |workflow| workflow,
-        );
-      (workflow, config)
-    });
-
-    for (workflow, config) in workflows_and_configs {
-      self.add_workflow(workflow, config);
-    }
-  }
-
-  fn add_workflow(&mut self, workflow: Workflow, config: Config) {
-    let mut workflow = workflow;
-
-    let workflow_traversals_count = workflow.traversals_count();
-    if workflow_traversals_count + self.current_traversals_count > self.traversals_count_limit {
-      log::debug!(
-        "failed to add workflow with {} traversal(s) due to traversals count limit being hit \
-         ({}); current traversals count {}",
-        workflow_traversals_count,
-        self.traversals_count_limit,
-        self.current_traversals_count
-      );
-
-      // Workflow being added has too many traversal for the engine to not exceed
-      // the configured traversals count limit. Keep removing workflow's run until
-      // its addition to the engine is possible.
-      // Process traversals in reversed order as we may end up modifying the array
-      // starting at `index` in any given iteration of the loop + we want to start
-      // removing runs starting from the "latest" ones and they are at the end of
-      // the enumerated array.
-      let mut remaining_workflow_traversals_count = workflow_traversals_count;
-      for index in (0 .. workflow.runs().len()).rev() {
-        let run_traversals_count = workflow.runs()[index].traversals_count();
-
-        log::debug!(
-          "removing workflow run with {} traversal(s)",
-          run_traversals_count
-        );
-
-        remaining_workflow_traversals_count -= run_traversals_count;
-        self.stats.traversals_count_limit_hit_total.inc();
-        workflow.remove_run(index);
-
-        if remaining_workflow_traversals_count + self.current_traversals_count
-          <= self.traversals_count_limit
-        {
-          break;
-        }
-      }
-    }
-
-    self.stats.workflow_starts_total.inc();
-    self
-      .stats
-      .run_starts_total
-      .inc_by(workflow.runs().len() as u64);
-    self
-      .stats
-      .traversal_starts_total
-      .inc_by(workflow_traversals_count.into());
-
-    log::trace!(
-      "workflow={}: workflow added, runs count {}, traversal count {}",
-      workflow.id(),
-      workflow.runs().len(),
-      workflow_traversals_count,
-    );
-
-    self.current_traversals_count += workflow.traversals_count();
-
-    self.configs.push(config);
-    self.state.workflows.push(workflow);
-  }
-
-  fn remove_workflow(&mut self, workflow_index: usize) {
-    self.configs.remove(workflow_index);
-    let workflow = self.state.workflows.remove(workflow_index);
-
-    let workflow_traversals_count = workflow.traversals_count();
-    self.stats.workflow_stops_total.inc();
-    self
-      .stats
-      .run_stops_total
-      .inc_by(workflow.runs().len() as u64);
-    self
-      .stats
-      .traversal_stops_total
-      .inc_by(workflow_traversals_count.into());
-
-    self.current_traversals_count = self
-      .current_traversals_count
-      .saturating_sub(workflow_traversals_count);
-
-    log::debug!("workflow={}: workflow removed", workflow.id());
-
-    // If there exists a run that is not in an initial state.
-    if !workflow.is_in_initial_state() {
-      log::debug!(
-        "workflow={}: workflow removed, marking state as dirty",
-        workflow.id()
-      );
-      // Mark the state as dirty so that the state associated with
-      // the workflow that was just removed can be removed from disk.
-      self.needs_state_persistence = true;
-    }
   }
 
   /// Attempts to persist the client-side state of the workflows to disk while ignoring any errors.
@@ -488,7 +362,7 @@ impl WorkflowsEngine {
 
         match negotiator_output {
           NegotiatorOutput::UploadApproved(action) => {
-            if let Some(state) = self.state.get_session_state(action.session_id.as_str()) {
+            if let Some(state) = self.state.get(action.session_id.as_str()) {
               state.pending_actions.remove(&action);
             };
 
@@ -500,7 +374,7 @@ impl WorkflowsEngine {
             match self.flush_buffers_actions_resolver.make_streaming_action(action.clone()) {
               Some(streaming_action) => {
                 log::debug!("streaming started: \"{streaming_action:?}\"");
-                if let Some(state) = self.state.get_session_state(action.session_id.as_str()) {
+                if let Some(state) = self.state.get(action.session_id.as_str()) {
                   state.streaming_actions.push(streaming_action);
                 };
               },
@@ -512,7 +386,7 @@ impl WorkflowsEngine {
             self.needs_state_persistence = true;
           },
           NegotiatorOutput::UploadRejected(action) => {
-            if let Some(state) = self.state.get_session_state(action.session_id.as_str()) {
+            if let Some(state) = self.state.get(action.session_id.as_str()) {
               state.pending_actions.remove(&action);
             };
             self.needs_state_persistence = true;
@@ -532,7 +406,7 @@ impl WorkflowsEngine {
     // Measure duration in here even if the list of workflows is empty.
     let _timer = self.stats.process_log_duration.start_timer();
 
-    let state = self.state.get_or_insert_session_state(log.session_id);
+    let state = self.state.get_or_insert(log.session_id);
 
     // Return early if there are no workflows.
     if state.workflows.is_empty() {
@@ -550,7 +424,7 @@ impl WorkflowsEngine {
     }
 
     let mut actions: Vec<TriggeredAction<'_>> = vec![];
-    for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
+    for (_index, workflow) in &mut state.workflows.iter_mut().enumerate() {
       let was_in_initial_state = workflow.is_in_initial_state();
 
       let Some(config) = self.configs.get(workflow.id()) else {
@@ -562,7 +436,7 @@ impl WorkflowsEngine {
       };
 
       let result = workflow.process_log(
-        &config,
+        config,
         log,
         &mut self.current_traversals_count,
         self.traversals_count_limit,
@@ -1251,7 +1125,7 @@ impl EngineState {
       .map_or_else(String::new, |state| state.session_id.clone())
   }
 
-  fn current_session_state(&mut self) -> &mut WorkflowsState {
+  fn current(&mut self) -> &mut WorkflowsState {
     if self.states.is_empty() {
       let state = WorkflowsState::default();
       self.states.push(state);
@@ -1260,19 +1134,18 @@ impl EngineState {
     self.states.first_mut().unwrap()
   }
 
-  fn get_session_state(&mut self, session_id: &str) -> Option<&mut WorkflowsState> {
+  fn get(&mut self, session_id: &str) -> Option<&mut WorkflowsState> {
     self
       .states
       .iter_mut()
       .find(|state| state.session_id == session_id)
   }
 
-  fn get_or_insert_session_state(&mut self, session_id: &str) -> &mut WorkflowsState {
+  fn get_or_insert(&mut self, session_id: &str) -> &mut WorkflowsState {
     if self
       .states
       .iter()
-      .find(|state| state.session_id == session_id)
-      .is_none()
+      .any(|state| state.session_id == session_id)
     {
       if let Some(previous_session) = self.states.first_mut() {
         // We are lazy and don't say that state needs persistance.
@@ -1474,7 +1347,7 @@ impl WorkflowsEngineStats {
       run_stops_total.clone(),
       traversal_starts_total.clone(),
       traversal_stops_total.clone(),
-      traversals_count_limit_hit_total.clone(),
+      traversals_count_limit_hit_total,
     );
 
     (
