@@ -689,7 +689,9 @@ impl WorkflowsEngine {
       self.needs_state_persistence = true;
     }
 
-    log::error!("Taking screenshot as the result of processing action  {:?} {:?}", log.message, log.log_type);
+    if !capture_screenshot_actions.is_empty() {
+      log::error!("Taking screenshot as the result of processing action  {:?} {:?}", log.message, log.log_type);
+    }
 
     WorkflowsEngineResult {
       log_destination_buffer_ids: Cow::Owned(result.log_destination_buffer_ids),
