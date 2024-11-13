@@ -5,7 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_proto::protos::client::api::log_upload_intent_response::Decision;
 use bd_proto::protos::client::api::{
   ApiRequest,
   ApiResponse,
@@ -20,11 +19,15 @@ use bd_proto::protos::client::api::{
   OpaqueRequest,
   OpaqueResponse,
   PongResponse,
+  SankeyIntentRequest,
+  SankeyIntentResponse,
+  SankeyPathUploadRequest,
+  SankeyPathUploadResponse,
   StatsUploadRequest,
   StatsUploadResponse,
 };
 use std::collections::HashMap;
-use upload::Tracked;
+use upload::{IntentResponse, Tracked, UploadResponse};
 
 pub mod api;
 mod payload_conversion;
@@ -88,6 +91,8 @@ pub enum ResponseKind<'a> {
   LogUploadIntent(&'a LogUploadIntentResponse),
   StatsUpload(&'a StatsUploadResponse),
   FlushBuffers(&'a FlushBuffers),
+  SankeyPathUpload(&'a SankeyPathUploadResponse),
+  SankeyPathUploadIntent(&'a SankeyIntentResponse),
   Opaque(&'a OpaqueResponse),
   Untyped,
 }
@@ -106,17 +111,23 @@ pub trait MuxResponse {
 pub enum DataUpload {
   /// A logs upload intent request sent to the server to ask whether a specific upload should be
   /// performed.
-  LogsUploadIntentRequest(Tracked<LogUploadIntentRequest, Decision>),
+  LogsUploadIntentRequest(Tracked<LogUploadIntentRequest, IntentResponse>),
 
   /// A logs upload request with an associated tracking id that is used to ensure delivery.
-  LogsUploadRequest(Tracked<LogUploadRequest, bool>),
+  LogsUploadRequest(Tracked<LogUploadRequest, UploadResponse>),
 
   /// A stats upload request with an associated tracking id that is used to ensure delivery.
-  StatsUploadRequest(Tracked<StatsUploadRequest, bool>),
+  StatsUploadRequest(Tracked<StatsUploadRequest, UploadResponse>),
+
+  /// A Sankey upload request with associated tracking id that is used to ensure delivery.
+  SankeyPathUploadIntentRequest(Tracked<SankeyIntentRequest, IntentResponse>),
+
+  /// A Sankey path upload request.
+  SankeyPathUpload(Tracked<SankeyPathUploadRequest, UploadResponse>),
 
   /// An opaque request with an associated tracking id that is used to ensure delivery. This allows
   /// for uploading of payloads which are not directly typed to the mux.
-  OpaqueRequest(Tracked<OpaqueRequest, bool>),
+  OpaqueRequest(Tracked<OpaqueRequest, UploadResponse>),
 }
 
 //

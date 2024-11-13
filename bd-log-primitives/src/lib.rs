@@ -6,6 +6,11 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 pub use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+
+pub const LOG_FIELD_NAME_TYPE: &str = "log_type";
+pub const LOG_FIELD_NAME_LEVEL: &str = "log_level";
+pub const LOG_FIELD_NAME_MESSAGE: &str = "_message";
+
 /// A union type that allows representing either a UTF-8 string or an opaque series of bytes. This
 /// is generic over the underlying String type to support different ownership models.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,7 +108,7 @@ pub type LogFields = Vec<LogField>;
 // AnnotatedLogField
 //
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnnotatedLogField {
   pub field: LogField,
   pub kind: LogFieldKind,
@@ -132,7 +137,7 @@ impl From<AnnotatedLogField> for LogField {
 // LogFieldKind
 //
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogFieldKind {
   Ootb,
   Custom,
@@ -142,7 +147,7 @@ pub enum LogFieldKind {
 // Log
 //
 
-///  A copy of an incoming log line.
+/// A copy of an incoming log line.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Log {
   // Remember to update the implementation
@@ -208,4 +213,18 @@ impl<'a> FieldsRef<'a> {
       .find(|field| field.key == key)
       .and_then(|field| field.value.as_str())
   }
+}
+
+//
+// LogInterceptor
+//
+
+pub trait LogInterceptor: Send + Sync {
+  fn process(
+    &self,
+    log_level: LogLevel,
+    log_type: LogType,
+    msg: &LogMessage,
+    fields: &mut AnnotatedLogFields,
+  );
 }

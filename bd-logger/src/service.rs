@@ -179,7 +179,7 @@ impl tower::Service<UploadRequest> for Uploader {
         () = shutdown.cancelled() => Ok(UploadResult::Canceled),
         response = response_rx => Ok(response
           .map(|result|
-            if result {
+            if result.success {
               UploadResult::Success
             } else {
               UploadResult::Failure

@@ -13,6 +13,7 @@ use crate::log_replay::LoggerReplay;
 use crate::logger::{ChannelPair, Logger};
 use crate::logging_state::UninitializedLoggingContext;
 use crate::InitParams;
+use bd_api::api::SimpleNetworkQualityProvider;
 use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
 use bd_client_stats_store::{Collector, Scope};
@@ -127,8 +128,7 @@ impl LoggerBuilder {
 
     let dynamic_stats = Arc::new(bd_client_stats::DynamicStats::new(&scope, &runtime_loader));
 
-    let (maybe_stats_flusher, maybe_stats_uploader, maybe_flusher_trigger) = if self.mobile_features
-    {
+    let (maybe_stats_flusher, maybe_flusher_trigger) = if self.mobile_features {
       let stats =
         bd_client_stats::Stats::new(maybe_managed_collector.unwrap(), dynamic_stats.clone());
       let flush_handles = stats.flush_handle(
@@ -140,13 +140,13 @@ impl LoggerBuilder {
 
       (
         Some(flush_handles.flusher),
-        Some(flush_handles.uploader),
         Some(flush_handles.flush_trigger),
       )
     } else {
-      (None, None, None)
+      (None, None)
     };
 
+    let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
         &self.params.sdk_directory,
@@ -164,10 +164,12 @@ impl LoggerBuilder {
       self.params.session_strategy.clone(),
       self.params.metadata_provider.clone(),
       self.params.resource_utilization_target,
+      self.params.session_replay_target,
       self.params.events_listener_target,
       config_update_rx,
       shutdown_handle.clone(),
       &runtime_loader,
+      network_quality_provider.clone(),
     );
 
     let logger = Logger::new(
@@ -230,6 +232,7 @@ impl LoggerBuilder {
         updater,
       ],
       Arc::new(SystemTimeProvider {}),
+      network_quality_provider,
       log.clone(),
       &scope.scope("api"),
     )?;
@@ -249,13 +252,6 @@ impl LoggerBuilder {
           if let Some(stats_flusher) = maybe_stats_flusher {
             stats_flusher.periodic_flush().await;
           };
-
-          Ok(())
-        },
-        async move {
-          if let Some(stats_uploader) = maybe_stats_uploader {
-            stats_uploader.upload_stats().await;
-          }
 
           Ok(())
         },

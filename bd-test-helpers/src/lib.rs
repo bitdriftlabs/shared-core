@@ -23,6 +23,7 @@ pub mod metadata_provider;
 pub mod resource_utilization;
 pub mod runtime;
 pub mod session;
+pub mod session_replay;
 pub mod stats;
 pub mod test_api_server;
 pub mod workflow;

@@ -22,6 +22,7 @@ exclude_dirs = (
     './fuzz/corpus/',
     './proto/',
     './target/',
+    './thirdparty/',
 )
 
 extensions_to_check = ('.rs', '.toml')

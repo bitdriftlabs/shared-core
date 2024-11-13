@@ -63,6 +63,8 @@ mod client {
     OpaqueRequest,
     PingRequest,
     RuntimeUpdate,
+    SankeyIntentRequest,
+    SankeyPathUploadRequest,
     StatsUploadRequest,
   };
 
@@ -84,6 +86,8 @@ mod client {
   into_api_request!(PingRequest, Request_type::Ping);
   into_api_request!(HandshakeRequest, Request_type::Handshake);
   into_api_request!(LogUploadIntentRequest, Request_type::LogUploadIntent);
+  into_api_request!(SankeyIntentRequest, Request_type::SankeyIntent);
+  into_api_request!(SankeyPathUploadRequest, Request_type::SankeyPathUpload);
   into_api_request!(OpaqueRequest, Request_type::OpaqueUpload);
 
   impl crate::IntoRequest for super::RuntimeConfigurationUpdate {
@@ -114,6 +118,8 @@ mod client {
         Response_type::Pong(pong) => Some(ResponseKind::Pong(pong)),
         Response_type::ErrorShutdown(e) => Some(ResponseKind::ErrorShutdown(e)),
         Response_type::FlushBuffers(f) => Some(ResponseKind::FlushBuffers(f)),
+        Response_type::SankeyDiagramUpload(s) => Some(ResponseKind::SankeyPathUpload(s)),
+        Response_type::SankeyIntentResponse(s) => Some(ResponseKind::SankeyPathUploadIntent(s)),
         Response_type::OpaqueUpload(o) => Some(ResponseKind::Opaque(o)),
         _ => Some(ResponseKind::Untyped),
       }

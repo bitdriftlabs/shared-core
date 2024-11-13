@@ -8,8 +8,9 @@
 use crate::workflow::Traversal;
 use anyhow::anyhow;
 use bd_log_matcher::matcher::Tree;
+use bd_matcher::FieldProvider;
 use bd_proto::protos::workflow::workflow;
-use bd_proto::protos::workflow::workflow::workflow::execution::Execution_type;
+use bd_proto::protos::workflow::workflow::workflow::transition_extension::Extension_type;
 use bd_proto::protos::workflow::workflow::workflow::{
   Execution as ExecutionProto,
   LimitDuration as LimitDurationProto,
@@ -17,13 +18,21 @@ use bd_proto::protos::workflow::workflow::workflow::{
 };
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
 use protobuf::MessageField;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Duration;
-use workflow::workflow::action::action_emit_metric::tag::Tag_type;
 use workflow::workflow::action::action_emit_metric::Value_extractor_type;
 use workflow::workflow::action::action_flush_buffers::streaming::termination_criterion;
-use workflow::workflow::action::{ActionEmitMetric as ActionEmitMetricProto, Action_type};
+use workflow::workflow::action::tag::Tag_type;
+use workflow::workflow::action::{
+  ActionEmitMetric as ActionEmitMetricProto,
+  ActionEmitSankeyDiagram as ActionEmitSankeyDiagramProto,
+  ActionTakeScreenshot as ActionTakeScreenshotProto,
+  Action_type,
+};
+use workflow::workflow::execution::Execution_type;
 use workflow::workflow::rule::Rule_type;
+use workflow::workflow::transition_extension::sankey_diagram_value_extraction;
 use workflow::workflow::{
   Action as ActionProto,
   State as StateProto,
@@ -78,9 +87,42 @@ pub struct Config {
 
 impl Config {
   pub fn new(config: &WorkflowConfigProto) -> anyhow::Result<Self> {
+    if config.states.is_empty() {
+      return Err(anyhow!(
+        "invalid workflow states configuration: states list is empty"
+      ));
+    }
+
+    let state_index_by_id = config
+      .states
+      .iter()
+      .enumerate()
+      .map(|(index, s)| (s.id.clone(), index))
+      .collect();
+
+    let sankey_values_extraction_limit_by_id: HashMap<_, _> = config
+      .states
+      .iter()
+      .flat_map(|state| &state.transitions)
+      .flat_map(|transition| &transition.actions)
+      .filter_map(|action| {
+        if let Some(Action_type::ActionEmitSankeyDiagram(sankey)) = &action.action_type {
+          Some((sankey.id.clone(), sankey.limit))
+        } else {
+          None
+        }
+      })
+      .collect();
+
+    let states = config
+      .states
+      .iter()
+      .map(|s| State::try_from_proto(s, &state_index_by_id, &sankey_values_extraction_limit_by_id))
+      .collect::<anyhow::Result<Vec<_>>>()?;
+
     Ok(Self {
       id: config.id.clone(),
-      states: State::try_from_proto(&config.states)?,
+      states,
       execution: Execution::new(&config.execution)?,
       duration_limit: Self::try_duration_limit_from_proto(&config.limit_duration)?,
       matched_logs_count_limit: Self::try_matched_logs_count_limit_from_proto(
@@ -153,6 +195,14 @@ impl Config {
     &self.states[traversal.state_index].transitions[transition_index].actions
   }
 
+  pub(crate) fn sankey_extractions(
+    &self,
+    traversal: &Traversal,
+    transition_index: usize,
+  ) -> &[SankeyExtraction] {
+    &self.states[traversal.state_index].transitions[transition_index].sankey_extractions
+  }
+
   pub(crate) fn next_state_index_for_traversal(
     &self,
     traversal: &Traversal,
@@ -169,7 +219,11 @@ pub(crate) struct State {
 }
 
 impl State {
-  fn new(state: &StateProto, state_index_by_id: &HashMap<StateID, usize>) -> anyhow::Result<Self> {
+  fn try_from_proto(
+    state: &StateProto,
+    state_index_by_id: &HashMap<StateID, usize>,
+    sankey_values_extraction_limit_by_id: &HashMap<String, u32>,
+  ) -> anyhow::Result<Self> {
     Ok(Self {
       id: state.id.clone(),
       transitions: state
@@ -182,7 +236,11 @@ impl State {
             ));
           }
 
-          Transition::new(transition, state_index_by_id[&transition.target_state_id])
+          Transition::new(
+            transition,
+            state_index_by_id[&transition.target_state_id],
+            sankey_values_extraction_limit_by_id,
+          )
         })
         .collect::<anyhow::Result<Vec<_>>>()?,
     })
@@ -196,29 +254,11 @@ impl State {
   pub(crate) fn transitions(&self) -> &[Transition] {
     &self.transitions
   }
-
-  pub fn try_from_proto(values: &[StateProto]) -> anyhow::Result<Vec<Self>> {
-    // Validate that there is an initial workflow.
-    if values.is_empty() {
-      return Err(anyhow!(
-        "invalid workflow states configuration: states list is empty"
-      ));
-    }
-
-    let mut state_index_by_id: HashMap<StateID, usize> = HashMap::new();
-    for (index, state) in values.iter().enumerate() {
-      state_index_by_id.insert(state.id.clone(), index);
-    }
-
-    let mut states: Vec<Self> = Vec::with_capacity(values.len());
-    for state_value in values {
-      let new_state = Self::new(state_value, &state_index_by_id)?;
-      states.push(new_state);
-    }
-
-    Ok(states)
-  }
 }
+
+//
+// Execution
+//
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Execution {
@@ -240,6 +280,41 @@ impl Execution {
 }
 
 //
+// SankeyExtraction
+//
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct SankeyExtraction {
+  pub(crate) sankey_id: String,
+  pub(crate) value: TagValue,
+  pub(crate) counts_toward_sankey_values_extraction_limit: bool,
+  pub(crate) limit: usize,
+}
+
+impl SankeyExtraction {
+  fn new(
+    proto: &workflow::workflow::transition_extension::SankeyDiagramValueExtraction,
+    limit: usize,
+  ) -> anyhow::Result<Self> {
+    let Some(value) = &proto.value_type else {
+      anyhow::bail!("invalid sankey value extraction configuration: missing value type")
+    };
+
+    Ok(Self {
+      sankey_id: proto.sankey_diagram_id.to_string(),
+      value: match value {
+        sankey_diagram_value_extraction::Value_type::Fixed(value) => TagValue::Fixed(value.clone()),
+        sankey_diagram_value_extraction::Value_type::FieldExtracted(extracted) => {
+          TagValue::Extract(extracted.field_name.clone())
+        },
+      },
+      counts_toward_sankey_values_extraction_limit: proto.counts_toward_sankey_extraction_limit,
+      limit,
+    })
+  }
+}
+
+//
 // Transition
 //
 
@@ -248,10 +323,15 @@ pub(crate) struct Transition {
   target_state_index: usize,
   rule: Predicate,
   actions: Vec<Action>,
+  sankey_extractions: Vec<SankeyExtraction>,
 }
 
 impl Transition {
-  fn new(transition: &TransitionProto, target_state_index: usize) -> anyhow::Result<Self> {
+  fn new(
+    transition: &TransitionProto,
+    target_state_index: usize,
+    sankey_values_extraction_limit_by_id: &HashMap<String, u32>,
+  ) -> anyhow::Result<Self> {
     let rule = transition
       .rule
       .as_ref()
@@ -273,13 +353,48 @@ impl Transition {
     let actions = transition
       .actions
       .iter()
-      .map(Action::new)
+      .map(Action::try_from_proto)
       .collect::<anyhow::Result<Vec<_>>>()?;
+
+    let sankey_extractions = transition
+      .extensions
+      .iter()
+      .map(|extension| {
+        let Some(extension_type) = &extension.extension_type else {
+          return Ok(None);
+        };
+
+        match extension_type {
+          Extension_type::SankeyDiagramValueExtraction(extension) => {
+            let Some(sankey_limit) =
+              sankey_values_extraction_limit_by_id.get(&extension.sankey_diagram_id)
+            else {
+              anyhow::bail!(
+                "invalid transition configuration: missing sankey limit for sankey id {:?}",
+                extension.sankey_diagram_id
+              );
+            };
+
+            let Ok(limit) = <u32 as TryInto<usize>>::try_into(*sankey_limit) else {
+              anyhow::bail!("sankey limit: conversion to usize failed");
+            };
+
+            Ok(Some(SankeyExtraction::new(extension, limit)))
+          },
+        }
+      })
+      .filter_map(|result| match result {
+        Ok(Some(value)) => Some(value),
+        Err(err) => Some(Err(err)),
+        _ => None,
+      })
+      .collect::<anyhow::Result<_>>()?;
 
     Ok(Self {
       target_state_index,
       rule,
       actions,
+      sankey_extractions,
     })
   }
 
@@ -308,10 +423,12 @@ pub(crate) enum Predicate {
 pub enum Action {
   FlushBuffers(ActionFlushBuffers),
   EmitMetric(ActionEmitMetric),
+  EmitSankey(ActionEmitSankey),
+  TakeScreenshot(ActionTakeScreenshot),
 }
 
 impl Action {
-  fn new(proto: &ActionProto) -> anyhow::Result<Self> {
+  fn try_from_proto(proto: &ActionProto) -> anyhow::Result<Self> {
     match proto
       .action_type
       .as_ref()
@@ -334,6 +451,12 @@ impl Action {
         }))
       },
       Action_type::ActionEmitMetric(metric) => Ok(Self::EmitMetric(ActionEmitMetric::new(metric)?)),
+      Action_type::ActionEmitSankeyDiagram(diagram) => {
+        Ok(Self::EmitSankey(ActionEmitSankey::try_from_proto(diagram)?))
+      },
+      Action_type::ActionTakeScreenshot(action) => Ok(Self::TakeScreenshot(
+        ActionTakeScreenshot::try_from_proto(action)?,
+      )),
     }
   }
 }
@@ -479,6 +602,75 @@ impl ActionEmitMetric {
 }
 
 //
+// ActionEmitSankey
+//
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ActionEmitSankey {
+  id: String,
+  limit: u32,
+  tags: BTreeMap<String, TagValue>,
+}
+
+impl ActionEmitSankey {
+  fn try_from_proto(proto: &ActionEmitSankeyDiagramProto) -> anyhow::Result<Self> {
+    Ok(Self {
+      id: proto.id.to_string(),
+      limit: proto.limit,
+      tags: proto
+        .tags
+        .iter()
+        .map(|tag| {
+          let value = match &tag.tag_type {
+            Some(Tag_type::FixedValue(value)) => TagValue::Fixed(value.clone()),
+            Some(Tag_type::FieldExtracted(extracted)) => {
+              TagValue::Extract(extracted.field_name.to_string())
+            },
+            None => {
+              anyhow::bail!("invalid action emit sankey diagram configuration: unknown tag_type")
+            },
+          };
+
+          Ok((tag.name.to_string(), value))
+        })
+        .collect::<anyhow::Result<BTreeMap<_, _>>>()?,
+    })
+  }
+
+  #[must_use]
+  pub fn id(&self) -> &str {
+    &self.id
+  }
+
+  #[must_use]
+  pub const fn limit(&self) -> u32 {
+    self.limit
+  }
+
+  #[must_use]
+  pub const fn tags(&self) -> &BTreeMap<String, TagValue> {
+    &self.tags
+  }
+}
+
+//
+// ActionTakeScreenshot
+//
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ActionTakeScreenshot {
+  id: String,
+}
+
+impl ActionTakeScreenshot {
+  fn try_from_proto(proto: &ActionTakeScreenshotProto) -> anyhow::Result<Self> {
+    Ok(Self {
+      id: proto.id.to_string(),
+    })
+  }
+}
+
+//
 // MetricType
 //
 
@@ -514,4 +706,13 @@ pub enum TagValue {
   Extract(String),
   // Use a fixed value.
   Fixed(FieldKey),
+}
+
+impl TagValue {
+  pub(crate) fn extract_value<'a>(&self, fields: &'a impl FieldProvider) -> Option<Cow<'a, str>> {
+    match self {
+      Self::Extract(field_key) => fields.field_value(field_key),
+      Self::Fixed(value) => Some(Cow::Owned(value.to_string())),
+    }
+  }
 }

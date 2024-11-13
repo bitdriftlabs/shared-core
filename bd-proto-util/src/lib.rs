@@ -6,3 +6,25 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 pub mod proto;
+
+use anyhow::bail;
+use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::{
+  root_as_log_unchecked,
+  Log,
+};
+
+extern "C" {
+  fn verify_log_buffer(buf: *const u8, buf_len: usize) -> bool;
+}
+
+pub fn call_verify_log_buffer(buf: &[u8]) -> anyhow::Result<Log<'_>> {
+  // The Rust verification code is noted as experimental, which was quickly proven via a failing
+  // fuzz test. The following code calls out to the C++ verifier code (see src/cpp/verify.cc) to
+  // check it. Once checked, we use the unchecked rust version to return the log.
+  unsafe {
+    if !verify_log_buffer(buf.as_ptr(), buf.len()) {
+      bail!("invalid flatbuffer binary data");
+    }
+    Ok(root_as_log_unchecked(buf))
+  }
+}

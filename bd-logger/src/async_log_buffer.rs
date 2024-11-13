@@ -14,14 +14,26 @@ use crate::logger::with_thread_local_logger_guard;
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::memory_bound::{channel, MemorySized, Receiver, Sender, TrySendError};
 use crate::metadata::MetadataCollector;
+use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::PreConfigBuffer;
 use crate::{internal_report, network};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_log_metadata::{AnnotatedLogFields, MetadataProvider};
-use bd_log_primitives::{log_level, Log, LogField, LogFieldValue, LogFields, LogLevel, LogMessage};
+use bd_log_primitives::{
+  log_level,
+  Log,
+  LogField,
+  LogFieldValue,
+  LogFields,
+  LogInterceptor,
+  LogLevel,
+  LogMessage,
+};
+use bd_network_quality::NetworkQualityProvider;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::ConfigLoader;
+use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use itertools::Itertools;
 use std::mem::size_of_val;
@@ -123,20 +135,6 @@ impl MemorySized for bd_log_primitives::Log {
   }
 }
 
-//
-// LogInterceptor
-//
-
-pub(crate) trait LogInterceptor: Send + Sync {
-  fn process(
-    &self,
-    log_level: LogLevel,
-    log_type: LogType,
-    msg: &LogMessage,
-    fields: &mut AnnotatedLogFields,
-  );
-}
-
 
 //
 // AsyncLogBuffer
@@ -152,6 +150,10 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   session_strategy: Arc<bd_session::Strategy>,
   metadata_collector: MetadataCollector,
   resource_utilization_reporter: bd_resource_utilization::Reporter,
+
+  session_replay_recorder: bd_session_replay::Recorder,
+  session_replay_capture_screenshot_handler: CaptureScreenshotHandler,
+
   events_listener: bd_events::Listener,
 
   replayer: R,
@@ -168,10 +170,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     session_strategy: Arc<bd_session::Strategy>,
     metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
     resource_utilization_target: Box<dyn bd_resource_utilization::Target + Send + Sync>,
+    session_replay_target: Box<dyn bd_session_replay::Target + Send + Sync>,
     events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
     config_update_rx: mpsc::Receiver<ConfigUpdate>,
     shutdown_trigger_handle: ComponentShutdownTriggerHandle,
     runtime_loader: &Arc<ConfigLoader>,
+    network_quality_provider: Arc<dyn NetworkQualityProvider>,
   ) -> (Self, Sender<AsyncLogBufferMessage>) {
     let (async_log_buffer_communication_tx, async_log_buffer_communication_rx) = channel(
       uninitialized_logging_context
@@ -182,9 +186,24 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         .max_size(),
     );
 
+    let (
+      session_replay_recorder,
+      session_replay_capture_screenshot_handler,
+      screenshot_log_interceptor,
+    ) = bd_session_replay::Recorder::new(
+      session_replay_target,
+      runtime_loader,
+      &uninitialized_logging_context.stats.scope,
+    );
+
     let internal_periodic_fields_reporter =
       Arc::new(internal_report::Reporter::new(runtime_loader));
-    let bandwidth_usage_tracker = Arc::new(network::HTTPTrafficDataUsageTracker::new());
+    let bandwidth_usage_tracker = Arc::new(network::HTTPTrafficDataUsageTracker::new(
+      Arc::new(SystemTimeProvider),
+      network_quality_provider.clone(),
+    ));
+    let network_quality_interceptor =
+      Arc::new(NetworkQualityInterceptor::new(network_quality_provider));
 
     (
       Self {
@@ -200,9 +219,18 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           resource_utilization_target,
           runtime_loader,
         ),
+
+        session_replay_recorder,
+        session_replay_capture_screenshot_handler,
+
         events_listener: bd_events::Listener::new(events_listener_target, runtime_loader),
 
-        interceptors: vec![internal_periodic_fields_reporter, bandwidth_usage_tracker],
+        interceptors: vec![
+          internal_periodic_fields_reporter,
+          bandwidth_usage_tracker,
+          network_quality_interceptor,
+          Arc::new(screenshot_log_interceptor),
+        ],
 
         // The size of the pre-config buffer matches the size of the enclosing
         // async log buffer.
@@ -480,8 +508,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn update(mut self, config: ConfigUpdate) -> (Self, Option<PreConfigBuffer<Log>>) {
     let (initialized_logging_context, maybe_pre_config_log_buffer) = match self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
-        let (initialized_logging_context, pre_config_log_buffer) =
-          uninitialized_logging_context.updated(config).await;
+        let (initialized_logging_context, pre_config_log_buffer) = uninitialized_logging_context
+          .updated(
+            config,
+            self.session_replay_capture_screenshot_handler.clone(),
+          )
+          .await;
         (initialized_logging_context, Some(pre_config_log_buffer))
       },
       LoggingState::Initialized(mut initialized_logging_context) => {
@@ -562,7 +594,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         Some(async_log_buffer_message) = self.communication_rx.recv() => {
           match async_log_buffer_message {
             AsyncLogBufferMessage::EmitLog(mut log) => {
-              for interceptor in &self.interceptors {
+              for interceptor in &mut self.interceptors {
                 interceptor.process(
                   log.log_level,
                   log.log_type,
@@ -623,6 +655,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         () = async { initialized_logging_context.unwrap().processing_pipeline.run().await },
           if initialized_logging_context.is_some() => {},
         () = self.resource_utilization_reporter.run() => {},
+        () = self.session_replay_recorder.run() => {},
         () = self.events_listener.run() => {},
         () = &mut local_shutdown => {
           return self;

@@ -1,3 +1,8 @@
 [submodule "api"]
 	path = api
 	url = https://github.com/bitdriftlabs/api
+	shallow = true
+[submodule "thirdparty/flatbuffers"]
+	path = thirdparty/flatbuffers
+	url = https://github.com/google/flatbuffers
+	shallow = true

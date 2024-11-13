@@ -9,7 +9,8 @@
 #[path = "./metrics_test.rs"]
 mod metrics_test;
 
-use crate::config::ActionEmitMetric;
+use crate::config::{ActionEmitMetric, TagValue};
+use crate::workflow::TriggeredActionEmitSankey;
 use bd_client_stats::DynamicStats;
 use bd_log_primitives::LogRef;
 use bd_matcher::FieldProvider;
@@ -32,15 +33,7 @@ impl MetricsCollector {
     Self { dynamic_stats }
   }
 
-  pub(crate) fn emit_metrics(
-    &self,
-    emit_metric_actions: &BTreeSet<&ActionEmitMetric>,
-    log: &LogRef<'_>,
-  ) {
-    self.emit_metric_actions(emit_metric_actions, log);
-  }
-
-  fn emit_metric_actions(&self, actions: &BTreeSet<&ActionEmitMetric>, log: &LogRef<'_>) {
+  pub(crate) fn emit_metrics(&self, actions: &BTreeSet<&ActionEmitMetric>, log: &LogRef<'_>) {
     if actions.is_empty() {
       return;
     }
@@ -49,16 +42,7 @@ impl MetricsCollector {
     // If `counter_increment` values are identical, consider deduping metrics even if their
     // `counter_increment` fields have different values.
     for action in actions {
-      let mut tags = BTreeMap::new();
-
-      for (key, value) in &action.tags {
-        if let Some(extracted_value) = match value {
-          crate::config::TagValue::Extract(extract) => Self::resolve_field_name(extract, log),
-          crate::config::TagValue::Fixed(value) => Some(value.as_str().into()),
-        } {
-          tags.insert(key.to_string(), extracted_value.into_owned());
-        }
-      }
+      let mut tags = Self::extract_tags(log, &action.tags);
       tags.insert("_id".to_string(), action.id.clone());
 
       #[allow(clippy::cast_precision_loss)]
@@ -98,11 +82,42 @@ impl MetricsCollector {
     }
   }
 
+  pub(crate) fn emit_sankeys(
+    &self,
+    actions: &BTreeSet<TriggeredActionEmitSankey<'_>>,
+    log: &LogRef<'_>,
+  ) {
+    for action in actions {
+      let mut tags = Self::extract_tags(log, action.action.tags());
+      tags.insert("_id".to_string(), action.action.id().to_string());
+      tags.insert("_path_id".to_string(), action.path.path_id.to_string());
+
+      self
+        .dynamic_stats
+        .record_dynamic_counter("workflows_dyn:action", tags, 1);
+    }
+  }
+
   fn resolve_field_name<'a>(key: &str, log: &'a LogRef<'a>) -> Option<Cow<'a, str>> {
     match key {
       "log_level" => Some(log.log_level.to_string().into()),
       "log_type" => Some(log.log_type.0.to_string().into()),
       key => log.fields.field_value(key).map(Into::into),
     }
+  }
+
+  fn extract_tags(log: &LogRef<'_>, tags: &BTreeMap<String, TagValue>) -> BTreeMap<String, String> {
+    let mut extracted_tags = BTreeMap::new();
+
+    for (key, value) in tags {
+      if let Some(extracted_value) = match value {
+        crate::config::TagValue::Extract(extract) => Self::resolve_field_name(extract, log),
+        crate::config::TagValue::Fixed(value) => Some(value.as_str().into()),
+      } {
+        extracted_tags.insert(key.to_string(), extracted_value.into_owned());
+      }
+    }
+
+    extracted_tags
   }
 }

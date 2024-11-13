@@ -9,6 +9,7 @@ use crate::generated::proto::test::{EchoRequest, EchoResponse};
 use crate::{
   make_server_streaming_router,
   make_unary_router,
+  new_grpc_response,
   Client,
   Code,
   Compression,
@@ -19,21 +20,30 @@ use crate::{
   ServiceMethod,
   Status,
   StreamStats,
+  StreamingApi,
   StreamingApiSender,
 };
 use assert_matches::assert_matches;
 use async_trait::async_trait;
+use axum::body::Body;
+use axum::extract::Request;
+use axum::routing::post;
+use axum::Router;
 use bd_grpc_codec::stats::DeferredCounter;
 use bd_grpc_codec::OptimizeFor;
 use bd_server_stats::stats::CounterWrapper;
 use bd_server_stats::test::util::stats::{self, Helper};
 use bd_time::TimeDurationExt;
+use futures::poll;
 use http::{Extensions, HeaderMap};
+use http_body_util::StreamBody;
 use prometheus::labels;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use time::ext::NumericalDuration;
 use tokio::net::TcpListener;
+use tokio::sync::{mpsc, watch};
+use tokio_stream::wrappers::ReceiverStream;
 
 #[ctor::ctor]
 fn test_global_init() {
@@ -190,6 +200,53 @@ impl ServerStreamingHandler<EchoResponse, EchoRequest> for ErrorHandler {
   }
 }
 
+struct NormalHandler {}
+
+#[async_trait]
+impl Handler<EchoRequest, EchoResponse> for NormalHandler {
+  async fn handle(
+    &self,
+    _headers: HeaderMap,
+    _extensions: Extensions,
+    request: EchoRequest,
+  ) -> Result<EchoResponse> {
+    Ok(EchoResponse {
+      echo: request.echo,
+      ..Default::default()
+    })
+  }
+}
+
+#[tokio::test]
+async fn unary_compression() {
+  let error_counter = prometheus::IntCounter::new("error", "-").unwrap();
+  let router = make_unary_router(
+    &ServiceMethod::<EchoRequest, EchoResponse>::new("Test", "Echo"),
+    Arc::new(NormalHandler {}),
+    move |_| {},
+    error_counter,
+    true,
+  );
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let local_address = listener.local_addr().unwrap();
+  let server = axum::serve(listener, router.into_make_service());
+  tokio::spawn(async { server.await.unwrap() });
+  let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
+  let response = client
+    .unary(
+      &ServiceMethod::<EchoRequest, EchoResponse>::new("Test", "Echo"),
+      None,
+      EchoRequest {
+        echo: "a".repeat(1000),
+        ..Default::default()
+      },
+      1.seconds(),
+      Compression::GRpc(bd_grpc_codec::Compression::StatelessZlib { level: 3 }),
+    )
+    .await;
+  assert_eq!(response.unwrap().echo, "a".repeat(1000));
+}
+
 #[tokio::test]
 async fn unary_error_handler() {
   let error_counter = prometheus::IntCounter::new("error", "-").unwrap();
@@ -223,6 +280,82 @@ async fn unary_error_handler() {
     Err(Error::Grpc(_))
   );
   assert!(called.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn read_stop() {
+  let (read_stop_tx, read_stop_rx) = watch::channel(false);
+  let (api_tx, mut api_rx) = mpsc::channel(1);
+
+  let router = Router::new().route(
+    &ServiceMethod::<EchoRequest, EchoResponse>::new("Test", "Echo").full_path,
+    post(move |request: Request| async move {
+      let (parts, body) = request.into_parts();
+      let (response_sender, response_body) = mpsc::channel(1);
+      let response = new_grpc_response(
+        Body::new(StreamBody::new(ReceiverStream::new(response_body))),
+        None,
+      );
+      let api = StreamingApi::<EchoResponse, EchoRequest>::new(
+        response_sender,
+        parts.headers,
+        body,
+        false,
+        None,
+        OptimizeFor::Memory,
+        Some(read_stop_rx),
+      );
+      api_tx.send(api).await.unwrap();
+      response
+    }),
+  );
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let local_address = listener.local_addr().unwrap();
+  let server = axum::serve(listener, router.into_make_service());
+  tokio::spawn(async { server.await.unwrap() });
+  let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
+  let mut stream = client
+    .streaming(
+      &ServiceMethod::<EchoRequest, EchoResponse>::new("Test", "Echo"),
+      None,
+      true,
+      None,
+      OptimizeFor::Memory,
+    )
+    .await
+    .unwrap();
+  stream.send(EchoRequest::default()).await.unwrap();
+  let mut api = api_rx.recv().await.unwrap();
+  assert_eq!(
+    EchoRequest::default(),
+    api.next().await.unwrap().unwrap()[0]
+  );
+
+  {
+    // Start the next future and poll it once. It should be waiting for a frame.
+    let next_future = api.next();
+    tokio::pin!(next_future);
+    assert!(poll!(&mut next_future).is_pending());
+    // Set to read stop and then poll again. It should now be waiting for the read stop to release.
+    read_stop_tx.send(true).unwrap();
+    assert!(poll!(&mut next_future).is_pending());
+    // Send a new message. We should not get anything back.
+    stream.send(EchoRequest::default()).await.unwrap();
+    assert!(poll!(&mut next_future).is_pending());
+    // Clear the read stop and poll again. We should now get the new message.
+    read_stop_tx.send(false).unwrap();
+    assert_eq!(
+      EchoRequest::default(),
+      next_future.await.unwrap().unwrap()[0]
+    );
+  }
+
+  // Write a message and set read stop and make sure that we go into immediate read stop.
+  stream.send(EchoRequest::default()).await.unwrap();
+  read_stop_tx.send(true).unwrap();
+  let next_future = api.next();
+  tokio::pin!(next_future);
+  assert!(poll!(&mut next_future).is_pending());
 }
 
 #[tokio::test]

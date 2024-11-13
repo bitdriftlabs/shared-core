@@ -11,7 +11,7 @@ mod actions_flush_buffers_test;
 
 use crate::config::ActionFlushBuffers;
 use anyhow::anyhow;
-use bd_api::upload::{Decision, Intent_type, LogUploadIntent};
+use bd_api::upload::{IntentDecision, Intent_type, TrackedLogUploadIntent};
 use bd_api::DataUpload;
 use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::LogUploadIntentRequest;
@@ -233,7 +233,7 @@ impl Negotiator {
     &self,
     action: &PendingFlushBuffersAction,
   ) -> anyhow::Result<bool> {
-    let intent_uuid = LogUploadIntent::upload_uuid();
+    let intent_uuid = TrackedLogUploadIntent::upload_uuid();
 
     let intent_request = LogUploadIntentRequest {
       log_count: 0,
@@ -245,7 +245,7 @@ impl Negotiator {
       buffer_id: action
         .trigger_buffer_ids
         .first()
-        .unwrap_or(&"no_buffer".into())
+        .map_or("no_buffer", |id| id.as_ref())
         .to_string(),
       intent_uuid: intent_uuid.clone(),
       intent_type: Some(Intent_type::WorkflowActionUpload(
@@ -303,7 +303,8 @@ impl Negotiator {
       // negotiation. Therefore, it's possible that the log triggering the flushing of the
       // buffer (and consequently the intent negotiation process) will not be in the buffer
       // once the intent negotiation process is complete.
-      let (intent, response) = LogUploadIntent::new(intent_uuid.clone(), intent_request.clone());
+      let (intent, response) =
+        TrackedLogUploadIntent::new(intent_uuid.clone(), intent_request.clone());
       self
         .data_upload_tx
         .send(DataUpload::LogsUploadIntentRequest(intent))
@@ -312,24 +313,26 @@ impl Negotiator {
 
       log::debug!("intent sent, awaiting response");
 
-      match response.await {
-        Ok(Decision::UploadImmediately(_)) => {
+      let Ok(intent_response) = response.await else {
+        self.stats.intent_request_failures_total.inc();
+        log::debug!("API stream closed while waiting for intent response, retrying");
+        continue;
+      };
+
+      match intent_response.decision {
+        IntentDecision::UploadImmediately => {
           log::debug!(
             "uploading trigger buffer, intent accepted (\"{}\")",
             intent_uuid
           );
           return Ok(true);
         },
-        Ok(Decision::Drop(_)) => {
+        IntentDecision::Drop => {
           log::debug!(
             "not uploading trigger, intent dropped (\"{}\")",
             intent_uuid
           );
           return Ok(false);
-        },
-        Err(_) => {
-          self.stats.intent_request_failures_total.inc();
-          log::debug!("API stream closed while waiting for intent response, retrying");
         },
       }
     }

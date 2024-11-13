@@ -5,9 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+mod file_manager;
 pub mod stats;
 
-use crate::stats::{Flusher, RealSerializedFileSystem, SerializedFileSystem, Uploader};
+use crate::stats::Flusher;
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
@@ -19,13 +20,17 @@ use bd_client_stats_store::{
   Error as StatsError,
   Scope,
 };
-use bd_runtime::runtime::ConfigLoader;
+use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
+use bd_runtime::runtime::{ConfigLoader, Watch};
 use bd_shutdown::ComponentShutdown;
-use bd_time::{SystemTimeProvider, TimeProvider};
+use bd_time::SystemTimeProvider;
+use file_manager::{FileManager, RealFileSystem};
+use stats::{RuntimeWatchTicker, Ticker};
 use std::collections::BTreeMap;
 use std::fmt::Formatter;
 use std::path::Path;
 use std::sync::Arc;
+use time::Duration;
 use tokio::sync::mpsc::Sender;
 
 #[cfg(test)]
@@ -38,10 +43,9 @@ fn test_global_init() {
 // FlushHandles
 //
 
-pub struct FlushHandles<T: TimeProvider, F: SerializedFileSystem> {
-  pub flusher: Flusher<T, F>,
+pub struct FlushHandles {
+  pub flusher: Flusher,
   pub flush_trigger: FlushTrigger,
-  pub uploader: Uploader<F>,
 }
 
 //
@@ -186,45 +190,51 @@ impl Stats {
     shutdown: ComponentShutdown,
     sdk_directory: &Path,
     data_flush_tx: tokio::sync::mpsc::Sender<DataUpload>,
-  ) -> anyhow::Result<FlushHandles<SystemTimeProvider, RealSerializedFileSystem>> {
+  ) -> anyhow::Result<FlushHandles> {
+    let flush_interval_flag: Watch<Duration, DirectStatFlushIntervalFlag> =
+      runtime_loader.register_watch()?;
+    let flush_ticker = RuntimeWatchTicker::new(flush_interval_flag.into_inner());
+
+    let upload_interval_flag: Watch<Duration, UploadStatFlushIntervalFlag> =
+      runtime_loader.register_watch()?;
+    let upload_ticker = RuntimeWatchTicker::new(upload_interval_flag.into_inner());
+
     self.flush_handle_helper(
-      runtime_loader,
+      flush_ticker,
+      upload_ticker,
       shutdown,
-      SystemTimeProvider {},
       data_flush_tx,
-      Arc::new(RealSerializedFileSystem::new(sdk_directory.to_path_buf())),
+      Arc::new(FileManager::new(
+        Box::new(RealFileSystem::new(sdk_directory.to_path_buf())),
+        Arc::new(SystemTimeProvider),
+        runtime_loader,
+      )?),
     )
   }
 
-  fn flush_handle_helper<T: TimeProvider, F: SerializedFileSystem>(
+  fn flush_handle_helper(
     self: &Arc<Self>,
-    runtime_loader: &Arc<ConfigLoader>,
+    flush_ticker: impl Ticker + 'static,
+    upload_ticker: impl Ticker + 'static,
     shutdown: ComponentShutdown,
-    time_provider: T,
     data_flush_tx: tokio::sync::mpsc::Sender<DataUpload>,
-    fs: Arc<F>,
-  ) -> anyhow::Result<FlushHandles<T, F>> {
+    fs: Arc<FileManager>,
+  ) -> anyhow::Result<FlushHandles> {
     let flush_time_histogram = self.collector.scope("stats").histogram("flush_time");
-
     let (flush_trigger, flush_rx) = FlushTrigger::new();
 
     Ok(FlushHandles {
       flusher: Flusher::new(
         self.clone(),
-        shutdown.clone(),
-        runtime_loader.register_watch()?,
-        flush_rx,
-        time_provider,
-        flush_time_histogram,
-        fs.clone(),
-      ),
-      flush_trigger,
-      uploader: Uploader::new(
         shutdown,
-        runtime_loader.register_watch()?,
+        flush_ticker,
+        flush_rx,
+        flush_time_histogram,
+        upload_ticker,
         data_flush_tx,
         fs,
       ),
+      flush_trigger,
     })
   }
 }

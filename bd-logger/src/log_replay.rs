@@ -17,6 +17,7 @@ use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::filters::FilterChainEnabledFlag;
 use bd_runtime::runtime::workflows::WorkflowsEnabledFlag;
 use bd_runtime::runtime::{BoolWatch, ConfigLoader};
+use bd_session_replay::CaptureScreenshotHandler;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use std::borrow::Cow;
@@ -88,6 +89,7 @@ pub struct ProcessingPipeline {
 
   trigger_upload_tx: Sender<TriggerUpload>,
   buffers_to_flush_rx: Option<Receiver<BuffersToFlush>>,
+  capture_screenshot_handler: CaptureScreenshotHandler,
 
   workflows_enabled_flag: BoolWatch<WorkflowsEnabledFlag>,
   filter_chain_enabled_flag: BoolWatch<FilterChainEnabledFlag>,
@@ -104,6 +106,7 @@ impl ProcessingPipeline {
     flush_buffers_tx: Sender<BuffersWithAck>,
     flush_stats_trigger: Option<FlushTrigger>,
     trigger_upload_tx: Sender<TriggerUpload>,
+    capture_screenshot_handler: CaptureScreenshotHandler,
 
     config: ConfigUpdate,
 
@@ -150,6 +153,8 @@ impl ProcessingPipeline {
       trigger_upload_tx,
       buffers_to_flush_rx,
 
+      capture_screenshot_handler,
+
       workflows_enabled_flag,
       filter_chain_enabled_flag,
       filter_chain_enabled,
@@ -173,20 +178,19 @@ impl ProcessingPipeline {
         self.buffer_producers.continuous_buffer_ids.clone(),
       );
 
-      match &mut self.workflows_engine {
-        Some(workflows_engine) => workflows_engine.update(workflows_engine_config),
-        None => {
-          let (mut engine, buffers_to_flush_rx) = WorkflowsEngine::new(
-            &self.stats.root_scope,
-            &self.sdk_directory,
-            &self.runtime,
-            self.data_upload_tx.clone(),
-            self.stats.dynamic_stats.clone(),
-          );
-          engine.start(workflows_engine_config);
-          self.workflows_engine = Some(engine);
-          self.buffers_to_flush_rx = Some(buffers_to_flush_rx);
-        },
+      if let Some(workflows_engine) = &mut self.workflows_engine {
+        workflows_engine.update(workflows_engine_config);
+      } else {
+        let (mut engine, buffers_to_flush_rx) = WorkflowsEngine::new(
+          &self.stats.root_scope,
+          &self.sdk_directory,
+          &self.runtime,
+          self.data_upload_tx.clone(),
+          self.stats.dynamic_stats.clone(),
+        );
+        engine.start(workflows_engine_config);
+        self.workflows_engine = Some(engine);
+        self.buffers_to_flush_rx = Some(buffers_to_flush_rx);
       }
     } else {
       self.workflows_engine = None;
@@ -250,6 +254,10 @@ impl ProcessingPipeline {
           "triggered flush buffer action IDs: {:?}",
           result.triggered_flush_buffers_action_ids
         );
+      }
+
+      if result.capture_screenshot {
+        self.capture_screenshot_handler.capture_screenshot();
       }
 
       Self::write_to_buffers(
@@ -388,10 +396,13 @@ impl ProcessingPipeline {
             // TODO(snowp): Track how often logs are dropped due to locks.
             // If the buffer is out of space, drop the error.
             // TODO(mattklein123): Track this via stats.
-            Err(Error::AbslStatus(
+            e @ Err(Error::AbslStatus(
               AbslCode::FailedPrecondition | AbslCode::ResourceExhausted,
               _,
-            )) => Ok(()),
+            )) => {
+              log::debug!("failed to write log to buffer: {e:?}");
+              Ok(())
+            },
             e => e,
           }?;
         }

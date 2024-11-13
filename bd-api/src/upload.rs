@@ -10,11 +10,65 @@ pub use bd_proto::protos::client::api::log_upload_intent_request::{
   Intent_type,
   WorkflowActionUpload,
 };
-pub use bd_proto::protos::client::api::log_upload_intent_response::Decision;
+pub use bd_proto::protos::client::api::log_upload_intent_response::Decision as LogsUploadDecision;
+use bd_proto::protos::client::api::sankey_intent_response::Decision as SankeyPathUploadDecision;
 pub use bd_proto::protos::client::api::LogUploadIntentRequest;
-use bd_proto::protos::client::api::{LogUploadRequest, StatsUploadRequest};
+use bd_proto::protos::client::api::{
+  LogUploadRequest,
+  SankeyIntentRequest,
+  SankeyPathUploadRequest,
+  StatsUploadRequest,
+};
 use std::collections::HashMap;
 use uuid::Uuid;
+
+//
+// UploadResponse
+//
+
+#[derive(Debug)]
+pub struct UploadResponse {
+  pub success: bool,
+  pub uuid: String,
+}
+
+//
+// IntentDecision
+//
+
+#[derive(Clone, Debug)]
+pub enum IntentDecision {
+  Drop,
+  UploadImmediately,
+}
+
+impl From<SankeyPathUploadDecision> for IntentDecision {
+  fn from(decision: SankeyPathUploadDecision) -> Self {
+    match decision {
+      SankeyPathUploadDecision::Drop(_) => Self::Drop,
+      SankeyPathUploadDecision::UploadImmediately(_) => Self::UploadImmediately,
+    }
+  }
+}
+
+impl From<LogsUploadDecision> for IntentDecision {
+  fn from(decision: LogsUploadDecision) -> Self {
+    match decision {
+      LogsUploadDecision::Drop(_) => Self::Drop,
+      LogsUploadDecision::UploadImmediately(_) => Self::UploadImmediately,
+    }
+  }
+}
+
+//
+// IntentResponse
+//
+
+#[derive(Clone, Debug)]
+pub struct IntentResponse {
+  pub uuid: String,
+  pub decision: IntentDecision,
+}
 
 /// Used to track pending upload requests. Requests are identified by a UUID recorded at
 /// upload time, which is used to correlate it with incoming response. Each pending request
@@ -22,12 +76,12 @@ use uuid::Uuid;
 /// upload attempt.
 pub struct StateTracker {
   // A map of pending uploads to their response channel. This is used to
-  // communicate back the result of a log or stats upload back to the upload task.
-  pending_uploads: HashMap<String, tokio::sync::oneshot::Sender<bool>>,
+  // communicate back the result of a log, sankey path or stats upload back to the upload task.
+  pending_uploads: HashMap<String, tokio::sync::oneshot::Sender<UploadResponse>>,
 
   // A map of pending log intents to their response channel. This is used to communicate back the
-  // result of a log intent request back to the upload task.
-  pending_intents: HashMap<String, tokio::sync::oneshot::Sender<Decision>>,
+  // result of an intent request back to the upload task.
+  pending_intents: HashMap<String, tokio::sync::oneshot::Sender<IntentResponse>>,
 }
 
 impl StateTracker {
@@ -40,7 +94,7 @@ impl StateTracker {
   }
 
   /// Track a log upload intent, converting it into an upload intent request.
-  pub fn track_intent<T: Send + Sync>(&mut self, intent: Tracked<T, Decision>) -> T {
+  pub fn track_intent<T: Send + Sync>(&mut self, intent: Tracked<T, IntentResponse>) -> T {
     let uuid = intent.uuid.clone();
     let (request, response_tx) = intent.into_parts();
     self.pending_intents.insert(uuid, response_tx);
@@ -49,7 +103,7 @@ impl StateTracker {
   }
 
   /// Track the upload object, converting it into an upload request.
-  pub fn track_upload<T: Send + Sync>(&mut self, upload: Tracked<T, bool>) -> T {
+  pub fn track_upload<T: Send + Sync>(&mut self, upload: Tracked<T, UploadResponse>) -> T {
     let uuid = upload.uuid.clone();
     let (request, response_tx) = upload.into_parts();
     self.pending_uploads.insert(uuid, response_tx);
@@ -64,17 +118,20 @@ impl StateTracker {
     let _ignored = self
       .pending_uploads
       .remove(uuid)
-      .ok_or_else(|| anyhow!("Log upload state for uuid {uuid:?} was inconsistent"))?
-      .send(error.is_empty());
+      .ok_or_else(|| anyhow!("State for request with uuid {uuid:?} was inconsistent"))?
+      .send(UploadResponse {
+        success: error.is_empty(),
+        uuid: uuid.to_string(),
+      });
 
     Ok(())
   }
 
-  pub fn resolve_intent(&mut self, uuid: &str, response: Decision) -> anyhow::Result<()> {
+  pub fn resolve_intent(&mut self, uuid: &str, response: IntentResponse) -> anyhow::Result<()> {
     let _ignored = self
       .pending_intents
       .remove(uuid)
-      .ok_or_else(|| anyhow!("Log upload state for uuid {uuid:?} was inconsistent"))?
+      .ok_or_else(|| anyhow!("Upload intent state for uuid {uuid:?} was inconsistent"))?
       .send(response);
 
     Ok(())
@@ -149,11 +206,15 @@ pub struct LogBatch {
 }
 
 /// A batch of logs sent to be uploaded. The upload is wrapped in an Arc to allow for cheap retries.
-pub type TrackedLogBatch = Tracked<LogUploadRequest, bool>;
+pub type TrackedLogBatch = Tracked<LogUploadRequest, UploadResponse>;
 
-pub type TrackedStatsUploadRequest = Tracked<StatsUploadRequest, bool>;
+pub type TrackedStatsUploadRequest = Tracked<StatsUploadRequest, UploadResponse>;
+
+pub type TrackedSankeyPathUploadRequest = Tracked<SankeyPathUploadRequest, UploadResponse>;
+
+pub type TrackedSankeyPathUploadIntentRequest = Tracked<SankeyIntentRequest, IntentResponse>;
 
 /// An intent to upload a buffer due to a listener triggering. This is communicated to the backend
 /// in order to allow the server to make decisions on whether a buffer should be uploaded in
 /// response to a specific listener.
-pub type LogUploadIntent = Tracked<LogUploadIntentRequest, Decision>;
+pub type TrackedLogUploadIntent = Tracked<LogUploadIntentRequest, IntentResponse>;

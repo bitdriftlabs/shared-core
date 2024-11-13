@@ -8,16 +8,17 @@
 #[cfg(test)]
 #[path = "./network_test.rs"]
 mod network_test;
-use crate::async_log_buffer::LogInterceptor;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
 use bd_log_primitives::{
   AnnotatedLogField,
   LogField,
+  LogInterceptor,
   LogLevel,
   LogMessage,
   LogType,
   StringOrBytes,
 };
+use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
 use itertools::Itertools;
 use std::cmp::Ordering;
 use std::sync::Arc;
@@ -50,22 +51,39 @@ macro_rules! accumulate_samples {
 /// uploaded due to HTTP requests performed by the app, measured on a per-minute basis.
 pub(crate) struct HTTPTrafficDataUsageTracker {
   container: parking_lot::Mutex<MetricsContainer>,
+  network_quality_provider: Arc<dyn NetworkQualityProvider>,
 }
 
 impl HTTPTrafficDataUsageTracker {
-  pub(crate) fn new() -> Self {
-    Self::new_with_time_provider(Arc::new(SystemTimeProvider))
-  }
-
-  pub(crate) fn new_with_time_provider(time_provider: Arc<dyn TimeProvider>) -> Self {
+  pub(crate) fn new(
+    time_provider: Arc<dyn TimeProvider>,
+    network_quality_provider: Arc<dyn NetworkQualityProvider>,
+  ) -> Self {
     Self {
       container: parking_lot::Mutex::new(MetricsContainer::new(time_provider)),
+      network_quality_provider,
     }
   }
 }
 
 impl HTTPTrafficDataUsageTracker {
   fn process_http_response_log(&self, fields: &AnnotatedLogFields) {
+    // If we get a HTTP response with a status code, we assume the network is online. This is done
+    // to smooth out race conditions where the tracker in the API mux is in backoff waiting to
+    // attempt to reconnect before indicating online. It's possible that after setting to online
+    // here it will be set to Unknown at the beginning of the API mux loop, but that's OK for
+    // right now.
+    //
+    // Additionally, there are many edge cases where this may not work. For example, some library
+    // that turns network failures into HTTP status codes, or a bound hot spot that ends up
+    // returning bad content as the internet is not actually connected. We will need to revisit
+    // this in the future.
+    if get_int_field_value(fields, "_status_code").is_some() {
+      self
+        .network_quality_provider
+        .set_network_quality(NetworkQuality::Online);
+    }
+
     let mut guard = self.container.lock();
 
     let mut samples = guard.clone();
@@ -312,10 +330,58 @@ pub(crate) trait TimeProvider: Send + Sync {
 // SystemTimeProvider
 //
 
-struct SystemTimeProvider;
+pub(crate) struct SystemTimeProvider;
 
 impl TimeProvider for SystemTimeProvider {
   fn now(&self) -> std::time::Instant {
     std::time::Instant::now()
+  }
+}
+
+//
+// NetworkQualityInterceptor
+//
+
+pub struct NetworkQualityInterceptor {
+  network_quality_provider: Arc<dyn NetworkQualityProvider>,
+}
+
+impl NetworkQualityInterceptor {
+  pub fn new(network_quality_provider: Arc<dyn NetworkQualityProvider>) -> Self {
+    Self {
+      network_quality_provider,
+    }
+  }
+}
+
+impl LogInterceptor for NetworkQualityInterceptor {
+  fn process(
+    &self,
+    _log_level: LogLevel,
+    log_type: LogType,
+    _msg: &LogMessage,
+    fields: &mut AnnotatedLogFields,
+  ) {
+    if log_type == LogType::Resource
+      || log_type == LogType::Replay
+      || log_type == LogType::InternalSDK
+    {
+      return;
+    }
+
+    // Currently we only attach the field attribute if we think we are offline. In the future when
+    // we have a more complex definition of network quality we can revisit this.
+    let network_quality = self.network_quality_provider.get_network_quality();
+    if network_quality != NetworkQuality::Offline {
+      return;
+    }
+
+    fields.push(AnnotatedLogField {
+      field: LogField {
+        key: "_network_quality".to_string(),
+        value: StringOrBytes::String("offline".to_string()),
+      },
+      kind: LogFieldKind::Ootb,
+    });
   }
 }

@@ -18,9 +18,16 @@ use crate::actions_flush_buffers::{
   ResolverConfig,
   StreamingBuffersAction,
 };
-use crate::config::{Action, ActionEmitMetric, ActionFlushBuffers, Config, WorkflowsConfiguration};
+use crate::config::{
+  ActionEmitMetric,
+  ActionFlushBuffers,
+  ActionTakeScreenshot,
+  Config,
+  WorkflowsConfiguration,
+};
 use crate::metrics::MetricsCollector;
-use crate::workflow::Workflow;
+use crate::sankey_diagram;
+use crate::workflow::{SankeyPath, TriggeredAction, TriggeredActionEmitSankey, Workflow};
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_stats::DynamicStats;
@@ -77,6 +84,9 @@ pub struct WorkflowsEngine {
   flush_buffers_negotiator_output_rx: Receiver<NegotiatorOutput>,
   flush_buffers_negotiator_join_handle: JoinHandle<()>,
 
+  sankey_processor_input_tx: Sender<SankeyPath>,
+  sankey_processor_join_handle: JoinHandle<()>,
+
   metrics_collector: MetricsCollector,
 
   buffers_to_flush_tx: Sender<BuffersToFlush>,
@@ -104,12 +114,15 @@ impl WorkflowsEngine {
 
     let (input_tx, input_rx) = tokio::sync::mpsc::channel(10);
     let (flush_buffers_actions_negotiator, output_rx) =
-      Negotiator::new(input_rx, data_upload_tx, &actions_scope);
+      Negotiator::new(input_rx, data_upload_tx.clone(), &actions_scope);
     let flush_buffers_negotiator_join_handle = flush_buffers_actions_negotiator.run();
 
     let flush_buffers_actions_resolver = Resolver::new(&actions_scope);
 
-    let (stats, remote_config_mediator_stats) = WorkflowsEngineStats::new(&scope);
+    let (sankey_input_tx, sankey_input_rx) = tokio::sync::mpsc::channel(10);
+    let sankey_diagram_processor =
+      sankey_diagram::Processor::new(sankey_input_rx, data_upload_tx, &actions_scope);
+    let sankey_processor_join_handle = sankey_diagram_processor.run();
 
     let workflows_engine = Self {
       configs: BTreeMap::new(),
@@ -125,6 +138,8 @@ impl WorkflowsEngine {
       flush_buffers_negotiator_join_handle,
       flush_buffers_negotiator_input_tx: input_tx,
       flush_buffers_negotiator_output_rx: output_rx,
+      sankey_processor_input_tx: sankey_input_tx,
+      sankey_processor_join_handle,
       metrics_collector: MetricsCollector::new(dynamic_stats),
       buffers_to_flush_tx,
     };
@@ -304,8 +319,136 @@ impl WorkflowsEngine {
 
     log::debug!(
       "consumed received workflows config update; workflows engine contains {} workflow(s)",
-      self.state.current_session_state().workflows.len()
+      self.state.workflows.len()
     );
+  }
+
+  fn add_workflows(&mut self, workflows: Vec<Config>, existing_workflows: Option<Vec<Workflow>>) {
+    // `workflows` is the source of truth for workflow configurations from the server
+    // while `existing_workflows` contains state of workflow who have been running on a device.
+    //  * Combine the two by iterating over the list of configs from the server and associating
+    //    configs with relevant workflow state (if any).
+    //  * Discard workflow states that don't have a corresponding server-side config.
+    let mut existing_workflow_ids_to_workflows =
+      existing_workflows.map_or_else(HashMap::new, |workflows| {
+        workflows
+          .into_iter()
+          .map(|workflow| (workflow.id().to_string(), workflow))
+          .collect()
+      });
+
+    let workflows_and_configs = workflows.into_iter().map(|config| {
+      let workflow = existing_workflow_ids_to_workflows
+        .remove(config.id())
+        .map_or_else(
+          // We have cache state for a given workflow ID.
+          || Workflow::new(config.id().to_string()),
+          //   No cached state for a given workflow ID, start from scratch.
+          |workflow| workflow,
+        );
+      (workflow, config)
+    });
+
+    for (workflow, config) in workflows_and_configs {
+      self.add_workflow(workflow, config);
+    }
+  }
+
+  fn add_workflow(&mut self, workflow: Workflow, config: Config) {
+    let mut workflow = workflow;
+
+    let workflow_traversals_count = workflow.traversals_count();
+    if workflow_traversals_count + self.current_traversals_count > self.traversals_count_limit {
+      log::debug!(
+        "failed to add workflow with {} traversal(s) due to traversals count limit being hit \
+         ({}); current traversals count {}",
+        workflow_traversals_count,
+        self.traversals_count_limit,
+        self.current_traversals_count
+      );
+
+      // Workflow being added has too many traversal for the engine to not exceed
+      // the configured traversals count limit. Keep removing workflow's run until
+      // its addition to the engine is possible.
+      // Process traversals in reversed order as we may end up modifying the array
+      // starting at `index` in any given iteration of the loop + we want to start
+      // removing runs starting from the "latest" ones and they are at the end of
+      // the enumerated array.
+      let mut remaining_workflow_traversals_count = workflow_traversals_count;
+      for index in (0 .. workflow.runs().len()).rev() {
+        let run_traversals_count = workflow.runs()[index].traversals_count();
+
+        log::debug!(
+          "removing workflow run with {} traversal(s)",
+          run_traversals_count
+        );
+
+        remaining_workflow_traversals_count -= run_traversals_count;
+        self.stats.traversals_count_limit_hit_total.inc();
+        workflow.remove_run(index);
+
+        if remaining_workflow_traversals_count + self.current_traversals_count
+          <= self.traversals_count_limit
+        {
+          break;
+        }
+      }
+    }
+
+    self.stats.workflow_starts_total.inc();
+    self
+      .stats
+      .run_starts_total
+      .inc_by(workflow.runs().len() as u64);
+    self
+      .stats
+      .traversal_starts_total
+      .inc_by(workflow_traversals_count.into());
+
+    log::trace!(
+      "workflow={}: workflow added, runs count {}, traversal count {}",
+      workflow.id(),
+      workflow.runs().len(),
+      workflow_traversals_count,
+    );
+
+    self.current_traversals_count += workflow.traversals_count();
+
+    self.configs.push(config);
+    self.state.workflows.push(workflow);
+  }
+
+  fn remove_workflow(&mut self, workflow_index: usize) {
+    self.configs.remove(workflow_index);
+    let workflow = self.state.workflows.remove(workflow_index);
+
+    let workflow_traversals_count = workflow.traversals_count();
+    self.stats.workflow_stops_total.inc();
+    self
+      .stats
+      .run_stops_total
+      .inc_by(workflow.runs().len() as u64);
+    self
+      .stats
+      .traversal_stops_total
+      .inc_by(workflow_traversals_count.into());
+
+    self.current_traversals_count = self
+      .current_traversals_count
+      .saturating_sub(workflow_traversals_count);
+
+    log::debug!("workflow={}: workflow removed", workflow.id());
+
+    // If there exists a run that is not in an initial state.
+    if !workflow.is_in_initial_state() {
+      log::debug!(
+        "workflow={}: workflow removed, marking state as dirty",
+        workflow.id()
+      );
+      // Mark the state as dirty so that the state associated with
+      // the workflow that was just removed can be removed from disk.
+      self.needs_state_persistence = true;
+    }
   }
 
   /// Attempts to persist the client-side state of the workflows to disk while ignoring any errors.
@@ -402,11 +545,12 @@ impl WorkflowsEngine {
         log_destination_buffer_ids: Cow::Borrowed(log_destination_buffer_ids),
         triggered_flushes_buffer_ids: BTreeSet::new(),
         triggered_flush_buffers_action_ids: BTreeSet::new(),
+        capture_screenshot: false,
       };
     }
 
-    let mut actions: Vec<&Action> = vec![];
-    for workflow in &mut state.workflows.iter_mut() {
+    let mut actions: Vec<TriggeredAction<'_>> = vec![];
+    for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let was_in_initial_state = workflow.is_in_initial_state();
 
       let Some(config) = self.configs.get(workflow.id()) else {
@@ -496,8 +640,7 @@ impl WorkflowsEngine {
         self.needs_state_persistence = true;
       }
 
-      let t = result.actions();
-      actions.extend(t);
+      actions.extend(result.triggered_actions());
     }
 
     debug_assert!(
@@ -510,12 +653,12 @@ impl WorkflowsEngine {
       "current_traversals_count is not equal to computed traversals count"
     );
 
-    self
-      .stats
-      .active_traversals_total
-      .observe(self.current_traversals_count.into());
-
-    let (flush_buffers_actions, emit_metric_actions) = Self::prepare_actions(&actions);
+    let (
+      flush_buffers_actions,
+      emit_metric_actions,
+      emit_sankey_diagrams_actions,
+      capture_screenshot_actions,
+    ) = Self::prepare_actions(actions);
 
     let result = self
       .flush_buffers_actions_resolver
@@ -540,6 +683,16 @@ impl WorkflowsEngine {
       .metrics_collector
       .emit_metrics(&emit_metric_actions, log);
 
+    self
+      .metrics_collector
+      .emit_sankeys(&emit_sankey_diagrams_actions, log);
+
+    for action in emit_sankey_diagrams_actions {
+      if let Err(e) = self.sankey_processor_input_tx.try_send(action.path) {
+        log::debug!("failed to process sankey: {e}");
+      }
+    }
+
     for action in flush_buffers_actions_processing_result.new_pending_actions_to_add {
       state.pending_actions.insert(action.clone());
       if let Err(e) = self.flush_buffers_negotiator_input_tx.try_send(action) {
@@ -556,6 +709,7 @@ impl WorkflowsEngine {
         .triggered_flush_buffers_action_ids,
       triggered_flushes_buffer_ids: flush_buffers_actions_processing_result
         .triggered_flushes_buffer_ids,
+      capture_screenshot: !capture_screenshot_actions.is_empty(),
     }
   }
 
@@ -566,20 +720,27 @@ impl WorkflowsEngine {
   /// for `exclusive` workflows). Currently, multiple metric emission actions triggered by runs of
   /// the same workflow result in only one metric emission, which is incorrect behavior.
   fn prepare_actions<'a>(
-    actions: &[&'a Action],
+    actions: Vec<TriggeredAction<'a>>,
   ) -> (
     BTreeSet<&'a ActionFlushBuffers>,
     BTreeSet<&'a ActionEmitMetric>,
+    BTreeSet<TriggeredActionEmitSankey<'a>>,
+    BTreeSet<&'a ActionTakeScreenshot>,
   ) {
     if actions.is_empty() {
-      return (BTreeSet::new(), BTreeSet::new());
+      return (
+        BTreeSet::new(),
+        BTreeSet::new(),
+        BTreeSet::new(),
+        BTreeSet::new(),
+      );
     }
 
     let flush_buffers_actions: BTreeSet<&ActionFlushBuffers> = actions
       .iter()
       .filter_map(|action| {
-        if let Action::FlushBuffers(flush_buffers_action) = action {
-          Some(flush_buffers_action)
+        if let TriggeredAction::FlushBuffers(flush_buffers_action) = action {
+          Some(*flush_buffers_action)
         } else {
           None
         }
@@ -589,8 +750,8 @@ impl WorkflowsEngine {
     let emit_metric_actions: BTreeSet<&ActionEmitMetric> = actions
       .iter()
       .filter_map(|action| {
-        if let Action::EmitMetric(emit_metric_action) = action {
-          Some(emit_metric_action)
+        if let TriggeredAction::EmitMetric(emit_metric_action) = action {
+          Some(*emit_metric_action)
         } else {
           None
         }
@@ -598,13 +759,42 @@ impl WorkflowsEngine {
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
 
-    (flush_buffers_actions, emit_metric_actions)
+    let capture_screenshot_actions = actions
+      .iter()
+      .filter_map(|action| {
+        if let TriggeredAction::TakeScreenshot(action) = action {
+          Some(*action)
+        } else {
+          None
+        }
+      })
+      .collect();
+
+    let sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>> = actions
+      .into_iter()
+      .filter_map(|action| {
+        if let TriggeredAction::SankeyDiagram(action) = action {
+          Some(action)
+        } else {
+          None
+        }
+      })
+      // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
+      .collect();
+
+    (
+      flush_buffers_actions,
+      emit_metric_actions,
+      sankey_diagrams_actions,
+      capture_screenshot_actions,
+    )
   }
 }
 
 impl Drop for WorkflowsEngine {
   fn drop(&mut self) {
     self.flush_buffers_negotiator_join_handle.abort();
+    self.sankey_processor_join_handle.abort();
   }
 }
 
@@ -841,6 +1031,9 @@ pub struct WorkflowsEngineResult<'a> {
   pub triggered_flush_buffers_action_ids: BTreeSet<&'a str>,
   // The identifier of trigger buffers that should be flushed.
   pub triggered_flushes_buffer_ids: BTreeSet<Cow<'static, str>>,
+
+  // Whether a screenshot should be taken in response to processing the log.
+  pub capture_screenshot: bool,
 }
 
 //
@@ -910,7 +1103,7 @@ impl StateStore {
     );
 
     Self {
-      state_path: sdk_directory.join("workflows_state_snapshot.3.bin"),
+      state_path: sdk_directory.join("workflows_state_snapshot.4.bin"),
       last_persisted: None,
       stats,
       persistence_write_interval_flag: runtime.register_watch().unwrap(),

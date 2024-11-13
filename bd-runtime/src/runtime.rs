@@ -747,6 +747,28 @@ pub mod resource_utilization {
   );
 }
 
+pub mod session_replay {
+  use time::ext::NumericalDuration as _;
+
+  bool_feature_flag!(
+    PeriodicScreensEnabledFlag,
+    "session_replay.screens.enabled",
+    false
+  );
+
+  duration_feature_flag!(
+    ReportingIntervalFlag,
+    "session_replay.screens.interval_ms",
+    3.seconds()
+  );
+
+  bool_feature_flag!(
+    ScreenshotsEnabledFlag,
+    "session_replay.screenshots.enabled",
+    false
+  );
+}
+
 #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
 pub mod api {
   use time::ext::NumericalDuration;
@@ -793,6 +815,16 @@ pub mod stats {
     UploadStatFlushIntervalFlag,
     "stats.upload_flush_interval_ms",
     60.seconds()
+  );
+
+  // The maximum number of pending stat upload files to keep on disk.
+  int_feature_flag!(MaxAggregatedFilesFlag, "stats.max_aggregated_files", 10);
+
+  // The maximum aggregation window of each pending file, in minutes.
+  duration_feature_flag!(
+    MaxAggregationWindowPerFileFlag,
+    "stats.max_aggregation_window_per_file_ms",
+    5.minutes()
   );
 
   // This controls how many unique counters we allow before rejecting new metrics. This limit
