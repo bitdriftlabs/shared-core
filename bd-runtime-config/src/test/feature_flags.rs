@@ -7,6 +7,7 @@
 
 use std::fs;
 use std::os::unix::fs as os_fs;
+use std::sync::Arc;
 
 #[tokio::test]
 async fn feature_flags() {
@@ -65,7 +66,8 @@ values:
       .borrow()
       .as_ref()
       .unwrap()
-      .get_string("bar", "world"),
+      .get_string("bar", &Arc::new("world".to_string()))
+      .as_str(),
     "hello"
   );
 
@@ -113,7 +115,8 @@ values:
       .borrow()
       .as_ref()
       .unwrap()
-      .get_string("bar", "hello"),
+      .get_string("bar", &Arc::new("hello".to_string()))
+      .as_str(),
     "world"
   );
   assert!(snapshot_watch
@@ -164,7 +167,8 @@ values:
       .borrow()
       .as_ref()
       .unwrap()
-      .get_string("bad", "world"),
+      .get_string("bad", &Arc::new("world".to_string()))
+      .as_str(),
     "world"
   );
   assert!(!snapshot_watch
