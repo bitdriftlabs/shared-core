@@ -159,9 +159,7 @@ impl WorkflowsEngine {
 
     if let Some(engine_state) = self.state_store.load() {
       for loaded_workflows_state in engine_state.into_iter() {
-        let workflows_state = self
-          .state
-          .get_or_insert(&loaded_workflows_state.session_id);
+        let workflows_state = self.state.get_or_insert(&loaded_workflows_state.session_id);
 
         workflows_state.pending_actions = self
           .flush_buffers_actions_resolver
@@ -209,15 +207,17 @@ impl WorkflowsEngine {
       }
     }
 
-    log::debug!(
-      "started workflows engine with {} workflow(s); {} pending processing action(s); {} \
-       streaming action(s); session ID: \"{}\"; traversals count limit: {}",
-      self.state.current().workflows.len(),
-      self.state.current().pending_actions.len(),
-      self.state.current().streaming_actions.len(),
-      self.state.current_session_id(),
-      self.traversals_count_limit,
-    );
+    if let Some(state) = self.state.current() {
+      log::debug!(
+        "started workflows engine with {} workflow(s); {} pending processing action(s); {} \
+         streaming action(s); session ID: \"{}\"; traversals count limit: {}",
+        state.workflows.len(),
+        state.pending_actions.len(),
+        state.streaming_actions.len(),
+        state.session_id,
+        self.traversals_count_limit,
+      );
+    }
   }
 
   /// Updates the configuration of workflows managed by the receiver with a provided
@@ -237,14 +237,14 @@ impl WorkflowsEngine {
     );
 
     for state in self.state.states.iter_mut() {
-            // Introduce hash look ups to avoid N^2 complexity later in this method.
-            let latest_workflow_ids_to_index: HashMap<&str, usize> = config
-            .workflows_configuration
-            .workflows
-            .iter()
-            .enumerate()
-            .map(|(index, config)| (config.id(), index))
-            .collect();
+      // Introduce hash look ups to avoid N^2 complexity later in this method.
+      let latest_workflow_ids_to_index: HashMap<&str, usize> = config
+        .workflows_configuration
+        .workflows
+        .iter()
+        .enumerate()
+        .map(|(index, config)| (config.id(), index))
+        .collect();
 
       // Process workflows in reversed order as we may end up removing workflows
       // while iterating.
@@ -252,7 +252,8 @@ impl WorkflowsEngine {
         let should_remove_existing_workflow =
           match latest_workflow_ids_to_index.get(state.workflows[index].id()) {
             Some(latest_workflows_index) => {
-              let workflow_id = config.workflows_configuration.workflows[*latest_workflows_index].id();
+              let workflow_id =
+                config.workflows_configuration.workflows[*latest_workflows_index].id();
               // Handle an edge case where a client receives a config update containing a workflow
               // with a config field unknown to the client, which is later updated to
               // understand this field. In such cases, the server's config is converted to
@@ -261,7 +262,8 @@ impl WorkflowsEngine {
               // we check for a config mismatch between the cached client representation and
               // the fresh client representation from the server. If there's a mismatch, we discard
               // the cached version and replace it with the fresh one later on.
-              Some(&config.workflows_configuration.workflows[*latest_workflows_index]) != self.configs.get(workflow_id)
+              Some(&config.workflows_configuration.workflows[*latest_workflows_index])
+                != self.configs.get(workflow_id)
             },
             // The latest config update doesn't contain a workflow with an ID of the existing
             // workflow. Remove existing workflow.
@@ -274,12 +276,18 @@ impl WorkflowsEngine {
             index,
             &mut self.configs,
             &mut self.traversals_count_limit,
+            &mut self.needs_state_persistence,
           );
         }
       }
     }
 
-    self.configs = config.workflows_configuration.workflows.into_iter().map(|config| (config.id().to_string(), config)).collect();
+    self.configs = config
+      .workflows_configuration
+      .workflows
+      .into_iter()
+      .map(|config| (config.id().to_string(), config))
+      .collect();
 
     self
       .flush_buffers_actions_resolver
@@ -288,7 +296,7 @@ impl WorkflowsEngine {
         config.continuous_buffer_ids,
       ));
 
-    for state in self.state.states.iter_mut() {
+    for state in &mut self.state.states {
       // Introduce hash look ups to avoid N^2 complexity later in this method.
       let existing_workflow_ids_to_index: HashMap<String, usize> = state
         .workflows
@@ -300,7 +308,7 @@ impl WorkflowsEngine {
       // Iterate over the list of configs from the latest update and
       // create workflows for the ones that do not have their representation
       // on the client yet.
-      for (_, workflow_config) in &self.configs {
+      for workflow_config in self.configs.values() {
         if !existing_workflow_ids_to_index.contains_key(workflow_config.id()) {
           self.remote_config_mediator.add_workflow(
             Workflow::new(workflow_config.id().to_string()),
@@ -321,7 +329,10 @@ impl WorkflowsEngine {
 
     log::debug!(
       "consumed received workflows config update; workflows engine contains {} workflow(s)",
-      self.state.current().workflows.len(),
+      self
+        .state
+        .current()
+        .map_or_else(|| 0, |s| s.workflows.len()),
     );
   }
 
@@ -406,7 +417,19 @@ impl WorkflowsEngine {
     // Measure duration in here even if the list of workflows is empty.
     let _timer = self.stats.process_log_duration.start_timer();
 
+    let old_session_id = self
+      .state
+      .current_session_id()
+      .map(std::string::ToString::to_string);
+
     let state = self.state.get_or_insert(log.session_id);
+
+    if let Some(old_session_id) = old_session_id {
+      if old_session_id != state.session_id {
+        self.needs_state_persistence = true;
+      }
+    }
+    // self.needs_state_persistence = true;
 
     // Return early if there are no workflows.
     if state.workflows.is_empty() {
@@ -860,6 +883,7 @@ impl RemoteConfigMediator {
     workflow_index: usize,
     configs: &mut BTreeMap<String, Config>,
     current_traversals_count: &mut u32,
+    needs_state_persistence: &mut bool,
   ) {
     configs.remove_entry(state.workflows[workflow_index].id());
     let workflow = state.workflows.remove(workflow_index);
@@ -887,8 +911,7 @@ impl RemoteConfigMediator {
       );
       // Mark the state as dirty so that the state associated with
       // the workflow that was just removed can be removed from disk.
-      // TODO(Augustyniak): Implement this.
-      // self.needs_state_persistence = true;
+      *needs_state_persistence = true;
     }
   }
 }
@@ -1118,20 +1141,12 @@ impl EngineState {
     self.states.iter()
   }
 
-  fn current_session_id(&self) -> String {
-    self
-      .states
-      .first()
-      .map_or_else(String::new, |state| state.session_id.clone())
+  fn current_session_id(&self) -> Option<&str> {
+    self.states.first().map(|state| state.session_id.as_str())
   }
 
-  fn current(&mut self) -> &mut WorkflowsState {
-    if self.states.is_empty() {
-      let state = WorkflowsState::default();
-      self.states.push(state);
-    }
-
-    self.states.first_mut().unwrap()
+  fn current(&self) -> Option<&WorkflowsState> {
+    self.states.first()
   }
 
   fn get(&mut self, session_id: &str) -> Option<&mut WorkflowsState> {
@@ -1144,51 +1159,58 @@ impl EngineState {
   fn get_or_insert(&mut self, session_id: &str) -> &mut WorkflowsState {
     if self
       .states
-      .iter()
+      .iter_mut()
       .any(|state| state.session_id == session_id)
     {
-      if let Some(previous_session) = self.states.first_mut() {
-        // We are lazy and don't say that state needs persistance.
-        // That may result in new session ID not being stored to disk
-        // (if the app is killed before the next time we store state)
-        // which means that the next time SDK launches we start with empty
-        // session ID (""). It should be OK as in the context of cleaning workflows
-        // state on session change, having empty session ID
-        // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
-        // all workflows in their initial states.
-        log::debug!(
-          "workflows engine: moving from \"{}\" to new session \"{}\", cleaning workflows state",
-          previous_session.session_id,
-          session_id
-        );
+      // # Safety
+      return self
+        .states
+        .iter_mut()
+        .find(|state| state.session_id == session_id)
+        .unwrap();
+    }
 
-        for workflow in &mut previous_session.workflows {
-          workflow.remove_all_runs();
-        }
+    if let Some(previous_session) = self.states.first_mut() {
+      // We are lazy and don't say that state needs persistance.
+      // That may result in new session ID not being stored to disk
+      // (if the app is killed before the next time we store state)
+      // which means that the next time SDK launches we start with empty
+      // session ID (""). It should be OK as in the context of cleaning workflows
+      // state on session change, having empty session ID
+      // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
+      // all workflows in their initial states.
+      log::debug!(
+        "workflows engine: moving from \"{}\" to new session \"{}\", cleaning workflows state",
+        previous_session.session_id,
+        session_id
+      );
 
-        // TODO(Augustyniak): Implement in other place.
-        // self.current_traversals_count = 0;
-        // self.needs_state_persistence = true;
-      } else {
-        // There was no state on a disk when workflows engine was started
-        // and engine just observed first session ID.
-        // We do not have to rush to persist it to disk until any of the
-        // workflows makes progress. That's because in the context of cleaning workflows
-        // state on session change, having empty session ID
-        // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
-        // all workflows in their initial states.
-        log::debug!(
-          "workflows engine: moving from no session to session \"{}\"",
-          session_id
-        );
+      for workflow in &mut previous_session.workflows {
+        workflow.remove_all_runs();
       }
 
-      let state = WorkflowsState::new(session_id);
-      self.states.insert(0, state);
+      // TODO(Augustyniak): Implement in other place.
+      // self.current_traversals_count = 0;
+      // self.needs_state_persistence = true;
+    } else {
+      // There was no state on a disk when workflows engine was started
+      // and engine just observed first session ID.
+      // We do not have to rush to persist it to disk until any of the
+      // workflows makes progress. That's because in the context of cleaning workflows
+      // state on session change, having empty session ID
+      // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
+      // all workflows in their initial states.
+      log::debug!(
+        "workflows engine: moving from no session to session \"{}\"",
+        session_id
+      );
+    }
 
-      if self.states.len() > 2 {
-        self.states.remove(self.states.len() - 1);
-      }
+    let state = WorkflowsState::new(session_id);
+    self.states.insert(0, state);
+
+    if self.states.len() > 2 {
+      self.states.remove(self.states.len() - 1);
     }
 
     // # Safety

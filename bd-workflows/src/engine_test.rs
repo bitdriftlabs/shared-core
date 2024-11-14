@@ -72,8 +72,8 @@ macro_rules! workflow {
 #[macro_export]
 macro_rules! engine_assert_active_runs {
   ($workflows_engine:expr; $workflow_index:expr; $($state_id:expr),+) => {
-    let workflow = $workflows_engine.state.workflows[$workflow_index].clone();
-    let config = $workflows_engine.configs[$workflow_index].clone();
+    let workflow = $workflows_engine.state.current().unwrap().workflows[$workflow_index].clone();
+    let config = $workflows_engine.configs.get(workflow.id()).unwrap().clone();
 
     let expected_states = [$($state_id,)+];
 
@@ -117,8 +117,8 @@ macro_rules! engine_assert_active_runs {
 #[macro_export]
 macro_rules! engine_assert_active_run_traversals {
   ($engine:expr; $workflow_index:expr => $run_index:expr; $($state_id:expr),+) => {
-    let workflow = $engine.state.workflows[$workflow_index].clone();
-    let config = $engine.configs[$workflow_index].clone();
+    let workflow = $engine.state.current().unwrap().workflows[$workflow_index].clone();
+    let config = $engine.configs.get(workflow.id()).unwrap().clone();
 
     #[allow(unused_comparisons)]
     let run_exists = workflow.runs().len() >= $run_index;
@@ -489,7 +489,7 @@ async fn engine_initialization_and_update() {
     WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
   );
 
-  assert_eq!(2, workflows_engine.state.workflows.len());
+  assert_eq!(2, workflows_engine.state.current().unwrap().workflows.len());
   setup.collector.assert_counter_eq(
     2,
     "workflows:workflows_total",
@@ -505,7 +505,7 @@ async fn engine_initialization_and_update() {
   workflows_engine.update(WorkflowsEngineConfig::new_with_workflow_configurations(
     workflows,
   ));
-  assert_eq!(3, workflows_engine.state.workflows.len());
+  assert_eq!(3, workflows_engine.state.current().unwrap().workflows.len());
   setup.collector.assert_counter_eq(
     5,
     "workflows:workflows_total",
@@ -614,9 +614,9 @@ async fn engine_update_after_sdk_update() {
     BTreeSet::from(["continuous_buffer_id".into()]),
   ));
 
-  assert_eq!(workflows_engine.state.workflows.len(), 1);
+  assert_eq!(workflows_engine.state.current().unwrap().workflows.len(), 1);
   assert_matches!(
-    &workflows_engine.configs[0].states()[0].transitions()[0].actions()[0],
+    &workflows_engine.configs.get("1").unwrap().states()[0].transitions()[0].actions()[0],
     Action::FlushBuffers(flush_buffers)
       if flush_buffers.streaming.is_some()
   );
@@ -846,8 +846,11 @@ async fn persist_workflows_with_at_least_one_non_initial_state_run_only() {
   let store = setup.make_state_store();
   let workflows_state = store.load().unwrap();
 
-  assert_eq!(1, workflows_state.workflows.len());
-  assert_eq!(1, workflows_state.workflows[0].runs().len());
+  assert_eq!(1, workflows_state.current().unwrap().workflows.len());
+  assert_eq!(
+    1,
+    workflows_state.current().unwrap().workflows[0].runs().len()
+  );
 }
 
 #[tokio::test]
@@ -1027,9 +1030,13 @@ async fn traversals_count_limit_prevents_creation_of_new_workflows() {
 
   // All workflows are added to the engine but some of them have no runs
   // to keep the engine below the configured traversals count limit.
-  assert_eq!(4, workflows_engine.state.workflows.len());
-  assert!(workflows_engine.state.workflows[2].runs().is_empty());
-  assert!(workflows_engine.state.workflows[3].runs().is_empty());
+  assert_eq!(4, workflows_engine.state.current().unwrap().workflows.len());
+  assert!(workflows_engine.state.current().unwrap().workflows[2]
+    .runs()
+    .is_empty());
+  assert!(workflows_engine.state.current().unwrap().workflows[3]
+    .runs()
+    .is_empty());
 
   // Process a log to force the engine to create initial runs for all workflows.
   engine_process_log!(workflows_engine; "foo");
@@ -1061,8 +1068,10 @@ async fn traversals_count_limit_prevents_creation_of_new_workflows() {
 
   // All workflows are added to the engine but some of them have no runs
   // to keep the engine below the configured traversals count limit.
-  assert_eq!(3, workflows_engine.state.workflows.len());
-  assert!(workflows_engine.state.workflows[2].runs().is_empty());
+  assert_eq!(3, workflows_engine.state.current().unwrap().workflows.len());
+  assert!(workflows_engine.state.current().unwrap().workflows[2]
+    .runs()
+    .is_empty());
 
   setup
     .collector
@@ -1161,7 +1170,9 @@ async fn traversals_count_limit_causes_run_removal_after_forking() {
   let mut workflows_engine = setup.make_workflows_engine(
     WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
   );
-  assert!(workflows_engine.state.workflows[0].runs().is_empty());
+  assert!(workflows_engine.state.current().unwrap().workflows[0]
+    .runs()
+    .is_empty());
 
   // * A new run is created as workflows has no runs in an initial state.
   // * The existing run "A" matches "foo" and moves to B.
@@ -1318,7 +1329,9 @@ async fn runs_in_initial_state_are_not_persisted() {
   // * Workflow #1: The second run was not re-recreated as it was not stored on a disk.
   // * Workflow #2: No runs exists as no runs were stored on disk.
   engine_assert_active_runs!(workflows_engine; 0; "A");
-  assert!(workflows_engine.state.workflows[1].runs().is_empty());
+  assert!(workflows_engine.state.current().unwrap().workflows[1]
+    .runs()
+    .is_empty());
   setup.collector.assert_counter_eq(
     1,
     "workflows:runs_total",
@@ -1376,7 +1389,9 @@ async fn ignore_persisted_state_if_corrupted() {
     WorkflowsEngineConfig::new_with_workflow_configurations(workflows.clone()),
   );
   // The workflow has no runs.
-  assert!(workflows_engine.state.workflows[0].runs().is_empty());
+  assert!(workflows_engine.state.current().unwrap().workflows[0]
+    .runs()
+    .is_empty());
 
   // Assert corrupted file was deleted
   assert!(
@@ -1479,7 +1494,9 @@ async fn ignore_persisted_state_if_invalid_dir() {
   ));
 
   // assert that the workflow has no runs.
-  assert!(workflows_engine.state.workflows[0].runs().is_empty());
+  assert!(workflows_engine.state.current().unwrap().workflows[0]
+    .runs()
+    .is_empty());
   collector.assert_counter_eq(
     1,
     "workflows:state_loads_total",
@@ -1527,7 +1544,9 @@ async fn ignore_persisted_state_if_invalid_dir() {
   ));
 
   // assert that the workflow has a valid initial state - no runs.
-  assert!(workflows_engine.state.workflows[0].runs().is_empty());
+  assert!(workflows_engine.state.current().unwrap().workflows[0]
+    .runs()
+    .is_empty());
   collector.assert_counter_eq(
     1,
     "workflows:state_loads_total",
@@ -1748,7 +1767,12 @@ async fn exclusive_workflow_duration_limit() {
   // * The run is not an initial state and has exceeded the maximum duration.
   // * The run is stopped.
   engine_process_log!(workflows_engine; "not matching"; with labels!{}; time now + Duration::from_secs(4));
-  assert_eq!(workflows_engine.state.workflows[0].runs().len(), 1);
+  assert_eq!(
+    workflows_engine.state.current().unwrap().workflows[0]
+      .runs()
+      .len(),
+    1
+  );
   engine_assert_active_runs!(workflows_engine; 0; "A");
   setup
     .collector
@@ -2144,10 +2168,26 @@ async fn logs_streaming() {
 
   // Two of the triggered flush buffers actions are awaiting corresponding logs upload intents to be
   // processed.
-  assert_eq!(workflows_engine.state.pending_actions.len(), 2);
+  assert_eq!(
+    workflows_engine
+      .state
+      .current()
+      .unwrap()
+      .pending_actions
+      .len(),
+    2
+  );
 
   // One logs streaming action is active.
-  assert_eq!(workflows_engine.state.streaming_actions.len(), 1);
+  assert_eq!(
+    workflows_engine
+      .state
+      .current()
+      .unwrap()
+      .streaming_actions
+      .len(),
+    1
+  );
 
   // Make sure that workflows state was persisted to disk.
   assert!(workflows_engine.needs_state_persistence);
@@ -2289,8 +2329,18 @@ async fn logs_streaming() {
     Cow::Owned(BTreeSet::from(["trigger_buffer_id".into()]))
   );
 
-  assert!(workflows_engine.state.pending_actions.is_empty());
-  assert!(workflows_engine.state.streaming_actions.is_empty());
+  assert!(workflows_engine
+    .state
+    .current()
+    .unwrap()
+    .pending_actions
+    .is_empty());
+  assert!(workflows_engine
+    .state
+    .current()
+    .unwrap()
+    .streaming_actions
+    .is_empty());
 
   // Make sure that workflows state was persisted to disk.
   assert!(workflows_engine.needs_state_persistence);
@@ -2354,7 +2404,15 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   );
 
   // Confirm that the pending action was not cleaned up.
-  assert_eq!(1, workflows_engine.state.pending_actions.len());
+  assert_eq!(
+    1,
+    workflows_engine
+      .state
+      .current()
+      .unwrap()
+      .pending_actions
+      .len()
+  );
 
   // Make sure that the engine's state is persisted to disk.
   assert!(workflows_engine.needs_state_persistence);
@@ -2450,8 +2508,12 @@ async fn creating_new_runs_after_first_log_processing() {
       workflow!(parallel with a, b),
     ]),
   );
-  assert!(workflows_engine.state.workflows[0].runs().is_empty());
-  assert!(workflows_engine.state.workflows[1].runs().is_empty());
+  assert!(workflows_engine.state.current().unwrap().workflows[0]
+    .runs()
+    .is_empty());
+  assert!(workflows_engine.state.current().unwrap().workflows[1]
+    .runs()
+    .is_empty());
 
   engine_process_log!(workflows_engine; "bar");
   engine_assert_active_runs!(workflows_engine; 0; "D");
@@ -2520,7 +2582,12 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   let mut workflows_engine = setup.make_workflows_engine(engine_config.clone());
 
   // Session ID is empty on first engine initialization.
-  assert!(workflows_engine.state.session_id.is_empty());
+  assert!(workflows_engine
+    .state
+    .current()
+    .unwrap()
+    .session_id
+    .is_empty());
   // No traversals as no log has been processed yet.
   assert_eq!(0, workflows_engine.current_traversals_count);
 
@@ -2540,7 +2607,10 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   );
 
   // Session ID captured from a process log.
-  assert_eq!("foo_session", workflows_engine.state.session_id);
+  assert_eq!(
+    "foo_session",
+    workflows_engine.state.current().unwrap().session_id
+  );
   assert!(workflows_engine.needs_state_persistence);
 
   workflows_engine.maybe_persist(false).await;
@@ -2550,7 +2620,10 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   let mut workflows_engine = setup.make_workflows_engine(engine_config);
 
   // Read saved session ID from disk.
-  assert_eq!("foo_session", workflows_engine.state.session_id);
+  assert_eq!(
+    "foo_session",
+    workflows_engine.state.current().unwrap().session_id
+  );
   // Read saved workflow state from disk.
   engine_assert_active_runs!(workflows_engine; 0; "A");
   // One traversal trad from disk.
@@ -2573,7 +2646,10 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   );
 
   // Session ID changed.
-  assert_eq!("bar_session", workflows_engine.state.session_id);
+  assert_eq!(
+    "bar_session",
+    workflows_engine.state.current().unwrap().session_id
+  );
   assert_eq!(1, workflows_engine.current_traversals_count);
 
   assert!(workflows_engine.needs_state_persistence);
@@ -2581,10 +2657,23 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   assert!(!workflows_engine.needs_state_persistence);
 
   // State was updated.
-  assert_eq!(workflows_engine.state.session_id, "bar_session",);
-  assert_eq!(1, workflows_engine.state.workflows.len());
-  assert!(workflows_engine.state.pending_actions.is_empty());
-  assert!(workflows_engine.state.streaming_actions.is_empty());
+  assert_eq!(
+    workflows_engine.state.current().unwrap().session_id,
+    "bar_session",
+  );
+  assert_eq!(1, workflows_engine.state.current().unwrap().workflows.len());
+  assert!(workflows_engine
+    .state
+    .current()
+    .unwrap()
+    .pending_actions
+    .is_empty());
+  assert!(workflows_engine
+    .state
+    .current()
+    .unwrap()
+    .streaming_actions
+    .is_empty());
   // No need to persist state as state file was removed already. The
   // only thing that needs storing is `session_ID` but having no session ID
   // stored on a disk is fine.
@@ -2592,6 +2681,8 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   // In memory state was cleared.
   assert!(workflows_engine
     .state
+    .current()
+    .unwrap()
     .workflows
     .iter()
     .all(Workflow::is_in_initial_state));
@@ -2640,39 +2731,39 @@ async fn test_traversals_count_tracking() {
   let mut engine = setup.make_workflows_engine(engine_config.clone());
 
   engine_process_log!(engine; "foo");
-  assert_eq!(1, engine.state.workflows[0].runs().len());
+  assert_eq!(1, engine.state.current().unwrap().workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "B");
   assert_eq!(1, engine.current_traversals_count);
 
   // Log is matched and workflow moves to state "B".
   engine_process_log!(engine; "foo");
-  assert_eq!(1, engine.state.workflows[0].runs().len());
+  assert_eq!(1, engine.state.current().unwrap().workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "B");
   assert_eq!(1, engine.current_traversals_count);
 
   // * A new initial state run is created and added to the beginning of runs list.
   // * Log is matched and workflow moves to state "C".
   engine_process_log!(engine; "bar");
-  assert_eq!(2, engine.state.workflows[0].runs().len());
+  assert_eq!(2, engine.state.current().unwrap().workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "A", "C");
   assert_eq!(2, engine.current_traversals_count);
 
   // Log is not matched.
   engine_process_log!(engine; "dar");
-  assert_eq!(2, engine.state.workflows[0].runs().len());
+  assert_eq!(2, engine.state.current().unwrap().workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "A", "C");
   assert_eq!(2, engine.current_traversals_count);
 
   // Log is matched and workflow is reset to its initial state.
   engine_process_log!(engine; "foo");
-  assert_eq!(1, engine.state.workflows[0].runs().len());
+  assert_eq!(1, engine.state.current().unwrap().workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "B");
   assert_eq!(1, engine.current_traversals_count);
 
   // * A new initial state run is created and added to the beginning of runs list.
   // * Log is matched by the run that's not in an initial state and the run advances to state `C`.
   engine_process_log!(engine; "bar");
-  assert_eq!(2, engine.state.workflows[0].runs().len());
+  assert_eq!(2, engine.state.current().unwrap().workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "A", "C");
   assert_eq!(2, engine.current_traversals_count);
 
@@ -2683,20 +2774,20 @@ async fn test_traversals_count_tracking() {
 
   // Log is not matched.
   engine_process_log!(engine; "foo");
-  assert_eq!(1, engine.state.workflows[0].runs().len());
+  assert_eq!(1, engine.state.current().unwrap().workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "B");
   assert_eq!(1, engine.current_traversals_count);
 
   // Log is matched and workflow moves to state "B".
   engine_process_log!(engine; "foo");
-  assert_eq!(1, engine.state.workflows[0].runs().len());
+  assert_eq!(1, engine.state.current().unwrap().workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "B");
   assert_eq!(1, engine.current_traversals_count);
 
   // * A new initial state run is created and added to the beginning of runs list.
   // * Log is matched and workflow moves to "E" state.
   engine_process_log!(engine; "dar");
-  assert_eq!(2, engine.state.workflows[0].runs().len());
+  assert_eq!(2, engine.state.current().unwrap().workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "A", "E");
   assert_eq!(2, engine.current_traversals_count);
 
