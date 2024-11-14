@@ -530,7 +530,19 @@ impl Resolver {
   pub(crate) fn make_streaming_action(
     &self,
     pending_action: PendingFlushBuffersAction,
+    current_session_id: &str,
   ) -> Option<StreamingBuffersAction> {
+    // If the session ID has changed since the action was created, we ignore the action.
+    // TODO(snowp): Ideally we'd want to upload the corresponding logs to the server, but we don't
+    // have a way to do this concurrently while logging logs for the new server.
+    if current_session_id != pending_action.session_id {
+      log::debug!(
+        "ignoring streaming action: \"{:?}\", session ID mismatch",
+        pending_action.id
+      );
+      return None;
+    }
+
     let streaming_action = StreamingBuffersAction::new(pending_action, &self.continuous_buffer_ids);
     if streaming_action.is_some() {
       self.stats.streaming_action_initiation_successes.inc();
