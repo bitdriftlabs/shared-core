@@ -18,24 +18,14 @@ use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::PreConfigBuffer;
 use crate::{internal_report, network};
 use bd_buffer::BuffersWithAck;
-use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
+use bd_client_common::error::handle_unexpected;
 use bd_log_metadata::{AnnotatedLogFields, MetadataProvider};
-use bd_log_primitives::{
-  log_level,
-  Log,
-  LogField,
-  LogFieldValue,
-  LogFields,
-  LogInterceptor,
-  LogLevel,
-  LogMessage,
-};
+use bd_log_primitives::{Log, LogField, LogFieldValue, LogInterceptor, LogLevel, LogMessage};
 use bd_network_quality::NetworkQualityProvider;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use itertools::Itertools;
 use std::mem::size_of_val;
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -99,7 +89,7 @@ pub struct LogAttributesOverridesPreviousRunSessionID {
   /// The hint that tells the SDK what the expected previous session ID was. The SDK uses it to
   /// verify whether the passed information matches its internal session ID tracking and drops
   /// logs whose hints are invalid.
-  pub expected_previous_process_session_id: String,
+  pub expected_previous_process_session_id: Option<String>,
   pub occurred_at: OffsetDateTime,
 }
 
@@ -363,13 +353,20 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       Ok(metadata) => {
         let (session_id, timestamp, extra_fields) =
           if let Some(overrides) = log.attributes_overrides {
-            if Some(overrides.expected_previous_process_session_id.clone())
-              == self.session_strategy.previous_process_session_id()
-            {
-              // Session ID override hint provided and matches our expectations. Emit log with
-              // overrides applied.
+            if let Some(override_session_id) = overrides.expected_previous_process_session_id {
               (
-                overrides.expected_previous_process_session_id,
+                override_session_id,
+                overrides.occurred_at,
+                Some(vec![LogField {
+                  key: "_logged_at".to_string(),
+                  value: LogFieldValue::String(metadata.timestamp.to_string()),
+                }]),
+              )
+            } else if let Some(previous_execution_session_id) =
+              self.session_strategy.previous_process_session_id()
+            {
+              (
+                previous_execution_session_id,
                 overrides.occurred_at,
                 Some(vec![LogField {
                   key: "_logged_at".to_string(),
@@ -377,54 +374,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 }]),
               )
             } else {
-              // Session ID override hint provided but doesn't match our expectations. Drop log.
-              let session_id = self.session_strategy.session_id();
-
-              handle_unexpected_error_with_details(
-                anyhow::Error::msg(
-                  "failed to override log attributes, provided override attributes do not match \
-                   expectations",
-                ),
-                &format!(
-                  "original_session_id {session_id:?}, override attribute session ID {:?} \
-                   original timestamp {:?}, override timestamp {:?}",
-                  overrides.expected_previous_process_session_id,
-                  metadata.timestamp,
-                  overrides.occurred_at
-                ),
-                || None,
-              );
-
-              // We log an internal log and continue processing the log.
-              let _ignored = self
-                .write_log_internal(
-                  "failed to override log attributes, provided override attributes do not match \
-                   expectations",
-                  metadata
-                    .fields
-                    .clone()
-                    .into_iter()
-                    .chain(vec![
-                      LogField {
-                        key: "_original_session_id".to_string(),
-                        value: LogFieldValue::String(session_id.clone()),
-                      },
-                      LogField {
-                        key: "_override_session_id".to_string(),
-                        value: LogFieldValue::String(
-                          overrides.expected_previous_process_session_id.clone(),
-                        ),
-                      },
-                    ])
-                    .collect_vec(),
-                  metadata.matching_fields.clone(),
-                  session_id.clone(),
-                  metadata.timestamp,
-                )
-                .await;
-
-              // We drop the log as the provided override attributes do not match our expectations.
-              return Ok(());
+              (
+                self.session_strategy.session_id(),
+                overrides.occurred_at,
+                Some(vec![LogField {
+                  key: "_logged_at".to_string(),
+                  value: LogFieldValue::String(metadata.timestamp.to_string()),
+                }]),
+              )
             }
           } else {
             (self.session_strategy.session_id(), metadata.timestamp, None)
@@ -665,29 +622,5 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         },
       }
     }
-  }
-
-  async fn write_log_internal(
-    &mut self,
-    msg: &str,
-    fields: LogFields,
-    matching_fields: LogFields,
-    session_id: String,
-    occurred_at: time::OffsetDateTime,
-  ) -> anyhow::Result<()> {
-    self
-      .write_log(
-        Log {
-          log_level: log_level::WARNING,
-          log_type: LogType::InternalSDK,
-          message: msg.into(),
-          fields,
-          matching_fields,
-          session_id,
-          occurred_at,
-        },
-        None,
-      )
-      .await
   }
 }

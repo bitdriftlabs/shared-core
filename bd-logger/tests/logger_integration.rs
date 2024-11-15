@@ -431,7 +431,7 @@ mod tests {
       },
     );
 
-    let current_session_id = setup.logger.new_logger_handle().session_id();
+    // let current_session_id = setup.logger.new_logger_handle().session_id();
 
     // This log should end up being emitted with an overridden session ID and timestamp.
     setup.log(
@@ -441,7 +441,7 @@ mod tests {
       vec![],
       vec![],
       Some(LogAttributesOverridesPreviousRunSessionID {
-        expected_previous_process_session_id: "foo_overridden".to_string(),
+        expected_previous_process_session_id: Some("foo_overridden".to_string()),
         occurred_at: time_second,
       }),
     );
@@ -454,7 +454,7 @@ mod tests {
       vec![],
       vec![],
       Some(LogAttributesOverridesPreviousRunSessionID {
-        expected_previous_process_session_id: "bar_overridden".to_string(),
+        expected_previous_process_session_id: Some("bar_overridden".to_string()),
         occurred_at: time_second,
       }),
     );
@@ -484,10 +484,8 @@ mod tests {
 
       // Confirm that second log was dropped and error was emitted.
       let second_uploaded_log = &log_upload.logs[1];
-      assert_eq!(expected_session_id(second_uploaded_log), current_session_id);
-      assert_eq!(expected_field_value(second_uploaded_log, "_override_session_id"), "bar_overridden");
-
-      assert!(error_reporter.error().is_some());
+      assert_eq!(expected_session_id(second_uploaded_log), "bar_overridden");
+      assert_eq!(expected_timestamp(second_uploaded_log), time_second);
     });
   }
 

@@ -1134,7 +1134,8 @@ impl StateStore {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct EngineState {
-  // The workflows state tracked by the engine ordered from the latest one (current one) to the oldest one.
+  // The workflows state tracked by the engine ordered from the latest one (current one) to the
+  // oldest one.
   states: Vec<WorkflowsState>,
 }
 
@@ -1223,7 +1224,7 @@ impl EngineState {
     self.insert_state(state)
   }
 
-  fn insert_state(&mut self, state: WorkflowsState) ->  &mut WorkflowsState {
+  fn insert_state(&mut self, state: WorkflowsState) -> &mut WorkflowsState {
     let session_id = state.session_id.clone();
     self.states.insert(0, state);
 
