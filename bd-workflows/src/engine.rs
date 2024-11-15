@@ -158,8 +158,11 @@ impl WorkflowsEngine {
       ));
 
     if let Some(engine_state) = self.state_store.load() {
-      for loaded_workflows_state in engine_state.into_iter() {
-        let workflows_state = self.state.get_or_insert(&loaded_workflows_state.session_id);
+      // Iterate over the states in reverse order to ensure that the states are loaded from the
+      // oldest to the newest. This is important because the last state to load signals to the
+      // engine the active session ID.
+      for loaded_workflows_state in engine_state.states.into_iter().rev() {
+        let workflows_state = self.state.insert(&loaded_workflows_state.session_id);
 
         workflows_state.pending_actions = self
           .flush_buffers_actions_resolver
@@ -177,7 +180,7 @@ impl WorkflowsEngine {
         );
       }
     } else {
-      let workflows_state = self.state.get_or_insert("");
+      let workflows_state = self.state.insert("");
 
       self.remote_config_mediator.add_workflows(
         &mut workflows_state.workflows,
@@ -195,7 +198,7 @@ impl WorkflowsEngine {
       .map(|config| (config.id().to_string(), config))
       .collect();
 
-    for workflows_state in self.state.iter() {
+    for workflows_state in &self.state.states {
       for action in &workflows_state.pending_actions {
         if let Err(e) = self
           .flush_buffers_negotiator_input_tx
@@ -236,7 +239,7 @@ impl WorkflowsEngine {
       config.workflows_configuration.workflows.len()
     );
 
-    for state in self.state.states.iter_mut() {
+    for state in &mut self.state.states {
       // Introduce hash look ups to avoid N^2 complexity later in this method.
       let latest_workflow_ids_to_index: HashMap<&str, usize> = config
         .workflows_configuration
@@ -425,11 +428,11 @@ impl WorkflowsEngine {
     let state = self.state.get_or_insert(log.session_id);
 
     if let Some(old_session_id) = old_session_id {
-      if old_session_id != state.session_id {
+      if !old_session_id.is_empty() && old_session_id != state.session_id {
         self.needs_state_persistence = true;
+        self.current_traversals_count = 0;
       }
     }
-    // self.needs_state_persistence = true;
 
     // Return early if there are no workflows.
     if state.workflows.is_empty() {
@@ -547,7 +550,13 @@ impl WorkflowsEngine {
         .map(Workflow::traversals_count)
         .sum::<u32>()
         == self.current_traversals_count,
-      "current_traversals_count is not equal to computed traversals count"
+      "current_traversals_count ({:?}) is not equal to computed traversals count ({:?})",
+      self.current_traversals_count,
+      state
+        .workflows
+        .iter()
+        .map(Workflow::traversals_count)
+        .sum::<u32>()
     );
 
     let (
@@ -765,7 +774,7 @@ struct RemoteConfigMediator {
 }
 
 impl RemoteConfigMediator {
-  fn new(stats: RemoteConfigMediatorStats) -> Self {
+  const fn new(stats: RemoteConfigMediatorStats) -> Self {
     Self { stats }
   }
 
@@ -773,7 +782,7 @@ impl RemoteConfigMediator {
     &self,
     workflows: &mut Vec<Workflow>,
     existing_workflows: Vec<Workflow>,
-    configs: &Vec<Config>,
+    configs: &[Config],
     current_traversals_count: &mut u32,
     traversals_count_limit: u32,
   ) {
@@ -787,7 +796,7 @@ impl RemoteConfigMediator {
       .map(|workflow| (workflow.id().to_string(), workflow))
       .collect();
 
-    let workflows_to_add = configs.into_iter().map(|config| {
+    let workflows_to_add = configs.iter().map(|config| {
       let workflow = existing_workflow_ids_to_workflows
         .remove(config.id())
         .map_or_else(
@@ -901,7 +910,11 @@ impl RemoteConfigMediator {
 
     *current_traversals_count = current_traversals_count.saturating_sub(workflow_traversals_count);
 
-    log::debug!("workflow={}: workflow removed", workflow.id());
+    log::debug!(
+      "workflow={}: workflow with {:?} traversals removed",
+      workflow.id(),
+      workflow_traversals_count
+    );
 
     // If there exists a run that is not in an initial state.
     if !workflow.is_in_initial_state() {
@@ -1128,17 +1141,7 @@ impl EngineState {
   fn optimized(&self) -> Self {
     Self {
       states: self.states.iter().map(WorkflowsState::optimized).collect(),
-      // current_traversals_count: 0,    // TODO(Augustyniak): IMPLEMENT
-      // needs_state_persistence: false, // TODO(Augustyniak): IMPLEMENT
     }
-  }
-
-  fn into_iter(self) -> impl Iterator<Item = WorkflowsState> {
-    self.states.into_iter()
-  }
-
-  fn iter(&self) -> impl Iterator<Item = &WorkflowsState> {
-    self.states.iter()
   }
 
   fn current_session_id(&self) -> Option<&str> {
@@ -1156,6 +1159,23 @@ impl EngineState {
       .find(|state| state.session_id == session_id)
   }
 
+  fn insert(&mut self, session_id: &str) -> &mut WorkflowsState {
+    self.states.retain(|s| s.session_id != session_id);
+
+    let state = WorkflowsState::new(session_id);
+    self.states.insert(0, state);
+
+    if self.states.len() > 2 {
+      self.states.remove(self.states.len() - 1);
+    }
+
+    self
+      .states
+      .iter_mut()
+      .find(|state| state.session_id == session_id)
+      .unwrap()
+  }
+
   fn get_or_insert(&mut self, session_id: &str) -> &mut WorkflowsState {
     if self
       .states
@@ -1170,7 +1190,7 @@ impl EngineState {
         .unwrap();
     }
 
-    if let Some(previous_session) = self.states.first_mut() {
+    let existing_workflows = if let Some(previous_session) = self.states.first_mut() {
       // We are lazy and don't say that state needs persistance.
       // That may result in new session ID not being stored to disk
       // (if the app is killed before the next time we store state)
@@ -1185,13 +1205,12 @@ impl EngineState {
         session_id
       );
 
+      let mut workflows: Vec<Workflow> = vec![];
       for workflow in &mut previous_session.workflows {
-        workflow.remove_all_runs();
+        workflows.push(Workflow::new(workflow.id().to_string()));
       }
 
-      // TODO(Augustyniak): Implement in other place.
-      // self.current_traversals_count = 0;
-      // self.needs_state_persistence = true;
+      workflows
     } else {
       // There was no state on a disk when workflows engine was started
       // and engine just observed first session ID.
@@ -1204,9 +1223,12 @@ impl EngineState {
         "workflows engine: moving from no session to session \"{}\"",
         session_id
       );
-    }
 
-    let state = WorkflowsState::new(session_id);
+      vec![]
+    };
+
+    let mut state = WorkflowsState::new(session_id);
+    state.workflows = existing_workflows;
     self.states.insert(0, state);
 
     if self.states.len() > 2 {
