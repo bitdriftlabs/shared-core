@@ -1134,6 +1134,7 @@ impl StateStore {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct EngineState {
+  // The workflows state tracked by the engine ordered from the latest one (current one) to the oldest one.
   states: Vec<WorkflowsState>,
 }
 
@@ -1163,17 +1164,7 @@ impl EngineState {
     self.states.retain(|s| s.session_id != session_id);
 
     let state = WorkflowsState::new(session_id);
-    self.states.insert(0, state);
-
-    if self.states.len() > 2 {
-      self.states.remove(self.states.len() - 1);
-    }
-
-    self
-      .states
-      .iter_mut()
-      .find(|state| state.session_id == session_id)
-      .unwrap()
+    self.insert_state(state)
   }
 
   fn get_or_insert(&mut self, session_id: &str) -> &mut WorkflowsState {
@@ -1229,18 +1220,22 @@ impl EngineState {
 
     let mut state = WorkflowsState::new(session_id);
     state.workflows = existing_workflows;
+    self.insert_state(state)
+  }
+
+  fn insert_state(&mut self, state: WorkflowsState) ->  &mut WorkflowsState {
+    let session_id = state.session_id.clone();
     self.states.insert(0, state);
 
+    // We limit the number of workflows state that are tracked to 2.
     if self.states.len() > 2 {
       self.states.remove(self.states.len() - 1);
     }
 
-    // # Safety
-    // Unwrapping is safe since we are adding the state that we search for a few lines above.
     self
       .states
       .iter_mut()
-      .find(|state| state.session_id == session_id)
+      .find(|s| s.session_id == session_id)
       .unwrap()
   }
 }
