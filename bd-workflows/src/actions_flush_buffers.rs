@@ -458,10 +458,12 @@ impl Resolver {
             .streaming_action_completion_termination_criterion_met
             .inc();
         } else if session_id_changed {
-          // TODO(Augustyniak): There are some tests that fails due to this not being called when a session changes.
-          // This is because streaming actions are tracked on per session ID basis now and when the session ID changes
-          // we do not process streaming actions from the previous session ID so `session_id_changed` is never true.
-          // Figure out how to handle this - either remove this stat altogether or make it work somehow.
+          // TODO(Augustyniak): There are some tests that fails due to this not being called when a
+          // session changes. This is because streaming actions are tracked on per session
+          // ID basis now and when the session ID changes we do not process streaming
+          // actions from the previous session ID so `session_id_changed` is never true.
+          // Figure out how to handle this - either remove this stat altogether or make it work
+          // somehow.
           self.stats.streaming_action_completion_session_changes.inc();
         }
 
