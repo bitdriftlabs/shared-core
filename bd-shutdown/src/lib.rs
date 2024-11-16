@@ -6,20 +6,28 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use std::sync::Arc;
+#[cfg(unix)]
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::watch;
 
 // The real graceful shutdown function that listens for SIGTERM or SIGINT.
+#[cfg(unix)]
 pub async fn real_graceful_shutdown() {
   let mut sigterm_stream = signal(SignalKind::terminate()).unwrap();
   let mut sigint_stream = signal(SignalKind::interrupt()).unwrap();
-
   tokio::select! {
     _ = sigterm_stream.recv() => {},
     _ = sigint_stream.recv() => {},
   }
 
   log::info!("received SIGTERM or SIGINT");
+}
+
+#[cfg(windows)]
+pub async fn real_graceful_shutdown() {
+  // Windows doesn't have signals, so we just wait for a key press.
+  tokio::signal::ctrl_c().await.unwrap();
+  log::info!("received CTRL-C");
 }
 
 //
