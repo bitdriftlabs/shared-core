@@ -216,12 +216,12 @@ fn one_state_workflow() {
   let a = state!("A");
 
   // test exclusive workflow
-  let config = workflow!(exclusive with a);
+  let config = workflow!("1"; exclusive with a);
   let mut workflow = AnnotatedWorkflow::new(config);
   workflow_process_log!(workflow; "foo");
 
   // test parallel workflow
-  let config = workflow!(parallel with a);
+  let config = workflow!("1"; parallel with a);
   let mut workflow = AnnotatedWorkflow::new(config);
   workflow_process_log!(workflow; "foo");
 }
@@ -237,7 +237,7 @@ fn unknown_state_reference_workflow() {
     do action!(flush_buffers &["foo_buffer_id"]; id "foo")
   );
 
-  let config = workflow_proto!(exclusive with a);
+  let config = workflow_proto!("1"; exclusive with a);
   assert_eq!(
     Config::new(&config).err().unwrap().to_string(),
     "invalid workflow state configuration: reference to an unexisting state"
@@ -274,7 +274,7 @@ fn multiple_start_nodes_initial_fork() {
     do action!(flush_buffers &["foo_buffer_id"]; id "foo")
   );
 
-  let config = workflow!(exclusive with a, b, c, d, e);
+  let config = workflow!("1"; exclusive with a, b, c, d, e);
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
@@ -383,7 +383,7 @@ fn multiple_start_nodes_initial_branching() {
     do action!(flush_buffers &["foo_buffer_id"]; id "foo")
   );
 
-  let config = workflow!(exclusive with a, b, c, d, e);
+  let config = workflow!("1"; exclusive with a, b, c, d, e);
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
@@ -487,7 +487,7 @@ fn basic_exclusive_workflow() {
     do action!(flush_buffers &["bar_buffer_id"]; id "bar")
   );
 
-  let config = workflow!(exclusive with a, b, c);
+  let config = workflow!("1"; exclusive with a, b, c);
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
@@ -590,7 +590,7 @@ fn basic_parallel_workflow() {
     do action!(flush_buffers &["bar_buffer_id"]; id "bar")
   );
 
-  let config = workflow!(parallel with a, b, c);
+  let config = workflow!("1"; parallel with a, b, c);
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
@@ -682,8 +682,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
     when rule!(log_matches!(message == "zar"))
   );
 
-  let config: Config =
-    workflow!(exclusive with a, b, c, d, e; matches limit!(count 3); duration limit!(seconds 10));
+  let config: Config = workflow!("1"; exclusive with a, b, c, d, e; matches limit!(count 3); duration limit!(seconds 10));
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
@@ -801,6 +800,7 @@ fn parallel_workflow_matched_logs_count_limit() {
   );
 
   let config = workflow_proto!(
+    "1";
     parallel with a, b, c, e, d;
     matches limit!(count 3);
     duration limit!(seconds 10)
@@ -913,7 +913,7 @@ fn exclusive_workflow_log_rule_count() {
     do action!(flush_buffers &["bar_buffer_id"]; id "bar")
   );
 
-  let config = workflow!(exclusive with a, b, c);
+  let config = workflow!("1"; exclusive with a, b, c);
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
@@ -1030,7 +1030,7 @@ fn parallel_workflow_log_rule_count() {
     do action!(flush_buffers &["bar_buffer_id"]; id "bar")
   );
 
-  let config = workflow!(parallel with a, b, c);
+  let config = workflow!("1"; parallel with a, b, c);
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
@@ -1200,7 +1200,7 @@ fn branching_exclusive_workflow() {
     do action!(flush_buffers &["bar_buffer_id"]; id "barbar")
   );
 
-  let config = workflow!(exclusive with a, b, c, d, e);
+  let config = workflow!("1"; exclusive with a, b, c, d, e);
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
@@ -1363,7 +1363,7 @@ fn branching_parallel_workflow() {
     do action!(flush_buffers &["zar_buffer_id"]; id "zar")
   );
 
-  let config = workflow!(parallel with a, b, c, d, e);
+  let config = workflow!("1"; parallel with a, b, c, d, e);
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 

@@ -44,7 +44,7 @@ use bd_stats_common::labels;
 use bd_time::TimeDurationExt as _;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -61,19 +61,16 @@ use tokio::time::Instant;
 /// Orchestrates the execution and management of workflows. It is also responsible for
 /// persisting and restoring its state in disk when any workflow has changed.
 pub struct WorkflowsEngine {
-  // Number of elements in configs and
-  // state.workflows should be always the same.
-  // A config at index `i` corresponds to a workflow (state.workflows list)
-  // at index `i`.
-  configs: Vec<Config>,
-  state: WorkflowsState,
+  configs: BTreeMap<String, Config>,
+  state: EngineState,
+  remote_config_mediator: RemoteConfigMediator,
   state_store: StateStore,
 
+  current_traversals_count: u32,
   needs_state_persistence: bool,
 
   stats: WorkflowsEngineStats,
 
-  current_traversals_count: u32,
   /// Used to keep track of the current number of traversals.
   /// The other way to do this would be to iterate over all workflows
   /// and their runs and their traversals every time we want to
@@ -127,13 +124,16 @@ impl WorkflowsEngine {
       sankey_diagram::Processor::new(sankey_input_rx, data_upload_tx, &actions_scope);
     let sankey_processor_join_handle = sankey_diagram_processor.run();
 
+    let (engine_stats, remote_config_mediator_stats) = WorkflowsEngineStats::new(&scope);
+
     let workflows_engine = Self {
-      configs: vec![],
-      state: WorkflowsState::new_uninitialized(),
-      stats: WorkflowsEngineStats::new(&scope),
+      configs: BTreeMap::new(),
+      state: EngineState::default(),
+      remote_config_mediator: RemoteConfigMediator::new(remote_config_mediator_stats),
+      stats: engine_stats,
       state_store: StateStore::new(sdk_directory, &scope, runtime),
-      needs_state_persistence: false,
       current_traversals_count: 0,
+      needs_state_persistence: false,
       traversals_count_limit: traversals_count_limit_flag.read(),
       state_periodic_write_interval: state_periodic_write_interval_flag.read(),
       flush_buffers_actions_resolver,
@@ -157,44 +157,70 @@ impl WorkflowsEngine {
         config.continuous_buffer_ids,
       ));
 
-    let workflows_state = self.state_store.load();
+    if let Some(engine_state) = self.state_store.load() {
+      // Iterate over the states in reverse order to ensure that the states are loaded from the
+      // oldest to the newest. This is important because the last state to load signals to the
+      // engine the active session ID.
+      for loaded_workflows_state in engine_state.states.into_iter().rev() {
+        let workflows_state = self.state.insert(&loaded_workflows_state.session_id);
 
-    if let Some(state) = workflows_state {
-      self.state.pending_actions = self
-        .flush_buffers_actions_resolver
-        .standardize_pending_actions(state.pending_actions);
-      self.state.streaming_actions = self
-        .flush_buffers_actions_resolver
-        .standardize_streaming_buffers(state.streaming_actions);
+        workflows_state.pending_actions = self
+          .flush_buffers_actions_resolver
+          .standardize_pending_actions(loaded_workflows_state.pending_actions);
+        workflows_state.streaming_actions = self
+          .flush_buffers_actions_resolver
+          .standardize_streaming_buffers(loaded_workflows_state.streaming_actions);
 
-      self.state.session_id.clone_from(&state.session_id);
-      self.add_workflows(
-        config.workflows_configuration.workflows,
-        Some(state.workflows),
-      );
+        self.remote_config_mediator.add_workflows(
+          &mut workflows_state.workflows,
+          loaded_workflows_state.workflows,
+          &config.workflows_configuration.workflows,
+          &mut self.current_traversals_count,
+          self.traversals_count_limit,
+        );
+      }
     } else {
-      self.add_workflows(config.workflows_configuration.workflows, None);
+      let workflows_state = self.state.insert("");
+
+      self.remote_config_mediator.add_workflows(
+        &mut workflows_state.workflows,
+        vec![],
+        &config.workflows_configuration.workflows,
+        &mut self.current_traversals_count,
+        self.traversals_count_limit,
+      );
     }
 
-    for action in &self.state.pending_actions {
-      if let Err(e) = self
-        .flush_buffers_negotiator_input_tx
-        .try_send(action.clone())
-      {
-        log::debug!("failed to send pending action for intent negotiation: {e}");
-        self.stats.intent_negotiation_channel_send_failures.inc();
+    self.configs = config
+      .workflows_configuration
+      .workflows
+      .into_iter()
+      .map(|config| (config.id().to_string(), config))
+      .collect();
+
+    for workflows_state in &self.state.states {
+      for action in &workflows_state.pending_actions {
+        if let Err(e) = self
+          .flush_buffers_negotiator_input_tx
+          .try_send(action.clone())
+        {
+          log::debug!("failed to send pending action for intent negotiation: {e}");
+          self.stats.intent_negotiation_channel_send_failures.inc();
+        }
       }
     }
 
-    log::debug!(
-      "started workflows engine with {} workflow(s); {} pending processing action(s); {} \
-       streaming action(s); session ID: \"{}\"; traversals count limit: {}",
-      self.state.workflows.len(),
-      self.state.pending_actions.len(),
-      self.state.streaming_actions.len(),
-      self.state.session_id,
-      self.traversals_count_limit,
-    );
+    if let Some(state) = self.state.current() {
+      log::debug!(
+        "started workflows engine with {} workflow(s); {} pending processing action(s); {} \
+         streaming action(s); session ID: \"{}\"; traversals count limit: {}",
+        state.workflows.len(),
+        state.pending_actions.len(),
+        state.streaming_actions.len(),
+        state.session_id,
+        self.traversals_count_limit,
+      );
+    }
   }
 
   /// Updates the configuration of workflows managed by the receiver with a provided
@@ -213,61 +239,58 @@ impl WorkflowsEngine {
       config.workflows_configuration.workflows.len()
     );
 
-    // Introduce hash look ups to avoid N^2 complexity later in this method.
-    let latest_workflow_ids_to_index: HashMap<&str, usize> = config
+    for state in &mut self.state.states {
+      // Introduce hash look ups to avoid N^2 complexity later in this method.
+      let latest_workflow_ids_to_index: HashMap<&str, usize> = config
+        .workflows_configuration
+        .workflows
+        .iter()
+        .enumerate()
+        .map(|(index, config)| (config.id(), index))
+        .collect();
+
+      // Process workflows in reversed order as we may end up removing workflows
+      // while iterating.
+      for index in (0 .. state.workflows.len()).rev() {
+        let should_remove_existing_workflow =
+          match latest_workflow_ids_to_index.get(state.workflows[index].id()) {
+            Some(latest_workflows_index) => {
+              let workflow_id =
+                config.workflows_configuration.workflows[*latest_workflows_index].id();
+              // Handle an edge case where a client receives a config update containing a workflow
+              // with a config field unknown to the client, which is later updated to
+              // understand this field. In such cases, the server's config is converted to
+              // the client's representation and cached for future use.
+              // If the client is later updated to understand the previously unsupported field,
+              // we check for a config mismatch between the cached client representation and
+              // the fresh client representation from the server. If there's a mismatch, we discard
+              // the cached version and replace it with the fresh one later on.
+              Some(&config.workflows_configuration.workflows[*latest_workflows_index])
+                != self.configs.get(workflow_id)
+            },
+            // The latest config update doesn't contain a workflow with an ID of the existing
+            // workflow. Remove existing workflow.
+            None => true,
+          };
+
+        if should_remove_existing_workflow {
+          self.remote_config_mediator.remove_workflow(
+            state,
+            index,
+            &mut self.configs,
+            &mut self.traversals_count_limit,
+            &mut self.needs_state_persistence,
+          );
+        }
+      }
+    }
+
+    self.configs = config
       .workflows_configuration
       .workflows
-      .iter()
-      .enumerate()
-      .map(|(index, config)| (config.id(), index))
+      .into_iter()
+      .map(|config| (config.id().to_string(), config))
       .collect();
-
-    // Process workflows in reversed order as we may end up removing workflows
-    // while iterating.
-    for index in (0 .. self.state.workflows.len()).rev() {
-      let should_remove_existing_workflow =
-        match latest_workflow_ids_to_index.get(self.state.workflows[index].id()) {
-          Some(latest_workflows_index) => {
-            // Handle an edge case where a client receives a config update containing a workflow
-            // with a config field unknown to the client, which is later updated to
-            // understand this field. In such cases, the server's config is converted to
-            // the client's representation and cached for future use.
-            // If the client is later updated to understand the previously unsupported field,
-            // we check for a config mismatch between the cached client representation and
-            // the fresh client representation from the server. If there's a mismatch, we discard
-            // the cached version and replace it with the fresh one later on.
-            config.workflows_configuration.workflows[*latest_workflows_index] != self.configs[index]
-          },
-          // The latest config update doesn't contain a workflow with an ID of the existing
-          // workflow. Remove existing workflow.
-          None => true,
-        };
-
-      if should_remove_existing_workflow {
-        self.remove_workflow(index);
-      }
-    }
-
-    // Introduce hash look ups to avoid N^2 complexity later in this method.
-    let existing_workflow_ids_to_index: HashMap<String, usize> = self
-      .state
-      .workflows
-      .iter()
-      .enumerate()
-      .map(|(index, workflow)| (workflow.id().to_string(), index))
-      .collect();
-
-    // Iterate over the list of configs from the latest update and
-    // create workflows for the ones that do not have their representation
-    // on the client yet.
-    for workflow_config in config.workflows_configuration.workflows {
-      if !existing_workflow_ids_to_index.contains_key(workflow_config.id()) {
-        self.add_workflow(
-          Workflow::new(workflow_config.id().to_string()),
-          workflow_config,
-        );
-      }
-    }
 
     self
       .flush_buffers_actions_resolver
@@ -276,145 +299,44 @@ impl WorkflowsEngine {
         config.continuous_buffer_ids,
       ));
 
-    self.state.pending_actions = self
-      .flush_buffers_actions_resolver
-      .standardize_pending_actions(self.state.pending_actions.clone());
-    self.state.streaming_actions = self
-      .flush_buffers_actions_resolver
-      .standardize_streaming_buffers(self.state.streaming_actions.clone());
+    for state in &mut self.state.states {
+      // Introduce hash look ups to avoid N^2 complexity later in this method.
+      let existing_workflow_ids_to_index: HashMap<String, usize> = state
+        .workflows
+        .iter()
+        .enumerate()
+        .map(|(index, workflow)| (workflow.id().to_string(), index))
+        .collect();
+
+      // Iterate over the list of configs from the latest update and
+      // create workflows for the ones that do not have their representation
+      // on the client yet.
+      for workflow_config in self.configs.values() {
+        if !existing_workflow_ids_to_index.contains_key(workflow_config.id()) {
+          self.remote_config_mediator.add_workflow(
+            Workflow::new(workflow_config.id().to_string()),
+            &mut state.workflows,
+            &mut self.current_traversals_count,
+            self.traversals_count_limit,
+          );
+        }
+      }
+
+      state.pending_actions = self
+        .flush_buffers_actions_resolver
+        .standardize_pending_actions(state.pending_actions.clone());
+      state.streaming_actions = self
+        .flush_buffers_actions_resolver
+        .standardize_streaming_buffers(state.streaming_actions.clone());
+    }
 
     log::debug!(
       "consumed received workflows config update; workflows engine contains {} workflow(s)",
-      self.state.workflows.len()
+      self
+        .state
+        .current()
+        .map_or_else(|| 0, |s| s.workflows.len()),
     );
-  }
-
-  fn add_workflows(&mut self, workflows: Vec<Config>, existing_workflows: Option<Vec<Workflow>>) {
-    // `workflows` is the source of truth for workflow configurations from the server
-    // while `existing_workflows` contains state of workflow who have been running on a device.
-    //  * Combine the two by iterating over the list of configs from the server and associating
-    //    configs with relevant workflow state (if any).
-    //  * Discard workflow states that don't have a corresponding server-side config.
-    let mut existing_workflow_ids_to_workflows =
-      existing_workflows.map_or_else(HashMap::new, |workflows| {
-        workflows
-          .into_iter()
-          .map(|workflow| (workflow.id().to_string(), workflow))
-          .collect()
-      });
-
-    let workflows_and_configs = workflows.into_iter().map(|config| {
-      let workflow = existing_workflow_ids_to_workflows
-        .remove(config.id())
-        .map_or_else(
-          // We have cache state for a given workflow ID.
-          || Workflow::new(config.id().to_string()),
-          //   No cached state for a given workflow ID, start from scratch.
-          |workflow| workflow,
-        );
-      (workflow, config)
-    });
-
-    for (workflow, config) in workflows_and_configs {
-      self.add_workflow(workflow, config);
-    }
-  }
-
-  fn add_workflow(&mut self, workflow: Workflow, config: Config) {
-    let mut workflow = workflow;
-
-    let workflow_traversals_count = workflow.traversals_count();
-    if workflow_traversals_count + self.current_traversals_count > self.traversals_count_limit {
-      log::debug!(
-        "failed to add workflow with {} traversal(s) due to traversals count limit being hit \
-         ({}); current traversals count {}",
-        workflow_traversals_count,
-        self.traversals_count_limit,
-        self.current_traversals_count
-      );
-
-      // Workflow being added has too many traversal for the engine to not exceed
-      // the configured traversals count limit. Keep removing workflow's run until
-      // its addition to the engine is possible.
-      // Process traversals in reversed order as we may end up modifying the array
-      // starting at `index` in any given iteration of the loop + we want to start
-      // removing runs starting from the "latest" ones and they are at the end of
-      // the enumerated array.
-      let mut remaining_workflow_traversals_count = workflow_traversals_count;
-      for index in (0 .. workflow.runs().len()).rev() {
-        let run_traversals_count = workflow.runs()[index].traversals_count();
-
-        log::debug!(
-          "removing workflow run with {} traversal(s)",
-          run_traversals_count
-        );
-
-        remaining_workflow_traversals_count -= run_traversals_count;
-        self.stats.traversals_count_limit_hit_total.inc();
-        workflow.remove_run(index);
-
-        if remaining_workflow_traversals_count + self.current_traversals_count
-          <= self.traversals_count_limit
-        {
-          break;
-        }
-      }
-    }
-
-    self.stats.workflow_starts_total.inc();
-    self
-      .stats
-      .run_starts_total
-      .inc_by(workflow.runs().len() as u64);
-    self
-      .stats
-      .traversal_starts_total
-      .inc_by(workflow_traversals_count.into());
-
-    log::trace!(
-      "workflow={}: workflow added, runs count {}, traversal count {}",
-      workflow.id(),
-      workflow.runs().len(),
-      workflow_traversals_count,
-    );
-
-    self.current_traversals_count += workflow.traversals_count();
-
-    self.configs.push(config);
-    self.state.workflows.push(workflow);
-  }
-
-  fn remove_workflow(&mut self, workflow_index: usize) {
-    self.configs.remove(workflow_index);
-    let workflow = self.state.workflows.remove(workflow_index);
-
-    let workflow_traversals_count = workflow.traversals_count();
-    self.stats.workflow_stops_total.inc();
-    self
-      .stats
-      .run_stops_total
-      .inc_by(workflow.runs().len() as u64);
-    self
-      .stats
-      .traversal_stops_total
-      .inc_by(workflow_traversals_count.into());
-
-    self.current_traversals_count = self
-      .current_traversals_count
-      .saturating_sub(workflow_traversals_count);
-
-    log::debug!("workflow={}: workflow removed", workflow.id());
-
-    // If there exists a run that is not in an initial state.
-    if !workflow.is_in_initial_state() {
-      log::debug!(
-        "workflow={}: workflow removed, marking state as dirty",
-        workflow.id()
-      );
-      // Mark the state as dirty so that the state associated with
-      // the workflow that was just removed can be removed from disk.
-      self.needs_state_persistence = true;
-    }
   }
 
   /// Attempts to persist the client-side state of the workflows to disk while ignoring any errors.
@@ -454,7 +376,9 @@ impl WorkflowsEngine {
 
         match negotiator_output {
           NegotiatorOutput::UploadApproved(action) => {
-            self.state.pending_actions.remove(&action);
+            if let Some(state) = self.state.get(action.session_id.as_str()) {
+              state.pending_actions.remove(&action);
+            };
 
             if let Err(e) = self.buffers_to_flush_tx.try_send(BuffersToFlush::new(&action)) {
               self.stats.buffers_to_flush_channel_send_failures.inc();
@@ -464,7 +388,9 @@ impl WorkflowsEngine {
             match self.flush_buffers_actions_resolver.make_streaming_action(action.clone()) {
               Some(streaming_action) => {
                 log::debug!("streaming started: \"{streaming_action:?}\"");
-                self.state.streaming_actions.push(streaming_action);
+                if let Some(state) = self.state.get(action.session_id.as_str()) {
+                  state.streaming_actions.push(streaming_action);
+                };
               },
               None => {
                 log::debug!("no streaming configuration defined for action: \"{action:?}\"");
@@ -474,7 +400,9 @@ impl WorkflowsEngine {
             self.needs_state_persistence = true;
           },
           NegotiatorOutput::UploadRejected(action) => {
-            self.state.pending_actions.remove(&action);
+            if let Some(state) = self.state.get(action.session_id.as_str()) {
+              state.pending_actions.remove(&action);
+            };
             self.needs_state_persistence = true;
           }
         }
@@ -492,39 +420,22 @@ impl WorkflowsEngine {
     // Measure duration in here even if the list of workflows is empty.
     let _timer = self.stats.process_log_duration.start_timer();
 
-    if self.state.session_id.is_empty() {
-      log::debug!(
-        "workflows engine: moving from no session to session \"{}\"",
-        log.session_id
-      );
-      // There was no state on a disk when workflows engine was started
-      // and engine just observed first session ID.
-      // We do not have to rush to persist it to disk until any of the
-      // workflows makes progress. That's because in the context of cleaning workflows
-      // state on session change, having empty session ID
-      // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
-      // all workflows in their initial states.
-      self.state.session_id = log.session_id.to_string();
-    } else if self.state.session_id != log.session_id {
-      log::debug!(
-        "workflows engine: moving from \"{}\" to new session \"{}\", cleaning workflows state",
-        self.state.session_id,
-        log.session_id
-      );
-      // We are lazy and don't say that state needs persistance.
-      // That may result in new session ID not being stored to disk
-      // (if the app is killed before the next time we store state)
-      // which means that the next time SDK launches we start with empty
-      // session ID (""). It should be OK as in the context of cleaning workflows
-      // state on session change, having empty session ID
-      // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
-      // all workflows in their initial states.
-      self.clean_state();
-      self.state.session_id = log.session_id.to_string();
+    let old_session_id = self
+      .state
+      .current_session_id()
+      .map(std::string::ToString::to_string);
+
+    let state = self.state.get_or_insert(log.session_id);
+
+    if let Some(old_session_id) = old_session_id {
+      if !old_session_id.is_empty() && old_session_id != state.session_id {
+        self.needs_state_persistence = true;
+        self.current_traversals_count = 0;
+      }
     }
 
     // Return early if there are no workflows.
-    if self.state.workflows.is_empty() {
+    if state.workflows.is_empty() {
       self
         .stats
         .active_traversals_total
@@ -539,10 +450,19 @@ impl WorkflowsEngine {
     }
 
     let mut actions: Vec<TriggeredAction<'_>> = vec![];
-    for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
+    for (_index, workflow) in &mut state.workflows.iter_mut().enumerate() {
       let was_in_initial_state = workflow.is_in_initial_state();
+
+      let Some(config) = self.configs.get(workflow.id()) else {
+        log::debug!(
+          "attempted to evaluate not existing workflow: {:?}",
+          workflow.id()
+        );
+        continue;
+      };
+
       let result = workflow.process_log(
-        &self.configs[index],
+        config,
         log,
         &mut self.current_traversals_count,
         self.traversals_count_limit,
@@ -623,20 +543,20 @@ impl WorkflowsEngine {
       actions.extend(result.triggered_actions());
     }
 
-    self
-      .stats
-      .active_traversals_total
-      .observe(self.current_traversals_count.into());
-
     debug_assert!(
-      self
-        .state
+      state
         .workflows
         .iter()
         .map(Workflow::traversals_count)
         .sum::<u32>()
         == self.current_traversals_count,
-      "current_traversals_count is not equal to computed traversals count"
+      "current_traversals_count ({:?}) is not equal to computed traversals count ({:?})",
+      self.current_traversals_count,
+      state
+        .workflows
+        .iter()
+        .map(Workflow::traversals_count)
+        .sum::<u32>()
     );
 
     let (
@@ -649,9 +569,9 @@ impl WorkflowsEngine {
     let result = self
       .flush_buffers_actions_resolver
       .process_streaming_actions(
-        &mut self.state.streaming_actions,
+        &mut state.streaming_actions,
         log_destination_buffer_ids,
-        &self.state.session_id,
+        log.session_id,
       );
 
     self.needs_state_persistence |= result.has_changed_streaming_actions;
@@ -660,9 +580,9 @@ impl WorkflowsEngine {
       .flush_buffers_actions_resolver
       .process_flush_buffer_actions(
         flush_buffers_actions,
-        &self.state.session_id,
-        &self.state.pending_actions,
-        &self.state.streaming_actions,
+        log.session_id,
+        &state.pending_actions,
+        &state.streaming_actions,
       );
 
     self
@@ -680,7 +600,7 @@ impl WorkflowsEngine {
     }
 
     for action in flush_buffers_actions_processing_result.new_pending_actions_to_add {
-      self.state.pending_actions.insert(action.clone());
+      state.pending_actions.insert(action.clone());
       if let Err(e) = self.flush_buffers_negotiator_input_tx.try_send(action) {
         log::debug!("failed to send flush buffers action intent for intent negotiation: {e}");
         self.stats.intent_negotiation_channel_send_failures.inc();
@@ -697,17 +617,6 @@ impl WorkflowsEngine {
         .triggered_flushes_buffer_ids,
       capture_screenshot: !capture_screenshot_actions.is_empty(),
     }
-  }
-
-  fn clean_state(&mut self) {
-    self.current_traversals_count = 0;
-    // We clear the ongoing workflows state as opposed to the whole state because:
-    // * pending actions (uploads) are not affected by the session change, and ongoing logs uploads
-    //   should continue even as the session ID changes.
-    // * streaming actions after the session ID change are cleared on the next call to the
-    //   Resolver's resolve method.
-    self.state.clear_ongoing_workflows_state();
-    self.needs_state_persistence = true;
   }
 
   /// Handles deduping metrics based on their tags, ensuring that the same emit metric
@@ -792,6 +701,231 @@ impl Drop for WorkflowsEngine {
   fn drop(&mut self) {
     self.flush_buffers_negotiator_join_handle.abort();
     self.sankey_processor_join_handle.abort();
+  }
+}
+
+//
+// RemoteConfigMediatorStats
+//
+
+#[allow(clippy::struct_field_names)]
+#[derive(Debug)]
+struct RemoteConfigMediatorStats {
+  /// The number of started workflows. Workflows are started on SDK configuration
+  /// and in response to workflow config updates from a server.
+  workflow_starts_total: Counter,
+  /// The number of workflows on the client that were stopped due to an update from a
+  /// server that removed them from the list of workflows.
+  workflow_stops_total: Counter,
+
+  /// The number of started runs. Each workflow has at least one and can
+  /// have significantly more runs.
+  run_starts_total: Counter,
+  /// A number of runs stopped in response to config update from a server or exceeding
+  /// one of the workflows-related limits controlled with either a workflows config or
+  /// SDK runtime settings.
+  run_stops_total: Counter,
+
+  /// The number of started traversals. See `Traversal` for more details.
+  traversal_starts_total: Counter,
+  /// A number of traversals stopped in response to config update from a server or exceeding
+  /// one of the workflows-related limits controlled with either a workflows config or
+  /// SDK runtime settings.
+  traversal_stops_total: Counter,
+
+  /// The number of times the engine prevented a run and/or traversal from being
+  /// created due to a configured traversals count limit.
+  traversals_count_limit_hit_total: Counter,
+}
+
+impl RemoteConfigMediatorStats {
+  fn new(
+    scope: &Scope,
+    run_starts_total: Counter,
+    run_stops_total: Counter,
+    traversal_starts_total: Counter,
+    traversal_stops_total: Counter,
+    traversals_count_limit_hit_total: Counter,
+  ) -> Self {
+    Self {
+      workflow_starts_total: scope
+        .counter_with_labels("workflows_total", labels!("operation" => "start")),
+      workflow_stops_total: scope
+        .counter_with_labels("workflows_total", labels!("operation" => "stop")),
+
+      run_starts_total,
+      run_stops_total,
+
+      traversal_starts_total,
+      traversal_stops_total,
+
+      traversals_count_limit_hit_total,
+    }
+  }
+}
+
+//
+//
+//
+
+#[derive(Debug)]
+struct RemoteConfigMediator {
+  stats: RemoteConfigMediatorStats,
+}
+
+impl RemoteConfigMediator {
+  const fn new(stats: RemoteConfigMediatorStats) -> Self {
+    Self { stats }
+  }
+
+  fn add_workflows(
+    &self,
+    workflows: &mut Vec<Workflow>,
+    existing_workflows: Vec<Workflow>,
+    configs: &[Config],
+    current_traversals_count: &mut u32,
+    traversals_count_limit: u32,
+  ) {
+    // `configs` is the source of truth for workflow configurations from the server
+    // while `existing_workflows` contains state of workflow who have been running on a device.
+    //  * Combine the two by iterating over the list of configs from the server and associating
+    //    configs with relevant workflow state (if any).
+    //  * Discard workflow states that don't have a corresponding server-side config.
+    let mut existing_workflow_ids_to_workflows: HashMap<_, _> = existing_workflows
+      .into_iter()
+      .map(|workflow| (workflow.id().to_string(), workflow))
+      .collect();
+
+    let workflows_to_add = configs.iter().map(|config| {
+      let workflow = existing_workflow_ids_to_workflows
+        .remove(config.id())
+        .map_or_else(
+          // No cached state for a given workflow ID, start from scratch.
+          || Workflow::new(config.id().to_string()),
+          // We have cache state for a given workflow ID.
+          |workflow| workflow,
+        );
+      workflow
+    });
+
+    for workflow in workflows_to_add {
+      self.add_workflow(
+        workflow,
+        workflows,
+        current_traversals_count,
+        traversals_count_limit,
+      );
+    }
+  }
+
+  fn add_workflow(
+    &self,
+    workflow: Workflow,
+    workflows: &mut Vec<Workflow>,
+    current_traversals_count: &mut u32,
+    traversals_count_limit: u32,
+  ) {
+    let mut workflow = workflow;
+
+    let workflow_traversals_count = workflow.traversals_count();
+    if workflow_traversals_count + *current_traversals_count > traversals_count_limit {
+      log::debug!(
+        "failed to add workflow with {} traversal(s) due to traversals count limit being hit \
+         ({}); current traversals count {}",
+        workflow_traversals_count,
+        traversals_count_limit,
+        current_traversals_count
+      );
+
+      // Workflow being added has too many traversal for the engine to not exceed
+      // the configured traversals count limit. Keep removing workflow's run until
+      // its addition to the engine is possible.
+      // Process traversals in reversed order as we may end up modifying the array
+      // starting at `index` in any given iteration of the loop + we want to start
+      // removing runs starting from the "latest" ones and they are at the end of
+      // the enumerated array.
+      let mut remaining_workflow_traversals_count = workflow_traversals_count;
+      for index in (0 .. workflow.runs().len()).rev() {
+        let run_traversals_count = workflow.runs()[index].traversals_count();
+
+        log::debug!(
+          "removing workflow run with {} traversal(s)",
+          run_traversals_count
+        );
+
+        remaining_workflow_traversals_count -= run_traversals_count;
+        self.stats.traversals_count_limit_hit_total.inc();
+        workflow.remove_run(index);
+
+        if remaining_workflow_traversals_count + *current_traversals_count <= traversals_count_limit
+        {
+          break;
+        }
+      }
+    }
+
+    self.stats.workflow_starts_total.inc();
+    self
+      .stats
+      .run_starts_total
+      .inc_by(workflow.runs().len() as u64);
+    self
+      .stats
+      .traversal_starts_total
+      .inc_by(workflow_traversals_count.into());
+
+    log::debug!(
+      "workflow={}: workflow added, runs count {}, traversal count {}",
+      workflow.id(),
+      workflow.runs().len(),
+      workflow_traversals_count,
+    );
+
+    *current_traversals_count += workflow.traversals_count();
+
+    workflows.push(workflow);
+  }
+
+  fn remove_workflow(
+    &self,
+    state: &mut WorkflowsState,
+    workflow_index: usize,
+    configs: &mut BTreeMap<String, Config>,
+    current_traversals_count: &mut u32,
+    needs_state_persistence: &mut bool,
+  ) {
+    configs.remove_entry(state.workflows[workflow_index].id());
+    let workflow = state.workflows.remove(workflow_index);
+
+    let workflow_traversals_count = workflow.traversals_count();
+    self.stats.workflow_stops_total.inc();
+    self
+      .stats
+      .run_stops_total
+      .inc_by(workflow.runs().len() as u64);
+    self
+      .stats
+      .traversal_stops_total
+      .inc_by(workflow_traversals_count.into());
+
+    *current_traversals_count = current_traversals_count.saturating_sub(workflow_traversals_count);
+
+    log::debug!(
+      "workflow={}: workflow with {:?} traversals removed",
+      workflow.id(),
+      workflow_traversals_count
+    );
+
+    // If there exists a run that is not in an initial state.
+    if !workflow.is_in_initial_state() {
+      log::debug!(
+        "workflow={}: workflow removed, marking state as dirty",
+        workflow.id()
+      );
+      // Mark the state as dirty so that the state associated with
+      // the workflow that was just removed can be removed from disk.
+      *needs_state_persistence = true;
+    }
   }
 }
 
@@ -886,9 +1020,9 @@ impl StateStore {
     }
   }
 
-  fn load(&self) -> Option<WorkflowsState> {
+  fn load(&self) -> Option<EngineState> {
     // Try to deserialize any persisted workflows state into a map
-    let workflows_state = if self.state_path.exists() {
+    let engine_state = if self.state_path.exists() {
       let _timer = self.stats.state_load_duration.start_timer();
       // State is cached
       self
@@ -908,20 +1042,20 @@ impl StateStore {
       None
     };
 
-    if workflows_state.is_some() {
-      log::debug!("read workflows state from disk: {workflows_state:?}");
+    if engine_state.is_some() {
+      log::debug!("read workflows engine state from disk: {engine_state:?}");
     } else {
-      log::debug!("no workflows state available");
+      log::debug!("no workflows engine state available");
     }
 
-    workflows_state
+    engine_state
   }
 
-  pub(self) fn load_state(&self) -> anyhow::Result<WorkflowsState> {
+  pub(self) fn load_state(&self) -> anyhow::Result<EngineState> {
     let file = File::open(self.state_path.as_path())?;
     // Wrap file in buffer to deserialize efficiently in place
     let buf_reader = BufReader::new(file);
-    Ok(bincode::deserialize_from::<_, WorkflowsState>(buf_reader)?)
+    Ok(bincode::deserialize_from::<_, EngineState>(buf_reader)?)
   }
 
   /// Stores states of the passed workflows if all pre-conditions are met.
@@ -929,15 +1063,15 @@ impl StateStore {
   ///
   /// # Arguments
   ///
-  /// * `workflows_state` - The workflows state to store.
+  /// * `engine_state` - The engine state to store.
   /// * `force` - If `true`, the state will be stored regardless of the time since the last save. If
   ///   `false`, the state will be stored only if the time since the last save is greater than the
   ///   configured interval.
-  async fn maybe_store(&mut self, workflows_state: &WorkflowsState, force: bool) -> bool {
+  async fn maybe_store(&mut self, engine_state: &EngineState, force: bool) -> bool {
     // Check if enough time has passed since the last save
     let now = Instant::now();
     if force {
-      log::debug!("forcing persisting workflows state to disk");
+      log::debug!("forcing persisting workflows engine state to disk");
     } else if let Some(last_save_time) = self.last_persisted {
       let persistence_write_interval_ms = self.persistence_write_interval_flag.read();
       if now.duration_since(last_save_time) < persistence_write_interval_ms {
@@ -949,11 +1083,11 @@ impl StateStore {
 
     let _timer = self.stats.state_persistence_duration.start_timer();
 
-    let workflows_state = workflows_state.optimized();
+    let engine_state = engine_state.optimized();
 
     // Serialize state snapshot and write to disk
     let state_path = self.state_path.clone();
-    match tokio::task::spawn_blocking(move || Self::store(&state_path, &workflows_state)).await {
+    match tokio::task::spawn_blocking(move || Self::store(&state_path, &engine_state)).await {
       Ok(Ok(())) => {
         log::trace!("finished persisting workflows state to disk");
         self.last_persisted = Some(now);
@@ -972,7 +1106,7 @@ impl StateStore {
     true
   }
 
-  fn store(state_path: &Path, state: &WorkflowsState) -> anyhow::Result<()> {
+  fn store(state_path: &Path, state: &EngineState) -> anyhow::Result<()> {
     let file = File::create(state_path)?;
     // Wrap the file in a BufWriter for better performance
     let mut writer = BufWriter::new(file);
@@ -989,8 +1123,121 @@ impl StateStore {
     }
 
     if let Err(e) = std::fs::remove_file(&self.state_path) {
-      log::debug!("failed to remove workflows state file: {e}");
+      log::debug!("failed to remove workflows engine state file: {e}");
     }
+  }
+}
+
+//
+// EngineState
+//
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub(crate) struct EngineState {
+  // The workflows state tracked by the engine ordered from the latest one (current one) to the
+  // oldest one.
+  states: Vec<WorkflowsState>,
+}
+
+impl EngineState {
+  fn optimized(&self) -> Self {
+    Self {
+      states: self.states.iter().map(WorkflowsState::optimized).collect(),
+    }
+  }
+
+  fn current_session_id(&self) -> Option<&str> {
+    self.states.first().map(|state| state.session_id.as_str())
+  }
+
+  fn current(&self) -> Option<&WorkflowsState> {
+    self.states.first()
+  }
+
+  fn get(&mut self, session_id: &str) -> Option<&mut WorkflowsState> {
+    self
+      .states
+      .iter_mut()
+      .find(|state| state.session_id == session_id)
+  }
+
+  fn insert(&mut self, session_id: &str) -> &mut WorkflowsState {
+    self.states.retain(|s| s.session_id != session_id);
+
+    let state = WorkflowsState::new(session_id);
+    self.insert_state(state)
+  }
+
+  fn get_or_insert(&mut self, session_id: &str) -> &mut WorkflowsState {
+    if self
+      .states
+      .iter_mut()
+      .any(|state| state.session_id == session_id)
+    {
+      // # Safety
+      return self
+        .states
+        .iter_mut()
+        .find(|state| state.session_id == session_id)
+        .unwrap();
+    }
+
+    let existing_workflows = if let Some(previous_session) = self.states.first_mut() {
+      // We are lazy and don't say that state needs persistance.
+      // That may result in new session ID not being stored to disk
+      // (if the app is killed before the next time we store state)
+      // which means that the next time SDK launches we start with empty
+      // session ID (""). It should be OK as in the context of cleaning workflows
+      // state on session change, having empty session ID
+      // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
+      // all workflows in their initial states.
+      log::debug!(
+        "workflows engine: moving from \"{}\" to new session \"{}\", cleaning workflows state",
+        previous_session.session_id,
+        session_id
+      );
+
+      let mut workflows: Vec<Workflow> = vec![];
+      for workflow in &mut previous_session.workflows {
+        workflows.push(Workflow::new(workflow.id().to_string()));
+      }
+
+      workflows
+    } else {
+      // There was no state on a disk when workflows engine was started
+      // and engine just observed first session ID.
+      // We do not have to rush to persist it to disk until any of the
+      // workflows makes progress. That's because in the context of cleaning workflows
+      // state on session change, having empty session ID
+      // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
+      // all workflows in their initial states.
+      log::debug!(
+        "workflows engine: moving from no session to session \"{}\"",
+        session_id
+      );
+
+      vec![]
+    };
+
+    let mut state = WorkflowsState::new(session_id);
+    state.workflows = existing_workflows;
+    self.insert_state(state)
+  }
+
+  fn insert_state(&mut self, state: WorkflowsState) -> &mut WorkflowsState {
+    let session_id = state.session_id.clone();
+    self.states.insert(0, state);
+
+    // We limit the number of workflows state that are tracked to 2.
+    if self.states.len() > 2 {
+      self.states.remove(self.states.len() - 1);
+    }
+
+    self
+      .states
+      .iter_mut()
+      .find(|s| s.session_id == session_id)
+      .unwrap()
   }
 }
 
@@ -998,7 +1245,7 @@ impl StateStore {
 // WorkflowsState
 //
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 /// Holds a complete representation of all the active Workflows' state.
 pub(crate) struct WorkflowsState {
   session_id: String,
@@ -1009,9 +1256,9 @@ pub(crate) struct WorkflowsState {
 }
 
 impl WorkflowsState {
-  const fn new_uninitialized() -> Self {
+  fn new(session_id: &str) -> Self {
     Self {
-      session_id: String::new(),
+      session_id: session_id.to_string(),
       workflows: vec![],
       pending_actions: BTreeSet::new(),
       streaming_actions: vec![],
@@ -1044,14 +1291,6 @@ impl WorkflowsState {
       streaming_actions: self.streaming_actions.clone(),
     }
   }
-
-  // Clear ongoing workflows state without clearing the state of pending and streaming actions.
-  fn clear_ongoing_workflows_state(&mut self) {
-    for workflow in &mut self.workflows {
-      workflow.remove_all_runs();
-    }
-    self.session_id = String::new();
-  }
 }
 
 //
@@ -1061,13 +1300,6 @@ impl WorkflowsState {
 /// A simple wrapper for various workflows-related stats.
 #[derive(Debug)]
 struct WorkflowsEngineStats {
-  /// The number of started workflows. Workflows are started on SDK configuration
-  /// and in response to workflow config updates from a server.
-  workflow_starts_total: Counter,
-  /// The number of workflows on the client that were stopped due to an update from a
-  /// server that removed them from the list of workflows.
-  workflow_stops_total: Counter,
-
   /// The number of times the state of an exclusive was reset and the workflow moved back to its
   /// initial state.
   exclusive_workflow_resets_total: Counter,
@@ -1122,13 +1354,7 @@ struct WorkflowsEngineStats {
 }
 
 impl WorkflowsEngineStats {
-  fn new(scope: &Scope) -> Self {
-    // TODO(Augustyniak): Consider adding "workflow advance" stat.
-    let workflow_starts_total =
-      scope.counter_with_labels("workflows_total", labels!("operation" => "start"));
-    let workflow_stops_total =
-      scope.counter_with_labels("workflows_total", labels!("operation" => "stop"));
-
+  fn new(scope: &Scope) -> (Self, RemoteConfigMediatorStats) {
     let exclusive_workflow_resets_total =
       scope.counter_with_labels("workflow_resets_total", labels!("type" => "exclusive"));
 
@@ -1153,34 +1379,45 @@ impl WorkflowsEngineStats {
     let traversal_stops_total =
       scope.counter_with_labels("traversals_total", labels!("operation" => "stop"));
 
-    Self {
-      workflow_starts_total,
-      workflow_stops_total,
+    let traversals_count_limit_hit_total = scope.counter("traversals_count_limit_hit_total");
 
-      exclusive_workflow_resets_total,
-      exclusive_workflow_potential_forks_total,
+    let remote_config_mediator_stats = RemoteConfigMediatorStats::new(
+      scope,
+      run_starts_total.clone(),
+      run_stops_total.clone(),
+      traversal_starts_total.clone(),
+      traversal_stops_total.clone(),
+      traversals_count_limit_hit_total,
+    );
 
-      run_starts_total,
-      run_advances_total,
-      run_completions_total,
-      run_stops_total,
+    (
+      Self {
+        exclusive_workflow_resets_total,
+        exclusive_workflow_potential_forks_total,
 
-      traversal_starts_total,
-      traversal_advances_total,
-      traversal_completions_total,
-      traversal_stops_total,
+        run_starts_total,
+        run_advances_total,
+        run_completions_total,
+        run_stops_total,
 
-      active_traversals_total: scope.histogram("traversal_active_total"),
-      traversals_count_limit_hit_total: scope.counter("traversals_count_limit_hit_total"),
-      matched_logs_total: scope.counter("matched_logs_total"),
+        traversal_starts_total,
+        traversal_advances_total,
+        traversal_completions_total,
+        traversal_stops_total,
 
-      process_log_duration: scope.histogram("engine_process_log_duration_s"),
+        active_traversals_total: scope.histogram("traversal_active_total"),
+        traversals_count_limit_hit_total: scope.counter("traversals_count_limit_hit_total"),
+        matched_logs_total: scope.counter("matched_logs_total"),
 
-      buffers_to_flush_channel_send_failures: scope
-        .counter("buffers_to_flush_channel_send_failures_total"),
-      intent_negotiation_channel_send_failures: scope
-        .counter("intent_negotiation_channel_send_failures_total"),
-    }
+        process_log_duration: scope.histogram("engine_process_log_duration_s"),
+
+        buffers_to_flush_channel_send_failures: scope
+          .counter("buffers_to_flush_channel_send_failures_total"),
+        intent_negotiation_channel_send_failures: scope
+          .counter("intent_negotiation_channel_send_failures_total"),
+      },
+      remote_config_mediator_stats,
+    )
   }
 }
 

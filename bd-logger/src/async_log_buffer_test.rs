@@ -782,7 +782,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
     assert_ok!(
       config_update_tx_clone.blocking_send(setup_clone.make_config_update(
         WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
-          workflow!(exclusive with state!("a"))
+          workflow!("1"; exclusive with state!("a"))
         ])
       ))
     );

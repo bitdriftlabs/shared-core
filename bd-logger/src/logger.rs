@@ -155,6 +155,17 @@ impl LoggerHandle {
     });
   }
 
+
+  pub const fn log_previous_execution_crash(&self, _fields: &AnnotatedLogFields) {
+    // TODO(Augustyniak): Implement
+    // What we need to do here is to call `AsyncLogBuffer::<LoggerReplay>::enqueue_log` with the
+    // right arguments. I think that they way to go would be to call it with
+    // `LogAttributesOverridesPreviousRunSessionID` instance On iOS, that instance of
+    // LogAttributesOverridesPreviousRunSessionID would have its
+    // `expected_previous_process_session_id` equal to `None` to signal to async log buffer that
+    // it should use the last session ID from the previous execution of the app/sdk.
+  }
+
   pub fn log_resource_utilization(&self, fields: AnnotatedLogFields, duration: time::Duration) {
     let mut fields = fields;
     fields.push(AnnotatedLogField {

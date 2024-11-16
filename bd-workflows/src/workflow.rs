@@ -341,11 +341,6 @@ impl Workflow {
     self.runs.remove(index);
   }
 
-  /// Remove all workflow runs.
-  pub(crate) fn remove_all_runs(&mut self) {
-    self.runs.clear();
-  }
-
   /// Returns the list of states of all run's traversals.
   #[cfg(test)]
   pub(crate) fn runs_states(&self, config: &Config) -> Vec<String> {
