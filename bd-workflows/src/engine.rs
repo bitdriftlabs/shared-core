@@ -1,4 +1,4 @@
-// shared-core - bitdrift's common client/server libraries
+// shared-core - bitdrift's commonto be processed. client/server libraries
 // Copyright Bitdrift, Inc. All rights reserved.
 //
 // Use of this source code is governed by a source available license that can be found in the
@@ -93,6 +93,13 @@ pub struct WorkflowsEngine {
   metrics_collector: MetricsCollector,
 
   buffers_to_flush_tx: Sender<BuffersToFlush>,
+
+  // Set to `Some` when the engine is waiting for the flush buffers actions to be completed. This
+  // is used to avoid resetting log streaming while there is an active flush in progress.
+  // TODO(snowp): Some of the APIs support granular flushing of different buffers, but in practice
+  // at the moment we only ever run one trigger buffer. If we were to start doing something more
+  // complex we'll need to track the state of invidiual buffers (or rework how all this works).
+  pending_buffer_flush: Option<tokio::sync::oneshot::Receiver<()>>,
 }
 
 impl WorkflowsEngine {
@@ -144,6 +151,7 @@ impl WorkflowsEngine {
       sankey_processor_join_handle,
       metrics_collector: MetricsCollector::new(dynamic_stats),
       buffers_to_flush_tx,
+      pending_buffer_flush: None,
     };
 
     (workflows_engine, buffers_to_flush_rx)
@@ -456,10 +464,18 @@ impl WorkflowsEngine {
           NegotiatorOutput::UploadApproved(action) => {
             self.state.pending_actions.remove(&action);
 
-            if let Err(e) = self.buffers_to_flush_tx.try_send(BuffersToFlush::new(&action)) {
+            // If there is already a pending buffer flush we don't want to signal another one, as
+            // this would do nothing but mess up our tracking of the in-flight flush.
+            if self.pending_buffer_flush.is_none() {
+                let (buffer_flush, rx) = BuffersToFlush::new(&action);
+
+            match self.buffers_to_flush_tx.try_send(buffer_flush) {
+                Err(e) => {
               self.stats.buffers_to_flush_channel_send_failures.inc();
               log::debug!("failed to send information about buffers to flush: {e}");
-            }
+            }, Ok(_) => {
+              self.pending_buffer_flush = Some(rx);
+            }}}
 
             match self.flush_buffers_actions_resolver.make_streaming_action(action.clone()) {
               Some(streaming_action) => {
@@ -479,6 +495,18 @@ impl WorkflowsEngine {
           }
         }
       },
+      result = async { self.pending_buffer_flush.as_mut().unwrap().await },
+      if self.pending_buffer_flush.is_some() => {
+           match result {
+             Ok(_) => {},
+             Err(_) => {
+               // At this point we can assume that the request to trigger didn't make it to the
+               // uploader, meaning that the flush was never initiated.
+               log::debug!("pending buffer flush oneshot dropped");
+             }
+           }
+           self.pending_buffer_flush = None;
+        }
     }
   }
 

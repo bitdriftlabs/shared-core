@@ -908,16 +908,25 @@ impl StreamingBuffersAction {
 // BuffersToFlush
 //
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct BuffersToFlush {
   // Unique IDs of buffers to flush.
   pub buffer_ids: BTreeSet<Cow<'static, str>>,
+  // Channel to notify the caller that the flush has been completed.
+  pub response_tx: tokio::sync::oneshot::Sender<()>,
 }
 
 impl BuffersToFlush {
-  pub(crate) fn new(action: &PendingFlushBuffersAction) -> Self {
-    Self {
-      buffer_ids: action.trigger_buffer_ids.clone(),
-    }
+  pub(crate) fn new(
+    action: &PendingFlushBuffersAction,
+  ) -> (Self, tokio::sync::oneshot::Receiver<()>) {
+    let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+    (
+      Self {
+        buffer_ids: action.trigger_buffer_ids.clone(),
+        response_tx,
+      },
+      response_rx,
+    )
   }
 }

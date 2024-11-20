@@ -350,8 +350,14 @@ impl AnnotatedWorkflowsEngine {
     })
   }
 
-  fn flushed_buffers(&self) -> Vec<BuffersToFlush> {
-    self.hooks.lock().flushed_buffers.clone()
+  fn flushed_buffers(&self) -> Vec<BTreeSet<Cow<'static, str>>> {
+    self
+      .hooks
+      .lock()
+      .flushed_buffers
+      .iter()
+      .map(|b| b.buffer_ids.clone())
+      .collect()
   }
 
   fn received_logs_upload_intents(&self) -> Vec<log_upload_intent_request::WorkflowActionUpload> {
@@ -2040,9 +2046,7 @@ async fn logs_streaming() {
   );
   assert_eq!(
     workflows_engine.flushed_buffers(),
-    vec![BuffersToFlush {
-      buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-    }],
+    vec![BTreeSet::from(["trigger_buffer_id".into()])],
   );
 
   setup.collector.assert_counter_eq(
@@ -2088,12 +2092,8 @@ async fn logs_streaming() {
   assert_eq!(
     workflows_engine.flushed_buffers(),
     vec![
-      BuffersToFlush {
-        buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-      },
-      BuffersToFlush {
-        buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-      },
+      BTreeSet::from(["trigger_buffer_id".into()]),
+      BTreeSet::from(["trigger_buffer_id".into()])
     ],
   );
 
@@ -2190,9 +2190,7 @@ async fn logs_streaming() {
   );
   assert_eq!(
     workflows_engine.flushed_buffers(),
-    vec![BuffersToFlush {
-      buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-    }],
+    vec![BTreeSet::from(["trigger_buffer_id".into()])],
   );
 
   setup.collector.assert_counter_eq(
@@ -2227,12 +2225,8 @@ async fn logs_streaming() {
   assert_eq!(
     workflows_engine.flushed_buffers(),
     vec![
-      BuffersToFlush {
-        buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-      },
-      BuffersToFlush {
-        buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-      }
+      BTreeSet::from(["trigger_buffer_id".into()]),
+      BTreeSet::from(["trigger_buffer_id".into()])
     ],
   );
 
@@ -2265,12 +2259,8 @@ async fn logs_streaming() {
   assert_eq!(
     workflows_engine.flushed_buffers(),
     vec![
-      BuffersToFlush {
-        buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-      },
-      BuffersToFlush {
-        buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-      }
+      BTreeSet::from(["trigger_buffer_id".into()]),
+      BTreeSet::from(["trigger_buffer_id".into()])
     ],
   );
 
@@ -2381,9 +2371,7 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   );
   assert_eq!(
     workflows_engine.flushed_buffers(),
-    vec![BuffersToFlush {
-      buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-    },],
+    vec![BTreeSet::from(["trigger_buffer_id".into()])],
   );
 
   let result = engine_process_log!(workflows_engine; "not triggering"; with labels!{});
