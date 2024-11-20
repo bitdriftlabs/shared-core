@@ -50,5 +50,5 @@ jobs:
           if test -f "Makefile"; then
             make test
           else
-            cargo test --workspace
+            cargo test --workspace --no-capture
           fi

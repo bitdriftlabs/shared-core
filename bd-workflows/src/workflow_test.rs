@@ -26,6 +26,11 @@ use pretty_assertions::assert_eq;
 use std::collections::{BTreeMap, BTreeSet};
 use std::vec;
 
+#[ctor::ctor]
+fn test_global_init() {
+  bd_test_helpers::test_global_init();
+}
+
 /// A macro that creates a workflow config using provided states.
 /// See `workflow_proto` macro for more details.
 /// A similar workflow! macro is available in `test_helpers::workflows`
