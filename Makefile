@@ -13,4 +13,4 @@ clippy: setup
 
 .PHONY: test
 test: setup
-	RUST_BACKTRACE=1 SKIP_PROTO_GEN=1 RUST_LOG=off cargo test --workspace --nocapture
+	RUST_BACKTRACE=1 SKIP_PROTO_GEN=1 RUST_LOG=off cargo test --workspace -- --nocapture
