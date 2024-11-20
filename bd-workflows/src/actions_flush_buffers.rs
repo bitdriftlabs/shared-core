@@ -444,7 +444,7 @@ impl Resolver {
       let meets_termination_criteria = a.meets_termination_criteria();
       let session_id_changed = a.session_id != session_id;
 
-      log::debug!(
+      log::trace!(
         "streaming buffers action {:?}, streamed logs: {:?} (limit {:?}), \
          meets_termination_criteria: {:?}, session_id_changed: {:?}, flush_completed: {:?}",
         a.id,

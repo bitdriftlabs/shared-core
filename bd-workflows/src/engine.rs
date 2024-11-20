@@ -1,4 +1,4 @@
-// shared-core - bitdrift's commonto be processed. client/server libraries
+// shared-core - bitdrift's common client/server libraries
 // Copyright Bitdrift, Inc. All rights reserved.
 //
 // Use of this source code is governed by a source available license that can be found in the
