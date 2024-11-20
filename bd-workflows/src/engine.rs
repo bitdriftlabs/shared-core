@@ -129,7 +129,7 @@ impl WorkflowsEngine {
 
     let workflows_engine = Self {
       configs: vec![],
-      state: WorkflowsState::new_uninitialized(),
+      state: WorkflowsState::default(),
       stats: WorkflowsEngineStats::new(&scope),
       state_store: StateStore::new(sdk_directory, &scope, runtime),
       needs_state_persistence: false,
@@ -548,60 +548,42 @@ impl WorkflowsEngine {
         self.traversals_count_limit,
       );
 
-      self
-        .stats
-        .exclusive_workflow_resets_total
-        .inc_by(u64::from(result.stats().reset_exclusive_workflows_count));
-      self
-        .stats
-        .exclusive_workflow_potential_forks_total
-        .inc_by(u64::from(
-          result.stats().potential_fork_exclusive_workflows_count,
-        ));
+      macro_rules! inc_by {
+        ($field:ident, $value:ident) => {
+          self.stats.$field.inc_by(u64::from(result.stats().$value));
+        };
+      }
 
-      self
-        .stats
-        .run_starts_total
-        .inc_by(u64::from(result.stats().created_runs_count));
-      self
-        .stats
-        .run_advances_total
-        .inc_by(u64::from(result.stats().advanced_runs_count));
-      self
-        .stats
-        .run_stops_total
-        .inc_by(u64::from(result.stats().stopped_runs_count));
-      self
-        .stats
-        .run_completions_total
-        .inc_by(u64::from(result.stats().completed_runs_count));
+      inc_by!(
+        exclusive_workflow_resets_total,
+        reset_exclusive_workflows_count
+      );
+      inc_by!(
+        exclusive_workflow_resets_total,
+        reset_exclusive_workflows_count
+      );
 
-      self
-        .stats
-        .traversal_starts_total
-        .inc_by(u64::from(result.stats().created_traversals_count));
-      self
-        .stats
-        .traversal_advances_total
-        .inc_by(u64::from(result.stats().advanced_traversals_count));
-      self
-        .stats
-        .traversal_stops_total
-        .inc_by(u64::from(result.stats().stopped_traversals_count));
-      self
-        .stats
-        .traversal_completions_total
-        .inc_by(u64::from(result.stats().completed_traversals_count));
+      inc_by!(
+        exclusive_workflow_potential_forks_total,
+        potential_fork_exclusive_workflows_count
+      );
 
-      self
-        .stats
-        .traversals_count_limit_hit_total
-        .inc_by(u64::from(result.stats().traversals_count_limit_hit_count));
+      inc_by!(run_starts_total, created_runs_count);
+      inc_by!(run_advances_total, advanced_runs_count);
+      inc_by!(run_stops_total, stopped_runs_count);
+      inc_by!(run_completions_total, completed_runs_count);
 
-      self
-        .stats
-        .matched_logs_total
-        .inc_by(u64::from(result.stats().matched_logs_count));
+      inc_by!(traversal_starts_total, created_traversals_count);
+      inc_by!(traversal_advances_total, advanced_traversals_count);
+      inc_by!(traversal_stops_total, stopped_traversals_count);
+      inc_by!(traversal_completions_total, completed_traversals_count);
+
+      inc_by!(
+        traversals_count_limit_hit_total,
+        traversals_count_limit_hit_count
+      );
+
+      inc_by!(matched_logs_total, matched_logs_count);
 
       // Not every case of a workflow making a progress needs a state persistence.
       // If the workflow was in an initial state prior to processing a log and is in
@@ -998,8 +980,8 @@ impl StateStore {
 // WorkflowsState
 //
 
-#[derive(Debug, Serialize, Deserialize)]
-/// Holds a complete representation of all the active Workflows' state.
+/// Maintains state about the workflow engine that is persisted to disk.
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub(crate) struct WorkflowsState {
   session_id: String,
   workflows: Vec<Workflow>,
@@ -1009,15 +991,6 @@ pub(crate) struct WorkflowsState {
 }
 
 impl WorkflowsState {
-  const fn new_uninitialized() -> Self {
-    Self {
-      session_id: String::new(),
-      workflows: vec![],
-      pending_actions: BTreeSet::new(),
-      streaming_actions: vec![],
-    }
-  }
-
   /// An optimized version of the workflows state with removed
   /// initial state runs and workflows that do not have any
   /// non initial state runs.
