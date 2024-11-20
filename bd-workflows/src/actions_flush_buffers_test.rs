@@ -414,23 +414,29 @@ fn process_streaming_buffers_actions() {
   ));
 
   let result = resolver.process_streaming_actions(
-    &mut vec![
-      StreamingBuffersAction {
-        id: "action_id_1".to_string(),
-        session_id: "foo_session_id".to_string(),
-        source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into()]),
-        destination_continuous_buffer_ids: BTreeSet::from(["continuous_buffer_id".into()]),
-        max_logs_count: Some(10),
-        logs_count: 0,
-      },
-      StreamingBuffersAction {
-        id: "action_id_2".to_string(),
-        session_id: "foo_session_id".to_string(),
-        source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into()]),
-        destination_continuous_buffer_ids: BTreeSet::from(["continuous_buffer_id".into()]),
-        max_logs_count: Some(10),
-        logs_count: 10,
-      },
+    vec![
+      (
+        StreamingBuffersAction {
+          id: "action_id_1".to_string(),
+          session_id: "foo_session_id".to_string(),
+          source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into()]),
+          destination_continuous_buffer_ids: BTreeSet::from(["continuous_buffer_id".into()]),
+          max_logs_count: Some(10),
+          logs_count: 0,
+        },
+        true,
+      ),
+      (
+        StreamingBuffersAction {
+          id: "action_id_2".to_string(),
+          session_id: "foo_session_id".to_string(),
+          source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into()]),
+          destination_continuous_buffer_ids: BTreeSet::from(["continuous_buffer_id".into()]),
+          max_logs_count: Some(10),
+          logs_count: 10,
+        },
+        true,
+      ),
     ],
     &BTreeSet::from(["existing_trigger_buffer_id".into()]),
     "foo_session_id",
@@ -440,6 +446,14 @@ fn process_streaming_buffers_actions() {
     StreamingBuffersActionsProcessingResult {
       log_destination_buffer_ids: BTreeSet::from(["continuous_buffer_id".into()]),
       has_changed_streaming_actions: true,
+      updated_streaming_actions: vec![StreamingBuffersAction {
+        id: "action_id_1".to_string(),
+        session_id: "foo_session_id".to_string(),
+        source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into()]),
+        destination_continuous_buffer_ids: BTreeSet::from(["continuous_buffer_id".into()]),
+        max_logs_count: Some(10),
+        logs_count: 1,
+      },],
     },
     result
   );

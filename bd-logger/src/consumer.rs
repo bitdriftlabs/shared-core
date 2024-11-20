@@ -19,6 +19,7 @@ use bd_client_common::fb::root_as_log;
 use bd_client_stats_store::{Counter, Scope};
 use bd_runtime::runtime::{ConfigLoader, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
+use futures_util::future::try_join_all;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
@@ -156,6 +157,9 @@ impl BufferUploadManager {
   ) -> anyhow::Result<()> {
     log::debug!("received trigger upload request");
 
+
+    let mut buffer_upload_completions = vec![];
+
     for buffer_id in trigger_upload.buffer_ids {
       // If there is already an active upload for this buffer, do nothing. This may happen if an
       // aggressive workflow is used which can match a second (or more) log within the time it takes
@@ -185,6 +189,9 @@ impl BufferUploadManager {
         let internal_logger = self.logging.clone();
         let shutdown_trigger = ComponentShutdownTrigger::default();
         let shutdown = shutdown_trigger.make_shutdown();
+        let (single_upload_complete_tx, single_upload_complete_rx) =
+          tokio::sync::oneshot::channel();
+        buffer_upload_completions.push(single_upload_complete_rx);
         tokio::task::spawn(
           async move {
             // Handle the error here so that we can fire the complete message even on failure.
@@ -200,6 +207,8 @@ impl BufferUploadManager {
                 handle_unexpected_error_with_details(e, "", || None);
               },
             };
+
+            single_upload_complete_tx.send(()).unwrap();
 
             // TODO(mattklein123): Should we pass this into the trigger consumer and actually
             // try to bail quickly if it's taking a long time and we are trying to shutdown?
@@ -224,6 +233,18 @@ impl BufferUploadManager {
         log::debug!("ignoring upload for {}, unknown buffer", buffer_id);
       }
     }
+
+    tokio::spawn(async move {
+      if let Err(e) = try_join_all(buffer_upload_completions).await {
+        log::debug!("failed to wait for trigger uploads to complete: {e:?}");
+      }
+
+      if let Err(e) = trigger_upload.response_tx.send(()) {
+        log::debug!("failed to send trigger upload response: {e:?}");
+      }
+
+      log::debug!("signaling all trigger uploads complete");
+    });
 
     Ok(())
   }

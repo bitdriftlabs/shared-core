@@ -360,6 +360,12 @@ impl AnnotatedWorkflowsEngine {
       .collect()
   }
 
+  fn complete_flushes(&self) {
+    for b in &mut self.hooks.lock().flushed_buffers.drain(..) {
+      b.response_tx.send(()).unwrap()
+    }
+  }
+
   fn received_logs_upload_intents(&self) -> Vec<log_upload_intent_request::WorkflowActionUpload> {
     self.hooks.lock().received_logs_upload_intents.clone()
   }
@@ -2263,6 +2269,7 @@ async fn logs_streaming() {
       BTreeSet::from(["trigger_buffer_id".into()])
     ],
   );
+  workflows_engine.complete_flushes();
 
   setup.collector.assert_counter_eq(
     1,
@@ -2373,6 +2380,7 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
     workflows_engine.flushed_buffers(),
     vec![BTreeSet::from(["trigger_buffer_id".into()])],
   );
+  workflows_engine.complete_flushes();
 
   let result = engine_process_log!(workflows_engine; "not triggering"; with labels!{});
   assert_eq!(

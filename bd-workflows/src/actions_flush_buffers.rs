@@ -433,18 +433,28 @@ impl Resolver {
   /// the final destination buffer IDs for the currently processed log.
   pub(crate) fn process_streaming_actions<'a>(
     &self,
-    streaming_actions: &mut Vec<StreamingBuffersAction>,
+    mut streaming_actions: Vec<(StreamingBuffersAction, bool)>,
     log_destination_buffer_ids: &BTreeSet<Cow<'a, str>>,
     session_id: &str,
   ) -> StreamingBuffersActionsProcessingResult<'a> {
     let mut has_changed_streaming_actions = false;
 
     // Remove streaming actions that should be terminated.
-    streaming_actions.retain(|a| {
+    streaming_actions.retain_mut(|(a, flush_completed)| {
       let meets_termination_criteria = a.meets_termination_criteria();
       let session_id_changed = a.session_id != session_id;
 
-      if meets_termination_criteria || session_id_changed {
+      log::debug!(
+        "streaming buffers action {:?}, streamed logs: {:?} (limit {:?}), \
+         meets_termination_criteria: {:?}, session_id_changed: {:?}, flush_completed: {:?}",
+        a.id,
+        a.logs_count,
+        a.max_logs_count,
+        meets_termination_criteria,
+        session_id_changed,
+        flush_completed
+      );
+      if (meets_termination_criteria || session_id_changed) && *flush_completed {
         log::debug!(
           "terminating streaming buffers action {:?}, streamed logs: {:?} (limit {:?})",
           a.id,
@@ -485,7 +495,7 @@ impl Resolver {
 
     let mut has_been_rerouted = false;
 
-    for action in streaming_actions {
+    for (action, _) in &mut streaming_actions {
       let intersection: BTreeSet<_> = action
         .source_trigger_buffer_ids
         .intersection(log_destination_buffer_ids)
@@ -524,6 +534,7 @@ impl Resolver {
     StreamingBuffersActionsProcessingResult {
       log_destination_buffer_ids: final_log_destination_buffer_ids,
       has_changed_streaming_actions,
+      updated_streaming_actions: streaming_actions.into_iter().map(|(a, _)| a).collect(),
     }
   }
 
@@ -714,6 +725,7 @@ pub(crate) struct FlushBuffersActionsProcessingResult<'a> {
 pub(crate) struct StreamingBuffersActionsProcessingResult<'a> {
   pub(crate) log_destination_buffer_ids: BTreeSet<Cow<'a, str>>,
   pub(crate) has_changed_streaming_actions: bool,
+  pub(crate) updated_streaming_actions: Vec<StreamingBuffersAction>,
 }
 
 //
@@ -921,6 +933,7 @@ impl BuffersToFlush {
     action: &PendingFlushBuffersAction,
   ) -> (Self, tokio::sync::oneshot::Receiver<()>) {
     let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+
     (
       Self {
         buffer_ids: action.trigger_buffer_ids.clone(),

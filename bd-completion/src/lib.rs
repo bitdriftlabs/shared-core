@@ -48,6 +48,14 @@ impl<T: Debug> Receiver<T> {
     }
   }
 
+  pub fn try_recv(&mut self) -> anyhow::Result<Option<T>> {
+    match self.rx.try_recv() {
+      Ok(value) => Ok(Some(value)),
+      Err(tokio::sync::oneshot::error::TryRecvError::Empty) => Ok(None),
+      Err(e) => anyhow::bail!("failed to receive completion signal: {e:?}"),
+    }
+  }
+
   pub fn blocking_recv(self) -> anyhow::Result<T> {
     Ok(self.rx.blocking_recv()?)
   }
