@@ -512,7 +512,7 @@ impl ProcessingPipeline {
           let trigger_upload = TriggerUpload::new(
             buffers_to_flush.buffer_ids
               .iter()
-              .map(|buffer_id| buffer_id.to_string())
+              .map(std::string::ToString::to_string)
               .collect(),
               buffers_to_flush.response_tx,
             );

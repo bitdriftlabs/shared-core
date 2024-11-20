@@ -476,7 +476,7 @@ impl WorkflowsEngine {
     let flush_buffers =
       if let Some(pending_buffer_flush) = self.pending_buffer_flushes.get_mut(&action.id) {
         match pending_buffer_flush.try_recv() {
-          Ok(_) => {
+          Ok(()) => {
             self.pending_buffer_flushes.remove(&action.id);
             log::debug!(
               "allowing upload due to pending buffer flush completed: \"{}\"",
@@ -520,7 +520,7 @@ impl WorkflowsEngine {
           self.stats.buffers_to_flush_channel_send_failures.inc();
           log::debug!("failed to send information about buffers to flush: {e}");
         },
-        Ok(_) => {
+        Ok(()) => {
           self.pending_buffer_flushes.insert(action.id.clone(), rx);
         },
       }

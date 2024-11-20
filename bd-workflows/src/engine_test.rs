@@ -362,7 +362,7 @@ impl AnnotatedWorkflowsEngine {
 
   fn complete_flushes(&self) {
     for b in &mut self.hooks.lock().flushed_buffers.drain(..) {
-      b.response_tx.send(()).unwrap()
+      b.response_tx.send(()).unwrap();
     }
   }
 

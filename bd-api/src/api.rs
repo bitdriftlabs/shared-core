@@ -837,7 +837,7 @@ impl Api {
             .trigger_upload_tx
             .send(TriggerUpload::new(flush_buffers.buffer_id_list.clone(), tx))
             .await
-            .map_err(|_| anyhow!("remote trigger upload tx"))?
+            .map_err(|_| anyhow!("remote trigger upload tx"))?;
         },
         Some(ResponseKind::SankeyPathUpload(sankey_path_upload)) => {
           log::debug!(

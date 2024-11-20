@@ -234,6 +234,9 @@ impl BufferUploadManager {
       }
     }
 
+    // Since we have one completion handler for the entire set of trigger uploads, we need to
+    // spawn a task to wait for all of the individual trigger uploads to complete before we can
+    // signal that the trigger uploads are complete.
     tokio::spawn(async move {
       if let Err(e) = try_join_all(buffer_upload_completions).await {
         log::debug!("failed to wait for trigger uploads to complete: {e:?}");
