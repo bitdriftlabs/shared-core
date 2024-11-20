@@ -1,6 +1,6 @@
 .PHONY: build
 build: setup
-	SKIP_PROTO_GEN=1 cargo build --workspace --no-capture
+	SKIP_PROTO_GEN=1 cargo build --workspace
 
 .PHONY: setup
 setup:
@@ -13,4 +13,4 @@ clippy: setup
 
 .PHONY: test
 test: setup
-	RUST_BACKTRACE=1 SKIP_PROTO_GEN=1 RUST_LOG=off cargo test --workspace
+	RUST_BACKTRACE=1 SKIP_PROTO_GEN=1 RUST_LOG=off cargo test --workspace --no-capture
