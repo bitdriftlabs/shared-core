@@ -1,6 +1,6 @@
 .PHONY: build
 build: setup
-	SKIP_PROTO_GEN=1 cargo build --workspace
+	SKIP_PROTO_GEN=1 cargo build --workspace --no-capture
 
 .PHONY: setup
 setup:
