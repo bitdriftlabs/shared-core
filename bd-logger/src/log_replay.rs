@@ -92,7 +92,6 @@ pub struct ProcessingPipeline {
   // The channel used to receive a signal from the workflows engine that it should flush the
   // buffers.
   buffers_to_flush_rx: Option<Receiver<BuffersToFlush>>,
-
   capture_screenshot_handler: CaptureScreenshotHandler,
 
   workflows_enabled_flag: BoolWatch<WorkflowsEnabledFlag>,
