@@ -619,15 +619,9 @@ impl WorkflowsEngine {
         reset_exclusive_workflows_count
       );
       inc_by!(
-        exclusive_workflow_resets_total,
-        reset_exclusive_workflows_count
-      );
-
-      inc_by!(
         exclusive_workflow_potential_forks_total,
         potential_fork_exclusive_workflows_count
       );
-
       inc_by!(run_starts_total, created_runs_count);
       inc_by!(run_advances_total, advanced_runs_count);
       inc_by!(run_stops_total, stopped_runs_count);
