@@ -50,6 +50,7 @@ use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::oneshot::error::TryRecvError;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
@@ -68,6 +69,7 @@ pub struct WorkflowsEngine {
   configs: Vec<Config>,
   state: WorkflowsState,
   state_store: StateStore,
+  pending_buffer_flushes: HashMap<String, tokio::sync::oneshot::Receiver<()>>,
 
   needs_state_persistence: bool,
 
@@ -144,6 +146,7 @@ impl WorkflowsEngine {
       sankey_processor_join_handle,
       metrics_collector: MetricsCollector::new(dynamic_stats),
       buffers_to_flush_tx,
+      pending_buffer_flushes: HashMap::new(),
     };
 
     (workflows_engine, buffers_to_flush_rx)
@@ -454,24 +457,7 @@ impl WorkflowsEngine {
 
         match negotiator_output {
           NegotiatorOutput::UploadApproved(action) => {
-            self.state.pending_actions.remove(&action);
-
-            if let Err(e) = self.buffers_to_flush_tx.try_send(BuffersToFlush::new(&action)) {
-              self.stats.buffers_to_flush_channel_send_failures.inc();
-              log::debug!("failed to send information about buffers to flush: {e}");
-            }
-
-            match self.flush_buffers_actions_resolver.make_streaming_action(action.clone()) {
-              Some(streaming_action) => {
-                log::debug!("streaming started: \"{streaming_action:?}\"");
-                self.state.streaming_actions.push(streaming_action);
-              },
-              None => {
-                log::debug!("no streaming configuration defined for action: \"{action:?}\"");
-              }
-            }
-
-            self.needs_state_persistence = true;
+              self.on_log_upload_approved(action).await;
           },
           NegotiatorOutput::UploadRejected(action) => {
             self.state.pending_actions.remove(&action);
@@ -480,6 +466,80 @@ impl WorkflowsEngine {
         }
       },
     }
+  }
+
+  async fn on_log_upload_approved(&mut self, action: PendingFlushBuffersAction) {
+    self.state.pending_actions.remove(&action);
+
+    // If there is already a pending buffer flush we don't want to signal another one, as
+    // this would do nothing but mess up our tracking of the in-flight flush.
+    let flush_buffers =
+      if let Some(pending_buffer_flush) = self.pending_buffer_flushes.get_mut(&action.id) {
+        match pending_buffer_flush.try_recv() {
+          Ok(()) => {
+            self.pending_buffer_flushes.remove(&action.id);
+            log::debug!(
+              "allowing upload due to pending buffer flush completed: \"{}\"",
+              action.id
+            );
+            true
+          },
+          Err(TryRecvError::Empty) => {
+            log::debug!(
+              "not uploading due to pending buffer flush: \"{}\"",
+              action.id
+            );
+            false
+          },
+          Err(TryRecvError::Closed) => {
+            self.pending_buffer_flushes.remove(&action.id);
+
+            log::debug!(
+              "pending buffer flush receiver closed without response: \"{}\"",
+              action.id
+            );
+
+            true
+          },
+        }
+      } else {
+        true
+      };
+
+    log::debug!(
+      "uploading due to flush buffers action: \"{}\"; flush_buffers={}",
+      action.id,
+      flush_buffers
+    );
+
+    if flush_buffers {
+      let (buffer_flush, rx) = BuffersToFlush::new(&action);
+
+      match self.buffers_to_flush_tx.try_send(buffer_flush) {
+        Err(e) => {
+          self.stats.buffers_to_flush_channel_send_failures.inc();
+          log::debug!("failed to send information about buffers to flush: {e}");
+        },
+        Ok(()) => {
+          self.pending_buffer_flushes.insert(action.id.clone(), rx);
+        },
+      }
+    }
+
+    match self
+      .flush_buffers_actions_resolver
+      .make_streaming_action(action.clone())
+    {
+      Some(streaming_action) => {
+        log::debug!("streaming started: \"{streaming_action:?}\"");
+        self.state.streaming_actions.push(streaming_action);
+      },
+      None => {
+        log::debug!("no streaming configuration defined for action: \"{action:?}\"");
+      },
+    }
+
+    self.needs_state_persistence = true;
   }
 
   /// Processes a given log. Returns actions that should be performed
@@ -649,10 +709,29 @@ impl WorkflowsEngine {
     let result = self
       .flush_buffers_actions_resolver
       .process_streaming_actions(
-        &mut self.state.streaming_actions,
+        self
+          .state
+          .streaming_actions
+          .drain(..)
+          .map(|action| {
+            // If there is no flush completion for this ID, we assume that no flush ever happened
+            // and we can happily terminate the streaming action.
+
+            let completed = self
+              .pending_buffer_flushes
+              .get_mut(&action.id)
+              .map_or(true, |rx| {
+                !matches!(rx.try_recv(), Err(TryRecvError::Empty))
+              });
+
+            (action, completed)
+          })
+          .collect(),
         log_destination_buffer_ids,
         &self.state.session_id,
       );
+
+    self.state.streaming_actions = result.updated_streaming_actions;
 
     self.needs_state_persistence |= result.has_changed_streaming_actions;
 

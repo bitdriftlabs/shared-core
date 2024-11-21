@@ -830,11 +830,15 @@ impl Api {
             .upload_state_tracker
             .resolve_pending_upload(&stats_upload.upload_uuid, &stats_upload.error)?;
         },
-        Some(ResponseKind::FlushBuffers(flush_buffers)) => self
-          .trigger_upload_tx
-          .send(TriggerUpload::new(flush_buffers.buffer_id_list.clone()))
-          .await
-          .map_err(|_| anyhow!("remote trigger upload tx"))?,
+        Some(ResponseKind::FlushBuffers(flush_buffers)) => {
+          let (tx, _rx) = tokio::sync::oneshot::channel();
+
+          self
+            .trigger_upload_tx
+            .send(TriggerUpload::new(flush_buffers.buffer_id_list.clone(), tx))
+            .await
+            .map_err(|_| anyhow!("remote trigger upload tx"))?;
+        },
         Some(ResponseKind::SankeyPathUpload(sankey_path_upload)) => {
           log::debug!(
             "received ack for sankey path upload {:?}, error: {:?}",

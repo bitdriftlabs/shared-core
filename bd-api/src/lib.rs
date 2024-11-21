@@ -135,16 +135,22 @@ pub enum DataUpload {
 //
 
 /// A trigger upload.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct TriggerUpload {
   // The list of identifiers of the buffers whose content should be uploaded.
   pub buffer_ids: Vec<String>,
+
+  // A channel to notify the caller that the upload has been completed.
+  pub response_tx: tokio::sync::oneshot::Sender<()>,
 }
 
 impl TriggerUpload {
   #[must_use]
-  pub const fn new(buffer_ids: Vec<String>) -> Self {
-    Self { buffer_ids }
+  pub const fn new(buffer_ids: Vec<String>, response_tx: tokio::sync::oneshot::Sender<()>) -> Self {
+    Self {
+      buffer_ids,
+      response_tx,
+    }
   }
 }
 
