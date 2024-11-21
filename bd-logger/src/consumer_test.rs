@@ -631,12 +631,12 @@ impl SetupMultiConsumer {
     self.shutdown_trigger.shutdown().await;
   }
 
-  async fn trigger_buffer_upload(&self, buffer: &str) {
-    self
-      .trigger_upload_tx
-      .send(TriggerUpload::new(vec![buffer.to_string()]))
-      .await
-      .unwrap();
+  async fn trigger_buffer_upload(&self, buffer: &str) -> tokio::sync::oneshot::Receiver<()> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let upload = TriggerUpload::new(vec![buffer.to_string()], tx);
+    self.trigger_upload_tx.send(upload).await.unwrap();
+
+    rx
   }
 
   async fn next_upload(&mut self) -> Tracked<ApiRequest, UploadResponse> {

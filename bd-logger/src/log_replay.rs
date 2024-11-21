@@ -87,7 +87,10 @@ pub struct ProcessingPipeline {
   pub(crate) flush_buffers_tx: Sender<BuffersWithAck>,
   pub(crate) flush_stats_trigger: Option<FlushTrigger>,
 
+  // The channel used to signal to the buffer consumer that it should flush the buffers.
   trigger_upload_tx: Sender<TriggerUpload>,
+  // The channel used to receive a signal from the workflows engine that it should flush the
+  // buffers.
   buffers_to_flush_rx: Option<Receiver<BuffersToFlush>>,
   capture_screenshot_handler: CaptureScreenshotHandler,
 
@@ -150,6 +153,7 @@ impl ProcessingPipeline {
       data_upload_tx,
       flush_buffers_tx,
       flush_stats_trigger,
+
       trigger_upload_tx,
       buffers_to_flush_rx,
 
@@ -506,15 +510,16 @@ impl ProcessingPipeline {
 
           let trigger_upload = TriggerUpload::new(
             buffers_to_flush.buffer_ids
-              .into_iter()
-              .map(|buffer_id| buffer_id.to_string())
-              .collect()
+              .iter()
+              .map(std::string::ToString::to_string)
+              .collect(),
+              buffers_to_flush.response_tx,
             );
 
-          let result = self.trigger_upload_tx.try_send(trigger_upload.clone());
+          let result = self.trigger_upload_tx.try_send(trigger_upload);
           match result {
             Ok(()) => {
-              log::debug!("triggered flush buffers action with buffer IDs: \"{:?}\"", trigger_upload.buffer_ids);
+              log::debug!("triggered flush buffers action with buffer IDs: \"{:?}\"", buffers_to_flush.buffer_ids);
             },
             Err(e) => {
               log::debug!("failed to send trigger flush: {e}");

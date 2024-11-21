@@ -350,8 +350,20 @@ impl AnnotatedWorkflowsEngine {
     })
   }
 
-  fn flushed_buffers(&self) -> Vec<BuffersToFlush> {
-    self.hooks.lock().flushed_buffers.clone()
+  fn flushed_buffers(&self) -> Vec<BTreeSet<Cow<'static, str>>> {
+    self
+      .hooks
+      .lock()
+      .flushed_buffers
+      .iter()
+      .map(|b| b.buffer_ids.clone())
+      .collect()
+  }
+
+  fn complete_flushes(&self) {
+    for b in &mut self.hooks.lock().flushed_buffers.drain(..) {
+      b.response_tx.send(()).unwrap();
+    }
   }
 
   fn received_logs_upload_intents(&self) -> Vec<log_upload_intent_request::WorkflowActionUpload> {
@@ -2040,9 +2052,7 @@ async fn logs_streaming() {
   );
   assert_eq!(
     workflows_engine.flushed_buffers(),
-    vec![BuffersToFlush {
-      buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-    }],
+    vec![BTreeSet::from(["trigger_buffer_id".into()])],
   );
 
   setup.collector.assert_counter_eq(
@@ -2088,12 +2098,8 @@ async fn logs_streaming() {
   assert_eq!(
     workflows_engine.flushed_buffers(),
     vec![
-      BuffersToFlush {
-        buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-      },
-      BuffersToFlush {
-        buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-      },
+      BTreeSet::from(["trigger_buffer_id".into()]),
+      BTreeSet::from(["trigger_buffer_id".into()])
     ],
   );
 
@@ -2190,9 +2196,7 @@ async fn logs_streaming() {
   );
   assert_eq!(
     workflows_engine.flushed_buffers(),
-    vec![BuffersToFlush {
-      buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-    }],
+    vec![BTreeSet::from(["trigger_buffer_id".into()])],
   );
 
   setup.collector.assert_counter_eq(
@@ -2227,12 +2231,8 @@ async fn logs_streaming() {
   assert_eq!(
     workflows_engine.flushed_buffers(),
     vec![
-      BuffersToFlush {
-        buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-      },
-      BuffersToFlush {
-        buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-      }
+      BTreeSet::from(["trigger_buffer_id".into()]),
+      BTreeSet::from(["trigger_buffer_id".into()])
     ],
   );
 
@@ -2265,14 +2265,11 @@ async fn logs_streaming() {
   assert_eq!(
     workflows_engine.flushed_buffers(),
     vec![
-      BuffersToFlush {
-        buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-      },
-      BuffersToFlush {
-        buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-      }
+      BTreeSet::from(["trigger_buffer_id".into()]),
+      BTreeSet::from(["trigger_buffer_id".into()])
     ],
   );
+  workflows_engine.complete_flushes();
 
   setup.collector.assert_counter_eq(
     1,
@@ -2381,12 +2378,112 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   );
   assert_eq!(
     workflows_engine.flushed_buffers(),
-    vec![BuffersToFlush {
-      buffer_ids: BTreeSet::from(["trigger_buffer_id".into()])
-    },],
+    vec![BTreeSet::from(["trigger_buffer_id".into()])],
   );
+  workflows_engine.complete_flushes();
 
   let result = engine_process_log!(workflows_engine; "not triggering"; with labels!{});
+  assert_eq!(
+    result.log_destination_buffer_ids,
+    Cow::Owned(BTreeSet::from(["trigger_buffer_id".into()]))
+  );
+
+  setup.collector.assert_counter_eq(
+    1,
+    "workflows:actions:streaming_buffers_action_initiations_total",
+    labels! { "result" => "success" },
+  );
+  setup.collector.assert_counter_eq(
+    1,
+    "workflows:actions:streaming_buffers_action_completions_total",
+    labels! { "type" => "session_changed" },
+  );
+}
+
+
+#[tokio::test]
+#[allow(clippy::many_single_char_names)]
+async fn engine_continues_to_stream_upload_not_complete() {
+  let mut a = state!("A");
+  let mut b = state!("B");
+  let c = state!("C");
+
+  declare_transition!(
+      &mut a => &b;
+      when rule!(log_matches!(message == "foo"));
+      do action!(
+        flush_buffers &["trigger_buffer_id"];
+        continue_streaming_to vec!["continuous_buffer_id"];
+        logs_count 10;
+        id "eventually_upload"
+    )
+  );
+  declare_transition!(
+    &mut b => &c;
+    when rule!(log_matches!(message == "bar"))
+  );
+
+  let setup = Setup::new();
+
+  let workflows_engine_config = WorkflowsEngineConfig::new(
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+      workflow!(exclusive with a, b, c),
+    ]),
+    BTreeSet::from(["trigger_buffer_id".into()]),
+    BTreeSet::from(["continuous_buffer_id".into()]),
+  );
+
+  let mut workflows_engine = setup.make_workflows_engine(workflows_engine_config.clone());
+  workflows_engine.log_destination_buffer_ids = BTreeSet::from(["trigger_buffer_id".into()]);
+
+  // Allow the intent to go through which should trigger an upload.
+  workflows_engine
+    .set_awaiting_logs_upload_intent_decisions(vec![IntentDecision::UploadImmediately]);
+
+  // The log below should trigger a buffer flush.
+  let result = engine_process_log!(workflows_engine; "foo"; with labels!{});
+  assert_eq!(
+    result.log_destination_buffer_ids,
+    Cow::Owned(BTreeSet::from(["trigger_buffer_id".into()]))
+  );
+
+  log::info!("Running the engine for the first time.");
+  workflows_engine.run_once_for_test(false).await;
+  log::info!("after Running the engine for the first time.");
+
+  assert_eq!(
+    vec![log_upload_intent_request::WorkflowActionUpload {
+      workflow_action_ids: vec!["eventually_upload".to_string()],
+      ..Default::default()
+    },],
+    workflows_engine.received_logs_upload_intents()
+  );
+  assert_eq!(
+    workflows_engine.flushed_buffers(),
+    vec![BTreeSet::from(["trigger_buffer_id".into()])],
+  );
+
+  // Verify that we have transitioned to streaming.
+  let result = engine_process_log!(workflows_engine; "streamed"; with labels!{});
+  assert_eq!(
+    result.log_destination_buffer_ids,
+    Cow::Owned(BTreeSet::from(["continuous_buffer_id".into()]))
+  );
+
+  // Change the session. This would typically cause the engine to stop streaming, but we haven't
+  // signaled that the upload is complete yet so the streaming action remains active.
+  workflows_engine.session_id = "new session ID".to_string();
+  let result = engine_process_log!(workflows_engine; "streamed"; with labels!{});
+  assert_eq!(
+    result.log_destination_buffer_ids,
+    Cow::Owned(BTreeSet::from(["continuous_buffer_id".into()]))
+  );
+
+  workflows_engine.complete_flushes();
+
+  // Now that the uploads have been completed, we'll be able to stop the streaming actions and
+  // start routing logs back to the original buffer.
+  let result = engine_process_log!(workflows_engine; "not streamed"; with labels!{});
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["trigger_buffer_id".into()]))
