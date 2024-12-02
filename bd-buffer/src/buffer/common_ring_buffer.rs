@@ -321,7 +321,11 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
 
   // Checks to see if the wrap gap (the space after last_write_end_before_wrap) in this reservation
   // (if applicable) intersects with another range.
-  fn intersect_in_wrap_gap(&self, reservation_data: &TempReservationData, range: &Range) -> bool {
+  const fn intersect_in_wrap_gap(
+    &self,
+    reservation_data: &TempReservationData,
+    range: &Range,
+  ) -> bool {
     if reservation_data.last_write_end_before_wrap.is_none() {
       return false;
     }
@@ -334,7 +338,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
   }
 
   // Checks to see if a reservation's range or its wrap gap intersects with another range.
-  pub fn intersect_reservation(
+  pub const fn intersect_reservation(
     &self,
     reservation_data: &TempReservationData,
     range: &Range,

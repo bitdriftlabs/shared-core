@@ -84,6 +84,7 @@ impl LoggerBuilder {
 
   /// Builds the logger, returning the logger, a channel to send data uploads to the logger, and a
   /// future that must be awaited to run the logger.
+  #[allow(clippy::type_complexity)]
   pub fn build(
     self,
   ) -> anyhow::Result<(

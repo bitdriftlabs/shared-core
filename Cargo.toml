@@ -43,37 +43,37 @@ resolver = "2"
 
 [workspace.dependencies]
 android_logger  = "0.14.1"
-anyhow          = "1.0.93"
+anyhow          = "1.0.94"
 arbitrary       = { version = "1.4.1", features = ["derive"] }
 arc-swap        = "1.7.1"
 assert_matches  = "1.5.0"
 async-trait     = "0.1.83"
-axum            = { version = "0.7.7", features = ["http2"] }
+axum            = { version = "0.7.9", features = ["http2"] }
 axum-server     = { version = "0.7.1", features = ["tls-rustls-no-provider"] }
 backoff         = "0.4.0"
 base64          = "0.22.1"
 base64-url      = "3.0.0"
 base64ct        = { version = "1.6.0", features = ["alloc", "std"] }
 bincode         = "1.3.3"
-bytes           = "1.8.0"
-cc              = "1.1.37"
-clap            = { version = "4.5.20", features = ["derive", "env"] }
+bytes           = "1.9.0"
+cc              = "1.2.3"
+clap            = { version = "4.5.23", features = ["derive", "env"] }
 color-backtrace = "0.6.1"
 concat-string   = "1.0.1"
 crc32fast       = "1.4.2"
-ctor            = "0.2.8"
+ctor            = "0.2.9"
 dashmap         = "6.1.0"
 flatbuffers     = "24.3.25"
 flatc-rust      = "0.2.0"
-flate2          = { version = "1.0.34", default-features = false }
+flate2          = { version = "1.0.35", default-features = false }
 fs2             = "0.4.3"
 futures         = "0.3.31"
 futures-core    = "0.3.31"
 futures-util    = "0.3.31"
-http            = "1.1.0"
+http            = "1.2.0"
 http-body       = "1.0.1"
 http-body-util  = "0.1.2"
-hyper           = "1.5.0"
+hyper           = "1.5.1"
 
 hyper-rustls = { version = "0.27.3", default-features = false, features = [
   "http1",
@@ -89,16 +89,16 @@ libfuzzer-sys         = "0.4.8"
 log                   = "0.4.22"
 matches               = "0.1.10"
 memmap2               = "0.9.5"
-mockall               = "0.13.0"
+mockall               = "0.13.1"
 notify                = "7.0.0"
 parameterized         = "2.0.0"
 parking_lot           = "0.12.3"
 pretty_assertions     = "1.4.1"
 prometheus            = { version = "0.13.4", default-features = false }
 thread_local          = "1.1"
-tracing               = "0.1.40"
+tracing               = "0.1.41"
 tracing-log           = "0.2.0"
-tracing-subscriber    = { version = "0.3.18", features = ["env-filter"] }
+tracing-subscriber    = { version = "0.3.19", features = ["env-filter"] }
 
 protobuf = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack", features = [
   "bytes",
@@ -119,14 +119,14 @@ sketches-rust = { git = "https://github.com/mattklein123/sketches-rust.git", bra
 snap              = "1.1.1"
 static_assertions = "1.1.0"
 tempfile          = "3.14.0"
-thiserror         = "2.0.3"
+thiserror         = "2.0.5"
 tikv-jemalloc-ctl = "0.6.0"
-time              = { version = "0.3.36", features = ["serde-well-known", "macros"] }
-tokio             = { version = "1.41.1", features = ["full", "test-util"] }
-tokio-stream      = "0.1.16"
+time              = { version = "0.3.37", features = ["serde-well-known", "macros"] }
+tokio             = { version = "1.42.0", features = ["full", "test-util"] }
+tokio-stream      = "0.1.17"
 tokio-test        = "0.4.4"
 tower             = { version = "0.5.1", features = ["retry", "util"] }
-tracing-error     = "0.2.0"
+tracing-error     = "0.2.1"
 unwrap-infallible = "0.1.5"
 urlencoding       = "2.1.3"
 uuid              = { version = "1.11.0", features = ["v4"] }

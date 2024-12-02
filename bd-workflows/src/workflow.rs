@@ -292,7 +292,7 @@ impl Workflow {
     }
 
     // If workflow doesn't have a run in an initial state.
-    return !self.runs.iter().any(Run::is_in_initial_state);
+    !self.runs.iter().any(Run::is_in_initial_state)
   }
 
   /// Returns workflow without these of its runs that are in initial state.
