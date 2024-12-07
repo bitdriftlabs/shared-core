@@ -152,7 +152,7 @@ enum HandshakeResult {
   Received(Option<handshake_response::StreamSettings>, Vec<ApiResponse>),
 
   /// The stream closed while waiting for the handshake.
-  StreamClosure,
+  StreamClosure(String),
 
   /// We gave up waiting for the handshake due to shutdown.
   ShuttingDown,
@@ -272,7 +272,7 @@ impl StreamState {
       Some(StreamEvent::StreamClosed(reason)) => {
         log::debug!("stream closed due to '{}'", reason);
 
-        Ok(UpstreamEvent::StreamClosed)
+        Ok(UpstreamEvent::StreamClosed(reason))
       },
       // The upstream event sender has dropped before we terminated the stream. This can happen
       // if the logger gets destroyed before the API stream receives the shutdown signal.
@@ -321,7 +321,7 @@ enum UpstreamEvent {
   UpstreamMessages(Vec<ApiResponse>),
 
   // The API stream closed (either locally or remotely).
-  StreamClosed,
+  StreamClosed(String),
 
   // The event channel has been shut down, indicating that we are shutting down.
   Shutdown,
@@ -593,6 +593,7 @@ impl Api {
       .collect();
 
     let mut disconnected_at = None;
+    let mut last_disconnect_reason = None;
 
     loop {
       // If we have been disconnected for more than 15s switch our network quality to offline. We
@@ -659,7 +660,7 @@ impl Api {
       log::debug!("sending handshake");
 
       stream_state
-        .send_request(self.handshake_request(&handshake_metadata))
+        .send_request(self.handshake_request(&handshake_metadata, last_disconnect_reason.take()))
         .await?;
 
       log::debug!("waiting for handshake");
@@ -676,9 +677,10 @@ impl Api {
         },
         // The stream closed while waiting for the handshake. Move to the next loop iteration
         // to attempt to re-create a stream.
-        HandshakeResult::StreamClosure => {
+        HandshakeResult::StreamClosure(reason) => {
           // The network manager API doesn't expose the underlying issue in a type-safe manner,
           // so just treat all failures to handshake as a connect failure.
+          last_disconnect_reason = Some(reason);
           self.stats.remote_connect_failure.inc();
           if self.do_reconnect_backoff(&mut backoff).await {
             continue;
@@ -742,10 +744,11 @@ impl Api {
           UpstreamEvent::UpstreamMessages(responses) => {
             self.handle_responses(responses, &mut stream_state).await?;
           },
-          UpstreamEvent::StreamClosed => {
+          UpstreamEvent::StreamClosed(reason) => {
             // We want to avoid a case in which we spin on an error shutdown. We do this by just
             // checking to see if the stream lived for longer than 1 minute, and if so reset the
             // backoff. If the process restarts everything starts over again anyway.
+            last_disconnect_reason = Some(reason);
             if Instant::now() - handshake_established > Duration::minutes(1) {
               log::debug!("stream lived for more than 1 minute, resetting backoff");
               backoff.reset();
@@ -814,7 +817,7 @@ impl Api {
               decision: intent
                 .decision
                 .clone()
-                .unwrap_or(LogsUploadDecision::Drop(LogsUploadDecisionDrop::default()))
+                .unwrap_or_else(|| LogsUploadDecision::Drop(LogsUploadDecisionDrop::default()))
                 .into(),
             },
           )?;
@@ -864,9 +867,9 @@ impl Api {
               decision: sankey_path_upload_intent
                 .decision
                 .clone()
-                .unwrap_or(SankeyPathUploadDecision::Drop(
-                  SankeyPathUploadDecisionDrop::default(),
-                ))
+                .unwrap_or_else(|| {
+                  SankeyPathUploadDecision::Drop(SankeyPathUploadDecisionDrop::default())
+                })
                 .into(),
             },
           )?;
@@ -889,10 +892,15 @@ impl Api {
   }
 
   // Creates a handshake request containing the current version nonces and static metadata.
-  fn handshake_request(&self, metadata: &HashMap<String, ProtoData>) -> HandshakeRequest {
+  fn handshake_request(
+    &self,
+    metadata: &HashMap<String, ProtoData>,
+    previous_disconnect_reason: Option<String>,
+  ) -> HandshakeRequest {
     self.configuration_pipelines.iter().fold(
       HandshakeRequest {
         static_device_metadata: metadata.clone(),
+        previous_disconnect_reason: previous_disconnect_reason.unwrap_or_default(),
         ..Default::default()
       },
       |mut handshake, pipeline| {
@@ -969,13 +977,16 @@ impl Api {
                 error.grpc_status,
                 error.grpc_message
               );
-              return Ok(HandshakeResult::StreamClosure);
+              return Ok(HandshakeResult::StreamClosure(format!(
+                "error shutdown: {}",
+                error.grpc_message
+              )));
             },
             _ => anyhow::bail!("unexpected api response: spurious response before handshake"),
           }
         },
         UpstreamEvent::Shutdown => return Ok(HandshakeResult::ShuttingDown),
-        UpstreamEvent::StreamClosed => return Ok(HandshakeResult::StreamClosure),
+        UpstreamEvent::StreamClosed(reason) => return Ok(HandshakeResult::StreamClosure(reason)),
       }
     }
   }

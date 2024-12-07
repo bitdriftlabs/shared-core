@@ -255,7 +255,7 @@ pub struct TestTimeChangeGuard<'a> {
   original_time: OffsetDateTime,
 }
 
-impl<'a> Drop for TestTimeChangeGuard<'a> {
+impl Drop for TestTimeChangeGuard<'_> {
   fn drop(&mut self) {
     *self.time_provider.now.lock() = self.original_time;
   }

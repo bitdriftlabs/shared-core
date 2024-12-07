@@ -71,10 +71,10 @@ impl<T: MemorySized + Debug> LoggingState<T> {
     }
   }
 
-  pub(crate) const fn flush_stats_trigger(&self) -> &Option<FlushTrigger> {
+  pub(crate) const fn flush_stats_trigger(&self) -> Option<&FlushTrigger> {
     match self {
-      Self::Uninitialized(context) => &context.flush_stats_trigger,
-      Self::Initialized(context) => &context.processing_pipeline.flush_stats_trigger,
+      Self::Uninitialized(context) => context.flush_stats_trigger.as_ref(),
+      Self::Initialized(context) => context.processing_pipeline.flush_stats_trigger.as_ref(),
     }
   }
 
