@@ -171,6 +171,7 @@ struct StreamState {
   response_decoder: bd_grpc_codec::Decoder<ApiResponse>,
   ping_interval: Option<tokio::time::Duration>,
   ping_deadline: Option<tokio::time::Instant>,
+  internal_logger: Arc<dyn bd_internal_logging::Logger>,
 
   upload_state_tracker: upload::StateTracker,
 
@@ -187,6 +188,7 @@ impl StreamState {
     stream_handle: Box<dyn PlatformNetworkStream>,
     stream_event_rx: tokio::sync::mpsc::Receiver<StreamEvent>,
     time_provider: Arc<dyn TimeProvider>,
+    internal_logger: Arc<dyn bd_internal_logging::Logger>,
     stats: &Stats,
   ) -> Self {
     // TODO(mattklein123): We should be pivoting based on the grpc-encoding response header, but
@@ -214,6 +216,7 @@ impl StreamState {
       ping_interval: None,
       ping_deadline: None,
       upload_state_tracker: StateTracker::new(),
+      internal_logger,
       stream_handle,
       stream_event_rx,
       time_provider,
@@ -270,6 +273,10 @@ impl StreamState {
       },
       // We observed a close event, propagate this back up.
       Some(StreamEvent::StreamClosed(reason)) => {
+        self
+          .internal_logger
+          .log_internal(&format!("Capture API stream closed due to {reason:?}"));
+
         log::debug!("stream closed due to '{}'", reason);
 
         Ok(UpstreamEvent::StreamClosed)
@@ -653,6 +660,7 @@ impl Api {
           .await?,
         stream_event_rx,
         self.time_provider.clone(),
+        self.internal_logger.clone(),
         &self.stats,
       );
 
@@ -775,6 +783,11 @@ impl Api {
         },
         Some(ResponseKind::Pong(_)) => stream_state.maybe_schedule_ping(),
         Some(ResponseKind::ErrorShutdown(error)) => {
+          self.internal_logger.log_internal(&format!(
+            "Capture API stream closed due to ErrorShutdown: {}",
+            error
+          ));
+
           log::debug!(
             "close with status {:?}, message {:?}",
             error.grpc_status,
@@ -941,6 +954,11 @@ impl Api {
             },
             Some(ResponseKind::ErrorShutdown(error)) => {
               static UNAUTHENTICATED: i32 = 16;
+
+              self.internal_logger.log_internal(&format!(
+                "Capture API stream closed due to ErrorShutdown before handshake: {}",
+                error
+              ));
 
               // If we're provided with an invalid API key or otherwise fail to authenticate with
               // the backend, log this as a warning to surface this to developers trying to set up
