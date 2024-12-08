@@ -444,6 +444,11 @@ pub struct HandshakeMatcher {
 
 impl HandshakeMatcher {
   fn matches(&self, attributes: &HashMap<String, String>) -> bool {
+    log::debug!(
+      "matching handshake attributes {:?} against {:?}",
+      attributes,
+      self
+    );
     let mut attributes = attributes.clone();
 
     if let Some(attribute_keys_to_ignore) = &self.attribute_keys_to_ignore {
