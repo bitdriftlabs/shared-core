@@ -42,7 +42,6 @@ pub fn make_mut<T>(mock: &mut Arc<T>) -> &mut T {
 // TODO(mattklein123): Panic behavior under cargo test is different vs. when run under bazel.
 //                     Figure this out.
 pub fn test_global_init() {
-  #[cfg(feature = "test_logger")]
   bd_log::SwapLogger::initialize();
 
   std::panic::set_hook(Box::new(move |info| {

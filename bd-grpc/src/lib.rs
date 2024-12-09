@@ -13,18 +13,26 @@ mod grpc_test;
 mod generated;
 
 pub mod axum_helper;
+pub mod client;
+pub mod compression;
+pub mod connect_protocol;
+pub mod error;
+pub mod service;
+pub mod stats;
+pub mod status;
 
-use assert_matches::debug_assert_matches;
+use crate::error::{Error, Result};
 use axum::body::{to_bytes, Body};
 use axum::extract::Request;
 use axum::http::HeaderValue;
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use axum::routing::post;
 use axum::{BoxError, Router};
 use base64ct::Encoding;
 use bd_grpc_codec::stats::DeferredCounter;
 use bd_grpc_codec::{
   Decoder,
+  DecodingResult,
   Encoder,
   OptimizeFor,
   GRPC_ACCEPT_ENCODING_HEADER,
@@ -33,548 +41,36 @@ use bd_grpc_codec::{
   LEGACY_GRPC_ENCODING_HEADER,
 };
 use bd_log::rate_limit_log::WarnTracker;
-use bd_server_stats::stats::{CounterWrapper, Scope};
 use bd_stats_common::DynCounter;
-use bd_time::TimeDurationExt;
-use bytes::Bytes;
-use http::{Extensions, HeaderMap, StatusCode, Uri};
+use bytes::{BufMut, Bytes, BytesMut};
+use connect_protocol::{ConnectProtocolType, EndOfStreamResponse, ErrorResponse, ToContentType};
+use http::header::{CONTENT_ENCODING, CONTENT_TYPE};
+use http::{Extensions, HeaderMap};
 use http_body::Frame;
 use http_body_util::{BodyExt, StreamBody};
-use hyper::body::Incoming;
-use hyper_util::client::legacy::connect::{Connect, HttpConnector};
-use hyper_util::rt::TokioExecutor;
 use prometheus::IntCounter;
-use protobuf::reflect::FileDescriptor;
 use protobuf::{Message, MessageFull};
+use service::ServiceMethod;
+use stats::{BandwidthStatsSummary, StreamStats};
+use status::{Code, Status};
 use std::convert::Infallible;
-use std::error::Error as StdError;
-use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use time::ext::NumericalDuration;
-use time::Duration;
-use tokio::sync::{mpsc, watch, Semaphore};
+use tokio::sync::{mpsc, watch};
 use tokio_stream::wrappers::ReceiverStream;
 
 const GRPC_STATUS: &str = "grpc-status";
 const GRPC_MESSAGE: &str = "grpc-message";
-pub const CONTENT_ENCODING: &str = "content-encoding";
 pub const CONTENT_ENCODING_SNAPPY: &str = "snappy";
-pub const CONTENT_TYPE: &str = "content-type";
 pub const CONTENT_TYPE_GRPC: &str = "application/grpc";
-const TRANSFER_ENCODING: &str = "te";
+const CONTENT_TYPE_PROTO: &str = "application/proto";
+const CONTENT_TYPE_CONNECT_STREAMING: &str = "application/connect+proto";
+const CONTENT_TYPE_JSON: &str = "application/json";
 const TRANSFER_ENCODING_TRAILERS: &str = "trailers";
+const CONNECT_PROTOCOL_VERSION: &str = "connect-protocol-version";
 
 pub type BodySender = mpsc::Sender<std::result::Result<Frame<Bytes>, BoxError>>;
-
-//
-// Error
-//
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-  #[error("Body stream error ocurred: {0}")]
-  BodyStream(BoxError),
-  #[error("Stream has closed")]
-  Closed,
-  #[error("A codec error occurred: {0}")]
-  Codec(#[from] bd_grpc_codec::Error),
-  #[error("A connection timeout occurred")]
-  ConnectionTimeout,
-  #[error("A gRPC error occurred: {0}")]
-  Grpc(#[from] Status),
-  #[error("A hyper client error occurred: {0}")]
-  HyperClient(#[from] hyper_util::client::legacy::Error),
-  #[error("A proto validation error occurred: {0}")]
-  ProtoValidation(#[from] bd_pgv::error::Error),
-  #[error("A request timeout occurred")]
-  RequestTimeout,
-  #[error("A snap decode error occurred: {0}")]
-  Snap(#[from] snap::Error),
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
-
-impl IntoResponse for Error {
-  fn into_response(self) -> Response {
-    match self {
-      Self::ConnectionTimeout | Self::RequestTimeout => {
-        Status::new(Code::Internal, "upstream timeout").into_response()
-      },
-      Self::Grpc(status) => status.into_response(),
-      Self::Codec(_) | Self::ProtoValidation(_) | Self::Snap(_) => {
-        StatusCode::BAD_REQUEST.into_response()
-      },
-      Self::BodyStream(_) | Self::Closed | Self::HyperClient(_) => {
-        StatusCode::INTERNAL_SERVER_ERROR.into_response()
-      },
-    }
-  }
-}
-
-impl Error {
-  fn warn_every_message(&self) -> Option<String> {
-    match self {
-      Self::ConnectionTimeout | Self::RequestTimeout => Some("upstream timeout".to_string()),
-      Self::Grpc(status) => {
-        if status.code == Code::Internal {
-          Some(format!(
-            "gRPC internal error ({})",
-            status.message.as_ref().map_or_else(|| "", |s| s.as_str())
-          ))
-        } else {
-          None
-        }
-      },
-      Self::Codec(_) | Self::ProtoValidation(_) | Self::Snap(_) | Self::Closed => None,
-      Self::BodyStream(e) => Some(format!("body stream error: {e}")),
-      Self::HyperClient(e) => Some(format!("hyper client error: {e}")),
-    }
-  }
-}
-
-//
-// Code
-//
-
-// Wrapper for supported gRPC status codes. Unknown is a synthetic code if mapping is not possible.
-#[derive(PartialEq, Eq, Debug)]
-pub enum Code {
-  Ok,
-  Unknown,
-  InvalidArgument,
-  FailedPrecondition,
-  Internal,
-  Unavailable,
-  Unauthenticated,
-  NotFound,
-}
-
-impl Code {
-  // Convert to an int via https://grpc.github.io/grpc/core/md_doc_statuscodes.html.
-  #[must_use]
-  pub const fn to_int(&self) -> i32 {
-    match self {
-      Self::Ok => 0,
-      Self::Unknown => 2,
-      Self::InvalidArgument => 3,
-      Self::FailedPrecondition => 9,
-      Self::NotFound => 5,
-      Self::Internal => 13,
-      Self::Unavailable => 14,
-      Self::Unauthenticated => 16,
-    }
-  }
-
-  // Convert from a string via https://grpc.github.io/grpc/core/md_doc_statuscodes.html.
-  #[must_use]
-  pub fn from_string(status: &str) -> Self {
-    match status {
-      "0" => Self::Ok,
-      "3" => Self::InvalidArgument,
-      "5" => Self::NotFound,
-      "9" => Self::FailedPrecondition,
-      "13" => Self::Internal,
-      "14" => Self::Unavailable,
-      "16" => Self::Unauthenticated,
-      _ => Self::Unknown,
-    }
-  }
-}
-
-//
-// Compression
-//
-
-// What compression type to use for gRPC requests.
-pub enum Compression {
-  // No compression.
-  None,
-  // Spec compliant gRPC compression.
-  GRpc(bd_grpc_codec::Compression),
-  // Snappy raw compression. This is meant for unary requests only as it does not use the snappy
-  // frame format and persist state for the duration of the stream. We can add this later if
-  // needed. This is not compliant with the gRPC spec.
-  Snappy,
-}
-
-//
-// Status
-//
-
-// Wrapper for a gRPC status including a code and optional message.
-#[derive(PartialEq, Eq, Debug)]
-pub struct Status {
-  pub code: Code,
-  pub message: Option<String>,
-}
-
-impl Status {
-  // Create a new status.
-  #[must_use]
-  pub fn new(code: Code, message: &str) -> Self {
-    Self {
-      code,
-      message: Some(message.to_string()),
-    }
-  }
-
-  // Create a status from headers. The grpc-status header is assumed to exist and this function
-  // will panic otherwise.
-  #[must_use]
-  pub fn from_headers(headers: &HeaderMap) -> Self {
-    Self {
-      code: Code::from_string(
-        headers
-          .get(GRPC_STATUS)
-          .expect("caller should verify grpc-status exists")
-          .to_str()
-          .unwrap_or_default(),
-      ),
-      message: headers
-        .get(GRPC_MESSAGE)
-        .and_then(|value| value.to_str().ok().map(ToString::to_string)),
-    }
-  }
-
-  // Convert a status into a response compatible with axum.
-  #[must_use]
-  pub fn into_response(self) -> Response {
-    self.into_response_with_body(().into())
-  }
-
-  // Convert a status into a response compatible with axum.
-  #[must_use]
-  pub fn into_response_with_body(self, body: Body) -> Response {
-    let mut builder = Response::builder()
-      .header(CONTENT_TYPE, CONTENT_TYPE_GRPC)
-      .header(GRPC_STATUS, self.code.to_int());
-
-    if self.message.is_some() {
-      // We need to make sure the message is a valid header so we URL encode it to be sure.
-      let encoded = urlencoding::encode(self.message.as_ref().unwrap());
-      let header_value = HeaderValue::from_str(&encoded).unwrap();
-
-      builder = builder.header(GRPC_MESSAGE, header_value);
-    }
-
-    builder.body(body).unwrap()
-  }
-}
-
-impl std::fmt::Display for Status {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(
-      f,
-      "code: {}, message: {}",
-      self.code.to_int(),
-      self.message.as_ref().map_or("<none>", |s| s.as_str())
-    )
-  }
-}
-
-impl std::error::Error for Status {}
-
-//
-// Client
-//
-
-// A simple gRPC client wrapper that allows for both unary and streaming requests.
-#[derive(Debug)]
-pub struct Client<C> {
-  client: hyper_util::client::legacy::Client<C, Body>,
-  address: Uri,
-  concurrency: Semaphore,
-}
-
-impl Client<HttpConnector> {
-  // Creates a new client against a target address using HTTP over a TCP socket.
-  pub fn new_http(
-    address: &str,
-    connect_timeout: Duration,
-    max_request_concurrency: u64,
-  ) -> anyhow::Result<Self> {
-    let mut connector = HttpConnector::new();
-    connector.set_nodelay(true);
-    connector.set_connect_timeout(Some(connect_timeout.unsigned_abs()));
-
-    Self::new_with_client(
-      format!("http://{address}"),
-      hyper_util::client::legacy::Client::builder(TokioExecutor::new())
-        .http2_only(true)
-        .build(connector),
-      max_request_concurrency,
-    )
-  }
-}
-
-impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
-  // Create a new client against a target address.
-  pub fn new_with_client<E: Send + Sync + std::error::Error + 'static>(
-    address: impl TryInto<Uri, Error = E>,
-    client: hyper_util::client::legacy::Client<C, Body>,
-    max_request_concurrency: u64,
-  ) -> anyhow::Result<Self> {
-    let address: Uri = address.try_into()?;
-
-    // These are unwrapped later on to construct the full URI, so bail early if they are not set.
-    if address.scheme().is_none() {
-      anyhow::bail!("missing scheme in address");
-    }
-
-    if address.authority().is_none() {
-      anyhow::bail!("missing authority in address");
-    }
-
-    // These are dropped when constructing the final URI, so providing them likely indicates a bug.
-    if address.path() != "/" {
-      anyhow::bail!(
-        "extra path parameter not supported in address: {}",
-        address.path()
-      );
-    }
-
-    if address.query().is_some() {
-      anyhow::bail!("extra query parameter not supported in address");
-    }
-
-    Ok(Self {
-      client,
-      address,
-      concurrency: Semaphore::new(max_request_concurrency.try_into().unwrap()),
-    })
-  }
-
-  // Common request generation for both unary and streaming requests.
-  async fn common_request<OutgoingType: MessageFull, IncomingType: MessageFull>(
-    &self,
-    service_method: &ServiceMethod<OutgoingType, IncomingType>,
-    extra_headers: Option<HeaderMap>,
-    body: Body,
-  ) -> Result<Response<Incoming>> {
-    // TODO(mattklein123): Potentially implement load shed if we have too many waiters.
-    let _permit = self.concurrency.acquire().await.unwrap();
-
-    let uri = Uri::builder()
-      .scheme(self.address.scheme().unwrap().clone())
-      .authority(self.address.authority().unwrap().as_str())
-      .path_and_query(service_method.full_path.as_str())
-      .build()
-      .unwrap();
-
-    let mut request = hyper::Request::builder()
-      .method(hyper::Method::POST)
-      .uri(uri)
-      .header(CONTENT_TYPE, CONTENT_TYPE_GRPC)
-      .header(TRANSFER_ENCODING, TRANSFER_ENCODING_TRAILERS)
-      .body(body)
-      .unwrap();
-    if let Some(extra_headers) = extra_headers {
-      request.headers_mut().extend(extra_headers);
-    }
-
-    let response = match self.client.request(request).await {
-      Ok(response) => response,
-      Err(e) => {
-        // This is absolutely horrendous but I can't figure out any other way of doing this
-        // more cleanly.
-        if e
-          .source()
-          .and_then(std::error::Error::source)
-          .and_then(|e| e.downcast_ref::<std::io::Error>())
-          .map_or(false, |e| e.kind() == ErrorKind::TimedOut)
-        {
-          return Err(Error::ConnectionTimeout);
-        }
-
-        return Err(e.into());
-      },
-    };
-    if !response.status().is_success() {
-      return Err(
-        Status::new(
-          Code::Internal,
-          &format!("Non-200 response code: {}", response.status()),
-        )
-        .into(),
-      );
-    }
-
-    // We treat any trailer only response as an error, even with the response status is OK. This
-    // seems fine for now.
-    if response.headers().contains_key(GRPC_STATUS) {
-      return Err(Status::from_headers(response.headers()).into());
-    }
-
-    Ok(response)
-  }
-
-  // Perform a unary request.
-  pub async fn unary<OutgoingType: MessageFull, IncomingType: MessageFull>(
-    &self,
-    service_method: &ServiceMethod<OutgoingType, IncomingType>,
-    extra_headers: Option<HeaderMap>,
-    request: OutgoingType,
-    request_timeout: Duration,
-    compression: Compression,
-  ) -> Result<IncomingType> {
-    let (extra_headers, body) = match compression {
-      Compression::None => {
-        let mut encoder = Encoder::new(None);
-        (extra_headers, encoder.encode(&request).into())
-      },
-      Compression::GRpc(compression) => {
-        debug_assert_matches!(
-          compression,
-          bd_grpc_codec::Compression::StatelessZlib { .. }
-        );
-        let mut encoder = Encoder::new(Some(compression));
-        let mut extra_headers = extra_headers.unwrap_or_default();
-        extra_headers.insert(
-          GRPC_ENCODING_HEADER,
-          GRPC_ENCODING_DEFLATE.try_into().unwrap(),
-        );
-        extra_headers.insert(
-          GRPC_ACCEPT_ENCODING_HEADER,
-          GRPC_ENCODING_DEFLATE.try_into().unwrap(),
-        );
-        (Some(extra_headers), encoder.encode(&request).into())
-      },
-      Compression::Snappy => {
-        // Note: This is not compliant to the gRPC spec. It just compresses the entire payload
-        // including the message length. We can consider making this better later but this is simple
-        // and works for the basic unary use case where we control both sides.
-        let mut encoder = Encoder::new(None);
-        let proto_encoded = encoder.encode(&request);
-        let body = snap::raw::Encoder::new()
-          .compress_vec(&proto_encoded)
-          .unwrap();
-        log::trace!(
-          "snappy compressed {} -> {}",
-          proto_encoded.len(),
-          body.len()
-        );
-        let mut extra_headers = extra_headers.unwrap_or_default();
-        extra_headers.append(
-          CONTENT_ENCODING,
-          CONTENT_ENCODING_SNAPPY.try_into().unwrap(),
-        );
-        (Some(extra_headers), body.into())
-      },
-    };
-
-    let response = match request_timeout
-      .timeout(self.common_request(service_method, extra_headers, body))
-      .await
-    {
-      Ok(response) => response?,
-      Err(_) => return Err(Error::RequestTimeout),
-    };
-    let mut decoder = Decoder::new(finalize_decompression(response.headers()), OptimizeFor::Cpu);
-    let body = response
-      .into_body()
-      .collect()
-      .await
-      .map_err(|e| Error::BodyStream(e.into()))?
-      .to_bytes();
-    let mut messages = decoder.decode_data(&body)?;
-
-    if messages.len() != 1 {
-      return Err(Status::new(Code::Internal, "Invalid response body").into());
-    }
-
-    Ok(messages.remove(0))
-  }
-
-  // Perform a bi-di streaming request.
-  // TODO(mattklein123): Allow an initial vector of request messages to be sent along with the
-  //                     request.
-  pub async fn streaming<OutgoingType: MessageFull, IncomingType: MessageFull>(
-    &self,
-    service_method: &ServiceMethod<OutgoingType, IncomingType>,
-    mut extra_headers: Option<HeaderMap>,
-    validate: bool,
-    compression: Option<bd_grpc_codec::Compression>,
-    optimize_for: OptimizeFor,
-  ) -> Result<StreamingApi<OutgoingType, IncomingType>> {
-    let (tx, rx) = mpsc::channel(1);
-    let body = StreamBody::new(ReceiverStream::new(rx));
-
-    match compression {
-      None => {},
-      Some(bd_grpc_codec::Compression::StatefulZlib { .. }) => {
-        // This is kept around for legacy clients where we only support server side. Tests
-        // are covered in codec tests.
-        unimplemented!()
-      },
-      Some(bd_grpc_codec::Compression::StatelessZlib { .. }) => {
-        let headers = extra_headers.get_or_insert_with(HeaderMap::default);
-        headers.insert(
-          GRPC_ENCODING_HEADER,
-          GRPC_ENCODING_DEFLATE.try_into().unwrap(),
-        );
-        headers.insert(
-          GRPC_ACCEPT_ENCODING_HEADER,
-          GRPC_ENCODING_DEFLATE.try_into().unwrap(),
-        );
-      },
-    }
-
-    let response = self
-      .common_request(service_method, extra_headers, Body::new(body))
-      .await?;
-    let (parts, body) = response.into_parts();
-
-    Ok(StreamingApi::new(
-      tx,
-      parts.headers,
-      Body::new(body),
-      validate,
-      compression,
-      optimize_for,
-      None,
-    ))
-  }
-
-  // Perform a unary streaming request.
-  // TODO(mattklein123): Support compression.
-  pub async fn server_streaming<OutgoingType: MessageFull, IncomingType: MessageFull>(
-    &self,
-    service_method: &ServiceMethod<OutgoingType, IncomingType>,
-    extra_headers: Option<HeaderMap>,
-    request: OutgoingType,
-    validate: bool,
-    optimize_for: OptimizeFor,
-  ) -> Result<ServerStreamingApi<OutgoingType, IncomingType>> {
-    let mut encoder = Encoder::new(None);
-    let response = self
-      .common_request(
-        service_method,
-        extra_headers,
-        encoder.encode(&request).into(),
-      )
-      .await?;
-    let (parts, body) = response.into_parts();
-    Ok(ServerStreamingApi::new(
-      parts.headers,
-      Body::new(body),
-      validate,
-      optimize_for,
-      None,
-    ))
-  }
-}
-
-//
-// BandwidthStatsSummary
-//
-
-pub struct BandwidthStatsSummary {
-  pub rx: u64,
-  pub rx_decompressed: u64,
-  pub tx: u64,
-  pub tx_uncompressed: u64,
-}
 
 //
 // StreamingApi
@@ -582,11 +78,9 @@ pub struct BandwidthStatsSummary {
 
 // Handle around a bidirectional streaming API. Allows for both sending outgoing messages and
 // receiving response messages.
-pub struct StreamingApi<OutgoingType: Message, IncomingType: Message> {
+pub struct StreamingApi<OutgoingType: Message, IncomingType: MessageFull> {
   sender: StreamingApiSender<OutgoingType>,
-
-  // A bidirectional API is just the sender + the server streaming API.
-  streaming_api: ServerStreamingApi<OutgoingType, IncomingType>,
+  receiver: StreamingApiReceiver<IncomingType>,
 }
 
 impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType, IncomingType> {
@@ -601,10 +95,12 @@ impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType
     optimize_for: OptimizeFor,
     read_stop: Option<watch::Receiver<bool>>,
   ) -> Self {
-    let sender = StreamingApiSender::new(tx, compression);
+    // TODO(mattklein123): Support connect protocol for bidirectional streaming. We have no
+    // current use case for this right now.
+    let sender = StreamingApiSender::new(tx, compression, false);
     Self {
       sender,
-      streaming_api: ServerStreamingApi::new(headers, body, validate, optimize_for, read_stop),
+      receiver: StreamingApiReceiver::new(headers, body, validate, optimize_for, read_stop),
     }
   }
 
@@ -620,7 +116,7 @@ impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType
 
   #[must_use]
   pub const fn bandwidth_stats(&self) -> BandwidthStatsSummary {
-    let (rx, rx_decompressed) = self.streaming_api.decoder.bandwidth_stats();
+    let (rx, rx_decompressed) = self.receiver.decoder.bandwidth_stats();
     let (tx, tx_uncompressed) = self.sender.encoder.bandwidth_stats();
     BandwidthStatsSummary {
       rx,
@@ -639,7 +135,7 @@ impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType
     rx_bytes_decompressed: DynCounter,
   ) {
     self
-      .streaming_api
+      .receiver
       .initialize_bandwidth_stats(rx_bytes, rx_bytes_decompressed);
     self
       .sender
@@ -647,32 +143,29 @@ impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType
   }
 
   pub async fn next(&mut self) -> Result<Option<Vec<IncomingType>>> {
-    self.streaming_api.next().await
+    self.receiver.next().await
   }
 
   #[must_use]
   pub const fn received_headers(&self) -> &HeaderMap {
-    self.streaming_api.received_headers()
+    self.receiver.received_headers()
   }
 }
 
 //
-// ServerStreamingApi
+// StreamingApiReceiver
 //
 
-// Handle around an API stream where the server is streaming responses.
-pub struct ServerStreamingApi<OutgoingType: Message, IncomingType: Message> {
+// Handle around an API stream receiving messages.
+pub struct StreamingApiReceiver<IncomingType: DecodingResult> {
   headers: HeaderMap,
   body: Body,
   decoder: Decoder<IncomingType>,
   validate: bool,
   read_stop: Option<watch::Receiver<bool>>,
-  _type: PhantomData<(OutgoingType, IncomingType)>,
 }
 
-impl<OutgoingType: Message, IncomingType: MessageFull>
-  ServerStreamingApi<OutgoingType, IncomingType>
-{
+impl<IncomingType: DecodingResult> StreamingApiReceiver<IncomingType> {
   // Create a new streaming API handler.
   #[must_use]
   pub fn new(
@@ -706,9 +199,9 @@ impl<OutgoingType: Message, IncomingType: MessageFull>
       decoder: Decoder::new(decompression, optimize_for),
       validate,
       read_stop,
-      _type: PhantomData,
     }
   }
+
   // Receive a message on the stream. An error indicates either a network or protobuf error. None
   // indicates the stream is complete.
   pub async fn next(&mut self) -> Result<Option<Vec<IncomingType>>> {
@@ -742,8 +235,10 @@ impl<OutgoingType: Message, IncomingType: MessageFull>
           let messages = self.decoder.decode_data(frame.data_ref().unwrap())?;
           if self.validate {
             for message in &messages {
-              bd_pgv::proto_validate::validate(message)
-                .inspect_err(|e| log::debug!("validation failure: {e}"))?;
+              if let Some(message) = message.message() {
+                bd_pgv::proto_validate::validate(message)
+                  .inspect_err(|e| log::debug!("validation failure: {e}"))?;
+              }
             }
           }
           if !messages.is_empty() {
@@ -797,16 +292,23 @@ pub struct StreamingApiSender<ResponseType: Message> {
   encoder: Encoder<ResponseType>,
   tx: BodySender,
   tx_messages_total: DeferredCounter,
+  // https://connectrpc.com/docs/protocol
+  connect_protocol: bool,
   _type: PhantomData<ResponseType>,
 }
 
 impl<ResponseType: Message> StreamingApiSender<ResponseType> {
   #[must_use]
-  pub fn new(tx: BodySender, compression: Option<bd_grpc_codec::Compression>) -> Self {
+  pub fn new(
+    tx: BodySender,
+    compression: Option<bd_grpc_codec::Compression>,
+    connect_protocol: bool,
+  ) -> Self {
     Self {
       encoder: Encoder::new(compression),
       tx,
       tx_messages_total: DeferredCounter::default(),
+      connect_protocol,
       _type: PhantomData,
     }
   }
@@ -837,8 +339,25 @@ impl<ResponseType: Message> StreamingApiSender<ResponseType> {
     Ok(())
   }
 
-  async fn send_error(&self, status: Status) -> Result<()> {
+  async fn send_connect_end_of_stream(&mut self, end_of_stream: EndOfStreamResponse) -> Result<()> {
+    let end_of_stream = serde_json::to_vec(&end_of_stream).unwrap();
+    let mut end_of_stream_bytes = BytesMut::new();
+    end_of_stream_bytes.put_u8(0x2); // end of stream
+    end_of_stream_bytes.put_u32(end_of_stream.len().try_into().unwrap());
+    end_of_stream_bytes.put_slice(&end_of_stream);
+    self.send_raw(end_of_stream_bytes.freeze()).await
+  }
+
+  async fn send_error(&mut self, status: Status) -> Result<()> {
     log::trace!("sending error trailers for stream");
+
+    if self.connect_protocol {
+      return self
+        .send_connect_end_of_stream(EndOfStreamResponse {
+          error: Some(ErrorResponse::new(status)),
+        })
+        .await;
+    }
 
     let mut trailers = HeaderMap::new();
     trailers.insert(
@@ -852,8 +371,15 @@ impl<ResponseType: Message> StreamingApiSender<ResponseType> {
     self.send_trailers(trailers).await
   }
 
-  async fn send_ok_trailers(&self) -> Result<()> {
+  async fn send_ok_trailers(&mut self) -> Result<()> {
     log::trace!("sending ok trailers for stream");
+
+    if self.connect_protocol {
+      return self
+        .send_connect_end_of_stream(EndOfStreamResponse { error: None })
+        .await;
+    }
+
     let mut trailers = HeaderMap::new();
     trailers.insert(GRPC_STATUS, HeaderValue::from_str("0").unwrap());
 
@@ -884,8 +410,12 @@ impl<ResponseType: Message> StreamingApiSender<ResponseType> {
 
 // Create a new successful axum gRPC response with a given body.
 #[must_use]
-pub fn new_grpc_response(body: Body, compression: Option<bd_grpc_codec::Compression>) -> Response {
-  let mut builder = Response::builder().header(CONTENT_TYPE, CONTENT_TYPE_GRPC);
+pub fn new_grpc_response(
+  body: Body,
+  compression: Option<bd_grpc_codec::Compression>,
+  connect_protocol: Option<ConnectProtocolType>,
+) -> Response {
+  let mut builder = Response::builder().header(CONTENT_TYPE, connect_protocol.to_content_type());
 
   match compression {
     None => {},
@@ -930,9 +460,13 @@ pub trait ServerStreamingHandler<ResponseType: Message, RequestType: Message>: S
 async fn decode_request<Message: MessageFull>(
   request: Request,
   validate_request: bool,
-) -> Result<(HeaderMap<HeaderValue>, Extensions, Message)> {
+) -> Result<(
+  HeaderMap<HeaderValue>,
+  Extensions,
+  Message,
+  Option<ConnectProtocolType>,
+)> {
   let (parts, body) = request.into_parts();
-  let mut grpc_decoder = Decoder::new(finalize_decompression(&parts.headers), OptimizeFor::Cpu);
   let body_bytes = to_bytes(body, usize::MAX)
     .await
     .map_err(|e| Error::BodyStream(e.into()))?;
@@ -950,18 +484,45 @@ async fn decode_request<Message: MessageFull>(
     body_bytes
   };
 
-  let mut messages = grpc_decoder.decode_data(&body_bytes)?;
-  if messages.len() != 1 {
-    return Err(Status::new(Code::InvalidArgument, "Invalid request body").into());
-  }
+  let connect_protocol_type = ConnectProtocolType::from_headers(&parts.headers);
+  let message = if matches!(connect_protocol_type, Some(ConnectProtocolType::Unary)) {
+    Message::parse_from_tokio_bytes(&body_bytes)
+      .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}")))?
+  } else {
+    let mut grpc_decoder =
+      Decoder::<Message>::new(finalize_decompression(&parts.headers), OptimizeFor::Cpu);
+    let mut messages = grpc_decoder.decode_data(&body_bytes)?;
+    if messages.len() != 1 {
+      return Err(Status::new(Code::InvalidArgument, "Invalid request body").into());
+    }
+    messages.remove(0)
+  };
 
   if validate_request {
-    if let Err(err) = bd_pgv::proto_validate::validate(&messages[0]) {
-      return Err(Status::new(Code::InvalidArgument, &format!("Invalid request: {err:?}")).into());
-    }
+    bd_pgv::proto_validate::validate(&message)
+      .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}")))?;
   }
 
-  Ok((parts.headers, parts.extensions, messages.remove(0)))
+  Ok((
+    parts.headers,
+    parts.extensions,
+    message,
+    connect_protocol_type,
+  ))
+}
+
+async fn unary_connect_handler<OutgoingType: MessageFull, IncomingType: MessageFull>(
+  headers: HeaderMap,
+  extensions: Extensions,
+  message: OutgoingType,
+  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
+) -> Result<Response> {
+  let response = handler.handle(headers, extensions, message).await?;
+  Ok(new_grpc_response(
+    response.write_to_bytes().unwrap().into(),
+    None,
+    Some(ConnectProtocolType::Unary),
+  ))
 }
 
 // Axum handler for a unary API.
@@ -970,8 +531,17 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
   validate_request: bool,
 ) -> Result<Response> {
-  let (headers, extensions, message) =
+  let (headers, extensions, message, connect_protocol_type) =
     decode_request::<OutgoingType>(request, validate_request).await?;
+  if matches!(connect_protocol_type, Some(ConnectProtocolType::Unary)) {
+    return Ok(
+      match unary_connect_handler(headers, extensions, message, handler).await {
+        Ok(response) => response,
+        Err(e) => e.to_connect_error_response(),
+      },
+    );
+  }
+
   let compression = finalize_response_compression(
     Some(bd_grpc_codec::Compression::StatelessZlib { level: 3 }),
     &headers,
@@ -993,6 +563,7 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   Ok(new_grpc_response(
     Body::new(StreamBody::new(ReceiverStream::new(rx))),
     compression,
+    None,
   ))
 }
 
@@ -1041,15 +612,20 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
   let path = request.uri().path().to_string();
 
   let (tx, rx) = mpsc::channel(1);
-  let (headers, extensions, message) = decode_request::<RequestType>(request, validate_request)
-    .await
-    .inspect_err(|_| {
-      stream_stats.stream_completion_failures_total.inc();
-    })?;
+  let (headers, extensions, message, connect_protocol_type) =
+    decode_request::<RequestType>(request, validate_request)
+      .await
+      .inspect_err(|_| {
+        stream_stats.stream_completion_failures_total.inc();
+      })?;
 
   let compression = finalize_response_compression(compression, &headers);
   tokio::spawn(async move {
-    let sender = &mut StreamingApiSender::new(tx, compression);
+    let sender = &mut StreamingApiSender::new(
+      tx,
+      compression,
+      matches!(connect_protocol_type, Some(ConnectProtocolType::Streaming)),
+    );
     sender.initialize_stats(
       stream_stats.tx_messages_total,
       stream_stats.tx_bytes_total,
@@ -1077,7 +653,7 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
 
         let status = match e {
           Error::Grpc(status) => status,
-          e => Status::new(Code::Internal, &format!("{e}")),
+          e => Status::new(Code::Internal, format!("{e}")),
         };
 
         log::debug!("Stream {path} failed: {status}");
@@ -1092,6 +668,7 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
   Ok(new_grpc_response(
     Body::new(StreamBody::new(ReceiverStream::new(rx))),
     compression,
+    connect_protocol_type,
   ))
 }
 
@@ -1159,87 +736,6 @@ pub fn make_unary_router<OutgoingType: MessageFull, IncomingType: MessageFull>(
 }
 
 //
-// ServiceMethod
-//
-
-// Wraps a gRPC service method after confirming the path matches the proto file.
-pub struct ServiceMethod<OutgoingType: MessageFull, IncomingType: MessageFull> {
-  full_path: String,
-  outgoing_type: PhantomData<OutgoingType>,
-  incoming_type: PhantomData<IncomingType>,
-}
-
-impl<OutgoingType: MessageFull, IncomingType: MessageFull>
-  ServiceMethod<OutgoingType, IncomingType>
-{
-  // Create a new service method given the service name and the method name.
-  #[must_use]
-  pub fn new(service_name: &str, method_name: &str) -> Self {
-    let message_descriptor = OutgoingType::descriptor();
-    let file_descriptor = message_descriptor.file_descriptor();
-
-    Self::new_with_fd(service_name, method_name, file_descriptor)
-  }
-
-  // Create a new service method given the service name and the method name. Useful when we cannot
-  // infer the file descriptor of the service via the request/response types.
-  #[must_use]
-  pub fn new_with_fd(
-    service_name: &str,
-    method_name: &str,
-    file_descriptor: &FileDescriptor,
-  ) -> Self {
-    let mut service_descriptor = None;
-    let mut method_descriptor = None;
-    for service in file_descriptor.services() {
-      if service.proto().name() != service_name {
-        continue;
-      }
-
-      service_descriptor = Some(service);
-      for method in service_descriptor.as_ref().unwrap().methods() {
-        if method.proto().name() == method_name {
-          method_descriptor = Some(method);
-          break;
-        }
-      }
-
-      if method_descriptor.is_some() {
-        break;
-      }
-    }
-
-    let service_descriptor =
-      service_descriptor.unwrap_or_else(|| panic!("could not find service: {service_name}"));
-    let method_descriptor =
-      method_descriptor.unwrap_or_else(|| panic!("could not find method: {method_name}"));
-    assert!(
-      method_descriptor.input_type().full_name() == OutgoingType::descriptor().full_name(),
-      "service method outgoing type mismatch: {} != {}",
-      method_descriptor.input_type().full_name(),
-      OutgoingType::descriptor().full_name()
-    );
-    assert!(
-      method_descriptor.output_type().full_name() == IncomingType::descriptor().full_name(),
-      "service method incoming type mismatch: {} != {}",
-      method_descriptor.output_type().full_name(),
-      IncomingType::descriptor().full_name()
-    );
-
-    Self {
-      full_path: format!(
-        "/{}.{}/{}",
-        file_descriptor.package(),
-        service_descriptor.proto().name(),
-        method_descriptor.proto().name(),
-      ),
-      outgoing_type: PhantomData,
-      incoming_type: PhantomData,
-    }
-  }
-}
-
-//
 // BinaryHeaderValue
 //
 
@@ -1258,61 +754,5 @@ impl BinaryHeaderValue {
 
   pub fn to_header_value(&self) -> HeaderValue {
     self.header_value.clone()
-  }
-}
-
-//
-// StreamStats
-//
-
-/// gRPC streaming request stats.
-#[derive(Clone, Debug)]
-pub struct StreamStats {
-  // The number of initiated streaming requests.
-  stream_initiations_total: IntCounter,
-  // The number of successfully completed streaming requests. These streams completed cleanly,
-  // without errors.
-  stream_completion_successes_total: IntCounter,
-  // The number of streaming requests completed due to an error.
-  stream_completion_failures_total: IntCounter,
-
-  // The number of messages sent across a stream that was opened in response to a streaming
-  // request.
-  tx_messages_total: DynCounter,
-
-  tx_bytes_total: DynCounter,
-  tx_bytes_uncompressed_total: DynCounter,
-}
-
-impl StreamStats {
-  #[must_use]
-  pub fn new(scope: &Scope, stream_name: &str) -> Self {
-    let scope = scope.scope(stream_name);
-
-    let stream_initiations_total = scope.counter("stream_initiations_total");
-
-    let stream_completions_total = scope.counter_vec("stream_completions_total", &["result"]);
-    let stream_completion_successes_total = stream_completions_total
-      .get_metric_with_label_values(&["success"])
-      .unwrap();
-    let stream_completion_failures_total = stream_completions_total
-      .get_metric_with_label_values(&["failure"])
-      .unwrap();
-
-    let tx_messages_total = CounterWrapper::make_dyn(scope.counter("stream_tx_messages_total"));
-    let tx_bytes_total = CounterWrapper::make_dyn(scope.counter("bandwidth_tx_bytes_total"));
-    let tx_bytes_uncompressed_total =
-      CounterWrapper::make_dyn(scope.counter("bandwidth_tx_bytes_uncompressed_total"));
-
-    Self {
-      stream_initiations_total,
-      stream_completion_successes_total,
-      stream_completion_failures_total,
-
-      tx_messages_total,
-
-      tx_bytes_total,
-      tx_bytes_uncompressed_total,
-    }
   }
 }

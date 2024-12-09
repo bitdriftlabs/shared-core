@@ -15,9 +15,9 @@ bd-events.path           = "../bd-events"
 bd-grpc-codec.path       = "../bd-grpc-codec"
 bd-grpc.path             = "../bd-grpc"
 bd-key-value.path        = "../bd-key-value"
-bd-log                   = { path = "../bd-log", optional = true }
 bd-log-metadata.path     = "../bd-log-metadata"
 bd-log-primitives.path   = "../bd-log-primitives"
+bd-log.path              = "../bd-log"
 bd-matcher.path          = "../bd-matcher"
 bd-metadata.path         = "../bd-metadata"
 bd-proto.path            = "../bd-proto"
@@ -40,6 +40,5 @@ tokio.workspace          = true
 tracing.workspace        = true
 
 [features]
-default     = ["runtime", "test_logger"]
+default     = ["runtime"]
 runtime     = ["bd-runtime-config", "mockall"]
-test_logger = ["dep:bd-log"]

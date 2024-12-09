@@ -16,7 +16,7 @@ use bd_client_common::error::handle_unexpected_error_with_details;
 use bd_stats_common::DynCounter;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use flate2::write::{ZlibDecoder, ZlibEncoder};
-use protobuf::{CodedOutputStream, Message};
+use protobuf::{CodedOutputStream, MessageFull};
 use std::cell::RefCell;
 use std::io::Write;
 use std::marker::PhantomData;
@@ -265,6 +265,32 @@ pub enum OptimizeFor {
 }
 
 //
+// DecodingResult
+//
+
+pub trait DecodingResult {
+  type Message: MessageFull;
+
+  fn from_flags_and_bytes(flags: u8, bytes: Bytes) -> Result<Self>
+  where
+    Self: Sized;
+
+  fn message(&self) -> Option<&Self::Message>;
+}
+
+impl<M: MessageFull> DecodingResult for M {
+  type Message = M;
+
+  fn from_flags_and_bytes(_flags: u8, bytes: Bytes) -> Result<Self> {
+    Ok(M::parse_from_tokio_bytes(&bytes)?)
+  }
+
+  fn message(&self) -> Option<&Self::Message> {
+    Some(self)
+  }
+}
+
+//
 // Decoder
 //
 
@@ -273,10 +299,10 @@ pub enum OptimizeFor {
 // will be retained combined with the data added when decode is next called. This allows for online
 // processing of a data stream which might does not align with gRPC message boundaries (e.g. a
 // single gRPC message split between multiple DATA frames).
-pub struct Decoder<MessageType: Message> {
+pub struct Decoder<MessageType: DecodingResult> {
   input_buffer: BytesMut,
   decompressor: Option<Decompressor>,
-  current_message_compressed: bool,
+  current_message_flags: u8,
   current_message_size: Option<usize>,
   _type: PhantomData<MessageType>,
   rx: DeferredCounter,
@@ -284,7 +310,7 @@ pub struct Decoder<MessageType: Message> {
   optimize_for: OptimizeFor,
 }
 
-impl<MessageType: Message> Decoder<MessageType> {
+impl<MessageType: DecodingResult> Decoder<MessageType> {
   #[must_use]
   pub fn new(decompression: Option<Decompression>, optimize_for: OptimizeFor) -> Self {
     Self {
@@ -293,7 +319,7 @@ impl<MessageType: Message> Decoder<MessageType> {
         Decompression::StatefulZlib => Decompressor::StatefulZlib(ZlibDecoder::new(Vec::new())),
         Decompression::StatelessZlib => Decompressor::StatelessZlib,
       }),
-      current_message_compressed: false,
+      current_message_flags: 0,
       current_message_size: None,
       rx: DeferredCounter::default(),
       rx_decompressed: DeferredCounter::default(),
@@ -311,6 +337,7 @@ impl<MessageType: Message> Decoder<MessageType> {
   // data from a previous chunk of data.
   pub fn decode_data(&mut self, data: &[u8]) -> Result<Vec<MessageType>> {
     self.input_buffer.extend_from_slice(data);
+    log::trace!("have {} bytes", self.input_buffer.len());
 
     self.rx.inc_by(data.len());
 
@@ -333,8 +360,9 @@ impl<MessageType: Message> Decoder<MessageType> {
       match self.current_message_size {
         None => {
           if self.input_buffer.len() >= GRPC_MESSAGE_PREFIX_LEN {
-            // Read compression byte. `1` means compressed, `0` uncompressed.
-            self.current_message_compressed = self.input_buffer.get_u8() == 1;
+            // Read flags byte.
+            self.current_message_flags = self.input_buffer.get_u8();
+            log::trace!("next message flags={}", self.current_message_flags);
             // Read the message size as big endian.
             self.current_message_size = Some(self.input_buffer.get_u32().try_into().unwrap());
             log::trace!("next message len={}", self.current_message_size.unwrap());
@@ -346,16 +374,16 @@ impl<MessageType: Message> Decoder<MessageType> {
         },
         Some(message_size) => {
           if self.input_buffer.len() >= message_size {
-            let message_buffer = if self.current_message_compressed {
+            let message_buffer = if self.current_message_flags & 0x1 == 0x1 {
               self.decompress(message_size)?
             } else {
               self.input_buffer.split_to(message_size).freeze()
             };
 
             self.rx_decompressed.inc_by(message_buffer.len());
-
+            let flags = std::mem::take(&mut self.current_message_flags);
             self.current_message_size = None;
-            messages.push(MessageType::parse_from_tokio_bytes(&message_buffer)?);
+            messages.push(MessageType::from_flags_and_bytes(flags, message_buffer)?);
           } else {
             break messages;
           }

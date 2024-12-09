@@ -29,11 +29,14 @@ log.workspace               = true
 mockall                     = { workspace = true, optional = true }
 prometheus.workspace        = true
 protobuf.workspace          = true
+serde.workspace             = true
+serde_json.workspace        = true
 snap.workspace              = true
 thiserror.workspace         = true
 time.workspace              = true
 tokio-stream.workspace      = true
 tokio.workspace             = true
+tower-http.workspace        = true
 tower.workspace             = true
 unwrap-infallible.workspace = true
 urlencoding.workspace       = true
@@ -43,6 +46,8 @@ assert_matches.workspace = true
 bd-test-helpers.path     = "../bd-test-helpers"
 bd-time.path             = "../bd-time"
 ctor.workspace           = true
+parking_lot.workspace    = true
+reqwest.workspace        = true
 
 [build-dependencies]
 protobuf-codegen.workspace = true
