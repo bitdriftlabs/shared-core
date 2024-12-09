@@ -5,14 +5,14 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::client::{AddressHelper, Client};
+use crate::compression::{Compression, ConnectSafeCompressionLayer};
 use crate::generated::proto::test::{EchoRequest, EchoResponse};
 use crate::{
   make_server_streaming_router,
   make_unary_router,
   new_grpc_response,
-  Client,
   Code,
-  Compression,
   Error,
   Handler,
   Result,
@@ -22,6 +22,9 @@ use crate::{
   StreamStats,
   StreamingApi,
   StreamingApiSender,
+  CONNECT_PROTOCOL_VERSION,
+  CONTENT_TYPE,
+  CONTENT_TYPE_PROTO,
 };
 use assert_matches::assert_matches;
 use async_trait::async_trait;
@@ -38,6 +41,7 @@ use futures::poll;
 use http::{Extensions, HeaderMap};
 use http_body_util::StreamBody;
 use prometheus::labels;
+use protobuf::Message;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use time::ext::NumericalDuration;
@@ -48,6 +52,89 @@ use tokio_stream::wrappers::ReceiverStream;
 #[ctor::ctor]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
+}
+
+//
+// EchoHandler
+//
+
+struct EchoHandler {
+  do_sleep: bool,
+}
+
+#[async_trait]
+impl Handler<EchoRequest, EchoResponse> for EchoHandler {
+  async fn handle(
+    &self,
+    _headers: HeaderMap,
+    _extensions: Extensions,
+    request: EchoRequest,
+  ) -> Result<EchoResponse> {
+    if self.do_sleep {
+      10.seconds().sleep().await;
+    }
+
+    Ok(EchoResponse {
+      echo: request.echo,
+      ..Default::default()
+    })
+  }
+}
+
+#[async_trait]
+impl ServerStreamingHandler<EchoResponse, EchoRequest> for EchoHandler {
+  async fn stream(
+    &self,
+    _headers: HeaderMap,
+    _extensions: Extensions,
+    _request: EchoRequest,
+    sender: &mut StreamingApiSender<EchoResponse>,
+  ) -> Result<()> {
+    if self.do_sleep {
+      10.seconds().sleep().await;
+    }
+
+    sender.send(EchoResponse::default()).await.unwrap();
+
+    Ok(())
+  }
+}
+
+//
+// ErrorHandler
+//
+
+struct ErrorHandler {}
+
+#[async_trait]
+impl Handler<EchoRequest, EchoResponse> for ErrorHandler {
+  async fn handle(
+    &self,
+    _headers: HeaderMap,
+    _extensions: Extensions,
+    _request: EchoRequest,
+  ) -> Result<EchoResponse> {
+    Err(crate::Error::Grpc(crate::Status::new(
+      crate::Code::Internal,
+      "foo",
+    )))
+  }
+}
+
+#[async_trait]
+impl ServerStreamingHandler<EchoResponse, EchoRequest> for ErrorHandler {
+  async fn stream(
+    &self,
+    _headers: HeaderMap,
+    _extensions: Extensions,
+    _request: EchoRequest,
+    _sender: &mut StreamingApiSender<EchoResponse>,
+  ) -> Result<()> {
+    Err(crate::Error::Grpc(crate::Status::new(
+      crate::Code::Internal,
+      "foo",
+    )))
+  }
 }
 
 #[test]
@@ -128,101 +215,12 @@ async fn connect_timeout() {
   );
 }
 
-struct EchoHandler {
-  do_sleep: bool,
-}
-
-#[async_trait]
-impl Handler<EchoRequest, EchoResponse> for EchoHandler {
-  async fn handle(
-    &self,
-    _headers: HeaderMap,
-    _extensions: Extensions,
-    _request: EchoRequest,
-  ) -> Result<EchoResponse> {
-    if self.do_sleep {
-      10.seconds().sleep().await;
-    }
-
-    Ok(EchoResponse::default())
-  }
-}
-
-#[async_trait]
-impl ServerStreamingHandler<EchoResponse, EchoRequest> for EchoHandler {
-  async fn stream(
-    &self,
-    _headers: HeaderMap,
-    _extensions: Extensions,
-    _request: EchoRequest,
-    sender: &mut StreamingApiSender<EchoResponse>,
-  ) -> Result<()> {
-    if self.do_sleep {
-      10.seconds().sleep().await;
-    }
-
-    sender.send(EchoResponse::default()).await.unwrap();
-
-    Ok(())
-  }
-}
-
-struct ErrorHandler {}
-
-#[async_trait]
-impl Handler<EchoRequest, EchoResponse> for ErrorHandler {
-  async fn handle(
-    &self,
-    _headers: HeaderMap,
-    _extensions: Extensions,
-    _request: EchoRequest,
-  ) -> Result<EchoResponse> {
-    Err(crate::Error::Grpc(crate::Status::new(
-      crate::Code::Internal,
-      "foo",
-    )))
-  }
-}
-
-#[async_trait]
-impl ServerStreamingHandler<EchoResponse, EchoRequest> for ErrorHandler {
-  async fn stream(
-    &self,
-    _headers: HeaderMap,
-    _extensions: Extensions,
-    _request: EchoRequest,
-    _sender: &mut StreamingApiSender<EchoResponse>,
-  ) -> Result<()> {
-    Err(crate::Error::Grpc(crate::Status::new(
-      crate::Code::Internal,
-      "foo",
-    )))
-  }
-}
-
-struct NormalHandler {}
-
-#[async_trait]
-impl Handler<EchoRequest, EchoResponse> for NormalHandler {
-  async fn handle(
-    &self,
-    _headers: HeaderMap,
-    _extensions: Extensions,
-    request: EchoRequest,
-  ) -> Result<EchoResponse> {
-    Ok(EchoResponse {
-      echo: request.echo,
-      ..Default::default()
-    })
-  }
-}
-
 #[tokio::test]
 async fn unary_compression() {
   let error_counter = prometheus::IntCounter::new("error", "-").unwrap();
   let router = make_unary_router(
     &ServiceMethod::<EchoRequest, EchoResponse>::new("Test", "Echo"),
-    Arc::new(NormalHandler {}),
+    Arc::new(EchoHandler { do_sleep: false }),
     move |_| {},
     error_counter,
     true,
@@ -521,5 +519,116 @@ async fn snappy_compression() {
       .await
       .unwrap(),
     EchoResponse::default()
+  );
+}
+
+#[tokio::test]
+async fn connect_unary_error() {
+  let error_counter = prometheus::IntCounter::new("error", "-").unwrap();
+  let service_method = ServiceMethod::<EchoRequest, EchoResponse>::new("Test", "Echo");
+  let router = make_unary_router(
+    &service_method,
+    Arc::new(ErrorHandler {}),
+    |_| {},
+    error_counter,
+    true,
+  )
+  .layer(ConnectSafeCompressionLayer::new());
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let local_address = listener.local_addr().unwrap();
+  let server = axum::serve(listener, router.into_make_service());
+  tokio::spawn(async { server.await.unwrap() });
+
+  let client = reqwest::Client::builder().deflate(false).build().unwrap();
+  let address = AddressHelper::new(format!("http://{local_address}")).unwrap();
+  let response = client
+    .post(address.build(&service_method).to_string())
+    .header(CONTENT_TYPE, CONTENT_TYPE_PROTO)
+    .header(CONNECT_PROTOCOL_VERSION, "1")
+    .body(
+      EchoRequest {
+        echo: "a".repeat(1024),
+        ..Default::default()
+      }
+      .write_to_bytes()
+      .unwrap(),
+    )
+    .send()
+    .await
+    .unwrap();
+  assert_eq!(response.status(), 200);
+}
+
+#[tokio::test]
+async fn connect_unary() {
+  let error_counter = prometheus::IntCounter::new("error", "-").unwrap();
+  let service_method = ServiceMethod::<EchoRequest, EchoResponse>::new("Test", "Echo");
+  let router = make_unary_router(
+    &service_method,
+    Arc::new(EchoHandler { do_sleep: false }),
+    |_| {},
+    error_counter,
+    true,
+  )
+  .layer(ConnectSafeCompressionLayer::new());
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let local_address = listener.local_addr().unwrap();
+  let server = axum::serve(listener, router.into_make_service());
+  tokio::spawn(async { server.await.unwrap() });
+
+  // Should not compress.
+  let client = reqwest::Client::builder().deflate(false).build().unwrap();
+  let address = AddressHelper::new(format!("http://{local_address}")).unwrap();
+  let response = client
+    .post(address.build(&service_method).to_string())
+    .header(CONTENT_TYPE, CONTENT_TYPE_PROTO)
+    .header(CONNECT_PROTOCOL_VERSION, "1")
+    .body(
+      EchoRequest {
+        echo: "a".repeat(1024),
+        ..Default::default()
+      }
+      .write_to_bytes()
+      .unwrap(),
+    )
+    .send()
+    .await
+    .unwrap();
+  assert_eq!(response.status(), 200);
+  let response = response.bytes().await.unwrap();
+  assert_eq!(
+    EchoResponse::parse_from_bytes(&response).unwrap(),
+    EchoResponse {
+      echo: "a".repeat(1024),
+      ..Default::default()
+    }
+  );
+
+  // Should compress.
+  let client = reqwest::Client::builder().deflate(true).build().unwrap();
+  let address = AddressHelper::new(format!("http://{local_address}")).unwrap();
+  let response = client
+    .post(address.build(&service_method).to_string())
+    .header(CONTENT_TYPE, CONTENT_TYPE_PROTO)
+    .header(CONNECT_PROTOCOL_VERSION, "1")
+    .body(
+      EchoRequest {
+        echo: "a".repeat(1024),
+        ..Default::default()
+      }
+      .write_to_bytes()
+      .unwrap(),
+    )
+    .send()
+    .await
+    .unwrap();
+  assert_eq!(response.status(), 200);
+  let response = response.bytes().await.unwrap();
+  assert_eq!(
+    EchoResponse::parse_from_bytes(&response).unwrap(),
+    EchoResponse {
+      echo: "a".repeat(1024),
+      ..Default::default()
+    }
   );
 }

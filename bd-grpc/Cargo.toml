@@ -29,11 +29,15 @@ log.workspace               = true
 mockall                     = { workspace = true, optional = true }
 prometheus.workspace        = true
 protobuf.workspace          = true
+reqwest.workspace           = true                                  # fixfix
+serde.workspace             = true
+serde_json.workspace        = true
 snap.workspace              = true
 thiserror.workspace         = true
 time.workspace              = true
 tokio-stream.workspace      = true
 tokio.workspace             = true
+tower-http.workspace        = true
 tower.workspace             = true
 unwrap-infallible.workspace = true
 urlencoding.workspace       = true
