@@ -408,6 +408,7 @@ async fn mux(
   bd_grpc::new_grpc_response(
     Body::new(StreamBody::new(ReceiverStream::new(rx))),
     compression,
+    None,
   )
 }
 
