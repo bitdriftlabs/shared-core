@@ -29,6 +29,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use time::Duration;
 use tokio::sync::{mpsc, oneshot, watch};
+use tokio::time::MissedTickBehavior;
 
 //
 // Ticker
@@ -64,14 +65,21 @@ impl Ticker for RuntimeWatchTicker {
     // We use jittered_interval_at() to make sure we stagger the start time to avoid synchronization
     // during mass reconnect.
     if self.interval.is_none() {
-      self.interval = Some(self.receiver.borrow_and_update().jittered_interval_at());
+      self.interval = Some(
+        self
+          .receiver
+          .borrow_and_update()
+          .jittered_interval_at(MissedTickBehavior::Delay),
+      );
     }
 
     loop {
       tokio::select! {
         _ = self.interval.as_mut().unwrap().tick() => break,
         _ = self.receiver.changed() => {
-          self.interval = Some(self.receiver.borrow_and_update().jittered_interval_at());
+          self.interval = Some(
+            self.receiver.borrow_and_update().jittered_interval_at(MissedTickBehavior::Delay)
+          );
         },
       }
     }

@@ -127,7 +127,7 @@ time              = { version = "0.3.37", features = ["serde-well-known", "macro
 tokio             = { version = "1.42.0", features = ["full", "test-util"] }
 tokio-stream      = "0.1.17"
 tokio-test        = "0.4.4"
-tower             = { version = "0.5.1", features = ["retry", "util"] }
+tower             = { version = "0.5.2", features = ["retry", "util"] }
 tower-http        = { version = "0.6.2", features = ["compression-deflate"] }
 tracing-error     = "0.2.1"
 unwrap-infallible = "0.1.5"

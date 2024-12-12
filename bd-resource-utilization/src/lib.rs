@@ -14,9 +14,10 @@ use bd_runtime::runtime::resource_utilization::{
 };
 use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
+use bd_time::TimeDurationExt;
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::time::{Instant, Interval, MissedTickBehavior};
+use time::Duration;
+use tokio::time::{Interval, MissedTickBehavior};
 
 #[cfg(test)]
 #[ctor::ctor]
@@ -62,7 +63,7 @@ impl Reporter {
       target,
 
       is_enabled: is_enabled_flag.read_mark_update(),
-      reporting_interval_rate: rate.unsigned_abs(),
+      reporting_interval_rate: rate,
 
       reporting_interval: None,
 
@@ -72,10 +73,10 @@ impl Reporter {
   }
 
   fn create_interval(interval: Duration, fire_immediately: bool) -> tokio::time::Interval {
-    let mut interval = if fire_immediately {
-      tokio::time::interval(interval)
+    let interval = if fire_immediately {
+      interval.interval(MissedTickBehavior::Delay)
     } else {
-      tokio::time::interval_at(Instant::now() + interval, interval)
+      interval.interval_at(MissedTickBehavior::Delay)
     };
 
     log::debug!(
@@ -83,7 +84,6 @@ impl Reporter {
       interval.period()
     );
 
-    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
     interval
   }
 
@@ -112,7 +112,7 @@ impl Reporter {
         _ = self.reporting_interval_flag.changed() => {
           self.reporting_interval = Some(
             Self::create_interval(
-              self.reporting_interval_flag.read_mark_update().unsigned_abs(),
+              self.reporting_interval_flag.read_mark_update(),
               false
             )
           );
