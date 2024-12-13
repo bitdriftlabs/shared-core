@@ -17,7 +17,7 @@ use bd_stats_common::labels;
 use bd_time::TimeDurationExt;
 use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tokio::time::Interval;
+use tokio::time::{Interval, MissedTickBehavior};
 
 pub const SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE: &str = "Screenshot captured";
 
@@ -140,10 +140,10 @@ impl Recorder {
   }
 
   fn create_interval(interval: time::Duration, fire_immediately: bool) -> tokio::time::Interval {
-    let mut interval = if fire_immediately {
-      interval.interval()
+    let interval = if fire_immediately {
+      interval.interval(MissedTickBehavior::Delay)
     } else {
-      interval.interval_at()
+      interval.interval_at(MissedTickBehavior::Delay)
     };
 
     log::debug!(
@@ -151,7 +151,6 @@ impl Recorder {
       interval.period()
     );
 
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     interval
   }
 
