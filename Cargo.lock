@@ -3747,7 +3747,7 @@ dependencies = [
 [[package]]
 name = "tower-http"
 version = "0.6.2"
-source = "git+https://github.com/mattklein123/tower-http?branch=end-stream-fix#7ec55d4a96a8ec5c187f6eaad32357eec02fc7ea"
+source = "git+https://github.com/tower-rs/tower-http#d0c522b6da2620bf5314302d12e4cded7295b11c"
 dependencies = [
  "async-compression",
  "bitflags 2.6.0",

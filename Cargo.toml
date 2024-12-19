@@ -129,8 +129,8 @@ tokio-stream      = "0.1.17"
 tokio-test        = "0.4.4"
 tower             = { version = "0.5.2", features = ["retry", "util"] }
 
-# Bump to upstream when https://github.com/tower-rs/tower-http/pull/535 is merged.
-tower-http = { git = "https://github.com/mattklein123/tower-http", branch = "end-stream-fix", features = [
+# Bump to release when https://github.com/tower-rs/tower-http/pull/535 is available.
+tower-http = { git = "https://github.com/tower-rs/tower-http", revision = "d0c522b6da2620bf5314302d12e4cded7295b11c", features = [
   "compression-deflate",
 ] }
 
