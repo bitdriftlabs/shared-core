@@ -12,6 +12,7 @@ mod matcher_test;
 use crate::version;
 use anyhow::{anyhow, Result};
 use base_log_matcher::tag_match::Value_match::{
+  DoubleValueMatch,
   IntValueMatch,
   IsSetMatch,
   SemVerValueMatch,
@@ -94,15 +95,12 @@ impl Tree {
           .try_into()
           .map_or(false, |log_level| log_level_matcher.evaluate(log_level)),
         Leaf::LogType(l_type) => *l_type == log_type.0,
-        Leaf::IntValue(input, criteria) =>
-        {
-          #[allow(clippy::cast_possible_truncation)]
-          input.get(message, fields).map_or(false, |input| {
-            input
-              .parse::<f64>()
-              .map_or(false, |v| criteria.evaluate(v as i32))
-          })
-        },
+        Leaf::IntValue(input, criteria) => input.get(message, fields).map_or(false, |input| {
+          input.parse().map_or(false, |v| criteria.evaluate(v))
+        }),
+        Leaf::DoubleValue(input, criteria) => input.get(message, fields).map_or(false, |input| {
+          input.parse().map_or(false, |v| criteria.evaluate(v))
+        }),
         Leaf::StringValue(input, criteria) => input
           .get(message, fields)
           .map_or(false, |input| criteria.evaluate(input.as_ref())),
@@ -140,6 +138,39 @@ impl IntMatch {
   }
 
   const fn evaluate(&self, candidate: i32) -> bool {
+    match self.operator {
+      // This should never happen as we check for UNSPECIFIED when we parse
+      // workflow config.
+      Operator::OPERATOR_UNSPECIFIED => false,
+      Operator::OPERATOR_LESS_THAN => candidate < self.value,
+      Operator::OPERATOR_LESS_THAN_OR_EQUAL => candidate <= self.value,
+      Operator::OPERATOR_GREATER_THAN => candidate > self.value,
+      Operator::OPERATOR_GREATER_THAN_OR_EQUAL => candidate >= self.value,
+      Operator::OPERATOR_NOT_EQUALS => candidate != self.value,
+      // Real Regex is not supported.
+      Operator::OPERATOR_EQUALS | Operator::OPERATOR_REGEX => candidate == self.value,
+    }
+  }
+}
+
+/// Describes a comparison match criteria against a f64 value
+#[derive(Clone, Debug, PartialEq)]
+pub struct DoubleMatch {
+  operator: Operator,
+  value: f64,
+}
+
+/// Supports comparison between two integers
+impl DoubleMatch {
+  fn new(operator: Operator, value: f64) -> Result<Self> {
+    match operator {
+      // Regex operator is not valid for f64
+      Operator::OPERATOR_REGEX => Err(anyhow!("regex does not support f64")),
+      _ => Ok(Self { operator, value }),
+    }
+  }
+
+  const fn evaluate(&self, candidate: f64) -> bool {
     match self.operator {
       // This should never happen as we check for UNSPECIFIED when we parse
       // workflow config.
@@ -243,6 +274,9 @@ pub enum Leaf {
   /// Match against either the tag or the message using an Int matcher.
   IntValue(InputType, IntMatch),
 
+  /// Match against either the tag or the message using a Double matcher.
+  DoubleValue(InputType, DoubleMatch),
+
   /// Match against either the tag or the message using a String matcher.
   StringValue(InputType, StringMatch),
 
@@ -308,6 +342,16 @@ impl Leaf {
             )?,
           )),
         },
+        DoubleValueMatch(double_value_match) => Ok(Self::DoubleValue(
+          InputType::Field(tag_match.tag_key.clone()),
+          DoubleMatch::new(
+            double_value_match
+              .operator
+              .enum_value()
+              .map_err(|_| anyhow!("unknown field or enum"))?,
+            double_value_match.match_value,
+          )?,
+        )),
         StringValueMatch(string_value_match) => Ok(Self::StringValue(
           InputType::Field(tag_match.tag_key.clone()),
           StringMatch::new(
