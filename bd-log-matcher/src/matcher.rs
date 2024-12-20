@@ -12,6 +12,7 @@ mod matcher_test;
 use crate::version;
 use anyhow::{anyhow, Result};
 use base_log_matcher::tag_match::Value_match::{
+  DoubleValueMatch,
   IntValueMatch,
   IsSetMatch,
   SemVerValueMatch,
@@ -103,6 +104,9 @@ impl Tree {
               .map_or(false, |v| criteria.evaluate(v as i32))
           })
         },
+        Leaf::DoubleValue(input, criteria) => input.get(message, fields).map_or(false, |input| {
+          input.parse().map_or(false, |v| criteria.evaluate(v))
+        }),
         Leaf::StringValue(input, criteria) => input
           .get(message, fields)
           .map_or(false, |input| criteria.evaluate(input.as_ref())),
@@ -140,6 +144,55 @@ impl IntMatch {
   }
 
   const fn evaluate(&self, candidate: i32) -> bool {
+    match self.operator {
+      // This should never happen as we check for UNSPECIFIED when we parse
+      // workflow config.
+      Operator::OPERATOR_UNSPECIFIED => false,
+      Operator::OPERATOR_LESS_THAN => candidate < self.value,
+      Operator::OPERATOR_LESS_THAN_OR_EQUAL => candidate <= self.value,
+      Operator::OPERATOR_GREATER_THAN => candidate > self.value,
+      Operator::OPERATOR_GREATER_THAN_OR_EQUAL => candidate >= self.value,
+      Operator::OPERATOR_NOT_EQUALS => candidate != self.value,
+      // Real Regex is not supported.
+      Operator::OPERATOR_EQUALS | Operator::OPERATOR_REGEX => candidate == self.value,
+    }
+  }
+}
+
+/// A float which compares as equal when both are NaN.
+#[derive(Clone, Debug, PartialOrd)]
+struct NanEqualFloat(f64);
+
+impl PartialEq for NanEqualFloat {
+  fn eq(&self, other: &Self) -> bool {
+    (self.0.is_nan() && other.0.is_nan()) || ((self.0 - other.0).abs() < f64::EPSILON)
+  }
+}
+
+impl Eq for NanEqualFloat {}
+
+/// Describes a comparison match criteria against a f64 value
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DoubleMatch {
+  operator: Operator,
+  value: NanEqualFloat,
+}
+
+/// Supports comparison between two integers
+impl DoubleMatch {
+  fn new(operator: Operator, value: f64) -> Result<Self> {
+    match operator {
+      // Regex operator is not valid for f64
+      Operator::OPERATOR_REGEX => Err(anyhow!("regex does not support f64")),
+      _ => Ok(Self {
+        operator,
+        value: NanEqualFloat(value),
+      }),
+    }
+  }
+
+  fn evaluate(&self, candidate: f64) -> bool {
+    let candidate = NanEqualFloat(candidate);
     match self.operator {
       // This should never happen as we check for UNSPECIFIED when we parse
       // workflow config.
@@ -243,6 +296,9 @@ pub enum Leaf {
   /// Match against either the tag or the message using an Int matcher.
   IntValue(InputType, IntMatch),
 
+  /// Match against either the tag or the message using a Double matcher.
+  DoubleValue(InputType, DoubleMatch),
+
   /// Match against either the tag or the message using a String matcher.
   StringValue(InputType, StringMatch),
 
@@ -308,6 +364,16 @@ impl Leaf {
             )?,
           )),
         },
+        DoubleValueMatch(double_value_match) => Ok(Self::DoubleValue(
+          InputType::Field(tag_match.tag_key.clone()),
+          DoubleMatch::new(
+            double_value_match
+              .operator
+              .enum_value()
+              .map_err(|_| anyhow!("unknown field or enum"))?,
+            double_value_match.match_value,
+          )?,
+        )),
         StringValueMatch(string_value_match) => Ok(Self::StringValue(
           InputType::Field(tag_match.tag_key.clone()),
           StringMatch::new(

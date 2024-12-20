@@ -11,7 +11,8 @@ use std::collections::HashMap;
 // release version of SDK which is used to allow the server to send different configurations to
 // different clients. This should be incremented whenever we want to be able to send different
 // configuration to a client, e.g. if newer clients support config that older clients would reject.
-const CONFIGURATION_VERSION: &str = "26";
+// Version 27: Added double matching support.
+const CONFIGURATION_VERSION: &str = "27";
 
 /// The platform we're currently running as.
 pub enum Platform {
