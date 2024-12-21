@@ -78,6 +78,18 @@ mod tests {
   use tempfile::TempDir;
   use time::ext::{NumericalDuration, NumericalStdDuration};
 
+  macro_rules! wait_for {
+    ($condition:expr) => {
+      let start = Instant::now();
+      while !$condition {
+        if start.elapsed() > 5.seconds() {
+          panic!("Timeout waiting for condition");
+        }
+        std::thread::sleep(10.std_milliseconds());
+      }
+    };
+  }
+
   #[ctor::ctor]
   fn global_init() {
     bd_test_helpers::test_global_init();
@@ -760,7 +772,7 @@ mod tests {
     let b = state!("B");
     declare_transition!(
       &mut a => &b;
-      when rule!(log_matches!(message == "foo"));
+      when rule!(log_matches!(message == "take a screenshot"));
       do action!(screenshot "screenshot_id")
     );
 
@@ -793,6 +805,8 @@ mod tests {
       vec![],
       vec![],
     );
+    // TODO(snowp): This is a bit of a brittle test as it relies on the timing of the screenshot
+    // handling.
     std::thread::sleep(100.std_milliseconds());
     assert_eq!(
       0,
@@ -805,14 +819,12 @@ mod tests {
     setup.blocking_log(
       log_level::DEBUG,
       LogType::Normal,
-      "foo".into(),
+      "take a screenshot".into(),
       vec![],
       vec![],
     );
-    std::thread::sleep(100.std_milliseconds());
-    assert_eq!(
-      1,
-      setup
+    wait_for!(
+      1 == setup
         .capture_screenshot_count
         .load(std::sync::atomic::Ordering::Relaxed)
     );
@@ -826,26 +838,34 @@ mod tests {
       vec![],
     );
 
+    // Due to all the channels used to propagate the fact that we have taken a screenshot, we need
+    // to block on this metric to ensure that we have transitioned into being able to take another
+    // screenshot before proceeding.
+    wait_for!(
+      setup
+        .logger
+        .stats()
+        .counter("logger:screenshots:received_total")
+        .get()
+        == 1
+    );
+
     // Emit a log that should result in taking a screenshot.
     setup.blocking_log(
       log_level::DEBUG,
       LogType::Normal,
-      "foo".into(),
+      "take a screenshot".into(),
       vec![],
       vec![],
     );
-    std::thread::sleep(100.std_milliseconds());
-    assert_eq!(
-      2,
-      setup
+    wait_for!(
+      2 == setup
         .capture_screenshot_count
         .load(std::sync::atomic::Ordering::Relaxed)
-    );
-    assert_eq!(
-      1,
-      setup
-        .capture_screen_count
-        .load(std::sync::atomic::Ordering::Relaxed)
+        && 1
+          == setup
+            .capture_screen_count
+            .load(std::sync::atomic::Ordering::Relaxed)
     );
   }
 
@@ -875,10 +895,8 @@ mod tests {
     // File should not exist immediately after flush_state call.
     assert!(!setup.pending_aggregation_index_file_path().exists());
 
-    // Wait a bit for the event loop to be able to process `flush_state` request.
-    std::thread::sleep(1.std_seconds());
-
-    assert!(setup.pending_aggregation_index_file_path().exists());
+    // We should eventually see the stats aggregation file exist on disk.
+    wait_for!(setup.pending_aggregation_index_file_path().exists());
   }
 
   #[test]
@@ -931,10 +949,8 @@ mod tests {
     // File should not exist immediately after flush_state call.
     assert!(!setup.pending_aggregation_index_file_path().exists());
 
-    // Wait a bit for the event loop to be able to process `flush_state` request.
-    std::thread::sleep(1.std_seconds());
-
-    assert!(setup.pending_aggregation_index_file_path().exists());
+    // We should eventually see the stats aggregation file exist on disk.
+    wait_for!(setup.pending_aggregation_index_file_path().exists());
   }
 
   #[test]
