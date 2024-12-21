@@ -111,10 +111,7 @@ impl Recorder {
       channel_full: stats.channel_full.clone(),
     };
 
-    let screenshot_log_interceptor = ScreenshotLogInterceptor {
-      next_screenshot_tx,
-      received: stats.received.clone(),
-    };
+    let screenshot_log_interceptor = ScreenshotLogInterceptor { next_screenshot_tx };
 
     (
       Self {
@@ -212,6 +209,8 @@ impl Recorder {
         },
         Some(()) = async { self.next_screenshot_rx.recv().await } => {
           log::debug!("session replay recorder received screenshot");
+
+          self.stats.received.inc();
           self.is_ready_to_capture_screenshot = true;
         },
         _ = self.is_periodic_reporting_enabled_flag.changed() => {
@@ -286,7 +285,6 @@ impl CaptureScreenshotHandler {
 
 pub struct ScreenshotLogInterceptor {
   next_screenshot_tx: Sender<()>,
-  received: Counter,
 }
 
 impl bd_log_primitives::LogInterceptor for ScreenshotLogInterceptor {

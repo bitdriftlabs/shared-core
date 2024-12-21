@@ -772,7 +772,7 @@ mod tests {
     let b = state!("B");
     declare_transition!(
       &mut a => &b;
-      when rule!(log_matches!(message == "foo"));
+      when rule!(log_matches!(message == "take a screenshot"));
       do action!(screenshot "screenshot_id")
     );
 
@@ -819,7 +819,7 @@ mod tests {
     setup.blocking_log(
       log_level::DEBUG,
       LogType::Normal,
-      "foo".into(),
+      "take a screenshot".into(),
       vec![],
       vec![],
     );
@@ -838,11 +838,23 @@ mod tests {
       vec![],
     );
 
+    // Due to all the channels used to propagate the fact that we have taken a screenshot, we need
+    // to block on this metric to ensure that we have transitioned into being able to take another
+    // screenshot before proceeding.
+    wait_for!(
+      setup
+        .logger
+        .stats()
+        .counter("logger:screenshots:received_total")
+        .get()
+        == 1
+    );
+
     // Emit a log that should result in taking a screenshot.
     setup.blocking_log(
       log_level::DEBUG,
       LogType::Normal,
-      "foo".into(),
+      "take a screenshot".into(),
       vec![],
       vec![],
     );
