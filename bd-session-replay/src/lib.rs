@@ -300,8 +300,6 @@ impl bd_log_primitives::LogInterceptor for ScreenshotLogInterceptor {
       return;
     }
 
-    self.received.inc();
-
     bd_client_common::error::handle_unexpected(
       self.next_screenshot_tx.try_send(()),
       "failed to send ready for next screenshot signal",
