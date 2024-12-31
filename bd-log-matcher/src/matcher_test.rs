@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
 use crate::matcher::Tree;
 use bd_log_primitives::{
   log_level,
@@ -254,6 +255,81 @@ fn test_tag_binary_string_eq_matcher() {
   match_test_runner(
     config,
     vec![(binary_log_tag("key", b"exact_binary"), false)],
+  );
+}
+
+#[test]
+fn test_tag_double_matcher() {
+  fn make_config(match_value: f64, operator: Operator) -> LogMatcher {
+    simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+      tag_key: "key".to_string(),
+      value_match: Some(DoubleValueMatch(base_log_matcher::DoubleValueMatch {
+        operator: operator.into(),
+        match_value,
+        ..Default::default()
+      })),
+      ..Default::default()
+    }))
+  }
+
+  match_test_runner(
+    make_config(12.0, Operator::OPERATOR_LESS_THAN_OR_EQUAL),
+    vec![
+      (log_tag("key", "13.0"), false),
+      (log_tag("key", "12.0"), true),
+      (log_tag("key", "11"), true),
+      (log_tag("key", "NaN"), false),
+      (log_tag("key", "+Inf"), false),
+      (log_tag("key", "-Inf"), true),
+    ],
+  );
+
+  match_test_runner(
+    make_config(f64::INFINITY, Operator::OPERATOR_LESS_THAN_OR_EQUAL),
+    vec![
+      (log_tag("key", "13.0"), true),
+      (log_tag("key", "12.0"), true),
+      (log_tag("key", "11"), true),
+      (log_tag("key", "NaN"), false),
+      (log_tag("key", "+Inf"), true),
+      (log_tag("key", "-Inf"), true),
+    ],
+  );
+
+  match_test_runner(
+    make_config(f64::NEG_INFINITY, Operator::OPERATOR_LESS_THAN_OR_EQUAL),
+    vec![
+      (log_tag("key", "13.0"), false),
+      (log_tag("key", "12.0"), false),
+      (log_tag("key", "11"), false),
+      (log_tag("key", "NaN"), false),
+      (log_tag("key", "+Inf"), false),
+      (log_tag("key", "-Inf"), true),
+    ],
+  );
+
+  match_test_runner(
+    make_config(f64::NAN, Operator::OPERATOR_LESS_THAN_OR_EQUAL),
+    vec![
+      (log_tag("key", "13.0"), false),
+      (log_tag("key", "12.0"), false),
+      (log_tag("key", "11"), false),
+      (log_tag("key", "NaN"), false),
+      (log_tag("key", "+Inf"), false),
+      (log_tag("key", "-Inf"), false),
+    ],
+  );
+
+  match_test_runner(
+    make_config(f64::NAN, Operator::OPERATOR_EQUALS),
+    vec![
+      (log_tag("key", "13.0"), false),
+      (log_tag("key", "12.0"), false),
+      (log_tag("key", "11"), false),
+      (log_tag("key", "NaN"), true),
+      (log_tag("key", "+Inf"), false),
+      (log_tag("key", "-Inf"), false),
+    ],
   );
 }
 
