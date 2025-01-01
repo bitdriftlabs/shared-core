@@ -64,7 +64,7 @@ fn service_method() -> ServiceMethod<EchoRequest, EchoResponse> {
 
 async fn make_unary_server(
   handler: Arc<dyn Handler<EchoRequest, EchoResponse>>,
-  error_handler: impl Fn(&crate::Error) + Clone + Send + 'static,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
 ) -> SocketAddr {
   let error_counter = prometheus::IntCounter::new("error", "-").unwrap();
   let router = make_unary_router(
@@ -84,7 +84,7 @@ async fn make_unary_server(
 
 async fn make_server_streaming_server(
   handler: Arc<dyn ServerStreamingHandler<EchoResponse, EchoRequest> + 'static>,
-  error_handler: impl Fn(&crate::Error) + Clone + Send + 'static,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
 ) -> (SocketAddr, stats::Helper) {
   let stats_helper = stats::Helper::new();
   let stream_stats = StreamStats::new(&stats_helper.collector().scope("streams"), "foo");
