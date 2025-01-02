@@ -676,7 +676,7 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
 pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: MessageFull>(
   service_method: &ServiceMethod<RequestType, ResponseType>,
   handler: Arc<dyn ServerStreamingHandler<ResponseType, RequestType>>,
-  error_handler: impl Fn(&crate::Error) + Clone + Send + 'static,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
   stream_stats: StreamStats,
   validate_request: bool,
   compression: Option<bd_grpc_codec::Compression>,
@@ -703,7 +703,7 @@ pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: Mess
 pub fn make_unary_router<OutgoingType: MessageFull, IncomingType: MessageFull>(
   service_method: &ServiceMethod<OutgoingType, IncomingType>,
   handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
-  error_handler: impl Fn(&crate::Error) + Clone + Send + 'static,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
   error_counter: IntCounter,
   validate_request: bool,
 ) -> Router {
