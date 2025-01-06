@@ -16,6 +16,7 @@ use std::fmt::Display;
 const CONFIGURATION_VERSION: &str = "27";
 
 /// The platform we're currently running as.
+#[derive(Clone, Copy)]
 pub enum Platform {
   Android,
   Apple,
