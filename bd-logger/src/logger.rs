@@ -21,7 +21,7 @@ use crate::{app_version, MetadataProvider};
 use bd_api::Metadata;
 use bd_client_stats_store::Scope;
 use bd_log::warn_every;
-use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
+use bd_log_metadata::AnnotatedLogFields;
 use bd_log_primitives::{log_level, AnnotatedLogField, LogField, LogLevel, LogMessage};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::Snapshot;
@@ -155,15 +155,11 @@ impl LoggerHandle {
     });
   }
 
-  pub fn log_resource_utilization(&self, fields: AnnotatedLogFields, duration: time::Duration) {
-    let mut fields = fields;
-    fields.push(AnnotatedLogField {
-      field: LogField {
-        key: "_duration_ms".into(),
-        value: (duration.as_seconds_f64() * 1_000f64).to_string().into(),
-      },
-      kind: LogFieldKind::Ootb,
-    });
+  pub fn log_resource_utilization(&self, mut fields: AnnotatedLogFields, duration: time::Duration) {
+    fields.push(AnnotatedLogField::new_ootb(
+      "_duration_ms".into(),
+      (duration.as_seconds_f64() * 1_000f64).to_string().into(),
+    ));
 
     self.log(
       log_level::DEBUG,
@@ -191,17 +187,13 @@ impl LoggerHandle {
   fn log_session_replay(
     &self,
     message: &str,
-    fields: AnnotatedLogFields,
+    mut fields: AnnotatedLogFields,
     duration: time::Duration,
   ) {
-    let mut fields = fields;
-    fields.push(AnnotatedLogField {
-      field: LogField {
-        key: "_duration_ms".into(),
-        value: (duration.as_seconds_f64() * 1_000f64).to_string().into(),
-      },
-      kind: LogFieldKind::Ootb,
-    });
+    fields.push(AnnotatedLogField::new_ootb(
+      "_duration_ms".to_string(),
+      (duration.as_seconds_f64() * 1_000f64).to_string().into(),
+    ));
 
     self.log(
       log_level::INFO,
@@ -219,22 +211,18 @@ impl LoggerHandle {
       .observe(duration.as_seconds_f64());
   }
 
-  pub fn log_sdk_start(&self, fields: AnnotatedLogFields, duration: time::Duration) {
-    let mut fields = fields;
-    fields.push(AnnotatedLogField {
-      field: LogField {
-        key: "_duration_ms".into(),
-        value: (duration.as_seconds_f64() * 1_000f64).to_string().into(),
-      },
-      kind: LogFieldKind::Ootb,
-    });
-    fields.push(AnnotatedLogField {
-      field: LogField {
-        key: "_sdk_version".into(),
-        value: self.sdk_version.to_string().into(),
-      },
-      kind: LogFieldKind::Ootb,
-    });
+  pub fn log_sdk_start(&self, mut fields: AnnotatedLogFields, duration: time::Duration) {
+    fields.extend([
+      AnnotatedLogField::new_ootb(
+        "_duration_ms".into(),
+        (duration.as_seconds_f64() * 1_000f64).to_string().into(),
+      ),
+      AnnotatedLogField::new_ootb("_sdk_version".into(), self.sdk_version.to_string().into()),
+      AnnotatedLogField::new_ootb(
+        "_session_strategy".into(),
+        self.session_strategy.type_name().into(),
+      ),
+    ]);
 
     self.log(
       log_level::INFO,
@@ -266,7 +254,7 @@ impl LoggerHandle {
     app_version: String,
     app_version_extra: AppVersionExtra,
     app_install_size_bytes: Option<u64>,
-    fields: AnnotatedLogFields,
+    mut fields: AnnotatedLogFields,
     duration: time::Duration,
   ) {
     let version = AppVersion {
@@ -280,40 +268,27 @@ impl LoggerHandle {
 
     log::debug!("emitting app update event: {:?}", version);
 
-    let mut fields = fields;
-    fields.push(AnnotatedLogField {
-      field: LogField {
-        key: "_duration_ms".into(),
-        value: (duration.as_seconds_f64() * 1_000f64).to_string().into(),
-      },
-      kind: LogFieldKind::Ootb,
-    });
+    fields.push(AnnotatedLogField::new_ootb(
+      "_duration_ms".into(),
+      (duration.as_seconds_f64() * 1_000f64).to_string().into(),
+    ));
     if let Some(app_install_size_bytes) = app_install_size_bytes {
-      fields.push(AnnotatedLogField {
-        field: LogField {
-          key: "_app_install_size_bytes".into(),
-          value: app_install_size_bytes.to_string().into(),
-        },
-        kind: LogFieldKind::Ootb,
-      });
+      fields.push(AnnotatedLogField::new_ootb(
+        "_app_install_size_bytes".into(),
+        app_install_size_bytes.to_string().into(),
+      ));
     }
-    fields.push(AnnotatedLogField {
-      field: LogField {
-        key: "_previous_app_version".into(),
-        value: previous_app_version.app_version.into(),
-      },
-      kind: LogFieldKind::Ootb,
-    });
-    fields.push(AnnotatedLogField {
-      field: LogField {
-        key: format!(
-          "_previous_{}",
-          previous_app_version.app_version_extra.name()
-        ),
-        value: previous_app_version.app_version_extra.string_value().into(),
-      },
-      kind: LogFieldKind::Ootb,
-    });
+    fields.push(AnnotatedLogField::new_ootb(
+      "_previous_app_version".into(),
+      previous_app_version.app_version.into(),
+    ));
+    fields.push(AnnotatedLogField::new_ootb(
+      format!(
+        "_previous_{}",
+        previous_app_version.app_version_extra.name()
+      ),
+      previous_app_version.app_version_extra.string_value().into(),
+    ));
 
     self.log(
       log_level::INFO,
