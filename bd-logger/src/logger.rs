@@ -212,20 +212,17 @@ impl LoggerHandle {
   }
 
   pub fn log_sdk_start(&self, mut fields: AnnotatedLogFields, duration: time::Duration) {
-    fields.extend(
-      [
-        AnnotatedLogField::new_ootb(
-          "_duration_ms".into(),
-          (duration.as_seconds_f64() * 1_000f64).to_string().into(),
-        ),
-        AnnotatedLogField::new_ootb("_sdk_version".into(), self.sdk_version.to_string().into()),
-        AnnotatedLogField::new_ootb(
-          "_session_strategy".into(),
-          self.session_strategy.type_name().into(),
-        ),
-      ]
-      .into_iter(),
-    );
+    fields.extend([
+      AnnotatedLogField::new_ootb(
+        "_duration_ms".into(),
+        (duration.as_seconds_f64() * 1_000f64).to_string().into(),
+      ),
+      AnnotatedLogField::new_ootb("_sdk_version".into(), self.sdk_version.to_string().into()),
+      AnnotatedLogField::new_ootb(
+        "_session_strategy".into(),
+        self.session_strategy.type_name().into(),
+      ),
+    ]);
 
     self.log(
       log_level::INFO,

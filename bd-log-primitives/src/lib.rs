@@ -116,14 +116,15 @@ pub struct AnnotatedLogField {
 
 impl AnnotatedLogField {
   #[must_use]
-  pub fn new_ootb(key: String, value: LogFieldValue) -> Self {
+  pub const fn new_ootb(key: String, value: LogFieldValue) -> Self {
     Self {
       field: LogField { key, value },
       kind: LogFieldKind::Ootb,
     }
   }
 
-  pub fn new_custom(key: String, value: LogFieldValue) -> Self {
+  #[must_use]
+  pub const fn new_custom(key: String, value: LogFieldValue) -> Self {
     Self {
       field: LogField { key, value },
       kind: LogFieldKind::Custom,

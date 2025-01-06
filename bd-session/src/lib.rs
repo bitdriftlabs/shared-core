@@ -60,7 +60,7 @@ impl Strategy {
   }
 
   /// Pretty name of the strategy.
-  pub fn type_name(&self) -> &'static str {
+  pub const fn type_name(&self) -> &'static str {
     match self {
       Self::Fixed(_) => "fixed",
       Self::ActivityBased(_) => "activity_based",
