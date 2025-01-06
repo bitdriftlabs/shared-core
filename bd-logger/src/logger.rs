@@ -18,7 +18,7 @@ use crate::async_log_buffer::{
 use crate::log_replay::LoggerReplay;
 use crate::memory_bound::{self, Sender as MemoryBoundSender};
 use crate::{app_version, MetadataProvider};
-use bd_api::{Metadata, Platform};
+use bd_api::Metadata;
 use bd_client_stats_store::Scope;
 use bd_log::warn_every;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
@@ -417,7 +417,7 @@ pub struct InitParams {
   /// The platform network implementation to use. This provides the implementation of the transport
   /// used to talk to the backend.
   pub network: Box<dyn bd_api::PlatformNetworkManager<bd_runtime::runtime::ConfigLoader>>,
-  pub platform: Platform,
+
   // Static metadata used to identify the client when communicating with the backend.
   pub static_metadata: Arc<dyn Metadata + Send + Sync>,
 }

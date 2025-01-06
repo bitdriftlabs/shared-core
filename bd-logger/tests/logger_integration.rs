@@ -8,7 +8,6 @@
 #[cfg(test)]
 mod tests {
   use assert_matches::assert_matches;
-  use bd_api::Platform;
   use bd_client_common::error::UnexpectedErrorHandler;
   use bd_key_value::Store;
   use bd_log_metadata::LogFieldKind;
@@ -172,7 +171,6 @@ mod tests {
         device,
         store: store.clone(),
         network: Box::new(Self::run_network(server.port, shutdown.make_shutdown())),
-        platform: Platform::Other("integration-test", "test"),
         static_metadata: Arc::new(EmptyMetadata),
       })
       .with_mobile_features(true)
@@ -535,7 +533,7 @@ mod tests {
         // If these numbers end up being too variable we do something more generic.
         let bandwidth_tx = upload.get_counter("api:bandwidth_tx", labels! {}).unwrap();
         let bandwidth_rx = upload.get_counter("api:bandwidth_rx", labels! {}).unwrap();
-        assert_eq!(upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}), Some(120));
+        assert_eq!(upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}), Some(118));
         assert!(bandwidth_tx > 100, "bandwidth_tx = {bandwidth_tx}");
         assert!(bandwidth_rx < 400, "bandwidth_rx = {bandwidth_rx}");
         assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(406));
@@ -2142,7 +2140,6 @@ mod tests {
       events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
       device,
       network,
-      platform: Platform::Other("integration-test", "test"),
       static_metadata: Arc::new(EmptyMetadata),
     })
     .with_mobile_features(true)
@@ -2277,7 +2274,6 @@ mod tests {
       let logger = bd_logger::LoggerBuilder::new(InitParams {
         api_key: "foo-api-key".to_string(),
         network,
-        platform: Platform::Other("integration-test", "test"),
         session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
           store.clone(),
           Arc::new(UUIDCallbacks),

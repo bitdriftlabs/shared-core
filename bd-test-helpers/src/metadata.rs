@@ -21,7 +21,11 @@ impl Metadata for EmptyMetadata {
   }
 
   fn platform(&self) -> &Platform {
-    &Platform::Other("unknown", "unknown")
+    &Platform::Apple
+  }
+
+  fn os(&self) -> String {
+    "ios".to_string()
   }
 
   #[must_use]
