@@ -6,18 +6,20 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
-#[path = "./memory_bound_test.rs"]
-mod memory_bound_test;
+#[path = "./mod_test.rs"]
+mod tests;
 
-pub use crate::size::MemorySized;
+mod size;
+
 use bd_client_stats_store::{Counter, Scope};
 use bd_stats_common::labels;
+pub use size::MemorySized;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc::error::TrySendError as TokioTrySendError;
 use tokio::sync::mpsc::{Receiver as TokioReceiver, Sender as TokioSender};
 
-// Like `mpcs::channel` but provides a way to specify the maximum amount of
+// Like `mpsc::channel` but provides a way to specify the maximum amount of
 // memory a channel may use. The channel becomes full when it reaches the maximum
 // number of items or when items stored within it reach the maximum memory capacity,
 // whichever happens first.

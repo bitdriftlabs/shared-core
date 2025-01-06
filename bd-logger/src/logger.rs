@@ -15,8 +15,8 @@ use crate::async_log_buffer::{
   AsyncLogBufferMessage,
   LogAttributesOverridesPreviousRunSessionID,
 };
+use crate::bounded_buffer::{self, Sender as MemoryBoundSender};
 use crate::log_replay::LoggerReplay;
-use crate::memory_bound::{self, Sender as MemoryBoundSender};
 use crate::{app_version, MetadataProvider};
 use bd_api::{Metadata, Platform};
 use bd_client_stats_store::Scope;
@@ -36,10 +36,10 @@ use tokio::sync::mpsc::{Receiver, Sender};
 #[derive(Clone)]
 #[allow(clippy::struct_field_names)]
 pub struct Stats {
-  pub(crate) log_emission_counters: memory_bound::SendCounters,
-  pub(crate) field_addition_counters: memory_bound::SendCounters,
-  pub(crate) field_removal_counters: memory_bound::SendCounters,
-  pub(crate) state_flushing_counters: memory_bound::SendCounters,
+  pub(crate) log_emission_counters: bounded_buffer::SendCounters,
+  pub(crate) field_addition_counters: bounded_buffer::SendCounters,
+  pub(crate) field_removal_counters: bounded_buffer::SendCounters,
+  pub(crate) state_flushing_counters: bounded_buffer::SendCounters,
   pub(crate) session_replay_duration_histogram: bd_client_stats_store::Histogram,
 }
 
@@ -51,19 +51,19 @@ impl Stats {
     let async_log_buffer_scope = stats_scope.scope("async_log_buffer");
 
     Self {
-      log_emission_counters: memory_bound::SendCounters::new(
+      log_emission_counters: bounded_buffer::SendCounters::new(
         &async_log_buffer_scope,
         "log_enqueueing",
       ),
-      field_addition_counters: memory_bound::SendCounters::new(
+      field_addition_counters: bounded_buffer::SendCounters::new(
         &async_log_buffer_scope,
         "field_additions",
       ),
-      field_removal_counters: memory_bound::SendCounters::new(
+      field_removal_counters: bounded_buffer::SendCounters::new(
         &async_log_buffer_scope,
         "field_removals",
       ),
-      state_flushing_counters: memory_bound::SendCounters::new(
+      state_flushing_counters: bounded_buffer::SendCounters::new(
         &async_log_buffer_scope,
         "state_flushing",
       ),

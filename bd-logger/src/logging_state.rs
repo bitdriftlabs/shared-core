@@ -5,9 +5,9 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::bounded_buffer::MemorySized;
 use crate::client_config::TailConfigurations;
 use crate::log_replay::ProcessingPipeline;
-use crate::memory_bound::MemorySized;
 use crate::pre_config_buffer::{self, PreConfigBuffer};
 use anyhow::anyhow;
 use bd_api::{DataUpload, TriggerUpload};

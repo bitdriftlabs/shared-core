@@ -9,10 +9,10 @@
 #[path = "./async_log_buffer_test.rs"]
 mod async_log_buffer_test;
 
+use crate::bounded_buffer::{channel, MemorySized, Receiver, Sender, TrySendError};
 use crate::log_replay::LogReplay;
 use crate::logger::with_thread_local_logger_guard;
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
-use crate::memory_bound::{channel, MemorySized, Receiver, Sender, TrySendError};
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::PreConfigBuffer;
