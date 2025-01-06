@@ -7,7 +7,7 @@
 
 use super::{with_thread_local_logger_guard, Stats};
 use crate::app_version::Repository;
-use crate::{memory_bound, LoggerHandle};
+use crate::{bounded_buffer, LoggerHandle};
 use bd_client_stats_store::Collector;
 use bd_key_value::Store;
 use bd_log_primitives::log_level;
@@ -22,7 +22,7 @@ use tokio_test::assert_pending;
 
 #[tokio::test]
 async fn thread_local_logger_guard() {
-  let (tx, mut rx) = memory_bound::channel(1, 100);
+  let (tx, mut rx) = bounded_buffer::channel(1, 100);
 
   let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
   let handle = LoggerHandle {

@@ -7,6 +7,7 @@
 
 use super::AsyncLogBufferMessage;
 use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay};
+use crate::bounded_buffer::MemorySized;
 use crate::client_config::TailConfigurations;
 use crate::log_replay::{LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{
@@ -15,7 +16,6 @@ use crate::logging_state::{
   LoggingState,
   UninitializedLoggingContext,
 };
-use crate::memory_bound::MemorySized;
 use assert_matches::assert_matches;
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_client_stats::{DynamicStats, FlushTrigger};

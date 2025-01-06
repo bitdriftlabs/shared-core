@@ -7,6 +7,7 @@
 
 mod app_version;
 mod async_log_buffer;
+mod bounded_buffer;
 mod builder;
 mod client_config;
 mod consumer;
@@ -15,12 +16,10 @@ mod internal_report;
 mod log_replay;
 mod logger;
 mod logging_state;
-mod memory_bound;
 mod metadata;
 mod network;
 mod pre_config_buffer;
 mod service;
-mod size;
 
 pub use crate::logger::{ChannelPair, InitParams};
 pub use app_version::AppVersionExtra;

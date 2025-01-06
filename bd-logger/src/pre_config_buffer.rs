@@ -8,7 +8,7 @@
 #[cfg(test)]
 #[path = "./pre_config_buffer_test.rs"]
 mod pre_config_buffer_test;
-use crate::size::MemorySized;
+use crate::bounded_buffer::MemorySized;
 use bd_client_stats_store::{Counter, Scope};
 use bd_stats_common::labels;
 
