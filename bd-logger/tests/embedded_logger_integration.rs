@@ -77,7 +77,6 @@ impl Setup {
     let (logger, upload_tx, future) = bd_logger::LoggerBuilder::new(InitParams {
       sdk_directory: sdk_directory.path().to_owned(),
       network: Box::new(handle),
-      platform: bd_api::Platform::Other("test", "test_os"),
       session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
         store.clone(),
         Arc::new(UUIDCallbacks),

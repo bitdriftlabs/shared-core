@@ -23,7 +23,11 @@ impl Metadata for EmptyMetadata {
   }
 
   fn platform(&self) -> &bd_metadata::Platform {
-    &bd_metadata::Platform::Ios
+    &bd_metadata::Platform::Apple
+  }
+
+  fn os(&self) -> String {
+    "ios".to_string()
   }
 
   fn collect_inner(&self) -> HashMap<String, String> {
@@ -102,7 +106,7 @@ fn attach_error_handler() {
     HashMap::from([
       ("x-session-id".to_string(), session_strategy.session_id()),
       ("x-sdk-version".to_string(), "1.2.3".to_string()),
-      ("x-kind".to_string(), "mobile".to_string()),
+      ("x-platform".to_string(), "apple".to_string()),
       ("x-os".to_string(), "ios".to_string()),
     ]),
     fields
