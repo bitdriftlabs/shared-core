@@ -376,12 +376,9 @@ impl LogInterceptor for NetworkQualityInterceptor {
       return;
     }
 
-    fields.push(AnnotatedLogField {
-      field: LogField {
-        key: "_network_quality".to_string(),
-        value: StringOrBytes::String("offline".to_string()),
-      },
-      kind: LogFieldKind::Ootb,
-    });
+    fields.push(AnnotatedLogField::new_ootb(
+      "_network_quality".to_string(),
+      "offline".into(),
+    ));
   }
 }

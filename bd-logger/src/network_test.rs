@@ -12,8 +12,6 @@ use bd_log_metadata::AnnotatedLogFields;
 use bd_log_primitives::{
   log_level,
   AnnotatedLogField,
-  LogField,
-  LogFieldKind,
   LogInterceptor,
   LogMessage,
   LogType,
@@ -67,13 +65,7 @@ fn network_quality() {
     interceptor.process(log_level::DEBUG, LogType::Normal, &"".into(), &mut fields);
     assert_eq!(
       fields[0],
-      AnnotatedLogField {
-        field: LogField {
-          key: "_network_quality".to_string(),
-          value: StringOrBytes::String("offline".to_string()),
-        },
-        kind: LogFieldKind::Ootb,
-      }
+      AnnotatedLogField::new_ootb("_network_quality".to_string(), "offline".into(),)
     );
   }
   {
@@ -215,11 +207,5 @@ fn get_int_field_value(fields: &AnnotatedLogFields, field_key: &str) -> Option<u
 
 /// Creates a string field using a provided key and integer value.
 fn create_int_field(key: &str, value: u64) -> AnnotatedLogField {
-  AnnotatedLogField {
-    field: LogField {
-      key: key.to_string(),
-      value: StringOrBytes::String(value.to_string()),
-    },
-    kind: LogFieldKind::Ootb,
-  }
+  AnnotatedLogField::new_ootb(key.to_string(), StringOrBytes::String(value.to_string()))
 }

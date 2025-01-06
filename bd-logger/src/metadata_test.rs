@@ -7,7 +7,6 @@
 
 use crate::metadata::MetadataCollector;
 use assert_matches::assert_matches;
-use bd_log_metadata::LogFieldKind;
 use bd_log_primitives::{AnnotatedLogField, LogField, LogFields, StringOrBytes};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -18,13 +17,10 @@ use std::sync::Arc;
 fn collector_attaches_provider_fields_as_matching_fields() {
   let metadata = LogMetadata {
     timestamp: time::OffsetDateTime::now_utc(),
-    fields: vec![AnnotatedLogField {
-      field: LogField {
-        key: "key".into(),
-        value: StringOrBytes::String("provider_value".into()),
-      },
-      kind: LogFieldKind::Ootb,
-    }],
+    fields: vec![AnnotatedLogField::new_ootb(
+      "key".into(),
+      "provider_value".into(),
+    )],
   };
 
   let collector = MetadataCollector::new(Arc::new(metadata));
@@ -35,20 +31,8 @@ fn collector_attaches_provider_fields_as_matching_fields() {
     let metadata = collector
       .normalized_metadata_with_extra_fields(
         vec![
-          AnnotatedLogField {
-            field: LogField {
-              key: "key".into(),
-              value: StringOrBytes::String("value".into()),
-            },
-            kind: LogFieldKind::Ootb,
-          },
-          AnnotatedLogField {
-            field: LogField {
-              key: "key2".into(),
-              value: StringOrBytes::String("value2".into()),
-            },
-            kind: LogFieldKind::Ootb,
-          },
+          AnnotatedLogField::new_ootb("key".into(), "value".into()),
+          AnnotatedLogField::new_ootb("key2".into(), "value2".into()),
         ],
         vec![],
         log_type,
@@ -77,48 +61,30 @@ fn collector_fields_hierarchy() {
   let metadata = LogMetadata {
     timestamp: time::OffsetDateTime::now_utc(),
     fields: vec![
-      AnnotatedLogField {
-        field: LogField {
-          key: "custom_provider_key".into(),
-          value: StringOrBytes::String("custom_provider_value".into()),
-        },
-        kind: LogFieldKind::Custom,
-      },
-      AnnotatedLogField {
-        field: LogField {
-          key: "ootb_provider_key_1".into(),
-          value: StringOrBytes::String("ootb_provider_value_1".into()),
-        },
-        kind: LogFieldKind::Ootb,
-      },
-      AnnotatedLogField {
-        field: LogField {
-          key: "ootb_provider_key_2".into(),
-          value: StringOrBytes::String("ootb_provider_value_2".into()),
-        },
-        kind: LogFieldKind::Ootb,
-      },
-      AnnotatedLogField {
-        field: LogField {
-          key: "provider_key".into(),
-          value: StringOrBytes::String("custom_provider_value".into()),
-        },
-        kind: LogFieldKind::Custom,
-      },
-      AnnotatedLogField {
-        field: LogField {
-          key: "provider_key".into(),
-          value: StringOrBytes::String("ootb_provider_value".into()),
-        },
-        kind: LogFieldKind::Ootb,
-      },
-      AnnotatedLogField {
-        field: LogField {
-          key: "collector_key".into(),
-          value: StringOrBytes::String("custom_provider_value".into()),
-        },
-        kind: LogFieldKind::Custom,
-      },
+      AnnotatedLogField::new_custom(
+        "custom_provider_key".into(),
+        StringOrBytes::String("custom_provider_value".into()),
+      ),
+      AnnotatedLogField::new_ootb(
+        "ootb_provider_key_1".into(),
+        StringOrBytes::String("ootb_provider_value_1".into()),
+      ),
+      AnnotatedLogField::new_ootb(
+        "ootb_provider_key_2".into(),
+        StringOrBytes::String("ootb_provider_value_2".into()),
+      ),
+      AnnotatedLogField::new_custom(
+        "provider_key".into(),
+        StringOrBytes::String("custom_provider_value".into()),
+      ),
+      AnnotatedLogField::new_ootb(
+        "provider_key".into(),
+        StringOrBytes::String("ootb_provider_value".into()),
+      ),
+      AnnotatedLogField::new_custom(
+        "collector_key".into(),
+        StringOrBytes::String("custom_provider_value".into()),
+      ),
     ],
   };
 
@@ -140,52 +106,27 @@ fn collector_fields_hierarchy() {
   let metadata = collector
     .normalized_metadata_with_extra_fields(
       vec![
-        AnnotatedLogField {
-          field: LogField {
-            key: "key".into(),
-            value: StringOrBytes::String("value".into()),
-          },
-          kind: LogFieldKind::Ootb,
-        },
-        AnnotatedLogField {
-          field: LogField {
-            key: "_key".into(),
-            value: StringOrBytes::String("_value".into()),
-          },
-          kind: LogFieldKind::Ootb,
-        },
-        AnnotatedLogField {
-          field: LogField {
-            key: "_should_be_dropped_key".into(),
-            value: StringOrBytes::String("should be dropped as it uses reserved _ prefix".into()),
-          },
-          kind: LogFieldKind::Custom,
-        },
-        AnnotatedLogField {
-          field: LogField {
-            key: "ootb_provider_key_1".into(),
-            value: StringOrBytes::String(
-              "should be ignored as it conflicts with ootb provider key".into(),
-            ),
-          },
-          kind: LogFieldKind::Custom,
-        },
-        AnnotatedLogField {
-          field: LogField {
-            key: "ootb_provider_key_2".into(),
-            value: StringOrBytes::String(
-              "should be ignored as it conflicts with ootb provider key".into(),
-            ),
-          },
-          kind: LogFieldKind::Ootb,
-        },
+        AnnotatedLogField::new_ootb("key".into(), "value".into()),
+        AnnotatedLogField::new_ootb("_key".into(), "_value".into()),
+        AnnotatedLogField::new_custom(
+          "_should_be_dropped_key".into(),
+          "should be dropped as it uses reserved _ prefix".into(),
+        ),
+        AnnotatedLogField::new_custom(
+          "ootb_provider_key_1".into(),
+          "should be ignored as it conflicts with ootb provider key".into(),
+        ),
+        AnnotatedLogField::new_ootb(
+          "ootb_provider_key_2".into(),
+          "should be ignored as it conflicts with ootb provider key".into(),
+        ),
       ],
       vec![],
       LogType::Lifecycle,
     )
     .unwrap();
 
-  assert_eq!(metadata.fields.len(), 7);
+  assert_eq!(metadata.fields.len(), 7, "{:?}", metadata.fields);
   assert_eq!(
     "value",
     expected_field_value(&metadata.fields, "key").unwrap()
@@ -221,20 +162,11 @@ fn collector_does_not_accept_reserved_fields() {
   let metadata = LogMetadata {
     timestamp: time::OffsetDateTime::now_utc(),
     fields: vec![
-      AnnotatedLogField {
-        field: LogField {
-          key: "_custom_provider_key".into(),
-          value: StringOrBytes::String("custom_provider_value".into()),
-        },
-        kind: LogFieldKind::Custom,
-      },
-      AnnotatedLogField {
-        field: LogField {
-          key: "_ootb_provider_key".into(),
-          value: StringOrBytes::String("ootb_provider_value".into()),
-        },
-        kind: LogFieldKind::Ootb,
-      },
+      AnnotatedLogField::new_custom(
+        "_custom_provider_key".into(),
+        "custom_provider_value".into(),
+      ),
+      AnnotatedLogField::new_ootb("_ootb_provider_key".into(), "ootb_provider_value".into()),
     ],
   };
 
@@ -300,20 +232,8 @@ fn provider_fields_earlier_in_the_list_take_precedence() {
   let metadata = LogMetadata {
     timestamp: time::OffsetDateTime::now_utc(),
     fields: vec![
-      AnnotatedLogField {
-        field: LogField {
-          key: "key_1".into(),
-          value: StringOrBytes::String("value_1".into()),
-        },
-        kind: LogFieldKind::Custom,
-      },
-      AnnotatedLogField {
-        field: LogField {
-          key: "key_1".into(),
-          value: StringOrBytes::String("to_be_overridden_value_1".into()),
-        },
-        kind: LogFieldKind::Custom,
-      },
+      AnnotatedLogField::new_custom("key_1".into(), "value_1".into()),
+      AnnotatedLogField::new_custom("key_1".into(), "to_be_overridden_value_1".into()),
     ],
   };
 
@@ -321,13 +241,10 @@ fn provider_fields_earlier_in_the_list_take_precedence() {
 
   let metadata = collector
     .normalized_metadata_with_extra_fields(
-      vec![AnnotatedLogField {
-        field: LogField {
-          key: "key_3".into(),
-          value: StringOrBytes::String("value_3".into()),
-        },
-        kind: LogFieldKind::Ootb,
-      }],
+      vec![AnnotatedLogField::new_ootb(
+        "key_3".into(),
+        "value_3".into(),
+      )],
       vec![],
       LogType::Lifecycle,
     )
@@ -349,20 +266,8 @@ fn passed_fields_earlier_in_the_list_take_precedence() {
   let metadata = LogMetadata {
     timestamp: time::OffsetDateTime::now_utc(),
     fields: vec![
-      AnnotatedLogField {
-        field: LogField {
-          key: "key_1".into(),
-          value: StringOrBytes::String("value_1".into()),
-        },
-        kind: LogFieldKind::Custom,
-      },
-      AnnotatedLogField {
-        field: LogField {
-          key: "key_2".into(),
-          value: StringOrBytes::String("value_2".into()),
-        },
-        kind: LogFieldKind::Ootb,
-      },
+      AnnotatedLogField::new_custom("key_1".into(), "value_1".into()),
+      AnnotatedLogField::new_ootb("key_2".into(), "value_2".into()),
     ],
   };
 
@@ -371,27 +276,9 @@ fn passed_fields_earlier_in_the_list_take_precedence() {
   let metadata = collector
     .normalized_metadata_with_extra_fields(
       vec![
-        AnnotatedLogField {
-          field: LogField {
-            key: "key_3".into(),
-            value: StringOrBytes::String("value_3".into()),
-          },
-          kind: LogFieldKind::Ootb,
-        },
-        AnnotatedLogField {
-          field: LogField {
-            key: "key_4".into(),
-            value: StringOrBytes::String("value_4".into()),
-          },
-          kind: LogFieldKind::Ootb,
-        },
-        AnnotatedLogField {
-          field: LogField {
-            key: "key_4".into(),
-            value: StringOrBytes::String("to_be_override_value_4".into()),
-          },
-          kind: LogFieldKind::Ootb,
-        },
+        AnnotatedLogField::new_ootb("key_3".into(), "value_3".into()),
+        AnnotatedLogField::new_ootb("key_4".into(), "value_4".into()),
+        AnnotatedLogField::new_ootb("key_4".into(), "to_be_override_value_4".into()),
       ],
       vec![],
       LogType::Lifecycle,

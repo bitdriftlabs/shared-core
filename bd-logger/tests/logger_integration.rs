@@ -1134,20 +1134,8 @@ mod tests {
     let mut setup = Setup::new_with_metadata(LogMetadata {
       timestamp: time::OffsetDateTime::now_utc(),
       fields: vec![
-        AnnotatedLogField {
-          field: LogField {
-            key: "k1".into(),
-            value: StringOrBytes::String("provider_value_1".into()),
-          },
-          kind: LogFieldKind::Custom,
-        },
-        AnnotatedLogField {
-          field: LogField {
-            key: "k2".into(),
-            value: StringOrBytes::String("provider_value_2".into()),
-          },
-          kind: LogFieldKind::Ootb,
-        },
+        AnnotatedLogField::new_custom("k1".into(), "provider_value_1".into()),
+        AnnotatedLogField::new_ootb("k2".into(), "provider_value_2".into()),
       ],
     });
 
@@ -1525,13 +1513,10 @@ mod tests {
       log_level::DEBUG,
       LogType::Normal,
       "yet another message!".into(),
-      vec![AnnotatedLogField {
-        field: LogField {
-          key: "foo".into(),
-          value: "do not fire workflow action!".into(),
-        },
-        kind: LogFieldKind::Custom,
-      }],
+      vec![AnnotatedLogField::new_custom(
+        "foo".into(),
+        "do not fire workflow action!".into(),
+      )],
       vec![],
       None,
     );
@@ -1752,44 +1737,21 @@ mod tests {
       LogType::InternalSDK,
       "fire!".into(),
       vec![
-        AnnotatedLogField {
-          field: LogField {
-            key: "_should_be_dropped_starting_with_underscore_key".into(),
-            value: StringOrBytes::String("should be dropped value".into()),
-          },
-          kind: LogFieldKind::Custom,
-        },
-        AnnotatedLogField {
-          field: LogField {
-            key: "_key".into(),
-            value: StringOrBytes::String(
-              "_should_be_overridden_due_to_conflict_with_ootb_field".into(),
-            ),
-          },
-          kind: LogFieldKind::Custom,
-        },
-        AnnotatedLogField {
-          field: LogField {
-            key: "_key".into(),
-            value: StringOrBytes::String("_value".into()),
-          },
-          kind: LogFieldKind::Ootb,
-        },
-        AnnotatedLogField {
-          field: LogField {
-            key: "key".into(),
-            value: StringOrBytes::String("value".into()),
-          },
-          kind: LogFieldKind::Custom,
-        },
+        AnnotatedLogField::new_custom(
+          "_should_be_dropped_starting_with_underscore_key".into(),
+          "should be dropped value".into(),
+        ),
+        AnnotatedLogField::new_custom(
+          "_key".into(),
+          "_should_be_overridden_due_to_conflict_with_ootb_field".into(),
+        ),
+        AnnotatedLogField::new_ootb("_key".into(), "_value".into()),
+        AnnotatedLogField::new_custom("key".into(), "value".into()),
       ],
-      vec![AnnotatedLogField {
-        field: LogField {
-          key: "_phantom_key".into(),
-          value: StringOrBytes::String("_phantom_value".into()),
-        },
-        kind: LogFieldKind::Ootb,
-      }],
+      vec![AnnotatedLogField::new_ootb(
+        "_phantom_key".into(),
+        "_phantom_value".into(),
+      )],
       None,
     );
 

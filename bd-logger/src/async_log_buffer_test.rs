@@ -174,13 +174,7 @@ fn log_line_size_is_computed_correctly() {
       log_level: 0,
       log_type: LogType::Normal,
       message: "foo".into(),
-      fields: vec![AnnotatedLogField {
-        field: LogField {
-          key: "foo".to_string(),
-          value: StringOrBytes::String("bar".to_string()),
-        },
-        kind: LogFieldKind::Ootb,
-      }],
+      fields: vec![AnnotatedLogField::new_ootb("foo".to_string(), "bar".into())],
       matching_fields: vec![],
       attributes_overrides: None,
       log_processing_completed_tx: None,
@@ -203,13 +197,10 @@ fn log_line_size_is_computed_correctly() {
   // Add one extra character to one of the fields' keys and verify that reported size increases
   // by 1 byte
   let mut baseline_log_with_longer_field_key = create_baseline_log();
-  baseline_log_with_longer_field_key.fields = vec![AnnotatedLogField {
-    field: LogField {
-      key: "foo1".to_string(),
-      value: StringOrBytes::String("bar".to_string()),
-    },
-    kind: LogFieldKind::Ootb,
-  }];
+  baseline_log_with_longer_field_key.fields = vec![AnnotatedLogField::new_ootb(
+    "foo1".to_string(),
+    "bar".into(),
+  )];
 
   assert_eq!(
     baseline_log_expected_size + 1,

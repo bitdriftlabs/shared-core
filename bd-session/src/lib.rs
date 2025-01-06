@@ -58,4 +58,12 @@ impl Strategy {
       Self::ActivityBased(strategy) => strategy.previous_process_session_id(),
     }
   }
+
+  /// Pretty name of the strategy.
+  pub fn type_name(&self) -> &'static str {
+    match self {
+      Self::Fixed(_) => "fixed",
+      Self::ActivityBased(_) => "activity_based",
+    }
+  }
 }
