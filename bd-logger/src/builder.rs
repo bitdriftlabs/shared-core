@@ -31,7 +31,7 @@ pub struct LoggerBuilder {
   params: InitParams,
 
   component_shutdown_handle: Option<ComponentShutdownTriggerHandle>,
-  mobile_features: bool,
+  client_stats: bool,
   internal_logger: bool,
   stats_scope: Option<Scope>,
 }
@@ -43,7 +43,7 @@ impl LoggerBuilder {
     Self {
       params,
       component_shutdown_handle: None,
-      mobile_features: false,
+      client_stats: false,
       internal_logger: false,
       stats_scope: None,
     }
@@ -59,10 +59,11 @@ impl LoggerBuilder {
     self
   }
 
-  /// Enables mobile features, such as periodic stats flushing and stats uploading.
+  /// Enables client stats, which results in collected metrics being reported via the API mux at
+  /// regular intervals. This is required for a lot of workflows-related features.
   #[must_use]
-  pub const fn with_mobile_features(mut self, mobile_features: bool) -> Self {
-    self.mobile_features = mobile_features;
+  pub const fn with_client_stats(mut self, mobile_features: bool) -> Self {
+    self.client_stats = mobile_features;
     self
   }
 
@@ -74,16 +75,18 @@ impl LoggerBuilder {
     self
   }
 
-  #[must_use]
   /// Enables the internal logger, which logs internal events to the logger. This is sometimes
   /// useful to aid debugging the logger in the wild.
+  #[must_use]
   pub const fn with_internal_logger(mut self, internal_logger: bool) -> Self {
     self.internal_logger = internal_logger;
     self
   }
 
-  /// Builds the logger, returning the logger, a channel to send data uploads to the logger, and a
-  /// future that must be awaited to run the logger.
+  /// Builds the logger.
+  ///
+  /// The returned feature must be awaited on in order for the logger to run. This future will
+  /// resolve when the logger has shut down.
   #[allow(clippy::type_complexity)]
   pub fn build(
     self,
@@ -92,7 +95,7 @@ impl LoggerBuilder {
     tokio::sync::mpsc::Sender<DataUpload>,
     Pin<Box<impl Future<Output = anyhow::Result<()>> + 'static>>,
   )> {
-    if self.mobile_features && self.stats_scope.is_some() {
+    if self.client_stats && self.stats_scope.is_some() {
       anyhow::bail!(
         "Cannot use mobile features and a custom stats scope at the same time, as the stats scope \
          must be managed by the logger in order to also flush stats"
@@ -129,7 +132,7 @@ impl LoggerBuilder {
 
     let dynamic_stats = Arc::new(bd_client_stats::DynamicStats::new(&scope, &runtime_loader));
 
-    let (maybe_stats_flusher, maybe_flusher_trigger) = if self.mobile_features {
+    let (maybe_stats_flusher, maybe_flusher_trigger) = if self.client_stats {
       let stats =
         bd_client_stats::Stats::new(maybe_managed_collector.unwrap(), dynamic_stats.clone());
       let flush_handles = stats.flush_handle(
@@ -161,7 +164,7 @@ impl LoggerBuilder {
         512,
         1024 * 1024,
       ),
-      LoggerReplay {},
+      LoggerReplay,
       self.params.session_strategy.clone(),
       self.params.metadata_provider.clone(),
       self.params.resource_utilization_target,
@@ -232,7 +235,7 @@ impl LoggerBuilder {
         Box::new(bd_runtime::runtime::RuntimeManager::new(runtime_loader)),
         updater,
       ],
-      Arc::new(SystemTimeProvider {}),
+      Arc::new(SystemTimeProvider),
       network_quality_provider,
       log.clone(),
       &scope.scope("api"),
@@ -263,8 +266,8 @@ impl LoggerBuilder {
     Ok((logger, data_upload_ch.tx, Box::pin(logger_future)))
   }
 
-  /// Builds the builder, running the logger on a dedicated thread. This is useful for running the
-  /// logger outside of a tokio runtime.
+  /// Builds the logger and runs the associated future on a dedicated thread. This is useful for
+  /// running the logger outside of a tokio runtime.
   pub fn build_dedicated_thread(
     self,
   ) -> anyhow::Result<(Logger, tokio::sync::mpsc::Sender<DataUpload>)> {
@@ -274,6 +277,20 @@ impl LoggerBuilder {
 
     let (logger, ch, future) = self.build()?;
 
+    Self::run_logger_runtime(future)?;
+
+    Ok((logger, ch))
+  }
+
+  /// Creates a new tokio runtime on a dedicated thread suitable for running the logger. The
+  /// provided future will be awaited on the runtime, and any errors will be reported to the
+  /// `handle_unexpected` system.
+  ///
+  /// This is exposed in order to make it possible to run more than just the logger future on the
+  /// newly spawned runtime.
+  pub fn run_logger_runtime(
+    f: impl Future<Output = anyhow::Result<()>> + Send + 'static,
+  ) -> anyhow::Result<()> {
     std::thread::Builder::new()
       .name("io.bitdrift.capture.logger".to_string())
       .spawn(move || {
@@ -284,10 +301,10 @@ impl LoggerBuilder {
           .build()
           .unwrap()
           .block_on(async {
-            handle_unexpected(future.await, "logger top level run loop");
+            handle_unexpected(f.await, "logger top level run loop");
           });
       })?;
 
-    Ok((logger, ch))
+    Ok(())
   }
 }
