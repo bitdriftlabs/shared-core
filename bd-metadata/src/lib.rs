@@ -6,7 +6,6 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use std::collections::HashMap;
-use std::fmt::Display;
 
 // The configuration version of the client is a version number maintained independently from the
 // release version of SDK which is used to allow the server to send different configurations to
@@ -16,19 +15,20 @@ use std::fmt::Display;
 const CONFIGURATION_VERSION: &str = "27";
 
 /// The platform we're currently running as.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Platform {
   Android,
   Apple,
   Electron,
 }
 
-impl Display for Platform {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Platform {
+  #[must_use]
+  pub const fn as_str(self) -> &'static str {
     match self {
-      Self::Android => write!(f, "android"),
-      Self::Apple => write!(f, "apple"),
-      Self::Electron => write!(f, "electron"),
+      Self::Android => "android",
+      Self::Apple => "apple",
+      Self::Electron => "electron",
     }
   }
 }
@@ -51,7 +51,7 @@ pub trait Metadata: Send {
     );
 
     inner.insert("os".to_string(), self.os());
-    inner.insert("platform".to_string(), self.platform().to_string());
+    inner.insert("platform".to_string(), self.platform().as_str().to_string());
     inner.insert("sdk_version".to_string(), self.sdk_version().to_string());
 
     inner
