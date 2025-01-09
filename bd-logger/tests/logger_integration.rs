@@ -173,7 +173,7 @@ mod tests {
         network: Box::new(Self::run_network(server.port, shutdown.make_shutdown())),
         static_metadata: Arc::new(EmptyMetadata),
       })
-      .with_mobile_features(true)
+      .with_client_stats(true)
       .with_internal_logger(true)
       .build_dedicated_thread()
       .unwrap()
@@ -2104,7 +2104,7 @@ mod tests {
       network,
       static_metadata: Arc::new(EmptyMetadata),
     })
-    .with_mobile_features(true)
+    .with_client_stats(true)
     .build_dedicated_thread()
     .unwrap()
     .0;
@@ -2252,7 +2252,7 @@ mod tests {
         }),
         device,
       })
-      .with_mobile_features(true)
+      .with_client_stats(true)
       .build_dedicated_thread()
       .unwrap()
       .0;
