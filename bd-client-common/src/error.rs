@@ -57,7 +57,7 @@ pub struct PanickingErrorReporter;
 
 impl PanickingErrorReporter {
   pub fn enable() {
-    UnexpectedErrorHandler::set_reporter(Arc::new(Self::default()));
+    UnexpectedErrorHandler::set_reporter(Arc::new(Self));
   }
 }
 
