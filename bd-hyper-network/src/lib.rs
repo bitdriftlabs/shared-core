@@ -336,7 +336,8 @@ pub struct ErrorReporter {
 }
 
 impl ErrorReporter {
-  #[must_use] pub fn new(api_address: String) -> (Self, ErrorReporterHandle) {
+  #[must_use]
+  pub fn new(api_address: String) -> (Self, ErrorReporterHandle) {
     let client = Client::builder(TokioExecutor::new())
       .http2_only(true)
       .build(make_tls_connector());
@@ -356,7 +357,9 @@ impl ErrorReporter {
 
   pub async fn start(mut self) {
     loop {
-      let (payload, fields) = if let Some(payload) = self.rx.recv().await { payload } else {
+      let (payload, fields) = if let Some(payload) = self.rx.recv().await {
+        payload
+      } else {
         log::debug!("error reporter shutting down");
         return;
       };
