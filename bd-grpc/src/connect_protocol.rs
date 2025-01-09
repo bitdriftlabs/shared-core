@@ -32,17 +32,17 @@ pub enum ConnectProtocolType {
 
 impl ConnectProtocolType {
   pub fn from_headers(headers: &HeaderMap) -> Option<Self> {
-    if !headers
+    if headers
       .get(CONNECT_PROTOCOL_VERSION)
-      .map_or(false, |v| v == "1")
+      .is_none_or(|v| v == "1")
     {
       return None;
     }
 
     let content_type = headers.get(CONTENT_TYPE);
-    if content_type.map_or(false, |v| v == CONTENT_TYPE_PROTO) {
+    if content_type.is_some_and(|v| v == CONTENT_TYPE_PROTO) {
       Some(Self::Unary)
-    } else if content_type.map_or(false, |v| v == CONTENT_TYPE_CONNECT_STREAMING) {
+    } else if content_type.is_some_and(|v| v == CONTENT_TYPE_CONNECT_STREAMING) {
       Some(Self::Streaming)
     } else {
       None

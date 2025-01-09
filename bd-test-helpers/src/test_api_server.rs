@@ -1061,7 +1061,7 @@ impl TestEventProcessor {
         let event_satisfied = self
           .streams
           .get(&stream_id)
-          .map_or(false, |state| match event {
+          .is_some_and(|state| match event {
             ExpectedStreamEvent::Created(key) => state.api_key == *key,
             ExpectedStreamEvent::Closed => state.stream_closed,
             ExpectedStreamEvent::Handshake(attributes) => attributes.as_ref().map_or_else(
@@ -1070,7 +1070,7 @@ impl TestEventProcessor {
                 state
                   .handshake_received
                   .as_ref()
-                  .map_or(false, |attrs| attribute_match.matches(attrs))
+                  .is_some_and(|attrs| attribute_match.matches(attrs))
               },
             ),
           });

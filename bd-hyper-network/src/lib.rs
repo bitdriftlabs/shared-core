@@ -357,9 +357,7 @@ impl ErrorReporter {
 
   pub async fn start(mut self) {
     loop {
-      let (payload, fields) = if let Some(payload) = self.rx.recv().await {
-        payload
-      } else {
+      let Some((payload, fields)) = self.rx.recv().await else {
         log::debug!("error reporter shutting down");
         return;
       };

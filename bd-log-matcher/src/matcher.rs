@@ -93,26 +93,26 @@ impl Tree {
       Self::Base(base_matcher) => match base_matcher {
         Leaf::LogLevel(log_level_matcher) => log_level
           .try_into()
-          .map_or(false, |log_level| log_level_matcher.evaluate(log_level)),
+          .is_ok_and(|log_level| log_level_matcher.evaluate(log_level)),
         Leaf::LogType(l_type) => *l_type == log_type.0,
         Leaf::IntValue(input, criteria) =>
         {
           #[allow(clippy::cast_possible_truncation)]
-          input.get(message, fields).map_or(false, |input| {
+          input.get(message, fields).is_some_and(|input| {
             input
               .parse::<f64>()
-              .map_or(false, |v| criteria.evaluate(v as i32))
+              .is_ok_and(|v| criteria.evaluate(v as i32))
           })
         },
-        Leaf::DoubleValue(input, criteria) => input.get(message, fields).map_or(false, |input| {
-          input.parse().map_or(false, |v| criteria.evaluate(v))
-        }),
+        Leaf::DoubleValue(input, criteria) => input
+          .get(message, fields)
+          .is_some_and(|input| input.parse().is_ok_and(|v| criteria.evaluate(v))),
         Leaf::StringValue(input, criteria) => input
           .get(message, fields)
-          .map_or(false, |input| criteria.evaluate(input.as_ref())),
+          .is_some_and(|input| criteria.evaluate(input.as_ref())),
         Leaf::VersionValue(input, criteria) => input
           .get(message, fields)
-          .map_or(false, |input| criteria.evaluate(input.as_ref())),
+          .is_some_and(|input| criteria.evaluate(input.as_ref())),
         Leaf::IsSetValue(input) => input.get(message, fields).is_some(),
       },
       Self::Or(or_matchers) => or_matchers

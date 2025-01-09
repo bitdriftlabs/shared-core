@@ -220,7 +220,7 @@ impl UnexpectedErrorHandler {
     // overriding the handling in test while also working around the fact that the tests run in
     // parallel.
     if PER_THREAD_REPORTER.with(|reporter| {
-      (*reporter.borrow()).as_ref().map_or(false, |reporter| {
+      (*reporter.borrow()).as_ref().is_some_and(|reporter| {
         reporter.report(&formatted, &details, &HashMap::new());
         true
       })

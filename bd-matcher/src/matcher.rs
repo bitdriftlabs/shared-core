@@ -75,7 +75,7 @@ impl Tree {
         Leaf::LogType(level) => *level == log_type.0,
         Leaf::String(input, criteria) => input
           .get(message, fields)
-          .map_or(false, |input| criteria.evaluate(input.as_ref())),
+          .is_some_and(|input| criteria.evaluate(input.as_ref())),
         Leaf::Any => true,
       },
       Self::Or(or_matchers) => or_matchers

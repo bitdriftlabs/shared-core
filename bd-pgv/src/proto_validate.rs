@@ -133,7 +133,7 @@ trait IntHelper {
   where
     <Self as IntHelper>::Item: PartialOrd + Display,
   {
-    if self.gt().map_or(false, |gt| value <= gt) {
+    if self.gt().is_some_and(|gt| value <= gt) {
       return Err(error::Error::ProtoValidation(format!(
         "field '{}' in message '{}' must be > {}",
         field_descriptor.full_name(),
