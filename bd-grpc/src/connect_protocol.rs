@@ -34,7 +34,7 @@ impl ConnectProtocolType {
   pub fn from_headers(headers: &HeaderMap) -> Option<Self> {
     if headers
       .get(CONNECT_PROTOCOL_VERSION)
-      .is_none_or(|v| v == "1")
+      .is_none_or(|v| v != "1")
     {
       return None;
     }
