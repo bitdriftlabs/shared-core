@@ -48,17 +48,6 @@ enum StreamEvent {
 }
 
 impl HyperNetwork {
-  fn make_tls_connector() -> HttpsConnector<HttpConnector> {
-    let mut connector = HttpConnector::new();
-    connector.enforce_http(false);
-
-    HttpsConnectorBuilder::new()
-      .with_webpki_roots()
-      .https_or_http()
-      .enable_http2()
-      .wrap_connector(connector)
-  }
-
   /// Runs the network on a dedicated thread, returning a Handle that can be used to interface with
   /// the running network processing loop.
   #[must_use]
@@ -85,6 +74,7 @@ impl HyperNetwork {
 
     let uri = format!("{address}/bitdrift_public.protobuf.client.v1.ApiService/Mux");
 
+
     (
       Self {
         stream_event_rx,
@@ -101,7 +91,7 @@ impl HyperNetwork {
 
     let client = Client::builder(TokioExecutor::new())
       .http2_only(true)
-      .build(Self::make_tls_connector());
+      .build(make_tls_connector());
 
     loop {
       // Loop until we get a new start stream event. There might be stale data left from an
@@ -317,4 +307,131 @@ impl PlatformNetworkStream for Handle {
 
     Ok(())
   }
+}
+
+//
+// ErrorPayload
+//
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct ErrorPayload {
+  message: String,
+  details: Option<String>,
+}
+
+pub type ErrorReport = (ErrorPayload, HashMap<String, String>);
+
+//
+// ErrorReporter
+//
+
+/// An implementation of `bd_client_common::error::Reporter` that sends errors to the API. In order
+/// to provide a sync API, this is split into a handle and the actual implementation. The
+/// implementation must be started on a tokio runtime in order to process the reports sent via the
+/// handle.
+pub struct ErrorReporter {
+  api_address: String,
+  client: Client<HttpsConnector<HttpConnector>, String>,
+  rx: tokio::sync::mpsc::Receiver<ErrorReport>,
+}
+
+impl ErrorReporter {
+  #[must_use]
+  pub fn new(api_address: String) -> (Self, ErrorReporterHandle) {
+    let client = Client::builder(TokioExecutor::new())
+      .http2_only(true)
+      .build(make_tls_connector());
+
+
+    // Give the channel a buffer of 5 so we can send multiple errors without dropping errors.
+    let (tx, rx) = tokio::sync::mpsc::channel(5);
+    (
+      Self {
+        api_address,
+        client,
+        rx,
+      },
+      ErrorReporterHandle(tx),
+    )
+  }
+
+  pub async fn start(mut self) {
+    loop {
+      let Some((payload, fields)) = self.rx.recv().await else {
+        log::debug!("error reporter shutting down");
+        return;
+      };
+
+      if let Err(e) = self.send_error(payload, &fields).await {
+        log::error!("failed to send error report: {:?}", e);
+      }
+    }
+  }
+
+  async fn send_error(
+    &self,
+    payload: ErrorPayload,
+    fields: &HashMap<String, String>,
+  ) -> anyhow::Result<()> {
+    let uri = format!("{}/v1/sdk-errors", self.api_address);
+    log::trace!("sending error report to {}", uri);
+    let mut request = Request::builder()
+      .method(Method::POST)
+      .uri(uri)
+      .header("content-type", "application/json");
+
+    for (k, v) in fields {
+      request = request.header(format!("x-{}", k.replace('_', "-")), v);
+    }
+
+    self
+      .client
+      .request(request.body(serde_json::to_string(&payload)?)?)
+      .await?;
+
+    Ok(())
+  }
+}
+
+pub struct ErrorReporterHandle(tokio::sync::mpsc::Sender<(ErrorPayload, HashMap<String, String>)>);
+
+impl bd_client_common::error::Reporter for ErrorReporterHandle {
+  fn report(
+    &self,
+    message: &str,
+    details: &Option<String>,
+    fields: &HashMap<std::borrow::Cow<'_, str>, std::borrow::Cow<'_, str>>,
+  ) {
+    let payload = ErrorPayload {
+      message: message.to_string(),
+      details: details.clone(),
+    };
+
+    if let Err(e) = self.0.try_send((
+      payload,
+      fields
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect(),
+    )) {
+      log::error!("failed to send error report: {:?}", e);
+    }
+  }
+}
+
+fn make_tls_connector() -> HttpsConnector<HttpConnector> {
+  let mut connector = HttpConnector::new();
+  connector.enforce_http(false);
+
+  HttpsConnectorBuilder::new()
+    .with_webpki_roots()
+    .https_or_http()
+    .enable_http2()
+    .wrap_connector(connector)
+}
+
+#[cfg(test)]
+#[ctor::ctor]
+fn init_logger() {
+  bd_test_helpers::test_global_init();
 }

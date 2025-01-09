@@ -89,9 +89,9 @@ impl RingBufferProducer for ProducerImpl {
       .as_ref()
       .and_then(|c| c.reservation.as_ref())
       .cloned();
-    if read_reservation.map_or(false, |r| {
-      common_ring_buffer.intersect_reservation(&temp_reservation_data, &r)
-    }) {
+    if read_reservation
+      .is_some_and(|r| common_ring_buffer.intersect_reservation(&temp_reservation_data, &r))
+    {
       log::trace!(
         "({}) writing into concurrent read. Dropping due to no space left",
         common_ring_buffer.name
@@ -108,9 +108,9 @@ impl RingBufferProducer for ProducerImpl {
       .reservations
       .front()
       .cloned();
-    if first_reservation.map_or(false, |r| {
-      common_ring_buffer.intersect_reservation(&temp_reservation_data, &r.range)
-    }) {
+    if first_reservation
+      .is_some_and(|r| common_ring_buffer.intersect_reservation(&temp_reservation_data, &r.range))
+    {
       log::trace!(
         "({}) writing into concurrent write. Dropping due to no space left",
         common_ring_buffer.name

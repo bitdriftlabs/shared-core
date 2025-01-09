@@ -179,7 +179,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
           .source()
           .and_then(std::error::Error::source)
           .and_then(|e| e.downcast_ref::<std::io::Error>())
-          .map_or(false, |e| e.kind() == ErrorKind::TimedOut)
+          .is_some_and(|e| e.kind() == ErrorKind::TimedOut)
         {
           return Err(Error::ConnectionTimeout);
         }

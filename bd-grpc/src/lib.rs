@@ -470,9 +470,11 @@ async fn decode_request<Message: MessageFull>(
   let body_bytes = to_bytes(body, usize::MAX)
     .await
     .map_err(|e| Error::BodyStream(e.into()))?;
-  let body_bytes = if parts.headers.get(CONTENT_ENCODING).map_or(false, |v| {
-    v.as_bytes() == CONTENT_ENCODING_SNAPPY.as_bytes()
-  }) {
+  let body_bytes = if parts
+    .headers
+    .get(CONTENT_ENCODING)
+    .is_some_and(|v| v.as_bytes() == CONTENT_ENCODING_SNAPPY.as_bytes())
+  {
     let decompressed = snap::raw::Decoder::new().decompress_vec(&body_bytes)?;
     log::trace!(
       "snappy decompressed {} -> {}",

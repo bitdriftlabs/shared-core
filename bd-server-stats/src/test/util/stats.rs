@@ -132,7 +132,7 @@ impl Helper {
 
       if latest_value
         .as_ref()
-        .map_or(false, |counter| counter.get_value() as u64 == value)
+        .is_some_and(|counter| counter.get_value() as u64 == value)
       {
         return;
       }

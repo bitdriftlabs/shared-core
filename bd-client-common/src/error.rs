@@ -29,13 +29,13 @@ pub trait Reporter: Send + Sync {
     &self,
     message: &str,
     details: &Option<String>,
-    fields: &HashMap<Cow<'_, str>, Cow<'_, str>>,
+    metadata: &HashMap<Cow<'_, str>, Cow<'_, str>>,
   );
 }
 
-// By default we use a reporter which fires a debug assert. This ensures that unless overriden,
+// By default we use a reporter which fires a debug assert. This ensures that unless overridden,
 // the errors bubble up as debug assert in test.
-struct DefaultErrorReporter {}
+struct DefaultErrorReporter;
 
 impl Reporter for DefaultErrorReporter {
   fn report(
@@ -53,11 +53,11 @@ impl Reporter for DefaultErrorReporter {
 //
 
 #[derive(Default)]
-pub struct PanickingErrorReporter {}
+pub struct PanickingErrorReporter;
 
 impl PanickingErrorReporter {
   pub fn enable() {
-    UnexpectedErrorHandler::set_reporter(Arc::new(Self::default()));
+    UnexpectedErrorHandler::set_reporter(Arc::new(Self));
   }
 }
 
@@ -220,7 +220,7 @@ impl UnexpectedErrorHandler {
     // overriding the handling in test while also working around the fact that the tests run in
     // parallel.
     if PER_THREAD_REPORTER.with(|reporter| {
-      (*reporter.borrow()).as_ref().map_or(false, |reporter| {
+      (*reporter.borrow()).as_ref().is_some_and(|reporter| {
         reporter.report(&formatted, &details, &HashMap::new());
         true
       })

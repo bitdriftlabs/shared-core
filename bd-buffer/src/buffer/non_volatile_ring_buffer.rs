@@ -870,7 +870,7 @@ impl RingBufferImpl {
           extra_locked_data
             .consumer
             .as_ref()
-            .map_or(false, |c| match c {
+            .is_some_and(|c| match c {
               ConsumerType::Consumer(c) => c.is_some(),
               ConsumerType::CursorConsumer(c) => !c.is_empty(),
             })
