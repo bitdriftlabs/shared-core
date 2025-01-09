@@ -399,7 +399,6 @@ name = "bd-client-common"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "axum",
  "bd-client-stats-store",
  "bd-log-primitives",
  "bd-matcher",
