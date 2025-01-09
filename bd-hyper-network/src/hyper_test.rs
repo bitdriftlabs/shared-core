@@ -94,7 +94,7 @@ impl TestServer {
     });
 
     Self {
-      address: format!("http://{}", address),
+      address: format!("http://{address}"),
       rx,
       _shutdown: shutdown_trigger,
     }
