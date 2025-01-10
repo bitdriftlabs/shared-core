@@ -5,6 +5,9 @@ name         = "bd-runtime-config"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [dependencies]
 async-trait.workspace = true
 bd-server-stats.path  = "../bd-server-stats"

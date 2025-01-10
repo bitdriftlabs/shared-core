@@ -5,6 +5,9 @@ name         = "bd-log-filter"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [dependencies]
 anyhow.workspace           = true
 bd-client-stats-store.path = "../bd-client-stats-store"

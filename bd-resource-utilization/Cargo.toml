@@ -5,6 +5,9 @@ name         = "bd-resource-utilization"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [dependencies]
 anyhow.workspace         = true
 bd-internal-logging.path = "../bd-internal-logging"

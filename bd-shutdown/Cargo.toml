@@ -5,6 +5,9 @@ name         = "bd-shutdown"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [dependencies]
 log.workspace   = true
 tokio.workspace = true

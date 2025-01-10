@@ -5,6 +5,9 @@ name         = "bd-client-stats-store"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [dependencies]
 bd-proto                = { path = "../bd-proto" }
 bd-stats-common         = { path = "../bd-stats-common" }

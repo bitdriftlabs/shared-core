@@ -4,3 +4,6 @@ license-file = "../LICENSE"
 name         = "bd-stats-common"
 publish      = false
 version      = "1.0.0"
+
+[lib]
+doctest = false

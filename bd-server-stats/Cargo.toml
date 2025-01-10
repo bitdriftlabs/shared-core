@@ -5,6 +5,9 @@ name         = "bd-server-stats"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [dependencies]
 bd-stats-common.path    = "../bd-stats-common"
 bd-time.path            = "../bd-time"

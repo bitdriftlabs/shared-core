@@ -5,6 +5,9 @@ name         = "bd-grpc"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [dependencies]
 anyhow.workspace            = true
 assert_matches.workspace    = true
