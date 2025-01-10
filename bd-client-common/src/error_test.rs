@@ -33,6 +33,10 @@ impl Metadata for EmptyMetadata {
   fn collect_inner(&self) -> HashMap<String, String> {
     HashMap::new()
   }
+
+  fn device_id(&self) -> String {
+    "device_id".to_string()
+  }
 }
 
 #[derive(Default)]
@@ -108,6 +112,7 @@ fn attach_error_handler() {
       ("x-sdk-version".to_string(), "1.2.3".to_string()),
       ("x-platform".to_string(), "apple".to_string()),
       ("x-os".to_string(), "ios".to_string()),
+      ("x-device-id".to_string(), "device_id".to_string()),
     ]),
     fields
   );

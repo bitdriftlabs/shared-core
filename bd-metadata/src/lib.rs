@@ -40,6 +40,8 @@ pub trait Metadata: Send {
 
   fn os(&self) -> String;
 
+  fn device_id(&self) -> String;
+
   fn collect_inner(&self) -> HashMap<String, String>;
 
   fn collect(&self) -> HashMap<String, String> {
@@ -53,6 +55,7 @@ pub trait Metadata: Send {
     inner.insert("os".to_string(), self.os());
     inner.insert("platform".to_string(), self.platform().as_str().to_string());
     inner.insert("sdk_version".to_string(), self.sdk_version().to_string());
+    inner.insert("device_id".to_string(), self.device_id());
 
     inner
   }
