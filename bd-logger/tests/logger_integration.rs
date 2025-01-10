@@ -533,7 +533,7 @@ mod tests {
         // If these numbers end up being too variable we do something more generic.
         let bandwidth_tx = upload.get_counter("api:bandwidth_tx", labels! {}).unwrap();
         let bandwidth_rx = upload.get_counter("api:bandwidth_rx", labels! {}).unwrap();
-        assert_eq!(upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}), Some(118));
+        assert_eq!(upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}), Some(135));
         assert!(bandwidth_tx > 100, "bandwidth_tx = {bandwidth_tx}");
         assert!(bandwidth_rx < 400, "bandwidth_rx = {bandwidth_rx}");
         assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(406));

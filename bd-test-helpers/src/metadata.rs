@@ -28,6 +28,10 @@ impl Metadata for EmptyMetadata {
     "ios".to_string()
   }
 
+  fn device_id(&self) -> String {
+    String::new()
+  }
+
   #[must_use]
   fn collect_inner(&self) -> HashMap<String, String> {
     HashMap::new()
