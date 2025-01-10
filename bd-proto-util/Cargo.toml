@@ -5,6 +5,9 @@ name         = "bd-proto-util"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [dependencies]
 anyhow.workspace    = true
 base64ct.workspace  = true

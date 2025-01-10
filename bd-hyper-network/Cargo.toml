@@ -5,6 +5,9 @@ name         = "bd-hyper-network"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [features]
 aws-lc-rs = ["hyper-rustls/aws-lc-rs"]
 default   = ["ring"]

@@ -5,6 +5,9 @@ name         = "bd-profile"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [dependencies]
 axum.workspace              = true
 tikv-jemalloc-ctl.workspace = true

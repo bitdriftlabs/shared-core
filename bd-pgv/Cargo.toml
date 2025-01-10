@@ -5,6 +5,9 @@ name         = "bd-pgv"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [dependencies]
 log.workspace       = true
 protobuf.workspace  = true

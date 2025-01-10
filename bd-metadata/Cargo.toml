@@ -5,6 +5,9 @@ name         = "bd-metadata"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [dependencies]
 anyhow.workspace  = true
 base64.workspace  = true

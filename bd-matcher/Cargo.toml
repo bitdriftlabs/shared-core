@@ -5,6 +5,9 @@ name         = "bd-matcher"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [dependencies]
 anyhow.workspace       = true
 bd-log-primitives.path = "../bd-log-primitives"

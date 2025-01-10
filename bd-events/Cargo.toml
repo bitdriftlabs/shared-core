@@ -5,6 +5,9 @@ name         = "bd-events"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [dependencies]
 bd-runtime.path  = "../bd-runtime"
 bd-shutdown.path = "../bd-shutdown"

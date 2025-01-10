@@ -5,6 +5,9 @@ name         = "bd-runtime"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [dependencies]
 anyhow.workspace      = true
 bd-client-common.path = "../bd-client-common"
