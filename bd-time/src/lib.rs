@@ -17,7 +17,7 @@ use std::future::{Future, IntoFuture};
 use std::sync::Arc;
 use std::time::Duration;
 use time::OffsetDateTime;
-use tokio::time::{interval, interval_at, Interval, MissedTickBehavior, Timeout};
+use tokio::time::{interval, interval_at, Interval, MissedTickBehavior, Sleep, Timeout};
 
 //
 // OffsetDateTimeExt
@@ -109,7 +109,7 @@ impl TimestampExt for Timestamp {
 
 pub trait TimeDurationExt {
   fn advance(self) -> impl Future<Output = ()>;
-  fn sleep(self) -> impl Future<Output = ()>;
+  fn sleep(self) -> Sleep;
   fn interval(self, behavior: MissedTickBehavior) -> Interval;
   fn interval_at(self, behavior: MissedTickBehavior) -> Interval;
   fn jittered_interval_at(self, behavior: MissedTickBehavior) -> Interval;
@@ -123,7 +123,7 @@ impl TimeDurationExt for time::Duration {
     tokio::time::advance(self.unsigned_abs())
   }
 
-  fn sleep(self) -> impl Future<Output = ()> {
+  fn sleep(self) -> Sleep {
     tokio::time::sleep(self.unsigned_abs())
   }
 
