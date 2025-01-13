@@ -29,7 +29,7 @@ pub trait Reporter: Send + Sync {
     &self,
     message: &str,
     details: &Option<String>,
-    metadata: &HashMap<Cow<'_, str>, Cow<'_, str>>,
+    headers: &HashMap<Cow<'_, str>, Cow<'_, str>>,
   );
 }
 
@@ -42,7 +42,7 @@ impl Reporter for DefaultErrorReporter {
     &self,
     message: &str,
     _details: &Option<String>,
-    _fields: &HashMap<Cow<'_, str>, Cow<'_, str>>,
+    _headers: &HashMap<Cow<'_, str>, Cow<'_, str>>,
   ) {
     debug_assert!(false, "unexpected error: {message}");
   }
@@ -109,18 +109,18 @@ impl Reporter for MetadataErrorReporter {
     &self,
     message: &str,
     details: &Option<String>,
-    fields: &HashMap<Cow<'_, str>, Cow<'_, str>>,
+    headers: &HashMap<Cow<'_, str>, Cow<'_, str>>,
   ) {
-    let mut fields = fields.clone();
+    let mut headers = headers.clone();
 
     let session_id = self.session_strategy.session_id();
-    fields.insert("x-session-id".into(), session_id.into());
+    headers.insert("x-session-id".into(), session_id.into());
 
     for (key, value) in self.metadata.collect() {
-      fields.insert(format!("x-{}", key.replace('_', "-")).into(), value.into());
+      headers.insert(format!("x-{}", key.replace('_', "-")).into(), value.into());
     }
 
-    self.reporter.report(message, details, &fields);
+    self.reporter.report(message, details, &headers);
   }
 }
 
