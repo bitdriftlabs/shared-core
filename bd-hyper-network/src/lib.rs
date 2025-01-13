@@ -373,18 +373,17 @@ impl ErrorReporter {
   async fn send_error(
     &self,
     payload: ErrorPayload,
-    fields: &HashMap<String, String>,
+    headers: &HashMap<String, String>,
   ) -> anyhow::Result<()> {
     let uri = format!("{}/v1/sdk-errors", self.api_address);
-    log::trace!("sending error report to {}", uri);
     let mut request = Request::builder()
       .method(Method::POST)
       .uri(uri)
       .header("content-type", "application/json")
       .header("x-bitdrift-api-key", &self.api_key);
 
-    for (k, v) in fields {
-      request = request.header(format!("x-{}", k.replace('_', "-")), v);
+    for (k, v) in headers {
+      request = request.header(k, v);
     }
 
     self
