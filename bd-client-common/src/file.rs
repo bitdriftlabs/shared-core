@@ -33,8 +33,10 @@ pub fn read_compressed_protobuf<T: protobuf::Message>(
 
   // The files are likely not large enough to deal with streaming decompression on top of flate2.
   // For now we just read the entire thing and then decompress it in memory. We can consider
-  // streaming later.
-  let mut decoder = ZlibDecoder::new(compressed_bytes);
+  // streaming later. Generally these are small files so we use a small buffer to avoid needless
+  // allocation.
+  // TODO(mattklein123): Zero-initializing is not necessary here but we will defer this for now.
+  let mut decoder = ZlibDecoder::new_with_buf(compressed_bytes, vec![0; 1024]);
   // In the future if/when we switch to using Bytes/Chars in the compiled proto it may be more
   // efficient to read out the uncompressed into Bytes and then parse from that.
   Ok(T::parse_from_reader(&mut decoder)?)

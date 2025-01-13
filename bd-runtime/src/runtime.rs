@@ -779,7 +779,7 @@ pub mod api {
   duration_feature_flag!(
     MaxBackoffInterval,
     "api.max_backoff_interval_ms",
-    5.minutes()
+    20.minutes()
   );
 
   // This controls the initial backoff used when connecting to the API backend after a sucessful
