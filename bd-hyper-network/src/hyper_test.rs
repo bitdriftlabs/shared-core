@@ -52,7 +52,7 @@ fn error_reporter() {
   handle.report(
     "foo",
     &Some("other".to_string()),
-    &[("header".into(), "value".into())].into(),
+    &[("x-header".into(), "value".into())].into(),
   );
 
   let reported_error = test_server.rx.blocking_recv().unwrap();
