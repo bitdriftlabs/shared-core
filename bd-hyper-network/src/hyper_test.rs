@@ -40,7 +40,8 @@ async fn connect_failure() {
 fn error_reporter() {
   let mut test_server = TestServer::new();
 
-  let (reporter, handle) = super::ErrorReporter::new(test_server.address.clone());
+  let (reporter, handle) =
+    super::ErrorReporter::new(test_server.address.clone(), "api-key".to_string());
 
   std::thread::spawn(move || {
     tokio::runtime::Runtime::new()
@@ -122,6 +123,11 @@ async fn handler(
   headers: HeaderMap,
   payload: Json<ErrorPayload>,
 ) {
+  assert_eq!(
+    headers.get("x-bitdrift-api-key"),
+    Some(&"api-key".parse().unwrap())
+  );
+
   tx.send(ReportedError {
     message: payload.0.message,
     details: payload.0.details.clone(),

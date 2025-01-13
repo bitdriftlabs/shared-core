@@ -331,13 +331,14 @@ pub type ErrorReport = (ErrorPayload, HashMap<String, String>);
 /// handle.
 pub struct ErrorReporter {
   api_address: String,
+  api_key: String,
   client: Client<HttpsConnector<HttpConnector>, String>,
   rx: tokio::sync::mpsc::Receiver<ErrorReport>,
 }
 
 impl ErrorReporter {
   #[must_use]
-  pub fn new(api_address: String) -> (Self, ErrorReporterHandle) {
+  pub fn new(api_address: String, api_key: String) -> (Self, ErrorReporterHandle) {
     let client = Client::builder(TokioExecutor::new())
       .http2_only(true)
       .build(make_tls_connector());
@@ -348,6 +349,7 @@ impl ErrorReporter {
     (
       Self {
         api_address,
+        api_key,
         client,
         rx,
       },
@@ -378,7 +380,8 @@ impl ErrorReporter {
     let mut request = Request::builder()
       .method(Method::POST)
       .uri(uri)
-      .header("content-type", "application/json");
+      .header("content-type", "application/json")
+      .header("x-bitdrift-api-key", &self.api_key);
 
     for (k, v) in fields {
       request = request.header(format!("x-{}", k.replace('_', "-")), v);
