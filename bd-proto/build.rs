@@ -201,7 +201,6 @@ fn main() {
     )
     .includes(["../api/thirdparty", "../api/src"])
     .inputs([
-      "../api/thirdparty/gogoproto/gogo.proto",
       "../api/thirdparty/prometheus/prompb/remote.proto",
       "../api/thirdparty/prometheus/prompb/types.proto",
     ])
