@@ -225,6 +225,12 @@ pub mod metric_metadata {
         DIRECTGAUGE = 100,
         // @@protoc_insertion_point(enum_value:prometheus.MetricMetadata.MetricType.DELTAGAUGE)
         DELTAGAUGE = 101,
+        // @@protoc_insertion_point(enum_value:prometheus.MetricMetadata.MetricType.TIMER)
+        TIMER = 102,
+        // @@protoc_insertion_point(enum_value:prometheus.MetricMetadata.MetricType.BULKTIMER)
+        BULKTIMER = 103,
+        // @@protoc_insertion_point(enum_value:prometheus.MetricMetadata.MetricType.DIRECTCOUNTER)
+        DIRECTCOUNTER = 104,
     }
 
     impl ::protobuf::Enum for MetricType {
@@ -246,6 +252,9 @@ pub mod metric_metadata {
                 7 => ::std::option::Option::Some(MetricType::STATESET),
                 100 => ::std::option::Option::Some(MetricType::DIRECTGAUGE),
                 101 => ::std::option::Option::Some(MetricType::DELTAGAUGE),
+                102 => ::std::option::Option::Some(MetricType::TIMER),
+                103 => ::std::option::Option::Some(MetricType::BULKTIMER),
+                104 => ::std::option::Option::Some(MetricType::DIRECTCOUNTER),
                 _ => ::std::option::Option::None
             }
         }
@@ -262,6 +271,9 @@ pub mod metric_metadata {
                 "STATESET" => ::std::option::Option::Some(MetricType::STATESET),
                 "DIRECTGAUGE" => ::std::option::Option::Some(MetricType::DIRECTGAUGE),
                 "DELTAGAUGE" => ::std::option::Option::Some(MetricType::DELTAGAUGE),
+                "TIMER" => ::std::option::Option::Some(MetricType::TIMER),
+                "BULKTIMER" => ::std::option::Option::Some(MetricType::BULKTIMER),
+                "DIRECTCOUNTER" => ::std::option::Option::Some(MetricType::DIRECTCOUNTER),
                 _ => ::std::option::Option::None
             }
         }
@@ -277,6 +289,9 @@ pub mod metric_metadata {
             MetricType::STATESET,
             MetricType::DIRECTGAUGE,
             MetricType::DELTAGAUGE,
+            MetricType::TIMER,
+            MetricType::BULKTIMER,
+            MetricType::DIRECTCOUNTER,
         ];
     }
 
@@ -298,6 +313,9 @@ pub mod metric_metadata {
                 MetricType::STATESET => 7,
                 MetricType::DIRECTGAUGE => 8,
                 MetricType::DELTAGAUGE => 9,
+                MetricType::TIMER => 10,
+                MetricType::BULKTIMER => 11,
+                MetricType::DIRECTCOUNTER => 12,
             };
             Self::enum_descriptor().value_by_index(index)
         }
@@ -326,6 +344,8 @@ pub struct Sample {
     pub timestamp: i64,
     // @@protoc_insertion_point(field:prometheus.Sample.sample_rate)
     pub sample_rate: f64,
+    // @@protoc_insertion_point(field:prometheus.Sample.bulk_values)
+    pub bulk_values: ::std::vec::Vec<f64>,
     // special fields
     // @@protoc_insertion_point(special_field:prometheus.Sample.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -343,7 +363,7 @@ impl Sample {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut fields = ::std::vec::Vec::with_capacity(4);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "value",
@@ -359,6 +379,11 @@ impl Sample {
             "sample_rate",
             |m: &Sample| { &m.sample_rate },
             |m: &mut Sample| { &mut m.sample_rate },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "bulk_values",
+            |m: &Sample| { &m.bulk_values },
+            |m: &mut Sample| { &mut m.bulk_values },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Sample>(
             "Sample",
@@ -387,6 +412,12 @@ impl ::protobuf::Message for Sample {
                 801 => {
                     self.sample_rate = is.read_double()?;
                 },
+                810 => {
+                    is.read_repeated_packed_double_into(&mut self.bulk_values)?;
+                },
+                809 => {
+                    self.bulk_values.push(is.read_double()?);
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -408,6 +439,7 @@ impl ::protobuf::Message for Sample {
         if self.sample_rate != 0. {
             my_size += 2 + 8;
         }
+        my_size += ::protobuf::rt::vec_packed_double_size(101, &self.bulk_values);
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -423,6 +455,7 @@ impl ::protobuf::Message for Sample {
         if self.sample_rate != 0. {
             os.write_double(100, self.sample_rate)?;
         }
+        os.write_repeated_packed_double(101, &self.bulk_values)?;
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -443,6 +476,7 @@ impl ::protobuf::Message for Sample {
         self.value = 0.;
         self.timestamp = 0;
         self.sample_rate = 0.;
+        self.bulk_values.clear();
         self.special_fields.clear();
     }
 
@@ -451,6 +485,7 @@ impl ::protobuf::Message for Sample {
             value: 0.,
             timestamp: 0,
             sample_rate: 0.,
+            bulk_values: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -1904,46 +1939,46 @@ impl ::protobuf::reflect::ProtobufValue for ChunkedSeries {
 }
 
 static file_descriptor_proto_data: &'static [u8] = b"\
-    \n\x1dprometheus/prompb/types.proto\x12\nprometheus\x1a\x14gogoproto/gog\
-    o.proto\"\xbe\x02\n\x0eMetricMetadata\x129\n\x04type\x18\x01\x20\x01(\
-    \x0e2%.prometheus.MetricMetadata.MetricTypeR\x04type\x12,\n\x12metric_fa\
-    mily_name\x18\x02\x20\x01(\tR\x10metricFamilyName\x12\x12\n\x04help\x18\
-    \x04\x20\x01(\tR\x04help\x12\x12\n\x04unit\x18\x05\x20\x01(\tR\x04unit\"\
-    \x9a\x01\n\nMetricType\x12\x0b\n\x07UNKNOWN\x10\0\x12\x0b\n\x07COUNTER\
-    \x10\x01\x12\t\n\x05GAUGE\x10\x02\x12\r\n\tHISTOGRAM\x10\x03\x12\x12\n\
-    \x0eGAUGEHISTOGRAM\x10\x04\x12\x0b\n\x07SUMMARY\x10\x05\x12\x08\n\x04INF\
-    O\x10\x06\x12\x0c\n\x08STATESET\x10\x07\x12\x0f\n\x0bDIRECTGAUGE\x10d\
-    \x12\x0e\n\nDELTAGAUGE\x10e\"]\n\x06Sample\x12\x14\n\x05value\x18\x01\
-    \x20\x01(\x01R\x05value\x12\x1c\n\ttimestamp\x18\x02\x20\x01(\x03R\ttime\
-    stamp\x12\x1f\n\x0bsample_rate\x18d\x20\x01(\x01R\nsampleRate\"o\n\x08Ex\
-    emplar\x12/\n\x06labels\x18\x01\x20\x03(\x0b2\x11.prometheus.LabelR\x06l\
-    abelsB\x04\xc8\xde\x1f\0\x12\x14\n\x05value\x18\x02\x20\x01(\x01R\x05val\
-    ue\x12\x1c\n\ttimestamp\x18\x03\x20\x01(\x03R\ttimestamp\"\xab\x01\n\nTi\
-    meSeries\x12/\n\x06labels\x18\x01\x20\x03(\x0b2\x11.prometheus.LabelR\
-    \x06labelsB\x04\xc8\xde\x1f\0\x122\n\x07samples\x18\x02\x20\x03(\x0b2\
-    \x12.prometheus.SampleR\x07samplesB\x04\xc8\xde\x1f\0\x128\n\texemplars\
-    \x18\x03\x20\x03(\x0b2\x14.prometheus.ExemplarR\texemplarsB\x04\xc8\xde\
-    \x1f\0\"1\n\x05Label\x12\x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12\
-    \x14\n\x05value\x18\x02\x20\x01(\tR\x05value\"9\n\x06Labels\x12/\n\x06la\
-    bels\x18\x01\x20\x03(\x0b2\x11.prometheus.LabelR\x06labelsB\x04\xc8\xde\
-    \x1f\0\"\x95\x01\n\x0cLabelMatcher\x121\n\x04type\x18\x01\x20\x01(\x0e2\
-    \x1d.prometheus.LabelMatcher.TypeR\x04type\x12\x12\n\x04name\x18\x02\x20\
-    \x01(\tR\x04name\x12\x14\n\x05value\x18\x03\x20\x01(\tR\x05value\"(\n\
-    \x04Type\x12\x06\n\x02EQ\x10\0\x12\x07\n\x03NEQ\x10\x01\x12\x06\n\x02RE\
-    \x10\x02\x12\x07\n\x03NRE\x10\x03\"\xb1\x01\n\tReadHints\x12\x17\n\x07st\
-    ep_ms\x18\x01\x20\x01(\x03R\x06stepMs\x12\x12\n\x04func\x18\x02\x20\x01(\
-    \tR\x04func\x12\x19\n\x08start_ms\x18\x03\x20\x01(\x03R\x07startMs\x12\
-    \x15\n\x06end_ms\x18\x04\x20\x01(\x03R\x05endMs\x12\x1a\n\x08grouping\
-    \x18\x05\x20\x03(\tR\x08grouping\x12\x0e\n\x02by\x18\x06\x20\x01(\x08R\
-    \x02by\x12\x19\n\x08range_ms\x18\x07\x20\x01(\x03R\x07rangeMs\"\xad\x01\
-    \n\x05Chunk\x12\x1e\n\x0bmin_time_ms\x18\x01\x20\x01(\x03R\tminTimeMs\
-    \x12\x1e\n\x0bmax_time_ms\x18\x02\x20\x01(\x03R\tmaxTimeMs\x12.\n\x04typ\
-    e\x18\x03\x20\x01(\x0e2\x1a.prometheus.Chunk.EncodingR\x04type\x12\x12\n\
-    \x04data\x18\x04\x20\x01(\x0cR\x04data\"\x20\n\x08Encoding\x12\x0b\n\x07\
-    UNKNOWN\x10\0\x12\x07\n\x03XOR\x10\x01\"q\n\rChunkedSeries\x12/\n\x06lab\
-    els\x18\x01\x20\x03(\x0b2\x11.prometheus.LabelR\x06labelsB\x04\xc8\xde\
-    \x1f\0\x12/\n\x06chunks\x18\x02\x20\x03(\x0b2\x11.prometheus.ChunkR\x06c\
-    hunksB\x04\xc8\xde\x1f\0B\x08Z\x06prompbb\x06proto3\
+    \n\x1dprometheus/prompb/types.proto\x12\nprometheus\"\xeb\x02\n\x0eMetri\
+    cMetadata\x129\n\x04type\x18\x01\x20\x01(\x0e2%.prometheus.MetricMetadat\
+    a.MetricTypeR\x04type\x12,\n\x12metric_family_name\x18\x02\x20\x01(\tR\
+    \x10metricFamilyName\x12\x12\n\x04help\x18\x04\x20\x01(\tR\x04help\x12\
+    \x12\n\x04unit\x18\x05\x20\x01(\tR\x04unit\"\xc7\x01\n\nMetricType\x12\
+    \x0b\n\x07UNKNOWN\x10\0\x12\x0b\n\x07COUNTER\x10\x01\x12\t\n\x05GAUGE\
+    \x10\x02\x12\r\n\tHISTOGRAM\x10\x03\x12\x12\n\x0eGAUGEHISTOGRAM\x10\x04\
+    \x12\x0b\n\x07SUMMARY\x10\x05\x12\x08\n\x04INFO\x10\x06\x12\x0c\n\x08STA\
+    TESET\x10\x07\x12\x0f\n\x0bDIRECTGAUGE\x10d\x12\x0e\n\nDELTAGAUGE\x10e\
+    \x12\t\n\x05TIMER\x10f\x12\r\n\tBULKTIMER\x10g\x12\x11\n\rDIRECTCOUNTER\
+    \x10h\"~\n\x06Sample\x12\x14\n\x05value\x18\x01\x20\x01(\x01R\x05value\
+    \x12\x1c\n\ttimestamp\x18\x02\x20\x01(\x03R\ttimestamp\x12\x1f\n\x0bsamp\
+    le_rate\x18d\x20\x01(\x01R\nsampleRate\x12\x1f\n\x0bbulk_values\x18e\x20\
+    \x03(\x01R\nbulkValues\"i\n\x08Exemplar\x12)\n\x06labels\x18\x01\x20\x03\
+    (\x0b2\x11.prometheus.LabelR\x06labels\x12\x14\n\x05value\x18\x02\x20\
+    \x01(\x01R\x05value\x12\x1c\n\ttimestamp\x18\x03\x20\x01(\x03R\ttimestam\
+    p\"\x99\x01\n\nTimeSeries\x12)\n\x06labels\x18\x01\x20\x03(\x0b2\x11.pro\
+    metheus.LabelR\x06labels\x12,\n\x07samples\x18\x02\x20\x03(\x0b2\x12.pro\
+    metheus.SampleR\x07samples\x122\n\texemplars\x18\x03\x20\x03(\x0b2\x14.p\
+    rometheus.ExemplarR\texemplars\"1\n\x05Label\x12\x12\n\x04name\x18\x01\
+    \x20\x01(\tR\x04name\x12\x14\n\x05value\x18\x02\x20\x01(\tR\x05value\"3\
+    \n\x06Labels\x12)\n\x06labels\x18\x01\x20\x03(\x0b2\x11.prometheus.Label\
+    R\x06labels\"\x95\x01\n\x0cLabelMatcher\x121\n\x04type\x18\x01\x20\x01(\
+    \x0e2\x1d.prometheus.LabelMatcher.TypeR\x04type\x12\x12\n\x04name\x18\
+    \x02\x20\x01(\tR\x04name\x12\x14\n\x05value\x18\x03\x20\x01(\tR\x05value\
+    \"(\n\x04Type\x12\x06\n\x02EQ\x10\0\x12\x07\n\x03NEQ\x10\x01\x12\x06\n\
+    \x02RE\x10\x02\x12\x07\n\x03NRE\x10\x03\"\xb1\x01\n\tReadHints\x12\x17\n\
+    \x07step_ms\x18\x01\x20\x01(\x03R\x06stepMs\x12\x12\n\x04func\x18\x02\
+    \x20\x01(\tR\x04func\x12\x19\n\x08start_ms\x18\x03\x20\x01(\x03R\x07star\
+    tMs\x12\x15\n\x06end_ms\x18\x04\x20\x01(\x03R\x05endMs\x12\x1a\n\x08grou\
+    ping\x18\x05\x20\x03(\tR\x08grouping\x12\x0e\n\x02by\x18\x06\x20\x01(\
+    \x08R\x02by\x12\x19\n\x08range_ms\x18\x07\x20\x01(\x03R\x07rangeMs\"\xad\
+    \x01\n\x05Chunk\x12\x1e\n\x0bmin_time_ms\x18\x01\x20\x01(\x03R\tminTimeM\
+    s\x12\x1e\n\x0bmax_time_ms\x18\x02\x20\x01(\x03R\tmaxTimeMs\x12.\n\x04ty\
+    pe\x18\x03\x20\x01(\x0e2\x1a.prometheus.Chunk.EncodingR\x04type\x12\x12\
+    \n\x04data\x18\x04\x20\x01(\x0cR\x04data\"\x20\n\x08Encoding\x12\x0b\n\
+    \x07UNKNOWN\x10\0\x12\x07\n\x03XOR\x10\x01\"e\n\rChunkedSeries\x12)\n\
+    \x06labels\x18\x01\x20\x03(\x0b2\x11.prometheus.LabelR\x06labels\x12)\n\
+    \x06chunks\x18\x02\x20\x03(\x0b2\x11.prometheus.ChunkR\x06chunksb\x06pro\
+    to3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1960,8 +1995,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(1);
-            deps.push(super::gogo::file_descriptor().clone());
+            let mut deps = ::std::vec::Vec::with_capacity(0);
             let mut messages = ::std::vec::Vec::with_capacity(10);
             messages.push(MetricMetadata::generated_message_descriptor_data());
             messages.push(Sample::generated_message_descriptor_data());

@@ -956,10 +956,9 @@ impl ::protobuf::reflect::ProtobufValue for ChunkedReadResponse {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n\x1eprometheus/prompb/remote.proto\x12\nprometheus\x1a\x1dprometheus/p\
-    rompb/types.proto\x1a\x14gogoproto/gogo.proto\"\xca\x01\n\x0cWriteReques\
-    t\x12<\n\ntimeseries\x18\x01\x20\x03(\x0b2\x16.prometheus.TimeSeriesR\nt\
-    imeseriesB\x04\xc8\xde\x1f\0\x12<\n\x08metadata\x18\x03\x20\x03(\x0b2\
-    \x1a.prometheus.MetricMetadataR\x08metadataB\x04\xc8\xde\x1f\0\x128\n\
+    rompb/types.proto\"\xbe\x01\n\x0cWriteRequest\x126\n\ntimeseries\x18\x01\
+    \x20\x03(\x0b2\x16.prometheus.TimeSeriesR\ntimeseries\x126\n\x08metadata\
+    \x18\x03\x20\x03(\x0b2\x1a.prometheus.MetricMetadataR\x08metadata\x128\n\
     \x18failthrough_statsd_lines\x18\x11\x20\x03(\tR\x16failthroughStatsdLin\
     esJ\x04\x08\x02\x10\x03\"\xce\x01\n\x0bReadRequest\x12+\n\x07queries\x18\
     \x01\x20\x03(\x0b2\x11.prometheus.QueryR\x07queries\x12\\\n\x17accepted_\
@@ -975,7 +974,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     es\x18\x01\x20\x03(\x0b2\x16.prometheus.TimeSeriesR\ntimeseries\"x\n\x13\
     ChunkedReadResponse\x12@\n\x0echunked_series\x18\x01\x20\x03(\x0b2\x19.p\
     rometheus.ChunkedSeriesR\rchunkedSeries\x12\x1f\n\x0bquery_index\x18\x02\
-    \x20\x01(\x03R\nqueryIndexB\x08Z\x06prompbb\x06proto3\
+    \x20\x01(\x03R\nqueryIndexb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -992,9 +991,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(2);
+            let mut deps = ::std::vec::Vec::with_capacity(1);
             deps.push(super::types::file_descriptor().clone());
-            deps.push(super::gogo::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(6);
             messages.push(WriteRequest::generated_message_descriptor_data());
             messages.push(ReadRequest::generated_message_descriptor_data());
