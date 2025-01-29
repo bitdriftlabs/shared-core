@@ -48,7 +48,7 @@ arbitrary       = { version = "1.4.1", features = ["derive"] }
 arc-swap        = "1.7.1"
 assert_matches  = "1.5.0"
 async-trait     = "0.1.85"
-axum            = { version = "0.8.1", features = ["http2", "macros"] }
+axum            = { version = "0.8.1", features = ["http2", "macros", "ws"] }
 axum-server     = { version = "0.7.1", features = ["tls-rustls-no-provider"] }
 backoff         = "0.4.0"
 base64          = "0.22.1"

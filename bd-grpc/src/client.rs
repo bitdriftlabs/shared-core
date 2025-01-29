@@ -11,13 +11,7 @@ use crate::error::{Error, Result};
 use crate::service::ServiceMethod;
 use crate::status::{Code, Status};
 use crate::{
-  finalize_decompression,
-  StreamingApi,
-  StreamingApiReceiver,
-  CONNECT_PROTOCOL_VERSION,
-  CONTENT_ENCODING_SNAPPY,
-  GRPC_STATUS,
-  TRANSFER_ENCODING_TRAILERS,
+  finalize_decompression, BodyFramer, SingleFrame, StreamingApi, StreamingApiReceiver, CONNECT_PROTOCOL_VERSION, CONTENT_ENCODING_SNAPPY, GRPC_STATUS, TRANSFER_ENCODING_TRAILERS
 };
 use assert_matches::debug_assert_matches;
 use axum::body::Body;
@@ -32,8 +26,10 @@ use bd_grpc_codec::{
   GRPC_ENCODING_HEADER,
 };
 use bd_time::TimeDurationExt;
+use futures::StreamExt;
 use http::header::{CONTENT_ENCODING, CONTENT_TYPE, TRANSFER_ENCODING};
 use http::{HeaderMap, Uri};
+use http_body::Frame;
 use http_body_util::{BodyExt, StreamBody};
 use hyper::body::Incoming;
 use hyper_util::client::legacy::connect::{Connect, HttpConnector};
@@ -296,9 +292,13 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
     validate: bool,
     compression: Option<bd_grpc_codec::Compression>,
     optimize_for: OptimizeFor,
-  ) -> Result<StreamingApi<OutgoingType, IncomingType>> {
+  ) -> Result<StreamingApi<OutgoingType, IncomingType, BodyFramer>> {
     let (tx, rx) = mpsc::channel(1);
-    let body = StreamBody::new(ReceiverStream::new(rx));
+    let body = StreamBody::new(ReceiverStream::new(rx).map(|f| match f {
+      Ok(SingleFrame::Data(data)) => Ok(Frame::data(data)),
+      Ok(SingleFrame::Trailers(trailers)) => Ok(Frame::trailers(trailers)),
+      Err(e) => Err(e),
+    }));
 
     match compression {
       None => {},
@@ -347,7 +347,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
     validate: bool,
     optimize_for: OptimizeFor,
     connect_protocol: Option<ConnectProtocolType>,
-  ) -> Result<StreamingApiReceiver<IncomingType>> {
+  ) -> Result<StreamingApiReceiver<IncomingType, BodyFramer>> {
     let mut encoder = Encoder::new(None);
     let response = self
       .common_request(
@@ -360,7 +360,9 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
     let (parts, body) = response.into_parts();
     Ok(StreamingApiReceiver::new(
       parts.headers,
-      Body::new(body),
+      BodyFramer {
+        body: Body::new(body),
+      },
       validate,
       optimize_for,
       None,

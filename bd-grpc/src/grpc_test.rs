@@ -10,22 +10,7 @@ use crate::compression::{Compression, ConnectSafeCompressionLayer};
 use crate::connect_protocol::ConnectProtocolType;
 use crate::generated::proto::test::{EchoRequest, EchoResponse};
 use crate::{
-  make_server_streaming_router,
-  make_unary_router,
-  new_grpc_response,
-  Code,
-  Error,
-  Handler,
-  Result,
-  ServerStreamingHandler,
-  ServiceMethod,
-  Status,
-  StreamStats,
-  StreamingApi,
-  StreamingApiSender,
-  CONNECT_PROTOCOL_VERSION,
-  CONTENT_TYPE,
-  CONTENT_TYPE_PROTO,
+  make_server_streaming_router, make_unary_router, new_grpc_response, BodyFramer, Code, Error, Handler, Result, ServerStreamingHandler, ServiceMethod, SingleFrame, Status, StreamStats, StreamingApi, StreamingApiSender, CONNECT_PROTOCOL_VERSION, CONTENT_TYPE, CONTENT_TYPE_PROTO
 };
 use assert_matches::assert_matches;
 use async_trait::async_trait;
@@ -39,8 +24,9 @@ use bd_server_stats::stats::CounterWrapper;
 use bd_server_stats::test::util::stats::{self, Helper};
 use bd_time::TimeDurationExt;
 use bytes::Bytes;
-use futures::poll;
+use futures::{poll, StreamExt};
 use http::{Extensions, HeaderMap};
+use http_body::Frame;
 use http_body_util::StreamBody;
 use parking_lot::Mutex;
 use prometheus::labels;
@@ -389,11 +375,17 @@ async fn read_stop() {
       let (parts, body) = request.into_parts();
       let (response_sender, response_body) = mpsc::channel(1);
       let response = new_grpc_response(
-        Body::new(StreamBody::new(ReceiverStream::new(response_body))),
+        Body::new(StreamBody::new(ReceiverStream::new(response_body).map(
+          |f| match f {
+            Ok(SingleFrame::Data(data)) => Ok(Frame::data(data)),
+            Ok(SingleFrame::Trailers(trailers)) => Ok(Frame::trailers(trailers)),
+            Err(e) => Err(e),
+          },
+        ))),
         None,
         None,
       );
-      let api = StreamingApi::<EchoResponse, EchoRequest>::new(
+      let api = StreamingApi::<EchoResponse, EchoRequest, BodyFramer>::new(
         response_sender,
         parts.headers,
         body,
