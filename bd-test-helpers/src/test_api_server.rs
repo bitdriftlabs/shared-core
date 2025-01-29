@@ -10,7 +10,7 @@ use axum::extract::{Request, State};
 use axum::routing::post;
 use axum_server::tls_rustls::RustlsConfig;
 use axum_server::Handle;
-use bd_grpc::finalize_response_compression;
+use bd_grpc::{finalize_response_compression, SingleFrame};
 use bd_grpc_codec::{Compression, OptimizeFor};
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::client::api::api_response::Response_type;
@@ -37,6 +37,8 @@ use bd_proto::protos::client::api::{
 };
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_time::{TimeDurationExt, ToProtoDuration};
+use futures::StreamExt;
+use http_body::Frame;
 use http_body_util::StreamBody;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -406,7 +408,11 @@ async fn mux(
   });
 
   bd_grpc::new_grpc_response(
-    Body::new(StreamBody::new(ReceiverStream::new(rx))),
+    Body::new(StreamBody::new(ReceiverStream::new(rx).map(|f| match f {
+      Ok(SingleFrame::Data(data)) => Ok(Frame::data(data)),
+      Ok(SingleFrame::Trailers(trailers)) => Ok(Frame::trailers(trailers)),
+      Err(e) => Err(e),
+    }))),
     compression,
     None,
   )

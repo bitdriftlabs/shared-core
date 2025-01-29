@@ -23,6 +23,7 @@ pub mod status;
 
 use crate::error::{Error, Result};
 use axum::body::{to_bytes, Body};
+use axum::extract::ws::WebSocket;
 use axum::extract::Request;
 use axum::http::HeaderValue;
 use axum::response::Response;
@@ -44,6 +45,7 @@ use bd_log::rate_limit_log::WarnTracker;
 use bd_stats_common::DynCounter;
 use bytes::{BufMut, Bytes, BytesMut};
 use connect_protocol::{ConnectProtocolType, EndOfStreamResponse, ErrorResponse, ToContentType};
+use futures::StreamExt;
 use http::header::{CONTENT_ENCODING, CONTENT_TYPE};
 use http::{Extensions, HeaderMap};
 use http_body::Frame;
@@ -70,7 +72,7 @@ const CONTENT_TYPE_JSON: &str = "application/json";
 const TRANSFER_ENCODING_TRAILERS: &str = "trailers";
 const CONNECT_PROTOCOL_VERSION: &str = "connect-protocol-version";
 
-pub type BodySender = mpsc::Sender<std::result::Result<Frame<Bytes>, BoxError>>;
+pub type BodySender = mpsc::Sender<std::result::Result<SingleFrame, BoxError>>;
 
 //
 // StreamingApi
@@ -78,12 +80,14 @@ pub type BodySender = mpsc::Sender<std::result::Result<Frame<Bytes>, BoxError>>;
 
 // Handle around a bidirectional streaming API. Allows for both sending outgoing messages and
 // receiving response messages.
-pub struct StreamingApi<OutgoingType: Message, IncomingType: MessageFull> {
+pub struct StreamingApi<OutgoingType: Message, IncomingType: MessageFull, F> {
   sender: StreamingApiSender<OutgoingType>,
-  receiver: StreamingApiReceiver<IncomingType>,
+  receiver: StreamingApiReceiver<IncomingType, F>,
 }
 
-impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType, IncomingType> {
+impl<OutgoingType: Message, IncomingType: MessageFull>
+  StreamingApi<OutgoingType, IncomingType, BodyFramer>
+{
   // Create a new streaming API handler.
   #[must_use]
   pub fn new(
@@ -100,10 +104,50 @@ impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType
     let sender = StreamingApiSender::new(tx, compression, false);
     Self {
       sender,
-      receiver: StreamingApiReceiver::new(headers, body, validate, optimize_for, read_stop),
+      receiver: StreamingApiReceiver::new(
+        headers,
+        BodyFramer { body },
+        validate,
+        optimize_for,
+        read_stop,
+      ),
     }
   }
+}
 
+impl<OutgoingType: Message, IncomingType: MessageFull>
+  StreamingApi<OutgoingType, IncomingType, WebSocketFramer>
+{
+  // Create a new streaming API handler using the websocket API.
+  #[must_use]
+  pub fn new_from_websocket(
+    tx: BodySender,
+    headers: HeaderMap,
+    websocket: WebSocket,
+    validate: bool,
+    compression: Option<bd_grpc_codec::Compression>,
+    optimize_for: OptimizeFor,
+    read_stop: Option<watch::Receiver<bool>>,
+  ) -> Self {
+    // TODO(mattklein123): Support connect protocol for bidirectional streaming. We have no
+    // current use case for this right now.
+    let sender = StreamingApiSender::new(tx, compression, false);
+    Self {
+      sender,
+      receiver: StreamingApiReceiver::new(
+        headers,
+        WebSocketFramer { websocket },
+        validate,
+        optimize_for,
+        read_stop,
+      ),
+    }
+  }
+}
+
+impl<OutgoingType: Message, IncomingType: MessageFull, F: Framer>
+  StreamingApi<OutgoingType, IncomingType, F>
+{
   // Send a message on the stream.
   pub async fn send(&mut self, message: OutgoingType) -> Result<()> {
     self.sender.send(message).await
@@ -153,24 +197,79 @@ impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType
 }
 
 //
+// SingleFrame
+//
+
+pub enum SingleFrame {
+  Data(Bytes),
+  Trailers(HeaderMap),
+}
+
+#[async_trait::async_trait]
+pub trait Framer {
+  async fn next(&mut self) -> Option<Result<SingleFrame>>;
+}
+
+pub struct WebSocketFramer {
+  websocket: WebSocket,
+}
+
+#[async_trait::async_trait]
+impl Framer for WebSocketFramer {
+  async fn next(&mut self) -> Option<Result<SingleFrame>> {
+    self.websocket.recv().await.map(|r| {
+      r.map(|message| SingleFrame::Data(message.into_data()))
+        .map_err(|e| Error::BodyStream(e.into()))
+    })
+  }
+}
+
+//
+// BodyFramer
+//
+
+pub struct BodyFramer {
+  body: Body,
+}
+
+#[async_trait::async_trait]
+impl Framer for BodyFramer {
+  async fn next(&mut self) -> Option<Result<SingleFrame>> {
+    let frame = self.body.frame().await?;
+
+    let Ok(frame) = frame else {
+      return Some(Err(Error::BodyStream(frame.err().unwrap().into())));
+    };
+
+    if frame.is_data() {
+      return Some(Ok(SingleFrame::Data(frame.into_data().unwrap())));
+    } else if frame.is_trailers() {
+      return Some(Ok(SingleFrame::Trailers(frame.into_trailers().unwrap())));
+    } else {
+      return None;
+    }
+  }
+}
+
+//
 // StreamingApiReceiver
 //
 
 // Handle around an API stream receiving messages.
-pub struct StreamingApiReceiver<IncomingType: DecodingResult> {
+pub struct StreamingApiReceiver<IncomingType: DecodingResult, F> {
   headers: HeaderMap,
-  body: Body,
+  framer: F,
   decoder: Decoder<IncomingType>,
   validate: bool,
   read_stop: Option<watch::Receiver<bool>>,
 }
 
-impl<IncomingType: DecodingResult> StreamingApiReceiver<IncomingType> {
+impl<IncomingType: DecodingResult, F: Framer> StreamingApiReceiver<IncomingType, F> {
   // Create a new streaming API handler.
   #[must_use]
   pub fn new(
     headers: HeaderMap,
-    body: Body,
+    framer: F,
     validate: bool,
     optimize_for: OptimizeFor,
     read_stop: Option<watch::Receiver<bool>>,
@@ -195,7 +294,7 @@ impl<IncomingType: DecodingResult> StreamingApiReceiver<IncomingType> {
 
     Self {
       headers,
-      body,
+      framer,
       decoder: Decoder::new(decompression, optimize_for),
       validate,
       read_stop,
@@ -221,7 +320,7 @@ impl<IncomingType: DecodingResult> StreamingApiReceiver<IncomingType> {
       }
 
       let frame = tokio::select! {
-        frame = self.body.frame() => frame,
+        frame = self.framer.next() => frame,
         _ = async {
               self.read_stop.as_mut().unwrap().changed().await
             }, if self.read_stop.is_some() => {
@@ -231,44 +330,47 @@ impl<IncomingType: DecodingResult> StreamingApiReceiver<IncomingType> {
 
       if let Some(frame) = frame {
         let frame = frame.map_err(|e| Error::BodyStream(e.into()))?;
-        if frame.is_data() {
-          let messages = self.decoder.decode_data(frame.data_ref().unwrap())?;
-          if self.validate {
-            for message in &messages {
-              if let Some(message) = message.message() {
-                bd_pgv::proto_validate::validate(message)
-                  .inspect_err(|e| log::debug!("validation failure: {e}"))?;
+        match frame {
+          SingleFrame::Data(data) => {
+            let messages = self.decoder.decode_data(&data)?;
+            if self.validate {
+              for message in &messages {
+                if let Some(message) = message.message() {
+                  bd_pgv::proto_validate::validate(message)
+                    .inspect_err(|e| log::debug!("validation failure: {e}"))?;
+                }
               }
             }
-          }
-          if !messages.is_empty() {
-            return Ok(Some(messages));
-          }
-        } else if let Some(trailers) = frame.trailers_ref() {
-          let (grpc_status, grpc_message) = trailers.iter().fold((None, None), |acc, (k, v)| {
-            if k == GRPC_STATUS {
-              (Some(v), acc.1)
-            } else if k == GRPC_MESSAGE {
-              (acc.0, Some(v))
-            } else {
-              acc
+            if !messages.is_empty() {
+              return Ok(Some(messages));
             }
-          });
+          },
+          SingleFrame::Trailers(trailers) => {
+            let (grpc_status, grpc_message) = trailers.iter().fold((None, None), |acc, (k, v)| {
+              if k == GRPC_STATUS {
+                (Some(v), acc.1)
+              } else if k == GRPC_MESSAGE {
+                (acc.0, Some(v))
+              } else {
+                acc
+              }
+            });
 
-          if let Some(grpc_status) = grpc_status {
-            let code = Code::from_string(grpc_status.to_str().unwrap_or_default());
-            if code == Code::Ok {
-              return Ok(None);
+            if let Some(grpc_status) = grpc_status {
+              let code = Code::from_string(grpc_status.to_str().unwrap_or_default());
+              if code == Code::Ok {
+                return Ok(None);
+              }
+
+              let status = Status {
+                code,
+                message: grpc_message.map(|v| v.to_str().unwrap_or_default().to_string()),
+              };
+              return Err(Error::Grpc(status));
             }
 
-            let status = Status {
-              code,
-              message: grpc_message.map(|v| v.to_str().unwrap_or_default().to_string()),
-            };
-            return Err(Error::Grpc(status));
-          }
-
-          return Ok(None);
+            return Ok(None);
+          },
         }
       } else {
         return Ok(None);
@@ -333,7 +435,7 @@ impl<ResponseType: Message> StreamingApiSender<ResponseType> {
 
     self
       .tx
-      .send(Ok(Frame::data(bytes)))
+      .send(Ok(SingleFrame::Data(bytes)))
       .await
       .map_err(|_| Error::Closed)?;
     Ok(())
@@ -389,7 +491,7 @@ impl<ResponseType: Message> StreamingApiSender<ResponseType> {
   async fn send_trailers(&self, trailers: HeaderMap) -> Result<()> {
     self
       .tx
-      .send(Ok(Frame::trailers(trailers)))
+      .send(Ok(SingleFrame::Trailers(trailers)))
       .await
       .map_err(|_| Error::Closed)?;
     Ok(())
@@ -668,7 +770,11 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
   });
 
   Ok(new_grpc_response(
-    Body::new(StreamBody::new(ReceiverStream::new(rx))),
+    Body::new(StreamBody::new(ReceiverStream::new(rx).map(|f| match f {
+      Ok(SingleFrame::Data(data)) => Ok(Frame::data(data)),
+      Ok(SingleFrame::Trailers(trailers)) => Ok(Frame::trailers(trailers)),
+      Err(e) => Err(e),
+    }))),
     compression,
     connect_protocol_type,
   ))
