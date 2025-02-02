@@ -30,14 +30,13 @@ use bd_proto::protos::client::api::{
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
-use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
+use bd_time::{Instant, OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use time::ext::NumericalDuration;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::task::JoinHandle;
-use tokio::time::Instant;
 
 struct EmptyMetadata;
 

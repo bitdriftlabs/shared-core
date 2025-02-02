@@ -16,11 +16,16 @@ bd-matcher.path            = "../bd-matcher"
 bd-metadata.path           = "../bd-metadata"
 bd-proto.path              = "../bd-proto"
 flatbuffers.workspace      = true
-flate2                     = { workspace = true, default-features = false, features = ["zlib"] }
 log.workspace              = true
 parking_lot.workspace      = true
 protobuf.workspace         = true
 thiserror.workspace        = true
 time.workspace             = true
-tokio.workspace            = true
+tokio                      = { workspace = true, features = ["sync"] }
 uuid.workspace             = true
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+uuid = { workspace = true, features = ["js"] }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+flate2 = { workspace = true, default-features = false }

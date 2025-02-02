@@ -9,6 +9,7 @@
 #[path = "./api_test.rs"]
 mod api_test;
 
+use crate::backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use crate::payload_conversion::RuntimeConfigurationUpdate;
 use crate::upload::{self, IntentResponse, StateTracker};
 use crate::{
@@ -24,9 +25,6 @@ use crate::{
   TriggerUpload,
 };
 use anyhow::anyhow;
-use backoff::backoff::Backoff;
-use backoff::exponential::{ExponentialBackoff, ExponentialBackoffBuilder};
-use backoff::SystemClock;
 use bd_client_common::error::UnexpectedErrorHandler;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
@@ -65,7 +63,7 @@ use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::Data as ProtoData;
 use bd_runtime::runtime::{BoolWatch, DurationWatch, RuntimeManager};
 use bd_shutdown::ComponentShutdown;
-use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
+use bd_time::{Instant, OffsetDateTimeExt, TimeProvider, TimestampExt};
 use parking_lot::RwLock;
 use protobuf::Message;
 use std::collections::HashMap;
@@ -74,7 +72,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::time::Instant;
 
 // The amount of time the API has to be in the disconnected state before network quality will be
 // switched to "offline".
@@ -170,7 +167,7 @@ struct StreamState {
   request_encoder: Encoder<ApiRequest>,
   response_decoder: bd_grpc_codec::Decoder<ApiResponse>,
   ping_interval: Option<tokio::time::Duration>,
-  ping_deadline: Option<tokio::time::Instant>,
+  ping_deadline: Option<Instant>,
 
   upload_state_tracker: upload::StateTracker,
 
@@ -552,7 +549,7 @@ impl Api {
   }
 
   #[must_use]
-  async fn do_reconnect_backoff(&mut self, backoff: &mut ExponentialBackoff<SystemClock>) -> bool {
+  async fn do_reconnect_backoff(&mut self, backoff: &mut ExponentialBackoff) -> bool {
     // We have no max timeout, hence this should always return a backoff value.
     // Before moving to the next iteration, sleep according to the backoff strategy.
     let reconnect_delay = backoff.next_backoff().unwrap();
@@ -992,8 +989,8 @@ impl Api {
   }
 
   /// Constructs a new `ExponentialBackoff` based on the current runtime values.
-  fn backoff_policy(&mut self) -> ExponentialBackoff<SystemClock> {
-    ExponentialBackoffBuilder::<SystemClock>::new()
+  fn backoff_policy(&mut self) -> ExponentialBackoff {
+    ExponentialBackoffBuilder::new()
       .with_initial_interval(
         self
           .initial_backoff_interval

@@ -8,7 +8,7 @@ version      = "1.0.0"
 [lib]
 doctest = false
 
-[dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
 bd-stats-common.path    = "../bd-stats-common"
 bd-time.path            = "../bd-time"
 concat-string.workspace = true
@@ -22,7 +22,7 @@ thiserror.workspace     = true
 time.workspace          = true
 tokio.workspace         = true
 
-[dev-dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 bd-log.path       = "../bd-log"
 ctor.workspace    = true
 matches.workspace = true

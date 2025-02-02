@@ -8,7 +8,7 @@ version      = "1.0.0"
 [lib]
 doctest = false
 
-[dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
 anyhow.workspace    = true
 base64ct.workspace  = true
 bd-proto.path       = "../bd-proto"
@@ -16,5 +16,5 @@ itertools.workspace = true
 protobuf.workspace  = true
 sha2.workspace      = true
 
-[build-dependencies]
+[target.'cfg(not(target_family = "wasm"))'.build-dependencies]
 cc.workspace = true

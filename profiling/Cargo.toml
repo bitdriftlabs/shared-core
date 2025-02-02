@@ -5,14 +5,14 @@ name         = "stats_collection_profiling"
 publish      = false
 version      = "1.0.0"
 
-[dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
 anyhow.workspace           = true
 base64-url.workspace       = true
 bd-client-common.path      = "../bd-client-common"
-bd-client-stats-store.path = "../bd-client-stats-store"
 bd-client-stats.path       = "../bd-client-stats"
-bd-log-primitives.path     = "../bd-log-primitives"
+bd-client-stats-store.path = "../bd-client-stats-store"
 bd-log.path                = "../bd-log"
+bd-log-primitives.path     = "../bd-log-primitives"
 bd-proto.path              = "../bd-proto"
 bd-runtime.path            = "../bd-runtime"
 bd-shutdown.path           = "../bd-shutdown"
@@ -27,5 +27,5 @@ rand.workspace             = true
 sha2.workspace             = true
 tempfile.workspace         = true
 time.workspace             = true
-tokio.workspace            = true
+tokio                      = { workspace = true, features = ["rt-multi-thread"] }
 uuid.workspace             = true

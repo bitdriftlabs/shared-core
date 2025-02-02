@@ -8,7 +8,7 @@ version      = "1.0.0"
 [lib]
 doctest = false
 
-[dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
 anyhow.workspace            = true
 assert_matches.workspace    = true
 async-trait.workspace       = true
@@ -44,7 +44,7 @@ tower.workspace             = true
 unwrap-infallible.workspace = true
 urlencoding.workspace       = true
 
-[dev-dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 assert_matches.workspace = true
 bd-test-helpers.path     = "../bd-test-helpers"
 bd-time.path             = "../bd-time"

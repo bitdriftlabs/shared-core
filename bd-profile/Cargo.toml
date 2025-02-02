@@ -8,6 +8,6 @@ version      = "1.0.0"
 [lib]
 doctest = false
 
-[dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
 axum.workspace              = true
 tikv-jemalloc-ctl.workspace = true

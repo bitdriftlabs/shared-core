@@ -14,8 +14,10 @@ bd-time                      = { path = "../bd-time" }
 log.workspace                = true
 parking_lot.workspace        = true
 time.workspace               = true
-tokio.workspace              = true
+tracing.workspace            = true
 tracing-error.workspace      = true
 tracing-log.workspace        = true
 tracing-subscriber.workspace = true
-tracing.workspace            = true
+
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
+tokio = { workspace = true, features = ["rt"] }

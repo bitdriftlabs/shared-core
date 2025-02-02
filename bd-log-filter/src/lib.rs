@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 #[path = "./filter_chain_test.rs"]
 mod filter_chain_test;
 
@@ -26,7 +26,7 @@ use itertools::Itertools;
 use regex::Regex;
 use std::borrow::Cow;
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 #[ctor::ctor]
 fn test_global_init() {
   bd_test_helpers::test_global_init();

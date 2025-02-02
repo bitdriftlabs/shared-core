@@ -11,6 +11,9 @@ rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 [target.aarch64-unknown-linux-gnu]
 rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
+[target.'cfg(target_family = "wasm")']
+rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]
+
 #####################################
 # Warnings and Linter Configuration #
 #####################################

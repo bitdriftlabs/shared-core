@@ -10,7 +10,7 @@ pub mod fixed;
 
 pub use bd_key_value::Store;
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 #[ctor::ctor]
 fn test_global_init() {
   bd_test_helpers::test_global_init();

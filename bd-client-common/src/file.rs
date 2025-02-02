@@ -5,20 +5,27 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
-use flate2::read::{ZlibDecoder, ZlibEncoder};
-use flate2::Compression;
-use std::io::Read;
-
 pub fn write_compressed_protobuf<T: protobuf::Message>(message: &T) -> Vec<u8> {
   let bytes = message.write_to_bytes().unwrap();
-  let mut encoder = ZlibEncoder::new(
-    &bytes[..],
-    Compression::new(DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL),
-  );
-  let mut compressed_bytes = Vec::new();
-  encoder.read_to_end(&mut compressed_bytes).unwrap();
-  compressed_bytes
+  #[cfg(not(target_family = "wasm"))]
+  {
+    use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
+    use flate2::read::ZlibEncoder;
+    use flate2::Compression;
+    use std::io::Read;
+
+    let mut encoder = ZlibEncoder::new(
+      &bytes[..],
+      Compression::new(DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL),
+    );
+    let mut compressed_bytes = Vec::new();
+    encoder.read_to_end(&mut compressed_bytes).unwrap();
+    compressed_bytes
+  }
+
+  // TODO(mattklein123): Use compression stream API.
+  #[cfg(target_family = "wasm")]
+  bytes
 }
 
 pub fn read_compressed_protobuf<T: protobuf::Message>(
@@ -31,13 +38,22 @@ pub fn read_compressed_protobuf<T: protobuf::Message>(
     anyhow::bail!("unexpected empty file");
   }
 
-  // The files are likely not large enough to deal with streaming decompression on top of flate2.
-  // For now we just read the entire thing and then decompress it in memory. We can consider
-  // streaming later. Generally these are small files so we use a small buffer to avoid needless
-  // allocation.
-  // TODO(mattklein123): Zero-initializing is not necessary here but we will defer this for now.
-  let mut decoder = ZlibDecoder::new_with_buf(compressed_bytes, vec![0; 1024]);
-  // In the future if/when we switch to using Bytes/Chars in the compiled proto it may be more
-  // efficient to read out the uncompressed into Bytes and then parse from that.
-  Ok(T::parse_from_reader(&mut decoder)?)
+  #[cfg(not(target_family = "wasm"))]
+  {
+    use flate2::read::ZlibDecoder;
+
+    // The files are likely not large enough to deal with streaming decompression on top of flate2.
+    // For now we just read the entire thing and then decompress it in memory. We can consider
+    // streaming later. Generally these are small files so we use a small buffer to avoid needless
+    // allocation.
+    // TODO(mattklein123): Zero-initializing is not necessary here but we will defer this for now.
+    let mut decoder = ZlibDecoder::new_with_buf(compressed_bytes, vec![0; 1024]);
+    // In the future if/when we switch to using Bytes/Chars in the compiled proto it may be more
+    // efficient to read out the uncompressed into Bytes and then parse from that.
+    Ok(T::parse_from_reader(&mut decoder)?)
+  }
+
+  // TODO(mattklein123): Use compression stream API.
+  #[cfg(target_family = "wasm")]
+  Ok(T::parse_from_bytes(compressed_bytes)?)
 }

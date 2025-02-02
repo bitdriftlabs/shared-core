@@ -17,15 +17,14 @@ use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer
 use bd_client_common::error::handle_unexpected_error_with_details;
 use bd_client_common::fb::root_as_log;
 use bd_client_stats_store::{Counter, Scope};
-use bd_runtime::runtime::{ConfigLoader, IntWatch, Watch};
+use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
+use bd_time::Instant;
 use futures_util::future::try_join_all;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tokio::time::Instant;
 use tower::{Service, ServiceExt};
 use tracing::Instrument as _;
 use unwrap_infallible::UnwrapInfallible;
@@ -41,7 +40,7 @@ struct Flags {
 
   // The duration to wait before uploading an incomplete batch. The batch will be uploaded
   // at this point regardless of log activity.
-  batch_deadline_watch: IntWatch<bd_runtime::runtime::log_upload::BatchDeadlineFlag>,
+  batch_deadline_watch: DurationWatch<bd_runtime::runtime::log_upload::BatchDeadlineFlag>,
 
   // The lookback window for the flush buffer uploads.
   upload_lookback_window_feature_flag:
@@ -492,7 +491,11 @@ impl ContinuousBufferUploader {
       if !self.batch_builder.logs.is_empty() && self.flush_batch_deadline.is_none() {
         self.flush_batch_deadline = Some(
           Instant::now()
-            + Duration::from_millis(self.feature_flags.batch_deadline_watch.read().into()),
+            + self
+              .feature_flags
+              .batch_deadline_watch
+              .read()
+              .unsigned_abs(),
         );
       }
     }

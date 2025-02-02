@@ -10,11 +10,11 @@
 mod ratelimit_test;
 
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch};
+use bd_time::Instant;
 use futures_util::future::BoxFuture;
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
-use tokio::time::Instant;
 use tower::{Layer, Service};
 
 /// A rate of requests per time period backed by feature flags.

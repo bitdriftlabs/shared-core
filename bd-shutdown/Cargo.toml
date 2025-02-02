@@ -9,5 +9,8 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-log.workspace   = true
-tokio.workspace = true
+log.workspace = true
+tokio         = { workspace = true, features = ["sync"] }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio = { workspace = true, features = ["signal"] }

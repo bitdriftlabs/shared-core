@@ -24,7 +24,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::collections::BTreeMap;
-use std::time::SystemTime;
+use time::OffsetDateTime;
 
 //
 // Workflow
@@ -543,7 +543,7 @@ pub(crate) struct Run {
   matched_logs_count: u32,
   /// The time at which run left its initial state. Used to implement
   /// duration limit.
-  first_progress_occurred_at: Option<SystemTime>,
+  first_progress_occurred_at: Option<OffsetDateTime>,
 }
 
 impl Run {
@@ -607,37 +607,37 @@ impl Run {
 
       if let Some(duration_limit) = config.duration_limit() {
         if let Some(first_progress_occurred_at) = self.first_progress_occurred_at {
-          let current_time: SystemTime = log.occurred_at.into();
+          let current_time: OffsetDateTime = log.occurred_at;
 
-          match current_time.duration_since(first_progress_occurred_at) {
-            Ok(duration_since_first_progress) => {
-              if duration_since_first_progress > duration_limit {
-                log::debug!(
-                  "run stopped due to exceeding duration limit ({:?}), duration since the run \
-                   first made progress progress: {:?}",
-                  duration_limit,
-                  duration_since_first_progress
-                );
-                return RunResult {
-                  state: RunState::Stopped,
-                  triggered_actions: vec![],
-                  created_traversals_count: 0,
-                  advanced_traversals_count: 0,
-                  completed_traversals_count: 0,
-                  matched_logs_count: run_matched_logs_count,
-                };
-              }
-            },
+          if current_time > first_progress_occurred_at {
+            let duration_since_first_progress = current_time - first_progress_occurred_at;
+            if duration_since_first_progress > duration_limit {
+              log::debug!(
+                "run stopped due to exceeding duration limit ({:?}), duration since the run first \
+                 made progress progress: {:?}",
+                duration_limit,
+                duration_since_first_progress
+              );
+              return RunResult {
+                state: RunState::Stopped,
+                triggered_actions: vec![],
+                created_traversals_count: 0,
+                advanced_traversals_count: 0,
+                completed_traversals_count: 0,
+                matched_logs_count: run_matched_logs_count,
+              };
+            }
+          } else {
             // `duration_since` fails if `earlier` time (passed as an argument) is after
             // `current_time`. This can happen as time instances processed in here come from
             // `TimeProvider` registered by SDK customer and nothing prevents these
             // providers from returning decreasing times.
-            Err(e) => log::debug!(
+            log::debug!(
               "failed to calculate time difference between current time {:?} and first progress \
-               occurred at time {:?}: {e}",
+               occurred at time {:?}",
               current_time,
               first_progress_occurred_at,
-            ),
+            );
           }
         }
       }
@@ -645,7 +645,7 @@ impl Run {
       // Update the value of `first_progress_occurred_at` if this is the first progress a run
       // has made.
       if self.first_progress_occurred_at.is_none() && traversal_result.did_make_progress() {
-        self.first_progress_occurred_at = Some(log.occurred_at.into());
+        self.first_progress_occurred_at = Some(log.occurred_at);
       }
 
       // Check if the traversal should advance.

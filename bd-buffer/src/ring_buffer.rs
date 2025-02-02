@@ -11,10 +11,8 @@ mod ring_buffer_test;
 
 use crate::buffer::{
   self,
-  AggregateRingBuffer,
   AllowOverwrite,
   LockHandle,
-  PerRecordCrc32Check,
   RingBuffer as RingBufferInterface,
   RingBufferConsumer,
   RingBufferCursorConsumer,

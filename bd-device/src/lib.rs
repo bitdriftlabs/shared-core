@@ -5,9 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 #[path = "./device_test.rs"]
 mod device_test;
+
 use bd_key_value::Key;
 pub use bd_key_value::Store;
 use std::sync::Arc;

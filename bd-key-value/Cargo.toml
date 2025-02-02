@@ -18,7 +18,7 @@ serde.workspace   = true
 time.workspace    = true
 tokio.workspace   = true
 
-[dev-dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
 ctor.workspace              = true
 parking_lot.workspace       = true

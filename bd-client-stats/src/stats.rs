@@ -22,14 +22,13 @@ use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::metric::{Metric as ProtoMetric, MetricsList};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::Id;
-use bd_time::TimeDurationExt;
+use bd_time::{Interval, MissedTickBehavior, TimeDurationExt};
 #[cfg(test)]
 use stats_test::{TestHooks, TestHooksReceiver};
 use std::collections::HashMap;
 use std::sync::Arc;
 use time::Duration;
 use tokio::sync::{mpsc, oneshot, watch};
-use tokio::time::MissedTickBehavior;
 
 //
 // Ticker
@@ -46,7 +45,7 @@ pub trait Ticker: Send + Sync {
 
 pub struct RuntimeWatchTicker {
   receiver: watch::Receiver<Duration>,
-  interval: Option<tokio::time::Interval>,
+  interval: Option<Interval>,
 }
 
 impl RuntimeWatchTicker {

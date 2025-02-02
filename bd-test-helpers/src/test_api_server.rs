@@ -36,7 +36,7 @@ use bd_proto::protos::client::api::{
   StatsUploadResponse,
 };
 use bd_proto::protos::logging::payload::data::Data_type;
-use bd_time::{TimeDurationExt, ToProtoDuration};
+use bd_time::{Instant, TimeDurationExt, ToProtoDuration};
 use http_body_util::StreamBody;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -46,7 +46,6 @@ use time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::{broadcast, mpsc};
-use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 
 //
@@ -746,7 +745,7 @@ impl ServerHandle {
     self
       .timed_event_wait_tx
       .blocking_send(TimedEventQuery {
-        deadline: timeout.add_tokio_now(),
+        deadline: timeout.add_now(),
         event,
       })
       .unwrap();
@@ -779,7 +778,7 @@ impl ServerHandle {
     self
       .timed_event_wait_tx
       .blocking_send(TimedEventQuery {
-        deadline: timeout.add_tokio_now(),
+        deadline: timeout.add_now(),
         event: Event::StreamEvent(
           stream_id,
           event,
@@ -804,7 +803,7 @@ impl ServerHandle {
     self
       .timed_event_wait_tx
       .send(TimedEventQuery {
-        deadline: timeout.add_tokio_now(),
+        deadline: timeout.add_now(),
         event: Event::StreamEvent(
           stream_id,
           event,

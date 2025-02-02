@@ -10,9 +10,7 @@ mod ffi;
 mod ring_buffer;
 
 pub use crate::buffer::{
-  AggregateRingBuffer,
   AllowOverwrite,
-  PerRecordCrc32Check,
   RingBuffer,
   RingBufferConsumer,
   RingBufferStats,

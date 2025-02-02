@@ -30,6 +30,7 @@ use std::collections::HashMap;
 use upload::{IntentResponse, Tracked, UploadResponse};
 
 pub mod api;
+pub mod backoff;
 mod payload_conversion;
 pub mod upload;
 

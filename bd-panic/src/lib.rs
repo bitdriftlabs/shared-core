@@ -18,9 +18,7 @@
 //! sending them over the wire somewhere.
 
 #[cfg(target_arch = "wasm32")]
-fn platform_default() {
-  console_error_panic_hook::set_once();
-}
+fn platform_default() {}
 
 #[cfg(not(target_arch = "wasm32"))]
 fn platform_default() {

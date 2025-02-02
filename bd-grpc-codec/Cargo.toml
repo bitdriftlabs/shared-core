@@ -13,10 +13,12 @@ anyhow.workspace      = true
 bd-client-common.path = "../bd-client-common"
 bd-stats-common.path  = "../bd-stats-common"
 bytes.workspace       = true
-flate2                = { workspace = true, default-features = false }
 log.workspace         = true
 protobuf.workspace    = true
 thiserror.workspace   = true
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+flate2 = { workspace = true, default-features = false }
 
 [dev-dependencies]
 bd-test-helpers  = { path = "../bd-test-helpers" } # revert

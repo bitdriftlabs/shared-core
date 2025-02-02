@@ -18,6 +18,7 @@ use bd_proto::protos::client::metric::{
   InlineHistogramValues,
 };
 use bd_stats_common::{DynCounter, Id};
+use bd_time::Instant;
 use parking_lot::Mutex;
 use sketches_rust::DDSketch;
 use std::collections::hash_map::Entry;
@@ -25,10 +26,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
 use tokio::sync::watch;
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 #[ctor::ctor]
 fn test_global_init() {
   bd_test_helpers::test_global_init();

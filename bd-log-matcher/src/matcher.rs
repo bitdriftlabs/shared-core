@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 #[path = "./matcher_test.rs"]
 mod matcher_test;
 

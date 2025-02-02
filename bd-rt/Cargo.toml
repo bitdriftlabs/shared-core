@@ -8,6 +8,6 @@ version      = "1.0.0"
 [lib]
 doctest = false
 
-[dependencies]
-log.workspace   = true
-tokio.workspace = true
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+log.workspace = true
+tokio         = { workspace = true, features = ["rt-multi-thread"] }

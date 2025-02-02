@@ -8,7 +8,7 @@ version      = "1.0.0"
 [lib]
 doctest = false
 
-[dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
 async-trait.workspace = true
 bd-server-stats.path  = "../bd-server-stats"
 log.workspace         = true
@@ -21,7 +21,7 @@ serde_yaml.workspace  = true
 thiserror.workspace   = true
 tokio.workspace       = true
 
-[dev-dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 bd-test-helpers    = { path = "../bd-test-helpers", default-features = false }
 ctor.workspace     = true
 tempfile.workspace = true

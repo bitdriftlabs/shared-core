@@ -5,14 +5,15 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 #[path = "./store_test.rs"]
 mod store_test;
+
 use base64::Engine;
 use bd_log::warn_every;
 use time::ext::NumericalDuration;
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 #[ctor::ctor]
 fn test_global_init() {
   bd_test_helpers::test_global_init();

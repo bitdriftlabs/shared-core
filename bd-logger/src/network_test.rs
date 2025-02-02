@@ -18,6 +18,7 @@ use bd_log_primitives::{
   StringOrBytes,
 };
 use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
+use bd_time::Instant;
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
 
@@ -26,19 +27,19 @@ use std::sync::Arc;
 //
 
 struct MockTimeProvider {
-  now: parking_lot::Mutex<std::time::Instant>,
+  now: parking_lot::Mutex<Instant>,
 }
 
 impl Default for MockTimeProvider {
   fn default() -> Self {
     Self {
-      now: parking_lot::Mutex::new(std::time::Instant::now()),
+      now: parking_lot::Mutex::new(Instant::now()),
     }
   }
 }
 
 impl TimeProvider for MockTimeProvider {
-  fn now(&self) -> std::time::Instant {
+  fn now(&self) -> Instant {
     *self.now.lock()
   }
 }

@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 #[path = "./runtime_test.rs"]
 mod runtime_test;
 
@@ -623,14 +623,14 @@ pub mod log_upload {
     1024 * 1024 // 1 MiB
   );
 
-  // Continuous logs are uploaded in batchs either when the batch size is hit or when the deadline
+  // Continuous logs are uploaded in batches either when the batch size is hit or when the deadline
   // has been hit. This controls how long the client will wait before triggering a flush for a
   // batch that has not yet reached the batch limit.
-  int_feature_flag!(
+  duration_feature_flag!(
     BatchDeadlineFlag,
     "log_uploader.batch_deadline_ms",
-    30 * 1000
-  ); // 30s
+    30.seconds()
+  );
 
   // This controls how often we poll continuous buffers to see if there are logs ready to be
   // consumed and added to the current batch.

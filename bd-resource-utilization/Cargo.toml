@@ -18,7 +18,7 @@ bd-time.path             = "../bd-time"
 ctor.workspace           = true
 log.workspace            = true
 time.workspace           = true
-tokio.workspace          = true
+tokio                    = { workspace = true, features = ["macros"] }
 
 [dev-dependencies]
 bd-test-helpers.path  = "../bd-test-helpers"

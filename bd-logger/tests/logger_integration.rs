@@ -70,10 +70,10 @@ mod tests {
     workflows_configuration,
   };
   use bd_test_helpers::{field_value, metric_tag, metric_value, set_field, RecordingErrorReporter};
+  use bd_time::Instant;
   use std::ops::Add;
   use std::sync::atomic::AtomicUsize;
   use std::sync::Arc;
-  use std::time::Instant;
   use tempfile::TempDir;
   use time::ext::{NumericalDuration, NumericalStdDuration};
 
@@ -2260,7 +2260,7 @@ mod tests {
       // The runtime configuration should use the cached value. As we load the cached config from
       // the event loop thread, there is a slight delay before we pick up on this cached value.
 
-      let deadline = Instant::now().add(500.milliseconds());
+      let deadline = Instant::now().add(500.std_milliseconds());
 
       let mut deadline_elapsed = true;
       while Instant::now() < deadline {

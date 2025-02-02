@@ -20,6 +20,9 @@ serde_yaml.workspace  = true
 time.workspace        = true
 uuid.workspace        = true
 
+[target.'cfg(target_family = "wasm")'.dependencies]
+uuid = { workspace = true, features = ["js"] }
+
 [dev-dependencies]
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
 ctor.workspace              = true

@@ -19,6 +19,7 @@ use bd_log_primitives::{
   StringOrBytes,
 };
 use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
+use bd_time::Instant;
 use itertools::Itertools;
 use std::cmp::Ordering;
 use std::sync::Arc;
@@ -240,7 +241,7 @@ impl MetricsContainer {
 #[allow(clippy::struct_field_names)]
 #[derive(Clone, Debug)]
 pub(crate) struct MetricsSample {
-  started_at: std::time::Instant,
+  started_at: Instant,
 
   request_body_bytes_count: u64,
   request_headers_bytes_count: u64,
@@ -250,7 +251,7 @@ pub(crate) struct MetricsSample {
 }
 
 impl MetricsSample {
-  const fn new(now: std::time::Instant) -> Self {
+  const fn new(now: Instant) -> Self {
     Self {
       started_at: now,
 
@@ -323,7 +324,7 @@ fn create_int_field(key: &str, value: u64) -> AnnotatedLogField {
 //
 
 pub(crate) trait TimeProvider: Send + Sync {
-  fn now(&self) -> std::time::Instant;
+  fn now(&self) -> Instant;
 }
 
 //
@@ -333,8 +334,8 @@ pub(crate) trait TimeProvider: Send + Sync {
 pub(crate) struct SystemTimeProvider;
 
 impl TimeProvider for SystemTimeProvider {
-  fn now(&self) -> std::time::Instant {
-    std::time::Instant::now()
+  fn now(&self) -> Instant {
+    Instant::now()
   }
 }
 

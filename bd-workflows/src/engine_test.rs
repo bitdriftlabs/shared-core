@@ -48,7 +48,6 @@ use std::time::Duration;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
-use tokio::time::timeout;
 
 /// A macro that creates a workflow config using provided states.
 /// See `workflow_proto` macro for more details.
@@ -1584,7 +1583,7 @@ async fn persists_state_on_periodic_basis() {
   // One of run loop's responsibilities is periodic persistance of state.
   // Given enough time it should persist the state to disk and mark
   // state as being "clean".
-  _ = timeout(Duration::from_millis(100), workflows_engine.run()).await;
+  _ = 100.milliseconds().timeout(workflows_engine.run()).await;
   assert!(!workflows_engine.needs_state_persistence);
 
   setup.collector.assert_counter_eq(

@@ -5,13 +5,13 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 #[path = "./rate_limit_log_test.rs"]
 mod rate_limit_log_test;
 
+use bd_time::Instant;
 use parking_lot::Mutex;
 use time::Duration;
-use tokio::time::Instant;
 
 #[derive(Default)]
 pub struct WarnTracker {

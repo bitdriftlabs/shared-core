@@ -41,7 +41,7 @@ use bd_runtime::runtime::workflows::{
 };
 use bd_runtime::runtime::{ConfigLoader, DurationWatch};
 use bd_stats_common::labels;
-use bd_time::TimeDurationExt as _;
+use bd_time::{Instant, TimeDurationExt as _};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
@@ -52,7 +52,6 @@ use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::task::JoinHandle;
-use tokio::time::Instant;
 
 //
 // WorkflowsEngine

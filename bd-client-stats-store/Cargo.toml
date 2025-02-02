@@ -11,12 +11,13 @@ doctest = false
 [dependencies]
 bd-proto                = { path = "../bd-proto" }
 bd-stats-common         = { path = "../bd-stats-common" }
+bd-time                 = { path = "../bd-time" }
 log.workspace           = true
 parking_lot.workspace   = true
 sketches-rust.workspace = true
 thiserror.workspace     = true
-tokio.workspace         = true
+tokio                   = { workspace = true, features = ["sync"] }
 
-[dev-dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 bd-test-helpers.path = "../bd-test-helpers"
 ctor.workspace       = true

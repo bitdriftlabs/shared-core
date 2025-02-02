@@ -33,6 +33,5 @@ bd-log.path              = "../bd-log"
 bd-stats-common.path     = "../bd-stats-common"
 bd-test-helpers.path     = "../bd-test-helpers"
 ctor.workspace           = true
-flate2                   = { workspace = true, default-features = false, features = ["zlib"] }
 futures-util.workspace   = true
 tempfile.workspace       = true

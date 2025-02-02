@@ -14,4 +14,15 @@ parking_lot.workspace = true
 protobuf.workspace    = true
 rand.workspace        = true
 time.workspace        = true
-tokio.workspace       = true
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio = { workspace = true, features = ["rt", "test-util", "time"] }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+futures.workspace      = true
+getrandom              = { workspace = true, features = ["wasm_js"] }
+js-sys.workspace       = true
+wasm-bindgen.workspace = true
+
+[target.'cfg(target_family = "wasm")'.dev-dependencies]
+wasm-bindgen-test.workspace = true

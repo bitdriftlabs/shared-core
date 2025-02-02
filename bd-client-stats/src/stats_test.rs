@@ -36,7 +36,7 @@ use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::float_eq;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
-use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeProvider, TimestampExt};
+use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeDurationExt, TimeProvider, TimestampExt};
 use futures_util::poll;
 use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
@@ -44,11 +44,10 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tempfile::TempDir;
-use time::ext::{NumericalDuration, NumericalStdDuration};
+use time::ext::NumericalDuration;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::mpsc;
 use tokio::task::JoinError;
-use tokio::time::timeout;
 
 async fn write_test_index(fs: &dyn FileSystem, ready_to_upload: bool) {
   let index = PendingAggregationIndex {
@@ -460,9 +459,7 @@ async fn max_files_upload_race() {
       uuid: stats.uuid,
     })
     .unwrap();
-  assert!(timeout(1.std_seconds(), setup.next_stat_upload())
-    .await
-    .is_err());
+  assert!(1.seconds().timeout(setup.next_stat_upload()).await.is_err());
 }
 
 #[tokio::test(start_paused = true)]

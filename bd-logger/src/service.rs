@@ -10,7 +10,7 @@
 mod service_test;
 
 use crate::service::ratelimit::RequestSized;
-use backoff::backoff::Backoff;
+use bd_api::backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use bd_api::upload::{LogBatch, TrackedLogBatch};
 use bd_api::DataUpload;
 use bd_client_stats_store::{Counter, Scope};
@@ -206,7 +206,7 @@ impl tower::Service<UploadRequest> for Uploader {
 struct RetryPolicy {
   attempts: u32,
   max_retries: IntWatch<bd_runtime::runtime::log_upload::RetryCountFlag>,
-  backoff: Option<backoff::ExponentialBackoff>,
+  backoff: Option<ExponentialBackoff>,
   backoff_provider: BackoffProvider,
 
   // Tracks how often we give up on a request due to the retry limit being exceeded.
@@ -289,8 +289,8 @@ impl BackoffProvider {
     })
   }
 
-  fn backoff(&self) -> backoff::ExponentialBackoff {
-    backoff::ExponentialBackoffBuilder::new()
+  fn backoff(&self) -> ExponentialBackoff {
+    ExponentialBackoffBuilder::new()
       .with_initial_interval(self.initial_backoff.read().unsigned_abs())
       .with_max_interval(self.max_backoff.read().unsigned_abs())
       .with_max_elapsed_time(None)

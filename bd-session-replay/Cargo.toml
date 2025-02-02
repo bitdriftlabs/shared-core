@@ -22,7 +22,7 @@ ctor.workspace             = true
 log.workspace              = true
 parking_lot.workspace      = true
 time.workspace             = true
-tokio.workspace            = true
+tokio                      = { workspace = true, features = ["macros"] }
 
 [dev-dependencies]
 bd-test-helpers.path  = "../bd-test-helpers"

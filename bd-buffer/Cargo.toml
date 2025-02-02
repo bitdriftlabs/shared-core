@@ -18,7 +18,6 @@ bd-proto.path                   = "../bd-proto"
 bd-runtime.path                 = "../bd-runtime"
 bd-stats-common.path            = "../bd-stats-common"
 crc32fast.workspace             = true
-fs2.workspace                   = true
 futures.workspace               = true
 intrusive-collections.workspace = true
 log.workspace                   = true
@@ -27,8 +26,11 @@ parking_lot.workspace           = true
 static_assertions.workspace     = true
 thiserror.workspace             = true
 time.workspace                  = true
-tokio.workspace                 = true
+tokio                           = { workspace = true, features = ["sync"] }
 tracing.workspace               = true
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+fs2.workspace = true
 
 [dev-dependencies]
 assert_matches.workspace = true

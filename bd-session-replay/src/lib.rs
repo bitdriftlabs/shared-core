@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 #[path = "./recorder_test.rs"]
 mod recorder_test;
 
@@ -14,14 +14,13 @@ use bd_log_primitives::LogType;
 use bd_runtime::runtime::{session_replay, BoolWatch, ConfigLoader, DurationWatch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_stats_common::labels;
-use bd_time::TimeDurationExt;
+use bd_time::{Interval, MissedTickBehavior, TimeDurationExt};
 use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tokio::time::{Interval, MissedTickBehavior};
 
 pub const SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE: &str = "Screenshot captured";
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 #[ctor::ctor]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
@@ -136,7 +135,7 @@ impl Recorder {
     )
   }
 
-  fn create_interval(interval: time::Duration, fire_immediately: bool) -> tokio::time::Interval {
+  fn create_interval(interval: time::Duration, fire_immediately: bool) -> Interval {
     let interval = if fire_immediately {
       interval.interval(MissedTickBehavior::Delay)
     } else {

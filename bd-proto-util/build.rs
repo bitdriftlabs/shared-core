@@ -8,11 +8,13 @@
 fn main() {
   // Compile verifier library for use in verifying incoming flatbuffers. Currently the Rust
   // verifier is not production ready.
-  cc::Build::new()
-    .cpp(true)
-    .flag("-std=c++11")
-    .file("src/cpp/verify.cc")
-    .include("../bd-proto/src/flatbuffers")
-    .include("../thirdparty/flatbuffers/include")
-    .compile("libverify.a");
+  if std::env::var("CARGO_CFG_TARGET_FAMILY").map_or(true, |family| family != "wasm") {
+    cc::Build::new()
+      .cpp(true)
+      .flag("-std=c++11")
+      .file("src/cpp/verify.cc")
+      .include("../bd-proto/src/flatbuffers")
+      .include("../thirdparty/flatbuffers/include")
+      .compile("libverify.a");
+  }
 }

@@ -5,9 +5,11 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(not(target_family = "wasm"))]
 mod aggregate_ring_buffer;
 mod common_ring_buffer;
 mod intrusive_queue_with_free_list;
+#[cfg(not(target_family = "wasm"))]
 mod non_volatile_ring_buffer;
 mod stats_helper;
 mod volatile_ring_buffer;
@@ -261,9 +263,11 @@ pub trait RingBuffer: Send + Sync {
 
 use crate::Result;
 #[allow(clippy::module_name_repetitions)]
+#[cfg(not(target_family = "wasm"))]
 pub use aggregate_ring_buffer::RingBufferImpl as AggregateRingBuffer;
 pub use common_ring_buffer::AllowOverwrite;
 #[allow(clippy::module_name_repetitions)]
+#[cfg(not(target_family = "wasm"))]
 pub use non_volatile_ring_buffer::{
   BlockWhenReservingIntoConcurrentRead,
   FileHeader as NonVolatileFileHeader,

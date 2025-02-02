@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 #[path = "./listener_test.rs"]
 mod listener_test;
 
@@ -14,7 +14,7 @@ use bd_runtime::runtime::{BoolWatch, ConfigLoader};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use std::sync::Arc;
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 #[ctor::ctor]
 fn test_global_init() {
   bd_test_helpers::test_global_init();

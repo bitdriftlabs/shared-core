@@ -9,15 +9,23 @@
 #[path = "./lib_test.rs"]
 mod test;
 
+#[cfg(not(target_family = "wasm"))]
+mod no_wasm;
+#[cfg(target_family = "wasm")]
+mod wasm;
+
+#[cfg(not(target_family = "wasm"))]
+pub use no_wasm::*;
 use parking_lot::Mutex;
 use protobuf::well_known_types::timestamp::Timestamp;
 use protobuf::MessageField;
-use rand::{thread_rng, Rng};
 use std::future::{Future, IntoFuture};
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use time::OffsetDateTime;
-use tokio::time::{interval, interval_at, Interval, MissedTickBehavior, Sleep, Timeout};
+#[cfg(target_family = "wasm")]
+pub use wasm::*;
 
 //
 // OffsetDateTimeExt
@@ -104,6 +112,14 @@ impl TimestampExt for Timestamp {
 }
 
 //
+// MissedTickBehavior
+//
+
+pub enum MissedTickBehavior {
+  Delay,
+}
+
+//
 // TimeDurationExt
 //
 
@@ -114,50 +130,8 @@ pub trait TimeDurationExt {
   fn interval_at(self, behavior: MissedTickBehavior) -> Interval;
   fn jittered_interval_at(self, behavior: MissedTickBehavior) -> Interval;
   fn timeout<F: IntoFuture>(self, f: F) -> Timeout<F::IntoFuture>;
-  fn add_tokio_now(self) -> tokio::time::Instant;
-  fn add_tokio_instant(self, instant: tokio::time::Instant) -> tokio::time::Instant;
-}
-
-impl TimeDurationExt for time::Duration {
-  fn advance(self) -> impl Future<Output = ()> {
-    tokio::time::advance(self.unsigned_abs())
-  }
-
-  fn sleep(self) -> Sleep {
-    tokio::time::sleep(self.unsigned_abs())
-  }
-
-  fn interval(self, behavior: MissedTickBehavior) -> Interval {
-    let mut i = interval(self.unsigned_abs());
-    i.set_missed_tick_behavior(behavior);
-    i
-  }
-
-  fn interval_at(self, behavior: MissedTickBehavior) -> Interval {
-    let mut i = interval_at(self.add_tokio_now(), self.unsigned_abs());
-    i.set_missed_tick_behavior(behavior);
-    i
-  }
-
-  fn jittered_interval_at(self, behavior: MissedTickBehavior) -> Interval {
-    let millis: u64 = self.whole_milliseconds().try_into().unwrap();
-    let jittered = Duration::from_millis(thread_rng().gen_range(0 ..= millis));
-    let mut i = interval_at(tokio::time::Instant::now() + jittered, self.unsigned_abs());
-    i.set_missed_tick_behavior(behavior);
-    i
-  }
-
-  fn timeout<F: IntoFuture>(self, f: F) -> Timeout<F::IntoFuture> {
-    tokio::time::timeout(self.unsigned_abs(), f)
-  }
-
-  fn add_tokio_now(self) -> tokio::time::Instant {
-    tokio::time::Instant::now() + self.unsigned_abs()
-  }
-
-  fn add_tokio_instant(self, instant: tokio::time::Instant) -> tokio::time::Instant {
-    instant + self.unsigned_abs()
-  }
+  fn add_now(self) -> Instant;
+  fn add_instant(self, instant: Instant) -> Instant;
 }
 
 //
@@ -230,10 +204,9 @@ impl ToProtoDuration for time::Duration {
 // TimeProvider
 //
 
-#[async_trait::async_trait]
 pub trait TimeProvider: Send + Sync {
   fn now(&self) -> OffsetDateTime;
-  async fn sleep(&self, duration: time::Duration);
+  fn sleep(&self, duration: time::Duration) -> Pin<Box<dyn Future<Output = ()> + Send>>;
 }
 
 //
@@ -247,8 +220,8 @@ impl TimeProvider for SystemTimeProvider {
   fn now(&self) -> OffsetDateTime {
     OffsetDateTime::now_utc()
   }
-  async fn sleep(&self, duration: time::Duration) {
-    tokio::time::sleep(duration.unsigned_abs()).await;
+  fn sleep(&self, duration: time::Duration) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+    Box::pin(duration.sleep())
   }
 }
 
@@ -304,20 +277,22 @@ impl TestTimeProvider {
   }
 }
 
-#[async_trait::async_trait]
 impl TimeProvider for TestTimeProvider {
   fn now(&self) -> OffsetDateTime {
     *self.now.lock()
   }
 
-  async fn sleep(&self, duration: time::Duration) {
+  fn sleep(&self, duration: time::Duration) -> Pin<Box<dyn Future<Output = ()> + Send>> {
     // For testing purposes we don't actually want to sleep, just advance the time. Advancing the
     // clock is required for cases where were the calling code expects that the wall clock
     // advances as a result of sleeping.
     *self.now.lock() += duration;
 
     // Yield to simulate the async nature of sleep. Without this, tests have a chance to spin as
-    // sleeping doesn't yield to the exeuctor like it normally would.
-    tokio::task::yield_now().await;
+    // sleeping doesn't yield to the executor like it normally would.
+    #[cfg(not(target_family = "wasm"))]
+    return Box::pin(tokio::task::yield_now());
+    #[cfg(target_family = "wasm")]
+    Box::pin(async {})
   }
 }

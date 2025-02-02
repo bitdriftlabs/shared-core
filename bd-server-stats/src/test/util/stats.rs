@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::stats;
-use bd_time::TimeDurationExt;
+use bd_time::{Instant, TimeDurationExt};
 use prometheus::proto::{Counter, Gauge, Histogram, Metric};
 use std::collections::HashMap;
 use time::ext::NumericalDuration;
@@ -120,7 +120,7 @@ impl Helper {
     labels: &HashMap<&str, &str>,
     duration: time::Duration,
   ) {
-    let now = tokio::time::Instant::now();
+    let now = Instant::now();
     let mut latest_value = None;
     loop {
       assert!(

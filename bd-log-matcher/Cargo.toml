@@ -17,8 +17,7 @@ itertools.workspace    = true
 protobuf.workspace     = true
 regex.workspace        = true
 
-
-[dev-dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 assert_matches.workspace    = true
 bd-test-helpers.path        = "../bd-test-helpers"
 matches.workspace           = true
