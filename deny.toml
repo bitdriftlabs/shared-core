@@ -7,9 +7,19 @@ targets             = []
 feature-depth = 1
 
 [licenses]
-allow                = ["Apache-2.0", "BSD-3-Clause", "CC0-1.0", "ISC", "MIT", "MPL-2.0", "OpenSSL", "Unicode-3.0"]
+allow = [
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "CC0-1.0",
+  "ISC",
+  "MIT",
+  "MPL-2.0",
+  "NCSA",
+  "OpenSSL",
+  "Unicode-3.0",
+]
 confidence-threshold = 0.8
-exceptions           = []
+exceptions = []
 
 [[licenses.clarify]]
 crate         = "ring"

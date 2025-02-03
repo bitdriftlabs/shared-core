@@ -12,7 +12,7 @@ mod test;
 use parking_lot::Mutex;
 use protobuf::well_known_types::timestamp::Timestamp;
 use protobuf::MessageField;
-use rand::{thread_rng, Rng};
+use rand::{rng, Rng};
 use std::future::{Future, IntoFuture};
 use std::sync::Arc;
 use std::time::Duration;
@@ -141,7 +141,7 @@ impl TimeDurationExt for time::Duration {
 
   fn jittered_interval_at(self, behavior: MissedTickBehavior) -> Interval {
     let millis: u64 = self.whole_milliseconds().try_into().unwrap();
-    let jittered = Duration::from_millis(thread_rng().gen_range(0 ..= millis));
+    let jittered = Duration::from_millis(rng().random_range(0 ..= millis));
     let mut i = interval_at(tokio::time::Instant::now() + jittered, self.unsigned_abs());
     i.set_missed_tick_behavior(behavior);
     i
