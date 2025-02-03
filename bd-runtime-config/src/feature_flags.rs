@@ -88,7 +88,7 @@ impl MemoryFeatureFlags {
 
 impl FeatureFlags for MemoryFeatureFlags {
   fn feature_enabled(&self, name: &str, default: bool) -> bool {
-    self.feature_enabled(name, default, || rand::thread_rng().gen())
+    self.feature_enabled(name, default, || rand::rng().random())
   }
 
   fn get_bool(&self, name: &str, default: bool) -> bool {

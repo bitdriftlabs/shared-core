@@ -184,8 +184,8 @@ impl AnnotatedWorkflowsEngine {
       },
     ];
 
-    let mut rng = rand::thread_rng();
-    let generated = rng.gen::<u32>() % 100;
+    let mut rng = rand::rng();
+    let generated = rng.random::<u32>() % 100;
 
     let foreground = if generated < 75 { "true" } else { "false" };
     fields.push(LogField {
@@ -340,8 +340,8 @@ impl AnnotatedWorkflowsEngine {
   }
 
   fn generate_action_id() -> String {
-    let mut rng = rand::thread_rng();
-    let generated: u32 = rng.gen();
+    let mut rng = rand::rng();
+    let generated: u32 = rng.random();
 
     let mut hasher = sha2::Sha256::new();
     sha2::Digest::update(&mut hasher, generated.to_be_bytes());
@@ -502,10 +502,10 @@ fn run_network_requests_profiling_with_request_count(network_request_count: u32)
     engine.process_log(log_level::INFO, "SceneDidActivate", labels! {});
 
     for _ in 0 .. network_request_count {
-      let mut rng = rand::thread_rng();
+      let mut rng = rand::rng();
 
       #[allow(clippy::cast_possible_truncation)]
-      let path_index: u32 = rng.gen::<u32>() % (PATHS.len() as u32);
+      let path_index: u32 = rng.random::<u32>() % (PATHS.len() as u32);
 
       engine.process_log(
         log_level::DEBUG,
@@ -513,12 +513,12 @@ fn run_network_requests_profiling_with_request_count(network_request_count: u32)
         labels! { "path" => PATHS[path_index as usize] },
       );
 
-      let duration_ms = (rng.gen::<u32>() % 5_000).to_string();
-      let body_bytes_sent = (rng.gen::<u32>() % 10_000).to_string();
-      let body_bytes_received = (rng.gen::<u32>() % 10_000).to_string();
+      let duration_ms = (rng.random::<u32>() % 5_000).to_string();
+      let body_bytes_sent = (rng.random::<u32>() % 10_000).to_string();
+      let body_bytes_received = (rng.random::<u32>() % 10_000).to_string();
 
       // 85% success rate.
-      let is_success = rng.gen::<u32>() % 100 < 85;
+      let is_success = rng.random::<u32>() % 100 < 85;
       let result = if is_success { "success" } else { "failure" };
       let status_code = if is_success { "200" } else { "500" };
 
