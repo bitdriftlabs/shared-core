@@ -753,9 +753,14 @@ impl WorkflowsEngine {
       .emit_sankeys(&emit_sankey_diagrams_actions, log);
 
     for action in emit_sankey_diagrams_actions {
+        self.state.pending_sankey_actions.insert(PendingSankeyPathUpload {
+          sankey_path: action.path.clone(),
+        });
       if let Err(e) = self.sankey_processor_input_tx.try_send(action.path) {
         log::debug!("failed to process sankey: {e}");
       }
+
+      self.needs_state_persistence = true;
     }
 
     for action in flush_buffers_actions_processing_result.new_pending_actions_to_add {
