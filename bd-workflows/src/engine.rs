@@ -486,7 +486,9 @@ impl WorkflowsEngine {
       Some(processed_sankey_path) = self.sankey_processor_output_rx.recv() => {
         log::debug!("received processed sankey path: \"{:?}\"", processed_sankey_path);
 
-        self.state.pending_sankey_actions.remove(&PendingSankeyPathUpload { sankey_path: processed_sankey_path });
+        self.state.pending_sankey_actions.remove(&PendingSankeyPathUpload {
+            sankey_path: processed_sankey_path
+        });
         self.needs_state_persistence = true;
       },
     }
@@ -753,7 +755,10 @@ impl WorkflowsEngine {
       .emit_sankeys(&emit_sankey_diagrams_actions, log);
 
     for action in emit_sankey_diagrams_actions {
-        self.state.pending_sankey_actions.insert(PendingSankeyPathUpload {
+      self
+        .state
+        .pending_sankey_actions
+        .insert(PendingSankeyPathUpload {
           sankey_path: action.path.clone(),
         });
       if let Err(e) = self.sankey_processor_input_tx.try_send(action.path) {
