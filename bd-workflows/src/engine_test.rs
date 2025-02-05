@@ -477,7 +477,7 @@ impl Setup {
     self
       .sdk_directory
       .path()
-      .join("workflows_state_snapshot.4.bin")
+      .join("workflows_state_snapshot.5.bin")
   }
 }
 
@@ -2150,7 +2150,7 @@ async fn logs_streaming() {
 
   // Two of the triggered flush buffers actions are awaiting corresponding logs upload intents to be
   // processed.
-  assert_eq!(workflows_engine.state.pending_actions.len(), 2);
+  assert_eq!(workflows_engine.state.pending_flush_actions.len(), 2);
 
   // One logs streaming action is active.
   assert_eq!(workflows_engine.state.streaming_actions.len(), 1);
@@ -2286,7 +2286,7 @@ async fn logs_streaming() {
     Cow::Owned(BTreeSet::from(["trigger_buffer_id".into()]))
   );
 
-  assert!(workflows_engine.state.pending_actions.is_empty());
+  assert!(workflows_engine.state.pending_flush_actions.is_empty());
   assert!(workflows_engine.state.streaming_actions.is_empty());
 
   // Make sure that workflows state was persisted to disk.
@@ -2351,7 +2351,7 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   );
 
   // Confirm that the pending action was not cleaned up.
-  assert_eq!(1, workflows_engine.state.pending_actions.len());
+  assert_eq!(1, workflows_engine.state.pending_flush_actions.len());
 
   // Make sure that the engine's state is persisted to disk.
   assert!(workflows_engine.needs_state_persistence);
@@ -2680,7 +2680,7 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   // State was updated.
   assert_eq!(workflows_engine.state.session_id, "bar_session",);
   assert_eq!(1, workflows_engine.state.workflows.len());
-  assert!(workflows_engine.state.pending_actions.is_empty());
+  assert!(workflows_engine.state.pending_flush_actions.is_empty());
   assert!(workflows_engine.state.streaming_actions.is_empty());
   // No need to persist state as state file was removed already. The
   // only thing that needs storing is `session_ID` but having no session ID

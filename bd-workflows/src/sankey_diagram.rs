@@ -18,6 +18,7 @@ use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{SankeyIntentRequest, SankeyPathUploadRequest};
 use bd_stats_common::labels;
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 const PROCESSED_INTENTS_LRU_CACHE_SIZE: usize = 100;
@@ -78,6 +79,11 @@ impl ProcessedIntents {
   }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialOrd, Ord, PartialEq, Eq)]
+pub struct PendingSankeyPathUpload {
+  pub sankey_path: SankeyPath,
+}
+
 //
 // Processor
 //
@@ -86,6 +92,7 @@ impl ProcessedIntents {
 pub(crate) struct Processor {
   data_upload_tx: Sender<DataUpload>,
   input_rx: Receiver<SankeyPath>,
+  output_rx: Sender<SankeyPath>,
 
   processed_intents: ProcessedIntents,
 
@@ -96,11 +103,13 @@ impl Processor {
   pub(crate) fn new(
     input_rx: Receiver<SankeyPath>,
     data_upload_tx: Sender<DataUpload>,
+    output_rx: Sender<SankeyPath>,
     scope: &Scope,
   ) -> Self {
     Self {
       data_upload_tx,
       input_rx,
+      output_rx,
       processed_intents: ProcessedIntents::default(),
       stats: Stats::new(scope),
     }
@@ -124,27 +133,32 @@ impl Processor {
       sankey_path.path_id
     );
 
-    if self.processed_intents.contains(&sankey_path) {
+    let should_process = !self.processed_intents.contains(&sankey_path);
+
+    if should_process {
+      match self.perform_upload_intent_negotiation(&sankey_path).await {
+        Ok(decision) => {
+          self
+            .handle_upload_intent_decision(sankey_path.clone(), decision)
+            .await;
+        },
+        Err(error) => {
+          self.stats.intent_request_failures.inc();
+          log::debug!("failed to negotiate sankey path upload intent: {error}");
+        },
+      }
+    } else {
       log::debug!(
         "sankey path upload intent already processed, sankey id: {:?}, path id: {:?}",
         sankey_path.sankey_id,
         sankey_path.path_id
       );
       self.stats.intent_completion_already_processed.inc();
-      return;
     }
 
-    match self.perform_upload_intent_negotiation(&sankey_path).await {
-      Ok(decision) => {
-        self
-          .handle_upload_intent_decision(sankey_path, decision)
-          .await;
-      },
-      Err(error) => {
-        self.stats.intent_request_failures.inc();
-        log::debug!("failed to negotiate sankey path upload intent: {error}");
-      },
-    };
+    if let Err(e) = self.output_rx.send(sankey_path).await {
+      log::debug!("failed to send sankey path to output channel: {e}");
+    }
   }
 
   async fn handle_upload_intent_decision(
