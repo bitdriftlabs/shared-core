@@ -26,7 +26,7 @@ use crate::config::{
   WorkflowsConfiguration,
 };
 use crate::metrics::MetricsCollector;
-use crate::sankey_diagram;
+use crate::sankey_diagram::{self, PendingSankeyPathUpload};
 use crate::workflow::{SankeyPath, TriggeredAction, TriggeredActionEmitSankey, Workflow};
 use anyhow::anyhow;
 use bd_api::DataUpload;
@@ -90,6 +90,8 @@ pub struct WorkflowsEngine {
   flush_buffers_negotiator_join_handle: JoinHandle<()>,
 
   sankey_processor_input_tx: Sender<SankeyPath>,
+  sankey_processor_output_rx: Receiver<SankeyPath>,
+
   sankey_processor_join_handle: JoinHandle<()>,
 
   metrics_collector: MetricsCollector,
@@ -125,8 +127,13 @@ impl WorkflowsEngine {
     let flush_buffers_actions_resolver = Resolver::new(&actions_scope);
 
     let (sankey_input_tx, sankey_input_rx) = tokio::sync::mpsc::channel(10);
-    let sankey_diagram_processor =
-      sankey_diagram::Processor::new(sankey_input_rx, data_upload_tx, &actions_scope);
+    let (sankey_output_tx, sankey_output_rx) = tokio::sync::mpsc::channel(10);
+    let sankey_diagram_processor = sankey_diagram::Processor::new(
+      sankey_input_rx,
+      data_upload_tx,
+      sankey_output_tx,
+      &actions_scope,
+    );
     let sankey_processor_join_handle = sankey_diagram_processor.run();
 
     let workflows_engine = Self {
@@ -143,6 +150,7 @@ impl WorkflowsEngine {
       flush_buffers_negotiator_input_tx: input_tx,
       flush_buffers_negotiator_output_rx: output_rx,
       sankey_processor_input_tx: sankey_input_tx,
+      sankey_processor_output_rx: sankey_output_rx,
       sankey_processor_join_handle,
       metrics_collector: MetricsCollector::new(dynamic_stats),
       buffers_to_flush_tx,
@@ -163,12 +171,13 @@ impl WorkflowsEngine {
     let workflows_state = self.state_store.load();
 
     if let Some(state) = workflows_state {
-      self.state.pending_actions = self
+      self.state.pending_flush_actions = self
         .flush_buffers_actions_resolver
-        .standardize_pending_actions(state.pending_actions);
+        .standardize_pending_actions(state.pending_flush_actions);
       self.state.streaming_actions = self
         .flush_buffers_actions_resolver
         .standardize_streaming_buffers(state.streaming_actions);
+      self.state.pending_sankey_actions = state.pending_sankey_actions;
 
       self.state.session_id.clone_from(&state.session_id);
       self.add_workflows(
@@ -179,7 +188,7 @@ impl WorkflowsEngine {
       self.add_workflows(config.workflows_configuration.workflows, None);
     }
 
-    for action in &self.state.pending_actions {
+    for action in &self.state.pending_flush_actions {
       if let Err(e) = self
         .flush_buffers_negotiator_input_tx
         .try_send(action.clone())
@@ -189,11 +198,21 @@ impl WorkflowsEngine {
       }
     }
 
+    for sankey_path in &self.state.pending_sankey_actions {
+      if let Err(e) = self
+        .sankey_processor_input_tx
+        .try_send(sankey_path.sankey_path.clone())
+      {
+        log::debug!("failed to process sankey: {e}");
+      }
+    }
+
     log::debug!(
-      "started workflows engine with {} workflow(s); {} pending processing action(s); {} \
-       streaming action(s); session ID: \"{}\"; traversals count limit: {}",
+      "started workflows engine with {} workflow(s); {} pending processing action(s); {} pending \
+       sankey path uploads; {} streaming action(s); session ID: \"{}\"; traversals count limit: {}",
       self.state.workflows.len(),
-      self.state.pending_actions.len(),
+      self.state.pending_flush_actions.len(),
+      self.state.pending_sankey_actions.len(),
       self.state.streaming_actions.len(),
       self.state.session_id,
       self.traversals_count_limit,
@@ -279,9 +298,9 @@ impl WorkflowsEngine {
         config.continuous_buffer_ids,
       ));
 
-    self.state.pending_actions = self
+    self.state.pending_flush_actions = self
       .flush_buffers_actions_resolver
-      .standardize_pending_actions(self.state.pending_actions.clone());
+      .standardize_pending_actions(self.state.pending_flush_actions.clone());
     self.state.streaming_actions = self
       .flush_buffers_actions_resolver
       .standardize_streaming_buffers(self.state.streaming_actions.clone());
@@ -460,16 +479,24 @@ impl WorkflowsEngine {
               self.on_log_upload_approved(action).await;
           },
           NegotiatorOutput::UploadRejected(action) => {
-            self.state.pending_actions.remove(&action);
+            self.state.pending_flush_actions.remove(&action);
             self.needs_state_persistence = true;
           }
         }
+      },
+      Some(processed_sankey_path) = self.sankey_processor_output_rx.recv() => {
+        log::debug!("received processed sankey path: \"{:?}\"", processed_sankey_path);
+
+        self.state.pending_sankey_actions.remove(&PendingSankeyPathUpload {
+            sankey_path: processed_sankey_path
+        });
+        self.needs_state_persistence = true;
       },
     }
   }
 
   async fn on_log_upload_approved(&mut self, action: PendingFlushBuffersAction) {
-    self.state.pending_actions.remove(&action);
+    self.state.pending_flush_actions.remove(&action);
 
     // If there is already a pending buffer flush we don't want to signal another one, as
     // this would do nothing but mess up our tracking of the in-flight flush.
@@ -716,7 +743,7 @@ impl WorkflowsEngine {
       .process_flush_buffer_actions(
         flush_buffers_actions,
         &self.state.session_id,
-        &self.state.pending_actions,
+        &self.state.pending_flush_actions,
         &self.state.streaming_actions,
       );
 
@@ -729,13 +756,30 @@ impl WorkflowsEngine {
       .emit_sankeys(&emit_sankey_diagrams_actions, log);
 
     for action in emit_sankey_diagrams_actions {
+      // There is no real limit on the number of sankey paths we might want to upload, so ensure
+      // that we don't hold to too many of them in memory.
+      if self.state.pending_sankey_actions.len() >= sankey_diagram::MAX_PENDING_SANKEY_PATH_UPLOADS
+      {
+        log::debug!("pending sankey actions limit reached, skipping sankey diagram upload");
+        break;
+      }
+
+      self
+        .state
+        .pending_sankey_actions
+        .insert(PendingSankeyPathUpload {
+          sankey_path: action.path.clone(),
+        });
+
       if let Err(e) = self.sankey_processor_input_tx.try_send(action.path) {
         log::debug!("failed to process sankey: {e}");
       }
+
+      self.needs_state_persistence = true;
     }
 
     for action in flush_buffers_actions_processing_result.new_pending_actions_to_add {
-      self.state.pending_actions.insert(action.clone());
+      self.state.pending_flush_actions.insert(action.clone());
       if let Err(e) = self.flush_buffers_negotiator_input_tx.try_send(action) {
         log::debug!("failed to send flush buffers action intent for intent negotiation: {e}");
         self.stats.intent_negotiation_channel_send_failures.inc();
@@ -934,7 +978,7 @@ impl StateStore {
     );
 
     Self {
-      state_path: sdk_directory.join("workflows_state_snapshot.4.bin"),
+      state_path: sdk_directory.join("workflows_state_snapshot.5.bin"),
       last_persisted: None,
       stats,
       persistence_write_interval_flag: runtime.register_watch().unwrap(),
@@ -1059,7 +1103,8 @@ pub(crate) struct WorkflowsState {
   session_id: String,
   workflows: Vec<Workflow>,
 
-  pending_actions: BTreeSet<PendingFlushBuffersAction>,
+  pending_flush_actions: BTreeSet<PendingFlushBuffersAction>,
+  pending_sankey_actions: BTreeSet<PendingSankeyPathUpload>,
   streaming_actions: Vec<StreamingBuffersAction>,
 }
 
@@ -1086,7 +1131,8 @@ impl WorkflowsState {
           }
         })
         .collect(),
-      pending_actions: self.pending_actions.clone(),
+      pending_flush_actions: self.pending_flush_actions.clone(),
+      pending_sankey_actions: self.pending_sankey_actions.clone(),
       streaming_actions: self.streaming_actions.clone(),
     }
   }

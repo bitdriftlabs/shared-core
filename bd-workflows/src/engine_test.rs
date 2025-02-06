@@ -224,7 +224,7 @@ struct Hooks {
 
   sankey_uploads: Vec<SankeyPathUploadRequest>,
   received_sankey_upload_intents: Vec<SankeyIntentRequest>,
-  awaiting_sankey_upload_intent_decisions: Vec<IntentDecision>,
+  awaiting_sankey_upload_intent_decisions: Vec<Option<IntentDecision>>,
 }
 
 struct AnnotatedWorkflowsEngine {
@@ -317,6 +317,12 @@ impl AnnotatedWorkflowsEngine {
                   let sankey_upload_intent_payload = sankey_upload_intent.payload.clone();
 
                   let decision = hooks.lock().awaiting_sankey_upload_intent_decisions.remove(0);
+                  let Some(decision) =  decision else {
+                    log::debug!("no decision available for sankey upload intent, not responding");
+                      continue;
+                  };
+
+
                   log::debug!("responding \"{:?}\" to sankey upload intent \"{}\" intent", decision, sankey_upload_intent.uuid);
 
                   hooks.lock().received_sankey_upload_intents
@@ -477,7 +483,7 @@ impl Setup {
     self
       .sdk_directory
       .path()
-      .join("workflows_state_snapshot.4.bin")
+      .join("workflows_state_snapshot.5.bin")
   }
 }
 
@@ -2150,7 +2156,7 @@ async fn logs_streaming() {
 
   // Two of the triggered flush buffers actions are awaiting corresponding logs upload intents to be
   // processed.
-  assert_eq!(workflows_engine.state.pending_actions.len(), 2);
+  assert_eq!(workflows_engine.state.pending_flush_actions.len(), 2);
 
   // One logs streaming action is active.
   assert_eq!(workflows_engine.state.streaming_actions.len(), 1);
@@ -2286,7 +2292,7 @@ async fn logs_streaming() {
     Cow::Owned(BTreeSet::from(["trigger_buffer_id".into()]))
   );
 
-  assert!(workflows_engine.state.pending_actions.is_empty());
+  assert!(workflows_engine.state.pending_flush_actions.is_empty());
   assert!(workflows_engine.state.streaming_actions.is_empty());
 
   // Make sure that workflows state was persisted to disk.
@@ -2351,7 +2357,7 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   );
 
   // Confirm that the pending action was not cleaned up.
-  assert_eq!(1, workflows_engine.state.pending_actions.len());
+  assert_eq!(1, workflows_engine.state.pending_flush_actions.len());
 
   // Make sure that the engine's state is persisted to disk.
   assert!(workflows_engine.needs_state_persistence);
@@ -2680,7 +2686,7 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   // State was updated.
   assert_eq!(workflows_engine.state.session_id, "bar_session",);
   assert_eq!(1, workflows_engine.state.workflows.len());
-  assert!(workflows_engine.state.pending_actions.is_empty());
+  assert!(workflows_engine.state.pending_flush_actions.is_empty());
   assert!(workflows_engine.state.streaming_actions.is_empty());
   // No need to persist state as state file was removed already. The
   // only thing that needs storing is `session_ID` but having no session ID
@@ -3013,8 +3019,7 @@ async fn test_exclusive_workflow_potential_fork() {
   );
 }
 
-#[tokio::test]
-async fn sankey_action() {
+fn sankey_workflow() -> crate::config::Config {
   let mut a = state!("A");
   let mut b = state!("B");
   let mut c = state!("C");
@@ -3050,9 +3055,14 @@ async fn sankey_action() {
     )
   );
 
-  let workflow = workflow!(exclusive with a, b, c, d);
+  workflow!(exclusive with a, b, c, d)
+}
+
+#[tokio::test]
+async fn sankey_action() {
   let setup = Setup::new();
 
+  let workflow = sankey_workflow();
   let mut engine = setup.make_workflows_engine(
     WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
   );
@@ -3063,7 +3073,7 @@ async fn sankey_action() {
     .hooks
     .lock()
     .awaiting_sankey_upload_intent_decisions
-    .push(IntentDecision::Drop);
+    .push(Some(IntentDecision::Drop));
 
   engine_process_log!(engine; "foo");
   engine_process_log!(engine; "bar");
@@ -3090,7 +3100,7 @@ async fn sankey_action() {
     .hooks
     .lock()
     .awaiting_sankey_upload_intent_decisions
-    .push(IntentDecision::UploadImmediately);
+    .push(Some(IntentDecision::UploadImmediately));
 
   engine_process_log!(engine; "foo");
   engine_process_log!(engine; "bar_loop");
@@ -3173,6 +3183,101 @@ async fn sankey_action() {
       "extracted_field" => "extracted_value",
     },
   );
+}
+
+#[tokio::test]
+async fn sankey_action_persistence() {
+  let setup = Setup::new();
+
+  let workflow = sankey_workflow();
+
+  {
+    let mut engine = setup.make_workflows_engine(
+      WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow.clone()]),
+    );
+
+    // Emit a Sankey path but don't accept it.
+
+    engine
+      .hooks
+      .lock()
+      .awaiting_sankey_upload_intent_decisions
+      .push(None);
+
+    engine_process_log!(engine; "foo");
+    engine_process_log!(engine; "bar");
+    engine_process_log!(engine; "dar");
+
+    1.milliseconds().sleep().await;
+
+    engine.maybe_persist(false).await;
+  }
+
+  // After shutting down the engine, we only expect to see a response from the server if the Sankey
+  // path upload was persisted to disk.
+
+  let engine = setup.make_workflows_engine(
+    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
+  );
+
+  engine
+    .hooks
+    .lock()
+    .awaiting_sankey_upload_intent_decisions
+    .push(Some(IntentDecision::UploadImmediately));
+
+  10.milliseconds().sleep().await;
+
+  assert_eq!(1, engine.hooks.lock().sankey_uploads.len());
+  assert_eq!(1, engine.hooks.lock().received_sankey_upload_intents.len());
+}
+
+#[tokio::test]
+async fn sankey_action_persistence_limit() {
+  let setup = Setup::new();
+
+  let workflow = sankey_workflow();
+
+  {
+    let mut engine = setup.make_workflows_engine(
+      WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow.clone()]),
+    );
+
+    // Emit 20 Sankey paths that we don't immediately accept.
+    for i in 0 .. 20 {
+      engine
+        .hooks
+        .lock()
+        .awaiting_sankey_upload_intent_decisions
+        .push(None);
+
+      engine_process_log!(engine; "foo");
+      engine_process_log!(engine; "bar"; with labels!{ "field_to_extract_key" => format!("value_{}", i) });
+      engine_process_log!(engine; "dar");
+    }
+
+    1.milliseconds().sleep().await;
+
+    engine.maybe_persist(false).await;
+  }
+
+  let engine = setup.make_workflows_engine(
+    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
+  );
+
+  // We only see 10 Sankey paths uploaded as we limit the number of enqueued Sankey paths to 10.
+  for _ in 0 .. 10 {
+    engine
+      .hooks
+      .lock()
+      .awaiting_sankey_upload_intent_decisions
+      .push(Some(IntentDecision::UploadImmediately));
+  }
+
+  10.milliseconds().sleep().await;
+
+  assert_eq!(10, engine.hooks.lock().sankey_uploads.len());
+  assert_eq!(10, engine.hooks.lock().received_sankey_upload_intents.len());
 }
 
 #[tokio::test]

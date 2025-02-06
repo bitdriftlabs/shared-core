@@ -345,7 +345,7 @@ mod tests {
       self
         .sdk_directory
         .path()
-        .join("workflows_state_snapshot.4.bin")
+        .join("workflows_state_snapshot.5.bin")
     }
   }
 
