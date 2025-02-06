@@ -316,11 +316,12 @@ impl AnnotatedWorkflowsEngine {
 
                   let sankey_upload_intent_payload = sankey_upload_intent.payload.clone();
 
-                  let Some(decision) = hooks.lock().awaiting_sankey_upload_intent_decisions.remove(0) else {
+                  let decision = hooks.lock().awaiting_sankey_upload_intent_decisions.remove(0);
+                  let Some(decision) =  decision else {
                     log::debug!("no decision available for sankey upload intent, not responding");
                       continue;
                   };
-                      
+
 
                   log::debug!("responding \"{:?}\" to sankey upload intent \"{}\" intent", decision, sankey_upload_intent.uuid);
 
@@ -3197,11 +3198,11 @@ async fn sankey_action_persistence() {
 
     // Emit a Sankey path but don't accept it.
 
-  engine
-    .hooks
-    .lock()
-    .awaiting_sankey_upload_intent_decisions
-    .push(None);
+    engine
+      .hooks
+      .lock()
+      .awaiting_sankey_upload_intent_decisions
+      .push(None);
 
     engine_process_log!(engine; "foo");
     engine_process_log!(engine; "bar");
@@ -3243,7 +3244,7 @@ async fn sankey_action_persistence_limit() {
     );
 
     // Emit 20 Sankey paths that we don't immediately accept.
-    for i in 0..20 {
+    for i in 0 .. 20 {
       engine
         .hooks
         .lock()
@@ -3260,19 +3261,17 @@ async fn sankey_action_persistence_limit() {
     engine.maybe_persist(false).await;
   }
 
-  // After shutting down the engine, we only expect to see a response from the server if the Sankey
-  // path upload was persisted to disk.
-
   let engine = setup.make_workflows_engine(
     WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
   );
 
-  for _ in 0..10 {
-  engine
-    .hooks
-    .lock()
-    .awaiting_sankey_upload_intent_decisions
-    .push(Some(IntentDecision::UploadImmediately));
+  // We only see 10 Sankey paths uploaded as we limit the number of enqueued Sankey paths to 10.
+  for _ in 0 .. 10 {
+    engine
+      .hooks
+      .lock()
+      .awaiting_sankey_upload_intent_decisions
+      .push(Some(IntentDecision::UploadImmediately));
   }
 
   10.milliseconds().sleep().await;
