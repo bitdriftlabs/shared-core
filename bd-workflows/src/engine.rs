@@ -177,6 +177,7 @@ impl WorkflowsEngine {
       self.state.streaming_actions = self
         .flush_buffers_actions_resolver
         .standardize_streaming_buffers(state.streaming_actions);
+      self.state.pending_sankey_actions = state.pending_sankey_actions;
 
       self.state.session_id.clone_from(&state.session_id);
       self.add_workflows(
@@ -755,12 +756,21 @@ impl WorkflowsEngine {
       .emit_sankeys(&emit_sankey_diagrams_actions, log);
 
     for action in emit_sankey_diagrams_actions {
+      // There is no real limit on the number of sankey paths we might want to upload, so ensure
+      // that we don't hold to too many of them in memory.
+      if self.state.pending_sankey_actions.len() >= sankey_diagram::MAX_PENDING_SANKEY_PATH_UPLOADS
+      {
+        log::debug!("pending sankey actions limit reached, skipping sankey diagram upload");
+        break;
+      }
+
       self
         .state
         .pending_sankey_actions
         .insert(PendingSankeyPathUpload {
           sankey_path: action.path.clone(),
         });
+
       if let Err(e) = self.sankey_processor_input_tx.try_send(action.path) {
         log::debug!("failed to process sankey: {e}");
       }

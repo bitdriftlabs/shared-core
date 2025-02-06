@@ -23,6 +23,10 @@ use tokio::sync::mpsc::{Receiver, Sender};
 
 const PROCESSED_INTENTS_LRU_CACHE_SIZE: usize = 100;
 
+/// The number of pending Sankey path uploads that that should be allowed to accumulate before we
+/// start dropping them.
+pub const MAX_PENDING_SANKEY_PATH_UPLOADS: usize = 10;
+
 //
 // ProcessedIntents
 //
