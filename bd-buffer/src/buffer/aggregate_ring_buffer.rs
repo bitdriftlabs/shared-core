@@ -199,6 +199,11 @@ impl RingBufferImpl {
   pub fn non_volatile_buffer(&self) -> &NonVolatileRingBuffer {
     &self.shared_data.non_volatile_buffer
   }
+
+  pub fn disable_disk_read_write(&self, disable: bool) {
+    self.shared_data.volatile_buffer.disable_read(disable);
+    self.shared_data.non_volatile_buffer.disable_read(disable);
+  }
 }
 
 impl Drop for RingBufferImpl {
@@ -234,6 +239,15 @@ impl RingBuffer for RingBufferImpl {
   }
 
   fn flush(&self) {
+    if self.shared_data.volatile_buffer.read_disabled() {
+      // TODO(mattklein123): If the volatile buffer is read disabled, draining will never happen,
+      // so we just return here and don't bother. Note that reading out of the consumer will also
+      // never happen. In the case of a pending flush, if reads become enabled, there may be data
+      // that has not yet been flushed into non-volatile storage. We should actually do a flush
+      // when we get enabled in this case. We can try to make this better later.
+      return;
+    }
+
     self.shared_data.volatile_buffer.wait_for_drain();
   }
 

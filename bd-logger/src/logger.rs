@@ -19,6 +19,7 @@ use crate::bounded_buffer::{self, Sender as MemoryBoundSender};
 use crate::log_replay::LoggerReplay;
 use crate::{app_version, MetadataProvider};
 use bd_api::Metadata;
+use bd_buffer::Manager;
 use bd_client_stats_store::Scope;
 use bd_log::warn_every;
 use bd_log_metadata::AnnotatedLogFields;
@@ -87,7 +88,7 @@ thread_local! {
 /// logger.
 ///
 /// # Panics
-/// This will panic if the logger guard has an outstanding borrowk, e.g. either if this function is
+/// This will panic if the logger guard has an outstanding borrow, e.g. either if this function is
 /// called again within the provided closure or some other code starts holding a borrow while
 /// calling this.
 pub fn with_thread_local_logger_guard<R>(f: impl FnOnce() -> R) -> R {
@@ -109,6 +110,8 @@ pub struct LoggerHandle {
   app_version_repo: app_version::Repository,
 
   stats: Stats,
+
+  buffer_manager: Arc<Manager>,
 }
 
 impl LoggerHandle {
@@ -151,6 +154,14 @@ impl LoggerHandle {
           "dropping log: message {:?}: emitting logs from within a field provider is not allowed",
           message
         );
+      }
+    });
+  }
+
+  pub fn disable_disk_read_write(&self, disable: bool) {
+    LOGGER_GUARD.with(|cell| {
+      if cell.try_borrow().is_ok() {
+        self.buffer_manager.disable_disk_read_write(disable);
       }
     });
   }
@@ -421,6 +432,8 @@ pub struct Logger {
   pub(crate) stats: Stats,
 
   stats_scope: Scope,
+
+  buffer_manager: Arc<Manager>,
 }
 
 impl Logger {
@@ -433,6 +446,7 @@ impl Logger {
     device: Arc<bd_device::Device>,
     sdk_version: &str,
     store: Arc<bd_key_value::Store>,
+    buffer_manager: Arc<Manager>,
   ) -> Self {
     Self {
       shutdown_state: Mutex::new(shutdown_state),
@@ -444,6 +458,7 @@ impl Logger {
       stats: Stats::new(&stats),
       stats_scope: stats,
       store,
+      buffer_manager,
     }
   }
 
@@ -484,6 +499,7 @@ impl Logger {
       sdk_version: self.sdk_version.clone(),
       app_version_repo: Repository::new(self.store.clone()),
       stats: self.stats.clone(),
+      buffer_manager: self.buffer_manager.clone(),
     }
   }
 }

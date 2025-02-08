@@ -8,10 +8,12 @@
 use super::{with_thread_local_logger_guard, Stats};
 use crate::app_version::Repository;
 use crate::{bounded_buffer, LoggerHandle};
+use bd_buffer::Manager;
 use bd_client_stats_store::Collector;
 use bd_key_value::Store;
 use bd_log_primitives::log_level;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use bd_runtime::runtime::ConfigLoader;
 use bd_session::fixed::{self, UUIDCallbacks};
 use bd_session::Strategy;
 use bd_test_helpers::session::InMemoryStorage;
@@ -25,6 +27,10 @@ async fn thread_local_logger_guard() {
   let (tx, mut rx) = bounded_buffer::channel(1, 100);
 
   let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
+  let tmp_dir = Arc::new(tempfile::TempDir::with_prefix("root-").unwrap());
+  let runtime = ConfigLoader::new(tmp_dir.path());
+  let helper = Collector::default();
+  let manager = Manager::new(tmp_dir.path().join("buffer"), &helper.scope(""), &runtime).0;
   let handle = LoggerHandle {
     tx,
     stats: Stats::new(&Collector::default().scope("")),
@@ -35,6 +41,7 @@ async fn thread_local_logger_guard() {
     device: Arc::new(bd_device::Device::new(store.clone())),
     sdk_version: "1.0.0".into(),
     app_version_repo: Repository::new(store),
+    buffer_manager: manager,
   };
 
   with_thread_local_logger_guard(|| {

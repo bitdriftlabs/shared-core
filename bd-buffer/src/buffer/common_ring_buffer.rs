@@ -113,6 +113,15 @@ struct WaitForDrainData {
 }
 
 //
+// ReadState
+//
+
+pub struct ReadState {
+  pub read_disabled: bool,
+  pub has_data: bool,
+}
+
+//
 // LockedData
 //
 
@@ -159,9 +168,9 @@ pub struct LockedData<ExtraLockedData> {
 
   // Indicates whether the buffer is in a readable state or not, i.e. if we expect a read() call to
   // immediately return an entry.
-  pub readable: tokio::sync::watch::Sender<bool>,
+  pub readable: tokio::sync::watch::Sender<ReadState>,
   // We need to keep track of one of the receivers to avoid closing the channel.
-  _readable_rx: tokio::sync::watch::Receiver<bool>,
+  _readable_rx: tokio::sync::watch::Receiver<ReadState>,
 
   // For debugging only.
   pub name: String,
@@ -531,12 +540,11 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
   pub fn finish_commit_common(&mut self, reservation: &Range) -> &mut [u8] {
     log::trace!("({}) committing {}", self.name, reservation);
 
-    // TODO(snowp): Consider moving this deeper into the ring buffer where we notify the condvars
-    // if calling it repeatedly on every log ends up being expensive.
-    self
-      .readable
-      .send(true)
-      .expect("readable send should never fail");
+    self.readable.send_if_modified(|state| {
+      let changed = !state.has_data;
+      state.has_data = true;
+      changed
+    });
 
     // Return the extra space at the beginning (not counting the size) if there is any.
     self.extra_data(reservation.start)
@@ -731,6 +739,17 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     }
   }
 
+  pub fn disable_read(guard: &MutexGuard<'_, Self>, conditions: &Conditions, disable: bool) {
+    guard.readable.send_if_modified(|state| {
+      let changed = state.read_disabled != disable;
+      state.read_disabled = disable;
+      changed
+    });
+    if !disable {
+      conditions.read_enabled.notify_all();
+    }
+  }
+
   // Common implementation for the consumer startRead() API. On return will fill reserved_read with
   // a reservation if in blocking mode.
   pub fn start_read<'a>(
@@ -745,6 +764,21 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
         AbslCode::InvalidArgument,
         "start read without finishing previous read".to_string(),
       ));
+    }
+
+    loop {
+      if guard.readable.borrow().read_disabled {
+        if block {
+          conditions.read_enabled.wait(guard);
+        } else {
+          return Err(Error::AbslStatus(
+            AbslCode::Unavailable,
+            "read disabled".to_string(),
+          ));
+        }
+      } else {
+        break;
+      }
     }
 
     // The following loop is used to handle the case in which reading the next read size is
@@ -783,10 +817,11 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
         } else {
           log::trace!("({}) non-blocking no more data to read", guard.name);
 
-          guard
-            .readable
-            .send(false)
-            .expect("watch update should not fail");
+          guard.readable.send_if_modified(|state| {
+            let changed = state.has_data;
+            state.has_data = false;
+            changed
+          });
 
           return Err(Error::AbslStatus(
             AbslCode::Unavailable,
@@ -904,6 +939,7 @@ pub struct Conditions {
   data_available: Condvar,
   next_read_complete: Condvar,
   drain_complete: Condvar,
+  read_enabled: Condvar,
 }
 
 //
@@ -932,11 +968,14 @@ impl<ExtraLockedData> CommonRingBuffer<ExtraLockedData> {
     has_read_reservation_cb: impl Fn(&ExtraLockedData) -> bool + Send + 'static,
     has_write_reservation_cb: impl Fn(&ExtraLockedData) -> bool + Send + 'static,
   ) -> Self {
-    // Initialize the channel to true on startup. If we end up reading from the buffer when it's
+    // Initialize the channel to has data on startup. If we end up reading from the buffer when it's
     // not ready the async read calls will still wait for the read to be available, and starting
     // with reads enabled allows us to make progress if the buffer is full on startup and unable
     // to receive new logs (which is how we normally adjust the readable flag).
-    let (readable, readable_rx) = tokio::sync::watch::channel(true);
+    let (readable, readable_rx) = tokio::sync::watch::channel(ReadState {
+      read_disabled: false,
+      has_data: true,
+    });
 
     Self {
       locked_data: Mutex::new(LockedData {

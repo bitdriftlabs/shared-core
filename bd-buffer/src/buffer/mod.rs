@@ -117,8 +117,9 @@ pub trait RingBufferProducer: Send {
 #[async_trait::async_trait]
 pub trait RingBufferConsumer: Send {
   // Performs an async read, delaying the resolution of the future until there is an available
-  // record.
-  async fn read<'a>(&'a mut self) -> Result<&'a [u8]>;
+  // record. If return_empty is true, the call will return Unavailable if there is no data
+  // available. Otherwise, the call will block until there is data available or an unrelated error.
+  async fn read<'a>(&'a mut self, return_empty: bool) -> Result<&'a [u8]>;
 
   // Start a read on the buffer. An error is returned if startRead() is called before a previous
   // read is finished via finishRead().

@@ -447,6 +447,17 @@ impl Manager {
     Some((rx, updated_stream_buffer))
   }
 
+  pub fn disable_disk_read_write(&self, disable: bool) {
+    // TODO(mattklein123): We should persist the read/write state in the manager so we can start
+    // a buffer disabled if we receive a config update while disabled. In practice this almost
+    // never happens so we ignore this for now. If the entire app starts up in a disabled state
+    // we will need to see how it goes and deal with that flow independently.
+    let buffers = self.buffers.lock();
+    for (_, buffer) in buffers.0.values() {
+      buffer.disable_disk_read_write(disable);
+    }
+  }
+
   // Returns the active set of ring buffers.
   #[must_use]
   pub fn buffers(
@@ -466,16 +477,6 @@ impl Manager {
       .iter()
       .map(|(key, (buffer_type, buffer))| (key.clone(), (*buffer_type, buffer.clone())))
       .collect()
-  }
-
-  #[must_use]
-  #[allow(clippy::option_if_let_else)]
-  pub fn stream_buffer(&self) -> Option<Arc<dyn buffer::RingBuffer>> {
-    // A plain .clone() doesn't work well with the dyn indirection.
-    match &self.buffers.lock().1 {
-      Some(buffer) => Some(buffer.clone()),
-      None => None,
-    }
   }
 }
 
@@ -524,15 +525,15 @@ pub struct Consumer {
 }
 
 impl Consumer {
-  pub fn try_read(&mut self) -> Result<Vec<u8>> {
-    let reserved = self.consumer.start_read(false)?;
+  pub async fn try_read(&mut self) -> Result<Vec<u8>> {
+    let reserved = self.consumer.read(true).await?;
     let result = reserved.to_vec();
     self.consumer.finish_read()?;
     Ok(result)
   }
 
   pub async fn read(&mut self) -> Result<Vec<u8>> {
-    self.consumer.read().await.map(<[u8]>::to_vec)
+    self.consumer.read(false).await.map(<[u8]>::to_vec)
   }
 }
 
@@ -715,6 +716,10 @@ impl RingBuffer {
   // Flush the underlying buffer.
   pub fn flush(&self) {
     self.buffer.flush();
+  }
+
+  fn disable_disk_read_write(&self, disable: bool) {
+    self.buffer.disable_disk_read_write(disable);
   }
 }
 

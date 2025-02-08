@@ -176,6 +176,12 @@ impl LoggerBuilder {
       network_quality_provider.clone(),
     );
 
+    // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
+    // improve the perceived performance of the logger initialization.
+    let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;
+    let (buffer_manager, buffer_event_rx) =
+      bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader);
+
     let logger = Logger::new(
       maybe_shutdown_trigger,
       runtime_loader.clone(),
@@ -185,6 +191,7 @@ impl LoggerBuilder {
       self.params.device,
       self.params.static_metadata.sdk_version(),
       self.params.store,
+      buffer_manager.clone(),
     );
 
     let log = if self.internal_logger {
@@ -196,11 +203,6 @@ impl LoggerBuilder {
       Arc::new(NoopLogger) as Arc<dyn bd_internal_logging::Logger>
     };
 
-    // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
-    // improve the perceived performance of the logger initialization.
-    let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;
-    let (buffer_manager, buffer_event_rx) =
-      bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader);
     let buffer_uploader = BufferUploadManager::new(
       data_upload_ch.tx.clone(),
       &runtime_loader,

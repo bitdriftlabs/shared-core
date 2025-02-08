@@ -121,7 +121,7 @@ impl BufferUploadManager {
 
   #[tracing::instrument(level = "debug", skip(self), name = "BufferUploadManager")]
   pub async fn run(mut self) -> anyhow::Result<()> {
-    // For each spawned task, track the cancelation token and join handle,
+    // For each spawned task, track the cancellation token and join handle,
     // allowing us to cancel the task when a buffer has been removed.
 
     // Used to notify the upload manager about trigger uploads completing, allowing it to clear up
@@ -562,7 +562,7 @@ impl StreamedBufferUpload {
       log::debug!("awaiting stream log");
 
       let log = tokio::select! {
-        log = self.consumer.read() => log,
+        log = self.consumer.read(false) => log,
         () = self.shutdown.cancelled() => return Ok(()),
       }?;
 
@@ -649,7 +649,10 @@ impl CompleteBufferUpload {
 
     let mut total_logs = 0;
     loop {
-      let entry = self.consumer.try_read();
+      // TODO(mattklein123): If we shut down with an active batch either being built or being
+      // uploaded we are going to lose that batch. If the buffer is disk read/write disabled, this
+      // becomes even more likely. We will need to redo this to handle shutdown more gracefully.
+      let entry = self.consumer.try_read().await;
 
       match entry {
         // Log available, add to batch and flush if batch size hit.

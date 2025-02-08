@@ -329,16 +329,12 @@ impl BufferProducers {
   pub(crate) fn new(buffer_manager: &Arc<bd_buffer::Manager>) -> anyhow::Result<Self> {
     // TODO(snowp): Consider making this update logic more granular if the perf here becomes an
     // issue (e.g. only update things that changed).
-    let buffers = buffer_manager
-      .buffers()
-      .iter()
-      .map(|(id, buffer)| Ok((id.clone(), buffer.1.new_thread_local_producer()?)))
-      .collect::<anyhow::Result<_>>()?;
-
+    let mut buffers = HashMap::new();
     let mut continuous_buffer_ids = BTreeSet::new();
     let mut trigger_buffer_ids = BTreeSet::new();
 
-    for (buffer_id, (buffer_type, _)) in buffer_manager.buffers() {
+    for (buffer_id, (buffer_type, buffer)) in buffer_manager.buffers() {
+      buffers.insert(buffer_id.clone(), buffer.new_thread_local_producer()?);
       match buffer_type {
         bd_proto::protos::config::v1::config::buffer_config::Type::CONTINUOUS => {
           continuous_buffer_ids.insert(buffer_id.clone().into());

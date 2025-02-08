@@ -17,6 +17,7 @@ use super::common_ring_buffer::{
   LockHandleImpl as CommonLockHandleImpl,
   LockedData,
   Range,
+  ReadState,
 };
 use super::intrusive_queue_with_free_list::{Container, IntrusiveQueueWithFreeList};
 #[cfg(test)]
@@ -224,7 +225,7 @@ impl RingBufferProducer for ProducerImpl {
 
 struct ConsumerImpl {
   buffer: Weak<RingBufferImpl>,
-  readable: tokio::sync::watch::Receiver<bool>,
+  readable: tokio::sync::watch::Receiver<ReadState>,
 }
 
 impl ConsumerImpl {
@@ -266,7 +267,7 @@ impl ConsumerImpl {
 
 #[async_trait::async_trait]
 impl RingBufferConsumer for ConsumerImpl {
-  async fn read<'a>(&'a mut self) -> Result<&'a [u8]> {
+  async fn read<'a>(&'a mut self, return_empty: bool) -> Result<&'a [u8]> {
     let Some(parent) = self.buffer.upgrade() else {
       return Err(Error::AbslStatus(
         AbslCode::FailedPrecondition,
@@ -274,29 +275,29 @@ impl RingBufferConsumer for ConsumerImpl {
       ));
     };
 
-    // TODO(snowp): It doesn't seem like this clone would be necessary, but there are some lifetime
-    // issues to work through.
-    let mut readable = self.readable.clone();
     loop {
-      if *readable.borrow_and_update() {
+      let readable = {
+        let state = self.readable.borrow_and_update();
+        (state.has_data || return_empty) && !state.read_disabled
+      };
+      if readable {
         match Self::inner_start_read(
           parent.common_ring_buffer.locked_data.lock(),
           &parent.common_ring_buffer.conditions,
           false,
         ) {
           Ok(value) => return Ok(value),
-          Err(Error::AbslStatus(AbslCode::Unavailable, _)) => {
-            log::trace!(
-              "({}) read resulted in no entry, waiting for more data",
-              parent.common_ring_buffer.locked_data.lock().name
-            );
-            continue;
+          Err(e) if matches!(e, Error::AbslStatus(AbslCode::Unavailable, _)) => {
+            if return_empty {
+              return Err(e);
+            }
           },
           Err(e) => return Err(e),
         }
       }
 
-      readable
+      self
+        .readable
         .changed()
         .await
         .expect("read watch channel should never be closed");
@@ -486,6 +487,21 @@ impl RingBufferImpl {
       common_ring_buffer,
       no_reservations_condition: Condvar::default(),
     })
+  }
+
+  pub fn disable_read(&self, disable: bool) {
+    let common_ring_buffer = self.common_ring_buffer.locked_data.lock();
+    LockedData::disable_read(
+      &common_ring_buffer,
+      &self.common_ring_buffer.conditions,
+      disable,
+    );
+  }
+
+  pub fn read_disabled(&self) -> bool {
+    let common_ring_buffer = self.common_ring_buffer.locked_data.lock();
+    let readable = common_ring_buffer.readable.borrow();
+    readable.read_disabled
   }
 }
 
