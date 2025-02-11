@@ -244,5 +244,6 @@ pub trait LogInterceptor: Send + Sync {
     log_type: LogType,
     msg: &LogMessage,
     fields: &mut AnnotatedLogFields,
+    matching_fields: &mut AnnotatedLogFields,
   );
 }

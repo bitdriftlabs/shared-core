@@ -174,6 +174,7 @@ impl LoggerBuilder {
       shutdown_handle.clone(),
       &runtime_loader,
       network_quality_provider.clone(),
+      String::new(),
     );
 
     let logger = Logger::new(

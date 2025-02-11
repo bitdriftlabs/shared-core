@@ -294,6 +294,7 @@ impl bd_log_primitives::LogInterceptor for ScreenshotLogInterceptor {
     log_type: bd_log_primitives::LogType,
     msg: &bd_log_primitives::LogMessage,
     _fields: &mut bd_log_primitives::AnnotatedLogFields,
+    _matching_fields: &mut bd_log_primitives::AnnotatedLogFields,
   ) {
     if !(log_type == LogType::Replay && msg.as_str() == Some(SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE))
     {

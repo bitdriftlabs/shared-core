@@ -313,6 +313,7 @@ async fn no_logs_are_lost() {
     make_shutdown(1.seconds()),
     &setup.runtime,
     Arc::new(SimpleNetworkQualityProvider::default()),
+    String::new(),
   );
 
   let written_logs_count = Arc::new(AtomicUsize::new(0));
@@ -419,6 +420,7 @@ async fn logs_are_replayed_in_order() {
     make_shutdown(5.seconds()),
     &setup.runtime,
     Arc::new(SimpleNetworkQualityProvider::default()),
+    String::new(),
   );
 
   let written_logs = Arc::new(Mutex::new(vec![]));
@@ -525,6 +527,7 @@ fn enqueuing_log_does_not_block() {
     shutdown_trigger.make_handle(),
     &setup.runtime,
     Arc::new(SimpleNetworkQualityProvider::default()),
+    String::new(),
   );
 
   let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
@@ -567,6 +570,7 @@ fn take_screenshot_action() {
     shutdown_trigger.make_handle(),
     &setup.runtime,
     Arc::new(SimpleNetworkQualityProvider::default()),
+    String::new(),
   );
 
   let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
@@ -609,6 +613,7 @@ fn enqueuing_log_blocks() {
     shutdown_trigger.make_handle(),
     &setup.runtime,
     Arc::new(SimpleNetworkQualityProvider::default()),
+    String::new(),
   );
 
   let rt = tokio::runtime::Runtime::new().unwrap();
@@ -671,6 +676,7 @@ async fn creates_workflows_engine_in_response_to_config_update() {
     make_shutdown(1.seconds()),
     &setup.runtime,
     Arc::new(SimpleNetworkQualityProvider::default()),
+    String::new(),
   );
 
   // Simulate config update.
@@ -717,6 +723,7 @@ async fn does_not_create_workflows_engine_in_response_to_config_update_if_workfl
     make_shutdown(1.seconds()),
     &setup.runtime,
     Arc::new(SimpleNetworkQualityProvider::default()),
+    String::new(),
   );
 
   // Simulate config update.
@@ -760,6 +767,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
     shutdown_trigger.make_handle(),
     &setup.runtime,
     Arc::new(SimpleNetworkQualityProvider::default()),
+    String::new(),
   );
 
   let setup_clone = setup.clone();
@@ -857,6 +865,7 @@ async fn stops_workflows_engine_if_workflows_runtime_flag_is_disabled() {
     shutdown_trigger.make_handle(),
     &setup.runtime,
     Arc::new(SimpleNetworkQualityProvider::default()),
+    String::new(),
   );
 
   let setup_clone = setup.clone();
@@ -930,6 +939,7 @@ async fn logs_resource_utilization_log() {
     shutdown_trigger.make_handle(),
     &setup.runtime,
     Arc::new(SimpleNetworkQualityProvider::default()),
+    String::new(),
   );
 
   setup

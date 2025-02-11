@@ -43,6 +43,7 @@ impl LogInterceptor for Reporter {
     log_type: LogType,
     msg: &LogMessage,
     fields: &mut AnnotatedLogFields,
+    _matching_fields: &mut AnnotatedLogFields,
   ) {
     let mut guard = self.state.lock();
 
