@@ -10,7 +10,7 @@ pub struct DeviceIdInterceptor {
 }
 
 impl DeviceIdInterceptor {
-  pub fn new(device_id: String) -> Self {
+  pub const fn new(device_id: String) -> Self {
     Self { device_id }
   }
 }
