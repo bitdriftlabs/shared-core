@@ -10,6 +10,7 @@
 mod async_log_buffer_test;
 
 use crate::bounded_buffer::{channel, MemorySized, Receiver, Sender, TrySendError};
+use crate::device_id::DeviceIdInterceptor;
 use crate::log_replay::LogReplay;
 use crate::logger::with_thread_local_logger_guard;
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
@@ -176,6 +177,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     shutdown_trigger_handle: ComponentShutdownTriggerHandle,
     runtime_loader: &Arc<ConfigLoader>,
     network_quality_provider: Arc<dyn NetworkQualityProvider>,
+    device_id: String,
   ) -> (Self, Sender<AsyncLogBufferMessage>) {
     let (async_log_buffer_communication_tx, async_log_buffer_communication_rx) = channel(
       uninitialized_logging_context
@@ -204,6 +206,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     ));
     let network_quality_interceptor =
       Arc::new(NetworkQualityInterceptor::new(network_quality_provider));
+    let device_id_interceptor = Arc::new(DeviceIdInterceptor::new(device_id));
 
     (
       Self {
@@ -230,6 +233,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           bandwidth_usage_tracker,
           network_quality_interceptor,
           Arc::new(screenshot_log_interceptor),
+          device_id_interceptor,
         ],
 
         // The size of the pre-config buffer matches the size of the enclosing
@@ -600,6 +604,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   log.log_type,
                   &log.message,
                   &mut log.fields,
+                  &mut log.matching_fields,
                 );
               }
 

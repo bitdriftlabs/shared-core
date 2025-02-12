@@ -152,7 +152,6 @@ impl HTTPTrafficDataUsageTracker {
   }
 }
 
-#[allow(clippy::cognitive_complexity)]
 impl LogInterceptor for HTTPTrafficDataUsageTracker {
   fn process(
     &self,
@@ -160,6 +159,7 @@ impl LogInterceptor for HTTPTrafficDataUsageTracker {
     log_type: LogType,
     msg: &LogMessage,
     fields: &mut AnnotatedLogFields,
+    _matching_fields: &mut AnnotatedLogFields,
   ) {
     let LogMessage::String(msg) = msg else { return };
 
@@ -295,6 +295,7 @@ fn get_int_field_value(fields: &[AnnotatedLogField], field_key: &str) -> Option<
 
     let string_value = match &field.field.value {
       StringOrBytes::String(value) => value,
+      StringOrBytes::SharedString(value) => value,
       StringOrBytes::Bytes(_) => break,
     };
 
@@ -361,6 +362,7 @@ impl LogInterceptor for NetworkQualityInterceptor {
     log_type: LogType,
     _msg: &LogMessage,
     fields: &mut AnnotatedLogFields,
+    _matching_fields: &mut AnnotatedLogFields,
   ) {
     if log_type == LogType::Resource
       || log_type == LogType::Replay

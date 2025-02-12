@@ -249,6 +249,7 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
     LogType::Replay,
     &SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE.into(),
     &mut vec![],
+    &mut vec![],
   );
 
   // Request taking a screenshot goes through successfully as the previous screenshot log was
@@ -281,6 +282,7 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
     log_level::INFO,
     LogType::Replay,
     &SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE.into(),
+    &mut vec![],
     &mut vec![],
   );
 

@@ -131,6 +131,13 @@ fn string_or_bytes_union<T: AsRef<str>, B: AsRef<[u8]>>(
         Data::string_data,
       )
     },
+    StringOrBytes::SharedString(s) => {
+      let value = builder.create_string(s.as_ref());
+      (
+        StringData::create(builder, &StringDataArgs { data: Some(value) }).as_union_value(),
+        Data::string_data,
+      )
+    },
     StringOrBytes::Bytes(b) => {
       let value = builder.create_vector(b.as_ref());
       (

@@ -1688,6 +1688,71 @@ mod tests {
   }
 
   #[test]
+  fn device_id_matching() {
+    let mut setup = Setup::new();
+
+    let device_id = setup.logger.new_logger_handle().device_id();
+
+    // Send down a configuration with a trigger buffer ('trigger') which accepts all logs and a
+    // single workflow which matches for logs with the 'fire!' message in order to flush the
+    // default buffer.
+    let maybe_nack = setup.send_configuration_update(configuration_update(
+      "",
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![BufferConfigBuilder {
+            name: "trigger",
+            buffer_type: Type::TRIGGER,
+            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+            non_volatile_size: 100_000,
+            volatile_size: 10_000,
+          }
+          .build()],
+          ..Default::default()
+        })
+        .into(),
+        workflows_configuration: Some(make_workflow_config_flushing_buffer(
+          "trigger",
+          log_matches!(tag("_device_id") == &device_id),
+        ))
+        .into(),
+        ..Default::default()
+      },
+    ));
+    assert!(maybe_nack.is_none());
+
+    for _ in 0 .. 9 {
+      setup.log(
+        log_level::DEBUG,
+        LogType::Normal,
+        "test".into(),
+        vec![],
+        vec![],
+        None,
+      );
+    }
+
+    setup.log(
+      log_level::DEBUG,
+      LogType::InternalSDK,
+      "fire!".into(),
+      vec![],
+      vec![],
+      None,
+    );
+
+    assert_matches!(setup.server.next_log_intent(), Some(_intent));
+    assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+      assert_eq!(log_upload.buffer_uuid.as_str(), "trigger");
+      assert_eq!(log_upload.logs.len(), 10);
+
+      for log in &log_upload.logs {
+        assert!(!exists_field_value(log, "device_id") );
+      }
+    });
+  }
+
+  #[test]
   fn matching_on_but_not_capturing_matching_fields() {
     let mut setup = Setup::new();
 

@@ -54,6 +54,8 @@ impl MemorySized for LogFieldValue {
     size_of_val(self)
       + match self {
         Self::String(s) => s.len(),
+        // TODO(snowp): Can we avoid counting the size of the string if we know that it's "shared"?
+        Self::SharedString(s) => s.len(),
         Self::Bytes(b) => b.capacity(),
       }
   }

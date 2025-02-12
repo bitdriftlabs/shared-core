@@ -56,13 +56,31 @@ fn network_quality() {
   let interceptor = NetworkQualityInterceptor::new(network_quality_provider.clone());
   {
     let mut fields = vec![];
-    interceptor.process(log_level::DEBUG, LogType::Normal, &"".into(), &mut fields);
+    interceptor.process(
+      log_level::DEBUG,
+      LogType::Normal,
+      &"".into(),
+      &mut fields,
+      &mut vec![],
+    );
     assert!(fields.is_empty());
     network_quality_provider.set_network_quality(NetworkQuality::Online);
-    interceptor.process(log_level::DEBUG, LogType::Normal, &"".into(), &mut fields);
+    interceptor.process(
+      log_level::DEBUG,
+      LogType::Normal,
+      &"".into(),
+      &mut fields,
+      &mut vec![],
+    );
     assert!(fields.is_empty());
     network_quality_provider.set_network_quality(NetworkQuality::Offline);
-    interceptor.process(log_level::DEBUG, LogType::Normal, &"".into(), &mut fields);
+    interceptor.process(
+      log_level::DEBUG,
+      LogType::Normal,
+      &"".into(),
+      &mut fields,
+      &mut vec![],
+    );
     assert_eq!(
       fields[0],
       AnnotatedLogField::new_ootb("_network_quality".to_string(), "offline".into(),)
@@ -70,7 +88,13 @@ fn network_quality() {
   }
   {
     let mut fields = vec![];
-    interceptor.process(log_level::DEBUG, LogType::Replay, &"".into(), &mut fields);
+    interceptor.process(
+      log_level::DEBUG,
+      LogType::Replay,
+      &"".into(),
+      &mut fields,
+      &mut vec![],
+    );
     assert!(fields.is_empty());
   }
 }
@@ -90,7 +114,13 @@ async fn collects_bandwidth_sample() {
     time_provider.advance_by(std::time::Duration::from_secs(3));
 
     let mut fields = vec![];
-    tracker.process(log_level::DEBUG, LogType::Resource, &"".into(), &mut fields);
+    tracker.process(
+      log_level::DEBUG,
+      LogType::Resource,
+      &"".into(),
+      &mut fields,
+      &mut vec![],
+    );
     assert!(fields.is_empty());
   }
 
@@ -105,6 +135,7 @@ async fn collects_bandwidth_sample() {
       create_int_field("_response_body_bytes_received_count", 300),
       create_int_field("_response_headers_bytes_count", 400),
     ],
+    &mut vec![],
   );
 
   assert_eq!(
@@ -116,7 +147,13 @@ async fn collects_bandwidth_sample() {
     time_provider.advance_by(std::time::Duration::from_secs(3));
 
     let mut fields = vec![];
-    tracker.process(log_level::DEBUG, LogType::Resource, &"".into(), &mut fields);
+    tracker.process(
+      log_level::DEBUG,
+      LogType::Resource,
+      &"".into(),
+      &mut fields,
+      &mut vec![],
+    );
     assert!(!fields.is_empty());
 
     assert_eq!(
@@ -152,7 +189,13 @@ async fn collects_bandwidth_sample() {
   time_provider.advance_by(std::time::Duration::from_secs(3));
 
   let mut fields = vec![];
-  tracker.process(log_level::DEBUG, LogType::Resource, &"".into(), &mut fields);
+  tracker.process(
+    log_level::DEBUG,
+    LogType::Resource,
+    &"".into(),
+    &mut fields,
+    &mut vec![],
+  );
 
   assert_eq!(
     Some(0),
@@ -192,6 +235,7 @@ fn get_int_field_value(fields: &AnnotatedLogFields, field_key: &str) -> Option<u
     }
 
     let string_value = match &field.field.value {
+      StringOrBytes::SharedString(value) => value,
       StringOrBytes::String(value) => value,
       StringOrBytes::Bytes(_) => break,
     };

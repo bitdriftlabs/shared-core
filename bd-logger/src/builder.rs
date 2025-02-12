@@ -174,6 +174,7 @@ impl LoggerBuilder {
       shutdown_handle.clone(),
       &runtime_loader,
       network_quality_provider.clone(),
+      self.params.device.id(),
     );
 
     let logger = Logger::new(
