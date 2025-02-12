@@ -7,18 +7,21 @@
 
 use bd_log_metadata::AnnotatedLogFields;
 use bd_log_primitives::{AnnotatedLogField, LogInterceptor, LogLevel, LogMessage, LogType};
+use std::sync::Arc;
 
 //
 // DeviceIdInterceptor
 //
 
 pub struct DeviceIdInterceptor {
-  device_id: String,
+  device_id: Arc<String>,
 }
 
 impl DeviceIdInterceptor {
-  pub const fn new(device_id: String) -> Self {
-    Self { device_id }
+  pub fn new(device_id: String) -> Self {
+    Self {
+      device_id: device_id.into(),
+    }
   }
 }
 

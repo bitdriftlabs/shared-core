@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 pub use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use std::sync::Arc;
 
 pub const LOG_FIELD_NAME_TYPE: &str = "log_type";
 pub const LOG_FIELD_NAME_LEVEL: &str = "log_level";
@@ -16,23 +17,30 @@ pub const LOG_FIELD_NAME_MESSAGE: &str = "_message";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StringOrBytes<S: AsRef<str>, B: AsRef<[u8]>> {
   String(S),
+  SharedString(Arc<String>),
   Bytes(B),
 }
 
 impl<T: AsRef<str>, B: AsRef<[u8]>> StringOrBytes<T, B> {
   /// Extracts the underlying str if the enum represents a String, None otherwise.
   pub fn as_str(&self) -> Option<&str> {
-    if let Self::String(s) = self {
-      return Some(s.as_ref());
+    match self {
+      Self::String(s) => Some(s.as_ref()),
+      Self::SharedString(s) => Some(s.as_str()),
+      Self::Bytes(_) => None,
     }
-
-    None
   }
 }
 
 impl From<String> for StringOrBytes<String, Vec<u8>> {
   fn from(s: String) -> Self {
     Self::String(s)
+  }
+}
+
+impl<S: AsRef<str>> From<Arc<String>> for StringOrBytes<S, Vec<u8>> {
+  fn from(s: Arc<String>) -> Self {
+    Self::SharedString(s)
   }
 }
 
@@ -64,6 +72,7 @@ impl std::fmt::Display for LogMessage {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Self::String(s) => write!(f, "{s}"),
+      Self::SharedString(s) => write!(f, "{s}"),
       Self::Bytes(b) => {
         write!(f, "bytes:{b:?}")
       },

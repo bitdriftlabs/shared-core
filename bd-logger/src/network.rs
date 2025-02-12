@@ -295,6 +295,7 @@ fn get_int_field_value(fields: &[AnnotatedLogField], field_key: &str) -> Option<
 
     let string_value = match &field.field.value {
       StringOrBytes::String(value) => value,
+      StringOrBytes::SharedString(value) => value,
       StringOrBytes::Bytes(_) => break,
     };
 
