@@ -632,16 +632,6 @@ pub mod log_upload {
     30 * 1000
   ); // 30s
 
-  // This controls how often we poll continuous buffers to see if there are logs ready to be
-  // consumed and added to the current batch.
-  // TODO(snowp): This goes away once we start using a future to determine respond to new data
-  // instead of polling.
-  int_feature_flag!(
-    ContinuousBufferPollIntervalFlag,
-    "log_uploader.continuous_buffer_poll_interval_ms",
-    1000
-  ); // 1s
-
   // This controls how many times we'll retry an upload before giving up. Note that this tracks the
   // number of times the log upload is dispatched to the internal API mux, not direct attempts at
   // sending it over the wire. This has the effect that a retry attempt is only processed while
