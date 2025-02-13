@@ -50,7 +50,15 @@ fn platform_default() {
   } else {
     let trace_printer =
       color_backtrace::BacktracePrinter::default().message("Panic triggered backtrace");
-    trace_printer.install(color_backtrace::default_output_stream());
+    std::panic::set_hook(Box::new(move |info| {
+      // By default the color backtrace printer will print to stderr directly. If there are
+      // multiple threads running we continue to get a lot of output while the backtrace is
+      // being computed which splits the output. This forces all output into a string and then
+      // we log that directly.
+      let mut ansi = termcolor::Ansi::new(vec![]);
+      trace_printer.print_panic_info(info, &mut ansi).unwrap();
+      log::error!("{}", String::from_utf8(ansi.into_inner()).unwrap());
+    }));
   }
 }
 

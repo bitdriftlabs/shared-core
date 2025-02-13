@@ -11,3 +11,4 @@ doctest = false
 [dependencies]
 color-backtrace.workspace = true
 log.workspace             = true
+termcolor.workspace       = true

@@ -806,6 +806,7 @@ version = "1.0.0"
 dependencies = [
  "color-backtrace",
  "log",
+ "termcolor",
 ]
 
 [[package]]
@@ -1414,9 +1415,9 @@ dependencies = [
 
 [[package]]
 name = "ctor"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c07fe864cb3698cd740399ae09cacf8ee4ae901b4a38b0f86f035838e807118"
+checksum = "952d7c24b2615675db90c2201742b49c314dea9fa56c6688cbf8c4dee2b2553f"
 
 [[package]]
 name = "dashmap"
