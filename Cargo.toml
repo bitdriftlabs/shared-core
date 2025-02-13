@@ -61,7 +61,7 @@ clap            = { version = "4.5.29", features = ["derive", "env"] }
 color-backtrace = "0.7.0"
 concat-string   = "1.0.1"
 crc32fast       = "1.4.2"
-ctor            = "0.3.2"
+ctor            = "0.3.3"
 dashmap         = "6.1.0"
 flatbuffers     = "25.2.10"
 flatc-rust      = "0.2.0"
@@ -75,7 +75,11 @@ http-body       = "1.0.1"
 http-body-util  = "0.1.2"
 hyper           = "1.6.0"
 
-hyper-rustls = { version = "0.27.5", default-features = false, features = ["http1", "http2", "webpki-tokio"] }
+hyper-rustls = { version = "0.27.5", default-features = false, features = [
+  "http1",
+  "http2",
+  "webpki-tokio",
+] }
 
 hyper-util            = { version = "0.1.10", features = ["client", "client-legacy"] }
 intrusive-collections = "0.9.7"
@@ -117,6 +121,7 @@ sketches-rust = { git = "https://github.com/mattklein123/sketches-rust.git", bra
 snap              = "1.1.1"
 static_assertions = "1.1.0"
 tempfile          = "3.16.0"
+termcolor         = "1.4.1"
 thiserror         = "2.0.11"
 tikv-jemalloc-ctl = "0.6.0"
 time              = { version = "0.3.37", features = ["serde-well-known", "macros"] }
