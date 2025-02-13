@@ -623,7 +623,7 @@ pub mod log_upload {
     1024 * 1024 // 1 MiB
   );
 
-  // Continuous logs are uploaded in batchs either when the batch size is hit or when the deadline
+  // Continuous logs are uploaded in batches either when the batch size is hit or when the deadline
   // has been hit. This controls how long the client will wait before triggering a flush for a
   // batch that has not yet reached the batch limit.
   int_feature_flag!(
@@ -631,16 +631,6 @@ pub mod log_upload {
     "log_uploader.batch_deadline_ms",
     30 * 1000
   ); // 30s
-
-  // This controls how often we poll continuous buffers to see if there are logs ready to be
-  // consumed and added to the current batch.
-  // TODO(snowp): This goes away once we start using a future to determine respond to new data
-  // instead of polling.
-  int_feature_flag!(
-    ContinuousBufferPollIntervalFlag,
-    "log_uploader.continuous_buffer_poll_interval_ms",
-    1000
-  ); // 1s
 
   // This controls how many times we'll retry an upload before giving up. Note that this tracks the
   // number of times the log upload is dispatched to the internal API mux, not direct attempts at
