@@ -623,7 +623,7 @@ pub mod log_upload {
     1024 * 1024 // 1 MiB
   );
 
-  // Continuous logs are uploaded in batchs either when the batch size is hit or when the deadline
+  // Continuous logs are uploaded in batches either when the batch size is hit or when the deadline
   // has been hit. This controls how long the client will wait before triggering a flush for a
   // batch that has not yet reached the batch limit.
   int_feature_flag!(
