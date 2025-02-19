@@ -2713,8 +2713,106 @@ impl ApiRequest {
         }
     }
 
+    // .bitdrift_public.protobuf.client.v1.UploadArtifactRequest artifact_upload = 12;
+
+    pub fn artifact_upload(&self) -> &UploadArtifactRequest {
+        match self.request_type {
+            ::std::option::Option::Some(api_request::Request_type::ArtifactUpload(ref v)) => v,
+            _ => <UploadArtifactRequest as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_artifact_upload(&mut self) {
+        self.request_type = ::std::option::Option::None;
+    }
+
+    pub fn has_artifact_upload(&self) -> bool {
+        match self.request_type {
+            ::std::option::Option::Some(api_request::Request_type::ArtifactUpload(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_artifact_upload(&mut self, v: UploadArtifactRequest) {
+        self.request_type = ::std::option::Option::Some(api_request::Request_type::ArtifactUpload(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_artifact_upload(&mut self) -> &mut UploadArtifactRequest {
+        if let ::std::option::Option::Some(api_request::Request_type::ArtifactUpload(_)) = self.request_type {
+        } else {
+            self.request_type = ::std::option::Option::Some(api_request::Request_type::ArtifactUpload(UploadArtifactRequest::new()));
+        }
+        match self.request_type {
+            ::std::option::Option::Some(api_request::Request_type::ArtifactUpload(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_artifact_upload(&mut self) -> UploadArtifactRequest {
+        if self.has_artifact_upload() {
+            match self.request_type.take() {
+                ::std::option::Option::Some(api_request::Request_type::ArtifactUpload(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            UploadArtifactRequest::new()
+        }
+    }
+
+    // .bitdrift_public.protobuf.client.v1.UploadArtifactIntentRequest artifact_intent = 13;
+
+    pub fn artifact_intent(&self) -> &UploadArtifactIntentRequest {
+        match self.request_type {
+            ::std::option::Option::Some(api_request::Request_type::ArtifactIntent(ref v)) => v,
+            _ => <UploadArtifactIntentRequest as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_artifact_intent(&mut self) {
+        self.request_type = ::std::option::Option::None;
+    }
+
+    pub fn has_artifact_intent(&self) -> bool {
+        match self.request_type {
+            ::std::option::Option::Some(api_request::Request_type::ArtifactIntent(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_artifact_intent(&mut self, v: UploadArtifactIntentRequest) {
+        self.request_type = ::std::option::Option::Some(api_request::Request_type::ArtifactIntent(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_artifact_intent(&mut self) -> &mut UploadArtifactIntentRequest {
+        if let ::std::option::Option::Some(api_request::Request_type::ArtifactIntent(_)) = self.request_type {
+        } else {
+            self.request_type = ::std::option::Option::Some(api_request::Request_type::ArtifactIntent(UploadArtifactIntentRequest::new()));
+        }
+        match self.request_type {
+            ::std::option::Option::Some(api_request::Request_type::ArtifactIntent(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_artifact_intent(&mut self) -> UploadArtifactIntentRequest {
+        if self.has_artifact_intent() {
+            match self.request_type.take() {
+                ::std::option::Option::Some(api_request::Request_type::ArtifactIntent(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            UploadArtifactIntentRequest::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(11);
+        let mut fields = ::std::vec::Vec::with_capacity(13);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, HandshakeRequest>(
             "handshake",
@@ -2793,6 +2891,20 @@ impl ApiRequest {
             ApiRequest::mut_sankey_intent,
             ApiRequest::set_sankey_intent,
         ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, UploadArtifactRequest>(
+            "artifact_upload",
+            ApiRequest::has_artifact_upload,
+            ApiRequest::artifact_upload,
+            ApiRequest::mut_artifact_upload,
+            ApiRequest::set_artifact_upload,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, UploadArtifactIntentRequest>(
+            "artifact_intent",
+            ApiRequest::has_artifact_intent,
+            ApiRequest::artifact_intent,
+            ApiRequest::mut_artifact_intent,
+            ApiRequest::set_artifact_intent,
+        ));
         oneofs.push(api_request::Request_type::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ApiRequest>(
             "ApiRequest",
@@ -2844,6 +2956,12 @@ impl ::protobuf::Message for ApiRequest {
                 },
                 90 => {
                     self.request_type = ::std::option::Option::Some(api_request::Request_type::SankeyIntent(is.read_message()?));
+                },
+                98 => {
+                    self.request_type = ::std::option::Option::Some(api_request::Request_type::ArtifactUpload(is.read_message()?));
+                },
+                106 => {
+                    self.request_type = ::std::option::Option::Some(api_request::Request_type::ArtifactIntent(is.read_message()?));
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -2903,6 +3021,14 @@ impl ::protobuf::Message for ApiRequest {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
+                &api_request::Request_type::ArtifactUpload(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &api_request::Request_type::ArtifactIntent(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
             };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -2946,6 +3072,12 @@ impl ::protobuf::Message for ApiRequest {
                 &api_request::Request_type::SankeyIntent(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(11, v, os)?;
                 },
+                &api_request::Request_type::ArtifactUpload(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(12, v, os)?;
+                },
+                &api_request::Request_type::ArtifactIntent(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(13, v, os)?;
+                },
             };
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
@@ -2965,6 +3097,8 @@ impl ::protobuf::Message for ApiRequest {
     }
 
     fn clear(&mut self) {
+        self.request_type = ::std::option::Option::None;
+        self.request_type = ::std::option::Option::None;
         self.request_type = ::std::option::Option::None;
         self.request_type = ::std::option::Option::None;
         self.request_type = ::std::option::Option::None;
@@ -3033,6 +3167,10 @@ pub mod api_request {
         SankeyPathUpload(super::SankeyPathUploadRequest),
         // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiRequest.sankey_intent)
         SankeyIntent(super::SankeyIntentRequest),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiRequest.artifact_upload)
+        ArtifactUpload(super::UploadArtifactRequest),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiRequest.artifact_intent)
+        ArtifactIntent(super::UploadArtifactIntentRequest),
     }
 
     impl ::protobuf::Oneof for Request_type {
@@ -3509,6 +3647,964 @@ impl ::std::fmt::Display for SankeyIntentRequest {
 }
 
 impl ::protobuf::reflect::ProtobufValue for SankeyIntentRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.UploadArtifactIntentRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct UploadArtifactIntentRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactIntentRequest.intent_uuid)
+    pub intent_uuid: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactIntentRequest.type_id)
+    pub type_id: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactIntentRequest.metadata)
+    pub metadata: ::std::vec::Vec<u8>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.UploadArtifactIntentRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a UploadArtifactIntentRequest {
+    fn default() -> &'a UploadArtifactIntentRequest {
+        <UploadArtifactIntentRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl UploadArtifactIntentRequest {
+    pub fn new() -> UploadArtifactIntentRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "intent_uuid",
+            |m: &UploadArtifactIntentRequest| { &m.intent_uuid },
+            |m: &mut UploadArtifactIntentRequest| { &mut m.intent_uuid },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "type_id",
+            |m: &UploadArtifactIntentRequest| { &m.type_id },
+            |m: &mut UploadArtifactIntentRequest| { &mut m.type_id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "metadata",
+            |m: &UploadArtifactIntentRequest| { &m.metadata },
+            |m: &mut UploadArtifactIntentRequest| { &mut m.metadata },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<UploadArtifactIntentRequest>(
+            "UploadArtifactIntentRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for UploadArtifactIntentRequest {
+    const NAME: &'static str = "UploadArtifactIntentRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.intent_uuid = is.read_string()?;
+                },
+                18 => {
+                    self.type_id = is.read_string()?;
+                },
+                26 => {
+                    self.metadata = is.read_bytes()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.intent_uuid.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.intent_uuid);
+        }
+        if !self.type_id.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.type_id);
+        }
+        if !self.metadata.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(3, &self.metadata);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.intent_uuid.is_empty() {
+            os.write_string(1, &self.intent_uuid)?;
+        }
+        if !self.type_id.is_empty() {
+            os.write_string(2, &self.type_id)?;
+        }
+        if !self.metadata.is_empty() {
+            os.write_bytes(3, &self.metadata)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> UploadArtifactIntentRequest {
+        UploadArtifactIntentRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.intent_uuid.clear();
+        self.type_id.clear();
+        self.metadata.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static UploadArtifactIntentRequest {
+        static instance: UploadArtifactIntentRequest = UploadArtifactIntentRequest {
+            intent_uuid: ::std::string::String::new(),
+            type_id: ::std::string::String::new(),
+            metadata: ::std::vec::Vec::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for UploadArtifactIntentRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("UploadArtifactIntentRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for UploadArtifactIntentRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for UploadArtifactIntentRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.UploadArtifactIntentResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct UploadArtifactIntentResponse {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactIntentResponse.intent_uuid)
+    pub intent_uuid: ::std::string::String,
+    // message oneof groups
+    pub decision: ::std::option::Option<upload_artifact_intent_response::Decision>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.UploadArtifactIntentResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a UploadArtifactIntentResponse {
+    fn default() -> &'a UploadArtifactIntentResponse {
+        <UploadArtifactIntentResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl UploadArtifactIntentResponse {
+    pub fn new() -> UploadArtifactIntentResponse {
+        ::std::default::Default::default()
+    }
+
+    // .bitdrift_public.protobuf.client.v1.UploadArtifactIntentResponse.UploadImmediately upload_immediately = 3;
+
+    pub fn upload_immediately(&self) -> &upload_artifact_intent_response::UploadImmediately {
+        match self.decision {
+            ::std::option::Option::Some(upload_artifact_intent_response::Decision::UploadImmediately(ref v)) => v,
+            _ => <upload_artifact_intent_response::UploadImmediately as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_upload_immediately(&mut self) {
+        self.decision = ::std::option::Option::None;
+    }
+
+    pub fn has_upload_immediately(&self) -> bool {
+        match self.decision {
+            ::std::option::Option::Some(upload_artifact_intent_response::Decision::UploadImmediately(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_upload_immediately(&mut self, v: upload_artifact_intent_response::UploadImmediately) {
+        self.decision = ::std::option::Option::Some(upload_artifact_intent_response::Decision::UploadImmediately(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_upload_immediately(&mut self) -> &mut upload_artifact_intent_response::UploadImmediately {
+        if let ::std::option::Option::Some(upload_artifact_intent_response::Decision::UploadImmediately(_)) = self.decision {
+        } else {
+            self.decision = ::std::option::Option::Some(upload_artifact_intent_response::Decision::UploadImmediately(upload_artifact_intent_response::UploadImmediately::new()));
+        }
+        match self.decision {
+            ::std::option::Option::Some(upload_artifact_intent_response::Decision::UploadImmediately(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_upload_immediately(&mut self) -> upload_artifact_intent_response::UploadImmediately {
+        if self.has_upload_immediately() {
+            match self.decision.take() {
+                ::std::option::Option::Some(upload_artifact_intent_response::Decision::UploadImmediately(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            upload_artifact_intent_response::UploadImmediately::new()
+        }
+    }
+
+    // .bitdrift_public.protobuf.client.v1.UploadArtifactIntentResponse.Drop drop = 4;
+
+    pub fn drop(&self) -> &upload_artifact_intent_response::Drop {
+        match self.decision {
+            ::std::option::Option::Some(upload_artifact_intent_response::Decision::Drop(ref v)) => v,
+            _ => <upload_artifact_intent_response::Drop as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_drop(&mut self) {
+        self.decision = ::std::option::Option::None;
+    }
+
+    pub fn has_drop(&self) -> bool {
+        match self.decision {
+            ::std::option::Option::Some(upload_artifact_intent_response::Decision::Drop(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_drop(&mut self, v: upload_artifact_intent_response::Drop) {
+        self.decision = ::std::option::Option::Some(upload_artifact_intent_response::Decision::Drop(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_drop(&mut self) -> &mut upload_artifact_intent_response::Drop {
+        if let ::std::option::Option::Some(upload_artifact_intent_response::Decision::Drop(_)) = self.decision {
+        } else {
+            self.decision = ::std::option::Option::Some(upload_artifact_intent_response::Decision::Drop(upload_artifact_intent_response::Drop::new()));
+        }
+        match self.decision {
+            ::std::option::Option::Some(upload_artifact_intent_response::Decision::Drop(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_drop(&mut self) -> upload_artifact_intent_response::Drop {
+        if self.has_drop() {
+            match self.decision.take() {
+                ::std::option::Option::Some(upload_artifact_intent_response::Decision::Drop(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            upload_artifact_intent_response::Drop::new()
+        }
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "intent_uuid",
+            |m: &UploadArtifactIntentResponse| { &m.intent_uuid },
+            |m: &mut UploadArtifactIntentResponse| { &mut m.intent_uuid },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, upload_artifact_intent_response::UploadImmediately>(
+            "upload_immediately",
+            UploadArtifactIntentResponse::has_upload_immediately,
+            UploadArtifactIntentResponse::upload_immediately,
+            UploadArtifactIntentResponse::mut_upload_immediately,
+            UploadArtifactIntentResponse::set_upload_immediately,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, upload_artifact_intent_response::Drop>(
+            "drop",
+            UploadArtifactIntentResponse::has_drop,
+            UploadArtifactIntentResponse::drop,
+            UploadArtifactIntentResponse::mut_drop,
+            UploadArtifactIntentResponse::set_drop,
+        ));
+        oneofs.push(upload_artifact_intent_response::Decision::generated_oneof_descriptor_data());
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<UploadArtifactIntentResponse>(
+            "UploadArtifactIntentResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for UploadArtifactIntentResponse {
+    const NAME: &'static str = "UploadArtifactIntentResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.intent_uuid = is.read_string()?;
+                },
+                26 => {
+                    self.decision = ::std::option::Option::Some(upload_artifact_intent_response::Decision::UploadImmediately(is.read_message()?));
+                },
+                34 => {
+                    self.decision = ::std::option::Option::Some(upload_artifact_intent_response::Decision::Drop(is.read_message()?));
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.intent_uuid.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.intent_uuid);
+        }
+        if let ::std::option::Option::Some(ref v) = self.decision {
+            match v {
+                &upload_artifact_intent_response::Decision::UploadImmediately(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &upload_artifact_intent_response::Decision::Drop(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.intent_uuid.is_empty() {
+            os.write_string(1, &self.intent_uuid)?;
+        }
+        if let ::std::option::Option::Some(ref v) = self.decision {
+            match v {
+                &upload_artifact_intent_response::Decision::UploadImmediately(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                },
+                &upload_artifact_intent_response::Decision::Drop(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> UploadArtifactIntentResponse {
+        UploadArtifactIntentResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.intent_uuid.clear();
+        self.decision = ::std::option::Option::None;
+        self.decision = ::std::option::Option::None;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static UploadArtifactIntentResponse {
+        static instance: UploadArtifactIntentResponse = UploadArtifactIntentResponse {
+            intent_uuid: ::std::string::String::new(),
+            decision: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for UploadArtifactIntentResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("UploadArtifactIntentResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for UploadArtifactIntentResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for UploadArtifactIntentResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `UploadArtifactIntentResponse`
+pub mod upload_artifact_intent_response {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.client.v1.UploadArtifactIntentResponse.decision)
+    pub enum Decision {
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.UploadArtifactIntentResponse.upload_immediately)
+        UploadImmediately(UploadImmediately),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.UploadArtifactIntentResponse.drop)
+        Drop(Drop),
+    }
+
+    impl ::protobuf::Oneof for Decision {
+    }
+
+    impl ::protobuf::OneofFull for Decision {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::UploadArtifactIntentResponse as ::protobuf::MessageFull>::descriptor().oneof_by_name("decision").unwrap()).clone()
+        }
+    }
+
+    impl Decision {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Decision>("decision")
+        }
+    }
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.UploadArtifactIntentResponse.UploadImmediately)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct UploadImmediately {
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.UploadArtifactIntentResponse.UploadImmediately.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a UploadImmediately {
+        fn default() -> &'a UploadImmediately {
+            <UploadImmediately as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl UploadImmediately {
+        pub fn new() -> UploadImmediately {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(0);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<UploadImmediately>(
+                "UploadArtifactIntentResponse.UploadImmediately",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for UploadImmediately {
+        const NAME: &'static str = "UploadImmediately";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> UploadImmediately {
+            UploadImmediately::new()
+        }
+
+        fn clear(&mut self) {
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static UploadImmediately {
+            static instance: UploadImmediately = UploadImmediately {
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for UploadImmediately {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("UploadArtifactIntentResponse.UploadImmediately").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for UploadImmediately {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for UploadImmediately {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.UploadArtifactIntentResponse.Drop)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Drop {
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.UploadArtifactIntentResponse.Drop.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Drop {
+        fn default() -> &'a Drop {
+            <Drop as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Drop {
+        pub fn new() -> Drop {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(0);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Drop>(
+                "UploadArtifactIntentResponse.Drop",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Drop {
+        const NAME: &'static str = "Drop";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Drop {
+            Drop::new()
+        }
+
+        fn clear(&mut self) {
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Drop {
+            static instance: Drop = Drop {
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Drop {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("UploadArtifactIntentResponse.Drop").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Drop {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Drop {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.UploadArtifactRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct UploadArtifactRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.upload_uuid)
+    pub upload_uuid: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.type_id)
+    pub type_id: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.contents)
+    pub contents: ::std::vec::Vec<u8>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a UploadArtifactRequest {
+    fn default() -> &'a UploadArtifactRequest {
+        <UploadArtifactRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl UploadArtifactRequest {
+    pub fn new() -> UploadArtifactRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "upload_uuid",
+            |m: &UploadArtifactRequest| { &m.upload_uuid },
+            |m: &mut UploadArtifactRequest| { &mut m.upload_uuid },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "type_id",
+            |m: &UploadArtifactRequest| { &m.type_id },
+            |m: &mut UploadArtifactRequest| { &mut m.type_id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "contents",
+            |m: &UploadArtifactRequest| { &m.contents },
+            |m: &mut UploadArtifactRequest| { &mut m.contents },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<UploadArtifactRequest>(
+            "UploadArtifactRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for UploadArtifactRequest {
+    const NAME: &'static str = "UploadArtifactRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.upload_uuid = is.read_string()?;
+                },
+                18 => {
+                    self.type_id = is.read_string()?;
+                },
+                26 => {
+                    self.contents = is.read_bytes()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.upload_uuid.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.upload_uuid);
+        }
+        if !self.type_id.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.type_id);
+        }
+        if !self.contents.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(3, &self.contents);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.upload_uuid.is_empty() {
+            os.write_string(1, &self.upload_uuid)?;
+        }
+        if !self.type_id.is_empty() {
+            os.write_string(2, &self.type_id)?;
+        }
+        if !self.contents.is_empty() {
+            os.write_bytes(3, &self.contents)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> UploadArtifactRequest {
+        UploadArtifactRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.upload_uuid.clear();
+        self.type_id.clear();
+        self.contents.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static UploadArtifactRequest {
+        static instance: UploadArtifactRequest = UploadArtifactRequest {
+            upload_uuid: ::std::string::String::new(),
+            type_id: ::std::string::String::new(),
+            contents: ::std::vec::Vec::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for UploadArtifactRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("UploadArtifactRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for UploadArtifactRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for UploadArtifactRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.UploadArtifactResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct UploadArtifactResponse {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactResponse.upload_uuid)
+    pub upload_uuid: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactResponse.error)
+    pub error: ::std::string::String,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.UploadArtifactResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a UploadArtifactResponse {
+    fn default() -> &'a UploadArtifactResponse {
+        <UploadArtifactResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl UploadArtifactResponse {
+    pub fn new() -> UploadArtifactResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "upload_uuid",
+            |m: &UploadArtifactResponse| { &m.upload_uuid },
+            |m: &mut UploadArtifactResponse| { &mut m.upload_uuid },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "error",
+            |m: &UploadArtifactResponse| { &m.error },
+            |m: &mut UploadArtifactResponse| { &mut m.error },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<UploadArtifactResponse>(
+            "UploadArtifactResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for UploadArtifactResponse {
+    const NAME: &'static str = "UploadArtifactResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.upload_uuid = is.read_string()?;
+                },
+                18 => {
+                    self.error = is.read_string()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.upload_uuid.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.upload_uuid);
+        }
+        if !self.error.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.error);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.upload_uuid.is_empty() {
+            os.write_string(1, &self.upload_uuid)?;
+        }
+        if !self.error.is_empty() {
+            os.write_string(2, &self.error)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> UploadArtifactResponse {
+        UploadArtifactResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.upload_uuid.clear();
+        self.error.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static UploadArtifactResponse {
+        static instance: UploadArtifactResponse = UploadArtifactResponse {
+            upload_uuid: ::std::string::String::new(),
+            error: ::std::string::String::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for UploadArtifactResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("UploadArtifactResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for UploadArtifactResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for UploadArtifactResponse {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
@@ -7307,8 +8403,106 @@ impl ApiResponse {
         }
     }
 
+    // .bitdrift_public.protobuf.client.v1.UploadArtifactResponse artifact_upload = 14;
+
+    pub fn artifact_upload(&self) -> &UploadArtifactResponse {
+        match self.response_type {
+            ::std::option::Option::Some(api_response::Response_type::ArtifactUpload(ref v)) => v,
+            _ => <UploadArtifactResponse as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_artifact_upload(&mut self) {
+        self.response_type = ::std::option::Option::None;
+    }
+
+    pub fn has_artifact_upload(&self) -> bool {
+        match self.response_type {
+            ::std::option::Option::Some(api_response::Response_type::ArtifactUpload(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_artifact_upload(&mut self, v: UploadArtifactResponse) {
+        self.response_type = ::std::option::Option::Some(api_response::Response_type::ArtifactUpload(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_artifact_upload(&mut self) -> &mut UploadArtifactResponse {
+        if let ::std::option::Option::Some(api_response::Response_type::ArtifactUpload(_)) = self.response_type {
+        } else {
+            self.response_type = ::std::option::Option::Some(api_response::Response_type::ArtifactUpload(UploadArtifactResponse::new()));
+        }
+        match self.response_type {
+            ::std::option::Option::Some(api_response::Response_type::ArtifactUpload(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_artifact_upload(&mut self) -> UploadArtifactResponse {
+        if self.has_artifact_upload() {
+            match self.response_type.take() {
+                ::std::option::Option::Some(api_response::Response_type::ArtifactUpload(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            UploadArtifactResponse::new()
+        }
+    }
+
+    // .bitdrift_public.protobuf.client.v1.UploadArtifactIntentResponse artifact_intent = 15;
+
+    pub fn artifact_intent(&self) -> &UploadArtifactIntentResponse {
+        match self.response_type {
+            ::std::option::Option::Some(api_response::Response_type::ArtifactIntent(ref v)) => v,
+            _ => <UploadArtifactIntentResponse as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_artifact_intent(&mut self) {
+        self.response_type = ::std::option::Option::None;
+    }
+
+    pub fn has_artifact_intent(&self) -> bool {
+        match self.response_type {
+            ::std::option::Option::Some(api_response::Response_type::ArtifactIntent(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_artifact_intent(&mut self, v: UploadArtifactIntentResponse) {
+        self.response_type = ::std::option::Option::Some(api_response::Response_type::ArtifactIntent(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_artifact_intent(&mut self) -> &mut UploadArtifactIntentResponse {
+        if let ::std::option::Option::Some(api_response::Response_type::ArtifactIntent(_)) = self.response_type {
+        } else {
+            self.response_type = ::std::option::Option::Some(api_response::Response_type::ArtifactIntent(UploadArtifactIntentResponse::new()));
+        }
+        match self.response_type {
+            ::std::option::Option::Some(api_response::Response_type::ArtifactIntent(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_artifact_intent(&mut self) -> UploadArtifactIntentResponse {
+        if self.has_artifact_intent() {
+            match self.response_type.take() {
+                ::std::option::Option::Some(api_response::Response_type::ArtifactIntent(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            UploadArtifactIntentResponse::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(13);
+        let mut fields = ::std::vec::Vec::with_capacity(15);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, HandshakeResponse>(
             "handshake",
@@ -7401,6 +8595,20 @@ impl ApiResponse {
             ApiResponse::mut_sankey_intent_response,
             ApiResponse::set_sankey_intent_response,
         ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, UploadArtifactResponse>(
+            "artifact_upload",
+            ApiResponse::has_artifact_upload,
+            ApiResponse::artifact_upload,
+            ApiResponse::mut_artifact_upload,
+            ApiResponse::set_artifact_upload,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, UploadArtifactIntentResponse>(
+            "artifact_intent",
+            ApiResponse::has_artifact_intent,
+            ApiResponse::artifact_intent,
+            ApiResponse::mut_artifact_intent,
+            ApiResponse::set_artifact_intent,
+        ));
         oneofs.push(api_response::Response_type::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ApiResponse>(
             "ApiResponse",
@@ -7458,6 +8666,12 @@ impl ::protobuf::Message for ApiResponse {
                 },
                 106 => {
                     self.response_type = ::std::option::Option::Some(api_response::Response_type::SankeyIntentResponse(is.read_message()?));
+                },
+                114 => {
+                    self.response_type = ::std::option::Option::Some(api_response::Response_type::ArtifactUpload(is.read_message()?));
+                },
+                122 => {
+                    self.response_type = ::std::option::Option::Some(api_response::Response_type::ArtifactIntent(is.read_message()?));
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -7525,6 +8739,14 @@ impl ::protobuf::Message for ApiResponse {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
+                &api_response::Response_type::ArtifactUpload(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &api_response::Response_type::ArtifactIntent(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
             };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -7574,6 +8796,12 @@ impl ::protobuf::Message for ApiResponse {
                 &api_response::Response_type::SankeyIntentResponse(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(13, v, os)?;
                 },
+                &api_response::Response_type::ArtifactUpload(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(14, v, os)?;
+                },
+                &api_response::Response_type::ArtifactIntent(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(15, v, os)?;
+                },
             };
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
@@ -7593,6 +8821,8 @@ impl ::protobuf::Message for ApiResponse {
     }
 
     fn clear(&mut self) {
+        self.response_type = ::std::option::Option::None;
+        self.response_type = ::std::option::Option::None;
         self.response_type = ::std::option::Option::None;
         self.response_type = ::std::option::Option::None;
         self.response_type = ::std::option::Option::None;
@@ -7667,6 +8897,10 @@ pub mod api_response {
         SankeyDiagramUpload(super::SankeyPathUploadResponse),
         // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiResponse.sankey_intent_response)
         SankeyIntentResponse(super::SankeyIntentResponse),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiResponse.artifact_upload)
+        ArtifactUpload(super::UploadArtifactResponse),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiResponse.artifact_intent)
+        ArtifactIntent(super::UploadArtifactIntentResponse),
     }
 
     impl ::protobuf::Oneof for Response_type {
@@ -7740,38 +8974,58 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x12S\n\x04nack\x18\x02\x20\x01(\x0b2?.bitdrift_public.protobuf.client.v\
     1.ConfigurationUpdateAck.NackR\x04nack\x1aP\n\x04Nack\x12#\n\rversion_no\
     nce\x18\x01\x20\x01(\tR\x0cversionNonce\x12#\n\rerror_details\x18\x02\
-    \x20\x01(\tR\x0cerrorDetails\"\xf3\x08\n\nApiRequest\x12T\n\thandshake\
-    \x18\x01\x20\x01(\x0b24.bitdrift_public.protobuf.client.v1.HandshakeRequ\
-    estH\0R\thandshake\x12h\n\x11log_upload_intent\x18\x07\x20\x01(\x0b2:.bi\
-    tdrift_public.protobuf.client.v1.LogUploadIntentRequestH\0R\x0flogUpload\
-    Intent\x12U\n\nlog_upload\x18\x02\x20\x01(\x0b24.bitdrift_public.protobu\
-    f.client.v1.LogUploadRequestH\0R\tlogUpload\x12[\n\x0cstats_upload\x18\
-    \x06\x20\x01(\x0b26.bitdrift_public.protobuf.client.v1.StatsUploadReques\
-    tH\0R\x0bstatsUpload\x12E\n\x04ping\x18\x03\x20\x01(\x0b2/.bitdrift_publ\
-    ic.protobuf.client.v1.PingRequestH\0R\x04ping\x12v\n\x18configuration_up\
-    date_ack\x18\x04\x20\x01(\x0b2:.bitdrift_public.protobuf.client.v1.Confi\
-    gurationUpdateAckH\0R\x16configurationUpdateAck\x12j\n\x12runtime_update\
-    _ack\x18\x05\x20\x01(\x0b2:.bitdrift_public.protobuf.client.v1.Configura\
-    tionUpdateAckH\0R\x10runtimeUpdateAck\x12\x89\x01\n\x1fopaque_configurat\
-    ion_update_ack\x18\x08\x20\x01(\x0b2@.bitdrift_public.protobuf.client.v1\
-    .OpaqueConfigurationUpdateAckH\0R\x1copaqueConfigurationUpdateAck\x12X\n\
-    \ropaque_upload\x18\t\x20\x01(\x0b21.bitdrift_public.protobuf.client.v1.\
-    OpaqueRequestH\0R\x0copaqueUpload\x12k\n\x12sankey_path_upload\x18\n\x20\
-    \x01(\x0b2;.bitdrift_public.protobuf.client.v1.SankeyPathUploadRequestH\
-    \0R\x10sankeyPathUpload\x12^\n\rsankey_intent\x18\x0b\x20\x01(\x0b27.bit\
-    drift_public.protobuf.client.v1.SankeyIntentRequestH\0R\x0csankeyIntentB\
-    \x13\n\x0crequest_type\x12\x03\xf8B\x01\"\x9a\x02\n\x17SankeyPathUploadR\
-    equest\x12(\n\x0bupload_uuid\x18\x04\x20\x01(\tR\nuploadUuidB\x07\xfaB\
-    \x04r\x02\x10\x01\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\
-    \x04r\x02\x10\x01\x12\x20\n\x07path_id\x18\x02\x20\x01(\tR\x06pathIdB\
-    \x07\xfaB\x04r\x02\x10\x01\x12`\n\x05nodes\x18\x03\x20\x03(\x0b2@.bitdri\
-    ft_public.protobuf.client.v1.SankeyPathUploadRequest.NodeR\x05nodesB\x08\
-    \xfaB\x05\x92\x01\x02\x08\x01\x1a8\n\x04Node\x120\n\x0fextracted_value\
-    \x18\x01\x20\x01(\tR\x0eextractedValueB\x07\xfaB\x04r\x02\x10\x01\"\x96\
-    \x01\n\x13SankeyIntentRequest\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\
-    \nintentUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x20\n\x07path_id\x18\x02\x20\
-    \x01(\tR\x06pathIdB\x07\xfaB\x04r\x02\x10\x01\x123\n\x11sankey_diagram_i\
-    d\x18\x03\x20\x01(\tR\x0fsankeyDiagramIdB\x07\xfaB\x04r\x02\x10\x01\"\
+    \x20\x01(\tR\x0cerrorDetails\"\xc5\n\n\nApiRequest\x12T\n\thandshake\x18\
+    \x01\x20\x01(\x0b24.bitdrift_public.protobuf.client.v1.HandshakeRequestH\
+    \0R\thandshake\x12h\n\x11log_upload_intent\x18\x07\x20\x01(\x0b2:.bitdri\
+    ft_public.protobuf.client.v1.LogUploadIntentRequestH\0R\x0flogUploadInte\
+    nt\x12U\n\nlog_upload\x18\x02\x20\x01(\x0b24.bitdrift_public.protobuf.cl\
+    ient.v1.LogUploadRequestH\0R\tlogUpload\x12[\n\x0cstats_upload\x18\x06\
+    \x20\x01(\x0b26.bitdrift_public.protobuf.client.v1.StatsUploadRequestH\0\
+    R\x0bstatsUpload\x12E\n\x04ping\x18\x03\x20\x01(\x0b2/.bitdrift_public.p\
+    rotobuf.client.v1.PingRequestH\0R\x04ping\x12v\n\x18configuration_update\
+    _ack\x18\x04\x20\x01(\x0b2:.bitdrift_public.protobuf.client.v1.Configura\
+    tionUpdateAckH\0R\x16configurationUpdateAck\x12j\n\x12runtime_update_ack\
+    \x18\x05\x20\x01(\x0b2:.bitdrift_public.protobuf.client.v1.Configuration\
+    UpdateAckH\0R\x10runtimeUpdateAck\x12\x89\x01\n\x1fopaque_configuration_\
+    update_ack\x18\x08\x20\x01(\x0b2@.bitdrift_public.protobuf.client.v1.Opa\
+    queConfigurationUpdateAckH\0R\x1copaqueConfigurationUpdateAck\x12X\n\rop\
+    aque_upload\x18\t\x20\x01(\x0b21.bitdrift_public.protobuf.client.v1.Opaq\
+    ueRequestH\0R\x0copaqueUpload\x12k\n\x12sankey_path_upload\x18\n\x20\x01\
+    (\x0b2;.bitdrift_public.protobuf.client.v1.SankeyPathUploadRequestH\0R\
+    \x10sankeyPathUpload\x12^\n\rsankey_intent\x18\x0b\x20\x01(\x0b27.bitdri\
+    ft_public.protobuf.client.v1.SankeyIntentRequestH\0R\x0csankeyIntent\x12\
+    d\n\x0fartifact_upload\x18\x0c\x20\x01(\x0b29.bitdrift_public.protobuf.c\
+    lient.v1.UploadArtifactRequestH\0R\x0eartifactUpload\x12j\n\x0fartifact_\
+    intent\x18\r\x20\x01(\x0b2?.bitdrift_public.protobuf.client.v1.UploadArt\
+    ifactIntentRequestH\0R\x0eartifactIntentB\x13\n\x0crequest_type\x12\x03\
+    \xf8B\x01\"\x9a\x02\n\x17SankeyPathUploadRequest\x12(\n\x0bupload_uuid\
+    \x18\x04\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x17\n\
+    \x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12\x20\n\
+    \x07path_id\x18\x02\x20\x01(\tR\x06pathIdB\x07\xfaB\x04r\x02\x10\x01\x12\
+    `\n\x05nodes\x18\x03\x20\x03(\x0b2@.bitdrift_public.protobuf.client.v1.S\
+    ankeyPathUploadRequest.NodeR\x05nodesB\x08\xfaB\x05\x92\x01\x02\x08\x01\
+    \x1a8\n\x04Node\x120\n\x0fextracted_value\x18\x01\x20\x01(\tR\x0eextract\
+    edValueB\x07\xfaB\x04r\x02\x10\x01\"\x96\x01\n\x13SankeyIntentRequest\
+    \x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\nintentUuidB\x07\xfaB\x04r\
+    \x02\x10\x01\x12\x20\n\x07path_id\x18\x02\x20\x01(\tR\x06pathIdB\x07\xfa\
+    B\x04r\x02\x10\x01\x123\n\x11sankey_diagram_id\x18\x03\x20\x01(\tR\x0fsa\
+    nkeyDiagramIdB\x07\xfaB\x04r\x02\x10\x01\"\x85\x01\n\x1bUploadArtifactIn\
+    tentRequest\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\nintentUuidB\x07\
+    \xfaB\x04r\x02\x10\x01\x12\x20\n\x07type_id\x18\x02\x20\x01(\tR\x06typeI\
+    dB\x07\xfaB\x04r\x02\x10\x01\x12\x1a\n\x08metadata\x18\x03\x20\x01(\x0cR\
+    \x08metadata\"\xd4\x02\n\x1cUploadArtifactIntentResponse\x12(\n\x0binten\
+    t_uuid\x18\x01\x20\x01(\tR\nintentUuidB\x07\xfaB\x04r\x02\x10\x01\x12\
+    \x83\x01\n\x12upload_immediately\x18\x03\x20\x01(\x0b2R.bitdrift_public.\
+    protobuf.client.v1.UploadArtifactIntentResponse.UploadImmediatelyH\0R\
+    \x11uploadImmediately\x12[\n\x04drop\x18\x04\x20\x01(\x0b2E.bitdrift_pub\
+    lic.protobuf.client.v1.UploadArtifactIntentResponse.DropH\0R\x04drop\x1a\
+    \x13\n\x11UploadImmediately\x1a\x06\n\x04DropB\n\n\x08decision\"\x88\x01\
+    \n\x15UploadArtifactRequest\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nu\
+    ploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x20\n\x07type_id\x18\x02\x20\
+    \x01(\tR\x06typeIdB\x07\xfaB\x04r\x02\x10\x01\x12#\n\x08contents\x18\x03\
+    \x20\x01(\x0cR\x08contentsB\x07\xfaB\x04z\x02\x10\x01\"X\n\x16UploadArti\
+    factResponse\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\
+    \xfaB\x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\"\
     \xd4\x01\n\x11HandshakeResponse\x12m\n\x0fstream_settings\x18\x01\x20\
     \x01(\x0b2D.bitdrift_public.protobuf.client.v1.HandshakeResponse.StreamS\
     ettingsR\x0estreamSettings\x1aP\n\x0eStreamSettings\x12>\n\rping_interva\
@@ -7829,32 +9083,36 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     UploadImmediatelyH\0R\x11uploadImmediately\x12S\n\x04drop\x18\x04\x20\
     \x01(\x0b2=.bitdrift_public.protobuf.client.v1.SankeyIntentResponse.Drop\
     H\0R\x04drop\x1a\x13\n\x11UploadImmediately\x1a\x06\n\x04DropB\n\n\x08de\
-    cisionJ\x04\x08\x02\x10\x03R\x08decision\"\xa4\n\n\x0bApiResponse\x12U\n\
-    \thandshake\x18\x01\x20\x01(\x0b25.bitdrift_public.protobuf.client.v1.Ha\
-    ndshakeResponseH\0R\thandshake\x12V\n\nlog_upload\x18\x02\x20\x01(\x0b25\
-    .bitdrift_public.protobuf.client.v1.LogUploadResponseH\0R\tlogUpload\x12\
-    i\n\x11log_upload_intent\x18\x08\x20\x01(\x0b2;.bitdrift_public.protobuf\
-    .client.v1.LogUploadIntentResponseH\0R\x0flogUploadIntent\x12\\\n\x0csta\
-    ts_upload\x18\x07\x20\x01(\x0b27.bitdrift_public.protobuf.client.v1.Stat\
-    sUploadResponseH\0R\x0bstatsUpload\x12F\n\x04pong\x18\x03\x20\x01(\x0b20\
-    .bitdrift_public.protobuf.client.v1.PongResponseH\0R\x04pong\x12l\n\x14c\
-    onfiguration_update\x18\x04\x20\x01(\x0b27.bitdrift_public.protobuf.clie\
-    nt.v1.ConfigurationUpdateH\0R\x13configurationUpdate\x12Z\n\x0eruntime_u\
-    pdate\x18\x05\x20\x01(\x0b21.bitdrift_public.protobuf.client.v1.RuntimeU\
-    pdateH\0R\rruntimeUpdate\x12Z\n\x0eerror_shutdown\x18\x06\x20\x01(\x0b21\
-    .bitdrift_public.protobuf.client.v1.ErrorShutdownH\0R\rerrorShutdown\x12\
-    W\n\rflush_buffers\x18\t\x20\x01(\x0b20.bitdrift_public.protobuf.client.\
-    v1.FlushBuffersH\0R\x0cflushBuffers\x12\x7f\n\x1bopaque_configuration_up\
-    date\x18\n\x20\x01(\x0b2=.bitdrift_public.protobuf.client.v1.OpaqueConfi\
-    gurationUpdateH\0R\x19opaqueConfigurationUpdate\x12Y\n\ropaque_upload\
-    \x18\x0b\x20\x01(\x0b22.bitdrift_public.protobuf.client.v1.OpaqueRespons\
-    eH\0R\x0copaqueUpload\x12r\n\x15sankey_diagram_upload\x18\x0c\x20\x01(\
-    \x0b2<.bitdrift_public.protobuf.client.v1.SankeyPathUploadResponseH\0R\
-    \x13sankeyDiagramUpload\x12p\n\x16sankey_intent_response\x18\r\x20\x01(\
-    \x0b28.bitdrift_public.protobuf.client.v1.SankeyIntentResponseH\0R\x14sa\
-    nkeyIntentResponseB\x14\n\rresponse_type\x12\x03\xf8B\x012x\n\nApiServic\
-    e\x12j\n\x03Mux\x12..bitdrift_public.protobuf.client.v1.ApiRequest\x1a/.\
-    bitdrift_public.protobuf.client.v1.ApiResponse(\x010\x01b\x06proto3\
+    cisionJ\x04\x08\x02\x10\x03R\x08decision\"\xf8\x0b\n\x0bApiResponse\x12U\
+    \n\thandshake\x18\x01\x20\x01(\x0b25.bitdrift_public.protobuf.client.v1.\
+    HandshakeResponseH\0R\thandshake\x12V\n\nlog_upload\x18\x02\x20\x01(\x0b\
+    25.bitdrift_public.protobuf.client.v1.LogUploadResponseH\0R\tlogUpload\
+    \x12i\n\x11log_upload_intent\x18\x08\x20\x01(\x0b2;.bitdrift_public.prot\
+    obuf.client.v1.LogUploadIntentResponseH\0R\x0flogUploadIntent\x12\\\n\
+    \x0cstats_upload\x18\x07\x20\x01(\x0b27.bitdrift_public.protobuf.client.\
+    v1.StatsUploadResponseH\0R\x0bstatsUpload\x12F\n\x04pong\x18\x03\x20\x01\
+    (\x0b20.bitdrift_public.protobuf.client.v1.PongResponseH\0R\x04pong\x12l\
+    \n\x14configuration_update\x18\x04\x20\x01(\x0b27.bitdrift_public.protob\
+    uf.client.v1.ConfigurationUpdateH\0R\x13configurationUpdate\x12Z\n\x0eru\
+    ntime_update\x18\x05\x20\x01(\x0b21.bitdrift_public.protobuf.client.v1.R\
+    untimeUpdateH\0R\rruntimeUpdate\x12Z\n\x0eerror_shutdown\x18\x06\x20\x01\
+    (\x0b21.bitdrift_public.protobuf.client.v1.ErrorShutdownH\0R\rerrorShutd\
+    own\x12W\n\rflush_buffers\x18\t\x20\x01(\x0b20.bitdrift_public.protobuf.\
+    client.v1.FlushBuffersH\0R\x0cflushBuffers\x12\x7f\n\x1bopaque_configura\
+    tion_update\x18\n\x20\x01(\x0b2=.bitdrift_public.protobuf.client.v1.Opaq\
+    ueConfigurationUpdateH\0R\x19opaqueConfigurationUpdate\x12Y\n\ropaque_up\
+    load\x18\x0b\x20\x01(\x0b22.bitdrift_public.protobuf.client.v1.OpaqueRes\
+    ponseH\0R\x0copaqueUpload\x12r\n\x15sankey_diagram_upload\x18\x0c\x20\
+    \x01(\x0b2<.bitdrift_public.protobuf.client.v1.SankeyPathUploadResponseH\
+    \0R\x13sankeyDiagramUpload\x12p\n\x16sankey_intent_response\x18\r\x20\
+    \x01(\x0b28.bitdrift_public.protobuf.client.v1.SankeyIntentResponseH\0R\
+    \x14sankeyIntentResponse\x12e\n\x0fartifact_upload\x18\x0e\x20\x01(\x0b2\
+    :.bitdrift_public.protobuf.client.v1.UploadArtifactResponseH\0R\x0eartif\
+    actUpload\x12k\n\x0fartifact_intent\x18\x0f\x20\x01(\x0b2@.bitdrift_publ\
+    ic.protobuf.client.v1.UploadArtifactIntentResponseH\0R\x0eartifactIntent\
+    B\x14\n\rresponse_type\x12\x03\xf8B\x012x\n\nApiService\x12j\n\x03Mux\
+    \x12..bitdrift_public.protobuf.client.v1.ApiRequest\x1a/.bitdrift_public\
+    .protobuf.client.v1.ApiResponse(\x010\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -7883,7 +9141,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(super::config::file_descriptor().clone());
             deps.push(super::payload::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(38);
+            let mut messages = ::std::vec::Vec::with_capacity(44);
             messages.push(ClientKillFile::generated_message_descriptor_data());
             messages.push(HandshakeRequest::generated_message_descriptor_data());
             messages.push(OpaqueConfigurationUpdate::generated_message_descriptor_data());
@@ -7896,6 +9154,10 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(ApiRequest::generated_message_descriptor_data());
             messages.push(SankeyPathUploadRequest::generated_message_descriptor_data());
             messages.push(SankeyIntentRequest::generated_message_descriptor_data());
+            messages.push(UploadArtifactIntentRequest::generated_message_descriptor_data());
+            messages.push(UploadArtifactIntentResponse::generated_message_descriptor_data());
+            messages.push(UploadArtifactRequest::generated_message_descriptor_data());
+            messages.push(UploadArtifactResponse::generated_message_descriptor_data());
             messages.push(HandshakeResponse::generated_message_descriptor_data());
             messages.push(RateLimited::generated_message_descriptor_data());
             messages.push(LogUploadResponse::generated_message_descriptor_data());
@@ -7916,6 +9178,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(log_upload_intent_response::Drop::generated_message_descriptor_data());
             messages.push(configuration_update_ack::Nack::generated_message_descriptor_data());
             messages.push(sankey_path_upload_request::Node::generated_message_descriptor_data());
+            messages.push(upload_artifact_intent_response::UploadImmediately::generated_message_descriptor_data());
+            messages.push(upload_artifact_intent_response::Drop::generated_message_descriptor_data());
             messages.push(handshake_response::StreamSettings::generated_message_descriptor_data());
             messages.push(stats_upload_request::Snapshot::generated_message_descriptor_data());
             messages.push(stats_upload_request::snapshot::Aggregated::generated_message_descriptor_data());
