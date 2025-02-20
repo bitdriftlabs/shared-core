@@ -3660,6 +3660,8 @@ pub struct UploadArtifactIntentRequest {
     pub type_id: ::std::string::String,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactIntentRequest.metadata)
     pub metadata: ::std::vec::Vec<u8>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactIntentRequest.artifact_id)
+    pub artifact_id: ::std::string::String,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.UploadArtifactIntentRequest.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -3677,7 +3679,7 @@ impl UploadArtifactIntentRequest {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut fields = ::std::vec::Vec::with_capacity(4);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "intent_uuid",
@@ -3693,6 +3695,11 @@ impl UploadArtifactIntentRequest {
             "metadata",
             |m: &UploadArtifactIntentRequest| { &m.metadata },
             |m: &mut UploadArtifactIntentRequest| { &mut m.metadata },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "artifact_id",
+            |m: &UploadArtifactIntentRequest| { &m.artifact_id },
+            |m: &mut UploadArtifactIntentRequest| { &mut m.artifact_id },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<UploadArtifactIntentRequest>(
             "UploadArtifactIntentRequest",
@@ -3721,6 +3728,9 @@ impl ::protobuf::Message for UploadArtifactIntentRequest {
                 26 => {
                     self.metadata = is.read_bytes()?;
                 },
+                34 => {
+                    self.artifact_id = is.read_string()?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -3742,6 +3752,9 @@ impl ::protobuf::Message for UploadArtifactIntentRequest {
         if !self.metadata.is_empty() {
             my_size += ::protobuf::rt::bytes_size(3, &self.metadata);
         }
+        if !self.artifact_id.is_empty() {
+            my_size += ::protobuf::rt::string_size(4, &self.artifact_id);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -3756,6 +3769,9 @@ impl ::protobuf::Message for UploadArtifactIntentRequest {
         }
         if !self.metadata.is_empty() {
             os.write_bytes(3, &self.metadata)?;
+        }
+        if !self.artifact_id.is_empty() {
+            os.write_string(4, &self.artifact_id)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -3777,6 +3793,7 @@ impl ::protobuf::Message for UploadArtifactIntentRequest {
         self.intent_uuid.clear();
         self.type_id.clear();
         self.metadata.clear();
+        self.artifact_id.clear();
         self.special_fields.clear();
     }
 
@@ -3785,6 +3802,7 @@ impl ::protobuf::Message for UploadArtifactIntentRequest {
             intent_uuid: ::std::string::String::new(),
             type_id: ::std::string::String::new(),
             metadata: ::std::vec::Vec::new(),
+            artifact_id: ::std::string::String::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -4320,6 +4338,8 @@ pub struct UploadArtifactRequest {
     pub type_id: ::std::string::String,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.contents)
     pub contents: ::std::vec::Vec<u8>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.artifact_id)
+    pub artifact_id: ::std::string::String,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -4337,7 +4357,7 @@ impl UploadArtifactRequest {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut fields = ::std::vec::Vec::with_capacity(4);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "upload_uuid",
@@ -4353,6 +4373,11 @@ impl UploadArtifactRequest {
             "contents",
             |m: &UploadArtifactRequest| { &m.contents },
             |m: &mut UploadArtifactRequest| { &mut m.contents },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "artifact_id",
+            |m: &UploadArtifactRequest| { &m.artifact_id },
+            |m: &mut UploadArtifactRequest| { &mut m.artifact_id },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<UploadArtifactRequest>(
             "UploadArtifactRequest",
@@ -4381,6 +4406,9 @@ impl ::protobuf::Message for UploadArtifactRequest {
                 26 => {
                     self.contents = is.read_bytes()?;
                 },
+                34 => {
+                    self.artifact_id = is.read_string()?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -4402,6 +4430,9 @@ impl ::protobuf::Message for UploadArtifactRequest {
         if !self.contents.is_empty() {
             my_size += ::protobuf::rt::bytes_size(3, &self.contents);
         }
+        if !self.artifact_id.is_empty() {
+            my_size += ::protobuf::rt::string_size(4, &self.artifact_id);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -4416,6 +4447,9 @@ impl ::protobuf::Message for UploadArtifactRequest {
         }
         if !self.contents.is_empty() {
             os.write_bytes(3, &self.contents)?;
+        }
+        if !self.artifact_id.is_empty() {
+            os.write_string(4, &self.artifact_id)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -4437,6 +4471,7 @@ impl ::protobuf::Message for UploadArtifactRequest {
         self.upload_uuid.clear();
         self.type_id.clear();
         self.contents.clear();
+        self.artifact_id.clear();
         self.special_fields.clear();
     }
 
@@ -4445,6 +4480,7 @@ impl ::protobuf::Message for UploadArtifactRequest {
             upload_uuid: ::std::string::String::new(),
             type_id: ::std::string::String::new(),
             contents: ::std::vec::Vec::new(),
+            artifact_id: ::std::string::String::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -9009,29 +9045,31 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\nintentUuidB\x07\xfaB\x04r\
     \x02\x10\x01\x12\x20\n\x07path_id\x18\x02\x20\x01(\tR\x06pathIdB\x07\xfa\
     B\x04r\x02\x10\x01\x123\n\x11sankey_diagram_id\x18\x03\x20\x01(\tR\x0fsa\
-    nkeyDiagramIdB\x07\xfaB\x04r\x02\x10\x01\"\x85\x01\n\x1bUploadArtifactIn\
+    nkeyDiagramIdB\x07\xfaB\x04r\x02\x10\x01\"\xaf\x01\n\x1bUploadArtifactIn\
     tentRequest\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\nintentUuidB\x07\
     \xfaB\x04r\x02\x10\x01\x12\x20\n\x07type_id\x18\x02\x20\x01(\tR\x06typeI\
     dB\x07\xfaB\x04r\x02\x10\x01\x12\x1a\n\x08metadata\x18\x03\x20\x01(\x0cR\
-    \x08metadata\"\xd4\x02\n\x1cUploadArtifactIntentResponse\x12(\n\x0binten\
-    t_uuid\x18\x01\x20\x01(\tR\nintentUuidB\x07\xfaB\x04r\x02\x10\x01\x12\
-    \x83\x01\n\x12upload_immediately\x18\x03\x20\x01(\x0b2R.bitdrift_public.\
-    protobuf.client.v1.UploadArtifactIntentResponse.UploadImmediatelyH\0R\
-    \x11uploadImmediately\x12[\n\x04drop\x18\x04\x20\x01(\x0b2E.bitdrift_pub\
-    lic.protobuf.client.v1.UploadArtifactIntentResponse.DropH\0R\x04drop\x1a\
-    \x13\n\x11UploadImmediately\x1a\x06\n\x04DropB\n\n\x08decision\"\x88\x01\
-    \n\x15UploadArtifactRequest\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nu\
-    ploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x20\n\x07type_id\x18\x02\x20\
-    \x01(\tR\x06typeIdB\x07\xfaB\x04r\x02\x10\x01\x12#\n\x08contents\x18\x03\
-    \x20\x01(\x0cR\x08contentsB\x07\xfaB\x04z\x02\x10\x01\"X\n\x16UploadArti\
-    factResponse\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\
-    \xfaB\x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\"\
-    \xd4\x01\n\x11HandshakeResponse\x12m\n\x0fstream_settings\x18\x01\x20\
-    \x01(\x0b2D.bitdrift_public.protobuf.client.v1.HandshakeResponse.StreamS\
-    ettingsR\x0estreamSettings\x1aP\n\x0eStreamSettings\x12>\n\rping_interva\
-    l\x18\x01\x20\x01(\x0b2\x19.google.protobuf.DurationR\x0cpingInterval\"\
-    \r\n\x0bRateLimited\"\xca\x01\n\x11LogUploadResponse\x12(\n\x0bupload_uu\
-    id\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\
+    \x08metadata\x12(\n\x0bartifact_id\x18\x04\x20\x01(\tR\nartifactIdB\x07\
+    \xfaB\x04r\x02\x10\x01\"\xd4\x02\n\x1cUploadArtifactIntentResponse\x12(\
+    \n\x0bintent_uuid\x18\x01\x20\x01(\tR\nintentUuidB\x07\xfaB\x04r\x02\x10\
+    \x01\x12\x83\x01\n\x12upload_immediately\x18\x03\x20\x01(\x0b2R.bitdrift\
+    _public.protobuf.client.v1.UploadArtifactIntentResponse.UploadImmediatel\
+    yH\0R\x11uploadImmediately\x12[\n\x04drop\x18\x04\x20\x01(\x0b2E.bitdrif\
+    t_public.protobuf.client.v1.UploadArtifactIntentResponse.DropH\0R\x04dro\
+    p\x1a\x13\n\x11UploadImmediately\x1a\x06\n\x04DropB\n\n\x08decision\"\
+    \xa9\x01\n\x15UploadArtifactRequest\x12(\n\x0bupload_uuid\x18\x01\x20\
+    \x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x20\n\x07type_id\x18\
+    \x02\x20\x01(\tR\x06typeIdB\x07\xfaB\x04r\x02\x10\x01\x12\x1a\n\x08conte\
+    nts\x18\x03\x20\x01(\x0cR\x08contents\x12(\n\x0bartifact_id\x18\x04\x20\
+    \x01(\tR\nartifactIdB\x07\xfaB\x04r\x02\x10\x01\"X\n\x16UploadArtifactRe\
+    sponse\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\
+    \x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\"\xd4\
+    \x01\n\x11HandshakeResponse\x12m\n\x0fstream_settings\x18\x01\x20\x01(\
+    \x0b2D.bitdrift_public.protobuf.client.v1.HandshakeResponse.StreamSettin\
+    gsR\x0estreamSettings\x1aP\n\x0eStreamSettings\x12>\n\rping_interval\x18\
+    \x01\x20\x01(\x0b2\x19.google.protobuf.DurationR\x0cpingInterval\"\r\n\
+    \x0bRateLimited\"\xca\x01\n\x11LogUploadResponse\x12(\n\x0bupload_uuid\
+    \x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\
     \x05error\x18\x02\x20\x01(\tR\x05error\x12!\n\x0clogs_dropped\x18\x03\
     \x20\x01(\rR\x0blogsDropped\x12R\n\x0crate_limited\x18\x04\x20\x01(\x0b2\
     /.bitdrift_public.protobuf.client.v1.RateLimitedR\x0brateLimited\"\xdf\
