@@ -117,7 +117,6 @@ impl MetadataCollector {
     ]
     .concat()
     .into_iter()
-    .map(LogField::from)
     .unique_by(|f| f.key.clone())
     .collect_vec();
 
