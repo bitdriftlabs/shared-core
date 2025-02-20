@@ -102,7 +102,7 @@ impl MetricsCollector {
     match key {
       "log_level" => Some(log.log_level.to_string().into()),
       "log_type" => Some(log.log_type.0.to_string().into()),
-      key => log.fields.field_value(key).map(Into::into),
+      key => log.fields.field_value(key),
     }
   }
 

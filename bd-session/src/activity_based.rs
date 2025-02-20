@@ -108,9 +108,7 @@ impl Strategy {
     // state update even if session hasn't changed.
     let is_last_activity_storage_allowed = state
       .last_activity_write
-      .map_or(true, |last_activity_write| {
-        now - last_activity_write > self.max_write_interval
-      });
+      .is_none_or(|last_activity_write| now - last_activity_write > self.max_write_interval);
 
     state.last_activity = now;
 
