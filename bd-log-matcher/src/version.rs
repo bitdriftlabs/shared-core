@@ -9,7 +9,7 @@
 #[path = "./version_test.rs"]
 mod test;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Operator;
 use itertools::Itertools;
 use regex::Regex;

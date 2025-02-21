@@ -7,7 +7,6 @@
 
 use arbitrary::Arbitrary;
 use bd_buffer::buffer::{
-  to_u32,
   AggregateRingBuffer,
   AllowOverwrite,
   BlockWhenReservingIntoConcurrentRead,
@@ -22,6 +21,7 @@ use bd_buffer::buffer::{
   RingBufferStats,
   StatsHelper,
   VolatileRingBuffer,
+  to_u32,
 };
 use bd_buffer::{AbslCode, Error};
 use bd_client_stats_store::Collector;

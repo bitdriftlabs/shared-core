@@ -10,14 +10,14 @@
 mod test;
 
 use parking_lot::Mutex;
-use protobuf::well_known_types::timestamp::Timestamp;
 use protobuf::MessageField;
-use rand::{rng, Rng};
+use protobuf::well_known_types::timestamp::Timestamp;
+use rand::{Rng, rng};
 use std::future::{Future, IntoFuture};
 use std::sync::Arc;
 use std::time::Duration;
 use time::OffsetDateTime;
-use tokio::time::{interval, interval_at, Interval, MissedTickBehavior, Sleep, Timeout};
+use tokio::time::{Interval, MissedTickBehavior, Sleep, Timeout, interval, interval_at};
 
 //
 // OffsetDateTimeExt

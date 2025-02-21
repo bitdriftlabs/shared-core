@@ -17,12 +17,12 @@ use crate::async_log_buffer::{
 };
 use crate::bounded_buffer::{self, Sender as MemoryBoundSender};
 use crate::log_replay::LoggerReplay;
-use crate::{app_version, MetadataProvider};
+use crate::{MetadataProvider, app_version};
 use bd_api::Metadata;
 use bd_client_stats_store::Scope;
 use bd_log::warn_every;
 use bd_log_metadata::AnnotatedLogFields;
-use bd_log_primitives::{log_level, AnnotatedLogField, LogField, LogLevel, LogMessage};
+use bd_log_primitives::{AnnotatedLogField, LogField, LogLevel, LogMessage, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::Snapshot;
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;

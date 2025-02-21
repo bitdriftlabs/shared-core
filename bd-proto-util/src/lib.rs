@@ -9,8 +9,8 @@ pub mod proto;
 
 use anyhow::bail;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::{
-  root_as_log_unchecked,
   Log,
+  root_as_log_unchecked,
 };
 
 extern "C" {

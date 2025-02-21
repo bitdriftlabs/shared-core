@@ -10,25 +10,26 @@ use anyhow::anyhow;
 use bd_log_matcher::matcher::Tree;
 use bd_matcher::FieldProvider;
 use bd_proto::protos::workflow::workflow;
+use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
 use bd_proto::protos::workflow::workflow::workflow::transition_extension::Extension_type;
 use bd_proto::protos::workflow::workflow::workflow::{
   Execution as ExecutionProto,
   LimitDuration as LimitDurationProto,
   LimitMatchedLogsCount,
 };
-use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
 use protobuf::MessageField;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Duration;
+use workflow::Workflow as WorkflowConfigProto;
 use workflow::workflow::action::action_emit_metric::Value_extractor_type;
 use workflow::workflow::action::action_flush_buffers::streaming::termination_criterion;
 use workflow::workflow::action::tag::Tag_type;
 use workflow::workflow::action::{
+  Action_type,
   ActionEmitMetric as ActionEmitMetricProto,
   ActionEmitSankeyDiagram as ActionEmitSankeyDiagramProto,
   ActionTakeScreenshot as ActionTakeScreenshotProto,
-  Action_type,
 };
 use workflow::workflow::execution::Execution_type;
 use workflow::workflow::rule::Rule_type;
@@ -38,7 +39,6 @@ use workflow::workflow::{
   State as StateProto,
   Transition as TransitionProto,
 };
-use workflow::Workflow as WorkflowConfigProto;
 
 pub(crate) type StateID = String;
 

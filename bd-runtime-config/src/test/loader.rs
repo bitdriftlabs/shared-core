@@ -21,13 +21,15 @@ struct TestData {
 #[tokio::test]
 async fn bad_directory() {
   let helper = crate::test::Helper::new();
-  assert!(WatchedFileLoader::new_loader(
-    Path::new("bad"),
-    Path::new("bad"),
-    |test_data: Option<TestData>| -> ConfigPtr<TestData> { test_data.map(Arc::new) },
-    helper.stats()
-  )
-  .is_err());
+  assert!(
+    WatchedFileLoader::new_loader(
+      Path::new("bad"),
+      Path::new("bad"),
+      |test_data: Option<TestData>| -> ConfigPtr<TestData> { test_data.map(Arc::new) },
+      helper.stats()
+    )
+    .is_err()
+  );
 }
 
 #[tokio::test]

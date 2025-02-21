@@ -23,13 +23,13 @@ use super::intrusive_queue_with_free_list::IntrusiveQueueWithFreeList;
 #[cfg(test)]
 use super::test::thread_synchronizer::ThreadSynchronizer;
 use super::{
-  to_u32,
   LockHandle,
   RingBuffer,
   RingBufferConsumer,
   RingBufferCursorConsumer,
   RingBufferProducer,
   RingBufferStats,
+  to_u32,
 };
 use crate::{AbslCode, Error, Result};
 use crc32fast::Hasher;

@@ -5,10 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_proto::protos::client::api::stats_upload_request::snapshot::Snapshot_type;
 use bd_proto::protos::client::api::StatsUploadRequest;
-use bd_proto::protos::client::metric::metric::Data;
+use bd_proto::protos::client::api::stats_upload_request::snapshot::Snapshot_type;
 use bd_proto::protos::client::metric::MetricsList;
+use bd_proto::protos::client::metric::metric::Data;
 use std::collections::{BTreeMap, HashMap};
 
 #[macro_export]

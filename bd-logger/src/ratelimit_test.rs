@@ -8,7 +8,7 @@
 use super::RateLimitLayer;
 use crate::service::RequestSized;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
-use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_time::TimeDurationExt;
 use futures_util::future::BoxFuture;
 use futures_util::poll;

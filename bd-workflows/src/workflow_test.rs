@@ -7,7 +7,7 @@
 
 use crate::config::{ActionEmitMetric, ActionFlushBuffers, Config, MetricType, ValueIncrement};
 use crate::workflow::{Run, TriggeredAction, Workflow, WorkflowResult, WorkflowResultStats};
-use bd_log_primitives::{log_level, FieldsRef, LogFields, LogMessage};
+use bd_log_primitives::{FieldsRef, LogFields, LogMessage, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_stats_common::labels;
 use bd_test_helpers::metric_value;

@@ -6,13 +6,13 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use anyhow::anyhow;
+pub use bd_proto::protos::client::api::LogUploadIntentRequest;
 pub use bd_proto::protos::client::api::log_upload_intent_request::{
   Intent_type,
   WorkflowActionUpload,
 };
 pub use bd_proto::protos::client::api::log_upload_intent_response::Decision as LogsUploadDecision;
 use bd_proto::protos::client::api::sankey_intent_response::Decision as SankeyPathUploadDecision;
-pub use bd_proto::protos::client::api::LogUploadIntentRequest;
 use bd_proto::protos::client::api::{
   LogUploadRequest,
   SankeyIntentRequest,

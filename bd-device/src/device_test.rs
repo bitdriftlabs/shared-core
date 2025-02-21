@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{Device, DEVICE_ID_KEY};
+use crate::{DEVICE_ID_KEY, Device};
 use bd_key_value::{Storage, Store};
 use bd_test_helpers::session::InMemoryStorage;
 use pretty_assertions::assert_eq;

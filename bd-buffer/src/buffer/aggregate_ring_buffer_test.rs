@@ -6,19 +6,19 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::RingBufferImpl;
+use crate::Result;
 use crate::buffer::common_ring_buffer::{AllowOverwrite, Cursor};
 use crate::buffer::non_volatile_ring_buffer::{FileHeader, PerRecordCrc32Check};
 use crate::buffer::test::thread_synchronizer::ThreadSynchronizer;
 use crate::buffer::test::{
+  Helper as CommonHelper,
   cursor_read_advance,
   cursor_read_and_verify,
   cursor_read_and_verify_and_advance,
   read_and_verify,
   start_read_and_verify,
-  Helper as CommonHelper,
 };
-use crate::buffer::{to_u32, RingBuffer, RingBufferStats, StatsHelper};
-use crate::Result;
+use crate::buffer::{RingBuffer, RingBufferStats, StatsHelper, to_u32};
 use bd_client_stats_store::Collector;
 use futures::poll;
 use std::sync::Arc;

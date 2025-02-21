@@ -30,7 +30,6 @@ pub use bd_device::Device;
 pub use bd_events::ListenerTarget as EventsListenerTarget;
 pub use bd_log_metadata::{AnnotatedLogFields, MetadataProvider};
 pub use bd_log_primitives::{
-  log_level,
   AnnotatedLogField,
   FieldsRef,
   LogField,
@@ -41,6 +40,7 @@ pub use bd_log_primitives::{
   LogMessage,
   LogRef,
   StringOrBytes,
+  log_level,
 };
 pub use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 pub use bd_resource_utilization::Target as ResourceUtilizationTarget;

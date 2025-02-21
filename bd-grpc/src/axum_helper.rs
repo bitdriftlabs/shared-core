@@ -17,8 +17,8 @@ use prometheus::{IntCounter, IntGauge};
 use std::future::Future;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
-use tower::util::ServiceExt;
 use tower::Service;
+use tower::util::ServiceExt;
 use unwrap_infallible::UnwrapInfallible;
 
 pub async fn serve_with_connect_info(
