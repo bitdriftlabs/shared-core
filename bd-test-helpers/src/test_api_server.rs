@@ -458,7 +458,7 @@ impl HandshakeMatcher {
     self
       .attributes
       .as_ref()
-      .map_or(true, |attributes_match| attributes_match == &attributes)
+      .is_none_or(|attributes_match| attributes_match == &attributes)
   }
 }
 

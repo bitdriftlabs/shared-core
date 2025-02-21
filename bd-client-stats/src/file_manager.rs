@@ -236,7 +236,7 @@ impl FileManager {
     let mut inner = self.inner.lock().await;
     let initialized_inner = inner.get_initialized().await?;
 
-    let create_new_snapshot = initialized_inner.index.back_mut().map_or(true, |file| {
+    let create_new_snapshot = initialized_inner.index.back_mut().is_none_or(|file| {
       if file.period_end.is_some() {
         log::debug!("snapshot is ready to upload, creating new snapshot");
         true
