@@ -58,7 +58,7 @@ impl FieldProvider for LogRef<'_> {
     match key {
       LOG_FIELD_NAME_LEVEL => Some(Cow::Owned(self.log_level.to_string())),
       LOG_FIELD_NAME_TYPE => Some(Cow::Owned(self.log_type.0.to_string())),
-      key => self.fields.field_value(key).map(Into::into),
+      key => self.fields.field_value(key),
     }
   }
 }

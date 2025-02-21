@@ -300,7 +300,7 @@ impl BoundedScope {
     labels: BTreeMap<String, String>,
     constructor: impl FnOnce() -> MetricData,
   ) -> Result<&mut MetricData> {
-    let can_insert = inner.limit.as_ref().map_or(true, |limit| {
+    let can_insert = inner.limit.as_ref().is_none_or(|limit| {
       inner.metrics.len() < (*limit.borrow()).try_into().unwrap()
     });
 

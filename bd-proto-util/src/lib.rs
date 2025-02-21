@@ -13,7 +13,7 @@ use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::{
   root_as_log_unchecked,
 };
 
-extern "C" {
+unsafe extern "C" {
   fn verify_log_buffer(buf: *const u8, buf_len: usize) -> bool;
 }
 
