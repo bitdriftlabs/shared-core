@@ -25,9 +25,10 @@ impl Predicate for ConnectSafeCompressionLayer {
   {
     // Custom predicate that keeps default min size and skips both gRPC and connect streaming.
     SizeAbove::default().should_compress(response)
-      && response.headers().get(CONTENT_TYPE).is_none_or(|v| {
-        v != CONTENT_TYPE_GRPC && v != CONTENT_TYPE_CONNECT_STREAMING
-      })
+      && response
+        .headers()
+        .get(CONTENT_TYPE)
+        .is_none_or(|v| v != CONTENT_TYPE_GRPC && v != CONTENT_TYPE_CONNECT_STREAMING)
   }
 }
 

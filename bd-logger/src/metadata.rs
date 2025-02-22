@@ -116,7 +116,8 @@ impl MetadataCollector {
       provider_matching_fields.custom,
     ]
     .concat()
-    .into_iter().unique_by(|f| f.key.clone())
+    .into_iter()
+    .unique_by(|f| f.key.clone())
     .collect_vec();
 
     Ok(LogMetadata {

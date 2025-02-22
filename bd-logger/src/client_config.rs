@@ -414,7 +414,8 @@ impl TailConfigurations {
       .iter()
       .filter_map(|(id, matcher)| {
         matcher
-          .as_ref().is_none_or(|matcher| {
+          .as_ref()
+          .is_none_or(|matcher| {
             matcher.do_match(log.log_level, log.log_type, log.message, log.fields)
           })
           .then_some(id.as_str())
