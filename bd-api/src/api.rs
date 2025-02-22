@@ -282,20 +282,20 @@ impl StreamState {
 
   async fn handle_data_upload(&mut self, data_upload: DataUpload) -> anyhow::Result<()> {
     match data_upload {
-      DataUpload::LogsUploadIntentRequest(intent) => {
+      DataUpload::LogsUploadIntent(intent) => {
         let req = self.upload_state_tracker.track_intent(intent);
         self.send_request(req).await
       },
-      DataUpload::LogsUploadRequest(request) => {
+      DataUpload::LogsUpload(request) => {
         let req = self.upload_state_tracker.track_upload(request);
         self.send_request(req).await
       },
-      DataUpload::StatsUploadRequest(mut request) => {
+      DataUpload::StatsUpload(mut request) => {
         request.payload.sent_at = self.time_provider.now().into_proto();
         let req = self.upload_state_tracker.track_upload(request);
         self.send_request(req).await
       },
-      DataUpload::SankeyPathUploadIntentRequest(request) => {
+      DataUpload::SankeyPathUploadIntent(request) => {
         let req = self.upload_state_tracker.track_intent(request);
         self.send_request(req).await
       },
@@ -303,8 +303,12 @@ impl StreamState {
         let req = self.upload_state_tracker.track_upload(request);
         self.send_request(req).await
       },
-      DataUpload::OpaqueRequest(request) => {
-        let req = self.upload_state_tracker.track_upload(request);
+      DataUpload::ArtifactUploadIntent(tracked) => {
+        let req = self.upload_state_tracker.track_intent(tracked);
+        self.send_request(req).await
+      },
+      DataUpload::ArtifactUpload(tracked) => {
+        let req = self.upload_state_tracker.track_upload(tracked);
         self.send_request(req).await
       },
     }

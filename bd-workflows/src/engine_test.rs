@@ -284,7 +284,7 @@ impl AnnotatedWorkflowsEngine {
             },
             Some(data_upload) = data_upload_rx.recv() => {
               match data_upload {
-                DataUpload::LogsUploadIntentRequest(logs_upload_intent) => {
+                DataUpload::LogsUploadIntent(logs_upload_intent) => {
 
                 if hooks.lock().awaiting_logs_upload_intent_decisions.is_empty() {
                   continue;
@@ -311,7 +311,7 @@ impl AnnotatedWorkflowsEngine {
                     panic!("failed to send response: {e:?}");
                   }
                 },
-                DataUpload::SankeyPathUploadIntentRequest(sankey_upload_intent) => {
+                DataUpload::SankeyPathUploadIntent(sankey_upload_intent) => {
                   assert!(!hooks.lock().awaiting_sankey_upload_intent_decisions.is_empty(), "received sankey upload intent when there are no awaiting intents");
 
                   let sankey_upload_intent_payload = sankey_upload_intent.payload.clone();

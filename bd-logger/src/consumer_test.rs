@@ -113,18 +113,19 @@ impl SetupSingleConsumer {
 
   async fn next_upload(&mut self) -> Tracked<ApiRequest, UploadResponse> {
     match self.data_upload_rx.recv().await.unwrap() {
-      DataUpload::LogsUploadRequest(upload) => upload.map_payload(|payload| ApiRequest {
+      DataUpload::LogsUpload(upload) => upload.map_payload(|payload| ApiRequest {
         request_type: Request_type::LogUpload(payload).into(),
         ..Default::default()
       }),
-      DataUpload::StatsUploadRequest(upload) => upload.map_payload(|payload| ApiRequest {
+      DataUpload::StatsUpload(upload) => upload.map_payload(|payload| ApiRequest {
         request_type: Request_type::StatsUpload(payload).into(),
         ..Default::default()
       }),
-      DataUpload::LogsUploadIntentRequest(_) => panic!("unexpected intent"),
-      DataUpload::OpaqueRequest(_) => panic!("unexpected opaque upload"),
-      DataUpload::SankeyPathUploadIntentRequest(_) => panic!("unexpected sankey upload intent"),
+      DataUpload::LogsUploadIntent(_) => panic!("unexpected intent"),
+      DataUpload::SankeyPathUploadIntent(_) => panic!("unexpected sankey upload intent"),
       DataUpload::SankeyPathUpload(_) => panic!("unexpected sankey upload"),
+      DataUpload::ArtifactUploadIntent(_) => panic!("unexpected artifact upload intent"),
+      DataUpload::ArtifactUpload(_) => panic!("unexpected artifact upload"),
     }
   }
 
@@ -641,7 +642,7 @@ impl SetupMultiConsumer {
 
   async fn next_upload(&mut self) -> Tracked<ApiRequest, UploadResponse> {
     match self.log_upload_rx.recv().await.unwrap() {
-      DataUpload::LogsUploadRequest(upload) => upload.map_payload(|p| ApiRequest {
+      DataUpload::LogsUpload(upload) => upload.map_payload(|p| ApiRequest {
         request_type: Some(Request_type::LogUpload(p)),
         ..Default::default()
       }),
@@ -886,14 +887,14 @@ async fn log_streaming() {
   producer.write(b"data").unwrap();
   producer.write(b"more data").unwrap();
 
-  assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::LogsUploadRequest(upload) => {
+  assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::LogsUpload(upload) => {
     assert_eq!(upload.payload.logs[0], b"data");
     upload.response_tx.send(UploadResponse {
       success: true,
       uuid: upload.uuid,
     }).unwrap();
   });
-  assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::LogsUploadRequest(upload) => {
+  assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::LogsUpload(upload) => {
     assert_eq!(upload.payload.logs[0], b"more data");
     upload.response_tx.send(UploadResponse {
       success: true,
@@ -946,7 +947,7 @@ async fn log_streaming_shutdown() {
   producer.write(b"data").unwrap();
 
   // Receive the upload request but do not complete it.
-  assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::LogsUploadRequest(upload) => {
+  assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::LogsUpload(upload) => {
     assert_eq!(upload.payload.logs[0], b"data");
   });
 

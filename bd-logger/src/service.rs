@@ -165,7 +165,7 @@ impl tower::Service<UploadRequest> for Uploader {
       // canceled. Errors are not retried.
       tokio::select! {
         () = shutdown.cancelled() => return Ok(UploadResult::Canceled),
-        r = data_upload_tx.send(DataUpload::LogsUploadRequest(upload)) => {
+        r = data_upload_tx.send(DataUpload::LogsUpload(upload)) => {
             if r.is_err() {
               return Ok(UploadResult::Canceled);
             }

@@ -195,6 +195,9 @@ impl<PayloadType: Send + Sync, R> Tracked<PayloadType, R> {
   }
 }
 
+pub type TrackedUpload<T> = Tracked<T, UploadResponse>;
+pub type TrackedIntent<T> = Tracked<T, IntentResponse>;
+
 /// A number of logs prepared for upload.
 #[derive(Debug)]
 pub struct LogBatch {

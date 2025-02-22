@@ -307,7 +307,7 @@ impl Negotiator {
         TrackedLogUploadIntent::new(intent_uuid.clone(), intent_request.clone());
       self
         .data_upload_tx
-        .send(DataUpload::LogsUploadIntentRequest(intent))
+        .send(DataUpload::LogsUploadIntent(intent))
         .await
         .map_err(|_| anyhow!("tokio send error: intent upload"))?;
 
