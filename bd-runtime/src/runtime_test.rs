@@ -7,8 +7,8 @@
 
 use crate::runtime::{ConfigLoader, FeatureFlag};
 use crate::{bool_feature_flag, duration_feature_flag, int_feature_flag};
-use bd_test_helpers::runtime::{make_update, ValueKind};
 use bd_test_helpers::RecordingErrorReporter;
+use bd_test_helpers::runtime::{ValueKind, make_update};
 use std::borrow::Borrow;
 use std::path::PathBuf;
 use std::sync::Arc;

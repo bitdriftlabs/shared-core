@@ -11,13 +11,13 @@ mod common_ring_buffer_test;
 
 #[cfg(test)]
 use super::test::thread_synchronizer::ThreadSynchronizer;
-use super::{to_u32, RingBufferStats};
+use super::{RingBufferStats, to_u32};
 use crate::{AbslCode, Error, Result};
 use parking_lot::{Condvar, Mutex, MutexGuard};
 use std::fmt::Display;
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 // Performing an intersection calculation (do a pair of start and size tuples overlap).
 pub const fn intersect(a: &Range, b: &Range) -> bool {

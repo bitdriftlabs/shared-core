@@ -8,8 +8,8 @@
 use super::{Config, Configuration};
 use anyhow::anyhow;
 use bd_client_stats_store::Collector;
-use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::ConfigurationUpdate;
+use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use pretty_assertions::assert_eq;
 use std::path::Path;

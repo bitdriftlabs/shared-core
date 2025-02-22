@@ -6,18 +6,18 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use assert_matches::assert_matches;
-use bd_api::upload::Tracked;
 use bd_api::DataUpload;
+use bd_api::upload::Tracked;
 use bd_key_value::Store;
-use bd_logger::{log_level, AnnotatedLogField, InitParams, LogType, Logger, MetadataProvider};
+use bd_logger::{AnnotatedLogField, InitParams, LogType, Logger, MetadataProvider, log_level};
 use bd_proto::protos::client::api::{OpaqueRequest, RuntimeUpdate};
-use bd_proto::protos::client::runtime::runtime::{value, Value};
 use bd_proto::protos::client::runtime::Runtime;
-use bd_proto::protos::config::v1::config::buffer_config::Type;
+use bd_proto::protos::client::runtime::runtime::{Value, value};
 use bd_proto::protos::config::v1::config::BufferConfigList;
+use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_runtime::runtime::FeatureFlag;
 use bd_session::fixed::UUIDCallbacks;
-use bd_session::{fixed, Strategy};
+use bd_session::{Strategy, fixed};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::config_helper::{
   configuration_update,

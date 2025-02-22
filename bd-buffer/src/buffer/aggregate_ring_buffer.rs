@@ -16,7 +16,6 @@ use super::non_volatile_ring_buffer::{
   PerRecordCrc32Check,
 };
 use super::{
-  to_u32,
   LockHandle,
   NonVolatileRingBuffer,
   RingBuffer,
@@ -25,6 +24,7 @@ use super::{
   RingBufferProducer,
   RingBufferStats,
   VolatileRingBuffer,
+  to_u32,
 };
 #[cfg(test)]
 use crate::buffer::test::thread_synchronizer::ThreadSynchronizer;
@@ -33,8 +33,8 @@ use parking_lot::Mutex;
 #[cfg(test)]
 use std::any::Any;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 //
 // SharedData

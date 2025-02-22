@@ -8,12 +8,12 @@
 use crate::{Reporter, Target};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
-use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_time::TimeDurationExt;
 use std::sync::Arc;
 use tempfile::TempDir;
-use time::ext::NumericalDuration;
 use time::Duration;
+use time::ext::NumericalDuration;
 use tokio_test::assert_ok;
 
 //

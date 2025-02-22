@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::State;
-use crate::activity_based::{self, Callbacks, Store, STATE_KEY};
+use crate::activity_based::{self, Callbacks, STATE_KEY, Store};
 use bd_key_value::Storage;
 use bd_time::TestTimeProvider;
 use pretty_assertions::assert_eq;

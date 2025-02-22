@@ -11,13 +11,13 @@ use crate::error::{Error, Result};
 use crate::service::ServiceMethod;
 use crate::status::{Code, Status};
 use crate::{
-  finalize_decompression,
-  StreamingApi,
-  StreamingApiReceiver,
   CONNECT_PROTOCOL_VERSION,
   CONTENT_ENCODING_SNAPPY,
   GRPC_STATUS,
+  StreamingApi,
+  StreamingApiReceiver,
   TRANSFER_ENCODING_TRAILERS,
+  finalize_decompression,
 };
 use assert_matches::debug_assert_matches;
 use axum::body::Body;
@@ -26,10 +26,10 @@ use bd_grpc_codec::{
   Decoder,
   DecodingResult,
   Encoder,
-  OptimizeFor,
   GRPC_ACCEPT_ENCODING_HEADER,
   GRPC_ENCODING_DEFLATE,
   GRPC_ENCODING_HEADER,
+  OptimizeFor,
 };
 use bd_time::TimeDurationExt;
 use http::header::{CONTENT_ENCODING, CONTENT_TYPE, TRANSFER_ENCODING};
@@ -42,7 +42,7 @@ use protobuf::MessageFull;
 use std::error::Error as StdError;
 use std::io::ErrorKind;
 use time::Duration;
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::{Semaphore, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 
 //

@@ -15,7 +15,7 @@ use bd_buffer::BuffersWithAck;
 use bd_client_stats::{DynamicStats, FlushTrigger};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::FilterChain;
-use bd_log_primitives::{log_level, LogLevel};
+use bd_log_primitives::{LogLevel, log_level};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
@@ -28,8 +28,8 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::error::TrySendError;
 
 //
 // LoggingState

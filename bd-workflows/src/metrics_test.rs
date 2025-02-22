@@ -10,7 +10,7 @@ use crate::config::{ActionEmitMetric, MetricType, TagValue};
 use bd_client_stats::DynamicStats;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{BoundedCollector, Collector};
-use bd_log_primitives::{log_level, FieldsRef, LogField, LogRef, LogType};
+use bd_log_primitives::{FieldsRef, LogField, LogRef, LogType, log_level};
 use bd_runtime::runtime::ConfigLoader;
 use bd_stats_common::labels;
 use std::collections::BTreeMap;
@@ -138,14 +138,16 @@ fn metric_increment_value_extraction() {
   );
 
   // No counter emitted for action_id_4 as the field does not exist.
-  assert!(dynamic_stats_collector
-    .find_counter(
-      "workflows_dyn:action",
-      labels! {
-      "_id" => "action_id_4",
-      },
-    )
-    .is_none());
+  assert!(
+    dynamic_stats_collector
+      .find_counter(
+        "workflows_dyn:action",
+        labels! {
+        "_id" => "action_id_4",
+        },
+      )
+      .is_none()
+  );
 
   // Values can be extracted from the matching_only_fields.
   dynamic_stats_collector.assert_counter_eq(

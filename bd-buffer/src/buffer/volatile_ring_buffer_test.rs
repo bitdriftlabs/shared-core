@@ -6,9 +6,9 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::buffer::common_ring_buffer::Cursor;
-use crate::buffer::test::{reserve_no_commit, Helper};
+use crate::buffer::test::{Helper, reserve_no_commit};
 use crate::buffer::volatile_ring_buffer::RingBufferImpl;
-use crate::buffer::{to_u32, RingBufferProducer, RingBufferStats};
+use crate::buffer::{RingBufferProducer, RingBufferStats, to_u32};
 use crate::{AbslCode, Error};
 use assert_matches::assert_matches;
 use itertools::Itertools;

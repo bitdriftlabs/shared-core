@@ -12,7 +12,6 @@ mod tests {
   use bd_key_value::Store;
   use bd_log_metadata::LogFieldKind;
   use bd_logger::{
-    log_level,
     AnnotatedLogField,
     AnnotatedLogFields,
     AppVersionExtra,
@@ -24,24 +23,26 @@ mod tests {
     LogType,
     Logger,
     StringOrBytes,
+    log_level,
   };
   use bd_noop_network::NoopNetwork;
   use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::root_as_log;
   use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
+  use bd_proto::protos::client::api::ConfigurationUpdate;
   use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
   use bd_proto::protos::client::api::configuration_update_ack::Nack;
-  use bd_proto::protos::client::api::ConfigurationUpdate;
-  use bd_proto::protos::config::v1::config::buffer_config::Type;
   use bd_proto::protos::config::v1::config::BufferConfigList;
+  use bd_proto::protos::config::v1::config::buffer_config::Type;
   use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
   use bd_runtime::runtime::FeatureFlag;
   use bd_session::fixed::{State, UUIDCallbacks};
-  use bd_session::{fixed, Strategy};
+  use bd_session::{Strategy, fixed};
   use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
   use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
   use bd_stats_common::labels;
   use bd_test_helpers::config_helper::{
     self,
+    BufferConfigBuilder,
     configuration_update,
     default_buffer_config,
     invalid_configuration,
@@ -51,12 +52,11 @@ mod tests {
     make_configuration_update_with_workflow_flushing_buffer_on_anything,
     make_workflow_config_flushing_buffer,
     match_message,
-    BufferConfigBuilder,
   };
   use bd_test_helpers::metadata::EmptyMetadata;
   use bd_test_helpers::metadata_provider::LogMetadata;
   use bd_test_helpers::resource_utilization::EmptyTarget;
-  use bd_test_helpers::runtime::{make_update, ValueKind};
+  use bd_test_helpers::runtime::{ValueKind, make_update};
   use bd_test_helpers::session::InMemoryStorage;
   use bd_test_helpers::stats::StatsRequestHelper;
   use bd_test_helpers::test_api_server::{ExpectedStreamEvent, StreamAction};
@@ -69,10 +69,10 @@ mod tests {
     workflow_proto,
     workflows_configuration,
   };
-  use bd_test_helpers::{field_value, metric_tag, metric_value, set_field, RecordingErrorReporter};
+  use bd_test_helpers::{RecordingErrorReporter, field_value, metric_tag, metric_value, set_field};
   use std::ops::Add;
-  use std::sync::atomic::AtomicUsize;
   use std::sync::Arc;
+  use std::sync::atomic::AtomicUsize;
   use std::time::Instant;
   use tempfile::TempDir;
   use time::ext::{NumericalDuration, NumericalStdDuration};
@@ -1539,14 +1539,16 @@ mod tests {
       "",
       StateOfTheWorld {
         buffer_config_list: Some(BufferConfigList {
-          buffer_config: vec![BufferConfigBuilder {
-            name: "default",
-            buffer_type: Type::TRIGGER,
-            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-            non_volatile_size: 100_000,
-            volatile_size: 10_000,
-          }
-          .build()],
+          buffer_config: vec![
+            BufferConfigBuilder {
+              name: "default",
+              buffer_type: Type::TRIGGER,
+              filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+              non_volatile_size: 100_000,
+              volatile_size: 10_000,
+            }
+            .build(),
+          ],
           ..Default::default()
         })
         .into(),
@@ -1700,14 +1702,16 @@ mod tests {
       "",
       StateOfTheWorld {
         buffer_config_list: Some(BufferConfigList {
-          buffer_config: vec![BufferConfigBuilder {
-            name: "trigger",
-            buffer_type: Type::TRIGGER,
-            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-            non_volatile_size: 100_000,
-            volatile_size: 10_000,
-          }
-          .build()],
+          buffer_config: vec![
+            BufferConfigBuilder {
+              name: "trigger",
+              buffer_type: Type::TRIGGER,
+              filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+              non_volatile_size: 100_000,
+              volatile_size: 10_000,
+            }
+            .build(),
+          ],
           ..Default::default()
         })
         .into(),
@@ -1763,14 +1767,16 @@ mod tests {
       "",
       StateOfTheWorld {
         buffer_config_list: Some(BufferConfigList {
-          buffer_config: vec![BufferConfigBuilder {
-            name: "trigger",
-            buffer_type: Type::TRIGGER,
-            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-            non_volatile_size: 100_000,
-            volatile_size: 10_000,
-          }
-          .build()],
+          buffer_config: vec![
+            BufferConfigBuilder {
+              name: "trigger",
+              buffer_type: Type::TRIGGER,
+              filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+              non_volatile_size: 100_000,
+              volatile_size: 10_000,
+            }
+            .build(),
+          ],
           ..Default::default()
         })
         .into(),
@@ -1904,14 +1910,16 @@ mod tests {
       "",
       StateOfTheWorld {
         buffer_config_list: Some(BufferConfigList {
-          buffer_config: vec![BufferConfigBuilder {
-            name: "continuous",
-            buffer_type: Type::CONTINUOUS,
-            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-            non_volatile_size: 240,
-            volatile_size: 200,
-          }
-          .build()],
+          buffer_config: vec![
+            BufferConfigBuilder {
+              name: "continuous",
+              buffer_type: Type::CONTINUOUS,
+              filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+              non_volatile_size: 240,
+              volatile_size: 200,
+            }
+            .build(),
+          ],
           ..Default::default()
         })
         .into(),

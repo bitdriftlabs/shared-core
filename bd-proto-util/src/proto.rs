@@ -11,8 +11,8 @@ mod tests;
 
 use base64ct::Encoding;
 use itertools::Itertools;
-use protobuf::reflect::ReflectValueRef;
 use protobuf::MessageFull;
+use protobuf::reflect::ReflectValueRef;
 use sha2::Digest;
 use std::hash::Hash;
 use std::ops::Deref;

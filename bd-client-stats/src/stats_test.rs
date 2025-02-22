@@ -9,25 +9,25 @@ use super::Ticker;
 use crate::file_manager::{
   FileManager,
   FileSystem,
-  RealFileSystem,
   PENDING_AGGREGATION_INDEX_FILE,
+  RealFileSystem,
   STATS_DIRECTORY,
 };
 use crate::{DynamicStats, Stats};
 use anyhow::anyhow;
 use assert_matches::assert_matches;
 use async_trait::async_trait;
-use bd_api::upload::{Tracked, UploadResponse};
 use bd_api::DataUpload;
+use bd_api::upload::{Tracked, UploadResponse};
 use bd_client_common::file::write_compressed_protobuf;
-use bd_client_stats_store::{make_sketch, Collector};
+use bd_client_stats_store::{Collector, make_sketch};
+use bd_proto::protos::client::api::StatsUploadRequest;
+use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapshot;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{
   Aggregated,
   Occurred_at,
   Snapshot_type,
 };
-use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapshot;
-use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::metric::metric::Data as MetricData;
 use bd_proto::protos::client::metric::pending_aggregation_index::PendingFile;
 use bd_proto::protos::client::metric::{Counter, Metric, MetricsList, PendingAggregationIndex};
@@ -35,14 +35,14 @@ use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::float_eq;
-use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeProvider, TimestampExt};
 use futures_util::poll;
 use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tempfile::TempDir;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::{Duration, OffsetDateTime};
@@ -460,9 +460,11 @@ async fn max_files_upload_race() {
       uuid: stats.uuid,
     })
     .unwrap();
-  assert!(timeout(1.std_seconds(), setup.next_stat_upload())
-    .await
-    .is_err());
+  assert!(
+    timeout(1.std_seconds(), setup.next_stat_upload())
+      .await
+      .is_err()
+  );
 }
 
 #[tokio::test(start_paused = true)]

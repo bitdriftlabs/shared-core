@@ -12,23 +12,23 @@
 use crate::{
   CaptureScreenshotHandler,
   Recorder,
+  SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE,
   ScreenshotLogInterceptor,
   Target,
-  SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE,
 };
-use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
-use bd_log_primitives::{log_level, LogInterceptor, LogType};
+use bd_client_stats_store::test::StatsHelper;
+use bd_log_primitives::{LogInterceptor, LogType, log_level};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
-use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_time::TimeDurationExt;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 use tempfile::TempDir;
-use time::ext::NumericalDuration;
 use time::Duration;
+use time::ext::NumericalDuration;
 use tokio_test::assert_ok;
 
 struct Setup {

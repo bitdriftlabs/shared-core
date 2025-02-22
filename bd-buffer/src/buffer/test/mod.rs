@@ -9,11 +9,11 @@ pub mod thread_synchronizer;
 
 use crate::buffer::common_ring_buffer::Cursor;
 use crate::buffer::{
-  to_u32,
   RingBuffer,
   RingBufferConsumer,
   RingBufferCursorConsumer,
   RingBufferProducer,
+  to_u32,
 };
 use std::sync::Arc;
 

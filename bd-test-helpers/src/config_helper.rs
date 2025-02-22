@@ -7,16 +7,16 @@
 
 use base_log_matcher::{AnyMatch, MessageMatch, StringMatchType, TypeMatch};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
-use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::ConfigurationUpdate;
-use bd_proto::protos::client::matcher::root_matcher::{self, ClientTarget};
+use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::matcher::RootMatcher;
+use bd_proto::protos::client::matcher::root_matcher::{self, ClientTarget};
 pub use bd_proto::protos::config::v1::config::buffer_config::Type as BufferType;
 use bd_proto::protos::config::v1::config::buffer_config::{BufferFilter, BufferSizes};
 use bd_proto::protos::config::v1::config::log_matcher::{
-  base_log_matcher,
   BaseLogMatcher,
   Match_type,
+  base_log_matcher,
 };
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration;
 #[rustfmt::skip]
@@ -34,10 +34,10 @@ use crate::workflow::macros::{
   workflows_configuration,
 };
 use bd_proto::protos::config::v1::config::{
-  buffer_config,
   BufferConfig,
   BufferConfigList,
   LogMatcher as BufferLogMatcher,
+  buffer_config,
 };
 use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
 

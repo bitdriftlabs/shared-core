@@ -16,12 +16,12 @@ use http::{Method, Request};
 use http_body::Frame;
 use http_body_util::{BodyExt, StreamBody};
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
-use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::Client;
+use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::rt::TokioExecutor;
 use std::collections::HashMap;
 use std::convert::Infallible;
-use tokio::sync::mpsc::{self, channel, Sender};
+use tokio::sync::mpsc::{self, Sender, channel};
 use tokio_stream::wrappers::ReceiverStream;
 
 type BoxBody = http_body_util::combinators::BoxBody<Bytes, Infallible>;
@@ -205,7 +205,7 @@ impl HyperNetwork {
           }
         },
         bd_api::StreamEvent::StreamClosed(closed) => {
-          return Some(bd_api::StreamEvent::StreamClosed(closed))
+          return Some(bd_api::StreamEvent::StreamClosed(closed));
         },
       }
     }

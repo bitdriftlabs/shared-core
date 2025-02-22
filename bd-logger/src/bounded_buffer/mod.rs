@@ -14,8 +14,8 @@ mod size;
 use bd_client_stats_store::{Counter, Scope};
 use bd_stats_common::labels;
 pub use size::MemorySized;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc::error::TrySendError as TokioTrySendError;
 use tokio::sync::mpsc::{Receiver as TokioReceiver, Sender as TokioSender};
 

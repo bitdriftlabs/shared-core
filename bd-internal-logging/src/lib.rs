@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-pub use bd_log_primitives::{log_level, LogFields, LogLevel, LogType};
+pub use bd_log_primitives::{LogFields, LogLevel, LogType, log_level};
 use std::sync::Arc;
 
 //

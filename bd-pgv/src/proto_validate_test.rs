@@ -10,12 +10,9 @@ use crate::error;
 use crate::generated::test_protos;
 use crate::generated::test_protos::test_validate::{Duration, Int32, Int64, Uint64};
 use bd_time::ToProtoDuration;
-use protobuf::well_known_types::duration::Duration as ProtoDuration;
 use protobuf::Message as ProtoMessage;
+use protobuf::well_known_types::duration::Duration as ProtoDuration;
 use test_protos::test_validate::{
-  message,
-  one_of,
-  repeated,
   Bool,
   EnumNew,
   EnumOld,
@@ -25,6 +22,9 @@ use test_protos::test_validate::{
   Repeated,
   String,
   Uint32,
+  message,
+  one_of,
+  repeated,
 };
 use time::ext::NumericalDuration;
 

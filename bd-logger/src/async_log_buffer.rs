@@ -9,7 +9,7 @@
 #[path = "./async_log_buffer_test.rs"]
 mod async_log_buffer_test;
 
-use crate::bounded_buffer::{channel, MemorySized, Receiver, Sender, TrySendError};
+use crate::bounded_buffer::{MemorySized, Receiver, Sender, TrySendError, channel};
 use crate::device_id::DeviceIdInterceptor;
 use crate::log_replay::LogReplay;
 use crate::logger::with_thread_local_logger_guard;
@@ -22,7 +22,6 @@ use bd_buffer::BuffersWithAck;
 use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_log_metadata::{AnnotatedLogFields, MetadataProvider};
 use bd_log_primitives::{
-  log_level,
   Log,
   LogField,
   LogFieldValue,
@@ -30,6 +29,7 @@ use bd_log_primitives::{
   LogInterceptor,
   LogLevel,
   LogMessage,
+  log_level,
 };
 use bd_network_quality::NetworkQualityProvider;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;

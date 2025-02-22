@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 #[cfg(unix)]
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::watch;
 
 // The real graceful shutdown function that listens for SIGTERM or SIGINT.

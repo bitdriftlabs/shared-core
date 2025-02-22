@@ -6,8 +6,8 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_proto::protos::client::api::RuntimeUpdate;
-use bd_proto::protos::client::runtime::runtime::{value, Value};
 use bd_proto::protos::client::runtime::Runtime;
+use bd_proto::protos::client::runtime::runtime::{Value, value};
 
 /// A simple representation of a runtime value. This is used to provide better ergonomics than the
 /// protobuf enums.

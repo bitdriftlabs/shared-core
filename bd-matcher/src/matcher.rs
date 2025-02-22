@@ -12,10 +12,10 @@ mod matcher_test;
 use crate::{Error, FieldProvider, Result};
 use bd_log_primitives::{LogLevel, LogMessage, LogType};
 use bd_proto::protos;
+use protos::config::v1::config::LogMatcher;
 use protos::config::v1::config::log_matcher::base_log_matcher::log_level_match::ComparisonOperator;
 use protos::config::v1::config::log_matcher::base_log_matcher::{self, StringMatchType};
 use protos::config::v1::config::log_matcher::{BaseLogMatcher, Match_type};
-use protos::config::v1::config::LogMatcher;
 use regex::Regex;
 use std::borrow::Cow;
 

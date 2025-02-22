@@ -7,8 +7,8 @@
 
 #![no_main]
 
-use fuzz::spsc_buffer_fuzz_test::SpscBufferFuzzTestCase;
 use fuzz::BufferFuzzTest;
+use fuzz::spsc_buffer_fuzz_test::SpscBufferFuzzTestCase;
 
 libfuzzer_sys::fuzz_target!(|input: SpscBufferFuzzTestCase| {
   BufferFuzzTest::new(input.test_case).run(false);

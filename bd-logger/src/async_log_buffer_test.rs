@@ -19,33 +19,33 @@ use crate::logging_state::{
 use assert_matches::assert_matches;
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_client_stats::{DynamicStats, FlushTrigger};
-use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
+use bd_client_stats_store::test::StatsHelper;
 use bd_key_value::Store;
 use bd_log_filter::FilterChain;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
-use bd_log_primitives::{log_level, AnnotatedLogField, Log, LogField, LogFields, StringOrBytes};
+use bd_log_primitives::{AnnotatedLogField, Log, LogField, LogFields, StringOrBytes, log_level};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::fixed::UUIDCallbacks;
-use bd_session::{fixed, Strategy};
+use bd_session::{Strategy, fixed};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_stats_common::labels;
 use bd_test_helpers::events::NoOpListenerTarget;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
-use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_test_helpers::session::InMemoryStorage;
 use bd_test_helpers::workflow::macros::{state, workflow};
 use bd_time::TimeDurationExt;
 use bd_workflows::config::WorkflowsConfiguration;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use time::ext::NumericalDuration;
 use time::Duration;
+use time::ext::NumericalDuration;
 use tokio::sync::oneshot::Sender;
 use tokio_test::assert_ok;
 
@@ -465,8 +465,10 @@ async fn logs_are_replayed_in_order() {
   let config_update_task = std::thread::spawn(move || {
     // Send an initial workflows config update to allow
     // the async log buffer to start replaying buffered logs.
-    assert_ok!(config_update_tx
-      .blocking_send(setup_clone.make_config_update(WorkflowsConfiguration::default())));
+    assert_ok!(
+      config_update_tx
+        .blocking_send(setup_clone.make_config_update(WorkflowsConfiguration::default()))
+    );
     drop(config_update_tx);
   });
 
@@ -775,8 +777,10 @@ async fn updates_workflow_engine_in_response_to_config_update() {
 
   let task = std::thread::spawn(move || {
     // Simulate config update with no workflows.
-    assert_ok!(config_update_tx_clone
-      .blocking_send(setup_clone.make_config_update(WorkflowsConfiguration::default())));
+    assert_ok!(
+      config_update_tx_clone
+        .blocking_send(setup_clone.make_config_update(WorkflowsConfiguration::default()))
+    );
     // Simulate config update with one workflow.
     assert_ok!(
       config_update_tx_clone.blocking_send(setup_clone.make_config_update(
@@ -812,8 +816,10 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   let setup_clone = setup.clone();
   let task = std::thread::spawn(move || {
     // Config push disables workflow engine by pushing an empty workflow config.
-    assert_ok!(config_update_tx
-      .blocking_send(setup_clone.make_config_update(WorkflowsConfiguration::default())));
+    assert_ok!(
+      config_update_tx
+        .blocking_send(setup_clone.make_config_update(WorkflowsConfiguration::default()))
+    );
   });
 
   // Timeout as otherwise buffer's workflows engine continues to try
@@ -871,8 +877,10 @@ async fn stops_workflows_engine_if_workflows_runtime_flag_is_disabled() {
   let setup_clone = setup.clone();
   let task = std::thread::spawn(move || {
     // Config push disables workflow engine by pushing an empty workflow config.
-    assert_ok!(config_update_tx
-      .blocking_send(setup_clone.make_config_update(WorkflowsConfiguration::default())));
+    assert_ok!(
+      config_update_tx
+        .blocking_send(setup_clone.make_config_update(WorkflowsConfiguration::default()))
+    );
   });
 
   // Timeout as otherwise buffer's workflows engine continues to try
@@ -966,8 +974,10 @@ async fn logs_resource_utilization_log() {
   let setup_clone = setup.clone();
   let task = std::thread::spawn(move || {
     // Config push disables workflow engine by pushing an empty workflow config.
-    assert_ok!(config_update_tx
-      .blocking_send(setup_clone.make_config_update(WorkflowsConfiguration::default())));
+    assert_ok!(
+      config_update_tx
+        .blocking_send(setup_clone.make_config_update(WorkflowsConfiguration::default()))
+    );
   });
 
   let message = AsyncLogBufferMessage::EmitLog(LogLine {
@@ -1000,7 +1010,9 @@ async fn logs_resource_utilization_log() {
 
   // Confirm that internal fields are added if enabled.
   assert!(replayer_fields.lock().len() > 0);
-  assert!(replayer_fields.lock()[0]
-    .iter()
-    .any(|f| f.key == "_logs_count"));
+  assert!(
+    replayer_fields.lock()[0]
+      .iter()
+      .any(|f| f.key == "_logs_count")
+  );
 }

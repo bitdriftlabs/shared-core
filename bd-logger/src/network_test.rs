@@ -10,12 +10,12 @@ use crate::network::HTTPTrafficDataUsageTracker;
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_log_metadata::AnnotatedLogFields;
 use bd_log_primitives::{
-  log_level,
   AnnotatedLogField,
   LogInterceptor,
   LogMessage,
   LogType,
   StringOrBytes,
+  log_level,
 };
 use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
 use pretty_assertions::assert_eq;

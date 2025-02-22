@@ -6,8 +6,8 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
-use flate2::read::{ZlibDecoder, ZlibEncoder};
 use flate2::Compression;
+use flate2::read::{ZlibDecoder, ZlibEncoder};
 use std::io::Read;
 
 pub fn write_compressed_protobuf<T: protobuf::Message>(message: &T) -> Vec<u8> {

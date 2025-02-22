@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::handle_unexpected;
-use crate::error::{MetadataErrorReporter, SessionProvider, UnexpectedErrorHandler, ERROR_HANDLER};
+use crate::error::{ERROR_HANDLER, MetadataErrorReporter, SessionProvider, UnexpectedErrorHandler};
 use anyhow::anyhow;
 use bd_client_stats_store::Collector;
 use bd_metadata::Metadata;

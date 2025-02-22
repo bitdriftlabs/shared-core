@@ -5,9 +5,9 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use axum::Router;
 use axum::extract::Query;
 use axum::routing::post;
-use axum::Router;
 use std::collections::HashMap;
 use std::ffi::CString;
 

@@ -10,9 +10,9 @@ use crate::compression::{Compression, ConnectSafeCompressionLayer};
 use crate::connect_protocol::ConnectProtocolType;
 use crate::generated::proto::test::{EchoRequest, EchoResponse};
 use crate::{
-  make_server_streaming_router,
-  make_unary_router,
-  new_grpc_response,
+  CONNECT_PROTOCOL_VERSION,
+  CONTENT_TYPE,
+  CONTENT_TYPE_PROTO,
   Code,
   Error,
   Handler,
@@ -23,16 +23,16 @@ use crate::{
   StreamStats,
   StreamingApi,
   StreamingApiSender,
-  CONNECT_PROTOCOL_VERSION,
-  CONTENT_TYPE,
-  CONTENT_TYPE_PROTO,
+  make_server_streaming_router,
+  make_unary_router,
+  new_grpc_response,
 };
 use assert_matches::assert_matches;
 use async_trait::async_trait;
+use axum::Router;
 use axum::body::Body;
 use axum::extract::Request;
 use axum::routing::post;
-use axum::Router;
 use bd_grpc_codec::stats::DeferredCounter;
 use bd_grpc_codec::{DecodingResult, OptimizeFor};
 use bd_server_stats::stats::CounterWrapper;
@@ -46,8 +46,8 @@ use parking_lot::Mutex;
 use prometheus::labels;
 use protobuf::{Message, MessageFull};
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use time::ext::NumericalDuration;
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch};

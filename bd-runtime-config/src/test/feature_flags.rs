@@ -48,11 +48,13 @@ values:
   let mut snapshot_watch = loader.snapshot_watch();
 
   // Make sure the initial load is correct.
-  assert!(snapshot_watch
-    .borrow()
-    .as_ref()
-    .unwrap()
-    .get_bool("baz", false));
+  assert!(
+    snapshot_watch
+      .borrow()
+      .as_ref()
+      .unwrap()
+      .get_bool("baz", false)
+  );
   assert_eq!(
     snapshot_watch
       .borrow()
@@ -97,11 +99,13 @@ values:
   .unwrap();
 
   snapshot_watch.changed().await.unwrap();
-  assert!(!snapshot_watch
-    .borrow()
-    .as_ref()
-    .unwrap()
-    .get_bool("baz", true));
+  assert!(
+    !snapshot_watch
+      .borrow()
+      .as_ref()
+      .unwrap()
+      .get_bool("baz", true)
+  );
   assert_eq!(
     snapshot_watch
       .borrow()
@@ -119,16 +123,20 @@ values:
       .as_str(),
     "world"
   );
-  assert!(snapshot_watch
-    .borrow()
-    .as_ref()
-    .unwrap()
-    .feature_enabled("feature_percent_always", false));
-  assert!(!snapshot_watch
-    .borrow()
-    .as_ref()
-    .unwrap()
-    .feature_enabled("feature_percent_never", true));
+  assert!(
+    snapshot_watch
+      .borrow()
+      .as_ref()
+      .unwrap()
+      .feature_enabled("feature_percent_always", false)
+  );
+  assert!(
+    !snapshot_watch
+      .borrow()
+      .as_ref()
+      .unwrap()
+      .feature_enabled("feature_percent_never", true)
+  );
 
   // Create a bad file which should still provide a default implementation.
   helper.create_file_and_data_dir("data_dir3", "test.yaml", b"");
@@ -144,16 +152,20 @@ values:
   .unwrap();
 
   snapshot_watch.changed().await.unwrap();
-  assert!(snapshot_watch
-    .borrow()
-    .as_ref()
-    .unwrap()
-    .get_bool("bad", true));
-  assert!(!snapshot_watch
-    .borrow()
-    .as_ref()
-    .unwrap()
-    .get_bool("bad", false));
+  assert!(
+    snapshot_watch
+      .borrow()
+      .as_ref()
+      .unwrap()
+      .get_bool("bad", true)
+  );
+  assert!(
+    !snapshot_watch
+      .borrow()
+      .as_ref()
+      .unwrap()
+      .get_bool("bad", false)
+  );
   assert_eq!(
     snapshot_watch
       .borrow()
@@ -171,16 +183,20 @@ values:
       .as_str(),
     "world"
   );
-  assert!(!snapshot_watch
-    .borrow()
-    .as_ref()
-    .unwrap()
-    .feature_enabled("feature_percent_always", false));
-  assert!(snapshot_watch
-    .borrow()
-    .as_ref()
-    .unwrap()
-    .feature_enabled("feature_percent_never", true));
+  assert!(
+    !snapshot_watch
+      .borrow()
+      .as_ref()
+      .unwrap()
+      .feature_enabled("feature_percent_always", false)
+  );
+  assert!(
+    snapshot_watch
+      .borrow()
+      .as_ref()
+      .unwrap()
+      .feature_enabled("feature_percent_never", true)
+  );
 
   loader.shutdown().await;
 }

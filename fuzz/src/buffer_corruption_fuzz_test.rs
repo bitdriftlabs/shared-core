@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{process_test_case, BufferFuzzTestCase, BufferType};
+use crate::{BufferFuzzTestCase, BufferType, process_test_case};
 use arbitrary::Arbitrary;
 
 #[derive(Debug)]

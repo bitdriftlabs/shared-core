@@ -11,8 +11,8 @@ mod actions_flush_buffers_test;
 
 use crate::config::ActionFlushBuffers;
 use anyhow::anyhow;
-use bd_api::upload::{IntentDecision, Intent_type, TrackedLogUploadIntent};
 use bd_api::DataUpload;
+use bd_api::upload::{Intent_type, IntentDecision, TrackedLogUploadIntent};
 use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::LogUploadIntentRequest;
 use bd_stats_common::labels;
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 //
 // NegotiatorOutput

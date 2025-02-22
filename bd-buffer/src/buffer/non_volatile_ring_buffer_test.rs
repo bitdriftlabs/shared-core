@@ -7,8 +7,8 @@
 
 use super::{FileHeader, RingBufferImpl};
 use crate::buffer::common_ring_buffer::{AllowOverwrite, Cursor};
-use crate::buffer::test::{reserve_and_commit, Helper as CommonHelper};
-use crate::buffer::{to_u32, OptionalStatGetter, StatsHelper};
+use crate::buffer::test::{Helper as CommonHelper, reserve_and_commit};
+use crate::buffer::{OptionalStatGetter, StatsHelper, to_u32};
 use crate::{AbslCode, Error, Result};
 use assert_matches::assert_matches;
 use bd_client_stats_store::Collector;

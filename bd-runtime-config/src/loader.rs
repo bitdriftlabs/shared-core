@@ -7,7 +7,7 @@
 
 use bd_server_stats::stats::Scope;
 use notify::event::{ModifyKind, RenameMode};
-use notify::{recommended_watcher, Event, EventHandler, EventKind, RecommendedWatcher, Watcher};
+use notify::{Event, EventHandler, EventKind, RecommendedWatcher, Watcher, recommended_watcher};
 use parking_lot::Mutex;
 use prometheus::IntCounter;
 use serde::de::DeserializeOwned;

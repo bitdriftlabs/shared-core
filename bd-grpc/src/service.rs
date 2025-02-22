@@ -5,8 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use protobuf::reflect::FileDescriptor;
 use protobuf::MessageFull;
+use protobuf::reflect::FileDescriptor;
 use std::marker::PhantomData;
 
 

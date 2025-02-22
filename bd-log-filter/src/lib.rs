@@ -9,15 +9,15 @@
 #[path = "./filter_chain_test.rs"]
 mod filter_chain_test;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use bd_log_primitives::{
   FieldsRef,
-  Log,
-  LogField,
-  LogFields,
   LOG_FIELD_NAME_LEVEL,
   LOG_FIELD_NAME_MESSAGE,
   LOG_FIELD_NAME_TYPE,
+  Log,
+  LogField,
+  LogFields,
 };
 use bd_proto::protos::filter::filter::filter::{self};
 use bd_proto::protos::filter::filter::{Filter as FilterProto, FiltersConfiguration};

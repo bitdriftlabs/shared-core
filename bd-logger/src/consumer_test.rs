@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{service, BufferUploadManager, ContinuousBufferUploader, Flags};
+use super::{BufferUploadManager, ContinuousBufferUploader, Flags, service};
 use crate::consumer::StreamedBufferUpload;
 use assert_matches::assert_matches;
 use bd_api::upload::{Tracked, UploadResponse};
@@ -14,13 +14,13 @@ use bd_buffer::{Buffer, BufferEvent, BufferEventWithResponse, RingBuffer, RingBu
 use bd_client_common::fb::{make_log, root_as_log};
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
-use bd_log_primitives::{log_level, LogType};
-use bd_proto::protos::client::api::api_request::Request_type;
+use bd_log_primitives::{LogType, log_level};
 use bd_proto::protos::client::api::ApiRequest;
+use bd_proto::protos::client::api::api_request::Request_type;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
-use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_time::{OffsetDateTimeExt as _, TimeDurationExt};
 use core::panic;
 use flatbuffers::FlatBufferBuilder;
@@ -30,7 +30,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 use time::ext::NumericalDuration;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 struct SetupSingleConsumer {
   _global_shutdown_trigger: ComponentShutdownTrigger,

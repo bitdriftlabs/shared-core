@@ -171,23 +171,27 @@ fn collector_does_not_accept_reserved_fields() {
   };
 
   let mut collector = MetadataCollector::new(Arc::new(metadata));
-  assert!(collector
-    .add_field(LogField {
-      key: "_collector_key".into(),
-      value: StringOrBytes::String("collector_value".into()),
-    })
-    .is_err());
+  assert!(
+    collector
+      .add_field(LogField {
+        key: "_collector_key".into(),
+        value: StringOrBytes::String("collector_value".into()),
+      })
+      .is_err()
+  );
 
   let metadata = collector
     .normalized_metadata_with_extra_fields(vec![], vec![], LogType::Normal)
     .unwrap();
 
-  assert!(collector
-    .add_field(LogField {
-      key: "app_id".into(),
-      value: StringOrBytes::String("collector_value".into()),
-    })
-    .is_err());
+  assert!(
+    collector
+      .add_field(LogField {
+        key: "app_id".into(),
+        value: StringOrBytes::String("collector_value".into()),
+      })
+      .is_err()
+  );
 
   assert_eq!(metadata.fields.len(), 1);
   assert_eq!(

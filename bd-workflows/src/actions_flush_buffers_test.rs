@@ -17,10 +17,10 @@ use crate::actions_flush_buffers::{
 };
 use crate::config::ActionFlushBuffers;
 use assert_matches::assert_matches;
-use bd_api::upload::{IntentDecision, IntentResponse};
 use bd_api::DataUpload;
-use bd_client_stats_store::test::StatsHelper;
+use bd_api::upload::{IntentDecision, IntentResponse};
 use bd_client_stats_store::Collector;
+use bd_client_stats_store::test::StatsHelper;
 use bd_stats_common::labels;
 use pretty_assertions::assert_eq;
 use std::collections::BTreeSet;

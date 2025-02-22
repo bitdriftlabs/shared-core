@@ -10,7 +10,9 @@
 mod matcher_test;
 
 use crate::version;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
+use base_log_matcher::Match_type::{MessageMatch, TagMatch};
+use base_log_matcher::Operator;
 use base_log_matcher::tag_match::Value_match::{
   DoubleValueMatch,
   IntValueMatch,
@@ -18,16 +20,14 @@ use base_log_matcher::tag_match::Value_match::{
   SemVerValueMatch,
   StringValueMatch,
 };
-use base_log_matcher::Match_type::{MessageMatch, TagMatch};
-use base_log_matcher::Operator;
 use bd_log_primitives::{LogLevel, LogMessage, LogType};
 pub use bd_matcher::FieldProvider;
+use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
 use bd_proto::protos::log_matcher::log_matcher::log_matcher::{
-  base_log_matcher,
   BaseLogMatcher,
   Matcher,
+  base_log_matcher,
 };
-use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
 use regex::Regex;
 use std::borrow::Cow;
 

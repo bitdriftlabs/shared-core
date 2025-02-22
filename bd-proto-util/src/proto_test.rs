@@ -7,8 +7,8 @@
 
 use crate::proto::ProtoHashWrapper;
 use itertools::Itertools;
-use protobuf::well_known_types::struct_::{Struct, Value};
 use protobuf::Message;
+use protobuf::well_known_types::struct_::{Struct, Value};
 
 
 #[test]
