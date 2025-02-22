@@ -10,7 +10,7 @@
 mod api_test;
 
 use crate::payload_conversion::RuntimeConfigurationUpdate;
-use crate::upload::{self, IntentResponse, StateTracker};
+use crate::upload::{self, StateTracker};
 use crate::{
   ConfigurationUpdate,
   DataUpload,
@@ -50,6 +50,10 @@ pub use bd_proto::protos::client::api::sankey_intent_response::{
   Decision as SankeyPathUploadDecision,
   Drop as SankeyPathUploadDecisionDrop,
   UploadImmediately as SankeyPathUploadDecisionImmediately,
+};
+pub use bd_proto::protos::client::api::upload_artifact_intent_response::{
+  Decision as ArtifactIntentDecision,
+  Drop as ArtifactIntentDecisionDrop,
 };
 use bd_proto::protos::client::api::{
   handshake_response,
@@ -814,17 +818,9 @@ impl Api {
             .resolve_pending_upload(&log_upload.upload_uuid, &log_upload.error)?;
         },
         Some(ResponseKind::LogUploadIntent(intent)) => {
-          stream_state.upload_state_tracker.resolve_intent(
-            &intent.intent_uuid,
-            IntentResponse {
-              uuid: intent.intent_uuid.clone(),
-              decision: intent
-                .decision
-                .clone()
-                .unwrap_or_else(|| LogsUploadDecision::Drop(LogsUploadDecisionDrop::default()))
-                .into(),
-            },
-          )?;
+          stream_state
+            .upload_state_tracker
+            .resolve_intent(&intent.intent_uuid, intent.decision.clone())?;
         },
         Some(ResponseKind::StatsUpload(stats_upload)) => {
           log::debug!(
@@ -866,16 +862,30 @@ impl Api {
 
           stream_state.upload_state_tracker.resolve_intent(
             &sankey_path_upload_intent.intent_uuid,
-            IntentResponse {
-              uuid: sankey_path_upload_intent.intent_uuid.clone(),
-              decision: sankey_path_upload_intent
-                .decision
-                .clone()
-                .unwrap_or_else(|| {
-                  SankeyPathUploadDecision::Drop(SankeyPathUploadDecisionDrop::default())
-                })
-                .into(),
-            },
+            sankey_path_upload_intent.decision.clone(),
+          )?;
+        },
+        Some(ResponseKind::ArtifactUpload(artifact_upload)) => {
+          log::debug!(
+            "received ack for artifact upload {:?}, error: {:?}",
+            artifact_upload.upload_uuid,
+            artifact_upload.error
+          );
+
+          stream_state
+            .upload_state_tracker
+            .resolve_pending_upload(&artifact_upload.upload_uuid, &artifact_upload.error)?;
+        },
+        Some(ResponseKind::ArtifactUploadIntent(artifact_upload_intent)) => {
+          log::debug!(
+            "received ack for artifact upload intent {:?}, decision: {:?}",
+            artifact_upload_intent.intent_uuid,
+            artifact_upload_intent.decision
+          );
+
+          stream_state.upload_state_tracker.resolve_intent(
+            &artifact_upload_intent.intent_uuid,
+            artifact_upload_intent.decision.clone(),
           )?;
         },
         Some(ResponseKind::Untyped) => {

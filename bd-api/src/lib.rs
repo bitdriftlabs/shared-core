@@ -25,7 +25,9 @@ use bd_proto::protos::client::api::{
   StatsUploadRequest,
   StatsUploadResponse,
   UploadArtifactIntentRequest,
+  UploadArtifactIntentResponse,
   UploadArtifactRequest,
+  UploadArtifactResponse,
 };
 use std::collections::HashMap;
 use upload::{TrackedIntent, TrackedUpload};
@@ -95,6 +97,8 @@ pub enum ResponseKind<'a> {
   SankeyPathUpload(&'a SankeyPathUploadResponse),
   SankeyPathUploadIntent(&'a SankeyIntentResponse),
   Opaque(&'a OpaqueResponse),
+  ArtifactUploadIntent(&'a UploadArtifactIntentResponse),
+  ArtifactUpload(&'a UploadArtifactResponse),
   Untyped,
 }
 
