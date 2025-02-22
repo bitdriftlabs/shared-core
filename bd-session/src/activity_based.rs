@@ -107,8 +107,7 @@ impl Strategy {
     // If the last activity write is None (happens always on SDK launch), we allow to store the
     // state update even if session hasn't changed.
     let is_last_activity_storage_allowed = state
-      .last_activity_write
-      .map_or(true, |last_activity_write| {
+      .last_activity_write.is_none_or(|last_activity_write| {
         now - last_activity_write > self.max_write_interval
       });
 

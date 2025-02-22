@@ -306,8 +306,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     // individual corrupted record. This can overflow but as long as we are within the memory
     // space crc checks will catch further corruption.
     if size == 0
-      || Self::overflow_add(&[next_read_start_to_use, self.extra_bytes_per_record, size])
-        .map_or(true, |next_read_start_index| {
+      || Self::overflow_add(&[next_read_start_to_use, self.extra_bytes_per_record, size]).is_none_or(|next_read_start_index| {
           next_read_start_index > to_u32(self.memory.0.len())
         })
     {

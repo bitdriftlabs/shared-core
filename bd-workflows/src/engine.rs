@@ -722,8 +722,7 @@ impl WorkflowsEngine {
 
             let completed = self
               .pending_buffer_flushes
-              .get_mut(&action.id)
-              .map_or(true, |rx| {
+              .get_mut(&action.id).is_none_or(|rx| {
                 !matches!(rx.try_recv(), Err(TryRecvError::Empty))
               });
 
