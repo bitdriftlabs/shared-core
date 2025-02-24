@@ -105,31 +105,27 @@ impl Setup {
 async fn runtime_update() {
   let mut setup = Setup::new().await;
 
-  let stream_id = setup.server.next_initialized_stream().await.unwrap();
+  let stream = setup.server.next_initialized_stream().await.unwrap();
 
-  setup
-    .server
-    .stream_action(
-      stream_id,
-      StreamAction::SendRuntime(RuntimeUpdate {
-        runtime: Some(Runtime {
-          values: [(
-            "test".to_string(),
-            Value {
-              type_: Some(value::Type::StringValue("test".to_string())),
-              ..Default::default()
-            },
-          )]
-          .into(),
-          ..Default::default()
-        })
+  stream
+    .stream_action(StreamAction::SendRuntime(RuntimeUpdate {
+      runtime: Some(Runtime {
+        values: [(
+          "test".to_string(),
+          Value {
+            type_: Some(value::Type::StringValue("test".to_string())),
+            ..Default::default()
+          },
+        )]
         .into(),
         ..Default::default()
-      }),
-    )
+      })
+      .into(),
+      ..Default::default()
+    }))
     .await;
 
-  setup.server.next_runtime_ack(stream_id).await;
+  setup.server.next_runtime_ack(&stream).await;
 
   assert_eq!(
     setup
@@ -147,44 +143,36 @@ async fn runtime_update() {
 async fn configuration_update_with_log_uploads() {
   let mut setup = Setup::new().await;
 
-  let stream_id = setup.server.next_initialized_stream().await.unwrap();
+  let stream = setup.server.next_initialized_stream().await.unwrap();
 
-  setup
-    .server
-    .stream_action(
-      stream_id,
-      StreamAction::SendRuntime(make_update(
-        vec![(
-          bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
-          bd_test_helpers::runtime::ValueKind::Int(1),
-        )],
-        "version".to_string(),
-      )),
-    )
+  stream
+    .stream_action(StreamAction::SendRuntime(make_update(
+      vec![(
+        bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
+        bd_test_helpers::runtime::ValueKind::Int(1),
+      )],
+      "version".to_string(),
+    )))
     .await;
 
-  setup
-    .server
-    .stream_action(
-      stream_id,
-      StreamAction::SendConfiguration(configuration_update(
-        "test",
-        bd_proto::protos::client::api::configuration_update::StateOfTheWorld {
-          buffer_config_list: Some(BufferConfigList {
-            buffer_config: vec![default_buffer_config(
-              Type::CONTINUOUS,
-              make_buffer_matcher_matching_everything().into(),
-            )],
-            ..Default::default()
-          })
-          .into(),
+  stream
+    .stream_action(StreamAction::SendConfiguration(configuration_update(
+      "test",
+      bd_proto::protos::client::api::configuration_update::StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![default_buffer_config(
+            Type::CONTINUOUS,
+            make_buffer_matcher_matching_everything().into(),
+          )],
           ..Default::default()
-        },
-      )),
-    )
+        })
+        .into(),
+        ..Default::default()
+      },
+    )))
     .await;
 
-  setup.server.next_configuration_ack(stream_id).await;
+  setup.server.next_configuration_ack(&stream).await;
 
   setup.logger.new_logger_handle().log(
     log_level::DEBUG,

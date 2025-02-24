@@ -59,7 +59,7 @@ mod tests {
   use bd_test_helpers::runtime::{make_update, ValueKind};
   use bd_test_helpers::session::InMemoryStorage;
   use bd_test_helpers::stats::StatsRequestHelper;
-  use bd_test_helpers::test_api_server::{ExpectedStreamEvent, StreamAction};
+  use bd_test_helpers::test_api_server::{ExpectedStreamEvent, StreamAction, StreamHandle};
   use bd_test_helpers::workflow::macros::{
     action,
     declare_transition,
@@ -119,7 +119,7 @@ mod tests {
     logger_handle: bd_logger::LoggerHandle,
     sdk_directory: Arc<TempDir>,
     server: Box<bd_test_helpers::test_api_server::ServerHandle>,
-    current_api_stream: i32,
+    current_api_stream: StreamHandle,
     store: Arc<Store>,
 
     capture_screen_count: Arc<AtomicUsize>,
@@ -198,26 +198,21 @@ mod tests {
       bd_hyper_network::HyperNetwork::run_on_thread(&format!("http://localhost:{port}"), shutdown)
     }
 
-    fn do_stream_setup(server: &mut bd_test_helpers::test_api_server::ServerHandle) -> i32 {
-      let current_api_stream = server.blocking_next_stream().unwrap();
-      assert!(server.await_event_with_timeout(
-        current_api_stream,
-        ExpectedStreamEvent::Handshake(None),
-        1.seconds(),
-      ));
+    fn do_stream_setup(
+      server: &mut bd_test_helpers::test_api_server::ServerHandle,
+    ) -> StreamHandle {
+      let stream = server.blocking_next_stream().unwrap();
+      assert!(stream.await_event_with_timeout(ExpectedStreamEvent::Handshake(None), 1.seconds(),));
 
-      server.blocking_stream_action(
-        current_api_stream,
-        StreamAction::SendRuntime(make_update(
-          Self::get_default_runtime_values(),
-          "base".to_string(),
-        )),
-      );
+      stream.blocking_stream_action(StreamAction::SendRuntime(make_update(
+        Self::get_default_runtime_values(),
+        "base".to_string(),
+      )));
 
       let (_, response) = server.blocking_next_runtime_ack();
       assert!(response.nack.is_none());
 
-      current_api_stream
+      stream
     }
 
     fn get_default_runtime_values() -> Vec<(&'static str, ValueKind)> {
@@ -297,12 +292,11 @@ mod tests {
     }
 
     fn send_configuration_update(&mut self, config: ConfigurationUpdate) -> Option<Nack> {
-      self.server.blocking_stream_action(
-        self.current_api_stream,
-        StreamAction::SendConfiguration(config),
-      );
+      self
+        .current_api_stream
+        .blocking_stream_action(StreamAction::SendConfiguration(config));
       let (stream_id, mut ack) = self.server.blocking_next_configuration_ack();
-      assert_eq!(stream_id, self.current_api_stream);
+      assert_eq!(stream_id, self.current_api_stream.id());
 
       ack.nack.take()
     }
@@ -328,10 +322,12 @@ mod tests {
         ValueKind::Bool(workflows_enabled),
       ));
 
-      self.server.blocking_stream_action(
-        self.current_api_stream,
-        StreamAction::SendRuntime(make_update(values, "version".to_string())),
-      );
+      self
+        .current_api_stream
+        .blocking_stream_action(StreamAction::SendRuntime(make_update(
+          values,
+          "version".to_string(),
+        )));
     }
 
     fn pending_aggregation_index_file_path(&self) -> std::path::PathBuf {
@@ -505,9 +501,9 @@ mod tests {
   fn api_bandwidth_counters() {
     let mut setup = Setup::new();
 
-    setup.server.blocking_stream_action(
-      setup.current_api_stream,
-      StreamAction::SendRuntime(make_update(
+    setup
+      .current_api_stream
+      .blocking_stream_action(StreamAction::SendRuntime(make_update(
         vec![
           (
             bd_runtime::runtime::stats::DirectStatFlushIntervalFlag::path(),
@@ -523,8 +519,7 @@ mod tests {
           ),
         ],
         "version".to_string(),
-      )),
-    );
+      )));
 
     // Verify that we emit counters for how much data we transmit/receive.
     assert_matches!(setup.server.next_stat_upload(), Some(upload) => {
@@ -657,16 +652,15 @@ mod tests {
 
     // Update the batch size to 1 so we don't have to log a whole bunch of logs to trigger the
     // update.
-    setup.server.blocking_stream_action(
-      setup.current_api_stream,
-      StreamAction::SendRuntime(make_update(
+    setup
+      .current_api_stream
+      .blocking_stream_action(StreamAction::SendRuntime(make_update(
         vec![(
           bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
           bd_test_helpers::runtime::ValueKind::Int(1),
         )],
         "base".to_string(),
-      )),
-    );
+      )));
 
     setup.log(
       log_level::DEBUG,
@@ -1356,9 +1350,9 @@ mod tests {
   fn workflow_emit_metric_action_triggers_runtime_limits() {
     let mut setup = Setup::new();
 
-    setup.server.blocking_stream_action(
-      setup.current_api_stream,
-      StreamAction::SendRuntime(make_update(
+    setup
+      .current_api_stream
+      .blocking_stream_action(StreamAction::SendRuntime(make_update(
         vec![
           (
             bd_runtime::runtime::stats::MaxDynamicCountersFlag::path(),
@@ -1370,8 +1364,7 @@ mod tests {
           ),
         ],
         "stats cap".to_string(),
-      )),
-    );
+      )));
 
     let mut a = state!("a");
     let b = state!("b");
@@ -1572,10 +1565,9 @@ mod tests {
     assert_matches!(setup.server.blocking_next_log_upload(), None);
 
     // Trigger a remote upload of the `default` buffer.
-    setup.server.blocking_stream_action(
-      setup.current_api_stream,
-      StreamAction::FlushBuffers(vec!["default".to_string()]),
-    );
+    setup
+      .current_api_stream
+      .blocking_stream_action(StreamAction::FlushBuffers(vec!["default".to_string()]));
 
     // We receive a log upload without intent negotiation.
     assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
@@ -1944,16 +1936,15 @@ mod tests {
       },
     );
 
-    setup.server.blocking_stream_action(
-      setup.current_api_stream,
-      StreamAction::SendRuntime(make_update(
+    setup
+      .current_api_stream
+      .blocking_stream_action(StreamAction::SendRuntime(make_update(
         vec![(
           bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
           bd_test_helpers::runtime::ValueKind::Int(1),
         )],
         "base".to_string(),
-      )),
-    );
+      )));
 
     // Despite being full on startup the logger is able to free up space by immediately starting
     // uploading, allowing us to capture both the new and old log.
@@ -1991,13 +1982,12 @@ mod tests {
   fn runtime_update() {
     let mut setup = Setup::new();
 
-    setup.server.blocking_stream_action(
-      setup.current_api_stream,
-      StreamAction::SendRuntime(make_update(
+    setup
+      .current_api_stream
+      .blocking_stream_action(StreamAction::SendRuntime(make_update(
         vec![("test", ValueKind::Bool(true))],
         "something".to_string(),
-      )),
-    );
+      )));
 
     let (_, update) = setup.server.blocking_next_runtime_ack();
     assert_eq!(update.last_applied_version_nonce, "something");
@@ -2085,9 +2075,9 @@ mod tests {
   fn binary_message_and_fields() {
     let mut setup = Setup::new();
 
-    setup.server.blocking_stream_action(
-      setup.current_api_stream,
-      StreamAction::SendRuntime(make_update(
+    setup
+      .current_api_stream
+      .blocking_stream_action(StreamAction::SendRuntime(make_update(
         vec![
           (
             bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
@@ -2099,8 +2089,7 @@ mod tests {
           ),
         ],
         "version".to_string(),
-      )),
-    );
+      )));
 
     setup.send_configuration_update(
       make_configuration_update_with_workflow_flushing_buffer_on_anything(
@@ -2204,40 +2193,37 @@ mod tests {
       false,
     );
 
-    let active_stream_id = Setup::do_stream_setup(&mut server);
+    let active_stream = Setup::do_stream_setup(&mut server);
 
-    server.blocking_stream_action(
-      active_stream_id,
-      StreamAction::SendConfiguration(configuration_update(
-        "test",
-        StateOfTheWorld {
-          buffer_config_list: Some(BufferConfigList {
-            buffer_config: vec![
-              default_buffer_config(
-                Type::CONTINUOUS,
-                make_buffer_matcher_matching_everything().into(),
-              ),
-              BufferConfigBuilder {
-                name: "trigger",
-                buffer_type: Type::TRIGGER,
-                non_volatile_size: 100_000,
-                volatile_size: 10_000,
-                filter: match_message("trigger").into(),
-              }
-              .build(),
-            ],
-            ..Default::default()
-          })
-          .into(),
-          workflows_configuration: Some(make_workflow_config_flushing_buffer(
-            "trigger",
-            log_matches!(message == "trigger"),
-          ))
-          .into(),
+    active_stream.blocking_stream_action(StreamAction::SendConfiguration(configuration_update(
+      "test",
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![
+            default_buffer_config(
+              Type::CONTINUOUS,
+              make_buffer_matcher_matching_everything().into(),
+            ),
+            BufferConfigBuilder {
+              name: "trigger",
+              buffer_type: Type::TRIGGER,
+              non_volatile_size: 100_000,
+              volatile_size: 10_000,
+              filter: match_message("trigger").into(),
+            }
+            .build(),
+          ],
           ..Default::default()
-        },
-      )),
-    );
+        })
+        .into(),
+        workflows_configuration: Some(make_workflow_config_flushing_buffer(
+          "trigger",
+          log_matches!(message == "trigger"),
+        ))
+        .into(),
+        ..Default::default()
+      },
+    )));
 
     server.blocking_next_configuration_ack();
 
@@ -2270,16 +2256,15 @@ mod tests {
     let directory = {
       let mut setup = Setup::new();
 
-      setup.server.blocking_stream_action(
-        setup.current_api_stream,
-        StreamAction::SendRuntime(make_update(
+      setup
+        .current_api_stream
+        .blocking_stream_action(StreamAction::SendRuntime(make_update(
           vec![(
             bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
             ValueKind::Int(1),
           )],
           "version".to_string(),
-        )),
-      );
+        )));
 
       setup.server.blocking_next_runtime_ack();
 
