@@ -12,15 +12,16 @@ pub use bd_proto::protos::client::api::log_upload_intent_request::{
 };
 pub use bd_proto::protos::client::api::log_upload_intent_response::Decision as LogsUploadDecision;
 use bd_proto::protos::client::api::sankey_intent_response::Decision as SankeyPathUploadDecision;
-use bd_proto::protos::client::api::upload_artifact_intent_response::Decision as ArtifactIntentDecision;
 pub use bd_proto::protos::client::api::LogUploadIntentRequest;
 use bd_proto::protos::client::api::{
+  upload_artifact_intent_response,
   LogUploadRequest,
   SankeyIntentRequest,
   SankeyPathUploadRequest,
   StatsUploadRequest,
 };
 use std::collections::HashMap;
+use upload_artifact_intent_response::Decision as ArtifactIntentDecision;
 use uuid::Uuid;
 
 //
@@ -137,14 +138,18 @@ impl StateTracker {
     Ok(())
   }
 
-  pub fn resolve_intent(&mut self, uuid: &str, decision: Option<impl Into<IntentDecision>>) -> anyhow::Result<()> {
+  pub fn resolve_intent(
+    &mut self,
+    uuid: &str,
+    decision: Option<impl Into<IntentDecision>>,
+  ) -> anyhow::Result<()> {
     let _ignored = self
       .pending_intents
       .remove(uuid)
       .ok_or_else(|| anyhow!("Upload intent state for uuid {uuid:?} was inconsistent"))?
       .send(IntentResponse {
         uuid: uuid.to_string(),
-        decision: decision.map_or_else(|| IntentDecision::Drop, Into::into)
+        decision: decision.map_or_else(|| IntentDecision::Drop, Into::into),
       });
 
     Ok(())

@@ -925,7 +925,8 @@ pub struct StreamHandle {
 }
 
 impl StreamHandle {
-  pub fn id(&self) -> i32 {
+  #[must_use]
+  pub const fn id(&self) -> i32 {
     self.stream_id
   }
 
