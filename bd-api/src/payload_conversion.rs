@@ -60,12 +60,13 @@ mod client {
     HandshakeRequest,
     LogUploadIntentRequest,
     LogUploadRequest,
-    OpaqueRequest,
     PingRequest,
     RuntimeUpdate,
     SankeyIntentRequest,
     SankeyPathUploadRequest,
     StatsUploadRequest,
+    UploadArtifactIntentRequest,
+    UploadArtifactRequest,
   };
 
   unwrap_response!(
@@ -88,7 +89,8 @@ mod client {
   into_api_request!(LogUploadIntentRequest, Request_type::LogUploadIntent);
   into_api_request!(SankeyIntentRequest, Request_type::SankeyIntent);
   into_api_request!(SankeyPathUploadRequest, Request_type::SankeyPathUpload);
-  into_api_request!(OpaqueRequest, Request_type::OpaqueUpload);
+  into_api_request!(UploadArtifactRequest, Request_type::ArtifactUpload);
+  into_api_request!(UploadArtifactIntentRequest, Request_type::ArtifactIntent);
 
   impl crate::IntoRequest for super::RuntimeConfigurationUpdate {
     fn into_request(self) -> ApiRequest {

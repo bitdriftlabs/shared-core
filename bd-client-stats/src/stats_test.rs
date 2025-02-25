@@ -217,7 +217,7 @@ impl Setup {
   async fn next_stat_upload(&mut self) -> Tracked<StatsUploadRequest, UploadResponse> {
     let stats_upload = self.data_rx.recv().await.unwrap();
 
-    let DataUpload::StatsUploadRequest(stats) = stats_upload else {
+    let DataUpload::StatsUpload(stats) = stats_upload else {
       panic!("unexpected upload type");
     };
 

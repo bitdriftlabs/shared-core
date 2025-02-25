@@ -18,6 +18,7 @@ use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Updat
 use bd_proto::protos::client::api::handshake_response::StreamSettings;
 use bd_proto::protos::client::api::log_upload_intent_response::{Decision, UploadImmediately};
 use bd_proto::protos::client::api::{
+  upload_artifact_intent_response,
   ApiRequest,
   ApiResponse,
   ConfigurationUpdate,
@@ -34,6 +35,10 @@ use bd_proto::protos::client::api::{
   RuntimeUpdate,
   StatsUploadRequest,
   StatsUploadResponse,
+  UploadArtifactIntentRequest,
+  UploadArtifactIntentResponse,
+  UploadArtifactRequest,
+  UploadArtifactResponse,
 };
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_time::{TimeDurationExt, ToProtoDuration};
@@ -93,6 +98,8 @@ struct ServiceState {
   log_upload_tx: Sender<LogUploadRequest>,
   log_intent_tx: Sender<LogUploadIntentRequest>,
   opaque_upload_tx: Sender<OpaqueRequest>,
+  artifact_upload_tx: Sender<UploadArtifactRequest>,
+  artifact_intent_tx: Sender<UploadArtifactIntentRequest>,
   stats_upload_tx: Sender<StatsUploadRequest>,
   configuration_ack_tx: Sender<(i32, ConfigurationUpdateAck)>,
   runtime_ack_tx: Sender<(i32, ConfigurationUpdateAck)>,
@@ -184,6 +191,50 @@ impl RequestProcessor {
           .unwrap();
 
         None
+      },
+      Some(Request_type::ArtifactUpload(upload)) => {
+        log::debug!("[S{}] received artifact upload", self.stream_id);
+
+        self
+          .stream_state
+          .artifact_upload_tx
+          .send(upload.clone())
+          .await
+          .unwrap();
+
+        Some(ApiResponse {
+          response_type: Some(Response_type::ArtifactUpload(UploadArtifactResponse {
+            upload_uuid: upload.upload_uuid.clone(),
+            error: String::new(),
+            ..Default::default()
+          })),
+          ..Default::default()
+        })
+      },
+      Some(Request_type::ArtifactIntent(intent)) => {
+        log::debug!("[S{}] received artifact intent {intent:?}", self.stream_id);
+
+        self
+          .stream_state
+          .artifact_intent_tx
+          .send(intent.clone())
+          .await
+          .unwrap();
+
+        Some(ApiResponse {
+          response_type: Some(Response_type::ArtifactIntent(
+            UploadArtifactIntentResponse {
+              intent_uuid: intent.intent_uuid.clone(),
+              decision: Some(
+                upload_artifact_intent_response::Decision::UploadImmediately(
+                  upload_artifact_intent_response::UploadImmediately::default(),
+                ),
+              ),
+              ..Default::default()
+            },
+          )),
+          ..Default::default()
+        })
       },
       Some(Request_type::OpaqueUpload(upload)) => {
         log::debug!("[S{}] received opaque upload", self.stream_id);
@@ -528,6 +579,8 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
   let (log_upload_tx, log_upload_rx) = channel(256);
   let (log_intent_tx, log_intent_rx) = channel(256);
   let (opaque_upload_tx, opaque_upload_rx) = channel(256);
+  let (artifact_upload_tx, artifact_upload_rx) = channel(256);
+  let (artifact_intent_tx, artifact_intent_rx) = channel(256);
   let (stats_upload_tx, stats_upload_rx) = channel(256);
   let (configuration_ack_tx, configuration_ack_rx) = channel(1);
   let (runtime_ack_tx, runtime_ack_rx) = channel(256);
@@ -556,6 +609,8 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
           log_upload_tx,
           log_intent_tx,
           opaque_upload_tx,
+          artifact_upload_tx,
+          artifact_intent_tx,
           stats_upload_tx,
           configuration_ack_tx,
           runtime_ack_tx,
@@ -586,6 +641,8 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
     log_upload_rx,
     log_intent_rx,
     opaque_upload_rx,
+    artifact_upload_rx,
+    artifact_intent_rx,
     stats_upload_rx,
     configuration_ack_rx,
     runtime_ack_rx,
@@ -685,6 +742,8 @@ pub struct ServerHandle {
 
   log_upload_rx: Receiver<LogUploadRequest>,
   opaque_upload_rx: Receiver<OpaqueRequest>,
+  artifact_upload_rx: Receiver<UploadArtifactRequest>,
+  artifact_intent_rx: Receiver<UploadArtifactIntentRequest>,
   log_intent_rx: Receiver<LogUploadIntentRequest>,
   stats_upload_rx: Receiver<StatsUploadRequest>,
 
@@ -720,7 +779,7 @@ impl ServerHandle {
 
   // Blocks for a new stream to be established, returning the stream id.
   #[must_use]
-  pub fn blocking_next_stream(&self) -> Option<i32> {
+  pub fn blocking_next_stream(&self) -> Option<StreamHandle> {
     let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
     self
@@ -733,10 +792,16 @@ impl ServerHandle {
       })
       .unwrap();
 
-    match response_rx.blocking_recv().unwrap() {
+    let stream_id = match response_rx.blocking_recv().unwrap() {
       Response::Value(stream_id) => Some(stream_id),
       Response::Timeout => None,
-    }
+    }?;
+
+    Some(StreamHandle {
+      stream_id,
+      timed_event_wait_tx: self.timed_event_wait_tx.clone(),
+      stream_action_tx: self.stream_action_tx.clone(),
+    })
   }
 
   /// Enqueues an event that is expected to be observed by the test server. The provided
@@ -756,88 +821,21 @@ impl ServerHandle {
   /// using this function over `next_stream` when the stream is expected to be initialized
   /// immediately.
   #[must_use]
-  pub async fn next_initialized_stream(&self) -> Option<i32> {
-    let stream_id = self.next_stream().await?;
+  pub async fn next_initialized_stream(&self) -> Option<StreamHandle> {
+    let stream = StreamHandle {
+      stream_id: self.next_stream().await?,
+      timed_event_wait_tx: self.timed_event_wait_tx.clone(),
+      stream_action_tx: self.stream_action_tx.clone(),
+    };
 
     assert!(
-      self
-        .expect_event(stream_id, ExpectedStreamEvent::Handshake(None), 1.seconds())
+      stream
+        .expect_event(ExpectedStreamEvent::Handshake(None), 1.seconds())
         .await
     );
 
-    Some(stream_id)
+    Some(stream)
   }
-
-  #[must_use]
-  pub fn await_event_with_timeout(
-    &self,
-    stream_id: i32,
-    event: ExpectedStreamEvent,
-    timeout: Duration,
-  ) -> bool {
-    let (response_tx, response_rx) = tokio::sync::oneshot::channel();
-    self
-      .timed_event_wait_tx
-      .blocking_send(TimedEventQuery {
-        deadline: timeout.add_tokio_now(),
-        event: Event::StreamEvent(
-          stream_id,
-          event,
-          Box::new(OneshotCallback {
-            tx: Some(response_tx),
-          }),
-        ),
-      })
-      .unwrap();
-
-    std::matches!(response_rx.blocking_recv().unwrap(), Response::Value(()))
-  }
-
-  #[must_use]
-  pub async fn expect_event(
-    &self,
-    stream_id: i32,
-    event: ExpectedStreamEvent,
-    timeout: Duration,
-  ) -> bool {
-    let (response_tx, response_rx) = tokio::sync::oneshot::channel();
-    self
-      .timed_event_wait_tx
-      .send(TimedEventQuery {
-        deadline: timeout.add_tokio_now(),
-        event: Event::StreamEvent(
-          stream_id,
-          event,
-          Box::new(OneshotCallback {
-            tx: Some(response_tx),
-          }),
-        ),
-      })
-      .await
-      .unwrap();
-
-    std::matches!(response_rx.await.unwrap(), Response::Value(()))
-  }
-
-  pub fn blocking_stream_action(&self, stream_id: i32, action: StreamAction) {
-    log::debug!("sending stream action {:?} to stream {stream_id}", action);
-
-    self
-      .stream_action_tx
-      .blocking_send((stream_id, action))
-      .unwrap();
-  }
-
-  pub async fn stream_action(&self, stream_id: i32, action: StreamAction) {
-    log::debug!("sending stream action {:?} to stream {stream_id}", action);
-
-    self
-      .stream_action_tx
-      .send((stream_id, action))
-      .await
-      .unwrap();
-  }
-
   /// Blocks waiting for request to be received over the provided receiver. Times out ofter the
   /// provided duration.
   fn blocking_next_request_with_timeout<T>(receiver: &mut Receiver<T>) -> Option<T> {
@@ -869,8 +867,16 @@ impl ServerHandle {
     Self::next_request(&mut self.opaque_upload_rx).await
   }
 
+  pub async fn next_artifact_upload(&mut self) -> Option<UploadArtifactRequest> {
+    Self::next_request(&mut self.artifact_upload_rx).await
+  }
+
   pub fn next_log_intent(&mut self) -> Option<LogUploadIntentRequest> {
     Self::blocking_next_request_with_timeout(&mut self.log_intent_rx)
+  }
+
+  pub async fn next_artifact_intent(&mut self) -> Option<UploadArtifactIntentRequest> {
+    Self::next_request(&mut self.artifact_intent_rx).await
   }
 
   pub async fn next_log_upload(&mut self) -> Option<LogUploadRequest> {
@@ -891,10 +897,10 @@ impl ServerHandle {
   }
 
   /// Waits for the next configuration update ack to be received by the server.
-  pub async fn next_configuration_ack(&mut self, stream_id: i32) {
+  pub async fn next_configuration_ack(&mut self, stream: &StreamHandle) {
     let (id, ack) = self.configuration_ack_rx.recv().await.unwrap();
 
-    assert_eq!(id, stream_id);
+    assert_eq!(id, stream.stream_id);
     assert!(ack.nack.is_none());
   }
 
@@ -904,11 +910,92 @@ impl ServerHandle {
   }
 
   /// Waits for the next runtime ack to be received by the server.
-  pub async fn next_runtime_ack(&mut self, stream_id: i32) {
+  pub async fn next_runtime_ack(&mut self, stream: &StreamHandle) {
     let (id, ack) = self.runtime_ack_rx.recv().await.unwrap();
 
-    assert_eq!(id, stream_id);
+    assert_eq!(id, stream.stream_id);
     assert!(ack.nack.is_none());
+  }
+}
+
+pub struct StreamHandle {
+  stream_id: i32,
+  timed_event_wait_tx: Sender<TimedEventQuery>,
+  stream_action_tx: Sender<(i32, StreamAction)>,
+}
+
+impl StreamHandle {
+  #[must_use]
+  pub const fn id(&self) -> i32 {
+    self.stream_id
+  }
+
+  #[must_use]
+  pub fn await_event_with_timeout(&self, event: ExpectedStreamEvent, timeout: Duration) -> bool {
+    let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+    self
+      .timed_event_wait_tx
+      .blocking_send(TimedEventQuery {
+        deadline: timeout.add_tokio_now(),
+        event: Event::StreamEvent(
+          self.stream_id,
+          event,
+          Box::new(OneshotCallback {
+            tx: Some(response_tx),
+          }),
+        ),
+      })
+      .unwrap();
+
+    std::matches!(response_rx.blocking_recv().unwrap(), Response::Value(()))
+  }
+
+  #[must_use]
+  pub async fn expect_event(&self, event: ExpectedStreamEvent, timeout: Duration) -> bool {
+    let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+    self
+      .timed_event_wait_tx
+      .send(TimedEventQuery {
+        deadline: timeout.add_tokio_now(),
+        event: Event::StreamEvent(
+          self.stream_id,
+          event,
+          Box::new(OneshotCallback {
+            tx: Some(response_tx),
+          }),
+        ),
+      })
+      .await
+      .unwrap();
+
+    std::matches!(response_rx.await.unwrap(), Response::Value(()))
+  }
+
+  pub fn blocking_stream_action(&self, action: StreamAction) {
+    log::debug!(
+      "sending stream action {:?} to stream {}",
+      action,
+      self.stream_id,
+    );
+
+    self
+      .stream_action_tx
+      .blocking_send((self.stream_id, action))
+      .unwrap();
+  }
+
+  pub async fn stream_action(&self, action: StreamAction) {
+    log::debug!(
+      "sending stream action {:?} to stream {}",
+      action,
+      self.stream_id
+    );
+
+    self
+      .stream_action_tx
+      .send((self.stream_id, action))
+      .await
+      .unwrap();
   }
 }
 

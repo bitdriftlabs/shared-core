@@ -16,7 +16,6 @@ use bd_proto::protos::client::api::{
   LogUploadIntentResponse,
   LogUploadRequest,
   LogUploadResponse,
-  OpaqueRequest,
   OpaqueResponse,
   PongResponse,
   SankeyIntentRequest,
@@ -25,9 +24,13 @@ use bd_proto::protos::client::api::{
   SankeyPathUploadResponse,
   StatsUploadRequest,
   StatsUploadResponse,
+  UploadArtifactIntentRequest,
+  UploadArtifactIntentResponse,
+  UploadArtifactRequest,
+  UploadArtifactResponse,
 };
 use std::collections::HashMap;
-use upload::{IntentResponse, Tracked, UploadResponse};
+use upload::{TrackedIntent, TrackedUpload};
 
 pub mod api;
 mod payload_conversion;
@@ -94,6 +97,8 @@ pub enum ResponseKind<'a> {
   SankeyPathUpload(&'a SankeyPathUploadResponse),
   SankeyPathUploadIntent(&'a SankeyIntentResponse),
   Opaque(&'a OpaqueResponse),
+  ArtifactUploadIntent(&'a UploadArtifactIntentResponse),
+  ArtifactUpload(&'a UploadArtifactResponse),
   Untyped,
 }
 
@@ -101,7 +106,7 @@ pub enum ResponseKind<'a> {
 // MuxResponse
 //
 
-/// Used to convert a response type into the transport indendent `ResponseKind`.
+/// Used to convert a response type into the transport independent `ResponseKind`.
 pub trait MuxResponse {
   fn demux(&self) -> Option<ResponseKind<'_>>;
 }
@@ -111,23 +116,25 @@ pub trait MuxResponse {
 pub enum DataUpload {
   /// A logs upload intent request sent to the server to ask whether a specific upload should be
   /// performed.
-  LogsUploadIntentRequest(Tracked<LogUploadIntentRequest, IntentResponse>),
+  LogsUploadIntent(TrackedIntent<LogUploadIntentRequest>),
 
   /// A logs upload request with an associated tracking id that is used to ensure delivery.
-  LogsUploadRequest(Tracked<LogUploadRequest, UploadResponse>),
+  LogsUpload(TrackedUpload<LogUploadRequest>),
 
   /// A stats upload request with an associated tracking id that is used to ensure delivery.
-  StatsUploadRequest(Tracked<StatsUploadRequest, UploadResponse>),
+  StatsUpload(TrackedUpload<StatsUploadRequest>),
 
-  /// A Sankey upload request with associated tracking id that is used to ensure delivery.
-  SankeyPathUploadIntentRequest(Tracked<SankeyIntentRequest, IntentResponse>),
+  /// An intent to upload a Sankey path due collected by a workflow.
+  SankeyPathUploadIntent(TrackedIntent<SankeyIntentRequest>),
 
   /// A Sankey path upload request.
-  SankeyPathUpload(Tracked<SankeyPathUploadRequest, UploadResponse>),
+  SankeyPathUpload(TrackedUpload<SankeyPathUploadRequest>),
 
-  /// An opaque request with an associated tracking id that is used to ensure delivery. This allows
-  /// for uploading of payloads which are not directly typed to the mux.
-  OpaqueRequest(Tracked<OpaqueRequest, UploadResponse>),
+  /// An intent to upload an generic artifact.
+  ArtifactUploadIntent(TrackedIntent<UploadArtifactIntentRequest>),
+
+  /// An generic artifact upload request.
+  ArtifactUpload(TrackedUpload<UploadArtifactRequest>),
 }
 
 //

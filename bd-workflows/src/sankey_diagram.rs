@@ -257,9 +257,7 @@ impl Processor {
 
     self
       .data_upload_tx
-      .send(DataUpload::SankeyPathUploadIntentRequest(
-        intent_upload_request,
-      ))
+      .send(DataUpload::SankeyPathUploadIntent(intent_upload_request))
       .await?;
 
     Ok(response.await?)

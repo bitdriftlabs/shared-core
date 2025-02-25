@@ -339,7 +339,7 @@ impl Flusher {
         .sum::<usize>(),
     );
 
-    let tracked_upload = DataUpload::StatsUploadRequest(stats);
+    let tracked_upload = DataUpload::StatsUpload(stats);
 
     // If this errors out the other end of the channel has closed, indicating that we are shutting
     // down.

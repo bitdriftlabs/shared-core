@@ -50,7 +50,7 @@ impl Setup {
         let mut data_upload_rx = data_upload_rx;
         loop {
           if let Some(data_upload) = data_upload_rx.recv().await {
-            if let DataUpload::LogsUploadIntentRequest(intent) = data_upload {
+            if let DataUpload::LogsUploadIntent(intent) = data_upload {
               intent.response_tx.send(response_decision.clone()).unwrap();
             } else {
               panic!("unknown request type");
