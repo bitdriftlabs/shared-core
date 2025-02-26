@@ -12,12 +12,13 @@ use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
 use crate::logger::{ChannelPair, Logger};
 use crate::logging_state::UninitializedLoggingContext;
-use crate::InitParams;
+use crate::{InitParams, LoggerHandle};
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
 use bd_client_stats_store::{Collector, Scope};
 use bd_internal_logging::NoopLogger;
+use bd_log_primitives::{log_level, AnnotatedLogField, LogType};
 use bd_runtime::runtime;
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_time::SystemTimeProvider;
@@ -223,6 +224,15 @@ impl LoggerBuilder {
       &scope,
     )?);
 
+    let mut crash_monitor = bd_crash_handler::Monitor::new(
+      &runtime_loader,
+      &self.params.sdk_directory,
+      Arc::new(CrashHandler {
+        logger: logger.new_logger_handle(),
+      }),
+      shutdown_handle.make_shutdown(),
+    );
+
     let api = bd_api::api::Api::new(
       self.params.sdk_directory,
       self.params.api_key,
@@ -260,6 +270,7 @@ impl LoggerBuilder {
 
           Ok(())
         },
+        async move { crash_monitor.run().await }
       )
       .map(|_| ())
     };
@@ -307,5 +318,28 @@ impl LoggerBuilder {
       })?;
 
     Ok(())
+  }
+}
+
+struct CrashHandler {
+  logger: LoggerHandle,
+}
+
+impl bd_crash_handler::CrashLogger for CrashHandler {
+  fn log_crash(&self, report: &[u8]) {
+    // TODO(snowp): We need to figure out how to set both the timestamp and the correct session
+    // ID.
+    self.logger.log(
+      log_level::ERROR,
+      LogType::Lifecycle,
+      "App crashed".into(),
+      vec![AnnotatedLogField::new_ootb(
+        "_crash_artifact".into(),
+        report.into(),
+      )],
+      vec![],
+      None,
+      false,
+    );
   }
 }

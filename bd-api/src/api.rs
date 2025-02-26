@@ -450,6 +450,9 @@ impl Api {
   }
 
   pub async fn start(mut self) -> anyhow::Result<()> {
+    // TODO(snowp): It would be nicer if we did this before we started the API but seems like a
+    // risky change.
+
     // Loading the configuration can fail for a number of reasons like the file not existing, so
     // ignore.
     for pipeline in &mut self.configuration_pipelines {
@@ -522,10 +525,8 @@ impl Api {
       }
     } else if !self.generic_kill_duration.read().is_zero() {
       log::debug!("client has been killed, writing kill file");
-      if let Err(e) = self
-        .write_kill_file(self.generic_kill_duration.read())
-        .await
-      {
+      let generic_kill_duration = *self.generic_kill_duration.read();
+      if let Err(e) = self.write_kill_file(generic_kill_duration).await {
         log::warn!("failed to write kill file: {}", e);
       }
     }
@@ -643,7 +644,7 @@ impl Api {
         ("content-type", "application/grpc"),
       ]);
 
-      let compression_enabled = self.compression_enabled.read();
+      let compression_enabled = *self.compression_enabled.read();
       let compression = compression_enabled.then_some(Compression::StatelessZlib {
         level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
       });
@@ -700,10 +701,8 @@ impl Api {
         // Unauthenticated, we need to perform a kill action to stop the API.
         HandshakeResult::Unauthenticated => {
           log::debug!("unauthenticated, killing client");
-          if let Err(e) = self
-            .write_kill_file(self.unauthenticated_kill_duration.read())
-            .await
-          {
+          let unauthorized_kill_duration = *self.unauthenticated_kill_duration.read();
+          if let Err(e) = self.write_kill_file(unauthorized_kill_duration).await {
             log::warn!("failed to write kill file: {}", e);
           }
           continue;

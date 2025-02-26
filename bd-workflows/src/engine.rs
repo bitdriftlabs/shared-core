@@ -143,8 +143,8 @@ impl WorkflowsEngine {
       state_store: StateStore::new(sdk_directory, &scope, runtime),
       needs_state_persistence: false,
       current_traversals_count: 0,
-      traversals_count_limit: traversals_count_limit_flag.read(),
-      state_periodic_write_interval: state_periodic_write_interval_flag.read(),
+      traversals_count_limit: *traversals_count_limit_flag.read(),
+      state_periodic_write_interval: *state_periodic_write_interval_flag.read(),
       flush_buffers_actions_resolver,
       flush_buffers_negotiator_join_handle,
       flush_buffers_negotiator_input_tx: input_tx,
@@ -1036,7 +1036,7 @@ impl StateStore {
     if force {
       log::debug!("forcing persisting workflows state to disk");
     } else if let Some(last_save_time) = self.last_persisted {
-      let persistence_write_interval_ms = self.persistence_write_interval_flag.read();
+      let persistence_write_interval_ms = *self.persistence_write_interval_flag.read();
       if now.duration_since(last_save_time) < persistence_write_interval_ms {
         return false;
       }

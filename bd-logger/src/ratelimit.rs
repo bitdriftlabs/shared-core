@@ -34,11 +34,11 @@ impl Rate {
   }
 
   pub(crate) fn num(&self) -> u32 {
-    self.num.read()
+    *self.num.read()
   }
 
   pub(crate) fn per(&self) -> time::Duration {
-    self.per.read()
+    *self.per.read()
   }
 }
 

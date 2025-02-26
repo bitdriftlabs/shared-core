@@ -22,6 +22,9 @@ mod network;
 mod pre_config_buffer;
 mod service;
 
+#[cfg(test)]
+mod test;
+
 pub use crate::logger::{ChannelPair, InitParams};
 pub use app_version::AppVersionExtra;
 pub use async_log_buffer::LogAttributesOverridesPreviousRunSessionID;

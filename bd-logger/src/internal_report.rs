@@ -83,7 +83,7 @@ impl LogInterceptor for Reporter {
     }
 
     let LogMessage::String(msg) = msg else { return };
-    if !(log_type == LogType::Resource && msg.is_empty() && self.is_enabled_flag.read()) {
+    if !(log_type == LogType::Resource && msg.is_empty() && *self.is_enabled_flag.read()) {
       return;
     }
 

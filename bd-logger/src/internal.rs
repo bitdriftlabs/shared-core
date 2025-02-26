@@ -36,7 +36,7 @@ impl InternalLogger {
 
 impl bd_internal_logging::Logger for InternalLogger {
   fn log(&self, log_level: LogLevel, log_type: LogType, msg: &str, fields: LogFields) {
-    if !self.logging_enabled.read() {
+    if !*self.logging_enabled.read() {
       return;
     }
 

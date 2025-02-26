@@ -57,12 +57,13 @@ impl Reporter {
     let mut reporting_interval_flag =
       ResourceUtilizationReportingIntervalFlag::register(runtime_loader).unwrap();
 
-    let rate = reporting_interval_flag.read_mark_update();
+    let rate = *reporting_interval_flag.read_mark_update();
+    let is_enabled = *is_enabled_flag.read_mark_update();
 
     Self {
       target,
 
-      is_enabled: is_enabled_flag.read_mark_update(),
+      is_enabled,
       reporting_interval_rate: rate,
 
       reporting_interval: None,
@@ -112,13 +113,13 @@ impl Reporter {
         _ = self.reporting_interval_flag.changed() => {
           self.reporting_interval = Some(
             Self::create_interval(
-              self.reporting_interval_flag.read_mark_update(),
+              *self.reporting_interval_flag.read_mark_update(),
               false
             )
           );
         },
         _ = self.is_enabled_flag.changed() => {
-          self.is_enabled = self.is_enabled_flag.read_mark_update();
+          self.is_enabled = *self.is_enabled_flag.read_mark_update();
         },
         () = &mut local_shutdown => {
           return;

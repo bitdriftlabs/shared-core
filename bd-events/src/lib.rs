@@ -74,7 +74,7 @@ impl Listener {
     loop {
       tokio::select! {
         _ = self.is_enabled_flag.changed() => {
-          let new_is_enabled = self.is_enabled_flag.read();
+          let new_is_enabled = *self.is_enabled_flag.read();
           if new_is_enabled {
             log::debug!("events listener start");
             self.target.start();

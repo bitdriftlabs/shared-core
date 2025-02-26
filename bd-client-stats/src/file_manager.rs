@@ -241,7 +241,7 @@ impl FileManager {
         log::debug!("snapshot is ready to upload, creating new snapshot");
         true
       } else if file.period_start.to_offset_date_time()
-        + self.max_aggregation_window_per_file.read()
+        + *self.max_aggregation_window_per_file.read()
         <= self.time_provider.now()
       {
         log::debug!("snapshot is too old, creating new snapshot");
@@ -253,7 +253,8 @@ impl FileManager {
     });
 
     if create_new_snapshot {
-      if self.max_aggregated_files.read() <= u32::try_from(initialized_inner.index.len()).unwrap() {
+      if *self.max_aggregated_files.read() <= u32::try_from(initialized_inner.index.len()).unwrap()
+      {
         log::debug!("max files reached, popping oldest snapshot");
         initialized_inner.delete_oldest_snapshot().await?;
       }
@@ -353,7 +354,7 @@ impl FileManager {
         && initialized_inner.index[0]
           .period_start
           .to_offset_date_time()
-          + self.max_aggregation_window_per_file.read()
+          + *self.max_aggregation_window_per_file.read()
           > self.time_provider.now()
       {
         log::debug!("no pending upload: file is not old enough");
