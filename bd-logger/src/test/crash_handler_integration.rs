@@ -20,10 +20,10 @@ fn crash_reports() {
   let directory = {
     let setup = Setup::new();
 
-    std::fs::create_dir_all(setup.sdk_directory.path().join("crashes/new")).unwrap();
+    std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();
 
     std::fs::write(
-      setup.sdk_directory.path().join("crashes/new/crash1.txt"),
+      setup.sdk_directory.path().join("reports/new/crash1.txt"),
       "crash1",
     )
     .unwrap();
@@ -62,11 +62,11 @@ fn crash_directories_configuration() {
   setup.server.blocking_next_runtime_ack();
 
   wait_for!(
-    std::fs::exists(setup.sdk_directory.path().join("crashes/directories")).unwrap_or_default()
+    std::fs::exists(setup.sdk_directory.path().join("reports/directories")).unwrap_or_default()
   );
 
   assert_eq!(
-    std::fs::read(setup.sdk_directory.path().join("crashes/directories")).unwrap(),
+    std::fs::read(setup.sdk_directory.path().join("reports/directories")).unwrap(),
     b"a:b"
   );
 
@@ -76,6 +76,6 @@ fn crash_directories_configuration() {
   setup.server.blocking_next_runtime_ack();
 
   wait_for!(
-    !std::fs::exists(setup.sdk_directory.path().join("crashes/directories")).unwrap_or_default()
+    !std::fs::exists(setup.sdk_directory.path().join("reports/directories")).unwrap_or_default()
   );
 }
