@@ -89,7 +89,6 @@ impl Monitor {
         self.report_directory,
         e
       );
-      return;
     }
   }
 
