@@ -5,19 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::setup::{
-  exists_field_value,
-  expected_binary_field_value,
-  expected_binary_message,
-  expected_field_value,
-  expected_message,
-  expected_session_id,
-  expected_stream_ids,
-  expected_timestamp,
-  expected_workflow_action_ids,
-  log_type,
-  Setup,
-};
+use super::setup::Setup;
 use crate::{
   log_level,
   wait_for,
@@ -44,7 +32,6 @@ use bd_runtime::runtime::FeatureFlag;
 use bd_session::fixed::{State, UUIDCallbacks};
 use bd_session::{fixed, Strategy};
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
-use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::config_helper::{
   self,
@@ -130,11 +117,11 @@ fn log_upload() {
   }
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "default");
-    uuid::Uuid::parse_str(log_upload.upload_uuid.as_str()).unwrap();
-    assert_eq!(log_upload.logs.len(), 10);
+    assert_eq!(log_upload.buffer_id(), "default");
+    uuid::Uuid::parse_str(log_upload.upload_uuid()).unwrap();
+    assert_eq!(log_upload.logs().len(), 10);
 
-    assert_eq!(expected_message(&log_upload.logs[0]), "some log");
+    assert_eq!(log_upload.logs()[0].message(), "some log");
   });
 }
 
@@ -205,21 +192,21 @@ fn log_upload_attributes_override() {
   }
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "default");
-    uuid::Uuid::parse_str(log_upload.upload_uuid.as_str()).unwrap();
-    assert_eq!(log_upload.logs.len(), 10);
+    assert_eq!(log_upload.buffer_id(), "default");
+    uuid::Uuid::parse_str(log_upload.upload_uuid()).unwrap();
+    assert_eq!(log_upload.logs().len(), 10);
 
     // Confirm both session ID and timestamp are overridden.
-    let first_uploaded_log = &log_upload.logs[0];
-    assert_eq!(expected_session_id(first_uploaded_log), "foo_overridden");
-    assert_eq!(expected_timestamp(first_uploaded_log), time_second);
-    assert_eq!(expected_field_value(first_uploaded_log, "_logged_at"), time_first.to_string());
-    assert_eq!(expected_message(first_uploaded_log), "log with overridden attributes");
+    let first_uploaded_log = &log_upload.logs()[0];
+    assert_eq!(first_uploaded_log.session_id(), "foo_overridden");
+    assert_eq!(first_uploaded_log.timestamp(), time_second);
+    assert_eq!(first_uploaded_log.field("_logged_at"), time_first.to_string());
+    assert_eq!(first_uploaded_log.message(), "log with overridden attributes");
 
     // Confirm that second log was dropped and error was emitted.
-    let second_uploaded_log = &log_upload.logs[1];
-    assert_eq!(expected_session_id(second_uploaded_log), current_session_id);
-    assert_eq!(expected_field_value(second_uploaded_log, "_override_session_id"), "bar_overridden");
+    let second_uploaded_log = &log_upload.logs()[1];
+    assert_eq!(second_uploaded_log.session_id(), current_session_id);
+    assert_eq!(second_uploaded_log.field("_override_session_id"), "bar_overridden");
 
     assert!(error_reporter.error().is_some());
   });
@@ -295,7 +282,7 @@ fn buffer_selection_update() {
   }
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.logs.len(), 10);
+    assert_eq!(log_upload.logs().len(), 10);
   });
 
   // Now update the configuration to drop all logs.
@@ -377,8 +364,8 @@ fn configuration_caching() {
   );
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "default");
-    assert_eq!(log_upload.logs.len(), 1);
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.logs().len(), 1);
   });
 }
 
@@ -692,10 +679,10 @@ fn log_tailing() {
 
   // Logs are immediately uploaded with "streamed" as the buffer id.
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "streamed");
-    assert_eq!(log_upload.logs.len(), 1);
-    assert_eq!("something", expected_message(&log_upload.logs[0]));
-    assert_eq!(vec!["all"], expected_stream_ids(&log_upload.logs[0]));
+    assert_eq!(log_upload.buffer_id(), "streamed");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!("something", log_upload.logs()[0].message());
+    assert_eq!(vec!["all"], log_upload.logs()[0].stream_ids());
   });
 
   let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
@@ -734,10 +721,10 @@ fn log_tailing() {
   // When multiple streams match the same log the log is uploaded once with multiple tagged stream
   // IDs.
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "streamed");
-    assert_eq!(log_upload.logs.len(), 1);
-    assert_eq!("something", expected_message(&log_upload.logs[0]));
-    assert_eq!(vec!["all", "some"], expected_stream_ids(&log_upload.logs[0]));
+    assert_eq!(log_upload.buffer_id(), "streamed");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!("something", log_upload.logs()[0].message());
+    assert_eq!(vec!["all", "some"], log_upload.logs()[0].stream_ids());
   });
 }
 
@@ -794,9 +781,9 @@ fn workflow_flush_buffers_action_uploads_buffer() {
   // Since there are 10 logs in the buffer at this point, we should now see an upload containing
   // 10 logs.
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "default");
-    assert_eq!(log_upload.logs.len(), 10);
-    assert_eq!(vec!["flush_action_id"], expected_workflow_action_ids(&log_upload.logs[9]));
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.logs().len(), 10);
+    assert_eq!(vec!["flush_action_id"], log_upload.logs()[9].workflow_action_ids());
   });
 }
 
@@ -920,16 +907,16 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   // We verify that this synthetic log is uploaded as part of flushing
   // the "trigger_buffer_id" buffer.
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "trigger_buffer_id");
-    assert_eq!(log_upload.logs.len(), 1);
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 1);
 
-    assert_eq!(vec!["flush_with_streaming_action_id"], expected_workflow_action_ids(&log_upload.logs[0]));
+    assert_eq!(vec!["flush_with_streaming_action_id"], log_upload.logs()[0].workflow_action_ids());
 
-    assert_eq!("provider_value_1", expected_field_value(&log_upload.logs[0], "k1"));
-    assert_eq!("provider_value_2", expected_field_value(&log_upload.logs[0], "k2"));
-    assert_eq!("value_3", expected_field_value(&log_upload.logs[0], "k3"));
+    assert_eq!("provider_value_1", log_upload.logs()[0].field("k1"));
+    assert_eq!("provider_value_2", log_upload.logs()[0].field( "k2"));
+    assert_eq!("value_3", log_upload.logs()[0].field("k3"));
 
-    assert_eq!(LogType::Normal, log_type(&log_upload.logs[0]));
+    assert_eq!(LogType::Normal, log_upload.logs()[0].log_type());
   });
 
   // Emit 20 logs that should go to a "trigger_buffer_id" but due to the streaming
@@ -949,8 +936,8 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   // Confirm that the first ten out of nineteenth emitted logs ended up in `default` continuous
   // buffer.
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid, "default");
-    assert_eq!(log_upload.logs.len(), 10);
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.logs().len(), 10);
   });
 
   // Trigger the upload of a trigger "trigger_buffer_id" buffer.
@@ -966,10 +953,10 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   // Confirm that the second ten out of nineteenth emitted logs ended up in `trigger_buffer_id`
   // continuous buffer. Assert for nine + the trigger log so ten logs in total.
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid, "trigger_buffer_id");
-    assert_eq!(log_upload.logs.len(), 10);
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 10);
 
-    assert_eq!("fire flush trigger buffer action!", expected_message(log_upload.logs.last().unwrap()));
+    assert_eq!("fire flush trigger buffer action!", log_upload.logs().last().unwrap().message());
   });
 }
 
@@ -1220,10 +1207,10 @@ fn transforms_emitted_logs_according_to_filters() {
   // Since there are 10 logs in the buffer at this point, we should now see an upload containing
   // 10 logs.
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "default");
-    assert_eq!(log_upload.logs.len(), 10);
-    assert_eq!("fire workflow action!", expected_field_value(&log_upload.logs[9], "foo"));
-    assert_eq!(vec!["flush_action_id"], expected_workflow_action_ids(&log_upload.logs[9]));
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.logs().len(), 10);
+    assert_eq!("fire workflow action!", log_upload.logs()[9].field("foo"));
+    assert_eq!(vec!["flush_action_id"], log_upload.logs()[9].workflow_action_ids());
   });
 }
 
@@ -1276,7 +1263,7 @@ fn remote_buffer_upload() {
 
   // We receive a log upload without intent negotiation.
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-      assert_eq!(log_upload.logs.len(), 10);
+      assert_eq!(log_upload.logs().len(), 10);
   });
 }
 
@@ -1331,9 +1318,9 @@ fn continuous_and_trigger_buffer() {
   }
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "default");
-    assert_eq!(log_upload.logs.len(), 10);
-    assert_eq!(expected_message(&log_upload.logs[0]), "test");
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.logs().len(), 10);
+    assert_eq!(log_upload.logs()[0].message(), "test");
   });
 
   setup.log(
@@ -1351,15 +1338,15 @@ fn continuous_and_trigger_buffer() {
 
   assert_matches!(setup.server.next_log_intent(), Some(_intent));
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "trigger");
-    assert_eq!(log_upload.logs.len(), 10);
-    assert_eq!(expected_message(&log_upload.logs[0]), "test");
+    assert_eq!(log_upload.buffer_id(), "trigger");
+    assert_eq!(log_upload.logs().len(), 10);
+    assert_eq!(log_upload.logs()[0].message(), "test");
   });
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "trigger");
-    assert_eq!(log_upload.logs.len(), 1);
-    assert_eq!(expected_message(&log_upload.logs[0]), "fire!");
+    assert_eq!(log_upload.buffer_id(), "trigger");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(log_upload.logs()[0].message(), "fire!");
   });
 
   // Write an additional 9 logs to trigger an immediate continuous log batch upload, to avoid
@@ -1377,10 +1364,10 @@ fn continuous_and_trigger_buffer() {
   }
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "default");
-    assert_eq!(log_upload.logs.len(), 10);
-    assert_eq!(expected_message(&log_upload.logs[0]), "fire!");
-    assert_eq!(expected_message(&log_upload.logs[1]), "test");
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.logs().len(), 10);
+    assert_eq!(log_upload.logs()[0].message(), "fire!");
+    assert_eq!(log_upload.logs()[1].message(), "test");
   });
 }
 
@@ -1440,11 +1427,11 @@ fn device_id_matching() {
 
   assert_matches!(setup.server.next_log_intent(), Some(_intent));
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "trigger");
-    assert_eq!(log_upload.logs.len(), 10);
+    assert_eq!(log_upload.buffer_id(), "trigger");
+    assert_eq!(log_upload.logs().len(), 10);
 
-    for log in &log_upload.logs {
-      assert!(!exists_field_value(log, "device_id") );
+    for log in &log_upload.logs() {
+      assert!(!log.has_field("device_id"));
     }
   });
 }
@@ -1520,15 +1507,15 @@ fn matching_on_but_not_capturing_matching_fields() {
   //  2. from the continuous buffer uploading the single trigger line.
   assert_matches!(setup.server.next_log_intent(), Some(_intent));
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "trigger");
-    assert_eq!(log_upload.logs.len(), 10);
+    assert_eq!(log_upload.buffer_id(), "trigger");
+    assert_eq!(log_upload.logs().len(), 10);
 
-    let log = &log_upload.logs[9];
-    assert_eq!(expected_message(log), "fire!");
-    assert_eq!(expected_field_value(log, "key"), "value");
-    assert_eq!(expected_field_value(log, "_key"), "_value");
-    assert!(!exists_field_value(log, "_should_be_dropped_starting_with_underscore_key"));
-    assert!(!exists_field_value(log, "_phantom_key"));
+    let log = &log_upload.logs()[9];
+    assert_eq!(log.message(), "fire!");
+    assert_eq!(log.field("key"), "value");
+    assert_eq!(log.field("_key"), "_value");
+    assert!(!log.has_field("_should_be_dropped_starting_with_underscore_key"));
+    assert!(!log.has_field("_phantom_key"));
   });
 }
 
@@ -1536,20 +1523,7 @@ fn matching_on_but_not_capturing_matching_fields() {
 fn log_app_update() {
   let mut setup = Setup::new();
 
-  setup.send_configuration_update(configuration_update(
-    "",
-    StateOfTheWorld {
-      buffer_config_list: Some(BufferConfigList {
-        buffer_config: vec![default_buffer_config(
-          Type::CONTINUOUS,
-          make_buffer_matcher_matching_everything_except_internal_logs().into(),
-        )],
-        ..Default::default()
-      })
-      .into(),
-      ..Default::default()
-    },
-  ));
+  setup.configure_stream_all_logs();
 
   setup.logger_handle.log_app_update(
     "1".to_string(),
@@ -1578,16 +1552,16 @@ fn log_app_update() {
   }
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "default");
-    assert_eq!(log_upload.logs.len(), 10);
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.logs().len(), 10);
 
-    let app_update_log = &log_upload.logs[0];
-    assert_eq!("AppUpdated", expected_message(app_update_log));
-    assert_eq!("1", expected_field_value(app_update_log, "_previous_app_version"));
-    assert_eq!("2", expected_field_value(app_update_log, "_previous_build_number"));
+    let app_update_log = &log_upload.logs()[0];
+    assert_eq!("AppUpdated", app_update_log.message());
+    assert_eq!("1", app_update_log.field("_previous_app_version"));
+    assert_eq!("2", app_update_log.field("_previous_build_number"));
 
-    let test_log = &log_upload.logs[1];
-    assert_eq!("test", expected_message(test_log));
+    let test_log = &log_upload.logs()[1];
+    assert_eq!("test", test_log.message());
   });
 }
 
@@ -1663,15 +1637,15 @@ fn continuous_buffer_resume_with_full_buffer() {
     None,
   );
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "continuous");
-    assert_eq!(log_upload.logs.len(), 1);
-    assert_eq!(expected_message(&log_upload.logs[0]), "test");
+    assert_eq!(log_upload.buffer_id(), "continuous");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(log_upload.logs()[0].message(), "test");
   });
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_uuid.as_str(), "continuous");
-    assert_eq!(log_upload.logs.len(), 1);
-    assert_eq!(expected_message(&log_upload.logs[0]), "after startup");
+    assert_eq!(log_upload.buffer_id(), "continuous");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(log_upload.logs()[0].message(), "after startup");
   });
 }
 
@@ -1701,7 +1675,7 @@ fn stats_upload() {
   let mut setup = Setup::new();
 
   // Note that we need to send a configuration update due to how we propagate the counter for
-  // error logs. As we add better suppport for log tagging this can probably be improved.
+  // error logs. As we add better support for log tagging this can probably be improved.
   let maybe_nack = setup.send_configuration_update(configuration_update(
     "",
     StateOfTheWorld {
@@ -1767,7 +1741,7 @@ fn stats_upload() {
 }
 
 // Verifies end to end processing of binary messages and fields, ensuring that the binary data
-// is preserverd all the way to the test server.
+// is preserved all the way to the test server.
 #[test]
 fn binary_message_and_fields() {
   let mut setup = Setup::new();
@@ -1819,48 +1793,15 @@ fn binary_message_and_fields() {
     None,
   );
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!([1, 2, 3], expected_binary_message(&log_upload.logs[0]));
-    assert_eq!("str-data", expected_field_value(&log_upload.logs[0], "str"));
-    assert_eq!([0, 0, 0], expected_binary_field_value(&log_upload.logs[0], "binary"));
+    assert_eq!([1, 2, 3], log_upload.logs()[0].binary_message());
+    assert_eq!("str-data", log_upload.logs()[0].field("str"));
+    assert_eq!([0, 0, 0], log_upload.logs()[0].binary_field("binary"));
   });
 }
 
 #[test]
 fn logs_before_cache_load() {
-  let directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
-  let mut server = bd_test_helpers::test_api_server::start_server(false, None);
-
-  let shutdown = ComponentShutdownTrigger::default();
-  let network = Box::new(Setup::run_network(server.port, shutdown.make_shutdown()));
-
-  let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
-  let device = Arc::new(bd_device::Device::new(store.clone()));
-
-  let logger = crate::LoggerBuilder::new(InitParams {
-    sdk_directory: directory.path().into(),
-    api_key: "foo-api-key".to_string(),
-    session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
-      store.clone(),
-      Arc::new(UUIDCallbacks),
-    ))),
-    metadata_provider: Arc::new(LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: Vec::new(),
-    }),
-    store,
-    resource_utilization_target: Box::new(EmptyTarget),
-    session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
-    events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
-    device,
-    network,
-    static_metadata: Arc::new(EmptyMetadata),
-  })
-  .with_client_stats(true)
-  .build_dedicated_thread()
-  .unwrap()
-  .0;
-
-  let handle = logger.new_logger_handle();
+  let mut setup = Setup::new();
 
   // Write logs *before* configuration arrives.
 
@@ -1868,7 +1809,7 @@ fn logs_before_cache_load() {
   for i in 0 .. 9 {
     let msg = i.to_string();
 
-    handle.log(
+    setup.logger_handle.log(
       log_level::ERROR,
       LogType::Normal,
       msg.as_str().into(),
@@ -1880,7 +1821,7 @@ fn logs_before_cache_load() {
   }
 
   // This log should trigger a trigger buffer upload.
-  handle.log(
+  setup.logger_handle.log(
     log_level::DEBUG,
     LogType::Normal,
     "trigger".into(),
@@ -1890,51 +1831,52 @@ fn logs_before_cache_load() {
     false,
   );
 
-  let active_stream = Setup::do_stream_setup(&mut server);
 
-  active_stream.blocking_stream_action(StreamAction::SendConfiguration(configuration_update(
-    "test",
-    StateOfTheWorld {
-      buffer_config_list: Some(BufferConfigList {
-        buffer_config: vec![
-          default_buffer_config(
-            Type::CONTINUOUS,
-            make_buffer_matcher_matching_everything().into(),
-          ),
-          BufferConfigBuilder {
-            name: "trigger",
-            buffer_type: Type::TRIGGER,
-            non_volatile_size: 100_000,
-            volatile_size: 10_000,
-            filter: match_message("trigger").into(),
-          }
-          .build(),
-        ],
+  setup
+    .current_api_stream
+    .blocking_stream_action(StreamAction::SendConfiguration(configuration_update(
+      "test",
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: vec![
+            default_buffer_config(
+              Type::CONTINUOUS,
+              make_buffer_matcher_matching_everything().into(),
+            ),
+            BufferConfigBuilder {
+              name: "trigger",
+              buffer_type: Type::TRIGGER,
+              non_volatile_size: 100_000,
+              volatile_size: 10_000,
+              filter: match_message("trigger").into(),
+            }
+            .build(),
+          ],
+          ..Default::default()
+        })
+        .into(),
+        workflows_configuration: Some(make_workflow_config_flushing_buffer(
+          "trigger",
+          log_matches!(message == "trigger"),
+        ))
+        .into(),
         ..Default::default()
-      })
-      .into(),
-      workflows_configuration: Some(make_workflow_config_flushing_buffer(
-        "trigger",
-        log_matches!(message == "trigger"),
-      ))
-      .into(),
-      ..Default::default()
-    },
-  )));
+      },
+    )));
 
-  server.blocking_next_configuration_ack();
+  setup.server.blocking_next_configuration_ack();
 
   // At this point we should see both a trigger upload and a continuous upload.
   let mut verify_upload = || {
-    assert_matches!(server.blocking_next_log_upload(), Some(log_upload) => {
-        match log_upload.buffer_uuid.as_str() {
+    assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+        match log_upload.buffer_id() {
             "trigger" => {
-                assert_eq!(log_upload.logs.len(), 1);
+                assert_eq!(log_upload.logs().len(), 1);
             }
             "default" => {
-            assert_eq!(log_upload.logs.len(), 10);
+            assert_eq!(log_upload.logs().len(), 10);
             for i in 0..9 {
-                assert_eq!(expected_message(&log_upload.logs[i]), i.to_string());
+                assert_eq!(log_upload.logs()[i].message(), i.to_string());
             }
             }
             buffer => panic!("unknown buffer {buffer}"),

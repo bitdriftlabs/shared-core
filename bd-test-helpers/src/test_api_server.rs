@@ -5,6 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+mod log_upload;
+
 use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::routing::post;
@@ -43,6 +45,7 @@ use bd_proto::protos::client::api::{
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_time::{TimeDurationExt, ToProtoDuration};
 use http_body_util::StreamBody;
+use log_upload::LogUpload;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -883,8 +886,8 @@ impl ServerHandle {
     Self::next_request_with_timeout(&mut self.log_upload_rx).await
   }
 
-  pub fn blocking_next_log_upload(&mut self) -> Option<LogUploadRequest> {
-    Self::blocking_next_request_with_timeout(&mut self.log_upload_rx)
+  pub fn blocking_next_log_upload(&mut self) -> Option<LogUpload> {
+    Self::blocking_next_request_with_timeout(&mut self.log_upload_rx).map(LogUpload)
   }
 
   pub fn next_stat_upload(&mut self) -> Option<StatsUploadRequest> {

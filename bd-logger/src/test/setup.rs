@@ -14,7 +14,6 @@ use crate::{
   LogType,
   Logger,
 };
-use bd_client_common::fb::root_as_log;
 use bd_device::Store;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
@@ -345,96 +344,4 @@ impl Drop for Setup {
     // completes.
     self.logger.shutdown(true);
   }
-}
-
-pub fn exists_field_value(log: &[u8], key: &str) -> bool {
-  let log = root_as_log(log).unwrap();
-
-  log.fields().unwrap().iter().any(|field| field.key() == key)
-}
-
-// Extracts out the value of an expected field from a flatbuffer encoded log.
-pub fn expected_field_value<'a>(log: &'a [u8], key: &str) -> &'a str {
-  let log = root_as_log(log).unwrap();
-
-  let field_entry = log
-    .fields()
-    .unwrap()
-    .iter()
-    .find(|field| field.key() == key)
-    .unwrap();
-
-  field_entry.value_as_string_data().unwrap().data()
-}
-
-pub fn expected_stream_ids(log: &[u8]) -> Vec<String> {
-  let log = root_as_log(log).unwrap();
-
-  log
-    .stream_ids()
-    .unwrap()
-    .iter()
-    .map(ToString::to_string)
-    .collect()
-}
-
-pub fn log_type(log: &[u8]) -> LogType {
-  root_as_log(log).unwrap().log_type()
-}
-
-pub fn expected_binary_field_value<'a>(log: &'a [u8], key: &str) -> &'a [u8] {
-  let log = root_as_log(log).unwrap();
-
-  let field_entry = log
-    .fields()
-    .unwrap()
-    .iter()
-    .find(|field| field.key() == key)
-    .unwrap();
-
-  field_entry.value_as_binary_data().unwrap().data().bytes()
-}
-
-// Extracts out the message from a flatbuffer encoded log.
-pub fn expected_message(log: &[u8]) -> &str {
-  let log = root_as_log(log).unwrap();
-
-  log.message_as_string_data().unwrap().data()
-}
-
-pub fn expected_binary_message(log: &[u8]) -> &[u8] {
-  let log = root_as_log(log).unwrap();
-
-  log.message_as_binary_data().unwrap().data().bytes()
-}
-
-pub fn expected_session_id(log: &[u8]) -> &str {
-  let log = root_as_log(log).unwrap();
-
-  log.session_id().unwrap()
-}
-
-pub fn expected_timestamp(log: &[u8]) -> time::OffsetDateTime {
-  let log = root_as_log(log).unwrap();
-  let timestamp = log.timestamp().unwrap();
-
-  #[allow(clippy::cast_lossless)]
-  time::OffsetDateTime::from_unix_timestamp_nanos(
-    (timestamp.seconds() as i128) * 1_000_000_000 + (timestamp.nanos() as i128),
-  )
-  .unwrap()
-}
-
-pub fn expected_workflow_action_ids(log: &[u8]) -> Vec<String> {
-  let log = root_as_log(log).unwrap();
-
-  log
-    .workflow_action_ids()
-    .map(|workflow_action_ids| {
-      workflow_action_ids
-        .iter()
-        .map(ToString::to_string)
-        .collect()
-    })
-    .unwrap_or_default()
 }
