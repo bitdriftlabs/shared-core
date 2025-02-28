@@ -22,6 +22,7 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use tokio::sync::watch::Ref;
 
 // TODO(mattklein123): This entire file should use async IO but this is not so simple given all the
 // call sites so we can consider this in the future.
@@ -102,12 +103,20 @@ impl Snapshot {
       .map_or(default, |v| time::Duration::milliseconds(v.into()))
   }
 
-  pub fn get_string<'a>(&'a self, name: &'static str, default: &'static str) -> &'a str {
+  pub fn get_str<'a>(&'a self, name: &'static str, default: &'static str) -> &'a str {
     self
       .runtime
       .values
       .get(name)
       .map_or(default, Value::string_value)
+  }
+
+  pub fn get_string(&self, name: &str, default: String) -> String {
+    self
+      .runtime
+      .values
+      .get(name)
+      .map_or(default, |v| v.string_value().to_string())
   }
 }
 
@@ -299,14 +308,14 @@ impl ConfigLoader {
     })
   }
 
-  fn send_if_modified<T: PartialEq + Display + Copy>(
+  fn send_if_modified<T: PartialEq + Display + Clone>(
     key: &str,
     snapshot: &Snapshot,
     internal_watch: &InternalWatch<T>,
   ) where
     Snapshot: ReadValue<T>,
   {
-    let updated_value = snapshot.read_value(key, internal_watch.default);
+    let updated_value = snapshot.read_value(key, internal_watch.default.clone());
 
     // Only send a new value if it differs from the old one. This ensures that consumers only get
     // updates when the value has actually changed.
@@ -314,7 +323,7 @@ impl ConfigLoader {
       if *state == updated_value {
         false
       } else {
-        *state = updated_value;
+        *state = updated_value.clone();
         true
       }
     });
@@ -347,6 +356,9 @@ impl ConfigLoader {
           InternalWatchKind::Int(watch) => Self::send_if_modified(k, &snapshot, watch),
           InternalWatchKind::Bool(watch) => Self::send_if_modified(k, &snapshot, watch),
           InternalWatchKind::Duration(watch) => {
+            Self::send_if_modified(k, &snapshot, watch);
+          },
+          InternalWatchKind::String(watch) => {
             Self::send_if_modified(k, &snapshot, watch);
           },
         }
@@ -385,21 +397,21 @@ pub struct Watch<T, P: FeatureFlag<T>> {
   _type: PhantomData<P>,
 }
 
-impl<T: Copy, P: FeatureFlag<T>> Watch<T, P> {
+impl<T, P: FeatureFlag<T>> Watch<T, P> {
   /// Reads the latest record, and marks the watch as having seen the update. This can be used in
   /// conjunction with `changed()` to let the caller check if the flag has changed since the last
   /// time `read_mark_update()` has been called.
-  pub fn read_mark_update(&mut self) -> T {
+  pub fn read_mark_update(&mut self) -> Ref<'_, T> {
     // We use borrow_and_update to record the read. This enables us to use changed() to determine
     // whether there has been any new updates since read() was called.
-    *self.watch.borrow_and_update()
+    self.watch.borrow_and_update()
   }
 
   /// Performs a read without updating the watch to indicate that the value has been read. This
   /// won't effect `changed()`, but doesn't require `&mut self`.
   #[must_use]
-  pub fn read(&self) -> T {
-    *self.watch.borrow()
+  pub fn read(&self) -> Ref<'_, T> {
+    self.watch.borrow()
   }
 
   /// Returns true if the underlying value has changed since the last time `read_mark_update` has
@@ -429,6 +441,7 @@ impl<T: Copy, P: FeatureFlag<T>> Watch<T, P> {
 pub type BoolWatch<P> = Watch<bool, P>;
 pub type IntWatch<P> = Watch<u32, P>;
 pub type DurationWatch<P> = Watch<time::Duration, P>;
+pub type StringWatch<P> = Watch<String, P>;
 
 //
 // FeatureFlag
@@ -462,6 +475,7 @@ pub enum InternalWatchKind {
   Int(InternalWatch<u32>),
   Bool(InternalWatch<bool>),
   Duration(InternalWatch<time::Duration>),
+  String(InternalWatch<String>),
 }
 
 //
@@ -517,6 +531,7 @@ macro_rules! define_primitive_flag_type {
 define_primitive_flag_type!(u32, Int, get_integer);
 define_primitive_flag_type!(bool, Bool, get_bool);
 define_primitive_flag_type!(time::Duration, Duration, get_duration);
+define_primitive_flag_type!(String, String, get_string);
 
 /// Defines a statically typed feature flag that reads runtime from a specific path, returning a
 /// default value if the path is not set.
@@ -572,6 +587,15 @@ macro_rules! bool_feature_flag {
   };
 }
 
+/// Defines a statically typed boolean feature flag with the specified default, reading the
+/// runtime value from the provided path.
+#[macro_export]
+macro_rules! string_feature_flag {
+  ($name:tt, $path:literal, $default:expr) => {
+    $crate::feature_flag!($name, String, $path, $default);
+  };
+}
+
 #[macro_export]
 macro_rules! duration_feature_flag {
   ($name:tt, $path:literal, $default:expr) => {
@@ -598,6 +622,17 @@ pub mod debugging {
     PeriodicInternalLoggingFlag,
     "internal_logging.periodic_logs.enabled",
     false
+  );
+}
+
+pub mod crash_handling {
+  // Controls the list of directories that the platform layer should monitor for crash reports.
+  // This is a :-separated list of directories of platforms that may be of interest to the platform
+  // layer.
+  string_feature_flag!(
+    CrashDirectories,
+    "crash_handling.directories",
+    String::new()
   );
 }
 

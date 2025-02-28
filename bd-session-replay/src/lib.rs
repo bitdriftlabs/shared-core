@@ -94,15 +94,15 @@ impl Recorder {
 
     let mut is_periodic_reporting_enabled_flag =
       session_replay::PeriodicScreensEnabledFlag::register(runtime_loader).unwrap();
-    let is_periodic_reporting_enabled = is_periodic_reporting_enabled_flag.read_mark_update();
+    let is_periodic_reporting_enabled = *is_periodic_reporting_enabled_flag.read_mark_update();
 
-    let reporting_interval_rate = session_replay::ReportingIntervalFlag::register(runtime_loader)
+    let reporting_interval_rate = *session_replay::ReportingIntervalFlag::register(runtime_loader)
       .unwrap()
       .read_mark_update();
 
     let mut is_capture_screenshots_enabled_flag =
       session_replay::ScreenshotsEnabledFlag::register(runtime_loader).unwrap();
-    let is_capture_screenshots_enabled = is_capture_screenshots_enabled_flag.read_mark_update();
+    let is_capture_screenshots_enabled = *is_capture_screenshots_enabled_flag.read_mark_update();
 
     let stats = Stats::new(scope);
 
@@ -180,7 +180,7 @@ impl Recorder {
         _ = self.reporting_interval_rate_flag.changed() => {
           self.reporting_interval = Some(
             Self::create_interval(
-              self.reporting_interval_rate_flag.read_mark_update(),
+              *self.reporting_interval_rate_flag.read_mark_update(),
               false
             )
           );
@@ -215,11 +215,11 @@ impl Recorder {
         },
         _ = self.is_periodic_reporting_enabled_flag.changed() => {
           self.is_periodic_reporting_enabled
-            = self.is_periodic_reporting_enabled_flag.read_mark_update();
+            = *self.is_periodic_reporting_enabled_flag.read_mark_update();
         },
         _ = self.is_capture_screenshots_enabled_flag.changed() => {
           self.is_capture_screenshots_enabled
-            = self.is_capture_screenshots_enabled_flag.read_mark_update();
+            = *self.is_capture_screenshots_enabled_flag.read_mark_update();
         },
         () = &mut local_shutdown => {
           return;

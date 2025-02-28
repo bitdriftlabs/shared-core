@@ -218,11 +218,11 @@ struct RetryPolicy {
 
 impl RetryPolicy {
   fn should_retry(&self) -> bool {
-    self.attempts < self.max_retries.read()
+    self.attempts < *self.max_retries.read()
   }
 
   fn remaining(&self) -> u32 {
-    self.max_retries.read() - self.attempts
+    *self.max_retries.read() - self.attempts
   }
 }
 

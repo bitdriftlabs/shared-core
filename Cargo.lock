@@ -471,6 +471,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-crash-handler"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "async-trait",
+ "bd-runtime",
+ "bd-shutdown",
+ "bd-test-helpers",
+ "ctor",
+ "futures-util",
+ "log",
+ "mockall",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "bd-device"
 version = "1.0.0"
 dependencies = [
@@ -711,6 +729,7 @@ dependencies = [
  "bd-client-stats",
  "bd-client-stats-store",
  "bd-completion",
+ "bd-crash-handler",
  "bd-device",
  "bd-events",
  "bd-hyper-network",

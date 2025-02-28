@@ -400,8 +400,8 @@ impl BatchBuilder {
       return false;
     }
 
-    let max_batch_size_logs = self.flags.max_batch_size_logs.read() as usize;
-    let max_batch_size_bytes = self.flags.max_match_size_bytes.read() as usize;
+    let max_batch_size_logs = *self.flags.max_batch_size_logs.read() as usize;
+    let max_batch_size_bytes = *self.flags.max_match_size_bytes.read() as usize;
 
     max_batch_size_bytes <= self.total_bytes || max_batch_size_logs <= self.logs.len()
   }
@@ -492,7 +492,7 @@ impl ContinuousBufferUploader {
       if !self.batch_builder.logs.is_empty() && self.flush_batch_deadline.is_none() {
         self.flush_batch_deadline = Some(
           Instant::now()
-            + Duration::from_millis(self.feature_flags.batch_deadline_watch.read().into()),
+            + Duration::from_millis((*self.feature_flags.batch_deadline_watch.read()).into()),
         );
       }
     }
@@ -623,7 +623,7 @@ impl CompleteBufferUpload {
     buffer_id: String,
     old_logs_dropped: Counter,
   ) -> Self {
-    let lookback_window_limit = runtime_flags.upload_lookback_window_feature_flag.read();
+    let lookback_window_limit = *runtime_flags.upload_lookback_window_feature_flag.read();
 
     let lookback_window = if lookback_window_limit.is_zero() {
       None

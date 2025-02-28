@@ -5,9 +5,9 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::{log_level, AnnotatedLogField, InitParams, LogType, Logger, MetadataProvider};
 use assert_matches::assert_matches;
 use bd_key_value::Store;
-use bd_logger::{log_level, AnnotatedLogField, InitParams, LogType, Logger, MetadataProvider};
 use bd_proto::protos::client::api::RuntimeUpdate;
 use bd_proto::protos::client::runtime::runtime::{value, Value};
 use bd_proto::protos::client::runtime::Runtime;
@@ -28,11 +28,6 @@ use bd_test_helpers::runtime::make_update;
 use bd_test_helpers::session::InMemoryStorage;
 use bd_test_helpers::test_api_server::StreamAction;
 use std::sync::Arc;
-
-#[ctor::ctor]
-fn global_init() {
-  bd_test_helpers::test_global_init();
-}
 
 // TODO(snowp): Shared test fixture.
 struct TestMetadataProvider;
@@ -70,7 +65,7 @@ impl Setup {
     let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
-    let (logger, _, future) = bd_logger::LoggerBuilder::new(InitParams {
+    let (logger, _, future) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: sdk_directory.path().to_owned(),
       network: Box::new(handle),
       session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
@@ -128,10 +123,7 @@ async fn runtime_update() {
   setup.server.next_runtime_ack(&stream).await;
 
   assert_eq!(
-    setup
-      .logger
-      .runtime_snapshot()
-      .get_string("test", "default"),
+    setup.logger.runtime_snapshot().get_str("test", "default"),
     "test"
   );
 

@@ -421,7 +421,7 @@ impl Manager {
       (true, None) => {
         updated_stream_buffer = Some(buffer::VolatileRingBuffer::new(
           "bd tail".to_string(),
-          self.stream_buffer_size_flag.read(),
+          *self.stream_buffer_size_flag.read(),
           Arc::new(RingBufferStats::default()),
         ));
 

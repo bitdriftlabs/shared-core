@@ -1,0 +1,25 @@
+[package]
+edition      = "2024"
+license-file = "../LICENSE"
+name         = "bd-crash-handler"
+publish      = false
+version      = "1.0.0"
+
+[lib]
+doctest = false
+
+[dependencies]
+anyhow.workspace      = true
+async-trait.workspace = true
+bd-runtime.path       = "../bd-runtime"
+bd-shutdown.path      = "../bd-shutdown"
+log.workspace         = true
+tokio.workspace       = true
+
+[dev-dependencies]
+assert_matches.workspace = true
+bd-test-helpers          = { path = "../bd-test-helpers", default-features = false }
+ctor.workspace           = true
+futures-util.workspace   = true
+mockall.workspace        = true
+tempfile.workspace       = true

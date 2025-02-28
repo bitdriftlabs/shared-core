@@ -118,10 +118,10 @@ impl ProcessingPipeline {
     stats: InitializedLoggingContextStats,
   ) -> Self {
     let mut workflows_enabled_flag = runtime.register_watch().unwrap();
-    let workflows_enabled = workflows_enabled_flag.read_mark_update();
+    let workflows_enabled = *workflows_enabled_flag.read_mark_update();
 
     let mut filter_chain_enabled_flag = runtime.register_watch().unwrap();
-    let filter_chain_enabled = filter_chain_enabled_flag.read_mark_update();
+    let filter_chain_enabled = *filter_chain_enabled_flag.read_mark_update();
 
     let (workflows_engine, buffers_to_flush_rx) = if workflows_enabled {
       let (mut workflows_engine, flush_buffers_tx) = WorkflowsEngine::new(
@@ -175,7 +175,7 @@ impl ProcessingPipeline {
     self.tail_configs = config.tail_configs;
     self.filter_chain = config.filter_chain;
 
-    if self.workflows_enabled_flag.read_mark_update() {
+    if *self.workflows_enabled_flag.read_mark_update() {
       let workflows_engine_config = WorkflowsEngineConfig::new(
         config.workflows_configuration,
         self.buffer_producers.trigger_buffer_ids.clone(),
@@ -528,12 +528,12 @@ impl ProcessingPipeline {
           }
         },
         Ok(()) = self.workflows_enabled_flag.changed() => {
-          if !self.workflows_enabled_flag.read_mark_update() {
+          if !*self.workflows_enabled_flag.read_mark_update() {
             self.workflows_engine = None;
           }
         },
         Ok(()) = self.filter_chain_enabled_flag.changed() => {
-          self.filter_chain_enabled = self.filter_chain_enabled_flag.read_mark_update();
+          self.filter_chain_enabled = *self.filter_chain_enabled_flag.read_mark_update();
         }
     }
   }

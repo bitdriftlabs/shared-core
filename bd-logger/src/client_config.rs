@@ -262,7 +262,7 @@ impl ApplyConfig for LoggerUpdate {
     // It's in here so that we do not even attempt to parse workflow protos if workflows
     // are disabled.
     // TODO(Augustyniak): Consider removing this feature flag once workflows APIs are stable.
-    let workflows_configuration = if self.workflows_enabled_flag.read() {
+    let workflows_configuration = if *self.workflows_enabled_flag.read() {
       WorkflowsConfiguration::new(&workflows)
     } else {
       WorkflowsConfiguration::default()

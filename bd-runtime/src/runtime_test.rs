@@ -25,8 +25,8 @@ fn feature_flag_registration() {
   let mut bool_feature_flag = BoolFlag::register(&loader).unwrap();
 
   // Initially the value is the specified default.
-  assert_eq!(int_feature_flag.read_mark_update(), 1);
-  assert!(!bool_feature_flag.read_mark_update());
+  assert_eq!(*int_feature_flag.read_mark_update(), 1);
+  assert!(!*bool_feature_flag.read_mark_update());
 
   // After updating the value it now reflects the updated value.
   loader.update_snapshot(&make_update(
@@ -36,13 +36,13 @@ fn feature_flag_registration() {
     ],
     "1".to_string(),
   ));
-  assert_eq!(int_feature_flag.read_mark_update(), 10);
-  assert!(bool_feature_flag.read_mark_update());
+  assert_eq!(*int_feature_flag.read_mark_update(), 10);
+  assert!(*bool_feature_flag.read_mark_update());
 
   // When we clear out the runtime, it reverts to the default.
   loader.update_snapshot(&make_update(vec![], String::new()));
-  assert_eq!(int_feature_flag.read_mark_update(), 1);
-  assert!(!bool_feature_flag.read_mark_update());
+  assert_eq!(*int_feature_flag.read_mark_update(), 1);
+  assert!(!*bool_feature_flag.read_mark_update());
 
   // If the value doesn't change, no events are pushed.
   loader.update_snapshot(&make_update(vec![], String::new()));
@@ -66,7 +66,7 @@ fn registration_after_update() {
 
   // The initial value of the watch should be 10.
   assert!(!feature_flag.watch.has_changed().unwrap());
-  assert_eq!(feature_flag.read(), 10);
+  assert_eq!(*feature_flag.read(), 10);
 }
 
 #[test]
@@ -94,14 +94,14 @@ fn duration_flag() {
 
   let flag = DurationFlag::register(&loader).unwrap();
 
-  assert_eq!(flag.borrow().read(), time::Duration::seconds(5));
+  assert_eq!(*flag.borrow().read(), time::Duration::seconds(5));
 
   loader.update_snapshot(&make_update(
     vec![(DurationFlag::path(), ValueKind::Int(100))],
     "1".to_string(),
   ));
 
-  assert_eq!(flag.borrow().read(), time::Duration::milliseconds(100));
+  assert_eq!(*flag.borrow().read(), time::Duration::milliseconds(100));
 }
 
 struct SetupDiskPersistence {
@@ -151,7 +151,7 @@ fn disk_persistence_happy_path() {
   loader.handle_cached_config();
 
   let flag = TestFlag::register(&loader).unwrap();
-  assert_eq!(flag.read(), 10);
+  assert_eq!(*flag.read(), 10);
   assert_eq!(loader.snapshot().nonce, Some("1".to_string()));
 }
 
@@ -182,7 +182,7 @@ fn disk_persistence_config_corruption() {
     unexpected_error,
   );
   let flag = TestFlag::register(&loader).unwrap();
-  assert_eq!(flag.read(), 1);
+  assert_eq!(*flag.read(), 1);
   assert_eq!(loader.snapshot().nonce, None);
 }
 
@@ -208,7 +208,7 @@ fn disk_persistence_retry_corruption() {
   loader.handle_cached_config();
 
   let flag = TestFlag::register(&loader).unwrap();
-  assert_eq!(flag.read(), 1);
+  assert_eq!(*flag.read(), 1);
   assert_eq!(loader.snapshot().nonce, None);
 }
 
@@ -231,14 +231,14 @@ fn disk_persistence_retry_limit() {
     let loader = setup.new_loader();
     loader.handle_cached_config();
     let flag = TestFlag::register(&loader).unwrap();
-    assert_eq!(flag.read(), 10);
+    assert_eq!(*flag.read(), 10);
   }
 
   // On the 6th go we hit the limit and will treat it as an error, wiping all state.
   let loader = setup.new_loader();
   loader.handle_cached_config();
   let flag = TestFlag::register(&loader).unwrap();
-  assert_eq!(flag.read(), 1);
+  assert_eq!(*flag.read(), 1);
   assert!(!loader.protobuf_file.exists());
   assert!(!loader.retry_count_file.exists());
 }
@@ -262,7 +262,7 @@ fn disk_persistence_retry_marked_safe() {
     let loader = setup.new_loader();
     loader.handle_cached_config();
     let flag = TestFlag::register(&loader).unwrap();
-    assert_eq!(flag.read(), 10);
+    assert_eq!(*flag.read(), 10);
 
     loader.mark_safe();
   }
@@ -271,7 +271,7 @@ fn disk_persistence_retry_marked_safe() {
   let loader = setup.new_loader();
   loader.handle_cached_config();
   let flag = TestFlag::register(&loader).unwrap();
-  assert_eq!(flag.read(), 10);
+  assert_eq!(*flag.read(), 10);
   assert_eq!(std::fs::read(&setup.retry_file).unwrap(), b"1");
 }
 
@@ -299,7 +299,7 @@ fn disk_persistence_missing_config_file() {
   let loader = setup.new_loader();
   loader.handle_cached_config();
   let flag = TestFlag::register(&loader).unwrap();
-  assert_eq!(flag.read(), 1);
+  assert_eq!(*flag.read(), 1);
 
   assert!(!setup.retry_file.exists());
 }
@@ -328,7 +328,7 @@ fn disk_persistence_missing_retry_file() {
   let loader = setup.new_loader();
   loader.handle_cached_config();
   let flag = TestFlag::register(&loader).unwrap();
-  assert_eq!(flag.read(), 1);
+  assert_eq!(*flag.read(), 1);
 
   assert!(!setup.protobuf_file.exists());
 }
@@ -362,7 +362,7 @@ fn disk_persistence_cannot_update_retry() {
     error
   );
   let flag = TestFlag::register(&loader).unwrap();
-  assert_eq!(flag.read(), 1);
+  assert_eq!(*flag.read(), 1);
 
   assert!(!setup.protobuf_file.exists());
 }
