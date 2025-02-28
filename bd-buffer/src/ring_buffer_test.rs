@@ -169,7 +169,7 @@ async fn test_ring_buffer_manager() {
 }
 
 #[tokio::test]
-async fn test_ring_buffer_stats() {
+async fn ring_buffer_stats() {
   let diretory = tempfile::TempDir::with_prefix("ringbuffer").unwrap();
 
   let collector = Collector::default();
@@ -250,7 +250,7 @@ async fn test_ring_buffer_stats() {
   );
 
   // Write a bunch of entries that will overflow the small buffers
-  for _ in 0 .. 1000 {
+  for _ in 0 .. 5000 {
     let _ignored = producer1.write(&[0; 50]);
   }
 

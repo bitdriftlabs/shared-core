@@ -6,7 +6,6 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::setup::Setup;
-use crate::test::setup::{expected_binary_field_value, expected_message};
 use crate::wait_for;
 use assert_matches::assert_matches;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
@@ -43,9 +42,9 @@ fn crash_reports() {
   setup.upload_individual_logs();
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(upload) => {
-    assert_eq!(upload.logs.len(), 1);
-    assert_eq!(expected_message(&upload.logs[0].clone()), "App crashed");
-    assert_eq!(expected_binary_field_value(&upload.logs[0], "_crash_artifact"), b"crash1");
+    assert_eq!(upload.logs().len(), 1);
+    assert_eq!(upload.logs()[0].message(), "App crashed");
+    assert_eq!(upload.logs()[0].binary_field("_crash_artifact"), b"crash1");
   });
 }
 
