@@ -8,6 +8,7 @@
 pub mod actions_flush_buffers;
 pub mod config;
 pub mod engine;
+mod generate_log;
 pub mod metrics;
 mod sankey_diagram;
 pub mod workflow;

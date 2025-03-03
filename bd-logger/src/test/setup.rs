@@ -193,10 +193,6 @@ impl Setup {
         bd_test_helpers::runtime::ValueKind::Int(100_000),
       ),
       (
-        bd_runtime::runtime::workflows::WorkflowsEnabledFlag::path(),
-        ValueKind::Bool(true),
-      ),
-      (
         bd_runtime::runtime::resource_utilization::ResourceUtilizationEnabledFlag::path(),
         ValueKind::Bool(false),
       ),
@@ -294,7 +290,7 @@ impl Setup {
     ack.nack.take()
   }
 
-  pub fn send_runtime_update(&self, workflows_enabled: bool, immediate_stats_upload_enabled: bool) {
+  pub fn send_runtime_update(&self, immediate_stats_upload_enabled: bool) {
     let mut values = Self::get_default_runtime_values();
 
     if immediate_stats_upload_enabled {
@@ -309,11 +305,6 @@ impl Setup {
         ),
       ]);
     }
-
-    values.push((
-      bd_runtime::runtime::workflows::WorkflowsEnabledFlag::path(),
-      ValueKind::Bool(workflows_enabled),
-    ));
 
     self
       .current_api_stream

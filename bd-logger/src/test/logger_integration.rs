@@ -246,7 +246,7 @@ fn api_bandwidth_counters() {
       assert_eq!(upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}), Some(135));
       assert!(bandwidth_tx > 100, "bandwidth_tx = {bandwidth_tx}");
       assert!(bandwidth_rx < 400, "bandwidth_rx = {bandwidth_rx}");
-      assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(406));
+      assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(381));
       assert_eq!(upload.get_counter("api:stream_total", labels! {}), Some(1));
   });
 }
@@ -407,7 +407,7 @@ fn trigger_buffers_not_uploaded() {
 fn blocking_log() {
   let mut setup = Setup::new();
 
-  setup.send_runtime_update(true, false);
+  setup.send_runtime_update(false);
 
   // Send down a configuration with a single 'default' buffer and a workflow that matches on 'foo'
   // log message.
@@ -450,7 +450,7 @@ fn blocking_log() {
 #[test]
 fn session_replay_actions() {
   let mut setup = Setup::new();
-  setup.send_runtime_update(true, false);
+  setup.send_runtime_update(false);
 
   let mut a = state!("A");
   let b = state!("B");
@@ -732,7 +732,7 @@ fn log_tailing() {
 fn workflow_flush_buffers_action_uploads_buffer() {
   let mut setup = Setup::new();
 
-  setup.send_runtime_update(true, false);
+  setup.send_runtime_update(false);
 
   // Send down a configuration with a single buffer ('default')
   // which accepts all logs and a single workflow which matches for logs
@@ -858,7 +858,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   assert!(maybe_nack.is_none());
 
   // Enable immediate stats upload.
-  setup.send_runtime_update(true, true);
+  setup.send_runtime_update(true);
 
   for _ in 0 .. 9 {
     setup.log(
@@ -964,7 +964,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
 fn workflow_emit_metric_action_emits_metric() {
   let mut setup = Setup::new();
 
-  setup.send_runtime_update(true, true);
+  setup.send_runtime_update(true);
 
   let mut a = state!("A");
   let b = state!("B");
@@ -1045,16 +1045,10 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
   setup
     .current_api_stream
     .blocking_stream_action(StreamAction::SendRuntime(make_update(
-      vec![
-        (
-          bd_runtime::runtime::stats::MaxDynamicCountersFlag::path(),
-          ValueKind::Int(1),
-        ),
-        (
-          bd_runtime::runtime::workflows::WorkflowsEnabledFlag::path(),
-          ValueKind::Bool(true),
-        ),
-      ],
+      vec![(
+        bd_runtime::runtime::stats::MaxDynamicCountersFlag::path(),
+        ValueKind::Int(1),
+      )],
       "stats cap".to_string(),
     )));
 
@@ -1111,7 +1105,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
     vec![],
   );
 
-  setup.send_runtime_update(false, true);
+  setup.send_runtime_update(true);
 
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
 
@@ -1141,7 +1135,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
 fn transforms_emitted_logs_according_to_filters() {
   let mut setup = Setup::new();
 
-  setup.send_runtime_update(true, false);
+  setup.send_runtime_update(false);
 
   // Send down a configuration:
   //  * with a single buffer ('default') which accepts all logs
@@ -1713,7 +1707,7 @@ fn stats_upload() {
   // Create one stat that is incremented.
   stats.scope("test").counter("used").inc();
 
-  setup.send_runtime_update(false, true);
+  setup.send_runtime_update(true);
 
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(

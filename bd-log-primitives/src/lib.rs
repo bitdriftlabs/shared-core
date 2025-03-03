@@ -233,6 +233,15 @@ impl<'a> FieldsRef<'a> {
   }
 
   #[must_use]
+  pub fn captured_field_value(&self, key: &str) -> Option<&str> {
+    self
+      .captured_fields
+      .iter()
+      .find(|field| field.key == key)
+      .and_then(|field| field.value.as_str())
+  }
+
+  #[must_use]
   pub fn matching_field_value(&self, key: &str) -> Option<&str> {
     self
       .matching_fields

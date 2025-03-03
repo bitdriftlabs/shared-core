@@ -8,6 +8,7 @@
 use bd_log_primitives::{LogField, LogFields, StringOrBytes};
 use bd_proto::protos;
 use bd_proto::protos::log_matcher::log_matcher::log_matcher;
+use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::string_value_match::String_value_match_type;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::streaming::{
   termination_criterion,
   TerminationCriterion,
@@ -72,7 +73,7 @@ pub mod macros {
   macro_rules! workflow {
     ($($x:tt)*) => {
       bd_workflows::config::Config::new(
-        &$crate::workflow::macros::workflow_proto!($($x)*)
+        $crate::workflow::macros::workflow_proto!($($x)*)
       ).unwrap()
     }
   }
@@ -630,7 +631,7 @@ pub fn make_log_message_matcher(
         string_value_match: protobuf::MessageField::from_option(Some(
           base_log_matcher::StringValueMatch {
             operator: operator.into(),
-            match_value: value.to_string(),
+            string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
             ..Default::default()
           },
         )),
@@ -651,7 +652,7 @@ pub fn make_log_tag_matcher(name: &str, value: &str) -> LogMatcher {
         value_match: Some(Value_match::StringValueMatch(
           base_log_matcher::StringValueMatch {
             operator: log_matcher::base_log_matcher::Operator::OPERATOR_EQUALS.into(),
-            match_value: value.to_string(),
+            string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
             ..Default::default()
           },
         )),

@@ -51,7 +51,7 @@ impl Setup {
 
     engine.start(WorkflowsEngineConfig::new(
       WorkflowsConfiguration::new(
-        &bd_proto::protos::workflow::workflow::WorkflowsConfiguration {
+        bd_proto::protos::workflow::workflow::WorkflowsConfiguration {
           workflows,
           ..Default::default()
         },

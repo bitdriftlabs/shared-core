@@ -32,7 +32,7 @@ use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_stats::DynamicStats;
 use bd_client_stats_store::{Counter, Histogram, Scope};
-use bd_log_primitives::LogRef;
+use bd_log_primitives::{Log, LogRef};
 pub use bd_matcher::FieldProvider;
 use bd_runtime::runtime::workflows::{
   PersistenceWriteIntervalFlag,
@@ -598,7 +598,7 @@ impl WorkflowsEngine {
         self.state.session_id,
         log.session_id
       );
-      // We are lazy and don't say that state needs persistance.
+      // We are lazy and don't say that state needs persistence.
       // That may result in new session ID not being stored to disk
       // (if the app is killed before the next time we store state)
       // which means that the next time SDK launches we start with empty
@@ -622,10 +622,12 @@ impl WorkflowsEngine {
         triggered_flushes_buffer_ids: BTreeSet::new(),
         triggered_flush_buffers_action_ids: BTreeSet::new(),
         capture_screenshot: false,
+        logs_to_inject: vec![],
       };
     }
 
     let mut actions: Vec<TriggeredAction<'_>> = vec![];
+    let mut logs_to_inject: Vec<Log> = vec![];
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let was_in_initial_state = workflow.is_in_initial_state();
       let result = workflow.process_log(
@@ -683,7 +685,9 @@ impl WorkflowsEngine {
         self.needs_state_persistence = true;
       }
 
-      actions.extend(result.triggered_actions());
+      let (triggered_actions, capture_screenshot_actions) = result.into_parts();
+      actions.extend(triggered_actions);
+      logs_to_inject.extend(capture_screenshot_actions);
     }
 
     self
@@ -793,6 +797,7 @@ impl WorkflowsEngine {
       triggered_flushes_buffer_ids: flush_buffers_actions_processing_result
         .triggered_flushes_buffer_ids,
       capture_screenshot: !capture_screenshot_actions.is_empty(),
+      logs_to_inject,
     }
   }
 
@@ -907,6 +912,9 @@ pub struct WorkflowsEngineResult<'a> {
 
   // Whether a screenshot should be taken in response to processing the log.
   pub capture_screenshot: bool,
+
+  // Logs to be injected back into the workflow engine after field attachment and other processing.
+  pub logs_to_inject: Vec<Log>,
 }
 
 //
@@ -976,7 +984,7 @@ impl StateStore {
     );
 
     Self {
-      state_path: sdk_directory.join("workflows_state_snapshot.5.bin"),
+      state_path: sdk_directory.join("workflows_state_snapshot.6.bin"),
       last_persisted: None,
       stats,
       persistence_write_interval_flag: runtime.register_watch().unwrap(),

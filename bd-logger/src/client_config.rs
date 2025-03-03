@@ -30,8 +30,6 @@ use bd_proto::protos::client::api::{
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
-use bd_runtime::runtime::workflows::WorkflowsEnabledFlag;
-use bd_runtime::runtime::{BoolWatch, ConfigLoader};
 use bd_workflows::config::WorkflowsConfiguration;
 use itertools::Itertools;
 use protobuf::{Chars, Message};
@@ -217,7 +215,6 @@ impl<A: ApplyConfig + Send + Sync> bd_api::ConfigurationUpdate for Config<A> {
 pub struct LoggerUpdate {
   buffer_manager: Arc<bd_buffer::Manager>,
   config_update_tx: Sender<ConfigUpdate>,
-  workflows_enabled_flag: BoolWatch<WorkflowsEnabledFlag>,
   stream_config_parse_failure: Counter,
   filter_config_parse_failure: Counter,
 }
@@ -226,13 +223,11 @@ impl LoggerUpdate {
   pub(crate) fn new(
     buffer_manager: Arc<bd_buffer::Manager>,
     config_update_tx: Sender<ConfigUpdate>,
-    runtime: &Arc<ConfigLoader>,
     scope: &Scope,
   ) -> Self {
     Self {
       buffer_manager,
       config_update_tx,
-      workflows_enabled_flag: runtime.register_watch().unwrap(),
       stream_config_parse_failure: scope.counter("stream_config_parse_failure"),
       filter_config_parse_failure: scope.counter("filter_config_parse_failure"),
     }
@@ -259,14 +254,7 @@ impl ApplyConfig for LoggerUpdate {
       !bdtail.active_streams.is_empty()
     );
 
-    // It's in here so that we do not even attempt to parse workflow protos if workflows
-    // are disabled.
-    // TODO(Augustyniak): Consider removing this feature flag once workflows APIs are stable.
-    let workflows_configuration = if *self.workflows_enabled_flag.read() {
-      WorkflowsConfiguration::new(&workflows)
-    } else {
-      WorkflowsConfiguration::default()
-    };
+    let workflows_configuration = WorkflowsConfiguration::new(workflows);
 
     let (filter_chain, filter_config_parse_failure_count) = FilterChain::new(filters);
     self

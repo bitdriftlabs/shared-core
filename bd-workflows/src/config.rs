@@ -10,6 +10,7 @@ use anyhow::anyhow;
 use bd_log_matcher::matcher::Tree;
 use bd_matcher::FieldProvider;
 use bd_proto::protos::workflow::workflow;
+use bd_proto::protos::workflow::workflow::workflow::action::ActionGenerateLog;
 use bd_proto::protos::workflow::workflow::workflow::transition_extension::Extension_type;
 use bd_proto::protos::workflow::workflow::workflow::{
   Execution as ExecutionProto,
@@ -53,10 +54,10 @@ pub struct WorkflowsConfiguration {
 }
 
 impl WorkflowsConfiguration {
-  pub fn new(workflows_configuration: &WorkflowsConfigurationProto) -> Self {
+  pub fn new(workflows_configuration: WorkflowsConfigurationProto) -> Self {
     let workflows = workflows_configuration
       .workflows
-      .iter()
+      .into_iter()
       .filter_map(|config| Config::new(config).ok())
       .collect();
 
@@ -76,7 +77,7 @@ impl WorkflowsConfiguration {
 //
 
 #[cfg_attr(test, derive(Clone))]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct Config {
   id: String,
   states: Vec<State>,
@@ -86,7 +87,7 @@ pub struct Config {
 }
 
 impl Config {
-  pub fn new(config: &WorkflowConfigProto) -> anyhow::Result<Self> {
+  pub fn new(config: WorkflowConfigProto) -> anyhow::Result<Self> {
     if config.states.is_empty() {
       return Err(anyhow!(
         "invalid workflow states configuration: states list is empty"
@@ -116,7 +117,7 @@ impl Config {
 
     let states = config
       .states
-      .iter()
+      .into_iter()
       .map(|s| State::try_from_proto(s, &state_index_by_id, &sankey_values_extraction_limit_by_id))
       .collect::<anyhow::Result<Vec<_>>>()?;
 
@@ -195,12 +196,12 @@ impl Config {
     &self.states[traversal.state_index].transitions[transition_index].actions
   }
 
-  pub(crate) fn sankey_extractions(
+  pub(crate) fn extractions(
     &self,
     traversal: &Traversal,
     transition_index: usize,
-  ) -> &[SankeyExtraction] {
-    &self.states[traversal.state_index].transitions[transition_index].sankey_extractions
+  ) -> &TransitionExtractions {
+    &self.states[traversal.state_index].transitions[transition_index].extractions
   }
 
   pub(crate) fn next_state_index_for_traversal(
@@ -212,7 +213,7 @@ impl Config {
   }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct State {
   id: StateID,
   transitions: Vec<Transition>,
@@ -220,7 +221,7 @@ pub(crate) struct State {
 
 impl State {
   fn try_from_proto(
-    state: &StateProto,
+    state: StateProto,
     state_index_by_id: &HashMap<StateID, usize>,
     sankey_values_extraction_limit_by_id: &HashMap<String, u32>,
   ) -> anyhow::Result<Self> {
@@ -228,7 +229,7 @@ impl State {
       id: state.id.clone(),
       transitions: state
         .transitions
-        .iter()
+        .into_iter()
         .map(|transition| {
           if !state_index_by_id.contains_key(&transition.target_state_id) {
             return Err(anyhow!(
@@ -236,9 +237,10 @@ impl State {
             ));
           }
 
+          let target_state_index = state_index_by_id[&transition.target_state_id];
           Transition::new(
             transition,
-            state_index_by_id[&transition.target_state_id],
+            target_state_index,
             sankey_values_extraction_limit_by_id,
           )
         })
@@ -315,20 +317,41 @@ impl SankeyExtraction {
 }
 
 //
-// Transition
+// FieldExtractionConfig
 //
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct FieldExtractionConfig {
+  pub(crate) field_name: String,
+  pub(crate) id: String,
+}
+
+//
+// TransitionExtractions
+//
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TransitionExtractions {
+  pub(crate) sankey_extractions: Vec<SankeyExtraction>,
+  pub(crate) timestamp_extraction_id: Option<String>,
+  pub(crate) field_extractions: Vec<FieldExtractionConfig>,
+}
+
+//
+// Transition
+//
+
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Transition {
   target_state_index: usize,
   rule: Predicate,
   actions: Vec<Action>,
-  sankey_extractions: Vec<SankeyExtraction>,
+  extractions: TransitionExtractions,
 }
 
 impl Transition {
   fn new(
-    transition: &TransitionProto,
+    transition: TransitionProto,
     target_state_index: usize,
     sankey_values_extraction_limit_by_id: &HashMap<String, u32>,
   ) -> anyhow::Result<Self> {
@@ -345,56 +368,65 @@ impl Transition {
       Rule_type::RuleLogMatch(rule) => {
         Predicate::LogMatch(Tree::new(&rule.log_matcher)?, rule.count)
       },
-      Rule_type::RuleTimeout(rule) => {
-        Predicate::TimeoutMatch(Duration::from_millis(rule.duration_ms))
-      },
     };
 
     let actions = transition
       .actions
-      .iter()
+      .into_iter()
       .map(Action::try_from_proto)
       .collect::<anyhow::Result<Vec<_>>>()?;
 
-    let sankey_extractions = transition
-      .extensions
-      .iter()
-      .map(|extension| {
-        let Some(extension_type) = &extension.extension_type else {
-          return Ok(None);
-        };
+    let mut sankey_extractions = Vec::new();
+    let mut field_extractions = Vec::new();
+    let mut timestamp_extraction_id = None;
+    for extension in &transition.extensions {
+      let Some(extension_type) = &extension.extension_type else {
+        continue;
+      };
 
-        match extension_type {
-          Extension_type::SankeyDiagramValueExtraction(extension) => {
-            let Some(sankey_limit) =
-              sankey_values_extraction_limit_by_id.get(&extension.sankey_diagram_id)
-            else {
-              anyhow::bail!(
-                "invalid transition configuration: missing sankey limit for sankey id {:?}",
-                extension.sankey_diagram_id
-              );
-            };
+      match extension_type {
+        Extension_type::SankeyDiagramValueExtraction(extension) => {
+          let Some(sankey_limit) =
+            sankey_values_extraction_limit_by_id.get(&extension.sankey_diagram_id)
+          else {
+            anyhow::bail!(
+              "invalid transition configuration: missing sankey limit for sankey id {:?}",
+              extension.sankey_diagram_id
+            );
+          };
 
-            let Ok(limit) = <u32 as TryInto<usize>>::try_into(*sankey_limit) else {
-              anyhow::bail!("sankey limit: conversion to usize failed");
-            };
+          let Ok(limit) = <u32 as TryInto<usize>>::try_into(*sankey_limit) else {
+            anyhow::bail!("sankey limit: conversion to usize failed");
+          };
 
-            Ok(Some(SankeyExtraction::new(extension, limit)))
-          },
-        }
-      })
-      .filter_map(|result| match result {
-        Ok(Some(value)) => Some(value),
-        Err(err) => Some(Err(err)),
-        _ => None,
-      })
-      .collect::<anyhow::Result<_>>()?;
+          sankey_extractions.push(SankeyExtraction::new(extension, limit)?);
+        },
+        Extension_type::SaveField(save_field) => {
+          field_extractions.push(FieldExtractionConfig {
+            field_name: save_field.field_name.clone(),
+            id: save_field.id.clone(),
+          });
+        },
+        Extension_type::SaveTimestamp(save_timestamp) => {
+          // There is no reason to have multiple timestamp extractions in a single transition.
+          if timestamp_extraction_id.is_some() {
+            anyhow::bail!("invalid transition configuration: multiple timestamp extractions");
+          }
+
+          timestamp_extraction_id = Some(save_timestamp.id.clone());
+        },
+      }
+    }
 
     Ok(Self {
       target_state_index,
       rule,
       actions,
-      sankey_extractions,
+      extractions: TransitionExtractions {
+        sankey_extractions,
+        timestamp_extraction_id,
+        field_extractions,
+      },
     })
   }
 
@@ -411,42 +443,37 @@ impl Transition {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Predicate {
   LogMatch(Tree, u32),
-  TimeoutMatch(Duration), // TODO(murki): implement
 }
 
 //
 // Action
 //
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 /// The action to perform.
 pub enum Action {
   FlushBuffers(ActionFlushBuffers),
   EmitMetric(ActionEmitMetric),
   EmitSankey(ActionEmitSankey),
   TakeScreenshot(ActionTakeScreenshot),
+  GenerateLog(ActionGenerateLog),
 }
 
 impl Action {
-  fn try_from_proto(proto: &ActionProto) -> anyhow::Result<Self> {
+  fn try_from_proto(proto: ActionProto) -> anyhow::Result<Self> {
     match proto
       .action_type
-      .as_ref()
       .ok_or_else(|| anyhow!("invalid action configuration: missing action type"))?
     {
       Action_type::ActionFlushBuffers(action) => {
-        let streaming = match action.streaming.clone().into_option() {
+        let streaming = match action.streaming.into_option() {
           Some(streaming_proto) => Some(Streaming::new(streaming_proto)?),
           None => None,
         };
 
         Ok(Self::FlushBuffers(ActionFlushBuffers {
-          id: action.id.clone(),
-          buffer_ids: action
-            .buffer_ids
-            .clone()
-            .into_iter()
-            .collect::<BTreeSet<_>>(),
+          id: action.id,
+          buffer_ids: action.buffer_ids.into_iter().collect::<BTreeSet<_>>(),
           streaming,
         }))
       },
@@ -457,6 +484,7 @@ impl Action {
       Action_type::ActionTakeScreenshot(action) => Ok(Self::TakeScreenshot(
         ActionTakeScreenshot::try_from_proto(action)?,
       )),
+      Action_type::ActionGenerateLog(action) => Ok(Self::GenerateLog(action)),
     }
   }
 }
@@ -548,26 +576,24 @@ pub struct ActionEmitMetric {
 impl ActionEmitMetric {
   /// Attempts to create a `Metric` from the protobuf description, failing if the
   /// provided configuration contains unknown oneof values.
-  fn new(proto: &ActionEmitMetricProto) -> anyhow::Result<Self> {
+  fn new(proto: ActionEmitMetricProto) -> anyhow::Result<Self> {
     let tags: BTreeMap<String, TagValue> = proto
       .tags
-      .iter()
+      .into_iter()
       .map(|t| {
-        let value = match &t.tag_type {
-          Some(Tag_type::FixedValue(value)) => TagValue::Fixed(value.clone()),
-          Some(Tag_type::FieldExtracted(extracted)) => {
-            TagValue::Extract(extracted.field_name.to_string())
-          },
+        let value = match t.tag_type {
+          Some(Tag_type::FixedValue(value)) => TagValue::Fixed(value),
+          Some(Tag_type::FieldExtracted(extracted)) => TagValue::Extract(extracted.field_name),
           _ => {
             anyhow::bail!("invalid action emit metric configuration: unknown tag_type")
           },
         };
 
-        Ok((t.name.clone(), value))
+        Ok((t.name, value))
       })
       .collect::<anyhow::Result<BTreeMap<String, TagValue>>>()?;
 
-    let metric_type = match &proto.metric_type {
+    let metric_type = match proto.metric_type {
       Some(proto) => match proto {
         workflow::workflow::action::action_emit_metric::Metric_type::Counter(_) => {
           MetricType::Counter
@@ -581,17 +607,17 @@ impl ActionEmitMetric {
       },
     };
 
-    match &proto.value_extractor_type {
+    match proto.value_extractor_type {
       Some(Value_extractor_type::Fixed(value)) => Ok(Self {
         id: proto.id.clone(),
         tags,
-        increment: ValueIncrement::Fixed(u64::from(*value)),
+        increment: ValueIncrement::Fixed(u64::from(value)),
         metric_type,
       }),
       Some(Value_extractor_type::FieldExtracted(extracted)) => Ok(Self {
-        id: proto.id.clone(),
+        id: proto.id,
         tags,
-        increment: ValueIncrement::Extract(extracted.field_name.to_string()),
+        increment: ValueIncrement::Extract(extracted.field_name),
         metric_type,
       }),
       _ => Err(anyhow!(
@@ -613,25 +639,23 @@ pub struct ActionEmitSankey {
 }
 
 impl ActionEmitSankey {
-  fn try_from_proto(proto: &ActionEmitSankeyDiagramProto) -> anyhow::Result<Self> {
+  fn try_from_proto(proto: ActionEmitSankeyDiagramProto) -> anyhow::Result<Self> {
     Ok(Self {
-      id: proto.id.to_string(),
+      id: proto.id,
       limit: proto.limit,
       tags: proto
         .tags
-        .iter()
+        .into_iter()
         .map(|tag| {
-          let value = match &tag.tag_type {
-            Some(Tag_type::FixedValue(value)) => TagValue::Fixed(value.clone()),
-            Some(Tag_type::FieldExtracted(extracted)) => {
-              TagValue::Extract(extracted.field_name.to_string())
-            },
+          let value = match tag.tag_type {
+            Some(Tag_type::FixedValue(value)) => TagValue::Fixed(value),
+            Some(Tag_type::FieldExtracted(extracted)) => TagValue::Extract(extracted.field_name),
             None => {
               anyhow::bail!("invalid action emit sankey diagram configuration: unknown tag_type")
             },
           };
 
-          Ok((tag.name.to_string(), value))
+          Ok((tag.name, value))
         })
         .collect::<anyhow::Result<BTreeMap<_, _>>>()?,
     })
@@ -663,10 +687,8 @@ pub struct ActionTakeScreenshot {
 }
 
 impl ActionTakeScreenshot {
-  fn try_from_proto(proto: &ActionTakeScreenshotProto) -> anyhow::Result<Self> {
-    Ok(Self {
-      id: proto.id.to_string(),
-    })
+  fn try_from_proto(proto: ActionTakeScreenshotProto) -> anyhow::Result<Self> {
+    Ok(Self { id: proto.id })
   }
 }
 

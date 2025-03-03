@@ -19,12 +19,15 @@ use crate::config::{
   Execution,
   Predicate,
 };
-use bd_log_primitives::LogRef;
+use crate::generate_log::generate_log_action;
+use bd_log_primitives::{FieldsRef, Log, LogRef};
+use bd_matcher::FieldProvider;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::collections::BTreeMap;
 use std::time::SystemTime;
+use time::OffsetDateTime;
 
 //
 // Workflow
@@ -102,9 +105,9 @@ impl Workflow {
     // starting at `index` in any given iteration of the loop.
     for index in (0 .. self.runs.len()).rev() {
       let run = &mut self.runs[index];
-      let run_result = run.process_log(config, log);
+      let mut run_result = run.process_log(config, log);
 
-      result.incorporate_run_result(&run_result);
+      result.incorporate_run_result(&mut run_result);
 
       *current_traversals_count += run_result.created_traversals_count;
       // TODO(Augustyniak): a 'standard' subtracting operation should be sufficient here for
@@ -314,7 +317,7 @@ impl Workflow {
 
   /// Whether a given workflow has no runs or all of its runs are in an initial state.
   /// While in theory the implementation of the method needs to iterate over the list of all
-  /// workflow's run in practise it's able to tell whether a workflow is an initial state
+  /// workflow's run in practice it's able to tell whether a workflow is an initial state
   /// after checking at most two of its workflow runs.
   /// That's because:
   /// * if there are no runs workflow is an initial state.
@@ -379,25 +382,27 @@ impl Workflow {
 /// of processing a log by a given workflow and stats-like measurements
 /// that describe what internal operations workflow performed
 /// when it processed a given log.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq)]
 pub(crate) struct WorkflowResult<'a> {
   triggered_actions: Vec<TriggeredAction<'a>>,
+  logs_to_inject: Vec<Log>,
   stats: WorkflowResultStats,
 }
 
 impl<'a> WorkflowResult<'a> {
-  pub fn triggered_actions(self) -> Vec<TriggeredAction<'a>> {
-    self.triggered_actions
+  pub fn into_parts(self) -> (Vec<TriggeredAction<'a>>, Vec<Log>) {
+    (self.triggered_actions, self.logs_to_inject)
   }
 
   pub const fn stats(&self) -> &WorkflowResultStats {
     &self.stats
   }
 
-  fn incorporate_run_result(&mut self, run_result: &RunResult<'a>) {
+  fn incorporate_run_result(&mut self, run_result: &mut RunResult<'a>) {
     self
       .triggered_actions
-      .extend_from_slice(&run_result.triggered_actions);
+      .append(&mut run_result.triggered_actions);
+    self.logs_to_inject.append(&mut run_result.logs_to_inject);
     self.stats.created_traversals_count += run_result.created_traversals_count;
     self.stats.advanced_traversals_count += run_result.advanced_traversals_count;
     self.stats.completed_traversals_count += run_result.completed_traversals_count;
@@ -548,8 +553,8 @@ pub(crate) struct Run {
 
 impl Run {
   pub(crate) fn new(config: &Config) -> Self {
-    let traversals =
-      Traversal::new(config, 0, None).map_or_else(Vec::new, |traversal| vec![traversal]);
+    let traversals = Traversal::new(config, 0, TraversalExtractions::default())
+      .map_or_else(Vec::new, |traversal| vec![traversal]);
 
     Self {
       traversals,
@@ -567,9 +572,8 @@ impl Run {
     // Optimize for the case when no traversal is advanced as it's
     // the most common situation.
 
-    // TODO(Augustyniak): Check for duration limit in here.
-
     let mut run_triggered_actions = Vec::<TriggeredAction<'_>>::new();
+    let mut run_logs_to_inject = Vec::<Log>::new();
 
     let mut created_traversals_count = 0;
     let mut advanced_traversals_count = 0;
@@ -583,6 +587,7 @@ impl Run {
       let mut traversal_result = traversal.process_log(config, log);
 
       run_triggered_actions.append(&mut traversal_result.triggered_actions);
+      run_logs_to_inject.append(&mut traversal_result.log_to_inject);
 
       // Increase the counter of logs matched by a given workflow run.
       self.matched_logs_count += traversal_result.matched_logs_count;
@@ -601,6 +606,7 @@ impl Run {
             advanced_traversals_count: 0,
             completed_traversals_count: 0,
             matched_logs_count: run_matched_logs_count,
+            logs_to_inject: vec![],
           };
         }
       }
@@ -625,6 +631,7 @@ impl Run {
                   advanced_traversals_count: 0,
                   completed_traversals_count: 0,
                   matched_logs_count: run_matched_logs_count,
+                  logs_to_inject: vec![],
                 };
               }
             },
@@ -695,6 +702,7 @@ impl Run {
       advanced_traversals_count,
       completed_traversals_count,
       matched_logs_count: run_matched_logs_count,
+      logs_to_inject: run_logs_to_inject,
     }
   }
 
@@ -768,6 +776,8 @@ pub(crate) struct RunResult<'a> {
   completed_traversals_count: u32,
   /// The number of matched logs. A single log can be matched multiple times
   matched_logs_count: u32,
+  // Logs to be injected back into the workflow engine after field attachment and other processing.
+  logs_to_inject: Vec<Log>,
 }
 
 impl RunResult<'_> {
@@ -775,6 +785,21 @@ impl RunResult<'_> {
   const fn did_make_progress(&self) -> bool {
     self.matched_logs_count > 0
   }
+}
+
+//
+// TraversalExtractions
+//
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub(crate) struct TraversalExtractions {
+  /// States of Sankey diagrams. It's a `None` when traversal is initialized and is set
+  /// to `Some` after the first value for a Sankey and a given traversal is extracted.
+  pub(crate) sankey_states: Option<BTreeMap<String, SankeyState>>,
+  /// Snapped timestamps, by extraction ID.
+  pub(crate) timestamps: Option<BTreeMap<String, OffsetDateTime>>,
+  /// Snapped field values, by extraction ID.
+  pub(crate) fields: Option<BTreeMap<String, String>>,
 }
 
 //
@@ -793,9 +818,8 @@ pub(crate) struct Traversal {
   /// The number of logs matched by traversal's transitions.
   /// Each element in an array corresponds to one transition.
   pub(crate) matched_logs_counts: Vec<u32>,
-  /// States of Sankey diagrams. It's a `None` when traversal is initialized and is set
-  /// to `Some` after the first value for a Sankey and a given traversal is extracted.
-  pub(crate) sankey_states: Option<BTreeMap<String, SankeyState>>,
+  /// Extractions folded across all traversals in a path.
+  pub(crate) extractions: TraversalExtractions,
 }
 
 impl Traversal {
@@ -805,7 +829,7 @@ impl Traversal {
   pub fn new(
     config: &Config,
     state_index: usize,
-    sankey_states: Option<BTreeMap<String, SankeyState>>,
+    extractions: TraversalExtractions,
   ) -> Option<Self> {
     if config.states()[state_index].transitions().is_empty() {
       None
@@ -815,7 +839,7 @@ impl Traversal {
         // The number of logs matched by a given traversal.
         // Start at 0 for a new traversal.
         matched_logs_counts: vec![0; config.states()[state_index].transitions().len()],
-        sankey_states,
+        extractions,
       })
     }
   }
@@ -841,18 +865,20 @@ impl Traversal {
 
             if self.matched_logs_counts[index] == *count {
               result.followed_transitions_count += 1;
-              // Update Sankey states.
-              let mut updated_sankey_states = self.sankey_states(config, index, log);
+              // Update extractions.
+              let mut updated_extractions = self.do_extractions(config, index, log);
 
-              // Collect triggered actions.
+              // Collect triggered actions and injected logs.
               let actions = config.actions_for_traversal(self, index);
-              let triggered_actions = Self::triggered_actions(actions, &mut updated_sankey_states);
+              let (triggered_actions, logs_to_inject) =
+                Self::triggered_actions(actions, &mut updated_extractions, log.fields);
 
               result.triggered_actions.extend(triggered_actions);
+              result.log_to_inject.extend(logs_to_inject);
 
               // Create next traversal.
               let next_state_index = config.next_state_index_for_traversal(self, index);
-              if let Some(traversal) = Self::new(config, next_state_index, updated_sankey_states) {
+              if let Some(traversal) = Self::new(config, next_state_index, updated_extractions) {
                 result.output_traversals.push(traversal);
               }
 
@@ -873,29 +899,27 @@ impl Traversal {
             }
           }
         },
-        Predicate::TimeoutMatch(_duration_ms) => {
-          // TODO(murki): Implement timeout (need to propagate timestamp)
-        },
       }
     }
 
     result
   }
 
-  fn sankey_states(
-    &self,
+  fn do_extractions(
+    &mut self,
     config: &Config,
     index: usize,
     log: &LogRef<'_>,
-  ) -> Option<BTreeMap<String, SankeyState>> {
-    let mut sankey_states = self.sankey_states.clone();
-    let extractions = config.sankey_extractions(self, index);
-    for extraction in extractions {
+  ) -> TraversalExtractions {
+    let extractions = config.extractions(self, index);
+    for extraction in &extractions.sankey_extractions {
       let Some(extracted_value) = extraction.value.extract_value(log) else {
         continue;
       };
 
-      sankey_states
+      self
+        .extractions
+        .sankey_states
         .get_or_insert_with(BTreeMap::new)
         .entry(extraction.sankey_id.clone())
         .or_default()
@@ -906,14 +930,35 @@ impl Traversal {
         );
     }
 
-    sankey_states
+    if let Some(timestamp_extraction_id) = &extractions.timestamp_extraction_id {
+      let timestamp = log.occurred_at;
+      self
+        .extractions
+        .timestamps
+        .get_or_insert_with(BTreeMap::new)
+        .insert(timestamp_extraction_id.clone(), timestamp);
+    }
+
+    for extraction in &extractions.field_extractions {
+      if let Some(value) = log.field_value(&extraction.field_name) {
+        self
+          .extractions
+          .fields
+          .get_or_insert_with(BTreeMap::new)
+          .insert(extraction.id.clone(), value.to_string());
+      }
+    }
+
+    std::mem::take(&mut self.extractions)
   }
 
   fn triggered_actions<'a>(
     actions: &'a [Action],
-    sankey_states: &mut Option<BTreeMap<String, SankeyState>>,
-  ) -> Vec<TriggeredAction<'a>> {
+    extractions: &mut TraversalExtractions,
+    current_log_fields: &FieldsRef<'_>,
+  ) -> (Vec<TriggeredAction<'a>>, Vec<Log>) {
     let mut triggered_actions = vec![];
+    let mut logs_to_inject = vec![];
     for action in actions {
       match action {
         Action::FlushBuffers(action) => {
@@ -923,8 +968,11 @@ impl Traversal {
           triggered_actions.push(TriggeredAction::EmitMetric(action));
         },
         Action::EmitSankey(action) => {
-          debug_assert!(sankey_states.is_some(), "sankey_states should be present");
-          let Some(sankey_states) = sankey_states else {
+          debug_assert!(
+            extractions.sankey_states.is_some(),
+            "sankey_states should be present"
+          );
+          let Some(sankey_states) = &mut extractions.sankey_states else {
             continue;
           };
 
@@ -945,9 +993,19 @@ impl Traversal {
         Action::TakeScreenshot(action) => {
           triggered_actions.push(TriggeredAction::TakeScreenshot(action));
         },
+        Action::GenerateLog(action) => {
+          if let Some(log) = generate_log_action(
+            extractions,
+            action,
+            current_log_fields,
+            OffsetDateTime::now_utc(),
+          ) {
+            logs_to_inject.push(log);
+          }
+        },
       }
     }
-    triggered_actions
+    (triggered_actions, logs_to_inject)
   }
 
   // Whether a given traversal is an initial state.
@@ -960,7 +1018,7 @@ impl Traversal {
 // TriggeredAction
 //
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 /// The action to perform.
 pub(crate) enum TriggeredAction<'a> {
   FlushBuffers(&'a ActionFlushBuffers),
@@ -996,6 +1054,8 @@ struct TraversalResult<'a> {
   matched_logs_count: u32,
   // The number of transitions that were followed in response to processing a log.
   followed_transitions_count: u32,
+  // Logs to be injected back into the workflow engine after field attachment and other processing.
+  log_to_inject: Vec<Log>,
 }
 
 impl TraversalResult<'_> {

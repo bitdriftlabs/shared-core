@@ -59,7 +59,7 @@ use tokio::time::timeout;
 macro_rules! workflow {
   ($($x:tt)*) => {
     $crate::config::Config::new(
-      &bd_test_helpers::workflow::macros::workflow_proto!($($x)*)
+      bd_test_helpers::workflow::macros::workflow_proto!($($x)*)
     ).unwrap()
   }
 }
@@ -1641,6 +1641,7 @@ async fn engine_processing_log() {
       triggered_flush_buffers_action_ids: BTreeSet::from(["foo_action_id"]),
       triggered_flushes_buffer_ids: BTreeSet::from(["foo_buffer_id".into()]),
       capture_screenshot: false,
+      logs_to_inject: vec![],
     },
     result
   );
@@ -1905,6 +1906,7 @@ async fn log_without_destination() {
       triggered_flush_buffers_action_ids: BTreeSet::from(["action"]),
       triggered_flushes_buffer_ids: BTreeSet::from(["trigger_buffer_id".into()]),
       capture_screenshot: false,
+      logs_to_inject: vec![],
     },
     result
   );
