@@ -10,13 +10,14 @@ use assert_matches::assert_matches;
 use bd_log_primitives::{AnnotatedLogField, LogField, LogFields, StringOrBytes};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_test_helpers::metadata_provider::LogMetadata;
+use parking_lot::Mutex;
 use std::sync::Arc;
 
 
 #[test]
 fn collector_attaches_provider_fields_as_matching_fields() {
   let metadata = LogMetadata {
-    timestamp: time::OffsetDateTime::now_utc(),
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
     fields: vec![AnnotatedLogField::new_ootb(
       "key".into(),
       "provider_value".into(),
@@ -59,7 +60,7 @@ fn collector_attaches_provider_fields_as_matching_fields() {
 #[test]
 fn collector_fields_hierarchy() {
   let metadata = LogMetadata {
-    timestamp: time::OffsetDateTime::now_utc(),
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
     fields: vec![
       AnnotatedLogField::new_custom(
         "custom_provider_key".into(),
@@ -160,7 +161,7 @@ fn collector_fields_hierarchy() {
 #[test]
 fn collector_does_not_accept_reserved_fields() {
   let metadata = LogMetadata {
-    timestamp: time::OffsetDateTime::now_utc(),
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
     fields: vec![
       AnnotatedLogField::new_custom(
         "_custom_provider_key".into(),
@@ -199,7 +200,7 @@ fn collector_does_not_accept_reserved_fields() {
 #[test]
 fn collector_fields_management() {
   let metadata = LogMetadata {
-    timestamp: time::OffsetDateTime::now_utc(),
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
     fields: vec![],
   };
 
@@ -230,7 +231,7 @@ fn collector_fields_management() {
 #[test]
 fn provider_fields_earlier_in_the_list_take_precedence() {
   let metadata = LogMetadata {
-    timestamp: time::OffsetDateTime::now_utc(),
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
     fields: vec![
       AnnotatedLogField::new_custom("key_1".into(), "value_1".into()),
       AnnotatedLogField::new_custom("key_1".into(), "to_be_overridden_value_1".into()),
@@ -264,7 +265,7 @@ fn provider_fields_earlier_in_the_list_take_precedence() {
 #[test]
 fn passed_fields_earlier_in_the_list_take_precedence() {
   let metadata = LogMetadata {
-    timestamp: time::OffsetDateTime::now_utc(),
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
     fields: vec![
       AnnotatedLogField::new_custom("key_1".into(), "value_1".into()),
       AnnotatedLogField::new_ootb("key_2".into(), "value_2".into()),

@@ -18,11 +18,13 @@ use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::PreConfigBuffer;
 use crate::{internal_report, network};
+use anyhow::anyhow;
 use bd_buffer::BuffersWithAck;
 use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
-use bd_log_metadata::{AnnotatedLogFields, MetadataProvider};
+use bd_log_metadata::{AnnotatedLogFields, LogFieldKind, MetadataProvider};
 use bd_log_primitives::{
   log_level,
+  AnnotatedLogField,
   Log,
   LogField,
   LogFieldValue,
@@ -37,6 +39,7 @@ use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use itertools::Itertools;
+use std::collections::VecDeque;
 use std::mem::size_of_val;
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -135,7 +138,6 @@ impl MemorySized for bd_log_primitives::Log {
       + self.session_id.len()
   }
 }
-
 
 //
 // AsyncLogBuffer
@@ -355,7 +357,44 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     Ok(())
   }
 
-  async fn process_log(&mut self, log: LogLine) -> anyhow::Result<()> {
+  async fn process_all_logs(&mut self, log: LogLine) -> anyhow::Result<()> {
+    let mut logs = VecDeque::new();
+    logs.push_back(log);
+    while let Some(log) = logs.pop_front() {
+      let new_logs = self.process_log(log).await?;
+      logs.extend(new_logs.into_iter().map(|log| {
+        LogLine {
+          log_level: log.log_level,
+          log_type: log.log_type,
+          message: log.message,
+          fields: log
+            .fields
+            .into_iter()
+            .map(|field| AnnotatedLogField {
+              field,
+              kind: LogFieldKind::Custom,
+            })
+            .collect(),
+          matching_fields: log
+            .matching_fields
+            .into_iter()
+            .map(|field| AnnotatedLogField {
+              field,
+              kind: LogFieldKind::Custom,
+            })
+            .collect(),
+          // TODO(mattklein123): Technically we should probably propagate overrides to injected
+          // logs as well as cover completion under any generated logs, but this gets complicated
+          // and is an extreme edge case so we ignore for now until proven it's an issue.
+          attributes_overrides: None,
+          log_processing_completed_tx: None,
+        }
+      }));
+    }
+    Ok(())
+  }
+
+  async fn process_log(&mut self, log: LogLine) -> anyhow::Result<Vec<Log>> {
     // Prevent re-entrancy when we are evaluating the log metadata.
     let result = with_thread_local_logger_guard(|| {
       self
@@ -367,8 +406,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       Ok(metadata) => {
         let (session_id, timestamp, extra_fields) =
           if let Some(overrides) = log.attributes_overrides {
-            if Some(overrides.expected_previous_process_session_id.clone())
-              == self.session_strategy.previous_process_session_id()
+            if Some(&overrides.expected_previous_process_session_id)
+              == self.session_strategy.previous_process_session_id().as_ref()
             {
               // Session ID override hint provided and matches our expectations. Emit log with
               // overrides applied.
@@ -428,7 +467,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 .await;
 
               // We drop the log as the provided override attributes do not match our expectations.
-              return Ok(());
+              return Ok(vec![]);
             }
           } else {
             (self.session_strategy.session_id(), metadata.timestamp, None)
@@ -470,8 +509,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     &mut self,
     log: Log,
     log_processing_completed_tx: Option<oneshot::Sender<()>>,
-  ) -> anyhow::Result<()> {
-    match &mut self.logging_state {
+  ) -> anyhow::Result<Vec<Log>> {
+    let logs_to_inject = match &mut self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
         let result = uninitialized_logging_context
           .pre_config_log_buffer
@@ -490,23 +529,21 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             anyhow::bail!("failed to send log processing completion message: {e:?}");
           }
         }
-      },
-      LoggingState::Initialized(initialized_logging_context) => {
-        if let Err(e) = self
-          .replayer
-          .replay_log(
-            log,
-            log_processing_completed_tx,
-            &mut initialized_logging_context.processing_pipeline,
-          )
-          .await
-        {
-          anyhow::bail!("failed to replay async log buffer log: {e}");
-        }
-      },
-    }
 
-    Ok(())
+        vec![]
+      },
+      LoggingState::Initialized(initialized_logging_context) => self
+        .replayer
+        .replay_log(
+          log,
+          log_processing_completed_tx,
+          &mut initialized_logging_context.processing_pipeline,
+        )
+        .await
+        .map_err(|e| anyhow!("failed to replay async log buffer log: {e}"))?,
+    };
+
+    Ok(logs_to_inject)
   }
 
   async fn update(mut self, config: ConfigUpdate) -> (Self, Option<PreConfigBuffer<Log>>) {
@@ -630,8 +667,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 );
               }
 
-              if let Err(e) = self.process_log(log).await {
-                log::debug!("failed to process log: {e}");
+              if let Err(e) = self.process_all_logs(log).await {
+                log::debug!("failed to process all logs: {e}");
               }
             },
             AsyncLogBufferMessage::AddLogField(field) => {
@@ -702,6 +739,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     session_id: String,
     occurred_at: time::OffsetDateTime,
   ) -> anyhow::Result<()> {
+    // TODO(mattklein123): Should we support injected logs for internal logs?
     self
       .write_log(
         Log {
@@ -715,6 +753,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         },
         None,
       )
-      .await
+      .await?;
+
+    Ok(())
   }
 }

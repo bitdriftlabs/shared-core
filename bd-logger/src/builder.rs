@@ -16,16 +16,36 @@ use crate::InitParams;
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
+use bd_client_stats::stats::{RuntimeWatchTicker, Ticker};
+use bd_client_stats::FlushTrigger;
 use bd_client_stats_store::{Collector, Scope};
 use bd_internal_logging::NoopLogger;
 use bd_log_primitives::{log_level, Log, LogType};
-use bd_runtime::runtime;
+use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
+use bd_runtime::runtime::{self, ConfigLoader, Watch};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_time::SystemTimeProvider;
 use futures_util::{try_join, Future};
 use std::pin::Pin;
 use std::sync::Arc;
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
+
+pub fn default_stats_flush_triggers(
+  runtime_loader: &ConfigLoader,
+) -> anyhow::Result<(Box<dyn Ticker>, Box<dyn Ticker>)> {
+  let flush_interval_flag: Watch<Duration, DirectStatFlushIntervalFlag> =
+    runtime_loader.register_watch()?;
+  let flush_ticker = RuntimeWatchTicker::new(flush_interval_flag.into_inner());
+
+  let upload_interval_flag: Watch<Duration, UploadStatFlushIntervalFlag> =
+    runtime_loader.register_watch()?;
+  let upload_ticker = RuntimeWatchTicker::new(upload_interval_flag.into_inner());
+
+  Ok((
+    Box::new(flush_ticker) as Box<dyn Ticker>,
+    Box::new(upload_ticker) as Box<dyn Ticker>,
+  ))
+}
 
 /// A builder for the logger.
 pub struct LoggerBuilder {
@@ -34,6 +54,7 @@ pub struct LoggerBuilder {
 
   component_shutdown_handle: Option<ComponentShutdownTriggerHandle>,
   client_stats: bool,
+  client_stats_tickers: Option<(Box<dyn Ticker>, Box<dyn Ticker>)>,
   internal_logger: bool,
   stats_scope: Option<Scope>,
 }
@@ -46,6 +67,7 @@ impl LoggerBuilder {
       params,
       component_shutdown_handle: None,
       client_stats: false,
+      client_stats_tickers: None,
       internal_logger: false,
       stats_scope: None,
     }
@@ -64,8 +86,20 @@ impl LoggerBuilder {
   /// Enables client stats, which results in collected metrics being reported via the API mux at
   /// regular intervals. This is required for a lot of workflows-related features.
   #[must_use]
-  pub const fn with_client_stats(mut self, mobile_features: bool) -> Self {
-    self.client_stats = mobile_features;
+  pub const fn with_client_stats(mut self, client_stats: bool) -> Self {
+    self.client_stats = client_stats;
+    self
+  }
+
+  /// Sets the tickers to be used for flushing client stats. If not set, the default tickers will
+  /// be used.
+  #[must_use]
+  pub fn with_client_stats_tickers(
+    mut self,
+    flush_ticker: Box<dyn Ticker>,
+    upload_ticker: Box<dyn Ticker>,
+  ) -> Self {
+    self.client_stats_tickers = Some((flush_ticker, upload_ticker));
     self
   }
 
@@ -96,6 +130,7 @@ impl LoggerBuilder {
     Logger,
     tokio::sync::mpsc::Sender<DataUpload>,
     Pin<Box<impl Future<Output = anyhow::Result<()>> + 'static>>,
+    Option<FlushTrigger>,
   )> {
     if self.client_stats && self.stats_scope.is_some() {
       anyhow::bail!(
@@ -137,11 +172,19 @@ impl LoggerBuilder {
     let (maybe_stats_flusher, maybe_flusher_trigger) = if self.client_stats {
       let stats =
         bd_client_stats::Stats::new(maybe_managed_collector.unwrap(), dynamic_stats.clone());
+      let (flush_ticker, upload_ticker) =
+        if let Some((flush_ticker, upload_ticker)) = self.client_stats_tickers {
+          (flush_ticker, upload_ticker)
+        } else {
+          default_stats_flush_triggers(&runtime_loader)?
+        };
       let flush_handles = stats.flush_handle(
         &runtime_loader,
         shutdown_handle.make_shutdown(),
         &self.params.sdk_directory,
         data_upload_ch.tx.clone(),
+        flush_ticker,
+        upload_ticker,
       )?;
 
       (
@@ -162,7 +205,7 @@ impl LoggerBuilder {
         trigger_upload_tx.clone(),
         data_upload_ch.tx.clone(),
         flush_buffers_tx,
-        maybe_flusher_trigger,
+        maybe_flusher_trigger.clone(),
         512,
         1024 * 1024,
       ),
@@ -219,7 +262,6 @@ impl LoggerBuilder {
       LoggerUpdate::new(
         buffer_manager.clone(),
         config_update_tx,
-        &runtime_loader,
         &scope.scope("config"),
       ),
       &scope,
@@ -297,23 +339,32 @@ impl LoggerBuilder {
       .map(|_| ())
     };
 
-    Ok((logger, data_upload_ch.tx, Box::pin(logger_future)))
+    Ok((
+      logger,
+      data_upload_ch.tx,
+      Box::pin(logger_future),
+      maybe_flusher_trigger,
+    ))
   }
 
   /// Builds the logger and runs the associated future on a dedicated thread. This is useful for
   /// running the logger outside of a tokio runtime.
   pub fn build_dedicated_thread(
     self,
-  ) -> anyhow::Result<(Logger, tokio::sync::mpsc::Sender<DataUpload>)> {
+  ) -> anyhow::Result<(
+    Logger,
+    tokio::sync::mpsc::Sender<DataUpload>,
+    Option<FlushTrigger>,
+  )> {
     if self.component_shutdown_handle.is_some() {
       anyhow::bail!("Cannot use a dedicated thread with a custom shutdown handle");
     }
 
-    let (logger, ch, future) = self.build()?;
+    let (logger, ch, future, maybe_flush_trigger) = self.build()?;
 
     Self::run_logger_runtime(future)?;
 
-    Ok((logger, ch))
+    Ok((logger, ch, maybe_flush_trigger))
   }
 
   /// Creates a new tokio runtime on a dedicated thread suitable for running the logger. The

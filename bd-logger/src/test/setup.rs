@@ -14,6 +14,8 @@ use crate::{
   LogType,
   Logger,
 };
+use bd_client_stats::test::TestTicker;
+use bd_client_stats::FlushTrigger;
 use bd_device::Store;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
@@ -38,6 +40,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::ext::NumericalDuration;
+use tokio::sync::mpsc;
 
 /// Wait for a condition to be true, or panic after 5 seconds.
 #[macro_export]
@@ -79,7 +82,7 @@ impl bd_session_replay::Target for MockSessionReplayTarget {
 
 pub struct SetupOptions {
   pub sdk_directory: Arc<TempDir>,
-  pub metadata_provider: LogMetadata,
+  pub metadata_provider: Arc<LogMetadata>,
   pub disk_storage: bool,
 }
 
@@ -87,10 +90,7 @@ impl Default for SetupOptions {
   fn default() -> Self {
     Self {
       sdk_directory: Arc::new(TempDir::with_prefix("sdk").unwrap()),
-      metadata_provider: LogMetadata {
-        timestamp: time::OffsetDateTime::now_utc(),
-        fields: Vec::new(),
-      },
+      metadata_provider: Arc::default(),
       disk_storage: false,
     }
   }
@@ -112,6 +112,10 @@ pub struct Setup {
   pub capture_screenshot_count: Arc<AtomicUsize>,
 
   _shutdown: ComponentShutdownTrigger,
+
+  pub _stats_flush_tx: mpsc::Sender<()>,
+  pub stats_upload_tx: mpsc::Sender<()>,
+  pub stats_flush_trigger: FlushTrigger,
 }
 
 impl Setup {
@@ -119,7 +123,7 @@ impl Setup {
     Self::new_with_options(SetupOptions::default())
   }
 
-  pub fn new_with_metadata(metadata_provider: LogMetadata) -> Self {
+  pub fn new_with_metadata(metadata_provider: Arc<LogMetadata>) -> Self {
     Self::new_with_options(SetupOptions {
       metadata_provider,
       ..Default::default()
@@ -143,14 +147,17 @@ impl Setup {
     let capture_screen_count = session_replay_target.capture_screen_count.clone();
     let capture_screenshot_count = session_replay_target.capture_screenshot_count.clone();
 
-    let logger = crate::LoggerBuilder::new(InitParams {
+    let (flush_tick_tx, flush_ticker) = TestTicker::new();
+    let (upload_tick_tx, upload_ticker) = TestTicker::new();
+
+    let (logger, _, flush_trigger) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: options.sdk_directory.path().into(),
       api_key: "foo-api-key".to_string(),
       session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
         store.clone(),
         Arc::new(UUIDCallbacks),
       ))),
-      metadata_provider: Arc::new(options.metadata_provider),
+      metadata_provider: options.metadata_provider,
       resource_utilization_target: Box::new(EmptyTarget),
       session_replay_target,
       events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
@@ -160,10 +167,10 @@ impl Setup {
       static_metadata: Arc::new(EmptyMetadata),
     })
     .with_client_stats(true)
+    .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
     .with_internal_logger(true)
     .build_dedicated_thread()
-    .unwrap()
-    .0;
+    .unwrap();
 
     let logger_handle = logger.new_logger_handle();
     let current_api_stream = Self::do_stream_setup(&mut server);
@@ -177,6 +184,9 @@ impl Setup {
       capture_screen_count,
       capture_screenshot_count,
       _shutdown: shutdown,
+      _stats_flush_tx: flush_tick_tx,
+      stats_upload_tx: upload_tick_tx,
+      stats_flush_trigger: flush_trigger.unwrap(),
     }
   }
 
@@ -220,10 +230,6 @@ impl Setup {
         bd_test_helpers::runtime::ValueKind::Int(100_000),
       ),
       (
-        bd_runtime::runtime::workflows::WorkflowsEnabledFlag::path(),
-        ValueKind::Bool(true),
-      ),
-      (
         bd_runtime::runtime::resource_utilization::ResourceUtilizationEnabledFlag::path(),
         ValueKind::Bool(false),
       ),
@@ -236,6 +242,15 @@ impl Setup {
         ValueKind::Bool(true),
       ),
     ]
+  }
+
+  pub fn flush_and_upload_stats(&self) {
+    let (sender, receiver) = bd_completion::Sender::new();
+    self
+      .stats_flush_trigger
+      .blocking_flush_for_test(Some(sender));
+    receiver.blocking_recv().unwrap();
+    self.stats_upload_tx.blocking_send(()).unwrap();
   }
 
   pub fn log(
@@ -321,26 +336,8 @@ impl Setup {
     ack.nack.take()
   }
 
-  pub fn send_runtime_update(&self, workflows_enabled: bool, immediate_stats_upload_enabled: bool) {
-    let mut values = Self::get_default_runtime_values();
-
-    if immediate_stats_upload_enabled {
-      values.append(&mut vec![
-        (
-          bd_runtime::runtime::stats::DirectStatFlushIntervalFlag::path(),
-          ValueKind::Int(100),
-        ),
-        (
-          bd_runtime::runtime::stats::UploadStatFlushIntervalFlag::path(),
-          ValueKind::Int(100),
-        ),
-      ]);
-    }
-
-    values.push((
-      bd_runtime::runtime::workflows::WorkflowsEnabledFlag::path(),
-      ValueKind::Bool(workflows_enabled),
-    ));
+  pub fn send_runtime_update(&self) {
+    let values = Self::get_default_runtime_values();
 
     self
       .current_api_stream
@@ -361,7 +358,7 @@ impl Setup {
     self
       .sdk_directory
       .path()
-      .join("workflows_state_snapshot.5.bin")
+      .join("workflows_state_snapshot.6.bin")
   }
 }
 

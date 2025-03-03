@@ -106,6 +106,7 @@ impl TestServer {
     tx: tokio::sync::mpsc::Sender<ReportedError>,
     mut shutdown: ComponentShutdown,
   ) {
+    listener.set_nonblocking(true).unwrap();
     axum::serve(
       tokio::net::TcpListener::from_std(listener).unwrap(),
       Router::new()
