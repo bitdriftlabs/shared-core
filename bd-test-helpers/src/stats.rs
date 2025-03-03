@@ -8,7 +8,7 @@
 use bd_proto::protos::client::api::stats_upload_request::snapshot::Snapshot_type;
 use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::metric::metric::Data;
-use bd_proto::protos::client::metric::MetricsList;
+use bd_proto::protos::client::metric::{Metric, MetricsList};
 use std::collections::{BTreeMap, HashMap};
 
 #[macro_export]
@@ -105,8 +105,7 @@ impl StatsRequestHelper {
   }
 
   #[allow(clippy::needless_pass_by_value)]
-  #[must_use]
-  pub fn get_counter(&self, name: &str, fields: BTreeMap<&str, &str>) -> Option<u64> {
+  fn get_metric(&self, name: &str, fields: BTreeMap<&str, &str>) -> Option<&Metric> {
     assert_eq!(self.request.snapshot.len(), 1);
 
     let fields_str = fields
@@ -119,16 +118,34 @@ impl StatsRequestHelper {
       .metric
       .iter()
       .find(|metric| metric.name == name && metric.tags == fields_str)
-      .and_then(|metric| {
-        metric.data.as_ref().map(|data| match data {
-          Data::Counter(c) => c.value,
-          Data::FixedBucketHistogramDeprecated(_)
-          | Data::DdsketchHistogram(_)
-          | Data::InlineHistogramValues(_) => {
-            panic!("not a counter")
-          },
-        })
+  }
+
+  #[allow(clippy::needless_pass_by_value)]
+  #[must_use]
+  pub fn get_inline_histogram(&self, name: &str, fields: BTreeMap<&str, &str>) -> Option<Vec<f64>> {
+    self.get_metric(name, fields).and_then(|metric| {
+      metric.data.as_ref().map(|data| match data {
+        Data::InlineHistogramValues(h) => h.values.clone(),
+        Data::Counter(_) | Data::FixedBucketHistogramDeprecated(_) | Data::DdsketchHistogram(_) => {
+          panic!("not an inline histogram")
+        },
       })
+    })
+  }
+
+  #[allow(clippy::needless_pass_by_value)]
+  #[must_use]
+  pub fn get_counter(&self, name: &str, fields: BTreeMap<&str, &str>) -> Option<u64> {
+    self.get_metric(name, fields).and_then(|metric| {
+      metric.data.as_ref().map(|data| match data {
+        Data::Counter(c) => c.value,
+        Data::FixedBucketHistogramDeprecated(_)
+        | Data::DdsketchHistogram(_)
+        | Data::InlineHistogramValues(_) => {
+          panic!("not a counter")
+        },
+      })
+    })
   }
 
   fn metrics(&self) -> &MetricsList {

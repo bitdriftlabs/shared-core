@@ -15,15 +15,13 @@ use bd_log_filter::FilterChain;
 use bd_log_primitives::{log_level, FieldsRef, Log, LogRef, LogType};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::filters::FilterChainEnabledFlag;
-use bd_runtime::runtime::workflows::WorkflowsEnabledFlag;
 use bd_runtime::runtime::{BoolWatch, ConfigLoader};
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use std::borrow::Cow;
 use std::collections::BTreeSet;
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::path::Path;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::oneshot;
 
@@ -45,7 +43,7 @@ pub trait LogReplay {
     log: Log,
     log_processing_completed_tx: Option<oneshot::Sender<()>>,
     pipeline: &mut ProcessingPipeline,
-  ) -> anyhow::Result<()>;
+  ) -> anyhow::Result<Vec<Log>>;
 }
 
 //
@@ -61,7 +59,7 @@ impl LogReplay for LoggerReplay {
     log: Log,
     log_processing_completed_tx: Option<oneshot::Sender<()>>,
     pipeline: &mut ProcessingPipeline,
-  ) -> anyhow::Result<()> {
+  ) -> anyhow::Result<Vec<Log>> {
     pipeline.process_log(log, log_processing_completed_tx).await
   }
 }
@@ -79,11 +77,10 @@ impl LogReplay for LoggerReplay {
 pub struct ProcessingPipeline {
   buffer_producers: BufferProducers,
   buffer_selector: BufferSelector,
-  pub(crate) workflows_engine: Option<WorkflowsEngine>,
+  pub(crate) workflows_engine: WorkflowsEngine,
   tail_configs: TailConfigurations,
   filter_chain: FilterChain,
 
-  data_upload_tx: Sender<DataUpload>,
   pub(crate) flush_buffers_tx: Sender<BuffersWithAck>,
   pub(crate) flush_stats_trigger: Option<FlushTrigger>,
 
@@ -91,15 +88,12 @@ pub struct ProcessingPipeline {
   trigger_upload_tx: Sender<TriggerUpload>,
   // The channel used to receive a signal from the workflows engine that it should flush the
   // buffers.
-  buffers_to_flush_rx: Option<Receiver<BuffersToFlush>>,
+  buffers_to_flush_rx: Receiver<BuffersToFlush>,
   capture_screenshot_handler: CaptureScreenshotHandler,
 
-  workflows_enabled_flag: BoolWatch<WorkflowsEnabledFlag>,
   filter_chain_enabled_flag: BoolWatch<FilterChainEnabledFlag>,
   filter_chain_enabled: bool,
 
-  runtime: Arc<ConfigLoader>,
-  sdk_directory: PathBuf,
   stats: InitializedLoggingContextStats,
 }
 
@@ -113,22 +107,19 @@ impl ProcessingPipeline {
 
     config: ConfigUpdate,
 
-    sdk_directory: PathBuf,
-    runtime: Arc<ConfigLoader>,
+    sdk_directory: &Path,
+    runtime: &ConfigLoader,
     stats: InitializedLoggingContextStats,
   ) -> Self {
-    let mut workflows_enabled_flag = runtime.register_watch().unwrap();
-    let workflows_enabled = *workflows_enabled_flag.read_mark_update();
-
     let mut filter_chain_enabled_flag = runtime.register_watch().unwrap();
     let filter_chain_enabled = *filter_chain_enabled_flag.read_mark_update();
 
-    let (workflows_engine, buffers_to_flush_rx) = if workflows_enabled {
+    let (workflows_engine, buffers_to_flush_rx) = {
       let (mut workflows_engine, flush_buffers_tx) = WorkflowsEngine::new(
         &stats.root_scope,
-        &sdk_directory,
-        &runtime,
-        data_upload_tx.clone(),
+        sdk_directory,
+        runtime,
+        data_upload_tx,
         stats.dynamic_stats.clone(),
       );
 
@@ -138,9 +129,7 @@ impl ProcessingPipeline {
         config.buffer_producers.continuous_buffer_ids.clone(),
       ));
 
-      (Some(workflows_engine), Some(flush_buffers_tx))
-    } else {
-      (None, None)
+      (workflows_engine, flush_buffers_tx)
     };
 
     Self {
@@ -150,7 +139,6 @@ impl ProcessingPipeline {
       tail_configs: config.tail_configs,
       filter_chain: config.filter_chain,
 
-      data_upload_tx,
       flush_buffers_tx,
       flush_stats_trigger,
 
@@ -159,12 +147,9 @@ impl ProcessingPipeline {
 
       capture_screenshot_handler,
 
-      workflows_enabled_flag,
       filter_chain_enabled_flag,
       filter_chain_enabled,
 
-      runtime,
-      sdk_directory,
       stats,
     }
   }
@@ -175,37 +160,20 @@ impl ProcessingPipeline {
     self.tail_configs = config.tail_configs;
     self.filter_chain = config.filter_chain;
 
-    if *self.workflows_enabled_flag.read_mark_update() {
-      let workflows_engine_config = WorkflowsEngineConfig::new(
-        config.workflows_configuration,
-        self.buffer_producers.trigger_buffer_ids.clone(),
-        self.buffer_producers.continuous_buffer_ids.clone(),
-      );
+    let workflows_engine_config = WorkflowsEngineConfig::new(
+      config.workflows_configuration,
+      self.buffer_producers.trigger_buffer_ids.clone(),
+      self.buffer_producers.continuous_buffer_ids.clone(),
+    );
 
-      if let Some(workflows_engine) = &mut self.workflows_engine {
-        workflows_engine.update(workflows_engine_config);
-      } else {
-        let (mut engine, buffers_to_flush_rx) = WorkflowsEngine::new(
-          &self.stats.root_scope,
-          &self.sdk_directory,
-          &self.runtime,
-          self.data_upload_tx.clone(),
-          self.stats.dynamic_stats.clone(),
-        );
-        engine.start(workflows_engine_config);
-        self.workflows_engine = Some(engine);
-        self.buffers_to_flush_rx = Some(buffers_to_flush_rx);
-      }
-    } else {
-      self.workflows_engine = None;
-    }
+    self.workflows_engine.update(workflows_engine_config);
   }
 
   async fn process_log(
     &mut self,
     mut log: Log,
     log_processing_completed_tx: Option<oneshot::Sender<()>>,
-  ) -> anyhow::Result<()> {
+  ) -> anyhow::Result<Vec<Log>> {
     self.stats.log_level_counters.record(log.log_level);
 
     if self.filter_chain_enabled {
@@ -244,76 +212,62 @@ impl ProcessingPipeline {
         .buffer_selector
         .buffers(log.log_type, log.log_level, log.message, log.fields);
 
-    if let Some(workflows_engine) = self.workflows_engine.as_mut() {
-      let result = workflows_engine.process_log(log, &matching_buffers);
+    let mut result = self.workflows_engine.process_log(log, &matching_buffers);
+    let logs_to_inject = std::mem::take(&mut result.logs_to_inject);
 
+    log::debug!(
+      "processed {:?} log, destination buffer(s): {:?}",
+      log.message.as_str().unwrap_or("[DATA]"),
+      result.log_destination_buffer_ids,
+    );
+
+    if !result.triggered_flush_buffers_action_ids.is_empty() {
       log::debug!(
-        "processed {:?} log, destination buffer(s): {:?}",
-        log.message.as_str().unwrap_or("[DATA]"),
-        result.log_destination_buffer_ids,
+        "triggered flush buffer action IDs: {:?}",
+        result.triggered_flush_buffers_action_ids
       );
-
-      if !result.triggered_flush_buffers_action_ids.is_empty() {
-        log::debug!(
-          "triggered flush buffer action IDs: {:?}",
-          result.triggered_flush_buffers_action_ids
-        );
-      }
-
-      if result.capture_screenshot {
-        self.capture_screenshot_handler.capture_screenshot();
-      }
-
-      Self::write_to_buffers(
-        &mut self.buffer_producers,
-        &result.log_destination_buffer_ids,
-        log,
-        result.triggered_flush_buffers_action_ids.iter().copied(),
-      )?;
-
-      if let Some(extra_matching_buffer) = Self::process_flush_buffers_actions(
-        &result.triggered_flush_buffers_action_ids,
-        &mut self.buffer_producers,
-        &result.triggered_flushes_buffer_ids,
-        &result.log_destination_buffer_ids,
-        log,
-      ) {
-        // We emitted a synthetic log. Add the buffer it was written to to the list of matching
-        // buffers.
-        matching_buffers.insert(extra_matching_buffer.into());
-      }
-
-      // Check whether the caller is waiting for the log processing to complete. We call such logs
-      // "blocking".
-      let is_blocking = log_processing_completed_tx.is_some();
-
-      // Force the persistence of workflows state to disk if log is blocking.
-      workflows_engine.maybe_persist(is_blocking).await;
-    } else {
-      Self::write_to_buffers(
-        &mut self.buffer_producers,
-        &matching_buffers,
-        log,
-        std::iter::empty(),
-      )?;
     }
 
+    if result.capture_screenshot {
+      self.capture_screenshot_handler.capture_screenshot();
+    }
+
+    Self::write_to_buffers(
+      &mut self.buffer_producers,
+      &result.log_destination_buffer_ids,
+      log,
+      result.triggered_flush_buffers_action_ids.iter().copied(),
+    )?;
+
+    if let Some(extra_matching_buffer) = Self::process_flush_buffers_actions(
+      &result.triggered_flush_buffers_action_ids,
+      &mut self.buffer_producers,
+      &result.triggered_flushes_buffer_ids,
+      &result.log_destination_buffer_ids,
+      log,
+    ) {
+      // We emitted a synthetic log. Add the buffer it was written to to the list of matching
+      // buffers.
+      matching_buffers.insert(extra_matching_buffer.into());
+    }
+
+    // Check whether the caller is waiting for the log processing to complete. We call such logs
+    // "blocking".
+    let is_blocking = log_processing_completed_tx.is_some();
+
+    // Force the persistence of workflows state to disk if log is blocking.
+    self.workflows_engine.maybe_persist(is_blocking).await;
+
     if let Some(log_processing_completed_tx) = log_processing_completed_tx {
-      let result = Self::finish_blocking_log_processing(
-        flush_buffers_tx,
-        flush_stats_trigger,
-        matching_buffers,
-      )
-      .await;
+      Self::finish_blocking_log_processing(flush_buffers_tx, flush_stats_trigger, matching_buffers)
+        .await?;
 
       log_processing_completed_tx
         .send(())
         .map_err(|e| anyhow::anyhow!("failed to send log processing completion signal: {e:?}"))?;
-
-      return result;
     }
 
-    Ok(())
+    Ok(logs_to_inject)
   }
 
   async fn finish_blocking_log_processing(
@@ -494,47 +448,32 @@ impl ProcessingPipeline {
 
   pub(crate) async fn run(&mut self) {
     tokio::select! {
-      () = async {
-        if let Some(workflows_engine) = &mut self.workflows_engine {
-          workflows_engine.run().await;
-        }
-      }, if self.workflows_engine.is_some() => {}
-      Some(buffers_to_flush) = async {
-        if let Some(buffers_to_flush_rx) = &mut self.buffers_to_flush_rx {
-          buffers_to_flush_rx.recv().await
-        } else {
-          panic!("should never happen in practice")
-        }
-      }, if self.buffers_to_flush_rx.is_some() => {
-          log::debug!("received flush buffers action signal, buffer IDs to flush: \"{:?}\"", buffers_to_flush.buffer_ids);
+      () = self.workflows_engine.run()  => {}
+      Some(buffers_to_flush) =  self.buffers_to_flush_rx.recv() => {
+        log::debug!("received flush buffers action signal, buffer IDs to flush: \"{:?}\"", buffers_to_flush.buffer_ids);
 
-          let trigger_upload = TriggerUpload::new(
-            buffers_to_flush.buffer_ids
-              .iter()
-              .map(std::string::ToString::to_string)
-              .collect(),
-              buffers_to_flush.response_tx,
-            );
+        let trigger_upload = TriggerUpload::new(
+          buffers_to_flush.buffer_ids
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect(),
+            buffers_to_flush.response_tx,
+          );
 
-          let result = self.trigger_upload_tx.try_send(trigger_upload);
-          match result {
-            Ok(()) => {
-              log::debug!("triggered flush buffers action with buffer IDs: \"{:?}\"", buffers_to_flush.buffer_ids);
-            },
-            Err(e) => {
-              log::debug!("failed to send trigger flush: {e}");
-              self.stats.trigger_upload_stats.record(&e);
-            }
+        let result = self.trigger_upload_tx.try_send(trigger_upload);
+        match result {
+          Ok(()) => {
+            log::debug!("triggered flush buffers action with buffer IDs: \"{:?}\"", buffers_to_flush.buffer_ids);
+          },
+          Err(e) => {
+            log::debug!("failed to send trigger flush: {e}");
+            self.stats.trigger_upload_stats.record(&e);
           }
-        },
-        Ok(()) = self.workflows_enabled_flag.changed() => {
-          if !*self.workflows_enabled_flag.read_mark_update() {
-            self.workflows_engine = None;
-          }
-        },
-        Ok(()) = self.filter_chain_enabled_flag.changed() => {
-          self.filter_chain_enabled = *self.filter_chain_enabled_flag.read_mark_update();
         }
+      },
+      Ok(()) = self.filter_chain_enabled_flag.changed() => {
+        self.filter_chain_enabled = *self.filter_chain_enabled_flag.read_mark_update();
+      }
     }
   }
 }

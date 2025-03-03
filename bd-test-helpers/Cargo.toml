@@ -23,6 +23,7 @@ bd-log-primitives.path   = "../bd-log-primitives"
 bd-log.path              = "../bd-log"
 bd-matcher.path          = "../bd-matcher"
 bd-metadata.path         = "../bd-metadata"
+bd-panic.path            = "../bd-panic"
 bd-proto.path            = "../bd-proto"
 bd-resource-utilization  = { path = "../bd-resource-utilization" }
 bd-runtime-config        = { path = "../bd-runtime-config", optional = true }

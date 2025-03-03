@@ -22,17 +22,89 @@ use base_log_matcher::Match_type::{MessageMatch, TagMatch};
 use base_log_matcher::Operator;
 use bd_log_primitives::{LogLevel, LogMessage, LogType};
 pub use bd_matcher::FieldProvider;
-use bd_proto::protos::log_matcher::log_matcher::log_matcher::{
-  base_log_matcher,
-  BaseLogMatcher,
-  Matcher,
+use bd_proto::protos::log_matcher::log_matcher;
+use log_matcher::log_matcher::base_log_matcher::double_value_match::Double_value_match_type;
+use log_matcher::log_matcher::base_log_matcher::int_value_match::Int_value_match_type;
+use log_matcher::log_matcher::base_log_matcher::string_value_match::String_value_match_type;
+use log_matcher::log_matcher::base_log_matcher::{
+  IntValueMatch as IntValueMatch_type,
+  StringValueMatch as StringValueMatch_type,
 };
-use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
+use log_matcher::log_matcher::{base_log_matcher, BaseLogMatcher, Matcher};
+use log_matcher::LogMatcher;
 use regex::Regex;
 use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::ops::Deref;
 
 const LOG_LEVEL_KEY: &str = "log_level";
 const LOG_TYPE_KEY: &str = "log_type";
+
+//
+// ValueOrSavedFieldId
+//
+
+// This entire dance is so that we can either store a value T, or an ID to a saved field, and then
+// resolve it to T later, in either value or reference form, with minimal copying.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ValueOrSavedFieldId<T> {
+  Value(T),
+  SaveFieldId(String),
+}
+enum ValueOrRef<'a, T> {
+  Value(T),
+  Ref(&'a T),
+}
+trait MakeValueOrRef<'a, T> {
+  #[allow(clippy::ptr_arg)]
+  fn make_value_or_ref(value: &'a String) -> Option<ValueOrRef<'a, T>>;
+}
+
+impl<'a, T: MakeValueOrRef<'a, T>> ValueOrSavedFieldId<T> {
+  fn load(
+    &'a self,
+    extracted_fields: Option<&'a BTreeMap<String, String>>,
+  ) -> Option<ValueOrRef<'a, T>> {
+    match self {
+      Self::Value(v) => Some(ValueOrRef::Ref(v)),
+      Self::SaveFieldId(field_id) => extracted_fields
+        .and_then(|extracted_fields| extracted_fields.get(field_id))
+        .and_then(|v| T::make_value_or_ref(v)),
+    }
+  }
+}
+
+impl<T> Deref for ValueOrRef<'_, T> {
+  type Target = T;
+
+  fn deref(&self) -> &Self::Target {
+    match self {
+      ValueOrRef::Value(v) => v,
+      ValueOrRef::Ref(v) => v,
+    }
+  }
+}
+
+impl<'a> MakeValueOrRef<'a, Self> for i32 {
+  fn make_value_or_ref(value: &String) -> Option<ValueOrRef<'a, Self>> {
+    value.parse::<Self>().ok().map(ValueOrRef::Value)
+  }
+}
+
+impl<'a> MakeValueOrRef<'a, Self> for NanEqualFloat {
+  fn make_value_or_ref(value: &String) -> Option<ValueOrRef<'a, Self>> {
+    value
+      .parse::<f64>()
+      .ok()
+      .map(|v| ValueOrRef::Value(Self(v)))
+  }
+}
+
+impl<'a> MakeValueOrRef<'a, Self> for String {
+  fn make_value_or_ref(value: &'a Self) -> Option<ValueOrRef<'a, Self>> {
+    Some(ValueOrRef::Ref(value))
+  }
+}
 
 /// A compiled matching tree that supports evaluating an input log. Matching involves
 /// evaluating the match criteria starting from the top, possibly recursing into subtree matching.
@@ -88,12 +160,13 @@ impl Tree {
     log_type: LogType,
     message: &LogMessage,
     fields: &impl FieldProvider,
+    extracted_fields: Option<&BTreeMap<String, String>>,
   ) -> bool {
     match self {
       Self::Base(base_matcher) => match base_matcher {
         Leaf::LogLevel(log_level_matcher) => log_level
           .try_into()
-          .is_ok_and(|log_level| log_level_matcher.evaluate(log_level)),
+          .is_ok_and(|log_level| log_level_matcher.evaluate(log_level, extracted_fields)),
         Leaf::LogType(l_type) => *l_type == log_type.0,
         Leaf::IntValue(input, criteria) =>
         {
@@ -101,15 +174,17 @@ impl Tree {
           input.get(message, fields).is_some_and(|input| {
             input
               .parse::<f64>()
-              .is_ok_and(|v| criteria.evaluate(v as i32))
+              .is_ok_and(|v| criteria.evaluate(v as i32, extracted_fields))
           })
         },
-        Leaf::DoubleValue(input, criteria) => input
-          .get(message, fields)
-          .is_some_and(|input| input.parse().is_ok_and(|v| criteria.evaluate(v))),
+        Leaf::DoubleValue(input, criteria) => input.get(message, fields).is_some_and(|input| {
+          input
+            .parse()
+            .is_ok_and(|v| criteria.evaluate(v, extracted_fields))
+        }),
         Leaf::StringValue(input, criteria) => input
           .get(message, fields)
-          .is_some_and(|input| criteria.evaluate(input.as_ref())),
+          .is_some_and(|input| criteria.evaluate(input.as_ref(), extracted_fields)),
         Leaf::VersionValue(input, criteria) => input
           .get(message, fields)
           .is_some_and(|input| criteria.evaluate(input.as_ref())),
@@ -117,11 +192,13 @@ impl Tree {
       },
       Self::Or(or_matchers) => or_matchers
         .iter()
-        .any(|matcher| matcher.do_match(log_level, log_type, message, fields)),
+        .any(|matcher| matcher.do_match(log_level, log_type, message, fields, extracted_fields)),
       Self::And(and_matchers) => and_matchers
         .iter()
-        .all(|matcher| matcher.do_match(log_level, log_type, message, fields)),
-      Self::Not(matcher) => !matcher.do_match(log_level, log_type, message, fields),
+        .all(|matcher| matcher.do_match(log_level, log_type, message, fields, extracted_fields)),
+      Self::Not(matcher) => {
+        !matcher.do_match(log_level, log_type, message, fields, extracted_fields)
+      },
     }
   }
 }
@@ -130,12 +207,12 @@ impl Tree {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IntMatch {
   operator: Operator,
-  value: i32,
+  value: ValueOrSavedFieldId<i32>,
 }
 
 /// Supports comparison between two integers
 impl IntMatch {
-  fn new(operator: Operator, value: i32) -> Result<Self> {
+  fn new(operator: Operator, value: ValueOrSavedFieldId<i32>) -> Result<Self> {
     match operator {
       // Regex operator is not valid for int32
       Operator::OPERATOR_REGEX => Err(anyhow!("regex does not support int32")),
@@ -143,18 +220,22 @@ impl IntMatch {
     }
   }
 
-  const fn evaluate(&self, candidate: i32) -> bool {
+  fn evaluate(&self, candidate: i32, extracted_fields: Option<&BTreeMap<String, String>>) -> bool {
+    let Some(value) = self.value.load(extracted_fields) else {
+      return false;
+    };
+
     match self.operator {
       // This should never happen as we check for UNSPECIFIED when we parse
       // workflow config.
       Operator::OPERATOR_UNSPECIFIED => false,
-      Operator::OPERATOR_LESS_THAN => candidate < self.value,
-      Operator::OPERATOR_LESS_THAN_OR_EQUAL => candidate <= self.value,
-      Operator::OPERATOR_GREATER_THAN => candidate > self.value,
-      Operator::OPERATOR_GREATER_THAN_OR_EQUAL => candidate >= self.value,
-      Operator::OPERATOR_NOT_EQUALS => candidate != self.value,
+      Operator::OPERATOR_LESS_THAN => candidate < *value,
+      Operator::OPERATOR_LESS_THAN_OR_EQUAL => candidate <= *value,
+      Operator::OPERATOR_GREATER_THAN => candidate > *value,
+      Operator::OPERATOR_GREATER_THAN_OR_EQUAL => candidate >= *value,
+      Operator::OPERATOR_NOT_EQUALS => candidate != *value,
       // Real Regex is not supported.
-      Operator::OPERATOR_EQUALS | Operator::OPERATOR_REGEX => candidate == self.value,
+      Operator::OPERATOR_EQUALS | Operator::OPERATOR_REGEX => candidate == *value,
     }
   }
 }
@@ -175,35 +256,36 @@ impl Eq for NanEqualFloat {}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DoubleMatch {
   operator: Operator,
-  value: NanEqualFloat,
+  value: ValueOrSavedFieldId<NanEqualFloat>,
 }
 
 /// Supports comparison between two integers
 impl DoubleMatch {
-  fn new(operator: Operator, value: f64) -> Result<Self> {
+  fn new(operator: Operator, value: ValueOrSavedFieldId<NanEqualFloat>) -> Result<Self> {
     match operator {
       // Regex operator is not valid for f64
       Operator::OPERATOR_REGEX => Err(anyhow!("regex does not support f64")),
-      _ => Ok(Self {
-        operator,
-        value: NanEqualFloat(value),
-      }),
+      _ => Ok(Self { operator, value }),
     }
   }
 
-  fn evaluate(&self, candidate: f64) -> bool {
+  fn evaluate(&self, candidate: f64, extracted_fields: Option<&BTreeMap<String, String>>) -> bool {
     let candidate = NanEqualFloat(candidate);
+    let Some(value) = self.value.load(extracted_fields) else {
+      return false;
+    };
+
     match self.operator {
       // This should never happen as we check for UNSPECIFIED when we parse
       // workflow config.
       Operator::OPERATOR_UNSPECIFIED => false,
-      Operator::OPERATOR_LESS_THAN => candidate < self.value,
-      Operator::OPERATOR_LESS_THAN_OR_EQUAL => candidate <= self.value,
-      Operator::OPERATOR_GREATER_THAN => candidate > self.value,
-      Operator::OPERATOR_GREATER_THAN_OR_EQUAL => candidate >= self.value,
-      Operator::OPERATOR_NOT_EQUALS => candidate != self.value,
+      Operator::OPERATOR_LESS_THAN => candidate < *value,
+      Operator::OPERATOR_LESS_THAN_OR_EQUAL => candidate <= *value,
+      Operator::OPERATOR_GREATER_THAN => candidate > *value,
+      Operator::OPERATOR_GREATER_THAN_OR_EQUAL => candidate >= *value,
+      Operator::OPERATOR_NOT_EQUALS => candidate != *value,
       // Real Regex is not supported.
-      Operator::OPERATOR_EQUALS | Operator::OPERATOR_REGEX => candidate == self.value,
+      Operator::OPERATOR_EQUALS | Operator::OPERATOR_REGEX => candidate == *value,
     }
   }
 }
@@ -212,7 +294,7 @@ impl DoubleMatch {
 #[derive(Clone, Debug)]
 pub struct StringMatch {
   operator: Operator,
-  value: String,
+  value: ValueOrSavedFieldId<String>,
   regex: Option<Regex>,
 }
 
@@ -230,37 +312,47 @@ impl std::cmp::Eq for StringMatch {}
 
 /// Supports comparison between two Strings
 impl StringMatch {
-  fn new(operator: Operator, value: &str) -> Result<Self> {
+  fn new(operator: Operator, value: ValueOrSavedFieldId<String>) -> Result<Self> {
     if operator == Operator::OPERATOR_UNSPECIFIED {
       return Err(anyhow!("UNSPECIFIED operator"));
     }
 
     // Compile the regex on tree creation to avoid recompiling it on every match.
     let regex = match operator {
-      Operator::OPERATOR_REGEX => Some(match Regex::new(value) {
-        Ok(regex) => regex,
-        Err(e) => return Err(anyhow::Error::new(e).context("invalid regex")),
-      }),
+      Operator::OPERATOR_REGEX => {
+        let ValueOrSavedFieldId::Value(value) = &value else {
+          return Err(anyhow!("regex operator requires a value"));
+        };
+
+        Some(match Regex::new(value) {
+          Ok(regex) => regex,
+          Err(e) => return Err(anyhow::Error::new(e).context("invalid regex")),
+        })
+      },
       _ => None,
     };
     Ok(Self {
       operator,
-      value: value.to_string(),
+      value,
       regex,
     })
   }
 
-  fn evaluate(&self, candidate: &str) -> bool {
+  fn evaluate(&self, candidate: &str, extracted_fields: Option<&BTreeMap<String, String>>) -> bool {
+    let Some(value) = self.value.load(extracted_fields) else {
+      return false;
+    };
+
     match self.operator {
       // This should never happen as we check for UNSPECIFIED when we parse
       // workflow config.
       Operator::OPERATOR_UNSPECIFIED => false,
-      Operator::OPERATOR_LESS_THAN => candidate < self.value.as_str(),
-      Operator::OPERATOR_LESS_THAN_OR_EQUAL => candidate <= self.value.as_str(),
-      Operator::OPERATOR_EQUALS => candidate == self.value.as_str(),
-      Operator::OPERATOR_GREATER_THAN => candidate > self.value.as_str(),
-      Operator::OPERATOR_GREATER_THAN_OR_EQUAL => candidate >= self.value.as_str(),
-      Operator::OPERATOR_NOT_EQUALS => candidate != self.value.as_str(),
+      Operator::OPERATOR_LESS_THAN => *candidate < **value,
+      Operator::OPERATOR_LESS_THAN_OR_EQUAL => *candidate <= **value,
+      Operator::OPERATOR_EQUALS => candidate == *value,
+      Operator::OPERATOR_GREATER_THAN => *candidate > **value,
+      Operator::OPERATOR_GREATER_THAN_OR_EQUAL => *candidate >= **value,
+      Operator::OPERATOR_NOT_EQUALS => candidate != *value,
       Operator::OPERATOR_REGEX => self.regex.as_ref().unwrap().is_match(candidate),
     }
   }
@@ -314,6 +406,32 @@ pub enum Leaf {
 
 impl Leaf {
   fn new(log_matcher: &BaseLogMatcher) -> Result<Self> {
+    fn transform_int_value_match(int_value_match: &IntValueMatch_type) -> ValueOrSavedFieldId<i32> {
+      // This used to not be a oneof so supply an equivalent default if the field is not set.
+      match int_value_match
+        .int_value_match_type
+        .as_ref()
+        .unwrap_or(&Int_value_match_type::MatchValue(0))
+      {
+        Int_value_match_type::MatchValue(v) => ValueOrSavedFieldId::Value(*v),
+        Int_value_match_type::SaveFieldId(s) => ValueOrSavedFieldId::SaveFieldId(s.clone()),
+      }
+    }
+
+    fn transform_string_value_match(
+      string_value_match: &StringValueMatch_type,
+    ) -> ValueOrSavedFieldId<String> {
+      // This used to not be a oneof so supply an equivalent default if the field is not set.
+      match string_value_match
+        .string_value_match_type
+        .as_ref()
+        .unwrap_or(&String_value_match_type::MatchValue(String::new()))
+      {
+        String_value_match_type::MatchValue(s) => ValueOrSavedFieldId::Value(s.clone()),
+        String_value_match_type::SaveFieldId(s) => ValueOrSavedFieldId::SaveFieldId(s.clone()),
+      }
+    }
+
     match log_matcher
       .match_type
       .as_ref()
@@ -327,7 +445,7 @@ impl Leaf {
             .operator
             .enum_value()
             .map_err(|_| anyhow!("unknown field or enum"))?,
-          message_match.string_value_match.match_value.as_str(),
+          transform_string_value_match(&message_match.string_value_match),
         )?,
       )),
       TagMatch(tag_match) => match tag_match
@@ -345,13 +463,20 @@ impl Leaf {
               .operator
               .enum_value()
               .map_err(|_| anyhow!("unknown field or enum"))?,
-            int_value_match.match_value,
+            transform_int_value_match(int_value_match),
           )?)),
           // Special case for key="log_type"
           // We're special casing log type because we need to look for this tag outside of the
           // regular fields map It should be a bd_matcher::LogType u32 value, so we
           // try to convert it from i32
-          LOG_TYPE_KEY => Ok(Self::LogType(int_value_match.match_value.try_into()?)),
+          LOG_TYPE_KEY => Ok(Self::LogType(
+            match transform_int_value_match(int_value_match) {
+              ValueOrSavedFieldId::Value(v) => v.try_into()?,
+              ValueOrSavedFieldId::SaveFieldId(_) => {
+                return Err(anyhow!("log_type must be a value"))
+              },
+            },
+          )),
           // Any other int uses the IntValue match
           _ => Ok(Self::IntValue(
             InputType::Field(tag_match.tag_key.clone()),
@@ -360,7 +485,7 @@ impl Leaf {
                 .operator
                 .enum_value()
                 .map_err(|_| anyhow!("unknown field or enum"))?,
-              int_value_match.match_value,
+              transform_int_value_match(int_value_match),
             )?,
           )),
         },
@@ -371,7 +496,19 @@ impl Leaf {
               .operator
               .enum_value()
               .map_err(|_| anyhow!("unknown field or enum"))?,
-            double_value_match.match_value,
+            // This used to not be a oneof so supply an equivalent default if the field is not set.
+            match double_value_match
+              .double_value_match_type
+              .as_ref()
+              .unwrap_or(&Double_value_match_type::MatchValue(0.0))
+            {
+              Double_value_match_type::MatchValue(d) => {
+                ValueOrSavedFieldId::Value(NanEqualFloat(*d))
+              },
+              Double_value_match_type::SaveFieldId(s) => {
+                ValueOrSavedFieldId::SaveFieldId(s.clone())
+              },
+            },
           )?,
         )),
         StringValueMatch(string_value_match) => Ok(Self::StringValue(
@@ -381,7 +518,7 @@ impl Leaf {
               .operator
               .enum_value()
               .map_err(|_| anyhow!("unknown field or enum"))?,
-            string_value_match.match_value.as_str(),
+            transform_string_value_match(string_value_match),
           )?,
         )),
         SemVerValueMatch(sem_ver_value_match) => Ok(Self::VersionValue(

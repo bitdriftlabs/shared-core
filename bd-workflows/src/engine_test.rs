@@ -16,7 +16,7 @@ use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
 use bd_api::DataUpload;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{BoundedCollector, Collector};
-use bd_log_primitives::{log_level, FieldsRef, LogFields, LogMessage, LogRef};
+use bd_log_primitives::{log_level, FieldsRef, Log, LogField, LogFields, LogMessage, LogRef};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::client::api::log_upload_intent_request::Intent_type::WorkflowActionUpload;
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
@@ -37,6 +37,13 @@ use bd_test_helpers::workflow::macros::{
   rule,
   state,
 };
+use bd_test_helpers::workflow::{
+  make_generate_log_action_proto,
+  make_save_field_extraction,
+  make_save_timestamp_extraction,
+  TestFieldRef,
+  TestFieldType,
+};
 use bd_test_helpers::{metric_tag, metric_value, sankey_value};
 use bd_time::TimeDurationExt;
 use pretty_assertions::assert_eq;
@@ -45,7 +52,10 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use std::vec;
 use time::ext::NumericalDuration;
+use time::macros::datetime;
+use time::OffsetDateTime;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
@@ -59,7 +69,7 @@ use tokio::time::timeout;
 macro_rules! workflow {
   ($($x:tt)*) => {
     $crate::config::Config::new(
-      &bd_test_helpers::workflow::macros::workflow_proto!($($x)*)
+      bd_test_helpers::workflow::macros::workflow_proto!($($x)*)
     ).unwrap()
   }
 }
@@ -483,7 +493,7 @@ impl Setup {
     self
       .sdk_directory
       .path()
-      .join("workflows_state_snapshot.5.bin")
+      .join("workflows_state_snapshot.6.bin")
   }
 }
 
@@ -1641,6 +1651,7 @@ async fn engine_processing_log() {
       triggered_flush_buffers_action_ids: BTreeSet::from(["foo_action_id"]),
       triggered_flushes_buffer_ids: BTreeSet::from(["foo_buffer_id".into()]),
       capture_screenshot: false,
+      logs_to_inject: vec![],
     },
     result
   );
@@ -1905,6 +1916,7 @@ async fn log_without_destination() {
       triggered_flush_buffers_action_ids: BTreeSet::from(["action"]),
       triggered_flushes_buffer_ids: BTreeSet::from(["trigger_buffer_id".into()]),
       capture_screenshot: false,
+      logs_to_inject: vec![],
     },
     result
   );
@@ -3056,6 +3068,70 @@ fn sankey_workflow() -> crate::config::Config {
   );
 
   workflow!(exclusive with a, b, c, d)
+}
+
+#[tokio::test]
+async fn generate_log_action() {
+  let setup = Setup::new();
+
+  let mut a = state!("A");
+  let mut b = state!("B");
+  let c = state!("C");
+
+  declare_transition!(
+    &mut a => &b;
+    when rule!(log_matches!(message == "foo")),
+    with {
+      make_save_field_extraction("id1", "field1"),
+      make_save_timestamp_extraction("timestamp1")
+    }
+  );
+
+  declare_transition!(
+    &mut b => &c;
+    when rule!(log_matches!(message == "bar")),
+    with { make_save_timestamp_extraction("timestamp2") };
+    do action!(generate_log make_generate_log_action_proto("message", &[
+      ("duration",
+       TestFieldType::Subtract(
+        TestFieldRef::SavedTimestampId("timestamp2"),
+        TestFieldRef::SavedTimestampId("timestamp1")
+       )),
+       ("other", TestFieldType::Single(TestFieldRef::SavedFieldId("id1")))
+    ]))
+  );
+
+  let workflow = workflow!(exclusive with a, b, c);
+  let mut engine = setup.make_workflows_engine(
+    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
+  );
+  let result = engine_process_log!(engine; "foo"; with labels!{ "field1" => "value1" };
+                                   time datetime!(2023-01-01 00:00:00 UTC));
+  assert!(result.logs_to_inject.is_empty());
+  let mut result = engine_process_log!(engine; "bar"; with labels!{};
+                                   time datetime!(2023-01-01 00:00:00.003 UTC));
+  result.logs_to_inject[0].occurred_at = OffsetDateTime::UNIX_EPOCH;
+  assert_eq!(
+    result.logs_to_inject,
+    vec![Log {
+      log_level: log_level::DEBUG,
+      log_type: LogType::Normal,
+      message: "message".into(),
+      fields: vec![
+        LogField {
+          key: "duration".to_string(),
+          value: "0.003000020980834961".into(),
+        },
+        LogField {
+          key: "other".to_string(),
+          value: "value1".into(),
+        }
+      ],
+      matching_fields: vec![],
+      session_id: String::new(),
+      occurred_at: OffsetDateTime::UNIX_EPOCH,
+    },]
+  );
 }
 
 #[tokio::test]

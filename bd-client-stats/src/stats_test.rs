@@ -5,7 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::Ticker;
 use crate::file_manager::{
   FileManager,
   FileSystem,
@@ -13,6 +12,7 @@ use crate::file_manager::{
   PENDING_AGGREGATION_INDEX_FILE,
   STATS_DIRECTORY,
 };
+use crate::test::TestTicker;
 use crate::{DynamicStats, Stats};
 use anyhow::anyhow;
 use assert_matches::assert_matches;
@@ -108,28 +108,6 @@ impl Default for TestHooks {
 }
 
 //
-// TestTicker
-//
-
-struct TestTicker {
-  receiver: mpsc::Receiver<()>,
-}
-
-#[async_trait]
-impl Ticker for TestTicker {
-  async fn tick(&mut self) {
-    self.receiver.recv().await.unwrap();
-  }
-}
-
-impl TestTicker {
-  fn new() -> (mpsc::Sender<()>, Self) {
-    let (tx, rx) = mpsc::channel(1);
-    (tx, Self { receiver: rx })
-  }
-}
-
-//
 // Setup
 //
 
@@ -181,8 +159,8 @@ impl Setup {
     let (upload_tick_tx, upload_ticker) = TestTicker::new();
     let mut flush_handles = stats
       .flush_handle_helper(
-        flush_ticker,
-        upload_ticker,
+        Box::new(flush_ticker),
+        Box::new(upload_ticker),
         shutdown_trigger.make_shutdown(),
         data_tx,
         Arc::new(FileManager::new(fs, test_time.clone(), &runtime_loader).unwrap()),

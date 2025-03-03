@@ -92,7 +92,9 @@ impl Store {
 
   pub fn set_internal<T: Storable>(&self, key: &Key<T>, value: &T) -> anyhow::Result<()> {
     let mut bytes = vec![];
-    if let Err(e) = bincode::serialize_into(&mut bytes, value) {
+    if let Err(e) =
+      bincode::serde::encode_into_std_write(value, &mut bytes, bincode::config::legacy())
+    {
       anyhow::bail!("failed to serialize value: {:?}", e);
     }
 
@@ -114,8 +116,8 @@ impl Store {
         let result = base64::engine::general_purpose::STANDARD.decode(base64);
         Ok(result.map_or_else(
           |e| anyhow::bail!("failed to decode base64 value: {:?}", e),
-          |bytes| match bincode::deserialize_from::<_, T>(&bytes[..]) {
-            Ok(model) => Ok(Some(model)),
+          |bytes| match bincode::serde::decode_from_slice(&bytes[..], bincode::config::legacy()) {
+            Ok(model) => Ok(Some(model.0)),
             Err(e) => anyhow::bail!("failed to deserialize model: {:?}", e),
           },
         )?)

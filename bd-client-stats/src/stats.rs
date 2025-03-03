@@ -109,20 +109,20 @@ impl Flusher {
   pub fn new(
     stats: Arc<Stats>,
     shutdown: ComponentShutdown,
-    flush_ticker: impl Ticker + 'static,
+    flush_ticker: Box<dyn Ticker>,
     flush_rx: tokio::sync::mpsc::Receiver<FlushTriggerCompletionSender>,
     flush_time_histogram: Histogram,
-    upload_ticker: impl Ticker + 'static,
+    upload_ticker: Box<dyn Ticker>,
     data_flush_tx: mpsc::Sender<DataUpload>,
     file_manager: Arc<FileManager>,
   ) -> Self {
     Self {
       stats,
       shutdown,
-      flush_ticker: Box::new(flush_ticker),
+      flush_ticker,
       flush_rx,
       flush_time_histogram,
-      upload_ticker: Box::new(upload_ticker),
+      upload_ticker,
       data_flush_tx,
       file_manager,
 
