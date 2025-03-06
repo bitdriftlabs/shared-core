@@ -12,9 +12,7 @@ use bd_matcher::FieldProvider;
 use bd_proto::protos::workflow::workflow;
 use bd_proto::protos::workflow::workflow::workflow::transition_extension::Extension_type;
 use bd_proto::protos::workflow::workflow::workflow::{
-  Execution as ExecutionProto,
-  LimitDuration as LimitDurationProto,
-  LimitMatchedLogsCount,
+  Execution as ExecutionProto, LimitDuration as LimitDurationProto, LimitMatchedLogsCount,
 };
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
 use protobuf::MessageField;
@@ -27,16 +25,13 @@ use workflow::workflow::action::tag::Tag_type;
 use workflow::workflow::action::{
   ActionEmitMetric as ActionEmitMetricProto,
   ActionEmitSankeyDiagram as ActionEmitSankeyDiagramProto,
-  ActionTakeScreenshot as ActionTakeScreenshotProto,
-  Action_type,
+  ActionTakeScreenshot as ActionTakeScreenshotProto, Action_type,
 };
 use workflow::workflow::execution::Execution_type;
 use workflow::workflow::rule::Rule_type;
 use workflow::workflow::transition_extension::sankey_diagram_value_extraction;
 use workflow::workflow::{
-  Action as ActionProto,
-  State as StateProto,
-  Transition as TransitionProto,
+  Action as ActionProto, State as StateProto, Transition as TransitionProto,
 };
 use workflow::Workflow as WorkflowConfigProto;
 
@@ -58,6 +53,7 @@ impl WorkflowsConfiguration {
       .workflows
       .iter()
       .filter_map(|config| {
+        log::warn!("loading workflow: {:?}", config.id);
         Config::new(config)
           // TODO(mattklein123): We should be propagating errors here, at least for metrics, if not
           // to eventually NACK the entire config update.
