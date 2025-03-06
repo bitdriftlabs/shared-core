@@ -57,7 +57,13 @@ impl WorkflowsConfiguration {
     let workflows = workflows_configuration
       .workflows
       .iter()
-      .filter_map(|config| Config::new(config).ok())
+      .filter_map(|config| {
+        Config::new(config)
+          // TODO(mattklein123): We should be propagating errors here, at least for metrics, if not
+          // to eventually NACK the entire config update.
+          .inspect_err(|e| log::warn!("discarding workflow due to load error: {e}"))
+          .ok()
+      })
       .collect();
 
     Self { workflows }
