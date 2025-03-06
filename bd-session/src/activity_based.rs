@@ -88,25 +88,24 @@ impl Strategy {
 
           self.callbacks.session_id_changed(&state.session_id);
 
+          log::info!(
+            "bitdrift Capture initialized with session ID: {:?}",
+            state.session_id,
+          );
+
           state
         }
       },
       std::clone::Clone::clone,
     );
 
-    let is_first_session_load = guard.is_none();
-    if is_first_session_load {
-      log::info!(
-        "bitdrift Capture initialized with session ID: {:?}",
-        state.session_id.clone()
-      );
-    }
-
     let is_now_before_last_activity = now < state.last_activity;
     let is_inactivity_threshold_exceeded = now - state.last_activity > self.inactivity_threshold;
-    // If the last activity write is None (happens always on SDK launch), we allow to store the
-    // state update even if session hasn't changed.
-    let is_last_activity_storage_allowed = state
+
+    // We debounce writes to the store to avoid excessive writes, so only perform a state write if
+    // we haven't written to the store yet or if the last write was more than `max_write_interval`
+    // ago. If the session changes we always write to the store.
+    let last_activity_storage_needs_write = state
       .last_activity_write
       .is_none_or(|last_activity_write| now - last_activity_write > self.max_write_interval);
 
@@ -121,7 +120,7 @@ impl Strategy {
       self.store.set(&STATE_KEY, &state.clone().into());
 
       self.callbacks.session_id_changed(&session_id);
-    } else if is_last_activity_storage_allowed {
+    } else if last_activity_storage_needs_write {
       state.last_activity_write = Some(now);
 
       self.store.set(&STATE_KEY, &state.clone().into());
