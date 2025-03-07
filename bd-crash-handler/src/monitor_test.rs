@@ -9,7 +9,6 @@ use crate::Monitor;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _};
 use bd_shutdown::ComponentShutdownTrigger;
-use bd_test_helpers::make_mut;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use std::sync::Arc;
 use tempfile::TempDir;

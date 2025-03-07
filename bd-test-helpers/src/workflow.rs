@@ -52,8 +52,6 @@ use protos::workflow::workflow::workflow::{
 };
 use std::collections::BTreeMap;
 
-
-
 #[allow(clippy::module_inception)]
 pub mod macros {
   #[macro_export]
