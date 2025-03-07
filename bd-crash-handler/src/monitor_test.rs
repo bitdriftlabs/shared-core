@@ -9,7 +9,7 @@ use crate::Monitor;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _};
 use bd_shutdown::ComponentShutdownTrigger;
-use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -71,8 +71,15 @@ async fn crash_handling() {
   setup.make_crash("crash1", b"crash1");
   setup.make_crash("crash2", b"crash2");
 
-  let logs = setup.monitor.process_new_reports().await;
+  let mut logs = setup.monitor.process_new_reports().await;
   assert_eq!(2, logs.len());
+  logs.sort_by_key(|log| {
+    log.fields[0]
+      .value
+      .clone()
+      .as_bytes()
+      .map(ToOwned::to_owned)
+  });
   assert_eq!(
     b"crash1",
     &logs[0]
