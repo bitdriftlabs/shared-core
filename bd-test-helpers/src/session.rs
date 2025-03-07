@@ -13,6 +13,8 @@ use std::path::PathBuf;
 // DiskStorage
 //
 
+// A simple disk-based key-value store to be used to simulate a real-world persisted storage
+// solution, allowing it to be scoped within the SDK directory.
 #[derive(Default)]
 pub struct DiskStorage {
   root: parking_lot::Mutex<PathBuf>,
