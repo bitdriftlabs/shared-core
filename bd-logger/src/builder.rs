@@ -252,7 +252,7 @@ impl LoggerBuilder {
 
     bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
 
-    let session_strategy = self.params.session_strategy.clone();
+    let session_strategy = self.params.session_strategy;
 
     let logger_future = async move {
       // This is guaranteed to run before the initial configuration load, which means that

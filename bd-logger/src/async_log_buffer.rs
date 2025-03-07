@@ -611,7 +611,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
           self = updated_self;
           if let Some(pre_config_log_buffer) = maybe_pre_config_buffer {
-            self.maybe_replay_pre_config_buffer_logs(pre_config_log_buffer, &mut initial_logs).await;
+            self.maybe_replay_pre_config_buffer_logs(
+                pre_config_log_buffer,
+                &mut initial_logs
+            ).await;
           }
         },
         Some(async_log_buffer_message) = self.communication_rx.recv() => {

@@ -19,6 +19,7 @@ pub struct DiskStorage {
 }
 
 impl DiskStorage {
+  #[must_use]
   pub fn new(root: PathBuf) -> Self {
     std::fs::create_dir_all(&root).unwrap();
 
