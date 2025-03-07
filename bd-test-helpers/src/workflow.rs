@@ -52,22 +52,8 @@ use protos::workflow::workflow::workflow::{
 };
 use std::collections::BTreeMap;
 
-
-
 #[allow(clippy::module_inception)]
 pub mod macros {
-  #[macro_export]
-  #[allow(clippy::module_name_repetitions)]
-  /// A macro that creates a workflow config using provided states.
-  /// See `workflow_proto` macro for more details.
-  macro_rules! workflow {
-    ($($x:tt)*) => {
-      bd_workflows::config::Config::new(
-        &$crate::workflow::macros::workflow_proto!($($x)*)
-      ).unwrap()
-    }
-  }
-
   /// A macro that creates a workflow config proto using provided states.
   #[macro_export]
   #[allow(clippy::module_name_repetitions)]
@@ -420,7 +406,6 @@ pub mod macros {
     rule,
     sankey_value,
     state,
-    workflow,
     workflow_proto,
   };
 }

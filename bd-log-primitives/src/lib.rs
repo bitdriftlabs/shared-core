@@ -30,6 +30,14 @@ impl<T: AsRef<str>, B: AsRef<[u8]>> StringOrBytes<T, B> {
       Self::Bytes(_) => None,
     }
   }
+
+  /// Extracts the underlying bytes if the enum represents a Bytes, None otherwise.
+  pub fn as_bytes(&self) -> Option<&[u8]> {
+    match self {
+      Self::String(_) | Self::SharedString(_) => None,
+      Self::Bytes(b) => Some(b.as_ref()),
+    }
+  }
 }
 
 impl From<String> for StringOrBytes<String, Vec<u8>> {

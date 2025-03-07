@@ -7,7 +7,7 @@
 
 use super::AsyncLogBufferMessage;
 use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay};
-use crate::bounded_buffer::MemorySized;
+use crate::bounded_buffer::{self, MemorySized};
 use crate::client_config::TailConfigurations;
 use crate::log_replay::{LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{
@@ -32,30 +32,34 @@ use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::fixed::UUIDCallbacks;
 use bd_session::{fixed, Strategy};
-use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
+use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::events::NoOpListenerTarget;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use bd_test_helpers::session::InMemoryStorage;
-use bd_test_helpers::workflow::macros::{state, workflow};
+use bd_test_helpers::{state, workflow_proto};
 use bd_time::TimeDurationExt;
-use bd_workflows::config::WorkflowsConfiguration;
+use bd_workflows::config::{Config, WorkflowsConfiguration};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use time::ext::NumericalDuration;
-use time::Duration;
+use time::macros::datetime;
 use tokio::sync::oneshot::Sender;
 use tokio_test::assert_ok;
 
-#[derive(Clone)]
 struct Setup {
   buffer_manager: Arc<bd_buffer::Manager>,
   runtime: Arc<ConfigLoader>,
   stats: Collector,
   dynamic_counter_stats: Arc<DynamicStats>,
   tmp_dir: Arc<tempfile::TempDir>,
+
+  replayer_log_count: Arc<AtomicUsize>,
+  replayer_logs: Arc<parking_lot::Mutex<Vec<String>>>,
+  replayer_fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
+  shutdown: Option<ComponentShutdownTrigger>,
 }
 
 impl Setup {
@@ -76,7 +80,83 @@ impl Setup {
       stats: helper,
       dynamic_counter_stats,
       tmp_dir,
+      replayer_log_count: Arc::default(),
+      replayer_logs: Arc::default(),
+      replayer_fields: Arc::default(),
+      shutdown: Some(ComponentShutdownTrigger::default()),
     }
+  }
+
+  fn shutdown_in(&mut self, duration: time::Duration) {
+    let shutdown = self.shutdown.take().unwrap();
+    tokio::spawn(async move {
+      duration.sleep().await;
+      shutdown.shutdown().await;
+    });
+  }
+
+
+  fn make_test_async_log_buffer(
+    &mut self,
+    config_update_rx: tokio::sync::mpsc::Receiver<ConfigUpdate>,
+  ) -> (
+    AsyncLogBuffer<TestReplay>,
+    bounded_buffer::Sender<AsyncLogBufferMessage>,
+  ) {
+    let replayer = TestReplay::new();
+    self.replayer_log_count = replayer.logs_count.clone();
+    self.replayer_logs = replayer.logs.clone();
+    self.replayer_fields = replayer.fields.clone();
+
+    AsyncLogBuffer::new(
+      self.make_logging_context(),
+      replayer,
+      Arc::new(Strategy::Fixed(fixed::Strategy::new(
+        Arc::new(Store::new(Box::<InMemoryStorage>::default())),
+        Arc::new(UUIDCallbacks),
+      ))),
+      Arc::new(LogMetadata {
+        timestamp: time::OffsetDateTime::now_utc(),
+        fields: vec![],
+      }),
+      Box::new(EmptyTarget),
+      Box::new(bd_test_helpers::session_replay::NoOpTarget),
+      Box::new(NoOpListenerTarget),
+      config_update_rx,
+      self.shutdown.as_ref().unwrap().make_handle(),
+      &self.runtime,
+      Arc::new(SimpleNetworkQualityProvider::default()),
+      String::new(),
+    )
+  }
+
+  fn make_real_async_log_buffer(
+    &self,
+    config_update_rx: tokio::sync::mpsc::Receiver<ConfigUpdate>,
+  ) -> (
+    AsyncLogBuffer<LoggerReplay>,
+    bounded_buffer::Sender<AsyncLogBufferMessage>,
+  ) {
+    AsyncLogBuffer::new(
+      self.make_logging_context(),
+      LoggerReplay {},
+      Arc::new(Strategy::Fixed(fixed::Strategy::new(
+        Arc::new(Store::new(Box::<InMemoryStorage>::default())),
+        Arc::new(UUIDCallbacks),
+      ))),
+      Arc::new(LogMetadata {
+        timestamp: time::OffsetDateTime::now_utc(),
+        fields: vec![],
+      }),
+      Box::new(EmptyTarget),
+      Box::new(bd_test_helpers::session_replay::NoOpTarget),
+      Box::new(NoOpListenerTarget),
+      config_update_rx,
+      self.shutdown.as_ref().unwrap().make_handle(),
+      &self.runtime,
+      Arc::new(SimpleNetworkQualityProvider::default()),
+      String::new(),
+    )
   }
 
   fn make_logging_context(&self) -> UninitializedLoggingContext<Log> {
@@ -154,17 +234,6 @@ impl LogReplay for TestReplay {
 
     Ok(())
   }
-}
-
-fn make_shutdown(timeout: Duration) -> ComponentShutdownTriggerHandle {
-  let shutdown_trigger = ComponentShutdownTrigger::default();
-  let shutdown_trigger_handle = shutdown_trigger.make_handle();
-  std::thread::spawn(move || {
-    std::thread::sleep(timeout.unsigned_abs());
-    shutdown_trigger.shutdown_blocking();
-  });
-
-  shutdown_trigger_handle
 }
 
 #[test]
@@ -288,33 +357,10 @@ fn annotated_log_line_size_is_computed_correctly() {
 
 #[tokio::test]
 async fn no_logs_are_lost() {
-  let setup = Setup::new();
+  let mut setup = Setup::new();
 
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-
-  let replayer = TestReplay::new();
-  let replayer_logs_count = replayer.logs_count.clone();
-
-  let (buffer, buffer_tx) = AsyncLogBuffer::new(
-    setup.make_logging_context(),
-    replayer,
-    Arc::new(Strategy::Fixed(fixed::Strategy::new(
-      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
-      Arc::new(UUIDCallbacks),
-    ))),
-    Arc::new(LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: vec![],
-    }),
-    Box::new(EmptyTarget),
-    Box::new(bd_test_helpers::session_replay::NoOpTarget),
-    Box::new(NoOpListenerTarget),
-    config_update_rx,
-    make_shutdown(1.seconds()),
-    &setup.runtime,
-    Arc::new(SimpleNetworkQualityProvider::default()),
-    String::new(),
-  );
+  let (buffer, buffer_tx) = setup.make_test_async_log_buffer(config_update_rx);
 
   let written_logs_count = Arc::new(AtomicUsize::new(0));
   let shutdown = Arc::new(AtomicBool::new(false));
@@ -373,8 +419,10 @@ async fn no_logs_are_lost() {
     counted_logs += 1;
   }
 
+  setup.shutdown_in(1.seconds());
+
   let run_buffer_task = tokio::task::spawn(async move {
-    _ = buffer.run().await;
+    _ = buffer.run(vec![]).await;
   });
 
   shutdown.store(true, Ordering::SeqCst);
@@ -388,40 +436,17 @@ async fn no_logs_are_lost() {
   assert!(written_logs_count.load(Ordering::SeqCst) > 0);
   assert_eq!(
     written_logs_count.load(Ordering::SeqCst),
-    replayer_logs_count.load(Ordering::SeqCst)
+    setup.replayer_log_count.load(Ordering::SeqCst)
   );
 }
 
 #[tokio::test]
 async fn logs_are_replayed_in_order() {
-  let setup = Setup::new();
+  let mut setup = Setup::new();
 
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
 
-  let replayer = TestReplay::new();
-  let replayer_logs = replayer.logs.clone();
-  let replayer_logs_count = replayer.logs_count.clone();
-
-  let (buffer, buffer_tx) = AsyncLogBuffer::new(
-    setup.make_logging_context(),
-    replayer,
-    Arc::new(Strategy::Fixed(fixed::Strategy::new(
-      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
-      Arc::new(UUIDCallbacks),
-    ))),
-    Arc::new(LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: vec![],
-    }),
-    Box::new(EmptyTarget),
-    Box::new(bd_test_helpers::session_replay::NoOpTarget),
-    Box::new(NoOpListenerTarget),
-    config_update_rx,
-    make_shutdown(5.seconds()),
-    &setup.runtime,
-    Arc::new(SimpleNetworkQualityProvider::default()),
-    String::new(),
-  );
+  let (buffer, buffer_tx) = setup.make_test_async_log_buffer(config_update_rx);
 
   let written_logs = Arc::new(Mutex::new(vec![]));
   let shutdown = Arc::new(AtomicBool::new(false));
@@ -461,12 +486,11 @@ async fn logs_are_replayed_in_order() {
     }
   });
 
-  let setup_clone = setup.clone();
+  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
   let config_update_task = std::thread::spawn(move || {
     // Send an initial workflows config update to allow
     // the async log buffer to start replaying buffered logs.
-    assert_ok!(config_update_tx
-      .blocking_send(setup_clone.make_config_update(WorkflowsConfiguration::default())));
+    assert_ok!(config_update_tx.blocking_send(config_update));
     drop(config_update_tx);
   });
 
@@ -478,8 +502,10 @@ async fn logs_are_replayed_in_order() {
     counted_logs += 1;
   }
 
+  setup.shutdown_in(1.seconds());
+
   let run_buffer_task = tokio::task::spawn(async move {
-    _ = buffer.run().await;
+    _ = buffer.run(vec![]).await;
   });
 
   shutdown.store(true, Ordering::SeqCst);
@@ -494,10 +520,13 @@ async fn logs_are_replayed_in_order() {
   assert!(written_logs.len() > 0);
   assert_eq!(
     written_logs.len(),
-    replayer_logs_count.load(Ordering::SeqCst),
+    setup.replayer_log_count.load(Ordering::SeqCst),
   );
   for index in 0 .. written_logs.len() {
-    assert_eq!(written_logs[index], replayer_logs.lock()[index].as_str());
+    assert_eq!(
+      written_logs[index],
+      setup.replayer_logs.lock()[index].as_str()
+    );
   }
 }
 
@@ -508,27 +537,7 @@ fn enqueuing_log_does_not_block() {
 
   let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
 
-  let shutdown_trigger = ComponentShutdownTrigger::default();
-  let (mut _buffer, buffer_tx) = AsyncLogBuffer::new(
-    setup.make_logging_context(),
-    TestReplay::new(),
-    Arc::new(Strategy::Fixed(fixed::Strategy::new(
-      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
-      Arc::new(UUIDCallbacks),
-    ))),
-    Arc::new(LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: vec![],
-    }),
-    Box::new(EmptyTarget),
-    Box::new(bd_test_helpers::session_replay::NoOpTarget),
-    Box::new(NoOpListenerTarget),
-    config_update_rx,
-    shutdown_trigger.make_handle(),
-    &setup.runtime,
-    Arc::new(SimpleNetworkQualityProvider::default()),
-    String::new(),
-  );
+  let (mut _buffer, buffer_tx) = setup.make_real_async_log_buffer(config_update_rx);
 
   let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
     &buffer_tx,
@@ -546,32 +555,12 @@ fn enqueuing_log_does_not_block() {
 
 #[test]
 fn take_screenshot_action() {
-  let setup = Setup::new();
+  let mut setup = Setup::new();
   setup.enable_workflows(true);
 
   let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
 
-  let shutdown_trigger = ComponentShutdownTrigger::default();
-  let (mut _buffer, buffer_tx) = AsyncLogBuffer::new(
-    setup.make_logging_context(),
-    TestReplay::new(),
-    Arc::new(Strategy::Fixed(fixed::Strategy::new(
-      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
-      Arc::new(UUIDCallbacks),
-    ))),
-    Arc::new(LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: vec![],
-    }),
-    Box::new(EmptyTarget),
-    Box::new(bd_test_helpers::session_replay::NoOpTarget),
-    Box::new(NoOpListenerTarget),
-    config_update_rx,
-    shutdown_trigger.make_handle(),
-    &setup.runtime,
-    Arc::new(SimpleNetworkQualityProvider::default()),
-    String::new(),
-  );
+  let (mut _buffer, buffer_tx) = setup.make_test_async_log_buffer(config_update_rx);
 
   let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
     &buffer_tx,
@@ -594,27 +583,7 @@ fn enqueuing_log_blocks() {
 
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
 
-  let shutdown_trigger = ComponentShutdownTrigger::default();
-  let (buffer, buffer_tx) = AsyncLogBuffer::new(
-    setup.make_logging_context(),
-    LoggerReplay {},
-    Arc::new(Strategy::Fixed(fixed::Strategy::new(
-      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
-      Arc::new(UUIDCallbacks),
-    ))),
-    Arc::new(LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: vec![],
-    }),
-    Box::new(EmptyTarget),
-    Box::new(bd_test_helpers::session_replay::NoOpTarget),
-    Box::new(NoOpListenerTarget),
-    config_update_rx,
-    shutdown_trigger.make_handle(),
-    &setup.runtime,
-    Arc::new(SimpleNetworkQualityProvider::default()),
-    String::new(),
-  );
+  let (buffer, buffer_tx) = setup.make_real_async_log_buffer(config_update_rx);
 
   let rt = tokio::runtime::Runtime::new().unwrap();
   rt.spawn(async move {
@@ -632,7 +601,7 @@ fn enqueuing_log_blocks() {
 
     let shutdown_trigger = ComponentShutdownTrigger::default();
     buffer
-      .run_with_shutdown(shutdown_trigger.make_shutdown())
+      .run_with_shutdown(shutdown_trigger.make_shutdown(), vec![])
       .await;
     shutdown_trigger.shutdown().await;
   });
@@ -658,26 +627,7 @@ async fn creates_workflows_engine_in_response_to_config_update() {
 
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
 
-  let (mut buffer, _buffer_tx) = AsyncLogBuffer::new(
-    setup.make_logging_context(),
-    LoggerReplay {},
-    Arc::new(Strategy::Fixed(fixed::Strategy::new(
-      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
-      Arc::new(UUIDCallbacks),
-    ))),
-    Arc::new(LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: vec![],
-    }),
-    Box::new(EmptyTarget),
-    Box::new(bd_test_helpers::session_replay::NoOpTarget),
-    Box::new(NoOpListenerTarget),
-    config_update_rx,
-    make_shutdown(1.seconds()),
-    &setup.runtime,
-    Arc::new(SimpleNetworkQualityProvider::default()),
-    String::new(),
-  );
+  let (mut buffer, _buffer_tx) = setup.make_real_async_log_buffer(config_update_rx);
 
   // Simulate config update.
   assert_ok!(
@@ -687,7 +637,8 @@ async fn creates_workflows_engine_in_response_to_config_update() {
   );
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
+  let handle =
+    tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown(), vec![]));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   buffer = handle.await.unwrap();
@@ -701,30 +652,11 @@ async fn creates_workflows_engine_in_response_to_config_update() {
 
 #[tokio::test]
 async fn does_not_create_workflows_engine_in_response_to_config_update_if_workflows_are_disabled() {
-  let setup = Setup::new();
+  let mut setup = Setup::new();
 
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
 
-  let (mut buffer, _buffer_tx) = AsyncLogBuffer::new(
-    setup.make_logging_context(),
-    LoggerReplay {},
-    Arc::new(Strategy::Fixed(fixed::Strategy::new(
-      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
-      Arc::new(UUIDCallbacks),
-    ))),
-    Arc::new(LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: vec![],
-    }),
-    Box::new(EmptyTarget),
-    Box::new(bd_test_helpers::session_replay::NoOpTarget),
-    Box::new(NoOpListenerTarget),
-    config_update_rx,
-    make_shutdown(1.seconds()),
-    &setup.runtime,
-    Arc::new(SimpleNetworkQualityProvider::default()),
-    String::new(),
-  );
+  let (mut buffer, _buffer_tx) = setup.make_real_async_log_buffer(config_update_rx);
 
   // Simulate config update.
   assert_ok!(
@@ -733,7 +665,9 @@ async fn does_not_create_workflows_engine_in_response_to_config_update_if_workfl
       .await
   );
 
-  buffer = buffer.run().await;
+  setup.shutdown_in(1.seconds());
+
+  buffer = buffer.run(vec![]).await;
 
   assert_matches!(
     buffer.logging_state,
@@ -742,55 +676,94 @@ async fn does_not_create_workflows_engine_in_response_to_config_update_if_workfl
   );
 }
 
+
+#[tokio::test]
+async fn initial_logs_are_processed_first() {
+  let mut setup = Setup::new();
+
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+
+  let (buffer, buffer_tx) = setup.make_test_async_log_buffer(config_update_rx);
+
+  let t0 = datetime!(2021-01-01 00:00:00 UTC);
+  let shutdown = setup.shutdown.as_ref().unwrap().make_shutdown();
+
+  let handle = tokio::spawn(async move {
+    buffer
+      .run_with_shutdown(
+        shutdown,
+        vec![Log {
+          log_level: log_level::ERROR,
+          log_type: LogType::Normal,
+          message: "first".into(),
+          fields: vec![],
+          matching_fields: vec![],
+          session_id: "first session".into(),
+          occurred_at: t0,
+        }],
+      )
+      .await;
+  });
+
+  // One log is sent over the channel before the config update.
+
+  buffer_tx
+    .try_send(AsyncLogBufferMessage::EmitLog(LogLine {
+      log_level: log_level::INFO,
+      log_type: LogType::Normal,
+      message: "second".into(),
+      fields: vec![],
+      matching_fields: vec![],
+      attributes_overrides: None,
+      log_processing_completed_tx: None,
+    }))
+    .unwrap();
+
+  // Simulate config update.
+  assert_ok!(
+    config_update_tx
+      .send(setup.make_config_update(WorkflowsConfiguration::default()))
+      .await
+  );
+
+  setup.shutdown_in(1.seconds());
+
+  handle.await.unwrap();
+
+  let logs = setup.replayer_logs.lock().clone();
+  assert_eq!(2, logs.len());
+  assert_eq!("first", logs[0].as_str());
+  assert_eq!("second", logs[1].as_str());
+}
+
 #[tokio::test]
 async fn updates_workflow_engine_in_response_to_config_update() {
   let setup = Setup::new();
   setup.enable_workflows(true);
 
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-  let shutdown_trigger = ComponentShutdownTrigger::default();
-  let (mut buffer, _) = AsyncLogBuffer::new(
-    setup.make_logging_context(),
-    LoggerReplay {},
-    Arc::new(Strategy::Fixed(fixed::Strategy::new(
-      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
-      Arc::new(UUIDCallbacks),
-    ))),
-    Arc::new(LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: vec![],
-    }),
-    Box::new(EmptyTarget),
-    Box::new(bd_test_helpers::session_replay::NoOpTarget),
-    Box::new(NoOpListenerTarget),
-    config_update_rx,
-    shutdown_trigger.make_handle(),
-    &setup.runtime,
-    Arc::new(SimpleNetworkQualityProvider::default()),
-    String::new(),
-  );
-
-  let setup_clone = setup.clone();
+  let (mut buffer, _) = setup.make_real_async_log_buffer(config_update_rx);
   let config_update_tx_clone = config_update_tx.clone();
 
+  let config_update1 = setup.make_config_update(WorkflowsConfiguration::default());
+  let config_update2 = setup.make_config_update(
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![Config::new(
+      &workflow_proto!(exclusive with state!("a")),
+    )
+    .unwrap()]),
+  );
   let task = std::thread::spawn(move || {
     // Simulate config update with no workflows.
-    assert_ok!(config_update_tx_clone
-      .blocking_send(setup_clone.make_config_update(WorkflowsConfiguration::default())));
+    assert_ok!(config_update_tx_clone.blocking_send(config_update1));
     // Simulate config update with one workflow.
-    assert_ok!(
-      config_update_tx_clone.blocking_send(setup_clone.make_config_update(
-        WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
-          workflow!(exclusive with state!("a"))
-        ])
-      ))
-    );
+    assert_ok!(config_update_tx_clone.blocking_send(config_update2));
   });
 
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
+  let handle =
+    tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown(), vec![]));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   buffer = handle.await.unwrap();
@@ -809,17 +782,17 @@ async fn updates_workflow_engine_in_response_to_config_update() {
     labels! { "operation" => "start" },
   );
 
-  let setup_clone = setup.clone();
+  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
   let task = std::thread::spawn(move || {
     // Config push disables workflow engine by pushing an empty workflow config.
-    assert_ok!(config_update_tx
-      .blocking_send(setup_clone.make_config_update(WorkflowsConfiguration::default())));
+    assert_ok!(config_update_tx.blocking_send(config_update));
   });
 
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
+  let handle =
+    tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown(), vec![]));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   buffer = handle.await.unwrap();
@@ -868,17 +841,17 @@ async fn stops_workflows_engine_if_workflows_runtime_flag_is_disabled() {
     String::new(),
   );
 
-  let setup_clone = setup.clone();
+  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
   let task = std::thread::spawn(move || {
     // Config push disables workflow engine by pushing an empty workflow config.
-    assert_ok!(config_update_tx
-      .blocking_send(setup_clone.make_config_update(WorkflowsConfiguration::default())));
+    assert_ok!(config_update_tx.blocking_send(config_update));
   });
 
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
+  let handle =
+    tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown(), vec![]));
   500.milliseconds().sleep().await;
   shutdown_trigger.shutdown().await;
   let buffer = handle.await.unwrap();
@@ -896,7 +869,8 @@ async fn stops_workflows_engine_if_workflows_runtime_flag_is_disabled() {
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
+  let handle =
+    tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown(), vec![]));
   500.milliseconds().sleep().await;
   shutdown_trigger.shutdown().await;
   let buffer = handle.await.unwrap();
@@ -910,37 +884,12 @@ async fn stops_workflows_engine_if_workflows_runtime_flag_is_disabled() {
 
 #[tokio::test]
 async fn logs_resource_utilization_log() {
-  let setup = Setup::new();
+  let mut setup = Setup::new();
   setup.enable_workflows(true);
 
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
 
-  let replayer = TestReplay::new();
-  let replayer_logs_count = replayer.logs_count.clone();
-  let replayer_logs = replayer.logs.clone();
-  let replayer_fields = replayer.fields.clone();
-
-  let shutdown_trigger = ComponentShutdownTrigger::default();
-  let (buffer, sender) = AsyncLogBuffer::new(
-    setup.make_logging_context(),
-    replayer,
-    Arc::new(Strategy::Fixed(fixed::Strategy::new(
-      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
-      Arc::new(UUIDCallbacks),
-    ))),
-    Arc::new(LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: vec![],
-    }),
-    Box::new(EmptyTarget),
-    Box::new(bd_test_helpers::session_replay::NoOpTarget),
-    Box::new(NoOpListenerTarget),
-    config_update_rx,
-    shutdown_trigger.make_handle(),
-    &setup.runtime,
-    Arc::new(SimpleNetworkQualityProvider::default()),
-    String::new(),
-  );
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
 
   setup
     .runtime
@@ -963,11 +912,10 @@ async fn logs_resource_utilization_log() {
       ),
     ]));
 
-  let setup_clone = setup.clone();
+  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
   let task = std::thread::spawn(move || {
     // Config push disables workflow engine by pushing an empty workflow config.
-    assert_ok!(config_update_tx
-      .blocking_send(setup_clone.make_config_update(WorkflowsConfiguration::default())));
+    assert_ok!(config_update_tx.blocking_send(config_update));
   });
 
   let message = AsyncLogBufferMessage::EmitLog(LogLine {
@@ -985,7 +933,8 @@ async fn logs_resource_utilization_log() {
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
+  let handle =
+    tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown(), vec![]));
   500.milliseconds().sleep().await;
 
   shutdown_trigger.shutdown().await;
@@ -995,12 +944,12 @@ async fn logs_resource_utilization_log() {
 
   // There should be at least one periodic internal log reported by using >= to avoid flakes as
   // there are many time dependant things happening in this test.
-  assert!(replayer_logs_count.load(Ordering::SeqCst) >= 1);
-  assert_eq!("", replayer_logs.lock()[0]);
+  assert!(setup.replayer_log_count.load(Ordering::SeqCst) >= 1);
+  assert_eq!("", setup.replayer_logs.lock()[0]);
 
   // Confirm that internal fields are added if enabled.
-  assert!(replayer_fields.lock().len() > 0);
-  assert!(replayer_fields.lock()[0]
+  assert!(setup.replayer_fields.lock().len() > 0);
+  assert!(setup.replayer_fields.lock()[0]
     .iter()
     .any(|f| f.key == "_logs_count"));
 }

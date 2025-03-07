@@ -9,10 +9,10 @@
 #[path = "./monitor_test.rs"]
 mod tests;
 
+use bd_log_primitives::{AnnotatedLogField, LogFields};
 use bd_runtime::runtime::{ConfigLoader, StringWatch};
 use bd_shutdown::ComponentShutdown;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 #[cfg(test)]
 #[ctor::ctor]
@@ -22,6 +22,15 @@ fn test_global_init() {
 
 const REPORTS_DIRECTORY: &str = "reports";
 const REPORTS_DIRECTORY_CONFIG_FILE: &str = "directories";
+
+//
+// CrashLog
+//
+
+/// A single crash log to be emitted by the crash logger.
+pub struct CrashLog {
+  pub fields: LogFields,
+}
 
 //
 // CrashLogger
@@ -52,31 +61,22 @@ pub trait CrashLogger: Send + Sync {
 pub struct Monitor {
   reports_directories_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashDirectories>,
   report_directory: PathBuf,
-  crash_logger: Arc<dyn CrashLogger>,
   shutdown: ComponentShutdown,
 }
 
 impl Monitor {
-  pub fn new(
-    runtime: &ConfigLoader,
-    sdk_directory: &Path,
-    crash_logger: Arc<dyn CrashLogger>,
-    shutdown: ComponentShutdown,
-  ) -> Self {
+  pub fn new(runtime: &ConfigLoader, sdk_directory: &Path, shutdown: ComponentShutdown) -> Self {
     let crash_directories_flag =
       bd_runtime::runtime::crash_handling::CrashDirectories::register(runtime).unwrap();
 
     Self {
       reports_directories_flag: crash_directories_flag,
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
-      crash_logger,
       shutdown,
     }
   }
 
   pub async fn run(&mut self) -> anyhow::Result<()> {
-    self.process_new_reports().await;
-
     self.check_for_config_changes().await
   }
 
@@ -141,7 +141,7 @@ impl Monitor {
     }
   }
 
-  async fn process_new_reports(&self) {
+  pub async fn process_new_reports(&self) -> Vec<CrashLog> {
     let mut dir = match tokio::fs::read_dir(&self.report_directory.join("new")).await {
       Ok(dir) => dir,
       Err(e) => {
@@ -160,12 +160,14 @@ impl Monitor {
           );
         }
 
-        return;
+        return vec![];
       },
     };
 
     // TODO(snowp): Add smarter handling to avoid duplicate reporting.
     // TODO(snowp): Consider only reporting one of the pending reports if there are multiple.
+
+    let mut logs = vec![];
 
     while let Ok(Some(entry)) = dir.next_entry().await {
       let path = entry.path();
@@ -182,7 +184,11 @@ impl Monitor {
         // differentiate.
         // TODO(snowp): Eventually we'll want to upload the report out of band, but for now just
         // chuck it into a log line.
-        self.crash_logger.log_crash(&contents);
+        logs.push(CrashLog {
+          fields: vec![
+            AnnotatedLogField::new_ootb("_crash_artifact".into(), contents.into()).into(),
+          ],
+        });
       }
 
       // Clean up files after processing them. If this fails we'll potentially end up
@@ -191,5 +197,7 @@ impl Monitor {
         log::warn!("Failed to remove crash report: {:?} ({})", path, e);
       }
     }
+
+    logs
   }
 }
