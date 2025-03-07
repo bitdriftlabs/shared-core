@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::setup::Setup;
+use crate::test::setup::SetupOptions;
 use crate::{
   log_level,
   wait_for,
@@ -326,17 +327,14 @@ fn bad_config() {
 
 #[test]
 fn configuration_caching() {
-  let directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
+  let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
 
   // Initialize the logger once, sending it a configuration that will upload all logs.
   {
-    let mut setup = Setup::new_with_directory(
-      directory.clone(),
-      LogMetadata {
-        timestamp: time::OffsetDateTime::now_utc(),
-        fields: Vec::new(),
-      },
-    );
+    let mut setup = Setup::new_with_options(SetupOptions {
+      sdk_directory: sdk_directory.clone(),
+      ..Default::default()
+    });
 
     setup.configure_stream_all_logs();
   }
@@ -344,13 +342,10 @@ fn configuration_caching() {
   // After shutting down the previous logger, create a new one with the same buffer directory.
   // It should reuse the previous configuration and upload logs without receiving a configuration
   // update.
-  let mut setup = Setup::new_with_directory(
-    directory,
-    LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: Vec::new(),
-    },
-  );
+  let mut setup = Setup::new_with_options(SetupOptions {
+    sdk_directory,
+    ..Default::default()
+  });
 
   setup.upload_individual_logs();
 
@@ -1602,18 +1597,15 @@ fn continuous_buffer_resume_with_full_buffer() {
 
   // Shut down the logger. The bufer should now be "full" and only have a single log in place.
 
-  let dir = setup.sdk_directory.clone();
+  let sdk_directory = setup.sdk_directory.clone();
   std::mem::drop(setup);
 
   // Restart the logger + server from the previous directory. This should resume us from a full
   // buffer.
-  let mut setup = Setup::new_with_directory(
-    dir,
-    LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: Vec::new(),
-    },
-  );
+  let mut setup = Setup::new_with_options(SetupOptions {
+    sdk_directory,
+    ..Default::default()
+  });
 
   setup.upload_individual_logs();
 
@@ -1892,7 +1884,7 @@ fn logs_before_cache_load() {
 
 #[test]
 fn runtime_caching() {
-  let directory = {
+  let sdk_directory = {
     let mut setup = Setup::new();
 
     setup.upload_individual_logs();
@@ -1900,8 +1892,12 @@ fn runtime_caching() {
     setup.sdk_directory.clone()
   };
 
-  let retry_file = directory.path().join("runtime").join("retry_count");
-  assert!(directory.path().join("runtime").join("update.pb").exists());
+  let retry_file = sdk_directory.path().join("runtime").join("retry_count");
+  assert!(sdk_directory
+    .path()
+    .join("runtime")
+    .join("update.pb")
+    .exists());
   assert!(retry_file.exists());
   assert_eq!(std::fs::read(&retry_file).unwrap(), b"0");
 
@@ -1924,7 +1920,7 @@ fn runtime_caching() {
       resource_utilization_target: Box::new(EmptyTarget),
       session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
       events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
-      sdk_directory: directory.path().into(),
+      sdk_directory: sdk_directory.path().into(),
       metadata_provider: Arc::new(LogMetadata {
         timestamp: time::OffsetDateTime::now_utc(),
         fields: Vec::new(),
@@ -1960,13 +1956,10 @@ fn runtime_caching() {
 
   // Now start another logger with the same directory, this time going through the standard
   // handshake initialization.
-  let _setup = Setup::new_with_directory(
-    directory,
-    LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: Vec::new(),
-    },
-  );
+  let _setup = Setup::new_with_options(SetupOptions {
+    sdk_directory,
+    ..Default::default()
+  });
 
   // At this point the retry count should have been reset since we were able to verify that we
   // can connect to the backend with this runtime configuration.

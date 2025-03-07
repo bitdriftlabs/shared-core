@@ -7,6 +7,52 @@
 
 use bd_key_value::Storage;
 use std::collections::HashMap;
+use std::path::PathBuf;
+
+//
+// DiskStorage
+//
+
+#[derive(Default)]
+pub struct DiskStorage {
+  root: parking_lot::Mutex<PathBuf>,
+}
+
+impl DiskStorage {
+  pub fn new(root: PathBuf) -> Self {
+    std::fs::create_dir_all(&root).unwrap();
+
+    Self { root: root.into() }
+  }
+}
+
+impl Storage for DiskStorage {
+  fn set_string(&self, key: &str, value: &str) -> anyhow::Result<()> {
+    let guard = self.root.lock();
+
+    std::fs::write(guard.join(key), value)?;
+
+    Ok(())
+  }
+
+  fn get_string(&self, key: &str) -> anyhow::Result<Option<String>> {
+    let guard = self.root.lock();
+
+    if !guard.join(key).exists() {
+      return Ok(None);
+    }
+
+    Ok(Some(std::fs::read_to_string(guard.join(key))?))
+  }
+
+  fn delete(&self, key: &str) -> anyhow::Result<()> {
+    let guard = self.root.lock();
+
+    std::fs::remove_file(guard.join(key))?;
+    Ok(())
+  }
+}
+
 
 //
 // InMemoryStorage

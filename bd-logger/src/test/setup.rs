@@ -32,7 +32,7 @@ use bd_test_helpers::metadata::EmptyMetadata;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
 use bd_test_helpers::runtime::{make_update, ValueKind};
-use bd_test_helpers::session::InMemoryStorage;
+use bd_test_helpers::session::{DiskStorage, InMemoryStorage};
 use bd_test_helpers::test_api_server::{ExpectedStreamEvent, StreamAction, StreamHandle};
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
@@ -73,6 +73,33 @@ impl bd_session_replay::Target for MockSessionReplayTarget {
   }
 }
 
+//
+// SetupOptions
+//
+
+pub struct SetupOptions {
+  pub sdk_directory: Arc<TempDir>,
+  pub metadata_provider: LogMetadata,
+  pub disk_storage: bool,
+}
+
+impl Default for SetupOptions {
+  fn default() -> Self {
+    Self {
+      sdk_directory: Arc::new(TempDir::with_prefix("sdk").unwrap()),
+      metadata_provider: LogMetadata {
+        timestamp: time::OffsetDateTime::now_utc(),
+        fields: Vec::new(),
+      },
+      disk_storage: false,
+    }
+  }
+}
+
+//
+// Setup
+//
+
 pub struct Setup {
   pub logger: Logger,
   pub logger_handle: crate::LoggerHandle,
@@ -89,27 +116,27 @@ pub struct Setup {
 
 impl Setup {
   pub fn new() -> Self {
-    Self::new_with_directory(
-      Arc::new(TempDir::with_prefix("sdk").unwrap()),
-      LogMetadata {
-        timestamp: time::OffsetDateTime::now_utc(),
-        fields: Vec::new(),
-      },
-    )
+    Self::new_with_options(SetupOptions::default())
   }
 
   pub fn new_with_metadata(metadata_provider: LogMetadata) -> Self {
-    Self::new_with_directory(
-      Arc::new(TempDir::with_prefix("sdk").unwrap()),
+    Self::new_with_options(SetupOptions {
       metadata_provider,
-    )
+      ..Default::default()
+    })
   }
 
-  pub fn new_with_directory(sdk_directory: Arc<TempDir>, metadata_provider: LogMetadata) -> Self {
+  pub fn new_with_options(options: SetupOptions) -> Self {
     let mut server = bd_test_helpers::test_api_server::start_server(false, None);
     let shutdown = ComponentShutdownTrigger::default();
 
-    let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
+    let store = if options.disk_storage {
+      Arc::new(Store::new(Box::new(DiskStorage::new(
+        options.sdk_directory.path().join("store"),
+      ))))
+    } else {
+      Arc::new(Store::new(Box::<InMemoryStorage>::default()))
+    };
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
     let session_replay_target = Box::new(MockSessionReplayTarget::default());
@@ -117,13 +144,13 @@ impl Setup {
     let capture_screenshot_count = session_replay_target.capture_screenshot_count.clone();
 
     let logger = crate::LoggerBuilder::new(InitParams {
-      sdk_directory: sdk_directory.path().into(),
+      sdk_directory: options.sdk_directory.path().into(),
       api_key: "foo-api-key".to_string(),
       session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
         store.clone(),
         Arc::new(UUIDCallbacks),
       ))),
-      metadata_provider: Arc::new(metadata_provider),
+      metadata_provider: Arc::new(options.metadata_provider),
       resource_utilization_target: Box::new(EmptyTarget),
       session_replay_target,
       events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
@@ -143,7 +170,7 @@ impl Setup {
     Self {
       logger,
       logger_handle,
-      sdk_directory,
+      sdk_directory: options.sdk_directory,
       server,
       current_api_stream,
       store,

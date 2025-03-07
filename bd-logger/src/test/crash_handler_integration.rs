@@ -6,18 +6,21 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::setup::Setup;
+use crate::test::setup::SetupOptions;
 use crate::wait_for;
 use assert_matches::assert_matches;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::FeatureFlag;
-use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use time::ext::{NumericalDuration, NumericalStdDuration};
 
 #[test]
 fn crash_reports() {
   let (directory, initial_session_id) = {
-    let setup = Setup::new();
+    let setup = Setup::new_with_options(SetupOptions {
+      disk_storage: true,
+      ..Default::default()
+    });
 
     std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();
 
@@ -33,13 +36,11 @@ fn crash_reports() {
     )
   };
 
-  let mut setup = Setup::new_with_directory(
-    directory,
-    LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: Vec::new(),
-    },
-  );
+  let mut setup = Setup::new_with_options(SetupOptions {
+    sdk_directory: directory,
+    disk_storage: true,
+    ..Default::default()
+  });
 
   assert_ne!(
     initial_session_id,
