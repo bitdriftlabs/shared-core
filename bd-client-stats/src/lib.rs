@@ -7,6 +7,7 @@
 
 mod file_manager;
 pub mod stats;
+pub mod test;
 
 use crate::stats::Flusher;
 use anyhow::anyhow;
@@ -20,17 +21,15 @@ use bd_client_stats_store::{
   Error as StatsError,
   Scope,
 };
-use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
-use bd_runtime::runtime::{ConfigLoader, Watch};
+use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;
 use bd_time::SystemTimeProvider;
 use file_manager::{FileManager, RealFileSystem};
-use stats::{RuntimeWatchTicker, Ticker};
+use stats::Ticker;
 use std::collections::BTreeMap;
 use std::fmt::Formatter;
 use std::path::Path;
 use std::sync::Arc;
-use time::Duration;
 use tokio::sync::mpsc::Sender;
 
 #[cfg(test)]
@@ -82,6 +81,10 @@ impl FlushTrigger {
       .send(completion_tx)
       .await
       .map_err(|e| anyhow::anyhow!("failed to send flush stats trigger: {e}"))
+  }
+
+  pub fn blocking_flush_for_test(&self, completion_tx: FlushTriggerCompletionSender) {
+    self.flush_tx.blocking_send(completion_tx).unwrap();
   }
 }
 
@@ -190,15 +193,9 @@ impl Stats {
     shutdown: ComponentShutdown,
     sdk_directory: &Path,
     data_flush_tx: tokio::sync::mpsc::Sender<DataUpload>,
+    flush_ticker: Box<dyn Ticker>,
+    upload_ticker: Box<dyn Ticker>,
   ) -> anyhow::Result<FlushHandles> {
-    let flush_interval_flag: Watch<Duration, DirectStatFlushIntervalFlag> =
-      runtime_loader.register_watch()?;
-    let flush_ticker = RuntimeWatchTicker::new(flush_interval_flag.into_inner());
-
-    let upload_interval_flag: Watch<Duration, UploadStatFlushIntervalFlag> =
-      runtime_loader.register_watch()?;
-    let upload_ticker = RuntimeWatchTicker::new(upload_interval_flag.into_inner());
-
     self.flush_handle_helper(
       flush_ticker,
       upload_ticker,
@@ -214,8 +211,8 @@ impl Stats {
 
   fn flush_handle_helper(
     self: &Arc<Self>,
-    flush_ticker: impl Ticker + 'static,
-    upload_ticker: impl Ticker + 'static,
+    flush_ticker: Box<dyn Ticker>,
+    upload_ticker: Box<dyn Ticker>,
     shutdown: ComponentShutdown,
     data_flush_tx: tokio::sync::mpsc::Sender<DataUpload>,
     fs: Arc<FileManager>,

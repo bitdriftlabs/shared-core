@@ -8,7 +8,7 @@
 mod app_version;
 mod async_log_buffer;
 mod bounded_buffer;
-mod builder;
+pub mod builder;
 mod client_config;
 mod consumer;
 mod device_id;

@@ -30,13 +30,7 @@ fn crash_reports() {
     setup.sdk_directory.clone()
   };
 
-  let mut setup = Setup::new_with_directory(
-    directory,
-    LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: Vec::new(),
-    },
-  );
+  let mut setup = Setup::new_with_directory(directory, LogMetadata::default().into());
 
   setup.configure_stream_all_logs();
   setup.upload_individual_logs();

@@ -12,6 +12,7 @@ use bd_client_common::file::read_compressed_protobuf;
 use bd_client_stats::{DynamicStats, Stats};
 use bd_client_stats_store::{Collector, Scope};
 use bd_log_primitives::{log_level, FieldsRef, LogField, LogLevel, LogMessage, LogRef};
+use bd_logger::builder::default_stats_flush_triggers;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::client::api::{RuntimeUpdate, StatsUploadRequest};
 use bd_proto::protos::client::metric::PendingAggregationIndex;
@@ -107,7 +108,7 @@ impl AnnotatedWorkflowsEngine {
     Self::create_networking_workflows(&mut workflow_configurations);
 
     engine.start(WorkflowsEngineConfig::new(
-      WorkflowsConfiguration::new(&workflow_configurations.configs()),
+      WorkflowsConfiguration::new(workflow_configurations.configs()),
       BTreeSet::default(),
       BTreeSet::default(),
     ));
@@ -389,6 +390,7 @@ impl Setup {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let (data_tx, _data_rx) = tokio::sync::mpsc::channel(1);
 
+    let (flush_ticker, upload_ticker) = default_stats_flush_triggers(&self.runtime_loader).unwrap();
     let flush_handles = self
       .stats
       .flush_handle(
@@ -396,6 +398,8 @@ impl Setup {
         shutdown_trigger.make_shutdown(),
         self.directory.path(),
         data_tx,
+        flush_ticker,
+        upload_ticker,
       )
       .unwrap();
 
@@ -417,7 +421,6 @@ impl Setup {
       .join("stats_uploads/pending_aggregation_index.pb")
   }
 }
-
 
 fn run_profiling<T: Fn(&mut AnnotatedWorkflowsEngine) + std::marker::Send + 'static>(
   setup: Setup,

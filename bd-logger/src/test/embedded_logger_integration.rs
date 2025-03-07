@@ -65,7 +65,7 @@ impl Setup {
     let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
-    let (logger, _, future) = crate::LoggerBuilder::new(InitParams {
+    let (logger, _, future, _) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: sdk_directory.path().to_owned(),
       network: Box::new(handle),
       session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
