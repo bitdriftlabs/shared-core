@@ -263,7 +263,7 @@ impl ApplyConfig for LoggerUpdate {
     // are disabled.
     // TODO(Augustyniak): Consider removing this feature flag once workflows APIs are stable.
     let workflows_configuration = if *self.workflows_enabled_flag.read() {
-      WorkflowsConfiguration::new(&workflows)
+      WorkflowsConfiguration::new(&workflows.workflows)
     } else {
       WorkflowsConfiguration::default()
     };

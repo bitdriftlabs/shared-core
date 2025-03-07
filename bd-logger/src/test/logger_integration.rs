@@ -28,7 +28,7 @@ use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::config::v1::config::BufferConfigList;
-use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
+use bd_proto::protos::filter::filter::Filter;
 use bd_runtime::runtime::FeatureFlag;
 use bd_session::fixed::{State, UUIDCallbacks};
 use bd_session::{fixed, Strategy};
@@ -37,6 +37,7 @@ use bd_stats_common::labels;
 use bd_test_helpers::config_helper::{
   self,
   configuration_update,
+  configuration_update_from_parts,
   default_buffer_config,
   invalid_configuration,
   make_buffer_matcher_matching_everything,
@@ -46,6 +47,7 @@ use bd_test_helpers::config_helper::{
   make_workflow_config_flushing_buffer,
   match_message,
   BufferConfigBuilder,
+  ConfigurationUpdateParts,
 };
 use bd_test_helpers::metadata::EmptyMetadata;
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -61,7 +63,6 @@ use bd_test_helpers::workflow::macros::{
   rule,
   state,
   workflow_proto,
-  workflows_configuration,
 };
 use bd_test_helpers::{field_value, metric_tag, metric_value, set_field, RecordingErrorReporter};
 use std::ops::Add;
@@ -408,22 +409,14 @@ fn blocking_log() {
   // log message.
   // After the log 'foo' is emitted the workflow should trigger a flush buffer action. In response
   // to this action th engine will persist workflows state to disk.
-  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
     "",
-    StateOfTheWorld {
-      buffer_config_list: Some(BufferConfigList {
-        buffer_config: vec![config_helper::default_buffer_config(
-          Type::TRIGGER,
-          make_buffer_matcher_matching_everything().into(),
-        )],
-        ..Default::default()
-      })
-      .into(),
-      workflows_configuration: Some(make_workflow_config_flushing_buffer(
-        "default",
-        log_matches!(message == "foo"),
-      ))
-      .into(),
+    ConfigurationUpdateParts {
+      buffer_config: vec![config_helper::default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: make_workflow_config_flushing_buffer("default", log_matches!(message == "foo")),
       ..Default::default()
     },
   ));
@@ -456,21 +449,14 @@ fn session_replay_actions() {
   );
 
   // Send a configuration that takes a screenshot on "foo" message.
-  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
     "",
-    StateOfTheWorld {
-      buffer_config_list: Some(BufferConfigList {
-        buffer_config: vec![config_helper::default_buffer_config(
-          Type::TRIGGER,
-          make_buffer_matcher_matching_everything().into(),
-        )],
-        ..Default::default()
-      })
-      .into(),
-      workflows_configuration: Some(workflows_configuration!(vec![
-        workflow_proto!("workflow"; exclusive with a, b)
-      ]))
-      .into(),
+    ConfigurationUpdateParts {
+      buffer_config: vec![config_helper::default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: vec![workflow_proto!("workflow"; exclusive with a, b)],
       ..Default::default()
     },
   ));
@@ -583,22 +569,14 @@ fn blocking_flush_state() {
   let mut setup = Setup::new();
 
   // Send down a configuration with a single 'default' buffer.
-  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
     "",
-    StateOfTheWorld {
-      buffer_config_list: Some(BufferConfigList {
-        buffer_config: vec![config_helper::default_buffer_config(
-          Type::TRIGGER,
-          make_buffer_matcher_matching_everything().into(),
-        )],
-        ..Default::default()
-      })
-      .into(),
-      workflows_configuration: Some(make_workflow_config_flushing_buffer(
-        "default",
-        log_matches!(message == "foo"),
-      ))
-      .into(),
+    ConfigurationUpdateParts {
+      buffer_config: vec![config_helper::default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: make_workflow_config_flushing_buffer("default", log_matches!(message == "foo")),
       ..Default::default()
     },
   ));
@@ -732,22 +710,17 @@ fn workflow_flush_buffers_action_uploads_buffer() {
   // Send down a configuration with a single buffer ('default')
   // which accepts all logs and a single workflow which matches for logs
   // with the 'fire workflow action!' message in order to flush all buffers.
-  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
     "",
-    StateOfTheWorld {
-      buffer_config_list: Some(BufferConfigList {
-        buffer_config: vec![config_helper::default_buffer_config(
-          Type::TRIGGER,
-          make_buffer_matcher_matching_everything().into(),
-        )],
-        ..Default::default()
-      })
-      .into(),
-      workflows_configuration: Some(make_workflow_config_flushing_buffer(
+    ConfigurationUpdateParts {
+      buffer_config: vec![config_helper::default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: make_workflow_config_flushing_buffer(
         "default",
         log_matches!(message == "fire workflow action!"),
-      ))
-      .into(),
+      ),
       ..Default::default()
     },
   ));
@@ -822,31 +795,24 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   // which does not accept `InternalSDK` logs and a single workflow
   // which matches for logs with the 'fire workflow action!' message
   // in order to flush all buffers.
-  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
     "",
-    StateOfTheWorld {
-      buffer_config_list: Some(BufferConfigList {
-        buffer_config: vec![
-          default_buffer_config(
-            Type::CONTINUOUS,
-            make_buffer_matcher_matching_resource_logs().into(),
-          ),
-          BufferConfigBuilder {
-            name: "trigger_buffer_id",
-            buffer_type: Type::TRIGGER,
-            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-            non_volatile_size: 100_000,
-            volatile_size: 10_000,
-          }
-          .build(),
-        ],
-        ..Default::default()
-      })
-      .into(),
-      workflows_configuration: Some(workflows_configuration!(vec![
-        workflow_proto!("workflow"; exclusive with a, b, c)
-      ]))
-      .into(),
+    ConfigurationUpdateParts {
+      buffer_config: vec![
+        default_buffer_config(
+          Type::CONTINUOUS,
+          make_buffer_matcher_matching_resource_logs().into(),
+        ),
+        BufferConfigBuilder {
+          name: "trigger_buffer_id",
+          buffer_type: Type::TRIGGER,
+          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+          non_volatile_size: 100_000,
+          volatile_size: 10_000,
+        }
+        .build(),
+      ],
+      workflows: vec![workflow_proto!("workflow"; exclusive with a, b, c)],
       ..Default::default()
     },
   ));
@@ -979,22 +945,17 @@ fn workflow_emit_metric_action_emits_metric() {
 
   // Send down a configuration with a single buffer ('default') buffer
   // and our workflow that matches on "fire workflow action!" log.
-  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
     "",
-    StateOfTheWorld {
-      buffer_config_list: Some(BufferConfigList {
-        buffer_config: vec![config_helper::default_buffer_config(
-          Type::TRIGGER,
-          make_buffer_matcher_matching_everything().into(),
-        )],
-        ..Default::default()
-      })
-      .into(),
-      workflows_configuration: Some(workflows_configuration!(vec![
+    ConfigurationUpdateParts {
+      buffer_config: vec![config_helper::default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: vec![
         workflow_proto!("workflow_1"; exclusive with a, b),
         workflow_proto!("workflow_2"; exclusive with a, b),
-      ]))
-      .into(),
+      ],
       ..Default::default()
     },
   ));
@@ -1081,10 +1042,10 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
 
   let workflow = workflow_proto!("1"; exclusive with a, b, c);
 
-  let maybe_nack = setup.send_configuration_update(configuration_update(
+  let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
     "",
-    StateOfTheWorld {
-      workflows_configuration: Some(workflows_configuration!(vec![workflow])).into(),
+    ConfigurationUpdateParts {
+      workflows: vec![workflow],
       ..Default::default()
     },
   ));
@@ -1143,33 +1104,24 @@ fn transforms_emitted_logs_according_to_filters() {
   //  * a single workflow which flushes all buffers when it sees a log with field "foo" equal to
   //    'fire workflow action!'
   //  * a filter that adds a field "foo" with value 'fire workflow action!'
-  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
     "",
-    StateOfTheWorld {
-      buffer_config_list: Some(BufferConfigList {
-        buffer_config: vec![config_helper::default_buffer_config(
-          Type::TRIGGER,
-          make_buffer_matcher_matching_everything().into(),
-        )],
-        ..Default::default()
-      })
-      .into(),
-      workflows_configuration: Some(make_workflow_config_flushing_buffer(
+    ConfigurationUpdateParts {
+      buffer_config: vec![config_helper::default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: make_workflow_config_flushing_buffer(
         "default",
         log_matches!(tag("foo") == "fire workflow action!"),
-      ))
-      .into(),
-      filters_configuration: Some(FiltersConfiguration {
-        filters: vec![Filter {
-          matcher: Some(log_matches!(message == "yet another message!")).into(),
-          transforms: vec![set_field!(
-            captured("foo") = field_value!("fire workflow action!")
-          )],
-          ..Default::default()
-        }],
+      ),
+      filters_configuration: vec![Filter {
+        matcher: Some(log_matches!(message == "yet another message!")).into(),
+        transforms: vec![set_field!(
+          captured("foo") = field_value!("fire workflow action!")
+        )],
         ..Default::default()
-      })
-      .into(),
+      }],
       ..Default::default()
     },
   ));
@@ -1270,32 +1222,24 @@ fn continuous_and_trigger_buffer() {
   // which accepts all logs and a single workflow which matches for logs
   // with the 'fire!' message in order to flush the default buffer.
   // Also send down a continuous buffer which matches a smaller subset of the logs.
-  let maybe_nack = setup.send_configuration_update(configuration_update(
+  let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
     "",
-    StateOfTheWorld {
-      buffer_config_list: Some(BufferConfigList {
-        buffer_config: vec![
-          default_buffer_config(
-            Type::CONTINUOUS,
-            make_buffer_matcher_matching_everything_except_internal_logs().into(),
-          ),
-          BufferConfigBuilder {
-            name: "trigger",
-            buffer_type: Type::TRIGGER,
-            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-            non_volatile_size: 100_000,
-            volatile_size: 10_000,
-          }
-          .build(),
-        ],
-        ..Default::default()
-      })
-      .into(),
-      workflows_configuration: Some(make_workflow_config_flushing_buffer(
-        "trigger",
-        log_matches!(message == "fire!"),
-      ))
-      .into(),
+    ConfigurationUpdateParts {
+      buffer_config: vec![
+        default_buffer_config(
+          Type::CONTINUOUS,
+          make_buffer_matcher_matching_everything_except_internal_logs().into(),
+        ),
+        BufferConfigBuilder {
+          name: "trigger",
+          buffer_type: Type::TRIGGER,
+          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+          non_volatile_size: 100_000,
+          volatile_size: 10_000,
+        }
+        .build(),
+      ],
+      workflows: make_workflow_config_flushing_buffer("trigger", log_matches!(message == "fire!")),
       ..Default::default()
     },
   ));
@@ -1375,26 +1319,21 @@ fn device_id_matching() {
   // Send down a configuration with a trigger buffer ('trigger') which accepts all logs and a
   // single workflow which matches for logs with the 'fire!' message in order to flush the
   // default buffer.
-  let maybe_nack = setup.send_configuration_update(configuration_update(
+  let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
     "",
-    StateOfTheWorld {
-      buffer_config_list: Some(BufferConfigList {
-        buffer_config: vec![BufferConfigBuilder {
-          name: "trigger",
-          buffer_type: Type::TRIGGER,
-          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-          non_volatile_size: 100_000,
-          volatile_size: 10_000,
-        }
-        .build()],
-        ..Default::default()
-      })
-      .into(),
-      workflows_configuration: Some(make_workflow_config_flushing_buffer(
+    ConfigurationUpdateParts {
+      buffer_config: vec![BufferConfigBuilder {
+        name: "trigger",
+        buffer_type: Type::TRIGGER,
+        filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+        non_volatile_size: 100_000,
+        volatile_size: 10_000,
+      }
+      .build()],
+      workflows: make_workflow_config_flushing_buffer(
         "trigger",
         log_matches!(tag("_device_id") == &device_id),
-      ))
-      .into(),
+      ),
       ..Default::default()
     },
   ));
@@ -1438,26 +1377,21 @@ fn matching_on_but_not_capturing_matching_fields() {
   // Send down a configuration with a trigger buffer ('trigger') which accepts all logs and a
   // single workflow which matches for logs with the 'fire!' message in order to flush the
   // default buffer.
-  let maybe_nack = setup.send_configuration_update(configuration_update(
+  let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
     "",
-    StateOfTheWorld {
-      buffer_config_list: Some(BufferConfigList {
-        buffer_config: vec![BufferConfigBuilder {
-          name: "trigger",
-          buffer_type: Type::TRIGGER,
-          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-          non_volatile_size: 100_000,
-          volatile_size: 10_000,
-        }
-        .build()],
-        ..Default::default()
-      })
-      .into(),
-      workflows_configuration: Some(make_workflow_config_flushing_buffer(
+    ConfigurationUpdateParts {
+      buffer_config: vec![BufferConfigBuilder {
+        name: "trigger",
+        buffer_type: Type::TRIGGER,
+        filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+        non_volatile_size: 100_000,
+        volatile_size: 10_000,
+      }
+      .build()],
+      workflows: make_workflow_config_flushing_buffer(
         "trigger",
-        log_matches!(tag("_phantom_key") == "_phantom_value"),
-      ))
-      .into(),
+        log_matches!(tag("key") == "value"),
+      ),
       ..Default::default()
     },
   ));
@@ -1826,10 +1760,10 @@ fn logs_before_cache_load() {
 
   setup
     .current_api_stream
-    .blocking_stream_action(StreamAction::SendConfiguration(configuration_update(
-      "test",
-      StateOfTheWorld {
-        buffer_config_list: Some(BufferConfigList {
+    .blocking_stream_action(StreamAction::SendConfiguration(
+      configuration_update_from_parts(
+        "test",
+        ConfigurationUpdateParts {
           buffer_config: vec![
             default_buffer_config(
               Type::CONTINUOUS,
@@ -1844,17 +1778,14 @@ fn logs_before_cache_load() {
             }
             .build(),
           ],
+          workflows: make_workflow_config_flushing_buffer(
+            "trigger",
+            log_matches!(message == "trigger"),
+          ),
           ..Default::default()
-        })
-        .into(),
-        workflows_configuration: Some(make_workflow_config_flushing_buffer(
-          "trigger",
-          log_matches!(message == "trigger"),
-        ))
-        .into(),
-        ..Default::default()
-      },
-    )));
+        },
+      ),
+    ));
 
   setup.server.blocking_next_configuration_ack();
 

@@ -7,6 +7,7 @@
 
 use base_log_matcher::{AnyMatch, MessageMatch, StringMatchType, TypeMatch};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::ConfigurationUpdate;
 use bd_proto::protos::client::matcher::root_matcher::{self, ClientTarget};
@@ -18,7 +19,8 @@ use bd_proto::protos::config::v1::config::log_matcher::{
   BaseLogMatcher,
   Match_type,
 };
-use bd_proto::protos::workflow::workflow::WorkflowsConfiguration;
+use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
+use bd_proto::protos::workflow::workflow::{Workflow, WorkflowsConfiguration};
 #[rustfmt::skip]
 use crate::declare_transition;
 use crate::workflow::macros::{
@@ -31,7 +33,6 @@ use crate::workflow::macros::{
   rule,
   state,
   workflow_proto,
-  workflows_configuration,
 };
 use bd_proto::protos::config::v1::config::{
   buffer_config,
@@ -135,24 +136,67 @@ pub fn configuration_update(version: &str, sow: StateOfTheWorld) -> Configuratio
   }
 }
 
+#[derive(Debug, Default)]
+pub struct ConfigurationUpdateParts {
+  pub buffer_config: Vec<BufferConfig>,
+  pub workflows: Vec<Workflow>,
+  pub bdtail_streams: Vec<BdTailStream>,
+  pub filters_configuration: Vec<Filter>,
+}
+
 #[must_use]
-pub fn make_benchmarking_buffers_config() -> BufferConfigList {
-  BufferConfigList {
-    buffer_config: vec![make_buffer(
-      "default_buffer_id",
-      buffer_config::Type::TRIGGER,
-      matches!(level >= base_log_matcher::log_level_match::LogLevel::TRACE),
-    )],
+pub fn configuration_update_from_parts(
+  version: &str,
+  parts: ConfigurationUpdateParts,
+) -> ConfigurationUpdate {
+  ConfigurationUpdate {
+    version_nonce: version.to_string(),
+    update_type: Some(Update_type::StateOfTheWorld(StateOfTheWorld {
+      buffer_config_list: (!parts.buffer_config.is_empty())
+        .then(|| BufferConfigList {
+          buffer_config: parts.buffer_config,
+          ..Default::default()
+        })
+        .into(),
+      workflows_configuration: (!parts.workflows.is_empty())
+        .then(|| WorkflowsConfiguration {
+          workflows: parts.workflows,
+          ..Default::default()
+        })
+        .into(),
+      bdtail_configuration: (!parts.bdtail_streams.is_empty())
+        .then(|| BdTailConfigurations {
+          active_streams: parts.bdtail_streams,
+          ..Default::default()
+        })
+        .into(),
+      filters_configuration: (!parts.filters_configuration.is_empty())
+        .then(|| FiltersConfiguration {
+          filters: parts.filters_configuration,
+          ..Default::default()
+        })
+        .into(),
+      ..Default::default()
+    })),
     ..Default::default()
   }
 }
 
 #[must_use]
+pub fn make_benchmarking_buffers_config() -> Vec<BufferConfig> {
+  vec![make_buffer(
+    "default_buffer_id",
+    buffer_config::Type::TRIGGER,
+    matches!(level >= base_log_matcher::log_level_match::LogLevel::TRACE),
+  )]
+}
+
+#[must_use]
 pub fn make_benchmarking_configuration_update() -> ConfigurationUpdate {
-  configuration_update(
+  configuration_update_from_parts(
     "1",
-    StateOfTheWorld {
-      buffer_config_list: Some(make_benchmarking_buffers_config()).into(),
+    ConfigurationUpdateParts {
+      buffer_config: make_benchmarking_buffers_config(),
       ..Default::default()
     },
   )
@@ -198,11 +242,11 @@ pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationU
 
   let workflow2 = workflow_proto!("2"; exclusive with c, d);
 
-  configuration_update(
+  configuration_update_from_parts(
     "1",
-    StateOfTheWorld {
-      buffer_config_list: Some(make_benchmarking_buffers_config()).into(),
-      workflows_configuration: Some(workflows_configuration!(vec![workflow1, workflow2])).into(),
+    ConfigurationUpdateParts {
+      buffer_config: make_benchmarking_buffers_config(),
+      workflows: vec![workflow1, workflow2],
       ..Default::default()
     },
   )
@@ -291,15 +335,11 @@ pub fn make_configuration_update_with_workflow_flushing_buffer_on_anything(
 
   let workflow = workflow_proto!("1"; exclusive with a, b);
 
-  configuration_update(
+  configuration_update_from_parts(
     "1",
-    StateOfTheWorld {
-      buffer_config_list: Some(make_buffer_config_matching_everything(
-        buffer_id,
-        buffer_type,
-      ))
-      .into(),
-      workflows_configuration: Some(workflows_configuration!(vec![workflow])).into(),
+    ConfigurationUpdateParts {
+      buffer_config: make_buffer_config_matching_everything(buffer_id, buffer_type),
+      workflows: vec![workflow],
       ..Default::default()
     },
   )
@@ -325,11 +365,11 @@ pub fn make_configuration_update_with_workflow_flushing_buffer(
 
   let workflow = workflow_proto!("1"; exclusive with a, b);
 
-  configuration_update(
+  configuration_update_from_parts(
     "1",
-    StateOfTheWorld {
-      buffer_config_list: Some(make_buffer_config(buffer_id, buffer_type, buffer_matcher)).into(),
-      workflows_configuration: Some(workflows_configuration!(vec![workflow])).into(),
+    ConfigurationUpdateParts {
+      buffer_config: make_buffer_config(buffer_id, buffer_type, buffer_matcher),
+      workflows: vec![workflow],
       ..Default::default()
     },
   )
@@ -339,7 +379,7 @@ pub fn make_configuration_update_with_workflow_flushing_buffer(
 pub fn make_workflow_config_flushing_buffer(
   buffer_id: &str,
   matcher: bd_proto::protos::log_matcher::log_matcher::LogMatcher,
-) -> WorkflowsConfiguration {
+) -> Vec<Workflow> {
   let mut a = state!("a");
   let b = state!("b");
 
@@ -351,14 +391,14 @@ pub fn make_workflow_config_flushing_buffer(
     do action!(flush_buffers &[buffer_id]; id "flush_action_id")
   );
 
-  workflows_configuration!(vec![workflow_proto!("1"; exclusive with a, b)])
+  vec![workflow_proto!("1"; exclusive with a, b)]
 }
 
 #[must_use]
 pub fn make_buffer_config_matching_everything(
   id: &str,
   buffer_type: buffer_config::Type,
-) -> BufferConfigList {
+) -> Vec<BufferConfig> {
   make_buffer_config(id, buffer_type, make_buffer_matcher_matching_everything())
 }
 
@@ -366,11 +406,8 @@ pub fn make_buffer_config(
   id: &str,
   buffer_type: buffer_config::Type,
   matcher: BufferLogMatcher,
-) -> BufferConfigList {
-  BufferConfigList {
-    buffer_config: vec![make_buffer(id, buffer_type, matcher)],
-    ..Default::default()
-  }
+) -> Vec<BufferConfig> {
+  vec![make_buffer(id, buffer_type, matcher)]
 }
 
 //

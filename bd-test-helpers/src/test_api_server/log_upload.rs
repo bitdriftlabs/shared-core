@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_log_primitives::LogType;
+use bd_log_primitives::{LogType, StringOrBytes};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::root_as_log;
 use bd_proto::protos::client::api::LogUploadRequest;
 
@@ -42,8 +42,50 @@ impl Log<'_> {
     self.0.message_as_string_data().unwrap().data()
   }
 
+  pub fn log_level(&self) -> u32 {
+    self.0.log_level()
+  }
+
   pub fn binary_message(&self) -> &[u8] {
     self.0.message_as_binary_data().unwrap().data().bytes()
+  }
+
+  pub fn typed_message(&self) -> StringOrBytes<String, Vec<u8>> {
+    if self.0.message_as_string_data().is_some() {
+      StringOrBytes::String(self.message().to_string())
+    } else {
+      StringOrBytes::Bytes(self.binary_message().to_vec())
+    }
+  }
+
+  pub fn typed_fields(&self) -> Vec<(String, StringOrBytes<String, Vec<u8>>)> {
+    self
+      .0
+      .fields()
+      .unwrap_or_default()
+      .iter()
+      .map(|field| {
+        let key = field.key();
+        if field.value_as_string_data().is_some() {
+          (
+            key.to_string(),
+            StringOrBytes::String(field.value_as_string_data().unwrap().data().to_string()),
+          )
+        } else {
+          (
+            key.to_string(),
+            StringOrBytes::Bytes(
+              field
+                .value_as_binary_data()
+                .unwrap()
+                .data()
+                .bytes()
+                .to_vec(),
+            ),
+          )
+        }
+      })
+      .collect()
   }
 
   pub fn field(&self, key: &str) -> &str {
