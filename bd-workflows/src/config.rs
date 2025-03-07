@@ -52,7 +52,8 @@ pub struct WorkflowsConfiguration {
 }
 
 impl WorkflowsConfiguration {
-  pub fn new(workflows: &Vec<WorkflowConfigProto>) -> Self {
+  #[must_use]
+  pub fn new(workflows: &[WorkflowConfigProto]) -> Self {
     let workflows = workflows
       .iter()
       .filter_map(|config| Config::new(config).ok())

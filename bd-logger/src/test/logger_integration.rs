@@ -1338,8 +1338,7 @@ fn device_id_matching() {
       workflows: make_workflow_config_flushing_buffer(
         "trigger",
         log_matches!(tag("_device_id") == &device_id),
-      )
-      .into(),
+      ),
       ..Default::default()
     },
   ));
