@@ -929,6 +929,15 @@ pub struct StreamHandle {
 
 impl StreamHandle {
   #[must_use]
+  pub fn from_stream_id(stream_id: i32, server: &ServerHandle) -> Self {
+    Self {
+      stream_id,
+      timed_event_wait_tx: Sender::clone(&server.timed_event_wait_tx),
+      stream_action_tx: Sender::clone(&server.stream_action_tx),
+    }
+  }
+
+  #[must_use]
   pub const fn id(&self) -> i32 {
     self.stream_id
   }
