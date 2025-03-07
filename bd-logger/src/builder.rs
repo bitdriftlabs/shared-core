@@ -255,7 +255,11 @@ impl LoggerBuilder {
     let session_strategy = self.params.session_strategy;
 
     let logger_future = async move {
-      // This is guaranteed to run before the initial configuration load, which means that
+      // By running it before we start all the other components, we ensure that the crash is
+      // processed before cached configuration is loaded, allowing us to pass a fixed set of logs
+      // to the async buffer that it can emit once it transitions into the configured mode,
+      // emitting these logs before any logs emitted by the application while we were starting
+      // up.
       let crash_logs = crash_monitor
         .process_new_reports()
         .await
