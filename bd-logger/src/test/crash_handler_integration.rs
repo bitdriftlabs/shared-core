@@ -16,7 +16,7 @@ use time::ext::{NumericalDuration, NumericalStdDuration};
 
 #[test]
 fn crash_reports() {
-  let directory = {
+  let (directory, initial_session_id) = {
     let setup = Setup::new();
 
     std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();
@@ -27,7 +27,10 @@ fn crash_reports() {
     )
     .unwrap();
 
-    setup.sdk_directory.clone()
+    (
+      setup.sdk_directory.clone(),
+      setup.logger.new_logger_handle().session_id(),
+    )
   };
 
   let mut setup = Setup::new_with_directory(
@@ -38,13 +41,20 @@ fn crash_reports() {
     },
   );
 
+  assert_ne!(
+    initial_session_id,
+    setup.logger.new_logger_handle().session_id()
+  );
+
   setup.configure_stream_all_logs();
   setup.upload_individual_logs();
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(upload) => {
     assert_eq!(upload.logs().len(), 1);
     assert_eq!(upload.logs()[0].message(), "App crashed");
+    assert_eq!(upload.logs()[0].message(), "App crashed");
     assert_eq!(upload.logs()[0].binary_field("_crash_artifact"), b"crash1");
+    assert_eq!(upload.logs()[0].session_id(), initial_session_id);
   });
 }
 

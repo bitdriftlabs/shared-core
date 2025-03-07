@@ -477,6 +477,7 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "async-trait",
+ "bd-log-primitives",
  "bd-runtime",
  "bd-shutdown",
  "bd-test-helpers",

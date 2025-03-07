@@ -12,19 +12,20 @@ use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
 use crate::logger::{ChannelPair, Logger};
 use crate::logging_state::UninitializedLoggingContext;
-use crate::{InitParams, LoggerHandle};
+use crate::InitParams;
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
 use bd_client_stats_store::{Collector, Scope};
 use bd_internal_logging::NoopLogger;
-use bd_log_primitives::{log_level, AnnotatedLogField, LogType};
+use bd_log_primitives::{log_level, Log, LogType};
 use bd_runtime::runtime;
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_time::SystemTimeProvider;
 use futures_util::{try_join, Future};
 use std::pin::Pin;
 use std::sync::Arc;
+use time::OffsetDateTime;
 
 /// A builder for the logger.
 pub struct LoggerBuilder {
@@ -183,7 +184,7 @@ impl LoggerBuilder {
       runtime_loader.clone(),
       scope.clone(),
       async_log_buffer_communication_tx,
-      self.params.session_strategy,
+      self.params.session_strategy.clone(),
       self.params.device,
       self.params.static_metadata.sdk_version(),
       self.params.store,
@@ -227,9 +228,6 @@ impl LoggerBuilder {
     let mut crash_monitor = bd_crash_handler::Monitor::new(
       &runtime_loader,
       &self.params.sdk_directory,
-      Arc::new(CrashHandler {
-        logger: logger.new_logger_handle(),
-      }),
       shutdown_handle.make_shutdown(),
     );
 
@@ -254,12 +252,32 @@ impl LoggerBuilder {
 
     bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
 
-    let logger_future = async {
+    let session_strategy = self.params.session_strategy.clone();
+
+    let logger_future = async move {
+      // This is guaranteed to run before the initial configuration load, which means that
+      let crash_logs = crash_monitor
+        .process_new_reports()
+        .await
+        .into_iter()
+        .map(|crash_log| Log {
+          log_level: log_level::ERROR,
+          log_type: LogType::Lifecycle,
+          message: "App crashed".into(),
+          fields: crash_log.fields,
+          matching_fields: vec![],
+          session_id: session_strategy
+            .previous_process_session_id()
+            .unwrap_or_else(|| session_strategy.session_id()),
+          occurred_at: OffsetDateTime::now_utc(),
+        })
+        .collect();
+
       try_join!(
         async move { api.start().await },
         async move { buffer_uploader.run().await },
         async move {
-          async_log_buffer.run().await;
+          async_log_buffer.run(crash_logs).await;
           Ok(())
         },
         async move { buffer_manager.process_flushes(flush_buffers_rx).await },
@@ -318,28 +336,5 @@ impl LoggerBuilder {
       })?;
 
     Ok(())
-  }
-}
-
-struct CrashHandler {
-  logger: LoggerHandle,
-}
-
-impl bd_crash_handler::CrashLogger for CrashHandler {
-  fn log_crash(&self, report: &[u8]) {
-    // TODO(snowp): We need to figure out how to set both the timestamp and the correct session
-    // ID.
-    self.logger.log(
-      log_level::ERROR,
-      LogType::Lifecycle,
-      "App crashed".into(),
-      vec![AnnotatedLogField::new_ootb(
-        "_crash_artifact".into(),
-        report.into(),
-      )],
-      vec![],
-      None,
-      false,
-    );
   }
 }
