@@ -131,7 +131,7 @@ impl Setup {
   }
 
   fn make_real_async_log_buffer(
-    &mut self,
+    &self,
     config_update_rx: tokio::sync::mpsc::Receiver<ConfigUpdate>,
   ) -> (
     AsyncLogBuffer<LoggerReplay>,
@@ -532,7 +532,7 @@ async fn logs_are_replayed_in_order() {
 
 #[test]
 fn enqueuing_log_does_not_block() {
-  let mut setup = Setup::new();
+  let setup = Setup::new();
   setup.enable_workflows(true);
 
   let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
@@ -578,7 +578,7 @@ fn take_screenshot_action() {
 
 #[test]
 fn enqueuing_log_blocks() {
-  let mut setup = Setup::new();
+  let setup = Setup::new();
   setup.enable_workflows(true);
 
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
@@ -622,7 +622,7 @@ fn enqueuing_log_blocks() {
 
 #[tokio::test]
 async fn creates_workflows_engine_in_response_to_config_update() {
-  let mut setup = Setup::new();
+  let setup = Setup::new();
   setup.enable_workflows(true);
 
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
@@ -686,7 +686,6 @@ async fn initial_logs_are_processed_first() {
   let (buffer, buffer_tx) = setup.make_test_async_log_buffer(config_update_rx);
 
   let t0 = datetime!(2021-01-01 00:00:00 UTC);
-  let t0_clone = t0.clone();
   let shutdown = setup.shutdown.as_ref().unwrap().make_shutdown();
 
   let handle = tokio::spawn(async move {
@@ -700,7 +699,7 @@ async fn initial_logs_are_processed_first() {
           fields: vec![],
           matching_fields: vec![],
           session_id: "first session".into(),
-          occurred_at: t0_clone,
+          occurred_at: t0,
         }],
       )
       .await;
@@ -739,7 +738,7 @@ async fn initial_logs_are_processed_first() {
 
 #[tokio::test]
 async fn updates_workflow_engine_in_response_to_config_update() {
-  let mut setup = Setup::new();
+  let setup = Setup::new();
   setup.enable_workflows(true);
 
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
