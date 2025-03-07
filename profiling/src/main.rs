@@ -33,7 +33,6 @@ use bd_test_helpers::workflow::macros::{
   metric_value,
   rule,
   state,
-  workflows_configuration,
 };
 use bd_time::TimeDurationExt;
 use bd_workflows::config::WorkflowsConfiguration;
@@ -108,7 +107,7 @@ impl AnnotatedWorkflowsEngine {
     Self::create_networking_workflows(&mut workflow_configurations);
 
     engine.start(WorkflowsEngineConfig::new(
-      WorkflowsConfiguration::new(&workflows_configuration!(workflow_configurations.configs())),
+      WorkflowsConfiguration::new(&workflow_configurations.configs()),
       BTreeSet::default(),
       BTreeSet::default(),
     ));

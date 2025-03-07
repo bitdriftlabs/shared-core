@@ -16,7 +16,6 @@ use bd_proto::protos::workflow::workflow::workflow::{
   LimitDuration as LimitDurationProto,
   LimitMatchedLogsCount,
 };
-use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
 use protobuf::MessageField;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -53,9 +52,8 @@ pub struct WorkflowsConfiguration {
 }
 
 impl WorkflowsConfiguration {
-  pub fn new(workflows_configuration: &WorkflowsConfigurationProto) -> Self {
-    let workflows = workflows_configuration
-      .workflows
+  pub fn new(workflows: &Vec<WorkflowConfigProto>) -> Self {
+    let workflows = workflows
       .iter()
       .filter_map(|config| Config::new(config).ok())
       .collect();
