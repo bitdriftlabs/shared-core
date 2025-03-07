@@ -42,6 +42,10 @@ impl Log<'_> {
     self.0.message_as_string_data().unwrap().data()
   }
 
+  pub fn log_level(&self) -> u32 {
+    self.0.log_level()
+  }
+
   pub fn binary_message(&self) -> &[u8] {
     self.0.message_as_binary_data().unwrap().data().bytes()
   }
