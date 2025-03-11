@@ -46,9 +46,10 @@ use bd_test_helpers::workflow::{
 };
 use bd_test_helpers::{metric_tag, metric_value, sankey_value};
 use bd_time::TimeDurationExt;
+use itertools::Itertools;
 use pretty_assertions::assert_eq;
 use std::borrow::Cow;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -1651,7 +1652,7 @@ async fn engine_processing_log() {
       triggered_flush_buffers_action_ids: BTreeSet::from(["foo_action_id"]),
       triggered_flushes_buffer_ids: BTreeSet::from(["foo_buffer_id".into()]),
       capture_screenshot: false,
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
     },
     result
   );
@@ -1916,7 +1917,7 @@ async fn log_without_destination() {
       triggered_flush_buffers_action_ids: BTreeSet::from(["action"]),
       triggered_flushes_buffer_ids: BTreeSet::from(["trigger_buffer_id".into()]),
       capture_screenshot: false,
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
     },
     result
   );
@@ -3108,11 +3109,12 @@ async fn generate_log_action() {
   let result = engine_process_log!(engine; "foo"; with labels!{ "field1" => "value1" };
                                    time datetime!(2023-01-01 00:00:00 UTC));
   assert!(result.logs_to_inject.is_empty());
-  let mut result = engine_process_log!(engine; "bar"; with labels!{};
+  let result = engine_process_log!(engine; "bar"; with labels!{};
                                    time datetime!(2023-01-01 00:00:00.003 UTC));
-  result.logs_to_inject[0].occurred_at = OffsetDateTime::UNIX_EPOCH;
+  let mut logs_to_inject = result.logs_to_inject.into_values().collect_vec();
+  logs_to_inject[0].occurred_at = OffsetDateTime::UNIX_EPOCH;
   assert_eq!(
-    result.logs_to_inject,
+    logs_to_inject,
     vec![Log {
       log_level: log_level::DEBUG,
       log_type: LogType::Normal,

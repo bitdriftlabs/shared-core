@@ -72,6 +72,7 @@ use bd_test_helpers::workflow::{
 };
 use bd_test_helpers::{field_value, metric_tag, metric_value, set_field, RecordingErrorReporter};
 use parking_lot::Mutex;
+use time::OffsetDateTime;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Instant;
@@ -138,13 +139,10 @@ fn log_upload() {
 #[test]
 fn log_upload_attributes_override() {
   let time_first = time::OffsetDateTime::now_utc();
-  let mut setup = Setup::new_with_metadata(
-    LogMetadata {
-      timestamp: Mutex::new(time_first),
-      fields: vec![],
-    }
-    .into(),
-  );
+  let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
+    timestamp: Mutex::new(time_first),
+    fields: vec![],
+  }));
 
   setup.send_configuration_update(
     make_configuration_update_with_workflow_flushing_buffer_on_anything(
@@ -949,7 +947,8 @@ fn workflow_generate_log_to_histogram() {
     &mut b => &c;
     when rule!(log_matches!(message == "bar")),
     with { make_save_timestamp_extraction("timestamp2") };
-    do action!(generate_log make_generate_log_action_proto("message", &[
+    do action!(flush_buffers &["default"]; id "flush_action_id"),
+       action!(generate_log make_generate_log_action_proto("message", &[
       ("duration",
        TestFieldType::Subtract(
         TestFieldRef::SavedTimestampId("timestamp2"),
@@ -1014,6 +1013,15 @@ fn workflow_generate_log_to_histogram() {
     ),
     Some(vec![1.003_000_020_980_835]),
   );
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.logs().len(), 3);
+    assert_eq!(log_upload.logs()[2].message(), "message");
+    assert_eq!(log_upload.logs()[2].field("duration"), "1.003000020980835");
+    assert_ne!(log_upload.logs()[2].session_id(), "");
+    assert_ne!(log_upload.logs()[2].timestamp(), OffsetDateTime::UNIX_EPOCH);
+  });
 }
 
 #[test]

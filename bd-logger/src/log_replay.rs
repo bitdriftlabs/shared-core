@@ -213,7 +213,9 @@ impl ProcessingPipeline {
         .buffers(log.log_type, log.log_level, log.message, log.fields);
 
     let mut result = self.workflows_engine.process_log(log, &matching_buffers);
-    let logs_to_inject = std::mem::take(&mut result.logs_to_inject);
+    let logs_to_inject = std::mem::take(&mut result.logs_to_inject)
+      .into_values()
+      .collect();
 
     log::debug!(
       "processed {:?} log, destination buffer(s): {:?}",

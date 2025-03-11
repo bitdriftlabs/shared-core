@@ -19,19 +19,17 @@ use time::OffsetDateTime;
 //
 
 struct Helper {
-  now: OffsetDateTime,
   extractions: TraversalExtractions,
   captured_fields: LogFields,
   matching_fields: LogFields,
 }
 
 impl Helper {
-  fn new(now: OffsetDateTime) -> Self {
+  fn new() -> Self {
     let extractions = TraversalExtractions::default();
     let captured_fields = LogFields::default();
     let matching_fields = LogFields::default();
     Self {
-      now,
       extractions,
       captured_fields,
       matching_fields,
@@ -53,13 +51,12 @@ impl Helper {
           .collect(),
         matching_fields: vec![],
         session_id: String::new(),
-        occurred_at: self.now,
+        occurred_at: OffsetDateTime::UNIX_EPOCH,
       }),
       generate_log_action(
         &self.extractions,
         action,
         &FieldsRef::new(&self.captured_fields, &self.matching_fields),
-        self.now
       )
     );
   }
@@ -90,7 +87,7 @@ impl Helper {
 
 #[test]
 fn generate_log_no_fields() {
-  let helper = Helper::new(datetime!(2023-10-01 12:00:00 UTC));
+  let helper = Helper::new();
   helper.expect_log("message", &[], &make_generate_log_action("message", &[]));
 }
 
@@ -129,7 +126,7 @@ fn generate_log_with_saved_fields_math() {
       ),
     ],
   );
-  let mut helper = Helper::new(datetime!(2023-10-01 12:00:00 UTC));
+  let mut helper = Helper::new();
   helper.expect_log(
     "hello world",
     &[
@@ -182,7 +179,7 @@ fn generate_log_with_field_from_current_log() {
       ),
     ],
   );
-  let mut helper = Helper::new(datetime!(2023-10-01 12:00:00 UTC));
+  let mut helper = Helper::new();
   helper.add_extracted_field("bad1", "not a number");
   helper.add_extracted_field("id1", "42");
   helper.add_field("bad2", "also not a number");
@@ -212,7 +209,7 @@ fn generate_log_with_saved_timestamp_math() {
       ),
     ],
   );
-  let mut helper = Helper::new(datetime!(2023-10-01 12:00:00 UTC));
+  let mut helper = Helper::new();
   helper.expect_log(
     "hello world",
     &[("single", "single_value"), ("subtract", "NaN")],

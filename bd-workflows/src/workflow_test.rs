@@ -284,7 +284,7 @@ fn multiple_start_nodes_initial_fork() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -308,7 +308,7 @@ fn multiple_start_nodes_initial_fork() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 1,
         potential_fork_exclusive_workflows_count: 0,
@@ -336,7 +336,7 @@ fn multiple_start_nodes_initial_fork() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -395,7 +395,7 @@ fn multiple_start_nodes_initial_branching() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -420,7 +420,7 @@ fn multiple_start_nodes_initial_branching() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 1,
         potential_fork_exclusive_workflows_count: 0,
@@ -448,7 +448,7 @@ fn multiple_start_nodes_initial_branching() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -515,7 +515,7 @@ fn basic_exclusive_workflow() {
           metric_type: MetricType::Counter,
         })
       ],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -546,7 +546,7 @@ fn basic_exclusive_workflow() {
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -612,7 +612,7 @@ fn basic_parallel_workflow() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -643,7 +643,7 @@ fn basic_parallel_workflow() {
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -705,7 +705,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -734,7 +734,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -764,7 +764,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -830,7 +830,7 @@ fn parallel_workflow_matched_logs_count_limit() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -859,7 +859,7 @@ fn parallel_workflow_matched_logs_count_limit() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -889,7 +889,7 @@ fn parallel_workflow_matched_logs_count_limit() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -941,7 +941,7 @@ fn exclusive_workflow_log_rule_count() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -972,7 +972,7 @@ fn exclusive_workflow_log_rule_count() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 1,
@@ -1009,7 +1009,7 @@ fn exclusive_workflow_log_rule_count() {
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1061,7 +1061,7 @@ fn parallel_workflow_log_rule_count() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1093,7 +1093,7 @@ fn parallel_workflow_log_rule_count() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1125,7 +1125,7 @@ fn parallel_workflow_log_rule_count() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1165,7 +1165,7 @@ fn parallel_workflow_log_rule_count() {
           streaming: None,
         })
       ],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1236,7 +1236,7 @@ fn branching_exclusive_workflow() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1292,7 +1292,7 @@ fn branching_exclusive_workflow() {
         buffer_ids: BTreeSet::from(["zoo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1330,7 +1330,7 @@ fn branching_exclusive_workflow() {
           streaming: None,
         }),
       ],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1403,7 +1403,7 @@ fn branching_parallel_workflow() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1435,7 +1435,7 @@ fn branching_parallel_workflow() {
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1468,7 +1468,7 @@ fn branching_parallel_workflow() {
         buffer_ids: BTreeSet::from(["zoo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1497,7 +1497,7 @@ fn branching_parallel_workflow() {
         buffer_ids: BTreeSet::from(["zar_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1535,7 +1535,7 @@ fn branching_parallel_workflow() {
           streaming: None,
         })
       ],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1561,7 +1561,7 @@ fn branching_parallel_workflow() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: vec![],
+      logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,

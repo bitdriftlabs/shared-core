@@ -385,12 +385,12 @@ impl Workflow {
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct WorkflowResult<'a> {
   triggered_actions: Vec<TriggeredAction<'a>>,
-  logs_to_inject: Vec<Log>,
+  logs_to_inject: BTreeMap<&'a str, Log>,
   stats: WorkflowResultStats,
 }
 
 impl<'a> WorkflowResult<'a> {
-  pub fn into_parts(self) -> (Vec<TriggeredAction<'a>>, Vec<Log>) {
+  pub fn into_parts(self) -> (Vec<TriggeredAction<'a>>, BTreeMap<&'a str, Log>) {
     (self.triggered_actions, self.logs_to_inject)
   }
 
@@ -573,7 +573,7 @@ impl Run {
     // the most common situation.
 
     let mut run_triggered_actions = Vec::<TriggeredAction<'_>>::new();
-    let mut run_logs_to_inject = Vec::<Log>::new();
+    let mut run_logs_to_inject = BTreeMap::<&'a str, Log>::new();
 
     let mut created_traversals_count = 0;
     let mut advanced_traversals_count = 0;
@@ -606,7 +606,7 @@ impl Run {
             advanced_traversals_count: 0,
             completed_traversals_count: 0,
             matched_logs_count: run_matched_logs_count,
-            logs_to_inject: vec![],
+            logs_to_inject: BTreeMap::new(),
           };
         }
       }
@@ -631,7 +631,7 @@ impl Run {
                   advanced_traversals_count: 0,
                   completed_traversals_count: 0,
                   matched_logs_count: run_matched_logs_count,
-                  logs_to_inject: vec![],
+                  logs_to_inject: BTreeMap::new(),
                 };
               }
             },
@@ -777,7 +777,7 @@ pub(crate) struct RunResult<'a> {
   /// The number of matched logs. A single log can be matched multiple times
   matched_logs_count: u32,
   // Logs to be injected back into the workflow engine after field attachment and other processing.
-  logs_to_inject: Vec<Log>,
+  logs_to_inject: BTreeMap<&'a str, Log>,
 }
 
 impl RunResult<'_> {
@@ -972,9 +972,9 @@ impl Traversal {
     actions: &'a [Action],
     extractions: &mut TraversalExtractions,
     current_log_fields: &FieldsRef<'_>,
-  ) -> (Vec<TriggeredAction<'a>>, Vec<Log>) {
+  ) -> (Vec<TriggeredAction<'a>>, BTreeMap<&'a str, Log>) {
     let mut triggered_actions = vec![];
-    let mut logs_to_inject = vec![];
+    let mut logs_to_inject = BTreeMap::new();
     for action in actions {
       match action {
         Action::FlushBuffers(action) => {
@@ -1010,13 +1010,8 @@ impl Traversal {
           triggered_actions.push(TriggeredAction::TakeScreenshot(action));
         },
         Action::GenerateLog(action) => {
-          if let Some(log) = generate_log_action(
-            extractions,
-            action,
-            current_log_fields,
-            OffsetDateTime::now_utc(),
-          ) {
-            logs_to_inject.push(log);
+          if let Some(log) = generate_log_action(extractions, action, current_log_fields) {
+            logs_to_inject.insert(action.id.as_str(), log);
           }
         },
       }
@@ -1071,7 +1066,7 @@ struct TraversalResult<'a> {
   // The number of transitions that were followed in response to processing a log.
   followed_transitions_count: u32,
   // Logs to be injected back into the workflow engine after field attachment and other processing.
-  log_to_inject: Vec<Log>,
+  log_to_inject: BTreeMap<&'a str, Log>,
 }
 
 impl TraversalResult<'_> {

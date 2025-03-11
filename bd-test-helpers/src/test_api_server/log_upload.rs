@@ -31,6 +31,7 @@ impl LogUpload {
   }
 }
 
+#[derive(Debug)]
 pub struct Log<'a>(bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::Log<'a>);
 
 impl Log<'_> {

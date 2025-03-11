@@ -97,7 +97,6 @@ pub fn generate_log_action(
   extractions: &TraversalExtractions,
   action: &ActionGenerateLog,
   current_log_fields: &FieldsRef<'_>,
-  now: OffsetDateTime,
 ) -> Option<Log> {
   let message = action.message.clone();
   let mut fields = vec![];
@@ -138,8 +137,8 @@ pub fn generate_log_action(
     fields,
     message: StringOrBytes::String(message),
     matching_fields: vec![],
-    // This will be filled in later via the log processor.
+    // These will be filled in later via the log processor.
     session_id: String::new(),
-    occurred_at: now,
+    occurred_at: OffsetDateTime::UNIX_EPOCH,
   })
 }

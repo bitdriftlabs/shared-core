@@ -44,7 +44,7 @@ use bd_stats_common::labels;
 use bd_time::TimeDurationExt as _;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -622,12 +622,12 @@ impl WorkflowsEngine {
         triggered_flushes_buffer_ids: BTreeSet::new(),
         triggered_flush_buffers_action_ids: BTreeSet::new(),
         capture_screenshot: false,
-        logs_to_inject: vec![],
+        logs_to_inject: BTreeMap::new(),
       };
     }
 
     let mut actions: Vec<TriggeredAction<'_>> = vec![];
-    let mut logs_to_inject: Vec<Log> = vec![];
+    let mut logs_to_inject: BTreeMap<&'a str, Log> = BTreeMap::new();
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let was_in_initial_state = workflow.is_in_initial_state();
       let result = workflow.process_log(
@@ -685,9 +685,9 @@ impl WorkflowsEngine {
         self.needs_state_persistence = true;
       }
 
-      let (triggered_actions, capture_screenshot_actions) = result.into_parts();
+      let (triggered_actions, workflow_logs_to_inject) = result.into_parts();
       actions.extend(triggered_actions);
-      logs_to_inject.extend(capture_screenshot_actions);
+      logs_to_inject.extend(workflow_logs_to_inject);
     }
 
     self
@@ -914,7 +914,7 @@ pub struct WorkflowsEngineResult<'a> {
   pub capture_screenshot: bool,
 
   // Logs to be injected back into the workflow engine after field attachment and other processing.
-  pub logs_to_inject: Vec<Log>,
+  pub logs_to_inject: BTreeMap<&'a str, Log>,
 }
 
 //
