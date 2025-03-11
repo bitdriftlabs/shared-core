@@ -121,6 +121,8 @@ impl Monitor {
       candidates
     };
 
+    log::error!("considering candidates: {:?}", candidates);
+
     // Given a path like `["a", "b", "c"]` we want to look for a key `c` in the object at the end
     // after traversing the path `a.b`. If we find a string value at that key we'll use it as the
     // crash reason.
@@ -129,16 +131,23 @@ impl Monitor {
       let key = candidate_paths.last()?;
 
       for candidate in &candidates {
-        let mut candidate_map = candidate.get::<HashMap<String, JsonValue>>()?;
+        if let Some(reason) = (|| {
+          let mut candidate_map = candidate.get::<HashMap<String, JsonValue>>()?;
 
-        for path in candidate_paths.iter().take(candidate_paths.len() - 1) {
-          candidate_map = candidate_map.get(&path.to_string())?.get()?;
-        }
+          for path in candidate_paths.iter().take(candidate_paths.len() - 1) {
+            log::error!("considering path: {:?}", path);
+            candidate_map = candidate_map.get(&path.to_string())?.get()?;
+          }
 
-        let candidate = candidate_map.get(&key.to_string())?;
+          let candidate = candidate_map.get(&key.to_string())?;
 
-        if let JsonValue::String(reason) = candidate {
-          return Some(reason.clone());
+          if let JsonValue::String(reason) = candidate {
+            return Some(reason.clone());
+          }
+
+          None
+        })() {
+          return Some(reason);
         }
       }
     }

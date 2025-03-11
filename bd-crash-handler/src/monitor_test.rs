@@ -63,6 +63,75 @@ impl Setup {
 }
 
 #[tokio::test]
+async fn crash_reason_inferrence() {
+  let setup = Setup::new().await;
+
+  setup.monitor.try_ensure_directories_exist().await;
+
+  let artifact1 = b"{\"reason\":\"foo\"}";
+  let artifact2 = b"{\"crash\":{\"reason\": \"bar\"}}";
+  setup.make_crash("crash1", artifact1);
+  setup.make_crash("crash2", artifact2);
+
+  let mut logs = setup.monitor.process_new_reports().await;
+  assert_eq!(2, logs.len());
+  logs.sort_by_key(|log| {
+    log.fields[0]
+      .value
+      .clone()
+      .as_bytes()
+      .map(ToOwned::to_owned)
+  });
+  let log1 = &logs[0];
+  let log2 = &logs[1];
+
+  assert_eq!(
+    artifact1,
+    &log2
+      .fields
+      .iter()
+      .find(|field| field.key == "_crash_artifact")
+      .unwrap()
+      .value
+      .as_bytes()
+      .unwrap()
+  );
+  assert_eq!(
+    "foo",
+    log2
+      .fields
+      .iter()
+      .find(|field| field.key == "_crash_reason")
+      .unwrap()
+      .value
+      .as_str()
+      .unwrap()
+  );
+  assert_eq!(
+    artifact2,
+    &log1
+      .fields
+      .iter()
+      .find(|field| field.key == "_crash_artifact")
+      .unwrap()
+      .value
+      .as_bytes()
+      .unwrap()
+  );
+  assert_eq!(
+    "bar",
+    log1
+      .fields
+      .iter()
+      .find(|field| field.key == "_crash_reason")
+      .unwrap()
+      .value
+      .as_str()
+      .unwrap()
+  );
+}
+
+#[tokio::test]
 async fn crash_handling() {
   let setup = Setup::new().await;
 
@@ -103,6 +172,8 @@ async fn crash_handling() {
       .unwrap()
   );
 }
+
+
 
 #[tokio::test]
 async fn config_file() {
