@@ -71,12 +71,10 @@ fn crash_directories_configuration() {
   );
   setup.server.blocking_next_runtime_ack();
 
-  wait_for!(
-    std::fs::exists(setup.sdk_directory.path().join("reports/directories")).unwrap_or_default()
-  );
+  wait_for!(std::fs::exists(setup.sdk_directory.path().join("reports/config")).unwrap_or_default());
 
   assert_eq!(
-    std::fs::read(setup.sdk_directory.path().join("reports/directories")).unwrap(),
+    std::fs::read(setup.sdk_directory.path().join("reports/config")).unwrap(),
     b"a:b"
   );
 
@@ -86,6 +84,6 @@ fn crash_directories_configuration() {
   setup.server.blocking_next_runtime_ack();
 
   wait_for!(
-    !std::fs::exists(setup.sdk_directory.path().join("reports/directories")).unwrap_or_default()
+    !std::fs::exists(setup.sdk_directory.path().join("reports/config")).unwrap_or_default()
   );
 }

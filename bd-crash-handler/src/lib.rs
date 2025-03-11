@@ -9,13 +9,14 @@
 #[path = "./monitor_test.rs"]
 mod tests;
 
+mod json_extractor;
+
 use bd_log_primitives::{AnnotatedLogField, LogFields};
 use bd_runtime::runtime::{ConfigLoader, StringWatch};
 use bd_shutdown::ComponentShutdown;
 use itertools::Itertools as _;
-use std::collections::HashMap;
+use json_extractor::{JsonExtractor, JsonPath};
 use std::path::{Path, PathBuf};
-use tinyjson::JsonValue;
 
 #[cfg(test)]
 #[ctor::ctor]
@@ -24,7 +25,8 @@ fn test_global_init() {
 }
 
 const REPORTS_DIRECTORY: &str = "reports";
-const REPORTS_DIRECTORY_CONFIG_FILE: &str = "directories";
+const INGESTION_CONFIG_FILE: &str = "config";
+const REASON_INFERENCE_CONFIG_FILE: &str = "reason_inference";
 
 //
 // CrashLog
@@ -63,6 +65,7 @@ pub trait CrashLogger: Send + Sync {
 ///   responsible for copying the raw files into this directory.
 pub struct Monitor {
   reports_directories_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashDirectories>,
+  crash_reason_paths_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashReasonPaths>,
   report_directory: PathBuf,
   shutdown: ComponentShutdown,
 }
@@ -71,9 +74,12 @@ impl Monitor {
   pub fn new(runtime: &ConfigLoader, sdk_directory: &Path, shutdown: ComponentShutdown) -> Self {
     let crash_directories_flag =
       bd_runtime::runtime::crash_handling::CrashDirectories::register(runtime).unwrap();
+    let crash_reason_paths_flag =
+      bd_runtime::runtime::crash_handling::CrashReasonPaths::register(runtime).unwrap();
 
     Self {
       reports_directories_flag: crash_directories_flag,
+      crash_reason_paths_flag,
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
       shutdown,
     }
@@ -95,7 +101,7 @@ impl Monitor {
     }
   }
 
-  fn guess_crash_reason(report: &[u8], candidate_paths: &[&[&str]]) -> Option<String> {
+  fn guess_crash_reason(report: &[u8], candidate_paths: &[JsonPath]) -> Option<String> {
     // The report may come in either as a single JSON object or as a series of JSON objects.
     // Defensively handle both to produce a list of objects that we want to inspect to infer the
     // crash reason.
@@ -107,12 +113,12 @@ impl Monitor {
       return None;
     };
 
-    let candidates = if let Ok(json) = tinyjson::JsonParser::new(report.chars()).parse() {
+    let candidates = if let Ok(json) = JsonExtractor::new(&report) {
       vec![json]
     } else {
       let Ok(candidates) = report
         .lines()
-        .map(|line| tinyjson::JsonParser::new(line.chars()).parse())
+        .map(|line| JsonExtractor::new(line))
         .try_collect()
       else {
         return None;
@@ -121,30 +127,10 @@ impl Monitor {
       candidates
     };
 
-    // Given a path like `["a", "b", "c"]` we want to look for a key `c` in the object at the end
-    // after traversing the path `a.b`. If we find a string value at that key we'll use it as the
-    // crash reason.
-
-    for candidate_paths in candidate_paths {
-      let key = candidate_paths.last()?;
-
-      for candidate in &candidates {
-        if let Some(reason) = (|| {
-          let mut candidate_map = candidate.get::<HashMap<String, JsonValue>>()?;
-
-          for path in candidate_paths.iter().take(candidate_paths.len() - 1) {
-            candidate_map = candidate_map.get(&path.to_string())?.get()?;
-          }
-
-          let candidate = candidate_map.get(&key.to_string())?;
-
-          if let JsonValue::String(reason) = candidate {
-            return Some(reason.clone());
-          }
-
-          None
-        })() {
-          return Some(reason);
+    for candidate in candidates {
+      for path in candidate_paths {
+        if let Some(value) = candidate.extract(path) {
+          return Some(value.clone());
         }
       }
     }
@@ -156,6 +142,7 @@ impl Monitor {
     loop {
       tokio::select! {
         _ = self.reports_directories_flag.changed() => {},
+        _ = self.crash_reason_paths_flag.changed() => {},
         () = self.shutdown.cancelled() => return Ok(()),
       };
 
@@ -165,36 +152,44 @@ impl Monitor {
       // before the SDK starts, but if we find this problematic we might need to figure out how to
       // avoid reading the runtime value before the cached value is available.
 
-
       let crash_directories = self.reports_directories_flag.read_mark_update().clone();
-      self.write_config_file(&crash_directories).await;
+      self
+        .write_config_file(
+          &self.report_directory.join(INGESTION_CONFIG_FILE),
+          &crash_directories,
+        )
+        .await;
+
+      let crash_reason_paths = self.crash_reason_paths_flag.read_mark_update().clone();
+      self
+        .write_config_file(
+          &self.report_directory.join(REASON_INFERENCE_CONFIG_FILE),
+          &crash_reason_paths,
+        )
+        .await;
     }
   }
 
-  async fn write_config_file(&self, report_directories: &str) {
-    let config_file = &self.report_directory.join(REPORTS_DIRECTORY_CONFIG_FILE);
-
-    if report_directories.is_empty() {
+  async fn write_config_file(&self, file: &Path, value: &str) {
+    if value.is_empty() {
       log::debug!("No report directories configured, removing file");
 
-      if let Err(e) = tokio::fs::remove_file(&config_file).await {
+      if let Err(e) = tokio::fs::remove_file(&file).await {
         log::warn!(
           "Failed to remove report directories config file: {:?} ({})",
-          config_file,
+          file,
           e
         );
       }
     } else {
-      log::debug!(
-        "Writing {report_directories:?} to report directories config file {config_file:?}",
-      );
+      log::debug!("Writing {value:?} to report directories config file {file:?}",);
 
       self.try_ensure_directories_exist().await;
 
-      if let Err(e) = tokio::fs::write(config_file, report_directories).await {
+      if let Err(e) = tokio::fs::write(file, value).await {
         log::warn!(
           "Failed to write report directories config file: {:?} ({})",
-          config_file,
+          file,
           e
         );
       }
@@ -202,6 +197,8 @@ impl Monitor {
   }
 
   pub async fn process_new_reports(&self) -> Vec<CrashLog> {
+    let crash_reason_paths = self.crash_reason_paths().await;
+
     let mut dir = match tokio::fs::read_dir(&self.report_directory.join("new")).await {
       Ok(dir) => dir,
       Err(e) => {
@@ -240,8 +237,7 @@ impl Monitor {
             continue;
           },
         };
-        let crash_reason =
-          Self::guess_crash_reason(&contents, &[&["crash", "reason"], &["reason"]]);
+        let crash_reason = Self::guess_crash_reason(&contents, &crash_reason_paths);
         // TODO(snowp): For now everything in here is a crash, eventually we'll need to be able to
         // differentiate.
         // TODO(snowp): Eventually we'll want to upload the report out of band, but for now just
@@ -251,7 +247,7 @@ impl Monitor {
             AnnotatedLogField::new_ootb("_crash_artifact".into(), contents.into()).into(),
             AnnotatedLogField::new_ootb(
               "_crash_reason".into(),
-              crash_reason.unwrap_or("unknown".to_string()).into(),
+              crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
             )
             .into(),
           ],
@@ -266,5 +262,16 @@ impl Monitor {
     }
 
     logs
+  }
+
+  async fn crash_reason_paths(&self) -> Vec<JsonPath> {
+    let raw = tokio::fs::read_to_string(&self.report_directory.join(REASON_INFERENCE_CONFIG_FILE))
+      .await
+      .unwrap_or_default();
+
+    raw
+      .split(';')
+      .filter_map(|line| JsonPath::parse(line))
+      .collect()
   }
 }

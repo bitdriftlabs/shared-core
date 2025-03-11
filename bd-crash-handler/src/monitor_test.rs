@@ -5,11 +5,14 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::Monitor;
+use crate::{Monitor, INGESTION_CONFIG_FILE, REASON_INFERENCE_CONFIG_FILE};
+use bd_log_primitives::StringOrBytes;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use itertools::Itertools;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -43,92 +46,86 @@ impl Setup {
     std::fs::write(crash_directory.join(name), data).unwrap();
   }
 
-  fn configure_runtime_flag(&self, value: &str) {
+  fn configure_ingestion_runtime_flag(&self, value: &str) {
     self.runtime.update_snapshot(&make_simple_update(vec![(
       CrashDirectories::path(),
       ValueKind::String(value.to_string()),
     )]));
   }
 
-  fn read_config_file(&self) -> String {
-    let config_file = self.directory.path().join("reports/directories");
+  async fn write_config_file(&self, name: &str, contents: &str) {
+    let config_file = self.directory.path().join("reports").join(name);
+    log::info!("Writing config file: {:?}", config_file);
+
+    self
+      .monitor
+      .write_config_file(&self.directory.path().join("reports").join(name), contents)
+      .await;
+  }
+
+  fn read_config_file(&self, name: &str) -> String {
+    let config_file = self.directory.path().join("reports").join(name);
     log::info!("Reading config file: {:?}", config_file);
 
     std::fs::read_to_string(&config_file).unwrap()
   }
 
-  fn config_file_exists(&self) -> bool {
-    std::fs::exists(self.directory.path().join("reports/directories")).unwrap_or_default()
+  fn config_file_exists(&self, name: &str) -> bool {
+    std::fs::exists(self.directory.path().join("reports").join(name)).unwrap_or_default()
+  }
+
+  async fn process_new_reports(&self) -> Vec<HashMap<String, StringOrBytes<String, Vec<u8>>>> {
+    // Convert to a HashMap<String, String> for easier testing
+    // Sort the logs by the first field to make the test deterministic - otherwise this depends on
+    // the order of files traversed in the directory.
+
+    self
+      .monitor
+      .process_new_reports()
+      .await
+      .into_iter()
+      .sorted_by_key(|log| {
+        log.fields[0]
+          .value
+          .clone()
+          .as_bytes()
+          .map(ToOwned::to_owned)
+      })
+      .map(|log| {
+        log
+          .fields
+          .into_iter()
+          .map(|field| (field.key, field.value))
+          .collect()
+      })
+      .collect()
   }
 }
 
 #[tokio::test]
-async fn crash_reason_inferrence() {
+async fn crash_reason_inference() {
   let setup = Setup::new().await;
 
   setup.monitor.try_ensure_directories_exist().await;
+
+  setup
+    .write_config_file(REASON_INFERENCE_CONFIG_FILE, "reason;crash.reason")
+    .await;
 
   let artifact1 = b"{\"reason\":\"foo\"}";
   let artifact2 = b"{\"crash\":{\"reason\": \"bar\"}}";
   setup.make_crash("crash1", artifact1);
   setup.make_crash("crash2", artifact2);
 
-  let mut logs = setup.monitor.process_new_reports().await;
+  let logs = setup.process_new_reports().await;
   assert_eq!(2, logs.len());
-  logs.sort_by_key(|log| {
-    log.fields[0]
-      .value
-      .clone()
-      .as_bytes()
-      .map(ToOwned::to_owned)
-  });
   let log1 = &logs[0];
   let log2 = &logs[1];
 
-  assert_eq!(
-    artifact1,
-    &log2
-      .fields
-      .iter()
-      .find(|field| field.key == "_crash_artifact")
-      .unwrap()
-      .value
-      .as_bytes()
-      .unwrap()
-  );
-  assert_eq!(
-    "foo",
-    log2
-      .fields
-      .iter()
-      .find(|field| field.key == "_crash_reason")
-      .unwrap()
-      .value
-      .as_str()
-      .unwrap()
-  );
-  assert_eq!(
-    artifact2,
-    &log1
-      .fields
-      .iter()
-      .find(|field| field.key == "_crash_artifact")
-      .unwrap()
-      .value
-      .as_bytes()
-      .unwrap()
-  );
-  assert_eq!(
-    "bar",
-    log1
-      .fields
-      .iter()
-      .find(|field| field.key == "_crash_reason")
-      .unwrap()
-      .value
-      .as_str()
-      .unwrap()
-  );
+  assert_eq!(artifact1, &log2["_crash_artifact"].as_bytes().unwrap());
+  assert_eq!("foo", log2["_crash_reason"].as_str().unwrap());
+  assert_eq!(artifact2, &log1["_crash_artifact"].as_bytes().unwrap());
+  assert_eq!("bar", log1["_crash_reason"].as_str().unwrap());
 }
 
 #[tokio::test]
@@ -140,53 +137,24 @@ async fn crash_handling() {
   setup.make_crash("crash1", b"crash1");
   setup.make_crash("crash2", b"crash2");
 
-  let mut logs = setup.monitor.process_new_reports().await;
+  let logs = setup.process_new_reports().await;
   assert_eq!(2, logs.len());
-  logs.sort_by_key(|log| {
-    log.fields[0]
-      .value
-      .clone()
-      .as_bytes()
-      .map(ToOwned::to_owned)
-  });
-  assert_eq!(
-    b"crash1",
-    &logs[0]
-      .fields
-      .iter()
-      .find(|field| field.key == "_crash_artifact")
-      .unwrap()
-      .value
-      .as_bytes()
-      .unwrap()
-  );
-  assert_eq!(
-    b"crash2",
-    &logs[1]
-      .fields
-      .iter()
-      .find(|field| field.key == "_crash_artifact")
-      .unwrap()
-      .value
-      .as_bytes()
-      .unwrap()
-  );
+  assert_eq!(b"crash1", &logs[0]["_crash_artifact"].as_bytes().unwrap());
+  assert_eq!(b"crash2", &logs[1]["_crash_artifact"].as_bytes().unwrap());
 }
-
-
 
 #[tokio::test]
 async fn config_file() {
   let setup = Setup::new().await;
 
-  setup.configure_runtime_flag("a");
+  setup.configure_ingestion_runtime_flag("a");
 
-  setup.monitor.write_config_file("a").await;
-  assert_eq!("a", setup.read_config_file());
+  setup.write_config_file(INGESTION_CONFIG_FILE, "a").await;
+  assert_eq!("a", setup.read_config_file(INGESTION_CONFIG_FILE));
 
-  setup.monitor.write_config_file("a:b").await;
-  assert_eq!("a:b", setup.read_config_file());
+  setup.write_config_file(INGESTION_CONFIG_FILE, "a:b").await;
+  assert_eq!("a:b", setup.read_config_file(INGESTION_CONFIG_FILE));
 
-  setup.monitor.write_config_file("").await;
-  assert!(!setup.config_file_exists());
+  setup.write_config_file(INGESTION_CONFIG_FILE, "").await;
+  assert!(!setup.config_file_exists(INGESTION_CONFIG_FILE));
 }
