@@ -72,12 +72,12 @@ use bd_test_helpers::workflow::{
 };
 use bd_test_helpers::{field_value, metric_tag, metric_value, set_field, RecordingErrorReporter};
 use parking_lot::Mutex;
-use time::OffsetDateTime;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Instant;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::macros::datetime;
+use time::OffsetDateTime;
 
 #[test]
 fn attributes_accessors() {
