@@ -12,7 +12,10 @@ mod tests;
 use bd_log_primitives::{AnnotatedLogField, LogFields};
 use bd_runtime::runtime::{ConfigLoader, StringWatch};
 use bd_shutdown::ComponentShutdown;
+use itertools::Itertools as _;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use tinyjson::JsonValue;
 
 #[cfg(test)]
 #[ctor::ctor]
@@ -90,6 +93,57 @@ impl Monitor {
         e
       );
     }
+  }
+
+  fn guess_crash_reason(report: &[u8], candidate_paths: &[&[&str]]) -> Option<String> {
+    // The report may come in either as a single JSON object or as a series of JSON objects.
+    // Defensively handle both to produce a list of objects that we want to inspect to infer the
+    // crash reason.
+    if report.first() != Some(&b'{') {
+      return None;
+    }
+
+    let Ok(report) = std::str::from_utf8(report) else {
+      return None;
+    };
+
+    let candidates = if let Ok(json) = tinyjson::JsonParser::new(report.chars()).parse() {
+      vec![json]
+    } else {
+      let Ok(candidates) = report
+        .lines()
+        .map(|line| tinyjson::JsonParser::new(line.chars()).parse())
+        .try_collect()
+      else {
+        return None;
+      };
+
+      candidates
+    };
+
+    // Given a path like `["a", "b", "c"]` we want to look for a key `c` in the object at the end
+    // after traversing the path `a.b`. If we find a string value at that key we'll use it as the
+    // crash reason.
+
+    for candidate_paths in candidate_paths {
+      let key = candidate_paths.last()?;
+
+      for candidate in &candidates {
+        let mut candidate_map = candidate.get::<HashMap<String, JsonValue>>()?;
+
+        for path in candidate_paths.iter().take(candidate_paths.len() - 1) {
+          candidate_map = candidate_map.get(&path.to_string())?.get()?;
+        }
+
+        let candidate = candidate_map.get(&key.to_string())?;
+
+        if let JsonValue::String(reason) = candidate {
+          return Some(reason.clone());
+        }
+      }
+    }
+
+    None
   }
 
   async fn check_for_config_changes(&mut self) -> anyhow::Result<()> {
@@ -180,6 +234,8 @@ impl Monitor {
             continue;
           },
         };
+        let crash_reason =
+          Self::guess_crash_reason(&contents, &[&["crash", "reason"], &["reason"]]);
         // TODO(snowp): For now everything in here is a crash, eventually we'll need to be able to
         // differentiate.
         // TODO(snowp): Eventually we'll want to upload the report out of band, but for now just
@@ -187,6 +243,11 @@ impl Monitor {
         logs.push(CrashLog {
           fields: vec![
             AnnotatedLogField::new_ootb("_crash_artifact".into(), contents.into()).into(),
+            AnnotatedLogField::new_ootb(
+              "_crash_reason".into(),
+              crash_reason.unwrap_or("unknown".to_string()).into(),
+            )
+            .into(),
           ],
         });
       }
