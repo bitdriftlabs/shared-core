@@ -5,11 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{MockCrashLogger, Monitor};
+use crate::Monitor;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _};
 use bd_shutdown::ComponentShutdownTrigger;
-use bd_test_helpers::make_mut;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -19,7 +18,6 @@ struct Setup {
   monitor: Monitor,
   runtime: Arc<ConfigLoader>,
   _shutdown: ComponentShutdownTrigger,
-  crash_logger: Arc<MockCrashLogger>,
 }
 
 impl Setup {
@@ -28,26 +26,19 @@ impl Setup {
     std::fs::create_dir_all(directory.path().join("runtime")).unwrap();
     let runtime = ConfigLoader::new(&directory.path().join("runtime"));
     let shutdown = ComponentShutdownTrigger::default();
-    let crash_logger = Arc::new(MockCrashLogger::new());
 
-    let monitor = Monitor::new(
-      &runtime,
-      directory.path(),
-      crash_logger.clone(),
-      shutdown.make_shutdown(),
-    );
+    let monitor = Monitor::new(&runtime, directory.path(), shutdown.make_shutdown());
 
     Self {
       directory,
       monitor,
       runtime,
       _shutdown: shutdown,
-      crash_logger,
     }
   }
 
   fn make_crash(&self, name: &str, data: &[u8]) {
-    let crash_directory = self.directory.path().join("crashes/new");
+    let crash_directory = self.directory.path().join("reports/new");
     std::fs::create_dir_all(&crash_directory).unwrap();
     std::fs::write(crash_directory.join(name), data).unwrap();
   }
@@ -73,23 +64,44 @@ impl Setup {
 
 #[tokio::test]
 async fn crash_handling() {
-  let mut setup = Setup::new().await;
+  let setup = Setup::new().await;
 
   setup.monitor.try_ensure_directories_exist().await;
 
   setup.make_crash("crash1", b"crash1");
   setup.make_crash("crash2", b"crash2");
 
-  make_mut(&mut setup.crash_logger)
-    .expect_log_crash()
-    .withf(|data| data == b"crash1")
-    .return_const(());
-  make_mut(&mut setup.crash_logger)
-    .expect_log_crash()
-    .withf(|data| data == b"crash2")
-    .return_const(());
-
-  setup.monitor.process_new_reports().await;
+  let mut logs = setup.monitor.process_new_reports().await;
+  assert_eq!(2, logs.len());
+  logs.sort_by_key(|log| {
+    log.fields[0]
+      .value
+      .clone()
+      .as_bytes()
+      .map(ToOwned::to_owned)
+  });
+  assert_eq!(
+    b"crash1",
+    &logs[0]
+      .fields
+      .iter()
+      .find(|field| field.key == "_crash_artifact")
+      .unwrap()
+      .value
+      .as_bytes()
+      .unwrap()
+  );
+  assert_eq!(
+    b"crash2",
+    &logs[1]
+      .fields
+      .iter()
+      .find(|field| field.key == "_crash_artifact")
+      .unwrap()
+      .value
+      .as_bytes()
+      .unwrap()
+  );
 }
 
 #[tokio::test]

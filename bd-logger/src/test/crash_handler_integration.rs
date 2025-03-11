@@ -6,18 +6,21 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::setup::Setup;
+use crate::test::setup::SetupOptions;
 use crate::wait_for;
 use assert_matches::assert_matches;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::FeatureFlag;
-use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use time::ext::{NumericalDuration, NumericalStdDuration};
 
 #[test]
 fn crash_reports() {
-  let directory = {
-    let setup = Setup::new();
+  let (directory, initial_session_id) = {
+    let setup = Setup::new_with_options(SetupOptions {
+      disk_storage: true,
+      ..Default::default()
+    });
 
     std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();
 
@@ -27,15 +30,21 @@ fn crash_reports() {
     )
     .unwrap();
 
-    setup.sdk_directory.clone()
+    (
+      setup.sdk_directory.clone(),
+      setup.logger.new_logger_handle().session_id(),
+    )
   };
 
-  let mut setup = Setup::new_with_directory(
-    directory,
-    LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc(),
-      fields: Vec::new(),
-    },
+  let mut setup = Setup::new_with_options(SetupOptions {
+    sdk_directory: directory,
+    disk_storage: true,
+    ..Default::default()
+  });
+
+  assert_ne!(
+    initial_session_id,
+    setup.logger.new_logger_handle().session_id()
   );
 
   setup.configure_stream_all_logs();
@@ -44,7 +53,9 @@ fn crash_reports() {
   assert_matches!(setup.server.blocking_next_log_upload(), Some(upload) => {
     assert_eq!(upload.logs().len(), 1);
     assert_eq!(upload.logs()[0].message(), "App crashed");
+    assert_eq!(upload.logs()[0].message(), "App crashed");
     assert_eq!(upload.logs()[0].binary_field("_crash_artifact"), b"crash1");
+    assert_eq!(upload.logs()[0].session_id(), initial_session_id);
   });
 }
 

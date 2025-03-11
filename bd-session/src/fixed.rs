@@ -46,41 +46,56 @@ impl Strategy {
     }
   }
 
-  fn generate_session_id(&self, use_callbacks: bool) -> String {
-    if use_callbacks {
-      // Cannot log anything using `handle_unexpected` or similar as it would cause a cycle between
-      // `ErrorReporter` and `Strategy`. As a reminder, `ErrorReporter` calls into `SessionProvider`
-      // as part of error reporting flow.
-      let cell = self.is_callback_in_progress.get_or_default();
-      cell.set(true);
+  /// Generates a new session ID using the provided callback or a random UUID if the callback
+  /// fails.
+  fn generate_session_id(&self) -> String {
+    // Cannot log anything using `handle_unexpected` or similar as it would cause a cycle between
+    // `ErrorReporter` and `Strategy`. As a reminder, `ErrorReporter` calls into `SessionProvider`
+    // as part of error reporting flow.
+    let cell = self.is_callback_in_progress.get_or_default();
+    cell.set(true);
 
-      let session_id = self.callbacks.generate_session_id().unwrap_or_else(|_| {
-        let id = Uuid::new_v4().to_string();
-        log::warn!(
-          "failed to generate a new session ID, using a random UUID instead {:?}",
-          id
-        );
+    let session_id = self.callbacks.generate_session_id().unwrap_or_else(|_| {
+      let id = Self::generate_uuid();
+
+      log::warn!(
+        "failed to generate a new session ID, using a random UUID instead {:?}",
         id
-      });
-      cell.set(false);
+      );
+      id
+    });
+    cell.set(false);
 
-      session_id
-    } else {
-      Uuid::new_v4().to_string()
-    }
+    session_id
   }
 
+  fn generate_uuid() -> String {
+    Uuid::new_v4().to_string()
+  }
+
+  /// Returns the current session ID. If the session ID has not been generated yet we call through
+  /// to the provided callback to generate a new session ID.
+  ///
+  /// Note that if this is called from within the `generateSessionID` callback, we will return a
+  /// random UUID instead of the actual session ID to prevent deadlocks.
   pub(crate) fn session_id(&self) -> String {
     // Protect against cases where an attempt to read a session ID is made while already holding a
     // lock. In practice, this happens when a customer of the SDK reads session ID from within a
-    // `generatedSessionID` closure that they are allowed to provide to the SDK.
+    // `generateSessionID` closure that they are allowed to provide to the SDK.
+    //
+    // In this case we cannot proceed to the logic below as we risk deadlocking, so we stand
+    // in a random UUID instead.
     if self.is_callback_in_progress.get_or_default().get() {
       warn_every!(
         15.seconds(),
         "cannot obtain session ID from within 'generatedSessionID' {}",
         "callback"
       );
-      return self.generate_session_id(false);
+
+      // TODO(snowp): This probably never does what the user expects as this session ID is not a
+      // real session ID but a random UUID. We should probably return an error here or just rework
+      // how all this works.
+      return Self::generate_uuid();
     }
 
     let mut guard = self.state.lock();
@@ -95,7 +110,7 @@ impl Strategy {
         None
       };
 
-      let session_id = self.generate_session_id(true);
+      let session_id = self.generate_session_id();
 
       let state = InMemoryState {
         session_id: session_id.clone(),
@@ -115,17 +130,21 @@ impl Strategy {
     }
   }
 
+  /// Starts a new session by generating a new session ID and storing it in the state.
+  ///
+  /// Note that if this is called from within the `generateSessionID` callback, we will return an
+  /// error instead of starting a new session to prevent deadlocks.
   pub(crate) fn start_new_session(&self) -> anyhow::Result<String> {
     // Protect against cases where an attempt to start a new session is made while already holding a
     // lock. In practice, this happens when a customer of the SDK starts a new session from
-    // within a `generatedSessionID` closure that they are allowed to provide to the SDK.
+    // within a `generateSessionID` closure that they are allowed to provide to the SDK.
     if self.is_callback_in_progress.get_or_default().get() {
       anyhow::bail!("cannot start new session from within 'generatedSessionID' callback");
     };
 
     let mut guard = self.state.lock();
 
-    let session_id = self.generate_session_id(true);
+    let session_id = self.generate_session_id();
 
     let state = guard.as_ref().map_or_else(
       || match self.store.get(&STATE_KEY) {
@@ -150,14 +169,10 @@ impl Strategy {
     Ok(session_id)
   }
 
+  /// Returns the last session ID from the previous SDK run.
   pub fn previous_process_session_id(&self) -> Option<String> {
     self.state.lock().as_ref().map_or_else(
-      || {
-        self
-          .store
-          .get(&STATE_KEY)
-          .map_or_else(|| None, |state: State| Some(state.session_id))
-      },
+      || self.store.get(&STATE_KEY).map(|state| state.session_id),
       |state| state.previous_process_session_id.clone(),
     )
   }

@@ -534,10 +534,25 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn maybe_replay_pre_config_buffer_logs(
     &mut self,
     pre_config_log_buffer: PreConfigBuffer<bd_log_primitives::Log>,
+    initial_logs: &mut Vec<Log>,
   ) {
     let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state else {
       return;
     };
+
+    for log_line in initial_logs.drain(..) {
+      if let Err(e) = self
+        .replayer
+        .replay_log(
+          log_line,
+          None,
+          &mut initialized_logging_context.processing_pipeline,
+        )
+        .await
+      {
+        log::debug!("failed to reply initial logs: {e}");
+      }
+    }
 
     for log_line in pre_config_log_buffer.pop_all() {
       if let Err(e) = self
@@ -554,16 +569,20 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  pub async fn run(self) -> Self {
+  pub async fn run(self, initial_logs: Vec<Log>) -> Self {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     self
-      .run_with_shutdown(shutdown_trigger.make_shutdown())
+      .run_with_shutdown(shutdown_trigger.make_shutdown(), initial_logs)
       .await
   }
 
   // TODO(mattklein123): This seems to only be used for tests. Figure out how to clean this up
   // so we don't need this just for tests.
-  pub async fn run_with_shutdown(mut self, mut shutdown: ComponentShutdown) -> Self {
+  pub async fn run_with_shutdown(
+    mut self,
+    mut shutdown: ComponentShutdown,
+    mut initial_logs: Vec<Log>,
+  ) -> Self {
     // Processes incoming logs and reacts to workflows config updates.
     //
     // The first workflows config update makes the async log buffer disable
@@ -592,7 +611,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
           self = updated_self;
           if let Some(pre_config_log_buffer) = maybe_pre_config_buffer {
-            self.maybe_replay_pre_config_buffer_logs(pre_config_log_buffer).await;
+            self.maybe_replay_pre_config_buffer_logs(
+                pre_config_log_buffer,
+                &mut initial_logs
+            ).await;
           }
         },
         Some(async_log_buffer_message) = self.communication_rx.recv() => {
