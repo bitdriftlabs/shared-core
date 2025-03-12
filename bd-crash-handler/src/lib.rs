@@ -113,12 +113,12 @@ impl Monitor {
       return None;
     };
 
-    let candidates = if let Ok(json) = JsonExtractor::new(&report) {
+    let candidates = if let Ok(json) = JsonExtractor::new(report) {
       vec![json]
     } else {
       let Ok(candidates) = report
         .lines()
-        .map(|line| JsonExtractor::new(line))
+        .map(JsonExtractor::new)
         .try_collect()
       else {
         return None;
@@ -271,7 +271,7 @@ impl Monitor {
 
     raw
       .split(';')
-      .filter_map(|line| JsonPath::parse(line))
+      .filter_map(JsonPath::parse)
       .collect()
   }
 }

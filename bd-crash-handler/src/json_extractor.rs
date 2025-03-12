@@ -19,15 +19,15 @@ enum PathPart {
 
 impl PathPart {
   fn parse(s: impl AsRef<str>) -> Self {
-    let captures = ARRAY_ACCESS_REGEX.captures(s.as_ref());
-    if let Some(captures) = captures {
-      let key = captures.get(1).unwrap().as_str().to_string();
-      let index = captures.get(2).unwrap().as_str().parse::<usize>().unwrap();
+    ARRAY_ACCESS_REGEX.captures(s.as_ref()).map_or_else(
+      || Self::Key(s.as_ref().to_string()),
+      |captures| {
+        let key = captures.get(1).unwrap().as_str().to_string();
+        let index = captures.get(2).unwrap().as_str().parse::<usize>().unwrap();
 
-      PathPart::KeyAndIndex(key, index)
-    } else {
-      PathPart::Key(s.as_ref().to_string())
-    }
+        Self::KeyAndIndex(key, index)
+      },
+    )
   }
 }
 
@@ -42,7 +42,10 @@ pub struct JsonPath {
 
 impl JsonPath {
   pub fn parse(s: &str) -> Option<Self> {
-    let parts = s.split('.').map(|part| part.to_string()).collect_vec();
+    let parts = s
+      .split('.')
+      .map(std::string::ToString::to_string)
+      .collect_vec();
 
     if parts.len() == 1 {
       if parts[0].is_empty() {
