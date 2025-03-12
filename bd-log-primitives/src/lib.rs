@@ -206,7 +206,7 @@ pub struct Log {
 //
 
 /// A reference to a log message and its associated fields.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct LogRef<'a> {
   pub log_type: LogType,
   pub log_level: LogLevel,

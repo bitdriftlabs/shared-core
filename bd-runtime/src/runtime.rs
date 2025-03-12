@@ -886,11 +886,6 @@ pub mod buffers {
 pub mod workflows {
   use time::ext::NumericalDuration as _;
 
-  // Controls whether workflows are enabled. This feature flag should never be enabled to any
-  // real users. Its key is will be changed once workflows are ready to be shipped and only
-  // then we can start rolling out this variable to real users.
-  bool_feature_flag!(WorkflowsEnabledFlag, "workflows.enabled", false);
-
   // This controls how often we attempt to persist the complete state of the workflows to disk.
   // Note that this is not used as a consistent interval but instead sets a minimum amount of time
   // that must have elapsed between writing attempts.

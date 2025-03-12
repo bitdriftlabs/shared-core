@@ -79,7 +79,7 @@ impl FilterChain {
       let fields_ref = FieldsRef::new(&log.fields, &log.matching_fields);
       if !filter
         .matcher
-        .do_match(log.log_level, log.log_type, &log.message, &fields_ref)
+        .do_match(log.log_level, log.log_type, &log.message, &fields_ref, None)
       {
         continue;
       }

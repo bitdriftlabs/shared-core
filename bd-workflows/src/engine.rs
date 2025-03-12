@@ -32,7 +32,7 @@ use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_stats::DynamicStats;
 use bd_client_stats_store::{Counter, Histogram, Scope};
-use bd_log_primitives::LogRef;
+use bd_log_primitives::{Log, LogRef};
 pub use bd_matcher::FieldProvider;
 use bd_runtime::runtime::workflows::{
   PersistenceWriteIntervalFlag,
@@ -44,7 +44,7 @@ use bd_stats_common::labels;
 use bd_time::TimeDurationExt as _;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -598,7 +598,7 @@ impl WorkflowsEngine {
         self.state.session_id,
         log.session_id
       );
-      // We are lazy and don't say that state needs persistance.
+      // We are lazy and don't say that state needs persistence.
       // That may result in new session ID not being stored to disk
       // (if the app is killed before the next time we store state)
       // which means that the next time SDK launches we start with empty
@@ -622,10 +622,13 @@ impl WorkflowsEngine {
         triggered_flushes_buffer_ids: BTreeSet::new(),
         triggered_flush_buffers_action_ids: BTreeSet::new(),
         capture_screenshot: false,
+        logs_to_inject: BTreeMap::new(),
       };
     }
 
     let mut actions: Vec<TriggeredAction<'_>> = vec![];
+    let mut logs_to_inject: BTreeMap<&'a str, Log> = BTreeMap::new();
+    log::trace!("processing log: {log:?}");
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let was_in_initial_state = workflow.is_in_initial_state();
       let result = workflow.process_log(
@@ -683,7 +686,9 @@ impl WorkflowsEngine {
         self.needs_state_persistence = true;
       }
 
-      actions.extend(result.triggered_actions());
+      let (triggered_actions, workflow_logs_to_inject) = result.into_parts();
+      actions.extend(triggered_actions);
+      logs_to_inject.extend(workflow_logs_to_inject);
     }
 
     self
@@ -793,6 +798,7 @@ impl WorkflowsEngine {
       triggered_flushes_buffer_ids: flush_buffers_actions_processing_result
         .triggered_flushes_buffer_ids,
       capture_screenshot: !capture_screenshot_actions.is_empty(),
+      logs_to_inject,
     }
   }
 
@@ -907,6 +913,9 @@ pub struct WorkflowsEngineResult<'a> {
 
   // Whether a screenshot should be taken in response to processing the log.
   pub capture_screenshot: bool,
+
+  // Logs to be injected back into the workflow engine after field attachment and other processing.
+  pub logs_to_inject: BTreeMap<&'a str, Log>,
 }
 
 //
@@ -976,7 +985,7 @@ impl StateStore {
     );
 
     Self {
-      state_path: sdk_directory.join("workflows_state_snapshot.5.bin"),
+      state_path: sdk_directory.join("workflows_state_snapshot.6.bin"),
       last_persisted: None,
       stats,
       persistence_write_interval_flag: runtime.register_watch().unwrap(),
@@ -1017,8 +1026,11 @@ impl StateStore {
   pub(self) fn load_state(&self) -> anyhow::Result<WorkflowsState> {
     let file = File::open(self.state_path.as_path())?;
     // Wrap file in buffer to deserialize efficiently in place
-    let buf_reader = BufReader::new(file);
-    Ok(bincode::deserialize_from::<_, WorkflowsState>(buf_reader)?)
+    let mut buf_reader = BufReader::new(file);
+    Ok(bincode::serde::decode_from_std_read(
+      &mut buf_reader,
+      bincode::config::legacy(),
+    )?)
   }
 
   /// Stores states of the passed workflows if all pre-conditions are met.
@@ -1074,7 +1086,7 @@ impl StateStore {
     // Wrap the file in a BufWriter for better performance
     let mut writer = BufWriter::new(file);
     // Use serialize_into to avoid allocating memory twice
-    bincode::serialize_into(&mut writer, state)?;
+    bincode::serde::encode_into_std_write(state, &mut writer, bincode::config::legacy())?;
     // Flush the writer to ensure data is written
     writer.flush()?;
     Ok(())

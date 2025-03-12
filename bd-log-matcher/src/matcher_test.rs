@@ -19,6 +19,9 @@ use bd_log_primitives::{
 };
 use bd_proto::protos::log_matcher::log_matcher::{log_matcher, LogMatcher};
 use bd_test_helpers::workflow::macros::not;
+use log_matcher::base_log_matcher::double_value_match::Double_value_match_type;
+use log_matcher::base_log_matcher::int_value_match::Int_value_match_type;
+use log_matcher::base_log_matcher::string_value_match::String_value_match_type;
 use log_matcher::base_log_matcher::tag_match::Value_match::{
   IntValueMatch,
   IsSetMatch,
@@ -30,6 +33,7 @@ use log_matcher::base_log_matcher::Operator;
 use log_matcher::{base_log_matcher, BaseLogMatcher, Matcher, MatcherList};
 use pretty_assertions::assert_eq;
 use protobuf::MessageField;
+use std::collections::BTreeMap;
 
 type Input<'a> = (LogType, LogLevel, LogMessage, LogFields);
 
@@ -214,12 +218,45 @@ fn test_message_string_invalid_regex_config() {
 }
 
 #[test]
+fn test_extracted_string_matcher() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "key".to_string(),
+    value_match: Some(StringValueMatch(base_log_matcher::StringValueMatch {
+      operator: Operator::OPERATOR_EQUALS.into(),
+      string_value_match_type: Some(String_value_match_type::SaveFieldId("id1".to_string())),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }));
+
+  match_test_runner_with_extractions(
+    config.clone(),
+    vec![
+      (log_tag("key", "exact"), false),
+      (log_tag("keyx", "exact"), false),
+      (log_msg("no fields"), false),
+    ],
+    None,
+  );
+
+  match_test_runner_with_extractions(
+    config,
+    vec![
+      (log_tag("key", "exact"), true),
+      (log_tag("keyx", "exact"), false),
+      (log_msg("no fields"), false),
+    ],
+    Some(&BTreeMap::from([("id1".to_string(), "exact".to_string())])),
+  );
+}
+
+#[test]
 fn test_tag_string_eq_matcher() {
   let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "key".to_string(),
     value_match: Some(StringValueMatch(base_log_matcher::StringValueMatch {
       operator: Operator::OPERATOR_EQUALS.into(),
-      match_value: "exact".to_string(),
+      string_value_match_type: Some(String_value_match_type::MatchValue("exact".to_string())),
       ..Default::default()
     })),
     ..Default::default()
@@ -244,7 +281,9 @@ fn test_tag_binary_string_eq_matcher() {
     tag_key: "key".to_string(),
     value_match: Some(StringValueMatch(base_log_matcher::StringValueMatch {
       operator: Operator::OPERATOR_EQUALS.into(),
-      match_value: "exact_binary".to_string(),
+      string_value_match_type: Some(String_value_match_type::MatchValue(
+        "exact_binary".to_string(),
+      )),
       ..Default::default()
     })),
     ..Default::default()
@@ -259,13 +298,48 @@ fn test_tag_binary_string_eq_matcher() {
 }
 
 #[test]
+fn test_extracted_double_matcher() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "key".to_string(),
+    value_match: Some(DoubleValueMatch(base_log_matcher::DoubleValueMatch {
+      operator: Operator::OPERATOR_EQUALS.into(),
+      double_value_match_type: Some(Double_value_match_type::SaveFieldId("id1".to_string())),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }));
+
+  match_test_runner_with_extractions(
+    config.clone(),
+    vec![
+      (log_tag("key", "13.0"), false),
+      (log_tag("key", "13"), false),
+    ],
+    None,
+  );
+  match_test_runner_with_extractions(
+    config.clone(),
+    vec![
+      (log_tag("key", "13.0"), false),
+      (log_tag("key", "13"), false),
+    ],
+    Some(&BTreeMap::from([("id1".to_string(), "bad".to_string())])),
+  );
+  match_test_runner_with_extractions(
+    config,
+    vec![(log_tag("key", "13.0"), true), (log_tag("key", "13"), true)],
+    Some(&BTreeMap::from([("id1".to_string(), "13".to_string())])),
+  );
+}
+
+#[test]
 fn test_tag_double_matcher() {
   fn make_config(match_value: f64, operator: Operator) -> LogMatcher {
     simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
       tag_key: "key".to_string(),
       value_match: Some(DoubleValueMatch(base_log_matcher::DoubleValueMatch {
         operator: operator.into(),
-        match_value,
+        double_value_match_type: Some(Double_value_match_type::MatchValue(match_value)),
         ..Default::default()
       })),
       ..Default::default()
@@ -334,12 +408,40 @@ fn test_tag_double_matcher() {
 }
 
 #[test]
+fn test_extracted_int_matcher() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "key".to_string(),
+    value_match: Some(IntValueMatch(base_log_matcher::IntValueMatch {
+      operator: Operator::OPERATOR_EQUALS.into(),
+      int_value_match_type: Some(Int_value_match_type::SaveFieldId("id1".to_string())),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }));
+
+  match_test_runner_with_extractions(
+    config.clone(),
+    vec![
+      (log_tag("key", "13"), false),
+      (log_tag("key", "13.0"), false),
+    ],
+    None,
+  );
+
+  match_test_runner_with_extractions(
+    config,
+    vec![(log_tag("key", "13"), true), (log_tag("key", "13.0"), true)],
+    Some(&BTreeMap::from([("id1".to_string(), "13".to_string())])),
+  );
+}
+
+#[test]
 fn test_tag_int_lte_matcher() {
   let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "key".to_string(),
     value_match: Some(IntValueMatch(base_log_matcher::IntValueMatch {
       operator: Operator::OPERATOR_LESS_THAN_OR_EQUAL.into(),
-      match_value: 12,
+      int_value_match_type: Some(Int_value_match_type::MatchValue(12)),
       ..Default::default()
     })),
     ..Default::default()
@@ -370,7 +472,7 @@ fn test_tag_string_gt_matcher() {
     tag_key: "key".to_string(),
     value_match: Some(StringValueMatch(base_log_matcher::StringValueMatch {
       operator: Operator::OPERATOR_GREATER_THAN.into(),
-      match_value: "40".to_string(),
+      string_value_match_type: Some(String_value_match_type::MatchValue("40".to_string())),
       ..Default::default()
     })),
     ..Default::default()
@@ -398,7 +500,7 @@ fn test_tag_int_invalid_regex_matcher() {
     tag_key: "key".to_string(),
     value_match: Some(IntValueMatch(base_log_matcher::IntValueMatch {
       operator: Operator::OPERATOR_REGEX.into(),
-      match_value: 12,
+      int_value_match_type: Some(Int_value_match_type::MatchValue(12)),
       ..Default::default()
     })),
     ..Default::default()
@@ -416,7 +518,7 @@ fn test_tag_log_type_invalid_config_value() {
     tag_key: "log_type".to_string(),
     value_match: Some(IntValueMatch(base_log_matcher::IntValueMatch {
       operator: Operator::OPERATOR_REGEX.into(), // this is ignored
-      match_value: -1,                           // invalid
+      int_value_match_type: Some(Int_value_match_type::MatchValue(-1)), // invalid
       ..Default::default()
     })),
     ..Default::default()
@@ -434,7 +536,7 @@ fn test_tag_log_type() {
     tag_key: "log_type".to_string(),
     value_match: Some(IntValueMatch(base_log_matcher::IntValueMatch {
       operator: Operator::OPERATOR_REGEX.into(), // this is ignored
-      match_value: 3,
+      int_value_match_type: Some(Int_value_match_type::MatchValue(3)),
       ..Default::default()
     })),
     ..Default::default()
@@ -456,7 +558,7 @@ fn test_tag_log_level() {
     tag_key: "log_level".to_string(),
     value_match: Some(IntValueMatch(base_log_matcher::IntValueMatch {
       operator: Operator::OPERATOR_GREATER_THAN_OR_EQUAL.into(),
-      match_value: 2, // INFO
+      int_value_match_type: Some(Int_value_match_type::MatchValue(2)), // INFO
       ..Default::default()
     })),
     ..Default::default()
@@ -751,7 +853,7 @@ fn make_message_match(operator: Operator, match_value: &str) -> base_log_matcher
   MessageMatch(base_log_matcher::MessageMatch {
     string_value_match: MessageField::from_option(Some(base_log_matcher::StringValueMatch {
       operator: operator.into(),
-      match_value: match_value.to_string(),
+      string_value_match_type: Some(String_value_match_type::MatchValue(match_value.to_string())),
       ..Default::default()
     })),
     ..Default::default()
@@ -760,6 +862,15 @@ fn make_message_match(operator: Operator, match_value: &str) -> base_log_matcher
 
 #[allow(clippy::needless_pass_by_value)]
 fn match_test_runner(config: LogMatcher, cases: Vec<(Input<'_>, bool)>) {
+  match_test_runner_with_extractions(config, cases, None);
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn match_test_runner_with_extractions(
+  config: LogMatcher,
+  cases: Vec<(Input<'_>, bool)>,
+  extracted_fields: Option<&BTreeMap<String, String>>,
+) {
   let match_tree = Tree::new(&config).unwrap();
 
   for (input, should_match) in cases {
@@ -774,7 +885,8 @@ fn match_test_runner(config: LogMatcher, cases: Vec<(Input<'_>, bool)>) {
         log_level,
         bd_log_primitives::LogType(log_type.0),
         &message,
-        &fields
+        &fields,
+        extracted_fields,
       ),
       "{input:?} should result in {should_match} but did not",
     );

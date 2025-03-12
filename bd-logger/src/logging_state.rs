@@ -81,7 +81,7 @@ impl<T: MemorySized + Debug> LoggingState<T> {
   pub(crate) fn workflows_engine(&mut self) -> Option<&mut WorkflowsEngine> {
     match self {
       Self::Uninitialized(_) => None,
-      Self::Initialized(context) => context.processing_pipeline.workflows_engine.as_mut(),
+      Self::Initialized(context) => Some(&mut context.processing_pipeline.workflows_engine),
     }
   }
 }
@@ -153,8 +153,8 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
       self.trigger_upload_tx,
       capture_screenshot_handler,
       config,
-      self.sdk_directory.clone(),
-      self.runtime,
+      &self.sdk_directory,
+      &self.runtime,
       InitializedLoggingContextStats::new(&self.stats),
     );
 
@@ -189,11 +189,6 @@ impl InitializedLoggingContext {
 
   pub(crate) async fn update(&mut self, config: ConfigUpdate) {
     self.processing_pipeline.update(config);
-  }
-
-  #[cfg(test)]
-  pub(crate) const fn workflows_engine(&self) -> Option<&WorkflowsEngine> {
-    self.processing_pipeline.workflows_engine.as_ref()
   }
 }
 

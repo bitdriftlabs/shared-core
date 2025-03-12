@@ -50,7 +50,7 @@ impl Setup {
     assert!(!workflows.is_empty());
 
     engine.start(WorkflowsEngineConfig::new(
-      WorkflowsConfiguration::new(&workflows),
+      WorkflowsConfiguration::new(workflows),
       BTreeSet::default(),
       BTreeSet::default(),
     ));
