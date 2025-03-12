@@ -51,14 +51,14 @@ impl Setup {
   }
 
   fn read_config_file(&self) -> String {
-    let config_file = self.directory.path().join("reports/directories");
+    let config_file = self.directory.path().join("reports/config");
     log::info!("Reading config file: {:?}", config_file);
 
     std::fs::read_to_string(&config_file).unwrap()
   }
 
   fn config_file_exists(&self) -> bool {
-    std::fs::exists(self.directory.path().join("reports/directories")).unwrap_or_default()
+    std::fs::exists(self.directory.path().join("reports/config")).unwrap_or_default()
   }
 }
 
