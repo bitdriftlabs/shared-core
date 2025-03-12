@@ -744,57 +744,8 @@ pub mod workflow {
             }
         }
 
-        // .bitdrift_public.protobuf.workflow.v1.Workflow.RuleTimeout rule_timeout = 2;
-
-        pub fn rule_timeout(&self) -> &RuleTimeout {
-            match self.rule_type {
-                ::std::option::Option::Some(rule::Rule_type::RuleTimeout(ref v)) => v,
-                _ => <RuleTimeout as ::protobuf::Message>::default_instance(),
-            }
-        }
-
-        pub fn clear_rule_timeout(&mut self) {
-            self.rule_type = ::std::option::Option::None;
-        }
-
-        pub fn has_rule_timeout(&self) -> bool {
-            match self.rule_type {
-                ::std::option::Option::Some(rule::Rule_type::RuleTimeout(..)) => true,
-                _ => false,
-            }
-        }
-
-        // Param is passed by value, moved
-        pub fn set_rule_timeout(&mut self, v: RuleTimeout) {
-            self.rule_type = ::std::option::Option::Some(rule::Rule_type::RuleTimeout(v))
-        }
-
-        // Mutable pointer to the field.
-        pub fn mut_rule_timeout(&mut self) -> &mut RuleTimeout {
-            if let ::std::option::Option::Some(rule::Rule_type::RuleTimeout(_)) = self.rule_type {
-            } else {
-                self.rule_type = ::std::option::Option::Some(rule::Rule_type::RuleTimeout(RuleTimeout::new()));
-            }
-            match self.rule_type {
-                ::std::option::Option::Some(rule::Rule_type::RuleTimeout(ref mut v)) => v,
-                _ => panic!(),
-            }
-        }
-
-        // Take field
-        pub fn take_rule_timeout(&mut self) -> RuleTimeout {
-            if self.has_rule_timeout() {
-                match self.rule_type.take() {
-                    ::std::option::Option::Some(rule::Rule_type::RuleTimeout(v)) => v,
-                    _ => panic!(),
-                }
-            } else {
-                RuleTimeout::new()
-            }
-        }
-
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut fields = ::std::vec::Vec::with_capacity(1);
             let mut oneofs = ::std::vec::Vec::with_capacity(1);
             fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, RuleLogMatch>(
                 "rule_log_match",
@@ -802,13 +753,6 @@ pub mod workflow {
                 Rule::rule_log_match,
                 Rule::mut_rule_log_match,
                 Rule::set_rule_log_match,
-            ));
-            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, RuleTimeout>(
-                "rule_timeout",
-                Rule::has_rule_timeout,
-                Rule::rule_timeout,
-                Rule::mut_rule_timeout,
-                Rule::set_rule_timeout,
             ));
             oneofs.push(rule::Rule_type::generated_oneof_descriptor_data());
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Rule>(
@@ -832,9 +776,6 @@ pub mod workflow {
                     10 => {
                         self.rule_type = ::std::option::Option::Some(rule::Rule_type::RuleLogMatch(is.read_message()?));
                     },
-                    18 => {
-                        self.rule_type = ::std::option::Option::Some(rule::Rule_type::RuleTimeout(is.read_message()?));
-                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -853,10 +794,6 @@ pub mod workflow {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
-                    &rule::Rule_type::RuleTimeout(ref v) => {
-                        let len = v.compute_size();
-                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-                    },
                 };
             }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -869,9 +806,6 @@ pub mod workflow {
                 match v {
                     &rule::Rule_type::RuleLogMatch(ref v) => {
                         ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
-                    },
-                    &rule::Rule_type::RuleTimeout(ref v) => {
-                        ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
                     },
                 };
             }
@@ -892,7 +826,6 @@ pub mod workflow {
         }
 
         fn clear(&mut self) {
-            self.rule_type = ::std::option::Option::None;
             self.rule_type = ::std::option::Option::None;
             self.special_fields.clear();
         }
@@ -931,8 +864,6 @@ pub mod workflow {
         pub enum Rule_type {
             // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Rule.rule_log_match)
             RuleLogMatch(super::RuleLogMatch),
-            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Rule.rule_timeout)
-            RuleTimeout(super::RuleTimeout),
         }
 
         impl ::protobuf::Oneof for Rule_type {
@@ -1022,8 +953,106 @@ pub mod workflow {
             }
         }
 
+        // .bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SaveTimestamp save_timestamp = 2;
+
+        pub fn save_timestamp(&self) -> &transition_extension::SaveTimestamp {
+            match self.extension_type {
+                ::std::option::Option::Some(transition_extension::Extension_type::SaveTimestamp(ref v)) => v,
+                _ => <transition_extension::SaveTimestamp as ::protobuf::Message>::default_instance(),
+            }
+        }
+
+        pub fn clear_save_timestamp(&mut self) {
+            self.extension_type = ::std::option::Option::None;
+        }
+
+        pub fn has_save_timestamp(&self) -> bool {
+            match self.extension_type {
+                ::std::option::Option::Some(transition_extension::Extension_type::SaveTimestamp(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_save_timestamp(&mut self, v: transition_extension::SaveTimestamp) {
+            self.extension_type = ::std::option::Option::Some(transition_extension::Extension_type::SaveTimestamp(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_save_timestamp(&mut self) -> &mut transition_extension::SaveTimestamp {
+            if let ::std::option::Option::Some(transition_extension::Extension_type::SaveTimestamp(_)) = self.extension_type {
+            } else {
+                self.extension_type = ::std::option::Option::Some(transition_extension::Extension_type::SaveTimestamp(transition_extension::SaveTimestamp::new()));
+            }
+            match self.extension_type {
+                ::std::option::Option::Some(transition_extension::Extension_type::SaveTimestamp(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_save_timestamp(&mut self) -> transition_extension::SaveTimestamp {
+            if self.has_save_timestamp() {
+                match self.extension_type.take() {
+                    ::std::option::Option::Some(transition_extension::Extension_type::SaveTimestamp(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                transition_extension::SaveTimestamp::new()
+            }
+        }
+
+        // .bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SaveField save_field = 3;
+
+        pub fn save_field(&self) -> &transition_extension::SaveField {
+            match self.extension_type {
+                ::std::option::Option::Some(transition_extension::Extension_type::SaveField(ref v)) => v,
+                _ => <transition_extension::SaveField as ::protobuf::Message>::default_instance(),
+            }
+        }
+
+        pub fn clear_save_field(&mut self) {
+            self.extension_type = ::std::option::Option::None;
+        }
+
+        pub fn has_save_field(&self) -> bool {
+            match self.extension_type {
+                ::std::option::Option::Some(transition_extension::Extension_type::SaveField(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_save_field(&mut self, v: transition_extension::SaveField) {
+            self.extension_type = ::std::option::Option::Some(transition_extension::Extension_type::SaveField(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_save_field(&mut self) -> &mut transition_extension::SaveField {
+            if let ::std::option::Option::Some(transition_extension::Extension_type::SaveField(_)) = self.extension_type {
+            } else {
+                self.extension_type = ::std::option::Option::Some(transition_extension::Extension_type::SaveField(transition_extension::SaveField::new()));
+            }
+            match self.extension_type {
+                ::std::option::Option::Some(transition_extension::Extension_type::SaveField(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_save_field(&mut self) -> transition_extension::SaveField {
+            if self.has_save_field() {
+                match self.extension_type.take() {
+                    ::std::option::Option::Some(transition_extension::Extension_type::SaveField(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                transition_extension::SaveField::new()
+            }
+        }
+
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut fields = ::std::vec::Vec::with_capacity(3);
             let mut oneofs = ::std::vec::Vec::with_capacity(1);
             fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, transition_extension::SankeyDiagramValueExtraction>(
                 "sankey_diagram_value_extraction",
@@ -1031,6 +1060,20 @@ pub mod workflow {
                 TransitionExtension::sankey_diagram_value_extraction,
                 TransitionExtension::mut_sankey_diagram_value_extraction,
                 TransitionExtension::set_sankey_diagram_value_extraction,
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, transition_extension::SaveTimestamp>(
+                "save_timestamp",
+                TransitionExtension::has_save_timestamp,
+                TransitionExtension::save_timestamp,
+                TransitionExtension::mut_save_timestamp,
+                TransitionExtension::set_save_timestamp,
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, transition_extension::SaveField>(
+                "save_field",
+                TransitionExtension::has_save_field,
+                TransitionExtension::save_field,
+                TransitionExtension::mut_save_field,
+                TransitionExtension::set_save_field,
             ));
             oneofs.push(transition_extension::Extension_type::generated_oneof_descriptor_data());
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<TransitionExtension>(
@@ -1054,6 +1097,12 @@ pub mod workflow {
                     10 => {
                         self.extension_type = ::std::option::Option::Some(transition_extension::Extension_type::SankeyDiagramValueExtraction(is.read_message()?));
                     },
+                    18 => {
+                        self.extension_type = ::std::option::Option::Some(transition_extension::Extension_type::SaveTimestamp(is.read_message()?));
+                    },
+                    26 => {
+                        self.extension_type = ::std::option::Option::Some(transition_extension::Extension_type::SaveField(is.read_message()?));
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -1072,6 +1121,14 @@ pub mod workflow {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
+                    &transition_extension::Extension_type::SaveTimestamp(ref v) => {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                    },
+                    &transition_extension::Extension_type::SaveField(ref v) => {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                    },
                 };
             }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -1084,6 +1141,12 @@ pub mod workflow {
                 match v {
                     &transition_extension::Extension_type::SankeyDiagramValueExtraction(ref v) => {
                         ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                    },
+                    &transition_extension::Extension_type::SaveTimestamp(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                    },
+                    &transition_extension::Extension_type::SaveField(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
                     },
                 };
             }
@@ -1104,6 +1167,8 @@ pub mod workflow {
         }
 
         fn clear(&mut self) {
+            self.extension_type = ::std::option::Option::None;
+            self.extension_type = ::std::option::Option::None;
             self.extension_type = ::std::option::Option::None;
             self.special_fields.clear();
         }
@@ -1142,6 +1207,10 @@ pub mod workflow {
         pub enum Extension_type {
             // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.sankey_diagram_value_extraction)
             SankeyDiagramValueExtraction(SankeyDiagramValueExtraction),
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.save_timestamp)
+            SaveTimestamp(SaveTimestamp),
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.save_field)
+            SaveField(SaveField),
         }
 
         impl ::protobuf::Oneof for Extension_type {
@@ -1159,6 +1228,268 @@ pub mod workflow {
                 ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Extension_type>("extension_type")
             }
         }
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SaveTimestamp)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct SaveTimestamp {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SaveTimestamp.id)
+            pub id: ::std::string::String,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SaveTimestamp.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a SaveTimestamp {
+            fn default() -> &'a SaveTimestamp {
+                <SaveTimestamp as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl SaveTimestamp {
+            pub fn new() -> SaveTimestamp {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(1);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "id",
+                    |m: &SaveTimestamp| { &m.id },
+                    |m: &mut SaveTimestamp| { &mut m.id },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SaveTimestamp>(
+                    "Workflow.TransitionExtension.SaveTimestamp",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for SaveTimestamp {
+            const NAME: &'static str = "SaveTimestamp";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.id = is.read_string()?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.id.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.id);
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.id.is_empty() {
+                    os.write_string(1, &self.id)?;
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> SaveTimestamp {
+                SaveTimestamp::new()
+            }
+
+            fn clear(&mut self) {
+                self.id.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static SaveTimestamp {
+                static instance: SaveTimestamp = SaveTimestamp {
+                    id: ::std::string::String::new(),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for SaveTimestamp {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Workflow.TransitionExtension.SaveTimestamp").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for SaveTimestamp {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for SaveTimestamp {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SaveField)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct SaveField {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SaveField.id)
+            pub id: ::std::string::String,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SaveField.field_name)
+            pub field_name: ::std::string::String,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SaveField.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a SaveField {
+            fn default() -> &'a SaveField {
+                <SaveField as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl SaveField {
+            pub fn new() -> SaveField {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(2);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "id",
+                    |m: &SaveField| { &m.id },
+                    |m: &mut SaveField| { &mut m.id },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "field_name",
+                    |m: &SaveField| { &m.field_name },
+                    |m: &mut SaveField| { &mut m.field_name },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SaveField>(
+                    "Workflow.TransitionExtension.SaveField",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for SaveField {
+            const NAME: &'static str = "SaveField";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.id = is.read_string()?;
+                        },
+                        18 => {
+                            self.field_name = is.read_string()?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.id.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.id);
+                }
+                if !self.field_name.is_empty() {
+                    my_size += ::protobuf::rt::string_size(2, &self.field_name);
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.id.is_empty() {
+                    os.write_string(1, &self.id)?;
+                }
+                if !self.field_name.is_empty() {
+                    os.write_string(2, &self.field_name)?;
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> SaveField {
+                SaveField::new()
+            }
+
+            fn clear(&mut self) {
+                self.id.clear();
+                self.field_name.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static SaveField {
+                static instance: SaveField = SaveField {
+                    id: ::std::string::String::new(),
+                    field_name: ::std::string::String::new(),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for SaveField {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Workflow.TransitionExtension.SaveField").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for SaveField {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for SaveField {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
         // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SankeyDiagramValueExtraction)
         #[derive(PartialEq,Clone,Default,Debug)]
         pub struct SankeyDiagramValueExtraction {
@@ -1614,128 +1945,6 @@ pub mod workflow {
         type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
     }
 
-    // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.RuleTimeout)
-    #[derive(PartialEq,Clone,Default,Debug)]
-    pub struct RuleTimeout {
-        // message fields
-        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.RuleTimeout.duration_ms)
-        pub duration_ms: u64,
-        // special fields
-        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.RuleTimeout.special_fields)
-        pub special_fields: ::protobuf::SpecialFields,
-    }
-
-    impl<'a> ::std::default::Default for &'a RuleTimeout {
-        fn default() -> &'a RuleTimeout {
-            <RuleTimeout as ::protobuf::Message>::default_instance()
-        }
-    }
-
-    impl RuleTimeout {
-        pub fn new() -> RuleTimeout {
-            ::std::default::Default::default()
-        }
-
-        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(1);
-            let mut oneofs = ::std::vec::Vec::with_capacity(0);
-            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                "duration_ms",
-                |m: &RuleTimeout| { &m.duration_ms },
-                |m: &mut RuleTimeout| { &mut m.duration_ms },
-            ));
-            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<RuleTimeout>(
-                "Workflow.RuleTimeout",
-                fields,
-                oneofs,
-            )
-        }
-    }
-
-    impl ::protobuf::Message for RuleTimeout {
-        const NAME: &'static str = "RuleTimeout";
-
-        fn is_initialized(&self) -> bool {
-            true
-        }
-
-        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-            while let Some(tag) = is.read_raw_tag_or_eof()? {
-                match tag {
-                    8 => {
-                        self.duration_ms = is.read_uint64()?;
-                    },
-                    tag => {
-                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                    },
-                };
-            }
-            ::std::result::Result::Ok(())
-        }
-
-        // Compute sizes of nested messages
-        #[allow(unused_variables)]
-        fn compute_size(&self) -> u64 {
-            let mut my_size = 0;
-            if self.duration_ms != 0 {
-                my_size += ::protobuf::rt::uint64_size(1, self.duration_ms);
-            }
-            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-            self.special_fields.cached_size().set(my_size as u32);
-            my_size
-        }
-
-        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-            if self.duration_ms != 0 {
-                os.write_uint64(1, self.duration_ms)?;
-            }
-            os.write_unknown_fields(self.special_fields.unknown_fields())?;
-            ::std::result::Result::Ok(())
-        }
-
-        fn special_fields(&self) -> &::protobuf::SpecialFields {
-            &self.special_fields
-        }
-
-        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-            &mut self.special_fields
-        }
-
-        fn new() -> RuleTimeout {
-            RuleTimeout::new()
-        }
-
-        fn clear(&mut self) {
-            self.duration_ms = 0;
-            self.special_fields.clear();
-        }
-
-        fn default_instance() -> &'static RuleTimeout {
-            static instance: RuleTimeout = RuleTimeout {
-                duration_ms: 0,
-                special_fields: ::protobuf::SpecialFields::new(),
-            };
-            &instance
-        }
-    }
-
-    impl ::protobuf::MessageFull for RuleTimeout {
-        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("Workflow.RuleTimeout").unwrap()).clone()
-        }
-    }
-
-    impl ::std::fmt::Display for RuleTimeout {
-        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-            ::protobuf::text_format::fmt(self, f)
-        }
-    }
-
-    impl ::protobuf::reflect::ProtobufValue for RuleTimeout {
-        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-    }
-
     // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Action)
     #[derive(PartialEq,Clone,Default,Debug)]
     pub struct Action {
@@ -1953,8 +2162,57 @@ pub mod workflow {
             }
         }
 
+        // .bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog action_generate_log = 5;
+
+        pub fn action_generate_log(&self) -> &action::ActionGenerateLog {
+            match self.action_type {
+                ::std::option::Option::Some(action::Action_type::ActionGenerateLog(ref v)) => v,
+                _ => <action::ActionGenerateLog as ::protobuf::Message>::default_instance(),
+            }
+        }
+
+        pub fn clear_action_generate_log(&mut self) {
+            self.action_type = ::std::option::Option::None;
+        }
+
+        pub fn has_action_generate_log(&self) -> bool {
+            match self.action_type {
+                ::std::option::Option::Some(action::Action_type::ActionGenerateLog(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_action_generate_log(&mut self, v: action::ActionGenerateLog) {
+            self.action_type = ::std::option::Option::Some(action::Action_type::ActionGenerateLog(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_action_generate_log(&mut self) -> &mut action::ActionGenerateLog {
+            if let ::std::option::Option::Some(action::Action_type::ActionGenerateLog(_)) = self.action_type {
+            } else {
+                self.action_type = ::std::option::Option::Some(action::Action_type::ActionGenerateLog(action::ActionGenerateLog::new()));
+            }
+            match self.action_type {
+                ::std::option::Option::Some(action::Action_type::ActionGenerateLog(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_action_generate_log(&mut self) -> action::ActionGenerateLog {
+            if self.has_action_generate_log() {
+                match self.action_type.take() {
+                    ::std::option::Option::Some(action::Action_type::ActionGenerateLog(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                action::ActionGenerateLog::new()
+            }
+        }
+
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(4);
+            let mut fields = ::std::vec::Vec::with_capacity(5);
             let mut oneofs = ::std::vec::Vec::with_capacity(1);
             fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, action::ActionFlushBuffers>(
                 "action_flush_buffers",
@@ -1983,6 +2241,13 @@ pub mod workflow {
                 Action::action_take_screenshot,
                 Action::mut_action_take_screenshot,
                 Action::set_action_take_screenshot,
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, action::ActionGenerateLog>(
+                "action_generate_log",
+                Action::has_action_generate_log,
+                Action::action_generate_log,
+                Action::mut_action_generate_log,
+                Action::set_action_generate_log,
             ));
             oneofs.push(action::Action_type::generated_oneof_descriptor_data());
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Action>(
@@ -2015,6 +2280,9 @@ pub mod workflow {
                     34 => {
                         self.action_type = ::std::option::Option::Some(action::Action_type::ActionTakeScreenshot(is.read_message()?));
                     },
+                    42 => {
+                        self.action_type = ::std::option::Option::Some(action::Action_type::ActionGenerateLog(is.read_message()?));
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -2045,6 +2313,10 @@ pub mod workflow {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
+                    &action::Action_type::ActionGenerateLog(ref v) => {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                    },
                 };
             }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -2067,6 +2339,9 @@ pub mod workflow {
                     &action::Action_type::ActionTakeScreenshot(ref v) => {
                         ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
                     },
+                    &action::Action_type::ActionGenerateLog(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+                    },
                 };
             }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
@@ -2086,6 +2361,7 @@ pub mod workflow {
         }
 
         fn clear(&mut self) {
+            self.action_type = ::std::option::Option::None;
             self.action_type = ::std::option::Option::None;
             self.action_type = ::std::option::Option::None;
             self.action_type = ::std::option::Option::None;
@@ -2133,6 +2409,8 @@ pub mod workflow {
             ActionEmitSankeyDiagram(ActionEmitSankeyDiagram),
             // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.action_take_screenshot)
             ActionTakeScreenshot(ActionTakeScreenshot),
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.action_generate_log)
+            ActionGenerateLog(ActionGenerateLog),
         }
 
         impl ::protobuf::Oneof for Action_type {
@@ -2150,6 +2428,1222 @@ pub mod workflow {
                 ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Action_type>("action_type")
             }
         }
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct ActionGenerateLog {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.message)
+            pub message: ::std::string::String,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.fields)
+            pub fields: ::std::vec::Vec<action_generate_log::GeneratedField>,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.id)
+            pub id: ::std::string::String,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a ActionGenerateLog {
+            fn default() -> &'a ActionGenerateLog {
+                <ActionGenerateLog as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl ActionGenerateLog {
+            pub fn new() -> ActionGenerateLog {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(3);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "message",
+                    |m: &ActionGenerateLog| { &m.message },
+                    |m: &mut ActionGenerateLog| { &mut m.message },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                    "fields",
+                    |m: &ActionGenerateLog| { &m.fields },
+                    |m: &mut ActionGenerateLog| { &mut m.fields },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "id",
+                    |m: &ActionGenerateLog| { &m.id },
+                    |m: &mut ActionGenerateLog| { &mut m.id },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ActionGenerateLog>(
+                    "Workflow.Action.ActionGenerateLog",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for ActionGenerateLog {
+            const NAME: &'static str = "ActionGenerateLog";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.message = is.read_string()?;
+                        },
+                        18 => {
+                            self.fields.push(is.read_message()?);
+                        },
+                        26 => {
+                            self.id = is.read_string()?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.message.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.message);
+                }
+                for value in &self.fields {
+                    let len = value.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                };
+                if !self.id.is_empty() {
+                    my_size += ::protobuf::rt::string_size(3, &self.id);
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.message.is_empty() {
+                    os.write_string(1, &self.message)?;
+                }
+                for v in &self.fields {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                };
+                if !self.id.is_empty() {
+                    os.write_string(3, &self.id)?;
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> ActionGenerateLog {
+                ActionGenerateLog::new()
+            }
+
+            fn clear(&mut self) {
+                self.message.clear();
+                self.fields.clear();
+                self.id.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static ActionGenerateLog {
+                static instance: ActionGenerateLog = ActionGenerateLog {
+                    message: ::std::string::String::new(),
+                    fields: ::std::vec::Vec::new(),
+                    id: ::std::string::String::new(),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for ActionGenerateLog {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Workflow.Action.ActionGenerateLog").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for ActionGenerateLog {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for ActionGenerateLog {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
+        /// Nested message and enums of message `ActionGenerateLog`
+        pub mod action_generate_log {
+            // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReference)
+            #[derive(PartialEq,Clone,Default,Debug)]
+            pub struct ValueReference {
+                // message oneof groups
+                pub value_reference_type: ::std::option::Option<value_reference::Value_reference_type>,
+                // special fields
+                // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReference.special_fields)
+                pub special_fields: ::protobuf::SpecialFields,
+            }
+
+            impl<'a> ::std::default::Default for &'a ValueReference {
+                fn default() -> &'a ValueReference {
+                    <ValueReference as ::protobuf::Message>::default_instance()
+                }
+            }
+
+            impl ValueReference {
+                pub fn new() -> ValueReference {
+                    ::std::default::Default::default()
+                }
+
+                // string fixed = 1;
+
+                pub fn fixed(&self) -> &str {
+                    match self.value_reference_type {
+                        ::std::option::Option::Some(value_reference::Value_reference_type::Fixed(ref v)) => v,
+                        _ => "",
+                    }
+                }
+
+                pub fn clear_fixed(&mut self) {
+                    self.value_reference_type = ::std::option::Option::None;
+                }
+
+                pub fn has_fixed(&self) -> bool {
+                    match self.value_reference_type {
+                        ::std::option::Option::Some(value_reference::Value_reference_type::Fixed(..)) => true,
+                        _ => false,
+                    }
+                }
+
+                // Param is passed by value, moved
+                pub fn set_fixed(&mut self, v: ::std::string::String) {
+                    self.value_reference_type = ::std::option::Option::Some(value_reference::Value_reference_type::Fixed(v))
+                }
+
+                // Mutable pointer to the field.
+                pub fn mut_fixed(&mut self) -> &mut ::std::string::String {
+                    if let ::std::option::Option::Some(value_reference::Value_reference_type::Fixed(_)) = self.value_reference_type {
+                    } else {
+                        self.value_reference_type = ::std::option::Option::Some(value_reference::Value_reference_type::Fixed(::std::string::String::new()));
+                    }
+                    match self.value_reference_type {
+                        ::std::option::Option::Some(value_reference::Value_reference_type::Fixed(ref mut v)) => v,
+                        _ => panic!(),
+                    }
+                }
+
+                // Take field
+                pub fn take_fixed(&mut self) -> ::std::string::String {
+                    if self.has_fixed() {
+                        match self.value_reference_type.take() {
+                            ::std::option::Option::Some(value_reference::Value_reference_type::Fixed(v)) => v,
+                            _ => panic!(),
+                        }
+                    } else {
+                        ::std::string::String::new()
+                    }
+                }
+
+                // string field_from_current_log = 2;
+
+                pub fn field_from_current_log(&self) -> &str {
+                    match self.value_reference_type {
+                        ::std::option::Option::Some(value_reference::Value_reference_type::FieldFromCurrentLog(ref v)) => v,
+                        _ => "",
+                    }
+                }
+
+                pub fn clear_field_from_current_log(&mut self) {
+                    self.value_reference_type = ::std::option::Option::None;
+                }
+
+                pub fn has_field_from_current_log(&self) -> bool {
+                    match self.value_reference_type {
+                        ::std::option::Option::Some(value_reference::Value_reference_type::FieldFromCurrentLog(..)) => true,
+                        _ => false,
+                    }
+                }
+
+                // Param is passed by value, moved
+                pub fn set_field_from_current_log(&mut self, v: ::std::string::String) {
+                    self.value_reference_type = ::std::option::Option::Some(value_reference::Value_reference_type::FieldFromCurrentLog(v))
+                }
+
+                // Mutable pointer to the field.
+                pub fn mut_field_from_current_log(&mut self) -> &mut ::std::string::String {
+                    if let ::std::option::Option::Some(value_reference::Value_reference_type::FieldFromCurrentLog(_)) = self.value_reference_type {
+                    } else {
+                        self.value_reference_type = ::std::option::Option::Some(value_reference::Value_reference_type::FieldFromCurrentLog(::std::string::String::new()));
+                    }
+                    match self.value_reference_type {
+                        ::std::option::Option::Some(value_reference::Value_reference_type::FieldFromCurrentLog(ref mut v)) => v,
+                        _ => panic!(),
+                    }
+                }
+
+                // Take field
+                pub fn take_field_from_current_log(&mut self) -> ::std::string::String {
+                    if self.has_field_from_current_log() {
+                        match self.value_reference_type.take() {
+                            ::std::option::Option::Some(value_reference::Value_reference_type::FieldFromCurrentLog(v)) => v,
+                            _ => panic!(),
+                        }
+                    } else {
+                        ::std::string::String::new()
+                    }
+                }
+
+                // string saved_field_id = 3;
+
+                pub fn saved_field_id(&self) -> &str {
+                    match self.value_reference_type {
+                        ::std::option::Option::Some(value_reference::Value_reference_type::SavedFieldId(ref v)) => v,
+                        _ => "",
+                    }
+                }
+
+                pub fn clear_saved_field_id(&mut self) {
+                    self.value_reference_type = ::std::option::Option::None;
+                }
+
+                pub fn has_saved_field_id(&self) -> bool {
+                    match self.value_reference_type {
+                        ::std::option::Option::Some(value_reference::Value_reference_type::SavedFieldId(..)) => true,
+                        _ => false,
+                    }
+                }
+
+                // Param is passed by value, moved
+                pub fn set_saved_field_id(&mut self, v: ::std::string::String) {
+                    self.value_reference_type = ::std::option::Option::Some(value_reference::Value_reference_type::SavedFieldId(v))
+                }
+
+                // Mutable pointer to the field.
+                pub fn mut_saved_field_id(&mut self) -> &mut ::std::string::String {
+                    if let ::std::option::Option::Some(value_reference::Value_reference_type::SavedFieldId(_)) = self.value_reference_type {
+                    } else {
+                        self.value_reference_type = ::std::option::Option::Some(value_reference::Value_reference_type::SavedFieldId(::std::string::String::new()));
+                    }
+                    match self.value_reference_type {
+                        ::std::option::Option::Some(value_reference::Value_reference_type::SavedFieldId(ref mut v)) => v,
+                        _ => panic!(),
+                    }
+                }
+
+                // Take field
+                pub fn take_saved_field_id(&mut self) -> ::std::string::String {
+                    if self.has_saved_field_id() {
+                        match self.value_reference_type.take() {
+                            ::std::option::Option::Some(value_reference::Value_reference_type::SavedFieldId(v)) => v,
+                            _ => panic!(),
+                        }
+                    } else {
+                        ::std::string::String::new()
+                    }
+                }
+
+                // string saved_timestamp_id = 4;
+
+                pub fn saved_timestamp_id(&self) -> &str {
+                    match self.value_reference_type {
+                        ::std::option::Option::Some(value_reference::Value_reference_type::SavedTimestampId(ref v)) => v,
+                        _ => "",
+                    }
+                }
+
+                pub fn clear_saved_timestamp_id(&mut self) {
+                    self.value_reference_type = ::std::option::Option::None;
+                }
+
+                pub fn has_saved_timestamp_id(&self) -> bool {
+                    match self.value_reference_type {
+                        ::std::option::Option::Some(value_reference::Value_reference_type::SavedTimestampId(..)) => true,
+                        _ => false,
+                    }
+                }
+
+                // Param is passed by value, moved
+                pub fn set_saved_timestamp_id(&mut self, v: ::std::string::String) {
+                    self.value_reference_type = ::std::option::Option::Some(value_reference::Value_reference_type::SavedTimestampId(v))
+                }
+
+                // Mutable pointer to the field.
+                pub fn mut_saved_timestamp_id(&mut self) -> &mut ::std::string::String {
+                    if let ::std::option::Option::Some(value_reference::Value_reference_type::SavedTimestampId(_)) = self.value_reference_type {
+                    } else {
+                        self.value_reference_type = ::std::option::Option::Some(value_reference::Value_reference_type::SavedTimestampId(::std::string::String::new()));
+                    }
+                    match self.value_reference_type {
+                        ::std::option::Option::Some(value_reference::Value_reference_type::SavedTimestampId(ref mut v)) => v,
+                        _ => panic!(),
+                    }
+                }
+
+                // Take field
+                pub fn take_saved_timestamp_id(&mut self) -> ::std::string::String {
+                    if self.has_saved_timestamp_id() {
+                        match self.value_reference_type.take() {
+                            ::std::option::Option::Some(value_reference::Value_reference_type::SavedTimestampId(v)) => v,
+                            _ => panic!(),
+                        }
+                    } else {
+                        ::std::string::String::new()
+                    }
+                }
+
+                pub(in super::super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                    let mut fields = ::std::vec::Vec::with_capacity(4);
+                    let mut oneofs = ::std::vec::Vec::with_capacity(1);
+                    fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+                        "fixed",
+                        ValueReference::has_fixed,
+                        ValueReference::fixed,
+                        ValueReference::set_fixed,
+                    ));
+                    fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+                        "field_from_current_log",
+                        ValueReference::has_field_from_current_log,
+                        ValueReference::field_from_current_log,
+                        ValueReference::set_field_from_current_log,
+                    ));
+                    fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+                        "saved_field_id",
+                        ValueReference::has_saved_field_id,
+                        ValueReference::saved_field_id,
+                        ValueReference::set_saved_field_id,
+                    ));
+                    fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+                        "saved_timestamp_id",
+                        ValueReference::has_saved_timestamp_id,
+                        ValueReference::saved_timestamp_id,
+                        ValueReference::set_saved_timestamp_id,
+                    ));
+                    oneofs.push(value_reference::Value_reference_type::generated_oneof_descriptor_data());
+                    ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ValueReference>(
+                        "Workflow.Action.ActionGenerateLog.ValueReference",
+                        fields,
+                        oneofs,
+                    )
+                }
+            }
+
+            impl ::protobuf::Message for ValueReference {
+                const NAME: &'static str = "ValueReference";
+
+                fn is_initialized(&self) -> bool {
+                    true
+                }
+
+                fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                    while let Some(tag) = is.read_raw_tag_or_eof()? {
+                        match tag {
+                            10 => {
+                                self.value_reference_type = ::std::option::Option::Some(value_reference::Value_reference_type::Fixed(is.read_string()?));
+                            },
+                            18 => {
+                                self.value_reference_type = ::std::option::Option::Some(value_reference::Value_reference_type::FieldFromCurrentLog(is.read_string()?));
+                            },
+                            26 => {
+                                self.value_reference_type = ::std::option::Option::Some(value_reference::Value_reference_type::SavedFieldId(is.read_string()?));
+                            },
+                            34 => {
+                                self.value_reference_type = ::std::option::Option::Some(value_reference::Value_reference_type::SavedTimestampId(is.read_string()?));
+                            },
+                            tag => {
+                                ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                            },
+                        };
+                    }
+                    ::std::result::Result::Ok(())
+                }
+
+                // Compute sizes of nested messages
+                #[allow(unused_variables)]
+                fn compute_size(&self) -> u64 {
+                    let mut my_size = 0;
+                    if let ::std::option::Option::Some(ref v) = self.value_reference_type {
+                        match v {
+                            &value_reference::Value_reference_type::Fixed(ref v) => {
+                                my_size += ::protobuf::rt::string_size(1, &v);
+                            },
+                            &value_reference::Value_reference_type::FieldFromCurrentLog(ref v) => {
+                                my_size += ::protobuf::rt::string_size(2, &v);
+                            },
+                            &value_reference::Value_reference_type::SavedFieldId(ref v) => {
+                                my_size += ::protobuf::rt::string_size(3, &v);
+                            },
+                            &value_reference::Value_reference_type::SavedTimestampId(ref v) => {
+                                my_size += ::protobuf::rt::string_size(4, &v);
+                            },
+                        };
+                    }
+                    my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                    self.special_fields.cached_size().set(my_size as u32);
+                    my_size
+                }
+
+                fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                    if let ::std::option::Option::Some(ref v) = self.value_reference_type {
+                        match v {
+                            &value_reference::Value_reference_type::Fixed(ref v) => {
+                                os.write_string(1, v)?;
+                            },
+                            &value_reference::Value_reference_type::FieldFromCurrentLog(ref v) => {
+                                os.write_string(2, v)?;
+                            },
+                            &value_reference::Value_reference_type::SavedFieldId(ref v) => {
+                                os.write_string(3, v)?;
+                            },
+                            &value_reference::Value_reference_type::SavedTimestampId(ref v) => {
+                                os.write_string(4, v)?;
+                            },
+                        };
+                    }
+                    os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                    ::std::result::Result::Ok(())
+                }
+
+                fn special_fields(&self) -> &::protobuf::SpecialFields {
+                    &self.special_fields
+                }
+
+                fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                    &mut self.special_fields
+                }
+
+                fn new() -> ValueReference {
+                    ValueReference::new()
+                }
+
+                fn clear(&mut self) {
+                    self.value_reference_type = ::std::option::Option::None;
+                    self.value_reference_type = ::std::option::Option::None;
+                    self.value_reference_type = ::std::option::Option::None;
+                    self.value_reference_type = ::std::option::Option::None;
+                    self.special_fields.clear();
+                }
+
+                fn default_instance() -> &'static ValueReference {
+                    static instance: ValueReference = ValueReference {
+                        value_reference_type: ::std::option::Option::None,
+                        special_fields: ::protobuf::SpecialFields::new(),
+                    };
+                    &instance
+                }
+            }
+
+            impl ::protobuf::MessageFull for ValueReference {
+                fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                    descriptor.get(|| super::super::super::file_descriptor().message_by_package_relative_name("Workflow.Action.ActionGenerateLog.ValueReference").unwrap()).clone()
+                }
+            }
+
+            impl ::std::fmt::Display for ValueReference {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    ::protobuf::text_format::fmt(self, f)
+                }
+            }
+
+            impl ::protobuf::reflect::ProtobufValue for ValueReference {
+                type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+            }
+
+            /// Nested message and enums of message `ValueReference`
+            pub mod value_reference {
+
+                #[derive(Clone,PartialEq,Debug)]
+                // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReference.value_reference_type)
+                pub enum Value_reference_type {
+                    // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReference.fixed)
+                    Fixed(::std::string::String),
+                    // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReference.field_from_current_log)
+                    FieldFromCurrentLog(::std::string::String),
+                    // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReference.saved_field_id)
+                    SavedFieldId(::std::string::String),
+                    // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReference.saved_timestamp_id)
+                    SavedTimestampId(::std::string::String),
+                }
+
+                impl ::protobuf::Oneof for Value_reference_type {
+                }
+
+                impl ::protobuf::OneofFull for Value_reference_type {
+                    fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+                        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+                        descriptor.get(|| <super::ValueReference as ::protobuf::MessageFull>::descriptor().oneof_by_name("value_reference_type").unwrap()).clone()
+                    }
+                }
+
+                impl Value_reference_type {
+                    pub(in super::super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+                        ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Value_reference_type>("value_reference_type")
+                    }
+                }
+            }
+
+            // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReferencePair)
+            #[derive(PartialEq,Clone,Default,Debug)]
+            pub struct ValueReferencePair {
+                // message fields
+                // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReferencePair.lhs)
+                pub lhs: ::protobuf::MessageField<ValueReference>,
+                // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReferencePair.rhs)
+                pub rhs: ::protobuf::MessageField<ValueReference>,
+                // special fields
+                // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReferencePair.special_fields)
+                pub special_fields: ::protobuf::SpecialFields,
+            }
+
+            impl<'a> ::std::default::Default for &'a ValueReferencePair {
+                fn default() -> &'a ValueReferencePair {
+                    <ValueReferencePair as ::protobuf::Message>::default_instance()
+                }
+            }
+
+            impl ValueReferencePair {
+                pub fn new() -> ValueReferencePair {
+                    ::std::default::Default::default()
+                }
+
+                pub(in super::super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                    let mut fields = ::std::vec::Vec::with_capacity(2);
+                    let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                    fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ValueReference>(
+                        "lhs",
+                        |m: &ValueReferencePair| { &m.lhs },
+                        |m: &mut ValueReferencePair| { &mut m.lhs },
+                    ));
+                    fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ValueReference>(
+                        "rhs",
+                        |m: &ValueReferencePair| { &m.rhs },
+                        |m: &mut ValueReferencePair| { &mut m.rhs },
+                    ));
+                    ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ValueReferencePair>(
+                        "Workflow.Action.ActionGenerateLog.ValueReferencePair",
+                        fields,
+                        oneofs,
+                    )
+                }
+            }
+
+            impl ::protobuf::Message for ValueReferencePair {
+                const NAME: &'static str = "ValueReferencePair";
+
+                fn is_initialized(&self) -> bool {
+                    true
+                }
+
+                fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                    while let Some(tag) = is.read_raw_tag_or_eof()? {
+                        match tag {
+                            10 => {
+                                ::protobuf::rt::read_singular_message_into_field(is, &mut self.lhs)?;
+                            },
+                            18 => {
+                                ::protobuf::rt::read_singular_message_into_field(is, &mut self.rhs)?;
+                            },
+                            tag => {
+                                ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                            },
+                        };
+                    }
+                    ::std::result::Result::Ok(())
+                }
+
+                // Compute sizes of nested messages
+                #[allow(unused_variables)]
+                fn compute_size(&self) -> u64 {
+                    let mut my_size = 0;
+                    if let Some(v) = self.lhs.as_ref() {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                    }
+                    if let Some(v) = self.rhs.as_ref() {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                    }
+                    my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                    self.special_fields.cached_size().set(my_size as u32);
+                    my_size
+                }
+
+                fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                    if let Some(v) = self.lhs.as_ref() {
+                        ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                    }
+                    if let Some(v) = self.rhs.as_ref() {
+                        ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                    }
+                    os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                    ::std::result::Result::Ok(())
+                }
+
+                fn special_fields(&self) -> &::protobuf::SpecialFields {
+                    &self.special_fields
+                }
+
+                fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                    &mut self.special_fields
+                }
+
+                fn new() -> ValueReferencePair {
+                    ValueReferencePair::new()
+                }
+
+                fn clear(&mut self) {
+                    self.lhs.clear();
+                    self.rhs.clear();
+                    self.special_fields.clear();
+                }
+
+                fn default_instance() -> &'static ValueReferencePair {
+                    static instance: ValueReferencePair = ValueReferencePair {
+                        lhs: ::protobuf::MessageField::none(),
+                        rhs: ::protobuf::MessageField::none(),
+                        special_fields: ::protobuf::SpecialFields::new(),
+                    };
+                    &instance
+                }
+            }
+
+            impl ::protobuf::MessageFull for ValueReferencePair {
+                fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                    descriptor.get(|| super::super::super::file_descriptor().message_by_package_relative_name("Workflow.Action.ActionGenerateLog.ValueReferencePair").unwrap()).clone()
+                }
+            }
+
+            impl ::std::fmt::Display for ValueReferencePair {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    ::protobuf::text_format::fmt(self, f)
+                }
+            }
+
+            impl ::protobuf::reflect::ProtobufValue for ValueReferencePair {
+                type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+            }
+
+            // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.GeneratedField)
+            #[derive(PartialEq,Clone,Default,Debug)]
+            pub struct GeneratedField {
+                // message fields
+                // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.GeneratedField.name)
+                pub name: ::std::string::String,
+                // message oneof groups
+                pub generated_field_value_type: ::std::option::Option<generated_field::Generated_field_value_type>,
+                // special fields
+                // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.GeneratedField.special_fields)
+                pub special_fields: ::protobuf::SpecialFields,
+            }
+
+            impl<'a> ::std::default::Default for &'a GeneratedField {
+                fn default() -> &'a GeneratedField {
+                    <GeneratedField as ::protobuf::Message>::default_instance()
+                }
+            }
+
+            impl GeneratedField {
+                pub fn new() -> GeneratedField {
+                    ::std::default::Default::default()
+                }
+
+                // .bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReference single = 2;
+
+                pub fn single(&self) -> &ValueReference {
+                    match self.generated_field_value_type {
+                        ::std::option::Option::Some(generated_field::Generated_field_value_type::Single(ref v)) => v,
+                        _ => <ValueReference as ::protobuf::Message>::default_instance(),
+                    }
+                }
+
+                pub fn clear_single(&mut self) {
+                    self.generated_field_value_type = ::std::option::Option::None;
+                }
+
+                pub fn has_single(&self) -> bool {
+                    match self.generated_field_value_type {
+                        ::std::option::Option::Some(generated_field::Generated_field_value_type::Single(..)) => true,
+                        _ => false,
+                    }
+                }
+
+                // Param is passed by value, moved
+                pub fn set_single(&mut self, v: ValueReference) {
+                    self.generated_field_value_type = ::std::option::Option::Some(generated_field::Generated_field_value_type::Single(v))
+                }
+
+                // Mutable pointer to the field.
+                pub fn mut_single(&mut self) -> &mut ValueReference {
+                    if let ::std::option::Option::Some(generated_field::Generated_field_value_type::Single(_)) = self.generated_field_value_type {
+                    } else {
+                        self.generated_field_value_type = ::std::option::Option::Some(generated_field::Generated_field_value_type::Single(ValueReference::new()));
+                    }
+                    match self.generated_field_value_type {
+                        ::std::option::Option::Some(generated_field::Generated_field_value_type::Single(ref mut v)) => v,
+                        _ => panic!(),
+                    }
+                }
+
+                // Take field
+                pub fn take_single(&mut self) -> ValueReference {
+                    if self.has_single() {
+                        match self.generated_field_value_type.take() {
+                            ::std::option::Option::Some(generated_field::Generated_field_value_type::Single(v)) => v,
+                            _ => panic!(),
+                        }
+                    } else {
+                        ValueReference::new()
+                    }
+                }
+
+                // .bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReferencePair subtract = 3;
+
+                pub fn subtract(&self) -> &ValueReferencePair {
+                    match self.generated_field_value_type {
+                        ::std::option::Option::Some(generated_field::Generated_field_value_type::Subtract(ref v)) => v,
+                        _ => <ValueReferencePair as ::protobuf::Message>::default_instance(),
+                    }
+                }
+
+                pub fn clear_subtract(&mut self) {
+                    self.generated_field_value_type = ::std::option::Option::None;
+                }
+
+                pub fn has_subtract(&self) -> bool {
+                    match self.generated_field_value_type {
+                        ::std::option::Option::Some(generated_field::Generated_field_value_type::Subtract(..)) => true,
+                        _ => false,
+                    }
+                }
+
+                // Param is passed by value, moved
+                pub fn set_subtract(&mut self, v: ValueReferencePair) {
+                    self.generated_field_value_type = ::std::option::Option::Some(generated_field::Generated_field_value_type::Subtract(v))
+                }
+
+                // Mutable pointer to the field.
+                pub fn mut_subtract(&mut self) -> &mut ValueReferencePair {
+                    if let ::std::option::Option::Some(generated_field::Generated_field_value_type::Subtract(_)) = self.generated_field_value_type {
+                    } else {
+                        self.generated_field_value_type = ::std::option::Option::Some(generated_field::Generated_field_value_type::Subtract(ValueReferencePair::new()));
+                    }
+                    match self.generated_field_value_type {
+                        ::std::option::Option::Some(generated_field::Generated_field_value_type::Subtract(ref mut v)) => v,
+                        _ => panic!(),
+                    }
+                }
+
+                // Take field
+                pub fn take_subtract(&mut self) -> ValueReferencePair {
+                    if self.has_subtract() {
+                        match self.generated_field_value_type.take() {
+                            ::std::option::Option::Some(generated_field::Generated_field_value_type::Subtract(v)) => v,
+                            _ => panic!(),
+                        }
+                    } else {
+                        ValueReferencePair::new()
+                    }
+                }
+
+                // .bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReferencePair add = 4;
+
+                pub fn add(&self) -> &ValueReferencePair {
+                    match self.generated_field_value_type {
+                        ::std::option::Option::Some(generated_field::Generated_field_value_type::Add(ref v)) => v,
+                        _ => <ValueReferencePair as ::protobuf::Message>::default_instance(),
+                    }
+                }
+
+                pub fn clear_add(&mut self) {
+                    self.generated_field_value_type = ::std::option::Option::None;
+                }
+
+                pub fn has_add(&self) -> bool {
+                    match self.generated_field_value_type {
+                        ::std::option::Option::Some(generated_field::Generated_field_value_type::Add(..)) => true,
+                        _ => false,
+                    }
+                }
+
+                // Param is passed by value, moved
+                pub fn set_add(&mut self, v: ValueReferencePair) {
+                    self.generated_field_value_type = ::std::option::Option::Some(generated_field::Generated_field_value_type::Add(v))
+                }
+
+                // Mutable pointer to the field.
+                pub fn mut_add(&mut self) -> &mut ValueReferencePair {
+                    if let ::std::option::Option::Some(generated_field::Generated_field_value_type::Add(_)) = self.generated_field_value_type {
+                    } else {
+                        self.generated_field_value_type = ::std::option::Option::Some(generated_field::Generated_field_value_type::Add(ValueReferencePair::new()));
+                    }
+                    match self.generated_field_value_type {
+                        ::std::option::Option::Some(generated_field::Generated_field_value_type::Add(ref mut v)) => v,
+                        _ => panic!(),
+                    }
+                }
+
+                // Take field
+                pub fn take_add(&mut self) -> ValueReferencePair {
+                    if self.has_add() {
+                        match self.generated_field_value_type.take() {
+                            ::std::option::Option::Some(generated_field::Generated_field_value_type::Add(v)) => v,
+                            _ => panic!(),
+                        }
+                    } else {
+                        ValueReferencePair::new()
+                    }
+                }
+
+                // .bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReferencePair multiply = 5;
+
+                pub fn multiply(&self) -> &ValueReferencePair {
+                    match self.generated_field_value_type {
+                        ::std::option::Option::Some(generated_field::Generated_field_value_type::Multiply(ref v)) => v,
+                        _ => <ValueReferencePair as ::protobuf::Message>::default_instance(),
+                    }
+                }
+
+                pub fn clear_multiply(&mut self) {
+                    self.generated_field_value_type = ::std::option::Option::None;
+                }
+
+                pub fn has_multiply(&self) -> bool {
+                    match self.generated_field_value_type {
+                        ::std::option::Option::Some(generated_field::Generated_field_value_type::Multiply(..)) => true,
+                        _ => false,
+                    }
+                }
+
+                // Param is passed by value, moved
+                pub fn set_multiply(&mut self, v: ValueReferencePair) {
+                    self.generated_field_value_type = ::std::option::Option::Some(generated_field::Generated_field_value_type::Multiply(v))
+                }
+
+                // Mutable pointer to the field.
+                pub fn mut_multiply(&mut self) -> &mut ValueReferencePair {
+                    if let ::std::option::Option::Some(generated_field::Generated_field_value_type::Multiply(_)) = self.generated_field_value_type {
+                    } else {
+                        self.generated_field_value_type = ::std::option::Option::Some(generated_field::Generated_field_value_type::Multiply(ValueReferencePair::new()));
+                    }
+                    match self.generated_field_value_type {
+                        ::std::option::Option::Some(generated_field::Generated_field_value_type::Multiply(ref mut v)) => v,
+                        _ => panic!(),
+                    }
+                }
+
+                // Take field
+                pub fn take_multiply(&mut self) -> ValueReferencePair {
+                    if self.has_multiply() {
+                        match self.generated_field_value_type.take() {
+                            ::std::option::Option::Some(generated_field::Generated_field_value_type::Multiply(v)) => v,
+                            _ => panic!(),
+                        }
+                    } else {
+                        ValueReferencePair::new()
+                    }
+                }
+
+                // .bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReferencePair divide = 6;
+
+                pub fn divide(&self) -> &ValueReferencePair {
+                    match self.generated_field_value_type {
+                        ::std::option::Option::Some(generated_field::Generated_field_value_type::Divide(ref v)) => v,
+                        _ => <ValueReferencePair as ::protobuf::Message>::default_instance(),
+                    }
+                }
+
+                pub fn clear_divide(&mut self) {
+                    self.generated_field_value_type = ::std::option::Option::None;
+                }
+
+                pub fn has_divide(&self) -> bool {
+                    match self.generated_field_value_type {
+                        ::std::option::Option::Some(generated_field::Generated_field_value_type::Divide(..)) => true,
+                        _ => false,
+                    }
+                }
+
+                // Param is passed by value, moved
+                pub fn set_divide(&mut self, v: ValueReferencePair) {
+                    self.generated_field_value_type = ::std::option::Option::Some(generated_field::Generated_field_value_type::Divide(v))
+                }
+
+                // Mutable pointer to the field.
+                pub fn mut_divide(&mut self) -> &mut ValueReferencePair {
+                    if let ::std::option::Option::Some(generated_field::Generated_field_value_type::Divide(_)) = self.generated_field_value_type {
+                    } else {
+                        self.generated_field_value_type = ::std::option::Option::Some(generated_field::Generated_field_value_type::Divide(ValueReferencePair::new()));
+                    }
+                    match self.generated_field_value_type {
+                        ::std::option::Option::Some(generated_field::Generated_field_value_type::Divide(ref mut v)) => v,
+                        _ => panic!(),
+                    }
+                }
+
+                // Take field
+                pub fn take_divide(&mut self) -> ValueReferencePair {
+                    if self.has_divide() {
+                        match self.generated_field_value_type.take() {
+                            ::std::option::Option::Some(generated_field::Generated_field_value_type::Divide(v)) => v,
+                            _ => panic!(),
+                        }
+                    } else {
+                        ValueReferencePair::new()
+                    }
+                }
+
+                pub(in super::super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                    let mut fields = ::std::vec::Vec::with_capacity(6);
+                    let mut oneofs = ::std::vec::Vec::with_capacity(1);
+                    fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                        "name",
+                        |m: &GeneratedField| { &m.name },
+                        |m: &mut GeneratedField| { &mut m.name },
+                    ));
+                    fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, ValueReference>(
+                        "single",
+                        GeneratedField::has_single,
+                        GeneratedField::single,
+                        GeneratedField::mut_single,
+                        GeneratedField::set_single,
+                    ));
+                    fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, ValueReferencePair>(
+                        "subtract",
+                        GeneratedField::has_subtract,
+                        GeneratedField::subtract,
+                        GeneratedField::mut_subtract,
+                        GeneratedField::set_subtract,
+                    ));
+                    fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, ValueReferencePair>(
+                        "add",
+                        GeneratedField::has_add,
+                        GeneratedField::add,
+                        GeneratedField::mut_add,
+                        GeneratedField::set_add,
+                    ));
+                    fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, ValueReferencePair>(
+                        "multiply",
+                        GeneratedField::has_multiply,
+                        GeneratedField::multiply,
+                        GeneratedField::mut_multiply,
+                        GeneratedField::set_multiply,
+                    ));
+                    fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, ValueReferencePair>(
+                        "divide",
+                        GeneratedField::has_divide,
+                        GeneratedField::divide,
+                        GeneratedField::mut_divide,
+                        GeneratedField::set_divide,
+                    ));
+                    oneofs.push(generated_field::Generated_field_value_type::generated_oneof_descriptor_data());
+                    ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<GeneratedField>(
+                        "Workflow.Action.ActionGenerateLog.GeneratedField",
+                        fields,
+                        oneofs,
+                    )
+                }
+            }
+
+            impl ::protobuf::Message for GeneratedField {
+                const NAME: &'static str = "GeneratedField";
+
+                fn is_initialized(&self) -> bool {
+                    true
+                }
+
+                fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                    while let Some(tag) = is.read_raw_tag_or_eof()? {
+                        match tag {
+                            10 => {
+                                self.name = is.read_string()?;
+                            },
+                            18 => {
+                                self.generated_field_value_type = ::std::option::Option::Some(generated_field::Generated_field_value_type::Single(is.read_message()?));
+                            },
+                            26 => {
+                                self.generated_field_value_type = ::std::option::Option::Some(generated_field::Generated_field_value_type::Subtract(is.read_message()?));
+                            },
+                            34 => {
+                                self.generated_field_value_type = ::std::option::Option::Some(generated_field::Generated_field_value_type::Add(is.read_message()?));
+                            },
+                            42 => {
+                                self.generated_field_value_type = ::std::option::Option::Some(generated_field::Generated_field_value_type::Multiply(is.read_message()?));
+                            },
+                            50 => {
+                                self.generated_field_value_type = ::std::option::Option::Some(generated_field::Generated_field_value_type::Divide(is.read_message()?));
+                            },
+                            tag => {
+                                ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                            },
+                        };
+                    }
+                    ::std::result::Result::Ok(())
+                }
+
+                // Compute sizes of nested messages
+                #[allow(unused_variables)]
+                fn compute_size(&self) -> u64 {
+                    let mut my_size = 0;
+                    if !self.name.is_empty() {
+                        my_size += ::protobuf::rt::string_size(1, &self.name);
+                    }
+                    if let ::std::option::Option::Some(ref v) = self.generated_field_value_type {
+                        match v {
+                            &generated_field::Generated_field_value_type::Single(ref v) => {
+                                let len = v.compute_size();
+                                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                            },
+                            &generated_field::Generated_field_value_type::Subtract(ref v) => {
+                                let len = v.compute_size();
+                                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                            },
+                            &generated_field::Generated_field_value_type::Add(ref v) => {
+                                let len = v.compute_size();
+                                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                            },
+                            &generated_field::Generated_field_value_type::Multiply(ref v) => {
+                                let len = v.compute_size();
+                                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                            },
+                            &generated_field::Generated_field_value_type::Divide(ref v) => {
+                                let len = v.compute_size();
+                                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                            },
+                        };
+                    }
+                    my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                    self.special_fields.cached_size().set(my_size as u32);
+                    my_size
+                }
+
+                fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                    if !self.name.is_empty() {
+                        os.write_string(1, &self.name)?;
+                    }
+                    if let ::std::option::Option::Some(ref v) = self.generated_field_value_type {
+                        match v {
+                            &generated_field::Generated_field_value_type::Single(ref v) => {
+                                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                            },
+                            &generated_field::Generated_field_value_type::Subtract(ref v) => {
+                                ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                            },
+                            &generated_field::Generated_field_value_type::Add(ref v) => {
+                                ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+                            },
+                            &generated_field::Generated_field_value_type::Multiply(ref v) => {
+                                ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+                            },
+                            &generated_field::Generated_field_value_type::Divide(ref v) => {
+                                ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
+                            },
+                        };
+                    }
+                    os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                    ::std::result::Result::Ok(())
+                }
+
+                fn special_fields(&self) -> &::protobuf::SpecialFields {
+                    &self.special_fields
+                }
+
+                fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                    &mut self.special_fields
+                }
+
+                fn new() -> GeneratedField {
+                    GeneratedField::new()
+                }
+
+                fn clear(&mut self) {
+                    self.name.clear();
+                    self.generated_field_value_type = ::std::option::Option::None;
+                    self.generated_field_value_type = ::std::option::Option::None;
+                    self.generated_field_value_type = ::std::option::Option::None;
+                    self.generated_field_value_type = ::std::option::Option::None;
+                    self.generated_field_value_type = ::std::option::Option::None;
+                    self.special_fields.clear();
+                }
+
+                fn default_instance() -> &'static GeneratedField {
+                    static instance: GeneratedField = GeneratedField {
+                        name: ::std::string::String::new(),
+                        generated_field_value_type: ::std::option::Option::None,
+                        special_fields: ::protobuf::SpecialFields::new(),
+                    };
+                    &instance
+                }
+            }
+
+            impl ::protobuf::MessageFull for GeneratedField {
+                fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                    descriptor.get(|| super::super::super::file_descriptor().message_by_package_relative_name("Workflow.Action.ActionGenerateLog.GeneratedField").unwrap()).clone()
+                }
+            }
+
+            impl ::std::fmt::Display for GeneratedField {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    ::protobuf::text_format::fmt(self, f)
+                }
+            }
+
+            impl ::protobuf::reflect::ProtobufValue for GeneratedField {
+                type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+            }
+
+            /// Nested message and enums of message `GeneratedField`
+            pub mod generated_field {
+
+                #[derive(Clone,PartialEq,Debug)]
+                // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.GeneratedField.generated_field_value_type)
+                pub enum Generated_field_value_type {
+                    // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.GeneratedField.single)
+                    Single(super::ValueReference),
+                    // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.GeneratedField.subtract)
+                    Subtract(super::ValueReferencePair),
+                    // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.GeneratedField.add)
+                    Add(super::ValueReferencePair),
+                    // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.GeneratedField.multiply)
+                    Multiply(super::ValueReferencePair),
+                    // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.GeneratedField.divide)
+                    Divide(super::ValueReferencePair),
+                }
+
+                impl ::protobuf::Oneof for Generated_field_value_type {
+                }
+
+                impl ::protobuf::OneofFull for Generated_field_value_type {
+                    fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+                        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+                        descriptor.get(|| <super::GeneratedField as ::protobuf::MessageFull>::descriptor().oneof_by_name("generated_field_value_type").unwrap()).clone()
+                    }
+                }
+
+                impl Generated_field_value_type {
+                    pub(in super::super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+                        ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Generated_field_value_type>("generated_field_value_type")
+                    }
+                }
+            }
+        }
+
         // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionFlushBuffers)
         #[derive(PartialEq,Clone,Default,Debug)]
         pub struct ActionFlushBuffers {
@@ -5091,7 +6585,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ic.protobuf.workflow.v1\x1a\x17validate/validate.proto\x1a5bitdrift_publ\
     ic/protobuf/matcher/v1/log_matcher.proto\"f\n\x16WorkflowsConfiguration\
     \x12L\n\tworkflows\x18\x01\x20\x03(\x0b2..bitdrift_public.protobuf.workf\
-    low.v1.WorkflowR\tworkflows\"\xd3$\n\x08Workflow\x12\x17\n\x02id\x18\x01\
+    low.v1.WorkflowR\tworkflows\"\x841\n\x08Workflow\x12\x17\n\x02id\x18\x01\
     \x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12V\n\x06states\x18\x02\
     \x20\x03(\x0b24.bitdrift_public.protobuf.workflow.v1.Workflow.StateR\x06\
     statesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12V\n\texecution\x18\x03\x20\
@@ -5109,16 +6603,21 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01\x02\x10\x01\x12O\n\x07actions\x18\x03\x20\x03(\x0b25.bitdrift_publi\
     c.protobuf.workflow.v1.Workflow.ActionR\x07actions\x12b\n\nextensions\
     \x18\x04\x20\x03(\x0b2B.bitdrift_public.protobuf.workflow.v1.Workflow.Tr\
-    ansitionExtensionR\nextensions\x1a\xde\x01\n\x04Rule\x12c\n\x0erule_log_\
+    ansitionExtensionR\nextensions\x1a\x83\x01\n\x04Rule\x12c\n\x0erule_log_\
     match\x18\x01\x20\x01(\x0b2;.bitdrift_public.protobuf.workflow.v1.Workfl\
-    ow.RuleLogMatchH\0R\x0cruleLogMatch\x12_\n\x0crule_timeout\x18\x02\x20\
-    \x01(\x0b2:.bitdrift_public.protobuf.workflow.v1.Workflow.RuleTimeoutH\0\
-    R\x0bruleTimeoutB\x10\n\trule_type\x12\x03\xf8B\x01\x1a\x9d\x04\n\x13Tra\
-    nsitionExtension\x12\xa8\x01\n\x1fsankey_diagram_value_extraction\x18\
-    \x01\x20\x01(\x0b2_.bitdrift_public.protobuf.workflow.v1.Workflow.Transi\
-    tionExtension.SankeyDiagramValueExtractionH\0R\x1csankeyDiagramValueExtr\
-    action\x1a\xc3\x02\n\x1cSankeyDiagramValueExtraction\x123\n\x11sankey_di\
-    agram_id\x18\x01\x20\x01(\tR\x0fsankeyDiagramIdB\x07\xfaB\x04r\x02\x10\
+    ow.RuleLogMatchH\0R\x0cruleLogMatchB\x10\n\trule_type\x12\x03\xf8B\x01J\
+    \x04\x08\x02\x10\x03\x1a\xe4\x06\n\x13TransitionExtension\x12\xa8\x01\n\
+    \x1fsankey_diagram_value_extraction\x18\x01\x20\x01(\x0b2_.bitdrift_publ\
+    ic.protobuf.workflow.v1.Workflow.TransitionExtension.SankeyDiagramValueE\
+    xtractionH\0R\x1csankeyDiagramValueExtraction\x12y\n\x0esave_timestamp\
+    \x18\x02\x20\x01(\x0b2P.bitdrift_public.protobuf.workflow.v1.Workflow.Tr\
+    ansitionExtension.SaveTimestampH\0R\rsaveTimestamp\x12m\n\nsave_field\
+    \x18\x03\x20\x01(\x0b2L.bitdrift_public.protobuf.workflow.v1.Workflow.Tr\
+    ansitionExtension.SaveFieldH\0R\tsaveField\x1a\x1f\n\rSaveTimestamp\x12\
+    \x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x1a:\n\tSaveField\x12\x0e\n\x02id\
+    \x18\x01\x20\x01(\tR\x02id\x12\x1d\n\nfield_name\x18\x02\x20\x01(\tR\tfi\
+    eldName\x1a\xc3\x02\n\x1cSankeyDiagramValueExtraction\x123\n\x11sankey_d\
+    iagram_id\x18\x01\x20\x01(\tR\x0fsankeyDiagramIdB\x07\xfaB\x04r\x02\x10\
     \x01\x12\x1f\n\x05fixed\x18\x02\x20\x01(\tH\0R\x05fixedB\x07\xfaB\x04r\
     \x02\x10\x01\x12h\n\x0ffield_extracted\x18\x03\x20\x01(\x0b2=.bitdrift_p\
     ublic.protobuf.workflow.v1.Workflow.FieldExtractedH\0R\x0efieldExtracted\
@@ -5127,22 +6626,47 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x0eextension_type\x12\x03\xf8B\x01\x1a\x89\x01\n\x0cRuleLogMatch\x12Z\n\
     \x0blog_matcher\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf.matcher.\
     v1.LogMatcherR\nlogMatcherB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x1d\n\
-    \x05count\x18\x02\x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a7\n\
-    \x0bRuleTimeout\x12(\n\x0bduration_ms\x18\x01\x20\x01(\x04R\ndurationMsB\
-    \x07\xfaB\x042\x02(\0\x1a\x98\x11\n\x06Action\x12|\n\x14action_flush_buf\
-    fers\x18\x01\x20\x01(\x0b2H.bitdrift_public.protobuf.workflow.v1.Workflo\
-    w.Action.ActionFlushBuffersH\0R\x12actionFlushBuffers\x12v\n\x12action_e\
-    mit_metric\x18\x02\x20\x01(\x0b2F.bitdrift_public.protobuf.workflow.v1.W\
-    orkflow.Action.ActionEmitMetricH\0R\x10actionEmitMetric\x12\x8c\x01\n\
-    \x1aaction_emit_sankey_diagram\x18\x03\x20\x01(\x0b2M.bitdrift_public.pr\
-    otobuf.workflow.v1.Workflow.Action.ActionEmitSankeyDiagramH\0R\x17action\
-    EmitSankeyDiagram\x12\x82\x01\n\x16action_take_screenshot\x18\x04\x20\
-    \x01(\x0b2J.bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionT\
-    akeScreenshotH\0R\x14actionTakeScreenshot\x1a\xa9\x05\n\x12ActionFlushBu\
-    ffers\x12\x1d\n\nbuffer_ids\x18\x01\x20\x03(\tR\tbufferIds\x12\x17\n\x02\
-    id\x18\x02\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12p\n\tstreamin\
-    g\x18\x03\x20\x01(\x0b2R.bitdrift_public.protobuf.workflow.v1.Workflow.A\
-    ction.ActionFlushBuffers.StreamingR\tstreaming\x1a\xe8\x03\n\tStreaming\
+    \x05count\x18\x02\x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a\x96\
+    \x1c\n\x06Action\x12|\n\x14action_flush_buffers\x18\x01\x20\x01(\x0b2H.b\
+    itdrift_public.protobuf.workflow.v1.Workflow.Action.ActionFlushBuffersH\
+    \0R\x12actionFlushBuffers\x12v\n\x12action_emit_metric\x18\x02\x20\x01(\
+    \x0b2F.bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMe\
+    tricH\0R\x10actionEmitMetric\x12\x8c\x01\n\x1aaction_emit_sankey_diagram\
+    \x18\x03\x20\x01(\x0b2M.bitdrift_public.protobuf.workflow.v1.Workflow.Ac\
+    tion.ActionEmitSankeyDiagramH\0R\x17actionEmitSankeyDiagram\x12\x82\x01\
+    \n\x16action_take_screenshot\x18\x04\x20\x01(\x0b2J.bitdrift_public.prot\
+    obuf.workflow.v1.Workflow.Action.ActionTakeScreenshotH\0R\x14actionTakeS\
+    creenshot\x12y\n\x13action_generate_log\x18\x05\x20\x01(\x0b2G.bitdrift_\
+    public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLogH\0R\x11act\
+    ionGenerateLog\x1a\x80\n\n\x11ActionGenerateLog\x12\x18\n\x07message\x18\
+    \x01\x20\x01(\tR\x07message\x12n\n\x06fields\x18\x02\x20\x03(\x0b2V.bitd\
+    rift_public.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.Gener\
+    atedFieldR\x06fields\x12\x0e\n\x02id\x18\x03\x20\x01(\tR\x02id\x1a\xcf\
+    \x01\n\x0eValueReference\x12\x16\n\x05fixed\x18\x01\x20\x01(\tH\0R\x05fi\
+    xed\x125\n\x16field_from_current_log\x18\x02\x20\x01(\tH\0R\x13fieldFrom\
+    CurrentLog\x12&\n\x0esaved_field_id\x18\x03\x20\x01(\tH\0R\x0csavedField\
+    Id\x12.\n\x12saved_timestamp_id\x18\x04\x20\x01(\tH\0R\x10savedTimestamp\
+    IdB\x16\n\x14value_reference_type\x1a\xe8\x01\n\x12ValueReferencePair\
+    \x12h\n\x03lhs\x18\x01\x20\x01(\x0b2V.bitdrift_public.protobuf.workflow.\
+    v1.Workflow.Action.ActionGenerateLog.ValueReferenceR\x03lhs\x12h\n\x03rh\
+    s\x18\x02\x20\x01(\x0b2V.bitdrift_public.protobuf.workflow.v1.Workflow.A\
+    ction.ActionGenerateLog.ValueReferenceR\x03rhs\x1a\x93\x05\n\x0eGenerate\
+    dField\x12\x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12p\n\x06single\
+    \x18\x02\x20\x01(\x0b2V.bitdrift_public.protobuf.workflow.v1.Workflow.Ac\
+    tion.ActionGenerateLog.ValueReferenceH\0R\x06single\x12x\n\x08subtract\
+    \x18\x03\x20\x01(\x0b2Z.bitdrift_public.protobuf.workflow.v1.Workflow.Ac\
+    tion.ActionGenerateLog.ValueReferencePairH\0R\x08subtract\x12n\n\x03add\
+    \x18\x04\x20\x01(\x0b2Z.bitdrift_public.protobuf.workflow.v1.Workflow.Ac\
+    tion.ActionGenerateLog.ValueReferencePairH\0R\x03add\x12x\n\x08multiply\
+    \x18\x05\x20\x01(\x0b2Z.bitdrift_public.protobuf.workflow.v1.Workflow.Ac\
+    tion.ActionGenerateLog.ValueReferencePairH\0R\x08multiply\x12t\n\x06divi\
+    de\x18\x06\x20\x01(\x0b2Z.bitdrift_public.protobuf.workflow.v1.Workflow.\
+    Action.ActionGenerateLog.ValueReferencePairH\0R\x06divideB!\n\x1agenerat\
+    ed_field_value_type\x12\x03\xf8B\x01\x1a\xa9\x05\n\x12ActionFlushBuffers\
+    \x12\x1d\n\nbuffer_ids\x18\x01\x20\x03(\tR\tbufferIds\x12\x17\n\x02id\
+    \x18\x02\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12p\n\tstreaming\
+    \x18\x03\x20\x01(\x0b2R.bitdrift_public.protobuf.workflow.v1.Workflow.Ac\
+    tion.ActionFlushBuffers.StreamingR\tstreaming\x1a\xe8\x03\n\tStreaming\
     \x12G\n\x20destination_streaming_buffer_ids\x18\x01\x20\x03(\tR\x1ddesti\
     nationStreamingBufferIds\x12\x9a\x01\n\x14termination_criteria\x18\x02\
     \x20\x03(\x0b2g.bitdrift_public.protobuf.workflow.v1.Workflow.Action.Act\
@@ -5206,7 +6730,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             let mut deps = ::std::vec::Vec::with_capacity(2);
             deps.push(super::validate::file_descriptor().clone());
             deps.push(super::log_matcher::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(27);
+            let mut messages = ::std::vec::Vec::with_capacity(32);
             messages.push(WorkflowsConfiguration::generated_message_descriptor_data());
             messages.push(Workflow::generated_message_descriptor_data());
             messages.push(workflow::State::generated_message_descriptor_data());
@@ -5214,18 +6738,23 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(workflow::Rule::generated_message_descriptor_data());
             messages.push(workflow::TransitionExtension::generated_message_descriptor_data());
             messages.push(workflow::RuleLogMatch::generated_message_descriptor_data());
-            messages.push(workflow::RuleTimeout::generated_message_descriptor_data());
             messages.push(workflow::Action::generated_message_descriptor_data());
             messages.push(workflow::Execution::generated_message_descriptor_data());
             messages.push(workflow::LimitMatchedLogsCount::generated_message_descriptor_data());
             messages.push(workflow::LimitDuration::generated_message_descriptor_data());
             messages.push(workflow::FieldExtracted::generated_message_descriptor_data());
+            messages.push(workflow::transition_extension::SaveTimestamp::generated_message_descriptor_data());
+            messages.push(workflow::transition_extension::SaveField::generated_message_descriptor_data());
             messages.push(workflow::transition_extension::SankeyDiagramValueExtraction::generated_message_descriptor_data());
+            messages.push(workflow::action::ActionGenerateLog::generated_message_descriptor_data());
             messages.push(workflow::action::ActionFlushBuffers::generated_message_descriptor_data());
             messages.push(workflow::action::ActionEmitMetric::generated_message_descriptor_data());
             messages.push(workflow::action::ActionEmitSankeyDiagram::generated_message_descriptor_data());
             messages.push(workflow::action::Tag::generated_message_descriptor_data());
             messages.push(workflow::action::ActionTakeScreenshot::generated_message_descriptor_data());
+            messages.push(workflow::action::action_generate_log::ValueReference::generated_message_descriptor_data());
+            messages.push(workflow::action::action_generate_log::ValueReferencePair::generated_message_descriptor_data());
+            messages.push(workflow::action::action_generate_log::GeneratedField::generated_message_descriptor_data());
             messages.push(workflow::action::action_flush_buffers::Streaming::generated_message_descriptor_data());
             messages.push(workflow::action::action_flush_buffers::streaming::TerminationCriterion::generated_message_descriptor_data());
             messages.push(workflow::action::action_flush_buffers::streaming::termination_criterion::LogsCount::generated_message_descriptor_data());

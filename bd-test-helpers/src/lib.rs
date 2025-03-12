@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_client_common::error::UnexpectedErrorHandler;
+use bd_panic::PanicType;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::future::Future;
@@ -38,35 +39,14 @@ pub fn make_mut<T>(mock: &mut Arc<T>) -> &mut T {
   unsafe { ptr.as_mut().unwrap() }
 }
 
-// TODO(mattklein123): Link this into every test via bazel and some common test library dep.
-// TODO(mattklein123): Panic behavior under cargo test is different vs. when run under bazel.
-//                     Figure this out.
 pub fn test_global_init() {
+  // Call this before we initialize the logger as there is an issue where a log emitted /w thread
+  // ids (always set by SwapLogger) emitted during ctor will panic.
+  // See https://github.com/tokio-rs/tracing/issues/2063#issuecomment-2024185427, ideally this will
+  // be resolved somehow.
+  bd_panic::default(PanicType::ForceAbort);
+
   bd_log::SwapLogger::initialize();
-
-  std::panic::set_hook(Box::new(move |info| {
-    let message = info.payload().downcast_ref::<&str>().map_or_else(
-      || {
-        info
-          .payload()
-          .downcast_ref::<String>()
-          .map_or("<none>", |s| s)
-      },
-      |s| s,
-    );
-
-    let location = info.location().map_or_else(
-      || "<none>".to_string(),
-      |location| format!("{}:{}", location.file(), location.line()),
-    );
-
-    log::error!("panic: message=\"{}\" {}", message, location);
-    log::error!("backtrace:\n{}", std::backtrace::Backtrace::capture());
-    log::error!("forcing process exit after panic");
-
-    #[allow(clippy::exit)]
-    std::process::exit(1);
-  }));
 }
 
 //

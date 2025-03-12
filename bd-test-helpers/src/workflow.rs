@@ -5,6 +5,9 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use action_generate_log::generated_field::Generated_field_value_type;
+use action_generate_log::value_reference::Value_reference_type;
+use action_generate_log::{GeneratedField, ValueReference, ValueReferencePair};
 use bd_log_primitives::{LogField, LogFields, StringOrBytes};
 use bd_proto::protos;
 use bd_proto::protos::log_matcher::log_matcher::log_matcher;
@@ -13,14 +16,21 @@ use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers
   TerminationCriterion,
 };
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::Streaming;
-use bd_proto::protos::workflow::workflow::workflow::action::Tag;
+use bd_proto::protos::workflow::workflow::workflow::action::{
+  action_generate_log,
+  ActionGenerateLog,
+  Tag,
+};
 use bd_proto::protos::workflow::workflow::workflow::field_extracted::{Exact, Extraction_type};
 use bd_proto::protos::workflow::workflow::workflow::transition_extension::{
   sankey_diagram_value_extraction,
   Extension_type,
   SankeyDiagramValueExtraction,
+  SaveField,
+  SaveTimestamp,
 };
 use bd_proto::protos::workflow::workflow::workflow::{FieldExtracted, TransitionExtension};
+use log_matcher::base_log_matcher::string_value_match::String_value_match_type;
 use protobuf::MessageField;
 use protos::log_matcher::log_matcher::log_matcher::base_log_matcher::tag_match::Value_match;
 use protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type::{
@@ -161,6 +171,10 @@ pub mod macros {
     };
     ($from:expr => $to:expr; when $rule:expr, with { $($extraction:expr),+ }) => {
       $crate::workflow::add_transition($from, $to, $rule, &[], vec![$($extraction),+])
+    };
+    ($from:expr => $to:expr; when $rule:expr, with { $($extraction:expr),+ };
+      do $($action:expr),+) => {
+      $crate::workflow::add_transition($from, $to, $rule, &[$($action),+], vec![$($extraction),+])
     };
   }
 
@@ -310,7 +324,10 @@ pub mod macros {
     };
     (screenshot $id:expr) => {
       $crate::workflow::make_take_screenshot_action($id)
-    }
+    };
+    (generate_log $action:expr) => {
+      $action
+    };
   }
 
   /// Creates metric value.
@@ -506,6 +523,29 @@ pub fn make_take_screenshot_action(id: &str) -> Action_type {
 }
 
 #[must_use]
+pub fn make_save_field_extraction(id: &str, field_name: &str) -> TransitionExtension {
+  TransitionExtension {
+    extension_type: Some(Extension_type::SaveField(SaveField {
+      id: id.to_string(),
+      field_name: field_name.to_string(),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+#[must_use]
+pub fn make_save_timestamp_extraction(id: &str) -> TransitionExtension {
+  TransitionExtension {
+    extension_type: Some(Extension_type::SaveTimestamp(SaveTimestamp {
+      id: id.to_string(),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+#[must_use]
 pub fn make_sankey_extraction(
   id: &str,
   counts_toward_sankey_extraction_limit: bool,
@@ -605,7 +645,7 @@ pub fn make_log_message_matcher(
         string_value_match: protobuf::MessageField::from_option(Some(
           base_log_matcher::StringValueMatch {
             operator: operator.into(),
-            match_value: value.to_string(),
+            string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
             ..Default::default()
           },
         )),
@@ -626,7 +666,7 @@ pub fn make_log_tag_matcher(name: &str, value: &str) -> LogMatcher {
         value_match: Some(Value_match::StringValueMatch(
           base_log_matcher::StringValueMatch {
             operator: log_matcher::base_log_matcher::Operator::OPERATOR_EQUALS.into(),
-            match_value: value.to_string(),
+            string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
             ..Default::default()
           },
         )),
@@ -648,4 +688,100 @@ pub fn make_tags(labels: BTreeMap<String, String>) -> LogFields {
       value: StringOrBytes::String((*elem.1).to_string()),
     })
     .collect()
+}
+
+pub enum TestFieldRef {
+  Fixed(&'static str),
+  FieldFromCurrentLog(&'static str),
+  SavedFieldId(&'static str),
+  SavedTimestampId(&'static str),
+}
+
+pub enum TestFieldType {
+  Single(TestFieldRef),
+  Subtract(TestFieldRef, TestFieldRef),
+  Add(TestFieldRef, TestFieldRef),
+  Multiply(TestFieldRef, TestFieldRef),
+  Divide(TestFieldRef, TestFieldRef),
+}
+
+#[must_use]
+pub fn make_generate_log_action(
+  message: &'static str,
+  fields: &'static [(&'static str, TestFieldType)],
+  id: &str,
+) -> ActionGenerateLog {
+  fn make_field_ref(test_field_ref: &TestFieldRef) -> ValueReference {
+    ValueReference {
+      value_reference_type: Some(match test_field_ref {
+        TestFieldRef::Fixed(value) => Value_reference_type::Fixed((*value).to_string()),
+        TestFieldRef::FieldFromCurrentLog(field_name) => {
+          Value_reference_type::FieldFromCurrentLog((*field_name).to_string())
+        },
+        TestFieldRef::SavedFieldId(saved_field_id) => {
+          Value_reference_type::SavedFieldId((*saved_field_id).to_string())
+        },
+        TestFieldRef::SavedTimestampId(saved_timestamp_id) => {
+          Value_reference_type::SavedTimestampId((*saved_timestamp_id).to_string())
+        },
+      }),
+      ..Default::default()
+    }
+  }
+
+  ActionGenerateLog {
+    id: id.to_string(),
+    message: message.to_string(),
+    fields: fields
+      .iter()
+      .map(|(name, field_type)| {
+        let generated_field_value_type = match field_type {
+          TestFieldType::Single(field_ref) => {
+            Generated_field_value_type::Single(make_field_ref(field_ref))
+          },
+          TestFieldType::Subtract(lhs, rhs) => {
+            Generated_field_value_type::Subtract(ValueReferencePair {
+              lhs: Some(make_field_ref(lhs)).into(),
+              rhs: Some(make_field_ref(rhs)).into(),
+              ..Default::default()
+            })
+          },
+          TestFieldType::Add(lhs, rhs) => Generated_field_value_type::Add(ValueReferencePair {
+            lhs: Some(make_field_ref(lhs)).into(),
+            rhs: Some(make_field_ref(rhs)).into(),
+            ..Default::default()
+          }),
+          TestFieldType::Multiply(lhs, rhs) => {
+            Generated_field_value_type::Multiply(ValueReferencePair {
+              lhs: Some(make_field_ref(lhs)).into(),
+              rhs: Some(make_field_ref(rhs)).into(),
+              ..Default::default()
+            })
+          },
+          TestFieldType::Divide(lhs, rhs) => {
+            Generated_field_value_type::Divide(ValueReferencePair {
+              lhs: Some(make_field_ref(lhs)).into(),
+              rhs: Some(make_field_ref(rhs)).into(),
+              ..Default::default()
+            })
+          },
+        };
+        GeneratedField {
+          name: (*name).to_string(),
+          generated_field_value_type: Some(generated_field_value_type),
+          ..Default::default()
+        }
+      })
+      .collect(),
+    ..Default::default()
+  }
+}
+
+#[must_use]
+pub fn make_generate_log_action_proto(
+  message: &'static str,
+  fields: &'static [(&'static str, TestFieldType)],
+  id: &str,
+) -> Action_type {
+  Action_type::ActionGenerateLog(make_generate_log_action(message, fields, id))
 }

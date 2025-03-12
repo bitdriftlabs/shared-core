@@ -64,11 +64,20 @@ use bd_test_helpers::workflow::macros::{
   state,
   workflow_proto,
 };
+use bd_test_helpers::workflow::{
+  make_generate_log_action_proto,
+  make_save_timestamp_extraction,
+  TestFieldRef,
+  TestFieldType,
+};
 use bd_test_helpers::{field_value, metric_tag, metric_value, set_field, RecordingErrorReporter};
+use parking_lot::Mutex;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Instant;
 use time::ext::{NumericalDuration, NumericalStdDuration};
+use time::macros::datetime;
+use time::OffsetDateTime;
 
 #[test]
 fn attributes_accessors() {
@@ -130,10 +139,10 @@ fn log_upload() {
 #[test]
 fn log_upload_attributes_override() {
   let time_first = time::OffsetDateTime::now_utc();
-  let mut setup = Setup::new_with_metadata(LogMetadata {
-    timestamp: time_first,
+  let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
+    timestamp: Mutex::new(time_first),
     fields: vec![],
-  });
+  }));
 
   setup.send_configuration_update(
     make_configuration_update_with_workflow_flushing_buffer_on_anything(
@@ -221,34 +230,25 @@ fn api_bandwidth_counters() {
   setup
     .current_api_stream
     .blocking_stream_action(StreamAction::SendRuntime(make_update(
-      vec![
-        (
-          bd_runtime::runtime::stats::DirectStatFlushIntervalFlag::path(),
-          ValueKind::Int(1),
-        ),
-        (
-          bd_runtime::runtime::stats::UploadStatFlushIntervalFlag::path(),
-          ValueKind::Int(1),
-        ),
-        (
-          bd_runtime::runtime::resource_utilization::ResourceUtilizationEnabledFlag::path(),
-          ValueKind::Bool(false),
-        ),
-      ],
+      vec![(
+        bd_runtime::runtime::resource_utilization::ResourceUtilizationEnabledFlag::path(),
+        ValueKind::Bool(false),
+      )],
       "version".to_string(),
     )));
 
   // Verify that we emit counters for how much data we transmit/receive.
+  setup.flush_and_upload_stats();
   assert_matches!(setup.server.next_stat_upload(), Some(upload) => {
       let upload = StatsRequestHelper::new(upload);
 
       // If these numbers end up being too variable we do something more generic.
       let bandwidth_tx = upload.get_counter("api:bandwidth_tx", labels! {}).unwrap();
       let bandwidth_rx = upload.get_counter("api:bandwidth_rx", labels! {}).unwrap();
-      assert_eq!(upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}), Some(135));
+      assert_eq!(upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}), Some(119));
       assert!(bandwidth_tx > 100, "bandwidth_tx = {bandwidth_tx}");
       assert!(bandwidth_rx < 400, "bandwidth_rx = {bandwidth_rx}");
-      assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(406));
+      assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(258));
       assert_eq!(upload.get_counter("api:stream_total", labels! {}), Some(1));
   });
 }
@@ -403,7 +403,7 @@ fn trigger_buffers_not_uploaded() {
 fn blocking_log() {
   let mut setup = Setup::new();
 
-  setup.send_runtime_update(true, false);
+  setup.send_runtime_update();
 
   // Send down a configuration with a single 'default' buffer and a workflow that matches on 'foo'
   // log message.
@@ -438,7 +438,7 @@ fn blocking_log() {
 #[test]
 fn session_replay_actions() {
   let mut setup = Setup::new();
-  setup.send_runtime_update(true, false);
+  setup.send_runtime_update();
 
   let mut a = state!("A");
   let b = state!("B");
@@ -705,7 +705,7 @@ fn log_tailing() {
 fn workflow_flush_buffers_action_uploads_buffer() {
   let mut setup = Setup::new();
 
-  setup.send_runtime_update(true, false);
+  setup.send_runtime_update();
 
   // Send down a configuration with a single buffer ('default')
   // which accepts all logs and a single workflow which matches for logs
@@ -783,13 +783,13 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
     )
   );
 
-  let mut setup = Setup::new_with_metadata(LogMetadata {
-    timestamp: time::OffsetDateTime::now_utc(),
+  let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
     fields: vec![
       AnnotatedLogField::new_custom("k1".into(), "provider_value_1".into()),
       AnnotatedLogField::new_ootb("k2".into(), "provider_value_2".into()),
     ],
-  });
+  }));
 
   // Send down a configuration with a single buffer ('default')
   // which does not accept `InternalSDK` logs and a single workflow
@@ -818,8 +818,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   ));
   assert!(maybe_nack.is_none());
 
-  // Enable immediate stats upload.
-  setup.send_runtime_update(true, true);
+  setup.send_runtime_update();
 
   for _ in 0 .. 9 {
     setup.log(
@@ -850,6 +849,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
     None,
   );
 
+  setup.flush_and_upload_stats();
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
     stat_upload.get_counter(
@@ -922,10 +922,113 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
 }
 
 #[test]
+fn workflow_generate_log_to_histogram() {
+  let metadata = Arc::new(LogMetadata {
+    timestamp: Mutex::new(datetime!(2023-10-01 00:00:00 UTC)),
+    fields: vec![],
+  });
+  let mut setup = Setup::new_with_metadata(metadata.clone());
+  setup.send_runtime_update();
+
+  let mut a = state!("A");
+  let mut b = state!("B");
+  let mut c = state!("C");
+  let d = state!("D");
+
+  declare_transition!(
+    &mut a => &b;
+    when rule!(log_matches!(message == "foo")),
+    with {
+      make_save_timestamp_extraction("timestamp1")
+    }
+  );
+
+  declare_transition!(
+    &mut b => &c;
+    when rule!(log_matches!(message == "bar")),
+    with { make_save_timestamp_extraction("timestamp2") };
+    do action!(flush_buffers &["default"]; id "flush_action_id"),
+       action!(generate_log make_generate_log_action_proto("message", &[
+      ("duration",
+       TestFieldType::Subtract(
+        TestFieldRef::SavedTimestampId("timestamp2"),
+        TestFieldRef::SavedTimestampId("timestamp1")
+       )),
+       ("other", TestFieldType::Single(TestFieldRef::SavedFieldId("id1"))),
+    ], "id"))
+  );
+
+  declare_transition!(
+    &mut c => &d;
+    when rule!(log_matches!(tag("_generate_log_id") == "id"));
+    do action!(
+      emit_histogram "foo_id";
+      value metric_value!(extract "duration");
+      tags {
+        metric_tag!(fix "fixed_key" => "fixed_value")
+      }
+    )
+  );
+
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![config_helper::default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: vec![workflow_proto!("workflow_1"; exclusive with a, b, c, d)],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::Normal,
+    "foo".into(),
+    vec![],
+    vec![],
+  );
+
+  *metadata.timestamp.lock() = datetime!(2023-10-01 00:00:01.003 UTC);
+
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::Normal,
+    "bar".into(),
+    vec![],
+    vec![],
+  );
+
+  setup.flush_and_upload_stats();
+  let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
+  assert_eq!(
+    stat_upload.get_inline_histogram(
+      "workflows_dyn:histogram",
+      labels! {
+        "_id" => "foo_id",
+        "fixed_key" => "fixed_value",
+      }
+    ),
+    Some(vec![1.003_000_020_980_835]),
+  );
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.logs().len(), 3);
+    assert_eq!(log_upload.logs()[2].message(), "message");
+    assert_eq!(log_upload.logs()[2].field("duration"), "1.003000020980835");
+    assert_ne!(log_upload.logs()[2].session_id(), "");
+    assert_ne!(log_upload.logs()[2].timestamp(), OffsetDateTime::UNIX_EPOCH);
+  });
+}
+
+#[test]
 fn workflow_emit_metric_action_emits_metric() {
   let mut setup = Setup::new();
 
-  setup.send_runtime_update(true, true);
+  setup.send_runtime_update();
 
   let mut a = state!("A");
   let b = state!("B");
@@ -978,6 +1081,7 @@ fn workflow_emit_metric_action_emits_metric() {
     vec![],
   );
 
+  setup.flush_and_upload_stats();
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
     stat_upload.get_counter(
@@ -1001,16 +1105,10 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
   setup
     .current_api_stream
     .blocking_stream_action(StreamAction::SendRuntime(make_update(
-      vec![
-        (
-          bd_runtime::runtime::stats::MaxDynamicCountersFlag::path(),
-          ValueKind::Int(1),
-        ),
-        (
-          bd_runtime::runtime::workflows::WorkflowsEnabledFlag::path(),
-          ValueKind::Bool(true),
-        ),
-      ],
+      vec![(
+        bd_runtime::runtime::stats::MaxDynamicCountersFlag::path(),
+        ValueKind::Int(1),
+      )],
       "stats cap".to_string(),
     )));
 
@@ -1067,8 +1165,8 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
     vec![],
   );
 
-  setup.send_runtime_update(false, true);
-
+  setup.send_runtime_update();
+  setup.flush_and_upload_stats();
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
 
   assert_eq!(
@@ -1097,7 +1195,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
 fn transforms_emitted_logs_according_to_filters() {
   let mut setup = Setup::new();
 
-  setup.send_runtime_update(true, false);
+  setup.send_runtime_update();
 
   // Send down a configuration:
   //  * with a single buffer ('default') which accepts all logs
@@ -1639,8 +1737,8 @@ fn stats_upload() {
   // Create one stat that is incremented.
   stats.scope("test").counter("used").inc();
 
-  setup.send_runtime_update(false, true);
-
+  setup.send_runtime_update();
+  setup.flush_and_upload_stats();
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
     stat_upload.get_counter("logger:logs_received", labels! {"log_level" => "trace"}),
@@ -1852,10 +1950,7 @@ fn runtime_caching() {
       session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
       events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
       sdk_directory: sdk_directory.path().into(),
-      metadata_provider: Arc::new(LogMetadata {
-        timestamp: time::OffsetDateTime::now_utc(),
-        fields: Vec::new(),
-      }),
+      metadata_provider: Arc::new(LogMetadata::default()),
       device,
     })
     .with_client_stats(true)
