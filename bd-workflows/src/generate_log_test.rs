@@ -88,7 +88,11 @@ impl Helper {
 #[test]
 fn generate_log_no_fields() {
   let helper = Helper::new();
-  helper.expect_log("message", &[], &make_generate_log_action("message", &[]));
+  helper.expect_log(
+    "message",
+    &[],
+    &make_generate_log_action("message", &[], "id"),
+  );
 }
 
 #[test]
@@ -125,6 +129,7 @@ fn generate_log_with_saved_fields_math() {
         ),
       ),
     ],
+    "id",
   );
   let mut helper = Helper::new();
   helper.expect_log(
@@ -178,6 +183,7 @@ fn generate_log_with_field_from_current_log() {
         ),
       ),
     ],
+    "id",
   );
   let mut helper = Helper::new();
   helper.add_extracted_field("bad1", "not a number");
@@ -208,6 +214,7 @@ fn generate_log_with_saved_timestamp_math() {
         ),
       ),
     ],
+    "id",
   );
   let mut helper = Helper::new();
   helper.expect_log(

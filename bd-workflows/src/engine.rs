@@ -628,6 +628,7 @@ impl WorkflowsEngine {
 
     let mut actions: Vec<TriggeredAction<'_>> = vec![];
     let mut logs_to_inject: BTreeMap<&'a str, Log> = BTreeMap::new();
+    log::trace!("processing log: {log:?}");
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let was_in_initial_state = workflow.is_in_initial_state();
       let result = workflow.process_log(

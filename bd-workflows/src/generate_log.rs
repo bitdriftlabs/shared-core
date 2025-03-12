@@ -136,7 +136,10 @@ pub fn generate_log_action(
     log_type: LogType::Normal,
     fields,
     message: StringOrBytes::String(message),
-    matching_fields: vec![],
+    matching_fields: vec![LogField {
+      key: "_generate_log_id".to_string(),
+      value: StringOrBytes::String(action.id.to_string()),
+    }],
     // These will be filled in later via the log processor.
     session_id: String::new(),
     occurred_at: OffsetDateTime::UNIX_EPOCH,

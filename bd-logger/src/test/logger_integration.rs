@@ -955,7 +955,7 @@ fn workflow_generate_log_to_histogram() {
         TestFieldRef::SavedTimestampId("timestamp1")
        )),
        ("other", TestFieldType::Single(TestFieldRef::SavedFieldId("id1")))
-    ]))
+    ], "id"))
   );
 
   declare_transition!(

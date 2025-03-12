@@ -3071,6 +3071,139 @@ fn sankey_workflow() -> crate::config::Config {
   workflow!(exclusive with a, b, c, d)
 }
 
+#[allow(clippy::many_single_char_names)]
+#[tokio::test]
+async fn generate_log_multiple() {
+  let setup = Setup::new();
+
+  let mut a = state!("A");
+  let mut b = state!("B");
+  let mut c = state!("C");
+  let mut d = state!("D");
+  let e = state!("E");
+  let f = state!("F");
+
+  declare_transition!(
+    &mut a => &b;
+    when rule!(log_matches!(message == "foo")),
+    with {
+      make_save_timestamp_extraction("timestamp1")
+    }
+  );
+
+  declare_transition!(
+    &mut b => &c;
+    when rule!(log_matches!(message == "bar")),
+    with {
+      make_save_timestamp_extraction("timestamp2")
+    }
+  );
+
+  declare_transition!(
+    &mut c => &d;
+    when rule!(log_matches!(message == "baz")),
+    with {
+      make_save_timestamp_extraction("timestamp3")
+    };
+    do action!(generate_log make_generate_log_action_proto("message1", &[
+      ("duration",
+       TestFieldType::Subtract(
+        TestFieldRef::SavedTimestampId("timestamp2"),
+        TestFieldRef::SavedTimestampId("timestamp1")
+       ))
+    ], "id1")),
+    action!(generate_log make_generate_log_action_proto("message2", &[
+      ("duration",
+       TestFieldType::Subtract(
+        TestFieldRef::SavedTimestampId("timestamp3"),
+        TestFieldRef::SavedTimestampId("timestamp1")
+       ))
+    ], "id2"))
+  );
+
+  declare_transition!(
+    &mut d => &e;
+    when rule!(log_matches!(tag("_generate_log_id") == "id1"));
+    do action!(emit_counter "foo_metric"; value metric_value!(extract "duration"))
+  );
+
+  declare_transition!(
+    &mut d => &f;
+    when rule!(log_matches!(tag("_generate_log_id") == "id2"));
+    do action!(emit_counter "bar_metric"; value metric_value!(extract "duration"))
+  );
+
+  let workflow = workflow!(exclusive with a, b, c, d, e, f);
+  let mut engine = setup.make_workflows_engine(
+    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
+  );
+  let result = engine_process_log!(engine; "foo"; with labels!{};
+                                   time datetime!(2023-01-01 00:00:00 UTC));
+  assert!(result.logs_to_inject.is_empty());
+  let result = engine_process_log!(engine; "bar"; with labels!{};
+                                   time datetime!(2023-01-01 00:00:01 UTC));
+  assert!(result.logs_to_inject.is_empty());
+  let result = engine_process_log!(engine; "baz"; with labels!{};
+                                   time datetime!(2023-01-01 00:00:02 UTC));
+  assert_eq!(
+    result.logs_to_inject.into_values().collect_vec(),
+    vec![
+      Log {
+        log_level: log_level::DEBUG,
+        log_type: LogType::Normal,
+        message: "message1".into(),
+        fields: vec![LogField {
+          key: "duration".to_string(),
+          value: "1".into(),
+        },],
+        matching_fields: vec![LogField {
+          key: "_generate_log_id".to_string(),
+          value: "id1".into(),
+        }],
+        session_id: String::new(),
+        occurred_at: OffsetDateTime::UNIX_EPOCH,
+      },
+      Log {
+        log_level: log_level::DEBUG,
+        log_type: LogType::Normal,
+        message: "message2".into(),
+        fields: vec![LogField {
+          key: "duration".to_string(),
+          value: "2".into(),
+        },],
+        matching_fields: vec![LogField {
+          key: "_generate_log_id".to_string(),
+          value: "id2".into(),
+        }],
+        session_id: String::new(),
+        occurred_at: OffsetDateTime::UNIX_EPOCH,
+      }
+    ]
+  );
+
+  // Simulate pushing both logs back through the engine.
+  engine_process_log!(engine; "message1";
+                      with labels!{"duration" => "1", "_generate_log_id" => "id1"};
+                      time datetime!(2023-01-01 00:00:03 UTC));
+  engine.dynamic_stats_collector.assert_counter_eq(
+    1,
+    "workflows_dyn:action",
+    labels! {
+      "_id" => "foo_metric"
+    },
+  );
+  engine_process_log!(engine; "message2";
+                      with labels!{"duration" => "2", "_generate_log_id" => "id2"};
+                      time datetime!(2023-01-01 00:00:03 UTC));
+  engine.dynamic_stats_collector.assert_counter_eq(
+    2,
+    "workflows_dyn:action",
+    labels! {
+      "_id" => "bar_metric"
+    },
+  );
+}
+
 #[tokio::test]
 async fn generate_log_action() {
   let setup = Setup::new();
@@ -3099,7 +3232,7 @@ async fn generate_log_action() {
         TestFieldRef::SavedTimestampId("timestamp1")
        )),
        ("other", TestFieldType::Single(TestFieldRef::SavedFieldId("id1")))
-    ]))
+    ], "id"))
   );
 
   let workflow = workflow!(exclusive with a, b, c);
@@ -3111,10 +3244,8 @@ async fn generate_log_action() {
   assert!(result.logs_to_inject.is_empty());
   let result = engine_process_log!(engine; "bar"; with labels!{};
                                    time datetime!(2023-01-01 00:00:00.003 UTC));
-  let mut logs_to_inject = result.logs_to_inject.into_values().collect_vec();
-  logs_to_inject[0].occurred_at = OffsetDateTime::UNIX_EPOCH;
   assert_eq!(
-    logs_to_inject,
+    result.logs_to_inject.into_values().collect_vec(),
     vec![Log {
       log_level: log_level::DEBUG,
       log_type: LogType::Normal,
@@ -3129,10 +3260,13 @@ async fn generate_log_action() {
           value: "value1".into(),
         }
       ],
-      matching_fields: vec![],
+      matching_fields: vec![LogField {
+        key: "_generate_log_id".to_string(),
+        value: "id".into(),
+      }],
       session_id: String::new(),
       occurred_at: OffsetDateTime::UNIX_EPOCH,
-    },]
+    }]
   );
 }
 

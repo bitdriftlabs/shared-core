@@ -582,6 +582,11 @@ impl Run {
 
     // Process traversals in reversed order as we may end up modifying the array
     // starting at `index` in any given iteration of the loop.
+    log::trace!(
+      "processing {} traversals for workflow {}",
+      self.traversals.len(),
+      config.id()
+    );
     for index in (0 .. self.traversals.len()).rev() {
       let traversal = &mut self.traversals[index];
       let mut traversal_result = traversal.process_log(config, log);
@@ -852,6 +857,11 @@ impl Traversal {
     // more than 1 successor is created is possible if a state corresponding to
     // currently processed traversal has multiple outgoing transitions and a
     // processed log ends up fulfills conditions for more than 1 of these transitions.
+    log::trace!(
+      "processing {} transitions for workflow {}",
+      transitions.len(),
+      config.id()
+    );
     for (index, transition) in transitions.iter().enumerate() {
       match &transition.rule() {
         Predicate::LogMatch(log_match, count) => {
@@ -889,15 +899,17 @@ impl Traversal {
               }
 
               log::trace!(
-                "traversal's transition matched log ({} matches in total) and is advancing, \
+                "traversal's transition {} matched log ({} matches in total) and is advancing, \
                  workflow id={:?}",
+                index,
                 self.matched_logs_counts[index],
                 config.id(),
               );
             } else {
               log::trace!(
-                "traversal's transition matched log ({} matches in total) but needs {} matches to \
-                 advance, workflow id={:?}",
+                "traversal's transition {} matched log ({} matches in total) but needs {} matches \
+                 to advance, workflow id={:?}",
+                index,
                 self.matched_logs_counts[index],
                 *count,
                 config.id(),

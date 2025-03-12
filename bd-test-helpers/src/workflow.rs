@@ -709,6 +709,7 @@ pub enum TestFieldType {
 pub fn make_generate_log_action(
   message: &'static str,
   fields: &'static [(&'static str, TestFieldType)],
+  id: &str,
 ) -> ActionGenerateLog {
   fn make_field_ref(test_field_ref: &TestFieldRef) -> ValueReference {
     ValueReference {
@@ -729,6 +730,7 @@ pub fn make_generate_log_action(
   }
 
   ActionGenerateLog {
+    id: id.to_string(),
     message: message.to_string(),
     fields: fields
       .iter()
@@ -779,6 +781,7 @@ pub fn make_generate_log_action(
 pub fn make_generate_log_action_proto(
   message: &'static str,
   fields: &'static [(&'static str, TestFieldType)],
+  id: &str,
 ) -> Action_type {
-  Action_type::ActionGenerateLog(make_generate_log_action(message, fields))
+  Action_type::ActionGenerateLog(make_generate_log_action(message, fields, id))
 }
