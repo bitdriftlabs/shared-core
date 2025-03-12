@@ -954,13 +954,13 @@ fn workflow_generate_log_to_histogram() {
         TestFieldRef::SavedTimestampId("timestamp2"),
         TestFieldRef::SavedTimestampId("timestamp1")
        )),
-       ("other", TestFieldType::Single(TestFieldRef::SavedFieldId("id1")))
+       ("other", TestFieldType::Single(TestFieldRef::SavedFieldId("id1"))),
     ], "id"))
   );
 
   declare_transition!(
     &mut c => &d;
-    when rule!(log_matches!(message == "message"));
+    when rule!(log_matches!(tag("_generate_log_id") == "id"));
     do action!(
       emit_histogram "foo_id";
       value metric_value!(extract "duration");

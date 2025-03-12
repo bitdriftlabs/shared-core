@@ -380,7 +380,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             .into_iter()
             .map(|field| AnnotatedLogField {
               field,
-              kind: LogFieldKind::Custom,
+              // TODO(mattklein123): Right now the only matching field set on injected logs is the
+              // _generate_log_id field used for subsequent matching. If this ever changes we will
+              // need to correctly propagate this through.
+              kind: LogFieldKind::Ootb,
             })
             .collect(),
           // TODO(mattklein123): Technically we should probably propagate overrides to injected
