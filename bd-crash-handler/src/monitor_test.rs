@@ -5,7 +5,12 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{Monitor, INGESTION_CONFIG_FILE, REASON_INFERENCE_CONFIG_FILE};
+use crate::{
+  Monitor,
+  DETAILS_INFERENCE_CONFIG_FILE,
+  INGESTION_CONFIG_FILE,
+  REASON_INFERENCE_CONFIG_FILE,
+};
 use bd_log_primitives::StringOrBytes;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _};
@@ -109,10 +114,13 @@ async fn crash_reason_inference() {
   setup.monitor.try_ensure_directories_exist().await;
 
   setup
-    .write_config_file(REASON_INFERENCE_CONFIG_FILE, "reason;crash.reason")
+    .write_config_file(REASON_INFERENCE_CONFIG_FILE, "reason,crash.reason")
+    .await;
+  setup
+    .write_config_file(DETAILS_INFERENCE_CONFIG_FILE, "details[0].cause")
     .await;
 
-  let artifact1 = b"{\"reason\":\"foo\"}";
+  let artifact1 = b"{\"reason\":\"foo\",\"details\": [{\"cause\": \"kaboom\"}]}";
   let artifact2 = b"{\"crash\":{\"reason\": \"bar\"}}";
   setup.make_crash("crash1", artifact1);
   setup.make_crash("crash2", artifact2);
@@ -122,10 +130,12 @@ async fn crash_reason_inference() {
   let log1 = &logs[0];
   let log2 = &logs[1];
 
-  assert_eq!(artifact1, &log2["_crash_artifact"].as_bytes().unwrap());
-  assert_eq!("foo", log2["_crash_reason"].as_str().unwrap());
   assert_eq!(artifact2, &log1["_crash_artifact"].as_bytes().unwrap());
   assert_eq!("bar", log1["_crash_reason"].as_str().unwrap());
+  assert_eq!("unknown", log1["_crash_details"].as_str().unwrap());
+  assert_eq!(artifact1, &log2["_crash_artifact"].as_bytes().unwrap());
+  assert_eq!("foo", log2["_crash_reason"].as_str().unwrap());
+  assert_eq!("kaboom", log2["_crash_details"].as_str().unwrap());
 }
 
 #[tokio::test]

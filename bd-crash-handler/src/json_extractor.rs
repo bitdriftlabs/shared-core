@@ -33,7 +33,9 @@ impl PathPart {
 
 /// A JSON path is a sequence of keys that can be used to traverse a JSON object. For example,
 /// given the JSON object `{"a": {"b": {"c": "value"}}}` the path `a.b.c` would yield the string
-/// `value`.
+/// `value`. Array access is supported as part of a path segment by using the syntax `key[index]`.
+///
+/// For each pair of key or key/index access the traversal expects to find an object.
 #[derive(Debug)]
 pub struct JsonPath {
   key: PathPart,

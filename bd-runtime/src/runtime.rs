@@ -642,6 +642,14 @@ pub mod crash_handling {
     "crash_handling.crash_reason_paths",
     String::new()
   );
+
+  // Controls the list of paths that should be searched in order to attempt to determine the crash
+  // details.
+  string_feature_flag!(
+    CrashDetailsPaths,
+    "crash_handling.crash_details_paths",
+    String::new()
+  );
 }
 
 pub mod log_upload {
