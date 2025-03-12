@@ -16,6 +16,7 @@ bd-runtime.path        = "../bd-runtime"
 bd-shutdown.path       = "../bd-shutdown"
 itertools.workspace    = true
 log.workspace          = true
+regex.workspace        = true
 tinyjson               = "2.5.1"
 tokio.workspace        = true
 

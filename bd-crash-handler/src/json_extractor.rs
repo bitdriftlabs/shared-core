@@ -3,16 +3,41 @@
 mod tests;
 
 use itertools::Itertools as _;
+use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tinyjson::JsonValue;
+
+const ARRAY_ACCESS_REGEX: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"(\w+)\[(\d+)\]").unwrap());
+
+#[derive(Debug, PartialEq, Eq)]
+enum PathPart {
+  Key(String),
+  KeyAndIndex(String, usize),
+}
+
+impl PathPart {
+  fn parse(s: impl AsRef<str>) -> Self {
+    let captures = ARRAY_ACCESS_REGEX.captures(s.as_ref());
+    if let Some(captures) = captures {
+      let key = captures.get(1).unwrap().as_str().to_string();
+      let index = captures.get(2).unwrap().as_str().parse::<usize>().unwrap();
+
+      PathPart::KeyAndIndex(key, index)
+    } else {
+      PathPart::Key(s.as_ref().to_string())
+    }
+  }
+}
 
 /// A JSON path is a sequence of keys that can be used to traverse a JSON object. For example,
 /// given the JSON object `{"a": {"b": {"c": "value"}}}` the path `a.b.c` would yield the string
 /// `value`.
 #[derive(Debug)]
 pub struct JsonPath {
-  key: String,
-  path: Vec<String>,
+  key: PathPart,
+  path: Vec<PathPart>,
 }
 
 impl JsonPath {
@@ -25,7 +50,7 @@ impl JsonPath {
       }
 
       return Some(Self {
-        key: parts[0].clone(),
+        key: PathPart::parse(&parts[0]),
         path: Vec::new(),
       });
     }
@@ -33,7 +58,9 @@ impl JsonPath {
     let mut parts = parts.into_iter();
     let len = parts.len();
     let path = (&mut parts).take(len - 1).collect_vec();
-    let key = parts.last().unwrap().clone();
+    let key = PathPart::parse(parts.last().unwrap().as_str());
+
+    let path = path.into_iter().map(PathPart::parse).collect_vec();
 
     Some(Self { key, path })
   }
@@ -66,15 +93,25 @@ impl JsonExtractor {
     let mut ptr = &self.root;
 
     for key in &path.path {
-      ptr = ptr.get(&(*key).to_string())?.get()?;
+      ptr = Self::get(ptr, key)?.get()?;
     }
 
-    let value = ptr.get(&path.key)?;
+    let value = Self::get(ptr, &path.key)?;
 
     if let JsonValue::String(value) = value {
       return Some(value);
     }
 
     None
+  }
+
+  fn get<'a>(object: &'a HashMap<String, JsonValue>, key: &PathPart) -> Option<&'a JsonValue> {
+    match key {
+      PathPart::Key(key) => object.get(key),
+      PathPart::KeyAndIndex(key, index) => {
+        let array = object.get(key)?.get::<Vec<JsonValue>>()?;
+        array.get(*index)
+      },
+    }
   }
 }
