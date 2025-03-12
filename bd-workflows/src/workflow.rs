@@ -924,19 +924,23 @@ impl Traversal {
   }
 
   fn do_extractions(
-    &mut self,
+    &self,
     config: &Config,
     index: usize,
     log: &LogRef<'_>,
   ) -> TraversalExtractions {
+    // TODO(mattklein123): In the common case without forking we should be able to move this data
+    // and not clone it. It will require some thinking on how to do this given the loops involved.
+    // Maybe some CoW thing.
+    let mut new_extractions = self.extractions.clone();
+
     let extractions = config.extractions(self, index);
     for extraction in &extractions.sankey_extractions {
       let Some(extracted_value) = extraction.value.extract_value(log) else {
         continue;
       };
 
-      self
-        .extractions
+      new_extractions
         .sankey_states
         .get_or_insert_with(BTreeMap::new)
         .entry(extraction.sankey_id.clone())
@@ -955,8 +959,7 @@ impl Traversal {
         timestamp,
         timestamp_extraction_id
       );
-      self
-        .extractions
+      new_extractions
         .timestamps
         .get_or_insert_with(BTreeMap::new)
         .insert(timestamp_extraction_id.clone(), timestamp);
@@ -969,15 +972,14 @@ impl Traversal {
           value,
           extraction.id
         );
-        self
-          .extractions
+        new_extractions
           .fields
           .get_or_insert_with(BTreeMap::new)
           .insert(extraction.id.clone(), value.to_string());
       }
     }
 
-    std::mem::take(&mut self.extractions)
+    new_extractions
   }
 
   fn triggered_actions<'a>(

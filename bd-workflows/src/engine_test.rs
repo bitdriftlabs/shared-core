@@ -3080,8 +3080,9 @@ async fn generate_log_multiple() {
   let mut b = state!("B");
   let mut c = state!("C");
   let mut d = state!("D");
-  let e = state!("E");
+  let mut e = state!("E");
   let f = state!("F");
+  let g = state!("G");
 
   declare_transition!(
     &mut a => &b;
@@ -3111,8 +3112,16 @@ async fn generate_log_multiple() {
         TestFieldRef::SavedTimestampId("timestamp2"),
         TestFieldRef::SavedTimestampId("timestamp1")
        ))
-    ], "id1")),
-    action!(generate_log make_generate_log_action_proto("message2", &[
+    ], "id1"))
+  );
+
+  declare_transition!(
+    &mut c => &e;
+    when rule!(log_matches!(message == "baz")),
+    with {
+      make_save_timestamp_extraction("timestamp3")
+    };
+    do action!(generate_log make_generate_log_action_proto("message2", &[
       ("duration",
        TestFieldType::Subtract(
         TestFieldRef::SavedTimestampId("timestamp3"),
@@ -3122,18 +3131,18 @@ async fn generate_log_multiple() {
   );
 
   declare_transition!(
-    &mut d => &e;
+    &mut d => &f;
     when rule!(log_matches!(tag("_generate_log_id") == "id1"));
     do action!(emit_counter "foo_metric"; value metric_value!(extract "duration"))
   );
 
   declare_transition!(
-    &mut d => &f;
+    &mut e => &g;
     when rule!(log_matches!(tag("_generate_log_id") == "id2"));
     do action!(emit_counter "bar_metric"; value metric_value!(extract "duration"))
   );
 
-  let workflow = workflow!(exclusive with a, b, c, d, e, f);
+  let workflow = workflow!(exclusive with a, b, c, d, e, f, g);
   let mut engine = setup.make_workflows_engine(
     WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
   );

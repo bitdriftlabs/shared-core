@@ -49,7 +49,10 @@ impl Helper {
             value: (*v).into(),
           })
           .collect(),
-        matching_fields: vec![],
+        matching_fields: vec![LogField {
+          key: "_generate_log_id".to_string(),
+          value: "id".into(),
+        },],
         session_id: String::new(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
       }),
