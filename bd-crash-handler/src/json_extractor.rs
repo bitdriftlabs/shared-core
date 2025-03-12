@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 use tinyjson::JsonValue;
 
-const ARRAY_ACCESS_REGEX: LazyLock<Regex> =
+static ARRAY_ACCESS_REGEX: LazyLock<Regex> =
   LazyLock::new(|| Regex::new(r"(\w+)\[(\d+)\]").unwrap());
 
 #[derive(Debug, PartialEq, Eq)]
