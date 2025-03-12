@@ -21,7 +21,7 @@ fn test_global_init() {
 }
 
 const REPORTS_DIRECTORY: &str = "reports";
-const REPORTS_CONFIG_FILE: &str = "config";
+const REPORTS_DIRECTORY_CONFIG_FILE: &str = "config";
 
 //
 // CrashLog
@@ -53,8 +53,8 @@ pub trait CrashLogger: Send + Sync {
 ///
 /// This uses the following directory layout (within the SDK directory):
 /// - `reports/` - The root directory for all all reports.
-/// - `reports/config` - A file that contains the configuration to look for priorly stored crashes.
-//  The platform layer is responsible for reading this file and looking in each of the
+/// - `reports/config` - A file that contains the configuration to look for prior stored crashes.
+//    The platform layer is responsible for reading this file and looking in each of the
 ///   reports during pre-init.
 /// - `reports/new/` - A directory where new crash reports are placed. The platform layer is
 ///   responsible for copying the raw files into this directory.
@@ -112,7 +112,7 @@ impl Monitor {
   }
 
   async fn write_config_file(&self, report_directories: &str) {
-    let config_file = &self.report_directory.join(REPORTS_CONFIG_FILE);
+    let config_file = &self.report_directory.join(REPORTS_DIRECTORY_CONFIG_FILE);
 
     if report_directories.is_empty() {
       log::debug!("No report directories configured, removing file");
