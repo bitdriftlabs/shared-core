@@ -69,15 +69,13 @@ fn crash_reports() {
     let logs = upload.logs();
     let crash1 = logs.iter().find(|log| log.binary_field("_crash_artifact") == b"crash1").unwrap();
     assert_eq!(crash1.message(), "App crashed");
-    assert_eq!(crash1.binary_field("_crash_artifact"), b"crash2");
     assert_eq!(crash1.session_id(), initial_session_id);
-    assert_eq!(crash1.timestamp(), timestamp);
+    assert_ne!(crash1.timestamp(), timestamp);
 
     let crash2 = logs.iter().find(|log| log.binary_field("_crash_artifact") == b"crash2").unwrap();
     assert_eq!(crash2.message(), "App crashed");
-    assert_eq!(crash2.binary_field("_crash_artifact"), b"crash1");
     assert_eq!(crash2.session_id(), initial_session_id);
-    assert_ne!(crash2.timestamp(), timestamp);
+    assert_eq!(crash2.timestamp(), timestamp);
   });
 }
 

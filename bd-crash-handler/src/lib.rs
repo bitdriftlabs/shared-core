@@ -37,7 +37,7 @@ const DETAILS_INFERENCE_CONFIG_FILE: &str = "details_inference";
 /// A single crash log to be emitted by the crash logger.
 pub struct CrashLog {
   pub fields: LogFields,
-  pub timestamp: Option<OffsetDateTime>,
+  pub timestamp: OffsetDateTime,
 }
 
 //
@@ -280,7 +280,9 @@ impl Monitor {
 
               OffsetDateTime::from_unix_timestamp(timestamp).ok()
             })
-          });
+          })
+          .unwrap_or_else(OffsetDateTime::now_utc);
+
         let (crash_reason, crash_details) =
           Self::guess_crash_details(&contents, &crash_reason_paths, &crash_details_paths);
 
