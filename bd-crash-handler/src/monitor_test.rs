@@ -140,9 +140,11 @@ async fn crash_reason_inference() {
   assert_eq!(artifact2, &log1["_crash_artifact"].as_bytes().unwrap());
   assert_eq!("bar", log1["_crash_reason"].as_str().unwrap());
   assert_eq!("unknown", log1["_crash_details"].as_str().unwrap());
+
   assert_eq!(artifact1, &log2["_crash_artifact"].as_bytes().unwrap());
   assert_eq!("foo", log2["_crash_reason"].as_str().unwrap());
   assert_eq!("kaboom", log2["_crash_details"].as_str().unwrap());
+
   assert_eq!(artifact3, &log3["_crash_artifact"].as_bytes().unwrap());
   assert_eq!("bar", log3["_crash_reason"].as_str().unwrap());
   assert_eq!("unknown", log3["_crash_details"].as_str().unwrap());
