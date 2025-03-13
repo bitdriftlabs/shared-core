@@ -1,15 +1,46 @@
+#[cfg(test)]
+#[path = "./global_state_test.rs"]
+mod tests;
+
 use bd_device::Store;
 use bd_key_value::{Key, Storable};
 use bd_log_primitives::{LogField, LogFields};
-use std::collections::HashMap;
 use std::sync::Arc;
 
 const KEY: Key<State> = Key::new("global_state");
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, Default, PartialEq, Eq)]
-struct State(HashMap<String, String>);
+struct State(Vec<(String, String)>);
 
 impl Storable for State {}
+
+impl PartialEq<[LogField]> for State {
+  fn eq(&self, other: &[LogField]) -> bool {
+    // We don't persist binary fields since we don't really need them for ootb support, so filter
+    // out binary fields when we make the comparison.
+
+    for (k, v) in other
+      .iter()
+      .filter_map(|field| Some((field.key.as_str(), field.value.as_str()?)))
+    {
+      if self.0.iter().all(|(key, value)| k != *key || v != value) {
+        return false;
+      }
+    }
+
+    for (key, value) in &self.0 {
+      if !other
+        .iter()
+        .filter_map(|f| Some((f.key.as_str(), f.value.as_str()?)))
+        .any(|(k, v)| *key == *k && value == v)
+      {
+        return false;
+      }
+    }
+
+    true
+  }
+}
 
 //
 // GlobalStateTracker
@@ -30,7 +61,11 @@ impl Tracker {
     }
   }
 
-  pub fn maybe_update_global_state(&mut self, new_global_state: &[LogField]) {
+  pub fn maybe_update_global_state(&mut self, new_global_state: &[LogField]) -> bool {
+    if self.current_global_state == *new_global_state {
+      return false;
+    }
+
     let state = State(
       new_global_state
         .iter()
@@ -38,12 +73,10 @@ impl Tracker {
         .collect(),
     );
 
-    if state == self.current_global_state {
-      return;
-    }
-
     self.current_global_state = state;
     self.store.set(&KEY, &self.current_global_state);
+
+    true
   }
 
   pub fn global_state_fields(&self) -> LogFields {
