@@ -13,6 +13,7 @@ use bd_log_primitives::{AnnotatedLogField, LogFields};
 use bd_runtime::runtime::{ConfigLoader, StringWatch};
 use bd_shutdown::ComponentShutdown;
 use std::path::{Path, PathBuf};
+use time::OffsetDateTime;
 
 #[cfg(test)]
 #[ctor::ctor]
@@ -30,6 +31,7 @@ const REPORTS_DIRECTORY_CONFIG_FILE: &str = "config";
 /// A single crash log to be emitted by the crash logger.
 pub struct CrashLog {
   pub fields: LogFields,
+  pub timestamp: Option<OffsetDateTime>,
 }
 
 //
@@ -105,7 +107,6 @@ impl Monitor {
       // before the SDK starts, but if we find this problematic we might need to figure out how to
       // avoid reading the runtime value before the cached value is available.
 
-
       let crash_directories = self.reports_directories_flag.read_mark_update().clone();
       self.write_config_file(&crash_directories).await;
     }
@@ -180,6 +181,21 @@ impl Monitor {
             continue;
           },
         };
+
+        let timestamp = path
+          .file_name()
+          .and_then(|name| name.to_str())
+          .and_then(|name| {
+            name.split('_').next().and_then(|timestamp| {
+              let Ok(timestamp) = timestamp.parse() else {
+                log::debug!("Failed to parse timestamp from file name: {:?}", name);
+                return None;
+              };
+
+              OffsetDateTime::from_unix_timestamp(timestamp).ok()
+            })
+          });
+
         // TODO(snowp): For now everything in here is a crash, eventually we'll need to be able to
         // differentiate.
         // TODO(snowp): Eventually we'll want to upload the report out of band, but for now just
@@ -188,6 +204,7 @@ impl Monitor {
           fields: vec![
             AnnotatedLogField::new_ootb("_crash_artifact".into(), contents.into()).into(),
           ],
+          timestamp,
         });
       }
 

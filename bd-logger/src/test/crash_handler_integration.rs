@@ -13,9 +13,12 @@ use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::FeatureFlag;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use time::ext::{NumericalDuration, NumericalStdDuration};
+use time::macros::datetime;
 
 #[test]
 fn crash_reports() {
+  let timestamp = datetime!(2021-01-01 00:00:00 UTC);
+
   let (directory, initial_session_id) = {
     let setup = Setup::new_with_options(SetupOptions {
       disk_storage: true,
@@ -27,6 +30,16 @@ fn crash_reports() {
     std::fs::write(
       setup.sdk_directory.path().join("reports/new/crash1.txt"),
       "crash1",
+    )
+    .unwrap();
+
+
+    std::fs::write(
+      setup.sdk_directory.path().join(format!(
+        "reports/new/{}_crash2.txt",
+        timestamp.unix_timestamp()
+      )),
+      "crash2",
     )
     .unwrap();
 
@@ -51,11 +64,17 @@ fn crash_reports() {
   setup.upload_individual_logs();
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(upload) => {
-    assert_eq!(upload.logs().len(), 1);
+    assert_eq!(upload.logs().len(), 2);
+
     assert_eq!(upload.logs()[0].message(), "App crashed");
-    assert_eq!(upload.logs()[0].message(), "App crashed");
-    assert_eq!(upload.logs()[0].binary_field("_crash_artifact"), b"crash1");
+    assert_eq!(upload.logs()[0].binary_field("_crash_artifact"), b"crash2");
     assert_eq!(upload.logs()[0].session_id(), initial_session_id);
+    assert_eq!(upload.logs()[0].timestamp(), timestamp);
+
+    assert_eq!(upload.logs()[1].message(), "App crashed");
+    assert_eq!(upload.logs()[1].binary_field("_crash_artifact"), b"crash1");
+    assert_eq!(upload.logs()[1].session_id(), initial_session_id);
+    assert_ne!(upload.logs()[1].timestamp(), timestamp);
   });
 }
 
