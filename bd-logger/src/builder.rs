@@ -315,9 +315,7 @@ impl LoggerBuilder {
           session_id: session_strategy
             .previous_process_session_id()
             .unwrap_or_else(|| session_strategy.session_id()),
-          occurred_at: crash_log
-            .timestamp
-            .unwrap_or_else(OffsetDateTime::now_utc),
+          occurred_at: crash_log.timestamp.unwrap_or_else(OffsetDateTime::now_utc),
         })
         .collect();
 
