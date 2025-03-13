@@ -28,7 +28,7 @@ use bd_time::SystemTimeProvider;
 use futures_util::{try_join, Future};
 use std::pin::Pin;
 use std::sync::Arc;
-use time::{Duration, OffsetDateTime};
+use time::Duration;
 
 pub fn default_stats_flush_triggers(
   runtime_loader: &ConfigLoader,
