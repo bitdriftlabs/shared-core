@@ -24,8 +24,6 @@ impl Tracker {
   pub fn new(store: Arc<Store>) -> Self {
     let global_state = store.get(&KEY).unwrap_or_default();
 
-    log::error!("global_state: {:?}", global_state);
-
     Self {
       store,
       current_global_state: global_state,

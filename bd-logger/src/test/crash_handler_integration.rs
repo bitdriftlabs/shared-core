@@ -65,7 +65,6 @@ fn crash_reports() {
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(upload) => {
     assert_eq!(upload.logs().len(), 1);
-    log::error!("Log: {:?}", upload.logs()[0]);
     assert_eq!(upload.logs()[0].message(), "App crashed");
     assert_eq!(upload.logs()[0].message(), "App crashed");
     assert_eq!(upload.logs()[0].binary_field("_crash_artifact"), b"crash1");
