@@ -220,6 +220,7 @@ impl LoggerBuilder {
       &runtime_loader,
       network_quality_provider.clone(),
       self.params.device.id(),
+      self.params.store.clone(),
     );
 
     let logger = Logger::new(

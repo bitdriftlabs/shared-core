@@ -5,11 +5,14 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::global_state::Tracker;
 use crate::metadata::MetadataCollector;
 use assert_matches::assert_matches;
+use bd_device::Store;
 use bd_log_primitives::{AnnotatedLogField, LogField, LogFields, StringOrBytes};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_test_helpers::metadata_provider::LogMetadata;
+use bd_test_helpers::session::InMemoryStorage;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
@@ -28,6 +31,8 @@ fn collector_attaches_provider_fields_as_matching_fields() {
 
   let types = vec![LogType::Replay, LogType::Resource];
 
+  let mut tracker = Tracker::new(Arc::new(Store::new(Box::<InMemoryStorage>::default())));
+
   for log_type in types {
     let metadata = collector
       .normalized_metadata_with_extra_fields(
@@ -37,6 +42,7 @@ fn collector_attaches_provider_fields_as_matching_fields() {
         ],
         vec![],
         log_type,
+        &mut tracker,
       )
       .unwrap();
 
@@ -103,6 +109,7 @@ fn collector_fields_hierarchy() {
     })
     .unwrap();
 
+  let mut tracker = Tracker::new(Arc::new(Store::new(Box::<InMemoryStorage>::default())));
 
   let metadata = collector
     .normalized_metadata_with_extra_fields(
@@ -124,6 +131,7 @@ fn collector_fields_hierarchy() {
       ],
       vec![],
       LogType::Lifecycle,
+      &mut tracker,
     )
     .unwrap();
 
@@ -179,8 +187,10 @@ fn collector_does_not_accept_reserved_fields() {
     })
     .is_err());
 
+  let mut tracker = Tracker::new(Arc::new(Store::new(Box::<InMemoryStorage>::default())));
+
   let metadata = collector
-    .normalized_metadata_with_extra_fields(vec![], vec![], LogType::Normal)
+    .normalized_metadata_with_extra_fields(vec![], vec![], LogType::Normal, &mut tracker)
     .unwrap();
 
   assert!(collector
@@ -240,6 +250,8 @@ fn provider_fields_earlier_in_the_list_take_precedence() {
 
   let collector = MetadataCollector::new(Arc::new(metadata));
 
+  let mut tracker = Tracker::new(Arc::new(Store::new(Box::<InMemoryStorage>::default())));
+
   let metadata = collector
     .normalized_metadata_with_extra_fields(
       vec![AnnotatedLogField::new_ootb(
@@ -248,6 +260,7 @@ fn provider_fields_earlier_in_the_list_take_precedence() {
       )],
       vec![],
       LogType::Lifecycle,
+      &mut tracker,
     )
     .unwrap();
 
@@ -274,6 +287,8 @@ fn passed_fields_earlier_in_the_list_take_precedence() {
 
   let collector = MetadataCollector::new(Arc::new(metadata));
 
+  let mut tracker = Tracker::new(Arc::new(Store::new(Box::<InMemoryStorage>::default())));
+
   let metadata = collector
     .normalized_metadata_with_extra_fields(
       vec![
@@ -283,6 +298,7 @@ fn passed_fields_earlier_in_the_list_take_precedence() {
       ],
       vec![],
       LogType::Lifecycle,
+      &mut tracker,
     )
     .unwrap();
 

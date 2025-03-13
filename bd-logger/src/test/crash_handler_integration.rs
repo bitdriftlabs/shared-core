@@ -9,9 +9,12 @@ use super::setup::Setup;
 use crate::test::setup::SetupOptions;
 use crate::wait_for;
 use assert_matches::assert_matches;
+use bd_log_primitives::AnnotatedLogField;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::FeatureFlag;
+use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use std::sync::Arc;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 
 #[test]
@@ -19,8 +22,18 @@ fn crash_reports() {
   let (directory, initial_session_id) = {
     let setup = Setup::new_with_options(SetupOptions {
       disk_storage: true,
+      metadata_provider: Arc::new(LogMetadata {
+        timestamp: time::OffsetDateTime::now_utc().into(),
+        fields: vec![
+          AnnotatedLogField::new_ootb("_ootb_field".into(), "ootb".into()),
+          AnnotatedLogField::new_custom("custom".into(), "custom".into()),
+        ],
+      }),
       ..Default::default()
     });
+
+    // Log one log to trigger a global state update.
+    setup.logger_handle.log_sdk_start(vec![], 1.seconds());
 
     std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();
 
@@ -52,10 +65,13 @@ fn crash_reports() {
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(upload) => {
     assert_eq!(upload.logs().len(), 1);
+    log::error!("Log: {:?}", upload.logs()[0]);
     assert_eq!(upload.logs()[0].message(), "App crashed");
     assert_eq!(upload.logs()[0].message(), "App crashed");
     assert_eq!(upload.logs()[0].binary_field("_crash_artifact"), b"crash1");
     assert_eq!(upload.logs()[0].session_id(), initial_session_id);
+    assert_eq!(upload.logs()[0].field("_ootb_field"), "ootb");
+    assert!(!upload.logs()[0].has_field("custom"));
   });
 }
 

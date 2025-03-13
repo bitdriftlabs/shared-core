@@ -118,6 +118,7 @@ impl Setup {
       &self.runtime,
       Arc::new(SimpleNetworkQualityProvider::default()),
       String::new(),
+      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
     )
   }
 
@@ -144,6 +145,7 @@ impl Setup {
       &self.runtime,
       Arc::new(SimpleNetworkQualityProvider::default()),
       String::new(),
+      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
     )
   }
 

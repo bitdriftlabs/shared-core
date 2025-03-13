@@ -12,6 +12,7 @@ pub mod builder;
 mod client_config;
 mod consumer;
 mod device_id;
+mod global_state;
 pub mod internal;
 mod internal_report;
 mod log_replay;

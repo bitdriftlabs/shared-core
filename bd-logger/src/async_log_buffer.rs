@@ -11,6 +11,7 @@ mod async_log_buffer_test;
 
 use crate::bounded_buffer::{channel, MemorySized, Receiver, Sender, TrySendError};
 use crate::device_id::DeviceIdInterceptor;
+use crate::global_state::Tracker;
 use crate::log_replay::LogReplay;
 use crate::logger::with_thread_local_logger_guard;
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
@@ -21,6 +22,7 @@ use crate::{internal_report, network};
 use anyhow::anyhow;
 use bd_buffer::BuffersWithAck;
 use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
+use bd_device::Store;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind, MetadataProvider};
 use bd_log_primitives::{
   log_level,
@@ -164,6 +166,8 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   interceptors: Vec<Arc<dyn LogInterceptor>>,
 
   logging_state: LoggingState<bd_log_primitives::Log>,
+
+  global_state_tracker: Tracker,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -180,6 +184,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     runtime_loader: &Arc<ConfigLoader>,
     network_quality_provider: Arc<dyn NetworkQualityProvider>,
     device_id: String,
+    store: Arc<Store>,
   ) -> (Self, Sender<AsyncLogBufferMessage>) {
     let (async_log_buffer_communication_tx, async_log_buffer_communication_rx) = channel(
       uninitialized_logging_context
@@ -241,6 +246,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         // The size of the pre-config buffer matches the size of the enclosing
         // async log buffer.
         logging_state: LoggingState::Uninitialized(uninitialized_logging_context),
+        global_state_tracker: Tracker::new(store),
       },
       async_log_buffer_communication_tx,
     )
@@ -402,7 +408,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     let result = with_thread_local_logger_guard(|| {
       self
         .metadata_collector
-        .normalized_metadata_with_extra_fields(log.fields, log.matching_fields, log.log_type)
+        .normalized_metadata_with_extra_fields(
+          log.fields,
+          log.matching_fields,
+          log.log_type,
+          &mut self.global_state_tracker,
+        )
     });
 
     match result {
@@ -580,7 +591,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       return;
     };
 
-    for log_line in initial_logs.drain(..) {
+    for mut log_line in initial_logs.drain(..) {
+      log_line
+        .fields
+        .extend(self.global_state_tracker.global_state_fields());
+
       if let Err(e) = self
         .replayer
         .replay_log(

@@ -9,6 +9,7 @@
 #[path = "./metadata_test.rs"]
 mod metadata_test;
 
+use crate::global_state::Tracker;
 use bd_log::warn_every;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind, MetadataProvider};
 use bd_log_primitives::{LogField, LogFields};
@@ -74,8 +75,14 @@ impl MetadataCollector {
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
     log_type: LogType,
+    global_state_tracker: &mut Tracker,
   ) -> anyhow::Result<LogMetadata> {
     let timestamp = self.metadata_provider.timestamp()?;
+
+    let provider_fields = self.metadata_provider.fields()?;
+    let provider_fields = partition_fields(provider_fields);
+    global_state_tracker.maybe_update_global_state(&provider_fields.ootb);
+
     // Attach field provider's fields to session replay, resource logs, and internal SDK logs
     // as matching fields as opposed to 'normal' fields to save on bandwidth usage while still
     // allowing matching on them.
@@ -83,12 +90,11 @@ impl MetadataCollector {
       || log_type == LogType::Resource
       || log_type == LogType::InternalSDK
     {
-      (vec![], self.metadata_provider.fields()?)
+      (PartitionedFields::default(), provider_fields)
     } else {
-      (self.metadata_provider.fields()?, vec![])
+      (provider_fields, PartitionedFields::default())
     };
 
-    let provider_fields = partition_fields(provider_fields);
     let log_fields = partition_fields(fields);
 
     // Normalize fields. Process them in the order described below, where fields that are earlier in
@@ -106,7 +112,6 @@ impl MetadataCollector {
     .unique_by(|f| f.key.clone())
     .collect_vec();
 
-    let provider_matching_fields = partition_fields(provider_matching_fields);
     let matching_fields = partition_fields(matching_fields);
 
     let matching_fields = [
@@ -194,6 +199,7 @@ fn verify_custom_field_name(field: &LogField) -> anyhow::Result<()> {
 //
 
 // A helper to use as a return type for methods that partitions fields into OOTB and custom fields.
+#[derive(Default)]
 struct PartitionedFields {
   ootb: LogFields,
   custom: LogFields,
