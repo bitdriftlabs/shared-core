@@ -189,7 +189,10 @@ impl Monitor {
 
       let crash_details_paths = self.crash_details_paths_flag.read_mark_update().clone();
       self
-        .write_config_file(&self.report_directory.join("details"), &crash_details_paths)
+        .write_config_file(
+          &self.report_directory.join(DETAILS_INFERENCE_CONFIG_FILE),
+          &crash_details_paths,
+        )
         .await;
     }
   }
