@@ -133,7 +133,7 @@ impl Monitor {
     };
 
     // For all the candidate files, look for one which matches against a crash reason. Once we find
-    // this candidate, we'll look for the details within the same candidate and return "" if we
+    // this candidate, we'll look for the details within the same candidate and return None if we
     // can't find any.
 
     for candidate in candidates {
