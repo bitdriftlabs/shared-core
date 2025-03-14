@@ -28,7 +28,7 @@ use bd_time::SystemTimeProvider;
 use futures_util::{try_join, Future};
 use std::pin::Pin;
 use std::sync::Arc;
-use time::{Duration, OffsetDateTime};
+use time::Duration;
 
 pub fn default_stats_flush_triggers(
   runtime_loader: &ConfigLoader,
@@ -316,7 +316,7 @@ impl LoggerBuilder {
           session_id: session_strategy
             .previous_process_session_id()
             .unwrap_or_else(|| session_strategy.session_id()),
-          occurred_at: OffsetDateTime::now_utc(),
+          occurred_at: crash_log.timestamp,
         })
         .collect();
 

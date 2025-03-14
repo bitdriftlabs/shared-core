@@ -17,6 +17,7 @@ use bd_shutdown::ComponentShutdown;
 use itertools::Itertools as _;
 use json_extractor::{JsonExtractor, JsonPath};
 use std::path::{Path, PathBuf};
+use time::OffsetDateTime;
 
 #[cfg(test)]
 #[ctor::ctor]
@@ -36,6 +37,7 @@ const DETAILS_INFERENCE_CONFIG_FILE: &str = "details_inference";
 /// A single crash log to be emitted by the crash logger.
 pub struct CrashLog {
   pub fields: LogFields,
+  pub timestamp: OffsetDateTime,
 }
 
 //
@@ -265,6 +267,22 @@ impl Monitor {
             continue;
           },
         };
+
+        let timestamp = path
+          .file_name()
+          .and_then(|name| name.to_str())
+          .and_then(|name| {
+            name.split('_').next().and_then(|timestamp| {
+              let Ok(timestamp) = timestamp.parse() else {
+                log::debug!("Failed to parse timestamp from file name: {:?}", name);
+                return None;
+              };
+
+              OffsetDateTime::from_unix_timestamp(timestamp).ok()
+            })
+          })
+          .unwrap_or_else(OffsetDateTime::now_utc);
+
         let (crash_reason, crash_details) =
           Self::guess_crash_details(&contents, &crash_reason_paths, &crash_details_paths);
 
@@ -288,6 +306,7 @@ impl Monitor {
             )
             .into(),
           ],
+          timestamp,
         });
       }
 

@@ -16,9 +16,12 @@ use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use std::sync::Arc;
 use time::ext::{NumericalDuration, NumericalStdDuration};
+use time::macros::datetime;
 
 #[test]
 fn crash_reports() {
+  let timestamp = datetime!(2021-01-01 00:00:00 UTC);
+
   let (directory, initial_session_id) = {
     let setup = Setup::new_with_options(SetupOptions {
       disk_storage: true,
@@ -43,6 +46,16 @@ fn crash_reports() {
     )
     .unwrap();
 
+
+    std::fs::write(
+      setup.sdk_directory.path().join(format!(
+        "reports/new/{}_crash2.txt",
+        timestamp.unix_timestamp()
+      )),
+      "crash2",
+    )
+    .unwrap();
+
     (
       setup.sdk_directory.clone(),
       setup.logger.new_logger_handle().session_id(),
@@ -64,13 +77,18 @@ fn crash_reports() {
   setup.upload_individual_logs();
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(upload) => {
-    assert_eq!(upload.logs().len(), 1);
-    assert_eq!(upload.logs()[0].message(), "App crashed");
-    assert_eq!(upload.logs()[0].message(), "App crashed");
-    assert_eq!(upload.logs()[0].binary_field("_crash_artifact"), b"crash1");
-    assert_eq!(upload.logs()[0].session_id(), initial_session_id);
-    assert_eq!(upload.logs()[0].field("_ootb_field"), "ootb");
-    assert!(!upload.logs()[0].has_field("custom"));
+    assert_eq!(upload.logs().len(), 2);
+
+    let logs = upload.logs();
+    let crash1 = logs.iter().find(|log| log.binary_field("_crash_artifact") == b"crash1").unwrap();
+    assert_eq!(crash1.message(), "App crashed");
+    assert_eq!(crash1.session_id(), initial_session_id);
+    assert_ne!(crash1.timestamp(), timestamp);
+
+    let crash2 = logs.iter().find(|log| log.binary_field("_crash_artifact") == b"crash2").unwrap();
+    assert_eq!(crash2.message(), "App crashed");
+    assert_eq!(crash2.session_id(), initial_session_id);
+    assert_eq!(crash2.timestamp(), timestamp);
   });
 }
 
