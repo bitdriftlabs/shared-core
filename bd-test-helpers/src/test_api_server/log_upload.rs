@@ -96,12 +96,12 @@ impl Log<'_> {
       .unwrap_or_default()
       .iter()
       .find_map(|field| {
-        (field.key() == key).then_some(
+        (field.key() == key).then(|| {
           field
             .value_as_string_data()
             .expect("field should be string value")
-            .data(),
-        )
+            .data()
+        })
       })
       .expect("field should exist")
   }

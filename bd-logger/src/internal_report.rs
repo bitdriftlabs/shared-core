@@ -5,15 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
-use bd_log_primitives::{
-  AnnotatedLogField,
-  LogField,
-  LogInterceptor,
-  LogLevel,
-  LogMessage,
-  LogType,
-};
+use bd_log_metadata::AnnotatedLogFields;
+use bd_log_primitives::{AnnotatedLogField, LogInterceptor, LogLevel, LogMessage, LogType};
 use bd_runtime::runtime::{debugging, BoolWatch, ConfigLoader};
 
 //
@@ -87,81 +80,76 @@ impl LogInterceptor for Reporter {
       return;
     }
 
-    fields.push(create_field("_logs_count", guard.logs_count.to_string()));
-    fields.push(create_field(
-      "_logs_total_count",
-      guard.logs_total_count.to_string(),
-    ));
-    fields.push(create_field(
-      "_device_logs_count",
-      guard.device_logs_count.to_string(),
-    ));
-    fields.push(create_field(
-      "_device_logs_total_count",
-      guard.device_logs_total_count.to_string(),
-    ));
-    fields.push(create_field(
-      "_internal_logs_count",
-      guard.internal_logs_count.to_string(),
-    ));
-    fields.push(create_field(
-      "_internal_logs_total_count",
-      guard.internal_logs_total_count.to_string(),
-    ));
-    fields.push(create_field(
-      "_network_logs_count",
-      guard.network_logs_count.to_string(),
-    ));
-    fields.push(create_field(
-      "_network_logs_total_count",
-      guard.network_logs_total_count.to_string(),
-    ));
-    fields.push(create_field(
-      "_normal_logs_count",
-      guard.normal_logs_count.to_string(),
-    ));
-    fields.push(create_field(
-      "_normal_logs_total_count",
-      guard.normal_logs_total_count.to_string(),
-    ));
-    fields.push(create_field(
-      "_lifecycle_logs_count",
-      guard.lifecycle_logs_count.to_string(),
-    ));
-    fields.push(create_field(
-      "_lifecycle_logs_total_count",
-      guard.lifecycle_logs_total_count.to_string(),
-    ));
-    fields.push(create_field(
-      "_replay_logs_count",
-      guard.replay_logs_count.to_string(),
-    ));
-    fields.push(create_field(
-      "_replay_logs_total_count",
-      guard.replay_logs_total_count.to_string(),
-    ));
-    fields.push(create_field(
-      "_resource_logs_count",
-      guard.resource_logs_count.to_string(),
-    ));
-    fields.push(create_field(
-      "_resource_logs_total_count",
-      guard.resource_logs_total_count.to_string(),
-    ));
+    fields.insert("_logs_count".into(), {
+      let value = guard.logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_logs_total_count".into(), {
+      let value = guard.logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_device_logs_count".into(), {
+      let value = guard.device_logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_device_logs_total_count".into(), {
+      let value = guard.device_logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_internal_logs_count".into(), {
+      let value = guard.internal_logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_internal_logs_total_count".into(), {
+      let value = guard.internal_logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_network_logs_count".into(), {
+      let value = guard.network_logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_network_logs_total_count".into(), {
+      let value = guard.network_logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_normal_logs_count".into(), {
+      let value = guard.normal_logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_normal_logs_total_count".into(), {
+      let value = guard.normal_logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_lifecycle_logs_count".into(), {
+      let value = guard.lifecycle_logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_lifecycle_logs_total_count".into(), {
+      let value = guard.lifecycle_logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_replay_logs_count".into(), {
+      let value = guard.replay_logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_replay_logs_total_count".into(), {
+      let value = guard.replay_logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_resource_logs_count".into(), {
+      let value = guard.resource_logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_resource_logs_total_count".into(), {
+      let value = guard.resource_logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
 
     guard.clear();
   }
 }
 
-fn create_field(key: &str, value: String) -> AnnotatedLogField {
-  AnnotatedLogField {
-    field: LogField {
-      key: key.into(),
-      value: value.into(),
-    },
-    kind: LogFieldKind::Ootb,
-  }
-}
+
 
 //
 // State

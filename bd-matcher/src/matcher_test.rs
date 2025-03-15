@@ -8,15 +8,7 @@
 use crate::matcher::Tree;
 use crate::FieldProvider;
 use assert_matches::assert_matches;
-use bd_log_primitives::{
-  log_level,
-  LogField,
-  LogFields,
-  LogLevel,
-  LogMessage,
-  LogType,
-  StringOrBytes,
-};
+use bd_log_primitives::{log_level, LogFields, LogLevel, LogMessage, LogType, StringOrBytes};
 use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::{
   self,
   AnyMatch,
@@ -35,7 +27,7 @@ fn log_msg(message: &str) -> Input<'_> {
     LogType::Normal,
     log_level::DEBUG,
     LogMessage::String(message.to_string()),
-    vec![],
+    LogFields::default(),
   )
 }
 
@@ -44,10 +36,7 @@ fn log_tag(key: &'static str, value: &'static str) -> Input<'static> {
     LogType::Normal,
     log_level::DEBUG,
     LogMessage::String("message".into()),
-    vec![LogField {
-      key: key.into(),
-      value: StringOrBytes::String(value.into()),
-    }],
+    [(key.into(), StringOrBytes::String(value.into()))].into(),
   )
 }
 
@@ -56,7 +45,7 @@ fn binary_log_msg(message: &[u8]) -> Input<'_> {
     LogType::Normal,
     log_level::DEBUG,
     LogMessage::Bytes(message.to_vec()),
-    vec![],
+    LogFields::default(),
   )
 }
 
@@ -65,10 +54,7 @@ fn binary_log_tag(key: &'static str, value: &'static [u8]) -> Input<'static> {
     LogType::Normal,
     log_level::DEBUG,
     LogMessage::String("message".into()),
-    vec![LogField {
-      key: key.into(),
-      value: StringOrBytes::Bytes(value.into()),
-    }],
+    [(key.into(), StringOrBytes::Bytes(value.into()))].into(),
   )
 }
 
@@ -248,11 +234,11 @@ fn type_matcher() {
     config,
     vec![
       (
-        (LogType::Normal, log_level::DEBUG, "foo".into(), vec![]),
+        (LogType::Normal, log_level::DEBUG, "foo".into(), [].into()),
         false,
       ),
       (
-        (LogType::Replay, log_level::DEBUG, "foo".into(), vec![]),
+        (LogType::Replay, log_level::DEBUG, "foo".into(), [].into()),
         true,
       ),
     ],
@@ -365,8 +351,7 @@ fn simple_log_matcher(match_type: base_log_matcher::Match_type) -> LogMatcher {
 impl FieldProvider for LogFields {
   fn field_value(&self, field_key: &str) -> Option<Cow<'_, str>> {
     self
-      .iter()
-      .find(|field| field.key == field_key)
-      .and_then(|field| field.value.as_str().map(Cow::Borrowed))
+      .get(field_key)
+      .and_then(|v| Some(Cow::Borrowed(v.as_str()?)))
   }
 }

@@ -9,9 +9,12 @@ use super::setup::Setup;
 use crate::test::setup::SetupOptions;
 use crate::wait_for;
 use assert_matches::assert_matches;
+use bd_log_primitives::AnnotatedLogField;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::FeatureFlag;
+use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use std::sync::Arc;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::macros::datetime;
 
@@ -22,8 +25,19 @@ fn crash_reports() {
   let (directory, initial_session_id) = {
     let setup = Setup::new_with_options(SetupOptions {
       disk_storage: true,
+      metadata_provider: Arc::new(LogMetadata {
+        timestamp: time::OffsetDateTime::now_utc().into(),
+        fields: [
+          ("_ootb_field".into(), AnnotatedLogField::new_ootb("ootb")),
+          ("custom".into(), AnnotatedLogField::new_custom("custom")),
+        ]
+        .into(),
+      }),
       ..Default::default()
     });
+
+    // Log one log to trigger a global state update.
+    setup.logger_handle.log_sdk_start([].into(), 1.seconds());
 
     std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();
 
@@ -71,11 +85,15 @@ fn crash_reports() {
     assert_eq!(crash1.message(), "App crashed");
     assert_eq!(crash1.session_id(), initial_session_id);
     assert_ne!(crash1.timestamp(), timestamp);
+    assert_eq!(crash1.field("_ootb_field"), "ootb");
+    assert!(!crash1.has_field("custom"));
 
     let crash2 = logs.iter().find(|log| log.binary_field("_crash_artifact") == b"crash2").unwrap();
     assert_eq!(crash2.message(), "App crashed");
     assert_eq!(crash2.session_id(), initial_session_id);
     assert_eq!(crash2.timestamp(), timestamp);
+    assert_eq!(crash1.field("_ootb_field"), "ootb");
+    assert!(!crash1.has_field("custom"));
   });
 }
 

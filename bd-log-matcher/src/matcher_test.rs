@@ -10,7 +10,6 @@ use crate::matcher::Tree;
 use bd_log_primitives::{
   log_level,
   FieldsRef,
-  LogField,
   LogFields,
   LogLevel,
   LogMessage,
@@ -42,7 +41,7 @@ fn log_msg(message: &str) -> Input<'_> {
     LogType::Normal,
     log_level::DEBUG,
     LogMessage::String(message.to_string()),
-    Vec::new(),
+    [].into(),
   )
 }
 
@@ -51,7 +50,7 @@ fn binary_log_msg(message: &[u8]) -> Input<'_> {
     LogType::Normal,
     log_level::DEBUG,
     LogMessage::Bytes(message.to_vec()),
-    Vec::new(),
+    [].into(),
   )
 }
 
@@ -60,10 +59,7 @@ fn log_tag(key: &'static str, value: &'static str) -> Input<'static> {
     LogType::Normal,
     log_level::DEBUG,
     LogMessage::String("message".into()),
-    vec![LogField {
-      key: key.into(),
-      value: StringOrBytes::String(value.into()),
-    }],
+    [(key.into(), StringOrBytes::String(value.into()))].into(),
   )
 }
 
@@ -72,10 +68,7 @@ fn binary_log_tag(key: &'static str, value: &'static [u8]) -> Input<'static> {
     LogType::Normal,
     log_level::DEBUG,
     LogMessage::String("message".into()),
-    vec![LogField {
-      key: key.into(),
-      value: StringOrBytes::Bytes(value.into()),
-    }],
+    [(key.into(), StringOrBytes::Bytes(value.into()))].into(),
   )
 }
 
@@ -84,7 +77,7 @@ fn log_type(log_type: LogType) -> Input<'static> {
     log_type,
     log_level::DEBUG,
     LogMessage::String("message".into()),
-    Vec::new(),
+    [].into(),
   )
 }
 
@@ -93,7 +86,7 @@ fn log_level(log_level: LogLevel) -> Input<'static> {
     LogType::Normal,
     log_level,
     LogMessage::String("message".into()),
-    Vec::new(),
+    [].into(),
   )
 }
 

@@ -8,7 +8,7 @@
 use action_generate_log::generated_field::Generated_field_value_type;
 use action_generate_log::value_reference::Value_reference_type;
 use action_generate_log::{GeneratedField, ValueReference, ValueReferencePair};
-use bd_log_primitives::{LogField, LogFields, StringOrBytes};
+use bd_log_primitives::{LogFields, StringOrBytes};
 use bd_proto::protos;
 use bd_proto::protos::log_matcher::log_matcher::log_matcher;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::streaming::{
@@ -682,11 +682,8 @@ pub fn make_log_tag_matcher(name: &str, value: &str) -> LogMatcher {
 #[must_use]
 pub fn make_tags(labels: BTreeMap<String, String>) -> LogFields {
   labels
-    .iter()
-    .map(|elem| LogField {
-      key: (*elem.0).to_string(),
-      value: StringOrBytes::String((*elem.1).to_string()),
-    })
+    .into_iter()
+    .map(|(key, value)| (key, StringOrBytes::String(value)))
     .collect()
 }
 

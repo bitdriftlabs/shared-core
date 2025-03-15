@@ -14,7 +14,6 @@ use crate::{
   AppVersionExtra,
   InitParams,
   LogAttributesOverridesPreviousRunSessionID,
-  LogField,
   LogMessage,
   LogType,
   StringOrBytes,
@@ -22,7 +21,6 @@ use crate::{
 use assert_matches::assert_matches;
 use bd_client_common::error::UnexpectedErrorHandler;
 use bd_key_value::Store;
-use bd_log_metadata::LogFieldKind;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
@@ -121,8 +119,8 @@ fn log_upload() {
       log_level::DEBUG,
       LogType::Normal,
       "some log".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
     );
   }
@@ -141,7 +139,7 @@ fn log_upload_attributes_override() {
   let time_first = time::OffsetDateTime::now_utc();
   let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
     timestamp: Mutex::new(time_first),
-    fields: vec![],
+    fields: [].into(),
   }));
 
   setup.send_configuration_update(
@@ -170,8 +168,8 @@ fn log_upload_attributes_override() {
     log_level::DEBUG,
     LogType::Normal,
     "log with overridden attributes".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
     Some(LogAttributesOverridesPreviousRunSessionID {
       expected_previous_process_session_id: "foo_overridden".to_string(),
       occurred_at: time_second,
@@ -183,8 +181,8 @@ fn log_upload_attributes_override() {
     log_level::DEBUG,
     LogType::Normal,
     "log with overridden attributes".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
     Some(LogAttributesOverridesPreviousRunSessionID {
       expected_previous_process_session_id: "bar_overridden".to_string(),
       occurred_at: time_second,
@@ -196,8 +194,8 @@ fn log_upload_attributes_override() {
       log_level::DEBUG,
       LogType::Normal,
       "some log".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
     );
   }
@@ -277,8 +275,8 @@ fn buffer_selection_update() {
       log_level::DEBUG,
       LogType::Normal,
       "something".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
     );
   }
@@ -305,8 +303,8 @@ fn buffer_selection_update() {
       log_level::DEBUG,
       LogType::Normal,
       "something".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
     );
   }
@@ -354,8 +352,8 @@ fn configuration_caching() {
     log_level::DEBUG,
     LogType::Normal,
     "foo".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
     None,
   );
 
@@ -390,8 +388,8 @@ fn trigger_buffers_not_uploaded() {
       log_level::DEBUG,
       LogType::Normal,
       "something".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
     );
   }
@@ -426,8 +424,8 @@ fn blocking_log() {
     log_level::DEBUG,
     LogType::Normal,
     "foo".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
   );
 
   // Confim that workflows state is persisted to disk after the processing of log completes.
@@ -467,8 +465,8 @@ fn session_replay_actions() {
     log_level::DEBUG,
     LogType::Normal,
     "bar".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
   );
   // TODO(snowp): This is a bit of a brittle test as it relies on the timing of the screenshot
   // handling.
@@ -485,8 +483,8 @@ fn session_replay_actions() {
     log_level::DEBUG,
     LogType::Normal,
     "take a screenshot".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
   );
   wait_for!(
     1 == setup
@@ -499,8 +497,8 @@ fn session_replay_actions() {
     log_level::DEBUG,
     LogType::Replay,
     SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE.into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
   );
 
   // Due to all the channels used to propagate the fact that we have taken a screenshot, we need
@@ -520,8 +518,8 @@ fn session_replay_actions() {
     log_level::DEBUG,
     LogType::Normal,
     "take a screenshot".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
   );
   wait_for!(
     2 == setup
@@ -586,8 +584,8 @@ fn blocking_flush_state() {
     log_level::DEBUG,
     LogType::Normal,
     "foo".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
     None,
   );
 
@@ -645,8 +643,8 @@ fn log_tailing() {
     log_level::DEBUG,
     LogType::Normal,
     "something".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
     None,
   );
 
@@ -686,8 +684,8 @@ fn log_tailing() {
     log_level::DEBUG,
     LogType::Normal,
     "something".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
     None,
   );
 
@@ -731,8 +729,8 @@ fn workflow_flush_buffers_action_uploads_buffer() {
       log_level::DEBUG,
       LogType::Normal,
       "something".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
     );
   }
@@ -741,8 +739,8 @@ fn workflow_flush_buffers_action_uploads_buffer() {
     log_level::DEBUG,
     LogType::Normal,
     "fire workflow action!".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
     None,
   );
 
@@ -785,10 +783,14 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
 
   let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
     timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
-    fields: vec![
-      AnnotatedLogField::new_custom("k1".into(), "provider_value_1".into()),
-      AnnotatedLogField::new_ootb("k2".into(), "provider_value_2".into()),
-    ],
+    fields: [
+      (
+        "k1".into(),
+        AnnotatedLogField::new_custom("provider_value_1"),
+      ),
+      ("k2".into(), AnnotatedLogField::new_ootb("provider_value_2")),
+    ]
+    .into(),
   }));
 
   // Send down a configuration with a single buffer ('default')
@@ -825,8 +827,8 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
       log_level::DEBUG,
       LogType::InternalSDK,
       "something".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
     );
   }
@@ -835,17 +837,11 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
     log_level::DEBUG,
     LogType::Normal,
     "fire flush trigger buffer and start streaming action!".into(),
-    vec![LogField {
-      key: "k3".into(),
-      value: StringOrBytes::String("value_3".into()),
-    }]
-    .into_iter()
-    .map(|field| AnnotatedLogField {
-      field,
-      kind: LogFieldKind::Ootb,
-    })
-    .collect(),
-    vec![],
+    vec![("k3".into(), StringOrBytes::String("value_3".into()))]
+      .into_iter()
+      .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
+      .collect(),
+    [].into(),
     None,
   );
 
@@ -888,8 +884,8 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
       log_level::DEBUG,
       LogType::Normal,
       "message that should be streamed".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
     );
   }
@@ -906,8 +902,8 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
     log_level::DEBUG,
     LogType::Normal,
     "fire flush trigger buffer action!".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
     None,
   );
 
@@ -925,7 +921,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
 fn workflow_generate_log_to_histogram() {
   let metadata = Arc::new(LogMetadata {
     timestamp: Mutex::new(datetime!(2023-10-01 00:00:00 UTC)),
-    fields: vec![],
+    fields: [].into(),
   });
   let mut setup = Setup::new_with_metadata(metadata.clone());
   setup.send_runtime_update();
@@ -987,8 +983,8 @@ fn workflow_generate_log_to_histogram() {
     log_level::DEBUG,
     LogType::Normal,
     "foo".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
   );
 
   *metadata.timestamp.lock() = datetime!(2023-10-01 00:00:01.003 UTC);
@@ -997,8 +993,8 @@ fn workflow_generate_log_to_histogram() {
     log_level::DEBUG,
     LogType::Normal,
     "bar".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
   );
 
   setup.flush_and_upload_stats();
@@ -1068,17 +1064,13 @@ fn workflow_emit_metric_action_emits_metric() {
     log_level::DEBUG,
     LogType::Normal,
     "fire workflow action!".into(),
-    vec![LogField {
-      key: "extraction_key_from".into(),
-      value: StringOrBytes::String("extracted_value".into()),
-    }]
-    .into_iter()
-    .map(|field| AnnotatedLogField {
-      field,
-      kind: LogFieldKind::Ootb,
-    })
+    std::iter::once((
+      "extraction_key_from".into(),
+      StringOrBytes::String("extracted_value".into()),
+    ))
+    .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
     .collect(),
-    vec![],
+    [].into(),
   );
 
   setup.flush_and_upload_stats();
@@ -1153,16 +1145,16 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
     log_level::DEBUG,
     LogType::Normal,
     "first log".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
   );
 
   setup.blocking_log(
     log_level::DEBUG,
     LogType::Normal,
     "second log".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
   );
 
   setup.send_runtime_update();
@@ -1231,8 +1223,8 @@ fn transforms_emitted_logs_according_to_filters() {
       log_level::DEBUG,
       LogType::Normal,
       "message".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
     );
   }
@@ -1241,11 +1233,12 @@ fn transforms_emitted_logs_according_to_filters() {
     log_level::DEBUG,
     LogType::Normal,
     "yet another message!".into(),
-    vec![AnnotatedLogField::new_custom(
+    [(
       "foo".into(),
-      "do not fire workflow action!".into(),
-    )],
-    vec![],
+      AnnotatedLogField::new_custom("do not fire workflow action!"),
+    )]
+    .into(),
+    [].into(),
     None,
   );
 
@@ -1292,8 +1285,8 @@ fn remote_buffer_upload() {
       log_level::DEBUG,
       LogType::Normal,
       "test".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
     );
   }
@@ -1348,8 +1341,8 @@ fn continuous_and_trigger_buffer() {
       log_level::DEBUG,
       LogType::Normal,
       "test".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
     );
   }
@@ -1364,8 +1357,8 @@ fn continuous_and_trigger_buffer() {
     log_level::DEBUG,
     LogType::Normal,
     "fire!".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
     None,
   );
 
@@ -1394,8 +1387,8 @@ fn continuous_and_trigger_buffer() {
       log_level::DEBUG,
       LogType::Normal,
       "test".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
     );
   }
@@ -1442,8 +1435,8 @@ fn device_id_matching() {
       log_level::DEBUG,
       LogType::Normal,
       "test".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
     );
   }
@@ -1452,8 +1445,8 @@ fn device_id_matching() {
     log_level::DEBUG,
     LogType::InternalSDK,
     "fire!".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
     None,
   );
 
@@ -1500,8 +1493,8 @@ fn matching_on_but_not_capturing_matching_fields() {
       log_level::DEBUG,
       LogType::Normal,
       "test".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
     );
   }
@@ -1510,22 +1503,24 @@ fn matching_on_but_not_capturing_matching_fields() {
     log_level::DEBUG,
     LogType::InternalSDK,
     "fire!".into(),
-    vec![
-      AnnotatedLogField::new_custom(
+    [
+      (
         "_should_be_dropped_starting_with_underscore_key".into(),
-        "should be dropped value".into(),
+        AnnotatedLogField::new_custom("should be dropped value"),
       ),
-      AnnotatedLogField::new_custom(
+      (
         "_key".into(),
-        "_should_be_overridden_due_to_conflict_with_ootb_field".into(),
+        AnnotatedLogField::new_custom("_should_be_overridden_due_to_conflict_with_ootb_field"),
       ),
-      AnnotatedLogField::new_ootb("_key".into(), "_value".into()),
-      AnnotatedLogField::new_custom("key".into(), "value".into()),
-    ],
-    vec![AnnotatedLogField::new_ootb(
+      ("_key".into(), AnnotatedLogField::new_ootb("_value")),
+      ("key".into(), AnnotatedLogField::new_custom("value")),
+    ]
+    .into(),
+    [(
       "_phantom_key".into(),
-      "_phantom_value".into(),
-    )],
+      AnnotatedLogField::new_ootb("_phantom_value"),
+    )]
+    .into(),
     None,
   );
 
@@ -1556,14 +1551,14 @@ fn log_app_update() {
     "1".to_string(),
     AppVersionExtra::BuildNumber("2".to_string()),
     Some(123),
-    vec![],
+    [].into(),
     time::Duration::seconds(1),
   );
   setup.logger_handle.log_app_update(
     "2".to_string(),
     AppVersionExtra::BuildNumber("3".to_string()),
     Some(123),
-    vec![],
+    [].into(),
     time::Duration::seconds(1),
   );
 
@@ -1572,8 +1567,8 @@ fn log_app_update() {
       log_level::DEBUG,
       LogType::Normal,
       "test".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
     );
   }
@@ -1623,8 +1618,8 @@ fn continuous_buffer_resume_with_full_buffer() {
     log_level::DEBUG,
     LogType::Normal,
     "test".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
   );
 
   // Shut down the logger. The bufer should now be "full" and only have a single log in place.
@@ -1656,8 +1651,8 @@ fn continuous_buffer_resume_with_full_buffer() {
     log_level::DEBUG,
     LogType::Normal,
     "after startup".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
     None,
   );
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
@@ -1726,7 +1721,14 @@ fn stats_upload() {
     log_level::DEBUG,
     log_level::WARNING,
   ] {
-    setup.log(*level, LogType::Normal, "log".into(), vec![], vec![], None);
+    setup.log(
+      *level,
+      LogType::Normal,
+      "log".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
   }
 
   let stats = setup.logger.stats();
@@ -1797,23 +1799,14 @@ fn binary_message_and_fields() {
     log_level::DEBUG,
     LogType::Normal,
     LogMessage::Bytes(vec![1, 2, 3]),
-    vec![
-      LogField {
-        key: "str".into(),
-        value: StringOrBytes::String("str-data".to_string()),
-      },
-      LogField {
-        key: "binary".into(),
-        value: StringOrBytes::Bytes(vec![0, 0, 0]),
-      },
+    [
+      ("str".into(), StringOrBytes::String("str-data".to_string())),
+      ("binary".into(), StringOrBytes::Bytes(vec![0, 0, 0])),
     ]
     .into_iter()
-    .map(|field| AnnotatedLogField {
-      field,
-      kind: LogFieldKind::Ootb,
-    })
+    .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
     .collect(),
-    vec![],
+    [].into(),
     None,
   );
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
@@ -1837,8 +1830,8 @@ fn logs_before_cache_load() {
       log_level::ERROR,
       LogType::Normal,
       msg.as_str().into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
       false,
     );
@@ -1849,8 +1842,8 @@ fn logs_before_cache_load() {
     log_level::DEBUG,
     LogType::Normal,
     "trigger".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
     None,
     false,
   );

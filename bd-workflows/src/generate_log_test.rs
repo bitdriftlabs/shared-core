@@ -7,7 +7,7 @@
 
 use crate::generate_log::generate_log_action;
 use crate::workflow::TraversalExtractions;
-use bd_log_primitives::{log_level, FieldsRef, Log, LogField, LogFields, LogType};
+use bd_log_primitives::{log_level, FieldsRef, Log, LogFields, LogType};
 use bd_proto::protos::workflow::workflow::workflow::action::ActionGenerateLog;
 use bd_test_helpers::workflow::{make_generate_log_action, TestFieldRef, TestFieldType};
 use pretty_assertions::assert_eq;
@@ -44,15 +44,9 @@ impl Helper {
         message: message.into(),
         fields: fields
           .iter()
-          .map(|(k, v)| LogField {
-            key: (*k).to_string(),
-            value: (*v).into(),
-          })
+          .map(|(k, v)| ((*k).to_string(), (*v).into(),))
           .collect(),
-        matching_fields: vec![LogField {
-          key: "_generate_log_id".to_string(),
-          value: "id".into(),
-        },],
+        matching_fields: [("_generate_log_id".to_string(), "id".into(),),].into(),
         session_id: String::new(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
       }),
@@ -81,10 +75,7 @@ impl Helper {
   }
 
   fn add_field(&mut self, key: &str, value: &str) {
-    self.captured_fields.push(LogField {
-      key: key.to_string(),
-      value: value.into(),
-    });
+    self.captured_fields.insert(key.into(), value.into());
   }
 }
 

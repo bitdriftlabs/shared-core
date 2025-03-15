@@ -90,23 +90,12 @@ impl Setup {
       .await
       .into_iter()
       .sorted_by_key(|log| {
-        log
-          .fields
-          .iter()
-          .find(|field| field.key == "_crash_artifact")
-          .unwrap()
-          .value
+        log.fields["_crash_artifact"]
           .as_bytes()
           .unwrap_or_default()
           .to_vec()
       })
-      .map(|log| {
-        log
-          .fields
-          .into_iter()
-          .map(|field| (field.key, field.value))
-          .collect()
-      })
+      .map(|log| log.fields)
       .collect()
   }
 }
