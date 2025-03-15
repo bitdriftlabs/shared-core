@@ -27,16 +27,23 @@ fn crash_reports() {
       disk_storage: true,
       metadata_provider: Arc::new(LogMetadata {
         timestamp: time::OffsetDateTime::now_utc().into(),
-        fields: vec![
-          AnnotatedLogField::new_ootb("_ootb_field".into(), "ootb".into()),
-          AnnotatedLogField::new_custom("custom".into(), "custom".into()),
-        ],
+        fields: [
+          (
+            "_ootb_field".into(),
+            AnnotatedLogField::new_ootb("ootb".into()),
+          ),
+          (
+            "custom".into(),
+            AnnotatedLogField::new_custom("custom".into()),
+          ),
+        ]
+        .into(),
       }),
       ..Default::default()
     });
 
     // Log one log to trigger a global state update.
-    setup.logger_handle.log_sdk_start(vec![], 1.seconds());
+    setup.logger_handle.log_sdk_start([].into(), 1.seconds());
 
     std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();
 

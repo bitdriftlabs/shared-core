@@ -6,6 +6,8 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 pub use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub const LOG_FIELD_NAME_TYPE: &str = "log_type";
@@ -14,7 +16,7 @@ pub const LOG_FIELD_NAME_MESSAGE: &str = "_message";
 
 /// A union type that allows representing either a UTF-8 string or an opaque series of bytes. This
 /// is generic over the underlying String type to support different ownership models.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum StringOrBytes<S: AsRef<str>, B: AsRef<[u8]>> {
   String(S),
   SharedString(Arc<String>),
@@ -112,14 +114,14 @@ pub type LogFieldValue = StringOrBytes<String, Vec<u8>>;
 //
 
 /// The list of log fields annotated with extra information.
-pub type AnnotatedLogFields = Vec<AnnotatedLogField>;
+pub type AnnotatedLogFields = HashMap<String, AnnotatedLogField>;
 
 //
 // LogFields
 //
 
 /// The list of owned log fields.
-pub type LogFields = Vec<LogField>;
+pub type LogFields = HashMap<String, LogFieldValue>;
 
 //
 // AnnotatedLogField
@@ -127,43 +129,24 @@ pub type LogFields = Vec<LogField>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnnotatedLogField {
-  pub field: LogField,
+  pub value: LogFieldValue,
   pub kind: LogFieldKind,
 }
 
 impl AnnotatedLogField {
   #[must_use]
-  pub const fn new_ootb(key: String, value: LogFieldValue) -> Self {
+  pub const fn new_ootb(value: LogFieldValue) -> Self {
     Self {
-      field: LogField { key, value },
+      value,
       kind: LogFieldKind::Ootb,
     }
   }
 
   #[must_use]
-  pub const fn new_custom(key: String, value: LogFieldValue) -> Self {
+  pub const fn new_custom(value: LogFieldValue) -> Self {
     Self {
-      field: LogField { key, value },
+      value,
       kind: LogFieldKind::Custom,
-    }
-  }
-}
-
-//
-// LogField
-//
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LogField {
-  pub key: String,
-  pub value: LogFieldValue,
-}
-
-impl From<AnnotatedLogField> for LogField {
-  fn from(value: AnnotatedLogField) -> Self {
-    Self {
-      key: value.field.key,
-      value: value.field.value,
     }
   }
 }
@@ -172,7 +155,7 @@ impl From<AnnotatedLogField> for LogField {
 // LogFieldKind
 //
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LogFieldKind {
   Ootb,
   Custom,
@@ -245,8 +228,8 @@ impl<'a> FieldsRef<'a> {
     self
       .matching_fields
       .iter()
-      .find(|field| field.key == key)
-      .and_then(|field| field.value.as_str())
+      .find_map(|(k, v)| (key == k).then_some(v.as_str()))
+      .flatten()
   }
 }
 

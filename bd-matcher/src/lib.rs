@@ -43,7 +43,7 @@ impl FieldProvider for FieldsRef<'_> {
     if let Some(value) = self
       .captured_fields
       .iter()
-      .find_map(|field| (field.key == field_key).then(|| field.value.as_str()))
+      .find_map(|(key, value)| (key == field_key).then(|| value.as_str()))
       .flatten()
     {
       return Some(Cow::Borrowed(value));

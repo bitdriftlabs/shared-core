@@ -12,7 +12,7 @@ mod metadata_test;
 use crate::global_state::Tracker;
 use bd_log::warn_every;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind, MetadataProvider};
-use bd_log_primitives::{LogField, LogFields};
+use bd_log_primitives::{LogFieldValue, LogFields};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use itertools::Itertools;
 use std::collections::BTreeSet;
@@ -61,7 +61,7 @@ impl MetadataCollector {
   pub(crate) fn new(metadata_provider: Arc<dyn MetadataProvider + Send + Sync>) -> Self {
     Self {
       metadata_provider,
-      fields: vec![],
+      fields: [].into(),
     }
   }
   /// Returns metadata created by combining values acquired by combining the receiver's fields and
@@ -100,17 +100,17 @@ impl MetadataCollector {
     // Normalize fields. Process them in the order described below, where fields that are earlier in
     // the list take precedence over fields farther away in the list and cannot be overridden by
     // them.
-    let fields: Vec<LogField> = [
+    let fields = [
       provider_fields.ootb,
       log_fields.ootb,
       log_fields.custom,
       self.fields(),
       provider_fields.custom,
     ]
-    .concat()
     .into_iter()
-    .unique_by(|f| f.key.clone())
-    .collect_vec();
+    .flat_map(|f| f)
+    .unique_by(|(key, _)| key.clone())
+    .collect();
 
     let matching_fields = partition_fields(matching_fields);
 
@@ -120,10 +120,10 @@ impl MetadataCollector {
       matching_fields.custom,
       provider_matching_fields.custom,
     ]
-    .concat()
     .into_iter()
-    .unique_by(|f| f.key.clone())
-    .collect_vec();
+    .flat_map(|f| f)
+    .unique_by(|(key, _)| key.clone())
+    .collect();
 
     Ok(LogMetadata {
       timestamp,
@@ -132,22 +132,16 @@ impl MetadataCollector {
     })
   }
 
-  pub(crate) fn add_field(&mut self, field: LogField) -> anyhow::Result<()> {
-    verify_custom_field_name(&field)?;
+  pub(crate) fn add_field(&mut self, key: String, value: LogFieldValue) -> anyhow::Result<()> {
+    verify_custom_field_name(&key)?;
 
-    if let Some(position) = self.fields.iter().position(|f| f.key == field.key) {
-      self.fields.remove(position);
-    }
-
-    self.fields.push(field);
+    self.fields.insert(key, value);
 
     Ok(())
   }
 
   pub(crate) fn remove_field(&mut self, field_key: &str) {
-    if let Some(position) = self.fields.iter().position(|f| f.key == field_key) {
-      self.fields.remove(position);
-    }
+    self.fields.remove(field_key);
   }
 
   fn fields(&self) -> LogFields {
@@ -156,38 +150,39 @@ impl MetadataCollector {
 }
 
 fn partition_fields(field: AnnotatedLogFields) -> PartitionedFields {
-  let mut ootb = vec![];
-  let mut custom = vec![];
+  let mut ootb = LogFields::default();
+  let mut custom = LogFields::default();
 
-  for field in field {
-    match field.kind {
-      LogFieldKind::Ootb => ootb.push(field.field),
-      LogFieldKind::Custom => match verify_custom_field_name(&field.field) {
-        Ok(()) => custom.push(field.field),
+  for (key, value) in field {
+    match value.kind {
+      LogFieldKind::Ootb => ootb.insert(key, value.value),
+      LogFieldKind::Custom => match verify_custom_field_name(&key) {
+        Ok(()) => custom.insert(key, value.value),
         Err(e) => {
           warn_every!(15.seconds(), "failed to process field: {:?}", e);
+          continue;
         },
       },
-    }
+    };
   }
 
   PartitionedFields { ootb, custom }
 }
 
-fn verify_custom_field_name(field: &LogField) -> anyhow::Result<()> {
-  if RESERVED_FIELD_NAMES.contains(&field.key) {
+fn verify_custom_field_name(key: &str) -> anyhow::Result<()> {
+  if RESERVED_FIELD_NAMES.contains(key) {
     anyhow::bail!(
       "Custom global field with {:?} name is not allowed as the name is reserved for SDK internal \
        use",
-      field.key
+      key
     );
   }
 
-  if field.key.starts_with('_') {
+  if key.starts_with('_') {
     anyhow::bail!(
       "Custom global field with {:?} key is not allowed, fields whose key starts with \"_\" are \
        reserved for SDK internal use",
-      field.key
+      key
     );
   }
 

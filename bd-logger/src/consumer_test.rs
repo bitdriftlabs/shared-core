@@ -549,7 +549,7 @@ fn make_test_log(t: time::OffsetDateTime) -> Vec<u8> {
     log_level::INFO,
     LogType::Normal,
     &"".into(),
-    &vec![],
+    &[].into(),
     "",
     t,
     std::iter::empty(),

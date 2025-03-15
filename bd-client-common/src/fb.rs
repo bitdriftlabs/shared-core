@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use anyhow::anyhow;
-use bd_log_primitives::{LogField, LogFields, LogLevel, LogMessage, StringOrBytes};
+use bd_log_primitives::{LogFields, LogLevel, LogMessage, StringOrBytes};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::{
   root_as_log as fb_root_as_log,
   BinaryData,
@@ -64,7 +64,7 @@ pub fn make_log<'a: 'b, 'b>(
   let (message, message_type) = string_or_bytes_union(message, builder);
 
   let mut all_fields = Vec::new();
-  for LogField { key, value } in fields {
+  for (key, value) in fields {
     let key = builder.create_string(key.as_ref());
     let (value, value_type) = string_or_bytes_union(value, builder);
     all_fields.push(Field::create(

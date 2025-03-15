@@ -44,13 +44,21 @@ impl Setup {
 
 #[test]
 fn metric_increment_value_extraction() {
-  let fields = [
-    ("f1".to_string(), "1.1".into()),
-    ("f2".to_string(), "10".into()),
-  ]
-  .into();
+  let fields = vec![
+    LogField {
+      key: "f1".to_string(),
+      value: "1.1".into(),
+    },
+    LogField {
+      key: "f2".to_string(),
+      value: "10".into(),
+    },
+  ];
 
-  let matching_only_fields = [("m1".to_string(), "5".into())].into();
+  let matching_only_fields = vec![LogField {
+    key: "m1".to_string(),
+    value: "5".into(),
+  }];
 
   let setup = Setup::new();
   let (metrics_collector, dynamic_stats_collector) = setup.make_metrics_collector();
@@ -159,11 +167,16 @@ fn metric_increment_value_extraction() {
 
 #[test]
 fn counter_label_extraction() {
-  let fields = [
-    ("f1".to_string(), "foo".into()),
-    ("f2".to_string(), "bar".into()),
-  ]
-  .into();
+  let fields = vec![
+    LogField {
+      key: "f1".to_string(),
+      value: "foo".into(),
+    },
+    LogField {
+      key: "f2".to_string(),
+      value: "bar".into(),
+    },
+  ];
 
   let matching_only_fields = [("m1".to_string(), "5".into())].into();
 

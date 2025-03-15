@@ -7,7 +7,6 @@
 
 use crate::global_state::Tracker;
 use bd_device::Store;
-use bd_log_primitives::LogField;
 use bd_test_helpers::session::InMemoryStorage;
 use std::sync::Arc;
 
@@ -17,40 +16,29 @@ fn global_state_update() {
 
   assert!(state_tracker.global_state_fields().is_empty());
 
-  let fields = vec![
-    LogField {
-      key: "key2".into(),
-      value: "value2".into(),
-    },
-    LogField {
-      key: "key".into(),
-      value: "value".into(),
-    },
-  ];
+  let fields = [
+    ("key2".into(), "value2".into()),
+    ("key".into(), "value".into()),
+  ]
+  .into();
   assert!(state_tracker.maybe_update_global_state(&fields));
   assert!(!state_tracker.maybe_update_global_state(&fields));
 
   assert_eq!(state_tracker.global_state_fields(), fields);
-  assert_eq!(state_tracker.current_global_state, *fields);
+  assert_eq!(state_tracker.current_global_state.0, fields);
 
-  let updated_fields = vec![LogField {
-    key: "key".into(),
-    value: "value".into(),
-  }];
+  let updated_fields = [("key".into(), "value".into())].into();
 
   assert!(state_tracker.maybe_update_global_state(&updated_fields));
   assert!(!state_tracker.maybe_update_global_state(&updated_fields));
 
   assert_eq!(state_tracker.global_state_fields(), updated_fields);
-  assert_eq!(state_tracker.current_global_state, *updated_fields);
+  assert_eq!(state_tracker.current_global_state.0, updated_fields);
 
-  let updated_fields = vec![LogField {
-    key: "key".into(),
-    value: b"value".to_vec().into(),
-  }];
+  let updated_fields = [("key".into(), b"value".to_vec().into())].into();
 
   assert!(state_tracker.maybe_update_global_state(&updated_fields));
   assert!(!state_tracker.maybe_update_global_state(&updated_fields));
 
-  assert_eq!(state_tracker.global_state_fields(), vec![]);
+  assert_eq!(state_tracker.global_state_fields(), updated_fields);
 }

@@ -22,7 +22,7 @@ use bd_api::Metadata;
 use bd_client_stats_store::Scope;
 use bd_log::warn_every;
 use bd_log_metadata::AnnotatedLogFields;
-use bd_log_primitives::{log_level, AnnotatedLogField, LogField, LogLevel, LogMessage};
+use bd_log_primitives::{log_level, AnnotatedLogField, LogFieldValue, LogLevel, LogMessage};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::Snapshot;
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
@@ -156,17 +156,17 @@ impl LoggerHandle {
   }
 
   pub fn log_resource_utilization(&self, mut fields: AnnotatedLogFields, duration: time::Duration) {
-    fields.push(AnnotatedLogField::new_ootb(
+    fields.insert(
       "_duration_ms".into(),
-      (duration.as_seconds_f64() * 1_000f64).to_string().into(),
-    ));
+      AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string().into()),
+    );
 
     self.log(
       log_level::DEBUG,
       LogType::Resource,
       "".into(),
       fields,
-      vec![],
+      [].into(),
       None,
       false,
     );
@@ -190,17 +190,17 @@ impl LoggerHandle {
     mut fields: AnnotatedLogFields,
     duration: time::Duration,
   ) {
-    fields.push(AnnotatedLogField::new_ootb(
+    fields.insert(
       "_duration_ms".to_string(),
-      (duration.as_seconds_f64() * 1_000f64).to_string().into(),
-    ));
+      AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string().into()),
+    );
 
     self.log(
       log_level::INFO,
       LogType::Replay,
       message.into(),
       fields,
-      vec![],
+      [].into(),
       None,
       false,
     );
@@ -213,14 +213,17 @@ impl LoggerHandle {
 
   pub fn log_sdk_start(&self, mut fields: AnnotatedLogFields, duration: time::Duration) {
     fields.extend([
-      AnnotatedLogField::new_ootb(
+      (
         "_duration_ms".into(),
-        (duration.as_seconds_f64() * 1_000f64).to_string().into(),
+        AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string().into()),
       ),
-      AnnotatedLogField::new_ootb("_sdk_version".into(), self.sdk_version.to_string().into()),
-      AnnotatedLogField::new_ootb(
+      (
+        "_sdk_version".into(),
+        AnnotatedLogField::new_ootb(self.sdk_version.to_string().into()),
+      ),
+      (
         "_session_strategy".into(),
-        self.session_strategy.type_name().into(),
+        AnnotatedLogField::new_ootb(self.session_strategy.type_name().into()),
       ),
     ]);
 
@@ -229,7 +232,7 @@ impl LoggerHandle {
       LogType::Lifecycle,
       "SDKConfigured".into(),
       fields,
-      vec![],
+      [].into(),
       None,
       false,
     );
@@ -268,44 +271,44 @@ impl LoggerHandle {
 
     log::debug!("emitting app update event: {:?}", version);
 
-    fields.push(AnnotatedLogField::new_ootb(
+    fields.insert(
       "_duration_ms".into(),
-      (duration.as_seconds_f64() * 1_000f64).to_string().into(),
-    ));
+      AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string().into()),
+    );
     if let Some(app_install_size_bytes) = app_install_size_bytes {
-      fields.push(AnnotatedLogField::new_ootb(
+      fields.insert(
         "_app_install_size_bytes".into(),
-        app_install_size_bytes.to_string().into(),
-      ));
+        AnnotatedLogField::new_ootb(app_install_size_bytes.to_string().into()),
+      );
     }
-    fields.push(AnnotatedLogField::new_ootb(
+    fields.insert(
       "_previous_app_version".into(),
-      previous_app_version.app_version.into(),
-    ));
-    fields.push(AnnotatedLogField::new_ootb(
+      AnnotatedLogField::new_ootb(previous_app_version.app_version.into()),
+    );
+    fields.insert(
       format!(
         "_previous_{}",
         previous_app_version.app_version_extra.name()
       ),
-      previous_app_version.app_version_extra.string_value().into(),
-    ));
+      AnnotatedLogField::new_ootb(previous_app_version.app_version_extra.string_value().into()),
+    );
 
     self.log(
       log_level::INFO,
       LogType::Lifecycle,
       "AppUpdated".into(),
       fields,
-      vec![],
+      [].into(),
       None,
       false,
     );
   }
 
-  pub fn add_log_field(&self, field: LogField) {
+  pub fn add_log_field(&self, key: String, value: LogFieldValue) {
     LOGGER_GUARD.with(|cell| {
       if cell.try_borrow().is_ok() {
-        let field_name = field.key.clone();
-        let result = AsyncLogBuffer::<LoggerReplay>::add_log_field(&self.tx, field);
+        let field_name = key.clone();
+        let result = AsyncLogBuffer::<LoggerReplay>::add_log_field(&self.tx, key, value);
 
         self.stats.field_addition_counters.record(&result);
 
@@ -317,7 +320,7 @@ impl LoggerHandle {
           15.seconds(),
           "failed to add {:?} log field, adding log fields from within a field provider is not \
            allowed",
-          field.key
+          key
         );
       }
     });

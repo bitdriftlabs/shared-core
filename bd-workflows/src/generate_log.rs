@@ -14,7 +14,7 @@ use action::action_generate_log::generated_field::Generated_field_value_type;
 use action::action_generate_log::value_reference::Value_reference_type;
 use action::action_generate_log::ValueReference;
 use action::ActionGenerateLog;
-use bd_log_primitives::{log_level, FieldsRef, Log, LogField, LogType, StringOrBytes};
+use bd_log_primitives::{log_level, FieldsRef, Log, LogFields, LogType, StringOrBytes};
 use bd_matcher::FieldProvider;
 use bd_proto::protos::workflow::workflow::workflow::action;
 use bd_proto::protos::workflow::workflow::workflow::action::action_generate_log::ValueReferencePair;
@@ -99,7 +99,7 @@ pub fn generate_log_action(
   current_log_fields: &FieldsRef<'_>,
 ) -> Option<Log> {
   let message = action.message.clone();
-  let mut fields = vec![];
+  let mut fields = LogFields::default();
   for field in &action.fields {
     let value = match field.generated_field_value_type.as_ref()? {
       Generated_field_value_type::Single(reference) => {
@@ -124,10 +124,7 @@ pub fn generate_log_action(
     };
 
     if let Some(value) = value {
-      fields.push(LogField {
-        key: field.name.clone(),
-        value: StringOrBytes::String(value.to_string()),
-      });
+      fields.insert(field.name.clone(), StringOrBytes::String(value.to_string()));
     }
   }
 
@@ -136,10 +133,10 @@ pub fn generate_log_action(
     log_type: LogType::Normal,
     fields,
     message: StringOrBytes::String(message),
-    matching_fields: vec![LogField {
-      key: "_generate_log_id".to_string(),
-      value: StringOrBytes::String(action.id.to_string()),
-    }],
+    matching_fields: LogFields::from([(
+      "_generate_log_id".to_string(),
+      StringOrBytes::String(action.id.to_string()),
+    )]),
     // These will be filled in later via the log processor.
     session_id: String::new(),
     occurred_at: OffsetDateTime::UNIX_EPOCH,

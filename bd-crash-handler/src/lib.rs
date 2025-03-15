@@ -11,7 +11,7 @@ mod tests;
 
 mod json_extractor;
 
-use bd_log_primitives::{AnnotatedLogField, LogFields};
+use bd_log_primitives::LogFields;
 use bd_runtime::runtime::{ConfigLoader, StringWatch};
 use bd_shutdown::ComponentShutdown;
 use itertools::Itertools as _;
@@ -291,21 +291,20 @@ impl Monitor {
         // TODO(snowp): Eventually we'll want to upload the report out of band, but for now just
         // chuck it into a log line.
         logs.push(CrashLog {
-          fields: vec![
-            AnnotatedLogField::new_ootb("_crash_artifact".into(), contents.into()).into(),
-            AnnotatedLogField::new_ootb(
+          fields: [
+            ("_crash_artifact".into(), contents.into()),
+            (
               "_crash_reason".into(),
               crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
-            )
-            .into(),
-            AnnotatedLogField::new_ootb(
+            ),
+            (
               "_crash_details".into(),
               crash_details
                 .unwrap_or_else(|| "unknown".to_string())
                 .into(),
-            )
-            .into(),
-          ],
+            ),
+          ]
+          .into(),
           timestamp,
         });
       }

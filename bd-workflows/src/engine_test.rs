@@ -16,7 +16,7 @@ use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
 use bd_api::DataUpload;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{BoundedCollector, Collector};
-use bd_log_primitives::{log_level, FieldsRef, Log, LogField, LogFields, LogMessage, LogRef};
+use bd_log_primitives::{log_level, FieldsRef, Log, LogFields, LogMessage, LogRef};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::client::api::log_upload_intent_request::Intent_type::WorkflowActionUpload;
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
@@ -3161,14 +3161,8 @@ async fn generate_log_multiple() {
         log_level: log_level::DEBUG,
         log_type: LogType::Normal,
         message: "message1".into(),
-        fields: vec![LogField {
-          key: "duration".to_string(),
-          value: "1".into(),
-        },],
-        matching_fields: vec![LogField {
-          key: "_generate_log_id".to_string(),
-          value: "id1".into(),
-        }],
+        fields: [("duration".to_string(), "1".into(),),].into(),
+        matching_fields: [("_generate_log_id".to_string(), "id1".into(),)].into(),
         session_id: String::new(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
       },
@@ -3176,14 +3170,8 @@ async fn generate_log_multiple() {
         log_level: log_level::DEBUG,
         log_type: LogType::Normal,
         message: "message2".into(),
-        fields: vec![LogField {
-          key: "duration".to_string(),
-          value: "2".into(),
-        },],
-        matching_fields: vec![LogField {
-          key: "_generate_log_id".to_string(),
-          value: "id2".into(),
-        }],
+        fields: [("duration".to_string(), "2".into(),),].into(),
+        matching_fields: [("_generate_log_id".to_string(), "id2".into(),)].into(),
         session_id: String::new(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
       }
@@ -3259,20 +3247,12 @@ async fn generate_log_action() {
       log_level: log_level::DEBUG,
       log_type: LogType::Normal,
       message: "message".into(),
-      fields: vec![
-        LogField {
-          key: "duration".to_string(),
-          value: "0.003000020980834961".into(),
-        },
-        LogField {
-          key: "other".to_string(),
-          value: "value1".into(),
-        }
-      ],
-      matching_fields: vec![LogField {
-        key: "_generate_log_id".to_string(),
-        value: "id".into(),
-      }],
+      fields: [
+        ("duration".to_string(), "0.003000020980834961".into(),),
+        ("other".to_string(), "value1".into(),)
+      ]
+      .into(),
+      matching_fields: [("_generate_log_id".to_string(), "id".into(),)].into(),
       session_id: String::new(),
       occurred_at: OffsetDateTime::UNIX_EPOCH,
     }]

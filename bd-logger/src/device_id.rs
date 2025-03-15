@@ -38,9 +38,9 @@ impl LogInterceptor for DeviceIdInterceptor {
     // The device_id field is populated by lapi on upload based on the handshake, so by putting
     // it in the matching fields it will be matchable and also present on all logs without us
     // having to add an explicit field that eats up buffer capacity.
-    matching_fields.push(AnnotatedLogField::new_ootb(
+    matching_fields.insert(
       "_device_id".to_string(),
-      self.device_id.clone().into(),
-    ));
+      AnnotatedLogField::new_ootb(self.device_id.clone().into()),
+    );
   }
 }

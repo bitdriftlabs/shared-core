@@ -312,7 +312,7 @@ impl LoggerBuilder {
           log_type: LogType::Lifecycle,
           message: "App crashed".into(),
           fields: crash_log.fields,
-          matching_fields: vec![],
+          matching_fields: [].into(),
           session_id: session_strategy
             .previous_process_session_id()
             .unwrap_or_else(|| session_strategy.session_id()),

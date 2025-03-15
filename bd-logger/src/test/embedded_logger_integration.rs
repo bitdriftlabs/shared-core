@@ -5,9 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{log_level, AnnotatedLogField, InitParams, LogType, Logger, MetadataProvider};
+use crate::{log_level, InitParams, LogType, Logger, MetadataProvider};
 use assert_matches::assert_matches;
 use bd_key_value::Store;
+use bd_log_metadata::AnnotatedLogFields;
 use bd_proto::protos::client::api::RuntimeUpdate;
 use bd_proto::protos::client::runtime::runtime::{value, Value};
 use bd_proto::protos::client::runtime::Runtime;
@@ -37,8 +38,8 @@ impl MetadataProvider for TestMetadataProvider {
     Ok(time::OffsetDateTime::now_utc())
   }
 
-  fn fields(&self) -> anyhow::Result<Vec<AnnotatedLogField>> {
-    Ok(Vec::new())
+  fn fields(&self) -> anyhow::Result<AnnotatedLogFields> {
+    Ok(AnnotatedLogFields::default())
   }
 }
 
@@ -170,8 +171,8 @@ async fn configuration_update_with_log_uploads() {
     log_level::DEBUG,
     LogType::Normal,
     "test".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
     None,
     false,
   );

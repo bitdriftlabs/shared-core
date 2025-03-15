@@ -37,7 +37,6 @@ pub use bd_log_primitives::{
   log_level,
   AnnotatedLogField,
   FieldsRef,
-  LogField,
   LogFieldKind,
   LogFieldValue,
   LogFields,

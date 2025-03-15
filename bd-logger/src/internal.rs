@@ -10,7 +10,6 @@ use bd_log_metadata::LogFieldKind;
 use bd_log_primitives::{AnnotatedLogField, LogFields, LogLevel};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::ConfigLoader;
-use itertools::Itertools;
 
 //
 // InternalLogger
@@ -48,12 +47,17 @@ impl bd_internal_logging::Logger for InternalLogger {
       msg.into(),
       fields
         .into_iter()
-        .map(|field| AnnotatedLogField {
-          field,
-          kind: LogFieldKind::Ootb,
+        .map(|(key, value)| {
+          (
+            key,
+            AnnotatedLogField {
+              value,
+              kind: LogFieldKind::Ootb,
+            },
+          )
         })
-        .collect_vec(),
-      vec![],
+        .collect(),
+      [].into(),
       None,
       false,
     );
