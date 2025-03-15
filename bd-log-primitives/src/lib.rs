@@ -225,11 +225,7 @@ impl<'a> FieldsRef<'a> {
 
   #[must_use]
   pub fn matching_field_value(&self, key: &str) -> Option<&str> {
-    self
-      .matching_fields
-      .iter()
-      .find_map(|(k, v)| (key == k).then_some(v.as_str()))
-      .flatten()
+    self.matching_fields.get(key)?.as_str()
   }
 }
 
