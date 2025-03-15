@@ -1076,11 +1076,10 @@ fn workflow_emit_metric_action_emits_metric() {
     log_level::DEBUG,
     LogType::Normal,
     "fire workflow action!".into(),
-    [(
+    std::iter::once((
       "extraction_key_from".into(),
       StringOrBytes::String("extracted_value".into()),
-    )]
-    .into_iter()
+    ))
     .map(|(key, value)| {
       (
         key,

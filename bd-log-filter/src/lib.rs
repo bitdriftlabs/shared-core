@@ -401,7 +401,7 @@ impl FieldProvider for Log {
         .fields
         .iter()
         .chain(self.matching_fields.iter())
-        .find_map(|(k, v)| (k == key).then(|| v))
+        .find_map(|(k, v)| (k == key).then_some(v))
         .and_then(|f| f.as_str())
         .map(Into::into),
     }

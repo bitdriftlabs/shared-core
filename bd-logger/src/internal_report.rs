@@ -90,7 +90,7 @@ impl LogInterceptor for Reporter {
     );
     fields.insert(
       "_device_logs_count".into(),
-      create_field(guard.device_logs_count.to_string().into()),
+      create_field(guard.device_logs_count.to_string()),
     );
     fields.insert(
       "_device_logs_total_count".into(),

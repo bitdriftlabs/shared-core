@@ -108,7 +108,7 @@ impl MetadataCollector {
       provider_fields.custom,
     ]
     .into_iter()
-    .flat_map(|f| f)
+    .flatten()
     .unique_by(|(key, _)| key.clone())
     .collect();
 
@@ -121,7 +121,7 @@ impl MetadataCollector {
       provider_matching_fields.custom,
     ]
     .into_iter()
-    .flat_map(|f| f)
+    .flatten()
     .unique_by(|(key, _)| key.clone())
     .collect();
 
