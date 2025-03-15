@@ -21,7 +21,6 @@ use crate::{
 use assert_matches::assert_matches;
 use bd_client_common::error::UnexpectedErrorHandler;
 use bd_key_value::Store;
-use bd_log_metadata::LogFieldKind;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
@@ -787,12 +786,9 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
     fields: [
       (
         "k1".into(),
-        AnnotatedLogField::new_custom("provider_value_1".into()),
+        AnnotatedLogField::new_custom("provider_value_1"),
       ),
-      (
-        "k2".into(),
-        AnnotatedLogField::new_ootb("provider_value_2".into()),
-      ),
+      ("k2".into(), AnnotatedLogField::new_ootb("provider_value_2")),
     ]
     .into(),
   }));
@@ -843,15 +839,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
     "fire flush trigger buffer and start streaming action!".into(),
     vec![("k3".into(), StringOrBytes::String("value_3".into()))]
       .into_iter()
-      .map(|(key, value)| {
-        (
-          key,
-          AnnotatedLogField {
-            kind: LogFieldKind::Ootb,
-            value,
-          },
-        )
-      })
+      .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
       .collect(),
     [].into(),
     None,
@@ -1080,15 +1068,7 @@ fn workflow_emit_metric_action_emits_metric() {
       "extraction_key_from".into(),
       StringOrBytes::String("extracted_value".into()),
     ))
-    .map(|(key, value)| {
-      (
-        key,
-        AnnotatedLogField {
-          value,
-          kind: LogFieldKind::Ootb,
-        },
-      )
-    })
+    .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
     .collect(),
     [].into(),
   );
@@ -1255,7 +1235,7 @@ fn transforms_emitted_logs_according_to_filters() {
     "yet another message!".into(),
     [(
       "foo".into(),
-      AnnotatedLogField::new_custom("do not fire workflow action!".into()),
+      AnnotatedLogField::new_custom("do not fire workflow action!"),
     )]
     .into(),
     [].into(),
@@ -1526,21 +1506,19 @@ fn matching_on_but_not_capturing_matching_fields() {
     [
       (
         "_should_be_dropped_starting_with_underscore_key".into(),
-        AnnotatedLogField::new_custom("should be dropped value".into()),
+        AnnotatedLogField::new_custom("should be dropped value"),
       ),
       (
         "_key".into(),
-        AnnotatedLogField::new_custom(
-          "_should_be_overridden_due_to_conflict_with_ootb_field".into(),
-        ),
+        AnnotatedLogField::new_custom("_should_be_overridden_due_to_conflict_with_ootb_field"),
       ),
-      ("_key".into(), AnnotatedLogField::new_ootb("_value".into())),
-      ("key".into(), AnnotatedLogField::new_custom("value".into())),
+      ("_key".into(), AnnotatedLogField::new_ootb("_value")),
+      ("key".into(), AnnotatedLogField::new_custom("value")),
     ]
     .into(),
     [(
       "_phantom_key".into(),
-      AnnotatedLogField::new_ootb("_phantom_value".into()),
+      AnnotatedLogField::new_ootb("_phantom_value"),
     )]
     .into(),
     None,
@@ -1826,15 +1804,7 @@ fn binary_message_and_fields() {
       ("binary".into(), StringOrBytes::Bytes(vec![0, 0, 0])),
     ]
     .into_iter()
-    .map(|(key, value)| {
-      (
-        key,
-        AnnotatedLogField {
-          kind: LogFieldKind::Ootb,
-          value,
-        },
-      )
-    })
+    .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
     .collect(),
     [].into(),
     None,

@@ -40,7 +40,7 @@ impl LogInterceptor for DeviceIdInterceptor {
     // having to add an explicit field that eats up buffer capacity.
     matching_fields.insert(
       "_device_id".to_string(),
-      AnnotatedLogField::new_ootb(self.device_id.clone().into()),
+      AnnotatedLogField::new_ootb(self.device_id.clone()),
     );
   }
 }

@@ -83,7 +83,7 @@ fn network_quality() {
     );
     assert_eq!(
       fields["_network_quality"],
-      AnnotatedLogField::new_ootb("offline".into(),)
+      AnnotatedLogField::new_ootb("offline")
     );
   }
   {

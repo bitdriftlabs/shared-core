@@ -6,7 +6,6 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::logger::LoggerHandle;
-use bd_log_metadata::LogFieldKind;
 use bd_log_primitives::{AnnotatedLogField, LogFields, LogLevel};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::ConfigLoader;
@@ -47,15 +46,7 @@ impl bd_internal_logging::Logger for InternalLogger {
       msg.into(),
       fields
         .into_iter()
-        .map(|(key, value)| {
-          (
-            key,
-            AnnotatedLogField {
-              value,
-              kind: LogFieldKind::Ootb,
-            },
-          )
-        })
+        .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
         .collect(),
       [].into(),
       None,

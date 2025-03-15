@@ -21,11 +21,7 @@ use std::sync::Arc;
 fn collector_attaches_provider_fields_as_matching_fields() {
   let metadata = LogMetadata {
     timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
-    fields: [(
-      "key".into(),
-      AnnotatedLogField::new_ootb("provider_value".into()),
-    )]
-    .into(),
+    fields: [("key".into(), AnnotatedLogField::new_ootb("provider_value"))].into(),
   };
 
   let collector = MetadataCollector::new(Arc::new(metadata));
@@ -38,8 +34,8 @@ fn collector_attaches_provider_fields_as_matching_fields() {
     let metadata = collector
       .normalized_metadata_with_extra_fields(
         [
-          ("key".into(), AnnotatedLogField::new_ootb("value".into())),
-          ("key2".into(), AnnotatedLogField::new_ootb("value2".into())),
+          ("key".into(), AnnotatedLogField::new_ootb("value")),
+          ("key2".into(), AnnotatedLogField::new_ootb("value2")),
         ]
         .into(),
         [].into(),
@@ -117,23 +113,19 @@ fn collector_fields_hierarchy() {
   let metadata = collector
     .normalized_metadata_with_extra_fields(
       [
-        ("key".into(), AnnotatedLogField::new_ootb("value".into())),
-        ("_key".into(), AnnotatedLogField::new_ootb("_value".into())),
+        ("key".into(), AnnotatedLogField::new_ootb("value")),
+        ("_key".into(), AnnotatedLogField::new_ootb("_value")),
         (
           "_should_be_dropped_key".into(),
-          AnnotatedLogField::new_custom("should be dropped as it uses reserved _ prefix".into()),
+          AnnotatedLogField::new_custom("should be dropped as it uses reserved _ prefix"),
         ),
         (
           "ootb_provider_key_1".into(),
-          AnnotatedLogField::new_custom(
-            "should be ignored as it conflicts with ootb provider key".into(),
-          ),
+          AnnotatedLogField::new_custom("should be ignored as it conflicts with ootb provider key"),
         ),
         (
           "ootb_provider_key_2".into(),
-          AnnotatedLogField::new_ootb(
-            "should be ignored as it conflicts with ootb provider key".into(),
-          ),
+          AnnotatedLogField::new_ootb("should be ignored as it conflicts with ootb provider key"),
         ),
       ]
       .into(),
@@ -181,11 +173,11 @@ fn collector_does_not_accept_reserved_fields() {
     fields: [
       (
         "_custom_provider_key".into(),
-        AnnotatedLogField::new_custom("custom_provider_value".into()),
+        AnnotatedLogField::new_custom("custom_provider_value"),
       ),
       (
         "_ootb_provider_key".into(),
-        AnnotatedLogField::new_ootb("ootb_provider_value".into()),
+        AnnotatedLogField::new_ootb("ootb_provider_value"),
       ),
     ]
     .into(),

@@ -158,7 +158,7 @@ impl LoggerHandle {
   pub fn log_resource_utilization(&self, mut fields: AnnotatedLogFields, duration: time::Duration) {
     fields.insert(
       "_duration_ms".into(),
-      AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string().into()),
+      AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string()),
     );
 
     self.log(
@@ -192,7 +192,7 @@ impl LoggerHandle {
   ) {
     fields.insert(
       "_duration_ms".to_string(),
-      AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string().into()),
+      AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string()),
     );
 
     self.log(
@@ -215,15 +215,15 @@ impl LoggerHandle {
     fields.extend([
       (
         "_duration_ms".into(),
-        AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string().into()),
+        AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string()),
       ),
       (
         "_sdk_version".into(),
-        AnnotatedLogField::new_ootb(self.sdk_version.to_string().into()),
+        AnnotatedLogField::new_ootb(self.sdk_version.to_string()),
       ),
       (
         "_session_strategy".into(),
-        AnnotatedLogField::new_ootb(self.session_strategy.type_name().into()),
+        AnnotatedLogField::new_ootb(self.session_strategy.type_name()),
       ),
     ]);
 
@@ -273,24 +273,24 @@ impl LoggerHandle {
 
     fields.insert(
       "_duration_ms".into(),
-      AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string().into()),
+      AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string()),
     );
     if let Some(app_install_size_bytes) = app_install_size_bytes {
       fields.insert(
         "_app_install_size_bytes".into(),
-        AnnotatedLogField::new_ootb(app_install_size_bytes.to_string().into()),
+        AnnotatedLogField::new_ootb(app_install_size_bytes.to_string()),
       );
     }
     fields.insert(
       "_previous_app_version".into(),
-      AnnotatedLogField::new_ootb(previous_app_version.app_version.into()),
+      AnnotatedLogField::new_ootb(previous_app_version.app_version),
     );
     fields.insert(
       format!(
         "_previous_{}",
         previous_app_version.app_version_extra.name()
       ),
-      AnnotatedLogField::new_ootb(previous_app_version.app_version_extra.string_value().into()),
+      AnnotatedLogField::new_ootb(previous_app_version.app_version_extra.string_value()),
     );
 
     self.log(

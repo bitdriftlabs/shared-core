@@ -17,7 +17,7 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
 use bd_key_value::Store;
 use bd_log_filter::FilterChain;
-use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
+use bd_log_metadata::AnnotatedLogFields;
 use bd_log_primitives::{log_level, AnnotatedLogField, Log, LogFields, StringOrBytes};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
@@ -226,7 +226,7 @@ fn log_line_size_is_computed_correctly() {
       log_level: 0,
       log_type: LogType::Normal,
       message: "foo".into(),
-      fields: [("foo".into(), AnnotatedLogField::new_ootb("bar".into()))].into(),
+      fields: [("foo".into(), AnnotatedLogField::new_ootb("bar"))].into(),
       matching_fields: [].into(),
       attributes_overrides: None,
       log_processing_completed_tx: None,
@@ -249,11 +249,8 @@ fn log_line_size_is_computed_correctly() {
   // Add one extra character to one of the fields' keys and verify that reported size increases
   // by 1 byte
   let mut baseline_log_with_longer_field_key = create_baseline_log();
-  baseline_log_with_longer_field_key.fields = [(
-    "foo1".to_string(),
-    AnnotatedLogField::new_ootb("bar".into()),
-  )]
-  .into();
+  baseline_log_with_longer_field_key.fields =
+    [("foo1".to_string(), AnnotatedLogField::new_ootb("bar"))].into();
 
   assert_eq!(
     baseline_log_expected_size + 1,
@@ -263,14 +260,8 @@ fn log_line_size_is_computed_correctly() {
   // Add one extra character to one of the fields' values and verify that reported size increases
   // by 1 byte
   let mut baseline_log_with_longer_field_value = baseline_log;
-  baseline_log_with_longer_field_value.fields = [(
-    "foo".to_string(),
-    AnnotatedLogField {
-      kind: LogFieldKind::Ootb,
-      value: StringOrBytes::String("bar1".to_string()),
-    },
-  )]
-  .into();
+  baseline_log_with_longer_field_value.fields =
+    [("foo".to_string(), AnnotatedLogField::new_ootb("bar1"))].into();
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_field_value.size()

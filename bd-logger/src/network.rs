@@ -8,7 +8,7 @@
 #[cfg(test)]
 #[path = "./network_test.rs"]
 mod network_test;
-use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
+use bd_log_metadata::AnnotatedLogFields;
 use bd_log_primitives::{
   AnnotatedLogField,
   LogInterceptor,
@@ -299,10 +299,7 @@ fn get_int_field_value(fields: &AnnotatedLogFields, field_key: &str) -> Option<u
 fn create_int_field(key: &str, value: u64) -> (String, AnnotatedLogField) {
   (
     key.to_string(),
-    AnnotatedLogField {
-      kind: LogFieldKind::Ootb,
-      value: StringOrBytes::String(value.to_string()),
-    },
+    AnnotatedLogField::new_ootb(value.to_string()),
   )
 }
 
@@ -367,7 +364,7 @@ impl LogInterceptor for NetworkQualityInterceptor {
 
     fields.insert(
       "_network_quality".to_string(),
-      AnnotatedLogField::new_ootb("offline".into()),
+      AnnotatedLogField::new_ootb("offline"),
     );
   }
 }

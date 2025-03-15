@@ -80,78 +80,76 @@ impl LogInterceptor for Reporter {
       return;
     }
 
-    fields.insert(
-      "_logs_count".into(),
-      create_field(guard.logs_count.to_string()),
-    );
-    fields.insert(
-      "_logs_total_count".into(),
-      create_field(guard.logs_total_count.to_string()),
-    );
-    fields.insert(
-      "_device_logs_count".into(),
-      create_field(guard.device_logs_count.to_string()),
-    );
-    fields.insert(
-      "_device_logs_total_count".into(),
-      create_field(guard.device_logs_total_count.to_string()),
-    );
-    fields.insert(
-      "_internal_logs_count".into(),
-      create_field(guard.internal_logs_count.to_string()),
-    );
-    fields.insert(
-      "_internal_logs_total_count".into(),
-      create_field(guard.internal_logs_total_count.to_string()),
-    );
-    fields.insert(
-      "_network_logs_count".into(),
-      create_field(guard.network_logs_count.to_string()),
-    );
-    fields.insert(
-      "_network_logs_total_count".into(),
-      create_field(guard.network_logs_total_count.to_string()),
-    );
-    fields.insert(
-      "_normal_logs_count".into(),
-      create_field(guard.normal_logs_count.to_string()),
-    );
-    fields.insert(
-      "_normal_logs_total_count".into(),
-      create_field(guard.normal_logs_total_count.to_string()),
-    );
-    fields.insert(
-      "_lifecycle_logs_count".into(),
-      create_field(guard.lifecycle_logs_count.to_string()),
-    );
-    fields.insert(
-      "_lifecycle_logs_total_count".into(),
-      create_field(guard.lifecycle_logs_total_count.to_string()),
-    );
-    fields.insert(
-      "_replay_logs_count".into(),
-      create_field(guard.replay_logs_count.to_string()),
-    );
-    fields.insert(
-      "_replay_logs_total_count".into(),
-      create_field(guard.replay_logs_total_count.to_string()),
-    );
-    fields.insert(
-      "_resource_logs_count".into(),
-      create_field(guard.resource_logs_count.to_string()),
-    );
-    fields.insert(
-      "_resource_logs_total_count".into(),
-      create_field(guard.resource_logs_total_count.to_string()),
-    );
+    fields.insert("_logs_count".into(), {
+      let value = guard.logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_logs_total_count".into(), {
+      let value = guard.logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_device_logs_count".into(), {
+      let value = guard.device_logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_device_logs_total_count".into(), {
+      let value = guard.device_logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_internal_logs_count".into(), {
+      let value = guard.internal_logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_internal_logs_total_count".into(), {
+      let value = guard.internal_logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_network_logs_count".into(), {
+      let value = guard.network_logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_network_logs_total_count".into(), {
+      let value = guard.network_logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_normal_logs_count".into(), {
+      let value = guard.normal_logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_normal_logs_total_count".into(), {
+      let value = guard.normal_logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_lifecycle_logs_count".into(), {
+      let value = guard.lifecycle_logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_lifecycle_logs_total_count".into(), {
+      let value = guard.lifecycle_logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_replay_logs_count".into(), {
+      let value = guard.replay_logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_replay_logs_total_count".into(), {
+      let value = guard.replay_logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_resource_logs_count".into(), {
+      let value = guard.resource_logs_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
+    fields.insert("_resource_logs_total_count".into(), {
+      let value = guard.resource_logs_total_count.to_string();
+      AnnotatedLogField::new_ootb(value)
+    });
 
     guard.clear();
   }
 }
 
-fn create_field(value: String) -> AnnotatedLogField {
-  AnnotatedLogField::new_ootb(value.into())
-}
+
 
 //
 // State

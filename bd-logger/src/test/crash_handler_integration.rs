@@ -28,14 +28,8 @@ fn crash_reports() {
       metadata_provider: Arc::new(LogMetadata {
         timestamp: time::OffsetDateTime::now_utc().into(),
         fields: [
-          (
-            "_ootb_field".into(),
-            AnnotatedLogField::new_ootb("ootb".into()),
-          ),
-          (
-            "custom".into(),
-            AnnotatedLogField::new_custom("custom".into()),
-          ),
+          ("_ootb_field".into(), AnnotatedLogField::new_ootb("ootb")),
+          ("custom".into(), AnnotatedLogField::new_custom("custom")),
         ]
         .into(),
       }),

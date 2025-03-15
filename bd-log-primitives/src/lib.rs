@@ -135,17 +135,17 @@ pub struct AnnotatedLogField {
 
 impl AnnotatedLogField {
   #[must_use]
-  pub const fn new_ootb(value: LogFieldValue) -> Self {
+  pub fn new_ootb(value: impl Into<LogFieldValue>) -> Self {
     Self {
-      value,
+      value: value.into(),
       kind: LogFieldKind::Ootb,
     }
   }
 
   #[must_use]
-  pub const fn new_custom(value: LogFieldValue) -> Self {
+  pub fn new_custom(value: impl Into<LogFieldValue>) -> Self {
     Self {
-      value,
+      value: value.into(),
       kind: LogFieldKind::Custom,
     }
   }

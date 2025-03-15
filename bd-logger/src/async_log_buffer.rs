@@ -23,7 +23,7 @@ use anyhow::anyhow;
 use bd_buffer::BuffersWithAck;
 use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_device::Store;
-use bd_log_metadata::{AnnotatedLogFields, LogFieldKind, MetadataProvider};
+use bd_log_metadata::{AnnotatedLogFields, MetadataProvider};
 use bd_log_primitives::{
   log_level,
   AnnotatedLogField,
@@ -376,15 +376,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           fields: log
             .fields
             .into_iter()
-            .map(|(key, value)| {
-              (
-                key,
-                AnnotatedLogField {
-                  value,
-                  kind: LogFieldKind::Custom,
-                },
-              )
-            })
+            .map(|(key, value)| (key, AnnotatedLogField::new_custom(value)))
             .collect(),
           matching_fields: log
             .matching_fields
@@ -392,14 +384,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             .map(|(key, value)| {
               (
                 key,
-                AnnotatedLogField {
-                  // TODO(mattklein123): Right now the only matching field set on injected logs is
-                  // the _generate_log_id field used for subsequent matching. If
-                  // this ever changes we will need to correctly propagate this
-                  // through.
-                  kind: LogFieldKind::Ootb,
-                  value,
-                },
+                // TODO(mattklein123): Right now the only matching field set on injected logs is
+                // the _generate_log_id field used for subsequent matching. If
+                // this ever changes we will need to correctly propagate this
+                // through.
+                AnnotatedLogField::new_ootb(value),
               )
             })
             .collect(),
