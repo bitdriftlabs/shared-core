@@ -430,7 +430,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               overrides.expected_previous_process_session_id,
               overrides.occurred_at,
               Some(LogFields::from([(
-                "_logged_at".to_string(),
+                "_logged_at".into(),
                 LogFieldValue::String(metadata.timestamp.to_string()),
               )])),
             )
@@ -464,11 +464,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   .into_iter()
                   .chain([
                     (
-                      "_original_session_id".to_string(),
+                      "_original_session_id".into(),
                       LogFieldValue::String(session_id.clone()),
                     ),
                     (
-                      "_override_session_id".to_string(),
+                      "_override_session_id".into(),
                       LogFieldValue::String(overrides.expected_previous_process_session_id.clone()),
                     ),
                   ])
@@ -689,7 +689,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               }
             },
             AsyncLogBufferMessage::AddLogField(key, value) => {
-              if let Err(e) = self.metadata_collector.add_field(key.clone(), value.clone()) {
+              if let Err(e) = self.metadata_collector.add_field(key.clone().into(), value.clone()) {
                 log::warn!("failed to add log field ({key:?}): {e}");
               }
             },

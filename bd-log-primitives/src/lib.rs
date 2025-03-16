@@ -8,6 +8,7 @@
 use ahash::AHashMap;
 pub use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -104,6 +105,8 @@ pub mod log_level {
   pub const TRACE: LogLevel = 0;
 }
 
+pub type LogFieldKey = Cow<'static, str>;
+
 //
 // LogFieldValue
 //
@@ -115,14 +118,14 @@ pub type LogFieldValue = StringOrBytes<String, Vec<u8>>;
 //
 
 /// The list of log fields annotated with extra information.
-pub type AnnotatedLogFields = HashMap<String, AnnotatedLogField>;
+pub type AnnotatedLogFields = HashMap<LogFieldKey, AnnotatedLogField>;
 
 //
 // LogFields
 //
 
 /// The list of owned log fields.
-pub type LogFields = AHashMap<String, LogFieldValue>;
+pub type LogFields = AHashMap<LogFieldKey, LogFieldValue>;
 
 //
 // AnnotatedLogField

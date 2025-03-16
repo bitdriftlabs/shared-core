@@ -124,7 +124,10 @@ pub fn generate_log_action(
     };
 
     if let Some(value) = value {
-      fields.insert(field.name.clone(), StringOrBytes::String(value.to_string()));
+      fields.insert(
+        field.name.clone().into(),
+        StringOrBytes::String(value.to_string()),
+      );
     }
   }
 
@@ -134,7 +137,7 @@ pub fn generate_log_action(
     fields,
     message: StringOrBytes::String(message),
     matching_fields: LogFields::from([(
-      "_generate_log_id".to_string(),
+      "_generate_log_id".into(),
       StringOrBytes::String(action.id.to_string()),
     )]),
     // These will be filled in later via the log processor.

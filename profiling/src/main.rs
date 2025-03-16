@@ -126,7 +126,7 @@ impl AnnotatedWorkflowsEngine {
     let mut fields = Self::get_default_fields();
 
     for (key, value) in extra_fields {
-      fields.insert(key.to_string(), value.into());
+      fields.insert(key.to_string().into(), value.into());
     }
 
     self.engine.process_log(
@@ -144,18 +144,15 @@ impl AnnotatedWorkflowsEngine {
 
   fn get_default_fields() -> LogFields {
     let mut fields: LogFields = [
-      ("app_id".to_string(), "io.bitdrift.app.great_app".into()),
-      ("app_id".to_string(), "io.bitdrift.app.great_app".into()),
-      ("app_version".to_string(), "1.0.0".into()),
-      ("os".to_string(), "android".into()),
-      ("os_version".to_string(), "10".into()),
-      ("model".to_string(), "Pixel 4".into()),
-      (
-        "radio_type".to_string(),
-        "CTRadioAccessTechnologyGPRS".into(),
-      ),
-      ("network_type".to_string(), "WIFI".into()),
-      ("_locale".to_string(), "en_US".into()),
+      ("app_id".into(), "io.bitdrift.app.great_app".into()),
+      ("app_id".into(), "io.bitdrift.app.great_app".into()),
+      ("app_version".into(), "1.0.0".into()),
+      ("os".into(), "android".into()),
+      ("os_version".into(), "10".into()),
+      ("model".into(), "Pixel 4".into()),
+      ("radio_type".into(), "CTRadioAccessTechnologyGPRS".into()),
+      ("network_type".into(), "WIFI".into()),
+      ("_locale".into(), "en_US".into()),
     ]
     .into();
 
@@ -163,7 +160,7 @@ impl AnnotatedWorkflowsEngine {
     let generated = rng.random::<u32>() % 100;
 
     let foreground = if generated < 75 { "true" } else { "false" };
-    fields.insert("foreground".to_string(), foreground.into());
+    fields.insert("foreground".into(), foreground.into());
 
     fields
   }

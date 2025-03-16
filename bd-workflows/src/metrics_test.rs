@@ -44,13 +44,9 @@ impl Setup {
 
 #[test]
 fn metric_increment_value_extraction() {
-  let fields = [
-    ("f1".to_string(), "1.1".into()),
-    ("f2".to_string(), "10".into()),
-  ]
-  .into();
+  let fields = [("f1".into(), "1.1".into()), ("f2".into(), "10".into())].into();
 
-  let matching_only_fields = [("m1".to_string(), "5".into())].into();
+  let matching_only_fields = [("m1".into(), "5".into())].into();
 
   let setup = Setup::new();
   let (metrics_collector, dynamic_stats_collector) = setup.make_metrics_collector();
@@ -159,13 +155,9 @@ fn metric_increment_value_extraction() {
 
 #[test]
 fn counter_label_extraction() {
-  let fields = [
-    ("f1".to_string(), "foo".into()),
-    ("f2".to_string(), "bar".into()),
-  ]
-  .into();
+  let fields = [("f1".into(), "foo".into()), ("f2".into(), "bar".into())].into();
 
-  let matching_only_fields = [("m1".to_string(), "5".into())].into();
+  let matching_only_fields = [("m1".into(), "5".into())].into();
 
   let setup = Setup::new();
   let (metrics_collector, dynamic_stats_collector) = setup.make_metrics_collector();

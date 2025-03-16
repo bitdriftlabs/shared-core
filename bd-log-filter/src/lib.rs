@@ -13,6 +13,7 @@ use anyhow::{anyhow, Context, Result};
 use bd_log_primitives::{
   FieldsRef,
   Log,
+  LogFieldKey,
   LogFieldValue,
   LogFields,
   LOG_FIELD_NAME_LEVEL,
@@ -180,13 +181,13 @@ impl Transform {
 // This effectively removes a given fields from the list of matching fields and adds it to
 // the list of captured fields.
 struct CaptureField {
-  field_name: String,
+  field_name: LogFieldKey,
 }
 
 impl CaptureField {
   fn new(config: filter::transform::CaptureField) -> Result<Self> {
     Ok(Self {
-      field_name: config.name,
+      field_name: config.name.into(),
     })
   }
 
@@ -242,7 +243,7 @@ impl SetFieldValue {
 // Sets a given value for a given field. It overrides existing value in case of a field name
 // conflict.
 struct SetField {
-  field_name: String,
+  field_name: LogFieldKey,
   value: SetFieldValue,
   field_type: FieldType,
   is_override_allowed: bool,
@@ -257,7 +258,7 @@ impl SetField {
     };
 
     Ok(Self {
-      field_name: config.name,
+      field_name: config.name.into(),
       value: SetFieldValue::new(set_field_value).context("invalid SetFieldValue configuration")?,
       field_type: match field_type {
         filter::transform::set_field::FieldType::UNKNOWN => anyhow::bail!("unknown field_type"),
@@ -305,13 +306,13 @@ impl SetField {
 
 // Removes a field from the list of fields (both captured and matching fields).
 struct RemoveField {
-  field_name: String,
+  field_name: LogFieldKey,
 }
 
 impl RemoveField {
   fn new(config: filter::transform::RemoveField) -> Result<Self> {
     Ok(Self {
-      field_name: config.name,
+      field_name: config.name.into(),
     })
   }
 
@@ -381,7 +382,7 @@ impl RegexMatchAndSubstitute {
   }
 }
 
-fn set_field(fields: &mut LogFields, key: String, value: LogFieldValue) {
+fn set_field(fields: &mut LogFields, key: LogFieldKey, value: LogFieldValue) {
   // If a field that's supposed to be captured exists, remove it from the list of captured fields
   // before adding it.
   fields.insert(key, value);

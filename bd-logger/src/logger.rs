@@ -191,7 +191,7 @@ impl LoggerHandle {
     duration: time::Duration,
   ) {
     fields.insert(
-      "_duration_ms".to_string(),
+      "_duration_ms".into(),
       AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string()),
     );
 
@@ -289,7 +289,8 @@ impl LoggerHandle {
       format!(
         "_previous_{}",
         previous_app_version.app_version_extra.name()
-      ),
+      )
+      .into(),
       AnnotatedLogField::new_ootb(previous_app_version.app_version_extra.string_value()),
     );
 

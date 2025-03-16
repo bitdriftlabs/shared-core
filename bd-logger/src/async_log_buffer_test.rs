@@ -233,7 +233,7 @@ fn log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 466;
+  let baseline_log_expected_size = 463;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 
@@ -246,11 +246,11 @@ fn log_line_size_is_computed_correctly() {
     baseline_log_with_longer_message.size()
   );
 
-  // Add one extra character to one of the fields' keys and verify that reported size increases
+  // Add one extra character to one of the fields' values and verify that reported size increases
   // by 1 byte
   let mut baseline_log_with_longer_field_key = create_baseline_log();
   baseline_log_with_longer_field_key.fields =
-    [("foo1".to_string(), AnnotatedLogField::new_ootb("bar"))].into();
+    [("foo".into(), AnnotatedLogField::new_ootb("bar1"))].into();
 
   assert_eq!(
     baseline_log_expected_size + 1,
@@ -261,7 +261,7 @@ fn log_line_size_is_computed_correctly() {
   // by 1 byte
   let mut baseline_log_with_longer_field_value = baseline_log;
   baseline_log_with_longer_field_value.fields =
-    [("foo".to_string(), AnnotatedLogField::new_ootb("bar1"))].into();
+    [("foo".into(), AnnotatedLogField::new_ootb("bar1"))].into();
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_field_value.size()
@@ -275,14 +275,14 @@ fn annotated_log_line_size_is_computed_correctly() {
       log_level: 0,
       log_type: LogType::Normal,
       message: "foo".into(),
-      fields: [("foo".to_string(), StringOrBytes::String("bar".to_string()))].into(),
+      fields: [("foo".into(), StringOrBytes::String("bar".to_string()))].into(),
       matching_fields: [].into(),
       session_id: "foo".into(),
       occurred_at: time::OffsetDateTime::now_utc(),
     }
   }
 
-  let baseline_log_expected_size = 548;
+  let baseline_log_expected_size = 545;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 
@@ -307,7 +307,7 @@ fn annotated_log_line_size_is_computed_correctly() {
   // by 1 byte
   let mut baseline_log_with_longer_field_key = create_baseline_log();
   baseline_log_with_longer_field_key.fields =
-    [("foo1".to_string(), StringOrBytes::String("bar".to_string()))].into();
+    [("foo".into(), StringOrBytes::String("bar1".to_string()))].into();
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_field_key.size()
@@ -317,7 +317,7 @@ fn annotated_log_line_size_is_computed_correctly() {
   // by 1 byte
   let mut baseline_log_with_longer_field_value = baseline_log;
   baseline_log_with_longer_field_value.fields =
-    [("foo".to_string(), StringOrBytes::String("bar1".to_string()))].into();
+    [("foo".into(), StringOrBytes::String("bar1".to_string()))].into();
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_field_value.size()

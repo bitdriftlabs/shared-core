@@ -12,7 +12,7 @@ mod metadata_test;
 use crate::global_state::Tracker;
 use bd_log::warn_every;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind, MetadataProvider};
-use bd_log_primitives::{LogFieldValue, LogFields};
+use bd_log_primitives::{LogFieldKey, LogFieldValue, LogFields};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use itertools::Itertools;
 use std::collections::BTreeSet;
@@ -132,7 +132,7 @@ impl MetadataCollector {
     })
   }
 
-  pub(crate) fn add_field(&mut self, key: String, value: LogFieldValue) -> anyhow::Result<()> {
+  pub(crate) fn add_field(&mut self, key: LogFieldKey, value: LogFieldValue) -> anyhow::Result<()> {
     verify_custom_field_name(&key)?;
 
     self.fields.insert(key, value);

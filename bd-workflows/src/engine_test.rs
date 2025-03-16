@@ -3161,8 +3161,8 @@ async fn generate_log_multiple() {
         log_level: log_level::DEBUG,
         log_type: LogType::Normal,
         message: "message1".into(),
-        fields: [("duration".to_string(), "1".into(),),].into(),
-        matching_fields: [("_generate_log_id".to_string(), "id1".into(),)].into(),
+        fields: [("duration".into(), "1".into(),),].into(),
+        matching_fields: [("_generate_log_id".into(), "id1".into(),)].into(),
         session_id: String::new(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
       },
@@ -3170,8 +3170,8 @@ async fn generate_log_multiple() {
         log_level: log_level::DEBUG,
         log_type: LogType::Normal,
         message: "message2".into(),
-        fields: [("duration".to_string(), "2".into(),),].into(),
-        matching_fields: [("_generate_log_id".to_string(), "id2".into(),)].into(),
+        fields: [("duration".into(), "2".into(),),].into(),
+        matching_fields: [("_generate_log_id".into(), "id2".into(),)].into(),
         session_id: String::new(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
       }
@@ -3248,11 +3248,11 @@ async fn generate_log_action() {
       log_type: LogType::Normal,
       message: "message".into(),
       fields: [
-        ("duration".to_string(), "0.003000020980834961".into(),),
-        ("other".to_string(), "value1".into(),)
+        ("duration".into(), "0.003000020980834961".into(),),
+        ("other".into(), "value1".into(),)
       ]
       .into(),
-      matching_fields: [("_generate_log_id".to_string(), "id".into(),)].into(),
+      matching_fields: [("_generate_log_id".into(), "id".into(),)].into(),
       session_id: String::new(),
       occurred_at: OffsetDateTime::UNIX_EPOCH,
     }]

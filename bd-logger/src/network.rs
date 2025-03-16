@@ -11,6 +11,7 @@ mod network_test;
 use bd_log_metadata::AnnotatedLogFields;
 use bd_log_primitives::{
   AnnotatedLogField,
+  LogFieldKey,
   LogInterceptor,
   LogLevel,
   LogMessage,
@@ -123,25 +124,28 @@ impl HTTPTrafficDataUsageTracker {
 
     fields.extend(
       [
-        create_int_field("_request_bytes_per_min_count", sample.request_bytes_count()),
         create_int_field(
-          "_request_body_bytes_per_min_count",
+          "_request_bytes_per_min_count".into(),
+          sample.request_bytes_count(),
+        ),
+        create_int_field(
+          "_request_body_bytes_per_min_count".into(),
           sample.request_body_bytes_count,
         ),
         create_int_field(
-          "_request_headers_bytes_per_min_count",
+          "_request_headers_bytes_per_min_count".into(),
           sample.request_headers_bytes_count,
         ),
         create_int_field(
-          "_response_bytes_per_min_count",
+          "_response_bytes_per_min_count".into(),
           sample.response_bytes_count(),
         ),
         create_int_field(
-          "_response_body_bytes_per_min_count",
+          "_response_body_bytes_per_min_count".into(),
           sample.response_body_bytes_count,
         ),
         create_int_field(
-          "_response_headers_bytes_per_min_count",
+          "_response_headers_bytes_per_min_count".into(),
           sample.response_headers_bytes_count,
         ),
       ]
@@ -296,11 +300,8 @@ fn get_int_field_value(fields: &AnnotatedLogFields, field_key: &str) -> Option<u
 }
 
 /// Creates a string field using a provided key and integer value.
-fn create_int_field(key: &str, value: u64) -> (String, AnnotatedLogField) {
-  (
-    key.to_string(),
-    AnnotatedLogField::new_ootb(value.to_string()),
-  )
+fn create_int_field(key: LogFieldKey, value: u64) -> (LogFieldKey, AnnotatedLogField) {
+  (key, AnnotatedLogField::new_ootb(value.to_string()))
 }
 
 //
@@ -363,7 +364,7 @@ impl LogInterceptor for NetworkQualityInterceptor {
     }
 
     fields.insert(
-      "_network_quality".to_string(),
+      "_network_quality".into(),
       AnnotatedLogField::new_ootb("offline"),
     );
   }

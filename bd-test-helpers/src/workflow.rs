@@ -683,7 +683,7 @@ pub fn make_log_tag_matcher(name: &str, value: &str) -> LogMatcher {
 pub fn make_tags(labels: BTreeMap<String, String>) -> LogFields {
   labels
     .into_iter()
-    .map(|(key, value)| (key, StringOrBytes::String(value)))
+    .map(|(key, value)| (key.into(), StringOrBytes::String(value)))
     .collect()
 }
 

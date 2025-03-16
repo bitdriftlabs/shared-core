@@ -6,7 +6,8 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_log_metadata::AnnotatedLogFields;
-use bd_log_primitives::{AnnotatedLogField, LogFieldValue, LogFields, StringOrBytes};
+use bd_log_primitives::{AnnotatedLogField, LogFieldKey, LogFieldValue, LogFields, StringOrBytes};
+use std::borrow::Cow;
 use std::mem::{size_of, size_of_val};
 
 //
@@ -24,6 +25,16 @@ pub trait MemorySized {
 impl MemorySized for AnnotatedLogField {
   fn size(&self) -> usize {
     size_of_val(self) + self.value.size() + size_of_val(&self.kind)
+  }
+}
+
+impl MemorySized for LogFieldKey {
+  fn size(&self) -> usize {
+    size_of_val(self)
+      + match self {
+        Cow::Borrowed(_) => 0,
+        Cow::Owned(s) => s.len(),
+      }
   }
 }
 
