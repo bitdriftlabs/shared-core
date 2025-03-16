@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use ahash::AHashMap;
 pub use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -121,7 +122,7 @@ pub type AnnotatedLogFields = HashMap<String, AnnotatedLogField>;
 //
 
 /// The list of owned log fields.
-pub type LogFields = HashMap<String, LogFieldValue>;
+pub type LogFields = AHashMap<String, LogFieldValue>;
 
 //
 // AnnotatedLogField
