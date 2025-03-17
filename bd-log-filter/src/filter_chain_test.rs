@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::FilterChain;
-use bd_log_primitives::{log_level, Log, LogField, LogFields, LogType};
+use bd_log_primitives::{log_level, Log, LogFields, LogType};
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
 use bd_test_helpers::filter::macros::regex_match_and_substitute_field;
 use bd_test_helpers::{capture_field, field_value, log_matches, remove_field, set_field};
@@ -20,11 +20,8 @@ fn filters_are_not_applied_to_non_matching_logs_only() {
     vec![capture_field!(single "foo")],
   );
 
-  let fields = vec![];
-  let matching_fields = vec![LogField {
-    key: "foo".to_string(),
-    value: "bar".into(),
-  }];
+  let fields = LogFields::default();
+  let matching_fields: LogFields = [("foo".into(), "bar".into())].into();
 
   // Filter's transform are not applied to logs that don't match filter's matcher.
   let mut log = make_log("not matching", fields.clone(), matching_fields.clone());
@@ -42,17 +39,14 @@ fn filter_transforms_are_applied_in_order() {
     ],
   );
 
-  let mut log = make_log("matching", vec![], vec![]);
+  let mut log = make_log("matching", [].into(), [].into());
   filter_chain.process(&mut log);
   assert_eq!(
     log,
     make_log(
       "matching",
-      vec![LogField {
-        key: "foo".to_string(),
-        value: "bar".into(),
-      }],
-      vec![]
+      [("foo".into(), "bar".into(),)].into(),
+      [].into()
     )
   );
 }
@@ -75,17 +69,14 @@ fn filters_are_applied_in_order() {
     ..Default::default()
   });
 
-  let mut log = make_log("matching", vec![], vec![]);
+  let mut log = make_log("matching", [].into(), [].into());
   filter_chain.process(&mut log);
   assert_eq!(
     log,
     make_log(
       "matching",
-      vec![LogField {
-        key: "foo".to_string(),
-        value: "bar".into(),
-      }],
-      vec![]
+      LogFields::from([("foo".into(), "bar".into(),)]),
+      [].into()
     )
   );
 }
@@ -97,14 +88,11 @@ fn capture_field_transform() {
     vec![capture_field!(single "foo")],
   );
 
-  let fields = vec![];
-  let matching_fields = vec![LogField {
-    key: "foo".to_string(),
-    value: "bar".into(),
-  }];
+  let fields = [].into();
+  let matching_fields: LogFields = [("foo".into(), "bar".into())].into();
 
   // Filter's transform captures an existing matching field.
-  let mut log = make_log("matching", vec![], vec![]);
+  let mut log = make_log("matching", [].into(), [].into());
   filter_chain.process(&mut log);
   assert!(log.fields.is_empty());
   assert!(log.matching_fields.is_empty());
@@ -125,20 +113,11 @@ fn set_captured_field_transform_overrides_existing_field() {
 
   let mut log = make_log(
     "matching",
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "baz".into(),
-    }],
-    vec![],
+    LogFields::from([("foo".into(), "baz".into())]),
+    [].into(),
   );
   filter_chain.process(&mut log);
-  assert_eq!(
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "bar".into(),
-    }],
-    log.fields
-  );
+  assert_eq!(LogFields::from([("foo".into(), "bar".into(),)]), log.fields);
 }
 
 #[test]
@@ -148,22 +127,9 @@ fn set_captured_field_transform_does_not_override_existing_field() {
     vec![set_field!(captured("foo") = field_value!("bar"), false)],
   );
 
-  let mut log = make_log(
-    "matching",
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "baz".into(),
-    }],
-    vec![],
-  );
+  let mut log = make_log("matching", [("foo".into(), "baz".into())].into(), [].into());
   filter_chain.process(&mut log);
-  assert_eq!(
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "baz".into(),
-    }],
-    log.fields
-  );
+  assert_eq!(LogFields::from([("foo".into(), "baz".into(),)]), log.fields);
 }
 
 #[test]
@@ -175,24 +141,15 @@ fn set_captured_field_transform_adds_new_field() {
 
   let mut log = make_log(
     "matching",
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "bar".into(),
-    }],
-    vec![],
+    LogFields::from([("foo".into(), "bar".into())]),
+    [].into(),
   );
   filter_chain.process(&mut log);
   assert_eq!(
-    vec![
-      LogField {
-        key: "foo".to_string(),
-        value: "bar".into(),
-      },
-      LogField {
-        key: "new_foo".to_string(),
-        value: "bar".into(),
-      }
-    ],
+    LogFields::from([
+      ("foo".into(), "bar".into(),),
+      ("new_foo".into(), "bar".into(),)
+    ]),
     log.fields
   );
 }
@@ -204,26 +161,13 @@ fn set_captured_field_transform_copies_existing_field_value() {
     vec![set_field!(captured("new_foo") = field_value!(field "foo"))],
   );
 
-  let mut log = make_log(
-    "matching",
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "bar".into(),
-    }],
-    vec![],
-  );
+  let mut log = make_log("matching", [("foo".into(), "bar".into())].into(), [].into());
   filter_chain.process(&mut log);
   assert_eq!(
-    vec![
-      LogField {
-        key: "foo".to_string(),
-        value: "bar".into(),
-      },
-      LogField {
-        key: "new_foo".to_string(),
-        value: "bar".into(),
-      }
-    ],
+    LogFields::from([
+      ("foo".into(), "bar".into(),),
+      ("new_foo".into(), "bar".into(),)
+    ]),
     log.fields
   );
 }
@@ -235,20 +179,10 @@ fn set_matching_field_transform_overrides_existing_field() {
     vec![set_field!(matching("foo") = field_value!("bar"))],
   );
 
-  let mut log = make_log(
-    "matching",
-    vec![],
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "baz".into(),
-    }],
-  );
+  let mut log = make_log("matching", [].into(), [("foo".into(), "baz".into())].into());
   filter_chain.process(&mut log);
   assert_eq!(
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "bar".into(),
-    }],
+    LogFields::from([("foo".into(), "bar".into(),)]),
     log.matching_fields
   );
 }
@@ -260,26 +194,13 @@ fn set_matching_field_transform_adds_new_field() {
     vec![set_field!(matching("new_foo") = field_value!("bar"))],
   );
 
-  let mut log = make_log(
-    "matching",
-    vec![],
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "bar".into(),
-    }],
-  );
+  let mut log = make_log("matching", [].into(), [("foo".into(), "bar".into())].into());
   filter_chain.process(&mut log);
   assert_eq!(
-    vec![
-      LogField {
-        key: "foo".to_string(),
-        value: "bar".into(),
-      },
-      LogField {
-        key: "new_foo".to_string(),
-        value: "bar".into(),
-      }
-    ],
+    LogFields::from([
+      ("foo".into(), "bar".into(),),
+      ("new_foo".into(), "bar".into(),)
+    ]),
     log.matching_fields
   );
 }
@@ -293,42 +214,23 @@ fn remove_field_transform_removes_existing_fields() {
 
   let mut log = make_log(
     "matching",
-    vec![
-      LogField {
-        key: "remove_me".to_string(),
-        value: "bar".into(),
-      },
-      LogField {
-        key: "foo".to_string(),
-        value: "bar".into(),
-      },
-    ],
-    vec![
-      LogField {
-        key: "remove_me".to_string(),
-        value: "bar".into(),
-      },
-      LogField {
-        key: "foo".to_string(),
-        value: "bar".into(),
-      },
-    ],
+    [
+      ("remove_me".into(), "bar".into()),
+      ("foo".into(), "bar".into()),
+    ]
+    .into(),
+    [
+      ("remove_me".into(), "bar".into()),
+      ("foo".into(), "bar".into()),
+    ]
+    .into(),
   );
 
   filter_chain.process(&mut log);
 
+  assert_eq!(LogFields::from([("foo".into(), "bar".into(),)]), log.fields);
   assert_eq!(
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "bar".into(),
-    }],
-    log.fields
-  );
-  assert_eq!(
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "bar".into(),
-    }],
+    LogFields::from([("foo".into(), "bar".into(),)]),
     log.matching_fields
   );
 }
@@ -353,34 +255,25 @@ fn regex_match_and_substitute() {
 
   let mut log = make_log(
     "matching",
-    vec![
-      LogField {
-        key: "foo".to_string(),
-        value: "/foo/885fa9b2-97f1-435b-8fe3-a461d3235924/test/\
-                885fa9b2-97f1-435b-8fe3-a461d3235924"
+    [
+      (
+        "foo".into(),
+        "/foo/885fa9b2-97f1-435b-8fe3-a461d3235924/test/885fa9b2-97f1-435b-8fe3-a461d3235924"
           .into(),
-      },
-      LogField {
-        key: "bar".to_string(),
-        value: "/885fa9b2-97f1-435b-8fe3-a461d3235924".into(),
-      },
-    ],
-    vec![],
+      ),
+      ("bar".into(), "/885fa9b2-97f1-435b-8fe3-a461d3235924".into()),
+    ]
+    .into(),
+    [].into(),
   );
 
   filter_chain.process(&mut log);
 
   assert_eq!(
-    vec![
-      LogField {
-        key: "foo".to_string(),
-        value: "/foo/<id>/test/<id>".into(),
-      },
-      LogField {
-        key: "bar".to_string(),
-        value: "/<id>".into(),
-      }
-    ],
+    LogFields::from([
+      ("foo".into(), "/foo/<id>/test/<id>".into(),),
+      ("bar".into(), "/<id>".into(),)
+    ]),
     log.fields
   );
 }
@@ -399,23 +292,22 @@ fn regex_match_and_invalid_substitute() {
 
   let mut log = make_log(
     "matching",
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "/foo/885fa9b2-97f1-435b-8fe3-a461d3235924/test/885fa9b2-97f1-435b-8fe3-a461d3235924"
-        .into(),
-    }],
-    vec![],
+    [(
+      "foo".into(),
+      "/foo/885fa9b2-97f1-435b-8fe3-a461d3235924/test/885fa9b2-97f1-435b-8fe3-a461d3235924".into(),
+    )]
+    .into(),
+    [].into(),
   );
 
   filter_chain.process(&mut log);
 
   assert_eq!(
-    vec![LogField {
-      key: "foo".to_string(),
-      value: "/foo/885fa9b2-97f1-435b-8fe3-a461d3235924/test/\
-              <id>885fa9b2-97f1-435b-8fe3-a461d3235924"
+    LogFields::from([(
+      "foo".into(),
+      "/foo/885fa9b2-97f1-435b-8fe3-a461d3235924/test/<id>885fa9b2-97f1-435b-8fe3-a461d3235924"
         .into(),
-    }],
+    )]),
     log.fields
   );
 }
@@ -444,17 +336,11 @@ fn extracts_message_portion_and_creates_field_with_it() {
     ],
   );
 
-  let mut log = make_log("I like apple", vec![], vec![]);
+  let mut log = make_log("I like apple", [].into(), [].into());
 
   filter_chain.process(&mut log);
 
-  assert_eq!(
-    log.fields,
-    vec![LogField {
-      key: "fruit".to_string(),
-      value: "apple".into(),
-    }]
-  );
+  assert_eq!(log.fields, [("fruit".into(), "apple".into(),)].into());
 }
 
 #[test]
@@ -467,22 +353,17 @@ fn copies_log_level_and_log_type() {
     ],
   );
 
-  let mut log = make_log("foo", vec![], vec![]);
+  let mut log = make_log("foo", [].into(), [].into());
 
   filter_chain.process(&mut log);
 
   assert_eq!(
     log.fields,
-    vec![
-      LogField {
-        key: "new_log_level".to_string(),
-        value: "1".into(),
-      },
-      LogField {
-        key: "new_log_type".to_string(),
-        value: "0".into(),
-      }
+    [
+      ("new_log_level".into(), "1".into(),),
+      ("new_log_type".into(), "0".into(),)
     ]
+    .into()
   );
 }
 
@@ -508,7 +389,7 @@ fn make_log(message: &str, fields: LogFields, matching_fields: LogFields) -> Log
     message: message.into(),
     fields,
     matching_fields,
-    session_id: "session_id".to_string(),
+    session_id: "session_id".into(),
     occurred_at: datetime!(2020-01-01 0:00 UTC),
   }
 }

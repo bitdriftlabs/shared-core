@@ -9,9 +9,10 @@
 #[path = "./metadata_test.rs"]
 mod metadata_test;
 
+use crate::global_state::Tracker;
 use bd_log::warn_every;
 use bd_log_metadata::{AnnotatedLogFields, LogFieldKind, MetadataProvider};
-use bd_log_primitives::{LogField, LogFields};
+use bd_log_primitives::{LogFieldKey, LogFieldValue, LogFields};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use itertools::Itertools;
 use std::collections::BTreeSet;
@@ -60,7 +61,7 @@ impl MetadataCollector {
   pub(crate) fn new(metadata_provider: Arc<dyn MetadataProvider + Send + Sync>) -> Self {
     Self {
       metadata_provider,
-      fields: vec![],
+      fields: [].into(),
     }
   }
   /// Returns metadata created by combining values acquired by combining the receiver's fields and
@@ -74,8 +75,14 @@ impl MetadataCollector {
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
     log_type: LogType,
+    global_state_tracker: &mut Tracker,
   ) -> anyhow::Result<LogMetadata> {
     let timestamp = self.metadata_provider.timestamp()?;
+
+    let provider_fields = self.metadata_provider.fields()?;
+    let provider_fields = partition_fields(provider_fields);
+    global_state_tracker.maybe_update_global_state(&provider_fields.ootb);
+
     // Attach field provider's fields to session replay, resource logs, and internal SDK logs
     // as matching fields as opposed to 'normal' fields to save on bandwidth usage while still
     // allowing matching on them.
@@ -83,30 +90,28 @@ impl MetadataCollector {
       || log_type == LogType::Resource
       || log_type == LogType::InternalSDK
     {
-      (vec![], self.metadata_provider.fields()?)
+      (PartitionedFields::default(), provider_fields)
     } else {
-      (self.metadata_provider.fields()?, vec![])
+      (provider_fields, PartitionedFields::default())
     };
 
-    let provider_fields = partition_fields(provider_fields);
     let log_fields = partition_fields(fields);
 
     // Normalize fields. Process them in the order described below, where fields that are earlier in
     // the list take precedence over fields farther away in the list and cannot be overridden by
     // them.
-    let fields: Vec<LogField> = [
+    let fields = [
       provider_fields.ootb,
       log_fields.ootb,
       log_fields.custom,
       self.fields(),
       provider_fields.custom,
     ]
-    .concat()
     .into_iter()
-    .unique_by(|f| f.key.clone())
-    .collect_vec();
+    .flatten()
+    .unique_by(|(key, _)| key.clone())
+    .collect();
 
-    let provider_matching_fields = partition_fields(provider_matching_fields);
     let matching_fields = partition_fields(matching_fields);
 
     let matching_fields = [
@@ -115,10 +120,10 @@ impl MetadataCollector {
       matching_fields.custom,
       provider_matching_fields.custom,
     ]
-    .concat()
     .into_iter()
-    .unique_by(|f| f.key.clone())
-    .collect_vec();
+    .flatten()
+    .unique_by(|(key, _)| key.clone())
+    .collect();
 
     Ok(LogMetadata {
       timestamp,
@@ -127,22 +132,16 @@ impl MetadataCollector {
     })
   }
 
-  pub(crate) fn add_field(&mut self, field: LogField) -> anyhow::Result<()> {
-    verify_custom_field_name(&field)?;
+  pub(crate) fn add_field(&mut self, key: LogFieldKey, value: LogFieldValue) -> anyhow::Result<()> {
+    verify_custom_field_name(&key)?;
 
-    if let Some(position) = self.fields.iter().position(|f| f.key == field.key) {
-      self.fields.remove(position);
-    }
-
-    self.fields.push(field);
+    self.fields.insert(key, value);
 
     Ok(())
   }
 
   pub(crate) fn remove_field(&mut self, field_key: &str) {
-    if let Some(position) = self.fields.iter().position(|f| f.key == field_key) {
-      self.fields.remove(position);
-    }
+    self.fields.remove(field_key);
   }
 
   fn fields(&self) -> LogFields {
@@ -151,38 +150,39 @@ impl MetadataCollector {
 }
 
 fn partition_fields(field: AnnotatedLogFields) -> PartitionedFields {
-  let mut ootb = vec![];
-  let mut custom = vec![];
+  let mut ootb = LogFields::default();
+  let mut custom = LogFields::default();
 
-  for field in field {
-    match field.kind {
-      LogFieldKind::Ootb => ootb.push(field.field),
-      LogFieldKind::Custom => match verify_custom_field_name(&field.field) {
-        Ok(()) => custom.push(field.field),
+  for (key, value) in field {
+    match value.kind {
+      LogFieldKind::Ootb => ootb.insert(key, value.value),
+      LogFieldKind::Custom => match verify_custom_field_name(&key) {
+        Ok(()) => custom.insert(key, value.value),
         Err(e) => {
           warn_every!(15.seconds(), "failed to process field: {:?}", e);
+          continue;
         },
       },
-    }
+    };
   }
 
   PartitionedFields { ootb, custom }
 }
 
-fn verify_custom_field_name(field: &LogField) -> anyhow::Result<()> {
-  if RESERVED_FIELD_NAMES.contains(&field.key) {
+fn verify_custom_field_name(key: &str) -> anyhow::Result<()> {
+  if RESERVED_FIELD_NAMES.contains(key) {
     anyhow::bail!(
       "Custom global field with {:?} name is not allowed as the name is reserved for SDK internal \
        use",
-      field.key
+      key
     );
   }
 
-  if field.key.starts_with('_') {
+  if key.starts_with('_') {
     anyhow::bail!(
       "Custom global field with {:?} key is not allowed, fields whose key starts with \"_\" are \
        reserved for SDK internal use",
-      field.key
+      key
     );
   }
 
@@ -194,6 +194,7 @@ fn verify_custom_field_name(field: &LogField) -> anyhow::Result<()> {
 //
 
 // A helper to use as a return type for methods that partitions fields into OOTB and custom fields.
+#[derive(Default)]
 struct PartitionedFields {
   ootb: LogFields,
   custom: LogFields,

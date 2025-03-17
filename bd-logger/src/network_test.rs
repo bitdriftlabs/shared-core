@@ -55,13 +55,13 @@ fn network_quality() {
   let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
   let interceptor = NetworkQualityInterceptor::new(network_quality_provider.clone());
   {
-    let mut fields = vec![];
+    let mut fields = [].into();
     interceptor.process(
       log_level::DEBUG,
       LogType::Normal,
       &"".into(),
       &mut fields,
-      &mut vec![],
+      &mut [].into(),
     );
     assert!(fields.is_empty());
     network_quality_provider.set_network_quality(NetworkQuality::Online);
@@ -70,7 +70,7 @@ fn network_quality() {
       LogType::Normal,
       &"".into(),
       &mut fields,
-      &mut vec![],
+      &mut [].into(),
     );
     assert!(fields.is_empty());
     network_quality_provider.set_network_quality(NetworkQuality::Offline);
@@ -79,21 +79,21 @@ fn network_quality() {
       LogType::Normal,
       &"".into(),
       &mut fields,
-      &mut vec![],
+      &mut [].into(),
     );
     assert_eq!(
-      fields[0],
-      AnnotatedLogField::new_ootb("_network_quality".to_string(), "offline".into(),)
+      fields["_network_quality"],
+      AnnotatedLogField::new_ootb("offline")
     );
   }
   {
-    let mut fields = vec![];
+    let mut fields = [].into();
     interceptor.process(
       log_level::DEBUG,
       LogType::Replay,
       &"".into(),
       &mut fields,
-      &mut vec![],
+      &mut [].into(),
     );
     assert!(fields.is_empty());
   }
@@ -113,13 +113,13 @@ async fn collects_bandwidth_sample() {
   for _ in 0 .. 20 {
     time_provider.advance_by(std::time::Duration::from_secs(3));
 
-    let mut fields = vec![];
+    let mut fields = [].into();
     tracker.process(
       log_level::DEBUG,
       LogType::Resource,
       &"".into(),
       &mut fields,
-      &mut vec![],
+      &mut [].into(),
     );
     assert!(fields.is_empty());
   }
@@ -128,14 +128,24 @@ async fn collects_bandwidth_sample() {
     log_level::DEBUG,
     LogType::Span,
     &LogMessage::String("HTTPResponse".to_string()),
-    &mut vec![
-      create_int_field("_status_code", 200),
-      create_int_field("_request_body_bytes_sent_count", 100),
-      create_int_field("_request_headers_bytes_count", 200),
-      create_int_field("_response_body_bytes_received_count", 300),
-      create_int_field("_response_headers_bytes_count", 400),
-    ],
-    &mut vec![],
+    &mut [
+      ("_status_code".into(), create_int_field(200)),
+      (
+        "_request_body_bytes_sent_count".into(),
+        create_int_field(100),
+      ),
+      ("_request_headers_bytes_count".into(), create_int_field(200)),
+      (
+        "_response_body_bytes_received_count".into(),
+        create_int_field(300),
+      ),
+      (
+        "_response_headers_bytes_count".into(),
+        create_int_field(400),
+      ),
+    ]
+    .into(),
+    &mut [].into(),
   );
 
   assert_eq!(
@@ -146,13 +156,13 @@ async fn collects_bandwidth_sample() {
   for _ in 0 .. 20 {
     time_provider.advance_by(std::time::Duration::from_secs(3));
 
-    let mut fields = vec![];
+    let mut fields = [].into();
     tracker.process(
       log_level::DEBUG,
       LogType::Resource,
       &"".into(),
       &mut fields,
-      &mut vec![],
+      &mut [].into(),
     );
     assert!(!fields.is_empty());
 
@@ -188,13 +198,13 @@ async fn collects_bandwidth_sample() {
   // downloaded/uploaded bytes per minute => reported field values are equal to 0.
   time_provider.advance_by(std::time::Duration::from_secs(3));
 
-  let mut fields = vec![];
+  let mut fields = [].into();
   tracker.process(
     log_level::DEBUG,
     LogType::Resource,
     &"".into(),
     &mut fields,
-    &mut vec![],
+    &mut [].into(),
   );
 
   assert_eq!(
@@ -227,29 +237,10 @@ async fn collects_bandwidth_sample() {
 /// Retrieves an integer value of a field with the specified key from the provided list of the
 /// fields.
 fn get_int_field_value(fields: &AnnotatedLogFields, field_key: &str) -> Option<u64> {
-  let mut result: Option<u64> = None;
-
-  for field in fields {
-    if field.field.key != field_key {
-      continue;
-    }
-
-    let string_value = match &field.field.value {
-      StringOrBytes::SharedString(value) => value,
-      StringOrBytes::String(value) => value,
-      StringOrBytes::Bytes(_) => break,
-    };
-
-    if let Ok(value) = string_value.parse::<u64>() {
-      result = Some(value);
-      break;
-    }
-  }
-
-  result
+  fields.get(field_key)?.value.as_str()?.parse::<u64>().ok()
 }
 
 /// Creates a string field using a provided key and integer value.
-fn create_int_field(key: &str, value: u64) -> AnnotatedLogField {
-  AnnotatedLogField::new_ootb(key.to_string(), StringOrBytes::String(value.to_string()))
+fn create_int_field(value: u64) -> AnnotatedLogField {
+  AnnotatedLogField::new_ootb(StringOrBytes::String(value.to_string()))
 }

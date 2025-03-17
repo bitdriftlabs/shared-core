@@ -11,6 +11,7 @@ mod async_log_buffer_test;
 
 use crate::bounded_buffer::{channel, MemorySized, Receiver, Sender, TrySendError};
 use crate::device_id::DeviceIdInterceptor;
+use crate::global_state::Tracker;
 use crate::log_replay::LogReplay;
 use crate::logger::with_thread_local_logger_guard;
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
@@ -21,24 +22,24 @@ use crate::{internal_report, network};
 use anyhow::anyhow;
 use bd_buffer::BuffersWithAck;
 use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
-use bd_log_metadata::{AnnotatedLogFields, LogFieldKind, MetadataProvider};
+use bd_device::Store;
+use bd_log_metadata::{AnnotatedLogFields, MetadataProvider};
 use bd_log_primitives::{
   log_level,
   AnnotatedLogField,
   Log,
-  LogField,
   LogFieldValue,
   LogFields,
   LogInterceptor,
   LogLevel,
   LogMessage,
+  StringOrBytes,
 };
 use bd_network_quality::NetworkQualityProvider;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use itertools::Itertools;
 use std::collections::VecDeque;
 use std::mem::size_of_val;
 use std::sync::Arc;
@@ -48,7 +49,7 @@ use tokio::sync::{mpsc, oneshot};
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {
   EmitLog(LogLine),
-  AddLogField(LogField),
+  AddLogField(String, StringOrBytes<String, Vec<u8>>),
   RemoveLogField(String),
   FlushState(Option<bd_completion::Sender<()>>),
 }
@@ -58,7 +59,7 @@ impl MemorySized for AsyncLogBufferMessage {
     size_of_val(self)
       + match self {
         Self::EmitLog(log) => log.size(),
-        Self::AddLogField(field) => field.size(),
+        Self::AddLogField(key, value) => key.size() + value.size(),
         Self::RemoveLogField(field_name) => field_name.len(),
         Self::FlushState(sender) => size_of_val(sender),
       }
@@ -164,6 +165,8 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   interceptors: Vec<Arc<dyn LogInterceptor>>,
 
   logging_state: LoggingState<bd_log_primitives::Log>,
+
+  global_state_tracker: Tracker,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -180,6 +183,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     runtime_loader: &Arc<ConfigLoader>,
     network_quality_provider: Arc<dyn NetworkQualityProvider>,
     device_id: String,
+    store: Arc<Store>,
   ) -> (Self, Sender<AsyncLogBufferMessage>) {
     let (async_log_buffer_communication_tx, async_log_buffer_communication_rx) = channel(
       uninitialized_logging_context
@@ -241,6 +245,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         // The size of the pre-config buffer matches the size of the enclosing
         // async log buffer.
         logging_state: LoggingState::Uninitialized(uninitialized_logging_context),
+        global_state_tracker: Tracker::new(store),
       },
       async_log_buffer_communication_tx,
     )
@@ -314,9 +319,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
   pub fn add_log_field(
     tx: &Sender<AsyncLogBufferMessage>,
-    field: LogField,
+    key: String,
+    value: StringOrBytes<String, Vec<u8>>,
   ) -> Result<(), TrySendError<AsyncLogBufferMessage>> {
-    tx.try_send(AsyncLogBufferMessage::AddLogField(field))
+    tx.try_send(AsyncLogBufferMessage::AddLogField(key, value))
   }
 
   pub fn remove_log_field(
@@ -370,20 +376,20 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           fields: log
             .fields
             .into_iter()
-            .map(|field| AnnotatedLogField {
-              field,
-              kind: LogFieldKind::Custom,
-            })
+            .map(|(key, value)| (key, AnnotatedLogField::new_custom(value)))
             .collect(),
           matching_fields: log
             .matching_fields
             .into_iter()
-            .map(|field| AnnotatedLogField {
-              field,
-              // TODO(mattklein123): Right now the only matching field set on injected logs is the
-              // _generate_log_id field used for subsequent matching. If this ever changes we will
-              // need to correctly propagate this through.
-              kind: LogFieldKind::Ootb,
+            .map(|(key, value)| {
+              (
+                key,
+                // TODO(mattklein123): Right now the only matching field set on injected logs is
+                // the _generate_log_id field used for subsequent matching. If
+                // this ever changes we will need to correctly propagate this
+                // through.
+                AnnotatedLogField::new_ootb(value),
+              )
             })
             .collect(),
           // TODO(mattklein123): Technically we should probably propagate overrides to injected
@@ -402,79 +408,83 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     let result = with_thread_local_logger_guard(|| {
       self
         .metadata_collector
-        .normalized_metadata_with_extra_fields(log.fields, log.matching_fields, log.log_type)
+        .normalized_metadata_with_extra_fields(
+          log.fields,
+          log.matching_fields,
+          log.log_type,
+          &mut self.global_state_tracker,
+        )
     });
 
     match result {
       Ok(metadata) => {
-        let (session_id, timestamp, extra_fields) =
-          if let Some(overrides) = log.attributes_overrides {
-            if Some(&overrides.expected_previous_process_session_id)
-              == self.session_strategy.previous_process_session_id().as_ref()
-            {
-              // Session ID override hint provided and matches our expectations. Emit log with
-              // overrides applied.
-              (
-                overrides.expected_previous_process_session_id,
-                overrides.occurred_at,
-                Some(vec![LogField {
-                  key: "_logged_at".to_string(),
-                  value: LogFieldValue::String(metadata.timestamp.to_string()),
-                }]),
-              )
-            } else {
-              // Session ID override hint provided but doesn't match our expectations. Drop log.
-              let session_id = self.session_strategy.session_id();
-
-              handle_unexpected_error_with_details(
-                anyhow::Error::msg(
-                  "failed to override log attributes, provided override attributes do not match \
-                   expectations",
-                ),
-                &format!(
-                  "original_session_id {session_id:?}, override attribute session ID {:?} \
-                   original timestamp {:?}, override timestamp {:?}",
-                  overrides.expected_previous_process_session_id,
-                  metadata.timestamp,
-                  overrides.occurred_at
-                ),
-                || None,
-              );
-
-              // We log an internal log and continue processing the log.
-              let _ignored = self
-                .write_log_internal(
-                  "failed to override log attributes, provided override attributes do not match \
-                   expectations",
-                  metadata
-                    .fields
-                    .clone()
-                    .into_iter()
-                    .chain(vec![
-                      LogField {
-                        key: "_original_session_id".to_string(),
-                        value: LogFieldValue::String(session_id.clone()),
-                      },
-                      LogField {
-                        key: "_override_session_id".to_string(),
-                        value: LogFieldValue::String(
-                          overrides.expected_previous_process_session_id.clone(),
-                        ),
-                      },
-                    ])
-                    .collect_vec(),
-                  metadata.matching_fields.clone(),
-                  session_id.clone(),
-                  metadata.timestamp,
-                )
-                .await;
-
-              // We drop the log as the provided override attributes do not match our expectations.
-              return Ok(vec![]);
-            }
+        let (session_id, timestamp, extra_fields) = if let Some(overrides) =
+          log.attributes_overrides
+        {
+          if Some(&overrides.expected_previous_process_session_id)
+            == self.session_strategy.previous_process_session_id().as_ref()
+          {
+            // Session ID override hint provided and matches our expectations. Emit log with
+            // overrides applied.
+            (
+              overrides.expected_previous_process_session_id,
+              overrides.occurred_at,
+              Some(LogFields::from([(
+                "_logged_at".into(),
+                LogFieldValue::String(metadata.timestamp.to_string()),
+              )])),
+            )
           } else {
-            (self.session_strategy.session_id(), metadata.timestamp, None)
-          };
+            // Session ID override hint provided but doesn't match our expectations. Drop log.
+            let session_id = self.session_strategy.session_id();
+
+            handle_unexpected_error_with_details(
+              anyhow::Error::msg(
+                "failed to override log attributes, provided override attributes do not match \
+                 expectations",
+              ),
+              &format!(
+                "original_session_id {session_id:?}, override attribute session ID {:?} original \
+                 timestamp {:?}, override timestamp {:?}",
+                overrides.expected_previous_process_session_id,
+                metadata.timestamp,
+                overrides.occurred_at
+              ),
+              || None,
+            );
+
+            // We log an internal log and continue processing the log.
+            let _ignored = self
+              .write_log_internal(
+                "failed to override log attributes, provided override attributes do not match \
+                 expectations",
+                metadata
+                  .fields
+                  .clone()
+                  .into_iter()
+                  .chain([
+                    (
+                      "_original_session_id".into(),
+                      LogFieldValue::String(session_id.clone()),
+                    ),
+                    (
+                      "_override_session_id".into(),
+                      LogFieldValue::String(overrides.expected_previous_process_session_id.clone()),
+                    ),
+                  ])
+                  .collect(),
+                metadata.matching_fields.clone(),
+                session_id.clone(),
+                metadata.timestamp,
+              )
+              .await;
+
+            // We drop the log as the provided override attributes do not match our expectations.
+            return Ok(vec![]);
+          }
+        } else {
+          (self.session_strategy.session_id(), metadata.timestamp, None)
+        };
 
         let processed_log = bd_log_primitives::Log {
           log_level: log.log_level,
@@ -485,7 +495,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               .fields
               .iter()
               .chain(extra_fields.iter())
-              .cloned()
+              .map(|(k, v)| (k.clone(), v.clone()))
               .collect()
           } else {
             metadata.fields
@@ -580,7 +590,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       return;
     };
 
-    for log_line in initial_logs.drain(..) {
+    for mut log_line in initial_logs.drain(..) {
+      log_line
+        .fields
+        .extend(self.global_state_tracker.global_state_fields());
+
       if let Err(e) = self
         .replayer
         .replay_log(
@@ -674,9 +688,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 log::debug!("failed to process all logs: {e}");
               }
             },
-            AsyncLogBufferMessage::AddLogField(field) => {
-              if let Err(e) = self.metadata_collector.add_field(field.clone()) {
-                log::warn!("failed to add log field ({field:?}): {e}");
+            AsyncLogBufferMessage::AddLogField(key, value) => {
+              if let Err(e) = self.metadata_collector.add_field(key.clone().into(), value.clone()) {
+                log::warn!("failed to add log field ({key:?}): {e}");
               }
             },
             AsyncLogBufferMessage::RemoveLogField(field_name) => {

@@ -11,8 +11,9 @@ use crate::paths::PATHS;
 use bd_client_common::file::read_compressed_protobuf;
 use bd_client_stats::{DynamicStats, Stats};
 use bd_client_stats_store::{Collector, Scope};
-use bd_log_primitives::{log_level, FieldsRef, LogField, LogLevel, LogMessage, LogRef};
+use bd_log_primitives::{log_level, FieldsRef, LogLevel, LogMessage, LogRef};
 use bd_logger::builder::default_stats_flush_triggers;
+use bd_logger::LogFields;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::client::api::{RuntimeUpdate, StatsUploadRequest};
 use bd_proto::protos::client::metric::PendingAggregationIndex;
@@ -125,10 +126,7 @@ impl AnnotatedWorkflowsEngine {
     let mut fields = Self::get_default_fields();
 
     for (key, value) in extra_fields {
-      fields.push(LogField {
-        key: key.to_string(),
-        value: value.into(),
-      });
+      fields.insert(key.to_string().into(), value.into());
     }
 
     self.engine.process_log(
@@ -136,7 +134,7 @@ impl AnnotatedWorkflowsEngine {
         log_type: LogType::Normal,
         log_level,
         message: &LogMessage::String(message.to_string()),
-        fields: &FieldsRef::new(&fields, &vec![]),
+        fields: &FieldsRef::new(&fields, &[].into()),
         session_id: "1231231231312312312312",
         occurred_at: OffsetDateTime::now_utc(),
       },
@@ -144,54 +142,25 @@ impl AnnotatedWorkflowsEngine {
     );
   }
 
-  fn get_default_fields() -> Vec<LogField> {
-    let mut fields = vec![
-      LogField {
-        key: "app_id".to_string(),
-        value: "io.bitdrift.app.great_app".into(),
-      },
-      LogField {
-        key: "app_id".to_string(),
-        value: "io.bitdrift.app.great_app".into(),
-      },
-      LogField {
-        key: "app_version".to_string(),
-        value: "1.0.0".into(),
-      },
-      LogField {
-        key: "os".to_string(),
-        value: "android".into(),
-      },
-      LogField {
-        key: "os_version".to_string(),
-        value: "10".into(),
-      },
-      LogField {
-        key: "model".to_string(),
-        value: "Pixel 4".into(),
-      },
-      LogField {
-        key: "radio_type".to_string(),
-        value: "CTRadioAccessTechnologyGPRS".into(),
-      },
-      LogField {
-        key: "network_type".to_string(),
-        value: "WIFI".into(),
-      },
-      LogField {
-        key: "_locale".to_string(),
-        value: "en_US".into(),
-      },
-    ];
+  fn get_default_fields() -> LogFields {
+    let mut fields: LogFields = [
+      ("app_id".into(), "io.bitdrift.app.great_app".into()),
+      ("app_id".into(), "io.bitdrift.app.great_app".into()),
+      ("app_version".into(), "1.0.0".into()),
+      ("os".into(), "android".into()),
+      ("os_version".into(), "10".into()),
+      ("model".into(), "Pixel 4".into()),
+      ("radio_type".into(), "CTRadioAccessTechnologyGPRS".into()),
+      ("network_type".into(), "WIFI".into()),
+      ("_locale".into(), "en_US".into()),
+    ]
+    .into();
 
     let mut rng = rand::rng();
     let generated = rng.random::<u32>() % 100;
 
     let foreground = if generated < 75 { "true" } else { "false" };
-    fields.push(LogField {
-      key: "foreground".to_string(),
-      value: foreground.into(),
-    });
+    fields.insert("foreground".into(), foreground.into());
 
     fields
   }

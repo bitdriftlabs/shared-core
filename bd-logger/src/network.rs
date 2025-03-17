@@ -8,10 +8,10 @@
 #[cfg(test)]
 #[path = "./network_test.rs"]
 mod network_test;
-use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
+use bd_log_metadata::AnnotatedLogFields;
 use bd_log_primitives::{
   AnnotatedLogField,
-  LogField,
+  LogFieldKey,
   LogInterceptor,
   LogLevel,
   LogMessage,
@@ -122,27 +122,30 @@ impl HTTPTrafficDataUsageTracker {
       return;
     };
 
-    fields.append(
-      &mut vec![
-        create_int_field("_request_bytes_per_min_count", sample.request_bytes_count()),
+    fields.extend(
+      [
         create_int_field(
-          "_request_body_bytes_per_min_count",
+          "_request_bytes_per_min_count".into(),
+          sample.request_bytes_count(),
+        ),
+        create_int_field(
+          "_request_body_bytes_per_min_count".into(),
           sample.request_body_bytes_count,
         ),
         create_int_field(
-          "_request_headers_bytes_per_min_count",
+          "_request_headers_bytes_per_min_count".into(),
           sample.request_headers_bytes_count,
         ),
         create_int_field(
-          "_response_bytes_per_min_count",
+          "_response_bytes_per_min_count".into(),
           sample.response_bytes_count(),
         ),
         create_int_field(
-          "_response_body_bytes_per_min_count",
+          "_response_body_bytes_per_min_count".into(),
           sample.response_body_bytes_count,
         ),
         create_int_field(
-          "_response_headers_bytes_per_min_count",
+          "_response_headers_bytes_per_min_count".into(),
           sample.response_headers_bytes_count,
         ),
       ]
@@ -285,38 +288,20 @@ impl MetricsSample {
 
 /// Retrieves an integer value of a field with the specified key from the provided list of the
 /// fields.
-fn get_int_field_value(fields: &[AnnotatedLogField], field_key: &str) -> Option<u64> {
-  let mut result: Option<u64> = None;
+fn get_int_field_value(fields: &AnnotatedLogFields, field_key: &str) -> Option<u64> {
+  let value = fields.get(field_key)?;
+  let string_value = match &value.value {
+    StringOrBytes::String(value) => value,
+    StringOrBytes::SharedString(value) => value,
+    StringOrBytes::Bytes(_) => return None,
+  };
 
-  for field in fields {
-    if field.field.key != field_key {
-      continue;
-    }
-
-    let string_value = match &field.field.value {
-      StringOrBytes::String(value) => value,
-      StringOrBytes::SharedString(value) => value,
-      StringOrBytes::Bytes(_) => break,
-    };
-
-    if let Ok(value) = string_value.parse::<u64>() {
-      result = Some(value);
-      break;
-    }
-  }
-
-  result
+  string_value.parse::<u64>().ok()
 }
 
 /// Creates a string field using a provided key and integer value.
-fn create_int_field(key: &str, value: u64) -> AnnotatedLogField {
-  AnnotatedLogField {
-    field: LogField {
-      key: key.to_string(),
-      value: StringOrBytes::String(value.to_string()),
-    },
-    kind: LogFieldKind::Ootb,
-  }
+fn create_int_field(key: LogFieldKey, value: u64) -> (LogFieldKey, AnnotatedLogField) {
+  (key, AnnotatedLogField::new_ootb(value.to_string()))
 }
 
 //
@@ -378,9 +363,9 @@ impl LogInterceptor for NetworkQualityInterceptor {
       return;
     }
 
-    fields.push(AnnotatedLogField::new_ootb(
-      "_network_quality".to_string(),
-      "offline".into(),
-    ));
+    fields.insert(
+      "_network_quality".into(),
+      AnnotatedLogField::new_ootb("offline"),
+    );
   }
 }

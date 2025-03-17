@@ -7,7 +7,7 @@
 
 use crate::generate_log::generate_log_action;
 use crate::workflow::TraversalExtractions;
-use bd_log_primitives::{log_level, FieldsRef, Log, LogField, LogFields, LogType};
+use bd_log_primitives::{log_level, FieldsRef, Log, LogFieldKey, LogFields, LogType};
 use bd_proto::protos::workflow::workflow::workflow::action::ActionGenerateLog;
 use bd_test_helpers::workflow::{make_generate_log_action, TestFieldRef, TestFieldType};
 use pretty_assertions::assert_eq;
@@ -44,15 +44,9 @@ impl Helper {
         message: message.into(),
         fields: fields
           .iter()
-          .map(|(k, v)| LogField {
-            key: (*k).to_string(),
-            value: (*v).into(),
-          })
+          .map(|(k, v)| ((*k).to_string().into(), (*v).into(),))
           .collect(),
-        matching_fields: vec![LogField {
-          key: "_generate_log_id".to_string(),
-          value: "id".into(),
-        },],
+        matching_fields: [("_generate_log_id".into(), "id".into(),),].into(),
         session_id: String::new(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
       }),
@@ -80,11 +74,8 @@ impl Helper {
       .insert(id.to_string(), value.to_string());
   }
 
-  fn add_field(&mut self, key: &str, value: &str) {
-    self.captured_fields.push(LogField {
-      key: key.to_string(),
-      value: value.into(),
-    });
+  fn add_field(&mut self, key: LogFieldKey, value: &str) {
+    self.captured_fields.insert(key, value.into());
   }
 }
 
@@ -191,8 +182,8 @@ fn generate_log_with_field_from_current_log() {
   let mut helper = Helper::new();
   helper.add_extracted_field("bad1", "not a number");
   helper.add_extracted_field("id1", "42");
-  helper.add_field("bad2", "also not a number");
-  helper.add_field("id2", "10.0");
+  helper.add_field("bad2".into(), "also not a number");
+  helper.add_field("id2".into(), "10.0");
   helper.expect_log(
     "hello world",
     &[("add_both_bad", "NaN"), ("add_1_bad", "NaN"), ("add", "32")],

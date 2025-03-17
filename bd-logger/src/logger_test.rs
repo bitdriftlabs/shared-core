@@ -42,8 +42,8 @@ async fn thread_local_logger_guard() {
       log_level::INFO,
       LogType::Normal,
       "msg".into(),
-      vec![],
-      vec![],
+      [].into(),
+      [].into(),
       None,
       false,
     );

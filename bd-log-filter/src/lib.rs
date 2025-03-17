@@ -13,7 +13,8 @@ use anyhow::{anyhow, Context, Result};
 use bd_log_primitives::{
   FieldsRef,
   Log,
-  LogField,
+  LogFieldKey,
+  LogFieldValue,
   LogFields,
   LOG_FIELD_NAME_LEVEL,
   LOG_FIELD_NAME_MESSAGE,
@@ -180,29 +181,23 @@ impl Transform {
 // This effectively removes a given fields from the list of matching fields and adds it to
 // the list of captured fields.
 struct CaptureField {
-  field_name: String,
+  field_name: LogFieldKey,
 }
 
 impl CaptureField {
   fn new(config: filter::transform::CaptureField) -> Result<Self> {
     Ok(Self {
-      field_name: config.name,
+      field_name: config.name.into(),
     })
   }
 
   fn apply(&self, log: &mut Log) {
-    // Look for a field that's supposed to be captured.
-    let Some(field_position) = log
-      .matching_fields
-      .iter()
-      .position(|field| field.key == self.field_name)
-    else {
-      // Matching field with a given key doesn't exist so there is nothing to capture.
-      return;
-    };
+    let existing_field = log.matching_fields.remove(&self.field_name);
 
-    let field = log.matching_fields.remove(field_position);
-    set_field(&mut log.fields, field);
+    if let Some(existing_field) = existing_field {
+      // Add the field to the list of captured fields.
+      set_field(&mut log.fields, self.field_name.clone(), existing_field);
+    }
   }
 }
 
@@ -248,7 +243,7 @@ impl SetFieldValue {
 // Sets a given value for a given field. It overrides existing value in case of a field name
 // conflict.
 struct SetField {
-  field_name: String,
+  field_name: LogFieldKey,
   value: SetFieldValue,
   field_type: FieldType,
   is_override_allowed: bool,
@@ -263,7 +258,7 @@ impl SetField {
     };
 
     Ok(Self {
-      field_name: config.name,
+      field_name: config.name.into(),
       value: SetFieldValue::new(set_field_value).context("invalid SetFieldValue configuration")?,
       field_type: match field_type {
         filter::transform::set_field::FieldType::UNKNOWN => anyhow::bail!("unknown field_type"),
@@ -294,14 +289,13 @@ impl SetField {
       },
     };
 
-    let field = bd_log_primitives::LogField {
-      key: self.field_name.clone(),
-      value: value.into(),
-    };
-
     match self.field_type {
-      FieldType::MatchingOnly => set_field(&mut log.matching_fields, field),
-      FieldType::Captured => set_field(&mut log.fields, field),
+      FieldType::MatchingOnly => set_field(
+        &mut log.matching_fields,
+        self.field_name.clone(),
+        value.into(),
+      ),
+      FieldType::Captured => set_field(&mut log.fields, self.field_name.clone(), value.into()),
     }
   }
 }
@@ -312,19 +306,19 @@ impl SetField {
 
 // Removes a field from the list of fields (both captured and matching fields).
 struct RemoveField {
-  field_name: String,
+  field_name: LogFieldKey,
 }
 
 impl RemoveField {
   fn new(config: filter::transform::RemoveField) -> Result<Self> {
     Ok(Self {
-      field_name: config.name,
+      field_name: config.name.into(),
     })
   }
 
   fn apply(&self, log: &mut Log) {
-    log.matching_fields.retain(|f| f.key != self.field_name);
-    log.fields.retain(|f| f.key != self.field_name);
+    log.matching_fields.remove(&self.field_name);
+    log.fields.remove(&self.field_name);
   }
 }
 
@@ -348,12 +342,12 @@ impl RegexMatchAndSubstitute {
   }
 
   fn apply(&self, log: &mut Log) {
-    for field in &mut log.fields {
-      if field.key != self.field_name {
+    for (key, value) in &mut log.fields {
+      if *key != self.field_name {
         continue;
       }
-      if let Some(field_string_value) = field.value.as_str() {
-        field.value = self
+      if let Some(field_string_value) = value.as_str() {
+        *value = self
           .produce_new_value(field_string_value)
           .to_string()
           .into();
@@ -365,12 +359,12 @@ impl RegexMatchAndSubstitute {
       return;
     }
 
-    for field in &mut log.matching_fields {
-      if field.key != self.field_name {
+    for (key, value) in &mut log.matching_fields {
+      if *key != self.field_name {
         continue;
       }
-      if let Some(field_string_value) = field.value.as_str() {
-        field.value = self
+      if let Some(field_string_value) = value.as_str() {
+        *value = self
           .produce_new_value(field_string_value)
           .to_string()
           .into();
@@ -388,11 +382,10 @@ impl RegexMatchAndSubstitute {
   }
 }
 
-fn set_field(fields: &mut LogFields, field: LogField) {
+fn set_field(fields: &mut LogFields, key: LogFieldKey, value: LogFieldValue) {
   // If a field that's supposed to be captured exists, remove it from the list of captured fields
   // before adding it.
-  fields.retain(|f| f.key != field.key);
-  fields.push(field);
+  fields.insert(key, value);
 }
 
 trait FieldProvider {
@@ -409,8 +402,8 @@ impl FieldProvider for Log {
         .fields
         .iter()
         .chain(self.matching_fields.iter())
-        .find(|f| f.key == key)
-        .and_then(|f| f.value.as_str())
+        .find_map(|(k, v)| (k == key).then_some(v))
+        .and_then(|f| f.as_str())
         .map(Into::into),
     }
   }

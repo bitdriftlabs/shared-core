@@ -20,7 +20,12 @@ pub trait Logger: Send + Sync {
   fn log(&self, level: LogLevel, log_type: LogType, msg: &str, fields: LogFields);
 
   fn log_internal(&self, msg: &str) {
-    self.log(log_level::DEBUG, LogType::InternalSDK, msg, vec![]);
+    self.log(
+      log_level::DEBUG,
+      LogType::InternalSDK,
+      msg,
+      LogFields::default(),
+    );
   }
 }
 

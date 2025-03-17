@@ -17,8 +17,8 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
 use bd_key_value::Store;
 use bd_log_filter::FilterChain;
-use bd_log_metadata::{AnnotatedLogFields, LogFieldKind};
-use bd_log_primitives::{log_level, AnnotatedLogField, Log, LogField, LogFields, StringOrBytes};
+use bd_log_metadata::AnnotatedLogFields;
+use bd_log_primitives::{log_level, AnnotatedLogField, Log, LogFields, StringOrBytes};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::config::v1::config::BufferConfigList;
@@ -118,6 +118,7 @@ impl Setup {
       &self.runtime,
       Arc::new(SimpleNetworkQualityProvider::default()),
       String::new(),
+      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
     )
   }
 
@@ -144,6 +145,7 @@ impl Setup {
       &self.runtime,
       Arc::new(SimpleNetworkQualityProvider::default()),
       String::new(),
+      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
     )
   }
 
@@ -224,14 +226,14 @@ fn log_line_size_is_computed_correctly() {
       log_level: 0,
       log_type: LogType::Normal,
       message: "foo".into(),
-      fields: vec![AnnotatedLogField::new_ootb("foo".to_string(), "bar".into())],
-      matching_fields: vec![],
+      fields: [("foo".into(), AnnotatedLogField::new_ootb("bar"))].into(),
+      matching_fields: [].into(),
       attributes_overrides: None,
       log_processing_completed_tx: None,
     }
   }
 
-  let baseline_log_expected_size = 362;
+  let baseline_log_expected_size = 463;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 
@@ -244,13 +246,11 @@ fn log_line_size_is_computed_correctly() {
     baseline_log_with_longer_message.size()
   );
 
-  // Add one extra character to one of the fields' keys and verify that reported size increases
+  // Add one extra character to one of the fields' values and verify that reported size increases
   // by 1 byte
   let mut baseline_log_with_longer_field_key = create_baseline_log();
-  baseline_log_with_longer_field_key.fields = vec![AnnotatedLogField::new_ootb(
-    "foo1".to_string(),
-    "bar".into(),
-  )];
+  baseline_log_with_longer_field_key.fields =
+    [("foo".into(), AnnotatedLogField::new_ootb("bar1"))].into();
 
   assert_eq!(
     baseline_log_expected_size + 1,
@@ -260,13 +260,8 @@ fn log_line_size_is_computed_correctly() {
   // Add one extra character to one of the fields' values and verify that reported size increases
   // by 1 byte
   let mut baseline_log_with_longer_field_value = baseline_log;
-  baseline_log_with_longer_field_value.fields = vec![AnnotatedLogField {
-    field: LogField {
-      key: "foo".to_string(),
-      value: StringOrBytes::String("bar1".to_string()),
-    },
-    kind: LogFieldKind::Ootb,
-  }];
+  baseline_log_with_longer_field_value.fields =
+    [("foo".into(), AnnotatedLogField::new_ootb("bar1"))].into();
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_field_value.size()
@@ -280,17 +275,14 @@ fn annotated_log_line_size_is_computed_correctly() {
       log_level: 0,
       log_type: LogType::Normal,
       message: "foo".into(),
-      fields: vec![LogField {
-        key: "foo".to_string(),
-        value: StringOrBytes::String("bar".to_string()),
-      }],
-      matching_fields: vec![],
+      fields: [("foo".into(), StringOrBytes::String("bar".to_string()))].into(),
+      matching_fields: [].into(),
       session_id: "foo".into(),
       occurred_at: time::OffsetDateTime::now_utc(),
     }
   }
 
-  let baseline_log_expected_size = 308;
+  let baseline_log_expected_size = 545;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 
@@ -314,10 +306,8 @@ fn annotated_log_line_size_is_computed_correctly() {
   // Add one extra character to one of the fields' keys and verify that reported size increases
   // by 1 byte
   let mut baseline_log_with_longer_field_key = create_baseline_log();
-  baseline_log_with_longer_field_key.fields = vec![LogField {
-    key: "foo1".to_string(),
-    value: StringOrBytes::String("bar".to_string()),
-  }];
+  baseline_log_with_longer_field_key.fields =
+    [("foo".into(), StringOrBytes::String("bar1".to_string()))].into();
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_field_key.size()
@@ -326,10 +316,8 @@ fn annotated_log_line_size_is_computed_correctly() {
   // Add one extra character to one of the fields' values and verify that reported size increases
   // by 1 byte
   let mut baseline_log_with_longer_field_value = baseline_log;
-  baseline_log_with_longer_field_value.fields = vec![LogField {
-    key: "foo".to_string(),
-    value: StringOrBytes::String("bar1".to_string()),
-  }];
+  baseline_log_with_longer_field_value.fields =
+    [("foo".into(), StringOrBytes::String("bar1".to_string()))].into();
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_field_value.size()
@@ -368,8 +356,8 @@ async fn logs_are_replayed_in_order() {
         0,
         LogType::Normal,
         current_log_message.as_str().into(),
-        vec![],
-        vec![],
+        [].into(),
+        [].into(),
         None,
         false,
       );
@@ -438,8 +426,8 @@ fn enqueuing_log_does_not_block() {
     0,
     LogType::Normal,
     "test".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
     None,
     false,
   );
@@ -481,8 +469,8 @@ fn enqueuing_log_blocks() {
     0,
     LogType::Normal,
     "test".into(),
-    vec![],
-    vec![],
+    [].into(),
+    [].into(),
     None,
     true,
   );
@@ -534,8 +522,8 @@ async fn initial_logs_are_processed_first() {
           log_level: log_level::ERROR,
           log_type: LogType::Normal,
           message: "first".into(),
-          fields: vec![],
-          matching_fields: vec![],
+          fields: [].into(),
+          matching_fields: [].into(),
           session_id: "first session".into(),
           occurred_at: t0,
         }],
@@ -550,8 +538,8 @@ async fn initial_logs_are_processed_first() {
       log_level: log_level::INFO,
       log_type: LogType::Normal,
       message: "second".into(),
-      fields: vec![],
-      matching_fields: vec![],
+      fields: [].into(),
+      matching_fields: [].into(),
       attributes_overrides: None,
       log_processing_completed_tx: None,
     }))
@@ -703,7 +691,5 @@ async fn logs_resource_utilization_log() {
 
   // Confirm that internal fields are added if enabled.
   assert!(setup.replayer_fields.lock().len() > 0);
-  assert!(setup.replayer_fields.lock()[0]
-    .iter()
-    .any(|f| f.key == "_logs_count"));
+  assert!(setup.replayer_fields.lock()[0].contains_key("_logs_count"));
 }

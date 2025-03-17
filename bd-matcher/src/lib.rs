@@ -42,9 +42,8 @@ impl FieldProvider for FieldsRef<'_> {
     // fields take precedence, as they are potentially stored and uploaded to the remote server.
     if let Some(value) = self
       .captured_fields
-      .iter()
-      .find_map(|field| (field.key == field_key).then(|| field.value.as_str()))
-      .flatten()
+      .get(field_key)
+      .and_then(|value| value.as_str())
     {
       return Some(Cow::Borrowed(value));
     }

@@ -11,13 +11,12 @@ use crate::{
   INGESTION_CONFIG_FILE,
   REASON_INFERENCE_CONFIG_FILE,
 };
-use bd_log_primitives::StringOrBytes;
+use bd_log_primitives::LogFields;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use itertools::Itertools;
-use std::collections::HashMap;
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -79,7 +78,7 @@ impl Setup {
     std::fs::exists(self.directory.path().join("reports").join(name)).unwrap_or_default()
   }
 
-  async fn process_new_reports(&self) -> Vec<HashMap<String, StringOrBytes<String, Vec<u8>>>> {
+  async fn process_new_reports(&self) -> Vec<LogFields> {
     // Convert to a HashMap<String, String> for easier testing
     // Sort the logs by the first field to make the test deterministic - otherwise this depends on
     // the order of files traversed in the directory.
@@ -90,23 +89,12 @@ impl Setup {
       .await
       .into_iter()
       .sorted_by_key(|log| {
-        log
-          .fields
-          .iter()
-          .find(|field| field.key == "_crash_artifact")
-          .unwrap()
-          .value
+        log.fields["_crash_artifact"]
           .as_bytes()
           .unwrap_or_default()
           .to_vec()
       })
-      .map(|log| {
-        log
-          .fields
-          .into_iter()
-          .map(|field| (field.key, field.value))
-          .collect()
-      })
+      .map(|log| log.fields)
       .collect()
   }
 }

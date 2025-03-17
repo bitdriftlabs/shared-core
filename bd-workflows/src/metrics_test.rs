@@ -10,7 +10,7 @@ use crate::config::{ActionEmitMetric, MetricType, TagValue};
 use bd_client_stats::DynamicStats;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{BoundedCollector, Collector};
-use bd_log_primitives::{log_level, FieldsRef, LogField, LogRef, LogType};
+use bd_log_primitives::{log_level, FieldsRef, LogRef, LogType};
 use bd_runtime::runtime::ConfigLoader;
 use bd_stats_common::labels;
 use std::collections::BTreeMap;
@@ -44,21 +44,9 @@ impl Setup {
 
 #[test]
 fn metric_increment_value_extraction() {
-  let fields = vec![
-    LogField {
-      key: "f1".to_string(),
-      value: "1.1".into(),
-    },
-    LogField {
-      key: "f2".to_string(),
-      value: "10".into(),
-    },
-  ];
+  let fields = [("f1".into(), "1.1".into()), ("f2".into(), "10".into())].into();
 
-  let matching_only_fields = vec![LogField {
-    key: "m1".to_string(),
-    value: "5".into(),
-  }];
+  let matching_only_fields = [("m1".into(), "5".into())].into();
 
   let setup = Setup::new();
   let (metrics_collector, dynamic_stats_collector) = setup.make_metrics_collector();
@@ -167,21 +155,9 @@ fn metric_increment_value_extraction() {
 
 #[test]
 fn counter_label_extraction() {
-  let fields = vec![
-    LogField {
-      key: "f1".to_string(),
-      value: "foo".into(),
-    },
-    LogField {
-      key: "f2".to_string(),
-      value: "bar".into(),
-    },
-  ];
+  let fields = [("f1".into(), "foo".into()), ("f2".into(), "bar".into())].into();
 
-  let matching_only_fields = vec![LogField {
-    key: "m1".to_string(),
-    value: "5".into(),
-  }];
+  let matching_only_fields = [("m1".into(), "5".into())].into();
 
   let setup = Setup::new();
   let (metrics_collector, dynamic_stats_collector) = setup.make_metrics_collector();
