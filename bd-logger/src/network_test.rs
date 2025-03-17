@@ -8,10 +8,10 @@
 use super::{NetworkQualityInterceptor, TimeProvider};
 use crate::network::HTTPTrafficDataUsageTracker;
 use bd_api::api::SimpleNetworkQualityProvider;
-use bd_log_metadata::AnnotatedLogFields;
 use bd_log_primitives::{
   log_level,
   AnnotatedLogField,
+  AnnotatedLogFields,
   LogInterceptor,
   LogMessage,
   LogType,

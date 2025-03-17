@@ -21,8 +21,14 @@ use crate::{app_version, MetadataProvider};
 use bd_api::Metadata;
 use bd_client_stats_store::Scope;
 use bd_log::warn_every;
-use bd_log_metadata::AnnotatedLogFields;
-use bd_log_primitives::{log_level, AnnotatedLogField, LogFieldValue, LogLevel, LogMessage};
+use bd_log_primitives::{
+  log_level,
+  AnnotatedLogField,
+  AnnotatedLogFields,
+  LogFieldValue,
+  LogLevel,
+  LogMessage,
+};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::Snapshot;
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;

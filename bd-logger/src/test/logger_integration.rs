@@ -139,7 +139,7 @@ fn log_upload_attributes_override() {
   let time_first = time::OffsetDateTime::now_utc();
   let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
     timestamp: Mutex::new(time_first),
-    fields: [].into(),
+    ..Default::default()
   }));
 
   setup.send_configuration_update(
@@ -783,14 +783,8 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
 
   let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
     timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
-    fields: [
-      (
-        "k1".into(),
-        AnnotatedLogField::new_custom("provider_value_1"),
-      ),
-      ("k2".into(), AnnotatedLogField::new_ootb("provider_value_2")),
-    ]
-    .into(),
+    custom_fields: [("k1".into(), "provider_value_1".into())].into(),
+    ootb_fields: [("k2".into(), "provider_value_2".into())].into(),
   }));
 
   // Send down a configuration with a single buffer ('default')
@@ -921,7 +915,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
 fn workflow_generate_log_to_histogram() {
   let metadata = Arc::new(LogMetadata {
     timestamp: Mutex::new(datetime!(2023-10-01 00:00:00 UTC)),
-    fields: [].into(),
+    ..Default::default()
   });
   let mut setup = Setup::new_with_metadata(metadata.clone());
   setup.send_runtime_update();

@@ -23,10 +23,11 @@ use anyhow::anyhow;
 use bd_buffer::BuffersWithAck;
 use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_device::Store;
-use bd_log_metadata::{AnnotatedLogFields, MetadataProvider};
+use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{
   log_level,
   AnnotatedLogField,
+  AnnotatedLogFields,
   Log,
   LogFieldValue,
   LogFields,
@@ -137,6 +138,12 @@ impl MemorySized for bd_log_primitives::Log {
       + self.fields.size()
       + self.matching_fields.size()
       + self.session_id.len()
+  }
+}
+
+impl MemorySized for AnnotatedLogFields {
+  fn size(&self) -> usize {
+    self.iter().map(|(k, v)| k.len() + v.size()).sum::<usize>()
   }
 }
 

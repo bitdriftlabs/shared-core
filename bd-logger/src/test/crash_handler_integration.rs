@@ -9,7 +9,6 @@ use super::setup::Setup;
 use crate::test::setup::SetupOptions;
 use crate::wait_for;
 use assert_matches::assert_matches;
-use bd_log_primitives::AnnotatedLogField;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::FeatureFlag;
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -27,11 +26,8 @@ fn crash_reports() {
       disk_storage: true,
       metadata_provider: Arc::new(LogMetadata {
         timestamp: time::OffsetDateTime::now_utc().into(),
-        fields: [
-          ("_ootb_field".into(), AnnotatedLogField::new_ootb("ootb")),
-          ("custom".into(), AnnotatedLogField::new_custom("custom")),
-        ]
-        .into(),
+        ootb_fields: [("_ootb_field".into(), "ootb".into())].into(),
+        custom_fields: [("custom".into(), "custom".into())].into(),
       }),
       ..Default::default()
     });

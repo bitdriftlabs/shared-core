@@ -21,7 +21,8 @@ use std::sync::Arc;
 fn collector_attaches_provider_fields_as_matching_fields() {
   let metadata = LogMetadata {
     timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
-    fields: [("key".into(), AnnotatedLogField::new_ootb("provider_value"))].into(),
+    ootb_fields: [("key".into(), "provider_value".into())].into(),
+    ..Default::default()
   };
 
   let collector = MetadataCollector::new(Arc::new(metadata));
@@ -65,31 +66,16 @@ fn collector_attaches_provider_fields_as_matching_fields() {
 fn collector_fields_hierarchy() {
   let metadata = LogMetadata {
     timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
-    fields: [
-      (
-        "custom_provider_key".into(),
-        AnnotatedLogField::new_custom(StringOrBytes::String("custom_provider_value".into())),
-      ),
-      (
-        "ootb_provider_key_1".into(),
-        AnnotatedLogField::new_ootb(StringOrBytes::String("ootb_provider_value_1".into())),
-      ),
-      (
-        "ootb_provider_key_2".into(),
-        AnnotatedLogField::new_ootb(StringOrBytes::String("ootb_provider_value_2".into())),
-      ),
-      (
-        "provider_key".into(),
-        AnnotatedLogField::new_custom(StringOrBytes::String("custom_provider_value".into())),
-      ),
-      (
-        "provider_key".into(),
-        AnnotatedLogField::new_ootb(StringOrBytes::String("ootb_provider_value".into())),
-      ),
-      (
-        "collector_key".into(),
-        AnnotatedLogField::new_custom(StringOrBytes::String("custom_provider_value".into())),
-      ),
+    custom_fields: [
+      ("custom_provider_key".into(), "custom_provider_value".into()),
+      ("provider_key".into(), "custom_provider_value".into()),
+      ("collector_key".into(), "custom_provider_value".into()),
+    ]
+    .into(),
+    ootb_fields: [
+      ("ootb_provider_key_1".into(), "ootb_provider_value_1".into()),
+      ("ootb_provider_key_2".into(), "ootb_provider_value_2".into()),
+      ("provider_key".into(), "ootb_provider_value".into()),
     ]
     .into(),
   };
@@ -170,17 +156,12 @@ fn collector_fields_hierarchy() {
 fn collector_does_not_accept_reserved_fields() {
   let metadata = LogMetadata {
     timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
-    fields: [
-      (
-        "_custom_provider_key".into(),
-        AnnotatedLogField::new_custom("custom_provider_value"),
-      ),
-      (
-        "_ootb_provider_key".into(),
-        AnnotatedLogField::new_ootb("ootb_provider_value"),
-      ),
-    ]
+    custom_fields: [(
+      "_custom_provider_key".into(),
+      "custom_provider_value".into(),
+    )]
     .into(),
+    ootb_fields: [("_ootb_provider_key".into(), "ootb_provider_value".into())].into(),
   };
 
   let mut collector = MetadataCollector::new(Arc::new(metadata));
@@ -215,7 +196,7 @@ fn collector_does_not_accept_reserved_fields() {
 fn collector_fields_management() {
   let metadata = LogMetadata {
     timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
-    fields: [].into(),
+    ..Default::default()
   };
 
   let mut collector = MetadataCollector::new(Arc::new(metadata));

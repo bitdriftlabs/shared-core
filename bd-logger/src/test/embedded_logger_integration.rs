@@ -8,7 +8,7 @@
 use crate::{log_level, InitParams, LogType, Logger, MetadataProvider};
 use assert_matches::assert_matches;
 use bd_key_value::Store;
-use bd_log_metadata::AnnotatedLogFields;
+use bd_log_metadata::LogFields;
 use bd_proto::protos::client::api::RuntimeUpdate;
 use bd_proto::protos::client::runtime::runtime::{value, Value};
 use bd_proto::protos::client::runtime::Runtime;
@@ -38,8 +38,8 @@ impl MetadataProvider for TestMetadataProvider {
     Ok(time::OffsetDateTime::now_utc())
   }
 
-  fn fields(&self) -> anyhow::Result<AnnotatedLogFields> {
-    Ok(AnnotatedLogFields::default())
+  fn fields(&self) -> anyhow::Result<(LogFields, LogFields)> {
+    Ok((LogFields::default(), LogFields::default()))
   }
 }
 

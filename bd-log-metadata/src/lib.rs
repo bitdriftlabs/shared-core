@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-pub use bd_log_primitives::{AnnotatedLogFields, LogFieldKind};
+pub use bd_log_primitives::LogFields;
 
 //
 // MetadataProvider
@@ -16,6 +16,6 @@ pub trait MetadataProvider {
   /// Returns the timestamp to associate with the log message.
   fn timestamp(&self) -> anyhow::Result<time::OffsetDateTime>;
 
-  /// Returns fields to include with each log message.
-  fn fields(&self) -> anyhow::Result<AnnotatedLogFields>;
+  /// Returns custom and ootb fields to include with each log message.
+  fn fields(&self) -> anyhow::Result<(LogFields, LogFields)>;
 }
