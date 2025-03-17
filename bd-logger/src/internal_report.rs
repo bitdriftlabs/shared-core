@@ -5,8 +5,14 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_log_metadata::AnnotatedLogFields;
-use bd_log_primitives::{AnnotatedLogField, LogInterceptor, LogLevel, LogMessage, LogType};
+use bd_log_primitives::{
+  AnnotatedLogField,
+  AnnotatedLogFields,
+  LogInterceptor,
+  LogLevel,
+  LogMessage,
+  LogType,
+};
 use bd_runtime::runtime::{debugging, BoolWatch, ConfigLoader};
 
 //

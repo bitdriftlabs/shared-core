@@ -11,8 +11,8 @@ mod metadata_test;
 
 use crate::global_state::Tracker;
 use bd_log::warn_every;
-use bd_log_metadata::{AnnotatedLogFields, LogFieldKind, MetadataProvider};
-use bd_log_primitives::{LogFieldKey, LogFieldValue, LogFields};
+use bd_log_metadata::MetadataProvider;
+use bd_log_primitives::{AnnotatedLogFields, LogFieldKey, LogFieldKind, LogFieldValue, LogFields};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use itertools::Itertools;
 use std::collections::BTreeSet;
@@ -79,10 +79,22 @@ impl MetadataCollector {
   ) -> anyhow::Result<LogMetadata> {
     let timestamp = self.metadata_provider.timestamp()?;
 
-    let provider_fields = self.metadata_provider.fields()?;
-    let provider_fields = partition_fields(provider_fields);
-    global_state_tracker.maybe_update_global_state(&provider_fields.ootb);
+    let (custom_fields, ootb_fields) = self.metadata_provider.fields()?;
+    global_state_tracker.maybe_update_global_state(&ootb_fields);
 
+    let provider_fields = PartitionedFields {
+      ootb: ootb_fields,
+      custom: custom_fields
+        .into_iter()
+        .filter(|field| match verify_custom_field_name(&field.0) {
+          Ok(()) => true,
+          Err(e) => {
+            warn_every!(15.seconds(), "failed to process field: {:?}", e);
+            false
+          },
+        })
+        .collect(),
+    };
     // Attach field provider's fields to session replay, resource logs, and internal SDK logs
     // as matching fields as opposed to 'normal' fields to save on bandwidth usage while still
     // allowing matching on them.

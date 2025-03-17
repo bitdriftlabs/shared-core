@@ -5,12 +5,13 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_log_metadata::{AnnotatedLogFields, MetadataProvider};
+use bd_log_metadata::{LogFields, MetadataProvider};
 use parking_lot::Mutex;
 
 pub struct LogMetadata {
   pub timestamp: Mutex<time::OffsetDateTime>,
-  pub fields: AnnotatedLogFields,
+  pub custom_fields: LogFields,
+  pub ootb_fields: LogFields,
 }
 
 impl MetadataProvider for LogMetadata {
@@ -18,8 +19,8 @@ impl MetadataProvider for LogMetadata {
     Ok(*self.timestamp.lock())
   }
 
-  fn fields(&self) -> anyhow::Result<AnnotatedLogFields> {
-    Ok(self.fields.clone())
+  fn fields(&self) -> anyhow::Result<(LogFields, LogFields)> {
+    Ok((self.custom_fields.clone(), self.ootb_fields.clone()))
   }
 }
 
@@ -27,7 +28,8 @@ impl Default for LogMetadata {
   fn default() -> Self {
     Self {
       timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
-      fields: AnnotatedLogFields::default(),
+      custom_fields: LogFields::default(),
+      ootb_fields: LogFields::default(),
     }
   }
 }

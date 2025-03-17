@@ -32,10 +32,11 @@ pub use async_log_buffer::LogAttributesOverridesPreviousRunSessionID;
 pub use bd_api::{PlatformNetworkManager, PlatformNetworkStream};
 pub use bd_device::Device;
 pub use bd_events::ListenerTarget as EventsListenerTarget;
-pub use bd_log_metadata::{AnnotatedLogFields, MetadataProvider};
+pub use bd_log_metadata::MetadataProvider;
 pub use bd_log_primitives::{
   log_level,
   AnnotatedLogField,
+  AnnotatedLogFields,
   FieldsRef,
   LogFieldKind,
   LogFieldValue,

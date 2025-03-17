@@ -8,9 +8,9 @@
 #[cfg(test)]
 #[path = "./network_test.rs"]
 mod network_test;
-use bd_log_metadata::AnnotatedLogFields;
 use bd_log_primitives::{
   AnnotatedLogField,
+  AnnotatedLogFields,
   LogFieldKey,
   LogInterceptor,
   LogLevel,

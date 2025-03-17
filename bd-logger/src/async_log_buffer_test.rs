@@ -17,8 +17,14 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
 use bd_key_value::Store;
 use bd_log_filter::FilterChain;
-use bd_log_metadata::AnnotatedLogFields;
-use bd_log_primitives::{log_level, AnnotatedLogField, Log, LogFields, StringOrBytes};
+use bd_log_primitives::{
+  log_level,
+  AnnotatedLogField,
+  AnnotatedLogFields,
+  Log,
+  LogFields,
+  StringOrBytes,
+};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::config::v1::config::BufferConfigList;
@@ -233,7 +239,7 @@ fn log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 463;
+  let baseline_log_expected_size = 234;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 
