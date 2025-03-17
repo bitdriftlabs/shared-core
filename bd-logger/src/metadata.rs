@@ -87,7 +87,7 @@ impl MetadataCollector {
       custom: custom_fields
         .into_iter()
         .filter(|field| match verify_custom_field_name(&field.0) {
-          Ok(_) => true,
+          Ok(()) => true,
           Err(e) => {
             warn_every!(15.seconds(), "failed to process field: {:?}", e);
             false
