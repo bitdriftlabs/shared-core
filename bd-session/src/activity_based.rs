@@ -210,7 +210,6 @@ struct InMemoryState {
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct State {
   session_id: String,
-  #[serde(with = "time::serde::rfc3339")]
   last_activity: OffsetDateTime,
 }
 
