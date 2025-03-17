@@ -10,14 +10,8 @@
 mod workflow_test;
 
 use crate::config::{
-  Action,
-  ActionEmitMetric,
-  ActionEmitSankey,
-  ActionFlushBuffers,
-  ActionTakeScreenshot,
-  Config,
-  Execution,
-  Predicate,
+  Action, ActionEmitMetric, ActionEmitSankey, ActionFlushBuffers, ActionTakeScreenshot, Config,
+  Execution, Predicate,
 };
 use crate::generate_log::generate_log_action;
 use bd_log_primitives::{FieldsRef, Log, LogRef};
@@ -103,7 +97,7 @@ impl Workflow {
     let mut did_make_progress = false;
     // Process runs in reversed order as we may end up modifying the array
     // starting at `index` in any given iteration of the loop.
-    for index in (0 .. self.runs.len()).rev() {
+    for index in (0..self.runs.len()).rev() {
       let run = &mut self.runs[index];
       let mut run_result = run.process_log(config, log);
 
@@ -352,7 +346,7 @@ impl Workflow {
   /// Returns the list of states of all run's traversals.
   #[cfg(test)]
   pub(crate) fn runs_states(&self, config: &Config) -> Vec<String> {
-    (0 .. self.runs.len())
+    (0..self.runs.len())
       .flat_map(|run_index| {
         self.runs[run_index]
           .traversals
@@ -587,7 +581,7 @@ impl Run {
       self.traversals.len(),
       config.id()
     );
-    for index in (0 .. self.traversals.len()).rev() {
+    for index in (0..self.traversals.len()).rev() {
       let traversal = &mut self.traversals[index];
       let mut traversal_result = traversal.process_log(config, log);
 
@@ -691,7 +685,7 @@ impl Run {
       //    finished and can be removed.
       self
         .traversals
-        .splice(index ..= index, traversal_result.output_traversals);
+        .splice(index..=index, traversal_result.output_traversals);
     }
 
     let state = if self.traversals.is_empty() {
@@ -998,20 +992,24 @@ impl Traversal {
           triggered_actions.push(TriggeredAction::EmitMetric(action));
         },
         Action::EmitSankey(action) => {
+          log::trace!("About to crash I think 1");
           debug_assert!(
             extractions.sankey_states.is_some(),
             "sankey_states should be present"
           );
+          log::trace!("About to crash I think 1 NOT");
           let Some(sankey_states) = &mut extractions.sankey_states else {
             continue;
           };
 
           let Some(sankey_state) = sankey_states.remove(action.id()) else {
+            log::trace!("About to crash I think 2");
             debug_assert!(
               false,
               "sankey_states for Sankey with {:?} ID should be present",
               action.id()
             );
+            log::trace!("About to crash I think 2 NOT");
             continue;
           };
 
@@ -1024,6 +1022,7 @@ impl Traversal {
           triggered_actions.push(TriggeredAction::TakeScreenshot(action));
         },
         Action::GenerateLog(action) => {
+          log::trace!("HERE WE COME");
           if let Some(log) = generate_log_action(extractions, action, current_log_fields) {
             logs_to_inject.insert(action.id.as_str(), log);
           }
@@ -1088,13 +1087,11 @@ impl TraversalResult<'_> {
   /// to checking whether any log was matched but the check is abstracted away to improve
   /// readability.
   fn did_make_progress(&self) -> bool {
-    debug_assert!(
-      if self.matched_logs_count == 0 {
-        self.followed_transitions_count == 0
-      } else {
-        true
-      }
-    );
+    debug_assert!(if self.matched_logs_count == 0 {
+      self.followed_transitions_count == 0
+    } else {
+      true
+    });
     self.matched_logs_count > 0
   }
 }
