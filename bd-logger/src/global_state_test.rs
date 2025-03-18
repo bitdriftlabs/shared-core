@@ -25,7 +25,7 @@ fn global_state_update() {
   assert!(!state_tracker.maybe_update_global_state(&fields));
 
   assert_eq!(state_tracker.global_state_fields(), fields);
-  assert_eq!(state_tracker.current_global_state.0, fields);
+  assert_eq!(state_tracker.current_global_state.fields, fields);
 
   let updated_fields = [("key".into(), "value".into())].into();
 
@@ -33,7 +33,7 @@ fn global_state_update() {
   assert!(!state_tracker.maybe_update_global_state(&updated_fields));
 
   assert_eq!(state_tracker.global_state_fields(), updated_fields);
-  assert_eq!(state_tracker.current_global_state.0, updated_fields);
+  assert_eq!(state_tracker.current_global_state.fields, updated_fields);
 
   let updated_fields = [("key".into(), b"value".to_vec().into())].into();
 

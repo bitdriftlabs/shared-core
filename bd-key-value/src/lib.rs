@@ -10,6 +10,7 @@
 mod store_test;
 use base64::Engine;
 use bd_log::warn_every;
+use protobuf::MessageFull;
 use time::ext::NumericalDuration;
 
 #[cfg(test)]
@@ -26,6 +27,8 @@ fn test_global_init() {
 pub trait Storable: serde::Serialize + serde::de::DeserializeOwned {}
 
 impl Storable for String {}
+
+impl Storable for Vec<u8> {}
 
 //
 // Storage
@@ -63,6 +66,55 @@ impl Store {
         e
       );
     }
+  }
+
+  pub fn set_proto<P: MessageFull>(&self, key: &Key<Vec<u8>>, value: &P) {
+    let mut bytes = vec![];
+    if let Err(e) = value.write_to_vec(&mut bytes) {
+      warn_every!(
+        15.seconds(),
+        "failed to serialize value for {:?} key: {:?}",
+        key.key,
+        e
+      );
+      return;
+    }
+
+    if let Err(e) = self.set_internal(key, &bytes) {
+      warn_every!(
+        15.seconds(),
+        "failed to set value for {:?} key: {:?}",
+        key.key,
+        e
+      );
+    }
+  }
+
+  #[must_use]
+  pub fn get_proto<P: MessageFull>(&self, key: &Key<Vec<u8>>) -> Option<P> {
+    let data = self
+      .get_internal::<Vec<u8>>(key)
+      .map_err(|e| {
+        warn_every!(
+          15.seconds(),
+          "failed to get value for {:?} key: {:?}",
+          key.key,
+          e
+        );
+
+        if let Err(e) = self.storage.delete(key.key()) {
+          warn_every!(
+            15.seconds(),
+            "failed to delete value for {:?} key: {:?}",
+            key.key,
+            e
+          );
+        }
+      })
+      .ok()
+      .flatten()?;
+
+    P::parse_from_bytes(&data).ok()
   }
 
   #[must_use]
@@ -131,7 +183,7 @@ impl Store {
 // Key
 //
 
-pub struct Key<T: Storable> {
+pub struct Key<T> {
   key: &'static str,
   _phantom: std::marker::PhantomData<T>,
 }
