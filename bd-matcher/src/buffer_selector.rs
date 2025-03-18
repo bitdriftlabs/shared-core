@@ -10,7 +10,7 @@ use crate::{FieldProvider, Result};
 use bd_log_primitives::{LogLevel, LogMessage, LogType};
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use std::borrow::Cow;
-use std::collections::BTreeSet;
+use std::collections::HashSet;
 
 // A single buffer filter, containing the matchers used to determine if logs should be written to
 // the specific buffer.
@@ -61,8 +61,8 @@ impl BufferSelector {
     log_level: LogLevel,
     message: &LogMessage,
     fields: &impl FieldProvider,
-  ) -> BTreeSet<Cow<'_, str>> {
-    let mut buffers = BTreeSet::new();
+  ) -> HashSet<Cow<'_, str>> {
+    let mut buffers = HashSet::new();
     for buffer in &self.buffer_filters {
       for (_id, matcher) in &buffer.matchers {
         if matcher.do_match(log_type, log_level, message, fields) {

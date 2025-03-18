@@ -42,7 +42,7 @@ use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use protobuf::Message;
 use rand::Rng;
 use sha2::Digest;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs::{self};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
@@ -138,7 +138,7 @@ impl AnnotatedWorkflowsEngine {
         session_id: "1231231231312312312312",
         occurred_at: OffsetDateTime::now_utc(),
       },
-      &BTreeSet::new(),
+      &HashSet::new(),
     );
   }
 

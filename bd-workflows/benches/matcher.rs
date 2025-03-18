@@ -15,7 +15,7 @@ use bd_test_helpers::{action, declare_transition, log_matches, rule, state, work
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 use time::OffsetDateTime;
 
@@ -125,7 +125,7 @@ fn run_runtime_bench(bencher: &mut Bencher<'_>, engine: impl FnOnce() -> Workflo
             session_id: "session_id",
             occurred_at: OffsetDateTime::now_utc(),
           }),
-          &BTreeSet::default(),
+          &HashSet::default(),
         );
       });
     });

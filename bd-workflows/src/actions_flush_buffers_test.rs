@@ -23,7 +23,7 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
 use bd_stats_common::labels;
 use pretty_assertions::assert_eq;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
 
@@ -438,13 +438,13 @@ fn process_streaming_buffers_actions() {
         true,
       ),
     ],
-    &BTreeSet::from(["existing_trigger_buffer_id".into()]),
+    &HashSet::from(["existing_trigger_buffer_id".into()]),
     "foo_session_id",
   );
 
   assert_eq!(
     StreamingBuffersActionsProcessingResult {
-      log_destination_buffer_ids: BTreeSet::from(["continuous_buffer_id".into()]),
+      log_destination_buffer_ids: HashSet::from(["continuous_buffer_id".into()]),
       has_changed_streaming_actions: true,
       updated_streaming_actions: vec![StreamingBuffersAction {
         id: "action_id_1".to_string(),

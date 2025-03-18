@@ -18,7 +18,7 @@ use bd_proto::protos::client::api::LogUploadIntentRequest;
 use bd_stats_common::labels;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fmt::Debug;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
@@ -434,7 +434,7 @@ impl Resolver {
   pub(crate) fn process_streaming_actions<'a>(
     &self,
     mut streaming_actions: Vec<(StreamingBuffersAction, bool)>,
-    log_destination_buffer_ids: &BTreeSet<Cow<'a, str>>,
+    log_destination_buffer_ids: &HashSet<Cow<'a, str>>,
     session_id: &str,
   ) -> StreamingBuffersActionsProcessingResult<'a> {
     let mut has_changed_streaming_actions = false;
@@ -482,7 +482,7 @@ impl Resolver {
     // of this process, the state of all active streaming actions is updated, with a counter of logs
     // streamed for each active streaming rule being incremented accordingly.
 
-    let mut final_log_destination_buffer_ids: BTreeSet<_> = BTreeSet::new();
+    let mut final_log_destination_buffer_ids: HashSet<_> = HashSet::new();
 
     let mut not_rerouted_buffer_ids: BTreeSet<_> = log_destination_buffer_ids
       .clone()
@@ -498,7 +498,8 @@ impl Resolver {
     for (action, _) in &mut streaming_actions {
       let intersection: BTreeSet<_> = action
         .source_trigger_buffer_ids
-        .intersection(log_destination_buffer_ids)
+        .iter()
+        .filter(|id| log_destination_buffer_ids.contains(*id))
         .collect();
 
       if intersection.is_empty() {
@@ -527,7 +528,7 @@ impl Resolver {
       self.stats.streaming_action_applications.inc();
     }
 
-    final_log_destination_buffer_ids.append(&mut not_rerouted_buffer_ids);
+    final_log_destination_buffer_ids.extend(not_rerouted_buffer_ids);
 
     has_changed_streaming_actions |= has_been_rerouted;
 
@@ -723,7 +724,7 @@ pub(crate) struct FlushBuffersActionsProcessingResult<'a> {
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct StreamingBuffersActionsProcessingResult<'a> {
-  pub(crate) log_destination_buffer_ids: BTreeSet<Cow<'a, str>>,
+  pub(crate) log_destination_buffer_ids: HashSet<Cow<'a, str>>,
   pub(crate) has_changed_streaming_actions: bool,
   pub(crate) updated_streaming_actions: Vec<StreamingBuffersAction>,
 }

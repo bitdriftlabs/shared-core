@@ -44,7 +44,7 @@ use bd_stats_common::labels;
 use bd_time::TimeDurationExt as _;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -574,7 +574,7 @@ impl WorkflowsEngine {
   pub fn process_log<'a>(
     &'a mut self,
     log: &LogRef<'_>,
-    log_destination_buffer_ids: &'a BTreeSet<Cow<'a, str>>,
+    log_destination_buffer_ids: &'a HashSet<Cow<'a, str>>,
   ) -> WorkflowsEngineResult<'a> {
     // Measure duration in here even if the list of workflows is empty.
     let _timer = self.stats.process_log_duration.start_timer();
@@ -622,12 +622,12 @@ impl WorkflowsEngine {
         triggered_flushes_buffer_ids: BTreeSet::new(),
         triggered_flush_buffers_action_ids: BTreeSet::new(),
         capture_screenshot: false,
-        logs_to_inject: BTreeMap::new(),
+        logs_to_inject: HashMap::new(),
       };
     }
 
     let mut actions: Vec<TriggeredAction<'_>> = vec![];
-    let mut logs_to_inject: BTreeMap<&'a str, Log> = BTreeMap::new();
+    let mut logs_to_inject: HashMap<&'a str, Log> = HashMap::new();
     log::trace!("processing log: {log:?}");
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let was_in_initial_state = workflow.is_in_initial_state();
@@ -904,7 +904,7 @@ impl Drop for WorkflowsEngine {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct WorkflowsEngineResult<'a> {
-  pub log_destination_buffer_ids: Cow<'a, BTreeSet<Cow<'a, str>>>,
+  pub log_destination_buffer_ids: Cow<'a, HashSet<Cow<'a, str>>>,
 
   // The identifier of workflow actions that triggered buffers flush(es).
   pub triggered_flush_buffers_action_ids: BTreeSet<&'a str>,
@@ -915,7 +915,7 @@ pub struct WorkflowsEngineResult<'a> {
   pub capture_screenshot: bool,
 
   // Logs to be injected back into the workflow engine after field attachment and other processing.
-  pub logs_to_inject: BTreeMap<&'a str, Log>,
+  pub logs_to_inject: HashMap<&'a str, Log>,
 }
 
 //

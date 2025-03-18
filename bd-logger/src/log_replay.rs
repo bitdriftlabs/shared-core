@@ -20,7 +20,7 @@ use bd_session_replay::CaptureScreenshotHandler;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use std::borrow::Cow;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::oneshot;
@@ -275,7 +275,7 @@ impl ProcessingPipeline {
   async fn finish_blocking_log_processing(
     flush_buffers_tx: tokio::sync::mpsc::Sender<BuffersWithAck>,
     flush_stats_trigger: Option<FlushTrigger>,
-    matching_buffers: BTreeSet<Cow<'_, str>>,
+    matching_buffers: HashSet<Cow<'_, str>>,
   ) -> anyhow::Result<()> {
     // The processing of a blocking log is about to complete.
     // We make an arbitrary decision to start with the flushing of log buffers to disk first and
@@ -327,7 +327,7 @@ impl ProcessingPipeline {
 
   fn write_to_buffers<'a>(
     buffers: &mut BufferProducers,
-    matching_buffers: &BTreeSet<Cow<'_, str>>,
+    matching_buffers: &HashSet<Cow<'_, str>>,
     log: &LogRef<'_>,
     workflow_flush_buffer_action_ids: impl Iterator<Item = &'a str>,
   ) -> anyhow::Result<()> {
@@ -377,7 +377,7 @@ impl ProcessingPipeline {
     triggered_flush_buffers_action_ids: &BTreeSet<&str>,
     buffers: &mut BufferProducers,
     triggered_flushes_buffer_ids: &BTreeSet<Cow<'_, str>>,
-    written_to_buffers: &BTreeSet<Cow<'_, str>>,
+    written_to_buffers: &HashSet<Cow<'_, str>>,
     log: &LogRef<'_>,
   ) -> Option<String> {
     if triggered_flush_buffers_action_ids.is_empty() {
@@ -387,15 +387,17 @@ impl ProcessingPipeline {
     // Indicates whether the log was written to any of the continuous buffers. Continuous buffers
     // are periodically uploaded, so if the log was written to a continuous buffer, we assume
     // that it will eventually be uploaded to the remote.
-    let written_to_continuous_buffer =
-      !written_to_buffers.is_disjoint(&buffers.continuous_buffer_ids);
+    let written_to_continuous_buffer = written_to_buffers
+      .iter()
+      .any(|buffer| buffers.continuous_buffer_ids.contains(buffer));
 
     // Indicates whether the log was written to any of the trigger buffers. Trigger buffers are
     // uploaded only if there is a workflow action that instructs the system to flush them.
     // Therefore, we assume that the log ends up being uploaded only if it is directed to one of the
     // trigger buffers that is about to be flushed.
-    let written_to_flushed_trigger_buffer =
-      !written_to_buffers.is_disjoint(&buffers.trigger_buffer_ids);
+    let written_to_flushed_trigger_buffer = written_to_buffers
+      .iter()
+      .any(|buffer| triggered_flushes_buffer_ids.contains(buffer));
 
     let is_log_about_to_be_uploaded =
       written_to_continuous_buffer || written_to_flushed_trigger_buffer;

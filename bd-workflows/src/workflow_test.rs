@@ -23,7 +23,7 @@ use bd_test_helpers::workflow::macros::{
   workflow_proto,
 };
 use pretty_assertions::assert_eq;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::vec;
 
 #[ctor::ctor]
@@ -1497,7 +1497,7 @@ fn branching_parallel_workflow() {
         buffer_ids: BTreeSet::from(["zar_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: HashMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1535,7 +1535,7 @@ fn branching_parallel_workflow() {
           streaming: None,
         })
       ],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: HashMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,
@@ -1561,7 +1561,7 @@ fn branching_parallel_workflow() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: HashMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
         potential_fork_exclusive_workflows_count: 0,

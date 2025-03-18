@@ -25,7 +25,7 @@ use bd_matcher::FieldProvider;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::SystemTime;
 use time::OffsetDateTime;
 
@@ -385,12 +385,12 @@ impl Workflow {
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct WorkflowResult<'a> {
   triggered_actions: Vec<TriggeredAction<'a>>,
-  logs_to_inject: BTreeMap<&'a str, Log>,
+  logs_to_inject: HashMap<&'a str, Log>,
   stats: WorkflowResultStats,
 }
 
 impl<'a> WorkflowResult<'a> {
-  pub fn into_parts(self) -> (Vec<TriggeredAction<'a>>, BTreeMap<&'a str, Log>) {
+  pub fn into_parts(self) -> (Vec<TriggeredAction<'a>>, HashMap<&'a str, Log>) {
     (self.triggered_actions, self.logs_to_inject)
   }
 
@@ -402,7 +402,8 @@ impl<'a> WorkflowResult<'a> {
     self
       .triggered_actions
       .append(&mut run_result.triggered_actions);
-    self.logs_to_inject.append(&mut run_result.logs_to_inject);
+    let logs_to_inject = std::mem::take(&mut run_result.logs_to_inject);
+    self.logs_to_inject.extend(logs_to_inject);
     self.stats.created_traversals_count += run_result.created_traversals_count;
     self.stats.advanced_traversals_count += run_result.advanced_traversals_count;
     self.stats.completed_traversals_count += run_result.completed_traversals_count;
