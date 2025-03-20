@@ -12,7 +12,7 @@ use std::collections::HashMap;
 // different clients. This should be incremented whenever we want to be able to send different
 // configuration to a client, e.g. if newer clients support config that older clients would reject.
 // Version 27: Added double matching support.
-// Version 28: Added support for generate log action.
+// Version 28: Added support for generate log action and client report uploads.
 const CONFIGURATION_VERSION: &str = "28";
 
 /// The platform we're currently running as.
