@@ -47,7 +47,7 @@ fn crash_reports() {
     std::fs::write(
       setup.sdk_directory.path().join(format!(
         "reports/new/{}_crash2.txt",
-        timestamp.unix_timestamp()
+        timestamp.unix_timestamp_nanos() / 1_000_000
       )),
       "crash2",
     )

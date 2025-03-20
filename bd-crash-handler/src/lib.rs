@@ -274,6 +274,7 @@ impl Monitor {
           .and_then(|name| {
             name.split('_').next().and_then(|timestamp| {
               let Ok(timestamp) = timestamp.parse::<i128>() else {
+                log::debug!("Failed to parse timestamp from file name: {:?}", name);
                 return None;
               };
 
