@@ -21,6 +21,7 @@ use bd_log_primitives::{
 use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
 use itertools::Itertools;
 use std::cmp::Ordering;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use time::ext::NumericalDuration;
 
@@ -37,9 +38,7 @@ macro_rules! sample_add {
 /// result to the first passed sample.
 macro_rules! accumulate_samples {
   ($lhs:expr, $rhs:expr, $field_name:ident) => {
-    $lhs.$field_name = vec![$lhs.$field_name, $rhs.$field_name]
-      .into_iter()
-      .fold(0, |acc, x| acc + x)
+    $lhs.$field_name += $rhs.$field_name
   };
 }
 
@@ -84,9 +83,8 @@ impl HTTPTrafficDataUsageTracker {
         .set_network_quality(NetworkQuality::Online);
     }
 
-    let mut guard = self.container.lock();
+    let mut samples = self.container.lock();
 
-    let mut samples = guard.clone();
     let Some(sample) = samples.last_mut() else {
       return;
     };
@@ -111,8 +109,6 @@ impl HTTPTrafficDataUsageTracker {
       response_headers_bytes_count,
       get_int_field_value(fields, "_response_headers_bytes_count")
     );
-
-    *guard = samples;
   }
 
   fn process_resource_utilization_log(&self, fields: &mut AnnotatedLogFields) {
@@ -185,28 +181,36 @@ struct MetricsContainer {
   /// a new sample every `interval` duration of time, up until there are "1 minute / interval"
   /// samples. After that, the container drops the oldest sample each time it creates a new one.
   /// Samples are ordered from the oldest to the newest.
-  samples: Vec<MetricsSample>,
+  samples: VecDeque<MetricsSample>,
   time_provider: Arc<dyn TimeProvider>,
 }
 
 impl MetricsContainer {
   fn new(time_provider: Arc<dyn TimeProvider>) -> Self {
     Self {
-      samples: vec![MetricsSample::new(time_provider.now())],
+      samples: [MetricsSample::new(time_provider.now())].into(),
       time_provider,
     }
   }
 
   fn last_mut(&mut self) -> Option<&mut MetricsSample> {
-    self.samples.last_mut()
+    self.samples.back_mut()
   }
 
   fn get_summary_sample(&mut self) -> Option<MetricsSample> {
     let now = self.time_provider.now();
     let samples_count = self.samples.len();
-    self
-      .samples
-      .retain(|sample| now.duration_since(sample.started_at) <= 1.minutes());
+    loop {
+      if self
+        .samples
+        .front()
+        .is_some_and(|sample| now.duration_since(sample.started_at) > 1.minutes())
+      {
+        self.samples.pop_front();
+      } else {
+        break;
+      }
+    }
 
     match self.samples.len().cmp(&samples_count) {
       // We removed some samples so some of them were older than 60s so we have enough data to
@@ -220,7 +224,7 @@ impl MetricsContainer {
           accumulate_samples!(result, sample, response_headers_bytes_count);
         }
 
-        self.samples.push(MetricsSample::new(now));
+        self.samples.push_back(MetricsSample::new(now));
 
         Some(result)
       },
@@ -229,7 +233,7 @@ impl MetricsContainer {
         None
       },
       Ordering::Equal => {
-        self.samples.push(MetricsSample::new(now));
+        self.samples.push_back(MetricsSample::new(now));
         None
       },
     }
@@ -267,22 +271,12 @@ impl MetricsSample {
 }
 
 impl MetricsSample {
-  fn request_bytes_count(&self) -> u64 {
-    vec![
-      self.request_body_bytes_count,
-      self.request_headers_bytes_count,
-    ]
-    .into_iter()
-    .sum::<u64>()
+  const fn request_bytes_count(&self) -> u64 {
+    self.request_body_bytes_count + self.request_headers_bytes_count
   }
 
-  fn response_bytes_count(&self) -> u64 {
-    vec![
-      self.response_body_bytes_count,
-      self.response_headers_bytes_count,
-    ]
-    .into_iter()
-    .sum::<u64>()
+  const fn response_bytes_count(&self) -> u64 {
+    self.response_body_bytes_count + self.response_headers_bytes_count
   }
 }
 
