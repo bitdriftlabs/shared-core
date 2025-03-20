@@ -273,12 +273,13 @@ impl Monitor {
           .and_then(|name| name.to_str())
           .and_then(|name| {
             name.split('_').next().and_then(|timestamp| {
-              let Ok(timestamp) = timestamp.parse() else {
-                log::debug!("Failed to parse timestamp from file name: {:?}", name);
+              let Ok(timestamp) = timestamp.parse::<i128>() else {
                 return None;
               };
 
-              OffsetDateTime::from_unix_timestamp(timestamp).ok()
+              // We expect to see ms since epoch, so convert from ms to ns to satisfy the
+              // OffsetDateTime interface. Converting back to seconds would be a lossy operation.
+              OffsetDateTime::from_unix_timestamp_nanos(timestamp * 1_000_000).ok()
             })
           })
           .unwrap_or_else(OffsetDateTime::now_utc);
