@@ -8,7 +8,7 @@
 use crate::{
   AnnotatedLogFields,
   InitParams,
-  LogAttributesOverridesPreviousRunSessionID,
+  LogAttributesOverrides,
   LogLevel,
   LogMessage,
   LogType,
@@ -260,7 +260,7 @@ impl Setup {
     message: LogMessage,
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
-    attributes_overrides: Option<LogAttributesOverridesPreviousRunSessionID>,
+    attributes_overrides: Option<LogAttributesOverrides>,
   ) {
     self.logger_handle.log(
       level,

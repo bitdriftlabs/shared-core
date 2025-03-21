@@ -28,7 +28,7 @@ mod test;
 
 pub use crate::logger::{ChannelPair, InitParams};
 pub use app_version::AppVersionExtra;
-pub use async_log_buffer::LogAttributesOverridesPreviousRunSessionID;
+pub use async_log_buffer::LogAttributesOverrides;
 pub use bd_api::{PlatformNetworkManager, PlatformNetworkStream};
 pub use bd_device::Device;
 pub use bd_events::ListenerTarget as EventsListenerTarget;
