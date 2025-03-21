@@ -13,7 +13,7 @@ use crate::{
   AnnotatedLogField,
   AppVersionExtra,
   InitParams,
-  LogAttributesOverridesPreviousRunSessionID,
+  LogAttributesOverrides,
   LogMessage,
   LogType,
   StringOrBytes,
@@ -170,10 +170,10 @@ fn log_upload_attributes_override() {
     "log with overridden attributes".into(),
     [].into(),
     [].into(),
-    Some(LogAttributesOverridesPreviousRunSessionID {
-      expected_previous_process_session_id: "foo_overridden".to_string(),
-      occurred_at: time_second,
-    }),
+    Some(LogAttributesOverrides::PreviousRunSessionID(
+      "foo_overridden".to_string(),
+      time_second,
+    )),
   );
 
   // This log should end up being dropped.
@@ -183,10 +183,10 @@ fn log_upload_attributes_override() {
     "log with overridden attributes".into(),
     [].into(),
     [].into(),
-    Some(LogAttributesOverridesPreviousRunSessionID {
-      expected_previous_process_session_id: "bar_overridden".to_string(),
-      occurred_at: time_second,
-    }),
+    Some(LogAttributesOverrides::PreviousRunSessionID(
+      "bar_overridden".to_string(),
+      time_second,
+    )),
   );
 
   for _ in 0 .. 8 {
@@ -1841,7 +1841,6 @@ fn logs_before_cache_load() {
     None,
     false,
   );
-
 
   setup
     .current_api_stream

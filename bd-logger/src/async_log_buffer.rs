@@ -89,7 +89,7 @@ pub struct LogLine {
   pub message: LogMessage,
   pub fields: AnnotatedLogFields,
   pub matching_fields: AnnotatedLogFields,
-  pub attributes_overrides: Option<LogAttributesOverridesPreviousRunSessionID>,
+  pub attributes_overrides: Option<LogAttributesOverrides>,
   /// Used to send a message when the log is processed. In this context, 'processed' means that the
   /// log was written to either a pre-config buffer or one of the final ring buffers used by the
   /// SDK. Neither one of those guarantees that the log is written to a disk.
@@ -97,16 +97,19 @@ pub struct LogLine {
 }
 
 //
-// LogAttributesOverridesPreviousRunSessionID
+// LogAttributesOverrides
 //
 
 #[derive(Debug)]
-pub struct LogAttributesOverridesPreviousRunSessionID {
+pub enum LogAttributesOverrides {
   /// The hint that tells the SDK what the expected previous session ID was. The SDK uses it to
   /// verify whether the passed information matches its internal session ID tracking and drops
   /// logs whose hints are invalid.
-  pub expected_previous_process_session_id: String,
-  pub occurred_at: OffsetDateTime,
+  PreviousRunSessionID(String, OffsetDateTime),
+
+  /// Overrides the time when the log occurred at, useful for cases like spans with a provided
+  /// time.
+  OccurredAt(OffsetDateTime),
 }
 
 impl MemorySized for LogLine {
@@ -265,7 +268,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     message: LogMessage,
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
-    attributes_overrides: Option<LogAttributesOverridesPreviousRunSessionID>,
+    attributes_overrides: Option<LogAttributesOverrides>,
     blocking: bool,
   ) -> Result<(), TrySendError<AsyncLogBufferMessage>> {
     let (log_processing_completed_tx_option, log_processing_completed_rx_option) = if blocking {
@@ -425,72 +428,86 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     match result {
       Ok(metadata) => {
-        let (session_id, timestamp, extra_fields) = if let Some(overrides) =
-          log.attributes_overrides
-        {
-          if Some(&overrides.expected_previous_process_session_id)
-            == self.session_strategy.previous_process_session_id().as_ref()
-          {
-            // Session ID override hint provided and matches our expectations. Emit log with
-            // overrides applied.
+        let (session_id, timestamp, extra_fields) = match log.attributes_overrides {
+          Some(LogAttributesOverrides::PreviousRunSessionID(
+            expected_previous_process_session_id,
+            occurred_at,
+          )) => {
+            if Some(&expected_previous_process_session_id)
+              == self.session_strategy.previous_process_session_id().as_ref()
+            {
+              // Session ID override hint provided and matches our expectations. Emit log with
+              // overrides applied.
+              (
+                expected_previous_process_session_id,
+                occurred_at,
+                Some(LogFields::from([(
+                  "_logged_at".into(),
+                  LogFieldValue::String(metadata.timestamp.to_string()),
+                )])),
+              )
+            } else {
+              // Session ID override hint provided but doesn't match our expectations. Drop log.
+              let session_id = self.session_strategy.session_id();
+
+              handle_unexpected_error_with_details(
+                anyhow::Error::msg(
+                  "failed to override log attributes, provided override attributes do not match \
+                   expectations",
+                ),
+                &format!(
+                  "original_session_id {session_id:?}, override attribute session ID {:?} \
+                   original timestamp {:?}, override timestamp {:?}",
+                  expected_previous_process_session_id, metadata.timestamp, occurred_at
+                ),
+                || None,
+              );
+
+              // We log an internal log and continue processing the log.
+              let _ignored = self
+                .write_log_internal(
+                  "failed to override log attributes, provided override attributes do not match \
+                   expectations",
+                  metadata
+                    .fields
+                    .clone()
+                    .into_iter()
+                    .chain([
+                      (
+                        "_original_session_id".into(),
+                        LogFieldValue::String(session_id.clone()),
+                      ),
+                      (
+                        "_override_session_id".into(),
+                        LogFieldValue::String(expected_previous_process_session_id.clone()),
+                      ),
+                    ])
+                    .collect(),
+                  metadata.matching_fields.clone(),
+                  session_id.clone(),
+                  metadata.timestamp,
+                )
+                .await;
+
+              // We drop the log as the provided override attributes do not match our expectations.
+              return Ok(vec![]);
+            }
+          },
+          Some(LogAttributesOverrides::OccurredAt(overridden_timestamp)) => {
+            // Occurred at override provided. Emit log with overrides applied.
             (
-              overrides.expected_previous_process_session_id,
-              overrides.occurred_at,
+              self.session_strategy.session_id(),
+              overridden_timestamp,
               Some(LogFields::from([(
                 "_logged_at".into(),
                 LogFieldValue::String(metadata.timestamp.to_string()),
               )])),
             )
-          } else {
-            // Session ID override hint provided but doesn't match our expectations. Drop log.
-            let session_id = self.session_strategy.session_id();
-
-            handle_unexpected_error_with_details(
-              anyhow::Error::msg(
-                "failed to override log attributes, provided override attributes do not match \
-                 expectations",
-              ),
-              &format!(
-                "original_session_id {session_id:?}, override attribute session ID {:?} original \
-                 timestamp {:?}, override timestamp {:?}",
-                overrides.expected_previous_process_session_id,
-                metadata.timestamp,
-                overrides.occurred_at
-              ),
-              || None,
-            );
-
-            // We log an internal log and continue processing the log.
-            let _ignored = self
-              .write_log_internal(
-                "failed to override log attributes, provided override attributes do not match \
-                 expectations",
-                metadata
-                  .fields
-                  .clone()
-                  .into_iter()
-                  .chain([
-                    (
-                      "_original_session_id".into(),
-                      LogFieldValue::String(session_id.clone()),
-                    ),
-                    (
-                      "_override_session_id".into(),
-                      LogFieldValue::String(overrides.expected_previous_process_session_id.clone()),
-                    ),
-                  ])
-                  .collect(),
-                metadata.matching_fields.clone(),
-                session_id.clone(),
-                metadata.timestamp,
-              )
-              .await;
-
-            // We drop the log as the provided override attributes do not match our expectations.
-            return Ok(vec![]);
-          }
-        } else {
-          (self.session_strategy.session_id(), metadata.timestamp, None)
+          },
+          None => {
+            // No overrides provided. Emit log without any overrides.
+            (self.session_strategy.session_id(), metadata.timestamp, None)
+          },
         };
 
         let processed_log = bd_log_primitives::Log {

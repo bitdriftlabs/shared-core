@@ -10,11 +10,7 @@
 mod logger_test;
 
 use crate::app_version::{AppVersion, AppVersionExtra, Repository};
-use crate::async_log_buffer::{
-  AsyncLogBuffer,
-  AsyncLogBufferMessage,
-  LogAttributesOverridesPreviousRunSessionID,
-};
+use crate::async_log_buffer::{AsyncLogBuffer, AsyncLogBufferMessage, LogAttributesOverrides};
 use crate::bounded_buffer::{self, Sender as MemoryBoundSender};
 use crate::log_replay::LoggerReplay;
 use crate::{app_version, MetadataProvider};
@@ -127,7 +123,7 @@ impl LoggerHandle {
     message: LogMessage,
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
-    attributes_overrides: Option<LogAttributesOverridesPreviousRunSessionID>,
+    attributes_overrides: Option<LogAttributesOverrides>,
     blocking: bool,
   ) {
     LOGGER_GUARD.with(|cell| {
