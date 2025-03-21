@@ -37,10 +37,10 @@ impl Display for StringOrFloat<'_> {
 }
 
 #[allow(clippy::cast_precision_loss)]
-fn fractional_seconds_since_epoch(time: OffsetDateTime) -> f64 {
+fn fractional_milliseconds_since_epoch(time: OffsetDateTime) -> f64 {
   let seconds = time.unix_timestamp();
   let nanoseconds = time.nanosecond();
-  seconds as f64 + (f64::from(nanoseconds) / 1_000_000_000.0)
+  (seconds as f64 + (f64::from(nanoseconds) / 1_000_000_000.0)) * 1000.0
 }
 
 fn resolve_reference<'a>(
@@ -62,7 +62,7 @@ fn resolve_reference<'a>(
       .timestamps
       .as_ref()
       .and_then(|timestamps| timestamps.get(saved_timestamp_id))
-      .map(|timestamp| StringOrFloat::Float(fractional_seconds_since_epoch(*timestamp))),
+      .map(|timestamp| StringOrFloat::Float(fractional_milliseconds_since_epoch(*timestamp))),
   }
 }
 
@@ -133,7 +133,7 @@ pub fn generate_log_action(
 
   Some(Log {
     log_level: log_level::DEBUG,
-    log_type: LogType::Normal,
+    log_type: LogType(action.log_type),
     fields,
     message: StringOrBytes::String(message),
     matching_fields: LogFields::from([(

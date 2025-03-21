@@ -939,13 +939,13 @@ fn workflow_generate_log_to_histogram() {
     with { make_save_timestamp_extraction("timestamp2") };
     do action!(flush_buffers &["default"]; id "flush_action_id"),
        action!(generate_log make_generate_log_action_proto("message", &[
-      ("duration",
+      ("_duration_ms",
        TestFieldType::Subtract(
         TestFieldRef::SavedTimestampId("timestamp2"),
         TestFieldRef::SavedTimestampId("timestamp1")
        )),
        ("other", TestFieldType::Single(TestFieldRef::SavedFieldId("id1"))),
-    ], "id"))
+    ], "id", LogType::Span))
   );
 
   declare_transition!(
@@ -953,7 +953,7 @@ fn workflow_generate_log_to_histogram() {
     when rule!(log_matches!(tag("_generate_log_id") == "id"));
     do action!(
       emit_histogram "foo_id";
-      value metric_value!(extract "duration");
+      value metric_value!(extract "_duration_ms");
       tags {
         metric_tag!(fix "fixed_key" => "fixed_value")
       }
@@ -1001,14 +1001,15 @@ fn workflow_generate_log_to_histogram() {
         "fixed_key" => "fixed_value",
       }
     ),
-    Some(vec![1.003_000_020_980_835]),
+    Some(vec![1003.0]),
   );
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
     assert_eq!(log_upload.buffer_id(), "default");
     assert_eq!(log_upload.logs().len(), 3);
     assert_eq!(log_upload.logs()[2].message(), "message");
-    assert_eq!(log_upload.logs()[2].field("duration"), "1.003000020980835");
+    assert_eq!(log_upload.logs()[2].log_type(), LogType::Span);
+    assert_eq!(log_upload.logs()[2].field("_duration_ms"), "1003");
     assert_ne!(log_upload.logs()[2].session_id(), "");
     assert_ne!(log_upload.logs()[2].timestamp(), OffsetDateTime::UNIX_EPOCH);
   });

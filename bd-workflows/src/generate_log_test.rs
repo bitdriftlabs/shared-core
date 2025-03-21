@@ -36,11 +36,17 @@ impl Helper {
     }
   }
 
-  fn expect_log(&self, message: &str, fields: &[(&str, &str)], action: &ActionGenerateLog) {
+  fn expect_log(
+    &self,
+    message: &str,
+    fields: &[(&str, &str)],
+    log_type: LogType,
+    action: &ActionGenerateLog,
+  ) {
     assert_eq!(
       Some(Log {
         log_level: log_level::DEBUG,
-        log_type: LogType::Normal,
+        log_type,
         message: message.into(),
         fields: fields
           .iter()
@@ -85,7 +91,8 @@ fn generate_log_no_fields() {
   helper.expect_log(
     "message",
     &[],
-    &make_generate_log_action("message", &[], "id"),
+    LogType::Normal,
+    &make_generate_log_action("message", &[], "id", LogType::Normal),
   );
 }
 
@@ -124,6 +131,7 @@ fn generate_log_with_saved_fields_math() {
       ),
     ],
     "id",
+    LogType::Normal,
   );
   let mut helper = Helper::new();
   helper.expect_log(
@@ -134,6 +142,7 @@ fn generate_log_with_saved_fields_math() {
       ("multiply", "NaN"),
       ("divide", "NaN"),
     ],
+    LogType::Normal,
     &action,
   );
   helper.add_extracted_field("id1", "10.0");
@@ -146,6 +155,7 @@ fn generate_log_with_saved_fields_math() {
       ("multiply", "120"),
       ("divide", "0.8333333333333334"),
     ],
+    LogType::Normal,
     &action,
   );
 }
@@ -178,6 +188,7 @@ fn generate_log_with_field_from_current_log() {
       ),
     ],
     "id",
+    LogType::Normal,
   );
   let mut helper = Helper::new();
   helper.add_extracted_field("bad1", "not a number");
@@ -187,6 +198,7 @@ fn generate_log_with_field_from_current_log() {
   helper.expect_log(
     "hello world",
     &[("add_both_bad", "NaN"), ("add_1_bad", "NaN"), ("add", "32")],
+    LogType::Normal,
     &action,
   );
 }
@@ -209,21 +221,21 @@ fn generate_log_with_saved_timestamp_math() {
       ),
     ],
     "id",
+    LogType::Span,
   );
   let mut helper = Helper::new();
   helper.expect_log(
     "hello world",
     &[("single", "single_value"), ("subtract", "NaN")],
+    LogType::Span,
     &action,
   );
   helper.add_extracted_timestamp("id1", datetime!(2023-10-01 12:00:00 UTC));
   helper.add_extracted_timestamp("id2", datetime!(2023-10-01 12:00:00.003 UTC));
   helper.expect_log(
     "hello world",
-    &[
-      ("single", "single_value"),
-      ("subtract", "0.003000020980834961"),
-    ],
+    &[("single", "single_value"), ("subtract", "3")],
+    LogType::Span,
     &action,
   );
 }

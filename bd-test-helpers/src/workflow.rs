@@ -8,7 +8,7 @@
 use action_generate_log::generated_field::Generated_field_value_type;
 use action_generate_log::value_reference::Value_reference_type;
 use action_generate_log::{GeneratedField, ValueReference, ValueReferencePair};
-use bd_log_primitives::{LogFields, StringOrBytes};
+use bd_log_primitives::{LogFields, LogType, StringOrBytes};
 use bd_proto::protos;
 use bd_proto::protos::log_matcher::log_matcher::log_matcher;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::streaming::{
@@ -707,6 +707,7 @@ pub fn make_generate_log_action(
   message: &'static str,
   fields: &'static [(&'static str, TestFieldType)],
   id: &str,
+  log_type: LogType,
 ) -> ActionGenerateLog {
   fn make_field_ref(test_field_ref: &TestFieldRef) -> ValueReference {
     ValueReference {
@@ -770,6 +771,7 @@ pub fn make_generate_log_action(
         }
       })
       .collect(),
+    log_type: log_type.0,
     ..Default::default()
   }
 }
@@ -779,6 +781,7 @@ pub fn make_generate_log_action_proto(
   message: &'static str,
   fields: &'static [(&'static str, TestFieldType)],
   id: &str,
+  log_type: LogType,
 ) -> Action_type {
-  Action_type::ActionGenerateLog(make_generate_log_action(message, fields, id))
+  Action_type::ActionGenerateLog(make_generate_log_action(message, fields, id, log_type))
 }
