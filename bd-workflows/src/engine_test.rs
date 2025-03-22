@@ -3112,7 +3112,7 @@ async fn generate_log_multiple() {
         TestFieldRef::SavedTimestampId("timestamp2"),
         TestFieldRef::SavedTimestampId("timestamp1")
        ))
-    ], "id1"))
+    ], "id1", LogType::Normal))
   );
 
   declare_transition!(
@@ -3127,7 +3127,7 @@ async fn generate_log_multiple() {
         TestFieldRef::SavedTimestampId("timestamp3"),
         TestFieldRef::SavedTimestampId("timestamp1")
        ))
-    ], "id2"))
+    ], "id2", LogType::Normal))
   );
 
   declare_transition!(
@@ -3161,7 +3161,7 @@ async fn generate_log_multiple() {
         log_level: log_level::DEBUG,
         log_type: LogType::Normal,
         message: "message1".into(),
-        fields: [("duration".into(), "1".into(),),].into(),
+        fields: [("duration".into(), "1000".into(),),].into(),
         matching_fields: [("_generate_log_id".into(), "id1".into(),)].into(),
         session_id: String::new(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
@@ -3170,7 +3170,7 @@ async fn generate_log_multiple() {
         log_level: log_level::DEBUG,
         log_type: LogType::Normal,
         message: "message2".into(),
-        fields: [("duration".into(), "2".into(),),].into(),
+        fields: [("duration".into(), "2000".into(),),].into(),
         matching_fields: [("_generate_log_id".into(), "id2".into(),)].into(),
         session_id: String::new(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
@@ -3229,7 +3229,7 @@ async fn generate_log_action() {
         TestFieldRef::SavedTimestampId("timestamp1")
        )),
        ("other", TestFieldType::Single(TestFieldRef::SavedFieldId("id1")))
-    ], "id"))
+    ], "id", LogType::Normal))
   );
 
   let workflow = workflow!(exclusive with a, b, c);
@@ -3248,7 +3248,7 @@ async fn generate_log_action() {
       log_type: LogType::Normal,
       message: "message".into(),
       fields: [
-        ("duration".into(), "0.003000020980834961".into(),),
+        ("duration".into(), "3".into(),),
         ("other".into(), "value1".into(),)
       ]
       .into(),

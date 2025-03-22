@@ -380,10 +380,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log_level: log.log_level,
           log_type: log.log_type,
           message: log.message,
+          // TODO(mattklein123): Right now we set all fields as OOTB so they can have reserved
+          // naming if desired. This may have to change in the future.
           fields: log
             .fields
             .into_iter()
-            .map(|(key, value)| (key, AnnotatedLogField::new_custom(value)))
+            .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
             .collect(),
           matching_fields: log
             .matching_fields
