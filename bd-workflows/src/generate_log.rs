@@ -21,6 +21,7 @@ use bd_proto::protos::workflow::workflow::workflow::action::action_generate_log:
 use std::borrow::Cow;
 use std::fmt::Display;
 use time::OffsetDateTime;
+use uuid::Uuid;
 
 enum StringOrFloat<'a> {
   String(Cow<'a, str>),
@@ -63,6 +64,7 @@ fn resolve_reference<'a>(
       .as_ref()
       .and_then(|timestamps| timestamps.get(saved_timestamp_id))
       .map(|timestamp| StringOrFloat::Float(fractional_milliseconds_since_epoch(*timestamp))),
+    Value_reference_type::Uuid(_) => Some(StringOrFloat::String(Uuid::new_v4().to_string().into())),
   }
 }
 

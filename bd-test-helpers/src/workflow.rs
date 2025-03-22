@@ -692,6 +692,7 @@ pub enum TestFieldRef {
   FieldFromCurrentLog(&'static str),
   SavedFieldId(&'static str),
   SavedTimestampId(&'static str),
+  Uuid,
 }
 
 pub enum TestFieldType {
@@ -722,6 +723,7 @@ pub fn make_generate_log_action(
         TestFieldRef::SavedTimestampId(saved_timestamp_id) => {
           Value_reference_type::SavedTimestampId((*saved_timestamp_id).to_string())
         },
+        TestFieldRef::Uuid => Value_reference_type::Uuid(true),
       }),
       ..Default::default()
     }

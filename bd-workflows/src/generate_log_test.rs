@@ -13,6 +13,7 @@ use bd_test_helpers::workflow::{make_generate_log_action, TestFieldRef, TestFiel
 use pretty_assertions::assert_eq;
 use time::macros::datetime;
 use time::OffsetDateTime;
+use uuid::Uuid;
 
 //
 // Helper
@@ -238,4 +239,23 @@ fn generate_log_with_saved_timestamp_math() {
     LogType::Span,
     &action,
   );
+}
+
+#[test]
+fn generate_log_with_uuid() {
+  let action = make_generate_log_action(
+    "hello world",
+    &[("uuid", TestFieldType::Single(TestFieldRef::Uuid))],
+    "id",
+    LogType::Span,
+  );
+  let helper = Helper::new();
+  let log = generate_log_action(
+    &helper.extractions,
+    &action,
+    &FieldsRef::new(&helper.captured_fields, &helper.matching_fields),
+  )
+  .unwrap();
+
+  Uuid::parse_str(log.fields["uuid"].as_str().unwrap()).unwrap();
 }
