@@ -189,7 +189,7 @@ fn log_upload_attributes_override() {
     )),
   );
 
-  for _ in 0 .. 8 {
+  for _ in 0 .. 7 {
     setup.log(
       log_level::DEBUG,
       LogType::Normal,
@@ -199,6 +199,16 @@ fn log_upload_attributes_override() {
       None,
     );
   }
+
+  // This log should end up with a custom occurred_at
+  setup.log(
+    log_level::DEBUG,
+    LogType::Normal,
+    "override time only".into(),
+    [].into(),
+    [].into(),
+    Some(LogAttributesOverrides::OccurredAt(time_first)),
+  );
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
     assert_eq!(log_upload.buffer_id(), "default");
@@ -216,6 +226,10 @@ fn log_upload_attributes_override() {
     let second_uploaded_log = &log_upload.logs()[1];
     assert_eq!(second_uploaded_log.session_id(), current_session_id);
     assert_eq!(second_uploaded_log.field("_override_session_id"), "bar_overridden");
+
+    // Confirm the log overriding the time worked.
+    let occurred_at_overriden_log = &log_upload.logs()[9];
+    assert_eq!(occurred_at_overriden_log.timestamp(), time_first);
 
     assert!(error_reporter.error().is_some());
   });
