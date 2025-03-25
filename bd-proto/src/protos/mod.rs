@@ -10,6 +10,7 @@ pub mod client;
 pub mod config;
 pub mod filter;
 pub mod google;
+pub mod ingest;
 pub mod insight;
 pub mod log_matcher;
 pub mod logging;
