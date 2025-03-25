@@ -45,6 +45,7 @@ use std::collections::VecDeque;
 use std::mem::size_of_val;
 use std::sync::Arc;
 use time::OffsetDateTime;
+use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug)]
@@ -291,16 +292,30 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     // Wait for log processing to be completed only if passed `blocking`
     // argument is equal to `true` and we created a relevant one shot Tokio channel.
-    if let Some(rx) = log_processing_completed_rx_option {
-      match rx.blocking_recv() {
-        Ok(()) => {
-          log::debug!("enqueue_log: log processing completion received");
-        },
-        Err(e) => {
-          log::debug!(
-            "enqueue_log: received an error when waiting for log processing completion: {e}"
-          );
-        },
+    if let Some(mut rx) = log_processing_completed_rx_option {
+      let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+      loop {
+        if std::time::Instant::now() > deadline {
+          log::debug!("enqueue_log: timeout waiting for log processing completion");
+          break;
+        }
+
+        match rx.try_recv() {
+          Ok(()) => {
+            log::debug!("enqueue_log: log processing completion received");
+            break;
+          },
+          Err(TryRecvError::Closed) => {
+            log::debug!(
+              "enqueue_log: received an error when waiting for log processing completion: channel \
+               closed"
+            );
+            break;
+          },
+          Err(TryRecvError::Empty) => {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+          },
+        }
       }
     }
 
