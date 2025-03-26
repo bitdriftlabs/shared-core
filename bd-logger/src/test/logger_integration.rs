@@ -919,7 +919,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   // continuous buffer. Assert for nine + the trigger log so ten logs in total.
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
     assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
-    assert_eq!(log_upload.logs().len(), 10);
+    assert_eq!(log_upload.logs().len(), 10, "{:?}", log_upload.logs());
 
     assert_eq!("fire flush trigger buffer action!", log_upload.logs().last().unwrap().message());
   });
