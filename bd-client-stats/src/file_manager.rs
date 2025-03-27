@@ -184,10 +184,10 @@ impl Inner {
     match self {
       Self::Initialized(inner) => Ok(inner),
       Self::NotInitialized(file_system) => {
-        let file_system = file_system.take().unwrap();
+        let file_system_ref = file_system.as_ref().unwrap();
         let path = STATS_DIRECTORY.join(&*PENDING_AGGREGATION_INDEX_FILE);
         log::debug!("initializing pending aggregation index: {}", path.display());
-        let index = match file_system
+        let index = match file_system_ref
           .read_file(&path)
           .await
           .and_then(|contents| read_compressed_protobuf(&contents))
@@ -197,14 +197,14 @@ impl Inner {
             log::debug!("unable to open pending aggregation index: {e}");
             log::debug!("creating new aggregation index");
 
-            file_system.remove_dir(&STATS_DIRECTORY).await?;
-            file_system.create_dir(&STATS_DIRECTORY).await?;
+            file_system_ref.remove_dir(&STATS_DIRECTORY).await?;
+            file_system_ref.create_dir(&STATS_DIRECTORY).await?;
             PendingAggregationIndex::default()
           },
         };
 
         *self = Self::Initialized(InitializedInner {
-          file_system,
+          file_system: file_system.take().unwrap(),
           index: index.pending_files.into(),
         });
 

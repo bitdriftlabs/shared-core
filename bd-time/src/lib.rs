@@ -30,6 +30,9 @@ pub trait OffsetDateTimeExt {
   /// Convert into a unix timestamp in milliseconds with millisecond precision.
   fn unix_timestamp_ms(&self) -> i64;
 
+  /// Convert into a unix timestamp in microseconds with microsecond precision.
+  fn unix_timestamp_micros(&self) -> i64;
+
   /// Rounds down the given timestamp to the nearest interval.
   ///
   /// For example, if the interval is 5 minutes, then 12:03:00 would be rounded down to 12:00:00.
@@ -63,6 +66,11 @@ impl OffsetDateTimeExt for OffsetDateTime {
   #[must_use]
   fn unix_timestamp_ms(&self) -> i64 {
     self.unix_timestamp() * 1_000 + i64::from(self.nanosecond() / 1_000_000)
+  }
+
+  #[must_use]
+  fn unix_timestamp_micros(&self) -> i64 {
+    self.unix_timestamp() * 1_000_000 + i64::from(self.nanosecond() / 1_000)
   }
 
   fn floor(&self, interval: time::Duration) -> OffsetDateTime {
