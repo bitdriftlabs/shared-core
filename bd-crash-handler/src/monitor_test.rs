@@ -139,18 +139,28 @@ async fn crash_reason_inference() {
 }
 
 #[tokio::test]
-async fn crash_handling() {
+async fn crash_handling_missing_reason() {
   let setup = Setup::new().await;
 
   setup.monitor.try_ensure_directories_exist().await;
 
+  setup
+    .write_config_file(REASON_INFERENCE_CONFIG_FILE, "reason,crash.reason")
+    .await;
+  setup
+    .write_config_file(DETAILS_INFERENCE_CONFIG_FILE, "details[0].cause")
+    .await;
+
   setup.make_crash("crash1", b"crash1");
   setup.make_crash("crash2", b"crash2");
+  setup.make_crash("crash3", b"{\"crash\":{\"reason\": \"bar\"}}");
 
   let logs = setup.process_new_reports().await;
-  assert_eq!(2, logs.len());
-  assert_eq!(b"crash1", &logs[0]["_crash_artifact"].as_bytes().unwrap());
-  assert_eq!(b"crash2", &logs[1]["_crash_artifact"].as_bytes().unwrap());
+  assert_eq!(1, logs.len());
+  assert_eq!(
+    b"{\"crash\":{\"reason\": \"bar\"}}",
+    &logs[0]["_crash_artifact"].as_bytes().unwrap()
+  );
 }
 
 #[tokio::test]
