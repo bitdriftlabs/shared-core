@@ -288,6 +288,14 @@ impl Monitor {
         let (crash_reason, crash_details) =
           Self::guess_crash_details(&contents, &crash_reason_paths, &crash_details_paths);
 
+        if crash_reason.is_none() {
+          log::warn!(
+            "Failed to infer crash reason from report {:?}, dropping.",
+            path
+          );
+          continue;
+        }
+
         // TODO(snowp): For now everything in here is a crash, eventually we'll need to be able to
         // differentiate.
         // TODO(snowp): Eventually we'll want to upload the report out of band, but for now just
