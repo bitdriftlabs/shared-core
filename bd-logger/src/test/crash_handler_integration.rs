@@ -38,18 +38,23 @@ fn crash_reports() {
     std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();
 
     std::fs::write(
-      setup.sdk_directory.path().join("reports/new/crash1.txt"),
-      "crash1",
+      setup.sdk_directory.path().join("reports/reason_inference"),
+      "crash",
     )
     .unwrap();
 
+    std::fs::write(
+      setup.sdk_directory.path().join("reports/new/crash1.txt"),
+      "{\"crash\": \"crash1\"}",
+    )
+    .unwrap();
 
     std::fs::write(
       setup.sdk_directory.path().join(format!(
         "reports/new/{}_crash2.txt",
         timestamp.unix_timestamp_nanos() / 1_000_000
       )),
-      "crash2",
+      "{\"crash\": \"crash2\"}",
     )
     .unwrap();
 
@@ -77,18 +82,20 @@ fn crash_reports() {
     assert_eq!(upload.logs().len(), 2);
 
     let logs = upload.logs();
-    let crash1 = logs.iter().find(|log| log.binary_field("_crash_artifact") == b"crash1").unwrap();
+    let crash1 = logs.iter().find(|log| log.field("_crash_reason") == "crash1").unwrap();
     assert_eq!(crash1.message(), "App crashed");
     assert_eq!(crash1.session_id(), initial_session_id);
     assert_ne!(crash1.timestamp(), timestamp);
     assert_eq!(crash1.field("_ootb_field"), "ootb");
+    assert_eq!(crash1.binary_field("_crash_artifact"), b"{\"crash\": \"crash1\"}");
     assert!(!crash1.has_field("custom"));
 
-    let crash2 = logs.iter().find(|log| log.binary_field("_crash_artifact") == b"crash2").unwrap();
+    let crash2 = logs.iter().find(|log| log.field("_crash_reason") == "crash2").unwrap();
     assert_eq!(crash2.message(), "App crashed");
     assert_eq!(crash2.session_id(), initial_session_id);
     assert_eq!(crash2.timestamp(), timestamp);
-    assert_eq!(crash1.field("_ootb_field"), "ootb");
+    assert_eq!(crash2.field("_ootb_field"), "ootb");
+    assert_eq!(crash2.binary_field("_crash_artifact"), b"{\"crash\": \"crash2\"}");
     assert!(!crash1.has_field("custom"));
   });
 }
