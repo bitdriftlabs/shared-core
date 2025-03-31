@@ -303,7 +303,7 @@ impl BoundedScope {
     let can_insert = inner
       .limit
       .as_ref()
-      .is_none_or(|limit| inner.metrics.len() < (*limit.borrow()).try_into().unwrap());
+      .is_none_or(|limit| inner.metrics.len() < (*limit.borrow()) as usize);
 
     match inner.metrics.entry(Id::new(name, labels)) {
       Entry::Occupied(entry) => Ok(entry.into_mut()),
@@ -521,7 +521,7 @@ impl BoundedCollector {
     self.inner.lock().metrics.retain(|id, metric| {
       let retain = f(id, metric);
       if !retain {
-        log::trace!("removing metric: {:?}", id);
+        log::trace!("removing metric: {id:?}");
       }
       retain
     });

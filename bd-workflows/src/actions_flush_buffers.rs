@@ -143,7 +143,7 @@ impl Negotiator {
         .send(NegotiatorOutput::UploadRejected(pending_action))
         .await
       {
-        log::debug!("failed to send \"drop_already_rejected\": {:?}", e);
+        log::debug!("failed to send \"drop_already_rejected\": {e:?}");
         self
           .stats
           .intent_negotiator_channel_send_failures_total
@@ -175,7 +175,7 @@ impl Negotiator {
           .send(NegotiatorOutput::UploadApproved(pending_action))
           .await
         {
-          log::debug!("failed to send \"upload approved\" signal: {:?}", e);
+          log::debug!("failed to send \"upload approved\" signal: {e:?}");
           self
             .stats
             .intent_negotiator_channel_send_failures_total
@@ -199,7 +199,7 @@ impl Negotiator {
           .send(NegotiatorOutput::UploadRejected(pending_action))
           .await
         {
-          log::debug!("failed to send \"drop\" signal: {:?}", e);
+          log::debug!("failed to send \"drop\" signal: {e:?}");
           self
             .stats
             .intent_negotiator_channel_send_failures_total
@@ -219,7 +219,7 @@ impl Negotiator {
           .send(NegotiatorOutput::UploadRejected(pending_action))
           .await
         {
-          log::debug!("failed to send \"drop\" signal: {:?}", e);
+          log::debug!("failed to send \"drop\" signal: {e:?}");
           self
             .stats
             .intent_negotiator_channel_send_failures_total
@@ -295,7 +295,7 @@ impl Negotiator {
   ) -> anyhow::Result<bool> {
     let intent_uuid = intent_request.intent_uuid.clone();
 
-    log::debug!("issuing log intent upload ({:?}) for trigger", intent_uuid);
+    log::debug!("issuing log intent upload ({intent_uuid:?}) for trigger");
 
     // TODO(snowp): Add max retries to intent negotiation.
     loop {
@@ -321,17 +321,11 @@ impl Negotiator {
 
       match intent_response.decision {
         IntentDecision::UploadImmediately => {
-          log::debug!(
-            "uploading trigger buffer, intent accepted (\"{}\")",
-            intent_uuid
-          );
+          log::debug!("uploading trigger buffer, intent accepted (\"{intent_uuid}\")");
           return Ok(true);
         },
         IntentDecision::Drop => {
-          log::debug!(
-            "not uploading trigger, intent dropped (\"{}\")",
-            intent_uuid
-          );
+          log::debug!("not uploading trigger, intent dropped (\"{intent_uuid}\")");
           return Ok(false);
         },
       }
@@ -362,7 +356,7 @@ impl Resolver {
   }
 
   pub(crate) fn update(&mut self, config: ResolverConfig) {
-    log::debug!("resolver config update: \"{:?}\"", config);
+    log::debug!("resolver config update: \"{config:?}\"");
 
     self.trigger_buffer_ids = config.trigger_buffer_ids;
     self.continuous_buffer_ids = config.continuous_buffer_ids;
@@ -517,9 +511,8 @@ impl Resolver {
 
     if has_been_rerouted {
       log::trace!(
-        "streaming: log redirected from: \"{:?}\" to \"{:?}\" buffer(s)",
-        log_destination_buffer_ids,
-        final_log_destination_buffer_ids
+        "streaming: log redirected from: \"{log_destination_buffer_ids:?}\" to \
+         \"{final_log_destination_buffer_ids:?}\" buffer(s)"
       );
     }
 

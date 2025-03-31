@@ -166,7 +166,7 @@ impl BufferUploadManager {
       // to upload the log in response to the first trigger. Because we lock the buffer, this log
       // likely didn't even make it into the buffer so we just drop it here.
       if self.active_trigger_uploads.contains(&buffer_id) {
-        log::debug!("ignoring upload for {}, already in progress", buffer_id);
+        log::debug!("ignoring upload for {buffer_id}, already in progress");
         continue;
       }
 
@@ -230,7 +230,7 @@ impl BufferUploadManager {
           .shutdowns
           .insert(buffer_id.to_string(), shutdown_trigger);
       } else {
-        log::debug!("ignoring upload for {}, unknown buffer", buffer_id);
+        log::debug!("ignoring upload for {buffer_id}, unknown buffer");
       }
     }
 
@@ -258,7 +258,7 @@ impl BufferUploadManager {
       // When a new buffer is created, spawn a new task which is responsible for
       // consuming logs from this buffer continuously.
       BufferEvent::ContinuousBufferCreated(id, buffer) => {
-        log::debug!("creating new continous upload task for buffer {}", id);
+        log::debug!("creating new continous upload task for buffer {id}");
         let (uploader, shutdown_trigger) = self.new_continous_consumer(id, buffer)?;
         tokio::spawn(
           uploader
@@ -271,7 +271,7 @@ impl BufferUploadManager {
         self.shutdowns.insert(id.clone(), shutdown_trigger);
       },
       BufferEvent::TriggerBufferCreated(id, buffer) => {
-        log::debug!("registering new trigger buffer {}", id);
+        log::debug!("registering new trigger buffer {id}");
 
         self.trigger_buffers.insert(id.clone(), buffer.clone());
       },
@@ -280,7 +280,7 @@ impl BufferUploadManager {
         // The removed buffer will either be a trigger buffer or a continuous buffer, so try to
         // cancel/remove either.
         if let Some(shutdown_trigger) = self.shutdowns.remove(id) {
-          log::debug!("terminating consume task for buffer {}", id);
+          log::debug!("terminating consume task for buffer {id}");
           shutdown_trigger.shutdown().await;
         }
 
@@ -506,7 +506,7 @@ impl ContinuousBufferUploader {
     let logs = self.batch_builder.take();
     let logs_len = logs.len();
 
-    log::debug!("flushing {} logs", logs_len);
+    log::debug!("flushing {logs_len} logs");
 
     // Attempt to perform an upload of these buffers, with retries ++. See logger/service.rs for
     // details about retry policies etc.
@@ -530,7 +530,7 @@ impl ContinuousBufferUploader {
       () = self.shutdown.cancelled() => return Ok(()),
     };
 
-    log::debug!("completed continuous upload with result: {:?}", result);
+    log::debug!("completed continuous upload with result: {result:?}");
 
     // Regardless of the outcome of the upload, advance the read cursor to mark the records as
     // written.
@@ -588,7 +588,7 @@ impl StreamedBufferUpload {
         () = self.shutdown.cancelled() => return Ok(()),
       };
 
-      log::debug!("completed stream upload with result: {:?}", result);
+      log::debug!("completed stream upload with result: {result:?}");
 
       self.consumer.finish_read()?;
     }
@@ -682,7 +682,7 @@ impl CompleteBufferUpload {
             self.flush_batch().await?;
           }
 
-          log::debug!("trigger upload complete, sent {} logs", total_logs);
+          log::debug!("trigger upload complete, sent {total_logs} logs");
           return Ok(total_logs);
         },
         // Unexpected error, bubble up.
@@ -718,7 +718,7 @@ impl CompleteBufferUpload {
     // cancel them, so we don't anything extra here to avoid deadlocking like in the other two
     // consumer tasks.
 
-    log::debug!("completed trigger batch upload with result: {:?}", result);
+    log::debug!("completed trigger batch upload with result: {result:?}");
 
     Ok(())
   }

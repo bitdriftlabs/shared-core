@@ -60,7 +60,7 @@ impl FilterChain {
           .context("invalid filter configuration")
           .inspect_err(|e| {
             failures_count += 1;
-            log::debug!("{}", e);
+            log::debug!("{e}");
           })
           .ok()
       })

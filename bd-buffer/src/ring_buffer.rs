@@ -271,9 +271,8 @@ impl Manager {
           .as_ref()
           .map_or(100_000, |sizes| sizes.non_volatile_buffer_size_bytes);
         log::debug!(
-          "creating buffer with volatile_size={}, non_volatile_size={}",
-          volatile_buffer_size,
-          non_volatile_buffer_size
+          "creating buffer with volatile_size={volatile_buffer_size}, \
+           non_volatile_size={non_volatile_buffer_size}"
         );
 
         let (ring_buffer, _) = RingBuffer::new(
@@ -351,7 +350,7 @@ impl Manager {
     // Issue a BufferRemoved event, which informs the uploader about this buffer removal and allows
     // it to clean up upload state related to the buffer.
     for (id, (_, unreferenced_buffer)) in current_buffers {
-      log::debug!("notifying about buffer removal for {}", id);
+      log::debug!("notifying about buffer removal for {id}");
 
       unreferenced_buffer
         .delete_on_drop
@@ -373,7 +372,7 @@ impl Manager {
     // The creation of buffers must be announced to allow the uploader to pick them
     // up and process them. Do so for all new buffers.
     for (id, (buffer_type, buffer)) in new_buffers {
-      log::debug!("notifying about buffer creation for {}", id);
+      log::debug!("notifying about buffer creation for {id}");
 
       // We wrap the buffer we send to the uploader with a use case specific type, allowing the
       // uploader to create the right kind of consumer.

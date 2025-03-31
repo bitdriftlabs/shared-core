@@ -37,17 +37,17 @@ pub fn get_stat_value(
   metrics
     .iter()
     .find_map(|f| {
-      (f.get_name() == name).then(|| {
+      (f.name() == name).then(|| {
         f.get_metric()
           .iter()
           .find(|m| {
             m.get_label()
               .iter()
-              .map(|label| (label.get_name(), label.get_value()))
+              .map(|label| (label.name(), label.value()))
               .collect::<HashMap<&str, &str>>()
               == tags
           })
-          .map(|m| m.get_counter().get_value() as u64)
+          .map(|m| m.get_counter().value() as u64)
       })
     })
     .flatten()

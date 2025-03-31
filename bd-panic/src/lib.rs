@@ -45,7 +45,7 @@ fn platform_default() {
 
       // TODO(mattklein123): Potentially do a more complete stack trace in single log
       // line form.
-      log::error!("panic: message=\"{}\" location={}", message, location);
+      log::error!("panic: message=\"{message}\" location={location}");
     }));
   } else {
     let trace_printer =

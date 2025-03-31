@@ -468,7 +468,7 @@ fn run_network_requests_profiling() {
 }
 
 fn run_network_requests_profiling_with_request_count(network_request_count: u32) {
-  log::info!("+++ {:?} network requests:", network_request_count);
+  log::info!("+++ {network_request_count:?} network requests:");
   run_profiling(Setup::new(), move |engine| {
     engine.process_log(log_level::INFO, "SceneDidActivate", labels! {});
 

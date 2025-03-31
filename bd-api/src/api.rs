@@ -240,7 +240,7 @@ impl StreamState {
 
   fn maybe_schedule_ping(&mut self) {
     self.ping_deadline = self.ping_interval.map(|ping_in| {
-      log::debug!("scheduling ping in {:?}", ping_in);
+      log::debug!("scheduling ping in {ping_in:?}");
 
       Instant::now() + ping_in
     });
@@ -274,7 +274,7 @@ impl StreamState {
       },
       // We observed a close event, propagate this back up.
       Some(StreamEvent::StreamClosed(reason)) => {
-        log::debug!("stream closed due to '{}'", reason);
+        log::debug!("stream closed due to '{reason}'");
 
         Ok(UpstreamEvent::StreamClosed(reason))
       },
@@ -494,7 +494,7 @@ impl Api {
     let kill_until = match self.read_kill_file().await {
       Ok(kill_until) => kill_until,
       Err(e) => {
-        log::warn!("failed to read kill file: {}", e);
+        log::warn!("failed to read kill file: {e}");
         None
       },
     };
@@ -520,14 +520,14 @@ impl Api {
         // has changed. It will likely get killed again on the next startup.
         log::debug!("kill file has expired or the API key has changed, removing");
         if let Err(e) = tokio::fs::remove_file(self.kill_file_path()).await {
-          log::warn!("failed to remove kill file: {}", e);
+          log::warn!("failed to remove kill file: {e}");
         }
       }
     } else if !self.generic_kill_duration.read().is_zero() {
       log::debug!("client has been killed, writing kill file");
       let generic_kill_duration = *self.generic_kill_duration.read();
       if let Err(e) = self.write_kill_file(generic_kill_duration).await {
-        log::warn!("failed to write kill file: {}", e);
+        log::warn!("failed to write kill file: {e}");
       }
     }
   }
@@ -703,7 +703,7 @@ impl Api {
           log::debug!("unauthenticated, killing client");
           let unauthorized_kill_duration = *self.unauthenticated_kill_duration.read();
           if let Err(e) = self.write_kill_file(unauthorized_kill_duration).await {
-            log::warn!("failed to write kill file: {}", e);
+            log::warn!("failed to write kill file: {e}");
           }
           continue;
         },
@@ -888,7 +888,7 @@ impl Api {
           )?;
         },
         Some(ResponseKind::Untyped) => {
-          log::debug!("received untyped response: {}", response);
+          log::debug!("received untyped response: {response}");
           for pipeline in &mut self.configuration_pipelines {
             if let Some(request) = pipeline.try_apply_config(&response).await {
               stream_state.send_request(request).await?;

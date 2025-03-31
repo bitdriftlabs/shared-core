@@ -73,7 +73,7 @@ impl MetricsCollector {
             .record_dynamic_counter("workflows_dyn:action", tags, value as u64);
         },
         crate::config::MetricType::Histogram => {
-          log::debug!("recording histogram value: {}", value);
+          log::debug!("recording histogram value: {value}");
           self
             .dynamic_stats
             .record_dynamic_histogram("workflows_dyn:histogram", tags, value);

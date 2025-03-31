@@ -59,7 +59,7 @@ impl Setup {
 
   async fn write_config_file(&self, name: &str, contents: &str) {
     let config_file = self.directory.path().join("reports").join(name);
-    log::info!("Writing config file: {:?}", config_file);
+    log::info!("Writing config file: {config_file:?}");
 
     self
       .monitor
@@ -69,7 +69,7 @@ impl Setup {
 
   fn read_config_file(&self, name: &str) -> String {
     let config_file = self.directory.path().join("reports").join(name);
-    log::info!("Reading config file: {:?}", config_file);
+    log::info!("Reading config file: {config_file:?}");
 
     std::fs::read_to_string(&config_file).unwrap()
   }

@@ -238,7 +238,7 @@ impl ConfigLoader {
       return Ok(true);
     };
 
-    log::debug!("loaded runtime file at retry count {}", retry_count);
+    log::debug!("loaded runtime file at retry count {retry_count}");
 
     // Update the retry count before we apply the runtime. If this fails, we bail out (which will
     // attempt to clear the cache directory) and disable caching. We do this because being unable
@@ -329,7 +329,7 @@ impl ConfigLoader {
     });
 
     if updated {
-      log::debug!("updated value of {} to {}", key, updated_value);
+      log::debug!("updated value of {key} to {updated_value}");
     }
   }
 

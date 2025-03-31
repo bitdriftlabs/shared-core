@@ -208,10 +208,8 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
     #[allow(clippy::cast_precision_loss, clippy::cast_lossless)]
     let ratio = compressed_message_size as f64 * 1.0 / message_size as f64;
     log::trace!(
-      "compression completed; {} bytes compressed to {} bytes, compression ratio: {:.2}",
-      message_size,
-      compressed_message_size,
-      ratio
+      "compression completed; {message_size} bytes compressed to {compressed_message_size} bytes, \
+       compression ratio: {ratio:.2}"
     );
 
     Ok(buffer.into())
@@ -237,7 +235,7 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
       message
         .write_to_with_cached_sizes(&mut output_stream)
         .unwrap();
-      log::trace!("writing message len={}", message_size);
+      log::trace!("writing message len={message_size}");
     }
 
     buffer.freeze()

@@ -593,7 +593,7 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
   let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
   let local_addr = listener.local_addr().unwrap();
 
-  log::debug!("binding test server to {}", local_addr);
+  log::debug!("binding test server to {local_addr}");
 
   std::thread::spawn(move || {
     tokio::runtime::Builder::new_current_thread()
@@ -1101,11 +1101,11 @@ impl TestEventProcessor {
   fn process_event(&mut self, event: ObservedEvent) {
     match event {
       ObservedEvent::StreamCreation(stream_id) => {
-        log::debug!("[S{}] observing new stream", stream_id);
+        log::debug!("[S{stream_id}] observing new stream");
         self.pending_new_streams.push(stream_id);
       },
       ObservedEvent::StreamEvent(stream_id, event) => {
-        log::debug!("[S{}] observing event {:?}", stream_id, event);
+        log::debug!("[S{stream_id}] observing event {event:?}");
 
         match event {
           StreamEvent::Created(maybe_key) => {
