@@ -290,7 +290,7 @@ impl AnnotatedWorkflowsEngine {
       loop {
         tokio::select! {
           Some(buffers_to_flush) = buffers_to_flush_rx.recv() => {
-              log::debug!("received new buffers to flush {:?}", buffers_to_flush);
+              log::debug!("received new buffers to flush {buffers_to_flush:?}");
               hooks.lock().flushed_buffers.push(buffers_to_flush);
             },
             Some(data_upload) = data_upload_rx.recv() => {
@@ -358,7 +358,7 @@ impl AnnotatedWorkflowsEngine {
                   }).unwrap();
                 },
                 default => {
-                  log::error!("received unhandled data upload: {:?}", default);
+                  log::error!("received unhandled data upload: {default:?}");
                 }
               }
             }

@@ -646,7 +646,7 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
       Err(e) => {
         if let Some(warning) = e.warn_every_message() {
           if warn_tracker.should_warn(15.seconds()) {
-            log::warn!("{} failed: {warning}", path);
+            log::warn!("{path} failed: {warning}");
           }
         }
 
@@ -723,7 +723,7 @@ pub fn make_unary_router<OutgoingType: MessageFull, IncomingType: MessageFull>(
         if let Err(e) = &result {
           if let Some(warning) = e.warn_every_message() {
             if cloned_warn_tracker.should_warn(15.seconds()) {
-              log::warn!("{} failed: {warning}", cloned_full_path);
+              log::warn!("{cloned_full_path} failed: {warning}");
             }
           }
 

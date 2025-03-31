@@ -58,10 +58,7 @@ impl Strategy {
     let session_id = self.callbacks.generate_session_id().unwrap_or_else(|_| {
       let id = Self::generate_uuid();
 
-      log::warn!(
-        "failed to generate a new session ID, using a random UUID instead {:?}",
-        id
-      );
+      log::warn!("failed to generate a new session ID, using a random UUID instead {id:?}");
       id
     });
     cell.set(false);
@@ -121,10 +118,7 @@ impl Strategy {
 
       self.store.set(&STATE_KEY, &state.into());
 
-      log::info!(
-        "bitdrift Capture initialized with session ID: {:?}",
-        session_id
-      );
+      log::info!("bitdrift Capture initialized with session ID: {session_id:?}");
 
       session_id
     }

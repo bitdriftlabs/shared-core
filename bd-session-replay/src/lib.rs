@@ -274,7 +274,7 @@ impl CaptureScreenshotHandler {
     // layer can process them. In such cases, new requests are ignored.
     if let Err(e) = self.capture_screenshot_tx.try_send(()) {
       self.channel_full.inc();
-      log::debug!("failed to send capture screenshot signal: {:?}", e);
+      log::debug!("failed to send capture screenshot signal: {e:?}");
     }
   }
 }

@@ -365,7 +365,7 @@ impl ErrorReporter {
       };
 
       if let Err(e) = self.send_error(payload, &fields).await {
-        log::error!("failed to send error report: {:?}", e);
+        log::error!("failed to send error report: {e:?}");
       }
     }
   }
@@ -416,7 +416,7 @@ impl bd_client_common::error::Reporter for ErrorReporterHandle {
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect(),
     )) {
-      log::error!("failed to send error report: {:?}", e);
+      log::error!("failed to send error report: {e:?}");
     }
   }
 }

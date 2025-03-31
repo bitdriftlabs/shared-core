@@ -220,7 +220,7 @@ fn validate_string(
   message: &dyn protobuf::MessageDyn,
 ) -> error::Result<()> {
   if let Some(ReflectValueRef::String(value)) = get_singular_or_default(field_descriptor, message) {
-    if rules.has_min_len() && rules.min_len() > value.len().try_into().unwrap() {
+    if rules.has_min_len() && rules.min_len() > value.len() as u64 {
       return Err(error::Error::ProtoValidation(format!(
         "field '{}' in message '{}' requires string length >= {}",
         field_descriptor.full_name(),
@@ -229,7 +229,7 @@ fn validate_string(
       )));
     }
 
-    if rules.has_max_len() && rules.max_len() < value.len().try_into().unwrap() {
+    if rules.has_max_len() && rules.max_len() < value.len() as u64 {
       return Err(error::Error::ProtoValidation(format!(
         "field '{}' in message '{}' requires string length <= {}",
         field_descriptor.full_name(),
@@ -276,7 +276,7 @@ fn validate_repeated(
   message: &dyn protobuf::MessageDyn,
 ) -> error::Result<()> {
   if rules.has_min_items()
-    && field_descriptor.get_repeated(message).len() < rules.min_items().try_into().unwrap()
+    && field_descriptor.get_repeated(message).len() < usize::try_from(rules.min_items()).unwrap()
   {
     return Err(error::Error::ProtoValidation(format!(
       "field '{}' in message '{}' requires repeated items >= {}",

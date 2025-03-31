@@ -204,11 +204,7 @@ impl Monitor {
       log::debug!("No report directories configured, removing file");
 
       if let Err(e) = tokio::fs::remove_file(&file).await {
-        log::warn!(
-          "Failed to remove report directories config file: {:?} ({})",
-          file,
-          e
-        );
+        log::warn!("Failed to remove report directories config file: {file:?} ({e})");
       }
     } else {
       log::debug!("Writing {value:?} to report directories config file {file:?}",);
@@ -216,11 +212,7 @@ impl Monitor {
       self.try_ensure_directories_exist().await;
 
       if let Err(e) = tokio::fs::write(file, value).await {
-        log::warn!(
-          "Failed to write report directories config file: {:?} ({})",
-          file,
-          e
-        );
+        log::warn!("Failed to write report directories config file: {file:?} ({e})");
       }
     }
   }
@@ -259,11 +251,11 @@ impl Monitor {
     while let Ok(Some(entry)) = dir.next_entry().await {
       let path = entry.path();
       if path.is_file() {
-        log::info!("Processing new reports report: {:?}", path);
+        log::info!("Processing new reports report: {path:?}");
         let contents = match tokio::fs::read(&path).await {
           Ok(contents) => contents,
           Err(e) => {
-            log::warn!("Failed to read reports report: {:?} ({})", path, e);
+            log::warn!("Failed to read reports report: {path:?} ({e})");
             continue;
           },
         };
@@ -274,7 +266,7 @@ impl Monitor {
           .and_then(|name| {
             name.split('_').next().and_then(|timestamp| {
               let Ok(timestamp) = timestamp.parse::<i128>() else {
-                log::debug!("Failed to parse timestamp from file name: {:?}", name);
+                log::debug!("Failed to parse timestamp from file name: {name:?}");
                 return None;
               };
 
@@ -314,7 +306,7 @@ impl Monitor {
       // Clean up files after processing them. If this fails we'll potentially end up
       // double-reporting in the future.
       if let Err(e) = tokio::fs::remove_file(&path).await {
-        log::warn!("Failed to remove crash report: {:?} ({})", path, e);
+        log::warn!("Failed to remove crash report: {path:?} ({e})");
       }
     }
 

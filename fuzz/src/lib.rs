@@ -349,7 +349,7 @@ impl BufferFuzzTest {
 
   pub fn run(&mut self, allow_corruption: bool) {
     for action in self.test_case.actions.split_off(0) {
-      log::trace!("fuzz action: {:?}", action);
+      log::trace!("fuzz action: {action:?}");
 
       match action {
         Action::Read => self.action_read(),

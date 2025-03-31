@@ -624,10 +624,8 @@ impl Run {
             Ok(duration_since_first_progress) => {
               if duration_since_first_progress > duration_limit {
                 log::debug!(
-                  "run stopped due to exceeding duration limit ({:?}), duration since the run \
-                   first made progress progress: {:?}",
-                  duration_limit,
-                  duration_since_first_progress
+                  "run stopped due to exceeding duration limit ({duration_limit:?}), duration \
+                   since the run first made progress progress: {duration_since_first_progress:?}"
                 );
                 return RunResult {
                   state: RunState::Stopped,
@@ -645,10 +643,8 @@ impl Run {
             // `TimeProvider` registered by SDK customer and nothing prevents these
             // providers from returning decreasing times.
             Err(e) => log::debug!(
-              "failed to calculate time difference between current time {:?} and first progress \
-               occurred at time {:?}: {e}",
-              current_time,
-              first_progress_occurred_at,
+              "failed to calculate time difference between current time {current_time:?} and \
+               first progress occurred at time {first_progress_occurred_at:?}: {e}",
             ),
           }
         }
@@ -954,11 +950,7 @@ impl Traversal {
 
     if let Some(timestamp_extraction_id) = &extractions.timestamp_extraction_id {
       let timestamp = log.occurred_at;
-      log::debug!(
-        "extracted timestamp {} for extraction ID {}",
-        timestamp,
-        timestamp_extraction_id
-      );
+      log::debug!("extracted timestamp {timestamp} for extraction ID {timestamp_extraction_id}");
       new_extractions
         .timestamps
         .get_or_insert_with(BTreeMap::new)

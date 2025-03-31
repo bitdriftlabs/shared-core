@@ -267,7 +267,7 @@ impl<ConfigType: Send + Sync + 'static + ?Sized> WatchedFileLoader<ConfigType> {
       .join_handle
       .replace(tokio::spawn(async move {
         while let Some(Ok(event)) = rx.recv().await {
-          log::debug!("got event: {:?}", event);
+          log::debug!("got event: {event:?}");
           match event.kind {
             EventKind::Modify(ModifyKind::Name(mode)) if mode == Self::rename_mode() => {},
             _ => continue,
@@ -297,7 +297,7 @@ impl<ConfigType: Send + Sync + 'static + ?Sized> WatchedFileLoader<ConfigType> {
     conversion_function: &ConversionFunc,
     stats: &impl StatsCallbacks,
   ) -> ConfigPtr<ConfigType> {
-    log::info!("attempting to reload: {:?}", file_to_load);
+    log::info!("attempting to reload: {file_to_load:?}");
     conversion_function(match std::fs::read_to_string(file_to_load) {
       Ok(file_data) => match serde_yaml::from_str::<SerializedType>(&file_data) {
         Ok(config) => {
@@ -305,13 +305,13 @@ impl<ConfigType: Send + Sync + 'static + ?Sized> WatchedFileLoader<ConfigType> {
           Some(config)
         },
         Err(e) => {
-          log::warn!("unable to deserialize config: {:?}", e);
+          log::warn!("unable to deserialize config: {e:?}");
           stats.on_deserialize_failure();
           None
         },
       },
       Err(e) => {
-        log::warn!("unable to read config file: {:?}", e);
+        log::warn!("unable to read config file: {e:?}");
         stats.on_io_failure();
         None
       },

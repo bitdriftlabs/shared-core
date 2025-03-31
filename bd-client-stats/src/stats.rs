@@ -185,7 +185,7 @@ impl Flusher {
 
     for (id, metric) in delta_snapshot.metrics {
       let Some(cached_metric) = new_or_existing_snapshot.mut_metric(&id) else {
-        log::trace!("adding new metric to snapshot: {:?}", id);
+        log::trace!("adding new metric to snapshot: {id:?}");
         new_or_existing_snapshot.add_metric(id, metric);
         continue;
       };
@@ -354,7 +354,7 @@ impl Flusher {
     &self,
     upload_response: UploadResponse,
   ) -> Option<oneshot::Receiver<UploadResponse>> {
-    log::debug!("stat upload attempt complete: {:?}", upload_response);
+    log::debug!("stat upload attempt complete: {upload_response:?}");
     if upload_response.success {
       // If this fails we are in a bad state and are likely going to end up double uploading, but
       // there is little we can do about it.

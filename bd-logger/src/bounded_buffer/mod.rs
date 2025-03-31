@@ -102,18 +102,12 @@ impl<T: MemorySized> Sender<T> {
         Ok(())
       },
       Err(TokioTrySendError::Closed(message)) => {
-        log::debug!(
-          "Failed to add {:?} bytes to the channel: Channel is closed",
-          message_size
-        );
+        log::debug!("Failed to add {message_size:?} bytes to the channel: Channel is closed");
         self.void_memory_reservation(message_size);
         Err(TrySendError::Closed(message))
       },
       Err(TokioTrySendError::Full(message)) => {
-        log::debug!(
-          "Failed to add {:?} bytes to the channel: Channel is full",
-          message_size
-        );
+        log::debug!("Failed to add {message_size:?} bytes to the channel: Channel is full");
         self.void_memory_reservation(message_size);
         Err(TrySendError::FullCountOverflow(message))
       },
@@ -146,9 +140,8 @@ impl<T: MemorySized> Sender<T> {
     }
 
     log::trace!(
-      "Reserved {:?} bytes in the channel, the new size of the channel is {:?} bytes",
-      memory_amount,
-      post_add_mem_capacity
+      "Reserved {memory_amount:?} bytes in the channel, the new size of the channel is \
+       {post_add_mem_capacity:?} bytes"
     );
 
     // The memory reservation operation completed succesfully. The memory reservation needs to

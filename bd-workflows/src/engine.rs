@@ -366,10 +366,7 @@ impl WorkflowsEngine {
       for index in (0 .. workflow.runs().len()).rev() {
         let run_traversals_count = workflow.runs()[index].traversals_count();
 
-        log::debug!(
-          "removing workflow run with {} traversal(s)",
-          run_traversals_count
-        );
+        log::debug!("removing workflow run with {run_traversals_count} traversal(s)");
 
         remaining_workflow_traversals_count -= run_traversals_count;
         self.stats.traversals_count_limit_hit_total.inc();
@@ -472,7 +469,7 @@ impl WorkflowsEngine {
         self.maybe_persist(false).await;
       },
       Some(negotiator_output) = self.flush_buffers_negotiator_output_rx.recv() => {
-        log::debug!("received flush buffers negotiator output: \"{:?}\"", negotiator_output);
+        log::debug!("received flush buffers negotiator output: \"{negotiator_output:?}\"");
 
         match negotiator_output {
           NegotiatorOutput::UploadApproved(action) => {
@@ -485,7 +482,7 @@ impl WorkflowsEngine {
         }
       },
       Some(processed_sankey_path) = self.sankey_processor_output_rx.recv() => {
-        log::debug!("received processed sankey path: \"{:?}\"", processed_sankey_path);
+        log::debug!("received processed sankey path: \"{processed_sankey_path:?}\"");
 
         self.state.pending_sankey_actions.remove(&PendingSankeyPathUpload {
             sankey_path: processed_sankey_path

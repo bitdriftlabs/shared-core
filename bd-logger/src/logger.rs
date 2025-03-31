@@ -271,7 +271,7 @@ impl LoggerHandle {
       return;
     };
 
-    log::debug!("emitting app update event: {:?}", version);
+    log::debug!("emitting app update event: {version:?}");
 
     fields.insert(
       "_duration_ms".into(),
@@ -316,7 +316,7 @@ impl LoggerHandle {
         self.stats.field_addition_counters.record(&result);
 
         if let Err(e) = result {
-          log::warn!("failed to add {:?} log field: {e:?}", field_name);
+          log::warn!("failed to add {field_name:?} log field: {e:?}");
         }
       } else {
         warn_every!(
@@ -337,7 +337,7 @@ impl LoggerHandle {
         self.stats.field_removal_counters.record(&result);
 
         if let Err(e) = result {
-          log::warn!("failed to remove {:?} log field: {e:?}", field_name);
+          log::warn!("failed to remove {field_name:?} log field: {e:?}");
         }
       } else {
         warn_every!(

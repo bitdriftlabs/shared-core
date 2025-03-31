@@ -772,13 +772,10 @@ impl RingBufferImpl {
         })?
         .len()
     {
-      log::info!("({name}) ring buffer file exists with size: {}", size);
+      log::info!("({name}) ring buffer file exists with size: {size}");
       false
     } else {
-      log::info!(
-        "({name}) resizing new or wrong sized ring buffer file to size: {}",
-        size
-      );
+      log::info!("({name}) resizing new or wrong sized ring buffer file to size: {size}");
       file.set_len(size.into()).map_err(|e| {
         Error::AbslStatus(
           AbslCode::InvalidArgument,

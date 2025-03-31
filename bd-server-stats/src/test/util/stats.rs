@@ -54,8 +54,8 @@ impl Helper {
     }
 
     for label_pair in metric.get_label() {
-      if !labels.contains_key(label_pair.get_name())
-        || *labels.get(label_pair.get_name()).unwrap() != label_pair.get_value()
+      if !labels.contains_key(label_pair.name())
+        || *labels.get(label_pair.name()).unwrap() != label_pair.value()
       {
         return false;
       }
@@ -68,7 +68,7 @@ impl Helper {
   #[must_use]
   fn find_metric(&self, name: &str, labels: &HashMap<&str, &str>) -> Option<Metric> {
     for metric_family in self.collector.gather() {
-      if metric_family.get_name() == name {
+      if metric_family.name() == name {
         for metric in metric_family.get_metric() {
           if Self::labels_equal(metric, labels) {
             return Some(metric.clone());
@@ -85,7 +85,7 @@ impl Helper {
   pub fn find_counter(&self, name: &str, labels: &HashMap<&str, &str>) -> Option<Counter> {
     self
       .find_metric(name, labels)
-      .map(|metric| metric.get_counter().clone())
+      .and_then(|metric| metric.counter.into_option())
   }
 
   // Find a gauge by name.
@@ -93,7 +93,7 @@ impl Helper {
   pub fn find_gauge(&self, name: &str, labels: &HashMap<&str, &str>) -> Option<Gauge> {
     self
       .find_metric(name, labels)
-      .map(|metric| metric.get_gauge().clone())
+      .and_then(|metric| metric.gauge.into_option())
   }
 
   // Find a histogram by name.
@@ -101,7 +101,7 @@ impl Helper {
   pub fn find_histogram(&self, name: &str, labels: &HashMap<&str, &str>) -> Option<Histogram> {
     self
       .find_metric(name, labels)
-      .map(|metric| metric.get_histogram().clone())
+      .and_then(|metric| metric.histogram.into_option())
   }
 
   // Wait for a counter to be equal to some value, for up to 10s.
@@ -132,7 +132,7 @@ impl Helper {
 
       if latest_value
         .as_ref()
-        .is_some_and(|counter| counter.get_value() as u64 == value)
+        .is_some_and(|counter| counter.value() as u64 == value)
       {
         return;
       }
@@ -146,7 +146,7 @@ impl Helper {
     let actual = self
       .find_counter(name, labels)
       .unwrap_or_else(|| panic!("counter '{name}' with labels '{labels:?}' not found"))
-      .get_value() as u64;
+      .value() as u64;
     assert_eq!(
       value, actual,
       "counter '{name}' with labels '{labels:?}' not equal to '{value}', was '{actual}'",
@@ -161,7 +161,7 @@ impl Helper {
       self
         .find_gauge(name, labels)
         .unwrap_or_else(|| panic!("gauge '{name}' with labels '{labels:?}' not found"))
-        .get_value() as i64
+        .value() as i64
     );
   }
 
@@ -172,7 +172,7 @@ impl Helper {
       self
         .find_gauge(name, labels)
         .unwrap_or_else(|| panic!("gauge '{name}' with labels '{labels:?}' not found"))
-        .get_value()
+        .value()
     );
   }
 
@@ -247,8 +247,8 @@ pub fn assert_histogram(histogram: &Histogram, count: u64, sum: f64, buckets: &[
 
   // TODO(mattklein123): Replace with iterator::eq_by() when stabilized.
   for (bucket, verify) in itertools::zip_eq(histogram.get_bucket(), buckets) {
-    assert!((bucket.get_upper_bound() - verify.0).abs() < f64::EPSILON);
-    assert_eq!(bucket.get_cumulative_count(), verify.1);
+    assert!((bucket.upper_bound() - verify.0).abs() < f64::EPSILON);
+    assert_eq!(bucket.cumulative_count(), verify.1);
   }
 }
 
