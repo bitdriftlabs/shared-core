@@ -282,8 +282,7 @@ impl Monitor {
 
         if crash_reason.is_none() {
           log::warn!(
-            "Failed to infer crash reason from report {:?}, dropping.",
-            path
+            "Failed to infer crash reason from report {path:?}, dropping."
           );
           continue;
         }
