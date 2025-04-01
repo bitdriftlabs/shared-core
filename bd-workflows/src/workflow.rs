@@ -990,10 +990,6 @@ impl Traversal {
           triggered_actions.push(TriggeredAction::EmitMetric(action));
         },
         Action::EmitSankey(action) => {
-          debug_assert!(
-            extractions.sankey_states.is_some(),
-            "sankey_states should be present"
-          );
           let Some(sankey_states) = &mut extractions.sankey_states else {
             continue;
           };

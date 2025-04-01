@@ -281,10 +281,7 @@ impl Monitor {
           Self::guess_crash_details(&contents, &crash_reason_paths, &crash_details_paths);
 
         if crash_reason.is_none() {
-          log::warn!(
-            "Failed to infer crash reason from report {:?}, dropping.",
-            path
-          );
+          log::warn!("Failed to infer crash reason from report {path:?}, dropping.");
           continue;
         }
 
