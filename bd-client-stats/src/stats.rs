@@ -399,9 +399,12 @@ impl SnapshotHelper {
     let mut new_metrics = HashMap::new();
     for metric in metrics.metric {
       let id = Id::new(metric.name, metric.tags.into_iter().collect());
-      let metric = MetricData::from_proto(metric.data.unwrap()).unwrap();
-      let existing = new_metrics.insert(id, metric);
-      debug_assert!(existing.is_none());
+      if let Some(data) = metric.data {
+        if let Some(metric) = MetricData::from_proto(data) {
+          let existing = new_metrics.insert(id, metric);
+          debug_assert!(existing.is_none());
+        }
+      }
     }
 
     Some(new_metrics)
