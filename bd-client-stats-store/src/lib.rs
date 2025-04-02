@@ -390,12 +390,8 @@ pub enum MetricData {
 impl MetricData {
   pub fn from_proto(proto: ProtoMetricData) -> Option<Self> {
     match proto {
-      ProtoMetricData::Counter(ProtoCounter {
-        value,
-        value_deprecated,
-        ..
-      }) => Some(Self::Counter(Counter {
-        value: Arc::new(AtomicU64::new(value + u64::from(value_deprecated))),
+      ProtoMetricData::Counter(ProtoCounter { value, .. }) => Some(Self::Counter(Counter {
+        value: Arc::new(AtomicU64::new(value)),
       })),
       ProtoMetricData::DdsketchHistogram(histogram) => {
         let mut sketch = make_sketch();
@@ -409,7 +405,6 @@ impl MetricData {
           inner: Arc::new(Mutex::new(HistogramInner::Inline(values))),
         }))
       },
-      ProtoMetricData::FixedBucketHistogramDeprecated(_) => None,
     }
   }
 

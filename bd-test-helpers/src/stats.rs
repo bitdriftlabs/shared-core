@@ -126,7 +126,7 @@ impl StatsRequestHelper {
     self.get_metric(name, fields).and_then(|metric| {
       metric.data.as_ref().map(|data| match data {
         Data::InlineHistogramValues(h) => h.values.clone(),
-        Data::Counter(_) | Data::FixedBucketHistogramDeprecated(_) | Data::DdsketchHistogram(_) => {
+        Data::Counter(_) | Data::DdsketchHistogram(_) => {
           panic!("not an inline histogram")
         },
       })
@@ -139,9 +139,7 @@ impl StatsRequestHelper {
     self.get_metric(name, fields).and_then(|metric| {
       metric.data.as_ref().map(|data| match data {
         Data::Counter(c) => c.value,
-        Data::FixedBucketHistogramDeprecated(_)
-        | Data::DdsketchHistogram(_)
-        | Data::InlineHistogramValues(_) => {
+        Data::DdsketchHistogram(_) | Data::InlineHistogramValues(_) => {
           panic!("not a counter")
         },
       })

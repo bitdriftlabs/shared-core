@@ -321,8 +321,6 @@ pub mod pending_aggregation_index {
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct Counter {
     // message fields
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.Counter.value_deprecated)
-    pub value_deprecated: u32,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.Counter.value)
     pub value: u64,
     // special fields
@@ -342,13 +340,8 @@ impl Counter {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut fields = ::std::vec::Vec::with_capacity(1);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "value_deprecated",
-            |m: &Counter| { &m.value_deprecated },
-            |m: &mut Counter| { &mut m.value_deprecated },
-        ));
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "value",
             |m: &Counter| { &m.value },
@@ -372,9 +365,6 @@ impl ::protobuf::Message for Counter {
     fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
         while let Some(tag) = is.read_raw_tag_or_eof()? {
             match tag {
-                8 => {
-                    self.value_deprecated = is.read_uint32()?;
-                },
                 16 => {
                     self.value = is.read_uint64()?;
                 },
@@ -390,9 +380,6 @@ impl ::protobuf::Message for Counter {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u64 {
         let mut my_size = 0;
-        if self.value_deprecated != 0 {
-            my_size += ::protobuf::rt::uint32_size(1, self.value_deprecated);
-        }
         if self.value != 0 {
             my_size += ::protobuf::rt::uint64_size(2, self.value);
         }
@@ -402,9 +389,6 @@ impl ::protobuf::Message for Counter {
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-        if self.value_deprecated != 0 {
-            os.write_uint32(1, self.value_deprecated)?;
-        }
         if self.value != 0 {
             os.write_uint64(2, self.value)?;
         }
@@ -425,14 +409,12 @@ impl ::protobuf::Message for Counter {
     }
 
     fn clear(&mut self) {
-        self.value_deprecated = 0;
         self.value = 0;
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static Counter {
         static instance: Counter = Counter {
-            value_deprecated: 0,
             value: 0,
             special_fields: ::protobuf::SpecialFields::new(),
         };
@@ -455,308 +437,6 @@ impl ::std::fmt::Display for Counter {
 
 impl ::protobuf::reflect::ProtobufValue for Counter {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-}
-
-// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.FixedBucketHistogram)
-#[derive(PartialEq,Clone,Default,Debug)]
-pub struct FixedBucketHistogram {
-    // message fields
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.FixedBucketHistogram.fixed_buckets)
-    pub fixed_buckets: ::std::vec::Vec<fixed_bucket_histogram::Bucket>,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.FixedBucketHistogram.count)
-    pub count: u64,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.FixedBucketHistogram.sum)
-    pub sum: f64,
-    // special fields
-    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.FixedBucketHistogram.special_fields)
-    pub special_fields: ::protobuf::SpecialFields,
-}
-
-impl<'a> ::std::default::Default for &'a FixedBucketHistogram {
-    fn default() -> &'a FixedBucketHistogram {
-        <FixedBucketHistogram as ::protobuf::Message>::default_instance()
-    }
-}
-
-impl FixedBucketHistogram {
-    pub fn new() -> FixedBucketHistogram {
-        ::std::default::Default::default()
-    }
-
-    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(3);
-        let mut oneofs = ::std::vec::Vec::with_capacity(0);
-        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
-            "fixed_buckets",
-            |m: &FixedBucketHistogram| { &m.fixed_buckets },
-            |m: &mut FixedBucketHistogram| { &mut m.fixed_buckets },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "count",
-            |m: &FixedBucketHistogram| { &m.count },
-            |m: &mut FixedBucketHistogram| { &mut m.count },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "sum",
-            |m: &FixedBucketHistogram| { &m.sum },
-            |m: &mut FixedBucketHistogram| { &mut m.sum },
-        ));
-        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<FixedBucketHistogram>(
-            "FixedBucketHistogram",
-            fields,
-            oneofs,
-        )
-    }
-}
-
-impl ::protobuf::Message for FixedBucketHistogram {
-    const NAME: &'static str = "FixedBucketHistogram";
-
-    fn is_initialized(&self) -> bool {
-        true
-    }
-
-    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-        while let Some(tag) = is.read_raw_tag_or_eof()? {
-            match tag {
-                10 => {
-                    self.fixed_buckets.push(is.read_message()?);
-                },
-                16 => {
-                    self.count = is.read_uint64()?;
-                },
-                25 => {
-                    self.sum = is.read_double()?;
-                },
-                tag => {
-                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                },
-            };
-        }
-        ::std::result::Result::Ok(())
-    }
-
-    // Compute sizes of nested messages
-    #[allow(unused_variables)]
-    fn compute_size(&self) -> u64 {
-        let mut my_size = 0;
-        for value in &self.fixed_buckets {
-            let len = value.compute_size();
-            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-        };
-        if self.count != 0 {
-            my_size += ::protobuf::rt::uint64_size(2, self.count);
-        }
-        if self.sum != 0. {
-            my_size += 1 + 8;
-        }
-        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-        self.special_fields.cached_size().set(my_size as u32);
-        my_size
-    }
-
-    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-        for v in &self.fixed_buckets {
-            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
-        };
-        if self.count != 0 {
-            os.write_uint64(2, self.count)?;
-        }
-        if self.sum != 0. {
-            os.write_double(3, self.sum)?;
-        }
-        os.write_unknown_fields(self.special_fields.unknown_fields())?;
-        ::std::result::Result::Ok(())
-    }
-
-    fn special_fields(&self) -> &::protobuf::SpecialFields {
-        &self.special_fields
-    }
-
-    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-        &mut self.special_fields
-    }
-
-    fn new() -> FixedBucketHistogram {
-        FixedBucketHistogram::new()
-    }
-
-    fn clear(&mut self) {
-        self.fixed_buckets.clear();
-        self.count = 0;
-        self.sum = 0.;
-        self.special_fields.clear();
-    }
-
-    fn default_instance() -> &'static FixedBucketHistogram {
-        static instance: FixedBucketHistogram = FixedBucketHistogram {
-            fixed_buckets: ::std::vec::Vec::new(),
-            count: 0,
-            sum: 0.,
-            special_fields: ::protobuf::SpecialFields::new(),
-        };
-        &instance
-    }
-}
-
-impl ::protobuf::MessageFull for FixedBucketHistogram {
-    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-        descriptor.get(|| file_descriptor().message_by_package_relative_name("FixedBucketHistogram").unwrap()).clone()
-    }
-}
-
-impl ::std::fmt::Display for FixedBucketHistogram {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        ::protobuf::text_format::fmt(self, f)
-    }
-}
-
-impl ::protobuf::reflect::ProtobufValue for FixedBucketHistogram {
-    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-}
-
-/// Nested message and enums of message `FixedBucketHistogram`
-pub mod fixed_bucket_histogram {
-    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.FixedBucketHistogram.Bucket)
-    #[derive(PartialEq,Clone,Default,Debug)]
-    pub struct Bucket {
-        // message fields
-        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.FixedBucketHistogram.Bucket.less_than_equal_to)
-        pub less_than_equal_to: f64,
-        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.FixedBucketHistogram.Bucket.count)
-        pub count: u64,
-        // special fields
-        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.FixedBucketHistogram.Bucket.special_fields)
-        pub special_fields: ::protobuf::SpecialFields,
-    }
-
-    impl<'a> ::std::default::Default for &'a Bucket {
-        fn default() -> &'a Bucket {
-            <Bucket as ::protobuf::Message>::default_instance()
-        }
-    }
-
-    impl Bucket {
-        pub fn new() -> Bucket {
-            ::std::default::Default::default()
-        }
-
-        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(2);
-            let mut oneofs = ::std::vec::Vec::with_capacity(0);
-            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                "less_than_equal_to",
-                |m: &Bucket| { &m.less_than_equal_to },
-                |m: &mut Bucket| { &mut m.less_than_equal_to },
-            ));
-            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                "count",
-                |m: &Bucket| { &m.count },
-                |m: &mut Bucket| { &mut m.count },
-            ));
-            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Bucket>(
-                "FixedBucketHistogram.Bucket",
-                fields,
-                oneofs,
-            )
-        }
-    }
-
-    impl ::protobuf::Message for Bucket {
-        const NAME: &'static str = "Bucket";
-
-        fn is_initialized(&self) -> bool {
-            true
-        }
-
-        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-            while let Some(tag) = is.read_raw_tag_or_eof()? {
-                match tag {
-                    9 => {
-                        self.less_than_equal_to = is.read_double()?;
-                    },
-                    16 => {
-                        self.count = is.read_uint64()?;
-                    },
-                    tag => {
-                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                    },
-                };
-            }
-            ::std::result::Result::Ok(())
-        }
-
-        // Compute sizes of nested messages
-        #[allow(unused_variables)]
-        fn compute_size(&self) -> u64 {
-            let mut my_size = 0;
-            if self.less_than_equal_to != 0. {
-                my_size += 1 + 8;
-            }
-            if self.count != 0 {
-                my_size += ::protobuf::rt::uint64_size(2, self.count);
-            }
-            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-            self.special_fields.cached_size().set(my_size as u32);
-            my_size
-        }
-
-        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-            if self.less_than_equal_to != 0. {
-                os.write_double(1, self.less_than_equal_to)?;
-            }
-            if self.count != 0 {
-                os.write_uint64(2, self.count)?;
-            }
-            os.write_unknown_fields(self.special_fields.unknown_fields())?;
-            ::std::result::Result::Ok(())
-        }
-
-        fn special_fields(&self) -> &::protobuf::SpecialFields {
-            &self.special_fields
-        }
-
-        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-            &mut self.special_fields
-        }
-
-        fn new() -> Bucket {
-            Bucket::new()
-        }
-
-        fn clear(&mut self) {
-            self.less_than_equal_to = 0.;
-            self.count = 0;
-            self.special_fields.clear();
-        }
-
-        fn default_instance() -> &'static Bucket {
-            static instance: Bucket = Bucket {
-                less_than_equal_to: 0.,
-                count: 0,
-                special_fields: ::protobuf::SpecialFields::new(),
-            };
-            &instance
-        }
-    }
-
-    impl ::protobuf::MessageFull for Bucket {
-        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("FixedBucketHistogram.Bucket").unwrap()).clone()
-        }
-    }
-
-    impl ::std::fmt::Display for Bucket {
-        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-            ::protobuf::text_format::fmt(self, f)
-        }
-    }
-
-    impl ::protobuf::reflect::ProtobufValue for Bucket {
-        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-    }
 }
 
 // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DDSketchHistogram)
@@ -1077,55 +757,6 @@ impl Metric {
         }
     }
 
-    // .bitdrift_public.protobuf.client.v1.FixedBucketHistogram fixed_bucket_histogram_deprecated = 4;
-
-    pub fn fixed_bucket_histogram_deprecated(&self) -> &FixedBucketHistogram {
-        match self.data {
-            ::std::option::Option::Some(metric::Data::FixedBucketHistogramDeprecated(ref v)) => v,
-            _ => <FixedBucketHistogram as ::protobuf::Message>::default_instance(),
-        }
-    }
-
-    pub fn clear_fixed_bucket_histogram_deprecated(&mut self) {
-        self.data = ::std::option::Option::None;
-    }
-
-    pub fn has_fixed_bucket_histogram_deprecated(&self) -> bool {
-        match self.data {
-            ::std::option::Option::Some(metric::Data::FixedBucketHistogramDeprecated(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_fixed_bucket_histogram_deprecated(&mut self, v: FixedBucketHistogram) {
-        self.data = ::std::option::Option::Some(metric::Data::FixedBucketHistogramDeprecated(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_fixed_bucket_histogram_deprecated(&mut self) -> &mut FixedBucketHistogram {
-        if let ::std::option::Option::Some(metric::Data::FixedBucketHistogramDeprecated(_)) = self.data {
-        } else {
-            self.data = ::std::option::Option::Some(metric::Data::FixedBucketHistogramDeprecated(FixedBucketHistogram::new()));
-        }
-        match self.data {
-            ::std::option::Option::Some(metric::Data::FixedBucketHistogramDeprecated(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_fixed_bucket_histogram_deprecated(&mut self) -> FixedBucketHistogram {
-        if self.has_fixed_bucket_histogram_deprecated() {
-            match self.data.take() {
-                ::std::option::Option::Some(metric::Data::FixedBucketHistogramDeprecated(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            FixedBucketHistogram::new()
-        }
-    }
-
     // .bitdrift_public.protobuf.client.v1.DDSketchHistogram ddsketch_histogram = 5;
 
     pub fn ddsketch_histogram(&self) -> &DDSketchHistogram {
@@ -1225,7 +856,7 @@ impl Metric {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(6);
+        let mut fields = ::std::vec::Vec::with_capacity(5);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "name",
@@ -1243,13 +874,6 @@ impl Metric {
             Metric::counter,
             Metric::mut_counter,
             Metric::set_counter,
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, FixedBucketHistogram>(
-            "fixed_bucket_histogram_deprecated",
-            Metric::has_fixed_bucket_histogram_deprecated,
-            Metric::fixed_bucket_histogram_deprecated,
-            Metric::mut_fixed_bucket_histogram_deprecated,
-            Metric::set_fixed_bucket_histogram_deprecated,
         ));
         fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, DDSketchHistogram>(
             "ddsketch_histogram",
@@ -1305,9 +929,6 @@ impl ::protobuf::Message for Metric {
                 26 => {
                     self.data = ::std::option::Option::Some(metric::Data::Counter(is.read_message()?));
                 },
-                34 => {
-                    self.data = ::std::option::Option::Some(metric::Data::FixedBucketHistogramDeprecated(is.read_message()?));
-                },
                 42 => {
                     self.data = ::std::option::Option::Some(metric::Data::DdsketchHistogram(is.read_message()?));
                 },
@@ -1338,10 +959,6 @@ impl ::protobuf::Message for Metric {
         if let ::std::option::Option::Some(ref v) = self.data {
             match v {
                 &metric::Data::Counter(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-                },
-                &metric::Data::FixedBucketHistogramDeprecated(ref v) => {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
@@ -1378,9 +995,6 @@ impl ::protobuf::Message for Metric {
                 &metric::Data::Counter(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
                 },
-                &metric::Data::FixedBucketHistogramDeprecated(ref v) => {
-                    ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
-                },
                 &metric::Data::DdsketchHistogram(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
                 },
@@ -1408,7 +1022,6 @@ impl ::protobuf::Message for Metric {
     fn clear(&mut self) {
         self.name.clear();
         self.tags.clear();
-        self.data = ::std::option::Option::None;
         self.data = ::std::option::Option::None;
         self.data = ::std::option::Option::None;
         self.data = ::std::option::Option::None;
@@ -1446,8 +1059,6 @@ pub mod metric {
     pub enum Data {
         // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.Metric.counter)
         Counter(super::Counter),
-        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.Metric.fixed_bucket_histogram_deprecated)
-        FixedBucketHistogramDeprecated(super::FixedBucketHistogram),
         // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.Metric.ddsketch_histogram)
         DdsketchHistogram(super::DDSketchHistogram),
         // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.Metric.inline_histogram_values)
@@ -1603,30 +1214,22 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     e\x12\x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12=\n\x0cperiod_start\
     \x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x0bperiodStart\x12\
     9\n\nperiod_end\x18\x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tpe\
-    riodEnd\"J\n\x07Counter\x12)\n\x10value_deprecated\x18\x01\x20\x01(\rR\
-    \x0fvalueDeprecated\x12\x14\n\x05value\x18\x02\x20\x01(\x04R\x05value\"\
-    \xf1\x01\n\x14FixedBucketHistogram\x12d\n\rfixed_buckets\x18\x01\x20\x03\
-    (\x0b2?.bitdrift_public.protobuf.client.v1.FixedBucketHistogram.BucketR\
-    \x0cfixedBuckets\x12\x14\n\x05count\x18\x02\x20\x01(\x04R\x05count\x12\
-    \x10\n\x03sum\x18\x03\x20\x01(\x01R\x03sum\x1aK\n\x06Bucket\x12+\n\x12le\
-    ss_than_equal_to\x18\x01\x20\x01(\x01R\x0flessThanEqualTo\x12\x14\n\x05c\
-    ount\x18\x02\x20\x01(\x04R\x05count\"3\n\x11DDSketchHistogram\x12\x1e\n\
-    \nserialized\x18\x01\x20\x01(\x0cR\nserialized\"/\n\x15InlineHistogramVa\
-    lues\x12\x16\n\x06values\x18\x01\x20\x03(\x01R\x06values\"\xe3\x04\n\x06\
-    Metric\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\
-    \x10\x01\x12H\n\x04tags\x18\x02\x20\x03(\x0b24.bitdrift_public.protobuf.\
-    client.v1.Metric.TagsEntryR\x04tags\x12G\n\x07counter\x18\x03\x20\x01(\
-    \x0b2+.bitdrift_public.protobuf.client.v1.CounterH\0R\x07counter\x12\x85\
-    \x01\n!fixed_bucket_histogram_deprecated\x18\x04\x20\x01(\x0b28.bitdrift\
-    _public.protobuf.client.v1.FixedBucketHistogramH\0R\x1efixedBucketHistog\
-    ramDeprecated\x12f\n\x12ddsketch_histogram\x18\x05\x20\x01(\x0b25.bitdri\
-    ft_public.protobuf.client.v1.DDSketchHistogramH\0R\x11ddsketchHistogram\
-    \x12s\n\x17inline_histogram_values\x18\x06\x20\x01(\x0b29.bitdrift_publi\
-    c.protobuf.client.v1.InlineHistogramValuesH\0R\x15inlineHistogramValues\
-    \x1a7\n\tTagsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\
-    \x05value\x18\x02\x20\x01(\tR\x05value:\x028\x01B\x0b\n\x04data\x12\x03\
-    \xf8B\x01\"Q\n\x0bMetricsList\x12B\n\x06metric\x18\x01\x20\x03(\x0b2*.bi\
-    tdrift_public.protobuf.client.v1.MetricR\x06metricb\x06proto3\
+    riodEnd\"%\n\x07Counter\x12\x14\n\x05value\x18\x02\x20\x01(\x04R\x05valu\
+    eJ\x04\x08\x01\x10\x02\"3\n\x11DDSketchHistogram\x12\x1e\n\nserialized\
+    \x18\x01\x20\x01(\x0cR\nserialized\"/\n\x15InlineHistogramValues\x12\x16\
+    \n\x06values\x18\x01\x20\x03(\x01R\x06values\"\xe1\x03\n\x06Metric\x12\
+    \x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\
+    \x12H\n\x04tags\x18\x02\x20\x03(\x0b24.bitdrift_public.protobuf.client.v\
+    1.Metric.TagsEntryR\x04tags\x12G\n\x07counter\x18\x03\x20\x01(\x0b2+.bit\
+    drift_public.protobuf.client.v1.CounterH\0R\x07counter\x12f\n\x12ddsketc\
+    h_histogram\x18\x05\x20\x01(\x0b25.bitdrift_public.protobuf.client.v1.DD\
+    SketchHistogramH\0R\x11ddsketchHistogram\x12s\n\x17inline_histogram_valu\
+    es\x18\x06\x20\x01(\x0b29.bitdrift_public.protobuf.client.v1.InlineHisto\
+    gramValuesH\0R\x15inlineHistogramValues\x1a7\n\tTagsEntry\x12\x10\n\x03k\
+    ey\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\tR\x05\
+    value:\x028\x01B\x0b\n\x04data\x12\x03\xf8B\x01J\x04\x08\x04\x10\x05\"Q\
+    \n\x0bMetricsList\x12B\n\x06metric\x18\x01\x20\x03(\x0b2*.bitdrift_publi\
+    c.protobuf.client.v1.MetricR\x06metricb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1646,16 +1249,14 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             let mut deps = ::std::vec::Vec::with_capacity(2);
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(9);
+            let mut messages = ::std::vec::Vec::with_capacity(7);
             messages.push(PendingAggregationIndex::generated_message_descriptor_data());
             messages.push(Counter::generated_message_descriptor_data());
-            messages.push(FixedBucketHistogram::generated_message_descriptor_data());
             messages.push(DDSketchHistogram::generated_message_descriptor_data());
             messages.push(InlineHistogramValues::generated_message_descriptor_data());
             messages.push(Metric::generated_message_descriptor_data());
             messages.push(MetricsList::generated_message_descriptor_data());
             messages.push(pending_aggregation_index::PendingFile::generated_message_descriptor_data());
-            messages.push(fixed_bucket_histogram::Bucket::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(0);
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
