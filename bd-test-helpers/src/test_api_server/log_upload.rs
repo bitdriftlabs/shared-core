@@ -35,22 +35,27 @@ impl LogUpload {
 pub struct Log<'a>(bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::Log<'a>);
 
 impl Log<'_> {
+  #[must_use]
   pub fn session_id(&self) -> &str {
     self.0.session_id().unwrap()
   }
 
+  #[must_use]
   pub fn message(&self) -> &str {
     self.0.message_as_string_data().unwrap().data()
   }
 
+  #[must_use]
   pub fn log_level(&self) -> u32 {
     self.0.log_level()
   }
 
+  #[must_use]
   pub fn binary_message(&self) -> &[u8] {
     self.0.message_as_binary_data().unwrap().data().bytes()
   }
 
+  #[must_use]
   pub fn typed_message(&self) -> StringOrBytes<String, Vec<u8>> {
     if self.0.message_as_string_data().is_some() {
       StringOrBytes::String(self.message().to_string())
@@ -59,6 +64,7 @@ impl Log<'_> {
     }
   }
 
+  #[must_use]
   pub fn typed_fields(&self) -> Vec<(String, StringOrBytes<String, Vec<u8>>)> {
     self
       .0
@@ -89,6 +95,7 @@ impl Log<'_> {
       .collect()
   }
 
+  #[must_use]
   pub fn field(&self, key: &str) -> &str {
     self
       .0
@@ -106,6 +113,7 @@ impl Log<'_> {
       .expect("field should exist")
   }
 
+  #[must_use]
   pub fn has_field(&self, key: &str) -> bool {
     self
       .0
@@ -115,6 +123,7 @@ impl Log<'_> {
       .any(|field| field.key() == key)
   }
 
+  #[must_use]
   pub fn binary_field(&self, key: &str) -> &[u8] {
     self
       .0
@@ -133,6 +142,7 @@ impl Log<'_> {
       .expect("field should exist")
   }
 
+  #[must_use]
   pub fn timestamp(&self) -> time::OffsetDateTime {
     let timestamp = self.0.timestamp().unwrap();
 
@@ -143,6 +153,7 @@ impl Log<'_> {
     .unwrap()
   }
 
+  #[must_use]
   pub fn workflow_action_ids(&self) -> Vec<&str> {
     self
       .0
@@ -152,10 +163,12 @@ impl Log<'_> {
       .collect()
   }
 
+  #[must_use]
   pub fn stream_ids(&self) -> Vec<&str> {
     self.0.stream_ids().unwrap_or_default().iter().collect()
   }
 
+  #[must_use]
   pub fn log_type(&self) -> LogType {
     self.0.log_type()
   }
