@@ -11,6 +11,10 @@ clippy: setup
 	ci/check_license.sh
 	SKIP_PROTO_GEN=1 cargo clippy --workspace --bins --examples --tests -- --no-deps
 
+# Leaving the below loop around to help with debugging flakes if needed.
 .PHONY: test
 test: setup
-	RUST_BACKTRACE=1 SKIP_PROTO_GEN=1 RUST_LOG=error cargo test --workspace
+	for i in $(shell seq 1 1); do \
+  	echo "Running test iteration $$i..."; \
+		RUST_BACKTRACE=1 SKIP_PROTO_GEN=1 RUST_LOG=error cargo test || exit 1; \
+	done

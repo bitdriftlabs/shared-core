@@ -16,6 +16,7 @@ use crate::{
 };
 use bd_client_stats::test::TestTicker;
 use bd_client_stats::FlushTrigger;
+use bd_client_stats_store::Collector;
 use bd_device::Store;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
@@ -116,6 +117,7 @@ pub struct Setup {
   pub _stats_flush_tx: mpsc::Sender<()>,
   pub stats_upload_tx: mpsc::Sender<()>,
   pub stats_flush_trigger: FlushTrigger,
+  _collector: Collector,
 }
 
 impl Setup {
@@ -150,6 +152,7 @@ impl Setup {
     let (flush_tick_tx, flush_ticker) = TestTicker::new();
     let (upload_tick_tx, upload_ticker) = TestTicker::new();
 
+    let collector = Collector::default();
     let (logger, _, flush_trigger) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: options.sdk_directory.path().into(),
       api_key: "foo-api-key".to_string(),
@@ -168,6 +171,7 @@ impl Setup {
     })
     .with_client_stats(true)
     .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
+    .with_stats_collector(collector.clone())
     .with_internal_logger(true)
     .build_dedicated_thread()
     .unwrap();
@@ -187,6 +191,7 @@ impl Setup {
       _stats_flush_tx: flush_tick_tx,
       stats_upload_tx: upload_tick_tx,
       stats_flush_trigger: flush_trigger.unwrap(),
+      _collector: collector,
     }
   }
 

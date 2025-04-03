@@ -102,6 +102,7 @@ impl Drop for RecordingErrorReporter {
     assert!(self.recorded_error.lock().unwrap().is_none());
   }
 }
+
 impl bd_client_common::error::Reporter for RecordingErrorReporter {
   fn report(
     &self,
@@ -111,7 +112,12 @@ impl bd_client_common::error::Reporter for RecordingErrorReporter {
   ) {
     let mut l = self.recorded_error.lock().unwrap();
 
-    assert!(l.is_none(), "multiple errors captured");
+    assert!(
+      l.is_none(),
+      "multiple errors captured: previous: {:?}, new: {:?}",
+      *l,
+      message
+    );
     *l = Some(message.to_string());
   }
 }

@@ -200,7 +200,7 @@ impl<T: MemorySized> Receiver<T> {
 //
 
 #[derive(Debug, Clone)]
-pub(crate) struct SendCounters {
+pub struct SendCounters {
   ok: Counter,
   err_full_count_overflow: Counter,
   err_full_size_overflow: Counter,

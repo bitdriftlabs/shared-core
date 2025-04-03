@@ -473,7 +473,7 @@ impl WorkflowsEngine {
 
         match negotiator_output {
           NegotiatorOutput::UploadApproved(action) => {
-              self.on_log_upload_approved(action).await;
+              self.on_log_upload_approved(&action);
           },
           NegotiatorOutput::UploadRejected(action) => {
             self.state.pending_flush_actions.remove(&action);
@@ -492,8 +492,8 @@ impl WorkflowsEngine {
     }
   }
 
-  async fn on_log_upload_approved(&mut self, action: PendingFlushBuffersAction) {
-    self.state.pending_flush_actions.remove(&action);
+  fn on_log_upload_approved(&mut self, action: &PendingFlushBuffersAction) {
+    self.state.pending_flush_actions.remove(action);
 
     // If there is already a pending buffer flush we don't want to signal another one, as
     // this would do nothing but mess up our tracking of the in-flight flush.
@@ -537,7 +537,7 @@ impl WorkflowsEngine {
     );
 
     if flush_buffers {
-      let (buffer_flush, rx) = BuffersToFlush::new(&action);
+      let (buffer_flush, rx) = BuffersToFlush::new(action);
 
       match self.buffers_to_flush_tx.try_send(buffer_flush) {
         Err(e) => {
@@ -1049,7 +1049,7 @@ impl StateStore {
       if now.duration_since(last_save_time) < persistence_write_interval_ms {
         return false;
       }
-    };
+    }
 
     log::debug!("persisting workflows state to disk");
 

@@ -277,7 +277,7 @@ impl ApplyConfig for LoggerUpdate {
             maybe_stream_buffer.unwrap().register_producer().unwrap()
           },
           || self.stream_config_parse_failure.inc(),
-        )?,
+        ),
         filter_chain,
       })
       .await
@@ -342,7 +342,7 @@ impl Inner {
 }
 
 #[derive(Default)]
-pub(crate) struct TailConfigurations {
+pub struct TailConfigurations {
   // The inner structure is only initialized when there are any active streams.
   inner: Option<Inner>,
 }
@@ -352,10 +352,10 @@ impl TailConfigurations {
     config: BdTailConfigurations,
     producer: impl FnOnce() -> bd_buffer::Producer,
     on_parse_failure: impl Fn(),
-  ) -> anyhow::Result<Self> {
+  ) -> Self {
     if config.active_streams.is_empty() {
       log::debug!("zero active bdtail streams");
-      return Ok(Self::default());
+      return Self::default();
     }
 
     let mut active_streams = Vec::new();
@@ -380,12 +380,12 @@ impl TailConfigurations {
 
     log::debug!("{} active bdtail streams", active_streams.len());
 
-    Ok(Self {
+    Self {
       inner: Some(Inner {
         active_streams,
         stream_producer: producer(),
       }),
-    })
+    }
   }
 
   pub(crate) fn maybe_stream_log(

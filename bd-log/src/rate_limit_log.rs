@@ -22,7 +22,7 @@ impl WarnTracker {
   pub fn should_warn(&self, duration: Duration) -> bool {
     let now = Instant::now();
     let mut last_used_time = self.last_used_time.lock();
-    let warn = last_used_time.map_or(true, |last_used_time| now - last_used_time > duration);
+    let warn = last_used_time.is_none_or(|last_used_time| now - last_used_time > duration);
     if warn {
       *last_used_time = Some(now);
       return true;

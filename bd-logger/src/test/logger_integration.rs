@@ -828,8 +828,6 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   ));
   assert!(maybe_nack.is_none());
 
-  setup.send_runtime_update();
-
   for _ in 0 .. 9 {
     setup.log(
       log_level::DEBUG,
@@ -884,10 +882,10 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
     assert_eq!(LogType::Normal, log_upload.logs()[0].log_type());
   });
 
-  // Emit 20 logs that should go to a "trigger_buffer_id" but due to the streaming
+  // Emit 10 logs that should go to a "trigger_buffer_id" but due to the streaming
   // activated by the flush buffer action above the first 10 logs ends up being redirected
   // to the `default` continuous buffer instead.
-  for _ in 0 .. 19 {
+  for _ in 0 .. 10 {
     setup.log(
       log_level::DEBUG,
       LogType::Normal,
@@ -898,12 +896,23 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
     );
   }
 
-  // Confirm that the first ten out of nineteenth emitted logs ended up in `default` continuous
-  // buffer.
+  // Confirm that the logs ended up in `default` continuous buffer.
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
     assert_eq!(log_upload.buffer_id(), "default");
     assert_eq!(log_upload.logs().len(), 10);
   });
+
+  // Emit 9 logs that should go to the trigger buffer after streaming termination.
+  for _ in 10 .. 19 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::Normal,
+      "message that should not be streamed".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
 
   // Trigger the upload of a trigger "trigger_buffer_id" buffer.
   setup.log(

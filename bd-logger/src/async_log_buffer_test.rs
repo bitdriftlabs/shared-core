@@ -407,7 +407,7 @@ async fn logs_are_replayed_in_order() {
 
   let written_logs = written_logs.lock().unwrap();
 
-  assert!(written_logs.len() > 0);
+  assert!(!written_logs.is_empty());
   assert_eq!(
     written_logs.len(),
     setup.replayer_log_count.load(Ordering::SeqCst),
@@ -696,6 +696,6 @@ async fn logs_resource_utilization_log() {
   assert_eq!("", setup.replayer_logs.lock()[0]);
 
   // Confirm that internal fields are added if enabled.
-  assert!(setup.replayer_fields.lock().len() > 0);
+  assert!(!setup.replayer_fields.lock().is_empty());
   assert!(setup.replayer_fields.lock()[0].contains_key("_logs_count"));
 }

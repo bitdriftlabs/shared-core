@@ -348,7 +348,7 @@ impl FileManager {
       if initialized_inner.index.is_empty() {
         log::debug!("no pending upload: index is empty");
         return Ok(None);
-      };
+      }
 
       if only_if_file_is_old
         && initialized_inner.index[0]

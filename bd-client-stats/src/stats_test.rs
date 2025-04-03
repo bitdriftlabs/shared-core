@@ -157,15 +157,13 @@ impl Setup {
     let (data_tx, data_rx) = mpsc::channel(1);
     let (flush_tick_tx, flush_ticker) = TestTicker::new();
     let (upload_tick_tx, upload_ticker) = TestTicker::new();
-    let mut flush_handles = stats
-      .flush_handle_helper(
-        Box::new(flush_ticker),
-        Box::new(upload_ticker),
-        shutdown_trigger.make_shutdown(),
-        data_tx,
-        Arc::new(FileManager::new(fs, test_time.clone(), &runtime_loader).unwrap()),
-      )
-      .unwrap();
+    let mut flush_handles = stats.flush_handle_helper(
+      Box::new(flush_ticker),
+      Box::new(upload_ticker),
+      shutdown_trigger.make_shutdown(),
+      data_tx,
+      Arc::new(FileManager::new(fs, test_time.clone(), &runtime_loader).unwrap()),
+    );
 
     let test_hooks = flush_handles.flusher.test_hooks();
     let flush_handle = tokio::spawn(async move {

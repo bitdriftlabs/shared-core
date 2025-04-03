@@ -93,7 +93,7 @@ impl<T: MemorySized + std::fmt::Debug> PreConfigBuffer<T> {
 // PushCounters
 //
 
-pub(crate) struct PushCounters {
+pub struct PushCounters {
   ok: Counter,
   err_full_count_overflow: Counter,
   err_full_size_overflow: Counter,

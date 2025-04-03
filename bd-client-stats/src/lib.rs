@@ -165,8 +165,6 @@ impl DynamicStats {
 // Stats
 //
 
-/// A wrapper around prometheus that implements dynamic stats and provides a number of convenience
-/// functions for interacting with prometheus metric objects.
 pub struct Stats {
   collector: Collector,
   dynamic_stats: Arc<DynamicStats>,
@@ -196,7 +194,7 @@ impl Stats {
     flush_ticker: Box<dyn Ticker>,
     upload_ticker: Box<dyn Ticker>,
   ) -> anyhow::Result<FlushHandles> {
-    self.flush_handle_helper(
+    Ok(self.flush_handle_helper(
       flush_ticker,
       upload_ticker,
       shutdown,
@@ -206,7 +204,7 @@ impl Stats {
         Arc::new(SystemTimeProvider),
         runtime_loader,
       )?),
-    )
+    ))
   }
 
   fn flush_handle_helper(
@@ -216,11 +214,11 @@ impl Stats {
     shutdown: ComponentShutdown,
     data_flush_tx: tokio::sync::mpsc::Sender<DataUpload>,
     fs: Arc<FileManager>,
-  ) -> anyhow::Result<FlushHandles> {
+  ) -> FlushHandles {
     let flush_time_histogram = self.collector.scope("stats").histogram("flush_time");
     let (flush_trigger, flush_rx) = FlushTrigger::new();
 
-    Ok(FlushHandles {
+    FlushHandles {
       flusher: Flusher::new(
         self.clone(),
         shutdown,
@@ -232,6 +230,6 @@ impl Stats {
         fs,
       ),
       flush_trigger,
-    })
+    }
   }
 }

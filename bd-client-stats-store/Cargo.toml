@@ -11,6 +11,7 @@ doctest = false
 [dependencies]
 bd-proto                = { path = "../bd-proto" }
 bd-stats-common         = { path = "../bd-stats-common" }
+itertools.workspace     = true
 log.workspace           = true
 parking_lot.workspace   = true
 sketches-rust.workspace = true

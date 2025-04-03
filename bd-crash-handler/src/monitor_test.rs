@@ -28,7 +28,7 @@ struct Setup {
 }
 
 impl Setup {
-  async fn new() -> Self {
+  fn new() -> Self {
     let directory = TempDir::new().unwrap();
     std::fs::create_dir_all(directory.path().join("runtime")).unwrap();
     let runtime = ConfigLoader::new(&directory.path().join("runtime"));
@@ -101,7 +101,7 @@ impl Setup {
 
 #[tokio::test]
 async fn crash_reason_inference() {
-  let setup = Setup::new().await;
+  let setup = Setup::new();
 
   setup.monitor.try_ensure_directories_exist().await;
 
@@ -140,7 +140,7 @@ async fn crash_reason_inference() {
 
 #[tokio::test]
 async fn crash_handling_missing_reason() {
-  let setup = Setup::new().await;
+  let setup = Setup::new();
 
   setup.monitor.try_ensure_directories_exist().await;
 
@@ -165,7 +165,7 @@ async fn crash_handling_missing_reason() {
 
 #[tokio::test]
 async fn config_file() {
-  let setup = Setup::new().await;
+  let setup = Setup::new();
 
   setup.configure_ingestion_runtime_flag("a");
 

@@ -121,7 +121,7 @@ impl BufferUploadManager {
 
   #[tracing::instrument(level = "debug", skip(self), name = "BufferUploadManager")]
   pub async fn run(mut self) -> anyhow::Result<()> {
-    // For each spawned task, track the cancelation token and join handle,
+    // For each spawned task, track the cancellation token and join handle,
     // allowing us to cancel the task when a buffer has been removed.
 
     // Used to notify the upload manager about trigger uploads completing, allowing it to clear up
@@ -132,7 +132,7 @@ impl BufferUploadManager {
       tokio::select! {
         Some(event) = self.buffer_event_rx.recv() => self.handle_buffer_event(event).await?,
         Some(trigger) = self.trigger_upload_rx.recv() =>
-          self.handle_trigger_uploads(trigger, trigger_upload_complete_tx.clone()).await?,
+          self.handle_trigger_uploads(trigger, &trigger_upload_complete_tx)?,
         Some(completed_trigger_buffer) = trigger_upload_complete_rx.recv() => {
           self.active_trigger_uploads.remove(&completed_trigger_buffer);
         },
@@ -150,10 +150,10 @@ impl BufferUploadManager {
 
   // Checks to see if the buffers we're trying to upload are already being uploaded, and if not
   // spawn a task to consume the entire buffer.
-  async fn handle_trigger_uploads(
+  fn handle_trigger_uploads(
     &mut self,
     trigger_upload: TriggerUpload,
-    trigger_upload_complete_tx: Sender<String>,
+    trigger_upload_complete_tx: &Sender<String>,
   ) -> anyhow::Result<()> {
     log::debug!("received trigger upload request");
 
@@ -206,7 +206,7 @@ impl BufferUploadManager {
                 ));
                 handle_unexpected_error_with_details(e, "", || None);
               },
-            };
+            }
 
             single_upload_complete_tx.send(()).unwrap();
 

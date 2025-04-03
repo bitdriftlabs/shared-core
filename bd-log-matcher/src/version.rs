@@ -147,7 +147,7 @@ impl Version {
       };
 
       match a.cmp(b) {
-        Ordering::Equal => continue,
+        Ordering::Equal => {},
         other => return other,
       }
     }

@@ -179,7 +179,7 @@ impl HyperNetwork {
           Self::handle_outbound_data(&body_sender, stream_event?).await
         },
         frame = response.body_mut().frame() => {
-          Some(Self::handle_inbound_data(frame).await)
+          Some(Self::handle_inbound_data(frame))
         }
         () = self.shutdown.cancelled() => {
           log::debug!("received shutdown signal, shutting down hyper networking");
@@ -239,7 +239,7 @@ impl HyperNetwork {
 
   /// Handles inbound data arriving via the hyper response channel. Returns true if the stream
   /// should be closed.
-  async fn handle_inbound_data(
+  fn handle_inbound_data(
     frame: Option<std::result::Result<Frame<Bytes>, hyper::Error>>,
   ) -> bd_api::StreamEvent {
     // Stream is closing, signal close and go back to waiting for a new stream.

@@ -93,7 +93,7 @@ pub struct PendingSankeyPathUpload {
 //
 
 #[derive(Debug)]
-pub(crate) struct Processor {
+pub struct Processor {
   data_upload_tx: Sender<DataUpload>,
   input_rx: Receiver<SankeyPath>,
   output_rx: Sender<SankeyPath>,

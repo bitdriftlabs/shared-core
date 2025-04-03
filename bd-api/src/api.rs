@@ -258,10 +258,7 @@ impl StreamState {
   }
 
   // Processes a single upstream event (data/close) being provided by the platform network.
-  async fn handle_upstream_event(
-    &mut self,
-    event: Option<StreamEvent>,
-  ) -> anyhow::Result<UpstreamEvent> {
+  fn handle_upstream_event(&mut self, event: Option<StreamEvent>) -> anyhow::Result<UpstreamEvent> {
     match event {
       // We received some data on the stream. Attempt to decode this and
       // return up any decoded responses.
@@ -747,7 +744,7 @@ impl Api {
           event = stream_state.stream_event_rx.recv() => event,
         };
 
-        match stream_state.handle_upstream_event(upstream_event).await? {
+        match stream_state.handle_upstream_event(upstream_event)? {
           UpstreamEvent::UpstreamMessages(responses) => {
             self.handle_responses(responses, &mut stream_state).await?;
           },
@@ -940,7 +937,7 @@ impl Api {
         event = stream_state.stream_event_rx.recv() => event,
       };
 
-      match stream_state.handle_upstream_event(event).await? {
+      match stream_state.handle_upstream_event(event)? {
         UpstreamEvent::UpstreamMessages(responses) => {
           // This happens if we received data, but not enough to form a full gRPC message.
           if responses.is_empty() {

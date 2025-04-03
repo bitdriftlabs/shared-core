@@ -52,7 +52,7 @@ pub struct LogMetadata {
 // MetadataCollector
 //
 
-pub(crate) struct MetadataCollector {
+pub struct MetadataCollector {
   metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
   fields: LogFields,
 }
@@ -167,15 +167,18 @@ fn partition_fields(field: AnnotatedLogFields) -> PartitionedFields {
 
   for (key, value) in field {
     match value.kind {
-      LogFieldKind::Ootb => ootb.insert(key, value.value),
+      LogFieldKind::Ootb => {
+        ootb.insert(key, value.value);
+      },
       LogFieldKind::Custom => match verify_custom_field_name(&key) {
-        Ok(()) => custom.insert(key, value.value),
+        Ok(()) => {
+          custom.insert(key, value.value);
+        },
         Err(e) => {
           warn_every!(15.seconds(), "failed to process field: {:?}", e);
-          continue;
         },
       },
-    };
+    }
   }
 
   PartitionedFields { ootb, custom }
