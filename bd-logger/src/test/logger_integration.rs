@@ -20,6 +20,7 @@ use crate::{
 };
 use assert_matches::assert_matches;
 use bd_client_common::error::UnexpectedErrorHandler;
+use bd_client_stats::test::TestTicker;
 use bd_key_value::Store;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
@@ -1941,6 +1942,8 @@ fn runtime_caching() {
   assert_eq!(std::fs::read(&retry_file).unwrap(), b"0");
 
   let network = Box::new(NoopNetwork);
+  let (_flush_tick_tx, flush_ticker) = TestTicker::new();
+  let (_upload_tick_tx, upload_ticker) = TestTicker::new();
 
   // Start up a new logger that won't be able to connect to the server.
   {
@@ -1964,6 +1967,7 @@ fn runtime_caching() {
       device,
     })
     .with_client_stats(true)
+    .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
     .build_dedicated_thread()
     .unwrap()
     .0;
@@ -1986,6 +1990,7 @@ fn runtime_caching() {
     }
 
     assert!(!deadline_elapsed);
+    logger.shutdown(true);
   }
 
   assert_eq!(std::fs::read(&retry_file).unwrap(), b"1");
