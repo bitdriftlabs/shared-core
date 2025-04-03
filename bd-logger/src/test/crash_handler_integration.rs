@@ -8,11 +8,12 @@
 use super::setup::Setup;
 use crate::test::setup::SetupOptions;
 use crate::wait_for;
-use assert_matches::assert_matches;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::FeatureFlag;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use bd_test_helpers::test_api_server::log_upload::LogUpload;
+use itertools::Itertools as _;
 use std::sync::Arc;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::macros::datetime;
@@ -78,26 +79,52 @@ fn crash_reports() {
   setup.configure_stream_all_logs();
   setup.upload_individual_logs();
 
-  assert_matches!(setup.server.blocking_next_log_upload(), Some(upload) => {
-    assert_eq!(upload.logs().len(), 2);
+  // Sometimes we get the uploads split up between multiple payloads, so collect all the logs from
+  // any number of uploads.
+  let mut uploads: Vec<LogUpload> = vec![];
+  while uploads
+    .iter()
+    .map(|upload| upload.logs().len())
+    .sum::<usize>()
+    < 2
+  {
+    uploads.push(setup.server.blocking_next_log_upload().unwrap());
+  }
 
-    let logs = upload.logs();
-    let crash1 = logs.iter().find(|log| log.field("_crash_reason") == "crash1").unwrap();
-    assert_eq!(crash1.message(), "App crashed");
-    assert_eq!(crash1.session_id(), initial_session_id);
-    assert_ne!(crash1.timestamp(), timestamp);
-    assert_eq!(crash1.field("_ootb_field"), "ootb");
-    assert_eq!(crash1.binary_field("_crash_artifact"), b"{\"crash\": \"crash1\"}");
-    assert!(!crash1.has_field("custom"));
+  let logs = uploads
+    .iter()
+    .flat_map(|upload| upload.logs())
+    .collect_vec();
 
-    let crash2 = logs.iter().find(|log| log.field("_crash_reason") == "crash2").unwrap();
-    assert_eq!(crash2.message(), "App crashed");
-    assert_eq!(crash2.session_id(), initial_session_id);
-    assert_eq!(crash2.timestamp(), timestamp);
-    assert_eq!(crash2.field("_ootb_field"), "ootb");
-    assert_eq!(crash2.binary_field("_crash_artifact"), b"{\"crash\": \"crash2\"}");
-    assert!(!crash1.has_field("custom"));
-  });
+  log::info!("Logs: {:#?}", logs);
+
+  let crash1 = logs
+    .iter()
+    .find(|log| log.field("_crash_reason") == "crash1")
+    .unwrap();
+  assert_eq!(crash1.message(), "App crashed");
+  assert_eq!(crash1.session_id(), initial_session_id);
+  assert_ne!(crash1.timestamp(), timestamp);
+  assert_eq!(crash1.field("_ootb_field"), "ootb");
+  assert_eq!(
+    crash1.binary_field("_crash_artifact"),
+    b"{\"crash\": \"crash1\"}"
+  );
+  assert!(!crash1.has_field("custom"));
+
+  let crash2 = logs
+    .iter()
+    .find(|log| log.field("_crash_reason") == "crash2")
+    .unwrap();
+  assert_eq!(crash2.message(), "App crashed");
+  assert_eq!(crash2.session_id(), initial_session_id);
+  assert_eq!(crash2.timestamp(), timestamp);
+  assert_eq!(crash2.field("_ootb_field"), "ootb");
+  assert_eq!(
+    crash2.binary_field("_crash_artifact"),
+    b"{\"crash\": \"crash2\"}"
+  );
+  assert!(!crash1.has_field("custom"));
 }
 
 #[test]
@@ -112,11 +139,8 @@ fn crash_directories_configuration() {
   );
   setup.server.blocking_next_runtime_ack();
 
-  wait_for!(std::fs::exists(setup.sdk_directory.path().join("reports/config")).unwrap_or_default());
-
-  assert_eq!(
-    std::fs::read(setup.sdk_directory.path().join("reports/config")).unwrap(),
-    b"a:b"
+  wait_for!(
+    std::fs::read(setup.sdk_directory.path().join("reports/config")).unwrap_or_default() == b"a:b"
   );
 
   setup.current_api_stream.blocking_stream_action(
