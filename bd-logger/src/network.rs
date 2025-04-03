@@ -48,7 +48,7 @@ macro_rules! accumulate_samples {
 
 /// Responsible for emitting logs that enable the SDK to track the number of bytes downloaded and
 /// uploaded due to HTTP requests performed by the app, measured on a per-minute basis.
-pub(crate) struct HTTPTrafficDataUsageTracker {
+pub struct HTTPTrafficDataUsageTracker {
   container: parking_lot::Mutex<MetricsContainer>,
   network_quality_provider: Arc<dyn NetworkQualityProvider>,
 }
@@ -246,7 +246,7 @@ impl MetricsContainer {
 
 #[allow(clippy::struct_field_names)]
 #[derive(Clone, Debug)]
-pub(crate) struct MetricsSample {
+pub struct MetricsSample {
   started_at: std::time::Instant,
 
   request_body_bytes_count: u64,
@@ -302,7 +302,7 @@ fn create_int_field(key: LogFieldKey, value: u64) -> (LogFieldKey, AnnotatedLogF
 // TimeProvider
 //
 
-pub(crate) trait TimeProvider: Send + Sync {
+pub trait TimeProvider: Send + Sync {
   fn now(&self) -> std::time::Instant;
 }
 
@@ -310,7 +310,7 @@ pub(crate) trait TimeProvider: Send + Sync {
 // SystemTimeProvider
 //
 
-pub(crate) struct SystemTimeProvider;
+pub struct SystemTimeProvider;
 
 impl TimeProvider for SystemTimeProvider {
   fn now(&self) -> std::time::Instant {

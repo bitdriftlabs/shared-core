@@ -18,11 +18,12 @@ use bd_proto::protos::client::metric::{
   InlineHistogramValues,
 };
 use bd_stats_common::{DynCounter, Id};
+use itertools::Itertools;
 use parking_lot::Mutex;
 use sketches_rust::DDSketch;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
-use std::fmt::Debug;
+use std::fmt::{Debug, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
@@ -382,6 +383,7 @@ impl BoundedScope {
 // MetricData
 //
 
+#[derive(Debug)]
 pub enum MetricData {
   Counter(Counter),
   Histogram(Histogram),
@@ -466,6 +468,20 @@ pub struct BoundedCollector {
 }
 
 impl BoundedCollector {
+  #[must_use]
+  pub fn debug(&self) -> String {
+    let inner = self.inner.lock();
+    let mut result = String::new();
+    for (id, metric) in inner
+      .metrics
+      .iter()
+      .sorted_by(|a, b| a.0.name.cmp(&b.0.name))
+    {
+      writeln!(&mut result, "{id:?} => {metric:?}").unwrap();
+    }
+    result
+  }
+
   #[must_use]
   pub fn new(limit: Option<watch::Receiver<u32>>) -> Self {
     Self {

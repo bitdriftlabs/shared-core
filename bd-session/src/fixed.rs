@@ -134,7 +134,7 @@ impl Strategy {
     // within a `generateSessionID` closure that they are allowed to provide to the SDK.
     if self.is_callback_in_progress.get_or_default().get() {
       anyhow::bail!("cannot start new session from within 'generatedSessionID' callback");
-    };
+    }
 
     let mut guard = self.state.lock();
 

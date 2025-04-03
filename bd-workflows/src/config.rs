@@ -481,7 +481,7 @@ impl Action {
         Ok(Self::EmitSankey(ActionEmitSankey::try_from_proto(diagram)?))
       },
       Action_type::ActionTakeScreenshot(action) => Ok(Self::TakeScreenshot(
-        ActionTakeScreenshot::try_from_proto(action)?,
+        ActionTakeScreenshot::try_from_proto(action),
       )),
       Action_type::ActionGenerateLog(action) => Ok(Self::GenerateLog(action)),
     }
@@ -686,8 +686,8 @@ pub struct ActionTakeScreenshot {
 }
 
 impl ActionTakeScreenshot {
-  fn try_from_proto(proto: ActionTakeScreenshotProto) -> anyhow::Result<Self> {
-    Ok(Self { id: proto.id })
+  fn try_from_proto(proto: ActionTakeScreenshotProto) -> Self {
+    Self { id: proto.id }
   }
 }
 

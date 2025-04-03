@@ -186,31 +186,31 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
   }
 
   // Return the next write start value.
-  pub fn next_write_start(&mut self) -> &mut u32 {
+  pub const fn next_write_start(&mut self) -> &mut u32 {
     // Safety: We have exclusive access due to &mut self.
     unsafe { self.next_write_start.0.as_mut() }
   }
 
   // Return the committed write start value.
-  pub fn committed_write_start(&mut self) -> &mut Option<u32> {
+  pub const fn committed_write_start(&mut self) -> &mut Option<u32> {
     // Safety: We have exclusive access due to &mut self.
     unsafe { self.committed_write_start.0.as_mut() }
   }
 
   // Return the last write end before wrap value.
-  pub fn last_write_end_before_wrap(&mut self) -> &mut Option<u32> {
+  pub const fn last_write_end_before_wrap(&mut self) -> &mut Option<u32> {
     // Safety: We have exclusive access due to &mut self.
     unsafe { self.last_write_end_before_wrap.0.as_mut() }
   }
 
   // Return the next read start value.
-  pub fn next_read_start(&mut self) -> &mut Option<u32> {
+  pub const fn next_read_start(&mut self) -> &mut Option<u32> {
     // Safety: We have exclusive access due to &mut self.
     unsafe { self.next_read_start.0.as_mut() }
   }
 
   // Return the backing memory slice.
-  pub fn memory(&mut self) -> &mut [u8] {
+  pub const fn memory(&mut self) -> &mut [u8] {
     // Safety: We have exclusive access due to &mut self.
     unsafe { self.memory.0.as_mut() }
   }

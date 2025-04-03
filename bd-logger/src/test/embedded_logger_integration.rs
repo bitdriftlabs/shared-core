@@ -51,7 +51,7 @@ struct Setup {
 }
 
 impl Setup {
-  async fn new() -> Self {
+  fn new() -> Self {
     let server = bd_test_helpers::test_api_server::start_server(false, None);
 
     let shutdown = ComponentShutdownTrigger::default();
@@ -99,7 +99,7 @@ impl Setup {
 
 #[tokio::test]
 async fn runtime_update() {
-  let mut setup = Setup::new().await;
+  let mut setup = Setup::new();
 
   let stream = setup.server.next_initialized_stream().await.unwrap();
 
@@ -134,7 +134,7 @@ async fn runtime_update() {
 
 #[tokio::test]
 async fn configuration_update_with_log_uploads() {
-  let mut setup = Setup::new().await;
+  let mut setup = Setup::new();
 
   let stream = setup.server.next_initialized_stream().await.unwrap();
 

@@ -464,6 +464,7 @@ dependencies = [
  "bd-stats-common",
  "bd-test-helpers",
  "ctor",
+ "itertools 0.14.0",
  "log",
  "parking_lot",
  "sketches-rust",

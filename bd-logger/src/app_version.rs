@@ -19,7 +19,7 @@ static APP_VERSION_KEY: bd_key_value::Key<AppVersion> =
 //
 
 #[derive(Eq, PartialEq, serde::Serialize, serde::Deserialize, Debug)]
-pub(crate) struct AppVersion {
+pub struct AppVersion {
   pub(crate) app_version: String,
   pub(crate) app_version_extra: AppVersionExtra,
 }
@@ -54,7 +54,7 @@ impl AppVersionExtra {
 // Repository
 //
 
-pub(crate) struct Repository {
+pub struct Repository {
   store: Arc<bd_key_value::Store>,
 }
 

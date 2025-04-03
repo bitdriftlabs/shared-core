@@ -18,7 +18,7 @@ use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
 use bd_client_stats::stats::{RuntimeWatchTicker, Ticker};
 use bd_client_stats::FlushTrigger;
-use bd_client_stats_store::{Collector, Scope};
+use bd_client_stats_store::Collector;
 use bd_internal_logging::NoopLogger;
 use bd_log_primitives::{log_level, Log, LogType};
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
@@ -56,7 +56,7 @@ pub struct LoggerBuilder {
   client_stats: bool,
   client_stats_tickers: Option<(Box<dyn Ticker>, Box<dyn Ticker>)>,
   internal_logger: bool,
-  stats_scope: Option<Scope>,
+  stats_collector: Option<Collector>,
 }
 
 impl LoggerBuilder {
@@ -69,7 +69,7 @@ impl LoggerBuilder {
       client_stats: false,
       client_stats_tickers: None,
       internal_logger: false,
-      stats_scope: None,
+      stats_collector: None,
     }
   }
 
@@ -103,11 +103,11 @@ impl LoggerBuilder {
     self
   }
 
-  /// Provides an explicit stat scope to be used by the logger. If this is not set, the logger will
-  /// manage its own collector.
+  /// Provides an explicit stat collector to be used by the logger. If this is not set, the logger
+  /// will manage its own collector.
   #[must_use]
-  pub fn with_stats_scope(mut self, scope: Scope) -> Self {
-    self.stats_scope = Some(scope);
+  pub fn with_stats_collector(mut self, collector: Collector) -> Self {
+    self.stats_collector = Some(collector);
     self
   }
 
@@ -132,13 +132,6 @@ impl LoggerBuilder {
     Pin<Box<impl Future<Output = anyhow::Result<()>> + 'static>>,
     Option<FlushTrigger>,
   )> {
-    if self.client_stats && self.stats_scope.is_some() {
-      anyhow::bail!(
-        "Cannot use mobile features and a custom stats scope at the same time, as the stats scope \
-         must be managed by the logger in order to also flush stats"
-      );
-    }
-
     log::info!(
       "bitdrift Capture SDK: {:?}",
       self.params.static_metadata.sdk_version()
@@ -159,19 +152,13 @@ impl LoggerBuilder {
     let data_upload_ch: ChannelPair<DataUpload> = tokio::sync::mpsc::channel(1).into();
     let runtime_loader = runtime::ConfigLoader::new(&self.params.sdk_directory);
 
-    let (scope, maybe_managed_collector) = self.stats_scope.map_or_else(
-      || {
-        let collector = Collector::default();
-        (collector.scope(""), Some(collector))
-      },
-      |scope| (scope, None),
-    );
+    let collector = self.stats_collector.unwrap_or_default();
 
+    let scope = collector.scope("");
     let dynamic_stats = Arc::new(bd_client_stats::DynamicStats::new(&scope, &runtime_loader));
 
     let (maybe_stats_flusher, maybe_flusher_trigger) = if self.client_stats {
-      let stats =
-        bd_client_stats::Stats::new(maybe_managed_collector.unwrap(), dynamic_stats.clone());
+      let stats = bd_client_stats::Stats::new(collector, dynamic_stats.clone());
       let (flush_ticker, upload_ticker) =
         if let Some((flush_ticker, upload_ticker)) = self.client_stats_tickers {
           (flush_ticker, upload_ticker)
@@ -331,7 +318,7 @@ impl LoggerBuilder {
         async move {
           if let Some(stats_flusher) = maybe_stats_flusher {
             stats_flusher.periodic_flush().await;
-          };
+          }
 
           Ok(())
         },

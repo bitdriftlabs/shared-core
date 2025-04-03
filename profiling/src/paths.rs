@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-pub(crate) static PATHS: &[&str] = &[
+pub static PATHS: &[&str] = &[
   "/cloud",
   "/v1/cats",
   "/v1/hills/zoom",

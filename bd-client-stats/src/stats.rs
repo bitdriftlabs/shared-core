@@ -132,7 +132,7 @@ impl Flusher {
   }
 
   #[cfg(test)]
-  pub fn test_hooks(&mut self) -> TestHooksReceiver {
+  pub const fn test_hooks(&mut self) -> TestHooksReceiver {
     self.test_hooks.receiver.take().unwrap()
   }
 

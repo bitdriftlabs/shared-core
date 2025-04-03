@@ -585,19 +585,18 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     Ok(logs_to_inject)
   }
 
-  async fn update(mut self, config: ConfigUpdate) -> (Self, Option<PreConfigBuffer<Log>>) {
+  fn update(mut self, config: ConfigUpdate) -> (Self, Option<PreConfigBuffer<Log>>) {
     let (initialized_logging_context, maybe_pre_config_log_buffer) = match self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
         let (initialized_logging_context, pre_config_log_buffer) = uninitialized_logging_context
           .updated(
             config,
             self.session_replay_capture_screenshot_handler.clone(),
-          )
-          .await;
+          );
         (initialized_logging_context, Some(pre_config_log_buffer))
       },
       LoggingState::Initialized(mut initialized_logging_context) => {
-        initialized_logging_context.update(config).await;
+        initialized_logging_context.update(config);
         (initialized_logging_context, None)
       },
     };
@@ -687,7 +686,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       tokio::select! {
         Some(config) = self.config_update_rx.recv() => {
           let (updated_self, maybe_pre_config_buffer)
-            = self.update(config).await;
+            = self.update(config);
 
           self = updated_self;
           if let Some(pre_config_log_buffer) = maybe_pre_config_buffer {

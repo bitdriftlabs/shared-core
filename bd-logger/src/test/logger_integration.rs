@@ -20,6 +20,7 @@ use crate::{
 };
 use assert_matches::assert_matches;
 use bd_client_common::error::UnexpectedErrorHandler;
+use bd_client_stats::test::TestTicker;
 use bd_key_value::Store;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
@@ -828,8 +829,6 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   ));
   assert!(maybe_nack.is_none());
 
-  setup.send_runtime_update();
-
   for _ in 0 .. 9 {
     setup.log(
       log_level::DEBUG,
@@ -884,10 +883,10 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
     assert_eq!(LogType::Normal, log_upload.logs()[0].log_type());
   });
 
-  // Emit 20 logs that should go to a "trigger_buffer_id" but due to the streaming
+  // Emit 10 logs that should go to a "trigger_buffer_id" but due to the streaming
   // activated by the flush buffer action above the first 10 logs ends up being redirected
   // to the `default` continuous buffer instead.
-  for _ in 0 .. 19 {
+  for _ in 0 .. 10 {
     setup.log(
       log_level::DEBUG,
       LogType::Normal,
@@ -898,12 +897,23 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
     );
   }
 
-  // Confirm that the first ten out of nineteenth emitted logs ended up in `default` continuous
-  // buffer.
+  // Confirm that the logs ended up in `default` continuous buffer.
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
     assert_eq!(log_upload.buffer_id(), "default");
     assert_eq!(log_upload.logs().len(), 10);
   });
+
+  // Emit 9 logs that should go to the trigger buffer after streaming termination.
+  for _ in 10 .. 19 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::Normal,
+      "message that should not be streamed".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
 
   // Trigger the upload of a trigger "trigger_buffer_id" buffer.
   setup.log(
@@ -1932,6 +1942,8 @@ fn runtime_caching() {
   assert_eq!(std::fs::read(&retry_file).unwrap(), b"0");
 
   let network = Box::new(NoopNetwork);
+  let (_flush_tick_tx, flush_ticker) = TestTicker::new();
+  let (_upload_tick_tx, upload_ticker) = TestTicker::new();
 
   // Start up a new logger that won't be able to connect to the server.
   {
@@ -1955,6 +1967,7 @@ fn runtime_caching() {
       device,
     })
     .with_client_stats(true)
+    .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
     .build_dedicated_thread()
     .unwrap()
     .0;
@@ -1977,6 +1990,7 @@ fn runtime_caching() {
     }
 
     assert!(!deadline_elapsed);
+    logger.shutdown(true);
   }
 
   assert_eq!(std::fs::read(&retry_file).unwrap(), b"1");

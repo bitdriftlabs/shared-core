@@ -190,7 +190,7 @@ struct State {
 }
 
 impl State {
-  fn clear(&mut self) {
+  const fn clear(&mut self) {
     self.device_logs_count = 0;
     self.internal_logs_count = 0;
     self.lifecycle_logs_count = 0;

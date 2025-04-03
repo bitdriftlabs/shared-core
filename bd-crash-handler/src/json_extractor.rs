@@ -70,7 +70,7 @@ impl JsonPath {
     let mut parts = parts.into_iter();
     let len = parts.len();
     let path = (&mut parts).take(len - 1).collect_vec();
-    let key = PathPart::parse(parts.last().unwrap().as_str());
+    let key = PathPart::parse(parts.next_back().unwrap().as_str());
 
     let path = path.into_iter().map(PathPart::parse).collect_vec();
 

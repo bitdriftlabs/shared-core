@@ -145,15 +145,11 @@ impl Transform {
       .transform_type
       .ok_or_else(|| anyhow!("no transform_type"))?;
     Ok(match transform_type {
-      Transform_type::CaptureField(config) => Self::CaptureField(
-        CaptureField::new(config).context("invalid CaptureFields configuration")?,
-      ),
+      Transform_type::CaptureField(config) => Self::CaptureField(CaptureField::new(config)),
       Transform_type::SetField(config) => {
         Self::SetField(SetField::new(config).context("invalid SetField configuration")?)
       },
-      Transform_type::RemoveField(config) => {
-        Self::RemoveField(RemoveField::new(config).context("invalid RemoveField configuration")?)
-      },
+      Transform_type::RemoveField(config) => Self::RemoveField(RemoveField::new(config)),
       Transform_type::RegexMatchAndSubstituteField(config) => Self::RegexMatchAndSubstitute(
         RegexMatchAndSubstitute::new(config)
           .context("invalid RegexMatchAndSubstitute configuration")?,
@@ -185,10 +181,10 @@ struct CaptureField {
 }
 
 impl CaptureField {
-  fn new(config: filter::transform::CaptureField) -> Result<Self> {
-    Ok(Self {
+  fn new(config: filter::transform::CaptureField) -> Self {
+    Self {
       field_name: config.name.into(),
-    })
+    }
   }
 
   fn apply(&self, log: &mut Log) {
@@ -310,10 +306,10 @@ struct RemoveField {
 }
 
 impl RemoveField {
-  fn new(config: filter::transform::RemoveField) -> Result<Self> {
-    Ok(Self {
+  fn new(config: filter::transform::RemoveField) -> Self {
+    Self {
       field_name: config.name.into(),
-    })
+    }
   }
 
   fn apply(&self, log: &mut Log) {

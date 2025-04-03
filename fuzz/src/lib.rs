@@ -238,7 +238,7 @@ impl BufferFuzzTest {
     }
   }
 
-  fn state(&mut self) -> &mut BufferState {
+  const fn state(&mut self) -> &mut BufferState {
     self.buffer_state.as_mut().unwrap()
   }
 

@@ -146,7 +146,7 @@ impl LoggerHandle {
 
         if let Err(e) = result {
           warn_every!(15.seconds(), "dropping log: {:?}", e);
-        };
+        }
       } else {
         warn_every!(
           15.seconds(),

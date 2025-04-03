@@ -78,7 +78,7 @@ impl<T: MemorySized + Debug> LoggingState<T> {
     }
   }
 
-  pub(crate) fn workflows_engine(&mut self) -> Option<&mut WorkflowsEngine> {
+  pub(crate) const fn workflows_engine(&mut self) -> Option<&mut WorkflowsEngine> {
     match self {
       Self::Uninitialized(_) => None,
       Self::Initialized(context) => Some(&mut context.processing_pipeline.workflows_engine),
@@ -141,7 +141,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
     }
   }
 
-  pub(crate) async fn updated(
+  pub(crate) fn updated(
     self,
     config: ConfigUpdate,
     capture_screenshot_handler: CaptureScreenshotHandler,
@@ -187,7 +187,7 @@ impl InitializedLoggingContext {
     }
   }
 
-  pub(crate) async fn update(&mut self, config: ConfigUpdate) {
+  pub(crate) fn update(&mut self, config: ConfigUpdate) {
     self.processing_pipeline.update(config);
   }
 }
@@ -196,7 +196,7 @@ impl InitializedLoggingContext {
 // UninitializedLoggingContextStats
 //
 
-pub(crate) struct UninitializedLoggingContextStats {
+pub struct UninitializedLoggingContextStats {
   pub(crate) pre_config_log_buffer: pre_config_buffer::PushCounters,
   pub(crate) scope: Scope,
   root_scope: Scope,
@@ -220,7 +220,7 @@ impl UninitializedLoggingContextStats {
 //
 // InitializedLoggingContextStats
 //
-pub(crate) struct InitializedLoggingContextStats {
+pub struct InitializedLoggingContextStats {
   pub(crate) log_level_counters: LogLevelCounters,
   pub(crate) streamed_logs: Counter,
   pub(crate) trigger_upload_stats: TriggerUploadStats,
@@ -244,7 +244,7 @@ impl InitializedLoggingContextStats {
 // TriggerUploadCounters
 //
 
-pub(crate) struct TriggerUploadStats {
+pub struct TriggerUploadStats {
   send_err_full: Counter,
   send_err_closed: Counter,
 }
@@ -305,7 +305,7 @@ impl LogLevelCounters {
   }
 }
 
-pub(crate) struct ConfigUpdate {
+pub struct ConfigUpdate {
   pub(crate) buffer_producers: BufferProducers,
   pub(crate) buffer_selector: BufferSelector,
   pub(crate) workflows_configuration: WorkflowsConfiguration,
@@ -313,7 +313,7 @@ pub(crate) struct ConfigUpdate {
   pub(crate) filter_chain: FilterChain,
 }
 
-pub(crate) struct BufferProducers {
+pub struct BufferProducers {
   pub(crate) buffers: HashMap<String, bd_buffer::Producer>,
   pub(crate) builder: FlatBufferBuilder<'static>,
   pub(crate) continuous_buffer_ids: BTreeSet<Cow<'static, str>>,
