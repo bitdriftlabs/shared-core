@@ -499,7 +499,7 @@ async fn age_limit_log_uploads() {
     .update_snapshot(&make_simple_update(vec![
       (
         bd_runtime::runtime::log_upload::FlushBufferLookbackWindow::path(),
-        ValueKind::Int(5.minutes().whole_milliseconds().try_into().unwrap()),
+        ValueKind::Int(2.minutes().whole_milliseconds().try_into().unwrap()),
       ),
       (
         bd_runtime::runtime::log_upload::BatchDeadlineFlag::path(),
@@ -508,7 +508,7 @@ async fn age_limit_log_uploads() {
     ]));
 
   let now = time::OffsetDateTime::now_utc().floor(1.minutes());
-  for i in (0 .. 10).rev() {
+  for i in (0 .. 5).rev() {
     producer
       .write(&make_test_log(now - time::Duration::minutes(i)))
       .unwrap();
@@ -516,9 +516,9 @@ async fn age_limit_log_uploads() {
 
   setup.trigger_buffer_upload("buffer").await;
 
-  // We should only get the 5 most recent logs.
+  // We should only get the 2 most recent logs.
   let log_upload = setup.next_upload().await;
-  assert_eq!(log_upload.payload.log_upload().logs.len(), 5);
+  assert_eq!(log_upload.payload.log_upload().logs.len(), 2);
   assert_eq!(
     time::OffsetDateTime::from_unix_timestamp(
       root_as_log(&log_upload.payload.log_upload().logs[0])
@@ -528,12 +528,12 @@ async fn age_limit_log_uploads() {
         .seconds()
     )
     .unwrap(),
-    now - time::Duration::minutes(4)
+    now - time::Duration::minutes(1)
   );
 
   setup
     .stats
-    .assert_counter_eq(5, "consumer:old_logs_dropped", labels! {});
+    .assert_counter_eq(3, "consumer:old_logs_dropped", labels! {});
 
   // Tear down the structure
   setup.shutdown().await;
