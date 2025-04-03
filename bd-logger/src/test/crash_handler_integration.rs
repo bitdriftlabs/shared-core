@@ -93,10 +93,10 @@ fn crash_reports() {
 
   let logs = uploads
     .iter()
-    .flat_map(|upload| upload.logs())
+    .flat_map(bd_test_helpers::test_api_server::log_upload::LogUpload::logs)
     .collect_vec();
 
-  log::info!("Logs: {:#?}", logs);
+  log::info!("Logs: {logs:#?}");
 
   let crash1 = logs
     .iter()
