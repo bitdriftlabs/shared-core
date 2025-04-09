@@ -48,10 +48,9 @@ use http::header::{CONTENT_ENCODING, CONTENT_TYPE};
 use http::{Extensions, HeaderMap};
 use http_body::Frame;
 use http_body_util::{BodyExt, StreamBody};
-use prometheus::IntCounter;
 use protobuf::{Message, MessageFull};
 use service::ServiceMethod;
-use stats::{BandwidthStatsSummary, StreamStats};
+use stats::{BandwidthStatsSummary, EndpointStats, StreamStats};
 use status::{Code, Status};
 use std::convert::Infallible;
 use std::marker::PhantomData;
@@ -602,14 +601,16 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
   handler: Arc<dyn ServerStreamingHandler<ResponseType, RequestType>>,
   request: Request,
   error_handler: impl Fn(&crate::Error) + Clone + Send + 'static,
-  stream_stats: StreamStats,
+  stream_stats: Option<StreamStats>,
   validate_request: bool,
   warn_tracker: Arc<WarnTracker>,
   // This indicates if response compression is desired. It will still be gated on whether the
   // client sets the compression header.
   compression: Option<bd_grpc_codec::Compression>,
 ) -> Result<Response> {
-  stream_stats.stream_initiations_total.inc();
+  if let Some(stream_stats) = &stream_stats {
+    stream_stats.stream_initiations_total.inc();
+  }
 
   let path = request.uri().path().to_string();
 
@@ -618,7 +619,9 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
     decode_request::<RequestType>(request, validate_request)
       .await
       .inspect_err(|_| {
-        stream_stats.stream_completion_failures_total.inc();
+        if let Some(stream_stats) = &stream_stats {
+          stream_stats.rpc.failure.inc();
+        }
       })?;
 
   let compression = finalize_response_compression(compression, &headers);
@@ -628,15 +631,19 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
       compression,
       matches!(connect_protocol_type, Some(ConnectProtocolType::Streaming)),
     );
-    sender.initialize_stats(
-      stream_stats.tx_messages_total,
-      stream_stats.tx_bytes_total,
-      stream_stats.tx_bytes_uncompressed_total,
-    );
+    if let Some(stream_stats) = &stream_stats {
+      sender.initialize_stats(
+        stream_stats.tx_messages_total.clone(),
+        stream_stats.tx_bytes_total.clone(),
+        stream_stats.tx_bytes_uncompressed_total.clone(),
+      );
+    }
 
     match handler.stream(headers, extensions, message, sender).await {
       Ok(()) => {
-        stream_stats.stream_completion_successes_total.inc();
+        if let Some(stream_stats) = &stream_stats {
+          stream_stats.rpc.success.inc();
+        }
 
         // Make sure we send grpc-status: 0 to indicate success if we stop without error.
         // This can fail if the client has disconnected. We ignore the error here since there is
@@ -650,7 +657,9 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
           }
         }
 
-        stream_stats.stream_completion_failures_total.inc();
+        if let Some(stream_stats) = &stream_stats {
+          stream_stats.rpc.failure.inc();
+        }
         error_handler(&e);
 
         let status = match e {
@@ -679,13 +688,14 @@ pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: Mess
   service_method: &ServiceMethod<RequestType, ResponseType>,
   handler: Arc<dyn ServerStreamingHandler<ResponseType, RequestType>>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
-  stream_stats: StreamStats,
+  stream_stats: Option<&EndpointStats>,
   validate_request: bool,
   compression: Option<bd_grpc_codec::Compression>,
 ) -> Router {
   let warn_tracker = Arc::new(WarnTracker::default());
+  let stream_stats = stream_stats.map(|stats| stats.resolve_streaming(service_method));
   Router::new().route(
-    &service_method.full_path,
+    &service_method.full_path(),
     post(move |request: Request| async move {
       server_streaming_handler(
         handler,
@@ -706,33 +716,36 @@ pub fn make_unary_router<OutgoingType: MessageFull, IncomingType: MessageFull>(
   service_method: &ServiceMethod<OutgoingType, IncomingType>,
   handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
-  error_counter: IntCounter,
+  endpoint_stats: Option<&EndpointStats>,
   validate_request: bool,
 ) -> Router {
   let warn_tracker = Arc::new(WarnTracker::default());
-  let full_path = Arc::new(service_method.full_path.clone());
+  let full_path = Arc::new(service_method.full_path());
+  let resolved_stats = endpoint_stats
+    .as_ref()
+    .map(|stats| stats.resolve::<OutgoingType, IncomingType>(service_method));
   Router::new().route(
-    &service_method.full_path,
-    post(move |request| {
-      let cloned_warn_tracker = warn_tracker.clone();
-      let cloned_full_path = full_path.clone();
-      async move {
-        let result =
-          unary_handler::<OutgoingType, IncomingType>(request, handler, validate_request).await;
+    &service_method.full_path(),
+    post(move |request| async move {
+      let result =
+        unary_handler::<OutgoingType, IncomingType>(request, handler, validate_request).await;
 
-        if let Err(e) = &result {
-          if let Some(warning) = e.warn_every_message() {
-            if cloned_warn_tracker.should_warn(15.seconds()) {
-              log::warn!("{cloned_full_path} failed: {warning}");
-            }
+      if let Err(e) = &result {
+        if let Some(warning) = e.warn_every_message() {
+          if warn_tracker.should_warn(15.seconds()) {
+            log::warn!("{full_path} failed: {warning}");
           }
-
-          error_handler(e);
-          error_counter.inc();
         }
 
-        result
+        error_handler(e);
+        if let Some(resolved_stats) = &resolved_stats {
+          resolved_stats.failure.inc();
+        }
+      } else if let Some(resolved_stats) = &resolved_stats {
+        resolved_stats.success.inc();
       }
+
+      result
     }),
   )
 }

@@ -9,6 +9,7 @@ use crate::client::{AddressHelper, Client};
 use crate::compression::{Compression, ConnectSafeCompressionLayer};
 use crate::connect_protocol::ConnectProtocolType;
 use crate::generated::proto::test::{EchoRequest, EchoResponse};
+use crate::stats::EndpointStats;
 use crate::{
   make_server_streaming_router,
   make_unary_router,
@@ -20,7 +21,6 @@ use crate::{
   ServerStreamingHandler,
   ServiceMethod,
   Status,
-  StreamStats,
   StreamingApi,
   StreamingApiSender,
   CONNECT_PROTOCOL_VERSION,
@@ -65,13 +65,13 @@ fn service_method() -> ServiceMethod<EchoRequest, EchoResponse> {
 async fn make_unary_server(
   handler: Arc<dyn Handler<EchoRequest, EchoResponse>>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
+  endpoint_stats: Option<&EndpointStats>,
 ) -> SocketAddr {
-  let error_counter = prometheus::IntCounter::new("error", "-").unwrap();
   let router = make_unary_router(
     &service_method(),
     handler,
     error_handler,
-    error_counter,
+    endpoint_stats,
     true,
   )
   .layer(ConnectSafeCompressionLayer::new());
@@ -87,12 +87,12 @@ async fn make_server_streaming_server(
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
 ) -> (SocketAddr, stats::Helper) {
   let stats_helper = stats::Helper::new();
-  let stream_stats = StreamStats::new(&stats_helper.collector().scope("streams"), "foo");
+  let endpoint_stats = EndpointStats::new(stats_helper.collector().scope("test"));
   let router = make_server_streaming_router(
     &service_method(),
     handler,
     error_handler,
-    stream_stats,
+    Some(&endpoint_stats),
     true,
     None,
   )
@@ -336,7 +336,14 @@ async fn connect_timeout() {
 
 #[tokio::test]
 async fn unary_compression() {
-  let local_address = make_unary_server(Arc::new(EchoHandler::default()), |_| {}).await;
+  let stats = Helper::new();
+  let endpoints_stats = EndpointStats::new(stats.collector().scope("test"));
+  let local_address = make_unary_server(
+    Arc::new(EchoHandler::default()),
+    |_| {},
+    Some(&endpoints_stats),
+  )
+  .await;
   let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
   let response = client
     .unary(
@@ -351,16 +358,31 @@ async fn unary_compression() {
     )
     .await;
   assert_eq!(response.unwrap().echo, "a".repeat(1000));
+  stats.assert_counter_eq(
+    1,
+    "test:rpc",
+    &labels! {
+      "service" => "test_Test",
+      "endpoint" => "Echo",
+      "result" => "success"
+    },
+  );
 }
 
 #[tokio::test]
 async fn unary_error_handler() {
+  let stats = Helper::new();
+  let endpoints_stats = EndpointStats::new(stats.collector().scope("test"));
   let called = Arc::new(AtomicBool::new(false));
   let called_clone = called.clone();
-  let local_address = make_unary_server(Arc::new(ErrorHandler {}), move |e| {
-    assert_matches!(e, crate::Error::Grpc(_));
-    called_clone.store(true, Ordering::SeqCst);
-  })
+  let local_address = make_unary_server(
+    Arc::new(ErrorHandler {}),
+    move |e| {
+      assert_matches!(e, crate::Error::Grpc(_));
+      called_clone.store(true, Ordering::SeqCst);
+    },
+    Some(&endpoints_stats),
+  )
   .await;
   let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
   assert_matches!(
@@ -376,6 +398,15 @@ async fn unary_error_handler() {
     Err(Error::Grpc(_))
   );
   assert!(called.load(Ordering::SeqCst));
+  stats.assert_counter_eq(
+    1,
+    "test:rpc",
+    &labels! {
+      "service" => "test_Test",
+      "endpoint" => "Echo",
+      "result" => "failure"
+    },
+  );
 }
 
 #[tokio::test]
@@ -384,7 +415,7 @@ async fn read_stop() {
   let (api_tx, mut api_rx) = mpsc::channel(1);
 
   let router = Router::new().route(
-    &service_method().full_path,
+    &service_method().full_path(),
     post(move |request: Request| async move {
       let (parts, body) = request.into_parts();
       let (response_sender, response_body) = mpsc::channel(1);
@@ -469,18 +500,46 @@ async fn server_streaming() {
   assert!(stream.next().await.is_ok());
   assert!(stream.next().await.is_ok());
 
-  stats_helper.assert_counter_eq(1, "streams:foo:stream_initiations_total", &labels! {});
   stats_helper.assert_counter_eq(
     1,
-    "streams:foo:stream_completions_total",
-    &labels! { "result" => "success" },
+    "test:stream_initiations_total",
+    &labels! {
+      "service" => "test_Test",
+      "endpoint" => "Echo",
+    },
   );
-  stats_helper.assert_counter_eq(1, "streams:foo:stream_tx_messages_total", &labels! {});
-  stats_helper.assert_counter_eq(5, "streams:foo:bandwidth_tx_bytes_total", &labels! {});
+  stats_helper.assert_counter_eq(
+    1,
+    "test:rpc",
+    &labels! {
+      "service" => "test_Test",
+      "endpoint" => "Echo",
+      "result" => "success"
+    },
+  );
+  stats_helper.assert_counter_eq(
+    1,
+    "test:stream_tx_messages_total",
+    &labels! {
+      "service" => "test_Test",
+      "endpoint" => "Echo",
+    },
+  );
   stats_helper.assert_counter_eq(
     5,
-    "streams:foo:bandwidth_tx_bytes_uncompressed_total",
-    &labels! {},
+    "test:bandwidth_tx_bytes_total",
+    &labels! {
+      "service" => "test_Test",
+      "endpoint" => "Echo",
+    },
+  );
+  stats_helper.assert_counter_eq(
+    5,
+    "test:bandwidth_tx_bytes_uncompressed_total",
+    &labels! {
+      "service" => "test_Test",
+      "endpoint" => "Echo",
+    },
   );
 }
 
@@ -611,18 +670,46 @@ async fn server_streaming_error_handler() {
 
   assert!(called.load(Ordering::SeqCst));
 
-  stats_helper.assert_counter_eq(1, "streams:foo:stream_initiations_total", &labels! {});
   stats_helper.assert_counter_eq(
     1,
-    "streams:foo:stream_completions_total",
-    &labels! { "result" => "failure" },
+    "test:stream_initiations_total",
+    &labels! {
+      "service" => "test_Test",
+      "endpoint" => "Echo",
+    },
   );
-  stats_helper.assert_counter_eq(0, "streams:foo:stream_tx_messages_total", &labels! {});
-  stats_helper.assert_counter_eq(0, "streams:foo:bandwidth_tx_bytes_total", &labels! {});
+  stats_helper.assert_counter_eq(
+    1,
+    "test:rpc",
+    &labels! {
+      "service" => "test_Test",
+      "endpoint" => "Echo",
+      "result" => "failure"
+    },
+  );
   stats_helper.assert_counter_eq(
     0,
-    "streams:foo:bandwidth_tx_bytes_uncompressed_total",
-    &labels! {},
+    "test:stream_tx_messages_total",
+    &labels! {
+      "service" => "test_Test",
+      "endpoint" => "Echo",
+    },
+  );
+  stats_helper.assert_counter_eq(
+    0,
+    "test:bandwidth_tx_bytes_total",
+    &labels! {
+      "service" => "test_Test",
+      "endpoint" => "Echo",
+    },
+  );
+  stats_helper.assert_counter_eq(
+    0,
+    "test:bandwidth_tx_bytes_uncompressed_total",
+    &labels! {
+      "service" => "test_Test",
+      "endpoint" => "Echo",
+    },
   );
 }
 
@@ -634,6 +721,7 @@ async fn request_timeout() {
       streaming_event_sender: Mutex::default(),
     }),
     |_| {},
+    None,
   )
   .await;
   let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
@@ -653,7 +741,7 @@ async fn request_timeout() {
 
 #[tokio::test]
 async fn snappy_compression() {
-  let local_address = make_unary_server(Arc::new(EchoHandler::default()), |_| {}).await;
+  let local_address = make_unary_server(Arc::new(EchoHandler::default()), |_| {}, None).await;
   let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
   assert_eq!(
     client
@@ -672,7 +760,7 @@ async fn snappy_compression() {
 
 #[tokio::test]
 async fn connect_unary_error() {
-  let local_address = make_unary_server(Arc::new(ErrorHandler {}), |_| {}).await;
+  let local_address = make_unary_server(Arc::new(ErrorHandler {}), |_| {}, None).await;
   let client = reqwest::Client::builder().deflate(false).build().unwrap();
   let address = AddressHelper::new(format!("http://{local_address}")).unwrap();
   let response = client
@@ -699,7 +787,7 @@ async fn connect_unary_error() {
 
 #[tokio::test]
 async fn connect_unary() {
-  let local_address = make_unary_server(Arc::new(EchoHandler::default()), |_| {}).await;
+  let local_address = make_unary_server(Arc::new(EchoHandler::default()), |_| {}, None).await;
 
   // Should not compress.
   let client = reqwest::Client::builder().deflate(false).build().unwrap();

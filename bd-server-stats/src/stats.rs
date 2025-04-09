@@ -36,6 +36,7 @@ use prometheus::{
   TextEncoder,
 };
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -590,6 +591,26 @@ impl Collector {
       collector: self.clone(),
       labels: HashMap::new(),
     }
+  }
+
+  // Dump output for debugging stat names.
+  #[must_use]
+  pub fn debug_output(&self) -> String {
+    let mut output = String::new();
+
+    for family in self.gather_all() {
+      for metric in &family.metric {
+        let labels = metric
+          .label
+          .iter()
+          .map(|label| format!("{}: {}", label.name(), label.value()))
+          .collect::<Vec<_>>()
+          .join(", ");
+        writeln!(&mut output, "{}: ({})", family.name(), labels).unwrap();
+      }
+    }
+
+    output
   }
 
   // Dump prometheus output.

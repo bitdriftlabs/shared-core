@@ -12,6 +12,8 @@ use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::{
   root_as_log_unchecked,
   Log,
 };
+use protobuf::MessageFull;
+use std::fmt::Debug;
 
 extern "C" {
   fn verify_log_buffer(buf: *const u8, buf_len: usize) -> bool;
@@ -26,5 +28,24 @@ pub fn call_verify_log_buffer(buf: &[u8]) -> anyhow::Result<Log<'_>> {
       bail!("invalid flatbuffer binary data");
     }
     Ok(root_as_log_unchecked(buf))
+  }
+}
+
+//
+// ProtoVecDebugWrapper
+//
+
+// This is a helper that will use the display implementation for debug printing protos. We should
+// probably patch proto to just always use the friendly version.
+pub struct ProtoVecDebugWrapper<'a, T>(pub &'a Vec<T>);
+
+impl<T> Debug for ProtoVecDebugWrapper<'_, T>
+where
+  T: MessageFull,
+{
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_list()
+      .entries(self.0.iter().map(|x| format!("{x}")))
+      .finish()
   }
 }
