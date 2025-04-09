@@ -91,7 +91,7 @@ impl AddressHelper {
     Uri::builder()
       .scheme(self.address.scheme().unwrap().clone())
       .authority(self.address.authority().unwrap().as_str())
-      .path_and_query(service_method.full_path.as_str())
+      .path_and_query(service_method.full_path().as_str())
       .build()
       .unwrap()
   }

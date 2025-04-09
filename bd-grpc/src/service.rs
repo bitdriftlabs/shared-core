@@ -9,14 +9,14 @@ use protobuf::reflect::FileDescriptor;
 use protobuf::MessageFull;
 use std::marker::PhantomData;
 
-
 //
 // ServiceMethod
 //
 
 // Wraps a gRPC service method after confirming the path matches the proto file.
 pub struct ServiceMethod<OutgoingType: MessageFull, IncomingType: MessageFull> {
-  pub full_path: String,
+  service: String,
+  method: String,
   outgoing_type: PhantomData<OutgoingType>,
   incoming_type: PhantomData<IncomingType>,
 }
@@ -79,14 +79,29 @@ impl<OutgoingType: MessageFull, IncomingType: MessageFull>
     );
 
     Self {
-      full_path: format!(
-        "/{}.{}/{}",
+      service: format!(
+        "{}.{}",
         file_descriptor.package(),
         service_descriptor.proto().name(),
-        method_descriptor.proto().name(),
       ),
+      method: method_descriptor.proto().name().to_string(),
       outgoing_type: PhantomData,
       incoming_type: PhantomData,
     }
+  }
+
+  #[must_use]
+  pub fn service_name(&self) -> &str {
+    &self.service
+  }
+
+  #[must_use]
+  pub fn method_name(&self) -> &str {
+    &self.method
+  }
+
+  #[must_use]
+  pub fn full_path(&self) -> String {
+    format!("/{}/{}", self.service, self.method)
   }
 }

@@ -145,7 +145,12 @@ impl Helper {
   pub fn assert_counter_eq(&self, value: u64, name: &str, labels: &HashMap<&str, &str>) {
     let actual = self
       .find_counter(name, labels)
-      .unwrap_or_else(|| panic!("counter '{name}' with labels '{labels:?}' not found"))
+      .unwrap_or_else(|| {
+        panic!(
+          "counter '{name}' with labels '{labels:?}' not found. {:?}",
+          self.collector.debug_output()
+        )
+      })
       .value() as u64;
     assert_eq!(
       value, actual,

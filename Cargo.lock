@@ -963,6 +963,7 @@ name = "bd-server-stats"
 version = "1.0.0"
 dependencies = [
  "bd-log",
+ "bd-proto-util",
  "bd-stats-common",
  "bd-time",
  "concat-string",
