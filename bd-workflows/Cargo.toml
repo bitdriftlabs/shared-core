@@ -41,7 +41,7 @@ assert_matches.workspace    = true
 bd-log                      = { path = "../bd-log" }
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
 bd-time                     = { path = "../bd-time" }
-criterion                   = "0.5.1"
+criterion.workspace         = true
 ctor.workspace              = true
 futures-util.workspace      = true
 parking_lot.workspace       = true

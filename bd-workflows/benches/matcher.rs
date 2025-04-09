@@ -16,6 +16,7 @@ use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 use std::collections::BTreeSet;
+use std::future::Future;
 use std::sync::Arc;
 use time::OffsetDateTime;
 
@@ -37,7 +38,7 @@ impl Setup {
     }
   }
 
-  fn new_engine(&self, workflows: Vec<Workflow>) -> WorkflowsEngine {
+  async fn new_engine(&self, workflows: Vec<Workflow>) -> WorkflowsEngine {
     let config_loader = &ConfigLoader::new(self.tmp_dir.path());
     let scope = &Collector::default().scope("test");
     let (mut engine, _) = WorkflowsEngine::new(
@@ -49,16 +50,18 @@ impl Setup {
     );
     assert!(!workflows.is_empty());
 
-    engine.start(WorkflowsEngineConfig::new(
-      WorkflowsConfiguration::new(workflows),
-      BTreeSet::default(),
-      BTreeSet::default(),
-    ));
+    engine
+      .start(WorkflowsEngineConfig::new(
+        WorkflowsConfiguration::new(workflows),
+        BTreeSet::default(),
+        BTreeSet::default(),
+      ))
+      .await;
 
     engine
   }
 
-  fn simple_workflow(&self) -> WorkflowsEngine {
+  async fn simple_workflow(&self) -> WorkflowsEngine {
     let mut a = state!("A");
     let b = state!("B");
 
@@ -69,10 +72,10 @@ impl Setup {
     );
 
     let config = workflow_proto!(exclusive with a, b);
-    self.new_engine(vec![config])
+    self.new_engine(vec![config]).await
   }
 
-  fn many_simple_workflows(&self) -> WorkflowsEngine {
+  async fn many_simple_workflows(&self) -> WorkflowsEngine {
     let mut workflows = vec![];
     for i in 0 .. 30 {
       let mut a = state!("A");
@@ -99,22 +102,24 @@ impl Setup {
         when rule!(log_matches!(message == "baz"));
         do action!(flush_buffers &["foo_buffer_id"]; id "foo")
       );
-
       let mut config = workflow_proto!(exclusive with a, b);
       config.id = format!("baz_{i}");
     }
 
-    self.new_engine(workflows)
+    self.new_engine(workflows).await
   }
 }
 
-fn run_runtime_bench(bencher: &mut Bencher<'_>, engine: impl FnOnce() -> WorkflowsEngine) {
+fn run_runtime_bench<T: Future<Output = WorkflowsEngine>>(
+  bencher: &mut Bencher<'_>,
+  engine: impl FnOnce() -> T,
+) {
   tokio::runtime::Builder::new_current_thread()
     .enable_all()
     .build()
     .unwrap()
     .block_on(async {
-      let mut engine = engine();
+      let mut engine = engine().await;
       bencher.iter(|| {
         engine.process_log(
           black_box(&LogRef {
