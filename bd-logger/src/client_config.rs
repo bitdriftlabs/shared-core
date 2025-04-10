@@ -14,6 +14,7 @@ use anyhow::anyhow;
 use bd_api::{ClientConfigurationUpdate, FromResponse, IntoRequest};
 use bd_buffer::{AbslCode, RingBuffer as _};
 use bd_client_common::fb::make_log;
+use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::FilterChain;
 use bd_log_primitives::LogRef;
@@ -32,7 +33,7 @@ use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
 use bd_workflows::config::WorkflowsConfiguration;
 use itertools::Itertools;
-use protobuf::{Chars, Message};
+use protobuf::Chars;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
@@ -112,20 +113,21 @@ impl<A: ApplyConfig> Config<A> {
       .apply_configuration(Configuration::new(sotw))
       .await?;
 
-    // Upon applying the configuration sucesfully, write the configuration proto to disk.
+    // Upon applying the configuration successfully, write the configuration proto to disk.
     // This ensures that when we come up we can immediately start processing logs without
     // having to wait for the API server to respond.
     // TODO(snowp): Consider storing an intermediate format to avoid all the error checking
     // above on re-read.
-    let buffer = update.write_to_bytes()?;
-
     // If we fail writing to disk, record a counter and move on. We'll continue to operate
     // without disk caching.
     // TODO(snowp): Consider ways to expose what is going on here, Rust doesn't expose a way to
     // check if this is an out of disk issue without parsing the error message (not platform
     // independent) so it's tricky to avoid this being noisy. We may consider doing such
     // parsing on the server side.
-    if std::fs::write(&self.configuration_file, buffer).is_err() {
+    if tokio::fs::write(&self.configuration_file, write_compressed_protobuf(update))
+      .await
+      .is_err()
+    {
       self.config_cache_failure.inc();
     }
 
@@ -140,17 +142,18 @@ impl<A: ApplyConfig> Config<A> {
   // Attempts to load persisted config and apply as if it was a newly received configuration.
   pub async fn try_load_persisted_config_helper(&mut self) -> anyhow::Result<()> {
     let result: anyhow::Result<()> = {
-      let data = std::fs::read(&self.configuration_file)?;
+      // We don't use handle_unexpected_error here for custom logging and to let us unit test this
+      // code path.
+      // TODO(snowp): Track failures here via analytic events.
+      let result =
+        async { read_compressed_protobuf(&tokio::fs::read(&self.configuration_file).await?) }.await;
 
       // As soon as we've read the file contents, delete it. If we fail to parse the contents,
       // the file will be gone and it won't be read again. If we succeed to parse and apply the
       // contents, we end up writing the file back to disk.
-      std::fs::remove_file(&self.configuration_file)?;
+      tokio::fs::remove_file(&self.configuration_file).await?;
 
-      // We don't use handle_unexpected_error here for custom logging and to let us unit test this
-      // code path.
-      // TODO(snowp): Track failures here via analytic events.
-      let configuration_update: ConfigurationUpdate = ConfigurationUpdate::parse_from_bytes(&data)?;
+      let configuration_update: ConfigurationUpdate = result?;
 
       // If this function succeeds, it should write back the file to disk.
       let maybe_nack = self

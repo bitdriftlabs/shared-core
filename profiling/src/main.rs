@@ -93,7 +93,7 @@ struct AnnotatedWorkflowsEngine {
 }
 
 impl AnnotatedWorkflowsEngine {
-  fn new(
+  async fn new(
     directory: &Path,
     runtime_loader: &Arc<ConfigLoader>,
     scope: &Scope,
@@ -108,11 +108,13 @@ impl AnnotatedWorkflowsEngine {
     Self::create_general_health_workflows(&mut workflow_configurations);
     Self::create_networking_workflows(&mut workflow_configurations);
 
-    engine.start(WorkflowsEngineConfig::new(
-      WorkflowsConfiguration::new(workflow_configurations.configs()),
-      BTreeSet::default(),
-      BTreeSet::default(),
-    ));
+    engine
+      .start(WorkflowsEngineConfig::new(
+        WorkflowsConfiguration::new(workflow_configurations.configs()),
+        BTreeSet::default(),
+        BTreeSet::default(),
+      ))
+      .await;
 
     Self { engine }
   }
@@ -346,13 +348,14 @@ impl Setup {
   }
 
   #[allow(dead_code)]
-  fn create_engine(&self) -> AnnotatedWorkflowsEngine {
+  async fn create_engine(&self) -> AnnotatedWorkflowsEngine {
     AnnotatedWorkflowsEngine::new(
       self.directory.path(),
       &self.runtime_loader,
       &self.stats.scope(""),
       self.dynamic_stats.clone(),
     )
+    .await
   }
 
   async fn run_stats_flush_handler(&self) {
@@ -414,7 +417,7 @@ fn run_profiling<T: Fn(&mut AnnotatedWorkflowsEngine) + std::marker::Send + 'sta
         // Given the runtime configuration update time to propagate.
         1.seconds().sleep().await;
 
-        let mut engine = setup.create_engine();
+        let mut engine = setup.create_engine().await;
         f(&mut engine);
 
         // Let the stats flush to disk to run.

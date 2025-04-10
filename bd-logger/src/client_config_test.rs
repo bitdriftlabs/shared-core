@@ -120,7 +120,10 @@ async fn load_malformed_file() {
   std::fs::write(config_file, "not a proto").unwrap();
 
   let load_result = config.try_load_persisted_config_helper().await;
-  assert_eq!(load_result.err().unwrap().to_string(), "Incorrect tag");
+  assert_eq!(
+    load_result.err().unwrap().to_string(),
+    "corrupt deflate stream"
+  );
 
   // Validate that we remove the file if it fails decoding.
   assert!(!config_file.exists());

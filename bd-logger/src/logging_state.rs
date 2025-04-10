@@ -141,7 +141,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
     }
   }
 
-  pub(crate) fn updated(
+  pub(crate) async fn updated(
     self,
     config: ConfigUpdate,
     capture_screenshot_handler: CaptureScreenshotHandler,
@@ -156,7 +156,8 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
       &self.sdk_directory,
       &self.runtime,
       InitializedLoggingContextStats::new(&self.stats),
-    );
+    )
+    .await;
 
     let context = InitializedLoggingContext::new(processing_pipeline);
 

@@ -98,7 +98,7 @@ pub struct ProcessingPipeline {
 }
 
 impl ProcessingPipeline {
-  pub(crate) fn new(
+  pub(crate) async fn new(
     data_upload_tx: Sender<DataUpload>,
     flush_buffers_tx: Sender<BuffersWithAck>,
     flush_stats_trigger: Option<FlushTrigger>,
@@ -123,11 +123,13 @@ impl ProcessingPipeline {
         stats.dynamic_stats.clone(),
       );
 
-      workflows_engine.start(WorkflowsEngineConfig::new(
-        config.workflows_configuration,
-        config.buffer_producers.trigger_buffer_ids.clone(),
-        config.buffer_producers.continuous_buffer_ids.clone(),
-      ));
+      workflows_engine
+        .start(WorkflowsEngineConfig::new(
+          config.workflows_configuration,
+          config.buffer_producers.trigger_buffer_ids.clone(),
+          config.buffer_producers.continuous_buffer_ids.clone(),
+        ))
+        .await;
 
       (workflows_engine, flush_buffers_tx)
     };

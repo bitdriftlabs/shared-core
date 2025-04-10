@@ -447,7 +447,7 @@ impl Setup {
   // Can be called at most once for each created `Setup`. Calling it more than once
   // results in a crash due to re-registration of some stats. Use `new_with_sdk_directory`
   // to re-initialize `Setup`.
-  fn make_workflows_engine(
+  async fn make_workflows_engine(
     &self,
     workflows_engine_config: WorkflowsEngineConfig,
   ) -> AnnotatedWorkflowsEngine {
@@ -472,7 +472,7 @@ impl Setup {
     let task_handle =
       AnnotatedWorkflowsEngine::run_for_test(buffers_to_flush_rx, data_upload_rx, hooks.clone());
 
-    workflows_engine.start(workflows_engine_config);
+    workflows_engine.start(workflows_engine_config).await;
 
     AnnotatedWorkflowsEngine::new(
       workflows_engine,
@@ -514,9 +514,11 @@ async fn engine_initialization_and_update() {
   ];
 
   let setup = Setup::new();
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
 
   assert_eq!(2, workflows_engine.state.workflows.len());
   setup.collector.assert_counter_eq(
@@ -613,14 +615,16 @@ async fn engine_update_after_sdk_update() {
   );
 
   let setup = Setup::new();
-  let mut workflows_engine = setup.make_workflows_engine(cached_config_update.clone());
+  let mut workflows_engine = setup
+    .make_workflows_engine(cached_config_update.clone())
+    .await;
 
   workflows_engine.maybe_persist(false).await;
 
   // The SDK has been updated and is relaunched.
   let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
   // The SDK loads cached configuration from the previous run.
-  let mut workflows_engine = setup.make_workflows_engine(cached_config_update);
+  let mut workflows_engine = setup.make_workflows_engine(cached_config_update).await;
 
   let mut a = state!("A");
   let b = state!("B");
@@ -694,9 +698,11 @@ async fn persistence_succeeds() {
   ];
 
   let setup = Setup::new();
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows.clone()),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows.clone(),
+    ))
+    .await;
 
   setup.collector.assert_counter_eq(
     0,
@@ -728,9 +734,11 @@ async fn persistence_succeeds() {
   );
 
   let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
-  let workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
-  );
+  let workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
   // The new workflow engine has an on-going run with two traversals
   engine_assert_active_run_traversals!(workflows_engine; 0 => 0; "B", "D");
   setup.collector.assert_counter_eq(
@@ -758,9 +766,11 @@ async fn persistence_skipped_if_no_workflow_progress_is_made() {
   let workflows = vec![workflow!(exclusive with a, b, c)];
 
   let setup = Setup::new();
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
 
   // No matches, state is not dirty.
   engine_process_log!(workflows_engine; "bar");
@@ -803,9 +813,11 @@ async fn persistence_skipped_if_workflow_stays_in_an_initial_state() {
   let workflows = vec![workflow!(exclusive with a, b)];
 
   let setup = Setup::new();
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
 
   // Log is matched but the end state is equal to start state is equal to initial state
   // so no persistence is needed.
@@ -849,9 +861,11 @@ async fn persist_workflows_with_at_least_one_non_initial_state_run_only() {
   ];
 
   let setup = Setup::new();
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
 
   // Workflow "1" matches a log and its run is not initial state anymore.
   engine_process_log!(workflows_engine; "foo");
@@ -873,7 +887,7 @@ async fn persist_workflows_with_at_least_one_non_initial_state_run_only() {
   workflows_engine.maybe_persist(false).await;
 
   let store = setup.make_state_store();
-  let workflows_state = store.load().unwrap();
+  let workflows_state = store.load().await.unwrap();
 
   assert_eq!(1, workflows_state.workflows.len());
   assert_eq!(1, workflows_state.workflows[0].runs().len());
@@ -897,9 +911,11 @@ async fn needs_persistence_if_workflow_moves_to_an_initial_state() {
   let workflows = vec![workflow!(exclusive with a, b, c)];
 
   let setup = Setup::new();
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
 
   // Workflow's run moves to state 'B'.
   engine_process_log!(workflows_engine; "foo");
@@ -961,9 +977,11 @@ async fn persistence_is_respected_through_consecutive_workflows() {
   ];
 
   let setup = Setup::new();
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
 
   // "foo" makes the first workflow advance from "A" to "B" making its state dirty
   // "foo" doesn't match anything in the second workflow so its state remains clean
@@ -1001,9 +1019,11 @@ async fn persistence_performed_if_match_is_found_without_advancing() {
   let workflows = vec![workflow!(exclusive with a, b, c)];
 
   let setup = Setup::new();
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
 
   // Matches, but it doesn't advance the state machine
   engine_process_log!(workflows_engine; "foo");
@@ -1050,9 +1070,11 @@ async fn traversals_count_limit_prevents_creation_of_new_workflows() {
   // We try to create 4 workflows (each with 1 run that has 1 traversal) but
   // the configured traversals count limit is 2. For this reason, we succeed
   // hit the traversals limit twice.
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
 
   // All workflows are added to the engine but some of them have no runs
   // to keep the engine below the configured traversals count limit.
@@ -1121,9 +1143,11 @@ async fn traversals_count_limit_prevents_creation_of_new_workflow_runs() {
     ValueKind::Int(2),
   )]));
 
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
 
   engine_process_log!(workflows_engine; "foo");
   // The traversals limit is first hit as the result of the line below.
@@ -1187,9 +1211,11 @@ async fn traversals_count_limit_causes_run_removal_after_forking() {
     ValueKind::Int(2),
   )]));
 
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
   assert!(workflows_engine.state.workflows[0].runs().is_empty());
 
   // * A new run is created as workflows has no runs in an initial state.
@@ -1249,9 +1275,11 @@ async fn persistence_to_disk_is_rate_limited() {
   let workflows = vec![workflow!(exclusive with a, b, c, d, e)];
 
   let setup = Setup::new();
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows.clone()),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows.clone(),
+    ))
+    .await;
 
   // Create a fork from state A to both B and D by matching "foo" to both transitions.
   // This run has 2 traversals.
@@ -1267,9 +1295,11 @@ async fn persistence_to_disk_is_rate_limited() {
   workflows_engine.maybe_persist(false).await;
 
   let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
-  let other_workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows.clone()),
-  );
+  let other_workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows.clone(),
+    ))
+    .await;
   // The other workflow engine has the old run with still two traversals
   engine_assert_active_run_traversals!(other_workflows_engine; 0 => 0; "B", "D");
 
@@ -1285,9 +1315,11 @@ async fn persistence_to_disk_is_rate_limited() {
 
   // Create a copy from the persisted state.
   let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
-  let other_workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
-  );
+  let other_workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
   // assert that the re-created workflow engine has an on-going run with only 1 traversals.
   engine_assert_active_runs!(other_workflows_engine; 0; "D");
 }
@@ -1313,9 +1345,11 @@ async fn runs_in_initial_state_are_not_persisted() {
   ];
 
   let setup = Setup::new();
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows.clone()),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows.clone(),
+    ))
+    .await;
 
   // * Workflow #1: The only existing run matches log but does not advance as the transition
   //   requires 10 matches.
@@ -1339,9 +1373,11 @@ async fn runs_in_initial_state_are_not_persisted() {
   let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
   // We set up a new workflows engine that uses the same underlying workflows
   // state file.
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
 
   // The persisted state was loaded.
   // * Workflow #1: The second run was not re-recreated as it was not stored on a disk.
@@ -1401,9 +1437,11 @@ async fn ignore_persisted_state_if_corrupted() {
   std::fs::write(setup.workflows_state_path(), vec![0, 1, 2, 3]).unwrap();
 
   // Engine creation should still succeed but with a default state
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows.clone()),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows.clone(),
+    ))
+    .await;
   // The workflow has no runs.
   assert!(workflows_engine.state.workflows[0].runs().is_empty());
 
@@ -1426,9 +1464,11 @@ async fn ignore_persisted_state_if_corrupted() {
 
   // Create new engine off the saved state
   let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
-  let workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
-  );
+  let workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
 
   // The new workflow engine has an on-going run with two traversals
   engine_assert_active_run_traversals!(workflows_engine; 0 => 0; "B", "D");
@@ -1503,9 +1543,11 @@ async fn ignore_persisted_state_if_invalid_dir() {
     dynamic_stats.clone(),
   );
 
-  workflows_engine.start(WorkflowsEngineConfig::new_with_workflow_configurations(
-    workflows.clone(),
-  ));
+  workflows_engine
+    .start(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows.clone(),
+    ))
+    .await;
 
   // assert that the workflow has no runs.
   assert!(workflows_engine.state.workflows[0].runs().is_empty());
@@ -1551,9 +1593,11 @@ async fn ignore_persisted_state_if_invalid_dir() {
     dynamic_stats,
   );
 
-  workflows_engine.start(WorkflowsEngineConfig::new_with_workflow_configurations(
-    workflows,
-  ));
+  workflows_engine
+    .start(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
 
   // assert that the workflow has a valid initial state - no runs.
   assert!(workflows_engine.state.workflows[0].runs().is_empty());
@@ -1591,9 +1635,11 @@ async fn persists_state_on_periodic_basis() {
   )]));
 
   // Engine creation should still succeed but with a default state
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
 
   engine_process_log!(workflows_engine; "foo");
   // Log made the state dirty.
@@ -1635,11 +1681,13 @@ async fn engine_processing_log() {
   ];
 
   let setup = Setup::new();
-  let mut workflows_engine = setup.make_workflows_engine(WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(workflows),
-    BTreeSet::from(["foo_buffer_id".into()]),
-    BTreeSet::new(),
-  ));
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new(
+      WorkflowsConfiguration::new_with_workflow_configurations_for_test(workflows),
+      BTreeSet::from(["foo_buffer_id".into()]),
+      BTreeSet::new(),
+    ))
+    .await;
 
   // * Two workflows are created in response to a passed workflows config.
   // * One run is created for each of the created workflows.
@@ -1749,9 +1797,11 @@ async fn exclusive_workflow_duration_limit() {
   );
 
   let setup = Setup::new();
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(vec![config]),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![config],
+    ))
+    .await;
 
   let now = time::OffsetDateTime::now_utc();
 
@@ -1822,9 +1872,11 @@ async fn parallel_workflow_duration_limit() {
   );
 
   let setup = Setup::new();
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(vec![config]),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![config],
+    ))
+    .await;
 
   let now = time::OffsetDateTime::now_utc();
 
@@ -1906,7 +1958,7 @@ async fn log_without_destination() {
 
   let setup = Setup::new();
 
-  let mut workflows_engine = setup.make_workflows_engine(workflows_engine_config);
+  let mut workflows_engine = setup.make_workflows_engine(workflows_engine_config).await;
   workflows_engine.log_destination_buffer_ids = BTreeSet::new();
 
   let result = engine_process_log!(workflows_engine; "foo");
@@ -1999,7 +2051,9 @@ async fn logs_streaming() {
 
   let setup = Setup::new();
 
-  let mut workflows_engine = setup.make_workflows_engine(workflows_engine_config.clone());
+  let mut workflows_engine = setup
+    .make_workflows_engine(workflows_engine_config.clone())
+    .await;
   workflows_engine.log_destination_buffer_ids = BTreeSet::from(["trigger_buffer_id".into()]);
 
   // Emit four logs that results in four flushes of the buffer(s).
@@ -2182,7 +2236,7 @@ async fn logs_streaming() {
   // Simulate relaunch of the app and a fresh configuration of the SDK.
   let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
 
-  let mut workflows_engine = setup.make_workflows_engine(workflows_engine_config);
+  let mut workflows_engine = setup.make_workflows_engine(workflows_engine_config).await;
   workflows_engine.log_destination_buffer_ids = BTreeSet::from(["trigger_buffer_id".into()]);
 
   workflows_engine.set_awaiting_logs_upload_intent_decisions(vec![
@@ -2346,7 +2400,9 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
     BTreeSet::from(["continuous_buffer_id".into()]),
   );
 
-  let mut workflows_engine = setup.make_workflows_engine(workflows_engine_config.clone());
+  let mut workflows_engine = setup
+    .make_workflows_engine(workflows_engine_config.clone())
+    .await;
   workflows_engine.log_destination_buffer_ids = BTreeSet::from(["trigger_buffer_id".into()]);
 
   // Set up no responses so that the actions continue to wait for the server's response.
@@ -2379,7 +2435,7 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
 
   let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
 
-  let mut workflows_engine = setup.make_workflows_engine(workflows_engine_config);
+  let mut workflows_engine = setup.make_workflows_engine(workflows_engine_config).await;
   workflows_engine.session_id = "new session ID".to_string();
   workflows_engine.log_destination_buffer_ids = BTreeSet::from(["trigger_buffer_id".into()]);
 
@@ -2452,7 +2508,9 @@ async fn engine_continues_to_stream_upload_not_complete() {
     BTreeSet::from(["continuous_buffer_id".into()]),
   );
 
-  let mut workflows_engine = setup.make_workflows_engine(workflows_engine_config.clone());
+  let mut workflows_engine = setup
+    .make_workflows_engine(workflows_engine_config.clone())
+    .await;
   workflows_engine.log_destination_buffer_ids = BTreeSet::from(["trigger_buffer_id".into()]);
 
   // Allow the intent to go through which should trigger an upload.
@@ -2560,12 +2618,14 @@ async fn creating_new_runs_after_first_log_processing() {
 
   // This test assumes that internally `workflows_engine` iterates
   // over the list of its workflows in order.
-  let mut workflows_engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(vec![
-      workflow!(parallel with c, d, e),
-      workflow!(parallel with a, b),
-    ]),
-  );
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![
+        workflow!(parallel with c, d, e),
+        workflow!(parallel with a, b),
+      ],
+    ))
+    .await;
   assert!(workflows_engine.state.workflows[0].runs().is_empty());
   assert!(workflows_engine.state.workflows[1].runs().is_empty());
 
@@ -2633,7 +2693,7 @@ async fn workflows_state_is_purged_when_session_id_changes() {
     WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow!(parallel with a, b, c)]);
 
   let setup = Setup::new();
-  let mut workflows_engine = setup.make_workflows_engine(engine_config.clone());
+  let mut workflows_engine = setup.make_workflows_engine(engine_config.clone()).await;
 
   // Session ID is empty on first engine initialization.
   assert!(workflows_engine.state.session_id.is_empty());
@@ -2663,7 +2723,7 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   assert!(!workflows_engine.needs_state_persistence);
 
   let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
-  let mut workflows_engine = setup.make_workflows_engine(engine_config);
+  let mut workflows_engine = setup.make_workflows_engine(engine_config).await;
 
   // Read saved session ID from disk.
   assert_eq!("foo_session", workflows_engine.state.session_id);
@@ -2753,7 +2813,7 @@ async fn test_traversals_count_tracking() {
   let setup = Setup::new();
 
   let engine_config = WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]);
-  let mut engine = setup.make_workflows_engine(engine_config.clone());
+  let mut engine = setup.make_workflows_engine(engine_config.clone()).await;
 
   engine_process_log!(engine; "foo");
   assert_eq!(1, engine.state.workflows[0].runs().len());
@@ -2871,9 +2931,11 @@ async fn test_exclusive_workflow_state_reset() {
   let workflow = workflow!(exclusive with a, b, c, d);
   let setup = Setup::new();
 
-  let mut engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
-  );
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
 
   // The log matches the transition coming out of the currently active node and workflow moves to
   // state `B`.
@@ -2996,9 +3058,11 @@ async fn test_exclusive_workflow_potential_fork() {
   let workflow = workflow!(exclusive with a, b, c, d, e);
   let setup = Setup::new();
 
-  let mut engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
-  );
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
 
   // The log matches and workflow moves to state B.
   engine_process_log!(engine; "foo");
@@ -3143,9 +3207,11 @@ async fn generate_log_multiple() {
   );
 
   let workflow = workflow!(exclusive with a, b, c, d, e, f, g);
-  let mut engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
-  );
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
   let result = engine_process_log!(engine; "foo"; with labels!{};
                                    time datetime!(2023-01-01 00:00:00 UTC));
   assert!(result.logs_to_inject.is_empty());
@@ -3233,9 +3299,11 @@ async fn generate_log_action() {
   );
 
   let workflow = workflow!(exclusive with a, b, c);
-  let mut engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
-  );
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
   let result = engine_process_log!(engine; "foo"; with labels!{ "field1" => "value1" };
                                    time datetime!(2023-01-01 00:00:00 UTC));
   assert!(result.logs_to_inject.is_empty());
@@ -3264,9 +3332,11 @@ async fn sankey_action() {
   let setup = Setup::new();
 
   let workflow = sankey_workflow();
-  let mut engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
-  );
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
 
   // Emit Sankey that's rejected for the upload by the server.
 
@@ -3393,9 +3463,11 @@ async fn sankey_action_persistence() {
   let workflow = sankey_workflow();
 
   {
-    let mut engine = setup.make_workflows_engine(
-      WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow.clone()]),
-    );
+    let mut engine = setup
+      .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+        vec![workflow.clone()],
+      ))
+      .await;
 
     // Emit a Sankey path but don't accept it.
 
@@ -3417,9 +3489,11 @@ async fn sankey_action_persistence() {
   // After shutting down the engine, we only expect to see a response from the server if the Sankey
   // path upload was persisted to disk.
 
-  let engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
-  );
+  let engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
 
   engine
     .hooks
@@ -3440,9 +3514,11 @@ async fn sankey_action_persistence_limit() {
   let workflow = sankey_workflow();
 
   {
-    let mut engine = setup.make_workflows_engine(
-      WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow.clone()]),
-    );
+    let mut engine = setup
+      .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+        vec![workflow.clone()],
+      ))
+      .await;
 
     // Emit 20 Sankey paths that we don't immediately accept.
     for i in 0 .. 20 {
@@ -3462,9 +3538,11 @@ async fn sankey_action_persistence_limit() {
     engine.maybe_persist(false).await;
   }
 
-  let engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
-  );
+  let engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
 
   // We only see 10 Sankey paths uploaded as we limit the number of enqueued Sankey paths to 10.
   for _ in 0 .. 10 {
@@ -3495,9 +3573,11 @@ async fn take_screenshot_action() {
   let workflow = workflow!(exclusive with a, b);
   let setup = Setup::new();
 
-  let mut engine = setup.make_workflows_engine(
-    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]),
-  );
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
 
   let result = engine_process_log!(engine; "foo");
 

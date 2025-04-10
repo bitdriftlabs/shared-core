@@ -62,6 +62,7 @@ clap            = { version = "4.5.35", features = ["derive", "env"] }
 color-backtrace = "0.7.0"
 concat-string   = "1.0.1"
 crc32fast       = "1.4.2"
+criterion       = "0.5.1"
 ctor            = "0.4.1"
 dashmap         = "6.1.0"
 flatbuffers     = "25.2.10"

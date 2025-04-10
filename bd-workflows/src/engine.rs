@@ -30,6 +30,7 @@ use crate::sankey_diagram::{self, PendingSankeyPathUpload};
 use crate::workflow::{SankeyPath, TriggeredAction, TriggeredActionEmitSankey, Workflow};
 use anyhow::anyhow;
 use bd_api::DataUpload;
+use bd_client_common::file::{read_compressed, write_compressed};
 use bd_client_stats::DynamicStats;
 use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_log_primitives::{Log, LogRef};
@@ -45,8 +46,6 @@ use bd_time::TimeDurationExt as _;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::fs::File;
-use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -160,7 +159,7 @@ impl WorkflowsEngine {
     (workflows_engine, buffers_to_flush_rx)
   }
 
-  pub fn start(&mut self, config: WorkflowsEngineConfig) {
+  pub async fn start(&mut self, config: WorkflowsEngineConfig) {
     self
       .flush_buffers_actions_resolver
       .update(ResolverConfig::new(
@@ -170,7 +169,7 @@ impl WorkflowsEngine {
 
     let workflows_state = self.state_store.load();
 
-    if let Some(state) = workflows_state {
+    if let Some(state) = workflows_state.await {
       self.state.pending_flush_actions = self
         .flush_buffers_actions_resolver
         .standardize_pending_actions(state.pending_flush_actions);
@@ -989,23 +988,30 @@ impl StateStore {
     }
   }
 
-  fn load(&self) -> Option<WorkflowsState> {
+  async fn state_exists(&self) -> bool {
+    tokio::fs::try_exists(&self.state_path)
+      .await
+      .is_ok_and(|exists| exists)
+  }
+
+  async fn load(&self) -> Option<WorkflowsState> {
     // Try to deserialize any persisted workflows state into a map
-    let workflows_state = if self.state_path.exists() {
+    let workflows_state = if self.state_exists().await {
       let _timer = self.stats.state_load_duration.start_timer();
       // State is cached
-      self
-        .load_state()
-        .inspect(|_| {
+      match self.load_state().await {
+        Ok(state) => {
           self.stats.state_load_successes_total.inc();
-        })
-        .map_err(|e| {
+          Some(state)
+        },
+        Err(e) => {
           log::debug!("failed to deserialize workflows: {e}");
           self.stats.state_load_failures_total.inc();
           // Clean-up the corrupted file
-          self.purge();
-        })
-        .ok()
+          self.purge().await;
+          None
+        },
+      }
     } else {
       // Nothing has been cached yet
       None
@@ -1020,14 +1026,9 @@ impl StateStore {
     workflows_state
   }
 
-  pub(self) fn load_state(&self) -> anyhow::Result<WorkflowsState> {
-    let file = File::open(self.state_path.as_path())?;
-    // Wrap file in buffer to deserialize efficiently in place
-    let mut buf_reader = BufReader::new(file);
-    Ok(bincode::serde::decode_from_std_read(
-      &mut buf_reader,
-      bincode::config::legacy(),
-    )?)
+  pub(self) async fn load_state(&self) -> anyhow::Result<WorkflowsState> {
+    let bytes = read_compressed(&tokio::fs::read(&self.state_path).await?)?;
+    Ok(bincode::serde::decode_from_slice(&bytes, bincode::config::standard())?.0)
   }
 
   /// Stores states of the passed workflows if all pre-conditions are met.
@@ -1059,15 +1060,11 @@ impl StateStore {
 
     // Serialize state snapshot and write to disk
     let state_path = self.state_path.clone();
-    match tokio::task::spawn_blocking(move || Self::store(&state_path, &workflows_state)).await {
-      Ok(Ok(())) => {
+    match Self::store(&state_path, &workflows_state).await {
+      Ok(()) => {
         log::trace!("finished persisting workflows state to disk");
         self.last_persisted = Some(now);
         self.stats.state_persistence_successes_total.inc();
-      },
-      Ok(Err(e)) => {
-        log::debug!("failed to serialize workflows: {e}");
-        self.stats.state_persistence_failures_total.inc();
       },
       Err(e) => {
         log::debug!("failed to serialize workflows: {e}");
@@ -1078,23 +1075,19 @@ impl StateStore {
     true
   }
 
-  fn store(state_path: &Path, state: &WorkflowsState) -> anyhow::Result<()> {
-    let file = File::create(state_path)?;
-    // Wrap the file in a BufWriter for better performance
-    let mut writer = BufWriter::new(file);
-    // Use serialize_into to avoid allocating memory twice
-    bincode::serde::encode_into_std_write(state, &mut writer, bincode::config::legacy())?;
-    // Flush the writer to ensure data is written
-    writer.flush()?;
+  async fn store(state_path: &Path, state: &WorkflowsState) -> anyhow::Result<()> {
+    let bytes = bincode::serde::encode_to_vec(state, bincode::config::standard())?;
+    tokio::fs::write(state_path, write_compressed(&bytes)).await?;
+
     Ok(())
   }
 
-  fn purge(&self) {
-    if !self.state_path.exists() {
+  async fn purge(&self) {
+    if !self.state_exists().await {
       return;
     }
 
-    if let Err(e) = std::fs::remove_file(&self.state_path) {
+    if let Err(e) = tokio::fs::remove_file(&self.state_path).await {
       log::debug!("failed to remove workflows state file: {e}");
     }
   }
