@@ -9,7 +9,6 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-bd-proto-util.path      = "../bd-proto-util"
 bd-stats-common.path    = "../bd-stats-common"
 bd-time.path            = "../bd-time"
 concat-string.workspace = true
