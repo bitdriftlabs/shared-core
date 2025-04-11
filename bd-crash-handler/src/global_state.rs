@@ -31,6 +31,7 @@ pub struct Tracker {
 }
 
 impl Tracker {
+  #[must_use]
   pub fn new(store: Arc<Store>) -> Self {
     let global_state = store.get(&KEY).unwrap_or_default();
 
@@ -61,10 +62,12 @@ pub struct Reader {
 }
 
 impl Reader {
+  #[must_use]
   pub fn new(store: Arc<Store>) -> Self {
     Self { store }
   }
 
+  #[must_use]
   pub fn global_state_fields(&self) -> LogFields {
     self.store.get(&KEY).unwrap_or_default().0
   }

@@ -14,7 +14,7 @@ use std::sync::Arc;
 fn global_state_update() {
   let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
   let reader = Reader::new(store.clone());
-  let mut state_tracker = Tracker::new(store.clone());
+  let mut state_tracker = Tracker::new(store);
 
   assert!(state_tracker.current_global_state.0.is_empty());
   assert!(reader.global_state_fields().is_empty());
