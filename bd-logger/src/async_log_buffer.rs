@@ -11,7 +11,6 @@ mod async_log_buffer_test;
 
 use crate::bounded_buffer::{channel, MemorySized, Receiver, Sender, TrySendError};
 use crate::device_id::DeviceIdInterceptor;
-use crate::global_state::Tracker;
 use crate::log_replay::LogReplay;
 use crate::logger::with_thread_local_logger_guard;
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
@@ -22,6 +21,7 @@ use crate::{internal_report, network};
 use anyhow::anyhow;
 use bd_buffer::BuffersWithAck;
 use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
+use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{
@@ -176,7 +176,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
 
   logging_state: LoggingState<bd_log_primitives::Log>,
 
-  global_state_tracker: Tracker,
+  global_state_tracker: global_state::Tracker,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -255,7 +255,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         // The size of the pre-config buffer matches the size of the enclosing
         // async log buffer.
         logging_state: LoggingState::Uninitialized(uninitialized_logging_context),
-        global_state_tracker: Tracker::new(store),
+        global_state_tracker: global_state::Tracker::new(store),
       },
       async_log_buffer_communication_tx,
     )
@@ -616,11 +616,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       return;
     };
 
-    for mut log_line in initial_logs.drain(..) {
-      log_line
-        .fields
-        .extend(self.global_state_tracker.global_state_fields());
-
+    for log_line in initial_logs.drain(..) {
       if let Err(e) = self
         .replayer
         .replay_log(

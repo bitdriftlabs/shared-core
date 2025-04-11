@@ -6,16 +6,19 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::{
+  global_state,
   Monitor,
   DETAILS_INFERENCE_CONFIG_FILE,
   INGESTION_CONFIG_FILE,
   REASON_INFERENCE_CONFIG_FILE,
 };
+use bd_device::Store;
 use bd_log_primitives::LogFields;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use bd_test_helpers::session::InMemoryStorage;
 use itertools::Itertools;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -24,6 +27,7 @@ struct Setup {
   directory: TempDir,
   monitor: Monitor,
   runtime: Arc<ConfigLoader>,
+  store: Arc<Store>,
   _shutdown: ComponentShutdownTrigger,
 }
 
@@ -33,13 +37,20 @@ impl Setup {
     std::fs::create_dir_all(directory.path().join("runtime")).unwrap();
     let runtime = ConfigLoader::new(&directory.path().join("runtime"));
     let shutdown = ComponentShutdownTrigger::default();
+    let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
 
-    let monitor = Monitor::new(&runtime, directory.path(), shutdown.make_shutdown());
+    let monitor = Monitor::new(
+      &runtime,
+      directory.path(),
+      store.clone(),
+      shutdown.make_shutdown(),
+    );
 
     Self {
       directory,
       monitor,
       runtime,
+      store,
       _shutdown: shutdown,
     }
   }
@@ -103,6 +114,10 @@ impl Setup {
 async fn crash_reason_inference() {
   let setup = Setup::new();
 
+  let mut tracker = global_state::Tracker::new(setup.store.clone());
+
+  tracker.maybe_update_global_state(&[("state".into(), "foo".into())].into());
+
   setup.monitor.try_ensure_directories_exist().await;
 
   setup
@@ -128,14 +143,17 @@ async fn crash_reason_inference() {
   assert_eq!(artifact2, &log1["_crash_artifact"].as_bytes().unwrap());
   assert_eq!("bar", log1["_crash_reason"].as_str().unwrap());
   assert_eq!("unknown", log1["_crash_details"].as_str().unwrap());
+  assert_eq!("foo", log1["state"].as_str().unwrap());
 
   assert_eq!(artifact1, &log2["_crash_artifact"].as_bytes().unwrap());
   assert_eq!("foo", log2["_crash_reason"].as_str().unwrap());
   assert_eq!("kaboom", log2["_crash_details"].as_str().unwrap());
+  assert_eq!("foo", log1["state"].as_str().unwrap());
 
   assert_eq!(artifact3, &log3["_crash_artifact"].as_bytes().unwrap());
   assert_eq!("bar", log3["_crash_reason"].as_str().unwrap());
   assert_eq!("unknown", log3["_crash_details"].as_str().unwrap());
+  assert_eq!("foo", log1["state"].as_str().unwrap());
 }
 
 #[tokio::test]

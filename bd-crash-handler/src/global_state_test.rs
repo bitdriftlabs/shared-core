@@ -5,16 +5,19 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::global_state::Tracker;
+use crate::global_state::{Reader, Tracker};
 use bd_device::Store;
 use bd_test_helpers::session::InMemoryStorage;
 use std::sync::Arc;
 
 #[test]
 fn global_state_update() {
-  let mut state_tracker = Tracker::new(Arc::new(Store::new(Box::<InMemoryStorage>::default())));
+  let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
+  let reader = Reader::new(store.clone());
+  let mut state_tracker = Tracker::new(store.clone());
 
-  assert!(state_tracker.global_state_fields().is_empty());
+  assert!(state_tracker.current_global_state.0.is_empty());
+  assert!(reader.global_state_fields().is_empty());
 
   let fields = [
     ("key2".into(), "value2".into()),
@@ -24,7 +27,7 @@ fn global_state_update() {
   assert!(state_tracker.maybe_update_global_state(&fields));
   assert!(!state_tracker.maybe_update_global_state(&fields));
 
-  assert_eq!(state_tracker.global_state_fields(), fields);
+  assert_eq!(reader.global_state_fields(), fields);
   assert_eq!(state_tracker.current_global_state.0, fields);
 
   let updated_fields = [("key".into(), "value".into())].into();
@@ -32,7 +35,7 @@ fn global_state_update() {
   assert!(state_tracker.maybe_update_global_state(&updated_fields));
   assert!(!state_tracker.maybe_update_global_state(&updated_fields));
 
-  assert_eq!(state_tracker.global_state_fields(), updated_fields);
+  assert_eq!(reader.global_state_fields(), updated_fields);
   assert_eq!(state_tracker.current_global_state.0, updated_fields);
 
   let updated_fields = [("key".into(), b"value".to_vec().into())].into();
@@ -40,5 +43,5 @@ fn global_state_update() {
   assert!(state_tracker.maybe_update_global_state(&updated_fields));
   assert!(!state_tracker.maybe_update_global_state(&updated_fields));
 
-  assert_eq!(state_tracker.global_state_fields(), updated_fields);
+  assert_eq!(reader.global_state_fields(), updated_fields);
 }

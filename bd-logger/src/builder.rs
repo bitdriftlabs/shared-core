@@ -218,7 +218,7 @@ impl LoggerBuilder {
       self.params.session_strategy.clone(),
       self.params.device,
       self.params.static_metadata.sdk_version(),
-      self.params.store,
+      self.params.store.clone(),
     );
 
     let log = if self.internal_logger {
@@ -258,6 +258,7 @@ impl LoggerBuilder {
     let mut crash_monitor = bd_crash_handler::Monitor::new(
       &runtime_loader,
       &self.params.sdk_directory,
+      self.params.store.clone(),
       shutdown_handle.make_shutdown(),
     );
 
