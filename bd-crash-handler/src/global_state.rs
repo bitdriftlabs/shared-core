@@ -22,7 +22,7 @@ struct State(LogFields);
 impl Storable for State {}
 
 //
-// GlobalStateTracker
+// Tracker
 //
 
 pub struct Tracker {
@@ -31,6 +31,7 @@ pub struct Tracker {
 }
 
 impl Tracker {
+  #[must_use]
   pub fn new(store: Arc<Store>) -> Self {
     let global_state = store.get(&KEY).unwrap_or_default();
 
@@ -50,8 +51,24 @@ impl Tracker {
 
     true
   }
+}
 
+//
+// Reader
+//
+
+pub struct Reader {
+  store: Arc<Store>,
+}
+
+impl Reader {
+  #[must_use]
+  pub fn new(store: Arc<Store>) -> Self {
+    Self { store }
+  }
+
+  #[must_use]
   pub fn global_state_fields(&self) -> LogFields {
-    self.current_global_state.0.clone()
+    self.store.get(&KEY).unwrap_or_default().0
   }
 }

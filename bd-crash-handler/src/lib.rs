@@ -9,6 +9,7 @@
 #[path = "./monitor_test.rs"]
 mod tests;
 
+pub mod global_state;
 mod json_extractor;
 
 use bd_log_primitives::LogFields;
@@ -17,6 +18,7 @@ use bd_shutdown::ComponentShutdown;
 use itertools::Itertools as _;
 use json_extractor::{JsonExtractor, JsonPath};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use time::OffsetDateTime;
 
 #[cfg(test)]
@@ -71,11 +73,17 @@ pub struct Monitor {
   crash_reason_paths_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashReasonPaths>,
   crash_details_paths_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashDetailsPaths>,
   report_directory: PathBuf,
+  global_state_reader: global_state::Reader,
   shutdown: ComponentShutdown,
 }
 
 impl Monitor {
-  pub fn new(runtime: &ConfigLoader, sdk_directory: &Path, shutdown: ComponentShutdown) -> Self {
+  pub fn new(
+    runtime: &ConfigLoader,
+    sdk_directory: &Path,
+    store: Arc<bd_device::Store>,
+    shutdown: ComponentShutdown,
+  ) -> Self {
     let crash_directories_flag =
       bd_runtime::runtime::crash_handling::CrashDirectories::register(runtime).unwrap();
     let crash_reason_paths_flag =
@@ -88,6 +96,7 @@ impl Monitor {
       crash_reason_paths_flag,
       crash_details_paths_flag: crash_details_flag,
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
+      global_state_reader: global_state::Reader::new(store),
       shutdown,
     }
   }
@@ -246,6 +255,10 @@ impl Monitor {
     // TODO(snowp): Add smarter handling to avoid duplicate reporting.
     // TODO(snowp): Consider only reporting one of the pending reports if there are multiple.
 
+    // Read out the global fields from the previous application run. This is used to populate the
+    // fields in the crash report to attempt to match the fields state at the time of the crash.
+    let global_state_fields = self.global_state_reader.global_state_fields();
+
     let mut logs = vec![];
 
     while let Ok(Some(entry)) = dir.next_entry().await {
@@ -285,12 +298,10 @@ impl Monitor {
           continue;
         }
 
-        // TODO(snowp): For now everything in here is a crash, eventually we'll need to be able to
-        // differentiate.
-        // TODO(snowp): Eventually we'll want to upload the report out of band, but for now just
-        // chuck it into a log line.
-        logs.push(CrashLog {
-          fields: [
+        let mut fields = global_state_fields.clone();
+
+        fields.extend(
+          [
             ("_crash_artifact".into(), contents.into()),
             (
               "_crash_reason".into(),
@@ -303,9 +314,14 @@ impl Monitor {
                 .into(),
             ),
           ]
-          .into(),
-          timestamp,
-        });
+          .into_iter(),
+        );
+
+        // TODO(snowp): For now everything in here is a crash, eventually we'll need to be able to
+        // differentiate.
+        // TODO(snowp): Eventually we'll want to upload the report out of band, but for now just
+        // chuck it into a log line.
+        logs.push(CrashLog { fields, timestamp });
       }
 
       // Clean up files after processing them. If this fails we'll potentially end up

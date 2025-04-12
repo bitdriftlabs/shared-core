@@ -9,7 +9,7 @@
 #[path = "./metadata_test.rs"]
 mod metadata_test;
 
-use crate::global_state::Tracker;
+use bd_crash_handler::global_state;
 use bd_log::warn_every;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{AnnotatedLogFields, LogFieldKey, LogFieldKind, LogFieldValue, LogFields};
@@ -75,7 +75,7 @@ impl MetadataCollector {
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
     log_type: LogType,
-    global_state_tracker: &mut Tracker,
+    global_state_tracker: &mut global_state::Tracker,
   ) -> anyhow::Result<LogMetadata> {
     let timestamp = self.metadata_provider.timestamp()?;
 
