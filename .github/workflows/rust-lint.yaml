@@ -41,7 +41,7 @@ jobs:
       
 
       - name: Cache
-        uses: Swatinem/rust-cache@v2.7.3
+        uses: Swatinem/rust-cache@v2.7.8
 
       - name: Rust Toolchain
         uses: actions-rs/toolchain@v1
