@@ -141,18 +141,18 @@ async fn crash_reason_inference() {
   let log3 = &logs[2];
 
   assert_eq!(artifact2, &log1["_crash_artifact"].as_bytes().unwrap());
-  assert_eq!("bar", log1["_crash_reason"].as_str().unwrap());
-  assert_eq!("unknown", log1["_crash_details"].as_str().unwrap());
+  assert_eq!("bar", log1["_app_exit_info"].as_str().unwrap());
+  assert_eq!("unknown", log1["_app_exit_details"].as_str().unwrap());
   assert_eq!("foo", log1["state"].as_str().unwrap());
 
   assert_eq!(artifact1, &log2["_crash_artifact"].as_bytes().unwrap());
-  assert_eq!("foo", log2["_crash_reason"].as_str().unwrap());
-  assert_eq!("kaboom", log2["_crash_details"].as_str().unwrap());
+  assert_eq!("foo", log2["_app_exit_info"].as_str().unwrap());
+  assert_eq!("kaboom", log2["_app_exit_details"].as_str().unwrap());
   assert_eq!("foo", log1["state"].as_str().unwrap());
 
   assert_eq!(artifact3, &log3["_crash_artifact"].as_bytes().unwrap());
-  assert_eq!("bar", log3["_crash_reason"].as_str().unwrap());
-  assert_eq!("unknown", log3["_crash_details"].as_str().unwrap());
+  assert_eq!("bar", log3["_app_exit_info"].as_str().unwrap());
+  assert_eq!("unknown", log3["_app_exit_details"].as_str().unwrap());
   assert_eq!("foo", log1["state"].as_str().unwrap());
 }
 
