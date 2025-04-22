@@ -22,7 +22,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-
+      
 
       - name: Rust Toolchain
         uses: actions-rs/toolchain@v1
@@ -32,7 +32,7 @@ jobs:
           profile: minimal
 
       - name: Cache
-        uses: Swatinem/rust-cache@v2.7.3
+        uses: Swatinem/rust-cache@v2.7.8
 
       - name: CI Setup
         run: if [[ -f ci/setup.sh ]]; then ci/setup.sh; fi
@@ -46,7 +46,6 @@ jobs:
           fi
 
       - name: Test Workspace
-        shell: bash
         run: |
           if test -f "Makefile"; then
             make test
