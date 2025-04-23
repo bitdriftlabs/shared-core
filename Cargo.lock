@@ -897,6 +897,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-report-convert"
+version = "1.0.0"
+dependencies = [
+ "cc",
+ "cmake",
+ "flatc-rust",
+]
+
+[[package]]
 name = "bd-resource-utilization"
 version = "1.0.0"
 dependencies = [
