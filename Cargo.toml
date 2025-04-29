@@ -25,6 +25,7 @@ members = [
   "bd-profile",
   "bd-proto",
   "bd-proto-util",
+  "bd-report-convert",
   "bd-session",
   "bd-key-value",
   "bd-matcher",
@@ -58,6 +59,7 @@ base64ct        = { version = "1.7.3", features = ["alloc", "std"] }
 bincode         = { version = "2.0.1", features = ["serde"] }
 bytes           = "1.10.1"
 cc              = "1.2.17"
+cmake           = "0.1.54"
 clap            = { version = "4.5.35", features = ["derive", "env"] }
 color-backtrace = "0.7.0"
 concat-string   = "1.0.1"

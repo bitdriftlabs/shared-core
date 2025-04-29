@@ -1,0 +1,11 @@
+[package]
+edition      = "2021"
+license-file = "../LICENSE"
+name         = "bd-report-convert"
+publish      = false
+version      = "1.0.0"
+
+[build-dependencies]
+flatc-rust.workspace = true
+cc.workspace = true
+cmake.workspace = true
