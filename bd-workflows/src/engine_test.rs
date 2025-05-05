@@ -15,7 +15,7 @@ use assert_matches::assert_matches;
 use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
 use bd_api::DataUpload;
 use bd_client_stats_store::test::StatsHelper;
-use bd_client_stats_store::{BoundedCollector, Collector};
+use bd_client_stats_store::Collector;
 use bd_log_primitives::{log_level, FieldsRef, Log, LogFields, LogMessage, LogRef};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::client::api::log_upload_intent_request::Intent_type::WorkflowActionUpload;
@@ -246,7 +246,7 @@ struct AnnotatedWorkflowsEngine {
 
   hooks: Arc<parking_lot::Mutex<Hooks>>,
 
-  dynamic_stats_collector: BoundedCollector,
+  collector: Collector,
 
   task_handle: JoinHandle<()>,
 }
@@ -255,7 +255,7 @@ impl AnnotatedWorkflowsEngine {
   fn new(
     engine: WorkflowsEngine,
     hooks: Arc<parking_lot::Mutex<Hooks>>,
-    dynamic_stats_collector: BoundedCollector,
+    collector: Collector,
     task_handle: JoinHandle<()>,
   ) -> Self {
     Self {
@@ -266,7 +266,7 @@ impl AnnotatedWorkflowsEngine {
 
       hooks,
 
-      dynamic_stats_collector,
+      collector,
 
       task_handle,
     }
@@ -455,18 +455,14 @@ impl Setup {
 
     let hooks = Arc::new(parking_lot::Mutex::new(Hooks::default()));
 
-    let dynamic_stats = Arc::new(bd_client_stats::DynamicStats::new(
-      &self.collector.scope(""),
-      &self.runtime,
-    ));
-    let dynamic_stats_collector = dynamic_stats.collector_for_test().clone();
+    let stats = bd_client_stats::Stats::new(self.collector.clone());
 
     let (mut workflows_engine, buffers_to_flush_rx) = WorkflowsEngine::new(
       &self.collector.scope(""),
       self.sdk_directory.path(),
       &self.runtime,
       data_upload_tx,
-      dynamic_stats,
+      stats,
     );
 
     let task_handle =
@@ -474,12 +470,7 @@ impl Setup {
 
     workflows_engine.start(workflows_engine_config).await;
 
-    AnnotatedWorkflowsEngine::new(
-      workflows_engine,
-      hooks,
-      dynamic_stats_collector,
-      task_handle,
-    )
+    AnnotatedWorkflowsEngine::new(workflows_engine, hooks, self.collector.clone(), task_handle)
   }
 
   fn make_state_store(&self) -> StateStore {
@@ -1526,12 +1517,8 @@ async fn ignore_persisted_state_if_invalid_dir() {
 
   let collector = Collector::default();
   let sdk_directory = PathBuf::from("/invalid/path");
-  let runtime = ConfigLoader::new(sdk_directory.as_path());
 
-  let dynamic_stats = Arc::new(bd_client_stats::DynamicStats::new(
-    &collector.scope(""),
-    &runtime,
-  ));
+  let stats = bd_client_stats::Stats::new(collector.clone());
 
   // Engine creation should still succeed but with a default state
   let (tx, _) = tokio::sync::mpsc::channel(1);
@@ -1540,7 +1527,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
     sdk_directory.as_path(),
     &make_runtime(),
     tx,
-    dynamic_stats.clone(),
+    stats.clone(),
   );
 
   workflows_engine
@@ -1590,7 +1577,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
     sdk_directory.as_path(),
     &make_runtime(),
     rx,
-    dynamic_stats,
+    stats,
   );
 
   workflows_engine
@@ -1705,13 +1692,9 @@ async fn engine_processing_log() {
     result
   );
 
-  workflows_engine.dynamic_stats_collector.assert_counter_eq(
-    123,
-    "workflows_dyn:action",
-    labels! {
-      "_id" => "foo_metric"
-    },
-  );
+  workflows_engine
+    .collector
+    .assert_workflow_counter_eq(123, "foo_metric", labels! {});
 
   setup.collector.assert_counter_eq(
     2,
@@ -3248,23 +3231,15 @@ async fn generate_log_multiple() {
   engine_process_log!(engine; "message1";
                       with labels!{"duration" => "1", "_generate_log_id" => "id1"};
                       time datetime!(2023-01-01 00:00:03 UTC));
-  engine.dynamic_stats_collector.assert_counter_eq(
-    1,
-    "workflows_dyn:action",
-    labels! {
-      "_id" => "foo_metric"
-    },
-  );
+  engine
+    .collector
+    .assert_workflow_counter_eq(1, "foo_metric", labels! {});
   engine_process_log!(engine; "message2";
                       with labels!{"duration" => "2", "_generate_log_id" => "id2"};
                       time datetime!(2023-01-01 00:00:03 UTC));
-  engine.dynamic_stats_collector.assert_counter_eq(
-    2,
-    "workflows_dyn:action",
-    labels! {
-      "_id" => "bar_metric"
-    },
-  );
+  engine
+    .collector
+    .assert_workflow_counter_eq(2, "bar_metric", labels! {});
 }
 
 #[tokio::test]
@@ -3355,11 +3330,10 @@ async fn sankey_action() {
   assert!(engine.hooks.lock().sankey_uploads.is_empty());
   assert_eq!(1, engine.hooks.lock().received_sankey_upload_intents.len());
 
-  engine.dynamic_stats_collector.assert_counter_eq(
+  engine.collector.assert_workflow_counter_eq(
     1,
-    "workflows_dyn:action",
+    "sankey",
     labels! {
-      "_id" => "sankey",
       "_path_id" => "8b7712a10b290c2f0a386eef5a2d2b744305df42b0d4692e1c41911c98062afe",
       "fixed_field" => "fixed_value",
     },
@@ -3418,11 +3392,10 @@ async fn sankey_action() {
     first_upload
   );
 
-  engine.dynamic_stats_collector.assert_counter_eq(
+  engine.collector.assert_workflow_counter_eq(
     1,
-    "workflows_dyn:action",
+    "sankey",
     labels! {
-      "_id" => "sankey",
       "_path_id" => "8fdd001f37bfc8125d8f4704543fd6f3c089593d1b3c277f9eaa927c899f9aaa",
       "fixed_field" => "fixed_value",
       "extracted_field" => "extracted_value",
@@ -3444,11 +3417,10 @@ async fn sankey_action() {
   assert_eq!(1, engine.hooks.lock().sankey_uploads.len());
   assert_eq!(2, engine.hooks.lock().received_sankey_upload_intents.len());
 
-  engine.dynamic_stats_collector.assert_counter_eq(
+  engine.collector.assert_workflow_counter_eq(
     2,
-    "workflows_dyn:action",
+    "sankey",
     labels! {
-      "_id" => "sankey",
       "_path_id" => "8fdd001f37bfc8125d8f4704543fd6f3c089593d1b3c277f9eaa927c899f9aaa",
       "fixed_field" => "fixed_value",
       "extracted_field" => "extracted_value",

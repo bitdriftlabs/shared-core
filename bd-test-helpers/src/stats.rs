@@ -5,11 +5,19 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_proto::protos::client::api::stats_upload_request::snapshot::Snapshot_type;
+use assert_matches::assert_matches;
+use bd_proto::protos::client::api::stats_upload_request::snapshot::{
+  Aggregated,
+  Occurred_at,
+  Snapshot_type,
+};
 use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::metric::metric::Data;
 use bd_proto::protos::client::metric::{Metric, MetricsList};
+use bd_stats_common::{make_client_sketch, NameType};
+use bd_time::TimestampExt;
 use std::collections::{BTreeMap, HashMap};
+use time::OffsetDateTime;
 
 #[macro_export]
 macro_rules! float_eq {
@@ -67,38 +75,12 @@ pub fn get_required_stat_value(
     .unwrap_or_else(|| panic!("{name} {tags:?} not in {metrics:?}"))
 }
 
-pub struct StatRequestHelper {
-  request: bd_proto::protos::client::api::StatsUploadRequest,
-}
-
-impl StatRequestHelper {
-  pub const fn new(request: bd_proto::protos::client::api::StatsUploadRequest) -> Self {
-    Self { request }
-  }
-
-  #[allow(clippy::needless_pass_by_value)]
-  pub fn get_metric(&self, name: &str, fields: HashMap<&str, &str>) -> Option<u64> {
-    assert_eq!(self.request.snapshot.len(), 1);
-    let fields_str = fields
-      .iter()
-      .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
-      .collect();
-
-    self.request.snapshot[0]
-      .metrics()
-      .metric
-      .iter()
-      .find(|metric| metric.name == name && metric.tags == fields_str)
-      .map(|m| m.counter().value)
-  }
-}
-
 //
-// ProstStatRequestHelper
+// StatRequestHelper
 //
 
 pub struct StatsRequestHelper {
-  request: StatsUploadRequest,
+  pub request: StatsUploadRequest,
 }
 
 impl StatsRequestHelper {
@@ -108,7 +90,7 @@ impl StatsRequestHelper {
   }
 
   #[allow(clippy::needless_pass_by_value)]
-  fn get_metric(&self, name: &str, fields: BTreeMap<&str, &str>) -> Option<&Metric> {
+  fn get_metric(&self, name: NameType, fields: BTreeMap<&str, &str>) -> Option<&Metric> {
     assert_eq!(self.request.snapshot.len(), 1);
 
     let fields_str = fields
@@ -120,25 +102,79 @@ impl StatsRequestHelper {
       .metrics()
       .metric
       .iter()
-      .find(|metric| metric.name == name && metric.tags == fields_str)
+      .find(|metric| match &name {
+        NameType::Global(name) => metric.name() == name,
+        NameType::ActionId(id) => metric.metric_id() == id,
+      } && metric.tags == fields_str)
   }
 
   #[allow(clippy::needless_pass_by_value)]
   #[must_use]
-  pub fn get_inline_histogram(&self, name: &str, fields: BTreeMap<&str, &str>) -> Option<Vec<f64>> {
-    self.get_metric(name, fields).and_then(|metric| {
-      metric.data.as_ref().map(|data| match data {
-        Data::InlineHistogramValues(h) => h.values.clone(),
-        Data::Counter(_) | Data::DdsketchHistogram(_) => {
-          panic!("not an inline histogram")
-        },
+  pub fn get_inline_histogram(&self, id: &str, fields: BTreeMap<&str, &str>) -> Option<Vec<f64>> {
+    self
+      .get_metric(NameType::ActionId(id.to_string()), fields)
+      .and_then(|metric| {
+        metric.data.as_ref().map(|data| match data {
+          Data::InlineHistogramValues(h) => h.values.clone(),
+          Data::Counter(_) | Data::DdsketchHistogram(_) => {
+            panic!("not an inline histogram")
+          },
+        })
       })
-    })
+  }
+
+  #[allow(clippy::float_cmp, clippy::cast_precision_loss)]
+  pub fn expect_ddsketch_histogram(
+    &self,
+    name: &str,
+    fields: BTreeMap<&str, &str>,
+    sum: f64,
+    count: u64,
+  ) {
+    let histogram = self
+      .get_metric(NameType::Global(name.to_string()), fields)
+      .and_then(|c| c.has_ddsketch_histogram().then(|| c.ddsketch_histogram()))
+      .expect("missing histogram");
+
+    let mut sketch = make_client_sketch();
+    sketch.decode_and_merge_with(&histogram.serialized).unwrap();
+    assert_eq!(sketch.get_count(), count as f64);
+    assert!(
+      float_eq!(sketch.get_sum().unwrap(), sum),
+      "sum: {}, sketch sum: {}",
+      sum,
+      sketch.get_sum().unwrap()
+    );
+
+    // TODO(mattklein123): Add verification for the actual quantiles?
+  }
+
+  pub fn expect_inline_histogram(&self, name: &str, fields: BTreeMap<&str, &str>, values: &[f64]) {
+    let histogram = self
+      .get_metric(NameType::Global(name.to_string()), fields)
+      .and_then(|c| {
+        c.has_inline_histogram_values()
+          .then(|| c.inline_histogram_values())
+      })
+      .expect("missing histogram");
+
+    assert_eq!(histogram.values, values);
   }
 
   #[allow(clippy::needless_pass_by_value)]
   #[must_use]
   pub fn get_counter(&self, name: &str, fields: BTreeMap<&str, &str>) -> Option<u64> {
+    self.get_counter_inner(NameType::Global(name.to_string()), fields)
+  }
+
+  #[allow(clippy::needless_pass_by_value)]
+  #[must_use]
+  pub fn get_workflow_counter(&self, id: &str, fields: BTreeMap<&str, &str>) -> Option<u64> {
+    self.get_counter_inner(NameType::ActionId(id.to_string()), fields)
+  }
+
+  #[allow(clippy::needless_pass_by_value)]
+  fn get_counter_inner(&self, name: NameType, fields: BTreeMap<&str, &str>) -> Option<u64> {
     self.get_metric(name, fields).and_then(|metric| {
       metric.data.as_ref().map(|data| match data {
         Data::Counter(c) => c.value,
@@ -163,5 +199,40 @@ impl StatsRequestHelper {
           })
       })
       .unwrap()
+  }
+
+  pub fn overflows(&self) -> &HashMap<String, u64> {
+    &self.request.snapshot.first().unwrap().metric_id_overflows
+  }
+
+  pub fn aggregation_window_start(&self) -> OffsetDateTime {
+    assert_eq!(self.request.snapshot.len(), 1);
+    assert_matches!(
+      &self.request.snapshot[0].occurred_at,
+      Some(Occurred_at::Aggregated(Aggregated {
+        period_start,
+        ..
+      })) => period_start.to_offset_date_time()
+    )
+  }
+
+  pub fn aggregation_window_end(&self) -> OffsetDateTime {
+    assert_eq!(self.request.snapshot.len(), 1);
+    assert_matches!(
+      &self.request.snapshot[0].occurred_at,
+      Some(Occurred_at::Aggregated(Aggregated {
+        period_end,
+        ..
+      })) => period_end.to_offset_date_time()
+    )
+  }
+
+  pub fn number_of_metrics(&self) -> usize {
+    assert!(self.request.snapshot.len() <= 1);
+    if self.request.snapshot.is_empty() {
+      return 0;
+    }
+
+    self.request.snapshot[0].metrics().metric.len()
   }
 }

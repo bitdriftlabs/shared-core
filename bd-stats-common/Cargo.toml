@@ -7,3 +7,6 @@ version      = "1.0.0"
 
 [lib]
 doctest = false
+
+[dependencies]
+sketches-rust.workspace = true

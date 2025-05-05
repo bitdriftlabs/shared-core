@@ -10,17 +10,18 @@ doctest = false
 
 [dependencies]
 anyhow.workspace         = true
+assert_matches.workspace = true
 async-trait.workspace    = true
-axum-server.workspace    = true
 axum.workspace           = true
+axum-server.workspace    = true
 bd-client-common.path    = "../bd-client-common"
 bd-events.path           = "../bd-events"
-bd-grpc-codec.path       = "../bd-grpc-codec"
 bd-grpc.path             = "../bd-grpc"
+bd-grpc-codec.path       = "../bd-grpc-codec"
 bd-key-value.path        = "../bd-key-value"
+bd-log.path              = "../bd-log"
 bd-log-metadata.path     = "../bd-log-metadata"
 bd-log-primitives.path   = "../bd-log-primitives"
-bd-log.path              = "../bd-log"
 bd-matcher.path          = "../bd-matcher"
 bd-metadata.path         = "../bd-metadata"
 bd-panic.path            = "../bd-panic"
@@ -29,6 +30,7 @@ bd-resource-utilization  = { path = "../bd-resource-utilization" }
 bd-runtime-config        = { path = "../bd-runtime-config", optional = true }
 bd-session               = { path = "../bd-session" }
 bd-session-replay        = { path = "../bd-session-replay" }
+bd-stats-common.path     = "../bd-stats-common"
 bd-time.path             = "../bd-time"
 futures-core.workspace   = true
 http-body-util.workspace = true
@@ -39,10 +41,10 @@ prometheus.workspace     = true
 protobuf.workspace       = true
 serde.workspace          = true
 time.workspace           = true
-tokio-stream.workspace   = true
 tokio.workspace          = true
+tokio-stream.workspace   = true
 tracing.workspace        = true
 
 [features]
-default     = ["runtime"]
-runtime     = ["bd-runtime-config", "mockall"]
+default = ["runtime"]
+runtime = ["bd-runtime-config", "mockall"]

@@ -31,7 +31,7 @@ use crate::workflow::{SankeyPath, TriggeredAction, TriggeredActionEmitSankey, Wo
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_common::file::{read_compressed, write_compressed};
-use bd_client_stats::DynamicStats;
+use bd_client_stats::Stats;
 use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_log_primitives::{Log, LogRef};
 pub use bd_matcher::FieldProvider;
@@ -57,7 +57,6 @@ use tokio::time::Instant;
 // WorkflowsEngine
 //
 
-#[derive(Debug)]
 /// Orchestrates the execution and management of workflows. It is also responsible for
 /// persisting and restoring its state in disk when any workflow has changed.
 pub struct WorkflowsEngine {
@@ -100,13 +99,13 @@ pub struct WorkflowsEngine {
 
 impl WorkflowsEngine {
   pub fn new(
-    stats: &Scope,
+    scope: &Scope,
     sdk_directory: &Path,
     runtime: &ConfigLoader,
     data_upload_tx: Sender<DataUpload>,
-    dynamic_stats: Arc<DynamicStats>,
+    stats: Arc<Stats>,
   ) -> (Self, Receiver<BuffersToFlush>) {
-    let scope = stats.scope("workflows");
+    let scope = scope.scope("workflows");
 
     let traversals_count_limit_flag = TraversalsCountLimitFlag::register(runtime).unwrap();
     let state_periodic_write_interval_flag =
@@ -151,7 +150,7 @@ impl WorkflowsEngine {
       sankey_processor_input_tx: sankey_input_tx,
       sankey_processor_output_rx: sankey_output_rx,
       sankey_processor_join_handle,
-      metrics_collector: MetricsCollector::new(dynamic_stats),
+      metrics_collector: MetricsCollector::new(stats),
       buffers_to_flush_tx,
       pending_buffer_flushes: HashMap::new(),
     };

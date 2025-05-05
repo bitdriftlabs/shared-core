@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use sketches_rust::DDSketch;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -23,6 +24,44 @@ macro_rules! labels {
       lbs
     }
   };
+}
+
+#[must_use]
+pub fn make_client_sketch() -> DDSketch {
+  // For this sketch, the index parameters must be consistent in order to perform merges.
+  // However, the maximum number of buckets do not have to be the same. This means that
+  // we can use less buckets on the client and more on the server if we like as long as
+  // the other index parameters are the same. For now using the logarithmic collapsing
+  // variant seems the best. 0.02 relative accuracy is arbitrary as well as a max of 128
+  // buckets. We can tune this later as we have more time to devote to understanding the
+  // math.
+  DDSketch::logarithmic_collapsing_lowest_dense(0.02, 128).unwrap()
+}
+
+//
+// NameType
+//
+
+#[derive(Eq, Hash, PartialEq, Clone)]
+pub enum NameType {
+  Global(String),
+  ActionId(String),
+}
+
+impl NameType {
+  #[must_use]
+  pub fn as_str(&self) -> &str {
+    match self {
+      Self::Global(name) | Self::ActionId(name) => name,
+    }
+  }
+
+  #[must_use]
+  pub fn into_string(self) -> String {
+    match self {
+      Self::Global(name) | Self::ActionId(name) => name,
+    }
+  }
 }
 
 //
