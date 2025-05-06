@@ -232,6 +232,14 @@ fn main() {
     ..flatc_rust::Args::default()
   })
   .unwrap();
+  flatc_rust::run(flatc_rust::Args {
+    inputs: &[Path::new(
+      "../api/src/bitdrift_public/fbs/issue-reporting/v1/report.fbs",
+    )],
+    out_dir: Path::new("src/flatbuffers"),
+    ..flatc_rust::Args::default()
+  })
+  .unwrap();
 
   // Perform flatbuffer compile for C++.
   flatc_rust::run(flatc_rust::Args {
