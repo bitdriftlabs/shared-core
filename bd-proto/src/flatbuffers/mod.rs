@@ -16,3 +16,15 @@
   clippy::empty_line_after_outer_attr
 )]
 pub mod buffer_log;
+
+#[path = "report_generated.rs"]
+#[allow(clippy::all, clippy::use_self)]
+#[allow(unused)]
+#[allow(
+  clippy::must_use_candidate,
+  clippy::used_underscore_binding,
+  clippy::missing_const_for_fn,
+  clippy::derive_partial_eq_without_eq,
+  clippy::empty_line_after_outer_attr
+)]
+pub mod report;
