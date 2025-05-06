@@ -398,6 +398,45 @@ inline const char *EnumNameRotation(Rotation e) {
   return EnumNamesRotation()[index];
 }
 
+enum FrameStatus : int8_t {
+  FrameStatus_Missing = 0,
+  FrameStatus_Symbolicated = 1,
+  FrameStatus_MissingSymbol = 2,
+  FrameStatus_UnknownImage = 3,
+  FrameStatus_Malformed = 4,
+  FrameStatus_MIN = FrameStatus_Missing,
+  FrameStatus_MAX = FrameStatus_Malformed
+};
+
+inline const FrameStatus (&EnumValuesFrameStatus())[5] {
+  static const FrameStatus values[] = {
+    FrameStatus_Missing,
+    FrameStatus_Symbolicated,
+    FrameStatus_MissingSymbol,
+    FrameStatus_UnknownImage,
+    FrameStatus_Malformed
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesFrameStatus() {
+  static const char * const names[6] = {
+    "Missing",
+    "Symbolicated",
+    "MissingSymbol",
+    "UnknownImage",
+    "Malformed",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameFrameStatus(FrameStatus e) {
+  if (::flatbuffers::IsOutRange(e, FrameStatus_Missing, FrameStatus_Malformed)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesFrameStatus()[index];
+}
+
 FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(8) Timestamp FLATBUFFERS_FINAL_CLASS {
  private:
   uint64_t seconds_;
@@ -1202,7 +1241,11 @@ struct Frame FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_FRAME_ADDRESS = 14,
     VT_SYMBOL_ADDRESS = 16,
     VT_REGISTERS = 18,
-    VT_STATE = 20
+    VT_STATE = 20,
+    VT_FRAME_STATUS = 22,
+    VT_ORIGINAL_INDEX = 24,
+    VT_IN_APP = 26,
+    VT_SYMBOLICATED_NAME = 28
   };
   bitdrift_public::fbs::issue_reporting::v1::FrameType type() const {
     return static_cast<bitdrift_public::fbs::issue_reporting::v1::FrameType>(GetField<int8_t>(VT_TYPE, 0));
@@ -1231,6 +1274,18 @@ struct Frame FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>> *state() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>> *>(VT_STATE);
   }
+  bitdrift_public::fbs::issue_reporting::v1::FrameStatus frame_status() const {
+    return static_cast<bitdrift_public::fbs::issue_reporting::v1::FrameStatus>(GetField<int8_t>(VT_FRAME_STATUS, 0));
+  }
+  uint64_t original_index() const {
+    return GetField<uint64_t>(VT_ORIGINAL_INDEX, 0);
+  }
+  bool in_app() const {
+    return GetField<uint8_t>(VT_IN_APP, 0) != 0;
+  }
+  const ::flatbuffers::String *symbolicated_name() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_SYMBOLICATED_NAME);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_TYPE, 1) &&
@@ -1250,6 +1305,11 @@ struct Frame FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyOffset(verifier, VT_STATE) &&
            verifier.VerifyVector(state()) &&
            verifier.VerifyVectorOfStrings(state()) &&
+           VerifyField<int8_t>(verifier, VT_FRAME_STATUS, 1) &&
+           VerifyField<uint64_t>(verifier, VT_ORIGINAL_INDEX, 8) &&
+           VerifyField<uint8_t>(verifier, VT_IN_APP, 1) &&
+           VerifyOffset(verifier, VT_SYMBOLICATED_NAME) &&
+           verifier.VerifyString(symbolicated_name()) &&
            verifier.EndTable();
   }
 };
@@ -1285,6 +1345,18 @@ struct FrameBuilder {
   void add_state(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> state) {
     fbb_.AddOffset(Frame::VT_STATE, state);
   }
+  void add_frame_status(bitdrift_public::fbs::issue_reporting::v1::FrameStatus frame_status) {
+    fbb_.AddElement<int8_t>(Frame::VT_FRAME_STATUS, static_cast<int8_t>(frame_status), 0);
+  }
+  void add_original_index(uint64_t original_index) {
+    fbb_.AddElement<uint64_t>(Frame::VT_ORIGINAL_INDEX, original_index, 0);
+  }
+  void add_in_app(bool in_app) {
+    fbb_.AddElement<uint8_t>(Frame::VT_IN_APP, static_cast<uint8_t>(in_app), 0);
+  }
+  void add_symbolicated_name(::flatbuffers::Offset<::flatbuffers::String> symbolicated_name) {
+    fbb_.AddOffset(Frame::VT_SYMBOLICATED_NAME, symbolicated_name);
+  }
   explicit FrameBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1306,16 +1378,24 @@ inline ::flatbuffers::Offset<Frame> CreateFrame(
     uint64_t frame_address = 0,
     uint64_t symbol_address = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CPURegister>>> registers = 0,
-    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> state = 0) {
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> state = 0,
+    bitdrift_public::fbs::issue_reporting::v1::FrameStatus frame_status = bitdrift_public::fbs::issue_reporting::v1::FrameStatus_Missing,
+    uint64_t original_index = 0,
+    bool in_app = false,
+    ::flatbuffers::Offset<::flatbuffers::String> symbolicated_name = 0) {
   FrameBuilder builder_(_fbb);
+  builder_.add_original_index(original_index);
   builder_.add_symbol_address(symbol_address);
   builder_.add_frame_address(frame_address);
+  builder_.add_symbolicated_name(symbolicated_name);
   builder_.add_state(state);
   builder_.add_registers(registers);
   builder_.add_image_id(image_id);
   builder_.add_source_file(source_file);
   builder_.add_symbol_name(symbol_name);
   builder_.add_class_name(class_name);
+  builder_.add_in_app(in_app);
+  builder_.add_frame_status(frame_status);
   builder_.add_type(type);
   return builder_.Finish();
 }
@@ -1330,12 +1410,17 @@ inline ::flatbuffers::Offset<Frame> CreateFrameDirect(
     uint64_t frame_address = 0,
     uint64_t symbol_address = 0,
     const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CPURegister>> *registers = nullptr,
-    const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *state = nullptr) {
+    const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *state = nullptr,
+    bitdrift_public::fbs::issue_reporting::v1::FrameStatus frame_status = bitdrift_public::fbs::issue_reporting::v1::FrameStatus_Missing,
+    uint64_t original_index = 0,
+    bool in_app = false,
+    const char *symbolicated_name = nullptr) {
   auto class_name__ = class_name ? _fbb.CreateString(class_name) : 0;
   auto symbol_name__ = symbol_name ? _fbb.CreateString(symbol_name) : 0;
   auto image_id__ = image_id ? _fbb.CreateString(image_id) : 0;
   auto registers__ = registers ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CPURegister>>(*registers) : 0;
   auto state__ = state ? _fbb.CreateVector<::flatbuffers::Offset<::flatbuffers::String>>(*state) : 0;
+  auto symbolicated_name__ = symbolicated_name ? _fbb.CreateString(symbolicated_name) : 0;
   return bitdrift_public::fbs::issue_reporting::v1::CreateFrame(
       _fbb,
       type,
@@ -1346,7 +1431,11 @@ inline ::flatbuffers::Offset<Frame> CreateFrameDirect(
       frame_address,
       symbol_address,
       registers__,
-      state__);
+      state__,
+      frame_status,
+      original_index,
+      in_app,
+      symbolicated_name__);
 }
 
 struct Thread FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -2107,6 +2196,30 @@ inline const ::flatbuffers::TypeTable *RotationTypeTable() {
   return &tt;
 }
 
+inline const ::flatbuffers::TypeTable *FrameStatusTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 }
+  };
+  static const ::flatbuffers::TypeFunction type_refs[] = {
+    bitdrift_public::fbs::issue_reporting::v1::FrameStatusTypeTable
+  };
+  static const char * const names[] = {
+    "Missing",
+    "Symbolicated",
+    "MissingSymbol",
+    "UnknownImage",
+    "Malformed"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_ENUM, 5, type_codes, type_refs, nullptr, nullptr, names
+  };
+  return &tt;
+}
+
 inline const ::flatbuffers::TypeTable *TimestampTypeTable() {
   static const ::flatbuffers::TypeCode type_codes[] = {
     { ::flatbuffers::ET_ULONG, 0, -1 },
@@ -2322,12 +2435,17 @@ inline const ::flatbuffers::TypeTable *FrameTypeTable() {
     { ::flatbuffers::ET_ULONG, 0, -1 },
     { ::flatbuffers::ET_ULONG, 0, -1 },
     { ::flatbuffers::ET_SEQUENCE, 1, 2 },
-    { ::flatbuffers::ET_STRING, 1, -1 }
+    { ::flatbuffers::ET_STRING, 1, -1 },
+    { ::flatbuffers::ET_CHAR, 0, 3 },
+    { ::flatbuffers::ET_ULONG, 0, -1 },
+    { ::flatbuffers::ET_BOOL, 0, -1 },
+    { ::flatbuffers::ET_STRING, 0, -1 }
   };
   static const ::flatbuffers::TypeFunction type_refs[] = {
     bitdrift_public::fbs::issue_reporting::v1::FrameTypeTypeTable,
     bitdrift_public::fbs::issue_reporting::v1::SourceFileTypeTable,
-    bitdrift_public::fbs::issue_reporting::v1::CPURegisterTypeTable
+    bitdrift_public::fbs::issue_reporting::v1::CPURegisterTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::FrameStatusTypeTable
   };
   static const char * const names[] = {
     "type",
@@ -2338,10 +2456,14 @@ inline const ::flatbuffers::TypeTable *FrameTypeTable() {
     "frame_address",
     "symbol_address",
     "registers",
-    "state"
+    "state",
+    "frame_status",
+    "original_index",
+    "in_app",
+    "symbolicated_name"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_TABLE, 9, type_codes, type_refs, nullptr, nullptr, names
+    ::flatbuffers::ST_TABLE, 13, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
