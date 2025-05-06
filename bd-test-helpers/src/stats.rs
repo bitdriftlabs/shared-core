@@ -16,6 +16,9 @@ macro_rules! float_eq {
   ($rhs:expr, $lhs:expr) => {
     ($rhs - $lhs).abs() < f64::EPSILON
   };
+  ($rhs:expr, $lhs:expr, $type:ident) => {
+    ($rhs - $lhs).abs() < $type::EPSILON
+  };
 }
 
 /// Counts the total number of stats present in the list of metric families.

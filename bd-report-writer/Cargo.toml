@@ -1,0 +1,14 @@
+[package]
+edition      = "2021"
+name         = "bd-report-writer"
+version      = "1.0.0"
+license-file = "../LICENSE"
+publish      = false
+
+[dependencies]
+flatbuffers.workspace = true
+bd-proto.path = "../bd-proto"
+
+[build-dependencies]
+flatc-rust.workspace = true
+cbindgen.workspace = true
