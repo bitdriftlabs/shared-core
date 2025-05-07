@@ -150,3 +150,7 @@ uuid              = { version = "1.16.0", features = ["v4"] }
 
 [profile.bench]
 debug = true
+
+[profile.release]
+debug = false
+lto = true
