@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::stats;
+use bd_stats_common::NameType;
 use bd_time::TimeDurationExt;
 use prometheus::proto::{Counter, Gauge, Histogram, Metric};
 use std::collections::HashMap;
@@ -221,15 +222,15 @@ pub enum FakeMetricData {
 //
 
 pub struct FakeMetric {
-  pub name: String,
+  pub name: NameType,
   pub tags: HashMap<String, String>,
   pub metric: FakeMetricData,
 }
 
 impl FakeMetric {
-  fn new(name: &str, tags: Vec<(&str, &str)>, metric: FakeMetricData) -> Self {
+  fn new(name: NameType, tags: Vec<(&str, &str)>, metric: FakeMetricData) -> Self {
     Self {
-      name: name.to_string(),
+      name,
       tags: tags
         .into_iter()
         .map(|(key, value)| (key.to_string(), value.to_string()))
@@ -259,12 +260,12 @@ pub fn assert_histogram(histogram: &Histogram, count: u64, sum: f64, buckets: &[
 
 // Create a fake histogram.
 #[must_use]
-pub fn fake_histogram(name: &str, tags: Vec<(&str, &str)>, samples: Vec<f64>) -> FakeMetric {
+pub fn fake_histogram(name: NameType, tags: Vec<(&str, &str)>, samples: Vec<f64>) -> FakeMetric {
   FakeMetric::new(name, tags, FakeMetricData::Histogram(samples))
 }
 
 // Create a fake counter.
 #[must_use]
-pub fn fake_counter(name: &str, tags: Vec<(&str, &str)>, delta: u64) -> FakeMetric {
+pub fn fake_counter(name: NameType, tags: Vec<(&str, &str)>, delta: u64) -> FakeMetric {
   FakeMetric::new(name, tags, FakeMetricData::Counter(delta))
 }
