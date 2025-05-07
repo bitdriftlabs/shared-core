@@ -9,7 +9,6 @@ pub mod rate_limit_log;
 
 pub use parking_lot::Mutex as ParkingLotMutex;
 use std::sync::Mutex;
-use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::reload::Handle as ReloadHandle;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -62,11 +61,7 @@ impl SwapLogger {
     let (filter, reload_handle) = tracing_subscriber::reload::Layer::new(filter);
     *Self::get().handle.lock().unwrap() = Some(reload_handle);
 
-    Registry::default()
-      .with(filter)
-      .with(ErrorLayer::default())
-      .with(stderr)
-      .init();
+    Registry::default().with(filter).with(stderr).init();
   }
 
   // Swap in a new logger with the provided RUST_LOG string.
