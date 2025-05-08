@@ -12,7 +12,7 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
 use bd_proto::protos::config::v1::config::buffer_config::BufferSizes;
 use bd_proto::protos::config::v1::config::{buffer_config, BufferConfig, BufferConfigList};
-use bd_stats_common::labels;
+use bd_stats_common::{labels, NameType};
 use std::path::{Path, PathBuf};
 
 fn fake_counter() -> Counter {
@@ -257,10 +257,9 @@ async fn ring_buffer_stats() {
   // Verify that we recorded overwrites in the volatile buffer.
   assert!(
     collector
-      .inner()
       .find_counter(
-        "ring_buffer:volatile_overwrite",
-        labels! { "buffer_id" => "some-buffer" },
+        &NameType::Global("ring_buffer:volatile_overwrite".to_string()),
+        &labels! { "buffer_id" => "some-buffer" },
       )
       .unwrap()
       .get()

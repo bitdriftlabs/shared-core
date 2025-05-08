@@ -11,7 +11,7 @@ mod metrics_test;
 
 use crate::config::{ActionEmitMetric, TagValue};
 use crate::workflow::TriggeredActionEmitSankey;
-use bd_client_stats::DynamicStats;
+use bd_client_stats::Stats;
 use bd_log_primitives::LogRef;
 use bd_matcher::FieldProvider;
 use std::borrow::Cow;
@@ -23,14 +23,13 @@ use std::sync::Arc;
 //
 
 // Responsible for emitting statistics related to workflow action metrics.
-#[derive(Debug)]
 pub(crate) struct MetricsCollector {
-  dynamic_stats: Arc<DynamicStats>,
+  stats: Arc<Stats>,
 }
 
 impl MetricsCollector {
-  pub(crate) const fn new(dynamic_stats: Arc<DynamicStats>) -> Self {
-    Self { dynamic_stats }
+  pub(crate) const fn new(stats: Arc<Stats>) -> Self {
+    Self { stats }
   }
 
   pub(crate) fn emit_metrics(&self, actions: &BTreeSet<&ActionEmitMetric>, log: &LogRef<'_>) {
@@ -42,8 +41,7 @@ impl MetricsCollector {
     // If `counter_increment` values are identical, consider deduping metrics even if their
     // `counter_increment` fields have different values.
     for action in actions {
-      let mut tags = Self::extract_tags(log, &action.tags);
-      tags.insert("_id".to_string(), action.id.clone());
+      let tags = Self::extract_tags(log, &action.tags);
 
       #[allow(clippy::cast_precision_loss)]
       let maybe_value: anyhow::Result<f64> = match &action.increment {
@@ -69,14 +67,12 @@ impl MetricsCollector {
         crate::config::MetricType::Counter => {
           #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
           self
-            .dynamic_stats
-            .record_dynamic_counter("workflows_dyn:action", tags, value as u64);
+            .stats
+            .record_dynamic_counter(tags, &action.id, value as u64);
         },
         crate::config::MetricType::Histogram => {
           log::debug!("recording histogram value: {value}");
-          self
-            .dynamic_stats
-            .record_dynamic_histogram("workflows_dyn:histogram", tags, value);
+          self.stats.record_dynamic_histogram(tags, &action.id, value);
         },
       }
     }
@@ -89,12 +85,11 @@ impl MetricsCollector {
   ) {
     for action in actions {
       let mut tags = Self::extract_tags(log, action.action.tags());
-      tags.insert("_id".to_string(), action.action.id().to_string());
       tags.insert("_path_id".to_string(), action.path.path_id.to_string());
 
       self
-        .dynamic_stats
-        .record_dynamic_counter("workflows_dyn:action", tags, 1);
+        .stats
+        .record_dynamic_counter(tags, action.action.id(), 1);
     }
   }
 

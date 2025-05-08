@@ -13,14 +13,14 @@ use crate::file_manager::{
   STATS_DIRECTORY,
 };
 use crate::test::TestTicker;
-use crate::{DynamicStats, Stats};
+use crate::Stats;
 use anyhow::anyhow;
 use assert_matches::assert_matches;
 use async_trait::async_trait;
 use bd_api::upload::{Tracked, UploadResponse};
 use bd_api::DataUpload;
 use bd_client_common::file::write_compressed_protobuf;
-use bd_client_stats_store::{make_sketch, Collector};
+use bd_client_stats_store::Collector;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{
   Aggregated,
   Occurred_at,
@@ -28,15 +28,15 @@ use bd_proto::protos::client::api::stats_upload_request::snapshot::{
 };
 use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapshot;
 use bd_proto::protos::client::api::StatsUploadRequest;
-use bd_proto::protos::client::metric::metric::Data as MetricData;
+use bd_proto::protos::client::metric::metric::{Data as MetricData, Metric_name_type};
 use bd_proto::protos::client::metric::pending_aggregation_index::PendingFile;
 use bd_proto::protos::client::metric::{Counter, Metric, MetricsList, PendingAggregationIndex};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
-use bd_test_helpers::float_eq;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
-use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeProvider, TimestampExt};
+use bd_test_helpers::stats::StatsRequestHelper;
+use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeProvider};
 use futures_util::poll;
 use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
@@ -46,7 +46,7 @@ use std::sync::Arc;
 use tempfile::TempDir;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::{Duration, OffsetDateTime};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinError;
 use tokio::time::timeout;
 
@@ -113,7 +113,6 @@ impl Default for TestHooks {
 
 struct Setup {
   stats: Arc<Stats>,
-  dynamic_stats: Arc<DynamicStats>,
   _directory: TempDir,
   shutdown_trigger: ComponentShutdownTrigger,
   _runtime_loader: Arc<ConfigLoader>,
@@ -127,19 +126,18 @@ struct Setup {
 
 impl Setup {
   fn new() -> Self {
-    Self::new_with_filesystem(Box::new(TestFileSystem::new()), None)
+    Self::new_with_filesystem(Box::new(TestFileSystem::new()), None, 500)
   }
 
   fn new_with_directory(directory: TempDir) -> Self {
     Self::new_with_filesystem(
       Box::new(RealFileSystem::new(directory.path().to_path_buf())),
       Some(directory),
+      500,
     )
   }
-}
 
-impl Setup {
-  fn new_with_filesystem(fs: Box<dyn FileSystem>, directory: Option<TempDir>) -> Self {
+  fn new_with_filesystem(fs: Box<dyn FileSystem>, directory: Option<TempDir>, limit: u32) -> Self {
     let directory = directory.unwrap_or_else(|| TempDir::new().unwrap());
     let test_time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
     let shutdown_trigger = ComponentShutdownTrigger::default();
@@ -149,11 +147,7 @@ impl Setup {
       ValueKind::Int(2),
     )]));
 
-    let dynamic_stats = Arc::new(DynamicStats::new(
-      &Collector::default().scope(""),
-      &runtime_loader,
-    ));
-    let stats = Stats::new(Collector::default(), dynamic_stats.clone());
+    let stats = Stats::new(Collector::new(Some(watch::channel(limit).1)));
     let (data_tx, data_rx) = mpsc::channel(1);
     let (flush_tick_tx, flush_ticker) = TestTicker::new();
     let (upload_tick_tx, upload_ticker) = TestTicker::new();
@@ -173,7 +167,6 @@ impl Setup {
     Self {
       test_time,
       stats,
-      dynamic_stats,
       _directory: directory,
       shutdown_trigger,
       _runtime_loader: runtime_loader,
@@ -203,7 +196,7 @@ impl Setup {
   async fn with_next_stats_upload_with_result(
     &mut self,
     upload_ok: bool,
-    f: impl FnOnce(StatRequestHelper),
+    f: impl FnOnce(StatsRequestHelper),
   ) {
     // In order for the tests to be deterministic we have to do this dance carefully to make sure
     // that the events are fully complete before continuing. This is the basic sequence. Some tests
@@ -212,7 +205,7 @@ impl Setup {
 
     self.upload_tick_tx.send(()).await.unwrap();
     let stats = self.next_stat_upload().await;
-    f(StatRequestHelper::new(stats.payload.clone()));
+    f(StatsRequestHelper::new(stats.payload.clone()));
 
     stats
       .response_tx
@@ -224,7 +217,7 @@ impl Setup {
     self.test_hooks.upload_complete_rx.recv().await.unwrap();
   }
 
-  async fn with_next_stats_upload(&mut self, f: impl FnOnce(StatRequestHelper)) {
+  async fn with_next_stats_upload(&mut self, f: impl FnOnce(StatsRequestHelper)) {
     self.with_next_stats_upload_with_result(true, f).await;
   }
 
@@ -301,6 +294,70 @@ impl TestFileSystem {
   fn path_as_str(path: impl AsRef<Path>) -> String {
     path.as_ref().as_os_str().to_str().unwrap().to_string()
   }
+}
+
+#[tokio::test(start_paused = true)]
+async fn overflow() {
+  let mut setup = Setup::new_with_filesystem(Box::new(TestFileSystem::new()), None, 1);
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "bar"), "id1", 1);
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "bar"), "id1", 2);
+  // Overflow 1 for id1.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "baz"), "id1", 2);
+  // Overflow 2 for id1.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "baz"), "id1", 3);
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "baz"), "id2", 10);
+  setup.do_flush().await;
+
+  // This will cause the unused metrics to get freed from RAM.
+  setup.do_flush().await;
+
+  // Make sure we don't overflow when we merge into the disk snapshot and upload and also make sure
+  // we add up all of the overflows properly.
+
+  // This will go into RAM, but overflow when inserted into the disk snapshot, so #3.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "blah"), "id1", 100);
+  // Overflow 4 for id1.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "blah2"), "id1", 100);
+  // This will go into RAM, but overflow when inserted into the disk snapshot, so #1 for id2.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "blah"), "id2", 100);
+  // Overflow 2 for id2.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "blah2"), "id2", 100);
+  setup
+    .with_next_stats_upload(|upload| {
+      assert_eq!(upload.overflows().len(), 2);
+      assert_eq!(upload.overflows()["id1"], 4);
+      assert_eq!(upload.overflows()["id2"], 2);
+      assert_eq!(
+        upload.get_workflow_counter("id1", labels!("foo" => "bar")),
+        Some(3)
+      );
+      assert_eq!(
+        upload.get_workflow_counter("id2", labels!("foo" => "baz")),
+        Some(10)
+      );
+    })
+    .await;
+
+  setup.shutdown().await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -424,7 +481,7 @@ async fn max_files_upload_race() {
   // Since we have a "too old" snapshot sitting around, it should get sent immediately.
   let stats = setup.next_stat_upload().await;
   assert_eq!(
-    StatRequestHelper::new(stats.payload).get_counter("test:test", labels! {}),
+    StatsRequestHelper::new(stats.payload).get_counter("test:test", labels! {}),
     Some(10)
   );
 
@@ -631,7 +688,7 @@ async fn existing_aggregated_file() {
   let snapshot = StatsSnapshot {
     snapshot_type: Some(Snapshot_type::Metrics(MetricsList {
       metric: vec![Metric {
-        name: "test:blah".to_string(),
+        metric_name_type: Some(Metric_name_type::Name("test:blah".to_string())),
         tags: HashMap::new(),
         data: Some(MetricData::Counter(Counter {
           value: 1,
@@ -860,12 +917,12 @@ async fn histograms() {
 async fn dynamic_stats() {
   let mut setup = Setup::new();
 
-  setup.dynamic_stats.record_dynamic_counter(
-    "foo",
+  setup.stats.record_dynamic_counter(
     BTreeMap::from([
       ("k1".to_string(), "v1".to_string()),
       ("k2".to_string(), "v2".to_string()),
     ]),
+    "id",
     5,
   );
 
@@ -873,38 +930,38 @@ async fn dynamic_stats() {
     .with_next_stats_upload(|upload| {
       assert_eq!(upload.number_of_metrics(), 1);
       assert_eq!(
-        upload.get_counter("foo", labels! { "k1" => "v1", "k2" => "v2"}),
+        upload.get_workflow_counter("id", labels! { "k1" => "v1", "k2" => "v2"}),
         Some(5)
       );
     })
     .await;
 
   // Record the same metric multiple times between a flush interval.
-  setup.dynamic_stats.record_dynamic_counter(
-    "foo",
+  setup.stats.record_dynamic_counter(
     BTreeMap::from([
       ("k1".to_string(), "v1".to_string()),
       ("k2".to_string(), "v2".to_string()),
     ]),
+    "id",
     3,
   );
 
-  setup.dynamic_stats.record_dynamic_counter(
-    "foo",
+  setup.stats.record_dynamic_counter(
     BTreeMap::from([
       ("k1".to_string(), "v1".to_string()),
       ("k2".to_string(), "v2".to_string()),
     ]),
+    "id",
     4,
   );
 
   // Record a similar metric to ensure that we properly disambiguate metrics by tag values.
-  setup.dynamic_stats.record_dynamic_counter(
-    "foo",
+  setup.stats.record_dynamic_counter(
     BTreeMap::from([
       ("k1".to_string(), "v1".to_string()),
       ("k2".to_string(), "foo".to_string()),
     ]),
+    "id",
     3,
   );
 
@@ -912,23 +969,23 @@ async fn dynamic_stats() {
     .with_next_stats_upload(|upload| {
       assert_eq!(upload.number_of_metrics(), 3);
       assert_eq!(
-        upload.get_counter("foo", labels! { "k1" => "v1", "k2" => "v2"}),
+        upload.get_workflow_counter("id", labels! { "k1" => "v1", "k2" => "v2"}),
         Some(7)
       );
       assert_eq!(
-        upload.get_counter("foo", labels! { "k1" => "v1", "k2" => "foo"}),
+        upload.get_workflow_counter("id", labels! { "k1" => "v1", "k2" => "foo"}),
         Some(3)
       );
     })
     .await;
 
   // During this cycle only record one of the metrics, the other should be dropped.
-  setup.dynamic_stats.record_dynamic_counter(
-    "foo",
+  setup.stats.record_dynamic_counter(
     BTreeMap::from([
       ("k1".to_string(), "v1".to_string()),
       ("k2".to_string(), "foo".to_string()),
     ]),
+    "id",
     5,
   );
 
@@ -936,113 +993,11 @@ async fn dynamic_stats() {
     .with_next_stats_upload(|upload| {
       assert_eq!(upload.number_of_metrics(), 2);
       assert_eq!(
-        upload.get_counter("foo", labels! { "k1" => "v1", "k2" => "foo"}),
+        upload.get_workflow_counter("id", labels! { "k1" => "v1", "k2" => "foo"}),
         Some(5)
       );
     })
     .await;
 
   setup.shutdown().await.unwrap();
-}
-
-#[derive(Debug)]
-struct StatRequestHelper {
-  request: StatsUploadRequest,
-}
-
-impl StatRequestHelper {
-  fn new(request: StatsUploadRequest) -> Self {
-    for snapshot in &request.snapshot {
-      assert_matches!(snapshot.occurred_at, Some(Occurred_at::Aggregated(_)));
-    }
-    Self { request }
-  }
-
-  fn aggregation_window_start(&self) -> OffsetDateTime {
-    assert_eq!(self.request.snapshot.len(), 1);
-    assert_matches!(
-      &self.request.snapshot[0].occurred_at,
-      Some(Occurred_at::Aggregated(Aggregated {
-        period_start,
-        ..
-      })) => period_start.to_offset_date_time()
-    )
-  }
-
-  fn aggregation_window_end(&self) -> OffsetDateTime {
-    assert_eq!(self.request.snapshot.len(), 1);
-    assert_matches!(
-      &self.request.snapshot[0].occurred_at,
-      Some(Occurred_at::Aggregated(Aggregated {
-        period_end,
-        ..
-      })) => period_end.to_offset_date_time()
-    )
-  }
-
-  fn number_of_metrics(&self) -> usize {
-    assert!(self.request.snapshot.len() <= 1);
-    if self.request.snapshot.is_empty() {
-      return 0;
-    }
-
-    self.request.snapshot[0].metrics().metric.len()
-  }
-
-  fn get_counter(&self, name: &str, fields: BTreeMap<&str, &str>) -> Option<u64> {
-    self.get_metric(name, fields).map(|c| c.counter().value)
-  }
-
-  #[allow(clippy::float_cmp, clippy::cast_precision_loss)]
-  fn expect_ddsketch_histogram(
-    &self,
-    name: &str,
-    fields: BTreeMap<&str, &str>,
-    sum: f64,
-    count: u64,
-  ) {
-    let histogram = self
-      .get_metric(name, fields)
-      .and_then(|c| c.has_ddsketch_histogram().then(|| c.ddsketch_histogram()))
-      .expect("missing histogram");
-
-    let mut sketch = make_sketch();
-    sketch.decode_and_merge_with(&histogram.serialized).unwrap();
-    assert_eq!(sketch.get_count(), count as f64);
-    assert!(
-      float_eq!(sketch.get_sum().unwrap(), sum),
-      "sum: {}, sketch sum: {}",
-      sum,
-      sketch.get_sum().unwrap()
-    );
-
-    // TODO(mattklein123): Add verification for the actual quantiles?
-  }
-
-  fn expect_inline_histogram(&self, name: &str, fields: BTreeMap<&str, &str>, values: &[f64]) {
-    let histogram = self
-      .get_metric(name, fields)
-      .and_then(|c| {
-        c.has_inline_histogram_values()
-          .then(|| c.inline_histogram_values())
-      })
-      .expect("missing histogram");
-
-    assert_eq!(histogram.values, values);
-  }
-
-  #[allow(clippy::needless_pass_by_value)]
-  fn get_metric(&self, name: &str, fields: BTreeMap<&str, &str>) -> Option<&Metric> {
-    assert_eq!(self.request.snapshot.len(), 1);
-    let fields_str = fields
-      .iter()
-      .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
-      .collect();
-
-    self.request.snapshot[0]
-      .metrics()
-      .metric
-      .iter()
-      .find(|metric| metric.name == name && metric.tags == fields_str)
-  }
 }

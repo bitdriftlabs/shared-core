@@ -13,21 +13,14 @@ use crate::stats::Flusher;
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
-use bd_client_stats_store::{
-  BoundedCollector,
-  BoundedScope,
-  Collector,
-  Counter,
-  Error as StatsError,
-  Scope,
-};
+use bd_client_stats_store::{Collector, Error as StatsError};
 use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;
 use bd_time::SystemTimeProvider;
 use file_manager::{FileManager, RealFileSystem};
+use parking_lot::Mutex;
 use stats::Ticker;
-use std::collections::BTreeMap;
-use std::fmt::Formatter;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
@@ -89,99 +82,21 @@ impl FlushTrigger {
 }
 
 //
-// DynamicStats
-//
-
-/// Manages caching dynamic stat handles in a way that avoids having to know the stat name
-/// statically. This is helpful to support stats that are dynamically created as part of
-/// remote configuration.
-pub struct DynamicStats {
-  dynamic_collector: BoundedCollector,
-  dynamic_scope: BoundedScope,
-  dynamic_stats_overflow: Counter,
-}
-
-impl std::fmt::Debug for DynamicStats {
-  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("DynamicStats").finish()
-  }
-}
-
-impl DynamicStats {
-  pub fn new(stats: &Scope, runtime: &bd_runtime::runtime::ConfigLoader) -> Self {
-    let dynamic_stats_overflow = stats.scope("stats").counter("dynamic_stats_overflow");
-
-    let max_dynamic_stats =
-      bd_runtime::runtime::stats::MaxDynamicCountersFlag::register(runtime).unwrap();
-    let dynamic_collector = BoundedCollector::new(Some(max_dynamic_stats.into_inner()));
-    let dynamic_scope = dynamic_collector.scope("");
-
-    Self {
-      dynamic_collector,
-      dynamic_scope,
-      dynamic_stats_overflow,
-    }
-  }
-
-  #[must_use]
-  pub const fn collector_for_test(&self) -> &BoundedCollector {
-    &self.dynamic_collector
-  }
-
-  pub fn record_dynamic_counter(&self, name: &str, tags: BTreeMap<String, String>, value: u64) {
-    match self.dynamic_scope.counter_with_labels(name, tags) {
-      Ok(counter) => counter.inc_by(value),
-      Err(StatsError::ChangedType) => {
-        handle_unexpected::<(), anyhow::Error>(
-          Err(anyhow!("change in dynamic metric type")),
-          "dynamic counter type change",
-        );
-      },
-      Err(StatsError::Overflow) => {
-        log::debug!("dynamic metrics overflow");
-        self.dynamic_stats_overflow.inc();
-      },
-    }
-  }
-
-  pub fn record_dynamic_histogram(&self, name: &str, tags: BTreeMap<String, String>, value: f64) {
-    match self.dynamic_scope.histogram_with_labels(name, tags) {
-      Ok(histogram) => histogram.observe(value),
-      Err(StatsError::ChangedType) => {
-        handle_unexpected::<(), anyhow::Error>(
-          Err(anyhow!("change in dynamic metric type")),
-          "dynamic histogram type change",
-        );
-      },
-      Err(StatsError::Overflow) => {
-        log::debug!("dynamic metrics overflow");
-        self.dynamic_stats_overflow.inc();
-      },
-    }
-  }
-}
-
-//
 // Stats
 //
 
 pub struct Stats {
   collector: Collector,
-  dynamic_stats: Arc<DynamicStats>,
+  overflows: Mutex<HashMap<String, u64>>,
 }
 
 impl Stats {
   #[must_use]
-  pub fn new(collector: Collector, dynamic_stats: Arc<DynamicStats>) -> Arc<Self> {
+  pub fn new(collector: Collector) -> Arc<Self> {
     Arc::new(Self {
       collector,
-      dynamic_stats,
+      overflows: Mutex::default(),
     })
-  }
-
-  #[must_use]
-  pub fn scope(&self, name: &str) -> Scope {
-    self.collector.scope(name)
   }
 
   /// Creates a flush handle that can be used to periodically flush the stats store.
@@ -231,5 +146,49 @@ impl Stats {
       ),
       flush_trigger,
     }
+  }
+
+  fn handle_overflow(&self, id: &str) {
+    log::debug!("dynamic metrics overflow");
+    self
+      .overflows
+      .lock()
+      .entry(id.to_string())
+      .and_modify(|e| *e += 1)
+      .or_insert(1);
+  }
+
+  pub fn record_dynamic_counter(&self, tags: BTreeMap<String, String>, id: &str, value: u64) {
+    match self.collector.dynamic_counter(tags, id) {
+      Ok(counter) => counter.inc_by(value),
+      Err(StatsError::ChangedType) => {
+        handle_unexpected::<(), anyhow::Error>(
+          Err(anyhow!("change in dynamic metric type")),
+          "dynamic counter type change",
+        );
+      },
+      Err(StatsError::Overflow) => {
+        self.handle_overflow(id);
+      },
+    }
+  }
+
+  pub fn record_dynamic_histogram(&self, tags: BTreeMap<String, String>, id: &str, value: f64) {
+    match self.collector.dynamic_histogram(tags, id) {
+      Ok(histogram) => histogram.observe(value),
+      Err(StatsError::ChangedType) => {
+        handle_unexpected::<(), anyhow::Error>(
+          Err(anyhow!("change in dynamic metric type")),
+          "dynamic histogram type change",
+        );
+      },
+      Err(StatsError::Overflow) => {
+        self.handle_overflow(id);
+      },
+    }
+  }
+
+  pub fn limit(&self) -> Option<u32> {
+    self.collector.limit()
   }
 }

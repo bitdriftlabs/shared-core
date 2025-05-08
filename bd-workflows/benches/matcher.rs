@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_api::DataUpload;
-use bd_client_stats::DynamicStats;
+use bd_client_stats::Stats;
 use bd_client_stats_store::Collector;
 use bd_log_primitives::{log_level, FieldsRef, LogFields, LogRef, LogType};
 use bd_proto::protos::workflow::workflow::Workflow;
@@ -17,7 +17,6 @@ use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 use std::collections::BTreeSet;
 use std::future::Future;
-use std::sync::Arc;
 use time::OffsetDateTime;
 
 struct Setup {
@@ -40,13 +39,14 @@ impl Setup {
 
   async fn new_engine(&self, workflows: Vec<Workflow>) -> WorkflowsEngine {
     let config_loader = &ConfigLoader::new(self.tmp_dir.path());
-    let scope = &Collector::default().scope("test");
+    let collector = Collector::default();
+    let scope = &collector.scope("test");
     let (mut engine, _) = WorkflowsEngine::new(
       scope,
       self.tmp_dir.path(),
       config_loader,
       self.data_upload_tx.clone(),
-      Arc::new(DynamicStats::new(scope, config_loader)),
+      Stats::new(collector),
     );
     assert!(!workflows.is_empty());
 

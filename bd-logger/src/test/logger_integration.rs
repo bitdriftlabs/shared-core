@@ -855,12 +855,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   setup.flush_and_upload_stats();
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
-    stat_upload.get_counter(
-      "workflows_dyn:action",
-      labels! {
-        "_id" => "insight_action_id",
-      }
-    ),
+    stat_upload.get_workflow_counter("insight_action_id", labels! {}),
     Some(1),
   );
 
@@ -1019,9 +1014,8 @@ fn workflow_generate_log_to_histogram() {
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
     stat_upload.get_inline_histogram(
-      "workflows_dyn:histogram",
+      "foo_id",
       labels! {
-        "_id" => "foo_id",
         "fixed_key" => "fixed_value",
       }
     ),
@@ -1095,10 +1089,9 @@ fn workflow_emit_metric_action_emits_metric() {
   setup.flush_and_upload_stats();
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
-    stat_upload.get_counter(
-      "workflows_dyn:action",
+    stat_upload.get_workflow_counter(
+      "foo_id",
       labels! {
-        "_id" => "foo_id",
         "fixed_key" => "fixed_value",
         "extraction_key_to" => "extracted_value",
       }
@@ -1136,7 +1129,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
       emit_counter "foo";
       value metric_value!(1);
       tags {
-        metric_tag!(fix "fixed_key" => "fixed_value")
+        metric_tag!(extract "extracted" => "extracted")
       }
     )
   );
@@ -1164,10 +1157,20 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
     log_level::DEBUG,
     LogType::Normal,
     "first log".into(),
-    [].into(),
+    [("extracted".into(), AnnotatedLogField::new_custom("hello"))].into(),
     [].into(),
   );
 
+  // Blocked due to cardinality limits on the action ID.
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::Normal,
+    "first log".into(),
+    [("extracted".into(), AnnotatedLogField::new_custom("world"))].into(),
+    [].into(),
+  );
+
+  // Allowed as it is a different action ID.
   setup.blocking_log(
     log_level::DEBUG,
     LogType::Normal,
@@ -1181,25 +1184,27 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
 
   assert_eq!(
-    stat_upload.get_counter(
-      "workflows_dyn:action",
+    stat_upload.get_workflow_counter(
+      "foo",
       labels!(
-        "_id" => "foo",
-        "fixed_key" => "fixed_value",
+        "extracted" => "hello",
       )
     ),
     Some(1)
   );
-
   assert_eq!(
-    stat_upload.get_counter("workflows_dyn:action", labels! { "_id" => "bar" }),
+    stat_upload.get_workflow_counter(
+      "foo",
+      labels!(
+        "extracted" => "world",
+      )
+    ),
     None
   );
 
-  assert_eq!(
-    stat_upload.get_counter("stats:dynamic_stats_overflow", labels!()),
-    Some(1)
-  );
+  assert_eq!(stat_upload.get_workflow_counter("bar", labels! {}), Some(1));
+  assert_eq!(stat_upload.overflows().len(), 1);
+  assert_eq!(stat_upload.overflows()["foo"], 1);
 }
 
 #[test]

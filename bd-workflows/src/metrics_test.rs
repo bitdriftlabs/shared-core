@@ -7,40 +7,18 @@
 
 use super::MetricsCollector;
 use crate::config::{ActionEmitMetric, MetricType, TagValue};
-use bd_client_stats::DynamicStats;
+use bd_client_stats::Stats;
 use bd_client_stats_store::test::StatsHelper;
-use bd_client_stats_store::{BoundedCollector, Collector};
+use bd_client_stats_store::Collector;
 use bd_log_primitives::{log_level, FieldsRef, LogRef, LogType};
-use bd_runtime::runtime::ConfigLoader;
-use bd_stats_common::labels;
+use bd_stats_common::{labels, NameType};
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
-struct Setup {
-  sdk_directory: Arc<tempfile::TempDir>,
-  collector: Collector,
+fn make_metrics_collector() -> (MetricsCollector, Collector) {
+  let collector = Collector::default();
+  let stats = Stats::new(collector.clone());
+  (MetricsCollector::new(stats), collector)
 }
-
-impl Setup {
-  fn new() -> Self {
-    Self {
-      sdk_directory: Arc::new(tempfile::TempDir::with_prefix("bd-metrics_collector").unwrap()),
-      collector: Collector::default(),
-    }
-  }
-
-  fn make_metrics_collector(&self) -> (MetricsCollector, BoundedCollector) {
-    let dynamic_stats = DynamicStats::new(
-      &self.collector.scope(""),
-      &ConfigLoader::new(self.sdk_directory.path()),
-    );
-    let collector = dynamic_stats.collector_for_test().clone();
-
-    let dynamic_stats = Arc::new(dynamic_stats);
-    (MetricsCollector::new(dynamic_stats), collector)
-  }
-}
-
 
 #[test]
 fn metric_increment_value_extraction() {
@@ -48,8 +26,7 @@ fn metric_increment_value_extraction() {
 
   let matching_only_fields = [("m1".into(), "5".into())].into();
 
-  let setup = Setup::new();
-  let (metrics_collector, dynamic_stats_collector) = setup.make_metrics_collector();
+  let (metrics_collector, collector) = make_metrics_collector();
 
   metrics_collector.emit_metrics(
     &[
@@ -101,56 +78,20 @@ fn metric_increment_value_extraction() {
     },
   );
 
-  dynamic_stats_collector.assert_counter_eq(
-    1,
-    "workflows_dyn:action",
-    labels! {
-    "_id" => "action_id_1",
-    },
-  );
-
-  dynamic_stats_collector.assert_counter_eq(
-    10,
-    "workflows_dyn:action",
-    labels! {
-    "_id" => "action_id_2",
-    },
-  );
+  collector.assert_workflow_counter_eq(1, "action_id_1", labels! {});
+  collector.assert_workflow_counter_eq(10, "action_id_2", labels! {});
   // The 1.0 is parsed as a float, then converted to an integer.
-  dynamic_stats_collector.assert_counter_eq(
-    1,
-    "workflows_dyn:action",
-    labels! {
-    "_id" => "action_id_3",
-    },
-  );
+  collector.assert_workflow_counter_eq(1, "action_id_3", labels! {});
 
   // No counter emitted for action_id_4 as the field does not exist.
-  assert!(dynamic_stats_collector
-    .find_counter(
-      "workflows_dyn:action",
-      labels! {
-      "_id" => "action_id_4",
-      },
-    )
+  assert!(collector
+    .find_counter(&NameType::ActionId("action_id_4".to_string()), &labels! {})
     .is_none());
 
   // Values can be extracted from the matching_only_fields.
-  dynamic_stats_collector.assert_counter_eq(
-    5,
-    "workflows_dyn:action",
-    labels! {
-    "_id" => "action_id_5",
-    },
-  );
+  collector.assert_workflow_counter_eq(5, "action_id_5", labels! {});
   // Values can be extracted from the matching_only_fields.
-  dynamic_stats_collector.assert_histogram_observed(
-    5.0,
-    "workflows_dyn:histogram",
-    labels! {
-    "_id" => "action_id_6",
-    },
-  );
+  collector.assert_workflow_histogram_observed(5.0, "action_id_6", labels! {});
 }
 
 #[test]
@@ -159,8 +100,7 @@ fn counter_label_extraction() {
 
   let matching_only_fields = [("m1".into(), "5".into())].into();
 
-  let setup = Setup::new();
-  let (metrics_collector, dynamic_stats_collector) = setup.make_metrics_collector();
+  let (metrics_collector, collector) = make_metrics_collector();
 
   metrics_collector.emit_metrics(
     &[&ActionEmitMetric {
@@ -194,11 +134,10 @@ fn counter_label_extraction() {
     },
   );
 
-  dynamic_stats_collector.assert_counter_eq(
+  collector.assert_workflow_counter_eq(
     1,
-    "workflows_dyn:action",
+    "action_id_1",
     labels! {
-        "_id" => "action_id_1",
         "tag_1" => "foo",
         "tag_2" => "bar",
         "tag_3" => "fixed",

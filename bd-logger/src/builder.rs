@@ -56,7 +56,6 @@ pub struct LoggerBuilder {
   client_stats: bool,
   client_stats_tickers: Option<(Box<dyn Ticker>, Box<dyn Ticker>)>,
   internal_logger: bool,
-  stats_collector: Option<Collector>,
 }
 
 impl LoggerBuilder {
@@ -69,7 +68,6 @@ impl LoggerBuilder {
       client_stats: false,
       client_stats_tickers: None,
       internal_logger: false,
-      stats_collector: None,
     }
   }
 
@@ -100,14 +98,6 @@ impl LoggerBuilder {
     upload_ticker: Box<dyn Ticker>,
   ) -> Self {
     self.client_stats_tickers = Some((flush_ticker, upload_ticker));
-    self
-  }
-
-  /// Provides an explicit stat collector to be used by the logger. If this is not set, the logger
-  /// will manage its own collector.
-  #[must_use]
-  pub fn with_stats_collector(mut self, collector: Collector) -> Self {
-    self.stats_collector = Some(collector);
     self
   }
 
@@ -152,13 +142,16 @@ impl LoggerBuilder {
     let data_upload_ch: ChannelPair<DataUpload> = tokio::sync::mpsc::channel(1).into();
     let runtime_loader = runtime::ConfigLoader::new(&self.params.sdk_directory);
 
-    let collector = self.stats_collector.unwrap_or_default();
+    let max_dynamic_stats =
+      bd_runtime::runtime::stats::MaxDynamicCountersFlag::register(&runtime_loader)
+        .unwrap()
+        .into_inner();
+    let collector = Collector::new(Some(max_dynamic_stats));
 
     let scope = collector.scope("");
-    let dynamic_stats = Arc::new(bd_client_stats::DynamicStats::new(&scope, &runtime_loader));
+    let stats = bd_client_stats::Stats::new(collector);
 
     let (maybe_stats_flusher, maybe_flusher_trigger) = if self.client_stats {
-      let stats = bd_client_stats::Stats::new(collector, dynamic_stats.clone());
       let (flush_ticker, upload_ticker) =
         if let Some((flush_ticker, upload_ticker)) = self.client_stats_tickers {
           (flush_ticker, upload_ticker)
@@ -188,7 +181,7 @@ impl LoggerBuilder {
         &self.params.sdk_directory,
         &runtime_loader,
         scope.clone(),
-        dynamic_stats,
+        stats,
         trigger_upload_tx.clone(),
         data_upload_ch.tx.clone(),
         flush_buffers_tx,

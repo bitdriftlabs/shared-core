@@ -686,11 +686,10 @@ impl ::protobuf::reflect::ProtobufValue for InlineHistogramValues {
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct Metric {
     // message fields
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.Metric.name)
-    pub name: ::std::string::String,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.Metric.tags)
     pub tags: ::std::collections::HashMap<::std::string::String, ::std::string::String>,
     // message oneof groups
+    pub metric_name_type: ::std::option::Option<metric::Metric_name_type>,
     pub data: ::std::option::Option<metric::Data>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.Metric.special_fields)
@@ -706,6 +705,104 @@ impl<'a> ::std::default::Default for &'a Metric {
 impl Metric {
     pub fn new() -> Metric {
         ::std::default::Default::default()
+    }
+
+    // string name = 1;
+
+    pub fn name(&self) -> &str {
+        match self.metric_name_type {
+            ::std::option::Option::Some(metric::Metric_name_type::Name(ref v)) => v,
+            _ => "",
+        }
+    }
+
+    pub fn clear_name(&mut self) {
+        self.metric_name_type = ::std::option::Option::None;
+    }
+
+    pub fn has_name(&self) -> bool {
+        match self.metric_name_type {
+            ::std::option::Option::Some(metric::Metric_name_type::Name(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_name(&mut self, v: ::std::string::String) {
+        self.metric_name_type = ::std::option::Option::Some(metric::Metric_name_type::Name(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_name(&mut self) -> &mut ::std::string::String {
+        if let ::std::option::Option::Some(metric::Metric_name_type::Name(_)) = self.metric_name_type {
+        } else {
+            self.metric_name_type = ::std::option::Option::Some(metric::Metric_name_type::Name(::std::string::String::new()));
+        }
+        match self.metric_name_type {
+            ::std::option::Option::Some(metric::Metric_name_type::Name(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_name(&mut self) -> ::std::string::String {
+        if self.has_name() {
+            match self.metric_name_type.take() {
+                ::std::option::Option::Some(metric::Metric_name_type::Name(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            ::std::string::String::new()
+        }
+    }
+
+    // string metric_id = 7;
+
+    pub fn metric_id(&self) -> &str {
+        match self.metric_name_type {
+            ::std::option::Option::Some(metric::Metric_name_type::MetricId(ref v)) => v,
+            _ => "",
+        }
+    }
+
+    pub fn clear_metric_id(&mut self) {
+        self.metric_name_type = ::std::option::Option::None;
+    }
+
+    pub fn has_metric_id(&self) -> bool {
+        match self.metric_name_type {
+            ::std::option::Option::Some(metric::Metric_name_type::MetricId(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_metric_id(&mut self, v: ::std::string::String) {
+        self.metric_name_type = ::std::option::Option::Some(metric::Metric_name_type::MetricId(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_metric_id(&mut self) -> &mut ::std::string::String {
+        if let ::std::option::Option::Some(metric::Metric_name_type::MetricId(_)) = self.metric_name_type {
+        } else {
+            self.metric_name_type = ::std::option::Option::Some(metric::Metric_name_type::MetricId(::std::string::String::new()));
+        }
+        match self.metric_name_type {
+            ::std::option::Option::Some(metric::Metric_name_type::MetricId(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_metric_id(&mut self) -> ::std::string::String {
+        if self.has_metric_id() {
+            match self.metric_name_type.take() {
+                ::std::option::Option::Some(metric::Metric_name_type::MetricId(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            ::std::string::String::new()
+        }
     }
 
     // .bitdrift_public.protobuf.client.v1.Counter counter = 3;
@@ -856,12 +953,19 @@ impl Metric {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(5);
-        let mut oneofs = ::std::vec::Vec::with_capacity(1);
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+        let mut fields = ::std::vec::Vec::with_capacity(6);
+        let mut oneofs = ::std::vec::Vec::with_capacity(2);
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
             "name",
-            |m: &Metric| { &m.name },
-            |m: &mut Metric| { &mut m.name },
+            Metric::has_name,
+            Metric::name,
+            Metric::set_name,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+            "metric_id",
+            Metric::has_metric_id,
+            Metric::metric_id,
+            Metric::set_metric_id,
         ));
         fields.push(::protobuf::reflect::rt::v2::make_map_simpler_accessor_new::<_, _>(
             "tags",
@@ -889,6 +993,7 @@ impl Metric {
             Metric::mut_inline_histogram_values,
             Metric::set_inline_histogram_values,
         ));
+        oneofs.push(metric::Metric_name_type::generated_oneof_descriptor_data());
         oneofs.push(metric::Data::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Metric>(
             "Metric",
@@ -909,7 +1014,10 @@ impl ::protobuf::Message for Metric {
         while let Some(tag) = is.read_raw_tag_or_eof()? {
             match tag {
                 10 => {
-                    self.name = is.read_string()?;
+                    self.metric_name_type = ::std::option::Option::Some(metric::Metric_name_type::Name(is.read_string()?));
+                },
+                58 => {
+                    self.metric_name_type = ::std::option::Option::Some(metric::Metric_name_type::MetricId(is.read_string()?));
                 },
                 18 => {
                     let len = is.read_raw_varint32()?;
@@ -947,15 +1055,22 @@ impl ::protobuf::Message for Metric {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u64 {
         let mut my_size = 0;
-        if !self.name.is_empty() {
-            my_size += ::protobuf::rt::string_size(1, &self.name);
-        }
         for (k, v) in &self.tags {
             let mut entry_size = 0;
             entry_size += ::protobuf::rt::string_size(1, &k);
             entry_size += ::protobuf::rt::string_size(2, &v);
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(entry_size) + entry_size
         };
+        if let ::std::option::Option::Some(ref v) = self.metric_name_type {
+            match v {
+                &metric::Metric_name_type::Name(ref v) => {
+                    my_size += ::protobuf::rt::string_size(1, &v);
+                },
+                &metric::Metric_name_type::MetricId(ref v) => {
+                    my_size += ::protobuf::rt::string_size(7, &v);
+                },
+            };
+        }
         if let ::std::option::Option::Some(ref v) = self.data {
             match v {
                 &metric::Data::Counter(ref v) => {
@@ -978,9 +1093,6 @@ impl ::protobuf::Message for Metric {
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-        if !self.name.is_empty() {
-            os.write_string(1, &self.name)?;
-        }
         for (k, v) in &self.tags {
             let mut entry_size = 0;
             entry_size += ::protobuf::rt::string_size(1, &k);
@@ -990,6 +1102,16 @@ impl ::protobuf::Message for Metric {
             os.write_string(1, &k)?;
             os.write_string(2, &v)?;
         };
+        if let ::std::option::Option::Some(ref v) = self.metric_name_type {
+            match v {
+                &metric::Metric_name_type::Name(ref v) => {
+                    os.write_string(1, v)?;
+                },
+                &metric::Metric_name_type::MetricId(ref v) => {
+                    os.write_string(7, v)?;
+                },
+            };
+        }
         if let ::std::option::Option::Some(ref v) = self.data {
             match v {
                 &metric::Data::Counter(ref v) => {
@@ -1020,7 +1142,8 @@ impl ::protobuf::Message for Metric {
     }
 
     fn clear(&mut self) {
-        self.name.clear();
+        self.metric_name_type = ::std::option::Option::None;
+        self.metric_name_type = ::std::option::Option::None;
         self.tags.clear();
         self.data = ::std::option::Option::None;
         self.data = ::std::option::Option::None;
@@ -1053,6 +1176,31 @@ impl ::protobuf::reflect::ProtobufValue for Metric {
 
 /// Nested message and enums of message `Metric`
 pub mod metric {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.client.v1.Metric.metric_name_type)
+    pub enum Metric_name_type {
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.Metric.name)
+        Name(::std::string::String),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.Metric.metric_id)
+        MetricId(::std::string::String),
+    }
+
+    impl ::protobuf::Oneof for Metric_name_type {
+    }
+
+    impl ::protobuf::OneofFull for Metric_name_type {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::Metric as ::protobuf::MessageFull>::descriptor().oneof_by_name("metric_name_type").unwrap()).clone()
+        }
+    }
+
+    impl Metric_name_type {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Metric_name_type>("metric_name_type")
+        }
+    }
 
     #[derive(Clone,PartialEq,Debug)]
     // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.client.v1.Metric.data)
@@ -1217,19 +1365,20 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     riodEnd\"%\n\x07Counter\x12\x14\n\x05value\x18\x02\x20\x01(\x04R\x05valu\
     eJ\x04\x08\x01\x10\x02\"3\n\x11DDSketchHistogram\x12\x1e\n\nserialized\
     \x18\x01\x20\x01(\x0cR\nserialized\"/\n\x15InlineHistogramValues\x12\x16\
-    \n\x06values\x18\x01\x20\x03(\x01R\x06values\"\xe1\x03\n\x06Metric\x12\
-    \x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\
-    \x12H\n\x04tags\x18\x02\x20\x03(\x0b24.bitdrift_public.protobuf.client.v\
-    1.Metric.TagsEntryR\x04tags\x12G\n\x07counter\x18\x03\x20\x01(\x0b2+.bit\
-    drift_public.protobuf.client.v1.CounterH\0R\x07counter\x12f\n\x12ddsketc\
-    h_histogram\x18\x05\x20\x01(\x0b25.bitdrift_public.protobuf.client.v1.DD\
-    SketchHistogramH\0R\x11ddsketchHistogram\x12s\n\x17inline_histogram_valu\
-    es\x18\x06\x20\x01(\x0b29.bitdrift_public.protobuf.client.v1.InlineHisto\
-    gramValuesH\0R\x15inlineHistogramValues\x1a7\n\tTagsEntry\x12\x10\n\x03k\
-    ey\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\tR\x05\
-    value:\x028\x01B\x0b\n\x04data\x12\x03\xf8B\x01J\x04\x08\x04\x10\x05\"Q\
-    \n\x0bMetricsList\x12B\n\x06metric\x18\x01\x20\x03(\x0b2*.bitdrift_publi\
-    c.protobuf.client.v1.MetricR\x06metricb\x06proto3\
+    \n\x06values\x18\x01\x20\x03(\x01R\x06values\"\x8d\x04\n\x06Metric\x12\
+    \x14\n\x04name\x18\x01\x20\x01(\tH\0R\x04name\x12\x1d\n\tmetric_id\x18\
+    \x07\x20\x01(\tH\0R\x08metricId\x12H\n\x04tags\x18\x02\x20\x03(\x0b24.bi\
+    tdrift_public.protobuf.client.v1.Metric.TagsEntryR\x04tags\x12G\n\x07cou\
+    nter\x18\x03\x20\x01(\x0b2+.bitdrift_public.protobuf.client.v1.CounterH\
+    \x01R\x07counter\x12f\n\x12ddsketch_histogram\x18\x05\x20\x01(\x0b25.bit\
+    drift_public.protobuf.client.v1.DDSketchHistogramH\x01R\x11ddsketchHisto\
+    gram\x12s\n\x17inline_histogram_values\x18\x06\x20\x01(\x0b29.bitdrift_p\
+    ublic.protobuf.client.v1.InlineHistogramValuesH\x01R\x15inlineHistogramV\
+    alues\x1a7\n\tTagsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\
+    \x14\n\x05value\x18\x02\x20\x01(\tR\x05value:\x028\x01B\x12\n\x10metric_\
+    name_typeB\x0b\n\x04data\x12\x03\xf8B\x01J\x04\x08\x04\x10\x05\"Q\n\x0bM\
+    etricsList\x12B\n\x06metric\x18\x01\x20\x03(\x0b2*.bitdrift_public.proto\
+    buf.client.v1.MetricR\x06metricb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

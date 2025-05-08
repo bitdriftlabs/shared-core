@@ -120,7 +120,7 @@ impl ProcessingPipeline {
         sdk_directory,
         runtime,
         data_upload_tx,
-        stats.dynamic_stats.clone(),
+        stats.stats.clone(),
       );
 
       workflows_engine

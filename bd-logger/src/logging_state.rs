@@ -12,7 +12,7 @@ use crate::pre_config_buffer::{self, PreConfigBuffer};
 use anyhow::anyhow;
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::BuffersWithAck;
-use bd_client_stats::{DynamicStats, FlushTrigger};
+use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::FilterChain;
 use bd_log_primitives::{log_level, LogLevel};
@@ -120,8 +120,8 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
   pub(crate) fn new(
     sdk_directory: &Path,
     runtime: &Arc<ConfigLoader>,
-    stats: Scope,
-    dynamic_stats: Arc<DynamicStats>,
+    scope: Scope,
+    stats: Arc<Stats>,
     trigger_upload_tx: Sender<TriggerUpload>,
     data_upload_tx: Sender<DataUpload>,
     flush_buffers_tx: Sender<BuffersWithAck>,
@@ -136,7 +136,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
       flush_buffers_tx,
       flush_stats_trigger,
       sdk_directory: sdk_directory.to_owned(),
-      stats: UninitializedLoggingContextStats::new(stats, dynamic_stats),
+      stats: UninitializedLoggingContextStats::new(scope, stats),
       runtime: runtime.clone(),
     }
   }
@@ -201,11 +201,11 @@ pub struct UninitializedLoggingContextStats {
   pub(crate) pre_config_log_buffer: pre_config_buffer::PushCounters,
   pub(crate) scope: Scope,
   root_scope: Scope,
-  dynamic_stats: Arc<DynamicStats>,
+  stats: Arc<Stats>,
 }
 
 impl UninitializedLoggingContextStats {
-  fn new(root_scope: Scope, dynamic_stats: Arc<DynamicStats>) -> Self {
+  fn new(root_scope: Scope, stats: Arc<Stats>) -> Self {
     let stats_scope = root_scope.scope("logger");
     let pre_config_buffer_scope = stats_scope.scope("pre_config_log_buffer");
 
@@ -213,7 +213,7 @@ impl UninitializedLoggingContextStats {
       pre_config_log_buffer: pre_config_buffer::PushCounters::new(&pre_config_buffer_scope),
       scope: stats_scope,
       root_scope,
-      dynamic_stats,
+      stats,
     }
   }
 }
@@ -226,7 +226,7 @@ pub struct InitializedLoggingContextStats {
   pub(crate) streamed_logs: Counter,
   pub(crate) trigger_upload_stats: TriggerUploadStats,
   pub(crate) root_scope: Scope,
-  pub(crate) dynamic_stats: Arc<DynamicStats>,
+  pub(crate) stats: Arc<Stats>,
 }
 
 impl InitializedLoggingContextStats {
@@ -236,7 +236,7 @@ impl InitializedLoggingContextStats {
       streamed_logs: stats.scope.counter("streamed_logs"),
       trigger_upload_stats: TriggerUploadStats::new(&stats.scope),
       root_scope: stats.root_scope.clone(),
-      dynamic_stats: stats.dynamic_stats.clone(),
+      stats: stats.stats.clone(),
     }
   }
 }

@@ -9,7 +9,7 @@ mod paths;
 
 use crate::paths::PATHS;
 use bd_client_common::file::read_compressed_protobuf;
-use bd_client_stats::{DynamicStats, Stats};
+use bd_client_stats::Stats;
 use bd_client_stats_store::{Collector, Scope};
 use bd_log_primitives::{log_level, FieldsRef, LogLevel, LogMessage, LogRef};
 use bd_logger::builder::default_stats_flush_triggers;
@@ -97,12 +97,11 @@ impl AnnotatedWorkflowsEngine {
     directory: &Path,
     runtime_loader: &Arc<ConfigLoader>,
     scope: &Scope,
-    dynamic_stats: Arc<DynamicStats>,
+    stats: Arc<Stats>,
   ) -> Self {
     let (data_tx, _data_rx) = tokio::sync::mpsc::channel(1);
 
-    let (mut engine, _) =
-      WorkflowsEngine::new(scope, directory, runtime_loader, data_tx, dynamic_stats);
+    let (mut engine, _) = WorkflowsEngine::new(scope, directory, runtime_loader, data_tx, stats);
 
     let mut workflow_configurations = WorkflowConfigurationsInit::new();
     Self::create_general_health_workflows(&mut workflow_configurations);
@@ -324,8 +323,8 @@ impl AnnotatedWorkflowsEngine {
 struct Setup {
   directory: Arc<tempfile::TempDir>,
   runtime_loader: Arc<ConfigLoader>,
-  dynamic_stats: Arc<DynamicStats>,
   stats: Arc<Stats>,
+  collector: Collector,
 }
 
 impl Setup {
@@ -333,17 +332,14 @@ impl Setup {
     let directory = Arc::new(tempfile::TempDir::with_prefix("stats-benches-").unwrap());
     let runtime_loader = ConfigLoader::new(directory.path());
 
-    let dynamic_stats = Arc::new(DynamicStats::new(
-      &Collector::default().scope("test"),
-      &runtime_loader,
-    ));
-    let stats = Stats::new(Collector::default(), dynamic_stats.clone());
+    let collector = Collector::default();
+    let stats = Stats::new(collector.clone());
 
     Self {
       directory,
       runtime_loader,
-      dynamic_stats,
       stats,
+      collector,
     }
   }
 
@@ -352,8 +348,8 @@ impl Setup {
     AnnotatedWorkflowsEngine::new(
       self.directory.path(),
       &self.runtime_loader,
-      &self.stats.scope(""),
-      self.dynamic_stats.clone(),
+      &self.collector.scope(""),
+      self.stats.clone(),
     )
     .await
   }

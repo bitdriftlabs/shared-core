@@ -12,7 +12,7 @@ use crate::client_config::TailConfigurations;
 use crate::log_replay::{LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
 use bd_api::api::SimpleNetworkQualityProvider;
-use bd_client_stats::{DynamicStats, FlushTrigger};
+use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
 use bd_key_value::Store;
@@ -52,8 +52,8 @@ use tokio_test::assert_ok;
 struct Setup {
   buffer_manager: Arc<bd_buffer::Manager>,
   runtime: Arc<ConfigLoader>,
-  stats: Collector,
-  dynamic_counter_stats: Arc<DynamicStats>,
+  collector: Collector,
+  stats: Arc<Stats>,
   tmp_dir: Arc<tempfile::TempDir>,
 
   replayer_log_count: Arc<AtomicUsize>,
@@ -66,19 +66,19 @@ impl Setup {
   fn new() -> Self {
     let tmp_dir = Arc::new(tempfile::TempDir::with_prefix("root-").unwrap());
     let runtime = &Self::make_runtime(&tmp_dir);
-    let helper = Collector::default();
-    let dynamic_counter_stats = Arc::new(DynamicStats::new(&helper.scope(""), runtime));
+    let collector = Collector::default();
+    let stats = Stats::new(collector.clone());
 
     Self {
       buffer_manager: bd_buffer::Manager::new(
         tmp_dir.path().join("buffer"),
-        &helper.scope(""),
+        &collector.scope(""),
         runtime,
       )
       .0,
       runtime: Self::make_runtime(&tmp_dir),
-      stats: helper,
-      dynamic_counter_stats,
+      collector,
+      stats,
       tmp_dir,
       replayer_log_count: Arc::default(),
       replayer_logs: Arc::default(),
@@ -164,8 +164,8 @@ impl Setup {
     UninitializedLoggingContext::new(
       self.tmp_dir.path(),
       &self.runtime,
-      self.stats.scope(""),
-      self.dynamic_counter_stats.clone(),
+      self.collector.scope(""),
+      self.stats.clone(),
       trigger_upload_tx,
       data_upload_tx,
       flush_buffers_tx,
@@ -601,7 +601,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
 
   task.join().unwrap();
 
-  setup.stats.assert_counter_eq(
+  setup.collector.assert_counter_eq(
     1,
     "workflows:workflows_total",
     labels! { "operation" => "start" },
@@ -624,7 +624,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
 
   task.join().unwrap();
 
-  setup.stats.assert_counter_eq(
+  setup.collector.assert_counter_eq(
     1,
     "workflows:workflows_total",
     labels! {"operation" => "stop"},

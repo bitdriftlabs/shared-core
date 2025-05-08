@@ -5,6 +5,9 @@ version      = "1.0.0"
 license-file = "../LICENSE"
 publish      = false
 
+[lib]
+doctest = false
+
 [dependencies]
 flatbuffers.workspace = true
 bd-proto.path = "../bd-proto"

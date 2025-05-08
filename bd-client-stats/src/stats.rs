@@ -15,17 +15,18 @@ use async_trait::async_trait;
 use bd_api::upload::{TrackedStatsUploadRequest, UploadResponse};
 use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
-use bd_client_stats_store::{BoundedCollector, Histogram, MetricData};
+use bd_client_stats_store::{Collector, Histogram, MetricData, MetricsByName};
 use bd_proto::protos::client::api::stats_upload_request::snapshot::Snapshot_type;
 use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapshot;
 use bd_proto::protos::client::api::StatsUploadRequest;
+use bd_proto::protos::client::metric::metric::Metric_name_type;
 use bd_proto::protos::client::metric::{Metric as ProtoMetric, MetricsList};
 use bd_shutdown::ComponentShutdown;
-use bd_stats_common::Id;
+use bd_stats_common::NameType;
 use bd_time::TimeDurationExt;
 #[cfg(test)]
 use stats_test::{TestHooks, TestHooksReceiver};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use time::Duration;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -181,34 +182,48 @@ impl Flusher {
     // aggregation window.
     log::debug!("starting merge of delta snapshot to disk");
     let mut handle = self.file_manager.get_or_create_snapshot().await?;
-    let mut new_or_existing_snapshot = SnapshotHelper::new(handle.snapshot());
+    let mut new_or_existing_snapshot = SnapshotHelper::new(handle.snapshot(), self.stats.limit());
 
-    for (id, metric) in delta_snapshot.metrics {
-      let Some(cached_metric) = new_or_existing_snapshot.mut_metric(&id) else {
-        log::trace!("adding new metric to snapshot: {id:?}");
-        new_or_existing_snapshot.add_metric(id, metric);
-        continue;
-      };
+    for (name, metrics) in delta_snapshot.metrics {
+      for (labels, metric) in metrics {
+        let Some(cached_metric) = new_or_existing_snapshot.mut_metric(&name, &labels) else {
+          log::trace!("adding new metric to snapshot: {}{labels:?}", name.as_str());
+          new_or_existing_snapshot.add_metric(name.clone(), labels, metric);
+          continue;
+        };
 
-      // If the metric already exists in the cached snapshot, sum the values together.
-      match (&metric, &cached_metric) {
-        (MetricData::Counter(c), MetricData::Counter(cached_counter)) => {
-          log::trace!("merging counter {id:?} with value {}", c.get());
-          cached_counter.inc_by(c.get());
-        },
-        (MetricData::Histogram(h), MetricData::Histogram(cached_histogram)) => {
-          log::trace!("merging histogram {id:?}");
-          cached_histogram.merge_from(h);
-        },
-        _ => {
-          // We don't support metrics changing type ever, so do nothing but record an error so we
-          // know if this happens.
-          bd_client_common::error::handle_unexpected::<(), anyhow::Error>(
-            Err(anyhow::anyhow!("metrics inconsistency")),
-            "stats merging",
-          );
-        },
+        // If the metric already exists in the cached snapshot, sum the values together.
+        match (&metric, &cached_metric) {
+          (MetricData::Counter(c), MetricData::Counter(cached_counter)) => {
+            log::trace!(
+              "merging counter {}{labels:?} with value {}",
+              name.as_str(),
+              c.get()
+            );
+            cached_counter.inc_by(c.get());
+          },
+          (MetricData::Histogram(h), MetricData::Histogram(cached_histogram)) => {
+            log::trace!("merging histogram {}{labels:?}", name.as_str());
+            cached_histogram.merge_from(h);
+          },
+          _ => {
+            // We don't support metrics changing type ever, so do nothing but record an error so we
+            // know if this happens.
+            bd_client_common::error::handle_unexpected::<(), anyhow::Error>(
+              Err(anyhow::anyhow!("metrics inconsistency")),
+              "stats merging",
+            );
+          },
+        }
       }
+    }
+
+    for (name, count) in delta_snapshot.overflows {
+      new_or_existing_snapshot
+        .overflows
+        .entry(name)
+        .and_modify(|e| *e += count)
+        .or_insert(count);
     }
 
     // If there are no metrics in the snapshot after merging in the latest delta, skip writing the
@@ -221,8 +236,9 @@ impl Flusher {
     // Write the updated snapshot back to disk. This will either be read back up on the next
     // iteration of this task or converted into an upload payload by the upload task.
     log::debug!(
-      "updating aggregated snapshot file with {} metrics",
-      new_or_existing_snapshot.metrics.len()
+      "updating aggregated snapshot file with {} metrics and {} overflowed IDs",
+      new_or_existing_snapshot.metrics.len(),
+      new_or_existing_snapshot.overflows.len()
     );
 
     // This might fail due to us being out of space or other I/O errors.
@@ -266,21 +282,21 @@ impl Flusher {
   }
 
   fn create_delta_snapshot(&self) -> SnapshotHelper {
-    let mut snapshot = SnapshotHelper::new(None);
-    Self::snap_collector_to_snapshot(self.stats.collector.inner(), &mut snapshot);
-    Self::snap_collector_to_snapshot(&self.stats.dynamic_stats.dynamic_collector, &mut snapshot);
+    let mut snapshot = SnapshotHelper::new(None, self.stats.limit());
+    Self::snap_collector_to_snapshot(&self.stats.collector, &mut snapshot);
+    snapshot.overflows = std::mem::take(&mut self.stats.overflows.lock());
     snapshot
   }
 
-  fn snap_collector_to_snapshot(collector: &BoundedCollector, snapshot: &mut SnapshotHelper) {
+  fn snap_collector_to_snapshot(collector: &Collector, snapshot: &mut SnapshotHelper) {
     // During iteration if a metric has data, we retain it, since it is likely to be used again.
     // If there is no data we drop it if there are no outstanding references. This iteration
     // occurs under the collector lock so it is serialized with respect to new fetches.
-    collector.retain(|id, metric| {
+    collector.retain(|name, labels, metric| {
       metric.snap().map_or_else(
         || metric.multiple_references(),
         |metric| {
-          snapshot.add_metric(id.clone(), metric);
+          snapshot.add_metric(name.clone(), labels.clone(), metric);
           true
         },
       )
@@ -381,41 +397,81 @@ impl Flusher {
 //
 
 struct SnapshotHelper {
-  metrics: HashMap<Id, MetricData>,
+  metrics: MetricsByName,
+  overflows: HashMap<String, u64>,
+  limit: Option<u32>,
 }
 
 impl SnapshotHelper {
-  fn new(snapshot: Option<StatsSnapshot>) -> Self {
+  fn new(snapshot: Option<StatsSnapshot>, limit: Option<u32>) -> Self {
+    let (metrics, overflows) = Self::metrics_from_snapshot(snapshot).unwrap_or_default();
     Self {
-      metrics: Self::metrics_from_snapshot(snapshot).unwrap_or_default(),
+      metrics,
+      overflows,
+      limit,
     }
   }
 
-  fn metrics_from_snapshot(snapshot: Option<StatsSnapshot>) -> Option<HashMap<Id, MetricData>> {
-    let Some(Snapshot_type::Metrics(metrics)) = snapshot?.snapshot_type else {
+  fn metrics_from_snapshot(
+    snapshot: Option<StatsSnapshot>,
+  ) -> Option<(MetricsByName, HashMap<String, u64>)> {
+    let snapshot = snapshot?;
+    let Some(Snapshot_type::Metrics(metrics)) = snapshot.snapshot_type else {
       return None;
     };
 
-    let mut new_metrics = HashMap::new();
+    let mut new_metrics: MetricsByName = HashMap::new();
     for metric in metrics.metric {
-      let id = Id::new(metric.name, metric.tags.into_iter().collect());
+      let name = match metric.metric_name_type {
+        Some(Metric_name_type::Name(name)) => NameType::Global(name),
+        Some(Metric_name_type::MetricId(id)) => NameType::ActionId(id),
+        None => continue,
+      };
+
+      let tags = metric.tags.into_iter().collect();
       if let Some(data) = metric.data {
         if let Some(metric) = MetricData::from_proto(data) {
-          let existing = new_metrics.insert(id, metric);
+          let existing = new_metrics.entry(name).or_default().insert(tags, metric);
           debug_assert!(existing.is_none());
         }
       }
     }
 
-    Some(new_metrics)
+    Some((new_metrics, snapshot.metric_id_overflows))
   }
 
-  fn mut_metric(&mut self, id: &Id) -> Option<&mut MetricData> {
-    self.metrics.get_mut(id)
+  fn mut_metric(
+    &mut self,
+    name: &NameType,
+    labels: &BTreeMap<String, String>,
+  ) -> Option<&mut MetricData> {
+    self
+      .metrics
+      .get_mut(name)
+      .and_then(|metrics| metrics.get_mut(labels))
   }
 
-  fn add_metric(&mut self, id: Id, metric: MetricData) {
-    let existing = self.metrics.insert(id, metric);
+  fn add_metric(&mut self, name: NameType, labels: BTreeMap<String, String>, metric: MetricData) {
+    let maybe_limit = if matches!(name, NameType::ActionId(_)) {
+      self.limit
+    } else {
+      None
+    };
+
+    let by_name = self.metrics.entry(name.clone()).or_default();
+    if let Some(limit) = maybe_limit {
+      if by_name.len() >= limit as usize {
+        log::debug!("metric overflow during snapshot insert");
+        self
+          .overflows
+          .entry(name.into_string())
+          .and_modify(|e| *e += 1)
+          .or_insert(1);
+        return;
+      }
+    }
+
+    let existing = by_name.insert(labels, metric);
     debug_assert!(existing.is_none());
   }
 
@@ -423,11 +479,18 @@ impl SnapshotHelper {
     let proto_metrics: Vec<ProtoMetric> = self
       .metrics
       .into_iter()
-      .map(|(id, metric)| ProtoMetric {
-        name: id.name,
-        tags: id.labels.into_iter().collect(),
-        data: Some(metric.to_proto()),
-        ..Default::default()
+      .flat_map(|(name, metrics)| {
+        metrics
+          .into_iter()
+          .map(move |(labels, metric)| ProtoMetric {
+            metric_name_type: Some(match name.clone() {
+              NameType::Global(name) => Metric_name_type::Name(name),
+              NameType::ActionId(id) => Metric_name_type::MetricId(id),
+            }),
+            tags: labels.into_iter().collect(),
+            data: Some(metric.to_proto()),
+            ..Default::default()
+          })
       })
       .collect();
 
@@ -436,6 +499,7 @@ impl SnapshotHelper {
         metric: proto_metrics,
         ..Default::default()
       })),
+      metric_id_overflows: self.overflows,
       ..Default::default()
     }
   }

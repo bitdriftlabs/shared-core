@@ -868,8 +868,9 @@ pub mod stats {
     5.minutes()
   );
 
-  // This controls how many unique counters we allow before rejecting new metrics. This limit
-  // prevents unbounded growth of metrics, which could result in the system running out of memory.
+  // This controls how much tag cardinality we allow before rejecting new metrics *per workflow*.
+  // This limit prevents unbounded growth of metrics, which could result in the system running out
+  // of memory.
   int_feature_flag!(MaxDynamicCountersFlag, "stats.max_dynamic_stats", 500);
 }
 
