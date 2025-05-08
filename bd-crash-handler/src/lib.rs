@@ -13,8 +13,10 @@ pub mod global_state;
 mod json_extractor;
 
 use bd_log_primitives::LogFields;
+use bd_proto::flatbuffers::report::bitdrift_public::fbs;
 use bd_runtime::runtime::{ConfigLoader, StringWatch};
 use bd_shutdown::ComponentShutdown;
+use fbs::issue_reporting::v_1::root_as_report;
 use itertools::Itertools as _;
 use json_extractor::{JsonExtractor, JsonPath};
 use std::path::{Path, PathBuf};
@@ -122,6 +124,17 @@ impl Monitor {
     candidate_reason_paths: &[JsonPath],
     candidate_details_path: &[JsonPath],
   ) -> (Option<String>, Option<String>) {
+    if let Ok(bin_report) = root_as_report(report) {
+      return bin_report
+        .errors()
+        .map(|errs| errs.get(0))
+        .map_or((None, None), |err| {
+          (
+            err.name().map(str::to_owned),
+            err.reason().map(str::to_owned),
+          )
+        });
+    }
     // The report may come in either as a single JSON object or as a series of JSON objects.
     // Defensively handle both to produce a list of objects that we want to inspect to infer the
     // crash reason.
