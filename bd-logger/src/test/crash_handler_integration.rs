@@ -100,9 +100,9 @@ fn crash_reports() {
 
   let crash1 = logs
     .iter()
-    .find(|log| log.field("_crash_reason") == "crash1")
+    .find(|log| log.field("_app_exit_info") == "crash1")
     .unwrap();
-  assert_eq!(crash1.message(), "App crashed");
+  assert_eq!(crash1.message(), "AppExit");
   assert_eq!(crash1.session_id(), initial_session_id);
   assert_ne!(crash1.timestamp(), timestamp);
   assert_eq!(crash1.field("_ootb_field"), "ootb");
@@ -114,9 +114,9 @@ fn crash_reports() {
 
   let crash2 = logs
     .iter()
-    .find(|log| log.field("_crash_reason") == "crash2")
+    .find(|log| log.field("_app_exit_info") == "crash2")
     .unwrap();
-  assert_eq!(crash2.message(), "App crashed");
+  assert_eq!(crash2.message(), "AppExit");
   assert_eq!(crash2.session_id(), initial_session_id);
   assert_eq!(crash2.timestamp(), timestamp);
   assert_eq!(crash2.field("_ootb_field"), "ootb");

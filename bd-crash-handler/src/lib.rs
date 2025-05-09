@@ -304,11 +304,12 @@ impl Monitor {
           [
             ("_crash_artifact".into(), contents.into()),
             (
-              "_crash_reason".into(),
+              "_app_exit_info".into(),
               crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
             ),
+            ("_app_exit_source".into(), "bitdrift".into()),
             (
-              "_crash_details".into(),
+              "_app_exit_details".into(),
               crash_details
                 .unwrap_or_else(|| "unknown".to_string())
                 .into(),
