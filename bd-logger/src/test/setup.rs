@@ -358,7 +358,7 @@ impl Setup {
     self
       .sdk_directory
       .path()
-      .join("workflows_state_snapshot.6.bin")
+      .join("workflows_state_snapshot.7.bin")
   }
 }
 
