@@ -9,7 +9,9 @@ publish      = false
 doctest = false
 
 [dependencies]
-flatbuffers.workspace = true
+# defined separately to the workspace to allow compilation with
+# bazel/crate_universe within the sdk project
+flatbuffers = "25.2.10"
 bd-proto.path = "../bd-proto"
 
 [build-dependencies]
