@@ -9,6 +9,10 @@ use cbindgen::Config;
 use std::path::Path;
 
 pub fn main() {
+  if std::env::var("SKIP_FILE_GEN").is_ok() {
+    return;
+  }
+
   println!("cargo:rerun-if-changed=src/ffi.rs");
   cbindgen::Builder::new()
     .with_crate(Path::new("."))
