@@ -16,7 +16,7 @@ bd-log-primitives.path     = "../bd-log-primitives"
 bd-proto.path              = "../bd-proto"
 itertools.workspace        = true
 log.workspace              = true
-regex.workspace            = true
+regex-lite.workspace            = true
 time.workspace             = true
 
 [dev-dependencies]

@@ -32,7 +32,7 @@ use log_matcher::log_matcher::base_log_matcher::{
 };
 use log_matcher::log_matcher::{base_log_matcher, BaseLogMatcher, Matcher};
 use log_matcher::LogMatcher;
-use regex::Regex;
+use regex_lite::Regex;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::ops::Deref;

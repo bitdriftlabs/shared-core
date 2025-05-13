@@ -14,7 +14,7 @@ pub mod matcher;
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
   #[error("Invalid regex: {0}")]
-  Regex(#[from] regex::Error),
+  Regex(#[from] regex_lite::Error),
 
   #[error("Invalid matcher configuration")]
   InvalidConfig,

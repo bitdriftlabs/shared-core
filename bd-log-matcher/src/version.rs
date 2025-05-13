@@ -12,7 +12,7 @@ mod test;
 use anyhow::{anyhow, Result};
 use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Operator;
 use itertools::Itertools;
-use regex::Regex;
+use regex_lite::Regex;
 use std::cmp::Ordering;
 use std::fmt::Display;
 

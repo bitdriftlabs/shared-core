@@ -10,7 +10,7 @@
 mod tests;
 
 use itertools::Itertools as _;
-use regex::Regex;
+use regex_lite::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 use tinyjson::JsonValue;

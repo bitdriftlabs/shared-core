@@ -15,7 +15,7 @@ bd-matcher.path        = "../bd-matcher"
 bd-proto.path          = "../bd-proto"
 itertools.workspace    = true
 protobuf.workspace     = true
-regex.workspace        = true
+regex-lite.workspace        = true
 
 
 [dev-dependencies]

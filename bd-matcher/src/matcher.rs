@@ -16,7 +16,7 @@ use protos::config::v1::config::log_matcher::base_log_matcher::log_level_match::
 use protos::config::v1::config::log_matcher::base_log_matcher::{self, StringMatchType};
 use protos::config::v1::config::log_matcher::{BaseLogMatcher, Match_type};
 use protos::config::v1::config::LogMatcher;
-use regex::Regex;
+use regex_lite::Regex;
 use std::borrow::Cow;
 
 /// A compiled matching tree that supports evaluating a an input log. Matching involves

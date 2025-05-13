@@ -24,7 +24,7 @@ use bd_proto::protos::filter::filter::filter::{self};
 use bd_proto::protos::filter::filter::{Filter as FilterProto, FiltersConfiguration};
 use filter::transform::Transform_type;
 use itertools::Itertools;
-use regex::Regex;
+use regex_lite::Regex;
 use std::borrow::Cow;
 
 #[cfg(test)]
