@@ -74,3 +74,9 @@ impl AsFlatBufferString for Cow<'_, str> {
     Some(fbb.create_string(self))
   }
 }
+
+impl<S: AsFlatBufferString> AsFlatBufferString for Option<S> {
+  fn as_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>> {
+    self.as_ref().and_then(|inner| inner.as_fb(fbb))
+  }
+}
