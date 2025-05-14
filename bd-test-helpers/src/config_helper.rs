@@ -10,7 +10,6 @@ use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogTy
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::ConfigurationUpdate;
-use bd_proto::protos::client::matcher::root_matcher::{self, ClientTarget};
 use bd_proto::protos::client::matcher::RootMatcher;
 pub use bd_proto::protos::config::v1::config::buffer_config::Type as BufferType;
 use bd_proto::protos::config::v1::config::buffer_config::{BufferFilter, BufferSizes};
@@ -416,9 +415,6 @@ pub fn make_buffer_config(
 
 fn make_context_matcher() -> RootMatcher {
   RootMatcher {
-    target_type: Some(root_matcher::Target_type::ClientTarget(
-      ClientTarget::default(),
-    )),
     matcher: protobuf::MessageField::some(bd_proto::protos::client::matcher::Matcher {
       type_: Some(bd_proto::protos::client::matcher::matcher::Type::Always(
         true,

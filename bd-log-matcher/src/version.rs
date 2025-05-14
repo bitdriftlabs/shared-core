@@ -266,6 +266,7 @@ impl VersionMatch {
     })
   }
 
+  #[must_use]
   pub fn evaluate(&self, candidate: &str) -> bool {
     match self {
       Self::Regex(r) => r.is_match(candidate),
