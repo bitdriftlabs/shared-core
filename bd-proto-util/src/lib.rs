@@ -12,7 +12,9 @@ use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::{
   root_as_log_unchecked,
   Log,
 };
+use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use protobuf::MessageFull;
+use std::borrow::Cow;
 use std::fmt::Debug;
 
 extern "C" {
@@ -47,5 +49,28 @@ where
     f.debug_list()
       .entries(self.0.iter().map(|x| format!("{x}")))
       .finish()
+  }
+}
+
+/// Convenience trait for converting anything String-like into a Flatbuffer string.
+pub trait AsFlatBufferString {
+  fn as_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>>;
+}
+
+impl AsFlatBufferString for &str {
+  fn as_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>> {
+    Some(fbb.create_string(self))
+  }
+}
+
+impl AsFlatBufferString for String {
+  fn as_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>> {
+    Some(fbb.create_string(&self))
+  }
+}
+
+impl AsFlatBufferString for Cow<'_, str> {
+  fn as_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>> {
+    Some(fbb.create_string(&self))
   }
 }
