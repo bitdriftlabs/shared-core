@@ -65,12 +65,12 @@ impl AsFlatBufferString for &str {
 
 impl AsFlatBufferString for String {
   fn as_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>> {
-    Some(fbb.create_string(&self))
+    Some(fbb.create_string(self))
   }
 }
 
 impl AsFlatBufferString for Cow<'_, str> {
   fn as_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>> {
-    Some(fbb.create_string(&self))
+    Some(fbb.create_string(self))
   }
 }
