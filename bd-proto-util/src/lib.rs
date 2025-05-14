@@ -53,30 +53,30 @@ where
 }
 
 /// Convenience trait for converting anything String-like into a Flatbuffer string.
-pub trait AsFlatBufferString {
-  fn as_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>>;
+pub trait ToFlatBufferString {
+  fn to_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>>;
 }
 
-impl AsFlatBufferString for &str {
-  fn as_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>> {
+impl ToFlatBufferString for &str {
+  fn to_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>> {
     Some(fbb.create_string(self))
   }
 }
 
-impl AsFlatBufferString for String {
-  fn as_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>> {
+impl ToFlatBufferString for String {
+  fn to_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>> {
     Some(fbb.create_string(self))
   }
 }
 
-impl AsFlatBufferString for Cow<'_, str> {
-  fn as_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>> {
+impl ToFlatBufferString for Cow<'_, str> {
+  fn to_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>> {
     Some(fbb.create_string(self))
   }
 }
 
-impl<S: AsFlatBufferString> AsFlatBufferString for Option<S> {
-  fn as_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>> {
-    self.as_ref().and_then(|inner| inner.as_fb(fbb))
+impl<S: ToFlatBufferString> ToFlatBufferString for Option<S> {
+  fn to_fb<'a>(&self, fbb: &mut FlatBufferBuilder<'a>) -> Option<WIPOffset<&'a str>> {
+    self.as_ref().and_then(|inner| inner.to_fb(fbb))
   }
 }
