@@ -127,7 +127,7 @@ impl Monitor {
     if let Ok(bin_report) = root_as_report(report) {
       return bin_report
         .errors()
-        .map(|errs| errs.get(0))
+        .and_then(|errs| errs.iter().next())
         .map_or((None, None), |err| {
           (
             err.name().map(str::to_owned),

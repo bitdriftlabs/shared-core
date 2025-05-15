@@ -14,11 +14,17 @@ use crate::{
 };
 use bd_device::Store;
 use bd_log_primitives::LogFields;
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
+  Error,
+  Report,
+  ReportArgs,
+};
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use bd_test_helpers::session::InMemoryStorage;
+use flatbuffers::{FlatBufferBuilder, ForwardsUOffset};
 use itertools::Itertools;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -195,4 +201,22 @@ async fn config_file() {
 
   setup.write_config_file(INGESTION_CONFIG_FILE, "").await;
   assert!(!setup.config_file_exists(INGESTION_CONFIG_FILE));
+}
+
+#[test]
+fn crash_reason_from_empty_errors_vector() {
+  let mut builder = FlatBufferBuilder::new();
+  let errors = Some(builder.create_vector::<ForwardsUOffset<Error<'_>>>(&[]));
+  let report = Report::create(
+    &mut builder,
+    &ReportArgs {
+      errors,
+      ..Default::default()
+    },
+  );
+  builder.finish(report, None);
+  let data = builder.finished_data();
+  let (reason, detail) = Monitor::guess_crash_details(data, &[], &[]);
+  assert_eq!(None, reason);
+  assert_eq!(None, detail);
 }
