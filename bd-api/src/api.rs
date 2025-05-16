@@ -71,7 +71,6 @@ use bd_runtime::runtime::{BoolWatch, DurationWatch, RuntimeManager};
 use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
 use parking_lot::RwLock;
-use protobuf::Message;
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
@@ -91,7 +90,7 @@ impl ConfigurationUpdate for RuntimeManager {
   async fn try_apply_config(&mut self, response: &ApiResponse) -> Option<ApiRequest> {
     let update = RuntimeUpdate::from_response(response)?;
     log::debug!("applying runtime update: {}", update);
-    self.process_update(update);
+    self.process_update(update).await;
 
     Some(
       RuntimeConfigurationUpdate(ConfigurationUpdateAck {
@@ -104,18 +103,19 @@ impl ConfigurationUpdate for RuntimeManager {
   }
 
   async fn try_load_persisted_config(&mut self) {
-    let _ignored = self.handle_cached_config();
+    self.handle_cached_config().await;
   }
 
-  fn partial_handshake(&self) -> HandshakeRequest {
-    HandshakeRequest {
-      runtime_version_nonce: self.version_nonce().unwrap_or_default(),
-      ..Default::default()
-    }
+  async fn maybe_release_persisted_config(&mut self) {
+    self.handle_maybe_release_persisted_config().await;
   }
 
-  fn on_handshake_complete(&self) {
-    self.server_is_available();
+  fn fill_handshake(&self, handshake: &mut HandshakeRequest) {
+    handshake.runtime_version_nonce = self.version_nonce().unwrap_or_default();
+  }
+
+  async fn on_handshake_complete(&self) {
+    self.server_is_available().await;
   }
 }
 
@@ -153,7 +153,11 @@ impl NetworkQualityProvider for SimpleNetworkQualityProvider {
 enum HandshakeResult {
   /// We received a handshake response with with a set of stream settings, and a list of extra
   /// responses that were decoded in addition to the handshake response.
-  Received(Option<handshake_response::StreamSettings>, Vec<ApiResponse>),
+  Received {
+    stream_settings: Option<handshake_response::StreamSettings>,
+    all_configs_up_to_date: bool,
+    extra_responses: Vec<ApiResponse>,
+  },
 
   /// The stream closed while waiting for the handshake.
   StreamClosure(String),
@@ -674,11 +678,21 @@ impl Api {
       match self.wait_for_handshake(&mut stream_state).await? {
         // We received a handshake, so initialize the stream state with the stream settings
         // and process any additional frames we read together with the handshake.
-        HandshakeResult::Received(stream_settings, remaining_responses) => {
+        HandshakeResult::Received {
+          stream_settings,
+          all_configs_up_to_date,
+          extra_responses,
+        } => {
           stream_state.initialize_stream_settings(stream_settings);
 
+          if all_configs_up_to_date {
+            for pipeline in &mut self.configuration_pipelines {
+              pipeline.maybe_release_persisted_config().await;
+            }
+          }
+
           self
-            .handle_responses(remaining_responses, &mut stream_state)
+            .handle_responses(extra_responses, &mut stream_state)
             .await?;
         },
         // The stream closed while waiting for the handshake. Move to the next loop iteration
@@ -711,7 +725,7 @@ impl Api {
       // order to make it possible for the server to push down configuration that would get applied
       // as part of the handshake response.
       for pipeline in &self.configuration_pipelines {
-        pipeline.on_handshake_complete();
+        pipeline.on_handshake_complete().await;
       }
 
       log::debug!("handshake received, entering main loop");
@@ -907,19 +921,17 @@ impl Api {
     metadata: &HashMap<String, ProtoData>,
     previous_disconnect_reason: Option<String>,
   ) -> HandshakeRequest {
-    self.configuration_pipelines.iter().fold(
-      HandshakeRequest {
-        static_device_metadata: metadata.clone(),
-        previous_disconnect_reason: previous_disconnect_reason.unwrap_or_default(),
-        ..Default::default()
-      },
-      |mut handshake, pipeline| {
-        handshake
-          .merge_from_bytes(&pipeline.partial_handshake().write_to_bytes().unwrap())
-          .unwrap();
-        handshake
-      },
-    )
+    let mut handshake = HandshakeRequest {
+      static_device_metadata: metadata.clone(),
+      previous_disconnect_reason: previous_disconnect_reason.unwrap_or_default(),
+      ..Default::default()
+    };
+
+    for pipeline in &self.configuration_pipelines {
+      pipeline.fill_handshake(&mut handshake);
+    }
+
+    handshake
   }
 
   /// Waits for enough data to be collected to parse the initial handshake, handling various error
@@ -956,10 +968,11 @@ impl Api {
           match first.demux() {
             Some(ResponseKind::Handshake(h)) => {
               log::debug!("received handshake");
-              return Ok(HandshakeResult::Received(
-                h.stream_settings.clone().take(),
-                Vec::from(rest),
-              ));
+              return Ok(HandshakeResult::Received {
+                stream_settings: h.stream_settings.clone().take(),
+                all_configs_up_to_date: h.all_configs_up_to_date,
+                extra_responses: Vec::from(rest),
+              });
             },
             Some(ResponseKind::ErrorShutdown(error)) => {
               static UNAUTHENTICATED: i32 = 16;

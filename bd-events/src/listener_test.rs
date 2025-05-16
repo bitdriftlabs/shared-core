@@ -39,11 +39,14 @@ impl Setup {
   }
 
   #[allow(dead_code)]
-  fn make_runtime_update(&self, events_listener_enabled: bool) {
-    self.runtime.update_snapshot(&make_simple_update(vec![(
-      bd_runtime::runtime::platform_events::ListenerEnabledFlag::path(),
-      ValueKind::Bool(events_listener_enabled),
-    )]));
+  async fn make_runtime_update(&self, events_listener_enabled: bool) {
+    self
+      .runtime
+      .update_snapshot(&make_simple_update(vec![(
+        bd_runtime::runtime::platform_events::ListenerEnabledFlag::path(),
+        ValueKind::Bool(events_listener_enabled),
+      )]))
+      .await;
   }
 }
 
@@ -103,7 +106,7 @@ async fn does_not_interact_with_target_if_listener_is_disabled() {
     () = listener.run_with_shutdown(shutdown).await;
   });
 
-  setup.make_runtime_update(false);
+  setup.make_runtime_update(false).await;
 
   200.milliseconds().sleep().await;
 
@@ -131,7 +134,7 @@ async fn starts_target() {
     () = listener.run_with_shutdown(shutdown).await;
   });
 
-  setup.make_runtime_update(true);
+  setup.make_runtime_update(true).await;
 
   200.milliseconds().sleep().await;
 
@@ -159,10 +162,10 @@ async fn starts_and_stops_target() {
     () = listener.run_with_shutdown(shutdown).await;
   });
 
-  setup.make_runtime_update(true);
+  setup.make_runtime_update(true).await;
   200.milliseconds().sleep().await;
 
-  setup.make_runtime_update(false);
+  setup.make_runtime_update(false).await;
   200.milliseconds().sleep().await;
 
   shutdown_trigger.shutdown().await;

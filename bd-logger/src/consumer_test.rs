@@ -148,7 +148,8 @@ async fn upload_retries() {
     .update_snapshot(&make_simple_update(vec![(
       bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
       ValueKind::Int(10),
-    )]));
+    )]))
+    .await;
 
   // Write logs for one batch upload.
   for _ in 0 .. 10 {
@@ -199,7 +200,8 @@ async fn upload_retries() {
     .update_snapshot(&make_simple_update(vec![(
       bd_runtime::runtime::log_upload::RetryCountFlag::path(),
       ValueKind::Int(1),
-    )]));
+    )]))
+    .await;
 
   for _ in 0 .. 10 {
     setup.producer.write(b"c").unwrap();
@@ -252,7 +254,8 @@ async fn continuous_buffer_upload_byte_limit() {
     .update_snapshot(&make_simple_update(vec![(
       bd_runtime::runtime::log_upload::BatchSizeBytesFlag::path(),
       ValueKind::Int(10),
-    )]));
+    )]))
+    .await;
 
   for _ in 0 .. 2 {
     setup.producer.write(&[0; 150]).unwrap();
@@ -288,7 +291,8 @@ async fn continuous_buffer_upload_shutdown() {
     .update_snapshot(&make_simple_update(vec![(
       bd_runtime::runtime::log_upload::BatchSizeBytesFlag::path(),
       ValueKind::Int(10),
-    )]));
+    )]))
+    .await;
 
   setup.producer.write(&[0; 150]).unwrap();
 
@@ -311,7 +315,8 @@ async fn uploading_full_batch_failure() {
     .update_snapshot(&make_simple_update(vec![(
       bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
       ValueKind::Int(10),
-    )]));
+    )]))
+    .await;
 
   for i in 0 .. 11 {
     setup.producer.write(&[i]).unwrap();
@@ -475,7 +480,7 @@ async fn uploading_never_succeeds() {
 
 #[tokio::test]
 async fn age_limit_log_uploads() {
-  let mut setup = SetupMultiConsumer::new(1, 1000);
+  let mut setup = SetupMultiConsumer::new(1, 1000).await;
   let (buffer, mut producer) =
     create_trigger_buffer(setup.temp_directory.path().join("buffer").as_path());
 
@@ -505,7 +510,8 @@ async fn age_limit_log_uploads() {
         bd_runtime::runtime::log_upload::BatchDeadlineFlag::path(),
         ValueKind::Int(10),
       ),
-    ]));
+    ]))
+    .await;
 
   let now = time::OffsetDateTime::now_utc().floor(1.minutes());
   for i in (0 .. 5).rev() {
@@ -576,7 +582,7 @@ struct SetupMultiConsumer {
 }
 
 impl SetupMultiConsumer {
-  fn new(batch_size: u32, byte_limit: u32) -> Self {
+  async fn new(batch_size: u32, byte_limit: u32) -> Self {
     tokio::time::pause();
 
     let stats = Collector::default();
@@ -588,16 +594,18 @@ impl SetupMultiConsumer {
 
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let config_loader = ConfigLoader::new(temp_directory.path());
-    config_loader.update_snapshot(&make_simple_update(vec![
-      (
-        bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
-        ValueKind::Int(batch_size),
-      ),
-      (
-        bd_runtime::runtime::log_upload::BatchSizeBytesFlag::path(),
-        ValueKind::Int(byte_limit),
-      ),
-    ]));
+    config_loader
+      .update_snapshot(&make_simple_update(vec![
+        (
+          bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
+          ValueKind::Int(batch_size),
+        ),
+        (
+          bd_runtime::runtime::log_upload::BatchSizeBytesFlag::path(),
+          ValueKind::Int(byte_limit),
+        ),
+      ]))
+      .await;
     let shutdown = shutdown_trigger.make_shutdown();
     let config_loader_clone = config_loader.clone();
     let collector_clone = stats.clone();
@@ -654,7 +662,7 @@ impl SetupMultiConsumer {
 #[tokio::test]
 async fn upload_multiple_continuous_buffers() {
   let directory = tempfile::TempDir::with_prefix("consumer-").unwrap();
-  let mut setup = SetupMultiConsumer::new(1, 1000);
+  let mut setup = SetupMultiConsumer::new(1, 1000).await;
 
   let (buffer_a, mut producer_a) = create_continuous_buffer(
     &directory.path().join(PathBuf::from("buffer.a")),
@@ -743,7 +751,7 @@ async fn upload_multiple_continuous_buffers() {
 
 #[tokio::test]
 async fn remove_trigger_buffer() {
-  let setup = SetupMultiConsumer::new(1, 1000);
+  let setup = SetupMultiConsumer::new(1, 1000).await;
 
   // Verify that nothing bad happens if we remove a buffer that hasn't been added as a continous
   // one.
@@ -759,7 +767,7 @@ async fn remove_trigger_buffer() {
 #[tokio::test]
 async fn trigger_upload_byte_size_limit() {
   // Allow 10 logs or 100 bytes per upload.
-  let mut setup = SetupMultiConsumer::new(10, 100);
+  let mut setup = SetupMultiConsumer::new(10, 100).await;
   let (buffer, mut producer) =
     create_trigger_buffer(setup.temp_directory.path().join("buffer").as_path());
 
@@ -789,7 +797,7 @@ async fn trigger_upload_byte_size_limit() {
 
 #[tokio::test]
 async fn dropped_trigger() {
-  let mut setup = SetupMultiConsumer::new(1, 1000);
+  let mut setup = SetupMultiConsumer::new(1, 1000).await;
   let (buffer, mut producer) =
     create_trigger_buffer(setup.temp_directory.path().join("buffer").as_path());
 
@@ -819,7 +827,7 @@ async fn dropped_trigger() {
 
 #[tokio::test]
 async fn uploaded_trigger() {
-  let mut setup = SetupMultiConsumer::new(2, 1000);
+  let mut setup = SetupMultiConsumer::new(2, 1000).await;
   let (buffer, mut producer) =
     create_trigger_buffer(setup.temp_directory.path().join("buffer").as_path());
 

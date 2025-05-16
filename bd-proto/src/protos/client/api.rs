@@ -4650,6 +4650,8 @@ pub struct HandshakeResponse {
     // message fields
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.HandshakeResponse.stream_settings)
     pub stream_settings: ::protobuf::MessageField<handshake_response::StreamSettings>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.HandshakeResponse.all_configs_up_to_date)
+    pub all_configs_up_to_date: bool,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.HandshakeResponse.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -4667,12 +4669,17 @@ impl HandshakeResponse {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut fields = ::std::vec::Vec::with_capacity(2);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, handshake_response::StreamSettings>(
             "stream_settings",
             |m: &HandshakeResponse| { &m.stream_settings },
             |m: &mut HandshakeResponse| { &mut m.stream_settings },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "all_configs_up_to_date",
+            |m: &HandshakeResponse| { &m.all_configs_up_to_date },
+            |m: &mut HandshakeResponse| { &mut m.all_configs_up_to_date },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<HandshakeResponse>(
             "HandshakeResponse",
@@ -4695,6 +4702,9 @@ impl ::protobuf::Message for HandshakeResponse {
                 10 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.stream_settings)?;
                 },
+                16 => {
+                    self.all_configs_up_to_date = is.read_bool()?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -4711,6 +4721,9 @@ impl ::protobuf::Message for HandshakeResponse {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
+        if self.all_configs_up_to_date != false {
+            my_size += 1 + 1;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -4719,6 +4732,9 @@ impl ::protobuf::Message for HandshakeResponse {
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
         if let Some(v) = self.stream_settings.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        }
+        if self.all_configs_up_to_date != false {
+            os.write_bool(2, self.all_configs_up_to_date)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -4738,12 +4754,14 @@ impl ::protobuf::Message for HandshakeResponse {
 
     fn clear(&mut self) {
         self.stream_settings.clear();
+        self.all_configs_up_to_date = false;
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static HandshakeResponse {
         static instance: HandshakeResponse = HandshakeResponse {
             stream_settings: ::protobuf::MessageField::none(),
+            all_configs_up_to_date: false,
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -9098,13 +9116,14 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     nts\x18\x03\x20\x01(\x0cR\x08contents\x12(\n\x0bartifact_id\x18\x04\x20\
     \x01(\tR\nartifactIdB\x07\xfaB\x04r\x02\x10\x01\"X\n\x16UploadArtifactRe\
     sponse\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\
-    \x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\"\xd4\
-    \x01\n\x11HandshakeResponse\x12m\n\x0fstream_settings\x18\x01\x20\x01(\
+    \x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\"\x88\
+    \x02\n\x11HandshakeResponse\x12m\n\x0fstream_settings\x18\x01\x20\x01(\
     \x0b2D.bitdrift_public.protobuf.client.v1.HandshakeResponse.StreamSettin\
-    gsR\x0estreamSettings\x1aP\n\x0eStreamSettings\x12>\n\rping_interval\x18\
-    \x01\x20\x01(\x0b2\x19.google.protobuf.DurationR\x0cpingInterval\"\r\n\
-    \x0bRateLimited\"\xca\x01\n\x11LogUploadResponse\x12(\n\x0bupload_uuid\
-    \x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\
+    gsR\x0estreamSettings\x122\n\x16all_configs_up_to_date\x18\x02\x20\x01(\
+    \x08R\x12allConfigsUpToDate\x1aP\n\x0eStreamSettings\x12>\n\rping_interv\
+    al\x18\x01\x20\x01(\x0b2\x19.google.protobuf.DurationR\x0cpingInterval\"\
+    \r\n\x0bRateLimited\"\xca\x01\n\x11LogUploadResponse\x12(\n\x0bupload_uu\
+    id\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\
     \x05error\x18\x02\x20\x01(\tR\x05error\x12!\n\x0clogs_dropped\x18\x03\
     \x20\x01(\rR\x0blogsDropped\x12R\n\x0crate_limited\x18\x04\x20\x01(\x0b2\
     /.bitdrift_public.protobuf.client.v1.RateLimitedR\x0brateLimited\"\xae\

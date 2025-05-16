@@ -67,11 +67,14 @@ impl Setup {
     std::fs::write(crash_directory.join(name), data).unwrap();
   }
 
-  fn configure_ingestion_runtime_flag(&self, value: &str) {
-    self.runtime.update_snapshot(&make_simple_update(vec![(
-      CrashDirectories::path(),
-      ValueKind::String(value.to_string()),
-    )]));
+  async fn configure_ingestion_runtime_flag(&self, value: &str) {
+    self
+      .runtime
+      .update_snapshot(&make_simple_update(vec![(
+        CrashDirectories::path(),
+        ValueKind::String(value.to_string()),
+      )]))
+      .await;
   }
 
   async fn write_config_file(&self, name: &str, contents: &str) {
@@ -191,7 +194,7 @@ async fn crash_handling_missing_reason() {
 async fn config_file() {
   let setup = Setup::new();
 
-  setup.configure_ingestion_runtime_flag("a");
+  setup.configure_ingestion_runtime_flag("a").await;
 
   setup.write_config_file(INGESTION_CONFIG_FILE, "a").await;
   assert_eq!("a", setup.read_config_file(INGESTION_CONFIG_FILE));

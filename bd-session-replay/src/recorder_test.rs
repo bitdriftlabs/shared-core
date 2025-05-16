@@ -55,18 +55,21 @@ impl Setup {
     Recorder::new(target, &self.runtime, &self.collector.scope(""))
   }
 
-  fn update_reporting_interval(&self, interval: Duration) {
-    self.runtime.update_snapshot(&make_simple_update(vec![
-      (
-        bd_runtime::runtime::session_replay::PeriodicScreensEnabledFlag::path(),
-        ValueKind::Bool(true),
-      ),
-      (
-        bd_runtime::runtime::session_replay::ReportingIntervalFlag::path(),
-        #[allow(clippy::cast_possible_truncation)]
-        ValueKind::Int(interval.whole_milliseconds().try_into().unwrap()),
-      ),
-    ]));
+  async fn update_reporting_interval(&self, interval: Duration) {
+    self
+      .runtime
+      .update_snapshot(&make_simple_update(vec![
+        (
+          bd_runtime::runtime::session_replay::PeriodicScreensEnabledFlag::path(),
+          ValueKind::Bool(true),
+        ),
+        (
+          bd_runtime::runtime::session_replay::ReportingIntervalFlag::path(),
+          #[allow(clippy::cast_possible_truncation)]
+          ValueKind::Int(interval.whole_milliseconds().try_into().unwrap()),
+        ),
+      ]))
+      .await;
   }
 }
 
@@ -97,16 +100,19 @@ impl Target for MockTarget {
 #[tokio::test]
 async fn does_not_report_if_disabled() {
   let setup = Setup::new();
-  setup.runtime.update_snapshot(&make_simple_update(vec![
-    (
-      bd_runtime::runtime::session_replay::PeriodicScreensEnabledFlag::path(),
-      ValueKind::Bool(false),
-    ),
-    (
-      bd_runtime::runtime::session_replay::ReportingIntervalFlag::path(),
-      ValueKind::Int(10),
-    ),
-  ]));
+  setup
+    .runtime
+    .update_snapshot(&make_simple_update(vec![
+      (
+        bd_runtime::runtime::session_replay::PeriodicScreensEnabledFlag::path(),
+        ValueKind::Bool(false),
+      ),
+      (
+        bd_runtime::runtime::session_replay::ReportingIntervalFlag::path(),
+        ValueKind::Int(10),
+      ),
+    ]))
+    .await;
 
   let target = Box::<MockTarget>::default();
   let capture_screen_count = target.capture_screen_count.clone();
@@ -133,7 +139,7 @@ async fn does_not_report_if_disabled() {
 #[tokio::test]
 async fn does_not_report_if_there_are_no_fields() {
   let setup = Setup::new();
-  setup.update_reporting_interval(10.milliseconds());
+  setup.update_reporting_interval(10.milliseconds()).await;
 
   let target = Box::<MockTarget>::default();
   let capture_screen_count = target.capture_screen_count.clone();
@@ -179,10 +185,13 @@ async fn taking_screenshots_is_wired_up() {
     capture_screenshot_count.load(std::sync::atomic::Ordering::Relaxed)
   );
 
-  setup.runtime.update_snapshot(&make_simple_update(vec![(
-    bd_runtime::runtime::session_replay::ScreenshotsEnabledFlag::path(),
-    ValueKind::Bool(true),
-  )]));
+  setup
+    .runtime
+    .update_snapshot(&make_simple_update(vec![(
+      bd_runtime::runtime::session_replay::ScreenshotsEnabledFlag::path(),
+      ValueKind::Bool(true),
+    )]))
+    .await;
 
   100.milliseconds().sleep().await;
 
@@ -204,10 +213,13 @@ async fn taking_screenshots_is_wired_up() {
 async fn limits_the_number_of_concurrent_screenshots_to_one() {
   let setup = Setup::new();
 
-  setup.runtime.update_snapshot(&make_simple_update(vec![(
-    bd_runtime::runtime::session_replay::ScreenshotsEnabledFlag::path(),
-    ValueKind::Bool(true),
-  )]));
+  setup
+    .runtime
+    .update_snapshot(&make_simple_update(vec![(
+      bd_runtime::runtime::session_replay::ScreenshotsEnabledFlag::path(),
+      ValueKind::Bool(true),
+    )]))
+    .await;
 
   let target = Box::<MockTarget>::default();
   let capture_screenshot_count = target.capture_screenshot_count.clone();

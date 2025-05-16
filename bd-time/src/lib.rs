@@ -63,12 +63,10 @@ impl OffsetDateTimeExt for OffsetDateTime {
     .into()
   }
 
-  #[must_use]
   fn unix_timestamp_ms(&self) -> i64 {
     self.unix_timestamp() * 1_000 + i64::from(self.nanosecond() / 1_000_000)
   }
 
-  #[must_use]
   fn unix_timestamp_micros(&self) -> i64 {
     self.unix_timestamp() * 1_000_000 + i64::from(self.nanosecond() / 1_000)
   }

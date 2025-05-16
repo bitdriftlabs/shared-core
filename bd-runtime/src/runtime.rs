@@ -15,7 +15,6 @@ use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf
 use bd_proto::protos::client::api::RuntimeUpdate;
 use bd_proto::protos::client::runtime::runtime::Value;
 use bd_proto::protos::client::runtime::Runtime;
-use protobuf::Message;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::marker::PhantomData;
@@ -34,13 +33,17 @@ use tokio::sync::watch::Ref;
 #[allow(clippy::module_name_repetitions)]
 pub struct RuntimeManager {
   loader: Arc<ConfigLoader>,
+  maybe_persisted_config: Option<RuntimeUpdate>,
 }
 
 impl RuntimeManager {
   /// Creates a new `RuntimeManager` which is responsible for applying configuration updates and a
   /// handle to the config loader which can be used to read runtime values.
   pub const fn new(loader: Arc<ConfigLoader>) -> Self {
-    Self { loader }
+    Self {
+      loader,
+      maybe_persisted_config: None,
+    }
   }
 
   #[must_use]
@@ -48,18 +51,25 @@ impl RuntimeManager {
     self.loader.snapshot().nonce.clone()
   }
 
-  // Processes a new runtime update, validaing the update and updating the cached version
+  // Processes a new runtime update, validating the update and updating the cached version
   // if the update is valid. Returns the Nack responses to respond to the server with.
-  pub fn process_update(&self, update: &RuntimeUpdate) {
-    self.loader.update_snapshot(update);
+  pub async fn process_update(&mut self, update: &RuntimeUpdate) {
+    self.maybe_persisted_config = None;
+    self.loader.update_snapshot(update).await;
   }
 
-  pub fn server_is_available(&self) {
-    self.loader.mark_safe();
+  pub async fn server_is_available(&self) {
+    self.loader.mark_safe().await;
   }
 
-  pub fn handle_cached_config(&self) {
-    self.loader.handle_cached_config();
+  pub async fn handle_cached_config(&self) {
+    self.loader.handle_cached_config().await;
+  }
+
+  pub async fn handle_maybe_release_persisted_config(&mut self) {
+    if let Some(runtime_update) = self.maybe_persisted_config.take() {
+      self.loader.update_snapshot(&runtime_update).await;
+    }
   }
 }
 
@@ -177,45 +187,51 @@ impl ConfigLoader {
   /// for us to be able to receive an updated set of runtime config. Due to the way runtime values
   /// are read from the snapshot at any time, we're forced to rely on this kind of heuristic to
   /// attempt to validate that the runtime config doesn't cause a crash loop.
-  pub fn mark_safe(&self) {
+  pub async fn mark_safe(&self) {
     // We load the config from cache only at startup, so we only need to update the file once.
     if !self.cached_config_validated.swap(true, Ordering::SeqCst) {
       // If this fails worst case we'll use a stale retry count and eventually disable caching.
-      let _ignored = self.persist_cache_load_retry_count(0);
+      let _ignored = self.persist_cache_load_retry_count(0).await;
     }
   }
 
-  fn persist_cache_load_retry_count(&self, retry_count: u32) -> anyhow::Result<()> {
+  async fn persist_cache_load_retry_count(&self, retry_count: u32) -> anyhow::Result<()> {
     // This could fail, but by being defensive when we read this we should ideally worst case just
     // fall back to not reading from cache.
-    std::fs::write(&self.retry_count_file, format!("{retry_count}").as_bytes())
+    // fixfix compress
+    tokio::fs::write(&self.retry_count_file, format!("{retry_count}").as_bytes())
+      .await
       .map_err(|e| anyhow!("an io error occurred: {e}"))
   }
 
-  pub fn handle_cached_config(&self) {
+  async fn handle_cached_config(&self) -> Option<RuntimeUpdate> {
     // Attempt to load the cached config from disk. Should we run into any unexpected issues,
     // eagerly wipe out all the disk state by recreating the runtime directory. This should help
     // us clean up any dirty state we see on disk and avoid issues persisting between process
     // restarts. As the errors bubble up through the error handler we may find we can handle some
     // of these failures. We also wipe the cache on a few expected cases, like hitting the retry
     // limit or a partial cache state.
-    if match self.try_load_cached_config() {
-      Ok(reset_cache) => reset_cache,
+    let (reset, runtime_update) = match self.try_load_cached_config().await {
+      Ok((reset, runtime_update)) => (reset, runtime_update),
       Err(e) => {
         handle_unexpected::<(), anyhow::Error>(Err(e), "runtime cache load");
-        true
+        (true, None)
       },
-    } {
+    };
+
+    if reset {
       // Recreate the directory instead of deleting individual files, making sure we really clean
       // up any bad state.
-      let _ignored = std::fs::remove_dir_all(&self.runtime_directory);
-      let _ignored = std::fs::create_dir(&self.runtime_directory);
+      let _ignored = tokio::fs::remove_dir_all(&self.runtime_directory).await;
+      let _ignored = tokio::fs::create_dir(&self.runtime_directory).await;
     }
+
+    runtime_update
   }
 
   // Attempts to apply cached configuration. Returns true if the underlying cache state should be
   // reset.
-  fn try_load_cached_config(&self) -> anyhow::Result<bool> {
+  async fn try_load_cached_config(&self) -> anyhow::Result<(bool, Option<RuntimeUpdate>)> {
     // We expect at most two files in this directory: a protobuf.pb which contains the cached
     // runtime protobuf and a retry_count file which contains the number of times this cached
     // runtime has been attempted applied during startup. The idea behind the retry count is
@@ -226,16 +242,18 @@ impl ConfigLoader {
     // out the other file if it's there. This could handle naturally if the system shuts down in the
     // middle of caching config.
     if !self.retry_count_file.exists() || !self.protobuf_file.exists() {
-      return Ok(true);
+      return Ok((true, None));
     }
 
     // If the retry count file contains invalid data we defensively bail on reading the cached
     // value. If we were to treat an empty file as count=0 we could theoretically find ourselves in
     // a loop where the file is not properly updated.
     let Ok(retry_count) = Self::parse_retry_count(
-      &std::fs::read(&self.retry_count_file).map_err(|e| anyhow!("an io error ocurred: {e}"))?,
+      &tokio::fs::read(&self.retry_count_file)
+        .await
+        .map_err(|e| anyhow!("an io error ocurred: {e}"))?,
     ) else {
-      return Ok(true);
+      return Ok((true, None));
     };
 
     log::debug!("loaded runtime file at retry count {retry_count}");
@@ -244,7 +262,7 @@ impl ConfigLoader {
     // attempt to clear the cache directory) and disable caching. We do this because being unable
     // to update the retry count may result in us getting stuck processing what we think is retry
     // 0 over and over again.
-    self.persist_cache_load_retry_count(retry_count + 1)?;
+    self.persist_cache_load_retry_count(retry_count + 1).await?;
 
     // TODO(snowp): Should we read this from runtime as well? It would make it possible for a bad
     // runtime config to accidentally set this really high, but right now this is not
@@ -253,20 +271,13 @@ impl ConfigLoader {
       // Note that eventually if the client is killed this is going to kick in and delete cached
       // runtime. This is OK since we are still covered by the kill file, and ultimately we would
       // like the client to come up and get fresh config anyway.
-      return Ok(true);
+      return Ok((true, None));
     }
 
     // TODO(snowp): Add stats for how often the read fails beyond ENOENT.
     // TODO(snowp): When we add a callback, only trigger it if we successfully loaded the config.
-    // TODO(mattklein123): This tries to read the compressed format with CRC and if it fails tries
-    // to fall back to the uncompressed format.
-    let bytes = std::fs::read(&self.protobuf_file)?;
-    let runtime =
-      read_compressed_protobuf(&bytes).or_else(|_| RuntimeUpdate::parse_from_bytes(&bytes))?;
-
-    self.update_snapshot_inner(&runtime);
-
-    Ok(false)
+    let bytes = tokio::fs::read(&self.protobuf_file).await?;
+    Ok((false, Some(read_compressed_protobuf(&bytes)?)))
   }
 
   fn parse_retry_count(data: &[u8]) -> anyhow::Result<u32> {
@@ -333,15 +344,15 @@ impl ConfigLoader {
     }
   }
 
-  pub fn update_snapshot(&self, runtime_update: &RuntimeUpdate) {
-    self.update_snapshot_inner(runtime_update);
+  pub async fn update_snapshot(&self, runtime_update: &RuntimeUpdate) {
+    self.update_snapshot_inner(runtime_update).await;
     // Failing here is fine, worst case we'll use an old retry count or leave is missing, which
     // will eventually disable caching.
-    let _ignored = self.persist_cache_load_retry_count(0);
+    let _ignored = self.persist_cache_load_retry_count(0).await;
   }
 
   /// Updates the current runtime snapshot, updating all registered watchers as appropriate.
-  fn update_snapshot_inner(&self, runtime_update: &RuntimeUpdate) {
+  async fn update_snapshot_inner(&self, runtime_update: &RuntimeUpdate) {
     {
       let mut l = self.state.lock().unwrap();
 
@@ -370,11 +381,11 @@ impl ConfigLoader {
     // Drop the lock before we write to disk to reduce lock contention on the runtime snapshot.
     // We're operating within the single threaded executor, so there is no race to worry about
     // between multiple updates.
-    self.cache_update(runtime_update);
+    self.cache_update(runtime_update).await;
   }
 
-  fn cache_update(&self, runtime: &RuntimeUpdate) {
-    let _ignored = std::fs::write(&self.protobuf_file, write_compressed_protobuf(runtime));
+  async fn cache_update(&self, runtime: &RuntimeUpdate) {
+    let _ignored = tokio::fs::write(&self.protobuf_file, write_compressed_protobuf(runtime)).await;
   }
 }
 

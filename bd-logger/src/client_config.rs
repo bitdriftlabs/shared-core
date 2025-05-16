@@ -79,6 +79,8 @@ pub struct Config<A: ApplyConfig> {
   // Delegate used to apply the configuration. This allows for easier testing.
   #[allow(clippy::struct_field_names)]
   apply_config: A,
+
+  maybe_persisted_config: Option<ConfigurationUpdate>,
 }
 
 impl<A: ApplyConfig> Config<A> {
@@ -92,6 +94,7 @@ impl<A: ApplyConfig> Config<A> {
       configuration_version_id: None,
       config_cache_failure: stats.scope("config").counter("cache_failure"),
       apply_config,
+      maybe_persisted_config: None,
     })
   }
 
@@ -153,16 +156,7 @@ impl<A: ApplyConfig> Config<A> {
       // contents, we end up writing the file back to disk.
       tokio::fs::remove_file(&self.configuration_file).await?;
 
-      let configuration_update: ConfigurationUpdate = result?;
-
-      // If this function succeeds, it should write back the file to disk.
-      let maybe_nack = self
-        .process_configuration_update(&configuration_update)
-        .await;
-
-      // We should never persist config that results in a Nack, but if we do we effectively drop the
-      // config on startup as the above function won't write it back.
-      debug_assert!(maybe_nack.is_ok());
+      self.maybe_persisted_config = Some(result?);
 
       Ok(())
     };
@@ -204,14 +198,18 @@ impl<A: ApplyConfig + Send + Sync> bd_api::ConfigurationUpdate for Config<A> {
     let _ignored = self.try_load_persisted_config_helper().await;
   }
 
-  fn partial_handshake(&self) -> HandshakeRequest {
-    HandshakeRequest {
-      configuration_version_nonce: self.configuration_version_id.clone().unwrap_or_default(),
-      ..Default::default()
+  async fn maybe_release_persisted_config(&mut self) {
+    if let Some(persisted_config) = self.maybe_persisted_config.take() {
+      let _ignored = self.process_configuration_update(&persisted_config).await;
     }
   }
 
-  fn on_handshake_complete(&self) {}
+  fn fill_handshake(&self, handshake: &mut HandshakeRequest) {
+    handshake.configuration_version_nonce =
+      self.configuration_version_id.clone().unwrap_or_default();
+  }
+
+  async fn on_handshake_complete(&self) {}
 }
 
 // Update handle that updates the buffer configuration and thread local state for a given logger.

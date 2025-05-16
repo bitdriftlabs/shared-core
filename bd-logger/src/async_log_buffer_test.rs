@@ -658,7 +658,8 @@ async fn logs_resource_utilization_log() {
         bd_runtime::runtime::resource_utilization::ResourceUtilizationReportingIntervalFlag::path(),
         ValueKind::Int(250),
       ),
-    ]));
+    ]))
+    .await;
 
   let config_update = setup.make_config_update(WorkflowsConfiguration::default());
   let task = std::thread::spawn(move || {

@@ -968,7 +968,7 @@ impl StateStore {
     let stats = StateStoreStats::new(scope);
 
     let description =
-      format!("failed to deserialize workflows: invalid sdk dir: {sdk_directory:?}");
+      format!("failed to deserialize workflows: invalid sdk dir: {}", sdk_directory.display());
     bd_client_common::error::handle_unexpected::<(), anyhow::Error>(
       if sdk_directory.is_dir() {
         Ok(())

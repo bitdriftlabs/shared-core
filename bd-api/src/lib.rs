@@ -71,14 +71,18 @@ pub trait ConfigurationUpdate: Send + Sync {
   async fn try_apply_config(&mut self, response: &ApiResponse) -> Option<ApiRequest>;
 
   /// Attempts to load persisted config from disk if supported by the configuration type.
+  /// This will NOT make the configuration available to use, but will load the version nonce
+  /// if available.
   async fn try_load_persisted_config(&mut self);
 
-  /// Provides a partial handshake that is used to include the version nonce for this configuration
-  /// type into the handshake request.
-  fn partial_handshake(&self) -> HandshakeRequest;
+  /// fixfix
+  async fn maybe_release_persisted_config(&mut self);
+
+  /// Fill a handshake with version nonce information if available.
+  fn fill_handshake(&self, handshake: &mut HandshakeRequest);
 
   /// Called to allow the configuration pipeline to react to the server being available.
-  fn on_handshake_complete(&self);
+  async fn on_handshake_complete(&self);
 }
 
 //
