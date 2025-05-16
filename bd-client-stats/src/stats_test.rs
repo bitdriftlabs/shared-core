@@ -8,13 +8,11 @@
 use crate::file_manager::{FileManager, PENDING_AGGREGATION_INDEX_FILE, STATS_DIRECTORY};
 use crate::test::TestTicker;
 use crate::Stats;
-use anyhow::anyhow;
 use assert_matches::assert_matches;
-use async_trait::async_trait;
 use bd_api::upload::{Tracked, UploadResponse};
 use bd_api::DataUpload;
 use bd_client_common::file::write_compressed_protobuf;
-use bd_client_common::filesystem::{FileSystem, RealFileSystem};
+use bd_client_common::filesystem::{FileSystem, RealFileSystem, TestFileSystem};
 use bd_client_stats_store::Collector;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{
   Aggregated,
@@ -33,10 +31,7 @@ use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeProvider};
 use futures_util::poll;
-use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::ext::{NumericalDuration, NumericalStdDuration};
@@ -219,75 +214,6 @@ impl Setup {
   async fn shutdown(self) -> Result<(), JoinError> {
     self.shutdown_trigger.shutdown().await;
     self.flush_handle.await
-  }
-}
-
-//
-// TestFileSystem
-//
-
-/// An in-memory test implementation of a file system, meant to somewhat mimic the behavior of a
-/// real filesystem.
-struct TestFileSystem {
-  files: Mutex<HashMap<String, Vec<u8>>>,
-  disk_full: AtomicBool,
-}
-
-#[async_trait]
-impl FileSystem for TestFileSystem {
-  async fn read_file(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
-    let l = self.files.lock();
-
-    l.get(&Self::path_as_str(path))
-      .cloned()
-      .ok_or_else(|| anyhow!("not found"))
-  }
-
-  async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
-    if self.disk_full.load(Ordering::Relaxed) {
-      anyhow::bail!("disk full");
-    }
-
-    self
-      .files
-      .lock()
-      .insert(Self::path_as_str(path), data.as_ref().to_vec());
-
-    Ok(())
-  }
-
-  async fn delete_file(&self, path: &Path) -> anyhow::Result<()> {
-    self.files.lock().remove(&Self::path_as_str(path));
-
-    Ok(())
-  }
-
-  async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {
-    self
-      .files
-      .lock()
-      .retain(|k, _| !k.starts_with(path.to_str().unwrap()));
-
-    Ok(())
-  }
-
-  async fn create_dir(&self, _path: &Path) -> anyhow::Result<()> {
-    // Technically we should only allow creating files if the directory already exists, but we
-    // ignore that for now.
-    Ok(())
-  }
-}
-
-impl TestFileSystem {
-  fn new() -> Self {
-    Self {
-      files: Mutex::new(HashMap::new()),
-      disk_full: AtomicBool::new(false),
-    }
-  }
-
-  fn path_as_str(path: impl AsRef<Path>) -> String {
-    path.as_ref().as_os_str().to_str().unwrap().to_string()
   }
 }
 

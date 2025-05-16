@@ -89,6 +89,13 @@ impl Uploader {
   pub async fn run(mut self) -> anyhow::Result<()> {
     self.initialize().await?;
 
+    // TODO(snowp): Due to the way this is structured we only pop values off the queue of inbound
+    // requests while we have no pending uploads.
+    // TODO(snowp): Add intent retry policy.
+    // TODO(snowp): Add upload retry policy.
+    // TODO(snowp): Add bound to number of pending uploads.
+    // TODO(snowp): Add safety mechanism to clean up files that are not referenced by index.
+    // TODO(snowp): Consider upload/intent parallelism.
     loop {
       let Some(mut next) = self.index.pop_front() else {
         tokio::select! {
