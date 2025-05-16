@@ -106,10 +106,7 @@ fn crash_reports() {
   assert_eq!(crash1.session_id(), initial_session_id);
   assert_ne!(crash1.timestamp(), timestamp);
   assert_eq!(crash1.field("_ootb_field"), "ootb");
-  assert_eq!(
-    crash1.binary_field("_crash_artifact"),
-    b"{\"crash\": \"crash1\"}"
-  );
+  let _crash1_uuid = crash1.field("_crash_artifact_id");
   assert!(!crash1.has_field("custom"));
 
   let crash2 = logs
@@ -120,10 +117,7 @@ fn crash_reports() {
   assert_eq!(crash2.session_id(), initial_session_id);
   assert_eq!(crash2.timestamp(), timestamp);
   assert_eq!(crash2.field("_ootb_field"), "ootb");
-  assert_eq!(
-    crash2.binary_field("_crash_artifact"),
-    b"{\"crash\": \"crash2\"}"
-  );
+  let _crash2_uuid = crash2.field("_crash_artifact_id");
   assert!(!crash1.has_field("custom"));
 }
 

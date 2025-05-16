@@ -19,6 +19,8 @@ use bd_proto::protos::client::api::{
   SankeyIntentRequest,
   SankeyPathUploadRequest,
   StatsUploadRequest,
+  UploadArtifactIntentRequest,
+  UploadArtifactRequest,
 };
 use std::collections::HashMap;
 use upload_artifact_intent_response::Decision as ArtifactIntentDecision;
@@ -239,3 +241,6 @@ pub type TrackedSankeyPathUploadIntentRequest = Tracked<SankeyIntentRequest, Int
 /// in order to allow the server to make decisions on whether a buffer should be uploaded in
 /// response to a specific listener.
 pub type TrackedLogUploadIntent = Tracked<LogUploadIntentRequest, IntentResponse>;
+
+pub type TrackedArtifactUpload = Tracked<UploadArtifactRequest, UploadResponse>;
+pub type TrackedArtifactIntent = Tracked<UploadArtifactIntentRequest, IntentResponse>;

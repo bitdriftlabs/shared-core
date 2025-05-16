@@ -11,25 +11,29 @@ doctest = false
 [dependencies]
 anyhow.workspace       = true
 async-trait.workspace  = true
+bd-api.path            = "../bd-api"
+bd-client-common.path  = "../bd-client-common"
 bd-device.path         = "../bd-device"
 bd-key-value.path      = "../bd-key-value"
 bd-log-primitives.path = "../bd-log-primitives"
 bd-proto.path          = "../bd-proto"
 bd-runtime.path        = "../bd-runtime"
 bd-shutdown.path       = "../bd-shutdown"
+bd-time.path           = "../bd-time"
 flatbuffers.workspace  = true
 itertools.workspace    = true
 log.workspace          = true
+mockall.workspace      = true
 regex.workspace        = true
 serde.workspace        = true
 time.workspace         = true
 tinyjson               = "2.5.1"
 tokio.workspace        = true
+uuid.workspace         = true
 
 [dev-dependencies]
 assert_matches.workspace = true
 bd-test-helpers          = { path = "../bd-test-helpers", default-features = false }
 ctor.workspace           = true
 futures-util.workspace   = true
-mockall.workspace        = true
 tempfile.workspace       = true

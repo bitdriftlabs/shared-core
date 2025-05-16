@@ -11,6 +11,7 @@ mod tests;
 
 pub mod global_state;
 mod json_extractor;
+pub mod uploader;
 
 use bd_log_primitives::LogFields;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs;
@@ -76,6 +77,7 @@ pub struct Monitor {
   crash_details_paths_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashDetailsPaths>,
   report_directory: PathBuf,
   global_state_reader: global_state::Reader,
+  artifact_client: Arc<dyn uploader::Client>,
   shutdown: ComponentShutdown,
 }
 
@@ -84,6 +86,7 @@ impl Monitor {
     runtime: &ConfigLoader,
     sdk_directory: &Path,
     store: Arc<bd_device::Store>,
+    artifact_client: Arc<dyn uploader::Client>,
     shutdown: ComponentShutdown,
   ) -> Self {
     let crash_directories_flag =
@@ -99,6 +102,7 @@ impl Monitor {
       crash_details_paths_flag: crash_details_flag,
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
       global_state_reader: global_state::Reader::new(store),
+      artifact_client,
       shutdown,
     }
   }
@@ -311,30 +315,32 @@ impl Monitor {
           continue;
         }
 
-        let mut fields = global_state_fields.clone();
+        if let Ok(artifact_id) = self.artifact_client.enqueue_upload(contents).await {
+          let mut fields = global_state_fields.clone();
 
-        fields.extend(
-          [
-            ("_crash_artifact".into(), contents.into()),
-            (
-              "_crash_reason".into(),
-              crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
-            ),
-            (
-              "_crash_details".into(),
-              crash_details
-                .unwrap_or_else(|| "unknown".to_string())
-                .into(),
-            ),
-          ]
-          .into_iter(),
-        );
+          fields.extend(
+            [
+              ("_crash_artifact_id".into(), artifact_id.to_string().into()),
+              (
+                "_crash_reason".into(),
+                crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
+              ),
+              (
+                "_crash_details".into(),
+                crash_details
+                  .unwrap_or_else(|| "unknown".to_string())
+                  .into(),
+              ),
+            ]
+            .into_iter(),
+          );
 
-        // TODO(snowp): For now everything in here is a crash, eventually we'll need to be able to
-        // differentiate.
-        // TODO(snowp): Eventually we'll want to upload the report out of band, but for now just
-        // chuck it into a log line.
-        logs.push(CrashLog { fields, timestamp });
+          // TODO(snowp): For now everything in here is a crash, eventually we'll need to be able to
+          // differentiate.
+          // TODO(snowp): Eventually we'll want to upload the report out of band, but for now just
+          // chuck it into a log line.
+          logs.push(CrashLog { fields, timestamp });
+        }
       }
 
       // Clean up files after processing them. If this fails we'll potentially end up

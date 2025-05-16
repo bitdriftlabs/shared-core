@@ -5,13 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::file_manager::{
-  FileManager,
-  FileSystem,
-  RealFileSystem,
-  PENDING_AGGREGATION_INDEX_FILE,
-  STATS_DIRECTORY,
-};
+use crate::file_manager::{FileManager, PENDING_AGGREGATION_INDEX_FILE, STATS_DIRECTORY};
 use crate::test::TestTicker;
 use crate::Stats;
 use anyhow::anyhow;
@@ -20,6 +14,7 @@ use async_trait::async_trait;
 use bd_api::upload::{Tracked, UploadResponse};
 use bd_api::DataUpload;
 use bd_client_common::file::write_compressed_protobuf;
+use bd_client_common::filesystem::{FileSystem, RealFileSystem};
 use bd_client_stats_store::Collector;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{
   Aggregated,

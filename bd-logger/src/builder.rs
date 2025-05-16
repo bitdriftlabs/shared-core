@@ -16,6 +16,7 @@ use crate::InitParams;
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
+use bd_client_common::filesystem::RealFileSystem;
 use bd_client_stats::stats::{RuntimeWatchTicker, Ticker};
 use bd_client_stats::FlushTrigger;
 use bd_client_stats_store::Collector;
@@ -248,10 +249,18 @@ impl LoggerBuilder {
       &scope,
     )?);
 
+    let (artifact_uploader, artifact_client) = bd_crash_handler::uploader::Uploader::new(
+      Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
+      data_upload_ch.tx.clone(),
+      Arc::new(SystemTimeProvider),
+      shutdown_handle.make_shutdown(),
+    );
+
     let mut crash_monitor = bd_crash_handler::Monitor::new(
       &runtime_loader,
       &self.params.sdk_directory,
       self.params.store.clone(),
+      Arc::new(artifact_client),
       shutdown_handle.make_shutdown(),
     );
 
@@ -316,7 +325,8 @@ impl LoggerBuilder {
 
           Ok(())
         },
-        async move { crash_monitor.run().await }
+        async move { crash_monitor.run().await },
+        async move { artifact_uploader.run().await }
       )
       .map(|_| ())
     };
