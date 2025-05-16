@@ -92,13 +92,13 @@ impl Uploader {
     loop {
       let Some(mut next) = self.index.pop_front() else {
         tokio::select! {
-          _ = self.shutdown.cancelled() => {
+          () = self.shutdown.cancelled() => {
             log::debug!("shutting down uploader");
             return Ok(());
           }
           Some((uuid, contents)) = self.upload_queued_rx.recv() => {
             log::debug!("tracking artifact: {uuid} for upload");
-            self.track_new_upload(uuid, contents).await?          }
+            self.track_new_upload(uuid, contents).await?;          }
 
         }
         continue;
@@ -237,14 +237,12 @@ impl Uploader {
       match response.await {
         Ok(response) => {
           if response.success {
-            log::debug!("upload of artifact: {} succeeded", name);
+            log::debug!("upload of artifact: {name} succeeded");
             break;
-          } else {
-            log::debug!("upload of artifact: {} failed, retrying", name);
-            continue;
           }
+          log::debug!("upload of artifact: {name} failed, retrying");
         },
-        Err(_) => continue,
+        Err(_) => log::debug!("upload of artifact: {name} failed, retrying"),
       }
     }
 
@@ -273,7 +271,7 @@ impl Uploader {
 
       match response.await {
         Ok(response) => break Ok(response.decision),
-        Err(_) => continue,
+        Err(_) => log::debug!("intent negotiation for artifact: {uuid} failed, retrying"),
       }
     }
   }

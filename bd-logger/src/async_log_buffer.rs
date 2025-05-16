@@ -261,6 +261,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     )
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn enqueue_log(
     tx: &Sender<AsyncLogBufferMessage>,
     log_level: LogLevel,
@@ -327,6 +328,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     Ok(())
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn add_log_field(
     tx: &Sender<AsyncLogBufferMessage>,
     key: String,
@@ -335,6 +337,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     tx.try_send(AsyncLogBufferMessage::AddLogField(key, value))
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn remove_log_field(
     tx: &Sender<AsyncLogBufferMessage>,
     field_name: &str,
@@ -344,6 +347,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     ))
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn flush_state(
     tx: &Sender<AsyncLogBufferMessage>,
     blocking: bool,

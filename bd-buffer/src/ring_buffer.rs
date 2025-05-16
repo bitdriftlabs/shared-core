@@ -513,6 +513,7 @@ impl CursorConsumer {
 //
 
 // Adapter for the new consumer. To be removed.
+#[allow(clippy::struct_field_names)]
 pub struct Consumer {
   consumer: Box<dyn RingBufferConsumer>,
   _lock_handle: Box<dyn LockHandle>,

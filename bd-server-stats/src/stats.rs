@@ -349,6 +349,7 @@ impl bd_stats_common::Counter for CounterWrapper {
 
 // Named metrics scope used to create metrics.
 #[derive(Clone)]
+#[allow(clippy::struct_field_names)]
 pub struct Scope {
   scope: String,
   collector: Collector,
