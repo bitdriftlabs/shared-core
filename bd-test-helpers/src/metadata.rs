@@ -32,7 +32,6 @@ impl Metadata for EmptyMetadata {
     String::new()
   }
 
-  #[must_use]
   fn collect_inner(&self) -> HashMap<String, String> {
     HashMap::new()
   }

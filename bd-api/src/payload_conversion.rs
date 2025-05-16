@@ -122,7 +122,6 @@ mod client {
         Response_type::FlushBuffers(f) => Some(ResponseKind::FlushBuffers(f)),
         Response_type::SankeyDiagramUpload(s) => Some(ResponseKind::SankeyPathUpload(s)),
         Response_type::SankeyIntentResponse(s) => Some(ResponseKind::SankeyPathUploadIntent(s)),
-        Response_type::OpaqueUpload(o) => Some(ResponseKind::Opaque(o)),
         _ => Some(ResponseKind::Untyped),
       }
     }

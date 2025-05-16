@@ -10,17 +10,14 @@
 mod runtime_test;
 
 use anyhow::anyhow;
-use bd_client_common::error::handle_unexpected;
-use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
+use bd_client_common::safe_file_cache::SafeFileCache;
 use bd_proto::protos::client::api::RuntimeUpdate;
 use bd_proto::protos::client::runtime::runtime::Value;
 use bd_proto::protos::client::runtime::Runtime;
-use protobuf::Message;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::marker::PhantomData;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tokio::sync::watch::Ref;
 
@@ -48,18 +45,18 @@ impl RuntimeManager {
     self.loader.snapshot().nonce.clone()
   }
 
-  // Processes a new runtime update, validaing the update and updating the cached version
+  // Processes a new runtime update, validating the update and updating the cached version
   // if the update is valid. Returns the Nack responses to respond to the server with.
-  pub fn process_update(&self, update: &RuntimeUpdate) {
-    self.loader.update_snapshot(update);
+  pub async fn process_update(&mut self, update: &RuntimeUpdate) {
+    self.loader.update_snapshot(update).await;
   }
 
-  pub fn server_is_available(&self) {
-    self.loader.mark_safe();
+  pub async fn server_is_available(&self) {
+    self.loader.file_cache.mark_safe().await;
   }
 
-  pub fn handle_cached_config(&self) {
-    self.loader.handle_cached_config();
+  pub async fn handle_cached_config(&self) {
+    self.loader.handle_cached_config().await;
   }
 }
 
@@ -142,135 +139,16 @@ impl LoaderState {
 // configuration update from the backend.
 pub struct ConfigLoader {
   state: Mutex<LoaderState>,
-
-  /// The parent directory containing the two cached files.
-  runtime_directory: PathBuf,
-  /// The file containing the cache load retry counter, as a string integer (e.g. "0").
-  retry_count_file: PathBuf,
-  /// The file containing the cached runtime update protobuf.
-  protobuf_file: PathBuf,
-
-  /// Flag used to guard resetting the retry count file more than necessary.
-  cached_config_validated: AtomicBool,
+  file_cache: SafeFileCache<RuntimeUpdate>,
 }
 
 impl ConfigLoader {
   #[must_use]
   pub fn new(sdk_directory: &Path) -> Arc<Self> {
-    let runtime_directory = sdk_directory.join("runtime");
-
-    // Create the directory if it doesn't exist.
-    let _ignored = std::fs::create_dir(&runtime_directory);
-
     Arc::new(Self {
       state: Mutex::new(LoaderState::new(Runtime::default(), None)),
-      retry_count_file: runtime_directory.join("retry_count"),
-      protobuf_file: runtime_directory.join("update.pb"),
-      runtime_directory,
-      cached_config_validated: AtomicBool::new(false),
+      file_cache: SafeFileCache::new(sdk_directory, "runtime"),
     })
-  }
-
-  /// Called to mark the cached config as "safe", meaning that we feel comfortable about letting
-  /// the app continue to read this from disk. This should be called when we receive a handshake
-  /// response from the server, as this implies that the runtime configuration is "good enough"
-  /// for us to be able to receive an updated set of runtime config. Due to the way runtime values
-  /// are read from the snapshot at any time, we're forced to rely on this kind of heuristic to
-  /// attempt to validate that the runtime config doesn't cause a crash loop.
-  pub fn mark_safe(&self) {
-    // We load the config from cache only at startup, so we only need to update the file once.
-    if !self.cached_config_validated.swap(true, Ordering::SeqCst) {
-      // If this fails worst case we'll use a stale retry count and eventually disable caching.
-      let _ignored = self.persist_cache_load_retry_count(0);
-    }
-  }
-
-  fn persist_cache_load_retry_count(&self, retry_count: u32) -> anyhow::Result<()> {
-    // This could fail, but by being defensive when we read this we should ideally worst case just
-    // fall back to not reading from cache.
-    std::fs::write(&self.retry_count_file, format!("{retry_count}").as_bytes())
-      .map_err(|e| anyhow!("an io error occurred: {e}"))
-  }
-
-  pub fn handle_cached_config(&self) {
-    // Attempt to load the cached config from disk. Should we run into any unexpected issues,
-    // eagerly wipe out all the disk state by recreating the runtime directory. This should help
-    // us clean up any dirty state we see on disk and avoid issues persisting between process
-    // restarts. As the errors bubble up through the error handler we may find we can handle some
-    // of these failures. We also wipe the cache on a few expected cases, like hitting the retry
-    // limit or a partial cache state.
-    if match self.try_load_cached_config() {
-      Ok(reset_cache) => reset_cache,
-      Err(e) => {
-        handle_unexpected::<(), anyhow::Error>(Err(e), "runtime cache load");
-        true
-      },
-    } {
-      // Recreate the directory instead of deleting individual files, making sure we really clean
-      // up any bad state.
-      let _ignored = std::fs::remove_dir_all(&self.runtime_directory);
-      let _ignored = std::fs::create_dir(&self.runtime_directory);
-    }
-  }
-
-  // Attempts to apply cached configuration. Returns true if the underlying cache state should be
-  // reset.
-  fn try_load_cached_config(&self) -> anyhow::Result<bool> {
-    // We expect at most two files in this directory: a protobuf.pb which contains the cached
-    // runtime protobuf and a retry_count file which contains the number of times this cached
-    // runtime has been attempted applied during startup. The idea behind the retry count is
-    // allow a client that received bad configuration to eventually recover, avoiding an infinite
-    // crash loop.
-
-    // If either of the files don't exist, we're not going to try to load the config and we'll wipe
-    // out the other file if it's there. This could handle naturally if the system shuts down in the
-    // middle of caching config.
-    if !self.retry_count_file.exists() || !self.protobuf_file.exists() {
-      return Ok(true);
-    }
-
-    // If the retry count file contains invalid data we defensively bail on reading the cached
-    // value. If we were to treat an empty file as count=0 we could theoretically find ourselves in
-    // a loop where the file is not properly updated.
-    let Ok(retry_count) = Self::parse_retry_count(
-      &std::fs::read(&self.retry_count_file).map_err(|e| anyhow!("an io error ocurred: {e}"))?,
-    ) else {
-      return Ok(true);
-    };
-
-    log::debug!("loaded runtime file at retry count {retry_count}");
-
-    // Update the retry count before we apply the runtime. If this fails, we bail out (which will
-    // attempt to clear the cache directory) and disable caching. We do this because being unable
-    // to update the retry count may result in us getting stuck processing what we think is retry
-    // 0 over and over again.
-    self.persist_cache_load_retry_count(retry_count + 1)?;
-
-    // TODO(snowp): Should we read this from runtime as well? It would make it possible for a bad
-    // runtime config to accidentally set this really high, but right now this is not
-    // configurable at all.
-    if retry_count > 5 {
-      // Note that eventually if the client is killed this is going to kick in and delete cached
-      // runtime. This is OK since we are still covered by the kill file, and ultimately we would
-      // like the client to come up and get fresh config anyway.
-      return Ok(true);
-    }
-
-    // TODO(snowp): Add stats for how often the read fails beyond ENOENT.
-    // TODO(snowp): When we add a callback, only trigger it if we successfully loaded the config.
-    // TODO(mattklein123): This tries to read the compressed format with CRC and if it fails tries
-    // to fall back to the uncompressed format.
-    let bytes = std::fs::read(&self.protobuf_file)?;
-    let runtime =
-      read_compressed_protobuf(&bytes).or_else(|_| RuntimeUpdate::parse_from_bytes(&bytes))?;
-
-    self.update_snapshot_inner(&runtime);
-
-    Ok(false)
-  }
-
-  fn parse_retry_count(data: &[u8]) -> anyhow::Result<u32> {
-    Ok(std::str::from_utf8(data)?.parse()?)
   }
 
   pub fn snapshot(&self) -> Arc<Snapshot> {
@@ -333,48 +211,41 @@ impl ConfigLoader {
     }
   }
 
-  pub fn update_snapshot(&self, runtime_update: &RuntimeUpdate) {
+  async fn handle_cached_config(&self) {
+    if let Some(runtime) = self.file_cache.handle_cached_config().await {
+      self.update_snapshot_inner(&runtime);
+    }
+  }
+
+  pub async fn update_snapshot(&self, runtime_update: &RuntimeUpdate) {
     self.update_snapshot_inner(runtime_update);
-    // Failing here is fine, worst case we'll use an old retry count or leave is missing, which
-    // will eventually disable caching.
-    let _ignored = self.persist_cache_load_retry_count(0);
+    self.file_cache.cache_update(runtime_update).await;
   }
 
   /// Updates the current runtime snapshot, updating all registered watchers as appropriate.
   fn update_snapshot_inner(&self, runtime_update: &RuntimeUpdate) {
-    {
-      let mut l = self.state.lock().unwrap();
+    let mut l = self.state.lock().unwrap();
 
-      let snapshot = Arc::new(Snapshot::new(
-        runtime_update.runtime.clone().unwrap_or_default(),
-        runtime_update.version_nonce.clone().into(),
-      ));
+    let snapshot = Arc::new(Snapshot::new(
+      runtime_update.runtime.clone().unwrap_or_default(),
+      runtime_update.version_nonce.clone().into(),
+    ));
 
-      // Update the value for each active watch if the data changed.
-      for (k, mut watch) in &mut l.watches {
-        match &mut watch {
-          InternalWatchKind::Int(watch) => Self::send_if_modified(k, &snapshot, watch),
-          InternalWatchKind::Bool(watch) => Self::send_if_modified(k, &snapshot, watch),
-          InternalWatchKind::Duration(watch) => {
-            Self::send_if_modified(k, &snapshot, watch);
-          },
-          InternalWatchKind::String(watch) => {
-            Self::send_if_modified(k, &snapshot, watch);
-          },
-        }
+    // Update the value for each active watch if the data changed.
+    for (k, mut watch) in &mut l.watches {
+      match &mut watch {
+        InternalWatchKind::Int(watch) => Self::send_if_modified(k, &snapshot, watch),
+        InternalWatchKind::Bool(watch) => Self::send_if_modified(k, &snapshot, watch),
+        InternalWatchKind::Duration(watch) => {
+          Self::send_if_modified(k, &snapshot, watch);
+        },
+        InternalWatchKind::String(watch) => {
+          Self::send_if_modified(k, &snapshot, watch);
+        },
       }
-
-      l.snapshot = snapshot;
     }
 
-    // Drop the lock before we write to disk to reduce lock contention on the runtime snapshot.
-    // We're operating within the single threaded executor, so there is no race to worry about
-    // between multiple updates.
-    self.cache_update(runtime_update);
-  }
-
-  fn cache_update(&self, runtime: &RuntimeUpdate) {
-    let _ignored = std::fs::write(&self.protobuf_file, write_compressed_protobuf(runtime));
+    l.snapshot = snapshot;
   }
 }
 

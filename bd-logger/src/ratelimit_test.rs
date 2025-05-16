@@ -51,16 +51,18 @@ async fn ratelimit() {
   let runtime_loader = ConfigLoader::new(directory.path());
 
   // Set the ratelimit parameters to 10 characters per minute.
-  runtime_loader.update_snapshot(&make_simple_update(vec![
-    (
-      bd_runtime::runtime::log_upload::RatelimitByteCountPerPeriodFlag::path(),
-      ValueKind::Int(10),
-    ),
-    (
-      bd_runtime::runtime::log_upload::RatelimitPeriodFlag::path(),
-      ValueKind::Int(1000),
-    ),
-  ]));
+  runtime_loader
+    .update_snapshot(&make_simple_update(vec![
+      (
+        bd_runtime::runtime::log_upload::RatelimitByteCountPerPeriodFlag::path(),
+        ValueKind::Int(10),
+      ),
+      (
+        bd_runtime::runtime::log_upload::RatelimitPeriodFlag::path(),
+        ValueKind::Int(1000),
+      ),
+    ]))
+    .await;
 
   let rate_limit = RateLimitLayer::new(super::Rate::new(&runtime_loader).unwrap());
   let mut service = tower::ServiceBuilder::new()
@@ -93,16 +95,18 @@ async fn shared_quota() {
   let runtime_loader = ConfigLoader::new(directory.path());
 
   // Set the ratelimit parameters to 2 characters per second.
-  runtime_loader.update_snapshot(&make_simple_update(vec![
-    (
-      bd_runtime::runtime::log_upload::RatelimitByteCountPerPeriodFlag::path(),
-      ValueKind::Int(2),
-    ),
-    (
-      bd_runtime::runtime::log_upload::RatelimitPeriodFlag::path(),
-      ValueKind::Int(1000),
-    ),
-  ]));
+  runtime_loader
+    .update_snapshot(&make_simple_update(vec![
+      (
+        bd_runtime::runtime::log_upload::RatelimitByteCountPerPeriodFlag::path(),
+        ValueKind::Int(2),
+      ),
+      (
+        bd_runtime::runtime::log_upload::RatelimitPeriodFlag::path(),
+        ValueKind::Int(1000),
+      ),
+    ]))
+    .await;
 
   let rate_limit = RateLimitLayer::new(super::Rate::new(&runtime_loader).unwrap());
   let mut service1 = tower::ServiceBuilder::new()

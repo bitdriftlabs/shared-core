@@ -245,8 +245,7 @@ impl LoggerBuilder {
         config_update_tx,
         &scope.scope("config"),
       ),
-      &scope,
-    )?);
+    ));
 
     let mut crash_monitor = bd_crash_handler::Monitor::new(
       &runtime_loader,

@@ -14,7 +14,7 @@ use bd_runtime::runtime::ConfigLoader;
 use bd_test_helpers::{action, declare_transition, log_matches, rule, state, workflow_proto};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
-use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
+use criterion::{criterion_group, criterion_main, Bencher, Criterion};
 use std::collections::BTreeSet;
 use std::future::Future;
 use time::OffsetDateTime;
@@ -122,7 +122,7 @@ fn run_runtime_bench<T: Future<Output = WorkflowsEngine>>(
       let mut engine = engine().await;
       bencher.iter(|| {
         engine.process_log(
-          black_box(&LogRef {
+          std::hint::black_box(&LogRef {
             log_type: LogType::Normal,
             log_level: log_level::DEBUG,
             message: &"foo".into(),

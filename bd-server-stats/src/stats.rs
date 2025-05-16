@@ -350,7 +350,7 @@ impl bd_stats_common::Counter for CounterWrapper {
 // Named metrics scope used to create metrics.
 #[derive(Clone)]
 pub struct Scope {
-  scope: String,
+  name: String,
   collector: Collector,
   labels: HashMap<String, String>,
 }
@@ -374,14 +374,14 @@ impl Scope {
   // Create a sub-scope with a set of fixed labels.
   #[must_use]
   pub fn scope_with_labels(&self, extend: &str, labels: HashMap<String, String>) -> Self {
-    let scope_name = if extend.is_empty() {
-      self.scope.clone()
+    let name = if extend.is_empty() {
+      self.name.clone()
     } else {
       self.metric_name(extend)
     };
 
     Self {
-      scope: scope_name,
+      name,
       collector: self.collector.clone(),
       labels: self.final_labels(labels),
     }
@@ -518,10 +518,10 @@ impl Scope {
 
   // Build the final metric name from the current scope.
   fn metric_name(&self, name: &str) -> String {
-    if self.scope.is_empty() {
+    if self.name.is_empty() {
       name.to_string()
     } else {
-      format!("{}{SEP}{name}", self.scope)
+      format!("{}{SEP}{name}", self.name)
     }
   }
 }
@@ -587,7 +587,7 @@ impl Collector {
   #[must_use]
   pub fn scope(&self, name: &str) -> Scope {
     Scope {
-      scope: name.to_string(),
+      name: name.to_string(),
       collector: self.clone(),
       labels: HashMap::new(),
     }

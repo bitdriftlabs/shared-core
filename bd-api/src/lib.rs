@@ -16,7 +16,6 @@ use bd_proto::protos::client::api::{
   LogUploadIntentResponse,
   LogUploadRequest,
   LogUploadResponse,
-  OpaqueResponse,
   PongResponse,
   SankeyIntentRequest,
   SankeyIntentResponse,
@@ -73,12 +72,11 @@ pub trait ConfigurationUpdate: Send + Sync {
   /// Attempts to load persisted config from disk if supported by the configuration type.
   async fn try_load_persisted_config(&mut self);
 
-  /// Provides a partial handshake that is used to include the version nonce for this configuration
-  /// type into the handshake request.
-  fn partial_handshake(&self) -> HandshakeRequest;
+  /// Fill a handshake with version nonce information if available.
+  fn fill_handshake(&self, handshake: &mut HandshakeRequest);
 
   /// Called to allow the configuration pipeline to react to the server being available.
-  fn on_handshake_complete(&self);
+  async fn on_handshake_complete(&self);
 }
 
 //
@@ -96,7 +94,6 @@ pub enum ResponseKind<'a> {
   FlushBuffers(&'a FlushBuffers),
   SankeyPathUpload(&'a SankeyPathUploadResponse),
   SankeyPathUploadIntent(&'a SankeyIntentResponse),
-  Opaque(&'a OpaqueResponse),
   ArtifactUploadIntent(&'a UploadArtifactIntentResponse),
   ArtifactUpload(&'a UploadArtifactResponse),
   Untyped,

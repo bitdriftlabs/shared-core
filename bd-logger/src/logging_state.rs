@@ -38,6 +38,7 @@ use tokio::sync::mpsc::Sender;
 /// The logging state used by the `AsyncLogBuffer` to encapsulate objects
 /// that are needed to process incoming logs.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum LoggingState<T: MemorySized + Debug> {
   /// The initial state that each `AsyncLogBuffer` starts in. While in this state
   /// the buffer takes incoming logs, populates them with extra information using

@@ -270,7 +270,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     matching_fields: AnnotatedLogFields,
     attributes_overrides: Option<LogAttributesOverrides>,
     blocking: bool,
-  ) -> Result<(), TrySendError<AsyncLogBufferMessage>> {
+  ) -> Result<(), TrySendError> {
     let (log_processing_completed_tx_option, log_processing_completed_rx_option) = if blocking {
       // Create a (sender, receiver) pair only if the caller wants to wait on
       // on the log being pushed through the whole log processing pipeline.
@@ -293,7 +293,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     if let Err(e) = tx.try_send(AsyncLogBufferMessage::EmitLog(log)) {
       log::debug!("enqueue_log: sending to channel failed: {e:?}");
 
-      if let TrySendError::Closed(_) = &e {
+      if matches!(&e, TrySendError::Closed) {
         handle_unexpected::<(), anyhow::Error>(
           Err(anyhow::anyhow!("channel closed")),
           "async log buffer: channel is closed",
@@ -331,14 +331,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     tx: &Sender<AsyncLogBufferMessage>,
     key: String,
     value: StringOrBytes<String, Vec<u8>>,
-  ) -> Result<(), TrySendError<AsyncLogBufferMessage>> {
+  ) -> Result<(), TrySendError> {
     tx.try_send(AsyncLogBufferMessage::AddLogField(key, value))
   }
 
   pub fn remove_log_field(
     tx: &Sender<AsyncLogBufferMessage>,
     field_name: &str,
-  ) -> Result<(), TrySendError<AsyncLogBufferMessage>> {
+  ) -> Result<(), TrySendError> {
     tx.try_send(AsyncLogBufferMessage::RemoveLogField(
       field_name.to_string(),
     ))
@@ -347,7 +347,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   pub fn flush_state(
     tx: &Sender<AsyncLogBufferMessage>,
     blocking: bool,
-  ) -> Result<(), TrySendError<AsyncLogBufferMessage>> {
+  ) -> Result<(), TrySendError> {
     let (completion_tx, completion_rx) = if blocking {
       let (tx, rx) = bd_completion::Sender::new();
       (Some(tx), Some(rx))

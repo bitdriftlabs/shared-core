@@ -1941,7 +1941,7 @@ fn runtime_caching() {
   assert!(sdk_directory
     .path()
     .join("runtime")
-    .join("update.pb")
+    .join("protobuf.pb")
     .exists());
   assert!(retry_file.exists());
   assert_eq!(std::fs::read(&retry_file).unwrap(), b"0");
