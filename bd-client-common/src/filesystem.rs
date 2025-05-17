@@ -128,12 +128,23 @@ impl FileSystem for TestFileSystem {
   }
 }
 
+impl Default for TestFileSystem {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl TestFileSystem {
+  #[must_use]
   pub fn new() -> Self {
     Self {
       files: Mutex::new(HashMap::new()),
       disk_full: AtomicBool::new(false),
     }
+  }
+
+  pub fn files(&self) -> HashMap<String, Vec<u8>> {
+    self.files.lock().clone()
   }
 
   fn path_as_str(path: impl AsRef<Path>) -> String {

@@ -119,14 +119,11 @@ impl Uploader {
 
         match decision {
           IntentDecision::Drop => {
-            self
-              .filesystem
-              .read_file(&PathBuf::from(&next.name))
-              .await?;
+            self.filesystem.read_file(&file_path(&next.name)).await?;
             self.write_index().await?;
           },
           IntentDecision::UploadImmediately => {
-            log::debug!("uploading artifact: {}", next.name);
+            log::debug!("intent negotiated completed, proceeding to upload artifact");
             // Mark the file as being ready for uploads and persist this to the index.
             next.pending_intent_negotation = false;
             self.index.push_front(next);
@@ -137,7 +134,7 @@ impl Uploader {
         continue;
       }
 
-      let Ok(contents) = self.filesystem.read_file(&PathBuf::from(&next.name)).await else {
+      let Ok(contents) = self.filesystem.read_file(&file_path(&next.name)).await else {
         log::debug!(
           "failed to read file for artifact {}, deleting and removing from index",
           next.name
@@ -151,11 +148,8 @@ impl Uploader {
       self.upload_artifact(contents, &next.name).await?;
 
       // Remove the file from the filesystem.
-      self
-        .filesystem
-        .delete_file(&PathBuf::from(next.name))
-        .await?;
       self.write_index().await?;
+      self.filesystem.delete_file(&file_path(&next.name)).await?;
     }
   }
 
@@ -197,7 +191,7 @@ impl Uploader {
 
     self
       .filesystem
-      .write_file(&PathBuf::from(&uuid), &contents)
+      .write_file(&file_path(&uuid), &contents)
       .await?;
 
     Ok(())
@@ -241,19 +235,18 @@ impl Uploader {
         .send(DataUpload::ArtifactUpload(tracked))
         .await?;
 
+      log::debug!("waiting for resposne..");
       match response.await {
         Ok(response) => {
           if response.success {
             log::debug!("upload of artifact: {name} succeeded");
-            break;
+            return Ok(());
           }
           log::debug!("upload of artifact: {name} failed, retrying");
         },
         Err(_) => log::debug!("upload of artifact: {name} failed, retrying"),
       }
     }
-
-    Ok(())
   }
 
   async fn perform_intent_negotiation(&self, uuid: &str) -> anyhow::Result<IntentDecision> {
@@ -282,4 +275,8 @@ impl Uploader {
       }
     }
   }
+}
+
+pub fn file_path(name: &str) -> PathBuf {
+  REPORT_DIRECTORY.join(name)
 }
