@@ -13,7 +13,7 @@ use crate::stats::Flusher;
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
-use bd_client_common::filesystem::RealFileSystem;
+use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats_store::{Collector, Error as StatsError};
 use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;

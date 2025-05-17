@@ -7,7 +7,7 @@
 
 use bd_api::upload::TrackedStatsUploadRequest;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
-use bd_client_common::filesystem::FileSystem;
+use bd_client_common::file_system::FileSystem;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{Aggregated, Occurred_at};
 use bd_proto::protos::client::api::stats_upload_request::Snapshot;
 use bd_proto::protos::client::api::StatsUploadRequest;

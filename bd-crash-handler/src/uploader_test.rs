@@ -3,7 +3,7 @@ use assert_matches::assert_matches;
 use bd_api::upload::{IntentResponse, UploadResponse};
 use bd_api::DataUpload;
 use bd_client_common::file::read_compressed_protobuf;
-use bd_client_common::filesystem::TestFileSystem;
+use bd_client_common::file_system::TestFileSystem;
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_time::TestTimeProvider;
 use std::sync::Arc;

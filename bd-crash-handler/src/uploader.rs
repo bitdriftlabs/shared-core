@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
 use bd_api::DataUpload;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
-use bd_client_common::filesystem::FileSystem;
+use bd_client_common::file_system::FileSystem;
 use bd_proto::protos::client::api::{UploadArtifactIntentRequest, UploadArtifactRequest};
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
@@ -58,14 +58,14 @@ pub struct Uploader {
   upload_queued_rx: tokio::sync::mpsc::Receiver<NewUpload>,
   shutdown: ComponentShutdown,
   time_provider: Arc<dyn TimeProvider>,
-  filesystem: Arc<dyn FileSystem>,
+  file_system: Arc<dyn FileSystem>,
 
   index: VecDeque<Artifact>,
 }
 
 impl Uploader {
   pub fn new(
-    filesystem: Arc<dyn FileSystem>,
+    file_system: Arc<dyn FileSystem>,
     data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
     time_provider: Arc<dyn TimeProvider>,
     shutdown: ComponentShutdown,
@@ -77,7 +77,7 @@ impl Uploader {
       upload_queued_rx: upload_rx,
       shutdown,
       time_provider,
-      filesystem,
+      file_system,
       index: VecDeque::default(),
     };
 
@@ -90,15 +90,14 @@ impl Uploader {
     self.initialize().await?;
 
     // TODO(snowp): Due to the way this is structured we only pop values off the queue of inbound
-    // requests while we have no pending uploads.
+    // requests while we have no pending uploads. It may need to be two tasks that interact with
+    // the index through a mutex.
     // TODO(snowp): Add intent retry policy.
     // TODO(snowp): Add upload retry policy.
     // TODO(snowp): Add bound to number of pending uploads.
     // TODO(snowp): Add safety mechanism to clean up files that are not referenced by index.
     // TODO(snowp): Consider upload/intent parallelism.
     loop {
-      // Grab the next artifact for upload, removing it from the in-memory index. We'll persist
-      // the change after either we remove the entry or modify the state of the entry.
       let Some(mut next) = self.index.pop_front() else {
         tokio::select! {
           () = self.shutdown.cancelled() => {
@@ -121,14 +120,15 @@ impl Uploader {
 
         match decision {
           IntentDecision::Drop => {
-            log::debug!("intent negotiated completed, dropping artifact");
-
-            self.filesystem.delete_file(&file_path(&next.name)).await?;
+            self
+              .file_system
+              .read_file(&PathBuf::from(&next.name))
+              .await?;
             self.write_index().await?;
           },
           IntentDecision::UploadImmediately => {
-            log::debug!("intent negotiated completed, proceeding to upload artifact");
-
+            log::debug!("uploading artifact: {}", next.name);
+            // Mark the file as being ready for uploads and persist this to the index.
             next.pending_intent_negotation = false;
             self.index.push_front(next);
             self.write_index().await?;
@@ -138,7 +138,7 @@ impl Uploader {
         continue;
       }
 
-      let Ok(contents) = self.filesystem.read_file(&file_path(&next.name)).await else {
+      let Ok(contents) = self.file_system.read_file(&PathBuf::from(&next.name)).await else {
         log::debug!(
           "failed to read file for artifact {}, deleting and removing from index",
           next.name
@@ -149,16 +149,14 @@ impl Uploader {
       };
 
 
-      if let Err(_) = self.upload_artifact(contents, &next.name).await {
-        log::debug!("upload failed due to data channel closing, exiting task");
-        return Ok(());
-      };
+      self.upload_artifact(contents, &next.name).await?;
 
-      // At this point the payload has been successfully updated, so remove the file from disk and
-      // persist the index.
-
+      // Remove the file from the file_system.
+      self
+        .file_system
+        .delete_file(&PathBuf::from(next.name))
+        .await?;
       self.write_index().await?;
-      self.filesystem.delete_file(&file_path(&next.name)).await?;
     }
   }
 
@@ -167,7 +165,7 @@ impl Uploader {
     let path = REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE);
     log::debug!("initializing pending aggregation index: {}", path.display());
     self.index = match self
-      .filesystem
+      .file_system
       .read_file(&path)
       .await
       .and_then(|contents| read_compressed_protobuf::<ArtifactUploadIndex>(&contents))
@@ -177,8 +175,8 @@ impl Uploader {
         log::debug!("unable to open pending aggregation index: {e}");
         log::debug!("creating new aggregation index");
 
-        self.filesystem.remove_dir(&REPORT_DIRECTORY).await?;
-        self.filesystem.create_dir(&REPORT_DIRECTORY).await?;
+        self.file_system.remove_dir(&REPORT_DIRECTORY).await?;
+        self.file_system.create_dir(&REPORT_DIRECTORY).await?;
         ArtifactUploadIndex::default()
       },
     }
@@ -199,8 +197,8 @@ impl Uploader {
     });
 
     self
-      .filesystem
-      .write_file(&file_path(&uuid), &contents)
+      .file_system
+      .write_file(&PathBuf::from(&uuid), &contents)
       .await?;
 
     Ok(())
@@ -214,7 +212,7 @@ impl Uploader {
 
     let compressed = write_compressed_protobuf(&index);
     self
-      .filesystem
+      .file_system
       .as_ref()
       .write_file(&REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE), &compressed)
       .await?;
@@ -248,13 +246,15 @@ impl Uploader {
         Ok(response) => {
           if response.success {
             log::debug!("upload of artifact: {name} succeeded");
-            return Ok(());
+            break;
           }
           log::debug!("upload of artifact: {name} failed, retrying");
         },
         Err(_) => log::debug!("upload of artifact: {name} failed, retrying"),
       }
     }
+
+    Ok(())
   }
 
   async fn perform_intent_negotiation(&self, uuid: &str) -> anyhow::Result<IntentDecision> {
@@ -283,8 +283,4 @@ impl Uploader {
       }
     }
   }
-}
-
-pub fn file_path(name: &str) -> PathBuf {
-  REPORT_DIRECTORY.join(name)
 }

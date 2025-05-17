@@ -11,7 +11,7 @@ use std::future::Future;
 pub mod error;
 pub mod fb;
 pub mod file;
-pub mod filesystem;
+pub mod file_system;
 pub mod zlib;
 
 pub fn spawn_error_handling_task<E: std::error::Error + Sync + Send + 'static>(

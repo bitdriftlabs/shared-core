@@ -12,7 +12,7 @@ use assert_matches::assert_matches;
 use bd_api::upload::{Tracked, UploadResponse};
 use bd_api::DataUpload;
 use bd_client_common::file::write_compressed_protobuf;
-use bd_client_common::filesystem::{FileSystem, RealFileSystem, TestFileSystem};
+use bd_client_common::file_system::{FileSystem, RealFileSystem, TestFileSystem};
 use bd_client_stats_store::Collector;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{
   Aggregated,

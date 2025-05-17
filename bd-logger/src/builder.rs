@@ -16,7 +16,7 @@ use crate::InitParams;
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
-use bd_client_common::filesystem::RealFileSystem;
+use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats::stats::{RuntimeWatchTicker, Ticker};
 use bd_client_stats::FlushTrigger;
 use bd_client_stats_store::Collector;
