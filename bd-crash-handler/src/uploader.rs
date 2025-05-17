@@ -112,6 +112,8 @@ impl Uploader {
         continue;
       };
 
+      let file_path = REPORT_DIRECTORY.join(&next.name);
+
       if next.pending_intent_negotation {
         let Ok(decision) = self.perform_intent_negotiation(&next.name).await else {
           log::debug!("intent negotiation failed due to data channel closing, exiting task");
@@ -120,10 +122,7 @@ impl Uploader {
 
         match decision {
           IntentDecision::Drop => {
-            self
-              .file_system
-              .read_file(&PathBuf::from(&next.name))
-              .await?;
+            self.file_system.delete_file(&file_path).await?;
             self.write_index().await?;
           },
           IntentDecision::UploadImmediately => {
@@ -138,11 +137,12 @@ impl Uploader {
         continue;
       }
 
-      let Ok(contents) = self.file_system.read_file(&PathBuf::from(&next.name)).await else {
+      let Ok(contents) = self.file_system.read_file(&file_path).await else {
         log::debug!(
           "failed to read file for artifact {}, deleting and removing from index",
           next.name
         );
+        self.file_system.delete_file(&file_path).await?;
         self.write_index().await?;
 
         return Ok(());
@@ -151,11 +151,7 @@ impl Uploader {
 
       self.upload_artifact(contents, &next.name).await?;
 
-      // Remove the file from the file_system.
-      self
-        .file_system
-        .delete_file(&PathBuf::from(next.name))
-        .await?;
+      self.file_system.delete_file(&file_path).await?;
       self.write_index().await?;
     }
   }
@@ -198,7 +194,7 @@ impl Uploader {
 
     self
       .file_system
-      .write_file(&PathBuf::from(&uuid), &contents)
+      .write_file(&REPORT_DIRECTORY.join(uuid), &contents)
       .await?;
 
     Ok(())
