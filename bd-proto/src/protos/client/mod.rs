@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 pub mod api;
+pub mod artifact;
 pub mod matcher;
 pub mod metric;
 pub mod runtime;

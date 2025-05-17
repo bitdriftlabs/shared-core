@@ -322,57 +322,8 @@ impl Matcher {
         }
     }
 
-    // .bitdrift_public.protobuf.client.v1.Matcher.SemVerMatch semver = 7;
-
-    pub fn semver(&self) -> &matcher::SemVerMatch {
-        match self.type_ {
-            ::std::option::Option::Some(matcher::Type::Semver(ref v)) => v,
-            _ => <matcher::SemVerMatch as ::protobuf::Message>::default_instance(),
-        }
-    }
-
-    pub fn clear_semver(&mut self) {
-        self.type_ = ::std::option::Option::None;
-    }
-
-    pub fn has_semver(&self) -> bool {
-        match self.type_ {
-            ::std::option::Option::Some(matcher::Type::Semver(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_semver(&mut self, v: matcher::SemVerMatch) {
-        self.type_ = ::std::option::Option::Some(matcher::Type::Semver(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_semver(&mut self) -> &mut matcher::SemVerMatch {
-        if let ::std::option::Option::Some(matcher::Type::Semver(_)) = self.type_ {
-        } else {
-            self.type_ = ::std::option::Option::Some(matcher::Type::Semver(matcher::SemVerMatch::new()));
-        }
-        match self.type_ {
-            ::std::option::Option::Some(matcher::Type::Semver(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_semver(&mut self) -> matcher::SemVerMatch {
-        if self.has_semver() {
-            match self.type_.take() {
-                ::std::option::Option::Some(matcher::Type::Semver(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            matcher::SemVerMatch::new()
-        }
-    }
-
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(7);
+        let mut fields = ::std::vec::Vec::with_capacity(6);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
             "always",
@@ -415,13 +366,6 @@ impl Matcher {
             Matcher::mut_consistent,
             Matcher::set_consistent,
         ));
-        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, matcher::SemVerMatch>(
-            "semver",
-            Matcher::has_semver,
-            Matcher::semver,
-            Matcher::mut_semver,
-            Matcher::set_semver,
-        ));
         oneofs.push(matcher::Type::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Matcher>(
             "Matcher",
@@ -458,9 +402,6 @@ impl ::protobuf::Message for Matcher {
                 },
                 50 => {
                     self.type_ = ::std::option::Option::Some(matcher::Type::Consistent(is.read_message()?));
-                },
-                58 => {
-                    self.type_ = ::std::option::Option::Some(matcher::Type::Semver(is.read_message()?));
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -499,10 +440,6 @@ impl ::protobuf::Message for Matcher {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
-                &matcher::Type::Semver(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-                },
             };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -531,9 +468,6 @@ impl ::protobuf::Message for Matcher {
                 &matcher::Type::Consistent(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
                 },
-                &matcher::Type::Semver(ref v) => {
-                    ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
-                },
             };
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
@@ -553,7 +487,6 @@ impl ::protobuf::Message for Matcher {
     }
 
     fn clear(&mut self) {
-        self.type_ = ::std::option::Option::None;
         self.type_ = ::std::option::Option::None;
         self.type_ = ::std::option::Option::None;
         self.type_ = ::std::option::Option::None;
@@ -607,8 +540,6 @@ pub mod matcher {
         Integer(IntMatch),
         // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.Matcher.consistent)
         Consistent(ConsistentHashMatch),
-        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.Matcher.semver)
-        Semver(SemVerMatch),
     }
 
     impl ::protobuf::Oneof for Type {
@@ -1404,230 +1335,6 @@ pub mod matcher {
         }
     }
 
-    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.Matcher.SemVerMatch)
-    #[derive(PartialEq,Clone,Default,Debug)]
-    pub struct SemVerMatch {
-        // message fields
-        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.Matcher.SemVerMatch.key)
-        pub key: ::protobuf::MessageField<Key>,
-        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.Matcher.SemVerMatch.value)
-        pub value: ::std::string::String,
-        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.Matcher.SemVerMatch.match_type)
-        pub match_type: ::protobuf::EnumOrUnknown<sem_ver_match::Type>,
-        // special fields
-        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.Matcher.SemVerMatch.special_fields)
-        pub special_fields: ::protobuf::SpecialFields,
-    }
-
-    impl<'a> ::std::default::Default for &'a SemVerMatch {
-        fn default() -> &'a SemVerMatch {
-            <SemVerMatch as ::protobuf::Message>::default_instance()
-        }
-    }
-
-    impl SemVerMatch {
-        pub fn new() -> SemVerMatch {
-            ::std::default::Default::default()
-        }
-
-        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(3);
-            let mut oneofs = ::std::vec::Vec::with_capacity(0);
-            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, Key>(
-                "key",
-                |m: &SemVerMatch| { &m.key },
-                |m: &mut SemVerMatch| { &mut m.key },
-            ));
-            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                "value",
-                |m: &SemVerMatch| { &m.value },
-                |m: &mut SemVerMatch| { &mut m.value },
-            ));
-            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                "match_type",
-                |m: &SemVerMatch| { &m.match_type },
-                |m: &mut SemVerMatch| { &mut m.match_type },
-            ));
-            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SemVerMatch>(
-                "Matcher.SemVerMatch",
-                fields,
-                oneofs,
-            )
-        }
-    }
-
-    impl ::protobuf::Message for SemVerMatch {
-        const NAME: &'static str = "SemVerMatch";
-
-        fn is_initialized(&self) -> bool {
-            true
-        }
-
-        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-            while let Some(tag) = is.read_raw_tag_or_eof()? {
-                match tag {
-                    10 => {
-                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.key)?;
-                    },
-                    18 => {
-                        self.value = is.read_string()?;
-                    },
-                    24 => {
-                        self.match_type = is.read_enum_or_unknown()?;
-                    },
-                    tag => {
-                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                    },
-                };
-            }
-            ::std::result::Result::Ok(())
-        }
-
-        // Compute sizes of nested messages
-        #[allow(unused_variables)]
-        fn compute_size(&self) -> u64 {
-            let mut my_size = 0;
-            if let Some(v) = self.key.as_ref() {
-                let len = v.compute_size();
-                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-            }
-            if !self.value.is_empty() {
-                my_size += ::protobuf::rt::string_size(2, &self.value);
-            }
-            if self.match_type != ::protobuf::EnumOrUnknown::new(sem_ver_match::Type::GREATER_THAN_OR_EQUAL) {
-                my_size += ::protobuf::rt::int32_size(3, self.match_type.value());
-            }
-            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-            self.special_fields.cached_size().set(my_size as u32);
-            my_size
-        }
-
-        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-            if let Some(v) = self.key.as_ref() {
-                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
-            }
-            if !self.value.is_empty() {
-                os.write_string(2, &self.value)?;
-            }
-            if self.match_type != ::protobuf::EnumOrUnknown::new(sem_ver_match::Type::GREATER_THAN_OR_EQUAL) {
-                os.write_enum(3, ::protobuf::EnumOrUnknown::value(&self.match_type))?;
-            }
-            os.write_unknown_fields(self.special_fields.unknown_fields())?;
-            ::std::result::Result::Ok(())
-        }
-
-        fn special_fields(&self) -> &::protobuf::SpecialFields {
-            &self.special_fields
-        }
-
-        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-            &mut self.special_fields
-        }
-
-        fn new() -> SemVerMatch {
-            SemVerMatch::new()
-        }
-
-        fn clear(&mut self) {
-            self.key.clear();
-            self.value.clear();
-            self.match_type = ::protobuf::EnumOrUnknown::new(sem_ver_match::Type::GREATER_THAN_OR_EQUAL);
-            self.special_fields.clear();
-        }
-
-        fn default_instance() -> &'static SemVerMatch {
-            static instance: SemVerMatch = SemVerMatch {
-                key: ::protobuf::MessageField::none(),
-                value: ::std::string::String::new(),
-                match_type: ::protobuf::EnumOrUnknown::from_i32(0),
-                special_fields: ::protobuf::SpecialFields::new(),
-            };
-            &instance
-        }
-    }
-
-    impl ::protobuf::MessageFull for SemVerMatch {
-        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("Matcher.SemVerMatch").unwrap()).clone()
-        }
-    }
-
-    impl ::std::fmt::Display for SemVerMatch {
-        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-            ::protobuf::text_format::fmt(self, f)
-        }
-    }
-
-    impl ::protobuf::reflect::ProtobufValue for SemVerMatch {
-        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-    }
-
-    /// Nested message and enums of message `SemVerMatch`
-    pub mod sem_ver_match {
-        #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
-        // @@protoc_insertion_point(enum:bitdrift_public.protobuf.client.v1.Matcher.SemVerMatch.Type)
-        pub enum Type {
-            // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.client.v1.Matcher.SemVerMatch.Type.GREATER_THAN_OR_EQUAL)
-            GREATER_THAN_OR_EQUAL = 0,
-            // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.client.v1.Matcher.SemVerMatch.Type.LESS_THAN)
-            LESS_THAN = 1,
-        }
-
-        impl ::protobuf::Enum for Type {
-            const NAME: &'static str = "Type";
-
-            fn value(&self) -> i32 {
-                *self as i32
-            }
-
-            fn from_i32(value: i32) -> ::std::option::Option<Type> {
-                match value {
-                    0 => ::std::option::Option::Some(Type::GREATER_THAN_OR_EQUAL),
-                    1 => ::std::option::Option::Some(Type::LESS_THAN),
-                    _ => ::std::option::Option::None
-                }
-            }
-
-            fn from_str(str: &str) -> ::std::option::Option<Type> {
-                match str {
-                    "GREATER_THAN_OR_EQUAL" => ::std::option::Option::Some(Type::GREATER_THAN_OR_EQUAL),
-                    "LESS_THAN" => ::std::option::Option::Some(Type::LESS_THAN),
-                    _ => ::std::option::Option::None
-                }
-            }
-
-            const VALUES: &'static [Type] = &[
-                Type::GREATER_THAN_OR_EQUAL,
-                Type::LESS_THAN,
-            ];
-        }
-
-        impl ::protobuf::EnumFull for Type {
-            fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
-                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
-                descriptor.get(|| super::super::file_descriptor().enum_by_package_relative_name("Matcher.SemVerMatch.Type").unwrap()).clone()
-            }
-
-            fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
-                let index = *self as usize;
-                Self::enum_descriptor().value_by_index(index)
-            }
-        }
-
-        impl ::std::default::Default for Type {
-            fn default() -> Self {
-                Type::GREATER_THAN_OR_EQUAL
-            }
-        }
-
-        impl Type {
-            pub(in super::super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
-                ::protobuf::reflect::GeneratedEnumDescriptorData::new::<Type>("Matcher.SemVerMatch.Type")
-            }
-        }
-    }
-
     // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.Matcher.ConsistentHashMatch)
     #[derive(PartialEq,Clone,Default,Debug)]
     pub struct ConsistentHashMatch {
@@ -1812,6 +1519,8 @@ pub struct RootMatcher {
     // message fields
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.RootMatcher.matcher)
     pub matcher: ::protobuf::MessageField<Matcher>,
+    // message oneof groups
+    pub target_type: ::std::option::Option<root_matcher::Target_type>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.RootMatcher.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -1828,14 +1537,127 @@ impl RootMatcher {
         ::std::default::Default::default()
     }
 
+    // .bitdrift_public.protobuf.client.v1.RootMatcher.ClientTarget client_target = 1;
+
+    pub fn client_target(&self) -> &root_matcher::ClientTarget {
+        match self.target_type {
+            ::std::option::Option::Some(root_matcher::Target_type::ClientTarget(ref v)) => v,
+            _ => <root_matcher::ClientTarget as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_client_target(&mut self) {
+        self.target_type = ::std::option::Option::None;
+    }
+
+    pub fn has_client_target(&self) -> bool {
+        match self.target_type {
+            ::std::option::Option::Some(root_matcher::Target_type::ClientTarget(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_client_target(&mut self, v: root_matcher::ClientTarget) {
+        self.target_type = ::std::option::Option::Some(root_matcher::Target_type::ClientTarget(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_client_target(&mut self) -> &mut root_matcher::ClientTarget {
+        if let ::std::option::Option::Some(root_matcher::Target_type::ClientTarget(_)) = self.target_type {
+        } else {
+            self.target_type = ::std::option::Option::Some(root_matcher::Target_type::ClientTarget(root_matcher::ClientTarget::new()));
+        }
+        match self.target_type {
+            ::std::option::Option::Some(root_matcher::Target_type::ClientTarget(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_client_target(&mut self) -> root_matcher::ClientTarget {
+        if self.has_client_target() {
+            match self.target_type.take() {
+                ::std::option::Option::Some(root_matcher::Target_type::ClientTarget(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            root_matcher::ClientTarget::new()
+        }
+    }
+
+    // .bitdrift_public.protobuf.client.v1.RootMatcher.ServerTarget server_target = 2;
+
+    pub fn server_target(&self) -> &root_matcher::ServerTarget {
+        match self.target_type {
+            ::std::option::Option::Some(root_matcher::Target_type::ServerTarget(ref v)) => v,
+            _ => <root_matcher::ServerTarget as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_server_target(&mut self) {
+        self.target_type = ::std::option::Option::None;
+    }
+
+    pub fn has_server_target(&self) -> bool {
+        match self.target_type {
+            ::std::option::Option::Some(root_matcher::Target_type::ServerTarget(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_server_target(&mut self, v: root_matcher::ServerTarget) {
+        self.target_type = ::std::option::Option::Some(root_matcher::Target_type::ServerTarget(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_server_target(&mut self) -> &mut root_matcher::ServerTarget {
+        if let ::std::option::Option::Some(root_matcher::Target_type::ServerTarget(_)) = self.target_type {
+        } else {
+            self.target_type = ::std::option::Option::Some(root_matcher::Target_type::ServerTarget(root_matcher::ServerTarget::new()));
+        }
+        match self.target_type {
+            ::std::option::Option::Some(root_matcher::Target_type::ServerTarget(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_server_target(&mut self) -> root_matcher::ServerTarget {
+        if self.has_server_target() {
+            match self.target_type.take() {
+                ::std::option::Option::Some(root_matcher::Target_type::ServerTarget(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            root_matcher::ServerTarget::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(1);
-        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, root_matcher::ClientTarget>(
+            "client_target",
+            RootMatcher::has_client_target,
+            RootMatcher::client_target,
+            RootMatcher::mut_client_target,
+            RootMatcher::set_client_target,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, root_matcher::ServerTarget>(
+            "server_target",
+            RootMatcher::has_server_target,
+            RootMatcher::server_target,
+            RootMatcher::mut_server_target,
+            RootMatcher::set_server_target,
+        ));
         fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, Matcher>(
             "matcher",
             |m: &RootMatcher| { &m.matcher },
             |m: &mut RootMatcher| { &mut m.matcher },
         ));
+        oneofs.push(root_matcher::Target_type::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<RootMatcher>(
             "RootMatcher",
             fields,
@@ -1854,6 +1676,12 @@ impl ::protobuf::Message for RootMatcher {
     fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
         while let Some(tag) = is.read_raw_tag_or_eof()? {
             match tag {
+                10 => {
+                    self.target_type = ::std::option::Option::Some(root_matcher::Target_type::ClientTarget(is.read_message()?));
+                },
+                18 => {
+                    self.target_type = ::std::option::Option::Some(root_matcher::Target_type::ServerTarget(is.read_message()?));
+                },
                 26 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.matcher)?;
                 },
@@ -1873,6 +1701,18 @@ impl ::protobuf::Message for RootMatcher {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
+        if let ::std::option::Option::Some(ref v) = self.target_type {
+            match v {
+                &root_matcher::Target_type::ClientTarget(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &root_matcher::Target_type::ServerTarget(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -1881,6 +1721,16 @@ impl ::protobuf::Message for RootMatcher {
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
         if let Some(v) = self.matcher.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        if let ::std::option::Option::Some(ref v) = self.target_type {
+            match v {
+                &root_matcher::Target_type::ClientTarget(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                },
+                &root_matcher::Target_type::ServerTarget(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                },
+            };
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -1899,6 +1749,8 @@ impl ::protobuf::Message for RootMatcher {
     }
 
     fn clear(&mut self) {
+        self.target_type = ::std::option::Option::None;
+        self.target_type = ::std::option::Option::None;
         self.matcher.clear();
         self.special_fields.clear();
     }
@@ -1906,6 +1758,7 @@ impl ::protobuf::Message for RootMatcher {
     fn default_instance() -> &'static RootMatcher {
         static instance: RootMatcher = RootMatcher {
             matcher: ::protobuf::MessageField::none(),
+            target_type: ::std::option::Option::None,
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -1929,9 +1782,243 @@ impl ::protobuf::reflect::ProtobufValue for RootMatcher {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+/// Nested message and enums of message `RootMatcher`
+pub mod root_matcher {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.client.v1.RootMatcher.target_type)
+    pub enum Target_type {
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.RootMatcher.client_target)
+        ClientTarget(ClientTarget),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.RootMatcher.server_target)
+        ServerTarget(ServerTarget),
+    }
+
+    impl ::protobuf::Oneof for Target_type {
+    }
+
+    impl ::protobuf::OneofFull for Target_type {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::RootMatcher as ::protobuf::MessageFull>::descriptor().oneof_by_name("target_type").unwrap()).clone()
+        }
+    }
+
+    impl Target_type {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Target_type>("target_type")
+        }
+    }
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.RootMatcher.ClientTarget)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct ClientTarget {
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.RootMatcher.ClientTarget.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a ClientTarget {
+        fn default() -> &'a ClientTarget {
+            <ClientTarget as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl ClientTarget {
+        pub fn new() -> ClientTarget {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(0);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ClientTarget>(
+                "RootMatcher.ClientTarget",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for ClientTarget {
+        const NAME: &'static str = "ClientTarget";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> ClientTarget {
+            ClientTarget::new()
+        }
+
+        fn clear(&mut self) {
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static ClientTarget {
+            static instance: ClientTarget = ClientTarget {
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for ClientTarget {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("RootMatcher.ClientTarget").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for ClientTarget {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for ClientTarget {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.RootMatcher.ServerTarget)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct ServerTarget {
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.RootMatcher.ServerTarget.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a ServerTarget {
+        fn default() -> &'a ServerTarget {
+            <ServerTarget as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl ServerTarget {
+        pub fn new() -> ServerTarget {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(0);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ServerTarget>(
+                "RootMatcher.ServerTarget",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for ServerTarget {
+        const NAME: &'static str = "ServerTarget";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> ServerTarget {
+            ServerTarget::new()
+        }
+
+        fn clear(&mut self) {
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static ServerTarget {
+            static instance: ServerTarget = ServerTarget {
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for ServerTarget {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("RootMatcher.ServerTarget").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for ServerTarget {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for ServerTarget {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+}
+
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n0bitdrift_public/protobuf/client/v1/matcher.proto\x12\"bitdrift_public\
-    .protobuf.client.v1\x1a\x17validate/validate.proto\"\x8d\r\n\x07Matcher\
+    .protobuf.client.v1\x1a\x17validate/validate.proto\"\xb8\n\n\x07Matcher\
     \x12!\n\x06always\x18\x01\x20\x01(\x08H\0R\x06alwaysB\x07\xfaB\x04j\x02\
     \x08\x01\x12K\n\x03and\x18\x02\x20\x01(\x0b27.bitdrift_public.protobuf.c\
     lient.v1.Matcher.MatcherListH\0R\x03and\x12I\n\x02or\x18\x03\x20\x01(\
@@ -1940,38 +2027,35 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     .v1.Matcher.StringMatchH\0R\x06string\x12P\n\x07integer\x18\x05\x20\x01(\
     \x0b24.bitdrift_public.protobuf.client.v1.Matcher.IntMatchH\0R\x07intege\
     r\x12a\n\nconsistent\x18\x06\x20\x01(\x0b2?.bitdrift_public.protobuf.cli\
-    ent.v1.Matcher.ConsistentHashMatchH\0R\nconsistent\x12Q\n\x06semver\x18\
-    \x07\x20\x01(\x0b27.bitdrift_public.protobuf.client.v1.Matcher.SemVerMat\
-    chH\0R\x06semver\x1aS\n\x03Key\x12?\n\x16static_device_metadata\x18\x01\
-    \x20\x01(\tH\0R\x14staticDeviceMetadataB\x07\xfaB\x04r\x02\x10\x01B\x0b\
-    \n\x04type\x12\x03\xf8B\x01\x1a`\n\x0bMatcherList\x12Q\n\x08matchers\x18\
-    \x01\x20\x03(\x0b2+.bitdrift_public.protobuf.client.v1.MatcherR\x08match\
-    ersB\x08\xfaB\x05\x92\x01\x02\x08\x02\x1a\xe1\x01\n\x0bStringMatch\x12K\
-    \n\x03key\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1.Matc\
-    her.KeyR\x03keyB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x14\n\x05value\x18\
-    \x02\x20\x01(\tR\x05value\x12[\n\nmatch_type\x18\x03\x20\x01(\x0e2<.bitd\
-    rift_public.protobuf.client.v1.Matcher.StringMatch.TypeR\tmatchType\"\
-    \x12\n\x04Type\x12\n\n\x06EQUALS\x10\0\x1a\x88\x02\n\x08IntMatch\x12K\n\
-    \x03key\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1.Matche\
-    r.KeyR\x03keyB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x14\n\x05value\x18\
-    \x02\x20\x01(\x03R\x05value\x12X\n\nmatch_type\x18\x03\x20\x01(\x0e29.bi\
-    tdrift_public.protobuf.client.v1.Matcher.IntMatch.TypeR\tmatchType\"?\n\
-    \x04Type\x12\n\n\x06EQUALS\x10\0\x12\x10\n\x0cGREATER_THAN\x10\x01\x12\
-    \x19\n\x15GREATER_THAN_OR_EQUAL\x10\x02\x1a\xff\x01\n\x0bSemVerMatch\x12\
-    K\n\x03key\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1.Mat\
-    cher.KeyR\x03keyB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x14\n\x05value\
-    \x18\x02\x20\x01(\tR\x05value\x12[\n\nmatch_type\x18\x03\x20\x01(\x0e2<.\
-    bitdrift_public.protobuf.client.v1.Matcher.SemVerMatch.TypeR\tmatchType\
-    \"0\n\x04Type\x12\x19\n\x15GREATER_THAN_OR_EQUAL\x10\0\x12\r\n\tLESS_THA\
-    N\x10\x01\x1a\xb6\x01\n\x13ConsistentHashMatch\x12K\n\x03key\x18\x01\x20\
-    \x01(\x0b2/.bitdrift_public.protobuf.client.v1.Matcher.KeyR\x03keyB\x08\
-    \xfaB\x05\x8a\x01\x02\x10\x01\x12\x12\n\x04seed\x18\x02\x20\x01(\x04R\
-    \x04seed\x12\x1c\n\tnumerator\x18\x03\x20\x01(\x04R\tnumerator\x12\x20\n\
-    \x0bdenominator\x18\x04\x20\x01(\x04R\x0bdenominatorB\x0b\n\x04type\x12\
-    \x03\xf8B\x01\"j\n\x0bRootMatcher\x12O\n\x07matcher\x18\x03\x20\x01(\x0b\
-    2+.bitdrift_public.protobuf.client.v1.MatcherR\x07matcherB\x08\xfaB\x05\
-    \x8a\x01\x02\x10\x01J\x04\x08\x01\x10\x02J\x04\x08\x02\x10\x03b\x06proto\
-    3\
+    ent.v1.Matcher.ConsistentHashMatchH\0R\nconsistent\x1aS\n\x03Key\x12?\n\
+    \x16static_device_metadata\x18\x01\x20\x01(\tH\0R\x14staticDeviceMetadat\
+    aB\x07\xfaB\x04r\x02\x10\x01B\x0b\n\x04type\x12\x03\xf8B\x01\x1a`\n\x0bM\
+    atcherList\x12Q\n\x08matchers\x18\x01\x20\x03(\x0b2+.bitdrift_public.pro\
+    tobuf.client.v1.MatcherR\x08matchersB\x08\xfaB\x05\x92\x01\x02\x08\x02\
+    \x1a\xe1\x01\n\x0bStringMatch\x12K\n\x03key\x18\x01\x20\x01(\x0b2/.bitdr\
+    ift_public.protobuf.client.v1.Matcher.KeyR\x03keyB\x08\xfaB\x05\x8a\x01\
+    \x02\x10\x01\x12\x14\n\x05value\x18\x02\x20\x01(\tR\x05value\x12[\n\nmat\
+    ch_type\x18\x03\x20\x01(\x0e2<.bitdrift_public.protobuf.client.v1.Matche\
+    r.StringMatch.TypeR\tmatchType\"\x12\n\x04Type\x12\n\n\x06EQUALS\x10\0\
+    \x1a\x88\x02\n\x08IntMatch\x12K\n\x03key\x18\x01\x20\x01(\x0b2/.bitdrift\
+    _public.protobuf.client.v1.Matcher.KeyR\x03keyB\x08\xfaB\x05\x8a\x01\x02\
+    \x10\x01\x12\x14\n\x05value\x18\x02\x20\x01(\x03R\x05value\x12X\n\nmatch\
+    _type\x18\x03\x20\x01(\x0e29.bitdrift_public.protobuf.client.v1.Matcher.\
+    IntMatch.TypeR\tmatchType\"?\n\x04Type\x12\n\n\x06EQUALS\x10\0\x12\x10\n\
+    \x0cGREATER_THAN\x10\x01\x12\x19\n\x15GREATER_THAN_OR_EQUAL\x10\x02\x1a\
+    \xb6\x01\n\x13ConsistentHashMatch\x12K\n\x03key\x18\x01\x20\x01(\x0b2/.b\
+    itdrift_public.protobuf.client.v1.Matcher.KeyR\x03keyB\x08\xfaB\x05\x8a\
+    \x01\x02\x10\x01\x12\x12\n\x04seed\x18\x02\x20\x01(\x04R\x04seed\x12\x1c\
+    \n\tnumerator\x18\x03\x20\x01(\x04R\tnumerator\x12\x20\n\x0bdenominator\
+    \x18\x04\x20\x01(\x04R\x0bdenominatorB\x0b\n\x04type\x12\x03\xf8B\x01\"\
+    \xdc\x02\n\x0bRootMatcher\x12c\n\rclient_target\x18\x01\x20\x01(\x0b2<.b\
+    itdrift_public.protobuf.client.v1.RootMatcher.ClientTargetH\0R\x0cclient\
+    Target\x12c\n\rserver_target\x18\x02\x20\x01(\x0b2<.bitdrift_public.prot\
+    obuf.client.v1.RootMatcher.ServerTargetH\0R\x0cserverTarget\x12O\n\x07ma\
+    tcher\x18\x03\x20\x01(\x0b2+.bitdrift_public.protobuf.client.v1.MatcherR\
+    \x07matcherB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x1a\x0e\n\x0cClientTarget\
+    \x1a\x0e\n\x0cServerTargetB\x12\n\x0btarget_type\x12\x03\xf8B\x01b\x06pr\
+    oto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1990,19 +2074,19 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
             let mut deps = ::std::vec::Vec::with_capacity(1);
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(8);
+            let mut messages = ::std::vec::Vec::with_capacity(9);
             messages.push(Matcher::generated_message_descriptor_data());
             messages.push(RootMatcher::generated_message_descriptor_data());
             messages.push(matcher::Key::generated_message_descriptor_data());
             messages.push(matcher::MatcherList::generated_message_descriptor_data());
             messages.push(matcher::StringMatch::generated_message_descriptor_data());
             messages.push(matcher::IntMatch::generated_message_descriptor_data());
-            messages.push(matcher::SemVerMatch::generated_message_descriptor_data());
             messages.push(matcher::ConsistentHashMatch::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(3);
+            messages.push(root_matcher::ClientTarget::generated_message_descriptor_data());
+            messages.push(root_matcher::ServerTarget::generated_message_descriptor_data());
+            let mut enums = ::std::vec::Vec::with_capacity(2);
             enums.push(matcher::string_match::Type::generated_enum_descriptor_data());
             enums.push(matcher::int_match::Type::generated_enum_descriptor_data());
-            enums.push(matcher::sem_ver_match::Type::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
                 deps,

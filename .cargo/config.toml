@@ -37,6 +37,7 @@ rustflags = [
   "-Dclippy::nursery",
 
   "-Aclippy::missing-errors-doc",
+  "-Aclippy::unnecessary-debug-formatting",
   "-Aclippy::missing-panics-doc",
   "-Aclippy::module-name-repetitions",
   "-Aclippy::similar-names",
