@@ -159,7 +159,7 @@ impl Uploader {
   // Initialize the uploader from the index file on disk.
   async fn initialize(&mut self) -> anyhow::Result<()> {
     let path = REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE);
-    log::debug!("initializing pending aggregation index: {}", path.display());
+    log::debug!("initializing index: {}", path.display());
     self.index = match self
       .file_system
       .read_file(&path)
@@ -168,8 +168,8 @@ impl Uploader {
     {
       Ok(index) => index,
       Err(e) => {
-        log::debug!("unable to open pending aggregation index: {e}");
-        log::debug!("creating new aggregation index");
+        log::debug!("unable to open index: {e}");
+        log::debug!("creating new index");
 
         self.file_system.remove_dir(&REPORT_DIRECTORY).await?;
         self.file_system.create_dir(&REPORT_DIRECTORY).await?;
