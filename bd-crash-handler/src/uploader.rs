@@ -97,6 +97,8 @@ impl Uploader {
     // TODO(snowp): Add safety mechanism to clean up files that are not referenced by index.
     // TODO(snowp): Consider upload/intent parallelism.
     loop {
+      // Grab the next artifact for upload, removing it from the in-memory index. We'll persist
+      // the change after either we remove the entry or modify the state of the entry.
       let Some(mut next) = self.index.pop_front() else {
         tokio::select! {
           () = self.shutdown.cancelled() => {
@@ -119,12 +121,14 @@ impl Uploader {
 
         match decision {
           IntentDecision::Drop => {
-            self.filesystem.read_file(&file_path(&next.name)).await?;
+            log::debug!("intent negotiated completed, dropping artifact");
+
+            self.filesystem.delete_file(&file_path(&next.name)).await?;
             self.write_index().await?;
           },
           IntentDecision::UploadImmediately => {
             log::debug!("intent negotiated completed, proceeding to upload artifact");
-            // Mark the file as being ready for uploads and persist this to the index.
+
             next.pending_intent_negotation = false;
             self.index.push_front(next);
             self.write_index().await?;
@@ -145,9 +149,14 @@ impl Uploader {
       };
 
 
-      self.upload_artifact(contents, &next.name).await?;
+      if let Err(_) = self.upload_artifact(contents, &next.name).await {
+        log::debug!("upload failed due to data channel closing, exiting task");
+        return Ok(());
+      };
 
-      // Remove the file from the filesystem.
+      // At this point the payload has been successfully updated, so remove the file from disk and
+      // persist the index.
+
       self.write_index().await?;
       self.filesystem.delete_file(&file_path(&next.name)).await?;
     }
@@ -235,7 +244,6 @@ impl Uploader {
         .send(DataUpload::ArtifactUpload(tracked))
         .await?;
 
-      log::debug!("waiting for resposne..");
       match response.await {
         Ok(response) => {
           if response.success {
