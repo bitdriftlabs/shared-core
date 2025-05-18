@@ -16,6 +16,8 @@ use mockall::automock;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
+#[cfg(test)]
+use tests::TestHooks;
 use uuid::Uuid;
 
 /// Root directory for all files used for storage and uploading.
@@ -81,6 +83,15 @@ pub struct Uploader {
   file_system: Arc<dyn FileSystem>,
 
   index: VecDeque<Artifact>,
+
+  // TODO runtime flag
+  max_entries: usize,
+
+  intent_task_handle: Option<tokio::task::JoinHandle<Result<IntentDecision>>>,
+  upload_task_handle: Option<tokio::task::JoinHandle<Result<()>>>,
+
+  #[cfg(test)]
+  test_hooks: Option<TestHooks>,
 }
 
 impl Uploader {
@@ -88,6 +99,7 @@ impl Uploader {
     file_system: Arc<dyn FileSystem>,
     data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
     time_provider: Arc<dyn TimeProvider>,
+    max_entries: usize,
     shutdown: ComponentShutdown,
   ) -> (Self, UploadClient) {
     let (upload_tx, upload_rx) = tokio::sync::mpsc::channel(2);
@@ -99,6 +111,11 @@ impl Uploader {
       time_provider,
       file_system,
       index: VecDeque::default(),
+      max_entries,
+      upload_task_handle: None,
+      intent_task_handle: None,
+      #[cfg(test)]
+      test_hooks: None,
     };
 
     let client = UploadClient { upload_tx };
@@ -115,21 +132,26 @@ impl Uploader {
   async fn run_inner(mut self) -> Result<()> {
     self.initialize().await?;
 
-    let mut intent_task_handle = None;
-    let mut upload_task_handle = None;
-
     // TODO(snowp): Add intent retry policy.
     // TODO(snowp): Add upload retry policy.
     // TODO(snowp): Add bound to number of pending uploads.
     // TODO(snowp): Add safety mechanism to clean up files that are not referenced by index.
-    // TODO(snowp): Consider upload/intent parallelism.
+    //
+
+    // The state machinery below relies on careful handling of the contents of the index list, as
+    // we want to make sure that we don't lose entries due to process shutdown. The pending upload
+    // remains at the head of the list during intent negotiation/uploads and is only removed after
+    // the upload completes or we decide to not upload the file.
     loop {
       // If we're not currently processing an entry and there are pending work to do, check the
       // next entry in the list and perform the next step.
-      if intent_task_handle.is_none() && upload_task_handle.is_none() && !self.index.is_empty() {
+      if self.intent_task_handle.is_none()
+        && self.upload_task_handle.is_none()
+        && !self.index.is_empty()
+      {
         let next = self.index.front().unwrap().clone();
         if next.pending_intent_negotation {
-          intent_task_handle = Some(tokio::spawn(Self::perform_intent_negotiation(
+          self.intent_task_handle = Some(tokio::spawn(Self::perform_intent_negotiation(
             self.data_upload_tx.clone(),
             next.name.clone(),
           )));
@@ -150,7 +172,7 @@ impl Uploader {
         };
 
 
-        upload_task_handle = Some(tokio::spawn(Self::upload_artifact(
+        self.upload_task_handle = Some(tokio::spawn(Self::upload_artifact(
           self.data_upload_tx.clone(),
           contents,
           next.name.clone(),
@@ -158,7 +180,7 @@ impl Uploader {
       }
 
       // Only one task should ever be active at a time.
-      debug_assert!(!(intent_task_handle.is_some() && upload_task_handle.is_some()));
+      debug_assert!(!(self.intent_task_handle.is_some() && self.upload_task_handle.is_some()));
 
       // At this point either wait for progress to be made to the current entry or wait for a new
       // entry to be submitted.
@@ -172,17 +194,22 @@ impl Uploader {
           self.track_new_upload(uuid, contents).await?;
         }
         intent_decision = async {
-          intent_task_handle.as_mut().unwrap().await?
-        }, if intent_task_handle.is_some() => {
+          self.intent_task_handle.as_mut().unwrap().await?
+        }, if self.intent_task_handle.is_some() => {
             self.handle_intent_negotiation_decision(intent_decision?).await?;
-            intent_task_handle = None;
+            self.intent_task_handle = None;
         }
         result = async {
-          upload_task_handle.as_mut().unwrap().await?
-        }, if upload_task_handle.is_some() => {
+          self.upload_task_handle.as_mut().unwrap().await?
+        }, if self.upload_task_handle.is_some() => {
             result?;
-            self.handle_upload_complete().await?;
-            upload_task_handle = None;
+            #[allow(unused)]
+            let name = self.handle_upload_complete().await?;
+            self.upload_task_handle = None;
+            #[cfg(test)]
+            if let Some(hooks) = &self.test_hooks {
+                hooks.upload_complete_tx.send(name).await.unwrap();
+            }
         }
 
       }
@@ -242,17 +269,33 @@ impl Uploader {
     Ok(())
   }
 
-  async fn handle_upload_complete(&mut self) -> anyhow::Result<()> {
+  async fn handle_upload_complete(&mut self) -> anyhow::Result<String> {
     let entry = self.index.pop_front().unwrap();
     let file_path = REPORT_DIRECTORY.join(&entry.name);
     self.file_system.delete_file(&file_path).await?;
     self.write_index().await?;
 
-    Ok(())
+    Ok(entry.name)
   }
 
+  fn stop_current_upload(&mut self) {
+    if let Some(task) = self.upload_task_handle.take() {
+      task.abort();
+    }
+    if let Some(task) = self.intent_task_handle.take() {
+      task.abort();
+    }
+  }
 
   async fn track_new_upload(&mut self, uuid: Uuid, contents: Vec<u8>) -> anyhow::Result<()> {
+    // If we've reached our limit of entries, stop the entry currently being uploaded (the oldest
+    // one) to make space for the newer one.
+    if self.index.len() >= self.max_entries {
+      log::debug!("upload queue is full, dropping current upload");
+      self.stop_current_upload();
+      self.index.pop_front();
+    }
+
     let uuid = uuid.to_string();
     self.index.push_back(Artifact {
       name: uuid.clone(),
@@ -263,8 +306,17 @@ impl Uploader {
 
     self
       .file_system
-      .write_file(&REPORT_DIRECTORY.join(uuid), &contents)
+      .write_file(&REPORT_DIRECTORY.join(&uuid), &contents)
       .await?;
+
+    #[cfg(test)]
+    if let Some(hooks) = &self.test_hooks {
+      hooks
+        .entry_received_tx
+        .send(uuid.to_string())
+        .await
+        .unwrap();
+    }
 
     Ok(())
   }

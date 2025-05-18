@@ -253,6 +253,7 @@ impl LoggerBuilder {
       Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
       data_upload_ch.tx.clone(),
       Arc::new(SystemTimeProvider),
+      10,
       shutdown_handle.make_shutdown(),
     );
 
