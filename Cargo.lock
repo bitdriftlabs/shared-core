@@ -373,6 +373,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-artifact-upload"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "async-trait",
+ "bd-api",
+ "bd-client-common",
+ "bd-proto",
+ "bd-runtime",
+ "bd-shutdown",
+ "bd-test-helpers",
+ "bd-time",
+ "ctor",
+ "flatbuffers",
+ "futures-util",
+ "itertools 0.14.0",
+ "log",
+ "mockall",
+ "thiserror 2.0.12",
+ "time",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "bd-buffer"
 version = "1.0.0"
 dependencies = [
@@ -490,6 +516,7 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "bd-api",
+ "bd-artifact-upload",
  "bd-client-common",
  "bd-device",
  "bd-key-value",
@@ -753,6 +780,7 @@ dependencies = [
  "async-trait",
  "backoff",
  "bd-api",
+ "bd-artifact-upload",
  "bd-buffer",
  "bd-client-common",
  "bd-client-stats",

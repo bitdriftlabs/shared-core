@@ -6,6 +6,7 @@ members = [
   "bd-client-common",
   "bd-client-stats",
   "bd-crash-handler",
+  "bd-artifact-upload",
   "bd-client-stats-store",
   "bd-completion",
   "bd-device",

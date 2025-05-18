@@ -11,8 +11,8 @@ mod tests;
 
 pub mod global_state;
 mod json_extractor;
-pub mod uploader;
 
+use bd_artifact_upload::uploader;
 use bd_log_primitives::LogFields;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs;
 use bd_runtime::runtime::{ConfigLoader, StringWatch};

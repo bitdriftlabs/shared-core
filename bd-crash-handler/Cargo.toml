@@ -12,6 +12,7 @@ doctest = false
 anyhow.workspace       = true
 async-trait.workspace  = true
 bd-api.path            = "../bd-api"
+bd-artifact-upload.path            = "../bd-artifact-upload"
 bd-client-common.path  = "../bd-client-common"
 bd-device.path         = "../bd-device"
 bd-key-value.path      = "../bd-key-value"
