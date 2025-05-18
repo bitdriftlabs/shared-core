@@ -12,7 +12,6 @@ mod tests;
 pub mod global_state;
 mod json_extractor;
 
-use bd_artifact_upload::uploader;
 use bd_log_primitives::LogFields;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs;
 use bd_runtime::runtime::{ConfigLoader, StringWatch};
@@ -77,7 +76,7 @@ pub struct Monitor {
   crash_details_paths_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashDetailsPaths>,
   report_directory: PathBuf,
   global_state_reader: global_state::Reader,
-  artifact_client: Arc<dyn uploader::Client>,
+  artifact_client: Arc<dyn bd_artifact_upload::Client>,
   shutdown: ComponentShutdown,
 }
 
@@ -86,7 +85,7 @@ impl Monitor {
     runtime: &ConfigLoader,
     sdk_directory: &Path,
     store: Arc<bd_device::Store>,
-    artifact_client: Arc<dyn uploader::Client>,
+    artifact_client: Arc<dyn bd_artifact_upload::Client>,
     shutdown: ComponentShutdown,
   ) -> Self {
     let crash_directories_flag =

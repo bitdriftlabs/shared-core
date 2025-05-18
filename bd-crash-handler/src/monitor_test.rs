@@ -5,10 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::uploader::MockClient;
 use crate::{
   global_state,
-  uploader,
   Monitor,
   DETAILS_INFERENCE_CONFIG_FILE,
   INGESTION_CONFIG_FILE,
@@ -39,7 +37,7 @@ struct Setup {
   monitor: Monitor,
   runtime: Arc<ConfigLoader>,
   store: Arc<Store>,
-  upload_client: Arc<MockClient>,
+  upload_client: Arc<bd_artifact_upload::MockClient>,
   _shutdown: ComponentShutdownTrigger,
 }
 
@@ -50,7 +48,7 @@ impl Setup {
     let runtime = ConfigLoader::new(&directory.path().join("runtime"));
     let shutdown = ComponentShutdownTrigger::default();
     let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
-    let upload_client = Arc::new(uploader::MockClient::default());
+    let upload_client = Arc::new(bd_artifact_upload::MockClient::default());
 
     let monitor = Monitor::new(
       &runtime,

@@ -249,7 +249,7 @@ impl LoggerBuilder {
       &scope,
     )?);
 
-    let (artifact_uploader, artifact_client) = bd_artifact_upload::uploader::Uploader::new(
+    let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
       Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
       data_upload_ch.tx.clone(),
       Arc::new(SystemTimeProvider),
