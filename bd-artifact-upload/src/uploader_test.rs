@@ -1,8 +1,8 @@
 use super::UploadClient;
 use crate::uploader::Client;
 use assert_matches::assert_matches;
-use bd_api::upload::{IntentResponse, UploadResponse};
 use bd_api::DataUpload;
+use bd_api::upload::{IntentResponse, UploadResponse};
 use bd_client_common::file::read_compressed_protobuf;
 use bd_client_common::file_system::TestFileSystem;
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
@@ -25,7 +25,7 @@ struct Setup {
 }
 
 impl Setup {
-  async fn new(max_entries: usize) -> Self {
+  fn new(max_entries: usize) -> Self {
     let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
     let shutdown = bd_shutdown::ComponentShutdownTrigger::default();
 
@@ -62,7 +62,7 @@ impl Setup {
 
 #[tokio::test]
 async fn basic_flow() {
-  let mut setup = Setup::new(10).await;
+  let mut setup = Setup::new(10);
   let id = setup.client.enqueue_upload(b"abc".to_vec()).unwrap();
 
   let upload = setup.data_upload_rx.recv().await.unwrap();
@@ -98,7 +98,7 @@ async fn basic_flow() {
 
 #[tokio::test]
 async fn pending_upload_limit() {
-  let mut setup = Setup::new(2).await;
+  let mut setup = Setup::new(2);
 
   let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
   assert_eq!(
