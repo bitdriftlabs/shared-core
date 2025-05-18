@@ -61,13 +61,13 @@ enum Error {
 
 impl From<anyhow::Error> for Error {
   fn from(value: anyhow::Error) -> Self {
-    Error::Unhandled(value)
+    Self::Unhandled(value)
   }
 }
 
 impl From<tokio::task::JoinError> for Error {
   fn from(value: tokio::task::JoinError) -> Self {
-    Error::Unhandled(value.into())
+    Self::Unhandled(value.into())
   }
 }
 
