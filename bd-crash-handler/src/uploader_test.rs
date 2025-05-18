@@ -38,11 +38,9 @@ async fn basic_flow() {
     shutdown.make_shutdown(),
   );
 
-  tokio::spawn(async {
-    assert!(uploader.run().await.is_ok());
-  });
+  tokio::spawn(uploader.run());
 
-  let id = client.enqueue_upload(b"abc".to_vec()).await.unwrap();
+  let id = client.enqueue_upload(b"abc".to_vec()).unwrap();
 
   let upload = data_upload_rx.recv().await.unwrap();
   assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {

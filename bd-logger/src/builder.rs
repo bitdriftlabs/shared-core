@@ -326,7 +326,10 @@ impl LoggerBuilder {
           Ok(())
         },
         async move { crash_monitor.run().await },
-        async move { artifact_uploader.run().await }
+        async move {
+          artifact_uploader.run().await;
+          Ok(())
+        }
       )
       .map(|_| ())
     };

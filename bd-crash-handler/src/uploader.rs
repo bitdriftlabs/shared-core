@@ -2,9 +2,9 @@
 #[path = "./uploader_test.rs"]
 mod tests;
 
-use async_trait::async_trait;
 use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
 use bd_api::DataUpload;
+use bd_client_common::error;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::file_system::FileSystem;
 use bd_proto::protos::client::api::{UploadArtifactIntentRequest, UploadArtifactRequest};
@@ -27,19 +27,17 @@ pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index
 type NewUpload = (Uuid, Vec<u8>);
 
 #[automock]
-#[async_trait]
 pub trait Client: Send + Sync {
-  async fn enqueue_upload(&self, contents: Vec<u8>) -> anyhow::Result<Uuid>;
+  fn enqueue_upload(&self, contents: Vec<u8>) -> anyhow::Result<Uuid>;
 }
 
 pub struct UploadClient {
   upload_tx: tokio::sync::mpsc::Sender<NewUpload>,
 }
 
-#[async_trait]
 impl Client for UploadClient {
   /// Dispatches a payload to be uploaded, returning the associated artifact UUID.
-  async fn enqueue_upload(&self, contents: Vec<u8>) -> anyhow::Result<Uuid> {
+  fn enqueue_upload(&self, contents: Vec<u8>) -> anyhow::Result<Uuid> {
     let report_uuid = uuid::Uuid::new_v4();
 
     self
@@ -52,6 +50,28 @@ impl Client for UploadClient {
     Ok(report_uuid)
   }
 }
+
+#[derive(thiserror::Error, Debug)]
+enum Error {
+    #[error("Task is shutting down")]
+    Shutdown,
+    #[error("Unhandled error: $1")]
+    Unhandled(anyhow::Error)
+}
+
+impl From<anyhow::Error> for Error {
+    fn from(value: anyhow::Error) -> Self {
+        Error::Unhandled(value)
+    }
+}
+
+impl From<tokio::task::JoinError > for Error {
+    fn from(value: tokio::task::JoinError) -> Self {
+        Error::Unhandled(value.into())
+    }
+}
+
+type Result<T> = std::result::Result<T, Error>;
 
 pub struct Uploader {
   data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
@@ -86,197 +106,231 @@ impl Uploader {
     (uploader, client)
   }
 
-  pub async fn run(mut self) -> anyhow::Result<()> {
+  pub async fn run(self) {
+      if let Err(Error::Unhandled(e)) = self.run_inner().await {
+          error::handle_unexpected(Err::<(), _>(e), "artifact uploader");
+      }
+
+  }
+
+  async fn run_inner(mut self) -> Result<()> {
     self.initialize().await?;
 
-    // TODO(snowp): Due to the way this is structured we only pop values off the queue of inbound
-    // requests while we have no pending uploads. It may need to be two tasks that interact with
-    // the index through a mutex.
+    let mut intent_task_handle = None;
+    let mut upload_task_handle = None;
+
     // TODO(snowp): Add intent retry policy.
     // TODO(snowp): Add upload retry policy.
     // TODO(snowp): Add bound to number of pending uploads.
     // TODO(snowp): Add safety mechanism to clean up files that are not referenced by index.
     // TODO(snowp): Consider upload/intent parallelism.
     loop {
-      let Some(mut next) = self.index.pop_front() else {
+        // If we're not currently processing an entry and there are pending work to do, check the
+        // next entry in the list and perform the next step.
+        if intent_task_handle.is_none() && upload_task_handle.is_none() && !self.index.is_empty() {
+            let next = self.index.front().unwrap().clone();
+            if next.pending_intent_negotation {
+                intent_task_handle = Some(tokio::spawn(Self::perform_intent_negotiation(self.data_upload_tx.clone(), next.name.clone())));
+                continue;
+            }
+
+            let file_path = REPORT_DIRECTORY.join(&next.name);
+            let Ok(contents) = self.file_system.read_file(&file_path).await else {
+                log::debug!(
+                    "failed to read file for artifact {}, deleting and removing from index",
+                    next.name
+                );
+                self.file_system.delete_file(&file_path).await?;
+                self.index.pop_front();
+                self.write_index().await?;
+
+                return Ok(());
+            };
+
+
+            upload_task_handle = Some(tokio::spawn(Self::upload_artifact(self.data_upload_tx.clone(), contents, next.name.clone())));
+        }
+
+        // Only one task should ever be active at a time.
+        debug_assert!(!(intent_task_handle.is_some() && upload_task_handle.is_some()));
+
+        // At this point either wait for progress to be made to the current entry or wait for a new
+        // entry to be submitted.
         tokio::select! {
           () = self.shutdown.cancelled() => {
             log::debug!("shutting down uploader");
-            return Ok(());
+            return Err(Error::Shutdown);
           }
           Some((uuid, contents)) = self.upload_queued_rx.recv() => {
             log::debug!("tracking artifact: {uuid} for upload");
-            self.track_new_upload(uuid, contents).await?;          }
+            self.track_new_upload(uuid, contents).await?;
+          }
+          intent_decision = async { intent_task_handle.as_mut().unwrap().await? }, if intent_task_handle.is_some() => {
+              self.handle_intent_negotiation_decision(intent_decision?).await?;
+              intent_task_handle = None;
+          }
+          result = async { upload_task_handle.as_mut().unwrap().await? }, if upload_task_handle.is_some() => {
+              result?;
+              self.handle_upload_complete().await?;
+              upload_task_handle = None;
+          }
 
         }
-        continue;
-      };
 
-      let file_path = REPORT_DIRECTORY.join(&next.name);
-
-      if next.pending_intent_negotation {
-        let Ok(decision) = self.perform_intent_negotiation(&next.name).await else {
-          log::debug!("intent negotiation failed due to data channel closing, exiting task");
-          return Ok(());
-        };
-
-        match decision {
-          IntentDecision::Drop => {
-            self.file_system.delete_file(&file_path).await?;
-            self.write_index().await?;
-          },
-          IntentDecision::UploadImmediately => {
-            log::debug!("uploading artifact: {}", next.name);
-            // Mark the file as being ready for uploads and persist this to the index.
-            next.pending_intent_negotation = false;
-            self.index.push_front(next);
-            self.write_index().await?;
-          },
-        }
-
-        continue;
-      }
-
-      let Ok(contents) = self.file_system.read_file(&file_path).await else {
-        log::debug!(
-          "failed to read file for artifact {}, deleting and removing from index",
-          next.name
-        );
-        self.file_system.delete_file(&file_path).await?;
-        self.write_index().await?;
-
-        return Ok(());
-      };
-
-
-      self.upload_artifact(contents, &next.name).await?;
-
-      self.file_system.delete_file(&file_path).await?;
-      self.write_index().await?;
     }
   }
-
+  
   // Initialize the uploader from the index file on disk.
   async fn initialize(&mut self) -> anyhow::Result<()> {
-    let path = REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE);
-    log::debug!("initializing index: {}", path.display());
-    self.index = match self
-      .file_system
-      .read_file(&path)
-      .await
-      .and_then(|contents| read_compressed_protobuf::<ArtifactUploadIndex>(&contents))
-    {
-      Ok(index) => index,
-      Err(e) => {
-        log::debug!("unable to open index: {e}");
-        log::debug!("creating new index");
+      let path = REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE);
+      log::debug!("initializing index: {}", path.display());
+      self.index = match self
+          .file_system
+          .read_file(&path)
+          .await
+          .and_then(|contents| read_compressed_protobuf::<ArtifactUploadIndex>(&contents))
+          {
+              Ok(index) => index,
+              Err(e) => {
+                  log::debug!("unable to open index: {e}");
+                  log::debug!("creating new index");
 
-        self.file_system.remove_dir(&REPORT_DIRECTORY).await?;
-        self.file_system.create_dir(&REPORT_DIRECTORY).await?;
-        ArtifactUploadIndex::default()
-      },
-    }
-    .artifact
-    .into_iter()
-    .collect();
+                  self.file_system.remove_dir(&REPORT_DIRECTORY).await?;
+                  self.file_system.create_dir(&REPORT_DIRECTORY).await?;
+                  ArtifactUploadIndex::default()
+              },
+          }
+      .artifact
+          .into_iter()
+          .collect();
 
-    Ok(())
+      Ok(())
   }
 
+  async fn handle_intent_negotiation_decision(&mut self, decision: IntentDecision) -> anyhow::Result<()>{
+        match decision {
+            IntentDecision::Drop => {
+                let entry = &self.index.pop_front().unwrap();
+                self.file_system.delete_file(&REPORT_DIRECTORY.join(&entry.name)).await?;
+                self.index.pop_front();
+                self.write_index().await?;
+            },
+            IntentDecision::UploadImmediately => {
+                let entry = self.index.front_mut().unwrap();
+                log::debug!("uploading artifact: {}", entry.name);
+                // Mark the file as being ready for uploads and persist this to the index.
+                entry.pending_intent_negotation = false;
+                self.write_index().await?;
+            },
+        }
+
+        Ok(())
+  }
+
+  async fn handle_upload_complete(&mut self) -> anyhow::Result<()> {
+      let entry = self.index.pop_front().unwrap();
+      let file_path = REPORT_DIRECTORY.join(&entry.name);
+      self.file_system.delete_file(&file_path).await?;
+      self.write_index().await?;
+
+      Ok(())
+  }
+
+
   async fn track_new_upload(&mut self, uuid: Uuid, contents: Vec<u8>) -> anyhow::Result<()> {
-    let uuid = uuid.to_string();
-    self.index.push_back(Artifact {
-      name: uuid.clone(),
-      time: self.time_provider.now().into_proto(),
-      pending_intent_negotation: true,
-      ..Default::default()
-    });
+      let uuid = uuid.to_string();
+      self.index.push_back(Artifact {
+          name: uuid.clone(),
+          time: self.time_provider.now().into_proto(),
+          pending_intent_negotation: true,
+          ..Default::default()
+      });
 
-    self
-      .file_system
-      .write_file(&REPORT_DIRECTORY.join(uuid), &contents)
-      .await?;
+      self
+          .file_system
+          .write_file(&REPORT_DIRECTORY.join(uuid), &contents)
+          .await?;
 
-    Ok(())
+      Ok(())
   }
 
   async fn write_index(&self) -> anyhow::Result<()> {
-    let index = ArtifactUploadIndex {
-      artifact: self.index.iter().cloned().collect(),
-      ..Default::default()
-    };
+      let index = ArtifactUploadIndex {
+          artifact: self.index.iter().cloned().collect(),
+          ..Default::default()
+      };
 
-    let compressed = write_compressed_protobuf(&index);
-    self
-      .file_system
-      .as_ref()
-      .write_file(&REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE), &compressed)
-      .await?;
+      let compressed = write_compressed_protobuf(&index);
+      self
+          .file_system
+          .as_ref()
+          .write_file(&REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE), &compressed)
+          .await?;
 
-    Ok(())
+      Ok(())
   }
 
-  async fn upload_artifact(&self, contents: Vec<u8>, name: &str) -> anyhow::Result<()> {
-    let path = REPORT_DIRECTORY.join(name);
-    log::debug!("uploading artifact: {}", path.display());
+  async fn upload_artifact(
+      data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>
+      , contents: Vec<u8>, name: String) -> Result<()> {
+      let path = REPORT_DIRECTORY.join(&name);
+      log::debug!("uploading artifact: {}", path.display());
 
-    loop {
-      let upload_uuid = TrackedArtifactUpload::upload_uuid();
-      let (tracked, response) = TrackedArtifactUpload::new(
-        upload_uuid.clone(),
-        UploadArtifactRequest {
-          upload_uuid,
-          type_id: "client_report".to_string(),
-          contents: contents.clone(),
-          artifact_id: name.to_string(),
-          ..Default::default()
-        },
-      );
+      loop {
+          let upload_uuid = TrackedArtifactUpload::upload_uuid();
+          let (tracked, response) = TrackedArtifactUpload::new(
+              upload_uuid.clone(),
+              UploadArtifactRequest {
+                  upload_uuid,
+                  type_id: "client_report".to_string(),
+                  contents: contents.clone(),
+                  artifact_id: name.clone(),
+                  ..Default::default()
+              },
+          );
 
-      self
-        .data_upload_tx
-        .send(DataUpload::ArtifactUpload(tracked))
-        .await?;
+              data_upload_tx
+              .send(DataUpload::ArtifactUpload(tracked))
+              .await.map_err(|_| Error::Shutdown)?;
 
-      match response.await {
-        Ok(response) => {
-          if response.success {
-            log::debug!("upload of artifact: {name} succeeded");
-            break;
+          match response.await {
+              Ok(response) => {
+                  if response.success {
+                      log::debug!("upload of artifact: {name} succeeded");
+                      break;
+                  }
+                  log::debug!("upload of artifact: {name} failed, retrying");
+              },
+              Err(_) => log::debug!("upload of artifact: {name} failed, retrying"),
           }
-          log::debug!("upload of artifact: {name} failed, retrying");
-        },
-        Err(_) => log::debug!("upload of artifact: {name} failed, retrying"),
       }
-    }
 
-    Ok(())
+      Ok(())
   }
 
-  async fn perform_intent_negotiation(&self, uuid: &str) -> anyhow::Result<IntentDecision> {
-    loop {
-      let upload_uuid = TrackedArtifactIntent::upload_uuid();
-      let (tracked, response) = TrackedArtifactIntent::new(
-        upload_uuid.clone(),
-        UploadArtifactIntentRequest {
-          type_id: "client_report".to_string(),
-          artifact_id: uuid.to_string(),
-          intent_uuid: upload_uuid.to_string(),
-          // TODO(snowp): Figure out how to send relevant metadata about the artifact here.
-          metadata: vec![],
-          ..Default::default()
-        },
-      );
+  async fn perform_intent_negotiation(data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>, id: String) -> Result<IntentDecision> {
+      loop {
+          let upload_uuid = TrackedArtifactIntent::upload_uuid();
+          let (tracked, response) = TrackedArtifactIntent::new(
+              upload_uuid.clone(),
+              UploadArtifactIntentRequest {
+                  type_id: "client_report".to_string(),
+                  artifact_id: id.to_string(),
+                  intent_uuid: upload_uuid.to_string(),
+                  // TODO(snowp): Figure out how to send relevant metadata about the artifact here.
+                  metadata: vec![],
+                  ..Default::default()
+              },
+          );
 
-      self
-        .data_upload_tx
-        .send(DataUpload::ArtifactUploadIntent(tracked))
-        .await?;
+              data_upload_tx
+              .send(DataUpload::ArtifactUploadIntent(tracked))
+              .await.map_err(|_| Error::Shutdown)?;
 
-      match response.await {
-        Ok(response) => break Ok(response.decision),
-        Err(_) => log::debug!("intent negotiation for artifact: {uuid} failed, retrying"),
+          match response.await {
+              Ok(response) => break Ok(response.decision),
+              Err(_) => log::debug!("intent negotiation for artifact: {id} failed, retrying"),
+          }
       }
-    }
   }
 }

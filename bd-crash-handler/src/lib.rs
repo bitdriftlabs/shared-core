@@ -315,7 +315,7 @@ impl Monitor {
           continue;
         }
 
-        if let Ok(artifact_id) = self.artifact_client.enqueue_upload(contents).await {
+        if let Ok(artifact_id) = self.artifact_client.enqueue_upload(contents) {
           let mut fields = global_state_fields.clone();
 
           fields.extend(
