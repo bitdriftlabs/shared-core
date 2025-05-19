@@ -13,7 +13,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// relative root of the data directory used by the SDK.
 #[async_trait]
 pub trait FileSystem: Send + Sync {
+  async fn exists(&self, path: &Path) -> anyhow::Result<bool>;
+
+  async fn list_files(&self, directory: &Path) -> anyhow::Result<Vec<String>>;
+
   async fn read_file(&self, path: &Path) -> anyhow::Result<Vec<u8>>;
+
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()>;
 
   /// Deletes the file if it exists.
@@ -43,6 +48,30 @@ impl RealFileSystem {
 
 #[async_trait]
 impl FileSystem for RealFileSystem {
+  async fn list_files(&self, directory: &Path) -> anyhow::Result<Vec<String>> {
+    let mut files = Vec::new();
+
+    let mut entries = tokio::fs::read_dir(self.directory.join(directory)).await?;
+
+    while let Some(entry) = entries.next_entry().await? {
+      let path = entry.path();
+
+      if path.is_file() {
+        files.push(path.to_string_lossy().to_string());
+      }
+    }
+
+    Ok(files)
+  }
+
+  async fn exists(&self, path: &Path) -> anyhow::Result<bool> {
+    match tokio::fs::metadata(self.directory.join(path)).await {
+      Ok(_) => Ok(true),
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+      Err(e) => Err(e.into()),
+    }
+  }
+
   async fn read_file(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
     Ok(tokio::fs::read(self.directory.join(path)).await?)
   }
@@ -85,6 +114,26 @@ pub struct TestFileSystem {
 
 #[async_trait]
 impl FileSystem for TestFileSystem {
+  async fn list_files(&self, directory: &Path) -> anyhow::Result<Vec<String>> {
+    let l = self.files.lock();
+
+    let mut files = Vec::new();
+
+    for (k, _) in l.iter() {
+      if k.starts_with(directory.to_str().unwrap()) {
+        files.push(k.clone());
+      }
+    }
+
+    Ok(files)
+  }
+
+  async fn exists(&self, path: &Path) -> anyhow::Result<bool> {
+    let l = self.files.lock();
+
+    Ok(l.contains_key(&Self::path_as_str(path)))
+  }
+
   async fn read_file(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
     let l = self.files.lock();
 

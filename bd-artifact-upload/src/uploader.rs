@@ -14,7 +14,7 @@ use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use mockall::automock;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 #[cfg(test)]
@@ -27,6 +27,12 @@ pub static REPORT_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| "report_upload
 /// The index file used for tracking all of the individual files.
 pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index.pb".into());
 
+//
+// NewUpload
+//
+
+// TODO(snowp): Consider allowing passing an open file handle instead of having to hold the data in
+// memory while entry is pending within the channel.
 #[derive(Debug)]
 struct NewUpload {
   uuid: Uuid,
@@ -107,7 +113,6 @@ pub struct Uploader {
 
   index: VecDeque<Artifact>,
 
-  // TODO runtime flag
   max_entries: usize,
 
   intent_task_handle: Option<tokio::task::JoinHandle<Result<IntentDecision>>>,
@@ -263,6 +268,36 @@ impl Uploader {
     .artifact
     .into_iter()
     .collect();
+
+    // Ensure that the files stored on disk pending upload and the index are in sync. If either the
+    // file is missing for an index entry or a file exists without an index entry they can never
+    // be uploaded, so just clean them up.
+    // TODO(snowp): Should we check for crc integrity at this point?
+
+    let mut modified = false;
+    let mut new_index = VecDeque::default();
+    let mut filenames = HashSet::new();
+    for entry in self.index.drain(..) {
+      let file_path = REPORT_DIRECTORY.join(&entry.name);
+      if !self.file_system.exists(&file_path).await? {
+        log::debug!(
+          "removing artifact {} from index, file does not exist",
+          entry.name
+        );
+        modified = true;
+        continue;
+      }
+      filenames.insert(entry.name.clone());
+      new_index.push_back(entry);
+    }
+
+    self.index = new_index;
+
+    if modified {
+      self.write_index().await?;
+    }
+
+
 
     Ok(())
   }
