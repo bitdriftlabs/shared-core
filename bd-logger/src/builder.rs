@@ -253,7 +253,12 @@ impl LoggerBuilder {
       Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
       data_upload_ch.tx.clone(),
       Arc::new(SystemTimeProvider),
+      // TODO(snowp): All three of these should be runtime configurable but we may need to reorder
+      // in order to make sure we've read the cached runtime before we initialize this.
       10,
+      100,
+      // 1 mib
+      1 << 20,
       shutdown_handle.make_shutdown(),
     );
 

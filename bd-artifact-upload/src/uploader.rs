@@ -2,14 +2,15 @@
 #[path = "./uploader_test.rs"]
 mod tests;
 
-use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
 use bd_api::DataUpload;
+use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
+use bd_bounded_buffer::MemorySized;
 use bd_client_common::error;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::file_system::FileSystem;
 use bd_proto::protos::client::api::{UploadArtifactIntentRequest, UploadArtifactRequest};
-use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
+use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use mockall::automock;
@@ -26,7 +27,29 @@ pub static REPORT_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| "report_upload
 /// The index file used for tracking all of the individual files.
 pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index.pb".into());
 
-type NewUpload = (Uuid, Vec<u8>);
+#[derive(Debug)]
+struct NewUpload {
+  uuid: Uuid,
+  contents: Vec<u8>,
+}
+
+// Used for bounded_buffer logs
+impl std::fmt::Display for NewUpload {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(
+      f,
+      "NewUpload {{ uuid: {}, contents: {} }}",
+      self.uuid,
+      self.contents.len()
+    )
+  }
+}
+
+impl MemorySized for NewUpload {
+  fn size(&self) -> usize {
+    size_of::<Uuid>() + size_of::<Vec<u8>>() + self.contents.capacity() * size_of::<u8>()
+  }
+}
 
 #[automock]
 pub trait Client: Send + Sync {
@@ -34,22 +57,22 @@ pub trait Client: Send + Sync {
 }
 
 pub struct UploadClient {
-  upload_tx: tokio::sync::mpsc::Sender<NewUpload>,
+  upload_tx: bd_bounded_buffer::Sender<NewUpload>,
 }
 
 impl Client for UploadClient {
   /// Dispatches a payload to be uploaded, returning the associated artifact UUID.
   fn enqueue_upload(&self, contents: Vec<u8>) -> anyhow::Result<Uuid> {
-    let report_uuid = uuid::Uuid::new_v4();
+    let uuid = uuid::Uuid::new_v4();
 
     self
       .upload_tx
-      .try_send((report_uuid, contents))
+      .try_send(NewUpload { uuid, contents })
       .inspect_err(|e| {
-        log::warn!("failed to enqueue artifact upload: {e}");
+        log::warn!("failed to enqueue artifact upload: {e:?}");
       })?;
 
-    Ok(report_uuid)
+    Ok(uuid)
   }
 }
 
@@ -77,7 +100,7 @@ type Result<T> = std::result::Result<T, Error>;
 
 pub struct Uploader {
   data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
-  upload_queued_rx: tokio::sync::mpsc::Receiver<NewUpload>,
+  upload_queued_rx: bd_bounded_buffer::Receiver<NewUpload>,
   shutdown: ComponentShutdown,
   time_provider: Arc<dyn TimeProvider>,
   file_system: Arc<dyn FileSystem>,
@@ -100,9 +123,12 @@ impl Uploader {
     data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
     time_provider: Arc<dyn TimeProvider>,
     max_entries: usize,
+    buffer_capacity: usize,
+    buffer_memory_capacity: usize,
     shutdown: ComponentShutdown,
   ) -> (Self, UploadClient) {
-    let (upload_tx, upload_rx) = tokio::sync::mpsc::channel(2);
+    let (upload_tx, upload_rx) =
+      bd_bounded_buffer::channel(buffer_capacity, buffer_memory_capacity);
 
     let uploader = Self {
       data_upload_tx,
@@ -189,7 +215,7 @@ impl Uploader {
           log::debug!("shutting down uploader");
           return Err(Error::Shutdown);
         }
-        Some((uuid, contents)) = self.upload_queued_rx.recv() => {
+        Some(NewUpload {uuid, contents}) = self.upload_queued_rx.recv() => {
           log::debug!("tracking artifact: {uuid} for upload");
           self.track_new_upload(uuid, contents).await?;
         }

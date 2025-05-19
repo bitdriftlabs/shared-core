@@ -36,6 +36,8 @@ impl Setup {
       data_upload_tx,
       Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
       max_entries,
+      10,
+      2 << 12,
       shutdown.make_shutdown(),
     );
 

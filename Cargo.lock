@@ -380,6 +380,7 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "bd-api",
+ "bd-bounded-buffer",
  "bd-client-common",
  "bd-proto",
  "bd-runtime",
