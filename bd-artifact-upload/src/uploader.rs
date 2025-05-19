@@ -160,9 +160,7 @@ impl Uploader {
 
     // TODO(snowp): Add intent retry policy.
     // TODO(snowp): Add upload retry policy.
-    // TODO(snowp): Add bound to number of pending uploads.
     // TODO(snowp): Add safety mechanism to clean up files that are not referenced by index.
-    //
 
     // The state machinery below relies on careful handling of the contents of the index list, as
     // we want to make sure that we don't lose entries due to process shutdown. The pending upload
