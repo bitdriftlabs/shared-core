@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
-#[path = "./mod_test.rs"]
+#[path = "./lib_test.rs"]
 mod tests;
 
 mod size;
@@ -14,8 +14,8 @@ mod size;
 use bd_client_stats_store::{Counter, Scope};
 use bd_stats_common::labels;
 pub use size::MemorySized;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc::error::TrySendError as TokioTrySendError;
 use tokio::sync::mpsc::{Receiver as TokioReceiver, Sender as TokioSender};
 
@@ -208,7 +208,7 @@ pub struct SendCounters {
 }
 
 impl SendCounters {
-  pub(crate) fn new(scope: &Scope, operation_name: &str) -> Self {
+  pub fn new(scope: &Scope, operation_name: &str) -> Self {
     Self {
       ok: scope.counter_with_labels(operation_name, labels!("result" => "success")),
       err_full_count_overflow: scope.counter_with_labels(
@@ -221,7 +221,7 @@ impl SendCounters {
     }
   }
 
-  pub(crate) fn record<T: MemorySized>(&self, result: &std::result::Result<(), TrySendError<T>>) {
+  pub fn record<T: MemorySized>(&self, result: &std::result::Result<(), TrySendError<T>>) {
     match result {
       Ok(()) => self.ok.inc(),
       Err(TrySendError::FullCountOverflow(_)) => {

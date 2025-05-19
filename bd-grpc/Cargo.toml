@@ -23,11 +23,11 @@ bd-stats-common.path        = "../bd-stats-common"
 bd-time.path                = "../bd-time"
 bytes.workspace             = true
 futures.workspace           = true
-http-body-util.workspace    = true
-http-body.workspace         = true
 http.workspace              = true
-hyper-util.workspace        = true
+http-body.workspace         = true
+http-body-util.workspace    = true
 hyper.workspace             = true
+hyper-util.workspace        = true
 log.workspace               = true
 mockall                     = { workspace = true, optional = true }
 prometheus.workspace        = true
@@ -37,10 +37,10 @@ serde_json.workspace        = true
 snap.workspace              = true
 thiserror.workspace         = true
 time.workspace              = true
-tokio-stream.workspace      = true
 tokio.workspace             = true
-tower-http.workspace        = true
+tokio-stream.workspace      = true
 tower.workspace             = true
+tower-http.workspace        = true
 unwrap-infallible.workspace = true
 urlencoding.workspace       = true
 

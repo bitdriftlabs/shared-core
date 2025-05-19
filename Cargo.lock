@@ -399,6 +399,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-bounded-buffer"
+version = "1.0.0"
+dependencies = [
+ "ahash",
+ "bd-client-stats-store",
+ "bd-stats-common",
+ "ctor",
+ "log",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-test",
+]
+
+[[package]]
 name = "bd-buffer"
 version = "1.0.0"
 dependencies = [
@@ -766,6 +780,7 @@ version = "1.0.0"
 dependencies = [
  "ahash",
  "anyhow",
+ "bd-bounded-buffer",
  "bd-proto",
  "serde",
  "time",
@@ -781,6 +796,7 @@ dependencies = [
  "backoff",
  "bd-api",
  "bd-artifact-upload",
+ "bd-bounded-buffer",
  "bd-buffer",
  "bd-client-common",
  "bd-client-stats",
