@@ -26,6 +26,7 @@ use tokio::sync::mpsc::{Receiver as TokioReceiver, Sender as TokioSender};
 // The interface for working with the channel is supposed to be a subset of the interface exposed
 // by mpsc::channel. For improved ergonomics, we keep the interface of our channel to
 // be as closed to underlying mpsc::channel interface as possible.
+#[must_use]
 pub fn channel<L: MemorySized>(
   capacity: usize,
   memory_capacity: usize,
@@ -208,6 +209,7 @@ pub struct SendCounters {
 }
 
 impl SendCounters {
+  #[must_use]
   pub fn new(scope: &Scope, operation_name: &str) -> Self {
     Self {
       ok: scope.counter_with_labels(operation_name, labels!("result" => "success")),

@@ -40,7 +40,7 @@ impl<K: MemorySized, V: MemorySized> MemorySized for AHashMap<K, V> {
   fn size(&self) -> usize {
     let empty_reserved_mem = (self.capacity() - self.len()) * size_of::<(K, V)>();
     self.iter().map(|(k, v)| k.size() + v.size()).sum::<usize>()
-      + std::mem::size_of::<AHashMap<K, V>>()
+      + std::mem::size_of::<Self>()
       + empty_reserved_mem
   }
 }
