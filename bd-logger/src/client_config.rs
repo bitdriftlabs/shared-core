@@ -11,10 +11,11 @@ mod client_config_test;
 
 use crate::logging_state::{BufferProducers, ConfigUpdate};
 use anyhow::anyhow;
-use bd_api::{ClientConfigurationUpdate, FromResponse, IntoRequest};
 use bd_buffer::{AbslCode, RingBuffer as _};
 use bd_client_common::fb::make_log;
+use bd_client_common::payload_conversion::{ClientConfigurationUpdate, FromResponse, IntoRequest};
 use bd_client_common::safe_file_cache::SafeFileCache;
+use bd_client_common::HANDSHAKE_FLAG_CONFIG_UP_TO_DATE;
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::FilterChain;
 use bd_log_primitives::LogRef;
@@ -33,6 +34,7 @@ use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
 use bd_workflows::config::WorkflowsConfiguration;
 use itertools::Itertools;
+use parking_lot::Mutex;
 use protobuf::Chars;
 use std::path::Path;
 use std::sync::Arc;
@@ -42,7 +44,7 @@ use tokio::sync::mpsc::Sender;
 // logger.
 #[async_trait::async_trait]
 pub trait ApplyConfig {
-  async fn apply_configuration(&mut self, configuration: Configuration) -> anyhow::Result<()>;
+  async fn apply_configuration(&self, configuration: Configuration) -> anyhow::Result<()>;
 }
 
 #[cfg_attr(test, derive(Debug, Default, PartialEq))]
@@ -69,7 +71,7 @@ pub struct Config<A: ApplyConfig> {
   file_cache: SafeFileCache<ConfigurationUpdate>,
 
   // The currently applied version id, if a configuration has been applied.
-  configuration_version_id: Option<String>,
+  configuration_version_id: Mutex<Option<String>>,
 
   // Delegate used to apply the configuration. This allows for easier testing.
   #[allow(clippy::struct_field_names)]
@@ -80,7 +82,7 @@ impl<A: ApplyConfig> Config<A> {
   pub fn new(sdk_directory: &Path, apply_config: A) -> Self {
     Self {
       file_cache: SafeFileCache::new(sdk_directory, "config"),
-      configuration_version_id: None,
+      configuration_version_id: Mutex::default(),
       apply_config,
     }
   }
@@ -88,7 +90,7 @@ impl<A: ApplyConfig> Config<A> {
   // Process a new configuration update. If the configuration failed to apply, returns a Nack
   // containing the error details.
   async fn process_configuration_update_inner(
-    &mut self,
+    &self,
     update: &ConfigurationUpdate,
   ) -> anyhow::Result<()> {
     let config = update
@@ -106,13 +108,13 @@ impl<A: ApplyConfig> Config<A> {
     // Since we've validated that the configuration works and has been applied, we keep track
     // of the id here in order to surface it both via handshake requests sent on stream creation
     // as well as configuration acks/nacks.
-    self.configuration_version_id = Some(update.version_nonce.clone());
+    *self.configuration_version_id.lock() = Some(update.version_nonce.clone());
 
     Ok(())
   }
 
   pub async fn process_configuration_update(
-    &mut self,
+    &self,
     update: &ConfigurationUpdate,
   ) -> anyhow::Result<()> {
     self.process_configuration_update_inner(update).await?;
@@ -122,19 +124,14 @@ impl<A: ApplyConfig> Config<A> {
     // having to wait for the API server to respond.
     // TODO(snowp): Consider storing an intermediate format to avoid all the error checking
     // above on re-read.
-    // If we fail writing to disk, record a counter and move on. We'll continue to operate
-    // without disk caching.
-    // TODO(snowp): Consider ways to expose what is going on here, Rust doesn't expose a way to
-    // check if this is an out of disk issue without parsing the error message (not platform
-    // independent) so it's tricky to avoid this being noisy. We may consider doing such
-    // parsing on the server side.
+    // If we fail writing to disk, move on. We'll continue to operate without disk caching.
     self.file_cache.cache_update(update).await;
 
     Ok(())
   }
 
   // Attempts to load persisted config and apply as if it was a newly received configuration.
-  pub async fn try_load_persisted_config_helper(&mut self) {
+  pub async fn try_load_persisted_config_helper(&self) {
     if let Some(configuration_update) = self.file_cache.handle_cached_config().await {
       // If this function succeeds, it should write back the file to disk.
       let maybe_nack = self
@@ -149,8 +146,8 @@ impl<A: ApplyConfig> Config<A> {
 }
 
 #[async_trait::async_trait]
-impl<A: ApplyConfig + Send + Sync> bd_api::ConfigurationUpdate for Config<A> {
-  async fn try_apply_config(&mut self, response: &ApiResponse) -> Option<ApiRequest> {
+impl<A: ApplyConfig + Send + Sync> bd_client_common::ConfigurationUpdate for Config<A> {
+  async fn try_apply_config(&self, response: &ApiResponse) -> Option<ApiRequest> {
     let configuration_update = ConfigurationUpdate::from_response(response)?;
     let version_nonce = configuration_update.version_nonce.clone();
 
@@ -177,16 +174,25 @@ impl<A: ApplyConfig + Send + Sync> bd_api::ConfigurationUpdate for Config<A> {
     )
   }
 
-  async fn try_load_persisted_config(&mut self) {
+  async fn try_load_persisted_config(&self) {
     self.try_load_persisted_config_helper().await;
   }
 
   fn fill_handshake(&self, handshake: &mut HandshakeRequest) {
-    handshake.configuration_version_nonce =
-      self.configuration_version_id.clone().unwrap_or_default();
+    handshake.configuration_version_nonce = self
+      .configuration_version_id
+      .lock()
+      .clone()
+      .unwrap_or_default();
   }
 
-  async fn on_handshake_complete(&self) {
+  async fn on_handshake_complete(&self, configuration_update_status: u32) {
+    if configuration_update_status & HANDSHAKE_FLAG_CONFIG_UP_TO_DATE != 0 {
+      self.file_cache.mark_safe().await;
+    }
+  }
+
+  async fn mark_safe(&self) {
     self.file_cache.mark_safe().await;
   }
 }
@@ -216,7 +222,7 @@ impl LoggerUpdate {
 
 #[async_trait::async_trait]
 impl ApplyConfig for LoggerUpdate {
-  async fn apply_configuration(&mut self, configuration: Configuration) -> anyhow::Result<()> {
+  async fn apply_configuration(&self, configuration: Configuration) -> anyhow::Result<()> {
     let Configuration {
       buffer,
       workflows,

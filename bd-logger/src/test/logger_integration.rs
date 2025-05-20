@@ -1944,7 +1944,7 @@ fn runtime_caching() {
     .join("protobuf.pb")
     .exists());
   assert!(retry_file.exists());
-  assert_eq!(std::fs::read(&retry_file).unwrap(), b"0");
+  assert_eq!(std::fs::read(&retry_file).unwrap(), &[0]);
 
   let network = Box::new(NoopNetwork);
   let (_flush_tick_tx, flush_ticker) = TestTicker::new();
@@ -1998,7 +1998,7 @@ fn runtime_caching() {
     logger.shutdown(true);
   }
 
-  assert_eq!(std::fs::read(&retry_file).unwrap(), b"1");
+  assert_eq!(std::fs::read(&retry_file).unwrap(), &[1]);
 
   // Now start another logger with the same directory, this time going through the standard
   // handshake initialization.
@@ -2009,5 +2009,5 @@ fn runtime_caching() {
 
   // At this point the retry count should have been reset since we were able to verify that we
   // can connect to the backend with this runtime configuration.
-  assert_eq!(std::fs::read(&retry_file).unwrap(), b"0");
+  assert_eq!(std::fs::read(&retry_file).unwrap(), &[0]);
 }

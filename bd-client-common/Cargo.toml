@@ -10,6 +10,7 @@ doctest = false
 
 [dependencies]
 anyhow.workspace           = true
+async-trait.workspace      = true
 bd-client-stats-store.path = "../bd-client-stats-store"
 bd-log-primitives.path     = "../bd-log-primitives"
 bd-matcher.path            = "../bd-matcher"
@@ -18,6 +19,7 @@ bd-proto.path              = "../bd-proto"
 flatbuffers.workspace      = true
 flate2                     = { workspace = true, default-features = false, features = ["zlib"] }
 log.workspace              = true
+mockall.workspace          = true
 parking_lot.workspace      = true
 protobuf.workspace         = true
 thiserror.workspace        = true

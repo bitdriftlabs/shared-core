@@ -5,13 +5,14 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::error::handle_unexpected;
 use crate::file::{read_compressed_protobuf, write_compressed_protobuf};
-use anyhow::anyhow;
+use anyhow::bail;
 use protobuf::Message;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+
+const MAX_RETRY_COUNT: u8 = 5;
 
 pub struct SafeFileCache<T> {
   directory: PathBuf,
@@ -52,16 +53,10 @@ impl<T: Message> SafeFileCache<T> {
     self.directory.join("protobuf.pb")
   }
 
-  async fn persist_cache_load_retry_count(&self, retry_count: u32) -> anyhow::Result<()> {
+  async fn persist_cache_load_retry_count(&self, retry_count: u8) -> anyhow::Result<()> {
     // This could fail, but by being defensive when we read this we should ideally worst case just
     // fall back to not reading from cache.
-    // TODO(mattklein123): Switch this over to using compression or at least adding a CRC.
-    tokio::fs::write(
-      &self.retry_count_file(),
-      format!("{retry_count}").as_bytes(),
-    )
-    .await
-    .map_err(|e| anyhow!("an io error occurred: {e}"))
+    Ok(tokio::fs::write(&self.retry_count_file(), &[retry_count]).await?)
   }
 
   pub async fn handle_cached_config(&self) -> Option<T> {
@@ -74,7 +69,7 @@ impl<T: Message> SafeFileCache<T> {
     let (reset, cached) = match self.try_load_cached_config().await {
       Ok(result) => result,
       Err(e) => {
-        handle_unexpected::<(), anyhow::Error>(Err(e), "cache load");
+        log::debug!("failed to load cached config: {e}");
         (true, None)
       },
     };
@@ -117,11 +112,9 @@ impl<T: Message> SafeFileCache<T> {
     // If the retry count file contains invalid data we defensively bail on reading the cached
     // value. If we were to treat an empty file as count=0 we could theoretically find ourselves in
     // a loop where the file is not properly updated.
-    let Ok(retry_count) = Self::parse_retry_count(
-      &tokio::fs::read(&self.retry_count_file())
-        .await
-        .map_err(|e| anyhow!("an io error occurred: {e}"))?,
-    ) else {
+    let Ok(retry_count) =
+      Self::parse_retry_count(&tokio::fs::read(&self.retry_count_file()).await?)
+    else {
       return Ok((true, None));
     };
 
@@ -136,23 +129,27 @@ impl<T: Message> SafeFileCache<T> {
     // TODO(snowp): Should we read this from runtime as well? It would make it possible for a bad
     // runtime config to accidentally set this really high, but right now this is not
     // configurable at all.
-    if retry_count > 5 {
+    if retry_count > MAX_RETRY_COUNT {
       // Note that eventually if the client is killed this is going to kick in and delete cached
       // config. This is OK since we are still covered by the kill file, and ultimately we would
       // like the client to come up and get fresh config anyway.
       return Ok((true, None));
     }
 
-    // TODO(snowp): Add stats for how often the read fails beyond ENOENT.
-    // TODO(snowp): When we add a callback, only trigger it if we successfully loaded the config.
     let bytes = tokio::fs::read(&self.protobuf_file()).await?;
     let protobuf: T = read_compressed_protobuf(&bytes)?;
 
     Ok((false, Some(protobuf)))
   }
 
-  fn parse_retry_count(data: &[u8]) -> anyhow::Result<u32> {
-    Ok(std::str::from_utf8(data)?.parse()?)
+  fn parse_retry_count(data: &[u8]) -> anyhow::Result<u8> {
+    // Currently we do not bother with trying to prevent single byte corruption for this file using
+    // a CRC, etc.
+    if data.len() != 1 || data[0] > MAX_RETRY_COUNT {
+      bail!("invalid retry count file");
+    }
+
+    Ok(data[0])
   }
 
   pub async fn cache_update(&self, protobuf: &T) {
@@ -162,8 +159,9 @@ impl<T: Message> SafeFileCache<T> {
       log::debug!("failed to write cached config: {e}");
     }
 
-    // Failing here is fine, worst case we'll use an old retry count or leave is missing, which
+    // Failing here is fine, worst case we'll use an old retry count or leave it missing, which
     // will eventually disable caching.
+    self.cached_config_validated.store(true, Ordering::SeqCst);
     if let Err(e) = self.persist_cache_load_retry_count(0).await {
       log::debug!("failed to write retry count: {e}");
     }
