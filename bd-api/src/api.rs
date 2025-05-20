@@ -9,17 +9,11 @@
 #[path = "./api_test.rs"]
 mod api_test;
 
-use crate::payload_conversion::RuntimeConfigurationUpdate;
 use crate::upload::{self, StateTracker};
 use crate::{
-  ConfigurationUpdate,
   DataUpload,
-  FromResponse,
-  IntoRequest,
-  MuxResponse,
   PlatformNetworkManager,
   PlatformNetworkStream,
-  ResponseKind,
   StreamEvent,
   TriggerUpload,
 };
@@ -29,7 +23,9 @@ use backoff::exponential::{ExponentialBackoff, ExponentialBackoffBuilder};
 use backoff::SystemClock;
 use bd_client_common::error::UnexpectedErrorHandler;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
+use bd_client_common::payload_conversion::{IntoRequest, MuxResponse, ResponseKind};
 use bd_client_common::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
+use bd_client_common::ConfigurationUpdate;
 use bd_client_stats_store::{Counter, CounterWrapper, Scope};
 use bd_grpc_codec::{
   Compression,
@@ -60,14 +56,12 @@ use bd_proto::protos::client::api::{
   ApiRequest,
   ApiResponse,
   ClientKillFile,
-  ConfigurationUpdateAck,
   HandshakeRequest,
   PingRequest,
-  RuntimeUpdate,
 };
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::Data as ProtoData;
-use bd_runtime::runtime::{BoolWatch, DurationWatch, RuntimeManager};
+use bd_runtime::runtime::DurationWatch;
 use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
 use parking_lot::RwLock;
@@ -80,40 +74,11 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
 
 // The amount of time the API has to be in the disconnected state before network quality will be
-// switched to "offline".
+// switched to "offline". This offline grace period also governs when cached configuration will
+// be marked as safe to use if we can't contact the server. This prevents cached configuration
+// from being deleted during perpetually offline states if the process has been up for long
+// enough without crashing.
 const DISCONNECTED_OFFLINE_GRACE_PERIOD: std::time::Duration = std::time::Duration::from_secs(15);
-
-// TODO(snowp): This shouldn't be in this file, but runtime depends on api so we run into a
-// circular dependency. Maybe we should split the runtime read path from the updater?
-#[async_trait::async_trait]
-impl ConfigurationUpdate for RuntimeManager {
-  async fn try_apply_config(&mut self, response: &ApiResponse) -> Option<ApiRequest> {
-    let update = RuntimeUpdate::from_response(response)?;
-    log::debug!("applying runtime update: {}", update);
-    self.process_update(update).await;
-
-    Some(
-      RuntimeConfigurationUpdate(ConfigurationUpdateAck {
-        last_applied_version_nonce: self.version_nonce().unwrap_or_default(),
-        nack: None.into(),
-        ..Default::default()
-      })
-      .into_request(),
-    )
-  }
-
-  async fn try_load_persisted_config(&mut self) {
-    self.handle_cached_config().await;
-  }
-
-  fn fill_handshake(&self, handshake: &mut HandshakeRequest) {
-    handshake.runtime_version_nonce = self.version_nonce().unwrap_or_default();
-  }
-
-  async fn on_handshake_complete(&self) {
-    self.server_is_available().await;
-  }
-}
 
 //
 // SimpleNetworkQualityProvider
@@ -380,13 +345,14 @@ pub struct Api {
 
   max_backoff_interval: DurationWatch<bd_runtime::runtime::api::MaxBackoffInterval>,
   initial_backoff_interval: DurationWatch<bd_runtime::runtime::api::InitialBackoffInterval>,
-  compression_enabled: BoolWatch<bd_runtime::runtime::api::CompressionEnabled>,
-  configuration_pipelines: Vec<Box<dyn ConfigurationUpdate>>,
+  configuration_pipelines: Vec<Arc<dyn ConfigurationUpdate>>,
   runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
 
   internal_logger: Arc<dyn bd_internal_logging::Logger>,
   time_provider: Arc<dyn TimeProvider>,
   network_quality_provider: Arc<SimpleNetworkQualityProvider>,
+
+  config_marked_safe_due_to_offline: bool,
 
   stats: Stats,
 
@@ -411,7 +377,7 @@ impl Api {
     trigger_upload_tx: Sender<TriggerUpload>,
     static_metadata: Arc<dyn Metadata + Send + Sync>,
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
-    configuration_pipelines: Vec<Box<dyn ConfigurationUpdate>>,
+    configuration_pipelines: Vec<Arc<dyn ConfigurationUpdate>>,
     time_provider: Arc<dyn TimeProvider>,
     network_quality_provider: Arc<SimpleNetworkQualityProvider>,
     self_logger: Arc<dyn bd_internal_logging::Logger>,
@@ -419,7 +385,6 @@ impl Api {
   ) -> anyhow::Result<Self> {
     let max_backoff_interval = runtime_loader.register_watch()?;
     let initial_backoff_interval = runtime_loader.register_watch()?;
-    let compression_enabled = runtime_loader.register_watch()?;
     let generic_kill_duration = runtime_loader.register_watch()?;
     let unauthenticated_kill_duration = runtime_loader.register_watch()?;
 
@@ -437,12 +402,12 @@ impl Api {
       max_backoff_interval,
       initial_backoff_interval,
       internal_logger: self_logger,
-      compression_enabled,
       configuration_pipelines,
       stats: Stats::new(stats),
       client_killed: false,
       generic_kill_duration,
       unauthenticated_kill_duration,
+      config_marked_safe_due_to_offline: false,
     })
   }
 
@@ -609,6 +574,12 @@ impl Api {
         < Instant::now()
       {
         *self.network_quality_provider.network_quality.write() = NetworkQuality::Offline;
+        if !self.config_marked_safe_due_to_offline {
+          self.config_marked_safe_due_to_offline = true;
+          for pipeline in &self.configuration_pipelines {
+            pipeline.mark_safe().await;
+          }
+        }
       } else {
         *self.network_quality_provider.network_quality.write() = NetworkQuality::Unknown;
       }
@@ -635,28 +606,23 @@ impl Api {
         .internal_logger
         .log_internal("Starting new bitdrift Capture API stream");
 
-      let headers = &mut HashMap::from([
+      let headers = HashMap::from([
         ("x-bitdrift-api-key", self.api_key.as_ref()),
         ("x-bitdrift-app-id", app_id.as_ref()),
         ("content-type", "application/grpc"),
+        (GRPC_ENCODING_HEADER, GRPC_ENCODING_DEFLATE),
+        (GRPC_ACCEPT_ENCODING_HEADER, GRPC_ENCODING_DEFLATE),
       ]);
-
-      let compression_enabled = *self.compression_enabled.read();
-      let compression = compression_enabled.then_some(Compression::StatelessZlib {
-        level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
-      });
-      if compression.is_some() {
-        headers.insert(GRPC_ENCODING_HEADER, GRPC_ENCODING_DEFLATE);
-        headers.insert(GRPC_ACCEPT_ENCODING_HEADER, GRPC_ENCODING_DEFLATE);
-      }
 
       // Set the size to 16 to avoid blocking if we get back to back upstream events.
       let (stream_event_tx, stream_event_rx) = tokio::sync::mpsc::channel(16);
       let mut stream_state = StreamState::new(
-        compression,
+        Some(Compression::StatelessZlib {
+          level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
+        }),
         self
           .manager
-          .start_stream(stream_event_tx.clone(), &self.runtime_loader, headers)
+          .start_stream(stream_event_tx.clone(), &self.runtime_loader, &headers)
           .await?,
         stream_event_rx,
         self.time_provider.clone(),
@@ -676,7 +642,7 @@ impl Api {
         // and process any additional frames we read together with the handshake.
         HandshakeResult::Received {
           stream_settings,
-          configuration_update_status: _configuration_update_status,
+          configuration_update_status,
           remaining_responses,
         } => {
           stream_state.initialize_stream_settings(stream_settings);
@@ -684,6 +650,16 @@ impl Api {
           self
             .handle_responses(remaining_responses, &mut stream_state)
             .await?;
+
+          // Let the all the configuration pipelines know that we are able to connect to the
+          // backend. We do this after we process responses that immediately followed the handshake
+          // in order to make it possible for the server to push down configuration that
+          // would get applied as part of the handshake response.
+          for pipeline in &self.configuration_pipelines {
+            pipeline
+              .on_handshake_complete(configuration_update_status)
+              .await;
+          }
         },
         // The stream closed while waiting for the handshake. Move to the next loop iteration
         // to attempt to re-create a stream.
@@ -708,14 +684,6 @@ impl Api {
           }
           continue;
         },
-      }
-
-      // Let the all the configuration pipelines know that we are able to connect to the
-      // backend. We do this after we process responses that immediately followed the handshake in
-      // order to make it possible for the server to push down configuration that would get applied
-      // as part of the handshake response.
-      for pipeline in &self.configuration_pipelines {
-        pipeline.on_handshake_complete().await;
       }
 
       log::debug!("handshake received, entering main loop");

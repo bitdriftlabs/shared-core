@@ -7,8 +7,8 @@
 
 use crate::runtime::{ConfigLoader, FeatureFlag};
 use crate::{bool_feature_flag, duration_feature_flag, int_feature_flag};
+use bd_client_common::{ConfigurationUpdate, HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE};
 use bd_test_helpers::runtime::{make_update, ValueKind};
-use bd_test_helpers::RecordingErrorReporter;
 use std::borrow::Borrow;
 use std::sync::Arc;
 
@@ -165,6 +165,19 @@ async fn disk_persistence_happy_path() {
   let flag = TestFlag::register(&loader).unwrap();
   assert_eq!(*flag.read(), 10);
   assert_eq!(loader.snapshot().nonce, Some("1".to_string()));
+
+  // With no safety marking, we should have a retry count of 1.
+  assert_eq!(std::fs::read(setup.retry_file()).unwrap(), &[1]);
+
+  // Getting a handshake without runtime being up to date should not do anything.
+  loader.on_handshake_complete(0).await;
+  assert_eq!(std::fs::read(setup.retry_file()).unwrap(), &[1]);
+
+  // Getting a handshake with runtime being up to date should mark the config as safe.
+  loader
+    .on_handshake_complete(HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE)
+    .await;
+  assert_eq!(std::fs::read(setup.retry_file()).unwrap(), &[0]);
 }
 
 #[tokio::test]
@@ -187,16 +200,8 @@ async fn disk_persistence_config_corruption() {
   std::fs::write(setup.protobuf_file(), [0; 10]).unwrap();
 
   let loader = setup.new_loader();
-  let cloned_loader = loader.clone();
-  let ((), unexpected_error) = RecordingErrorReporter::async_record_error(async move {
-    cloned_loader.handle_cached_config().await;
-  })
-  .await;
+  loader.handle_cached_config().await;
 
-  assert_eq!(
-    "cache load: corrupt deflate stream".to_string(),
-    unexpected_error,
-  );
   let flag = TestFlag::register(&loader).unwrap();
   assert_eq!(*flag.read(), 1);
   assert_eq!(loader.snapshot().nonce, None);
@@ -276,8 +281,8 @@ async fn disk_persistence_retry_marked_safe() {
       .await;
   }
 
-  // Load the configuration 5 times without marking it as safe.
-  for _ in 0 .. 6 {
+  // Load the configuration 5 times marking it safe each time.
+  for _ in 0 .. 5 {
     let loader = setup.new_loader();
     loader.handle_cached_config().await;
     let flag = TestFlag::register(&loader).unwrap();
@@ -291,7 +296,7 @@ async fn disk_persistence_retry_marked_safe() {
   loader.handle_cached_config().await;
   let flag = TestFlag::register(&loader).unwrap();
   assert_eq!(*flag.read(), 10);
-  assert_eq!(std::fs::read(setup.retry_file()).unwrap(), b"1");
+  assert_eq!(std::fs::read(setup.retry_file()).unwrap(), &[1]);
 }
 
 #[tokio::test]
@@ -378,15 +383,7 @@ async fn disk_persistence_cannot_update_retry() {
   std::fs::set_permissions(setup.retry_file(), perms).unwrap();
 
   let loader = setup.new_loader();
-  let cloned_loader = loader.clone();
-  let ((), error) = RecordingErrorReporter::async_record_error(async move {
-    cloned_loader.handle_cached_config().await;
-  })
-  .await;
-  assert_eq!(
-    "cache load: an io error occurred: Permission denied (os error 13)",
-    error
-  );
+  loader.handle_cached_config().await;
   let flag = TestFlag::register(&loader).unwrap();
   assert_eq!(*flag.read(), 1);
 

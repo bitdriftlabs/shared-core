@@ -363,6 +363,7 @@ dependencies = [
  "bd-time",
  "ctor",
  "log",
+ "mockall",
  "parking_lot",
  "protobuf 4.0.0-alpha.0",
  "tempfile",
@@ -410,6 +411,7 @@ name = "bd-client-common"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bd-client-stats-store",
  "bd-log-primitives",
  "bd-matcher",
@@ -418,6 +420,7 @@ dependencies = [
  "flatbuffers",
  "flate2",
  "log",
+ "mockall",
  "parking_lot",
  "protobuf 4.0.0-alpha.0",
  "thiserror 2.0.12",
@@ -963,11 +966,13 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "assert_matches",
+ "async-trait",
  "bd-client-common",
  "bd-proto",
  "bd-test-helpers",
  "ctor",
  "log",
+ "parking_lot",
  "protobuf 4.0.0-alpha.0",
  "tempfile",
  "time",

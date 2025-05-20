@@ -10,55 +10,25 @@
 mod runtime_test;
 
 use anyhow::anyhow;
+use bd_client_common::payload_conversion::{FromResponse, IntoRequest, RuntimeConfigurationUpdate};
 use bd_client_common::safe_file_cache::SafeFileCache;
-use bd_proto::protos::client::api::RuntimeUpdate;
+use bd_client_common::{ConfigurationUpdate, HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE};
+use bd_proto::protos::client::api::{
+  ApiRequest,
+  ApiResponse,
+  ConfigurationUpdateAck,
+  HandshakeRequest,
+  RuntimeUpdate,
+};
 use bd_proto::protos::client::runtime::runtime::Value;
 use bd_proto::protos::client::runtime::Runtime;
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::marker::PhantomData;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::sync::watch::Ref;
-
-// TODO(mattklein123): This entire file should use async IO but this is not so simple given all the
-// call sites so we can consider this in the future.
-
-//
-// RuntimeManager
-//
-
-#[allow(clippy::module_name_repetitions)]
-pub struct RuntimeManager {
-  loader: Arc<ConfigLoader>,
-}
-
-impl RuntimeManager {
-  /// Creates a new `RuntimeManager` which is responsible for applying configuration updates and a
-  /// handle to the config loader which can be used to read runtime values.
-  pub const fn new(loader: Arc<ConfigLoader>) -> Self {
-    Self { loader }
-  }
-
-  #[must_use]
-  pub fn version_nonce(&self) -> Option<String> {
-    self.loader.snapshot().nonce.clone()
-  }
-
-  // Processes a new runtime update, validating the update and updating the cached version
-  // if the update is valid. Returns the Nack responses to respond to the server with.
-  pub async fn process_update(&mut self, update: &RuntimeUpdate) {
-    self.loader.update_snapshot(update).await;
-  }
-
-  pub async fn server_is_available(&self) {
-    self.loader.file_cache.mark_safe().await;
-  }
-
-  pub async fn handle_cached_config(&self) {
-    self.loader.handle_cached_config().await;
-  }
-}
 
 //
 // Snapshot
@@ -142,6 +112,42 @@ pub struct ConfigLoader {
   file_cache: SafeFileCache<RuntimeUpdate>,
 }
 
+#[async_trait::async_trait]
+impl ConfigurationUpdate for ConfigLoader {
+  async fn try_apply_config(&self, response: &ApiResponse) -> Option<ApiRequest> {
+    let update = RuntimeUpdate::from_response(response)?;
+    log::debug!("applying runtime update: {}", update);
+    self.update_snapshot(update).await;
+
+    Some(
+      RuntimeConfigurationUpdate(ConfigurationUpdateAck {
+        last_applied_version_nonce: self.snapshot().nonce.clone().unwrap_or_default(),
+        nack: None.into(),
+        ..Default::default()
+      })
+      .into_request(),
+    )
+  }
+
+  async fn try_load_persisted_config(&self) {
+    self.handle_cached_config().await;
+  }
+
+  fn fill_handshake(&self, handshake: &mut HandshakeRequest) {
+    handshake.runtime_version_nonce = self.snapshot().nonce.clone().unwrap_or_default();
+  }
+
+  async fn on_handshake_complete(&self, configuration_update_status: u32) {
+    if configuration_update_status & HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE != 0 {
+      self.file_cache.mark_safe().await;
+    }
+  }
+
+  async fn mark_safe(&self) {
+    self.file_cache.mark_safe().await;
+  }
+}
+
 impl ConfigLoader {
   #[must_use]
   pub fn new(sdk_directory: &Path) -> Arc<Self> {
@@ -152,7 +158,7 @@ impl ConfigLoader {
   }
 
   pub fn snapshot(&self) -> Arc<Snapshot> {
-    self.state.lock().unwrap().snapshot.clone()
+    self.state.lock().snapshot.clone()
   }
 
   /// Registers a watch for the runtime flag given by the provided type.
@@ -161,7 +167,7 @@ impl ConfigLoader {
     Snapshot: ReadValue<T>,
     InternalWatchKind: TypedWatch<T> + From<(T, tokio::sync::watch::Sender<T>)>,
   {
-    let mut l = self.state.lock().unwrap();
+    let mut l = self.state.lock();
 
     // If there is already a watch for this path, just return it directly.
     // TODO(snowp): If there are two flags that specify the same path we might be in trouble
@@ -224,7 +230,7 @@ impl ConfigLoader {
 
   /// Updates the current runtime snapshot, updating all registered watchers as appropriate.
   fn update_snapshot_inner(&self, runtime_update: &RuntimeUpdate) {
-    let mut l = self.state.lock().unwrap();
+    let mut l = self.state.lock();
 
     let snapshot = Arc::new(Snapshot::new(
       runtime_update.runtime.clone().unwrap_or_default(),
@@ -703,10 +709,6 @@ pub mod api {
     "api.initial_backoff_interval_ms",
     500.milliseconds()
   );
-
-  // Controls whether clients should compress uploaded payloads and advertise support for
-  // compression to the API. To be removed once we prove that compression works fine.
-  bool_feature_flag!(CompressionEnabled, "api.requests_compression_enabled", true);
 }
 
 pub mod stats {
