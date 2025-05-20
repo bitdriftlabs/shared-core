@@ -94,12 +94,12 @@ impl Setup {
     let task_handle = tokio::spawn(uploader.run());
 
     Self {
-      client,
-      data_upload_rx,
-      data_upload_tx,
-      filesystem,
       upload_complete_rx,
       entry_received_rx,
+      client,
+      filesystem,
+      data_upload_rx,
+      data_upload_tx,
       shutdown,
       task_handle,
       max_entries,
@@ -287,6 +287,14 @@ async fn inconsistent_state_missing_index() {
   assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
         assert_eq!(intent.payload.artifact_id, id2.to_string());
       assert_eq!(intent.payload.type_id, "client_report");
-
   });
+
+  // The id1 file should have been cleaned out due to not being referenced by the index file.
+  assert!(
+    !setup
+      .filesystem
+      .exists(&super::REPORT_DIRECTORY.join(id1.to_string()))
+      .await
+      .unwrap()
+  );
 }

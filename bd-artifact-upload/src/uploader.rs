@@ -307,6 +307,31 @@ impl Uploader {
     if modified {
       self.write_index().await;
     }
+
+    // Remove any files left in the directory that isn't the index or a file referenced by the
+    // index.
+    let files = self
+      .file_system
+      .list_files(&REPORT_DIRECTORY)
+      .await
+      .unwrap_or_default();
+
+    for file in files {
+      if file == REPORT_INDEX_FILE.to_string_lossy() {
+        continue;
+      }
+
+      if !filenames.contains(&file) {
+        log::debug!("removing artifact {} from disk, not in index", file);
+        if let Err(e) = self
+          .file_system
+          .delete_file(&REPORT_DIRECTORY.join(&file))
+          .await
+        {
+          log::warn!("failed to delete artifact {:?}: {}", file, e);
+        }
+      }
+    }
   }
 
   async fn handle_intent_negotiation_decision(&mut self, decision: IntentDecision) {
