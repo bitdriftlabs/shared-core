@@ -112,11 +112,9 @@ impl<T: Message> SafeFileCache<T> {
     // If the retry count file contains invalid data we defensively bail on reading the cached
     // value. If we were to treat an empty file as count=0 we could theoretically find ourselves in
     // a loop where the file is not properly updated.
-    let Ok(retry_count) = Self::parse_retry_count(
-      &tokio::fs::read(&self.retry_count_file())
-        .await
-        .map_err(|e| anyhow!("an io error occurred: {e}"))?,
-    ) else {
+    let Ok(retry_count) =
+      Self::parse_retry_count(&tokio::fs::read(&self.retry_count_file()).await?)
+    else {
       return Ok((true, None));
     };
 
@@ -161,7 +159,7 @@ impl<T: Message> SafeFileCache<T> {
       log::debug!("failed to write cached config: {e}");
     }
 
-    // Failing here is fine, worst case we'll use an old retry count or leave is missing, which
+    // Failing here is fine, worst case we'll use an old retry count or leave it missing, which
     // will eventually disable caching.
     self.cached_config_validated.store(true, Ordering::SeqCst);
     if let Err(e) = self.persist_cache_load_retry_count(0).await {
