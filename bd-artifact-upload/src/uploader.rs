@@ -161,7 +161,7 @@ impl Uploader {
   }
 
   async fn run_inner(mut self) -> Result<()> {
-    self.initialize().await?;
+    self.initialize().await;
 
     // TODO(snowp): Add intent retry policy.
     // TODO(snowp): Add upload retry policy.
@@ -195,7 +195,7 @@ impl Uploader {
           );
           self.file_system.delete_file(&file_path).await?;
           self.index.pop_front();
-          self.write_index().await?;
+          self.write_index().await;
 
           return Ok(());
         };
@@ -220,21 +220,23 @@ impl Uploader {
         }
         Some(NewUpload {uuid, contents}) = self.upload_queued_rx.recv() => {
           log::debug!("tracking artifact: {uuid} for upload");
-          self.track_new_upload(uuid, contents).await?;
+          self.track_new_upload(uuid, contents).await;
         }
         intent_decision = async {
           self.intent_task_handle.as_mut().unwrap().await?
         }, if self.intent_task_handle.is_some() => {
-            self.handle_intent_negotiation_decision(intent_decision?).await?;
+            self.handle_intent_negotiation_decision(intent_decision?).await;
             self.intent_task_handle = None;
         }
         result = async {
           self.upload_task_handle.as_mut().unwrap().await?
         }, if self.upload_task_handle.is_some() => {
             result?;
+
             #[allow(unused)]
-            let name = self.handle_upload_complete().await?;
+            let name = self.handle_upload_complete().await;
             self.upload_task_handle = None;
+
             #[cfg(test)]
             if let Some(hooks) = &self.test_hooks {
                 hooks.upload_complete_tx.send(name).await.unwrap();
@@ -246,7 +248,7 @@ impl Uploader {
   }
 
   // Initialize the uploader from the index file on disk.
-  async fn initialize(&mut self) -> anyhow::Result<()> {
+  async fn initialize(&mut self) {
     let path = REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE);
     log::debug!("initializing index: {}", path.display());
     self.index = match self
@@ -260,8 +262,8 @@ impl Uploader {
         log::debug!("unable to open index: {e}");
         log::debug!("creating new index");
 
-        self.file_system.remove_dir(&REPORT_DIRECTORY).await?;
-        self.file_system.create_dir(&REPORT_DIRECTORY).await?;
+        let _ignored = self.file_system.remove_dir(&REPORT_DIRECTORY).await;
+        let _ignored = self.file_system.create_dir(&REPORT_DIRECTORY).await;
         ArtifactUploadIndex::default()
       },
     }
@@ -279,7 +281,12 @@ impl Uploader {
     let mut filenames = HashSet::new();
     for entry in self.index.drain(..) {
       let file_path = REPORT_DIRECTORY.join(&entry.name);
-      if !self.file_system.exists(&file_path).await? {
+      if !self
+        .file_system
+        .exists(&file_path)
+        .await
+        .unwrap_or_default()
+      {
         log::debug!(
           "removing artifact {} from index, file does not exist",
           entry.name
@@ -294,47 +301,47 @@ impl Uploader {
     self.index = new_index;
 
     if modified {
-      self.write_index().await?;
+      self.write_index().await;
     }
-
-
-
-    Ok(())
   }
 
-  async fn handle_intent_negotiation_decision(
-    &mut self,
-    decision: IntentDecision,
-  ) -> anyhow::Result<()> {
+  async fn handle_intent_negotiation_decision(&mut self, decision: IntentDecision) {
     match decision {
       IntentDecision::Drop => {
         let entry = &self.index.pop_front().unwrap();
-        self
+
+        if let Err(e) = self
           .file_system
           .delete_file(&REPORT_DIRECTORY.join(&entry.name))
-          .await?;
+          .await
+        {
+          log::warn!("failed to delete artifact {:?}: {}", entry.name, e);
+        }
+
         self.index.pop_front();
-        self.write_index().await?;
+        self.write_index().await;
       },
       IntentDecision::UploadImmediately => {
         let entry = self.index.front_mut().unwrap();
         log::debug!("uploading artifact: {}", entry.name);
         // Mark the file as being ready for uploads and persist this to the index.
         entry.pending_intent_negotation = false;
-        self.write_index().await?;
+        self.write_index().await;
       },
     }
-
-    Ok(())
   }
 
-  async fn handle_upload_complete(&mut self) -> anyhow::Result<String> {
+  async fn handle_upload_complete(&mut self) -> String {
     let entry = self.index.pop_front().unwrap();
     let file_path = REPORT_DIRECTORY.join(&entry.name);
-    self.file_system.delete_file(&file_path).await?;
-    self.write_index().await?;
 
-    Ok(entry.name)
+    if let Err(e) = self.file_system.delete_file(&file_path).await {
+      log::warn!("failed to delete artifact {:?}: {}", entry.name, e);
+    }
+
+    self.write_index().await;
+
+    entry.name
   }
 
   fn stop_current_upload(&mut self) {
@@ -346,7 +353,7 @@ impl Uploader {
     }
   }
 
-  async fn track_new_upload(&mut self, uuid: Uuid, contents: Vec<u8>) -> anyhow::Result<()> {
+  async fn track_new_upload(&mut self, uuid: Uuid, contents: Vec<u8>) {
     // If we've reached our limit of entries, stop the entry currently being uploaded (the oldest
     // one) to make space for the newer one.
     if self.index.len() >= self.max_entries {
@@ -356,6 +363,17 @@ impl Uploader {
     }
 
     let uuid = uuid.to_string();
+    if let Err(e) = self
+      .file_system
+      .write_file(&REPORT_DIRECTORY.join(&uuid), &contents)
+      .await
+    {
+      log::warn!("failed to write artifact to disk: {uuid} to disk: {e}");
+      return;
+    }
+
+    // Only write the index after we've written the report file to disk to try to minimze the risk
+    // of the file being written without a corresponding entry.
     self.index.push_back(Artifact {
       name: uuid.clone(),
       time: self.time_provider.now().into_proto(),
@@ -363,10 +381,8 @@ impl Uploader {
       ..Default::default()
     });
 
-    self
-      .file_system
-      .write_file(&REPORT_DIRECTORY.join(&uuid), &contents)
-      .await?;
+    self.write_index().await;
+
 
     #[cfg(test)]
     if let Some(hooks) = &self.test_hooks {
@@ -376,24 +392,23 @@ impl Uploader {
         .await
         .unwrap();
     }
-
-    Ok(())
   }
 
-  async fn write_index(&self) -> anyhow::Result<()> {
+  async fn write_index(&self) {
     let index = ArtifactUploadIndex {
       artifact: self.index.iter().cloned().collect(),
       ..Default::default()
     };
 
     let compressed = write_compressed_protobuf(&index);
-    self
+    if let Err(e) = self
       .file_system
       .as_ref()
       .write_file(&REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE), &compressed)
-      .await?;
-
-    Ok(())
+      .await
+    {
+      log::debug!("failed to write index: {e}");
+    }
   }
 
   async fn upload_artifact(
