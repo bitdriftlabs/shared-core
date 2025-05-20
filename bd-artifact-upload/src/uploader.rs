@@ -318,6 +318,10 @@ impl Uploader {
           log::warn!("failed to delete artifact {:?}: {}", entry.name, e);
         }
 
+        // Even if we failed to delete the artifact still try to clean up the index. There's a good
+        // chance this will fail too but might make it less likely that we try to re-upload this
+        // file.
+
         self.index.pop_front();
         self.write_index().await;
       },
