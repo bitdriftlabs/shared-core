@@ -124,12 +124,7 @@ impl<A: ApplyConfig> Config<A> {
     // having to wait for the API server to respond.
     // TODO(snowp): Consider storing an intermediate format to avoid all the error checking
     // above on re-read.
-    // If we fail writing to disk, record a counter and move on. We'll continue to operate
-    // without disk caching.
-    // TODO(snowp): Consider ways to expose what is going on here, Rust doesn't expose a way to
-    // check if this is an out of disk issue without parsing the error message (not platform
-    // independent) so it's tricky to avoid this being noisy. We may consider doing such
-    // parsing on the server side.
+    // If we fail writing to disk, move on. We'll continue to operate without disk caching.
     self.file_cache.cache_update(update).await;
 
     Ok(())

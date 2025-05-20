@@ -163,6 +163,7 @@ impl<T: Message> SafeFileCache<T> {
 
     // Failing here is fine, worst case we'll use an old retry count or leave is missing, which
     // will eventually disable caching.
+    self.cached_config_validated.store(true, Ordering::SeqCst);
     if let Err(e) = self.persist_cache_load_retry_count(0).await {
       log::debug!("failed to write retry count: {e}");
     }

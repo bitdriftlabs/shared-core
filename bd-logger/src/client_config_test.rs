@@ -58,6 +58,9 @@ async fn process_and_load() {
     configuration_rx.recv().await.unwrap()
   );
 
+  let (configuration_tx, mut configuration_rx) = channel(2);
+  let update = TestUpdate { configuration_tx };
+  let config = Config::new(directory.path(), update);
   config.try_load_persisted_config().await;
   configuration_rx.recv().await;
 
