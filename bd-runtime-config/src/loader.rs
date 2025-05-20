@@ -297,7 +297,7 @@ impl<ConfigType: Send + Sync + 'static + ?Sized> WatchedFileLoader<ConfigType> {
     conversion_function: &ConversionFunc,
     stats: &impl StatsCallbacks,
   ) -> ConfigPtr<ConfigType> {
-    log::info!("attempting to reload: {file_to_load:?}");
+    log::info!("attempting to reload: {}", file_to_load.display());
     conversion_function(match std::fs::read_to_string(file_to_load) {
       Ok(file_data) => match serde_yaml::from_str::<SerializedType>(&file_data) {
         Ok(config) => {

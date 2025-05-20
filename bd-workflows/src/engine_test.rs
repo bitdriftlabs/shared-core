@@ -1053,10 +1053,13 @@ async fn traversals_count_limit_prevents_creation_of_new_workflows() {
   ];
 
   let setup = Setup::new();
-  setup.runtime.update_snapshot(&make_simple_update(vec![(
-    bd_runtime::runtime::workflows::TraversalsCountLimitFlag::path(),
-    ValueKind::Int(2),
-  )]));
+  setup
+    .runtime
+    .update_snapshot(&make_simple_update(vec![(
+      bd_runtime::runtime::workflows::TraversalsCountLimitFlag::path(),
+      ValueKind::Int(2),
+    )]))
+    .await;
 
   // We try to create 4 workflows (each with 1 run that has 1 traversal) but
   // the configured traversals count limit is 2. For this reason, we succeed
@@ -1129,10 +1132,13 @@ async fn traversals_count_limit_prevents_creation_of_new_workflow_runs() {
   let workflows = vec![workflow!(parallel with a, b)];
 
   let setup = Setup::new();
-  setup.runtime.update_snapshot(&make_simple_update(vec![(
-    bd_runtime::runtime::workflows::TraversalsCountLimitFlag::path(),
-    ValueKind::Int(2),
-  )]));
+  setup
+    .runtime
+    .update_snapshot(&make_simple_update(vec![(
+      bd_runtime::runtime::workflows::TraversalsCountLimitFlag::path(),
+      ValueKind::Int(2),
+    )]))
+    .await;
 
   let mut workflows_engine = setup
     .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
@@ -1197,10 +1203,13 @@ async fn traversals_count_limit_causes_run_removal_after_forking() {
 
   let setup = Setup::new();
 
-  setup.runtime.update_snapshot(&make_simple_update(vec![(
-    bd_runtime::runtime::workflows::TraversalsCountLimitFlag::path(),
-    ValueKind::Int(2),
-  )]));
+  setup
+    .runtime
+    .update_snapshot(&make_simple_update(vec![(
+      bd_runtime::runtime::workflows::TraversalsCountLimitFlag::path(),
+      ValueKind::Int(2),
+    )]))
+    .await;
 
   let mut workflows_engine = setup
     .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
@@ -1616,10 +1625,13 @@ async fn persists_state_on_periodic_basis() {
 
   // Speed up periodic persistance so that the test can complete in a shorter
   // amount of time.
-  setup.runtime.update_snapshot(&make_simple_update(vec![(
-    bd_runtime::runtime::workflows::StatePeriodicWriteIntervalFlag::path(),
-    ValueKind::Int(10),
-  )]));
+  setup
+    .runtime
+    .update_snapshot(&make_simple_update(vec![(
+      bd_runtime::runtime::workflows::StatePeriodicWriteIntervalFlag::path(),
+      ValueKind::Int(10),
+    )]))
+    .await;
 
   // Engine creation should still succeed but with a default state
   let mut workflows_engine = setup
@@ -2594,10 +2606,13 @@ async fn creating_new_runs_after_first_log_processing() {
   );
 
   let setup = Setup::new();
-  setup.runtime.update_snapshot(&make_simple_update(vec![(
-    bd_runtime::runtime::workflows::TraversalsCountLimitFlag::path(),
-    ValueKind::Int(3),
-  )]));
+  setup
+    .runtime
+    .update_snapshot(&make_simple_update(vec![(
+      bd_runtime::runtime::workflows::TraversalsCountLimitFlag::path(),
+      ValueKind::Int(3),
+    )]))
+    .await;
 
   // This test assumes that internally `workflows_engine` iterates
   // over the list of its workflows in order.

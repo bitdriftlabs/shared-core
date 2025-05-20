@@ -125,27 +125,34 @@ struct Setup {
 }
 
 impl Setup {
-  fn new() -> Self {
-    Self::new_with_filesystem(Box::new(TestFileSystem::new()), None, 500)
+  async fn new() -> Self {
+    Self::new_with_filesystem(Box::new(TestFileSystem::new()), None, 500).await
   }
 
-  fn new_with_directory(directory: TempDir) -> Self {
+  async fn new_with_directory(directory: TempDir) -> Self {
     Self::new_with_filesystem(
       Box::new(RealFileSystem::new(directory.path().to_path_buf())),
       Some(directory),
       500,
     )
+    .await
   }
 
-  fn new_with_filesystem(fs: Box<dyn FileSystem>, directory: Option<TempDir>, limit: u32) -> Self {
+  async fn new_with_filesystem(
+    fs: Box<dyn FileSystem>,
+    directory: Option<TempDir>,
+    limit: u32,
+  ) -> Self {
     let directory = directory.unwrap_or_else(|| TempDir::new().unwrap());
     let test_time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let runtime_loader = ConfigLoader::new(directory.path());
-    runtime_loader.update_snapshot(&make_simple_update(vec![(
-      bd_runtime::runtime::stats::MaxAggregatedFilesFlag::path(),
-      ValueKind::Int(2),
-    )]));
+    runtime_loader
+      .update_snapshot(&make_simple_update(vec![(
+        bd_runtime::runtime::stats::MaxAggregatedFilesFlag::path(),
+        ValueKind::Int(2),
+      )]))
+      .await;
 
     let stats = Stats::new(Collector::new(Some(watch::channel(limit).1)));
     let (data_tx, data_rx) = mpsc::channel(1);
@@ -298,7 +305,7 @@ impl TestFileSystem {
 
 #[tokio::test(start_paused = true)]
 async fn overflow() {
-  let mut setup = Setup::new_with_filesystem(Box::new(TestFileSystem::new()), None, 1);
+  let mut setup = Setup::new_with_filesystem(Box::new(TestFileSystem::new()), None, 1).await;
 
   setup
     .stats
@@ -362,7 +369,7 @@ async fn overflow() {
 
 #[tokio::test(start_paused = true)]
 async fn report() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   let c = setup
     .stats
@@ -449,7 +456,7 @@ async fn report() {
 
 #[tokio::test(start_paused = true)]
 async fn max_files_upload_race() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   let counter = setup.stats.collector.scope("test").counter("test");
   counter.inc();
@@ -500,7 +507,7 @@ async fn max_files_upload_race() {
 
 #[tokio::test(start_paused = true)]
 async fn max_files() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   let counter = setup.stats.collector.scope("test").counter("test");
   counter.inc();
@@ -541,7 +548,7 @@ async fn earliest_aggregation_start_end_maintained() {
   // This test simulates a few upload failures interleaved with stats being recorded, and verifies
   // that the aggregation start/end window is set according to when an aggregation period starts and
   // is not updated every time more data is merged into the aggregated data.
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   let t0 = setup.test_time.now();
   let counter = setup.stats.collector.scope("test").counter("test");
@@ -618,7 +625,7 @@ async fn existing_pending_upload() {
     .await
     .unwrap();
 
-  let mut setup = Setup::new_with_directory(directory);
+  let mut setup = Setup::new_with_directory(directory).await;
 
   setup
     .with_next_stats_upload(|upload| {
@@ -643,7 +650,7 @@ async fn existing_empty_pending_upload() {
     .await
     .unwrap();
 
-  let mut setup = Setup::new_with_directory(directory);
+  let mut setup = Setup::new_with_directory(directory).await;
 
   let counter = setup.stats.collector.scope("test").counter("test");
   counter.inc();
@@ -667,7 +674,7 @@ async fn existing_corrupted_pending_upload() {
     .await
     .unwrap();
 
-  let mut setup = Setup::new_with_directory(directory);
+  let mut setup = Setup::new_with_directory(directory).await;
 
   let counter = setup.stats.collector.scope("test").counter("test");
   counter.inc();
@@ -711,7 +718,7 @@ async fn existing_aggregated_file() {
     .await
     .unwrap();
 
-  let mut setup = Setup::new_with_directory(directory);
+  let mut setup = Setup::new_with_directory(directory).await;
 
   let counter = setup.stats.collector.scope("test").counter("blah");
   counter.inc();
@@ -734,7 +741,7 @@ async fn empty_aggregated_file() {
     .await
     .unwrap();
 
-  let mut setup = Setup::new_with_directory(directory);
+  let mut setup = Setup::new_with_directory(directory).await;
 
   let counter = setup.stats.collector.scope("test").counter("foo");
   counter.inc();
@@ -756,7 +763,7 @@ async fn corrupted_aggregated_file() {
     .await
     .unwrap();
 
-  let mut setup = Setup::new_with_directory(directory);
+  let mut setup = Setup::new_with_directory(directory).await;
 
   let counter = setup.stats.collector.scope("test").counter("foo");
   counter.inc();
@@ -772,7 +779,7 @@ async fn corrupted_aggregated_file() {
 // Basic test which exercises happy path flushing with test filesystem.
 #[tokio::test(start_paused = true)]
 async fn stat_flush_test_fs() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   let counter = setup.stats.collector.scope("test").counter("foo");
 
@@ -789,7 +796,7 @@ async fn stat_flush_test_fs() {
 
 #[tokio::test(start_paused = true)]
 async fn different_histogram_merges() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   // Fail first upload with an inline histogram.
   let histogram = setup.stats.collector.scope("test").histogram("blah");
@@ -838,7 +845,7 @@ async fn different_histogram_merges() {
 
 #[tokio::test(start_paused = true)]
 async fn different_histogram_merges2() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   // Fail first upload with an inline histogram.
   let histogram = setup.stats.collector.scope("test").histogram("blah");
@@ -879,7 +886,7 @@ async fn different_histogram_merges2() {
 
 #[tokio::test(start_paused = true)]
 async fn histograms() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   let histogram = setup.stats.collector.scope("test").histogram("blah");
 
@@ -915,7 +922,7 @@ async fn histograms() {
 
 #[tokio::test(start_paused = true)]
 async fn dynamic_stats() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   setup.stats.record_dynamic_counter(
     BTreeMap::from([

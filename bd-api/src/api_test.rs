@@ -39,6 +39,10 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
+// TODO(mattklein123): Move this somewhere common.
+const RUNTIME_UP_TO_DATE: u32 = 0x1;
+const CONFIG_UP_TO_DATE: u32 = 0x2;
+
 struct EmptyMetadata;
 
 impl Metadata for EmptyMetadata {
@@ -250,10 +254,11 @@ impl Setup {
     self.current_stream_tx = current_stream_tx;
   }
 
-  async fn handshake_response(&self) {
+  async fn handshake_response(&self, configuration_update_status: u32) {
     let response = ApiResponse {
       response_type: Some(Response_type::Handshake(HandshakeResponse {
         stream_settings: None.into(),
+        configuration_update_status,
         ..Default::default()
       })),
       ..Default::default()
@@ -363,7 +368,9 @@ async fn api_retry_stream() {
 
   assert!(setup.next_stream(1.seconds()).await);
 
-  setup.handshake_response().await;
+  setup
+    .handshake_response(CONFIG_UP_TO_DATE | RUNTIME_UP_TO_DATE)
+    .await;
   61.seconds().sleep().await;
   assert_eq!(
     NetworkQuality::Online,
@@ -398,7 +405,9 @@ async fn api_retry_stream() {
   }
   5.minutes().advance().await;
   assert!(setup.next_stream(1.seconds()).await);
-  setup.handshake_response().await;
+  setup
+    .handshake_response(CONFIG_UP_TO_DATE | RUNTIME_UP_TO_DATE)
+    .await;
   setup.close_stream().await;
   assert!(!setup.next_stream(10.seconds()).await);
   assert_eq!(
@@ -414,7 +423,7 @@ async fn client_kill() {
   let mut setup = Setup::new();
 
   assert!(setup.next_stream(1.seconds()).await);
-  setup.handshake_response().await;
+  setup.handshake_response(CONFIG_UP_TO_DATE).await;
 
   setup
     .send_response(ApiResponse {
@@ -479,7 +488,7 @@ async fn api_retry_stream_runtime_override() {
   let mut setup = Setup::new();
 
   assert!(setup.next_stream(1.seconds()).await);
-  setup.handshake_response().await;
+  setup.handshake_response(CONFIG_UP_TO_DATE).await;
 
   setup
     .send_response(ApiResponse {
@@ -511,7 +520,9 @@ async fn error_response() {
   let mut setup = Setup::new();
 
   assert!(setup.next_stream(1.seconds()).await);
-  setup.handshake_response().await;
+  setup
+    .handshake_response(CONFIG_UP_TO_DATE | RUNTIME_UP_TO_DATE)
+    .await;
 
   setup
     .send_response(ApiResponse {
@@ -609,7 +620,9 @@ async fn set_stats_upload_request_sent_at_field() {
   let mut setup = Setup::new();
 
   assert!(setup.next_stream(1.seconds()).await);
-  setup.handshake_response().await;
+  setup
+    .handshake_response(CONFIG_UP_TO_DATE | RUNTIME_UP_TO_DATE)
+    .await;
 
   let (tracked, _) = Tracked::new("123".to_string(), StatsUploadRequest::default());
 

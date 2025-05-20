@@ -112,8 +112,8 @@ impl Monitor {
     // to be resilient to the directory not existing.
     if let Err(e) = tokio::fs::create_dir_all(&self.report_directory).await {
       log::warn!(
-        "Failed to create crash directory: {:?} ({})",
-        self.report_directory,
+        "Failed to create crash directory: {} ({})",
+        self.report_directory.display(),
         e
       );
     }
@@ -226,15 +226,24 @@ impl Monitor {
       log::debug!("No report directories configured, removing file");
 
       if let Err(e) = tokio::fs::remove_file(&file).await {
-        log::warn!("Failed to remove report directories config file: {file:?} ({e})");
+        log::warn!(
+          "Failed to remove report directories config file: {} ({e})",
+          file.display()
+        );
       }
     } else {
-      log::debug!("Writing {value:?} to report directories config file {file:?}",);
+      log::debug!(
+        "Writing {value:?} to report directories config file {}",
+        file.display()
+      );
 
       self.try_ensure_directories_exist().await;
 
       if let Err(e) = tokio::fs::write(file, value).await {
-        log::warn!("Failed to write report directories config file: {file:?} ({e})");
+        log::warn!(
+          "Failed to write report directories config file: {} ({e})",
+          file.display()
+        );
       }
     }
   }
@@ -250,14 +259,14 @@ impl Monitor {
         // directory just doesn't exist it is not an error.
         if self.report_directory.join("new").exists() {
           log::warn!(
-            "Failed to read report directory: {:?} ({})",
-            self.report_directory.join("new"),
+            "Failed to read report directory: {} ({})",
+            self.report_directory.join("new").display(),
             e,
           );
         } else {
           log::debug!(
-            "Report directory does not exist: {:?}",
-            self.report_directory.join("new")
+            "Report directory does not exist: {}",
+            self.report_directory.join("new").display()
           );
         }
 
@@ -277,11 +286,11 @@ impl Monitor {
     while let Ok(Some(entry)) = dir.next_entry().await {
       let path = entry.path();
       if path.is_file() {
-        log::info!("Processing new reports report: {path:?}");
+        log::info!("Processing new reports report: {}", path.display());
         let contents = match tokio::fs::read(&path).await {
           Ok(contents) => contents,
           Err(e) => {
-            log::warn!("Failed to read reports report: {path:?} ({e})");
+            log::warn!("Failed to read reports report: {} ({e})", path.display());
             continue;
           },
         };
@@ -307,7 +316,10 @@ impl Monitor {
           Self::guess_crash_details(&contents, &crash_reason_paths, &crash_details_paths);
 
         if crash_reason.is_none() {
-          log::warn!("Failed to infer crash reason from report {path:?}, dropping.");
+          log::warn!(
+            "Failed to infer crash reason from report {}, dropping.",
+            path.display()
+          );
           continue;
         }
 
@@ -340,7 +352,7 @@ impl Monitor {
       // Clean up files after processing them. If this fails we'll potentially end up
       // double-reporting in the future.
       if let Err(e) = tokio::fs::remove_file(&path).await {
-        log::warn!("Failed to remove crash report: {path:?} ({e})");
+        log::warn!("Failed to remove crash report: {} ({e})", path.display());
       }
     }
 

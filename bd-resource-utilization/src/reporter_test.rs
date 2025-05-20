@@ -39,18 +39,22 @@ impl Setup {
     Reporter::new(target, &self.runtime)
   }
 
-  fn update_reporting_interval(&self, interval: Duration) {
-    self.runtime.update_snapshot(&make_simple_update(vec![
-      (
-        bd_runtime::runtime::resource_utilization::ResourceUtilizationEnabledFlag::path(),
-        ValueKind::Bool(true),
-      ),
-      (
-        bd_runtime::runtime::resource_utilization::ResourceUtilizationReportingIntervalFlag::path(),
-        #[allow(clippy::cast_possible_truncation)]
-        ValueKind::Int(interval.whole_milliseconds().try_into().unwrap()),
-      ),
-    ]));
+  async fn update_reporting_interval(&self, interval: Duration) {
+    self
+      .runtime
+      .update_snapshot(&make_simple_update(vec![
+        (
+          bd_runtime::runtime::resource_utilization::ResourceUtilizationEnabledFlag::path(),
+          ValueKind::Bool(true),
+        ),
+        (
+          bd_runtime::runtime::resource_utilization::ResourceUtilizationReportingIntervalFlag::path(
+          ),
+          #[allow(clippy::cast_possible_truncation)]
+          ValueKind::Int(interval.whole_milliseconds().try_into().unwrap()),
+        ),
+      ]))
+      .await;
   }
 }
 
@@ -72,16 +76,19 @@ impl Target for MockTarget {
 #[tokio::test]
 async fn does_not_report_if_disabled() {
   let setup = Setup::new();
-  setup.runtime.update_snapshot(&make_simple_update(vec![
-    (
-      bd_runtime::runtime::resource_utilization::ResourceUtilizationEnabledFlag::path(),
-      ValueKind::Bool(false),
-    ),
-    (
-      bd_runtime::runtime::resource_utilization::ResourceUtilizationReportingIntervalFlag::path(),
-      ValueKind::Int(10),
-    ),
-  ]));
+  setup
+    .runtime
+    .update_snapshot(&make_simple_update(vec![
+      (
+        bd_runtime::runtime::resource_utilization::ResourceUtilizationEnabledFlag::path(),
+        ValueKind::Bool(false),
+      ),
+      (
+        bd_runtime::runtime::resource_utilization::ResourceUtilizationReportingIntervalFlag::path(),
+        ValueKind::Int(10),
+      ),
+    ]))
+    .await;
 
   let target = Box::<MockTarget>::default();
   let ticks_count = target.ticks_count.clone();
@@ -105,7 +112,7 @@ async fn does_not_report_if_disabled() {
 #[tokio::test]
 async fn does_not_report_if_there_are_no_fields() {
   let setup = Setup::new();
-  setup.update_reporting_interval(10.milliseconds());
+  setup.update_reporting_interval(10.milliseconds()).await;
 
   let target = Box::<MockTarget>::default();
   let ticks_count = target.ticks_count.clone();
