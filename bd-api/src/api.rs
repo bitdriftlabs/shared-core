@@ -651,10 +651,11 @@ impl Api {
             .handle_responses(remaining_responses, &mut stream_state)
             .await?;
 
-          // Let the all the configuration pipelines know that we are able to connect to the
-          // backend. We do this after we process responses that immediately followed the handshake
-          // in order to make it possible for the server to push down configuration that
-          // would get applied as part of the handshake response.
+          // Let all the configuration pipelines know that we are able to connect to the
+          // backend. We supply the configuration update status to the pipelines so they can
+          // determine whether cached configuration can be marked safe immediately. It's possible
+          // that we already processed a configuration update frame in which case the config was
+          // already marked safe.
           for pipeline in &self.configuration_pipelines {
             pipeline
               .on_handshake_complete(configuration_update_status)

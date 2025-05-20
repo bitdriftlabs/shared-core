@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::file::{read_compressed_protobuf, write_compressed_protobuf};
-use anyhow::{anyhow, bail};
+use anyhow::bail;
 use protobuf::Message;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
