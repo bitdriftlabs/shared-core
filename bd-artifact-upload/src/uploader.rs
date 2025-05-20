@@ -180,6 +180,7 @@ impl Uploader {
       {
         let next = self.index.front().unwrap().clone();
         if next.pending_intent_negotation {
+          log::debug!("starting intent negotiation for {:?}", next.name);
           self.intent_task_handle = Some(tokio::spawn(Self::perform_intent_negotiation(
             self.data_upload_tx.clone(),
             next.name.clone(),
@@ -201,6 +202,7 @@ impl Uploader {
         };
 
 
+        log::debug!("starting file upload for {:?}", next.name);
         self.upload_task_handle = Some(tokio::spawn(Self::upload_artifact(
           self.data_upload_tx.clone(),
           contents,
@@ -216,6 +218,8 @@ impl Uploader {
       tokio::select! {
         () = self.shutdown.cancelled() => {
           log::debug!("shutting down uploader");
+          self.stop_current_upload();
+
           return Err(Error::Shutdown);
         }
         Some(NewUpload {uuid, contents}) = self.upload_queued_rx.recv() => {
@@ -327,7 +331,6 @@ impl Uploader {
       },
       IntentDecision::UploadImmediately => {
         let entry = self.index.front_mut().unwrap();
-        log::debug!("uploading artifact: {}", entry.name);
         // Mark the file as being ready for uploads and persist this to the index.
         entry.pending_intent_negotation = false;
         self.write_index().await;
@@ -360,7 +363,7 @@ impl Uploader {
   async fn track_new_upload(&mut self, uuid: Uuid, contents: Vec<u8>) {
     // If we've reached our limit of entries, stop the entry currently being uploaded (the oldest
     // one) to make space for the newer one.
-    if self.index.len() >= self.max_entries {
+    if self.index.len() == self.max_entries {
       log::debug!("upload queue is full, dropping current upload");
       self.stop_current_upload();
       self.index.pop_front();
