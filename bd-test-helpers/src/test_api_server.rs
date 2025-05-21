@@ -31,8 +31,6 @@ use bd_proto::protos::client::api::{
   LogUploadIntentResponse,
   LogUploadRequest,
   LogUploadResponse,
-  OpaqueRequest,
-  OpaqueResponse,
   PongResponse,
   RuntimeUpdate,
   StatsUploadRequest,
@@ -100,7 +98,6 @@ struct ServiceState {
   per_stream_action_txs: Arc<Mutex<HashMap<i32, Arc<Sender<StreamAction>>>>>,
   log_upload_tx: Sender<LogUploadRequest>,
   log_intent_tx: Sender<LogUploadIntentRequest>,
-  opaque_upload_tx: Sender<OpaqueRequest>,
   artifact_upload_tx: Sender<UploadArtifactRequest>,
   artifact_intent_tx: Sender<UploadArtifactIntentRequest>,
   stats_upload_tx: Sender<StatsUploadRequest>,
@@ -236,25 +233,6 @@ impl RequestProcessor {
               ..Default::default()
             },
           )),
-          ..Default::default()
-        })
-      },
-      Some(Request_type::OpaqueUpload(upload)) => {
-        log::debug!("[S{}] received opaque upload", self.stream_id);
-
-        self
-          .stream_state
-          .opaque_upload_tx
-          .send(upload.clone())
-          .await
-          .unwrap();
-
-        Some(ApiResponse {
-          response_type: Some(Response_type::OpaqueUpload(OpaqueResponse {
-            uuid: upload.uuid.clone(),
-            error: None,
-            ..Default::default()
-          })),
           ..Default::default()
         })
       },
@@ -581,7 +559,6 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
   let (event_tx, event_rx) = channel(1);
   let (log_upload_tx, log_upload_rx) = channel(256);
   let (log_intent_tx, log_intent_rx) = channel(256);
-  let (opaque_upload_tx, opaque_upload_rx) = channel(256);
   let (artifact_upload_tx, artifact_upload_rx) = channel(256);
   let (artifact_intent_tx, artifact_intent_rx) = channel(256);
   let (stats_upload_tx, stats_upload_rx) = channel(256);
@@ -611,7 +588,6 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
           per_stream_action_txs: per_stream_action_txs.clone(),
           log_upload_tx,
           log_intent_tx,
-          opaque_upload_tx,
           artifact_upload_tx,
           artifact_intent_tx,
           stats_upload_tx,
@@ -643,7 +619,6 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
     stream_action_tx,
     log_upload_rx,
     log_intent_rx,
-    opaque_upload_rx,
     artifact_upload_rx,
     artifact_intent_rx,
     stats_upload_rx,
@@ -744,7 +719,6 @@ pub struct ServerHandle {
   stream_action_tx: Sender<(i32, StreamAction)>,
 
   log_upload_rx: Receiver<LogUploadRequest>,
-  opaque_upload_rx: Receiver<OpaqueRequest>,
   artifact_upload_rx: Receiver<UploadArtifactRequest>,
   artifact_intent_rx: Receiver<UploadArtifactIntentRequest>,
   log_intent_rx: Receiver<LogUploadIntentRequest>,
@@ -864,10 +838,6 @@ impl ServerHandle {
   /// Awaits a request to be received over the provided receiver.
   async fn next_request<T>(receiver: &mut Receiver<T>) -> Option<T> {
     receiver.recv().await
-  }
-
-  pub async fn next_opaque_upload(&mut self) -> Option<OpaqueRequest> {
-    Self::next_request(&mut self.opaque_upload_rx).await
   }
 
   pub async fn next_artifact_upload(&mut self) -> Option<UploadArtifactRequest> {

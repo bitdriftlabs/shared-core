@@ -400,15 +400,18 @@ fn run_profiling<T: Fn(&mut AnnotatedWorkflowsEngine) + std::marker::Send + 'sta
       .build()
       .unwrap()
       .block_on(async {
-        setup.runtime_loader.update_snapshot(&RuntimeUpdate {
-          version_nonce: "123".to_string(),
-          runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
-            bd_runtime::runtime::stats::DirectStatFlushIntervalFlag::path(),
-            bd_test_helpers::runtime::ValueKind::Int(900),
-          )]))
-          .into(),
-          ..Default::default()
-        });
+        setup
+          .runtime_loader
+          .update_snapshot(&RuntimeUpdate {
+            version_nonce: "123".to_string(),
+            runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
+              bd_runtime::runtime::stats::DirectStatFlushIntervalFlag::path(),
+              bd_test_helpers::runtime::ValueKind::Int(900),
+            )]))
+            .into(),
+            ..Default::default()
+          })
+          .await;
 
         // Given the runtime configuration update time to propagate.
         1.seconds().sleep().await;

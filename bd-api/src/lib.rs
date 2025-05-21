@@ -6,109 +6,26 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_proto::protos::client::api::{
-  ApiRequest,
-  ApiResponse,
-  ErrorShutdown,
-  FlushBuffers,
-  HandshakeRequest,
-  HandshakeResponse,
   LogUploadIntentRequest,
-  LogUploadIntentResponse,
   LogUploadRequest,
-  LogUploadResponse,
-  OpaqueResponse,
-  PongResponse,
   SankeyIntentRequest,
-  SankeyIntentResponse,
   SankeyPathUploadRequest,
-  SankeyPathUploadResponse,
   StatsUploadRequest,
-  StatsUploadResponse,
   UploadArtifactIntentRequest,
-  UploadArtifactIntentResponse,
   UploadArtifactRequest,
-  UploadArtifactResponse,
 };
 use std::collections::HashMap;
 use upload::{TrackedIntent, TrackedUpload};
 
 pub mod api;
-mod payload_conversion;
 pub mod upload;
 
 pub use bd_metadata::{Metadata, Platform};
-pub use payload_conversion::{ClientConfigurationUpdate, RuntimeConfigurationUpdate};
 
 #[cfg(test)]
 #[ctor::ctor]
 fn global_init() {
   bd_test_helpers::test_global_init();
-}
-
-/// Used to allow the API mux operate against multiple different transport APIs. The code is able
-/// to operate against the inner types that can be wrapped up into the appropriate mux type
-/// depending on the use case.
-pub trait IntoRequest {
-  fn into_request(self) -> ApiRequest;
-}
-
-//
-// FromResponse
-//
-
-/// Used to unwrap a mulitplexing `ResponseType` into an inner type.
-pub trait FromResponse<ResponseType> {
-  fn from_response(response: &ResponseType) -> Option<&Self>;
-}
-
-/// Used to define a configuration pipeline that receives configuration updates through the
-/// multiplexing API. The configuration pipeline may optioanlly support disk persistence.
-#[async_trait::async_trait]
-pub trait ConfigurationUpdate: Send + Sync {
-  /// Attempt to apply a new inbound configuration. Returns None if the response does not apply
-  /// to this configuration type, otherwise returns the ack/nack after attempting to apply the
-  /// config.
-  async fn try_apply_config(&mut self, response: &ApiResponse) -> Option<ApiRequest>;
-
-  /// Attempts to load persisted config from disk if supported by the configuration type.
-  async fn try_load_persisted_config(&mut self);
-
-  /// Provides a partial handshake that is used to include the version nonce for this configuration
-  /// type into the handshake request.
-  fn partial_handshake(&self) -> HandshakeRequest;
-
-  /// Called to allow the configuration pipeline to react to the server being available.
-  fn on_handshake_complete(&self);
-}
-
-//
-// ResponseKind
-//
-
-/// A transport independent representation of the possible multiplexed response types.
-pub enum ResponseKind<'a> {
-  Handshake(&'a HandshakeResponse),
-  ErrorShutdown(&'a ErrorShutdown),
-  Pong(&'a PongResponse),
-  LogUpload(&'a LogUploadResponse),
-  LogUploadIntent(&'a LogUploadIntentResponse),
-  StatsUpload(&'a StatsUploadResponse),
-  FlushBuffers(&'a FlushBuffers),
-  SankeyPathUpload(&'a SankeyPathUploadResponse),
-  SankeyPathUploadIntent(&'a SankeyIntentResponse),
-  Opaque(&'a OpaqueResponse),
-  ArtifactUploadIntent(&'a UploadArtifactIntentResponse),
-  ArtifactUpload(&'a UploadArtifactResponse),
-  Untyped,
-}
-
-//
-// MuxResponse
-//
-
-/// Used to convert a response type into the transport independent `ResponseKind`.
-pub trait MuxResponse {
-  fn demux(&self) -> Option<ResponseKind<'_>>;
 }
 
 /// Wrapper around an generic uploadable payload which can be converted into `RequestType`.

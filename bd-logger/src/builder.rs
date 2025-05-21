@@ -239,15 +239,14 @@ impl LoggerBuilder {
       log.clone(),
     )?;
 
-    let updater = Box::new(client_config::Config::new(
+    let updater = Arc::new(client_config::Config::new(
       &self.params.sdk_directory,
       LoggerUpdate::new(
         buffer_manager.clone(),
         config_update_tx,
         &scope.scope("config"),
       ),
-      &scope,
-    )?);
+    ));
 
     let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
       Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
@@ -279,10 +278,7 @@ impl LoggerBuilder {
       trigger_upload_tx,
       self.params.static_metadata,
       runtime_loader.clone(),
-      vec![
-        Box::new(bd_runtime::runtime::RuntimeManager::new(runtime_loader)),
-        updater,
-      ],
+      vec![runtime_loader, updater],
       Arc::new(SystemTimeProvider),
       network_quality_provider,
       log.clone(),

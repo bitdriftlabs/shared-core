@@ -7,12 +7,11 @@
 
 use super::{Config, Configuration};
 use anyhow::anyhow;
-use bd_client_stats_store::Collector;
+use bd_client_common::{ConfigurationUpdate as _, HANDSHAKE_FLAG_CONFIG_UP_TO_DATE};
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::ConfigurationUpdate;
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use pretty_assertions::assert_eq;
-use std::path::Path;
 use tempfile::TempDir;
 use tokio::sync::mpsc::channel;
 
@@ -22,7 +21,7 @@ struct TestUpdate {
 
 #[async_trait::async_trait]
 impl super::ApplyConfig for TestUpdate {
-  async fn apply_configuration(&mut self, configuration: Configuration) -> anyhow::Result<()> {
+  async fn apply_configuration(&self, configuration: Configuration) -> anyhow::Result<()> {
     self
       .configuration_tx
       .send(configuration)
@@ -44,11 +43,10 @@ fn configuration_update() -> ConfigurationUpdate {
 
 #[tokio::test]
 async fn process_and_load() {
-  let stats = Collector::default();
   let (configuration_tx, mut configuration_rx) = channel(2);
   let update = TestUpdate { configuration_tx };
   let directory = TempDir::with_prefix("sdk").unwrap();
-  let mut config = Config::new(directory.path(), update, &stats.scope("")).unwrap();
+  let config = Config::new(directory.path(), update);
 
   config
     .process_configuration_update(&configuration_update())
@@ -60,20 +58,32 @@ async fn process_and_load() {
     configuration_rx.recv().await.unwrap()
   );
 
-  config.try_load_persisted_config_helper().await.unwrap();
-
-  configuration_rx.recv().await;
-}
-
-#[tokio::test]
-async fn load_bad_file() {
-  let (configuration_tx, _configuration_rx) = channel(2);
+  let (configuration_tx, mut configuration_rx) = channel(2);
   let update = TestUpdate { configuration_tx };
-  let stats = Collector::default();
-  let config = Config::new(Path::new("doesntexist"), update, &stats.scope(""));
+  let config = Config::new(directory.path(), update);
+  config.try_load_persisted_config().await;
+  configuration_rx.recv().await;
+
+  // With no safety marking, we should have a retry count of 1.
   assert_eq!(
-    "an invalid sdk directory was provided: \"doesntexist\"",
-    config.err().unwrap().to_string(),
+    std::fs::read(directory.path().join("config").join("retry_count")).unwrap(),
+    &[1]
+  );
+
+  // Getting a handshake without runtime being up to date should not do anything.
+  config.on_handshake_complete(0).await;
+  assert_eq!(
+    std::fs::read(directory.path().join("config").join("retry_count")).unwrap(),
+    &[1]
+  );
+
+  // Getting a handshake with runtime being up to date should mark the config as safe.
+  config
+    .on_handshake_complete(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE)
+    .await;
+  assert_eq!(
+    std::fs::read(directory.path().join("config").join("retry_count")).unwrap(),
+    &[0]
   );
 }
 
@@ -82,12 +92,11 @@ async fn cache_write_fails() {
   let (configuration_tx, mut configuration_rx) = channel(2);
   let update = TestUpdate { configuration_tx };
   let directory = TempDir::with_prefix("sdk").unwrap();
-  let stats = Collector::default();
-  let mut config = Config::new(directory.path(), update, &stats.scope("")).unwrap();
+  let config = Config::new(directory.path(), update);
 
   // Create the config file, then make it read only. This should make the attempt to cache fail,
   // which should result in this being reported as an error.
-  let config_file = directory.path().join("config.pb");
+  let config_file = directory.path().join("config").join("protobuf.pb");
   std::fs::write(&config_file, []).unwrap();
   let mut perms = std::fs::metadata(&config_file).unwrap().permissions();
   perms.set_readonly(true);
@@ -112,18 +121,13 @@ async fn cache_write_fails() {
 async fn load_malformed_file() {
   let (configuration_tx, _configuration_rx) = channel(2);
   let update = TestUpdate { configuration_tx };
-  let stats = Collector::default();
-  let mut config = Config::new(Path::new("."), update, &stats.scope("")).unwrap();
+  let directory = TempDir::with_prefix("sdk").unwrap();
+  let config = Config::new(directory.path(), update);
 
-  let config_file = Path::new("./config.pb");
+  let config_file = directory.path().join("config").join("protobuf.pb");
+  std::fs::write(&config_file, "not a proto").unwrap();
 
-  std::fs::write(config_file, "not a proto").unwrap();
-
-  let load_result = config.try_load_persisted_config_helper().await;
-  assert_eq!(
-    load_result.err().unwrap().to_string(),
-    "corrupt deflate stream"
-  );
+  config.try_load_persisted_config_helper().await;
 
   // Validate that we remove the file if it fails decoding.
   assert!(!config_file.exists());

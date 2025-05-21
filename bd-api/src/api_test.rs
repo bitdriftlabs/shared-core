@@ -11,6 +11,12 @@ use crate::upload::Tracked;
 use crate::DataUpload;
 use anyhow::anyhow;
 use assert_matches::assert_matches;
+use bd_client_common::{
+  ConfigurationUpdate,
+  MockConfigurationUpdate,
+  HANDSHAKE_FLAG_CONFIG_UP_TO_DATE,
+  HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+};
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
 use bd_grpc_codec::{Encoder, OptimizeFor};
@@ -30,14 +36,21 @@ use bd_proto::protos::client::api::{
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
+use bd_test_helpers::make_mut;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
+use mockall::predicate::eq;
 use std::collections::HashMap;
+use std::iter::once;
 use std::sync::{Arc, Mutex};
 use time::ext::NumericalDuration;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
+
+//
+// EmptyMetadata
+//
 
 struct EmptyMetadata;
 
@@ -62,6 +75,10 @@ impl Metadata for EmptyMetadata {
     HashMap::new()
   }
 }
+
+//
+// PlatformNetwork
+//
 
 #[derive(Clone)]
 #[allow(clippy::struct_field_names)]
@@ -109,6 +126,10 @@ impl<T> PlatformNetworkManager<T> for PlatformNetwork {
   }
 }
 
+//
+// Stream
+//
+
 struct Stream {
   _event_tx: Sender<StreamEvent>,
 
@@ -126,6 +147,20 @@ impl PlatformNetworkStream for Stream {
   }
 }
 
+//
+// TestLog
+//
+
+struct TestLog {}
+
+impl bd_internal_logging::Logger for TestLog {
+  fn log(&self, _level: LogLevel, _log_type: LogType, _msg: &str, _fields: LogFields) {}
+}
+
+//
+// Setup
+//
+
 struct Setup {
   sdk_directory: tempfile::TempDir,
   data_tx: Sender<DataUpload>,
@@ -141,14 +176,12 @@ struct Setup {
   network_quality_provider: Arc<SimpleNetworkQualityProvider>,
 }
 
-struct TestLog {}
-
-impl bd_internal_logging::Logger for TestLog {
-  fn log(&self, _level: LogLevel, _log_type: LogType, _msg: &str, _fields: LogFields) {}
-}
-
 impl Setup {
   fn new() -> Self {
+    Self::new_with_config_updater(None)
+  }
+
+  fn new_with_config_updater(updater: Option<Arc<dyn ConfigurationUpdate>>) -> Self {
     let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
 
     let (start_stream_tx, start_stream_rx) = channel(1);
@@ -179,9 +212,9 @@ impl Setup {
       trigger_upload_tx,
       Arc::new(EmptyMetadata),
       runtime_loader.clone(),
-      vec![Box::new(bd_runtime::runtime::RuntimeManager::new(
-        runtime_loader,
-      ))],
+      once(runtime_loader as Arc<dyn ConfigurationUpdate>)
+        .chain(updater)
+        .collect(),
       time_provider.clone(),
       network_quality_provider.clone(),
       Arc::new(TestLog {}),
@@ -233,9 +266,7 @@ impl Setup {
       trigger_upload_tx,
       Arc::new(EmptyMetadata),
       runtime_loader.clone(),
-      vec![Box::new(bd_runtime::runtime::RuntimeManager::new(
-        runtime_loader,
-      ))],
+      vec![runtime_loader],
       self.time_provider.clone(),
       self.network_quality_provider.clone(),
       Arc::new(TestLog {}),
@@ -250,10 +281,11 @@ impl Setup {
     self.current_stream_tx = current_stream_tx;
   }
 
-  async fn handshake_response(&self) {
+  async fn handshake_response(&self, configuration_update_status: u32) {
     let response = ApiResponse {
       response_type: Some(Response_type::Handshake(HandshakeResponse {
         stream_settings: None.into(),
+        configuration_update_status,
         ..Default::default()
       })),
       ..Default::default()
@@ -330,11 +362,25 @@ impl Setup {
 
 #[tokio::test(start_paused = true)]
 async fn api_retry_stream() {
-  let mut setup = Setup::new();
+  let mut mock_updater = Arc::new(MockConfigurationUpdate::new());
+  make_mut(&mut mock_updater)
+    .expect_try_load_persisted_config()
+    .once()
+    .returning(|| ());
+  make_mut(&mut mock_updater)
+    .expect_fill_handshake()
+    .times(..)
+    .returning(|_| ());
+  let mut setup = Setup::new_with_config_updater(Some(mock_updater.clone()));
 
   // Since the backoff uses random values we have no control over, we loop multiple attempts
   // until it takes over a minute before we get a new stream. This demonstrates that the delay
-  // grows past our initial delay of 500ms.
+  // grows past our initial delay of 500ms. We should have cached config marked safe during this
+  // process.
+  make_mut(&mut mock_updater)
+    .expect_mark_safe()
+    .once()
+    .returning(|| ());
   assert_eq!(
     NetworkQuality::Unknown,
     setup.network_quality_provider.get_network_quality()
@@ -363,7 +409,16 @@ async fn api_retry_stream() {
 
   assert!(setup.next_stream(1.seconds()).await);
 
-  setup.handshake_response().await;
+  make_mut(&mut mock_updater)
+    .expect_on_handshake_complete()
+    .with(eq(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+    ))
+    .once()
+    .returning(|_| ());
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE)
+    .await;
   61.seconds().sleep().await;
   assert_eq!(
     NetworkQuality::Online,
@@ -398,7 +453,16 @@ async fn api_retry_stream() {
   }
   5.minutes().advance().await;
   assert!(setup.next_stream(1.seconds()).await);
-  setup.handshake_response().await;
+  make_mut(&mut mock_updater)
+    .expect_on_handshake_complete()
+    .with(eq(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+    ))
+    .once()
+    .returning(|_| ());
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE)
+    .await;
   setup.close_stream().await;
   assert!(!setup.next_stream(10.seconds()).await);
   assert_eq!(
@@ -414,7 +478,9 @@ async fn client_kill() {
   let mut setup = Setup::new();
 
   assert!(setup.next_stream(1.seconds()).await);
-  setup.handshake_response().await;
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE)
+    .await;
 
   setup
     .send_response(ApiResponse {
@@ -479,7 +545,9 @@ async fn api_retry_stream_runtime_override() {
   let mut setup = Setup::new();
 
   assert!(setup.next_stream(1.seconds()).await);
-  setup.handshake_response().await;
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE)
+    .await;
 
   setup
     .send_response(ApiResponse {
@@ -511,7 +579,9 @@ async fn error_response() {
   let mut setup = Setup::new();
 
   assert!(setup.next_stream(1.seconds()).await);
-  setup.handshake_response().await;
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE)
+    .await;
 
   setup
     .send_response(ApiResponse {
@@ -609,7 +679,9 @@ async fn set_stats_upload_request_sent_at_field() {
   let mut setup = Setup::new();
 
   assert!(setup.next_stream(1.seconds()).await);
-  setup.handshake_response().await;
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE)
+    .await;
 
   let (tracked, _) = Tracked::new("123".to_string(), StatsUploadRequest::default());
 

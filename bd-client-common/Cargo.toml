@@ -19,6 +19,7 @@ bd-proto.path              = "../bd-proto"
 flatbuffers.workspace      = true
 flate2                     = { workspace = true, default-features = false, features = ["zlib"] }
 log.workspace              = true
+mockall.workspace          = true
 parking_lot.workspace      = true
 protobuf.workspace         = true
 thiserror.workspace        = true

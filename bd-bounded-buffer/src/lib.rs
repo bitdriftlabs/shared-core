@@ -55,30 +55,18 @@ pub fn channel<L: MemorySized>(
 pub struct MemoryReservationErrorNoMemory {}
 
 #[derive(Debug, thiserror::Error)]
-pub enum TrySendError<T: MemorySized> {
+pub enum TrySendError {
   // Adding a message to the buffer would cause the buffer to
   // exceed the maximum number of messages it was configured to
   // hold.
-  FullCountOverflow(T),
+  #[error("buffer count overflow")]
+  FullCountOverflow,
   // Adding a message to the buffer would cause the buffer to exceed it's
   // memory capacity.
-  FullSizeOverflow(T),
-  Closed(T),
-}
-
-impl<T: MemorySized + std::fmt::Display> std::fmt::Display for TrySendError<T> {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::FullCountOverflow(message) => write!(f, "log \"{message}\", channel count overflow"),
-      Self::FullSizeOverflow(message) => write!(
-        f,
-        "log \"{}\" (size {}), channel size overflow",
-        message,
-        message.size()
-      ),
-      Self::Closed(_) => write!(f, "channel Closed"),
-    }
-  }
+  #[error("buffer size overflow")]
+  FullSizeOverflow,
+  #[error("buffer closed")]
+  Closed,
 }
 
 pub struct Sender<T: MemorySized> {
@@ -89,12 +77,12 @@ pub struct Sender<T: MemorySized> {
 
 impl<T: MemorySized> Sender<T> {
   // Try to send a given message to the channel. Fails when the channel is closed or full.
-  pub fn try_send(&self, message: T) -> Result<(), TrySendError<T>> {
+  pub fn try_send(&self, message: T) -> Result<(), TrySendError> {
     let message_size = message.size() as u64;
     let result = self.try_reserve_memory(message_size);
 
     let Ok(()) = result else {
-      return Err(TrySendError::FullSizeOverflow(message));
+      return Err(TrySendError::FullSizeOverflow);
     };
 
     match self.tx.try_send(message) {
@@ -102,15 +90,15 @@ impl<T: MemorySized> Sender<T> {
         log::trace!("Added {message_size:?} bytes to the channel");
         Ok(())
       },
-      Err(TokioTrySendError::Closed(message)) => {
+      Err(TokioTrySendError::Closed(_)) => {
         log::debug!("Failed to add {message_size:?} bytes to the channel: Channel is closed");
         self.void_memory_reservation(message_size);
-        Err(TrySendError::Closed(message))
+        Err(TrySendError::Closed)
       },
-      Err(TokioTrySendError::Full(message)) => {
+      Err(TokioTrySendError::Full(_)) => {
         log::debug!("Failed to add {message_size:?} bytes to the channel: Channel is full");
         self.void_memory_reservation(message_size);
-        Err(TrySendError::FullCountOverflow(message))
+        Err(TrySendError::FullCountOverflow)
       },
     }
   }
@@ -223,16 +211,16 @@ impl SendCounters {
     }
   }
 
-  pub fn record<T: MemorySized>(&self, result: &std::result::Result<(), TrySendError<T>>) {
+  pub(crate) fn record(&self, result: &std::result::Result<(), TrySendError>) {
     match result {
       Ok(()) => self.ok.inc(),
-      Err(TrySendError::FullCountOverflow(_)) => {
+      Err(TrySendError::FullCountOverflow) => {
         self.err_full_count_overflow.inc();
       },
-      Err(TrySendError::FullSizeOverflow(_)) => {
+      Err(TrySendError::FullSizeOverflow) => {
         self.err_full_size_overflow.inc();
       },
-      Err(TrySendError::Closed(_)) => self.err_closed.inc(),
+      Err(TrySendError::Closed) => self.err_closed.inc(),
     }
   }
 }
