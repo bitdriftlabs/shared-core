@@ -389,3 +389,90 @@ async fn new_entry_disk_full_after_received() {
       assert_eq!(upload.payload.type_id, "client_report");
   });
 }
+
+#[tokio::test]
+async fn intent_retries() {
+  let mut setup = Setup::new(1);
+
+  let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id1.to_string()
+  );
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+      assert_eq!(intent.payload.artifact_id, id1.to_string());
+      assert_eq!(intent.payload.type_id, "client_report");
+
+      // Drop the response channel. This mimics a disconnect.
+  });
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+      assert_eq!(intent.payload.artifact_id, id1.to_string());
+      assert_eq!(intent.payload.type_id, "client_report");
+  });
+}
+
+#[tokio::test]
+async fn intent_drop() {
+  let mut setup = Setup::new(1);
+
+  let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id1.to_string()
+  );
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+      assert_eq!(intent.payload.artifact_id, id1.to_string());
+      assert_eq!(intent.payload.type_id, "client_report");
+
+      intent.response_tx.send(IntentResponse {
+          uuid: intent.uuid,
+          decision: bd_api::upload::IntentDecision::Drop }).unwrap();
+  });
+
+  assert!(
+    timeout(100.std_milliseconds(), setup.data_upload_rx.recv())
+      .await
+      .is_err()
+  );
+}
+
+#[tokio::test]
+async fn upload_retries() {
+  let mut setup = Setup::new(1);
+
+  let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id1.to_string()
+  );
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+      assert_eq!(intent.payload.artifact_id, id1.to_string());
+      assert_eq!(intent.payload.type_id, "client_report");
+
+      intent.response_tx.send(IntentResponse {
+          uuid: intent.uuid,
+          decision: bd_api::upload::IntentDecision::UploadImmediately }).unwrap();
+  });
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+      assert_eq!(upload.payload.artifact_id, id1.to_string());
+      assert_eq!(upload.payload.type_id, "client_report");
+
+      // Drop the response channel. This mimics a disconnect.
+  });
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+      assert_eq!(upload.payload.artifact_id, id1.to_string());
+      assert_eq!(upload.payload.type_id, "client_report");
+  });
+}
