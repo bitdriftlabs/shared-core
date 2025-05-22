@@ -449,6 +449,9 @@ fn get_fatal_issue_metadata(path: &Path) -> Result<FatalIssueMetadata, String> {
       reason_key: "_app_exit_info".into(),
       report_type_value: report_type.into(),
     }),
-    _ => Err(format!("Unknown file extension for path: {:?}", path)),
+    _ => Err(format!(
+      "Unknown file extension for path: {}",
+      path.display()
+    )),
   }
 }
