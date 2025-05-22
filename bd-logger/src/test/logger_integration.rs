@@ -1646,7 +1646,7 @@ fn continuous_buffer_resume_with_full_buffer() {
     [].into(),
   );
 
-  // Shut down the logger. The bufer should now be "full" and only have a single log in place.
+  // Shut down the logger. The buffer should now be "full" and only have a single log in place.
 
   let sdk_directory = setup.sdk_directory.clone();
   std::mem::drop(setup);

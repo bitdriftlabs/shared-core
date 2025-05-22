@@ -94,6 +94,8 @@ struct LoaderState {
 
   /// Tracks watches for each runtime key.
   watches: HashMap<&'static str, InternalWatchKind>,
+
+  initialized: bool,
 }
 
 impl LoaderState {
@@ -101,6 +103,7 @@ impl LoaderState {
     Self {
       snapshot: Arc::new(Snapshot::new(runtime, version_nonce)),
       watches: HashMap::new(),
+      initialized: false,
     }
   }
 }
@@ -153,7 +156,7 @@ impl ConfigLoader {
   pub fn new(sdk_directory: &Path) -> Arc<Self> {
     Arc::new(Self {
       state: Mutex::new(LoaderState::new(Runtime::default(), None)),
-      file_cache: SafeFileCache::new(sdk_directory, "runtime"),
+      file_cache: SafeFileCache::new("runtime", sdk_directory),
     })
   }
 
@@ -220,7 +223,13 @@ impl ConfigLoader {
   async fn handle_cached_config(&self) {
     if let Some(runtime) = self.file_cache.handle_cached_config().await {
       self.update_snapshot_inner(&runtime);
+    } else {
+      self.state.lock().initialized = true;
     }
+  }
+
+  pub fn expect_initialized(&self) {
+    debug_assert!(self.state.lock().initialized);
   }
 
   pub async fn update_snapshot(&self, runtime_update: &RuntimeUpdate) {
@@ -231,6 +240,7 @@ impl ConfigLoader {
   /// Updates the current runtime snapshot, updating all registered watchers as appropriate.
   fn update_snapshot_inner(&self, runtime_update: &RuntimeUpdate) {
     let mut l = self.state.lock();
+    l.initialized = true;
 
     let snapshot = Arc::new(Snapshot::new(
       runtime_update.runtime.clone().unwrap_or_default(),

@@ -345,7 +345,7 @@ pub struct Api {
 
   max_backoff_interval: DurationWatch<bd_runtime::runtime::api::MaxBackoffInterval>,
   initial_backoff_interval: DurationWatch<bd_runtime::runtime::api::InitialBackoffInterval>,
-  configuration_pipelines: Vec<Arc<dyn ConfigurationUpdate>>,
+  config_updater: Arc<dyn ConfigurationUpdate>,
   runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
 
   internal_logger: Arc<dyn bd_internal_logging::Logger>,
@@ -377,7 +377,7 @@ impl Api {
     trigger_upload_tx: Sender<TriggerUpload>,
     static_metadata: Arc<dyn Metadata + Send + Sync>,
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
-    configuration_pipelines: Vec<Arc<dyn ConfigurationUpdate>>,
+    config_updater: Arc<dyn ConfigurationUpdate>,
     time_provider: Arc<dyn TimeProvider>,
     network_quality_provider: Arc<SimpleNetworkQualityProvider>,
     self_logger: Arc<dyn bd_internal_logging::Logger>,
@@ -402,7 +402,7 @@ impl Api {
       max_backoff_interval,
       initial_backoff_interval,
       internal_logger: self_logger,
-      configuration_pipelines,
+      config_updater,
       stats: Stats::new(stats),
       client_killed: false,
       generic_kill_duration,
@@ -412,20 +412,14 @@ impl Api {
   }
 
   pub async fn start(mut self) -> anyhow::Result<()> {
-    // TODO(snowp): It would be nicer if we did this before we started the API but seems like a
-    // risky change.
-
-    // Loading the configuration can fail for a number of reasons like the file not existing, so
-    // ignore.
-    for pipeline in &mut self.configuration_pipelines {
-      pipeline.try_load_persisted_config().await;
-    }
+    self.config_updater.try_load_persisted_config().await;
 
     // To make the client kill process as simple as possible we won't watch for runtime updates
     // during operation. We will assume that runtime gets cached during the update process, and
     // the next time the client starts it will have the new configuration. We can consider
     // adding additional logic to handle this in the future. We can also send a synthetic
     // unauthenticated response to the client to trigger a kill if we need to.
+    self.runtime_loader.expect_initialized();
     self.maybe_kill_client().await;
 
     self.maintain_active_stream().await
@@ -576,9 +570,8 @@ impl Api {
         *self.network_quality_provider.network_quality.write() = NetworkQuality::Offline;
         if !self.config_marked_safe_due_to_offline {
           self.config_marked_safe_due_to_offline = true;
-          for pipeline in &self.configuration_pipelines {
-            pipeline.mark_safe().await;
-          }
+          self.runtime_loader.mark_safe().await;
+          self.config_updater.mark_safe().await;
         }
       } else {
         *self.network_quality_provider.network_quality.write() = NetworkQuality::Unknown;
@@ -656,11 +649,15 @@ impl Api {
           // determine whether cached configuration can be marked safe immediately. It's possible
           // that we already processed a configuration update frame in which case the config was
           // already marked safe.
-          for pipeline in &self.configuration_pipelines {
-            pipeline
-              .on_handshake_complete(configuration_update_status)
-              .await;
-          }
+          self
+            .runtime_loader
+            .on_handshake_complete(configuration_update_status)
+            .await;
+
+          self
+            .config_updater
+            .on_handshake_complete(configuration_update_status)
+            .await;
         },
         // The stream closed while waiting for the handshake. Move to the next loop iteration
         // to attempt to re-create a stream.
@@ -845,18 +842,20 @@ impl Api {
             artifact_upload_intent.decision.clone(),
           )?;
         },
-        Some(ResponseKind::Untyped) => {
-          log::debug!("received untyped response: {response}");
-          for pipeline in &mut self.configuration_pipelines {
-            if let Some(request) = pipeline.try_apply_config(&response).await {
-              stream_state.send_request(request).await?;
-            }
+        Some(ResponseKind::ConfigurationUpdate(_)) => {
+          if let Some(request) = self.config_updater.try_apply_config(&response).await {
+            stream_state.send_request(request).await?;
+          }
+        },
+        Some(ResponseKind::RuntimeUpdate(_)) => {
+          if let Some(request) = self.runtime_loader.try_apply_config(&response).await {
+            stream_state.send_request(request).await?;
           }
         },
         None => {
           debug_assert!(false, "not handled");
         },
-      }
+      };
     }
 
     Ok(())
@@ -874,9 +873,8 @@ impl Api {
       ..Default::default()
     };
 
-    for pipeline in &self.configuration_pipelines {
-      pipeline.fill_handshake(&mut handshake);
-    }
+    self.config_updater.fill_handshake(&mut handshake);
+    self.runtime_loader.fill_handshake(&mut handshake);
 
     handshake
   }

@@ -10,12 +10,13 @@ use crate::client_config::{self, LoggerUpdate};
 use crate::consumer::BufferUploadManager;
 use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
-use crate::logger::{ChannelPair, Logger};
+use crate::logger::Logger;
 use crate::logging_state::UninitializedLoggingContext;
 use crate::InitParams;
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
+use bd_client_common::ConfigurationUpdate;
 use bd_client_stats::stats::{RuntimeWatchTicker, Ticker};
 use bd_client_stats::FlushTrigger;
 use bd_client_stats_store::Collector;
@@ -135,12 +136,9 @@ impl LoggerBuilder {
       |handle| (handle, None),
     );
 
-    let (trigger_upload_tx, trigger_upload_rx) = tokio::sync::mpsc::channel(1);
-    let (flush_buffers_tx, flush_buffers_rx) = tokio::sync::mpsc::channel(1);
-    let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-
-    let data_upload_ch: ChannelPair<DataUpload> = tokio::sync::mpsc::channel(1).into();
+    let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
     let runtime_loader = runtime::ConfigLoader::new(&self.params.sdk_directory);
+
 
     let max_dynamic_stats =
       bd_runtime::runtime::stats::MaxDynamicCountersFlag::register(&runtime_loader)
@@ -150,6 +148,7 @@ impl LoggerBuilder {
 
     let scope = collector.scope("");
     let stats = bd_client_stats::Stats::new(collector);
+
 
     let (maybe_stats_flusher, maybe_flusher_trigger) = if self.client_stats {
       let (flush_ticker, upload_ticker) =
@@ -162,7 +161,7 @@ impl LoggerBuilder {
         &runtime_loader,
         shutdown_handle.make_shutdown(),
         &self.params.sdk_directory,
-        data_upload_ch.tx.clone(),
+        data_upload_tx.clone(),
         flush_ticker,
         upload_ticker,
       )?;
@@ -174,6 +173,9 @@ impl LoggerBuilder {
     } else {
       (None, None)
     };
+    let (trigger_upload_tx, trigger_upload_rx) = tokio::sync::mpsc::channel(1);
+    let (flush_buffers_tx, flush_buffers_rx) = tokio::sync::mpsc::channel(1);
+    let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
 
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
@@ -183,7 +185,7 @@ impl LoggerBuilder {
         scope.clone(),
         stats,
         trigger_upload_tx.clone(),
-        data_upload_ch.tx.clone(),
+        data_upload_tx.clone(),
         flush_buffers_tx,
         maybe_flusher_trigger.clone(),
         512,
@@ -213,7 +215,6 @@ impl LoggerBuilder {
       self.params.static_metadata.sdk_version(),
       self.params.store.clone(),
     );
-
     let log = if self.internal_logger {
       Arc::new(InternalLogger::new(
         logger.new_logger_handle(),
@@ -223,58 +224,61 @@ impl LoggerBuilder {
       Arc::new(NoopLogger) as Arc<dyn bd_internal_logging::Logger>
     };
 
-    // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
-    // improve the perceived performance of the logger initialization.
-    let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;
-    let (buffer_manager, buffer_event_rx) =
-      bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader);
-    let buffer_uploader = BufferUploadManager::new(
-      data_upload_ch.tx.clone(),
-      &runtime_loader,
-      shutdown_handle.make_shutdown(),
-      buffer_event_rx,
-      trigger_upload_rx,
-      &scope,
-      log.clone(),
-    )?;
-
-    let updater = Arc::new(client_config::Config::new(
-      &self.params.sdk_directory,
-      LoggerUpdate::new(
-        buffer_manager.clone(),
-        config_update_tx,
-        &scope.scope("config"),
-      ),
-    ));
-
-    let mut crash_monitor = bd_crash_handler::Monitor::new(
-      &runtime_loader,
-      &self.params.sdk_directory,
-      self.params.store.clone(),
-      shutdown_handle.make_shutdown(),
-    );
-
-    let api = bd_api::api::Api::new(
-      self.params.sdk_directory,
-      self.params.api_key,
-      self.params.network,
-      shutdown_handle.make_shutdown(),
-      data_upload_ch.rx,
-      trigger_upload_tx,
-      self.params.static_metadata,
-      runtime_loader.clone(),
-      vec![runtime_loader, updater],
-      Arc::new(SystemTimeProvider),
-      network_quality_provider,
-      log.clone(),
-      &scope.scope("api"),
-    )?;
-
-    bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
-
-    let session_strategy = self.params.session_strategy;
-
+    let data_upload_tx_clone = data_upload_tx.clone();
     let logger_future = async move {
+      runtime_loader.try_load_persisted_config().await;
+
+      // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
+      // improve the perceived performance of the logger initialization.
+      let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;
+      let (buffer_manager, buffer_event_rx) =
+        bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader);
+      let buffer_uploader = BufferUploadManager::new(
+        data_upload_tx_clone.clone(),
+        &runtime_loader,
+        shutdown_handle.make_shutdown(),
+        buffer_event_rx,
+        trigger_upload_rx,
+        &scope,
+        log.clone(),
+      )?;
+
+      let updater = Arc::new(client_config::Config::new(
+        &self.params.sdk_directory,
+        LoggerUpdate::new(
+          buffer_manager.clone(),
+          config_update_tx,
+          &scope.scope("config"),
+        ),
+      ));
+
+      let mut crash_monitor = bd_crash_handler::Monitor::new(
+        &runtime_loader,
+        &self.params.sdk_directory,
+        self.params.store.clone(),
+        shutdown_handle.make_shutdown(),
+      );
+
+      let api = bd_api::api::Api::new(
+        self.params.sdk_directory,
+        self.params.api_key,
+        self.params.network,
+        shutdown_handle.make_shutdown(),
+        data_upload_rx,
+        trigger_upload_tx,
+        self.params.static_metadata,
+        runtime_loader.clone(),
+        updater,
+        Arc::new(SystemTimeProvider),
+        network_quality_provider,
+        log.clone(),
+        &scope.scope("api"),
+      )?;
+
+      bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
+
+      let session_strategy = self.params.session_strategy;
+
       // By running it before we start all the other components, we ensure that the crash is
       // processed before cached configuration is loaded, allowing us to pass a fixed set of logs
       // to the async buffer that it can emit once it transitions into the configured mode,
@@ -319,7 +323,7 @@ impl LoggerBuilder {
 
     Ok((
       logger,
-      data_upload_ch.tx,
+      data_upload_tx,
       Box::pin(logger_future),
       maybe_flusher_trigger,
     ))
