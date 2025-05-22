@@ -8,8 +8,11 @@ use bd_client_common::file_system::{FileSystem, TestFileSystem};
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_time::TestTimeProvider;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use time::OffsetDateTime;
+use time::ext::NumericalStdDuration;
 use tokio::task::JoinHandle;
+use tokio::time::timeout;
 
 pub struct TestHooks {
   pub upload_complete_tx: tokio::sync::mpsc::Sender<String>,
@@ -334,4 +337,55 @@ async fn inconsistent_state_missing_index() {
       .await
       .unwrap()
   );
+}
+
+#[tokio::test]
+async fn new_entry_disk_full() {
+  let mut setup = Setup::new(2);
+  setup.filesystem.disk_full.store(true, Ordering::SeqCst);
+
+  let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id1.to_string()
+  );
+
+  assert_eq!(setup.filesystem.files().len(), 0);
+
+  assert!(
+    timeout(100.std_milliseconds(), setup.data_upload_rx.recv())
+      .await
+      .is_err()
+  );
+}
+
+#[tokio::test]
+async fn new_entry_disk_full_after_received() {
+  let mut setup = Setup::new(2);
+
+  let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id1.to_string()
+  );
+
+  // The disk becomes full aka not writeable at this point. We'll continue to process the upload
+  // since even if we were not able to update the index on disk.
+  setup.filesystem.disk_full.store(true, Ordering::SeqCst);
+  assert_eq!(setup.filesystem.files().len(), 2);
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+      assert_eq!(intent.payload.artifact_id, id1.to_string());
+      assert_eq!(intent.payload.type_id, "client_report");
+      intent.response_tx.send(IntentResponse {
+          uuid: intent.uuid,
+          decision: bd_api::upload::IntentDecision::UploadImmediately
+      }).unwrap();
+  });
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+      assert_eq!(upload.payload.artifact_id, id1.to_string());
+      assert_eq!(upload.payload.type_id, "client_report");
+  });
 }

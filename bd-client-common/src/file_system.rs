@@ -109,7 +109,7 @@ impl FileSystem for RealFileSystem {
 /// real filesystem.
 pub struct TestFileSystem {
   files: Mutex<HashMap<String, Vec<u8>>>,
-  disk_full: AtomicBool,
+  pub disk_full: AtomicBool,
 }
 
 #[async_trait]

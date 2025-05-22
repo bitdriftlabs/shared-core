@@ -321,13 +321,13 @@ impl Uploader {
       }
 
       if !filenames.contains(&file) {
-        log::debug!("removing artifact {} from disk, not in index", file);
+        log::debug!("removing artifact {file} from disk, not in index");
         if let Err(e) = self
           .file_system
           .delete_file(&REPORT_DIRECTORY.join(&file))
           .await
         {
-          log::warn!("failed to delete artifact {:?}: {}", file, e);
+          log::warn!("failed to delete artifact {file:?}: {e}");
         }
       }
     }
@@ -400,6 +400,15 @@ impl Uploader {
       .await
     {
       log::warn!("failed to write artifact to disk: {uuid} to disk: {e}");
+
+      #[cfg(test)]
+      if let Some(hooks) = &self.test_hooks {
+        hooks
+          .entry_received_tx
+          .send(uuid.to_string())
+          .await
+          .unwrap();
+      }
       return;
     }
 
