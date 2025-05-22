@@ -5,6 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(test)]
+#[path = "./file_test.rs"]
+mod tests;
+
 use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use flate2::read::{ZlibDecoder, ZlibEncoder};
 use flate2::Compression;
