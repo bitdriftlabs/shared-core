@@ -56,6 +56,8 @@ pub fn read_compressed_protobuf<T: protobuf::Message>(
   Ok(T::parse_from_tokio_bytes(&decompressed_bytes.into())?)
 }
 
+/// Writes the data and appends a CRC checksum at the end of the slice. The checksum is a 4-byte
+/// little-endian CRC32 checksum of the data.
 pub fn write_checksummed_data(bytes: &[u8]) -> Vec<u8> {
   let crc = crc32fast::hash(bytes);
 
@@ -65,6 +67,8 @@ pub fn write_checksummed_data(bytes: &[u8]) -> Vec<u8> {
   result
 }
 
+/// Reads the data and checks the CRC checksum at the end of the slice. If the checksum is valid, it
+/// returns the data.
 pub fn read_checksummed_data(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
   if bytes.len() < 4 {
     anyhow::bail!("data too small to contain CRC checksum");
