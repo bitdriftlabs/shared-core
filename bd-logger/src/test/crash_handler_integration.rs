@@ -45,14 +45,14 @@ fn crash_reports() {
     .unwrap();
 
     std::fs::write(
-      setup.sdk_directory.path().join("reports/new/crash1.txt"),
+      setup.sdk_directory.path().join("reports/new/crash1.json"),
       "{\"crash\": \"crash1\"}",
     )
     .unwrap();
 
     std::fs::write(
       setup.sdk_directory.path().join(format!(
-        "reports/new/{}_crash2.txt",
+        "reports/new/{}_crash2.json",
         timestamp.unix_timestamp_nanos() / 1_000_000
       )),
       "{\"crash\": \"crash2\"}",
