@@ -40,7 +40,6 @@ use bd_test_helpers::make_mut;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use mockall::predicate::eq;
 use std::collections::HashMap;
-use std::iter::once;
 use std::sync::{Arc, Mutex};
 use time::ext::NumericalDuration;
 use time::{Duration, OffsetDateTime};
@@ -178,10 +177,10 @@ struct Setup {
 
 impl Setup {
   fn new() -> Self {
-    Self::new_with_config_updater(None)
+    Self::new_with_config_updater(Self::make_nice_mock_updater())
   }
 
-  fn new_with_config_updater(updater: Option<Arc<dyn ConfigurationUpdate>>) -> Self {
+  fn new_with_config_updater(updater: Arc<dyn ConfigurationUpdate>) -> Self {
     let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
 
     let (start_stream_tx, start_stream_rx) = channel(1);
@@ -212,9 +211,7 @@ impl Setup {
       trigger_upload_tx,
       Arc::new(EmptyMetadata),
       runtime_loader.clone(),
-      once(runtime_loader as Arc<dyn ConfigurationUpdate>)
-        .chain(updater)
-        .collect(),
+      updater,
       time_provider.clone(),
       network_quality_provider.clone(),
       Arc::new(TestLog {}),
@@ -222,7 +219,11 @@ impl Setup {
     )
     .unwrap();
 
-    let api_task = tokio::task::spawn(api.start());
+
+    let api_task = tokio::task::spawn(async move {
+      runtime_loader.try_load_persisted_config().await;
+      api.start().await
+    });
 
     Self {
       current_stream_tx,
@@ -256,7 +257,9 @@ impl Setup {
     let (data_tx, data_rx) = channel(1);
     let (trigger_upload_tx, _trigger_upload_rx) = channel(1);
 
+    let mock_updater = Self::make_nice_mock_updater();
     let runtime_loader = ConfigLoader::new(self.sdk_directory.path());
+    runtime_loader.try_load_persisted_config().await;
     let api = Api::new(
       self.sdk_directory.path().to_path_buf(),
       self.api_key.clone(),
@@ -266,7 +269,7 @@ impl Setup {
       trigger_upload_tx,
       Arc::new(EmptyMetadata),
       runtime_loader.clone(),
-      vec![runtime_loader],
+      mock_updater,
       self.time_provider.clone(),
       self.network_quality_provider.clone(),
       Arc::new(TestLog {}),
@@ -358,20 +361,42 @@ impl Setup {
 
     None
   }
+
+  fn make_nice_mock_updater() -> Arc<MockConfigurationUpdate> {
+    let mut mock_updater = Arc::new(MockConfigurationUpdate::new());
+    make_mut(&mut mock_updater)
+      .expect_fill_handshake()
+      .times(..)
+      .returning(|_| ());
+    make_mut(&mut mock_updater)
+      .expect_mark_safe()
+      .times(..)
+      .returning(|| ());
+    make_mut(&mut mock_updater)
+      .expect_try_load_persisted_config()
+      .times(..)
+      .returning(|| ());
+    make_mut(&mut mock_updater)
+      .expect_on_handshake_complete()
+      .times(..)
+      .returning(|_| ());
+
+    mock_updater
+  }
 }
 
 #[tokio::test(start_paused = true)]
 async fn api_retry_stream() {
   let mut mock_updater = Arc::new(MockConfigurationUpdate::new());
   make_mut(&mut mock_updater)
-    .expect_try_load_persisted_config()
-    .once()
-    .returning(|| ());
-  make_mut(&mut mock_updater)
     .expect_fill_handshake()
     .times(..)
     .returning(|_| ());
-  let mut setup = Setup::new_with_config_updater(Some(mock_updater.clone()));
+  make_mut(&mut mock_updater)
+    .expect_try_load_persisted_config()
+    .times(..)
+    .returning(|| ());
+  let mut setup = Setup::new_with_config_updater(mock_updater.clone());
 
   // Since the backoff uses random values we have no control over, we loop multiple attempts
   // until it takes over a minute before we get a new stream. This demonstrates that the delay

@@ -61,7 +61,8 @@ pub enum ResponseKind<'a> {
   SankeyPathUploadIntent(&'a SankeyIntentResponse),
   ArtifactUploadIntent(&'a UploadArtifactIntentResponse),
   ArtifactUpload(&'a UploadArtifactResponse),
-  Untyped,
+  ConfigurationUpdate(&'a ConfigurationUpdate),
+  RuntimeUpdate(&'a RuntimeUpdate),
 }
 
 //
@@ -173,7 +174,10 @@ impl MuxResponse for ApiResponse {
       Response_type::FlushBuffers(f) => Some(ResponseKind::FlushBuffers(f)),
       Response_type::SankeyDiagramUpload(s) => Some(ResponseKind::SankeyPathUpload(s)),
       Response_type::SankeyIntentResponse(s) => Some(ResponseKind::SankeyPathUploadIntent(s)),
-      _ => Some(ResponseKind::Untyped),
+      Response_type::ConfigurationUpdate(u) => Some(ResponseKind::ConfigurationUpdate(u)),
+      Response_type::RuntimeUpdate(r) => Some(ResponseKind::RuntimeUpdate(r)),
+      Response_type::ArtifactUpload(u) => Some(ResponseKind::ArtifactUpload(u)),
+      Response_type::ArtifactIntent(u) => Some(ResponseKind::ArtifactUploadIntent(u)),
     }
   }
 }

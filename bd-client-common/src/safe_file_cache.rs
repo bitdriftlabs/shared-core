@@ -17,18 +17,23 @@ const MAX_RETRY_COUNT: u8 = 5;
 pub struct SafeFileCache<T> {
   directory: PathBuf,
   cached_config_validated: AtomicBool,
+  name: &'static str,
   phantom: PhantomData<T>,
 }
 
 impl<T: Message> SafeFileCache<T> {
   #[must_use]
-  pub fn new(sdk_directory: &Path, subdirectory: &str) -> Self {
+  pub fn new(name: &'static str, sdk_directory: &Path) -> Self {
     // Create the directory if it doesn't exist.
-    let directory = sdk_directory.join(subdirectory);
-    log::debug!("creating file cache directory at {}", directory.display());
+    let directory = sdk_directory.join(name);
+    log::debug!(
+      "creating file cache directory for {name:?} at {}",
+      directory.display()
+    );
     let _ignored = std::fs::create_dir(&directory);
 
     Self {
+      name,
       directory,
       cached_config_validated: AtomicBool::new(false),
       phantom: PhantomData,
@@ -69,7 +74,7 @@ impl<T: Message> SafeFileCache<T> {
     let (reset, cached) = match self.try_load_cached_config().await {
       Ok(result) => result,
       Err(e) => {
-        log::debug!("failed to load cached config: {e}");
+        log::debug!("failed to load cached config {:?}: {e}", self.name);
         (true, None)
       },
     };
@@ -87,7 +92,7 @@ impl<T: Message> SafeFileCache<T> {
   // Attempts to apply cached configuration. Returns true if the underlying cache state should be
   // reset.
   async fn try_load_cached_config(&self) -> anyhow::Result<(bool, Option<T>)> {
-    log::debug!("attempting to load cached config");
+    log::debug!("attempting to load cached config for {:?}", self.name);
 
     // We expect at most two files in this directory: a protobuf.pb which contains the cached
     // protobuf and a retry_count file which contains the number of times this cached
@@ -105,7 +110,10 @@ impl<T: Message> SafeFileCache<T> {
         .await
         .is_ok_and(|e| e)
     {
-      log::debug!("cached retry count or config not found, resetting cache");
+      log::debug!(
+        "cached retry count or config not found for {:?}, resetting cache",
+        self.name
+      );
       return Ok((true, None));
     }
 
@@ -118,7 +126,10 @@ impl<T: Message> SafeFileCache<T> {
       return Ok((true, None));
     };
 
-    log::debug!("loaded file at retry count {retry_count}");
+    log::debug!(
+      "loaded file at retry count {retry_count} for {:?}",
+      self.name
+    );
 
     // Update the retry count before we apply the config. If this fails, we bail out (which will
     // attempt to clear the cache directory) and disable caching. We do this because being unable
@@ -156,14 +167,14 @@ impl<T: Message> SafeFileCache<T> {
     if let Err(e) =
       tokio::fs::write(&self.protobuf_file(), write_compressed_protobuf(protobuf)).await
     {
-      log::debug!("failed to write cached config: {e}");
+      log::debug!("failed to write cached config for {}: {e}", self.name,);
     }
 
     // Failing here is fine, worst case we'll use an old retry count or leave it missing, which
     // will eventually disable caching.
     self.cached_config_validated.store(true, Ordering::SeqCst);
     if let Err(e) = self.persist_cache_load_retry_count(0).await {
-      log::debug!("failed to write retry count: {e}");
+      log::debug!("failed to write retry count for {}: {e}", self.name);
     }
   }
 }

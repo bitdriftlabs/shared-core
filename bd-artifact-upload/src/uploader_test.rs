@@ -6,6 +6,9 @@ use bd_api::upload::{IntentResponse, UploadResponse};
 use bd_client_common::file::read_compressed_protobuf;
 use bd_client_common::file_system::{FileSystem, TestFileSystem};
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
+use bd_runtime::runtime::{FeatureFlag, artifact_upload};
+use bd_runtime::test::TestConfigLoader;
+use bd_test_helpers::runtime::ValueKind;
 use bd_time::TestTimeProvider;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -28,8 +31,7 @@ struct Setup {
   data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
   shutdown: bd_shutdown::ComponentShutdownTrigger,
   task_handle: JoinHandle<()>,
-
-  max_entries: usize,
+  runtime: TestConfigLoader,
 }
 
 impl Setup {
@@ -39,13 +41,13 @@ impl Setup {
 
     let shutdown = bd_shutdown::ComponentShutdownTrigger::default();
 
+    let runtime = self.runtime;
+
     let (mut uploader, client) = super::Uploader::new(
       self.filesystem.clone(),
       self.data_upload_tx.clone(),
       Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
-      self.max_entries,
-      10,
-      2 << 12,
+      &runtime,
       shutdown.make_shutdown(),
     );
 
@@ -67,22 +69,32 @@ impl Setup {
       data_upload_tx: self.data_upload_tx.clone(),
       shutdown,
       task_handle,
-      max_entries: self.max_entries,
+      runtime,
     }
   }
-  fn new(max_entries: usize) -> Self {
+
+  async fn new(max_entries: u32) -> Self {
     let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
     let shutdown = bd_shutdown::ComponentShutdownTrigger::default();
 
     let filesystem = Arc::new(TestFileSystem::new());
+    let config_loader = TestConfigLoader::new().await;
+
+    config_loader
+      .update_snapshot(&bd_test_helpers::runtime::make_update(
+        vec![(
+          artifact_upload::MaxPendingEntries::path(),
+          ValueKind::Int(max_entries),
+        )],
+        "1".to_string(),
+      ))
+      .await;
 
     let (mut uploader, client) = super::Uploader::new(
       filesystem.clone(),
       data_upload_tx.clone(),
       Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
-      max_entries,
-      10,
-      2 << 12,
+      &config_loader,
       shutdown.make_shutdown(),
     );
 
@@ -105,14 +117,14 @@ impl Setup {
       data_upload_tx,
       shutdown,
       task_handle,
-      max_entries,
+      runtime: config_loader,
     }
   }
 }
 
 #[tokio::test]
 async fn basic_flow() {
-  let mut setup = Setup::new(10);
+  let mut setup = Setup::new(10).await;
   let id = setup.client.enqueue_upload(b"abc".to_vec()).unwrap();
 
   let upload = setup.data_upload_rx.recv().await.unwrap();
@@ -148,7 +160,7 @@ async fn basic_flow() {
 
 #[tokio::test]
 async fn pending_upload_limit() {
-  let mut setup = Setup::new(2);
+  let mut setup = Setup::new(2).await;
 
   let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
   assert_eq!(
@@ -218,7 +230,7 @@ async fn pending_upload_limit() {
 
 #[tokio::test]
 async fn inconsistent_state_missing_file() {
-  let mut setup = Setup::new(2);
+  let mut setup = Setup::new(2).await;
   let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -256,7 +268,7 @@ async fn inconsistent_state_missing_file() {
 
 #[tokio::test]
 async fn disk_persistence() {
-  let mut setup = Setup::new(2);
+  let mut setup = Setup::new(2).await;
   let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -293,7 +305,7 @@ async fn disk_persistence() {
 
 #[tokio::test]
 async fn inconsistent_state_missing_index() {
-  let mut setup = Setup::new(2);
+  let mut setup = Setup::new(2).await;
   let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -341,7 +353,7 @@ async fn inconsistent_state_missing_index() {
 
 #[tokio::test]
 async fn new_entry_disk_full() {
-  let mut setup = Setup::new(2);
+  let mut setup = Setup::new(2).await;
   setup.filesystem.disk_full.store(true, Ordering::SeqCst);
 
   let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
@@ -361,7 +373,7 @@ async fn new_entry_disk_full() {
 
 #[tokio::test]
 async fn new_entry_disk_full_after_received() {
-  let mut setup = Setup::new(2);
+  let mut setup = Setup::new(2).await;
 
   let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
   assert_eq!(
@@ -392,7 +404,7 @@ async fn new_entry_disk_full_after_received() {
 
 #[tokio::test]
 async fn intent_retries() {
-  let mut setup = Setup::new(1);
+  let mut setup = Setup::new(1).await;
 
   let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
   assert_eq!(
@@ -417,7 +429,7 @@ async fn intent_retries() {
 
 #[tokio::test]
 async fn intent_drop() {
-  let mut setup = Setup::new(1);
+  let mut setup = Setup::new(1).await;
 
   let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
   assert_eq!(
@@ -444,7 +456,7 @@ async fn intent_drop() {
 
 #[tokio::test]
 async fn upload_retries() {
-  let mut setup = Setup::new(1);
+  let mut setup = Setup::new(1).await;
 
   let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
   assert_eq!(

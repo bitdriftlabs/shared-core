@@ -81,7 +81,7 @@ pub struct Config<A: ApplyConfig> {
 impl<A: ApplyConfig> Config<A> {
   pub fn new(sdk_directory: &Path, apply_config: A) -> Self {
     Self {
-      file_cache: SafeFileCache::new(sdk_directory, "config"),
+      file_cache: SafeFileCache::new("config", sdk_directory),
       configuration_version_id: Mutex::default(),
       apply_config,
     }

@@ -6,11 +6,17 @@ use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
 use bd_bounded_buffer::MemorySized;
 use bd_client_common::error;
-use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
+use bd_client_common::file::{
+  read_checksummed_data,
+  read_compressed_protobuf,
+  write_checksummed_data,
+  write_compressed_protobuf,
+};
 use bd_client_common::file_system::FileSystem;
 use bd_proto::protos::client::api::{UploadArtifactIntentRequest, UploadArtifactRequest};
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
+use bd_runtime::runtime::{ConfigLoader, IntWatch, artifact_upload};
 use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use mockall::automock;
@@ -113,7 +119,7 @@ pub struct Uploader {
 
   index: VecDeque<Artifact>,
 
-  max_entries: usize,
+  max_entries: IntWatch<bd_runtime::runtime::artifact_upload::MaxPendingEntries>,
 
   intent_task_handle: Option<tokio::task::JoinHandle<Result<IntentDecision>>>,
   upload_task_handle: Option<tokio::task::JoinHandle<Result<()>>>,
@@ -127,13 +133,26 @@ impl Uploader {
     file_system: Arc<dyn FileSystem>,
     data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
     time_provider: Arc<dyn TimeProvider>,
-    max_entries: usize,
-    buffer_capacity: usize,
-    buffer_memory_capacity: usize,
+    runtime: &ConfigLoader,
     shutdown: ComponentShutdown,
   ) -> (Self, UploadClient) {
-    let (upload_tx, upload_rx) =
-      bd_bounded_buffer::channel(buffer_capacity, buffer_memory_capacity);
+    runtime.expect_initialized();
+
+    // TODO(snowp): It would be nice to not have to create a watch in order to use the typed
+    // runtime flags.
+    let buffer_capacity = *runtime
+      .register_watch::<u32, artifact_upload::BufferCountLimit>()
+      .unwrap()
+      .read();
+    let buffer_memory_capacity = *runtime
+      .register_watch::<u32, artifact_upload::BufferByteLimit>()
+      .unwrap()
+      .read();
+
+    let (upload_tx, upload_rx) = bd_bounded_buffer::channel(
+      buffer_capacity.try_into().unwrap_or_default(),
+      buffer_memory_capacity.try_into().unwrap_or_default(),
+    );
 
     let uploader = Self {
       data_upload_tx,
@@ -142,7 +161,7 @@ impl Uploader {
       time_provider,
       file_system,
       index: VecDeque::default(),
-      max_entries,
+      max_entries: runtime.register_watch().unwrap(),
       upload_task_handle: None,
       intent_task_handle: None,
       #[cfg(test)]
@@ -200,11 +219,24 @@ impl Uploader {
           return Ok(());
         };
 
+        let Ok(contents) = read_checksummed_data(&contents) else {
+          log::debug!(
+            "failed to validate CRC checksum for artifact {}, deleting and removing from index",
+            next.name
+          );
+
+          self.file_system.delete_file(&file_path).await?;
+          self.index.pop_front();
+          self.write_index().await;
+
+          return Ok(());
+        };
+
 
         log::debug!("starting file upload for {:?}", next.name);
         self.upload_task_handle = Some(tokio::spawn(Self::upload_artifact(
           self.data_upload_tx.clone(),
-          contents,
+          contents.to_vec(),
           next.name.clone(),
         )));
       }
@@ -387,13 +419,16 @@ impl Uploader {
   async fn track_new_upload(&mut self, uuid: Uuid, contents: Vec<u8>) {
     // If we've reached our limit of entries, stop the entry currently being uploaded (the oldest
     // one) to make space for the newer one.
-    if self.index.len() == self.max_entries {
+    if self.index.len() == usize::try_from(*self.max_entries.read()).unwrap_or_default() {
       log::debug!("upload queue is full, dropping current upload");
       self.stop_current_upload();
       self.index.pop_front();
     }
 
     let uuid = uuid.to_string();
+
+    // Add a CRC trailer to ensure we don't try to upload a malformed report.
+    let contents = write_checksummed_data(&contents);
     if let Err(e) = self
       .file_system
       .write_file(&REPORT_DIRECTORY.join(&uuid), &contents)
