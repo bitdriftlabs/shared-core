@@ -227,6 +227,57 @@ impl LoggerBuilder {
 
     bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
 
+    // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
+    // improve the perceived performance of the logger initialization.
+    let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;
+    let (buffer_manager, buffer_event_rx) =
+      bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader);
+    let buffer_uploader = BufferUploadManager::new(
+      data_upload_ch.tx.clone(),
+      &runtime_loader,
+      shutdown_handle.make_shutdown(),
+      buffer_event_rx,
+      trigger_upload_rx,
+      &scope,
+      log.clone(),
+    )?;
+
+    let updater = Arc::new(client_config::Config::new(
+      &self.params.sdk_directory,
+      LoggerUpdate::new(
+        buffer_manager.clone(),
+        config_update_tx,
+        &scope.scope("config"),
+      ),
+    ));
+
+    let mut crash_monitor = bd_crash_handler::Monitor::new(
+      &runtime_loader,
+      &self.params.sdk_directory,
+      self.params.store.clone(),
+      shutdown_handle.make_shutdown(),
+    );
+
+    let api = bd_api::api::Api::new(
+      self.params.sdk_directory,
+      self.params.api_key,
+      self.params.network,
+      shutdown_handle.make_shutdown(),
+      data_upload_ch.rx,
+      trigger_upload_tx,
+      self.params.static_metadata,
+      runtime_loader.clone(),
+      vec![runtime_loader, updater],
+      Arc::new(SystemTimeProvider),
+      network_quality_provider,
+      log.clone(),
+      &scope.scope("api"),
+    )?;
+
+    bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
+
+    let session_strategy = self.params.session_strategy;
+
     let data_upload_tx_clone = data_upload_tx.clone();
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
@@ -268,6 +319,34 @@ impl LoggerBuilder {
         &self.params.sdk_directory,
         self.params.store.clone(),
         Arc::new(artifact_client),
+      // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
+      // improve the perceived performance of the logger initialization.
+      let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;
+      let (buffer_manager, buffer_event_rx) =
+        bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader);
+      let buffer_uploader = BufferUploadManager::new(
+        data_upload_tx_clone.clone(),
+        &runtime_loader,
+        shutdown_handle.make_shutdown(),
+        buffer_event_rx,
+        trigger_upload_rx,
+        &scope,
+        log.clone(),
+      )?;
+
+      let updater = Arc::new(client_config::Config::new(
+        &self.params.sdk_directory,
+        LoggerUpdate::new(
+          buffer_manager.clone(),
+          config_update_tx,
+          &scope.scope("config"),
+        ),
+      ));
+
+      let mut crash_monitor = bd_crash_handler::Monitor::new(
+        &runtime_loader,
+        &self.params.sdk_directory,
+        self.params.store.clone(),
         shutdown_handle.make_shutdown(),
       );
 
