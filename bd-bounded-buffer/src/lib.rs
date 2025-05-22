@@ -211,7 +211,7 @@ impl SendCounters {
     }
   }
 
-  pub(crate) fn record(&self, result: &std::result::Result<(), TrySendError>) {
+  pub fn record(&self, result: &std::result::Result<(), TrySendError>) {
     match result {
       Ok(()) => self.ok.inc(),
       Err(TrySendError::FullCountOverflow) => {

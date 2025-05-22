@@ -165,7 +165,6 @@ impl Uploader {
 
     // TODO(snowp): Add intent retry policy.
     // TODO(snowp): Add upload retry policy.
-    // TODO(snowp): Add safety mechanism to clean up files that are not referenced by index.
 
     // The state machinery below relies on careful handling of the contents of the index list, as
     // we want to make sure that we don't lose entries due to process shutdown. The pending upload
@@ -179,7 +178,7 @@ impl Uploader {
         && !self.index.is_empty()
       {
         let next = self.index.front().unwrap().clone();
-        if next.pending_intent_negotation {
+        if next.pending_intent_negotiation {
           log::debug!("starting intent negotiation for {:?}", next.name);
           self.intent_task_handle = Some(tokio::spawn(Self::perform_intent_negotiation(
             self.data_upload_tx.clone(),
@@ -357,7 +356,7 @@ impl Uploader {
       IntentDecision::UploadImmediately => {
         let entry = self.index.front_mut().unwrap();
         // Mark the file as being ready for uploads and persist this to the index.
-        entry.pending_intent_negotation = false;
+        entry.pending_intent_negotiation = false;
         self.write_index().await;
       },
     }
@@ -409,7 +408,7 @@ impl Uploader {
     self.index.push_back(Artifact {
       name: uuid.clone(),
       time: self.time_provider.now().into_proto(),
-      pending_intent_negotation: true,
+      pending_intent_negotiation: true,
       ..Default::default()
     });
 

@@ -164,8 +164,8 @@ pub mod artifact_upload_index {
         pub name: ::std::string::String,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.time)
         pub time: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
-        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.pending_intent_negotation)
-        pub pending_intent_negotation: bool,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.pending_intent_negotiation)
+        pub pending_intent_negotiation: bool,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -196,9 +196,9 @@ pub mod artifact_upload_index {
                 |m: &mut Artifact| { &mut m.time },
             ));
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                "pending_intent_negotation",
-                |m: &Artifact| { &m.pending_intent_negotation },
-                |m: &mut Artifact| { &mut m.pending_intent_negotation },
+                "pending_intent_negotiation",
+                |m: &Artifact| { &m.pending_intent_negotiation },
+                |m: &mut Artifact| { &mut m.pending_intent_negotiation },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Artifact>(
                 "ArtifactUploadIndex.Artifact",
@@ -225,7 +225,7 @@ pub mod artifact_upload_index {
                         ::protobuf::rt::read_singular_message_into_field(is, &mut self.time)?;
                     },
                     24 => {
-                        self.pending_intent_negotation = is.read_bool()?;
+                        self.pending_intent_negotiation = is.read_bool()?;
                     },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -246,7 +246,7 @@ pub mod artifact_upload_index {
                 let len = v.compute_size();
                 my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
             }
-            if self.pending_intent_negotation != false {
+            if self.pending_intent_negotiation != false {
                 my_size += 1 + 1;
             }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -261,8 +261,8 @@ pub mod artifact_upload_index {
             if let Some(v) = self.time.as_ref() {
                 ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
             }
-            if self.pending_intent_negotation != false {
-                os.write_bool(3, self.pending_intent_negotation)?;
+            if self.pending_intent_negotiation != false {
+                os.write_bool(3, self.pending_intent_negotiation)?;
             }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
@@ -283,7 +283,7 @@ pub mod artifact_upload_index {
         fn clear(&mut self) {
             self.name.clear();
             self.time.clear();
-            self.pending_intent_negotation = false;
+            self.pending_intent_negotiation = false;
             self.special_fields.clear();
         }
 
@@ -291,7 +291,7 @@ pub mod artifact_upload_index {
             static instance: Artifact = Artifact {
                 name: ::std::string::String::new(),
                 time: ::protobuf::MessageField::none(),
-                pending_intent_negotation: false,
+                pending_intent_negotiation: false,
                 special_fields: ::protobuf::SpecialFields::new(),
             };
             &instance
@@ -318,13 +318,13 @@ pub mod artifact_upload_index {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n1bitdrift_public/protobuf/client/v1/artifact.proto\x12\"bitdrift_publi\
-    c.protobuf.client.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x80\x02\n\
+    c.protobuf.client.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x82\x02\n\
     \x13ArtifactUploadIndex\x12\\\n\x08artifact\x18\x01\x20\x03(\x0b2@.bitdr\
     ift_public.protobuf.client.v1.ArtifactUploadIndex.ArtifactR\x08artifact\
-    \x1a\x8a\x01\n\x08Artifact\x12\x12\n\x04name\x18\x01\x20\x01(\tR\x04name\
+    \x1a\x8c\x01\n\x08Artifact\x12\x12\n\x04name\x18\x01\x20\x01(\tR\x04name\
     \x12.\n\x04time\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x04\
-    time\x12:\n\x19pending_intent_negotation\x18\x03\x20\x01(\x08R\x17pendin\
-    gIntentNegotationb\x06proto3\
+    time\x12<\n\x1apending_intent_negotiation\x18\x03\x20\x01(\x08R\x18pendi\
+    ngIntentNegotiationb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
