@@ -51,3 +51,28 @@ pub fn read_compressed_protobuf<T: protobuf::Message>(
   let decompressed_bytes = read_compressed(compressed_bytes)?;
   Ok(T::parse_from_tokio_bytes(&decompressed_bytes.into())?)
 }
+
+pub fn write_checksummed_data(bytes: &[u8]) -> Vec<u8> {
+  let crc = crc32fast::hash(bytes);
+
+  let mut result = Vec::with_capacity(bytes.len() + 4);
+  result.extend_from_slice(bytes);
+  result.extend_from_slice(&crc.to_le_bytes());
+  result
+}
+
+pub fn read_checksummed_data(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
+  if bytes.len() < 4 {
+    anyhow::bail!("data too small to contain CRC checksum");
+  }
+
+  let (data, crc_bytes) = bytes.split_at(bytes.len() - 4);
+  let crc = u32::from_le_bytes(crc_bytes.try_into().unwrap());
+  let expected_crc = crc32fast::hash(data);
+
+  if expected_crc != crc {
+    anyhow::bail!("crc mismatch");
+  }
+
+  Ok(data.to_vec())
+}

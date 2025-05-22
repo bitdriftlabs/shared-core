@@ -417,6 +417,7 @@ dependencies = [
  "bd-matcher",
  "bd-metadata",
  "bd-proto",
+ "crc32fast",
  "flatbuffers",
  "flate2",
  "log",
