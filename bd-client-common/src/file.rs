@@ -5,6 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(test)]
+#[path = "./file_test.rs"]
+mod tests;
+
 use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use flate2::read::{ZlibDecoder, ZlibEncoder};
 use flate2::Compression;
@@ -50,4 +54,34 @@ pub fn read_compressed_protobuf<T: protobuf::Message>(
 ) -> anyhow::Result<T> {
   let decompressed_bytes = read_compressed(compressed_bytes)?;
   Ok(T::parse_from_tokio_bytes(&decompressed_bytes.into())?)
+}
+
+/// Writes the data and appends a CRC checksum at the end of the slice. The checksum is a 4-byte
+/// little-endian CRC32 checksum of the data.
+#[must_use]
+pub fn write_checksummed_data(bytes: &[u8]) -> Vec<u8> {
+  let crc = crc32fast::hash(bytes);
+
+  let mut result = Vec::with_capacity(bytes.len() + 4);
+  result.extend_from_slice(bytes);
+  result.extend_from_slice(&crc.to_le_bytes());
+  result
+}
+
+/// Reads the data and checks the CRC checksum at the end of the slice. If the checksum is valid, it
+/// returns the data.
+pub fn read_checksummed_data(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
+  if bytes.len() < 4 {
+    anyhow::bail!("data too small to contain CRC checksum");
+  }
+
+  let (data, crc_bytes) = bytes.split_at(bytes.len() - 4);
+  let crc = u32::from_le_bytes(crc_bytes.try_into().unwrap());
+  let expected_crc = crc32fast::hash(data);
+
+  if expected_crc != crc {
+    anyhow::bail!("crc mismatch");
+  }
+
+  Ok(data.to_vec())
 }
