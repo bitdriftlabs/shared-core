@@ -741,7 +741,7 @@ impl Api {
   /// Handles any number of non-handshake responses. Receiving a handshake response at this point
   /// is considered a protocol error.
   async fn handle_responses(
-    &mut self,
+    &self,
     responses: Vec<ApiResponse>,
     stream_state: &mut StreamState,
   ) -> anyhow::Result<()> {
@@ -855,7 +855,7 @@ impl Api {
         None => {
           debug_assert!(false, "not handled");
         },
-      };
+      }
     }
 
     Ok(())
