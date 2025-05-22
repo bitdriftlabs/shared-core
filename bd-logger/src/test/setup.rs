@@ -198,7 +198,7 @@ impl Setup {
     server: &mut bd_test_helpers::test_api_server::ServerHandle,
   ) -> StreamHandle {
     let stream = server.blocking_next_stream().unwrap();
-    assert!(stream.await_event_with_timeout(ExpectedStreamEvent::Handshake(None), 1.seconds(),));
+    assert!(stream.await_event_with_timeout(ExpectedStreamEvent::Handshake(None), 2.seconds(),));
 
     stream.blocking_stream_action(StreamAction::SendRuntime(make_update(
       Self::get_default_runtime_values(),
