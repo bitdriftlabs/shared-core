@@ -12,6 +12,7 @@ mod tests;
 pub mod global_state;
 mod json_extractor;
 
+use anyhow::bail;
 use bd_log_primitives::{LogFieldKey, LogFieldValue, LogFields, LogMessageValue};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs;
 use bd_runtime::runtime::{ConfigLoader, StringWatch};
@@ -325,18 +326,13 @@ impl Monitor {
           continue;
         }
 
-        let fatal_issue_metadata = match get_fatal_issue_metadata(&path) {
-          Ok(metadata) => metadata,
-          Err(e) => {
-            log::warn!(
-              "Failed to determine fatal issue metadata for path: {} ({})",
-              path.display(),
-              e
-            );
-            continue;
-          },
+        let Ok(fatal_issue_metadata) = get_fatal_issue_metadata(&path) else {
+          log::warn!(
+            "Failed to get fatal issue metadata for path: {}",
+            path.display()
+          );
+          continue;
         };
-
         let mut fields = global_state_fields.clone();
         let message = fatal_issue_metadata.message_value;
 
@@ -417,7 +413,7 @@ struct FatalIssueMetadata {
   report_type_value: LogFieldValue,
 }
 
-fn get_fatal_issue_metadata(path: &Path) -> Result<FatalIssueMetadata, String> {
+fn get_fatal_issue_metadata(path: &Path) -> anyhow::Result<FatalIssueMetadata> {
   let ext = path.extension().and_then(OsStr::to_str);
   let file_name = path
     .file_name()
@@ -449,9 +445,7 @@ fn get_fatal_issue_metadata(path: &Path) -> Result<FatalIssueMetadata, String> {
       reason_key: "_app_exit_info".into(),
       report_type_value: report_type.into(),
     }),
-    _ => Err(format!(
-      "Unknown file extension for path: {}",
-      path.display()
-    )),
+    // TODO(FranAguilera): BIT-5414 Clean up tombstone handling
+    _ => bail!("Unknown file extension for path: {}", path.display()),
   }
 }

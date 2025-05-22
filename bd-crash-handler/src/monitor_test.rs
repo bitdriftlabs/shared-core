@@ -265,5 +265,7 @@ fn get_fatal_issue_mechanism_without_extension_must_return_error() {
 
   let metadata = get_fatal_issue_metadata(file_without_extension);
   assert!(metadata.is_err());
-  assert!(metadata.unwrap_err().contains("Unknown file extension"));
+
+  let error_message = metadata.unwrap_err().to_string();
+  assert!(error_message.contains("Unknown file extension"));
 }
