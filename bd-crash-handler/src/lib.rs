@@ -338,7 +338,7 @@ impl Monitor {
         };
 
         let mut fields = global_state_fields.clone();
-        let message = fatal_issue_metadata.message_value.into();
+        let message = fatal_issue_metadata.message_value;
 
         fields.extend(
           [
@@ -359,7 +359,7 @@ impl Monitor {
             ),
             (
               "_fatal_issue_report_type".into(),
-              fatal_issue_metadata.report_type_value.into(),
+              fatal_issue_metadata.report_type_value,
             ),
           ]
           .into_iter(),
@@ -435,7 +435,7 @@ fn get_fatal_issue_metadata(path: &Path) -> Result<FatalIssueMetadata, String> {
   };
 
   match ext {
-    Some("envelope") | Some("json") => Ok(FatalIssueMetadata {
+    Some("envelope" | "json") => Ok(FatalIssueMetadata {
       mechanism_type_value: "INTEGRATION",
       message_value: "App crashed".into(),
       details_key: "_crash_details".into(),
