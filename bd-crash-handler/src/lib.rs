@@ -12,13 +12,14 @@ mod tests;
 pub mod global_state;
 mod json_extractor;
 
-use bd_log_primitives::LogFields;
+use bd_log_primitives::{LogFieldKey, LogFieldValue, LogFields, LogMessageValue};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs;
 use bd_runtime::runtime::{ConfigLoader, StringWatch};
 use bd_shutdown::ComponentShutdown;
 use fbs::issue_reporting::v_1::root_as_report;
 use itertools::Itertools as _;
 use json_extractor::{JsonExtractor, JsonPath};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -42,6 +43,7 @@ const DETAILS_INFERENCE_CONFIG_FILE: &str = "details_inference";
 pub struct CrashLog {
   pub fields: LogFields,
   pub timestamp: OffsetDateTime,
+  pub message: LogMessageValue,
 }
 
 //
@@ -323,20 +325,41 @@ impl Monitor {
           continue;
         }
 
+        let fatal_issue_metadata = match get_fatal_issue_metadata(&path) {
+          Ok(metadata) => metadata,
+          Err(e) => {
+            log::warn!(
+              "Failed to determine fatal issue metadata for path: {} ({})",
+              path.display(),
+              e
+            );
+            continue;
+          },
+        };
+
         let mut fields = global_state_fields.clone();
+        let message = fatal_issue_metadata.message_value.into();
 
         fields.extend(
           [
             ("_crash_artifact".into(), contents.into()),
             (
-              "_crash_reason".into(),
+              fatal_issue_metadata.reason_key.clone(),
               crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
             ),
             (
-              "_crash_details".into(),
+              fatal_issue_metadata.details_key.clone(),
               crash_details
                 .unwrap_or_else(|| "unknown".to_string())
                 .into(),
+            ),
+            (
+              "_fatal_issue_mechanism".into(),
+              fatal_issue_metadata.mechanism_type_value.into(),
+            ),
+            (
+              "_fatal_issue_report_type".into(),
+              fatal_issue_metadata.report_type_value.into(),
             ),
           ]
           .into_iter(),
@@ -346,7 +369,11 @@ impl Monitor {
         // differentiate.
         // TODO(snowp): Eventually we'll want to upload the report out of band, but for now just
         // chuck it into a log line.
-        logs.push(CrashLog { fields, timestamp });
+        logs.push(CrashLog {
+          fields,
+          timestamp,
+          message,
+        });
       }
 
       // Clean up files after processing them. If this fails we'll potentially end up
@@ -373,5 +400,55 @@ impl Monitor {
 
   async fn crash_details_paths(&self) -> Vec<JsonPath> {
     self.read_json_paths(DETAILS_INFERENCE_CONFIG_FILE).await
+  }
+}
+
+//
+// FatalIssueMetadata
+//
+
+/// Holds the expected log keys/values and message depending on the report file type
+#[derive(Debug)]
+struct FatalIssueMetadata {
+  details_key: LogFieldKey,
+  mechanism_type_value: &'static str,
+  message_value: LogMessageValue,
+  reason_key: LogFieldKey,
+  report_type_value: LogFieldValue,
+}
+
+fn get_fatal_issue_metadata(path: &Path) -> Result<FatalIssueMetadata, String> {
+  let ext = path.extension().and_then(OsStr::to_str);
+  let file_name = path
+    .file_name()
+    .and_then(|f| f.to_str())
+    .unwrap_or_default();
+
+  let report_type = if file_name.contains("_anr") {
+    "ANR"
+  } else if file_name.contains("_native_crash") {
+    "NATIVE_CRASH"
+  } else if file_name.contains("_crash") {
+    "CRASH"
+  } else {
+    "UNKNOWN"
+  };
+
+  match ext {
+    Some("envelope") | Some("json") => Ok(FatalIssueMetadata {
+      mechanism_type_value: "INTEGRATION",
+      message_value: "App crashed".into(),
+      details_key: "_crash_details".into(),
+      reason_key: "_crash_reason".into(),
+      report_type_value: report_type.into(),
+    }),
+    Some("cap") => Ok(FatalIssueMetadata {
+      mechanism_type_value: "BUILT_IN",
+      message_value: "AppExit".into(),
+      details_key: "_app_exit_details".into(),
+      reason_key: "_app_exit_info".into(),
+      report_type_value: report_type.into(),
+    }),
+    _ => Err(format!("Unknown file extension for path: {:?}", path)),
   }
 }
