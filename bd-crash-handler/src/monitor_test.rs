@@ -20,7 +20,8 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   ReportArgs,
 };
 use bd_runtime::runtime::crash_handling::CrashDirectories;
-use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _};
+use bd_runtime::runtime::{self, FeatureFlag as _};
+use bd_runtime::test::TestConfigLoader;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::make_mut;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
@@ -35,17 +36,28 @@ use uuid::Uuid;
 struct Setup {
   directory: TempDir,
   monitor: Monitor,
-  runtime: Arc<ConfigLoader>,
+  runtime: TestConfigLoader,
   store: Arc<Store>,
   upload_client: Arc<bd_artifact_upload::MockClient>,
   _shutdown: ComponentShutdownTrigger,
 }
 
 impl Setup {
-  fn new() -> Self {
+  async fn new(artifact_upload: bool) -> Self {
     let directory = TempDir::new().unwrap();
     std::fs::create_dir_all(directory.path().join("runtime")).unwrap();
-    let runtime = ConfigLoader::new(&directory.path().join("runtime"));
+    let runtime = TestConfigLoader::new_in_directory(&directory.path().join("runtime")).await;
+
+    if artifact_upload {
+      runtime
+        .update_snapshot(&make_simple_update(vec![(
+          runtime::artifact_upload::Enabled::path(),
+          ValueKind::Bool(artifact_upload),
+        )]))
+        .await;
+    }
+
+
     let shutdown = ComponentShutdownTrigger::default();
     let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
     let upload_client = Arc::new(bd_artifact_upload::MockClient::default());
@@ -138,7 +150,7 @@ impl Setup {
 
 #[tokio::test]
 async fn crash_reason_inference() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new(true).await;
 
   let mut tracker = global_state::Tracker::new(setup.store.clone());
 
@@ -200,7 +212,7 @@ async fn crash_reason_inference() {
 
 #[tokio::test]
 async fn crash_handling_missing_reason() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new(true).await;
 
   setup.monitor.try_ensure_directories_exist().await;
 
@@ -228,7 +240,7 @@ async fn crash_handling_missing_reason() {
 
 #[tokio::test]
 async fn config_file() {
-  let setup = Setup::new();
+  let setup = Setup::new(false).await;
 
   setup.configure_ingestion_runtime_flag("a").await;
 

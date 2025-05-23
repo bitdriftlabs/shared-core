@@ -339,10 +339,8 @@ impl Monitor {
           ("_crash_artifact".into(), contents.into())
         };
 
-
         let mut fields = global_state_fields.clone();
         fields.extend(std::iter::once(crash_field));
-
         fields.extend(
           [
             (
@@ -361,8 +359,6 @@ impl Monitor {
 
         // TODO(snowp): For now everything in here is a crash, eventually we'll need to be able to
         // differentiate.
-        // TODO(snowp): Eventually we'll want to upload the report out of band, but for now just
-        // chuck it into a log line.
         logs.push(CrashLog { fields, timestamp });
       }
 

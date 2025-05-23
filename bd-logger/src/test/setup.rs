@@ -211,7 +211,7 @@ impl Setup {
     stream
   }
 
-  fn get_default_runtime_values() -> Vec<(&'static str, ValueKind)> {
+  pub fn get_default_runtime_values() -> Vec<(&'static str, ValueKind)> {
     vec![
       (
         bd_runtime::runtime::filters::FilterChainEnabledFlag::path(),
