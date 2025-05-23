@@ -148,7 +148,7 @@ impl LoggerBuilder {
     let collector = Collector::new(Some(max_dynamic_stats));
 
     let scope = collector.scope("");
-    let stats = bd_client_stats::Stats::new(collector);
+    let stats = bd_client_stats::Stats::new(collector.clone());
 
 
     let (maybe_stats_flusher, maybe_flusher_trigger) = if self.client_stats {
@@ -230,6 +230,7 @@ impl LoggerBuilder {
     bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
 
     let data_upload_tx_clone = data_upload_tx.clone();
+    let collector_clone = collector.clone();
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
 
@@ -238,6 +239,7 @@ impl LoggerBuilder {
         data_upload_tx_clone.clone(),
         Arc::new(SystemTimeProvider),
         &runtime_loader,
+        &collector_clone,
         shutdown_handle.make_shutdown(),
       );
 

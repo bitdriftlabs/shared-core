@@ -5,6 +5,7 @@ use bd_api::DataUpload;
 use bd_api::upload::{IntentResponse, UploadResponse};
 use bd_client_common::file::read_compressed_protobuf;
 use bd_client_common::file_system::{FileSystem, TestFileSystem};
+use bd_client_stats_store::Collector;
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_runtime::runtime::{FeatureFlag, artifact_upload};
 use bd_runtime::test::TestConfigLoader;
@@ -48,6 +49,7 @@ impl Setup {
       self.data_upload_tx.clone(),
       Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
       &runtime,
+      &Collector::default(),
       shutdown.make_shutdown(),
     );
 
@@ -95,6 +97,7 @@ impl Setup {
       data_upload_tx.clone(),
       Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
       &config_loader,
+      &Collector::default(),
       shutdown.make_shutdown(),
     );
 
