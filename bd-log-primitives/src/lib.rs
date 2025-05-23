@@ -114,6 +114,12 @@ pub type LogFieldKey = Cow<'static, str>;
 pub type LogFieldValue = StringOrBytes<String, Vec<u8>>;
 
 //
+// LogMessageValue
+//
+
+pub type LogMessageValue = StringOrBytes<String, Vec<u8>>;
+
+//
 // AnnotatedLogFields
 //
 

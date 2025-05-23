@@ -110,7 +110,7 @@ impl Log<'_> {
             .data()
         })
       })
-      .expect("field should exist")
+      .expect(&format!("field {key:?} should exist"))
   }
 
   #[must_use]

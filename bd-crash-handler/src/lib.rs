@@ -12,13 +12,15 @@ mod tests;
 pub mod global_state;
 mod json_extractor;
 
-use bd_log_primitives::LogFields;
+use anyhow::bail;
+use bd_log_primitives::{LogFieldKey, LogFieldValue, LogFields, LogMessageValue};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs;
 use bd_runtime::runtime::{BoolWatch, ConfigLoader, StringWatch};
 use bd_shutdown::ComponentShutdown;
 use fbs::issue_reporting::v_1::root_as_report;
 use itertools::Itertools as _;
 use json_extractor::{JsonExtractor, JsonPath};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -42,6 +44,7 @@ const DETAILS_INFERENCE_CONFIG_FILE: &str = "details_inference";
 pub struct CrashLog {
   pub fields: LogFields,
   pub timestamp: OffsetDateTime,
+  pub message: LogMessageValue,
 }
 
 //
@@ -324,7 +327,17 @@ impl Monitor {
           continue;
         }
 
+        let Ok(fatal_issue_metadata) = get_fatal_issue_metadata(&path) else {
+          log::warn!(
+            "Failed to get fatal issue metadata for path: {}",
+            path.display()
+          );
+          continue;
+        };
+
         let crash_field = if *self.out_of_band_enabled_flag.read() {
+          log::debug!("uploading report out of band");
+
           let Ok(artifact_id) = self
             .artifact_client
             .enqueue_upload(contents, global_state_fields.clone())
@@ -339,30 +352,42 @@ impl Monitor {
 
           ("_crash_artifact_id".into(), artifact_id.to_string().into())
         } else {
+          log::debug!("uploading report in band with log line");
           ("_crash_artifact".into(), contents.into())
         };
 
+        let message = fatal_issue_metadata.message_value;
         let mut fields = global_state_fields.clone();
         fields.extend(std::iter::once(crash_field));
         fields.extend(
           [
             (
-              "_crash_reason".into(),
+              "_app_exit_reason".into(),
+              fatal_issue_metadata.report_type_value,
+            ),
+            (
+              fatal_issue_metadata.reason_key.clone(),
               crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
             ),
             (
-              "_crash_details".into(),
+              fatal_issue_metadata.details_key.clone(),
               crash_details
                 .unwrap_or_else(|| "unknown".to_string())
                 .into(),
+            ),
+            (
+              "_fatal_issue_mechanism".into(),
+              fatal_issue_metadata.mechanism_type_value.into(),
             ),
           ]
           .into_iter(),
         );
 
-        // TODO(snowp): For now everything in here is a crash, eventually we'll need to be able to
-        // differentiate.
-        logs.push(CrashLog { fields, timestamp });
+        logs.push(CrashLog {
+          fields,
+          timestamp,
+          message,
+        });
       }
 
       // Clean up files after processing them. If this fails we'll potentially end up
@@ -389,5 +414,56 @@ impl Monitor {
 
   async fn crash_details_paths(&self) -> Vec<JsonPath> {
     self.read_json_paths(DETAILS_INFERENCE_CONFIG_FILE).await
+  }
+}
+
+//
+// FatalIssueMetadata
+//
+
+/// Holds the expected log keys/values and message depending on the report file type
+#[derive(Debug)]
+struct FatalIssueMetadata {
+  details_key: LogFieldKey,
+  mechanism_type_value: &'static str,
+  message_value: LogMessageValue,
+  reason_key: LogFieldKey,
+  report_type_value: LogFieldValue,
+}
+
+fn get_fatal_issue_metadata(path: &Path) -> anyhow::Result<FatalIssueMetadata> {
+  let ext = path.extension().and_then(OsStr::to_str);
+  let file_name = path
+    .file_name()
+    .and_then(|f| f.to_str())
+    .unwrap_or_default();
+
+  let report_type = if file_name.contains("_anr") {
+    "ANR"
+  } else if file_name.contains("_native_crash") {
+    "Native Crash"
+  } else if file_name.contains("_crash") {
+    "Crash"
+  } else {
+    "Unknown"
+  };
+
+  match ext {
+    Some("envelope" | "json") => Ok(FatalIssueMetadata {
+      mechanism_type_value: "INTEGRATION",
+      message_value: "App crashed".into(),
+      details_key: "_crash_details".into(),
+      reason_key: "_crash_reason".into(),
+      report_type_value: report_type.into(),
+    }),
+    Some("cap") => Ok(FatalIssueMetadata {
+      mechanism_type_value: "BUILT_IN",
+      message_value: "AppExit".into(),
+      details_key: "_app_exit_details".into(),
+      reason_key: "_app_exit_info".into(),
+      report_type_value: report_type.into(),
+    }),
+    // TODO(FranAguilera): BIT-5414 Clean up tombstone handling
+    _ => bail!("Unknown file extension for path: {}", path.display()),
   }
 }

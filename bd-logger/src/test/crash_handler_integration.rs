@@ -47,14 +47,14 @@ fn crash_reports() {
     .unwrap();
 
     std::fs::write(
-      setup.sdk_directory.path().join("reports/new/crash1.txt"),
+      setup.sdk_directory.path().join("reports/new/crash1.json"),
       "{\"crash\": \"crash1\"}",
     )
     .unwrap();
 
     std::fs::write(
       setup.sdk_directory.path().join(format!(
-        "reports/new/{}_crash2.txt",
+        "reports/new/{}_crash2.json",
         timestamp.unix_timestamp_nanos() / 1_000_000
       )),
       "{\"crash\": \"crash2\"}",
@@ -128,7 +128,7 @@ fn crash_reports_artifact_upload() {
   let timestamp = datetime!(2021-01-01 00:00:00 UTC);
 
   let (directory, initial_session_id) = {
-    let setup = Setup::new_with_options(SetupOptions {
+    let mut setup = Setup::new_with_options(SetupOptions {
       disk_storage: true,
       metadata_provider: Arc::new(LogMetadata {
         timestamp: time::OffsetDateTime::now_utc().into(),
@@ -150,6 +150,7 @@ fn crash_reports_artifact_upload() {
           .collect(),
         "nonce".to_string(),
       )));
+    setup.server.blocking_next_runtime_ack();
 
     // Log one log to trigger a global state update.
     setup.logger_handle.log_sdk_start([].into(), 1.seconds());
@@ -163,14 +164,14 @@ fn crash_reports_artifact_upload() {
     .unwrap();
 
     std::fs::write(
-      setup.sdk_directory.path().join("reports/new/crash1.txt"),
+      setup.sdk_directory.path().join("reports/new/crash1.json"),
       "{\"crash\": \"crash1\"}",
     )
     .unwrap();
 
     std::fs::write(
       setup.sdk_directory.path().join(format!(
-        "reports/new/{}_crash2.txt",
+        "reports/new/{}_crash2.json",
         timestamp.unix_timestamp_nanos() / 1_000_000
       )),
       "{\"crash\": \"crash2\"}",
@@ -218,6 +219,7 @@ fn crash_reports_artifact_upload() {
     .iter()
     .find(|log| log.field("_crash_reason") == "crash1")
     .unwrap();
+  log::error!("{:?}", crash1.typed_fields());
   assert_eq!(crash1.message(), "App crashed");
   assert_eq!(crash1.session_id(), initial_session_id);
   assert_ne!(crash1.timestamp(), timestamp);

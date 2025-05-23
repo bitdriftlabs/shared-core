@@ -307,7 +307,7 @@ impl LoggerBuilder {
         .map(|crash_log| Log {
           log_level: log_level::ERROR,
           log_type: LogType::Lifecycle,
-          message: "App crashed".into(),
+          message: crash_log.message,
           fields: crash_log.fields,
           matching_fields: [].into(),
           session_id: session_strategy
