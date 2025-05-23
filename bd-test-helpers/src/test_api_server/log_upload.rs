@@ -110,7 +110,7 @@ impl Log<'_> {
             .data()
         })
       })
-      .expect(&format!("field {key:?} should exist"))
+      .unwrap_or_else(|| panic!("field {key:?} should exist"))
   }
 
   #[must_use]
