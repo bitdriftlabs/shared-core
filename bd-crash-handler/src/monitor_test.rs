@@ -6,8 +6,10 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::{
+  get_fatal_issue_metadata,
   global_state,
   Monitor,
+  Path,
   DETAILS_INFERENCE_CONFIG_FILE,
   INGESTION_CONFIG_FILE,
   REASON_INFERENCE_CONFIG_FILE,
@@ -139,9 +141,9 @@ async fn crash_reason_inference() {
   let artifact1 = b"{\"reason\":\"foo\",\"details\": [{\"cause\": \"kaboom\"}]}";
   let artifact2 = b"{\"crash\":{\"reason\": \"bar\"}}";
   let artifact3 = b"{}\n{\"crash\":{\"reason\": \"bar\"}}\n{\"crash\":{\"reason\": \"bar\"}}";
-  setup.make_crash("crash1", artifact1);
-  setup.make_crash("crash2", artifact2);
-  setup.make_crash("crash3", artifact3);
+  setup.make_crash("crash1.envelope", artifact1);
+  setup.make_crash("crash2.envelope", artifact2);
+  setup.make_crash("crash3.envelope", artifact3);
 
   let logs = setup.process_new_reports().await;
   assert_eq!(3, logs.len());
@@ -178,9 +180,9 @@ async fn crash_handling_missing_reason() {
     .write_config_file(DETAILS_INFERENCE_CONFIG_FILE, "details[0].cause")
     .await;
 
-  setup.make_crash("crash1", b"crash1");
-  setup.make_crash("crash2", b"crash2");
-  setup.make_crash("crash3", b"{\"crash\":{\"reason\": \"bar\"}}");
+  setup.make_crash("crash1.envelope", b"crash1");
+  setup.make_crash("crash2.envelope", b"crash2");
+  setup.make_crash("crash3.envelope", b"{\"crash\":{\"reason\": \"bar\"}}");
 
   let logs = setup.process_new_reports().await;
   assert_eq!(1, logs.len());
@@ -222,4 +224,58 @@ fn crash_reason_from_empty_errors_vector() {
   let (reason, detail) = Monitor::guess_crash_details(data, &[], &[]);
   assert_eq!(None, reason);
   assert_eq!(None, detail);
+}
+
+#[test]
+fn get_fatal_issue_mechanism_from_envelope_must_return_integration() {
+  let envelope_file = Path::new("foo.envelope");
+
+  let metadata = get_fatal_issue_metadata(envelope_file).unwrap();
+  assert_eq!(metadata.details_key, "_crash_details");
+  assert_eq!(metadata.reason_key, "_crash_reason");
+  assert_eq!(metadata.message_value, "App crashed".into());
+  assert_eq!(metadata.mechanism_type_value, "INTEGRATION");
+}
+
+#[test]
+fn get_fatal_issue_mechanism_from_json_must_return_integration() {
+  let json_file = Path::new("foo.json");
+
+  let metadata = get_fatal_issue_metadata(json_file).unwrap();
+  assert_eq!(metadata.details_key, "_crash_details");
+  assert_eq!(metadata.reason_key, "_crash_reason");
+  assert_eq!(metadata.message_value, "App crashed".into());
+  assert_eq!(metadata.mechanism_type_value, "INTEGRATION");
+  assert_eq!(metadata.report_type_value, "Unknown".into());
+}
+
+#[test]
+fn get_fatal_issue_mechanism_from_cap_must_return_built_in() {
+  let cap_file = Path::new("foo_crash.cap");
+
+  let crash_metadata = get_fatal_issue_metadata(cap_file).unwrap();
+  assert_eq!(crash_metadata.details_key, "_app_exit_details");
+  assert_eq!(crash_metadata.reason_key, "_app_exit_info");
+  assert_eq!(crash_metadata.message_value, "AppExit".into());
+  assert_eq!(crash_metadata.mechanism_type_value, "BUILT_IN");
+  assert_eq!(crash_metadata.report_type_value, "Crash".into());
+
+  let cap_file = Path::new("foo_anr.cap");
+  let anr_metadata = get_fatal_issue_metadata(cap_file).unwrap();
+  assert_eq!(anr_metadata.report_type_value, "ANR".into());
+
+  let cap_file = Path::new("foo_native_crash.cap");
+  let anr_metadata = get_fatal_issue_metadata(cap_file).unwrap();
+  assert_eq!(anr_metadata.report_type_value, "Native Crash".into());
+}
+
+#[test]
+fn get_fatal_issue_mechanism_without_extension_must_return_error() {
+  let file_without_extension = Path::new("no_extension");
+
+  let metadata = get_fatal_issue_metadata(file_without_extension);
+  assert!(metadata.is_err());
+
+  let error_message = metadata.unwrap_err().to_string();
+  assert!(error_message.contains("Unknown file extension"));
 }
