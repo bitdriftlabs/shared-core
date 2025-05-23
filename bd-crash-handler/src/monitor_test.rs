@@ -140,11 +140,11 @@ impl Setup {
       .collect()
   }
 
-  fn expect_artifact_upload(&mut self, content: &[u8], uuid: Uuid) {
+  fn expect_artifact_upload(&mut self, content: &[u8], uuid: Uuid, state: LogFields) {
     make_mut(&mut self.upload_client)
       .expect_enqueue_upload()
-      .with(eq(content.to_vec()))
-      .returning(move |_| Ok(uuid));
+      .with(eq(content.to_vec()), eq(state))
+      .returning(move |_, _| Ok(uuid));
   }
 }
 
@@ -175,9 +175,9 @@ async fn crash_reason_inference() {
   let uuid1 = "12345678-1234-5678-1234-567812345671".parse().unwrap();
   let uuid2 = "12345678-1234-5678-1234-567812345672".parse().unwrap();
   let uuid3 = "12345678-1234-5678-1234-567812345673".parse().unwrap();
-  setup.expect_artifact_upload(artifact1, uuid1);
-  setup.expect_artifact_upload(artifact2, uuid2);
-  setup.expect_artifact_upload(artifact3, uuid3);
+  setup.expect_artifact_upload(artifact1, uuid1, [("state".into(), "foo".into())].into());
+  setup.expect_artifact_upload(artifact2, uuid2, [("state".into(), "foo".into())].into());
+  setup.expect_artifact_upload(artifact3, uuid3, [("state".into(), "foo".into())].into());
 
   let logs = setup.process_new_reports().await;
   assert_eq!(3, logs.len());
@@ -228,7 +228,7 @@ async fn crash_handling_missing_reason() {
   setup.make_crash("crash3", b"{\"crash\":{\"reason\": \"bar\"}}");
 
   let uuid = "12345678-1234-5678-1234-567812345671".parse().unwrap();
-  setup.expect_artifact_upload(b"{\"crash\":{\"reason\": \"bar\"}}", uuid);
+  setup.expect_artifact_upload(b"{\"crash\":{\"reason\": \"bar\"}}", uuid, [].into());
 
   let logs = setup.process_new_reports().await;
   assert_eq!(1, logs.len());

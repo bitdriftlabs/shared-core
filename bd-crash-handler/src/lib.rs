@@ -325,7 +325,10 @@ impl Monitor {
         }
 
         let crash_field = if *self.out_of_band_enabled_flag.read() {
-          let Ok(artifact_id) = self.artifact_client.enqueue_upload(contents) else {
+          let Ok(artifact_id) = self
+            .artifact_client
+            .enqueue_upload(contents, global_state_fields.clone())
+          else {
             // TODO(snowp): Should we fall back to passing it via a field at this point?
             log::warn!(
               "Failed to enqueue crash report for upload: {}",

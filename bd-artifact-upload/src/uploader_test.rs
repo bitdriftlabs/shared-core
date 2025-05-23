@@ -125,7 +125,10 @@ impl Setup {
 #[tokio::test]
 async fn basic_flow() {
   let mut setup = Setup::new(10).await;
-  let id = setup.client.enqueue_upload(b"abc".to_vec()).unwrap();
+  let id = setup
+    .client
+    .enqueue_upload(b"abc".to_vec(), [].into())
+    .unwrap();
 
   let upload = setup.data_upload_rx.recv().await.unwrap();
   assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
@@ -162,18 +165,27 @@ async fn basic_flow() {
 async fn pending_upload_limit() {
   let mut setup = Setup::new(2).await;
 
-  let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
+  let id1 = setup
+    .client
+    .enqueue_upload(b"1".to_vec(), [].into())
+    .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
     id1.to_string()
   );
 
-  let id2 = setup.client.enqueue_upload(b"2".to_vec()).unwrap();
+  let id2 = setup
+    .client
+    .enqueue_upload(b"2".to_vec(), [].into())
+    .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
     id2.to_string()
   );
-  let id3 = setup.client.enqueue_upload(b"3".to_vec()).unwrap();
+  let id3 = setup
+    .client
+    .enqueue_upload(b"3".to_vec(), [].into())
+    .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
     id3.to_string()
@@ -231,12 +243,18 @@ async fn pending_upload_limit() {
 #[tokio::test]
 async fn inconsistent_state_missing_file() {
   let mut setup = Setup::new(2).await;
-  let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
+  let id1 = setup
+    .client
+    .enqueue_upload(b"1".to_vec(), [].into())
+    .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
     id1.to_string()
   );
-  let id2 = setup.client.enqueue_upload(b"2".to_vec()).unwrap();
+  let id2 = setup
+    .client
+    .enqueue_upload(b"2".to_vec(), [].into())
+    .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
     id2.to_string()
@@ -269,7 +287,10 @@ async fn inconsistent_state_missing_file() {
 #[tokio::test]
 async fn disk_persistence() {
   let mut setup = Setup::new(2).await;
-  let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
+  let id1 = setup
+    .client
+    .enqueue_upload(b"1".to_vec(), [].into())
+    .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
     id1.to_string()
@@ -306,7 +327,10 @@ async fn disk_persistence() {
 #[tokio::test]
 async fn inconsistent_state_missing_index() {
   let mut setup = Setup::new(2).await;
-  let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
+  let id1 = setup
+    .client
+    .enqueue_upload(b"1".to_vec(), [].into())
+    .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
     id1.to_string()
@@ -320,7 +344,10 @@ async fn inconsistent_state_missing_index() {
 
   let mut setup = setup.reinitialize().await;
 
-  let id2 = setup.client.enqueue_upload(b"2".to_vec()).unwrap();
+  let id2 = setup
+    .client
+    .enqueue_upload(b"2".to_vec(), [].into())
+    .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
     id2.to_string()
@@ -356,7 +383,10 @@ async fn new_entry_disk_full() {
   let mut setup = Setup::new(2).await;
   setup.filesystem.disk_full.store(true, Ordering::SeqCst);
 
-  let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
+  let id1 = setup
+    .client
+    .enqueue_upload(b"1".to_vec(), [].into())
+    .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
     id1.to_string()
@@ -375,7 +405,10 @@ async fn new_entry_disk_full() {
 async fn new_entry_disk_full_after_received() {
   let mut setup = Setup::new(2).await;
 
-  let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
+  let id1 = setup
+    .client
+    .enqueue_upload(b"1".to_vec(), [].into())
+    .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
     id1.to_string()
@@ -406,7 +439,10 @@ async fn new_entry_disk_full_after_received() {
 async fn intent_retries() {
   let mut setup = Setup::new(1).await;
 
-  let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
+  let id1 = setup
+    .client
+    .enqueue_upload(b"1".to_vec(), [].into())
+    .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
     id1.to_string()
@@ -431,7 +467,10 @@ async fn intent_retries() {
 async fn intent_drop() {
   let mut setup = Setup::new(1).await;
 
-  let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
+  let id1 = setup
+    .client
+    .enqueue_upload(b"1".to_vec(), [].into())
+    .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
     id1.to_string()
@@ -458,7 +497,10 @@ async fn intent_drop() {
 async fn upload_retries() {
   let mut setup = Setup::new(1).await;
 
-  let id1 = setup.client.enqueue_upload(b"1".to_vec()).unwrap();
+  let id1 = setup
+    .client
+    .enqueue_upload(b"1".to_vec(), [].into())
+    .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
     id1.to_string()

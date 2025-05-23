@@ -15,9 +15,12 @@ use bd_client_common::file::{
   write_compressed_protobuf,
 };
 use bd_client_common::file_system::FileSystem;
+use bd_log_primitives::LogFields;
 use bd_proto::protos::client::api::{UploadArtifactIntentRequest, UploadArtifactRequest};
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
+use bd_proto::protos::logging::payload::data::Data_type;
+use bd_proto::protos::logging::payload::{BinaryData, Data};
 use bd_runtime::runtime::{ConfigLoader, IntWatch, artifact_upload};
 use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
@@ -45,6 +48,7 @@ pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index
 struct NewUpload {
   uuid: Uuid,
   contents: Vec<u8>,
+  state: LogFields,
 }
 
 // Used for bounded_buffer logs
@@ -67,7 +71,7 @@ impl MemorySized for NewUpload {
 
 #[automock]
 pub trait Client: Send + Sync {
-  fn enqueue_upload(&self, contents: Vec<u8>) -> anyhow::Result<Uuid>;
+  fn enqueue_upload(&self, contents: Vec<u8>, state: LogFields) -> anyhow::Result<Uuid>;
 }
 
 pub struct UploadClient {
@@ -76,12 +80,16 @@ pub struct UploadClient {
 
 impl Client for UploadClient {
   /// Dispatches a payload to be uploaded, returning the associated artifact UUID.
-  fn enqueue_upload(&self, contents: Vec<u8>) -> anyhow::Result<Uuid> {
+  fn enqueue_upload(&self, contents: Vec<u8>, state: LogFields) -> anyhow::Result<Uuid> {
     let uuid = uuid::Uuid::new_v4();
 
     self
       .upload_tx
-      .try_send(NewUpload { uuid, contents })
+      .try_send(NewUpload {
+        uuid,
+        contents,
+        state,
+      })
       .inspect_err(|e| {
         log::warn!("failed to enqueue artifact upload: {e:?}");
       })?;
@@ -255,9 +263,9 @@ impl Uploader {
 
           return Err(Error::Shutdown);
         }
-        Some(NewUpload {uuid, contents}) = self.upload_queued_rx.recv() => {
+        Some(NewUpload {uuid, contents, state}) = self.upload_queued_rx.recv() => {
           log::debug!("tracking artifact: {uuid} for upload");
-          self.track_new_upload(uuid, contents).await;
+          self.track_new_upload(uuid, contents, state).await;
         }
         intent_decision = async {
           self.intent_task_handle.as_mut().unwrap().await?
@@ -418,7 +426,7 @@ impl Uploader {
     }
   }
 
-  async fn track_new_upload(&mut self, uuid: Uuid, contents: Vec<u8>) {
+  async fn track_new_upload(&mut self, uuid: Uuid, contents: Vec<u8>, state: LogFields) {
     // If we've reached our limit of entries, stop the entry currently being uploaded (the oldest
     // one) to make space for the newer one.
     if self.index.len() == usize::try_from(*self.max_entries.read()).unwrap_or_default() {
@@ -455,6 +463,27 @@ impl Uploader {
       name: uuid.clone(),
       time: self.time_provider.now().into_proto(),
       pending_intent_negotiation: true,
+      state_metadata: state
+        .into_iter()
+        .map(|(key, value)| {
+          (
+            key.into(),
+            Data {
+              data_type: Some(match value {
+                bd_log_primitives::StringOrBytes::String(s) => Data_type::StringData(s),
+                bd_log_primitives::StringOrBytes::SharedString(s) => {
+                  Data_type::StringData((*s).clone())
+                },
+                bd_log_primitives::StringOrBytes::Bytes(b) => Data_type::BinaryData(BinaryData {
+                  payload: b,
+                  ..Default::default()
+                }),
+              }),
+              ..Default::default()
+            },
+          )
+        })
+        .collect(),
       ..Default::default()
     });
 
@@ -550,6 +579,8 @@ impl Uploader {
     data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
     id: String,
   ) -> Result<IntentDecision> {
+    // TODO(snowp): Consider exponential backoff here as well? Less important due to how small
+    // the payloads are.
     loop {
       let upload_uuid = TrackedArtifactIntent::upload_uuid();
       let (tracked, response) = TrackedArtifactIntent::new(
