@@ -489,7 +489,10 @@ async fn server_streaming() {
     .server_streaming::<EchoRequest, EchoResponse>(
       &service_method(),
       None,
-      EchoRequest::default(),
+      EchoRequest {
+        echo: "a".repeat(1000),
+        ..Default::default()
+      },
       false,
       OptimizeFor::Memory,
       None,
@@ -526,7 +529,7 @@ async fn server_streaming() {
     },
   );
   stats_helper.assert_counter_eq(
-    5,
+    1008,
     "test:bandwidth_tx_bytes_total",
     &labels! {
       "service" => "test_Test",
@@ -534,7 +537,7 @@ async fn server_streaming() {
     },
   );
   stats_helper.assert_counter_eq(
-    5,
+    1008,
     "test:bandwidth_tx_bytes_uncompressed_total",
     &labels! {
       "service" => "test_Test",
@@ -559,7 +562,10 @@ async fn connect_server_streaming() {
     .server_streaming::<EchoRequest, ConnectMessageOrEndOfStream<EchoResponse>>(
       &service_method(),
       None,
-      EchoRequest::default(),
+      EchoRequest {
+        echo: "a".repeat(1000),
+        ..Default::default()
+      },
       false,
       OptimizeFor::Memory,
       Some(ConnectProtocolType::Streaming),
@@ -569,7 +575,10 @@ async fn connect_server_streaming() {
 
   assert_eq!(
     stream.next().await.unwrap().unwrap()[0].message().unwrap(),
-    &EchoResponse::default()
+    &EchoResponse {
+      echo: "a".repeat(1000),
+      ..Default::default()
+    }
   );
   event_tx
     .send(StreamingTestEvent::Message(EchoResponse::default()))
@@ -608,7 +617,10 @@ async fn connect_server_streaming_error() {
     .server_streaming::<EchoRequest, ConnectMessageOrEndOfStream<EchoResponse>>(
       &service_method(),
       None,
-      EchoRequest::default(),
+      EchoRequest {
+        echo: "a".repeat(1000),
+        ..Default::default()
+      },
       false,
       OptimizeFor::Memory,
       Some(ConnectProtocolType::Streaming),
@@ -618,7 +630,10 @@ async fn connect_server_streaming_error() {
 
   assert_eq!(
     stream.next().await.unwrap().unwrap()[0].message().unwrap(),
-    &EchoResponse::default()
+    &EchoResponse {
+      echo: "a".repeat(1000),
+      ..Default::default()
+    }
   );
   event_tx
     .send(StreamingTestEvent::EndStreamError(Status::new(
@@ -652,7 +667,10 @@ async fn server_streaming_error_handler() {
     .server_streaming::<EchoRequest, EchoResponse>(
       &service_method(),
       None,
-      EchoRequest::default(),
+      EchoRequest {
+        echo: "a".repeat(1000),
+        ..Default::default()
+      },
       false,
       OptimizeFor::Cpu,
       None,
@@ -730,7 +748,10 @@ async fn request_timeout() {
       .unary(
         &service_method(),
         None,
-        EchoRequest::default(),
+        EchoRequest {
+          echo: "a".repeat(1000),
+          ..Default::default()
+        },
         1.milliseconds(),
         Compression::None,
       )
@@ -748,13 +769,19 @@ async fn snappy_compression() {
       .unary(
         &service_method(),
         None,
-        EchoRequest::default(),
+        EchoRequest {
+          echo: "a".repeat(1000),
+          ..Default::default()
+        },
         10.seconds(),
         Compression::Snappy,
       )
       .await
       .unwrap(),
-    EchoResponse::default()
+    EchoResponse {
+      echo: "a".repeat(1000),
+      ..Default::default()
+    }
   );
 }
 
@@ -782,6 +809,22 @@ async fn connect_unary_error() {
   assert_eq!(
     response.bytes().await.unwrap(),
     "{\"code\":\"internal\",\"message\":\"foo\"}"
+  );
+
+  let response = client
+    .post(address.build(&service_method()).to_string())
+    .header(CONTENT_TYPE, CONTENT_TYPE_PROTO)
+    .header(CONNECT_PROTOCOL_VERSION, "1")
+    .body(EchoRequest::default().write_to_bytes().unwrap())
+    .send()
+    .await
+    .unwrap();
+  assert_eq!(response.status(), 400);
+  assert_eq!(
+    response.bytes().await.unwrap(),
+    "{\"code\":\"invalid_argument\",\"message\":\"Invalid request: A proto validation error \
+     occurred: field 'test.EchoRequest.echo' in message 'test.EchoRequest' requires string length \
+     >= 1\"}"
   );
 }
 

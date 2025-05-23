@@ -18,7 +18,7 @@ fn main() {
   protobuf_codegen::Codegen::new()
     .protoc()
     .customize(Customize::default().gen_mod_rs(false))
-    .includes(["src/proto"])
+    .includes(["src/proto", "../api/protoc-gen-validate"])
     .inputs(["src/proto/test.proto"])
     .out_dir("src/generated/proto/")
     .capture_stderr()

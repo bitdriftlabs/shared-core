@@ -1,9 +1,11 @@
 syntax = "proto3";
 
+import "validate/validate.proto";
+
 package test;
 
 message EchoRequest {
-  string echo = 1;
+  string echo = 1 [(validate.rules).string = {min_len: 1}];
 }
 message EchoResponse {
   string echo = 1;

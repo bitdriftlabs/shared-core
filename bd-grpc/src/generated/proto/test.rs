@@ -269,10 +269,11 @@ impl ::protobuf::reflect::ProtobufValue for EchoResponse {
 }
 
 static file_descriptor_proto_data: &'static [u8] = b"\
-    \n\ntest.proto\x12\x04test\"!\n\x0bEchoRequest\x12\x12\n\x04echo\x18\x01\
-    \x20\x01(\tR\x04echo\"\"\n\x0cEchoResponse\x12\x12\n\x04echo\x18\x01\x20\
-    \x01(\tR\x04echo25\n\x04Test\x12-\n\x04Echo\x12\x11.test.EchoRequest\x1a\
-    \x12.test.EchoResponseb\x06proto3\
+    \n\ntest.proto\x12\x04test\x1a\x17validate/validate.proto\"*\n\x0bEchoRe\
+    quest\x12\x1b\n\x04echo\x18\x01\x20\x01(\tR\x04echoB\x07\xfaB\x04r\x02\
+    \x10\x01\"\"\n\x0cEchoResponse\x12\x12\n\x04echo\x18\x01\x20\x01(\tR\x04\
+    echo25\n\x04Test\x12-\n\x04Echo\x12\x11.test.EchoRequest\x1a\x12.test.Ec\
+    hoResponseb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -289,7 +290,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(0);
+            let mut deps = ::std::vec::Vec::with_capacity(1);
+            deps.push(super::validate::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(2);
             messages.push(EchoRequest::generated_message_descriptor_data());
             messages.push(EchoResponse::generated_message_descriptor_data());
