@@ -557,15 +557,15 @@ impl Uploader {
         .await
         .map_err(|_| Error::Shutdown)?;
 
-      if response.await.map(|r| r.success).unwrap_or_default() {
+      if response.await.is_ok_and(|r| r.success) {
         log::debug!("upload of artifact: {name} succeeded");
         break;
-      } else {
-        let delay = retry_backoff.next_backoff().unwrap();
-
-        log::debug!("upload of artifact: {name} failed, retrying in {:?}", delay);
-        tokio::time::sleep(delay).await;
       }
+
+      let delay = retry_backoff.next_backoff().unwrap();
+
+      log::debug!("upload of artifact: {name} failed, retrying in {delay:?}");
+      tokio::time::sleep(delay).await;
     }
 
     Ok(())
