@@ -384,6 +384,7 @@ dependencies = [
  "bd-api",
  "bd-bounded-buffer",
  "bd-client-common",
+ "bd-client-stats-store",
  "bd-log-primitives",
  "bd-proto",
  "bd-runtime",

@@ -7,7 +7,7 @@ use backoff::backoff::Backoff;
 use backoff::exponential::ExponentialBackoff;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
-use bd_bounded_buffer::MemorySized;
+use bd_bounded_buffer::{MemorySized, SendCounters};
 use bd_client_common::error;
 use bd_client_common::file::{
   read_checksummed_data,
@@ -16,6 +16,7 @@ use bd_client_common::file::{
   write_compressed_protobuf,
 };
 use bd_client_common::file_system::FileSystem;
+use bd_client_stats_store::{Collector, Counter, Scope};
 use bd_log_primitives::LogFields;
 use bd_proto::protos::client::api::{UploadArtifactIntentRequest, UploadArtifactRequest};
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
@@ -70,6 +71,28 @@ impl MemorySized for NewUpload {
   }
 }
 
+//
+// Stats
+//
+
+struct Stats {
+  uploaded: Counter,
+  dropped: Counter,
+  dropped_intent: Counter,
+  accepted_intent: Counter,
+}
+
+impl Stats {
+  fn new(scope: &Scope) -> Self {
+    Self {
+      uploaded: scope.counter("uploaded"),
+      dropped: scope.counter("dropped"),
+      dropped_intent: scope.counter("dropped_intent"),
+      accepted_intent: scope.counter("accepted_intent"),
+    }
+  }
+}
+
 #[automock]
 pub trait Client: Send + Sync {
   fn enqueue_upload(&self, contents: Vec<u8>, state: LogFields) -> anyhow::Result<Uuid>;
@@ -77,6 +100,7 @@ pub trait Client: Send + Sync {
 
 pub struct UploadClient {
   upload_tx: bd_bounded_buffer::Sender<NewUpload>,
+  counter_stats: SendCounters,
 }
 
 impl Client for UploadClient {
@@ -84,16 +108,17 @@ impl Client for UploadClient {
   fn enqueue_upload(&self, contents: Vec<u8>, state: LogFields) -> anyhow::Result<Uuid> {
     let uuid = uuid::Uuid::new_v4();
 
-    self
+    let result = self
       .upload_tx
       .try_send(NewUpload {
         uuid,
         contents,
         state,
       })
-      .inspect_err(|e| {
-        log::warn!("failed to enqueue artifact upload: {e:?}");
-      })?;
+      .inspect_err(|e| log::warn!("failed to enqueue artifact upload: {e:?}"));
+
+    self.counter_stats.record(&result);
+    result?;
 
     Ok(uuid)
   }
@@ -135,6 +160,8 @@ pub struct Uploader {
   intent_task_handle: Option<tokio::task::JoinHandle<Result<IntentDecision>>>,
   upload_task_handle: Option<tokio::task::JoinHandle<Result<()>>>,
 
+  stats: Stats,
+
   #[cfg(test)]
   test_hooks: Option<TestHooks>,
 }
@@ -145,9 +172,12 @@ impl Uploader {
     data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
     time_provider: Arc<dyn TimeProvider>,
     runtime: &ConfigLoader,
+    collector: &Collector,
     shutdown: ComponentShutdown,
   ) -> (Self, UploadClient) {
     runtime.expect_initialized();
+
+    let scope = collector.scope("artifact_upload");
 
     // TODO(snowp): It would be nice to not have to create a watch in order to use the typed
     // runtime flags. This buffer cannot be recreated on config change so we're only reading it on
@@ -176,11 +206,15 @@ impl Uploader {
       max_entries: runtime.register_watch().unwrap(),
       upload_task_handle: None,
       intent_task_handle: None,
+      stats: Stats::new(&scope),
       #[cfg(test)]
       test_hooks: None,
     };
 
-    let client = UploadClient { upload_tx };
+    let client = UploadClient {
+      upload_tx,
+      counter_stats: SendCounters::new(&scope, "enqueue"),
+    };
 
     (uploader, client)
   }
@@ -379,6 +413,7 @@ impl Uploader {
   async fn handle_intent_negotiation_decision(&mut self, decision: IntentDecision) {
     match decision {
       IntentDecision::Drop => {
+        self.stats.dropped_intent.inc();
         let entry = &self.index.pop_front().unwrap();
 
         if let Err(e) = self
@@ -397,6 +432,7 @@ impl Uploader {
         self.write_index().await;
       },
       IntentDecision::UploadImmediately => {
+        self.stats.accepted_intent.inc();
         let entry = self.index.front_mut().unwrap();
         // Mark the file as being ready for uploads and persist this to the index.
         entry.pending_intent_negotiation = false;
@@ -406,6 +442,8 @@ impl Uploader {
   }
 
   async fn handle_upload_complete(&mut self) -> String {
+    self.stats.uploaded.inc();
+
     let entry = self.index.pop_front().unwrap();
     let file_path = REPORT_DIRECTORY.join(&entry.name);
 
@@ -432,6 +470,8 @@ impl Uploader {
     // one) to make space for the newer one.
     if self.index.len() == usize::try_from(*self.max_entries.read()).unwrap_or_default() {
       log::debug!("upload queue is full, dropping current upload");
+
+      self.stats.dropped.inc();
       self.stop_current_upload();
       self.index.pop_front();
     }
