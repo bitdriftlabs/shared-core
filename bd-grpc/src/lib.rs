@@ -459,12 +459,8 @@ pub trait ServerStreamingHandler<ResponseType: Message, RequestType: Message>: S
 async fn decode_request<Message: MessageFull>(
   request: Request,
   validate_request: bool,
-) -> Result<(
-  HeaderMap<HeaderValue>,
-  Extensions,
-  Message,
-  Option<ConnectProtocolType>,
-)> {
+  connect_protocol_type: Option<ConnectProtocolType>,
+) -> Result<(HeaderMap<HeaderValue>, Extensions, Message)> {
   let (parts, body) = request.into_parts();
   let body_bytes = to_bytes(body, usize::MAX)
     .await
@@ -485,7 +481,6 @@ async fn decode_request<Message: MessageFull>(
     body_bytes
   };
 
-  let connect_protocol_type = ConnectProtocolType::from_headers(&parts.headers);
   let message = if matches!(connect_protocol_type, Some(ConnectProtocolType::Unary)) {
     Message::parse_from_tokio_bytes(&body_bytes)
       .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}")))?
@@ -504,12 +499,7 @@ async fn decode_request<Message: MessageFull>(
       .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}")))?;
   }
 
-  Ok((
-    parts.headers,
-    parts.extensions,
-    message,
-    connect_protocol_type,
-  ))
+  Ok((parts.headers, parts.extensions, message))
 }
 
 async fn unary_connect_handler<OutgoingType: MessageFull, IncomingType: MessageFull>(
@@ -531,9 +521,10 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   request: Request,
   handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
   validate_request: bool,
+  connect_protocol_type: Option<ConnectProtocolType>,
 ) -> Result<Response> {
-  let (headers, extensions, message, connect_protocol_type) =
-    decode_request::<OutgoingType>(request, validate_request).await?;
+  let (headers, extensions, message) =
+    decode_request::<OutgoingType>(request, validate_request, connect_protocol_type).await?;
   if matches!(connect_protocol_type, Some(ConnectProtocolType::Unary)) {
     return Ok(
       match unary_connect_handler(headers, extensions, message, handler).await {
@@ -607,6 +598,7 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
   // This indicates if response compression is desired. It will still be gated on whether the
   // client sets the compression header.
   compression: Option<bd_grpc_codec::Compression>,
+  connect_protocol_type: Option<ConnectProtocolType>,
 ) -> Result<Response> {
   if let Some(stream_stats) = &stream_stats {
     stream_stats.stream_initiations_total.inc();
@@ -615,8 +607,8 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
   let path = request.uri().path().to_string();
 
   let (tx, rx) = mpsc::channel(1);
-  let (headers, extensions, message, connect_protocol_type) =
-    decode_request::<RequestType>(request, validate_request)
+  let (headers, extensions, message) =
+    decode_request::<RequestType>(request, validate_request, connect_protocol_type)
       .await
       .inspect_err(|_| {
         if let Some(stream_stats) = &stream_stats {
@@ -697,6 +689,7 @@ pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: Mess
   Router::new().route(
     &service_method.full_path(),
     post(move |request: Request| async move {
+      let connect_protocol_type = ConnectProtocolType::from_headers(request.headers());
       server_streaming_handler(
         handler,
         request,
@@ -705,8 +698,10 @@ pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: Mess
         validate_request,
         warn_tracker.clone(),
         compression,
+        connect_protocol_type,
       )
       .await
+      .map_err(|e| e.to_response(connect_protocol_type))
     }),
   )
 }
@@ -726,9 +721,15 @@ pub fn make_unary_router<OutgoingType: MessageFull, IncomingType: MessageFull>(
     .map(|stats| stats.resolve::<OutgoingType, IncomingType>(service_method));
   Router::new().route(
     &service_method.full_path(),
-    post(move |request| async move {
-      let result =
-        unary_handler::<OutgoingType, IncomingType>(request, handler, validate_request).await;
+    post(move |request: Request| async move {
+      let connect_protocol_type = ConnectProtocolType::from_headers(request.headers());
+      let result = unary_handler::<OutgoingType, IncomingType>(
+        request,
+        handler,
+        validate_request,
+        connect_protocol_type,
+      )
+      .await;
 
       if let Err(e) = &result {
         if let Some(warning) = e.warn_every_message() {
@@ -745,7 +746,7 @@ pub fn make_unary_router<OutgoingType: MessageFull, IncomingType: MessageFull>(
         resolved_stats.success.inc();
       }
 
-      result
+      result.map_err(|e| e.to_response(connect_protocol_type))
     }),
   )
 }

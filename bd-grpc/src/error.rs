@@ -5,10 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::connect_protocol::ErrorResponse;
+use crate::connect_protocol::{ConnectProtocolType, ErrorResponse};
 use crate::status::{Code, Status};
 use crate::CONTENT_TYPE_JSON;
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use axum::BoxError;
 use http::header::CONTENT_TYPE;
 
@@ -39,12 +39,6 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl IntoResponse for Error {
-  fn into_response(self) -> Response {
-    self.into_status().into_response()
-  }
-}
 
 impl Error {
   fn into_status(self) -> Status {
@@ -92,5 +86,14 @@ impl Error {
           .into(),
       )
       .unwrap()
+  }
+
+  #[must_use]
+  pub fn to_response(self, connect_protocol: Option<ConnectProtocolType>) -> Response {
+    if connect_protocol.is_some() {
+      self.to_connect_error_response()
+    } else {
+      self.into_status().into_response()
+    }
   }
 }
