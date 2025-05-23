@@ -504,6 +504,7 @@ impl Uploader {
     // the allowed amount.
 
     // TODO(snowp): Make more of these parameters runtime configurable.
+    // This default sets an initial timeout of 500s with a max timeout of 1 min (jittered).
     let mut retry_backoff = backoff::exponential::ExponentialBackoff::<SystemClock> {
       max_elapsed_time: None,
       ..Default::default()
