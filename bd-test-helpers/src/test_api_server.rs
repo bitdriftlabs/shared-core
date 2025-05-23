@@ -844,12 +844,20 @@ impl ServerHandle {
     Self::next_request(&mut self.artifact_upload_rx).await
   }
 
+  pub fn blocking_next_artifact_upload(&mut self) -> Option<UploadArtifactRequest> {
+    Self::blocking_next_request_with_timeout(&mut self.artifact_upload_rx)
+  }
+
   pub fn next_log_intent(&mut self) -> Option<LogUploadIntentRequest> {
     Self::blocking_next_request_with_timeout(&mut self.log_intent_rx)
   }
 
   pub async fn next_artifact_intent(&mut self) -> Option<UploadArtifactIntentRequest> {
     Self::next_request(&mut self.artifact_intent_rx).await
+  }
+
+  pub fn blocking_next_artifact_intent(&mut self) -> Option<UploadArtifactIntentRequest> {
+    Self::blocking_next_request_with_timeout(&mut self.artifact_intent_rx)
   }
 
   pub async fn next_log_upload(&mut self) -> Option<LogUploadRequest> {

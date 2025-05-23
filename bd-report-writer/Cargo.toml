@@ -1,9 +1,9 @@
 [package]
 edition      = "2021"
-name         = "bd-report-writer"
-version      = "1.0.0"
 license-file = "../LICENSE"
+name         = "bd-report-writer"
 publish      = false
+version      = "1.0.0"
 
 [lib]
 doctest = false
@@ -11,9 +11,9 @@ doctest = false
 [dependencies]
 # defined separately to the workspace to allow compilation with
 # bazel/crate_universe within the sdk project
-flatbuffers = "25.2.10"
 bd-proto.path = "../bd-proto"
+flatbuffers   = "25.2.10"
 
 [build-dependencies]
+cbindgen.workspace   = true
 flatc-rust.workspace = true
-cbindgen.workspace = true

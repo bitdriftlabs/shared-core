@@ -9,7 +9,6 @@
 #[path = "./async_log_buffer_test.rs"]
 mod async_log_buffer_test;
 
-use crate::bounded_buffer::{channel, MemorySized, Receiver, Sender, TrySendError};
 use crate::device_id::DeviceIdInterceptor;
 use crate::log_replay::LogReplay;
 use crate::logger::with_thread_local_logger_guard;
@@ -19,6 +18,7 @@ use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::PreConfigBuffer;
 use crate::{internal_report, network};
 use anyhow::anyhow;
+use bd_bounded_buffer::{channel, MemorySized, Receiver, Sender, TrySendError};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_crash_handler::global_state;
@@ -129,24 +129,6 @@ impl MemorySized for LogLine {
       + size_of_val(&self.attributes_overrides)
       + 48
       + 24
-  }
-}
-
-impl MemorySized for bd_log_primitives::Log {
-  fn size(&self) -> usize {
-    // The size cannot be computed by just calling a `size_of_val(self)` in here
-    // as that does not account for various heap allocations.
-    size_of_val(self)
-      + self.message.size()
-      + self.fields.size()
-      + self.matching_fields.size()
-      + self.session_id.len()
-  }
-}
-
-impl MemorySized for AnnotatedLogFields {
-  fn size(&self) -> usize {
-    self.iter().map(|(k, v)| k.len() + v.size()).sum::<usize>()
   }
 }
 
@@ -261,6 +243,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     )
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn enqueue_log(
     tx: &Sender<AsyncLogBufferMessage>,
     log_level: LogLevel,
@@ -327,6 +310,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     Ok(())
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn add_log_field(
     tx: &Sender<AsyncLogBufferMessage>,
     key: String,
@@ -335,6 +319,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     tx.try_send(AsyncLogBufferMessage::AddLogField(key, value))
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn remove_log_field(
     tx: &Sender<AsyncLogBufferMessage>,
     field_name: &str,
@@ -344,6 +329,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     ))
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn flush_state(
     tx: &Sender<AsyncLogBufferMessage>,
     blocking: bool,

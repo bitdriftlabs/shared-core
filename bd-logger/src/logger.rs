@@ -11,10 +11,10 @@ mod logger_test;
 
 use crate::app_version::{AppVersion, AppVersionExtra, Repository};
 use crate::async_log_buffer::{AsyncLogBuffer, AsyncLogBufferMessage, LogAttributesOverrides};
-use crate::bounded_buffer::{self, Sender as MemoryBoundSender};
 use crate::log_replay::LoggerReplay;
 use crate::{app_version, MetadataProvider};
 use bd_api::Metadata;
+use bd_bounded_buffer::{self, Sender as MemoryBoundSender};
 use bd_client_stats_store::Scope;
 use bd_log::warn_every;
 use bd_log_primitives::{
@@ -38,10 +38,10 @@ use tokio::sync::mpsc::{Receiver, Sender};
 #[derive(Clone)]
 #[allow(clippy::struct_field_names)]
 pub struct Stats {
-  pub(crate) log_emission_counters: bounded_buffer::SendCounters,
-  pub(crate) field_addition_counters: bounded_buffer::SendCounters,
-  pub(crate) field_removal_counters: bounded_buffer::SendCounters,
-  pub(crate) state_flushing_counters: bounded_buffer::SendCounters,
+  pub(crate) log_emission_counters: bd_bounded_buffer::SendCounters,
+  pub(crate) field_addition_counters: bd_bounded_buffer::SendCounters,
+  pub(crate) field_removal_counters: bd_bounded_buffer::SendCounters,
+  pub(crate) state_flushing_counters: bd_bounded_buffer::SendCounters,
   pub(crate) session_replay_duration_histogram: bd_client_stats_store::Histogram,
 }
 
@@ -53,19 +53,19 @@ impl Stats {
     let async_log_buffer_scope = stats_scope.scope("async_log_buffer");
 
     Self {
-      log_emission_counters: bounded_buffer::SendCounters::new(
+      log_emission_counters: bd_bounded_buffer::SendCounters::new(
         &async_log_buffer_scope,
         "log_enqueueing",
       ),
-      field_addition_counters: bounded_buffer::SendCounters::new(
+      field_addition_counters: bd_bounded_buffer::SendCounters::new(
         &async_log_buffer_scope,
         "field_additions",
       ),
-      field_removal_counters: bounded_buffer::SendCounters::new(
+      field_removal_counters: bd_bounded_buffer::SendCounters::new(
         &async_log_buffer_scope,
         "field_removals",
       ),
-      state_flushing_counters: bounded_buffer::SendCounters::new(
+      state_flushing_counters: bd_bounded_buffer::SendCounters::new(
         &async_log_buffer_scope,
         "state_flushing",
       ),

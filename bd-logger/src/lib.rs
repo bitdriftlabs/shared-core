@@ -7,7 +7,6 @@
 
 mod app_version;
 mod async_log_buffer;
-mod bounded_buffer;
 pub mod builder;
 mod client_config;
 mod consumer;

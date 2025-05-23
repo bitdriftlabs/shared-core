@@ -103,6 +103,7 @@ impl AddressHelper {
 
 // A simple gRPC client wrapper that allows for both unary and streaming requests.
 #[derive(Debug)]
+#[allow(clippy::struct_field_names)]
 pub struct Client<C> {
   client: hyper_util::client::legacy::Client<C, Body>,
   address: AddressHelper,

@@ -1,9 +1,9 @@
 [package]
 edition      = "2021"
-name         = "bd-report-writer-tests"
-version      = "1.0.0"
 license-file = "../LICENSE"
+name         = "bd-report-writer-tests"
 publish      = false
+version      = "1.0.0"
 
 [lib]
 doctest = false
@@ -13,9 +13,9 @@ bd-report-writer.path = "../bd-report-writer"
 flatbuffers.workspace = true
 
 [dev-dependencies]
-bd-test-helpers.path  = "../bd-test-helpers"
-bd-proto.path = "../bd-proto"
+bd-proto.path        = "../bd-proto"
+bd-test-helpers.path = "../bd-test-helpers"
 
 [build-dependencies]
-cc.workspace = true
 bd-report-writer.path = "../bd-report-writer"
+cc.workspace          = true

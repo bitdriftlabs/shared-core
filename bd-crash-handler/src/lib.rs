@@ -15,7 +15,7 @@ mod json_extractor;
 use anyhow::bail;
 use bd_log_primitives::{LogFieldKey, LogFieldValue, LogFields, LogMessageValue};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs;
-use bd_runtime::runtime::{ConfigLoader, StringWatch};
+use bd_runtime::runtime::{BoolWatch, ConfigLoader, StringWatch};
 use bd_shutdown::ComponentShutdown;
 use fbs::issue_reporting::v_1::root_as_report;
 use itertools::Itertools as _;
@@ -74,11 +74,16 @@ pub trait CrashLogger: Send + Sync {
 /// - `reports/new/` - A directory where new crash reports are placed. The platform layer is
 ///   responsible for copying the raw files into this directory.
 pub struct Monitor {
+  // TODO(snowp): Now that we load runtime early enough we can redo how this works a bit to make
+  // them less special.
   reports_directories_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashDirectories>,
   crash_reason_paths_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashReasonPaths>,
   crash_details_paths_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashDetailsPaths>,
+  out_of_band_enabled_flag: BoolWatch<bd_runtime::runtime::artifact_upload::Enabled>,
+
   report_directory: PathBuf,
   global_state_reader: global_state::Reader,
+  artifact_client: Arc<dyn bd_artifact_upload::Client>,
   shutdown: ComponentShutdown,
 }
 
@@ -87,21 +92,19 @@ impl Monitor {
     runtime: &ConfigLoader,
     sdk_directory: &Path,
     store: Arc<bd_device::Store>,
+    artifact_client: Arc<dyn bd_artifact_upload::Client>,
     shutdown: ComponentShutdown,
   ) -> Self {
-    let crash_directories_flag =
-      bd_runtime::runtime::crash_handling::CrashDirectories::register(runtime).unwrap();
-    let crash_reason_paths_flag =
-      bd_runtime::runtime::crash_handling::CrashReasonPaths::register(runtime).unwrap();
-    let crash_details_flag =
-      bd_runtime::runtime::crash_handling::CrashDetailsPaths::register(runtime).unwrap();
+    runtime.expect_initialized();
 
     Self {
-      reports_directories_flag: crash_directories_flag,
-      crash_reason_paths_flag,
-      crash_details_paths_flag: crash_details_flag,
+      reports_directories_flag: runtime.register_watch().unwrap(),
+      crash_reason_paths_flag: runtime.register_watch().unwrap(),
+      crash_details_paths_flag: runtime.register_watch().unwrap(),
+      out_of_band_enabled_flag: runtime.register_watch().unwrap(),
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
       global_state_reader: global_state::Reader::new(store),
+      artifact_client,
       shutdown,
     }
   }
@@ -250,11 +253,9 @@ impl Monitor {
       }
     }
   }
-
   pub async fn process_new_reports(&self) -> Vec<CrashLog> {
     let crash_reason_paths = self.crash_reason_paths().await;
     let crash_details_paths = self.crash_details_paths().await;
-
     let mut dir = match tokio::fs::read_dir(&self.report_directory.join("new")).await {
       Ok(dir) => dir,
       Err(e) => {
@@ -333,16 +334,37 @@ impl Monitor {
           );
           continue;
         };
-        let mut fields = global_state_fields.clone();
-        let message = fatal_issue_metadata.message_value;
 
+        let crash_field = if *self.out_of_band_enabled_flag.read() {
+          log::debug!("uploading report out of band");
+
+          let Ok(artifact_id) = self
+            .artifact_client
+            .enqueue_upload(contents, global_state_fields.clone())
+          else {
+            // TODO(snowp): Should we fall back to passing it via a field at this point?
+            log::warn!(
+              "Failed to enqueue crash report for upload: {}",
+              path.display()
+            );
+            continue;
+          };
+
+          ("_crash_artifact_id".into(), artifact_id.to_string().into())
+        } else {
+          log::debug!("uploading report in band with log line");
+          ("_crash_artifact".into(), contents.into())
+        };
+
+        let message = fatal_issue_metadata.message_value;
+        let mut fields = global_state_fields.clone();
+        fields.extend(std::iter::once(crash_field));
         fields.extend(
           [
             (
               "_app_exit_reason".into(),
               fatal_issue_metadata.report_type_value,
             ),
-            ("_crash_artifact".into(), contents.into()),
             (
               fatal_issue_metadata.reason_key.clone(),
               crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
@@ -361,10 +383,6 @@ impl Monitor {
           .into_iter(),
         );
 
-        // TODO(snowp): For now everything in here is a crash, eventually we'll need to be able to
-        // differentiate.
-        // TODO(snowp): Eventually we'll want to upload the report out of band, but for now just
-        // chuck it into a log line.
         logs.push(CrashLog {
           fields,
           timestamp,

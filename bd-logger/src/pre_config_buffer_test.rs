@@ -5,8 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::bounded_buffer::MemorySized;
 use crate::pre_config_buffer::{self, PreConfigBuffer};
+use bd_bounded_buffer::MemorySized;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct SimulatedSizeLog {

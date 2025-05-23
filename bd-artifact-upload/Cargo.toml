@@ -1,0 +1,37 @@
+[package]
+edition      = "2024"
+license-file = "../LICENSE"
+name         = "bd-artifact-upload"
+publish      = false
+version      = "1.0.0"
+
+[lib]
+doctest = false
+
+[dependencies]
+anyhow.workspace           = true
+async-trait.workspace      = true
+backoff.workspace          = true
+bd-api.path                = "../bd-api"
+bd-bounded-buffer.path     = "../bd-bounded-buffer"
+bd-client-common.path      = "../bd-client-common"
+bd-client-stats-store.path = "../bd-client-stats-store"
+bd-log-primitives.path     = "../bd-log-primitives"
+bd-proto.path              = "../bd-proto"
+bd-runtime.path            = "../bd-runtime"
+bd-shutdown.path           = "../bd-shutdown"
+bd-time.path               = "../bd-time"
+flatbuffers.workspace      = true
+itertools.workspace        = true
+log.workspace              = true
+mockall.workspace          = true
+thiserror.workspace        = true
+time.workspace             = true
+tokio.workspace            = true
+uuid.workspace             = true
+
+[dev-dependencies]
+assert_matches.workspace = true
+bd-test-helpers          = { path = "../bd-test-helpers", default-features = false }
+ctor.workspace           = true
+futures-util.workspace   = true
