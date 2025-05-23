@@ -246,17 +246,27 @@ fn get_fatal_issue_mechanism_from_json_must_return_integration() {
   assert_eq!(metadata.reason_key, "_crash_reason");
   assert_eq!(metadata.message_value, "App crashed".into());
   assert_eq!(metadata.mechanism_type_value, "INTEGRATION");
+  assert_eq!(metadata.report_type_value, "Unknown".into());
 }
 
 #[test]
 fn get_fatal_issue_mechanism_from_cap_must_return_built_in() {
-  let cap_file = Path::new("foo.cap");
+  let cap_file = Path::new("foo_crash.cap");
 
-  let metadata = get_fatal_issue_metadata(cap_file).unwrap();
-  assert_eq!(metadata.details_key, "_app_exit_details");
-  assert_eq!(metadata.reason_key, "_app_exit_info");
-  assert_eq!(metadata.message_value, "AppExit".into());
-  assert_eq!(metadata.mechanism_type_value, "BUILT_IN");
+  let crash_metadata = get_fatal_issue_metadata(cap_file).unwrap();
+  assert_eq!(crash_metadata.details_key, "_app_exit_details");
+  assert_eq!(crash_metadata.reason_key, "_app_exit_info");
+  assert_eq!(crash_metadata.message_value, "AppExit".into());
+  assert_eq!(crash_metadata.mechanism_type_value, "BUILT_IN");
+  assert_eq!(crash_metadata.report_type_value, "Crash".into());
+
+  let cap_file = Path::new("foo_anr.cap");
+  let anr_metadata = get_fatal_issue_metadata(cap_file).unwrap();
+  assert_eq!(anr_metadata.report_type_value, "ANR".into());
+
+  let cap_file = Path::new("foo_native_crash.cap");
+  let anr_metadata = get_fatal_issue_metadata(cap_file).unwrap();
+  assert_eq!(anr_metadata.report_type_value, "Native Crash".into());
 }
 
 #[test]

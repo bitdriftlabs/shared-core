@@ -338,6 +338,10 @@ impl Monitor {
 
         fields.extend(
           [
+            (
+              "_app_exit_reason".into(),
+              fatal_issue_metadata.report_type_value,
+            ),
             ("_crash_artifact".into(), contents.into()),
             (
               fatal_issue_metadata.reason_key.clone(),
@@ -352,10 +356,6 @@ impl Monitor {
             (
               "_fatal_issue_mechanism".into(),
               fatal_issue_metadata.mechanism_type_value.into(),
-            ),
-            (
-              "_fatal_issue_report_type".into(),
-              fatal_issue_metadata.report_type_value,
             ),
           ]
           .into_iter(),
@@ -423,11 +423,11 @@ fn get_fatal_issue_metadata(path: &Path) -> anyhow::Result<FatalIssueMetadata> {
   let report_type = if file_name.contains("_anr") {
     "ANR"
   } else if file_name.contains("_native_crash") {
-    "NATIVE_CRASH"
+    "Native Crash"
   } else if file_name.contains("_crash") {
-    "CRASH"
+    "Crash"
   } else {
-    "UNKNOWN"
+    "Unknown"
   };
 
   match ext {
