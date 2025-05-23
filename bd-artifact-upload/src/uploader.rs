@@ -4,6 +4,7 @@ mod tests;
 
 use backoff::SystemClock;
 use backoff::backoff::Backoff;
+use backoff::exponential::ExponentialBackoff;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
 use bd_bounded_buffer::MemorySized;
@@ -149,7 +150,8 @@ impl Uploader {
     runtime.expect_initialized();
 
     // TODO(snowp): It would be nice to not have to create a watch in order to use the typed
-    // runtime flags.
+    // runtime flags. This buffer cannot be recreated on config change so we're only reading it on
+    // startup.
     let buffer_capacity = *runtime
       .register_watch::<u32, artifact_upload::BufferCountLimit>()
       .unwrap()
@@ -191,9 +193,6 @@ impl Uploader {
 
   async fn run_inner(mut self) -> Result<()> {
     self.initialize().await;
-
-    // TODO(snowp): Add intent retry policy.
-    // TODO(snowp): Add upload retry policy.
 
     // The state machinery below relies on careful handling of the contents of the index list, as
     // we want to make sure that we don't lose entries due to process shutdown. The pending upload
@@ -319,7 +318,9 @@ impl Uploader {
     // Ensure that the files stored on disk pending upload and the index are in sync. If either the
     // file is missing for an index entry or a file exists without an index entry they can never
     // be uploaded, so just clean them up.
-    // TODO(snowp): Should we check for crc integrity at this point?
+
+    // TODO(snowp): Should we check for crc integrity at this point? Currently we only do so when
+    // we are considering a file for upload.
 
     let mut modified = false;
     let mut new_index = VecDeque::default();
@@ -529,15 +530,8 @@ impl Uploader {
     // wrong. We put no overall tiemout as the device might be offline for a long time and we want
     // to give it whatever time it needs to perform the upload.
 
-    // We keep trying forever until the task gets aborted due the number of pending uploads exceeds
-    // the allowed amount.
 
-    // TODO(snowp): Make more of these parameters runtime configurable.
-    // This default sets an initial timeout of 500s with a max timeout of 1 min (jittered).
-    let mut retry_backoff = backoff::exponential::ExponentialBackoff::<SystemClock> {
-      max_elapsed_time: None,
-      ..Default::default()
-    };
+    let mut retry_backoff = Self::make_retry_policy();
 
     loop {
       let upload_uuid = TrackedArtifactUpload::upload_uuid();
@@ -575,8 +569,8 @@ impl Uploader {
     data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
     id: String,
   ) -> Result<IntentDecision> {
-    // TODO(snowp): Consider exponential backoff here as well? Less important due to how small
-    // the payloads are.
+    let mut retry_backoff = Self::make_retry_policy();
+
     loop {
       let upload_uuid = TrackedArtifactIntent::upload_uuid();
       let (tracked, response) = TrackedArtifactIntent::new(
@@ -598,8 +592,25 @@ impl Uploader {
 
       match response.await {
         Ok(response) => break Ok(response.decision),
-        Err(_) => log::debug!("intent negotiation for artifact: {id} failed, retrying"),
+        Err(_) => {
+          let delay = retry_backoff.next_backoff().unwrap();
+          log::debug!("intent negotiation for artifact: {id} failed, retrying in {delay:?}");
+          tokio::time::sleep(delay).await;
+        },
       }
+    }
+  }
+
+  fn make_retry_policy() -> ExponentialBackoff<SystemClock> {
+    // TODO(snowp): Make more of these parameters runtime configurable.
+
+    // This default sets an initial timeout of 500s with a max timeout of 1 min (jittered).
+    // By setting max_elapsed_time to None we can safely unwrap `next_backoff`. We use no total
+    // timeout as we'll just keep trying until we eject the pending upload due to hitting the max
+    // number of pending uploads.
+    backoff::exponential::ExponentialBackoff::<SystemClock> {
+      max_elapsed_time: None,
+      ..Default::default()
     }
   }
 }
