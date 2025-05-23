@@ -590,14 +590,13 @@ impl Uploader {
         .await
         .map_err(|_| Error::Shutdown)?;
 
-      match response.await {
-        Ok(response) => break Ok(response.decision),
-        Err(_) => {
-          let delay = retry_backoff.next_backoff().unwrap();
-          log::debug!("intent negotiation for artifact: {id} failed, retrying in {delay:?}");
-          tokio::time::sleep(delay).await;
-        },
+      if let Ok(response) = response.await {
+        break Ok(response.decision);
       }
+
+      let delay = retry_backoff.next_backoff().unwrap();
+      log::debug!("intent negotiation for artifact: {id} failed, retrying in {delay:?}");
+      tokio::time::sleep(delay).await;
     }
   }
 
