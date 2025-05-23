@@ -2,6 +2,8 @@
 #[path = "./uploader_test.rs"]
 mod tests;
 
+use backoff::SystemClock;
+use backoff::backoff::Backoff;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
 use bd_bounded_buffer::MemorySized;
@@ -494,6 +496,19 @@ impl Uploader {
     let path = REPORT_DIRECTORY.join(&name);
     log::debug!("uploading artifact: {}", path.display());
 
+    // Use exponential backoff to avoid retrying over and over again in case something is going
+    // wrong. We put no overall tiemout as the device might be offline for a long time and we want
+    // to give it whatever time it needs to perform the upload.
+
+    // We keep trying forever until the task gets aborted due the number of pending uploads exceeds
+    // the allowed amount.
+
+    // TODO(snowp): Make more of these parameters runtime configurable.
+    let mut retry_backoff = backoff::exponential::ExponentialBackoff::<SystemClock> {
+      max_elapsed_time: None,
+      ..Default::default()
+    };
+
     loop {
       let upload_uuid = TrackedArtifactUpload::upload_uuid();
       let (tracked, response) = TrackedArtifactUpload::new(
@@ -520,7 +535,10 @@ impl Uploader {
           }
           log::debug!("upload of artifact: {name} failed, retrying");
         },
-        Err(_) => log::debug!("upload of artifact: {name} failed, retrying"),
+        Err(_) => {
+          tokio::time::sleep(retry_backoff.next_backoff().unwrap()).await;
+          log::debug!("upload of artifact: {name} failed, retrying")
+        },
       }
     }
 
