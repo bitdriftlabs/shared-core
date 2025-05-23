@@ -150,7 +150,6 @@ impl LoggerBuilder {
     let scope = collector.scope("");
     let stats = bd_client_stats::Stats::new(collector.clone());
 
-
     let (maybe_stats_flusher, maybe_flusher_trigger) = if self.client_stats {
       let (flush_ticker, upload_ticker) =
         if let Some((flush_ticker, upload_ticker)) = self.client_stats_tickers {
@@ -230,7 +229,7 @@ impl LoggerBuilder {
     bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
 
     let data_upload_tx_clone = data_upload_tx.clone();
-    let collector_clone = collector.clone();
+    let collector_clone = collector;
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
 

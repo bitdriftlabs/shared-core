@@ -77,6 +77,10 @@ impl MemorySized for NewUpload {
 
 struct Stats {
   uploaded: Counter,
+
+  // TODO(snowp): For now we just emit metrics on drops but we probably want a more robust
+  // mechanism for keeping track of the data that we're dropping either due to overflows or intent
+  // rejections.
   dropped: Counter,
   dropped_intent: Counter,
   accepted_intent: Counter,
