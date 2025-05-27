@@ -655,7 +655,7 @@ impl Uploader {
   fn make_retry_policy() -> ExponentialBackoff<SystemClock> {
     // TODO(snowp): Make more of these parameters runtime configurable.
 
-    // This default sets an initial timeout of 500s with a max timeout of 1 min (jittered).
+    // This default sets an initial timeout of 500ms with a max timeout of 1 min (jittered).
     // By setting max_elapsed_time to None we can safely unwrap `next_backoff`. We use no total
     // timeout as we'll just keep trying until we eject the pending upload due to hitting the max
     // number of pending uploads.
