@@ -226,8 +226,6 @@ impl LoggerBuilder {
 
     bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
 
-    bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
-
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
     let logger_future = async move {
