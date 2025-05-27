@@ -479,6 +479,7 @@ impl Uploader {
   async fn track_new_upload(&mut self, uuid: Uuid, contents: Vec<u8>, state: LogFields) {
     // If we've reached our limit of entries, stop the entry currently being uploaded (the oldest
     // one) to make space for the newer one.
+    // TODO(snowp): Consider also having a bound on the size of the files persisted to disk.
     if self.index.len() == usize::try_from(*self.max_entries.read()).unwrap_or_default() {
       log::debug!("upload queue is full, dropping current upload");
 
