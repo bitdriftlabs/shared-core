@@ -578,7 +578,7 @@ impl Uploader {
     log::debug!("uploading artifact: {}", path.display());
 
     // Use exponential backoff to avoid retrying over and over again in case something is going
-    // wrong. We put no overall tiemout as the device might be offline for a long time and we want
+    // wrong. We put no overall timeout as the device might be offline for a long time and we want
     // to give it whatever time it needs to perform the upload.
 
 
