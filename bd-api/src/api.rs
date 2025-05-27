@@ -333,7 +333,6 @@ impl Stats {
 /// The main handle for handling the Mux API. The API consumer communicates with this handler via a
 /// number of channels, both for sending data (e.g. log/stats upload) or receiving updates
 /// (configuration updates, upload acks).
-#[allow(clippy::struct_field_names)]
 pub struct Api {
   sdk_directory: PathBuf,
   api_key: String,
