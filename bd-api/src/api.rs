@@ -19,7 +19,7 @@ use crate::{
 };
 use anyhow::anyhow;
 use backoff::backoff::Backoff;
-use backoff::exponential::{ExponentialBackoff, ExponentialBackoffBuilder};
+use backoff::exponential::ExponentialBackoff;
 use backoff::SystemClock;
 use bd_client_common::error::UnexpectedErrorHandler;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
@@ -537,7 +537,10 @@ impl Api {
   // until shutdown has been signaled.
   #[tracing::instrument(skip(self), level = "debug", name = "api")]
   async fn maintain_active_stream(mut self) -> anyhow::Result<()> {
-    let mut backoff = self.backoff_policy();
+    let mut backoff = crate::backoff_policy(
+      &mut self.initial_backoff_interval,
+      &mut self.max_backoff_interval,
+    );
 
     // Collect metadata as part of maintaining active stream and not earlier to ensure that the
     // collection happens on SDK run loop.
@@ -588,7 +591,10 @@ impl Api {
       // Construct a new backoff policy if the runtime values have changed since last time.
       if self.max_backoff_interval.has_changed() || self.initial_backoff_interval.has_changed() {
         log::debug!("backoff policy has changed, recreating");
-        backoff = self.backoff_policy();
+        backoff = crate::backoff_policy(
+          &mut self.initial_backoff_interval,
+          &mut self.max_backoff_interval,
+        );
       }
 
       self.stats.stream_total.inc();
@@ -957,19 +963,5 @@ impl Api {
         UpstreamEvent::StreamClosed(reason) => return Ok(HandshakeResult::StreamClosure(reason)),
       }
     }
-  }
-
-  /// Constructs a new `ExponentialBackoff` based on the current runtime values.
-  fn backoff_policy(&mut self) -> ExponentialBackoff<SystemClock> {
-    ExponentialBackoffBuilder::<SystemClock>::new()
-      .with_initial_interval(
-        self
-          .initial_backoff_interval
-          .read_mark_update()
-          .unsigned_abs(),
-      )
-      .with_max_interval(self.max_backoff_interval.read_mark_update().unsigned_abs())
-      .with_max_elapsed_time(None)
-      .build()
   }
 }

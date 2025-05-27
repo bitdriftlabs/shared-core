@@ -9,9 +9,8 @@
 #[path = "./uploader_test.rs"]
 mod tests;
 
-use backoff::SystemClock;
+use backoff::ExponentialBackoff;
 use backoff::backoff::Backoff;
-use backoff::exponential::ExponentialBackoff;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
 use bd_bounded_buffer::{MemorySized, SendCounters};
@@ -30,7 +29,7 @@ use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::{BinaryData, Data};
-use bd_runtime::runtime::{ConfigLoader, IntWatch, artifact_upload};
+use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, artifact_upload};
 use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use mockall::automock;
@@ -167,6 +166,8 @@ pub struct Uploader {
   index: VecDeque<Artifact>,
 
   max_entries: IntWatch<bd_runtime::runtime::artifact_upload::MaxPendingEntries>,
+  initial_backoff_interval: DurationWatch<bd_runtime::runtime::api::InitialBackoffInterval>,
+  max_backoff_interval: DurationWatch<bd_runtime::runtime::api::MaxBackoffInterval>,
 
   intent_task_handle: Option<tokio::task::JoinHandle<Result<IntentDecision>>>,
   upload_task_handle: Option<tokio::task::JoinHandle<Result<()>>>,
@@ -215,6 +216,8 @@ impl Uploader {
       file_system,
       index: VecDeque::default(),
       max_entries: runtime.register_watch().unwrap(),
+      initial_backoff_interval: runtime.register_watch().unwrap(),
+      max_backoff_interval: runtime.register_watch().unwrap(),
       upload_task_handle: None,
       intent_task_handle: None,
       stats: Stats::new(&scope),
@@ -256,6 +259,10 @@ impl Uploader {
           self.intent_task_handle = Some(tokio::spawn(Self::perform_intent_negotiation(
             self.data_upload_tx.clone(),
             next.name.clone(),
+            bd_api::backoff_policy(
+              &mut self.initial_backoff_interval,
+              &mut self.max_backoff_interval,
+            ),
           )));
           continue;
         }
@@ -292,6 +299,10 @@ impl Uploader {
           self.data_upload_tx.clone(),
           contents.to_vec(),
           next.name.clone(),
+          bd_api::backoff_policy(
+            &mut self.initial_backoff_interval,
+            &mut self.max_backoff_interval,
+          ),
         )));
       }
 
@@ -574,6 +585,7 @@ impl Uploader {
     data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
     contents: Vec<u8>,
     name: String,
+    mut retry_policy: ExponentialBackoff,
   ) -> Result<()> {
     let path = REPORT_DIRECTORY.join(&name);
     log::debug!("uploading artifact: {}", path.display());
@@ -582,8 +594,6 @@ impl Uploader {
     // wrong. We put no overall timeout as the device might be offline for a long time and we want
     // to give it whatever time it needs to perform the upload.
 
-
-    let mut retry_backoff = Self::make_retry_policy();
 
     loop {
       let upload_uuid = TrackedArtifactUpload::upload_uuid();
@@ -608,7 +618,7 @@ impl Uploader {
         break;
       }
 
-      let delay = retry_backoff.next_backoff().unwrap();
+      let delay = retry_policy.next_backoff().unwrap();
 
       log::debug!("upload of artifact: {name} failed, retrying in {delay:?}");
       tokio::time::sleep(delay).await;
@@ -620,9 +630,8 @@ impl Uploader {
   async fn perform_intent_negotiation(
     data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
     id: String,
+    mut retry_policy: ExponentialBackoff,
   ) -> Result<IntentDecision> {
-    let mut retry_backoff = Self::make_retry_policy();
-
     loop {
       let upload_uuid = TrackedArtifactIntent::upload_uuid();
       let (tracked, response) = TrackedArtifactIntent::new(
@@ -646,22 +655,9 @@ impl Uploader {
         break Ok(response.decision);
       }
 
-      let delay = retry_backoff.next_backoff().unwrap();
+      let delay = retry_policy.next_backoff().unwrap();
       log::debug!("intent negotiation for artifact: {id} failed, retrying in {delay:?}");
       tokio::time::sleep(delay).await;
-    }
-  }
-
-  fn make_retry_policy() -> ExponentialBackoff<SystemClock> {
-    // TODO(snowp): Make more of these parameters runtime configurable.
-
-    // This default sets an initial timeout of 500ms with a max timeout of 1 min (jittered).
-    // By setting max_elapsed_time to None we can safely unwrap `next_backoff`. We use no total
-    // timeout as we'll just keep trying until we eject the pending upload due to hitting the max
-    // number of pending uploads.
-    backoff::exponential::ExponentialBackoff::<SystemClock> {
-      max_elapsed_time: None,
-      ..Default::default()
     }
   }
 }
