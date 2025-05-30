@@ -213,7 +213,7 @@ macro_rules! assert_active_run_traversals {
 
 #[test]
 fn one_state_workflow() {
-  let a = state!("A");
+  let a = state("A");
 
   // test exclusive workflow
   let config = workflow!(exclusive with a);
@@ -228,8 +228,8 @@ fn one_state_workflow() {
 
 #[test]
 fn unknown_state_reference_workflow() {
-  let mut a = state!("A");
-  let b = state!("B");
+  let mut a = state("A");
+  let b = state("B");
 
   declare_transition!(
     &mut a => &b;
@@ -247,11 +247,11 @@ fn unknown_state_reference_workflow() {
 #[test]
 #[allow(clippy::many_single_char_names)]
 fn multiple_start_nodes_initial_fork() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let mut c = state!("C");
-  let d = state!("D");
-  let e = state!("E");
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let d = state("D");
+  let e = state("E");
 
   declare_transition!(
     &mut a => &b;
@@ -358,11 +358,11 @@ fn multiple_start_nodes_initial_fork() {
 #[test]
 #[allow(clippy::many_single_char_names)]
 fn multiple_start_nodes_initial_branching() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let mut c = state!("C");
-  let d = state!("D");
-  let e = state!("E");
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let d = state("D");
+  let e = state("E");
 
   declare_transition!(
     &mut a => &b;
@@ -470,9 +470,9 @@ fn multiple_start_nodes_initial_branching() {
 #[test]
 #[allow(clippy::cognitive_complexity)]
 fn basic_exclusive_workflow() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
     &mut a => &b;
@@ -577,9 +577,9 @@ fn basic_exclusive_workflow() {
 #[test]
 #[allow(clippy::cognitive_complexity)]
 fn basic_parallel_workflow() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
     &mut a => &b;
@@ -668,11 +668,11 @@ fn basic_parallel_workflow() {
 #[allow(clippy::cognitive_complexity)]
 #[allow(clippy::many_single_char_names)]
 fn exclusive_workflow_matched_logs_count_limit() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
-  let mut d = state!("D");
-  let e = state!("E");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
+  let mut d = state("D");
+  let e = state("E");
 
   declare_transition!(
     &mut a => &b;
@@ -789,11 +789,11 @@ fn exclusive_workflow_matched_logs_count_limit() {
 #[allow(clippy::cognitive_complexity)]
 #[allow(clippy::many_single_char_names)]
 fn parallel_workflow_matched_logs_count_limit() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
-  let mut d = state!("D");
-  let e = state!("E");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
+  let mut d = state("D");
+  let e = state("E");
 
   declare_transition!(
     &mut a => &b;
@@ -913,9 +913,9 @@ fn parallel_workflow_matched_logs_count_limit() {
 #[test]
 #[allow(clippy::cognitive_complexity)]
 fn exclusive_workflow_log_rule_count() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
     &mut a => &b;
@@ -1033,9 +1033,9 @@ fn exclusive_workflow_log_rule_count() {
 #[test]
 #[allow(clippy::cognitive_complexity)]
 fn parallel_workflow_log_rule_count() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
     &mut a => &b;
@@ -1190,11 +1190,11 @@ fn parallel_workflow_log_rule_count() {
 #[allow(clippy::cognitive_complexity)]
 #[allow(clippy::many_single_char_names)]
 fn branching_exclusive_workflow() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let mut c = state!("C");
-  let d = state!("D");
-  let e = state!("E");
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let d = state("D");
+  let e = state("E");
 
   declare_transition!(
     &mut a => &b;
@@ -1356,11 +1356,11 @@ fn branching_exclusive_workflow() {
 #[allow(clippy::cognitive_complexity)]
 #[allow(clippy::many_single_char_names)]
 fn branching_parallel_workflow() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let mut c = state!("C");
-  let d = state!("D");
-  let e = state!("E");
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let d = state("D");
+  let e = state("E");
 
   declare_transition!(
     &mut a => &b;
