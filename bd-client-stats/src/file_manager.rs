@@ -5,9 +5,9 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use async_trait::async_trait;
 use bd_api::upload::TrackedStatsUploadRequest;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
+use bd_client_common::file_system::FileSystem;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{Aggregated, Occurred_at};
 use bd_proto::protos::client::api::stats_upload_request::Snapshot;
 use bd_proto::protos::client::api::StatsUploadRequest;
@@ -17,7 +17,8 @@ use bd_runtime::runtime::stats::{MaxAggregatedFilesFlag, MaxAggregationWindowPer
 use bd_runtime::runtime::{ConfigLoader, Watch};
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
 use std::collections::VecDeque;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use std::result::Result::Ok;
 use std::sync::{Arc, LazyLock};
 use time::Duration;
 use tokio::sync::Mutex;
@@ -28,71 +29,6 @@ pub static STATS_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| "stats_uploads"
 /// The index file used for tracking all of the individual files.
 pub static PENDING_AGGREGATION_INDEX_FILE: LazyLock<PathBuf> =
   LazyLock::new(|| "pending_aggregation_index.pb".into());
-
-//
-// FileSystem
-//
-
-/// A filesystem scoped to the SDK directory. This allows for mocking and abstracting away the
-/// relative root of the data directory used by the SDK.
-#[async_trait]
-pub trait FileSystem: Send + Sync {
-  async fn read_file(&self, path: &Path) -> anyhow::Result<Vec<u8>>;
-  async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()>;
-  async fn delete_file(&self, path: &Path) -> anyhow::Result<()>;
-  async fn remove_dir(&self, path: &Path) -> anyhow::Result<()>;
-  async fn create_dir(&self, path: &Path) -> anyhow::Result<()>;
-}
-
-//
-// RealFileSystem
-//
-
-/// The real filesystem implementation which delegates to `tokio::fs`, joining the relative paths
-/// provided in the calls with the SDK directory.
-pub struct RealFileSystem {
-  directory: PathBuf,
-}
-
-impl RealFileSystem {
-  #[must_use]
-  pub const fn new(directory: PathBuf) -> Self {
-    Self { directory }
-  }
-}
-
-#[async_trait]
-impl FileSystem for RealFileSystem {
-  async fn read_file(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
-    Ok(tokio::fs::read(self.directory.join(path)).await?)
-  }
-
-  async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
-    Ok(tokio::fs::write(self.directory.join(path), data).await?)
-  }
-
-  async fn delete_file(&self, path: &Path) -> anyhow::Result<()> {
-    // There are edge cases where the index might have been written but the file was not. We don't
-    // fail if the file is not found.
-    match tokio::fs::remove_file(self.directory.join(path)).await {
-      Ok(()) => Ok(()),
-      Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-      Err(e) => Err(e.into()),
-    }
-  }
-
-  async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {
-    match tokio::fs::remove_dir_all(self.directory.join(path)).await {
-      Ok(()) => Ok(()),
-      Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-      Err(e) => Err(e.into()),
-    }
-  }
-
-  async fn create_dir(&self, path: &Path) -> anyhow::Result<()> {
-    Ok(tokio::fs::create_dir(self.directory.join(path)).await?)
-  }
-}
 
 //
 // StatsUploadRequestHandle

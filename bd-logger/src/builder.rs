@@ -16,6 +16,7 @@ use crate::InitParams;
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
+use bd_client_common::file_system::RealFileSystem;
 use bd_client_common::ConfigurationUpdate;
 use bd_client_stats::stats::{RuntimeWatchTicker, Ticker};
 use bd_client_stats::FlushTrigger;
@@ -147,8 +148,7 @@ impl LoggerBuilder {
     let collector = Collector::new(Some(max_dynamic_stats));
 
     let scope = collector.scope("");
-    let stats = bd_client_stats::Stats::new(collector);
-
+    let stats = bd_client_stats::Stats::new(collector.clone());
 
     let (maybe_stats_flusher, maybe_flusher_trigger) = if self.client_stats {
       let (flush_ticker, upload_ticker) =
@@ -224,9 +224,30 @@ impl LoggerBuilder {
       Arc::new(NoopLogger) as Arc<dyn bd_internal_logging::Logger>
     };
 
+    bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
+
     let data_upload_tx_clone = data_upload_tx.clone();
+    let collector_clone = collector;
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
+
+      let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
+        Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
+        data_upload_tx_clone.clone(),
+        Arc::new(SystemTimeProvider),
+        &runtime_loader,
+        &collector_clone,
+        shutdown_handle.make_shutdown(),
+      );
+
+
+      let mut crash_monitor = bd_crash_handler::Monitor::new(
+        &runtime_loader,
+        &self.params.sdk_directory,
+        self.params.store.clone(),
+        Arc::new(artifact_client),
+        shutdown_handle.make_shutdown(),
+      );
 
       // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
       // improve the perceived performance of the logger initialization.
@@ -251,13 +272,6 @@ impl LoggerBuilder {
           &scope.scope("config"),
         ),
       ));
-
-      let mut crash_monitor = bd_crash_handler::Monitor::new(
-        &runtime_loader,
-        &self.params.sdk_directory,
-        self.params.store.clone(),
-        shutdown_handle.make_shutdown(),
-      );
 
       let api = bd_api::api::Api::new(
         self.params.sdk_directory,
@@ -316,7 +330,11 @@ impl LoggerBuilder {
 
           Ok(())
         },
-        async move { crash_monitor.run().await }
+        async move { crash_monitor.run().await },
+        async move {
+          artifact_uploader.run().await;
+          Ok(())
+        }
       )
       .map(|_| ())
     };

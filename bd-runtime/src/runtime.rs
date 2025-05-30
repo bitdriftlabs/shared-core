@@ -806,3 +806,19 @@ pub mod platform_events {
   // such as memory warnings or application lifecycle changes.
   bool_feature_flag!(ListenerEnabledFlag, "platform_events.enabled", false);
 }
+
+pub mod artifact_upload {
+  bool_feature_flag!(Enabled, "artifact_upload.enabled", false);
+
+  int_feature_flag!(MaxPendingEntries, "artifact_upload.max_pending_entries", 10);
+
+  int_feature_flag!(BufferCountLimit, "artifact_upload.buffer_count_limit", 100);
+
+  static ONE_MEGABYTE: u32 = 1024 * 1024; // 1 MiB in bytes
+
+  int_feature_flag!(
+    BufferByteLimit,
+    "artifact_upload.buffer_byte_limit",
+    ONE_MEGABYTE
+  );
+}

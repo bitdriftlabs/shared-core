@@ -6,6 +6,6 @@ publish      = false
 version      = "1.0.0"
 
 [build-dependencies]
+cc.workspace         = true
+cmake.workspace      = true
 flatc-rust.workspace = true
-cc.workspace = true
-cmake.workspace = true

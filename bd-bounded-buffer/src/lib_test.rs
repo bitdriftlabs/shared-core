@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{channel, MemorySized};
+use super::{MemorySized, channel};
 use tokio_test::{assert_err, assert_ok};
 
 #[derive(Debug)]

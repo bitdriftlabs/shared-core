@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use ahash::AHashMap;
+use bd_bounded_buffer::MemorySized;
 pub use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -183,11 +184,7 @@ pub struct Log {
   pub log_level: LogLevel,
   pub log_type: LogType,
   pub message: StringOrBytes<String, Vec<u8>>,
-  // TODO (Augustyniak): Change the type to `HashMap` to improve performance when matching on
-  // fields and reduce ambiguity by ensuring the uniqueness of field names.
   pub fields: LogFields,
-  // TODO (Augustyniak): Change the type to `HashMap` to improve performance when matching on
-  // fields and reduce ambiguity by ensuring the uniqueness of field names.
   pub matching_fields: LogFields,
   pub session_id: String,
   pub occurred_at: time::OffsetDateTime,
@@ -251,4 +248,34 @@ pub trait LogInterceptor: Send + Sync {
     fields: &mut AnnotatedLogFields,
     matching_fields: &mut AnnotatedLogFields,
   );
+}
+
+impl MemorySized for AnnotatedLogField {
+  fn size(&self) -> usize {
+    size_of_val(self) + self.value.size() + size_of_val(&self.kind)
+  }
+}
+
+impl MemorySized for LogFieldValue {
+  fn size(&self) -> usize {
+    size_of_val(self)
+      + match self {
+        Self::String(s) => s.len(),
+        // TODO(snowp): Can we avoid counting the size of the string if we know that it's "shared"?
+        Self::SharedString(s) => s.len(),
+        Self::Bytes(b) => b.capacity(),
+      }
+  }
+}
+
+impl MemorySized for Log {
+  fn size(&self) -> usize {
+    // The size cannot be computed by just calling a `size_of_val(self)` in here
+    // as that does not account for various heap allocations.
+    size_of_val(self)
+      + self.message.size()
+      + self.fields.size()
+      + self.matching_fields.size()
+      + self.session_id.len()
+  }
 }

@@ -7,11 +7,11 @@
 
 use super::AsyncLogBufferMessage;
 use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay};
-use crate::bounded_buffer::{self, MemorySized};
 use crate::client_config::TailConfigurations;
 use crate::log_replay::{LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
 use bd_api::api::SimpleNetworkQualityProvider;
+use bd_bounded_buffer::{self, MemorySized};
 use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
@@ -102,7 +102,7 @@ impl Setup {
     config_update_rx: tokio::sync::mpsc::Receiver<ConfigUpdate>,
   ) -> (
     AsyncLogBuffer<TestReplay>,
-    bounded_buffer::Sender<AsyncLogBufferMessage>,
+    bd_bounded_buffer::Sender<AsyncLogBufferMessage>,
   ) {
     let replayer = TestReplay::new();
     self.replayer_log_count = replayer.logs_count.clone();
@@ -134,7 +134,7 @@ impl Setup {
     config_update_rx: tokio::sync::mpsc::Receiver<ConfigUpdate>,
   ) -> (
     AsyncLogBuffer<LoggerReplay>,
-    bounded_buffer::Sender<AsyncLogBufferMessage>,
+    bd_bounded_buffer::Sender<AsyncLogBufferMessage>,
   ) {
     AsyncLogBuffer::new(
       self.make_logging_context(),
@@ -240,7 +240,7 @@ fn log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 234;
+  let baseline_log_expected_size = 511;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 

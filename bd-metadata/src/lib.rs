@@ -13,7 +13,8 @@ use std::collections::HashMap;
 // configuration to a client, e.g. if newer clients support config that older clients would reject.
 // Version 27: Added double matching support.
 // Version 28: Added support for generate log action and client report uploads.
-const CONFIGURATION_VERSION: &str = "28";
+// Version 29: Added support for out of the band artifact uploads.
+const CONFIGURATION_VERSION: &str = "29";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

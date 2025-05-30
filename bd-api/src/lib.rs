@@ -5,6 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use backoff::exponential::{ExponentialBackoff, ExponentialBackoffBuilder};
+use backoff::SystemClock;
 use bd_proto::protos::client::api::{
   LogUploadIntentRequest,
   LogUploadRequest,
@@ -14,6 +16,8 @@ use bd_proto::protos::client::api::{
   UploadArtifactIntentRequest,
   UploadArtifactRequest,
 };
+use bd_runtime::runtime::api::{InitialBackoffInterval, MaxBackoffInterval};
+use bd_runtime::runtime::DurationWatch;
 use std::collections::HashMap;
 use upload::{TrackedIntent, TrackedUpload};
 
@@ -126,4 +130,16 @@ pub trait PlatformNetworkStream: Send {
   /// Sends data over the stream.
   /// This may fail due to FFI issues, e.g. an unhandled exception.
   async fn send_data(&mut self, data: &[u8]) -> anyhow::Result<()>;
+}
+
+/// Constructs a new `ExponentialBackoff` based on the current runtime values.
+pub fn backoff_policy(
+  initial_backoff_interval: &mut DurationWatch<InitialBackoffInterval>,
+  max_backoff_interval: &mut DurationWatch<MaxBackoffInterval>,
+) -> ExponentialBackoff<SystemClock> {
+  ExponentialBackoffBuilder::<SystemClock>::new()
+    .with_initial_interval(initial_backoff_interval.read_mark_update().unsigned_abs())
+    .with_max_interval(max_backoff_interval.read_mark_update().unsigned_abs())
+    .with_max_elapsed_time(None)
+    .build()
 }

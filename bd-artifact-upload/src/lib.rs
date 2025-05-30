@@ -5,15 +5,12 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-pub mod api;
-pub mod artifact;
-pub mod matcher;
-pub mod metric;
-pub mod runtime;
+mod uploader;
 
-use super::bdtail::bdtail_config;
-use super::config::v1::config;
-use super::filter::filter;
-use super::logging::payload;
-use super::workflow::workflow;
-use bd_pgv::generated::protos::validate;
+pub use uploader::{Client, MockClient, Uploader};
+
+#[cfg(test)]
+#[ctor::ctor]
+fn global_init() {
+  bd_test_helpers::test_global_init();
+}
