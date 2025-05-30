@@ -491,8 +491,8 @@ impl Setup {
 
 #[tokio::test]
 async fn engine_initialization_and_update() {
-  let mut a = state!("A");
-  let b = state!("B");
+  let mut a = state("A");
+  let b = state("B");
 
   declare_transition!(
     &mut a => &b;
@@ -578,8 +578,8 @@ async fn engine_initialization_and_update() {
 
 #[tokio::test]
 async fn engine_update_after_sdk_update() {
-  let mut a = state!("A");
-  let b = state!("B");
+  let mut a = state("A");
+  let b = state("B");
   // The "flush buffers" action doesn't have streaming configuration. This simulates a scenario
   // where an old SDK version receives "flush buffers" action with a streaming configuration field
   // that it doesn't recognize.
@@ -589,8 +589,8 @@ async fn engine_update_after_sdk_update() {
     do action!(flush_buffers &["trigger_buffer_id"]; id "action_id")
   );
 
-  let mut c = state!("C");
-  let d = state!("D");
+  let mut c = state("C");
+  let d = state("D");
   declare_transition!(
     &mut c => &d;
     when rule!(log_matches!(message == "foo"))
@@ -617,8 +617,8 @@ async fn engine_update_after_sdk_update() {
   // The SDK loads cached configuration from the previous run.
   let mut workflows_engine = setup.make_workflows_engine(cached_config_update).await;
 
-  let mut a = state!("A");
-  let b = state!("B");
+  let mut a = state("A");
+  let b = state("B");
   declare_transition!(
     &mut a => &b;
     when rule!(log_matches!(message == "foo"));
@@ -660,11 +660,11 @@ async fn engine_update_after_sdk_update() {
 #[tokio::test]
 #[allow(clippy::many_single_char_names)]
 async fn persistence_succeeds() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
-  let mut d = state!("D");
-  let e = state!("E");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
+  let mut d = state("D");
+  let e = state("E");
 
   declare_transition!(
     &mut a => &b;
@@ -741,9 +741,9 @@ async fn persistence_succeeds() {
 
 #[tokio::test]
 async fn persistence_skipped_if_no_workflow_progress_is_made() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
     &mut a => &b;
@@ -793,8 +793,8 @@ async fn persistence_skipped_if_no_workflow_progress_is_made() {
 
 #[tokio::test]
 async fn persistence_skipped_if_workflow_stays_in_an_initial_state() {
-  let mut a = state!("A");
-  let b = state!("B");
+  let mut a = state("A");
+  let b = state("B");
 
   declare_transition!(
     &mut a => &b;
@@ -832,10 +832,10 @@ async fn persistence_skipped_if_workflow_stays_in_an_initial_state() {
 
 #[tokio::test]
 async fn persist_workflows_with_at_least_one_non_initial_state_run_only() {
-  let mut a = state!("A");
-  let b = state!("B");
-  let mut c = state!("C");
-  let d = state!("D");
+  let mut a = state("A");
+  let b = state("B");
+  let mut c = state("C");
+  let d = state("D");
 
   declare_transition!(
     &mut a => &b;
@@ -886,9 +886,9 @@ async fn persist_workflows_with_at_least_one_non_initial_state_run_only() {
 
 #[tokio::test]
 async fn needs_persistence_if_workflow_moves_to_an_initial_state() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
     &mut a => &b;
@@ -940,9 +940,9 @@ async fn needs_persistence_if_workflow_moves_to_an_initial_state() {
 #[allow(clippy::many_single_char_names)]
 async fn persistence_is_respected_through_consecutive_workflows() {
   // First workflow
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
     &mut a => &b;
@@ -954,8 +954,8 @@ async fn persistence_is_respected_through_consecutive_workflows() {
   );
 
   // Second workflow
-  let mut x = state!("X");
-  let y = state!("Y");
+  let mut x = state("X");
+  let y = state("Y");
 
   declare_transition!(
     &mut x => &y;
@@ -994,9 +994,9 @@ async fn persistence_is_respected_through_consecutive_workflows() {
 
 #[tokio::test]
 async fn persistence_performed_if_match_is_found_without_advancing() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
     &mut a => &b;
@@ -1037,8 +1037,8 @@ async fn persistence_performed_if_match_is_found_without_advancing() {
 
 #[tokio::test]
 async fn traversals_count_limit_prevents_creation_of_new_workflows() {
-  let mut a = state!("A");
-  let b = state!("B");
+  let mut a = state("A");
+  let b = state("B");
 
   declare_transition!(
     &mut a => &b;
@@ -1121,8 +1121,8 @@ async fn traversals_count_limit_prevents_creation_of_new_workflows() {
 
 #[tokio::test]
 async fn traversals_count_limit_prevents_creation_of_new_workflow_runs() {
-  let mut a = state!("A");
-  let b = state!("B");
+  let mut a = state("A");
+  let b = state("B");
 
   declare_transition!(
     &mut a => &b;
@@ -1171,12 +1171,12 @@ async fn traversals_count_limit_prevents_creation_of_new_workflow_runs() {
 #[tokio::test]
 #[allow(clippy::many_single_char_names)]
 async fn traversals_count_limit_causes_run_removal_after_forking() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let mut c = state!("C");
-  let mut d = state!("D");
-  let e = state!("E");
-  let f = state!("F");
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let mut d = state("D");
+  let e = state("E");
+  let f = state("F");
 
   declare_transition!(
     &mut a => &b;
@@ -1249,11 +1249,11 @@ async fn traversals_count_limit_causes_run_removal_after_forking() {
 #[tokio::test(start_paused = true)]
 #[allow(clippy::many_single_char_names)]
 async fn persistence_to_disk_is_rate_limited() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
-  let mut d = state!("D");
-  let e = state!("E");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
+  let mut d = state("D");
+  let e = state("E");
 
   declare_transition!(
     &mut a => &b;
@@ -1326,9 +1326,9 @@ async fn persistence_to_disk_is_rate_limited() {
 
 #[tokio::test]
 async fn runs_in_initial_state_are_not_persisted() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
     &mut a => &c;
@@ -1406,11 +1406,11 @@ async fn runs_in_initial_state_are_not_persisted() {
 #[tokio::test]
 #[allow(clippy::many_single_char_names)]
 async fn ignore_persisted_state_if_corrupted() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
-  let mut d = state!("D");
-  let e = state!("E");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
+  let mut d = state("D");
+  let e = state("E");
 
   declare_transition!(
     &mut a => &b;
@@ -1494,11 +1494,11 @@ impl bd_client_common::error::Reporter for TestReporter {
 #[tokio::test]
 #[allow(clippy::many_single_char_names)]
 async fn ignore_persisted_state_if_invalid_dir() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
-  let mut d = state!("D");
-  let e = state!("E");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
+  let mut d = state("D");
+  let e = state("E");
 
   // Default reporter panics in tests if unexpected error is found.
   // Register a custom one.
@@ -1606,9 +1606,9 @@ async fn ignore_persisted_state_if_invalid_dir() {
 
 #[tokio::test]
 async fn persists_state_on_periodic_basis() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
     &mut a => &b;
@@ -1658,10 +1658,10 @@ async fn persists_state_on_periodic_basis() {
 
 #[tokio::test]
 async fn engine_processing_log() {
-  let mut a = state!("A");
-  let b = state!("B");
-  let mut c = state!("C");
-  let d = state!("D");
+  let mut a = state("A");
+  let b = state("B");
+  let mut c = state("C");
+  let d = state("D");
 
   declare_transition!(
     &mut a => &b;
@@ -1772,9 +1772,9 @@ async fn engine_processing_log() {
 
 #[tokio::test]
 async fn exclusive_workflow_duration_limit() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
     &mut a => &b;
@@ -1847,9 +1847,9 @@ async fn exclusive_workflow_duration_limit() {
 
 #[tokio::test]
 async fn parallel_workflow_duration_limit() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
     &mut a => &b;
@@ -1929,8 +1929,8 @@ async fn parallel_workflow_duration_limit() {
 
 #[tokio::test]
 async fn log_without_destination() {
-  let mut a = state!("A");
-  let b = state!("B");
+  let mut a = state("A");
+  let b = state("B");
 
   declare_transition!(
     &mut a => &b;
@@ -1973,14 +1973,14 @@ async fn log_without_destination() {
 #[tokio::test]
 #[allow(clippy::many_single_char_names)]
 async fn logs_streaming() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let mut c = state!("C");
-  let mut d = state!("D");
-  let mut e = state!("E");
-  let mut f = state!("F");
-  let mut g = state!("G");
-  let h = state!("H");
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let mut d = state("D");
+  let mut e = state("E");
+  let mut f = state("F");
+  let mut g = state("G");
+  let h = state("H");
 
   declare_transition!(
     &mut a => &b;
@@ -2366,9 +2366,9 @@ async fn logs_streaming() {
 #[tokio::test]
 #[allow(clippy::many_single_char_names)]
 async fn engine_does_not_purge_pending_actions_on_session_id_change() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
       &mut a => &b;
@@ -2474,9 +2474,9 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
 #[tokio::test]
 #[allow(clippy::many_single_char_names)]
 async fn engine_continues_to_stream_upload_not_complete() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
       &mut a => &b;
@@ -2577,11 +2577,11 @@ async fn engine_continues_to_stream_upload_not_complete() {
 #[allow(clippy::cognitive_complexity)]
 #[allow(clippy::many_single_char_names)]
 async fn creating_new_runs_after_first_log_processing() {
-  let mut a = state!("A");
-  let b = state!("B");
-  let mut c = state!("C");
-  let mut d = state!("D");
-  let e = state!("E");
+  let mut a = state("A");
+  let b = state("B");
+  let mut c = state("C");
+  let mut d = state("D");
+  let e = state("E");
 
   declare_transition!(
     &mut a => &b;
@@ -2674,9 +2674,9 @@ async fn creating_new_runs_after_first_log_processing() {
 
 #[tokio::test]
 async fn workflows_state_is_purged_when_session_id_changes() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
     &mut a => &b;
@@ -2775,12 +2775,12 @@ async fn workflows_state_is_purged_when_session_id_changes() {
 #[allow(clippy::cognitive_complexity)]
 #[allow(clippy::many_single_char_names)]
 async fn test_traversals_count_tracking() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let mut c = state!("C");
-  let d = state!("D");
-  let mut e = state!("E");
-  let f = state!("F");
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let d = state("D");
+  let mut e = state("E");
+  let f = state("F");
 
   declare_transition!(
     &mut a => &b;
@@ -2908,10 +2908,10 @@ async fn test_traversals_count_tracking() {
 #[tokio::test]
 #[allow(clippy::cognitive_complexity)]
 async fn test_exclusive_workflow_state_reset() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let mut c = state!("C");
-  let d = state!("D");
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let d = state("D");
 
   declare_transition!(
     &mut a => &b;
@@ -3030,11 +3030,11 @@ async fn test_exclusive_workflow_state_reset() {
 #[allow(clippy::many_single_char_names)]
 #[allow(clippy::cognitive_complexity)]
 async fn test_exclusive_workflow_potential_fork() {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let mut c = state!("C");
-  let mut d = state!("D");
-  let e = state!("E");
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let mut d = state("D");
+  let e = state("E");
 
   declare_transition!(
     &mut a => &b;
@@ -3095,10 +3095,10 @@ async fn test_exclusive_workflow_potential_fork() {
 }
 
 fn sankey_workflow() -> crate::config::Config {
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let mut c = state!("C");
-  let d = state!("D");
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let d = state("D");
 
   let b_clone = b.clone();
 
@@ -3138,13 +3138,13 @@ fn sankey_workflow() -> crate::config::Config {
 async fn generate_log_multiple() {
   let setup = Setup::new();
 
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let mut c = state!("C");
-  let mut d = state!("D");
-  let mut e = state!("E");
-  let f = state!("F");
-  let g = state!("G");
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let mut d = state("D");
+  let mut e = state("E");
+  let f = state("F");
+  let g = state("G");
 
   declare_transition!(
     &mut a => &b;
@@ -3261,9 +3261,9 @@ async fn generate_log_multiple() {
 async fn generate_log_action() {
   let setup = Setup::new();
 
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
 
   declare_transition!(
     &mut a => &b;
@@ -3548,8 +3548,8 @@ async fn sankey_action_persistence_limit() {
 
 #[tokio::test]
 async fn take_screenshot_action() {
-  let mut a = state!("A");
-  let b = state!("B");
+  let mut a = state("A");
+  let b = state("B");
 
   declare_transition!(
     &mut a => &b;

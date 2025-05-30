@@ -453,8 +453,8 @@ fn session_replay_actions() {
   let mut setup = Setup::new();
   setup.send_runtime_update();
 
-  let mut a = state!("A");
-  let b = state!("B");
+  let mut a = state("A");
+  let b = state("B");
   declare_transition!(
     &mut a => &b;
     when rule!(log_matches!(message == "take a screenshot"));
@@ -770,9 +770,9 @@ fn workflow_flush_buffers_action_uploads_buffer() {
 
 #[test]
 fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_starts_streaming() {
-  let mut a = state!("A");
-  let b = state!("B");
-  let c = state!("C");
+  let mut a = state("A");
+  let b = state("B");
+  let c = state("C");
   declare_transition!(
     &mut a => &b;
     when rule!(log_matches!(message == "fire flush trigger buffer and start streaming action!"));
@@ -939,10 +939,10 @@ fn workflow_generate_log_to_histogram() {
   let mut setup = Setup::new_with_metadata(metadata.clone());
   setup.send_runtime_update();
 
-  let mut a = state!("A");
-  let mut b = state!("B");
-  let mut c = state!("C");
-  let d = state!("D");
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let d = state("D");
 
   declare_transition!(
     &mut a => &b;
@@ -1039,8 +1039,8 @@ fn workflow_emit_metric_action_emits_metric() {
 
   setup.send_runtime_update();
 
-  let mut a = state!("A");
-  let b = state!("B");
+  let mut a = state("A");
+  let b = state("B");
 
   declare_transition!(
     &mut a => &b;
@@ -1116,9 +1116,9 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
       "stats cap".to_string(),
     )));
 
-  let mut a = state!("a");
-  let b = state!("b");
-  let c = state!("c");
+  let mut a = state("a");
+  let b = state("b");
+  let c = state("c");
 
   declare_transition!(
     &mut a => &b;

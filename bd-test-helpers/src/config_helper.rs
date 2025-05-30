@@ -203,8 +203,8 @@ pub fn make_benchmarking_configuration_update() -> ConfigurationUpdate {
 
 #[must_use]
 pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationUpdate {
-  let mut a = state!("a");
-  let b = state!("b");
+  let mut a = state("a");
+  let b = state("b");
 
   declare_transition!(
     &mut a => &b;
@@ -219,8 +219,8 @@ pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationU
 
   let workflow1 = workflow_proto!("1"; exclusive with a, b);
 
-  let mut c = state!("c");
-  let d = state!("d");
+  let mut c = state("c");
+  let d = state("d");
 
   declare_transition!(
     &mut c => &d;
@@ -318,8 +318,8 @@ pub fn make_configuration_update_with_workflow_flushing_buffer_on_anything(
   buffer_id: &str,
   buffer_type: buffer_config::Type,
 ) -> ConfigurationUpdate {
-  let mut a = state!("a");
-  let b = state!("b");
+  let mut a = state("a");
+  let b = state("b");
 
   declare_transition!(
     &mut a => &b;
@@ -351,8 +351,8 @@ pub fn make_configuration_update_with_workflow_flushing_buffer(
   buffer_matcher: BufferLogMatcher,
   workflow_matcher: LogMatcher,
 ) -> ConfigurationUpdate {
-  let mut a = state!("a");
-  let b = state!("b");
+  let mut a = state("a");
+  let b = state("b");
 
   declare_transition!(
     &mut a => &b;
@@ -379,8 +379,8 @@ pub fn make_workflow_config_flushing_buffer(
   buffer_id: &str,
   matcher: bd_proto::protos::log_matcher::log_matcher::LogMatcher,
 ) -> Vec<Workflow> {
-  let mut a = state!("a");
-  let b = state!("b");
+  let mut a = state("a");
+  let b = state("b");
 
   declare_transition!(
     &mut a => &b;

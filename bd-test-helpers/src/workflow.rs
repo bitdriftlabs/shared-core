@@ -147,15 +147,13 @@ pub mod macros {
       )
     };
   }
-  /// A macro for creating workflow state with a given identifier.
-  #[macro_export]
-  macro_rules! state {
-    ($id:expr) => {
-      bd_proto::protos::workflow::workflow::workflow::State {
-        id: $id.to_string(),
-        ..Default::default()
-      }
-    };
+
+  #[must_use]
+  pub fn state(id: &str) -> bd_proto::protos::workflow::workflow::workflow::State {
+    bd_proto::protos::workflow::workflow::workflow::State {
+      id: id.to_string(),
+      ..Default::default()
+    }
   }
 
   /// A macro that creates a transition between two states.
@@ -422,7 +420,6 @@ pub mod macros {
     not,
     rule,
     sankey_value,
-    state,
     workflow_proto,
   };
 }

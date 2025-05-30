@@ -11,7 +11,8 @@ use bd_client_stats_store::Collector;
 use bd_log_primitives::{log_level, FieldsRef, LogFields, LogRef, LogType};
 use bd_proto::protos::workflow::workflow::Workflow;
 use bd_runtime::runtime::ConfigLoader;
-use bd_test_helpers::{action, declare_transition, log_matches, rule, state, workflow_proto};
+use bd_test_helpers::workflow::macros::state;
+use bd_test_helpers::{action, declare_transition, log_matches, rule, workflow_proto};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use criterion::{criterion_group, criterion_main, Bencher, Criterion};
@@ -62,8 +63,8 @@ impl Setup {
   }
 
   async fn simple_workflow(&self) -> WorkflowsEngine {
-    let mut a = state!("A");
-    let b = state!("B");
+    let mut a = state("A");
+    let b = state("B");
 
     declare_transition!(
       &mut a => &b;
@@ -78,8 +79,8 @@ impl Setup {
   async fn many_simple_workflows(&self) -> WorkflowsEngine {
     let mut workflows = vec![];
     for i in 0 .. 30 {
-      let mut a = state!("A");
-      let b = state!("B");
+      let mut a = state("A");
+      let b = state("B");
 
       declare_transition!(
         &mut a => &b;
@@ -94,8 +95,8 @@ impl Setup {
     }
 
     for i in 0 .. 30 {
-      let mut a = state!("A");
-      let b = state!("B");
+      let mut a = state("A");
+      let b = state("B");
 
       declare_transition!(
         &mut a => &b;

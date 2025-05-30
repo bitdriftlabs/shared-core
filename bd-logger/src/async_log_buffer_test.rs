@@ -39,7 +39,8 @@ use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
 use bd_test_helpers::runtime::ValueKind;
 use bd_test_helpers::session::InMemoryStorage;
-use bd_test_helpers::{state, workflow_proto};
+use bd_test_helpers::workflow::macros::state;
+use bd_test_helpers::workflow_proto;
 use bd_time::TimeDurationExt;
 use bd_workflows::config::{Config, WorkflowsConfiguration};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -579,7 +580,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   let config_update1 = setup.make_config_update(WorkflowsConfiguration::default());
   let config_update2 = setup.make_config_update(
     WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![Config::new(
-      workflow_proto!(exclusive with state!("a")),
+      workflow_proto!(exclusive with state("a")),
     )
     .unwrap()]),
   );

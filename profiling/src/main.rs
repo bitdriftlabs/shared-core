@@ -167,8 +167,8 @@ impl AnnotatedWorkflowsEngine {
   }
 
   fn create_networking_workflows(workflow_configurations: &mut WorkflowConfigurationsInit) {
-    let mut a = state!("A");
-    let b = state!("B");
+    let mut a = state("A");
+    let b = state("B");
     declare_transition!(
       &mut a => &b;
       when rule!(log_matches!(message == "HTTPRequest"));
@@ -176,8 +176,8 @@ impl AnnotatedWorkflowsEngine {
     );
     workflow_configurations.push(vec![a, b]);
 
-    let mut a = state!("A");
-    let b = state!("B");
+    let mut a = state("A");
+    let b = state("B");
     declare_transition!(
       &mut a => &b;
       when rule!(log_matches!(message == "HTTPResponse"));
@@ -192,8 +192,8 @@ impl AnnotatedWorkflowsEngine {
     );
     workflow_configurations.push(vec![a, b]);
 
-    let mut a = state!("A");
-    let b = state!("B");
+    let mut a = state("A");
+    let b = state("B");
     declare_transition!(
       &mut a => &b;
       when rule!(log_matches!(message == "HTTPResponse"));
@@ -207,8 +207,8 @@ impl AnnotatedWorkflowsEngine {
     );
     workflow_configurations.push(vec![a, b]);
 
-    let mut a = state!("A");
-    let b = state!("B");
+    let mut a = state("A");
+    let b = state("B");
     declare_transition!(
       &mut a => &b;
       when rule!(log_matches!(message == "HTTPResponse"));
@@ -223,8 +223,8 @@ impl AnnotatedWorkflowsEngine {
     );
     workflow_configurations.push(vec![a, b]);
 
-    let mut a = state!("A");
-    let b = state!("B");
+    let mut a = state("A");
+    let b = state("B");
     declare_transition!(
       &mut a => &b;
       when rule!(log_matches!(message == "HTTPResponse"));
@@ -239,8 +239,8 @@ impl AnnotatedWorkflowsEngine {
     );
     workflow_configurations.push(vec![a, b]);
 
-    let mut a = state!("A");
-    let b = state!("B");
+    let mut a = state("A");
+    let b = state("B");
     declare_transition!(
       &mut a => &b;
       when rule!(log_matches!(message == "HTTPResponse"));
@@ -254,8 +254,8 @@ impl AnnotatedWorkflowsEngine {
     );
     workflow_configurations.push(vec![a, b]);
 
-    let mut a = state!("A");
-    let b = state!("B");
+    let mut a = state("A");
+    let b = state("B");
     declare_transition!(
       &mut a => &b;
       when rule!(log_matches!(message == "HTTPResponse"));
@@ -269,8 +269,8 @@ impl AnnotatedWorkflowsEngine {
     );
     workflow_configurations.push(vec![a, b]);
 
-    let mut a = state!("A");
-    let b = state!("B");
+    let mut a = state("A");
+    let b = state("B");
     declare_transition!(
       &mut a => &b;
       when rule!(log_matches!(message == "HTTPResponse"));
@@ -286,8 +286,8 @@ impl AnnotatedWorkflowsEngine {
   }
 
   fn create_general_health_workflows(workflow_configurations: &mut WorkflowConfigurationsInit) {
-    let mut a = state!("A");
-    let b = state!("B");
+    let mut a = state("A");
+    let b = state("B");
     declare_transition!(
       &mut a => &b;
       when rule!(log_matches!(message == "SceneDidActivate"));
@@ -295,8 +295,8 @@ impl AnnotatedWorkflowsEngine {
     );
     workflow_configurations.push(vec![a, b]);
 
-    let mut a = state!("A");
-    let b = state!("B");
+    let mut a = state("A");
+    let b = state("B");
     declare_transition!(
       &mut a => &b;
       when rule!(log_matches!(message ~= ".*"));
