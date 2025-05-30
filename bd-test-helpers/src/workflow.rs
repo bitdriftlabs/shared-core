@@ -148,6 +148,7 @@ pub mod macros {
     };
   }
 
+  #[must_use]
   pub fn state(id: &str) -> bd_proto::protos::workflow::workflow::workflow::State {
     bd_proto::protos::workflow::workflow::workflow::State {
       id: id.to_string(),
