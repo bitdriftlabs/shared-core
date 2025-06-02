@@ -317,8 +317,7 @@ impl Monitor {
               // OffsetDateTime interface. Converting back to seconds would be a lossy operation.
               OffsetDateTime::from_unix_timestamp_nanos(timestamp * 1_000_000).ok()
             })
-          })
-          .unwrap_or_else(OffsetDateTime::now_utc);
+          });
 
         let (crash_reason, crash_details) =
           Self::guess_crash_details(&contents, &crash_reason_paths, &crash_details_paths);
@@ -345,7 +344,7 @@ impl Monitor {
           let Ok(artifact_id) = self.artifact_client.enqueue_upload(
             contents,
             global_state_fields.clone(),
-            Some(timestamp),
+            timestamp,
             self.previous_session_id.clone(),
           ) else {
             // TODO(snowp): Should we fall back to passing it via a field at this point?
@@ -391,7 +390,7 @@ impl Monitor {
 
         logs.push(CrashLog {
           fields,
-          timestamp,
+          timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
           message,
         });
       }
