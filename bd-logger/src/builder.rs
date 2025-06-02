@@ -246,6 +246,11 @@ impl LoggerBuilder {
         &self.params.sdk_directory,
         self.params.store.clone(),
         Arc::new(artifact_client),
+        self
+          .params
+          .session_strategy
+          .previous_process_session_id()
+          .unwrap_or_default(),
         shutdown_handle.make_shutdown(),
       );
 

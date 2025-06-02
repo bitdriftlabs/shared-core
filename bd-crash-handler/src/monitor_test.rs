@@ -30,7 +30,7 @@ use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use bd_test_helpers::session::InMemoryStorage;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset};
 use itertools::Itertools;
-use mockall::predicate::eq;
+use mockall::predicate::{always, eq};
 use std::sync::Arc;
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -69,6 +69,7 @@ impl Setup {
       directory.path(),
       store.clone(),
       upload_client.clone(),
+      "previous_session_id".to_string(),
       shutdown.make_shutdown(),
     );
 
@@ -145,8 +146,8 @@ impl Setup {
   fn expect_artifact_upload(&mut self, content: &[u8], uuid: Uuid, state: LogFields) {
     make_mut(&mut self.upload_client)
       .expect_enqueue_upload()
-      .with(eq(content.to_vec()), eq(state))
-      .returning(move |_, _| Ok(uuid));
+      .with(eq(content.to_vec()), eq(state), always(), always())
+      .returning(move |_, _, _, _| Ok(uuid));
   }
 }
 

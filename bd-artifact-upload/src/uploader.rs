@@ -31,13 +31,14 @@ use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::{BinaryData, Data};
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, artifact_upload};
 use bd_shutdown::ComponentShutdown;
-use bd_time::{OffsetDateTimeExt, TimeProvider};
+use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
 use mockall::automock;
 use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 #[cfg(test)]
 use tests::TestHooks;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 /// Root directory for all files used for storage and uploading.
@@ -57,6 +58,8 @@ struct NewUpload {
   uuid: Uuid,
   contents: Vec<u8>,
   state: LogFields,
+  timestamp: Option<OffsetDateTime>,
+  session_id: String,
 }
 
 // Used for bounded_buffer logs
@@ -105,7 +108,7 @@ impl Stats {
 
 #[automock]
 pub trait Client: Send + Sync {
-  fn enqueue_upload(&self, contents: Vec<u8>, state: LogFields) -> anyhow::Result<Uuid>;
+  fn enqueue_upload(&self, contents: Vec<u8>, state: LogFields, timestamp: Option<OffsetDateTime>, session_id: String) -> anyhow::Result<Uuid>;
 }
 
 pub struct UploadClient {
@@ -115,7 +118,7 @@ pub struct UploadClient {
 
 impl Client for UploadClient {
   /// Dispatches a payload to be uploaded, returning the associated artifact UUID.
-  fn enqueue_upload(&self, contents: Vec<u8>, state: LogFields) -> anyhow::Result<Uuid> {
+  fn enqueue_upload(&self, contents: Vec<u8>, state: LogFields, timestamp: Option<OffsetDateTime>, session_id: String) -> anyhow::Result<Uuid> {
     let uuid = uuid::Uuid::new_v4();
 
     let result = self
@@ -124,6 +127,8 @@ impl Client for UploadClient {
         uuid,
         contents,
         state,
+        timestamp,
+        session_id,
       })
       .inspect_err(|e| log::warn!("failed to enqueue artifact upload: {e:?}"));
 
@@ -259,6 +264,7 @@ impl Uploader {
           self.intent_task_handle = Some(tokio::spawn(Self::perform_intent_negotiation(
             self.data_upload_tx.clone(),
             next.name.clone(),
+            next.time.to_offset_date_time(),
             bd_api::backoff_policy(
               &mut self.initial_backoff_interval,
               &mut self.max_backoff_interval,
@@ -299,6 +305,8 @@ impl Uploader {
           self.data_upload_tx.clone(),
           contents.to_vec(),
           next.name.clone(),
+          next.time.to_offset_date_time(),
+          next.session_id.clone(),
           bd_api::backoff_policy(
             &mut self.initial_backoff_interval,
             &mut self.max_backoff_interval,
@@ -318,9 +326,9 @@ impl Uploader {
 
           return Err(Error::Shutdown);
         }
-        Some(NewUpload {uuid, contents, state}) = self.upload_queued_rx.recv() => {
+        Some(NewUpload {uuid, contents, state, timestamp, session_id}) = self.upload_queued_rx.recv() => {
           log::debug!("tracking artifact: {uuid} for upload");
-          self.track_new_upload(uuid, contents, state).await;
+          self.track_new_upload(uuid, contents, state, session_id, timestamp).await;
         }
         intent_decision = async {
           self.intent_task_handle.as_mut().unwrap().await?
@@ -487,7 +495,14 @@ impl Uploader {
     }
   }
 
-  async fn track_new_upload(&mut self, uuid: Uuid, contents: Vec<u8>, state: LogFields) {
+  async fn track_new_upload(
+    &mut self,
+    uuid: Uuid,
+    contents: Vec<u8>,
+    state: LogFields,
+    session_id: String,
+    timestamp: Option<OffsetDateTime>,
+  ) {
     // If we've reached our limit of entries, stop the entry currently being uploaded (the oldest
     // one) to make space for the newer one.
     // TODO(snowp): Consider also having a bound on the size of the files persisted to disk.
@@ -525,7 +540,10 @@ impl Uploader {
     // of the file being written without a corresponding entry.
     self.index.push_back(Artifact {
       name: uuid.clone(),
-      time: self.time_provider.now().into_proto(),
+      time: timestamp
+        .unwrap_or_else(|| self.time_provider.now())
+        .into_proto(),
+      session_id,
       pending_intent_negotiation: true,
       state_metadata: state
         .into_iter()
@@ -585,6 +603,8 @@ impl Uploader {
     data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
     contents: Vec<u8>,
     name: String,
+    timestamp: OffsetDateTime,
+    session_id: String,
     mut retry_policy: ExponentialBackoff,
   ) -> Result<()> {
     let path = REPORT_DIRECTORY.join(&name);
@@ -604,6 +624,8 @@ impl Uploader {
           type_id: "client_report".to_string(),
           contents: contents.clone(),
           artifact_id: name.clone(),
+          time: timestamp.into_proto(),
+          session_id: session_id.clone(),
           ..Default::default()
         },
       );
@@ -630,6 +652,7 @@ impl Uploader {
   async fn perform_intent_negotiation(
     data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
     id: String,
+    timestamp: OffsetDateTime,
     mut retry_policy: ExponentialBackoff,
   ) -> Result<IntentDecision> {
     loop {
@@ -640,6 +663,7 @@ impl Uploader {
           type_id: "client_report".to_string(),
           artifact_id: id.to_string(),
           intent_uuid: upload_uuid.to_string(),
+          time: timestamp.into_proto(),
           // TODO(snowp): Figure out how to send relevant metadata about the artifact here.
           metadata: vec![],
           ..Default::default()
