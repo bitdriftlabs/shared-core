@@ -33,6 +33,8 @@ use itertools::Itertools;
 use mockall::predicate::eq;
 use std::sync::Arc;
 use tempfile::TempDir;
+use time::macros::datetime;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 struct Setup {
@@ -69,6 +71,7 @@ impl Setup {
       directory.path(),
       store.clone(),
       upload_client.clone(),
+      "previous_session_id".to_string(),
       shutdown.make_shutdown(),
     );
 
@@ -142,12 +145,46 @@ impl Setup {
       .collect()
   }
 
-  fn expect_artifact_upload(&mut self, content: &[u8], uuid: Uuid, state: LogFields) {
+  fn expect_artifact_upload(
+    &mut self,
+    content: &[u8],
+    uuid: Uuid,
+    state: LogFields,
+    timestamp: Option<OffsetDateTime>,
+  ) {
     make_mut(&mut self.upload_client)
       .expect_enqueue_upload()
-      .with(eq(content.to_vec()), eq(state))
-      .returning(move |_, _| Ok(uuid));
+      .with(
+        eq(content.to_vec()),
+        eq(state),
+        eq(timestamp),
+        eq("previous_session_id".to_string()),
+      )
+      .returning(move |_, _, _, _| Ok(uuid));
   }
+}
+#[tokio::test]
+async fn timestamp_propagation() {
+  let mut setup = Setup::new(true).await;
+
+  setup.monitor.try_ensure_directories_exist().await;
+
+  setup
+    .write_config_file(REASON_INFERENCE_CONFIG_FILE, "reason,crash.reason")
+    .await;
+  setup
+    .write_config_file(DETAILS_INFERENCE_CONFIG_FILE, "details[0].cause")
+    .await;
+
+  let timestamp = datetime!(2024-01-01 12:00:00 UTC);
+  let artifact1 = b"{\"reason\":\"foo\",\"details\": [{\"cause\": \"kaboom\"}]}";
+  setup.make_crash(
+    &format!("{}_crash1.envelope", timestamp.unix_timestamp() * 1000),
+    artifact1,
+  );
+
+  let uuid1 = "12345678-1234-5678-1234-567812345671".parse().unwrap();
+  setup.expect_artifact_upload(artifact1, uuid1, [].into(), Some(timestamp));
 }
 
 #[tokio::test]
@@ -177,9 +214,24 @@ async fn crash_reason_inference() {
   let uuid1 = "12345678-1234-5678-1234-567812345671".parse().unwrap();
   let uuid2 = "12345678-1234-5678-1234-567812345672".parse().unwrap();
   let uuid3 = "12345678-1234-5678-1234-567812345673".parse().unwrap();
-  setup.expect_artifact_upload(artifact1, uuid1, [("state".into(), "foo".into())].into());
-  setup.expect_artifact_upload(artifact2, uuid2, [("state".into(), "foo".into())].into());
-  setup.expect_artifact_upload(artifact3, uuid3, [("state".into(), "foo".into())].into());
+  setup.expect_artifact_upload(
+    artifact1,
+    uuid1,
+    [("state".into(), "foo".into())].into(),
+    None,
+  );
+  setup.expect_artifact_upload(
+    artifact2,
+    uuid2,
+    [("state".into(), "foo".into())].into(),
+    None,
+  );
+  setup.expect_artifact_upload(
+    artifact3,
+    uuid3,
+    [("state".into(), "foo".into())].into(),
+    None,
+  );
 
   let logs = setup.process_new_reports().await;
   assert_eq!(3, logs.len());
@@ -230,7 +282,7 @@ async fn crash_handling_missing_reason() {
   setup.make_crash("crash3.envelope", b"{\"crash\":{\"reason\": \"bar\"}}");
 
   let uuid = "12345678-1234-5678-1234-567812345671".parse().unwrap();
-  setup.expect_artifact_upload(b"{\"crash\":{\"reason\": \"bar\"}}", uuid, [].into());
+  setup.expect_artifact_upload(b"{\"crash\":{\"reason\": \"bar\"}}", uuid, [].into(), None);
 
   let logs = setup.process_new_reports().await;
   assert_eq!(1, logs.len());

@@ -81,6 +81,8 @@ pub struct Monitor {
   crash_details_paths_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashDetailsPaths>,
   out_of_band_enabled_flag: BoolWatch<bd_runtime::runtime::artifact_upload::Enabled>,
 
+  previous_session_id: String,
+
   report_directory: PathBuf,
   global_state_reader: global_state::Reader,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
@@ -93,6 +95,7 @@ impl Monitor {
     sdk_directory: &Path,
     store: Arc<bd_device::Store>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
+    previous_session_id: String,
     shutdown: ComponentShutdown,
   ) -> Self {
     runtime.expect_initialized();
@@ -105,6 +108,7 @@ impl Monitor {
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
       global_state_reader: global_state::Reader::new(store),
       artifact_client,
+      previous_session_id,
       shutdown,
     }
   }
@@ -313,8 +317,7 @@ impl Monitor {
               // OffsetDateTime interface. Converting back to seconds would be a lossy operation.
               OffsetDateTime::from_unix_timestamp_nanos(timestamp * 1_000_000).ok()
             })
-          })
-          .unwrap_or_else(OffsetDateTime::now_utc);
+          });
 
         let (crash_reason, crash_details) =
           Self::guess_crash_details(&contents, &crash_reason_paths, &crash_details_paths);
@@ -338,10 +341,12 @@ impl Monitor {
         let crash_field = if *self.out_of_band_enabled_flag.read() {
           log::debug!("uploading report out of band");
 
-          let Ok(artifact_id) = self
-            .artifact_client
-            .enqueue_upload(contents, global_state_fields.clone())
-          else {
+          let Ok(artifact_id) = self.artifact_client.enqueue_upload(
+            contents,
+            global_state_fields.clone(),
+            timestamp,
+            self.previous_session_id.clone(),
+          ) else {
             // TODO(snowp): Should we fall back to passing it via a field at this point?
             log::warn!(
               "Failed to enqueue crash report for upload: {}",
@@ -385,7 +390,7 @@ impl Monitor {
 
         logs.push(CrashLog {
           fields,
-          timestamp,
+          timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
           message,
         });
       }
