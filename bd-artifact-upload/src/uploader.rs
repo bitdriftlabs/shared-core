@@ -108,7 +108,13 @@ impl Stats {
 
 #[automock]
 pub trait Client: Send + Sync {
-  fn enqueue_upload(&self, contents: Vec<u8>, state: LogFields, timestamp: Option<OffsetDateTime>, session_id: String) -> anyhow::Result<Uuid>;
+  fn enqueue_upload(
+    &self,
+    contents: Vec<u8>,
+    state: LogFields,
+    timestamp: Option<OffsetDateTime>,
+    session_id: String,
+  ) -> anyhow::Result<Uuid>;
 }
 
 pub struct UploadClient {
@@ -118,7 +124,13 @@ pub struct UploadClient {
 
 impl Client for UploadClient {
   /// Dispatches a payload to be uploaded, returning the associated artifact UUID.
-  fn enqueue_upload(&self, contents: Vec<u8>, state: LogFields, timestamp: Option<OffsetDateTime>, session_id: String) -> anyhow::Result<Uuid> {
+  fn enqueue_upload(
+    &self,
+    contents: Vec<u8>,
+    state: LogFields,
+    timestamp: Option<OffsetDateTime>,
+    session_id: String,
+  ) -> anyhow::Result<Uuid> {
     let uuid = uuid::Uuid::new_v4();
 
     let result = self
@@ -326,7 +338,13 @@ impl Uploader {
 
           return Err(Error::Shutdown);
         }
-        Some(NewUpload {uuid, contents, state, timestamp, session_id}) = self.upload_queued_rx.recv() => {
+        Some(NewUpload {
+            uuid,
+            contents,
+            state,
+            timestamp,
+            session_id
+        }) = self.upload_queued_rx.recv() => {
           log::debug!("tracking artifact: {uuid} for upload");
           self.track_new_upload(uuid, contents, state, session_id, timestamp).await;
         }
