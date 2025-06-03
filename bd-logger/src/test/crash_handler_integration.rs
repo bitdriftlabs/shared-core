@@ -8,6 +8,7 @@
 use super::setup::Setup;
 use crate::test::setup::SetupOptions;
 use crate::wait_for;
+use bd_log_primitives::LogType;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::{artifact_upload, FeatureFlag};
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -152,8 +153,16 @@ fn crash_reports_artifact_upload() {
       )));
     setup.server.blocking_next_runtime_ack();
 
-    // Log one log to trigger a global state update.
-    setup.logger_handle.log_sdk_start([].into(), 1.seconds());
+    // Log one log to trigger a global state update, blocking to make sure it gets processed.
+    setup.logger_handle.log(
+      0,
+      LogType::Normal,
+      "".into(),
+      [].into(),
+      [].into(),
+      None,
+      true,
+    );
 
     std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();
 
@@ -219,7 +228,6 @@ fn crash_reports_artifact_upload() {
     .iter()
     .find(|log| log.field("_crash_reason") == "crash1")
     .unwrap();
-  log::error!("{:?}", crash1.typed_fields());
   assert_eq!(crash1.message(), "App crashed");
   assert_eq!(crash1.session_id(), initial_session_id);
   assert_ne!(crash1.timestamp(), timestamp);
