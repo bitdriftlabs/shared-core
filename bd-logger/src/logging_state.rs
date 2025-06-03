@@ -72,10 +72,10 @@ impl<T: MemorySized + Debug> LoggingState<T> {
     }
   }
 
-  pub(crate) const fn flush_stats_trigger(&self) -> Option<&FlushTrigger> {
+  pub(crate) const fn flush_stats_trigger(&self) -> &FlushTrigger {
     match self {
-      Self::Uninitialized(context) => context.flush_stats_trigger.as_ref(),
-      Self::Initialized(context) => context.processing_pipeline.flush_stats_trigger.as_ref(),
+      Self::Uninitialized(context) => &context.flush_stats_trigger,
+      Self::Initialized(context) => &context.processing_pipeline.flush_stats_trigger,
     }
   }
 
@@ -97,7 +97,7 @@ pub struct UninitializedLoggingContext<T: MemorySized + Debug> {
   data_upload_tx: Sender<DataUpload>,
   trigger_upload_tx: Sender<TriggerUpload>,
   flush_buffers_tx: Sender<BuffersWithAck>,
-  flush_stats_trigger: Option<FlushTrigger>,
+  flush_stats_trigger: FlushTrigger,
 
   sdk_directory: PathBuf,
   pub(crate) stats: UninitializedLoggingContextStats,
@@ -126,7 +126,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
     trigger_upload_tx: Sender<TriggerUpload>,
     data_upload_tx: Sender<DataUpload>,
     flush_buffers_tx: Sender<BuffersWithAck>,
-    flush_stats_trigger: Option<FlushTrigger>,
+    flush_stats_trigger: FlushTrigger,
     max_count: usize,
     max_size: usize,
   ) -> Self {

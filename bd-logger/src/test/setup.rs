@@ -166,7 +166,6 @@ impl Setup {
       network: Box::new(Self::run_network(server.port, shutdown.make_shutdown())),
       static_metadata: Arc::new(EmptyMetadata),
     })
-    .with_client_stats(true)
     .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
     .with_internal_logger(true)
     .build_dedicated_thread()
@@ -186,7 +185,7 @@ impl Setup {
       _shutdown: shutdown,
       _stats_flush_tx: flush_tick_tx,
       stats_upload_tx: upload_tick_tx,
-      stats_flush_trigger: flush_trigger.unwrap(),
+      stats_flush_trigger: flush_trigger,
     }
   }
 

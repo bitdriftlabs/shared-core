@@ -1971,7 +1971,6 @@ fn runtime_caching() {
       metadata_provider: Arc::new(LogMetadata::default()),
       device,
     })
-    .with_client_stats(true)
     .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
     .build_dedicated_thread()
     .unwrap()

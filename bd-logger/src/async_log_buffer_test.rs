@@ -170,7 +170,7 @@ impl Setup {
       trigger_upload_tx,
       data_upload_tx,
       flush_buffers_tx,
-      Some(flush_stats_trigger),
+      flush_stats_trigger,
       5_000,
       1_000_000,
     )

@@ -701,16 +701,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               self.metadata_collector.remove_field(&field_name);
             },
             AsyncLogBufferMessage::FlushState(completion_tx) => {
-              if let Some(trigger) = self.logging_state.flush_stats_trigger() {
+              let (sender, receiver) = bd_completion::Sender::new();
+              if let Err(e) = self.logging_state.flush_stats_trigger().flush(Some(sender)).await {
+                log::debug!("flushing state: failed to flush stats: {e}");
+              }
 
-                let (sender, receiver) = bd_completion::Sender::new();
-                if let Err(e) = trigger.flush(Some(sender)).await {
-                  log::debug!("flushing state: failed to flush stats: {e}");
-                }
-
-                if let Err(e) = receiver.recv().await {
-                  log::debug!("flushing state: failed to wait for stats flush: {e}");
-                }
+              if let Err(e) = receiver.recv().await {
+                log::debug!("flushing state: failed to wait for stats flush: {e}");
               }
 
               let (sender, receiver) = bd_completion::Sender::new();
