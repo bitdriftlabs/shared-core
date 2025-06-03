@@ -326,7 +326,7 @@ async fn inconsistent_state_extra_file() {
   // Add another file that is not in the index.
   setup
     .filesystem
-    .write_file(&super::REPORT_DIRECTORY.join("other".to_string()), b"1")
+    .write_file(&super::REPORT_DIRECTORY.join("other"), b"1")
     .await
     .unwrap();
 

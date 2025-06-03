@@ -449,7 +449,7 @@ impl Uploader {
         continue;
       }
 
-      if !filenames.contains(file.split('/').last().unwrap()) {
+      if !filenames.contains(file.split('/').next_back().unwrap()) {
         log::debug!("removing artifact {file} from disk, not in index");
         if let Err(e) = self.file_system.delete_file(&PathBuf::from(&file)).await {
           log::warn!("failed to delete artifact {file:?}: {e}");
