@@ -441,10 +441,7 @@ impl Uploader {
       .await
       .unwrap_or_default();
 
-    log::error!("files in report directory: {files:?}");
     for file in files {
-      log::error!("found file in report directory: {file}");
-
       if file.ends_with(REPORT_INDEX_FILE.to_string_lossy().as_ref()) {
         continue;
       }
