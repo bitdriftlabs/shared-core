@@ -82,7 +82,7 @@ pub struct ProcessingPipeline {
   filter_chain: FilterChain,
 
   pub(crate) flush_buffers_tx: Sender<BuffersWithAck>,
-  pub(crate) flush_stats_trigger: Option<FlushTrigger>,
+  pub(crate) flush_stats_trigger: FlushTrigger,
 
   // The channel used to signal to the buffer consumer that it should flush the buffers.
   trigger_upload_tx: Sender<TriggerUpload>,
@@ -101,7 +101,7 @@ impl ProcessingPipeline {
   pub(crate) async fn new(
     data_upload_tx: Sender<DataUpload>,
     flush_buffers_tx: Sender<BuffersWithAck>,
-    flush_stats_trigger: Option<FlushTrigger>,
+    flush_stats_trigger: FlushTrigger,
     trigger_upload_tx: Sender<TriggerUpload>,
     capture_screenshot_handler: CaptureScreenshotHandler,
 
@@ -276,7 +276,7 @@ impl ProcessingPipeline {
 
   async fn finish_blocking_log_processing(
     flush_buffers_tx: tokio::sync::mpsc::Sender<BuffersWithAck>,
-    flush_stats_trigger: Option<FlushTrigger>,
+    flush_stats_trigger: FlushTrigger,
     matching_buffers: BTreeSet<Cow<'_, str>>,
   ) -> anyhow::Result<()> {
     // The processing of a blocking log is about to complete.
@@ -312,19 +312,15 @@ impl ProcessingPipeline {
     }
 
     // If the log is blocking, we need to flush the stats to disk.
-    if let Some(flush_stats_tx) = &flush_stats_trigger {
-      log::debug!("blocking log: sending signal to flush stats to disk");
-      let (sender, receiver) = bd_completion::Sender::new();
-      if let Err(e) = flush_stats_tx.flush(Some(sender)).await {
-        anyhow::bail!("blocking log: failed to send signal to flush stats: {e:?}");
-      }
-
-      return receiver.recv().await.map_err(|e| {
-        anyhow::anyhow!("failed to await receiving flush stats trigger completion: {e:?}")
-      });
+    log::debug!("blocking log: sending signal to flush stats to disk");
+    let (sender, receiver) = bd_completion::Sender::new();
+    if let Err(e) = flush_stats_trigger.flush(Some(sender)).await {
+      anyhow::bail!("blocking log: failed to send signal to flush stats: {e:?}");
     }
 
-    Ok(())
+    receiver.recv().await.map_err(|e| {
+      anyhow::anyhow!("failed to await receiving flush stats trigger completion: {e:?}")
+    })
   }
 
   fn write_to_buffers<'a>(

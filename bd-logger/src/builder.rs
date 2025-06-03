@@ -55,7 +55,6 @@ pub struct LoggerBuilder {
   params: InitParams,
 
   component_shutdown_handle: Option<ComponentShutdownTriggerHandle>,
-  client_stats: bool,
   client_stats_tickers: Option<(Box<dyn Ticker>, Box<dyn Ticker>)>,
   internal_logger: bool,
 }
@@ -67,7 +66,6 @@ impl LoggerBuilder {
     Self {
       params,
       component_shutdown_handle: None,
-      client_stats: false,
       client_stats_tickers: None,
       internal_logger: false,
     }
@@ -80,14 +78,6 @@ impl LoggerBuilder {
   #[must_use]
   pub fn with_shutdown_handle(mut self, handle: ComponentShutdownTriggerHandle) -> Self {
     self.component_shutdown_handle = Some(handle);
-    self
-  }
-
-  /// Enables client stats, which results in collected metrics being reported via the API mux at
-  /// regular intervals. This is required for a lot of workflows-related features.
-  #[must_use]
-  pub const fn with_client_stats(mut self, client_stats: bool) -> Self {
-    self.client_stats = client_stats;
     self
   }
 
@@ -122,7 +112,7 @@ impl LoggerBuilder {
     Logger,
     tokio::sync::mpsc::Sender<DataUpload>,
     Pin<Box<impl Future<Output = anyhow::Result<()>> + 'static>>,
-    Option<FlushTrigger>,
+    FlushTrigger,
   )> {
     log::info!(
       "bitdrift Capture SDK: {:?}",
@@ -150,7 +140,7 @@ impl LoggerBuilder {
     let scope = collector.scope("");
     let stats = bd_client_stats::Stats::new(collector.clone());
 
-    let (maybe_stats_flusher, maybe_flusher_trigger) = if self.client_stats {
+    let (stats_flusher, flusher_trigger) = {
       let (flush_ticker, upload_ticker) =
         if let Some((flush_ticker, upload_ticker)) = self.client_stats_tickers {
           (flush_ticker, upload_ticker)
@@ -166,12 +156,7 @@ impl LoggerBuilder {
         upload_ticker,
       )?;
 
-      (
-        Some(flush_handles.flusher),
-        Some(flush_handles.flush_trigger),
-      )
-    } else {
-      (None, None)
+      (flush_handles.flusher, flush_handles.flush_trigger)
     };
     let (trigger_upload_tx, trigger_upload_rx) = tokio::sync::mpsc::channel(1);
     let (flush_buffers_tx, flush_buffers_rx) = tokio::sync::mpsc::channel(1);
@@ -187,7 +172,7 @@ impl LoggerBuilder {
         trigger_upload_tx.clone(),
         data_upload_tx.clone(),
         flush_buffers_tx,
-        maybe_flusher_trigger.clone(),
+        flusher_trigger.clone(),
         512,
         1024 * 1024,
       ),
@@ -239,7 +224,6 @@ impl LoggerBuilder {
         &collector_clone,
         shutdown_handle.make_shutdown(),
       );
-
 
       let mut crash_monitor = bd_crash_handler::Monitor::new(
         &runtime_loader,
@@ -329,10 +313,7 @@ impl LoggerBuilder {
         },
         async move { buffer_manager.process_flushes(flush_buffers_rx).await },
         async move {
-          if let Some(stats_flusher) = maybe_stats_flusher {
-            stats_flusher.periodic_flush().await;
-          }
-
+          stats_flusher.periodic_flush().await;
           Ok(())
         },
         async move { crash_monitor.run().await },
@@ -348,7 +329,7 @@ impl LoggerBuilder {
       logger,
       data_upload_tx,
       Box::pin(logger_future),
-      maybe_flusher_trigger,
+      flusher_trigger,
     ))
   }
 
@@ -356,20 +337,16 @@ impl LoggerBuilder {
   /// running the logger outside of a tokio runtime.
   pub fn build_dedicated_thread(
     self,
-  ) -> anyhow::Result<(
-    Logger,
-    tokio::sync::mpsc::Sender<DataUpload>,
-    Option<FlushTrigger>,
-  )> {
+  ) -> anyhow::Result<(Logger, tokio::sync::mpsc::Sender<DataUpload>, FlushTrigger)> {
     if self.component_shutdown_handle.is_some() {
       anyhow::bail!("Cannot use a dedicated thread with a custom shutdown handle");
     }
 
-    let (logger, ch, future, maybe_flush_trigger) = self.build()?;
+    let (logger, ch, future, flush_trigger) = self.build()?;
 
     Self::run_logger_runtime(future)?;
 
-    Ok((logger, ch, maybe_flush_trigger))
+    Ok((logger, ch, flush_trigger))
   }
 
   /// Creates a new tokio runtime on a dedicated thread suitable for running the logger. The
