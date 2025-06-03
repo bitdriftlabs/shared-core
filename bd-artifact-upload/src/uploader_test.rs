@@ -134,6 +134,68 @@ impl Setup {
 }
 
 #[tokio::test]
+async fn pending_uploads_on_startup() {
+  let mut setup = Setup::new(10).await;
+
+  let timestamp = datetime!(2023-10-01 12:00:00 UTC);
+  let id = setup
+    .client
+    .enqueue_upload(
+      b"abc".to_vec(),
+      [].into(),
+      Some(timestamp),
+      "session_id".to_string(),
+    )
+    .unwrap();
+
+  setup.entry_received_rx.recv().await.unwrap();
+
+  let mut setup = setup.reinitialize().await;
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+      assert_eq!(intent.payload.artifact_id, id.to_string());
+      assert_eq!(intent.payload.type_id, "client_report");
+      assert_eq!(intent.payload.time, timestamp.into_proto());
+
+      assert!(intent.response_tx.is_closed());
+  });
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+      assert_eq!(intent.payload.artifact_id, id.to_string());
+      assert_eq!(intent.payload.type_id, "client_report");
+      assert_eq!(intent.payload.time, timestamp.into_proto());
+
+      intent.response_tx.send(IntentResponse {
+          uuid: intent.uuid,
+          decision: bd_api::upload::IntentDecision::UploadImmediately }).unwrap();
+  });
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+      assert_eq!(upload.payload.artifact_id, id.to_string());
+      assert_eq!(upload.payload.contents, b"abc");
+      assert_eq!(upload.payload.type_id, "client_report");
+      assert_eq!(upload.payload.time, timestamp.into_proto());
+      assert_eq!(upload.payload.session_id, "session_id");
+
+      upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true}).unwrap();
+  });
+
+  setup.upload_complete_rx.recv().await.unwrap();
+
+  let files = setup.filesystem.files();
+  let index_file = &files[&super::REPORT_DIRECTORY
+    .join(&*super::REPORT_INDEX_FILE)
+    .to_str()
+    .unwrap()
+    .to_string()];
+  let index_file: ArtifactUploadIndex = read_compressed_protobuf(index_file).unwrap();
+  assert_eq!(index_file, ArtifactUploadIndex::default());
+}
+
+#[tokio::test]
 async fn basic_flow() {
   let mut setup = Setup::new(10).await;
 
