@@ -33,7 +33,7 @@ use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, artifact_upload
 use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
 use mockall::automock;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 #[cfg(test)]
@@ -323,6 +323,7 @@ impl Uploader {
             &mut self.initial_backoff_interval,
             &mut self.max_backoff_interval,
           ),
+          next.state_metadata.clone(),
         )));
       }
 
@@ -440,18 +441,17 @@ impl Uploader {
       .await
       .unwrap_or_default();
 
+    log::error!("files in report directory: {files:?}");
     for file in files {
-      if file == REPORT_INDEX_FILE.to_string_lossy() {
+      log::error!("found file in report directory: {file}");
+
+      if file.ends_with(REPORT_INDEX_FILE.to_string_lossy().as_ref()) {
         continue;
       }
 
-      if !filenames.contains(&file) {
+      if !filenames.contains(file.split('/').last().unwrap()) {
         log::debug!("removing artifact {file} from disk, not in index");
-        if let Err(e) = self
-          .file_system
-          .delete_file(&REPORT_DIRECTORY.join(&file))
-          .await
-        {
+        if let Err(e) = self.file_system.delete_file(&PathBuf::from(&file)).await {
           log::warn!("failed to delete artifact {file:?}: {e}");
         }
       }
@@ -601,6 +601,8 @@ impl Uploader {
   }
 
   async fn write_index(&self) {
+    log::debug!("writing index to disk");
+
     let index = ArtifactUploadIndex {
       artifact: self.index.iter().cloned().collect(),
       ..Default::default()
@@ -624,6 +626,7 @@ impl Uploader {
     timestamp: OffsetDateTime,
     session_id: String,
     mut retry_policy: ExponentialBackoff,
+    state_metadata: HashMap<String, Data>,
   ) -> Result<()> {
     let path = REPORT_DIRECTORY.join(&name);
     log::debug!("uploading artifact: {}", path.display());
@@ -644,6 +647,7 @@ impl Uploader {
           artifact_id: name.clone(),
           time: timestamp.into_proto(),
           session_id: session_id.clone(),
+          state_metadata: state_metadata.clone(),
           ..Default::default()
         },
       );

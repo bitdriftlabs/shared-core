@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::UploadClient;
-use crate::uploader::{Client, REPORT_INDEX_FILE};
+use crate::uploader::{Client, REPORT_DIRECTORY, REPORT_INDEX_FILE};
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentResponse, UploadResponse};
@@ -14,6 +14,8 @@ use bd_client_common::file::read_compressed_protobuf;
 use bd_client_common::file_system::{FileSystem, TestFileSystem};
 use bd_client_stats_store::Collector;
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
+use bd_proto::protos::logging::payload::Data;
+use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::{FeatureFlag, artifact_upload};
 use bd_runtime::test::TestConfigLoader;
 use bd_test_helpers::runtime::ValueKind;
@@ -134,68 +136,6 @@ impl Setup {
 }
 
 #[tokio::test]
-async fn pending_uploads_on_startup() {
-  let mut setup = Setup::new(10).await;
-
-  let timestamp = datetime!(2023-10-01 12:00:00 UTC);
-  let id = setup
-    .client
-    .enqueue_upload(
-      b"abc".to_vec(),
-      [].into(),
-      Some(timestamp),
-      "session_id".to_string(),
-    )
-    .unwrap();
-
-  setup.entry_received_rx.recv().await.unwrap();
-
-  let mut setup = setup.reinitialize().await;
-
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-      assert_eq!(intent.payload.artifact_id, id.to_string());
-      assert_eq!(intent.payload.type_id, "client_report");
-      assert_eq!(intent.payload.time, timestamp.into_proto());
-
-      assert!(intent.response_tx.is_closed());
-  });
-
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-      assert_eq!(intent.payload.artifact_id, id.to_string());
-      assert_eq!(intent.payload.type_id, "client_report");
-      assert_eq!(intent.payload.time, timestamp.into_proto());
-
-      intent.response_tx.send(IntentResponse {
-          uuid: intent.uuid,
-          decision: bd_api::upload::IntentDecision::UploadImmediately }).unwrap();
-  });
-
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
-      assert_eq!(upload.payload.artifact_id, id.to_string());
-      assert_eq!(upload.payload.contents, b"abc");
-      assert_eq!(upload.payload.type_id, "client_report");
-      assert_eq!(upload.payload.time, timestamp.into_proto());
-      assert_eq!(upload.payload.session_id, "session_id");
-
-      upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true}).unwrap();
-  });
-
-  setup.upload_complete_rx.recv().await.unwrap();
-
-  let files = setup.filesystem.files();
-  let index_file = &files[&super::REPORT_DIRECTORY
-    .join(&*super::REPORT_INDEX_FILE)
-    .to_str()
-    .unwrap()
-    .to_string()];
-  let index_file: ArtifactUploadIndex = read_compressed_protobuf(index_file).unwrap();
-  assert_eq!(index_file, ArtifactUploadIndex::default());
-}
-
-#[tokio::test]
 async fn basic_flow() {
   let mut setup = Setup::new(10).await;
 
@@ -204,7 +144,7 @@ async fn basic_flow() {
     .client
     .enqueue_upload(
       b"abc".to_vec(),
-      [].into(),
+      [("foo".into(), "bar".into())].into(),
       Some(timestamp),
       "session_id".to_string(),
     )
@@ -228,6 +168,10 @@ async fn basic_flow() {
       assert_eq!(upload.payload.type_id, "client_report");
       assert_eq!(upload.payload.time, timestamp.into_proto());
       assert_eq!(upload.payload.session_id, "session_id");
+      assert_eq!(upload.payload.state_metadata, [("foo".into(), Data {
+          data_type: Some(Data_type::StringData("bar".to_string())),
+          ..Default::default()
+      })].into());
 
       upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true}).unwrap();
   });
@@ -365,6 +309,70 @@ async fn inconsistent_state_missing_file() {
       assert_eq!(intent.payload.type_id, "client_report");
 
   });
+}
+
+#[tokio::test]
+async fn inconsistent_state_extra_file() {
+  let mut setup = Setup::new(2).await;
+  let id1 = setup
+    .client
+    .enqueue_upload(b"1".to_vec(), [].into(), None, "session_id".to_string())
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id1.to_string()
+  );
+
+  // Add another file that is not in the index.
+  setup
+    .filesystem
+    .write_file(&super::REPORT_DIRECTORY.join("other".to_string()), b"1")
+    .await
+    .unwrap();
+
+  let mut setup = setup.reinitialize().await;
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+
+  // First we'll see the intent negotiation from the first instance. Since we terminated the task
+  // we expect to see the response channel already closed.
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+      assert_eq!(intent.payload.artifact_id, id1.to_string());
+      assert_eq!(intent.payload.type_id, "client_report");
+      assert!(intent.response_tx.is_closed());
+  });
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+      assert_eq!(intent.payload.artifact_id, id1.to_string());
+      assert_eq!(intent.payload.type_id, "client_report");
+
+      intent.response_tx.send(IntentResponse {
+          uuid: intent.uuid,
+          decision: bd_api::upload::IntentDecision::UploadImmediately }).unwrap();
+  });
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+      assert_eq!(upload.payload.artifact_id, id1.to_string());
+      assert_eq!(upload.payload.type_id, "client_report");
+
+      upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true}).unwrap();
+  });
+  setup.upload_complete_rx.recv().await.unwrap();
+
+  let files = setup
+    .filesystem
+    .list_files(&REPORT_DIRECTORY)
+    .await
+    .unwrap();
+  assert_eq!(files.len(), 1);
+  assert!(
+    files[0].ends_with(
+      &super::REPORT_DIRECTORY
+        .join(&*REPORT_INDEX_FILE)
+        .to_str()
+        .unwrap()
+    )
+  );
 }
 
 #[tokio::test]
