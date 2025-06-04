@@ -293,7 +293,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // Wait for log processing to be completed only if passed `blocking`
     // argument is equal to `true` and we created a relevant one shot Tokio channel.
     if let Some(mut rx) = log_processing_completed_rx_option {
-      let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+      let deadline = std::time::Instant::now() + std::time::Duration::from_secs(4);
       loop {
         if std::time::Instant::now() > deadline {
           log::debug!("enqueue_log: timeout waiting for log processing completion");
@@ -349,13 +349,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     tx.try_send(AsyncLogBufferMessage::FlushState(Some(completion_tx)))?;
 
-    // Wait for the processing to be completed only if `blocking` is `true`.
+    // Only wait with a timeout if blocking is enabled
     if blocking {
         if let Some(completion_rx) = Some(completion_rx) {
             let handle = tokio::runtime::Handle::current();
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(4);
 
             loop {
+
                 if std::time::Instant::now() > deadline {
                     log::debug!("flush state: timeout waiting for completion");
                     break;
@@ -377,7 +378,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     Ok(())
   }
-
 
   async fn process_all_logs(&mut self, log: LogLine) -> anyhow::Result<()> {
     let mut logs = VecDeque::new();
