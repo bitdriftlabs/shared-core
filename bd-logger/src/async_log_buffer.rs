@@ -300,10 +300,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       match blocking_wait_with_timeout(&mut rx, BLOCKING_FLUSH_TIMEOUT_SECONDS) {
         Ok(()) => log::debug!("enqueue_log: log processing completion received"),
         Err(WaitError::Timeout) => {
-          log::debug!("enqueue_log: timeout waiting for log processing completion")
+          log::debug!("enqueue_log: timeout waiting for log processing completion");
         },
         Err(WaitError::ChannelClosed) => {
-          log::debug!("enqueue_log: channel closed before completion received")
+          log::debug!("enqueue_log: channel closed before completion received");
         },
       }
     }
@@ -354,7 +354,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         match result {
           Ok(Ok(())) => log::debug!("flush state: completion received"),
           Ok(Err(e)) => {
-            log::debug!("flush state: received an error when waiting for completion: {e}")
+            log::debug!("flush state: received an error when waiting for completion: {e}");
           },
           Err(_) => log::debug!("flush state: timeout waiting for completion"),
         }
