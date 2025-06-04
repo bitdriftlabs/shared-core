@@ -45,8 +45,8 @@ use std::collections::VecDeque;
 use std::mem::size_of_val;
 use std::sync::Arc;
 use time::OffsetDateTime;
-use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::{mpsc, oneshot};
+use tokio::sync::oneshot::error::TryRecvError;
 
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {
@@ -345,30 +345,39 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     tx: &Sender<AsyncLogBufferMessage>,
     blocking: bool,
   ) -> Result<(), TrySendError> {
-    let (completion_tx, completion_rx) = if blocking {
-      let (tx, rx) = bd_completion::Sender::new();
-      (Some(tx), Some(rx))
-    } else {
-      (None, None)
-    };
+    let (completion_tx, completion_rx) = bd_completion::Sender::new();
 
-    tx.try_send(AsyncLogBufferMessage::FlushState(completion_tx))?;
+    tx.try_send(AsyncLogBufferMessage::FlushState(Some(completion_tx)))?;
 
-    // Wait for the processing to be completed only if passed `blocking` argument is equal to
-    // `true`.
-    if let Some(completion_rx) = completion_rx {
-      match &completion_rx.blocking_recv() {
-        Ok(()) => {
-          log::debug!("flush state: completion received");
-        },
-        Err(e) => {
-          log::debug!("flush state: received an error when waiting for completion: {e}");
-        },
-      }
+    // Wait for the processing to be completed only if `blocking` is `true`.
+    if blocking {
+        if let Some(completion_rx) = Some(completion_rx) {
+            let handle = tokio::runtime::Handle::current();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+
+            loop {
+                if std::time::Instant::now() > deadline {
+                    log::debug!("flush state: timeout waiting for completion");
+                    break;
+                }
+
+                match handle.block_on(completion_rx.recv()) {
+                    Ok(()) => {
+                        log::debug!("flush state: completion received");
+                        break;
+                    },
+                    Err(e) => {
+                        log::debug!("flush state: received an error when waiting for completion: {e}");
+                        break;
+                    },
+                }
+            }
+        }
     }
 
     Ok(())
   }
+
 
   async fn process_all_logs(&mut self, log: LogLine) -> anyhow::Result<()> {
     let mut logs = VecDeque::new();
