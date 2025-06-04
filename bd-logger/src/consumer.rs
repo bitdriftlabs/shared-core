@@ -258,7 +258,7 @@ impl BufferUploadManager {
       // When a new buffer is created, spawn a new task which is responsible for
       // consuming logs from this buffer continuously.
       BufferEvent::ContinuousBufferCreated(id, buffer) => {
-        log::debug!("creating new continous upload task for buffer {id}");
+        log::debug!("creating new continuous upload task for buffer {id}");
         let (uploader, shutdown_trigger) = self.new_continous_consumer(id, buffer)?;
         tokio::spawn(
           uploader

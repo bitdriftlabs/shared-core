@@ -794,12 +794,6 @@ pub mod workflows {
   );
 }
 
-pub mod filters {
-  // Controls whether the filter chain is enabled. If disabled, the filter chain configuration from
-  // the server is parsed but not applied to emitted logs.
-  bool_feature_flag!(FilterChainEnabledFlag, "filter_chain.enabled", false);
-}
-
 pub mod platform_events {
   // Controls whether the platform events listener is enabled or not. In practice, it determines
   // whether the platform layer emits events in response to various host platform-provided events

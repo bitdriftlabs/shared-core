@@ -14,8 +14,7 @@ use bd_client_stats::FlushTrigger;
 use bd_log_filter::FilterChain;
 use bd_log_primitives::{log_level, FieldsRef, Log, LogRef, LogType};
 use bd_matcher::buffer_selector::BufferSelector;
-use bd_runtime::runtime::filters::FilterChainEnabledFlag;
-use bd_runtime::runtime::{BoolWatch, ConfigLoader};
+use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
@@ -91,9 +90,6 @@ pub struct ProcessingPipeline {
   buffers_to_flush_rx: Receiver<BuffersToFlush>,
   capture_screenshot_handler: CaptureScreenshotHandler,
 
-  filter_chain_enabled_flag: BoolWatch<FilterChainEnabledFlag>,
-  filter_chain_enabled: bool,
-
   stats: InitializedLoggingContextStats,
 }
 
@@ -111,9 +107,6 @@ impl ProcessingPipeline {
     runtime: &ConfigLoader,
     stats: InitializedLoggingContextStats,
   ) -> Self {
-    let mut filter_chain_enabled_flag = runtime.register_watch().unwrap();
-    let filter_chain_enabled = *filter_chain_enabled_flag.read_mark_update();
-
     let (workflows_engine, buffers_to_flush_rx) = {
       let (mut workflows_engine, flush_buffers_tx) = WorkflowsEngine::new(
         &stats.root_scope,
@@ -149,9 +142,6 @@ impl ProcessingPipeline {
 
       capture_screenshot_handler,
 
-      filter_chain_enabled_flag,
-      filter_chain_enabled,
-
       stats,
     }
   }
@@ -178,10 +168,8 @@ impl ProcessingPipeline {
   ) -> anyhow::Result<Vec<Log>> {
     self.stats.log_level_counters.record(log.log_level);
 
-    if self.filter_chain_enabled {
-      // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
-      self.filter_chain.process(&mut log);
-    }
+    // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
+    self.filter_chain.process(&mut log);
 
     let log = &LogRef {
       log_type: log.log_type,
@@ -436,7 +424,7 @@ impl ProcessingPipeline {
         },
       );
       if let Err(e) = result {
-        log::debug!("failed to make a synhetic log: {e}");
+        log::debug!("failed to make a synthetic log: {e}");
         return None;
       }
 
@@ -471,9 +459,6 @@ impl ProcessingPipeline {
           }
         }
       },
-      Ok(()) = self.filter_chain_enabled_flag.changed() => {
-        self.filter_chain_enabled = *self.filter_chain_enabled_flag.read_mark_update();
-      }
     }
   }
 }
