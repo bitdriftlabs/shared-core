@@ -16,6 +16,7 @@ use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingConte
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::PreConfigBuffer;
+use crate::timeout::{blocking_wait_with_timeout, WaitError};
 use crate::{internal_report, network};
 use anyhow::anyhow;
 use bd_bounded_buffer::{channel, MemorySized, Receiver, Sender, TrySendError};
@@ -46,7 +47,6 @@ use std::mem::size_of_val;
 use std::sync::Arc;
 use std::time::Duration;
 use time::OffsetDateTime;
-use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::{mpsc, oneshot};
 
 // The blocking flush timeout threshold given that the Fatal ANR threshold on Android 5 seconds
@@ -297,29 +297,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // Wait for log processing to be completed only if passed `blocking`
     // argument is equal to `true` and we created a relevant one shot Tokio channel.
     if let Some(mut rx) = log_processing_completed_rx_option {
-      let deadline = std::time::Instant::now() + BLOCKING_FLUSH_TIMEOUT_SECONDS;
-      loop {
-        if std::time::Instant::now() > deadline {
-          log::debug!("enqueue_log: timeout waiting for log processing completion");
-          break;
-        }
-
-        match rx.try_recv() {
-          Ok(()) => {
-            log::debug!("enqueue_log: log processing completion received");
-            break;
-          },
-          Err(TryRecvError::Closed) => {
-            log::debug!(
-              "enqueue_log: received an error when waiting for log processing completion: channel \
-               closed"
-            );
-            break;
-          },
-          Err(TryRecvError::Empty) => {
-            std::thread::sleep(std::time::Duration::from_millis(5));
-          },
-        }
+      match blocking_wait_with_timeout(&mut rx, BLOCKING_FLUSH_TIMEOUT_SECONDS) {
+        Ok(()) => log::debug!("enqueue_log: log processing completion received"),
+        Err(WaitError::Timeout) => {
+          log::debug!("enqueue_log: timeout waiting for log processing completion")
+        },
+        Err(WaitError::ChannelClosed) => {
+          log::debug!("enqueue_log: channel closed before completion received")
+        },
       }
     }
 
@@ -375,7 +360,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         }
       }
     }
-
 
     Ok(())
   }
