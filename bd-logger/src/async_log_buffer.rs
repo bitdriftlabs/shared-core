@@ -44,9 +44,13 @@ use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdown
 use std::collections::VecDeque;
 use std::mem::size_of_val;
 use std::sync::Arc;
+use std::time::Duration;
 use time::OffsetDateTime;
-use tokio::sync::{mpsc, oneshot};
 use tokio::sync::oneshot::error::TryRecvError;
+use tokio::sync::{mpsc, oneshot};
+
+// The blocking flush timeout threshold given that the Fatal ANR threshold on Android 5 seconds
+const BLOCKING_FLUSH_TIMEOUT_SECONDS: Duration = Duration::from_secs(4);
 
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {
@@ -293,7 +297,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // Wait for log processing to be completed only if passed `blocking`
     // argument is equal to `true` and we created a relevant one shot Tokio channel.
     if let Some(mut rx) = log_processing_completed_rx_option {
-      let deadline = std::time::Instant::now() + std::time::Duration::from_secs(4);
+      let deadline = std::time::Instant::now() + BLOCKING_FLUSH_TIMEOUT_SECONDS;
       loop {
         if std::time::Instant::now() > deadline {
           log::debug!("enqueue_log: timeout waiting for log processing completion");
@@ -345,39 +349,49 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     tx: &Sender<AsyncLogBufferMessage>,
     blocking: bool,
   ) -> Result<(), TrySendError> {
-    let (completion_tx, completion_rx) = bd_completion::Sender::new();
+    // Create the completion channel only if blocking is enabled.
+    let (completion_tx, completion_rx) = if blocking {
+      let (tx, rx) = bd_completion::Sender::new();
+      (Some(tx), Some(rx))
+    } else {
+      (None, None)
+    };
 
-    tx.try_send(AsyncLogBufferMessage::FlushState(Some(completion_tx)))?;
+    // Send the flush message. If blocking is off, `completion_tx` is None.
+    tx.try_send(AsyncLogBufferMessage::FlushState(completion_tx))?;
 
-    // Only wait with a timeout if blocking is enabled
+    // Wait for the processing to be completed only if passed `blocking` argument is equal to
+    // `true`.
     if blocking {
-        if let Some(completion_rx) = Some(completion_rx) {
-            let handle = tokio::runtime::Handle::current();
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(4);
+      if let Some(rx) = completion_rx {
+        let handle = tokio::runtime::Handle::current();
+        let deadline = std::time::Instant::now() + BLOCKING_FLUSH_TIMEOUT_SECONDS;
 
-            loop {
+        loop {
+          // Check if the timeout deadline has been reached.
+          if std::time::Instant::now() > deadline {
+            log::debug!("flush state: timeout waiting for completion");
+            break;
+          }
 
-                if std::time::Instant::now() > deadline {
-                    log::debug!("flush state: timeout waiting for completion");
-                    break;
-                }
-
-                match handle.block_on(completion_rx.recv()) {
-                    Ok(()) => {
-                        log::debug!("flush state: completion received");
-                        break;
-                    },
-                    Err(e) => {
-                        log::debug!("flush state: received an error when waiting for completion: {e}");
-                        break;
-                    },
-                }
-            }
+          // Block on the async recv() operation.
+          match handle.block_on(rx.recv()) {
+            Ok(()) => {
+              log::debug!("flush state: completion received");
+              break;
+            },
+            Err(e) => {
+              log::debug!("flush state: received an error when waiting for completion: {e}");
+              break;
+            },
+          }
         }
+      }
     }
 
     Ok(())
   }
+
 
   async fn process_all_logs(&mut self, log: LogLine) -> anyhow::Result<()> {
     let mut logs = VecDeque::new();
