@@ -363,29 +363,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     if blocking {
       if let Some(rx) = completion_rx {
         let handle = tokio::runtime::Handle::current();
-        let deadline = std::time::Instant::now() + BLOCKING_FLUSH_TIMEOUT_SECONDS;
-
-        loop {
-          // Check if the timeout deadline has been reached.
-          if std::time::Instant::now() > deadline {
-            log::debug!("flush state: timeout waiting for completion");
-            break;
-          }
-
-          // Block on the async recv() operation.
-          match handle.block_on(rx.recv()) {
-            Ok(()) => {
-              log::debug!("flush state: completion received");
-              break;
-            },
-            Err(e) => {
-              log::debug!("flush state: received an error when waiting for completion: {e}");
-              break;
-            },
-          }
+        let result = handle.block_on(async {
+          tokio::time::timeout(BLOCKING_FLUSH_TIMEOUT_SECONDS, rx.recv()).await
+        });
+        match result {
+          Ok(Ok(())) => log::debug!("flush state: completion received"),
+          Ok(Err(e)) => {
+            log::debug!("flush state: received an error when waiting for completion: {e}")
+          },
+          Err(_) => log::debug!("flush state: timeout waiting for completion"),
         }
       }
     }
+
 
     Ok(())
   }
