@@ -20,6 +20,7 @@ mod metadata;
 mod network;
 mod pre_config_buffer;
 mod service;
+mod timeout;
 
 #[cfg(test)]
 mod test;

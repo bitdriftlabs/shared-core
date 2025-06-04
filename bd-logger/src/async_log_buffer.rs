@@ -16,6 +16,7 @@ use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingConte
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::PreConfigBuffer;
+use crate::timeout::{blocking_wait_with_timeout, WaitError};
 use crate::{internal_report, network};
 use anyhow::anyhow;
 use bd_bounded_buffer::{channel, MemorySized, Receiver, Sender, TrySendError};
@@ -44,8 +45,12 @@ use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdown
 use std::collections::VecDeque;
 use std::mem::size_of_val;
 use std::sync::Arc;
+use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, oneshot};
+
+// The blocking flush timeout threshold given that the Fatal ANR threshold on Android 5 seconds
+const BLOCKING_FLUSH_TIMEOUT_SECONDS: Duration = Duration::from_secs(4);
 
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {
@@ -291,15 +296,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     // Wait for log processing to be completed only if passed `blocking`
     // argument is equal to `true` and we created a relevant one shot Tokio channel.
-    if let Some(rx) = log_processing_completed_rx_option {
-      match rx.blocking_recv() {
-        Ok(()) => {
-          log::debug!("enqueue_log: log processing completion received");
+    if let Some(mut rx) = log_processing_completed_rx_option {
+      match blocking_wait_with_timeout(&mut rx, BLOCKING_FLUSH_TIMEOUT_SECONDS) {
+        Ok(()) => log::debug!("enqueue_log: log processing completion received"),
+        Err(WaitError::Timeout) => {
+          log::debug!("enqueue_log: timeout waiting for log processing completion");
         },
-        Err(e) => {
-          log::debug!(
-            "enqueue_log: received an error when waiting for log processing completion: {e}"
-          );
+        Err(WaitError::ChannelClosed) => {
+          log::debug!("enqueue_log: channel closed before completion received");
         },
       }
     }
@@ -341,14 +345,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     // Wait for the processing to be completed only if passed `blocking` argument is equal to
     // `true`.
-    if let Some(completion_rx) = completion_rx {
-      match &completion_rx.blocking_recv() {
-        Ok(()) => {
-          log::debug!("flush state: completion received");
-        },
-        Err(e) => {
-          log::debug!("flush state: received an error when waiting for completion: {e}");
-        },
+    if blocking {
+      if let Some(rx) = completion_rx {
+        let handle = tokio::runtime::Handle::current();
+        let result = handle.block_on(async {
+          tokio::time::timeout(BLOCKING_FLUSH_TIMEOUT_SECONDS, rx.recv()).await
+        });
+        match result {
+          Ok(Ok(())) => log::debug!("flush state: completion received"),
+          Ok(Err(e)) => {
+            log::debug!("flush state: received an error when waiting for completion: {e}");
+          },
+          Err(_) => log::debug!("flush state: timeout waiting for completion"),
+        }
       }
     }
 
