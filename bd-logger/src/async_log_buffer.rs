@@ -349,7 +349,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     tx: &Sender<AsyncLogBufferMessage>,
     blocking: bool,
   ) -> Result<(), TrySendError> {
-    // Create the completion channel only if blocking is enabled.
     let (completion_tx, completion_rx) = if blocking {
       let (tx, rx) = bd_completion::Sender::new();
       (Some(tx), Some(rx))
@@ -357,7 +356,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       (None, None)
     };
 
-    // Send the flush message. If blocking is off, `completion_tx` is None.
     tx.try_send(AsyncLogBufferMessage::FlushState(completion_tx))?;
 
     // Wait for the processing to be completed only if passed `blocking` argument is equal to
@@ -391,7 +389,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     Ok(())
   }
-
 
   async fn process_all_logs(&mut self, log: LogLine) -> anyhow::Result<()> {
     let mut logs = VecDeque::new();
