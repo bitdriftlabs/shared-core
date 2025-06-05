@@ -81,6 +81,7 @@ impl Setup {
       device,
       static_metadata: Arc::new(EmptyMetadata),
       api_key: "apikey".to_string(),
+      start_in_sleep_mode: false,
     })
     .with_shutdown_handle(shutdown.make_handle())
     .build()
@@ -101,7 +102,7 @@ impl Setup {
 async fn runtime_update() {
   let mut setup = Setup::new();
 
-  let stream = setup.server.next_initialized_stream().await.unwrap();
+  let stream = setup.server.next_initialized_stream(false).await.unwrap();
 
   stream
     .stream_action(StreamAction::SendRuntime(RuntimeUpdate {
@@ -136,7 +137,7 @@ async fn runtime_update() {
 async fn configuration_update_with_log_uploads() {
   let mut setup = Setup::new();
 
-  let stream = setup.server.next_initialized_stream().await.unwrap();
+  let stream = setup.server.next_initialized_stream(false).await.unwrap();
 
   stream
     .stream_action(StreamAction::SendRuntime(make_update(

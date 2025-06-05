@@ -84,6 +84,7 @@ pub struct SetupOptions {
   pub sdk_directory: Arc<TempDir>,
   pub metadata_provider: Arc<LogMetadata>,
   pub disk_storage: bool,
+  pub start_in_sleep_mode: bool,
 }
 
 impl Default for SetupOptions {
@@ -92,6 +93,7 @@ impl Default for SetupOptions {
       sdk_directory: Arc::new(TempDir::with_prefix("sdk").unwrap()),
       metadata_provider: Arc::default(),
       disk_storage: false,
+      start_in_sleep_mode: false,
     }
   }
 }
@@ -105,7 +107,7 @@ pub struct Setup {
   pub logger_handle: crate::LoggerHandle,
   pub sdk_directory: Arc<TempDir>,
   pub server: Box<bd_test_helpers::test_api_server::ServerHandle>,
-  pub current_api_stream: StreamHandle,
+  pub current_api_stream: Option<StreamHandle>,
   pub store: Arc<Store>,
 
   pub capture_screen_count: Arc<AtomicUsize>,
@@ -165,6 +167,7 @@ impl Setup {
       store: store.clone(),
       network: Box::new(Self::run_network(server.port, shutdown.make_shutdown())),
       static_metadata: Arc::new(EmptyMetadata),
+      start_in_sleep_mode: options.start_in_sleep_mode,
     })
     .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
     .with_internal_logger(true)
@@ -172,13 +175,13 @@ impl Setup {
     .unwrap();
 
     let logger_handle = logger.new_logger_handle();
-    let current_api_stream = Self::do_stream_setup(&mut server);
+    let current_api_stream = Self::do_stream_setup(&mut server, options.start_in_sleep_mode);
     Self {
       logger,
       logger_handle,
       sdk_directory: options.sdk_directory,
       server,
-      current_api_stream,
+      current_api_stream: Some(current_api_stream),
       store,
       capture_screen_count,
       capture_screenshot_count,
@@ -193,11 +196,25 @@ impl Setup {
     bd_hyper_network::HyperNetwork::run_on_thread(&format!("http://localhost:{port}"), shutdown)
   }
 
+  pub fn restart_stream(&mut self, expect_sleep_mode: bool) {
+    self
+      .current_api_stream()
+      .blocking_stream_action(StreamAction::CloseStream);
+    self.current_api_stream = Some(Self::do_stream_setup(&mut self.server, expect_sleep_mode));
+  }
+
   pub fn do_stream_setup(
     server: &mut bd_test_helpers::test_api_server::ServerHandle,
+    expect_sleep_mode: bool,
   ) -> StreamHandle {
     let stream = server.blocking_next_stream().unwrap();
-    assert!(stream.await_event_with_timeout(ExpectedStreamEvent::Handshake(None), 2.seconds(),));
+    assert!(stream.await_event_with_timeout(
+      ExpectedStreamEvent::Handshake {
+        matcher: None,
+        sleep_mode: expect_sleep_mode
+      },
+      2.seconds(),
+    ));
 
     stream.blocking_stream_action(StreamAction::SendRuntime(make_update(
       Self::get_default_runtime_values(),
@@ -304,9 +321,13 @@ impl Setup {
     ));
   }
 
+  pub fn current_api_stream(&self) -> &StreamHandle {
+    self.current_api_stream.as_ref().unwrap()
+  }
+
   pub fn upload_individual_logs(&mut self) {
     self
-      .current_api_stream
+      .current_api_stream()
       .blocking_stream_action(StreamAction::SendRuntime(make_update(
         vec![(
           bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
@@ -317,16 +338,16 @@ impl Setup {
 
     assert_eq!(
       self.server.blocking_next_runtime_ack().0,
-      self.current_api_stream.id()
+      self.current_api_stream().id()
     );
   }
 
   pub fn send_configuration_update(&mut self, config: ConfigurationUpdate) -> Option<Nack> {
     self
-      .current_api_stream
+      .current_api_stream()
       .blocking_stream_action(StreamAction::SendConfiguration(config));
     let (stream_id, mut ack) = self.server.blocking_next_configuration_ack();
-    assert_eq!(stream_id, self.current_api_stream.id());
+    assert_eq!(stream_id, self.current_api_stream().id());
 
     ack.nack.take()
   }
@@ -335,7 +356,7 @@ impl Setup {
     let values = Self::get_default_runtime_values();
 
     self
-      .current_api_stream
+      .current_api_stream()
       .blocking_stream_action(StreamAction::SendRuntime(make_update(
         values,
         "version".to_string(),

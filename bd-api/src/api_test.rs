@@ -19,16 +19,18 @@ use bd_client_common::{
 };
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
-use bd_grpc_codec::{Encoder, OptimizeFor};
+use bd_grpc_codec::{Decompression, Encoder, OptimizeFor};
 use bd_internal_logging::{LogFields, LogLevel, LogType};
 use bd_metadata::{Metadata, Platform};
 use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::client::api::api_response::Response_type;
+use bd_proto::protos::client::api::handshake_response::StreamSettings;
 use bd_proto::protos::client::api::{
   ApiRequest,
   ApiResponse,
   ErrorShutdown,
+  HandshakeRequest,
   HandshakeResponse,
   RuntimeUpdate,
   StatsUploadRequest,
@@ -37,13 +39,14 @@ use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::make_mut;
-use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
+use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, ToProtoDuration};
 use mockall::predicate::eq;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use time::ext::NumericalDuration;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
@@ -173,6 +176,7 @@ struct Setup {
   api_task: Option<JoinHandle<anyhow::Result<()>>>,
   api_key: String,
   network_quality_provider: Arc<SimpleNetworkQualityProvider>,
+  sleep_mode_active: watch::Sender<bool>,
 }
 
 impl Setup {
@@ -194,6 +198,7 @@ impl Setup {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let (data_tx, data_rx) = channel(1);
     let (trigger_upload_tx, _trigger_upload_rx) = channel(1);
+    let (sleep_mode_active_tx, sleep_mode_active_rx) = watch::channel(false);
 
     let time_provider = Arc::new(bd_time::TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
 
@@ -216,9 +221,9 @@ impl Setup {
       network_quality_provider.clone(),
       Arc::new(TestLog {}),
       &collector.scope("api"),
+      sleep_mode_active_rx,
     )
     .unwrap();
-
 
     let api_task = tokio::task::spawn(async move {
       runtime_loader.try_load_persisted_config().await;
@@ -234,10 +239,14 @@ impl Setup {
       shutdown_trigger,
       collector,
       time_provider,
-      requests_decoder: bd_grpc_codec::Decoder::new(None, OptimizeFor::Memory),
+      requests_decoder: bd_grpc_codec::Decoder::new(
+        Some(Decompression::StatelessZlib),
+        OptimizeFor::Memory,
+      ),
       api_task: Some(api_task),
       api_key,
       network_quality_provider,
+      sleep_mode_active: sleep_mode_active_tx,
     }
   }
 
@@ -274,6 +283,7 @@ impl Setup {
       self.network_quality_provider.clone(),
       Arc::new(TestLog {}),
       &self.collector.scope("api"),
+      self.sleep_mode_active.subscribe(),
     )
     .unwrap();
 
@@ -284,10 +294,14 @@ impl Setup {
     self.current_stream_tx = current_stream_tx;
   }
 
-  async fn handshake_response(&self, configuration_update_status: u32) {
+  async fn handshake_response(
+    &self,
+    configuration_update_status: u32,
+    stream_settings: Option<StreamSettings>,
+  ) {
     let response = ApiResponse {
       response_type: Some(Response_type::Handshake(HandshakeResponse {
-        stream_settings: None.into(),
+        stream_settings: stream_settings.into(),
         configuration_update_status,
         ..Default::default()
       })),
@@ -330,16 +344,33 @@ impl Setup {
   }
 
   #[must_use]
-  async fn next_stream(&mut self, wait: Duration) -> bool {
+  async fn next_stream(&mut self, wait: Duration) -> Option<HandshakeRequest> {
     tokio::select! {
       _ = self.start_stream_rx.recv() => {},
       () = wait.sleep() => {
-        return false;
+        return None;
       }
     };
-    self.send_data_rx.recv().await.unwrap();
+    let data = self.send_data_rx.recv().await.unwrap();
+    let request = self.decode(&data).unwrap();
+    let Some(Request_type::Handshake(request)) = request.request_type else {
+      panic!("expected handshake request, got {request:?}");
+    };
 
-    true
+    Some(request)
+  }
+
+  fn decode(&mut self, data: &[u8]) -> Option<ApiRequest> {
+    if let Ok(requests) = self.requests_decoder.decode_data(data) {
+      assert!(
+        requests.len() == 1,
+        "expected 1 request, got {}",
+        requests.len()
+      );
+      return requests.first().cloned();
+    }
+
+    None
   }
 
   async fn next_request(&mut self, wait: Duration) -> Option<ApiRequest> {
@@ -350,16 +381,7 @@ impl Setup {
       }
     }?;
 
-    if let Ok(requests) = self.requests_decoder.decode_data(&data) {
-      assert!(
-        requests.len() == 1,
-        "expected 1 request, got {}",
-        requests.len()
-      );
-      return requests.first().cloned();
-    }
-
-    None
+    self.decode(&data)
   }
 
   fn make_nice_mock_updater() -> Arc<MockConfigurationUpdate> {
@@ -411,7 +433,7 @@ async fn api_retry_stream() {
     setup.network_quality_provider.get_network_quality()
   );
   let now = Instant::now();
-  while setup.next_stream(1.minutes()).await {
+  while setup.next_stream(1.minutes()).await.is_some() {
     if now + DISCONNECTED_OFFLINE_GRACE_PERIOD > Instant::now() {
       assert_eq!(
         NetworkQuality::Unknown,
@@ -432,7 +454,7 @@ async fn api_retry_stream() {
 
   5.minutes().advance().await;
 
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
 
   make_mut(&mut mock_updater)
     .expect_on_handshake_complete()
@@ -442,7 +464,10 @@ async fn api_retry_stream() {
     .once()
     .returning(|_| ());
   setup
-    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE)
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+    )
     .await;
   61.seconds().sleep().await;
   assert_eq!(
@@ -451,7 +476,7 @@ async fn api_retry_stream() {
   );
   setup.close_stream().await;
 
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
   assert_eq!(
     NetworkQuality::Unknown,
     setup.network_quality_provider.get_network_quality()
@@ -461,7 +486,7 @@ async fn api_retry_stream() {
   // Now ramp up the backoff again to 1m, do the handshake and immediate shutdown, and verify the
   // backoff is not reset.
   let now = Instant::now();
-  while setup.next_stream(1.minutes()).await {
+  while setup.next_stream(1.minutes()).await.is_some() {
     if now + DISCONNECTED_OFFLINE_GRACE_PERIOD > Instant::now() {
       assert_eq!(
         NetworkQuality::Unknown,
@@ -477,7 +502,7 @@ async fn api_retry_stream() {
     setup.close_stream().await;
   }
   5.minutes().advance().await;
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
   make_mut(&mut mock_updater)
     .expect_on_handshake_complete()
     .with(eq(
@@ -486,10 +511,13 @@ async fn api_retry_stream() {
     .once()
     .returning(|_| ());
   setup
-    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE)
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+    )
     .await;
   setup.close_stream().await;
-  assert!(!setup.next_stream(10.seconds()).await);
+  assert!(setup.next_stream(10.seconds()).await.is_none());
   assert_eq!(
     NetworkQuality::Online,
     setup.network_quality_provider.get_network_quality()
@@ -502,9 +530,9 @@ async fn api_retry_stream() {
 async fn client_kill() {
   let mut setup = Setup::new();
 
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
-    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE)
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None)
     .await;
 
   setup
@@ -529,49 +557,49 @@ async fn client_kill() {
 
   // Restart to make sure we are killed.
   setup.restart().await;
-  assert!(!setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_none());
 
   // Advance 12 hours, we should still be killed.
   setup.time_provider.advance(12.hours());
   setup.restart().await;
-  assert!(!setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_none());
 
   // Advance another 13 hours, we should come back up.
   setup.time_provider.advance(13.hours());
   setup.restart().await;
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
 
   // The client should be killed again.
   setup.restart().await;
-  assert!(!setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_none());
 
   // Change the API key which without advancing time should allow the client to come up.
   setup.api_key = "other".to_string();
   setup.restart().await;
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
 }
 
 #[tokio::test(start_paused = true)]
 async fn bad_client_kill_file() {
   let mut setup = Setup::new();
 
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
 
   tokio::fs::write(setup.sdk_directory.path().join("client_kill_until"), b"bad")
     .await
     .unwrap();
   setup.restart().await;
 
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
 }
 
 #[tokio::test(start_paused = true)]
 async fn api_retry_stream_runtime_override() {
   let mut setup = Setup::new();
 
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
-    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE)
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None)
     .await;
 
   setup
@@ -588,12 +616,13 @@ async fn api_retry_stream_runtime_override() {
       ..Default::default()
     })
     .await;
+  setup.next_request(1.seconds()).await.unwrap();
 
   // Reconnect 10 times, asserting that it never takes more than 1s to connect. This proves that the
   // backoff never exceeds 1.5s, per the runtime override and default 50% randomization.
   for _ in 0 .. 10 {
     setup.close_stream().await;
-    assert!(setup.next_stream(1500.milliseconds()).await);
+    assert!(setup.next_stream(1500.milliseconds()).await.is_some());
   }
 
   setup.shutdown_trigger.shutdown().await;
@@ -603,9 +632,12 @@ async fn api_retry_stream_runtime_override() {
 async fn error_response() {
   let mut setup = Setup::new();
 
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
-    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE)
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+    )
     .await;
 
   setup
@@ -624,7 +656,7 @@ async fn error_response() {
   // event is processed via the same channel as the response, we know that the response must have
   // been processed.
   setup.close_stream().await;
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
 
   setup
     .collector
@@ -635,7 +667,7 @@ async fn error_response() {
 async fn error_response_before_handshake() {
   let mut setup = Setup::new();
 
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
 
   setup
     .send_response(ApiResponse {
@@ -653,7 +685,7 @@ async fn error_response_before_handshake() {
   // event is processed via the same channel as the response, we know that the response must have
   // been processed.
   setup.close_stream().await;
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
 
   setup
     .collector
@@ -667,7 +699,7 @@ async fn error_response_before_handshake() {
 async fn unauthenticated_response_before_handshake() {
   let mut setup = Setup::new();
 
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
 
   setup
     .send_response(ApiResponse {
@@ -683,7 +715,7 @@ async fn unauthenticated_response_before_handshake() {
   // The unauthenticated response will kill the client for the default 1 day period. Make sure that
   // we don't reconnect.
   setup.close_stream().await;
-  assert!(!setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_none());
 
   setup
     .collector
@@ -691,21 +723,24 @@ async fn unauthenticated_response_before_handshake() {
 
   // Restart to make sure the client is still killed. We should not see any stream requests.
   setup.restart().await;
-  assert!(!setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_none());
 
   // Now let's wait a day and make sure the client comes back online.
   setup.time_provider.advance(1.days());
   setup.restart().await;
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
 }
 
 #[tokio::test]
 async fn set_stats_upload_request_sent_at_field() {
   let mut setup = Setup::new();
 
-  assert!(setup.next_stream(1.seconds()).await);
+  assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
-    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE)
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+    )
     .await;
 
   let (tracked, _) = Tracked::new("123".to_string(), StatsUploadRequest::default());
@@ -716,4 +751,27 @@ async fn set_stats_upload_request_sent_at_field() {
   let next_received_request = setup.next_request(1.seconds()).await.unwrap();
   assert_matches!(next_received_request.request_type, Some(Request_type::StatsUpload(payload))
     if { payload.sent_at == setup.time_provider.now().into_proto() });
+}
+
+#[tokio::test(start_paused = true)]
+async fn sleep_mode() {
+  let mut setup = Setup::new();
+  setup.sleep_mode_active.send(true).unwrap();
+  assert!(setup.next_stream(1.seconds()).await.unwrap().sleep_mode);
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      Some(StreamSettings {
+        ping_interval: 60.seconds().into_proto(),
+        ..Default::default()
+      }),
+    )
+    .await;
+
+  let Some(Request_type::Ping(ping_request)) =
+    setup.next_request(61.seconds()).await.unwrap().request_type
+  else {
+    panic!("expected ping request");
+  };
+  assert!(ping_request.sleep_mode);
 }

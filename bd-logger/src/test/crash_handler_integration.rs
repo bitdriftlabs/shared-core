@@ -140,7 +140,7 @@ fn crash_reports_artifact_upload() {
     });
 
     setup
-      .current_api_stream
+      .current_api_stream()
       .blocking_stream_action(StreamAction::SendRuntime(make_update(
         Setup::get_default_runtime_values()
           .into_iter()
@@ -276,7 +276,7 @@ fn crash_reports_artifact_upload() {
 fn crash_directories_configuration() {
   let mut setup = Setup::new();
 
-  setup.current_api_stream.blocking_stream_action(
+  setup.current_api_stream().blocking_stream_action(
     bd_test_helpers::test_api_server::StreamAction::SendRuntime(make_simple_update(vec![(
       CrashDirectories::path(),
       ValueKind::String("a:b".to_string()),
@@ -288,7 +288,7 @@ fn crash_directories_configuration() {
     std::fs::read(setup.sdk_directory.path().join("reports/config")).unwrap_or_default() == b"a:b"
   );
 
-  setup.current_api_stream.blocking_stream_action(
+  setup.current_api_stream().blocking_stream_action(
     bd_test_helpers::test_api_server::StreamAction::SendRuntime(make_simple_update(vec![])),
   );
   setup.server.blocking_next_runtime_ack();

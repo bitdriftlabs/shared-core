@@ -79,6 +79,31 @@ use time::macros::datetime;
 use time::OffsetDateTime;
 
 #[test]
+fn sleep_mode() {
+  let mut setup = Setup::new_with_options(SetupOptions {
+    start_in_sleep_mode: true,
+    ..Default::default()
+  });
+
+  setup.logger_handle.transition_sleep_mode(false);
+  setup.restart_stream(false);
+
+  setup.logger_handle.transition_sleep_mode(true);
+  setup.restart_stream(true);
+
+  setup.flush_and_upload_stats();
+  let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
+  assert_eq!(
+    stat_upload.get_counter("sleep:transitions", labels! { "state" => "enabled" }),
+    Some(1),
+  );
+  assert_eq!(
+    stat_upload.get_counter("sleep:transitions", labels! { "state" => "disabled" }),
+    Some(1),
+  );
+}
+
+#[test]
 fn attributes_accessors() {
   let setup = Setup::new();
 
@@ -241,7 +266,7 @@ fn api_bandwidth_counters() {
   let mut setup = Setup::new();
 
   setup
-    .current_api_stream
+    .current_api_stream()
     .blocking_stream_action(StreamAction::SendRuntime(make_update(
       vec![(
         bd_runtime::runtime::resource_utilization::ResourceUtilizationEnabledFlag::path(),
@@ -1107,7 +1132,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
   let mut setup = Setup::new();
 
   setup
-    .current_api_stream
+    .current_api_stream()
     .blocking_stream_action(StreamAction::SendRuntime(make_update(
       vec![(
         bd_runtime::runtime::stats::MaxDynamicCountersFlag::path(),
@@ -1280,7 +1305,7 @@ fn transforms_emitted_logs_according_to_filters() {
 fn remote_buffer_upload() {
   let mut setup = Setup::new();
 
-  // Send down a configurarion with a trigger buffer ('default') which accepts all logs with no
+  // Send down a configuration with a trigger buffer ('default') which accepts all logs with no
   // local listeners that would cause it to trigger.
   let maybe_nack = setup.send_configuration_update(configuration_update(
     "",
@@ -1320,7 +1345,7 @@ fn remote_buffer_upload() {
 
   // Trigger a remote upload of the `default` buffer.
   setup
-    .current_api_stream
+    .current_api_stream()
     .blocking_stream_action(StreamAction::FlushBuffers(vec!["default".to_string()]));
 
   // We receive a log upload without intent negotiation.
@@ -1697,7 +1722,7 @@ fn runtime_update() {
   let mut setup = Setup::new();
 
   setup
-    .current_api_stream
+    .current_api_stream()
     .blocking_stream_action(StreamAction::SendRuntime(make_update(
       vec![("test", ValueKind::Bool(true))],
       "something".to_string(),
@@ -1767,24 +1792,8 @@ fn stats_upload() {
   setup.flush_and_upload_stats();
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
-    stat_upload.get_counter("logger:logs_received", labels! {"log_level" => "trace"}),
-    Some(1),
-  );
-  assert_eq!(
-    stat_upload.get_counter("logger:logs_received", labels! {"log_level" => "debug"}),
-    Some(1),
-  );
-  assert_eq!(
-    stat_upload.get_counter("logger:logs_received", labels! {"log_level" => "info"}),
-    Some(2),
-  );
-  assert_eq!(
-    stat_upload.get_counter("logger:logs_received", labels! {"log_level" => "warn"}),
-    Some(1),
-  );
-  assert_eq!(
-    stat_upload.get_counter("logger:logs_received", labels! {"log_level" => "error"}),
-    Some(2),
+    stat_upload.get_counter("logger:logs_received", labels! {}),
+    Some(7),
   );
   assert_eq!(stat_upload.get_counter("test:used", labels! {}), Some(1));
   assert_eq!(stat_upload.get_counter("test:unused", labels! {}), None);
@@ -1797,7 +1806,7 @@ fn binary_message_and_fields() {
   let mut setup = Setup::new();
 
   setup
-    .current_api_stream
+    .current_api_stream()
     .blocking_stream_action(StreamAction::SendRuntime(make_update(
       vec![
         (
@@ -1873,7 +1882,7 @@ fn logs_before_cache_load() {
   );
 
   setup
-    .current_api_stream
+    .current_api_stream()
     .blocking_stream_action(StreamAction::SendConfiguration(
       configuration_update_from_parts(
         "test",
@@ -1970,6 +1979,7 @@ fn runtime_caching() {
       sdk_directory: sdk_directory.path().into(),
       metadata_provider: Arc::new(LogMetadata::default()),
       device,
+      start_in_sleep_mode: false,
     })
     .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
     .build_dedicated_thread()

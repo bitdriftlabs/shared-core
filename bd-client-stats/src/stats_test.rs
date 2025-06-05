@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::file_manager::{FileManager, PENDING_AGGREGATION_INDEX_FILE, STATS_DIRECTORY};
+use crate::stats::{IntervalCreator, SleepModeAwareRuntimeWatchTicker, Ticker};
 use crate::test::TestTicker;
 use crate::Stats;
 use assert_matches::assert_matches;
@@ -29,7 +30,7 @@ use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::runtime::{make_simple_update, ValueKind};
 use bd_test_helpers::stats::StatsRequestHelper;
-use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeProvider};
+use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeDurationExt, TimeProvider};
 use futures_util::poll;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -38,7 +39,7 @@ use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::{Duration, OffsetDateTime};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinError;
-use tokio::time::timeout;
+use tokio::time::{sleep, timeout, MissedTickBehavior};
 
 async fn write_test_index(fs: &dyn FileSystem, ready_to_upload: bool) {
   let index = PendingAggregationIndex {
@@ -928,4 +929,79 @@ async fn dynamic_stats() {
     .await;
 
   setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn sleep_mode_aware_runtime_watch_ticker() {
+  struct TestIntervalCreator;
+  impl IntervalCreator for TestIntervalCreator {
+    fn interval(duration: Duration) -> tokio::time::Interval {
+      duration.interval_at(MissedTickBehavior::Delay)
+    }
+  }
+
+  let (live_mode_tx, live_mode_rx) = watch::channel(60.seconds());
+  let (sleep_mode_tx, sleep_mode_rx) = watch::channel(15.minutes());
+  let (sleep_mode_active_tx, sleep_mode_active_rx) = watch::channel(false);
+
+  let mut ticker = SleepModeAwareRuntimeWatchTicker::<TestIntervalCreator>::new(
+    live_mode_rx,
+    sleep_mode_rx,
+    sleep_mode_active_rx,
+  );
+
+  let mut tick_future = ticker.tick();
+  assert!(poll!(&mut tick_future).is_pending());
+  sleep(59.std_seconds()).await;
+  assert!(poll!(&mut tick_future).is_pending());
+  sleep(1.std_seconds()).await;
+  assert!(poll!(tick_future).is_ready());
+
+  // Now switch to sleep mode outside of an active tick.
+  sleep_mode_active_tx.send(true).unwrap();
+  let mut tick_future = ticker.tick();
+  assert!(poll!(&mut tick_future).is_pending());
+  sleep(14.std_minutes()).await;
+  assert!(poll!(&mut tick_future).is_pending());
+  sleep(1.std_minutes()).await;
+  assert!(poll!(tick_future).is_ready());
+
+  // Start a new tick in sleep mode, and switch to live mode during the tick.
+  let mut tick_future = ticker.tick();
+  sleep(3.std_minutes()).await;
+  assert!(poll!(&mut tick_future).is_pending());
+  sleep_mode_active_tx.send(false).unwrap();
+  assert!(poll!(&mut tick_future).is_pending());
+  sleep(59.std_seconds()).await;
+  assert!(poll!(&mut tick_future).is_pending());
+  sleep(1.std_seconds()).await;
+  assert!(poll!(tick_future).is_ready());
+
+  // Start a new tick and update sleep mode time which shouldn't do anything until we switch to
+  // sleep mode.
+  let mut tick_future = ticker.tick();
+  sleep_mode_tx.send(30.minutes()).unwrap();
+  sleep(59.std_seconds()).await;
+  assert!(poll!(&mut tick_future).is_pending());
+  sleep(1.std_seconds()).await;
+  assert!(poll!(tick_future).is_ready());
+
+  // Start a tick, switch to sleep mode, and verify we get the new time.
+  let mut tick_future = ticker.tick();
+  sleep_mode_active_tx.send(true).unwrap();
+  assert!(poll!(&mut tick_future).is_pending());
+  sleep(29.std_minutes()).await;
+  assert!(poll!(&mut tick_future).is_pending());
+  sleep(1.std_minutes()).await;
+  assert!(poll!(tick_future).is_ready());
+
+  // Start a tick, change live mode duration, switch to live, and verify we get the new time.
+  let mut tick_future = ticker.tick();
+  live_mode_tx.send(30.seconds()).unwrap();
+  sleep_mode_active_tx.send(false).unwrap();
+  assert!(poll!(&mut tick_future).is_pending());
+  sleep(29.std_seconds()).await;
+  assert!(poll!(&mut tick_future).is_pending());
+  sleep(1.std_seconds()).await;
+  assert!(poll!(tick_future).is_ready());
 }

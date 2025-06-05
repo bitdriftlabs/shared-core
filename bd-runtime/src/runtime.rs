@@ -731,7 +731,7 @@ pub mod stats {
     60.seconds()
   );
 
-  // This controls how often we attempt to read from the aggregrated file in order to prepare and
+  // This controls how often we attempt to read from the aggregated file in order to prepare and
   // send a stats upload request. Note that this only comes into play whenever we are not actively
   // trying to upload a stats request (which can take longer if we are retrying or there is no
   // active API stream)
@@ -755,6 +755,17 @@ pub mod stats {
   // This limit prevents unbounded growth of metrics, which could result in the system running out
   // of memory.
   int_feature_flag!(MaxDynamicCountersFlag, "stats.max_dynamic_stats", 500);
+}
+
+pub mod sleep_mode {
+  use time::ext::NumericalDuration as _;
+
+  // This is an override for "stats.upload_flush_interval_ms" when operating in sleep mode.
+  duration_feature_flag!(
+    UploadStatFlushIntervalFlag,
+    "sleep_mode.stats_upload_flush_interval_ms",
+    15.minutes()
+  );
 }
 
 pub mod buffers {

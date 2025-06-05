@@ -18,30 +18,43 @@ use bd_api::DataUpload;
 use bd_client_common::error::handle_unexpected;
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_common::ConfigurationUpdate;
-use bd_client_stats::stats::{RuntimeWatchTicker, Ticker};
+use bd_client_stats::stats::{
+  JitteredIntervalCreator,
+  RuntimeWatchTicker,
+  SleepModeAwareRuntimeWatchTicker,
+  Ticker,
+};
 use bd_client_stats::FlushTrigger;
 use bd_client_stats_store::Collector;
 use bd_internal_logging::NoopLogger;
 use bd_log_primitives::{log_level, Log, LogType};
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
-use bd_runtime::runtime::{self, ConfigLoader, Watch};
+use bd_runtime::runtime::{self, sleep_mode, ConfigLoader, Watch};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_time::SystemTimeProvider;
 use futures_util::{try_join, Future};
 use std::pin::Pin;
 use std::sync::Arc;
 use time::Duration;
+use tokio::sync::watch;
 
 pub fn default_stats_flush_triggers(
+  sleep_mode_active: watch::Receiver<bool>,
   runtime_loader: &ConfigLoader,
 ) -> anyhow::Result<(Box<dyn Ticker>, Box<dyn Ticker>)> {
   let flush_interval_flag: Watch<Duration, DirectStatFlushIntervalFlag> =
     runtime_loader.register_watch()?;
   let flush_ticker = RuntimeWatchTicker::new(flush_interval_flag.into_inner());
 
-  let upload_interval_flag: Watch<Duration, UploadStatFlushIntervalFlag> =
+  let live_mode_upload_interval_flag: Watch<Duration, UploadStatFlushIntervalFlag> =
     runtime_loader.register_watch()?;
-  let upload_ticker = RuntimeWatchTicker::new(upload_interval_flag.into_inner());
+  let sleep_mode_upload_interval_flag: Watch<Duration, sleep_mode::UploadStatFlushIntervalFlag> =
+    runtime_loader.register_watch()?;
+  let upload_ticker = SleepModeAwareRuntimeWatchTicker::<JitteredIntervalCreator>::new(
+    live_mode_upload_interval_flag.into_inner(),
+    sleep_mode_upload_interval_flag.into_inner(),
+    sleep_mode_active,
+  );
 
   Ok((
     Box::new(flush_ticker) as Box<dyn Ticker>,
@@ -130,7 +143,6 @@ impl LoggerBuilder {
     let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
     let runtime_loader = runtime::ConfigLoader::new(&self.params.sdk_directory);
 
-
     let max_dynamic_stats =
       bd_runtime::runtime::stats::MaxDynamicCountersFlag::register(&runtime_loader)
         .unwrap()
@@ -139,13 +151,15 @@ impl LoggerBuilder {
 
     let scope = collector.scope("");
     let stats = bd_client_stats::Stats::new(collector.clone());
+    let (sleep_mode_active_tx, sleep_mode_active_rx) =
+      watch::channel(self.params.start_in_sleep_mode);
 
     let (stats_flusher, flusher_trigger) = {
       let (flush_ticker, upload_ticker) =
         if let Some((flush_ticker, upload_ticker)) = self.client_stats_tickers {
           (flush_ticker, upload_ticker)
         } else {
-          default_stats_flush_triggers(&runtime_loader)?
+          default_stats_flush_triggers(sleep_mode_active_rx.clone(), &runtime_loader)?
         };
       let flush_handles = stats.flush_handle(
         &runtime_loader,
@@ -199,6 +213,7 @@ impl LoggerBuilder {
       self.params.device,
       self.params.static_metadata.sdk_version(),
       self.params.store.clone(),
+      sleep_mode_active_tx,
     );
     let log = if self.internal_logger {
       Arc::new(InternalLogger::new(
@@ -276,6 +291,7 @@ impl LoggerBuilder {
         network_quality_provider,
         log.clone(),
         &scope.scope("api"),
+        sleep_mode_active_rx,
       )?;
 
       bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);

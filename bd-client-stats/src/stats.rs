@@ -27,6 +27,7 @@ use bd_time::TimeDurationExt;
 #[cfg(test)]
 use stats_test::{TestHooks, TestHooksReceiver};
 use std::collections::{BTreeMap, HashMap};
+use std::marker::PhantomData;
 use std::sync::Arc;
 use time::Duration;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -81,6 +82,87 @@ impl Ticker for RuntimeWatchTicker {
           self.interval = Some(
             self.receiver.borrow_and_update().jittered_interval_at(MissedTickBehavior::Delay)
           );
+        },
+      }
+    }
+  }
+}
+
+//
+// SleepModeAwareRuntimeWatchTicker
+//
+
+pub trait IntervalCreator: Send + Sync {
+  fn interval(duration: Duration) -> tokio::time::Interval;
+}
+pub struct JitteredIntervalCreator;
+impl IntervalCreator for JitteredIntervalCreator {
+  fn interval(duration: Duration) -> tokio::time::Interval {
+    duration.jittered_interval_at(MissedTickBehavior::Delay)
+  }
+}
+pub struct SleepModeAwareRuntimeWatchTicker<T> {
+  live_mode_receiver: watch::Receiver<Duration>,
+  sleep_mode_receiver: watch::Receiver<Duration>,
+  sleep_mode_active: watch::Receiver<bool>,
+  interval: Option<tokio::time::Interval>,
+  phantom: PhantomData<T>,
+}
+
+impl<T: IntervalCreator> SleepModeAwareRuntimeWatchTicker<T> {
+  #[must_use]
+  pub const fn new(
+    live_mode_receiver: watch::Receiver<Duration>,
+    sleep_mode_receiver: watch::Receiver<Duration>,
+    sleep_mode_active: watch::Receiver<bool>,
+  ) -> Self {
+    Self {
+      live_mode_receiver,
+      sleep_mode_receiver,
+      sleep_mode_active,
+      interval: None,
+      phantom: PhantomData,
+    }
+  }
+}
+
+#[async_trait]
+impl<T: IntervalCreator> Ticker for SleepModeAwareRuntimeWatchTicker<T> {
+  async fn tick(&mut self) {
+    loop {
+      // Initialize the interval if it doesn't exist
+      if self.interval.is_none() {
+        // Choose interval duration based on sleep mode status
+        let duration = if *self.sleep_mode_active.borrow() {
+          log::trace!("sleep mode active, using sleep mode duration");
+          *self.sleep_mode_receiver.borrow_and_update()
+        } else {
+          log::trace!("sleep mode inactive, using live mode duration");
+          *self.live_mode_receiver.borrow_and_update()
+        };
+
+        self.interval = Some(T::interval(duration));
+      }
+
+      tokio::select! {
+        _ = self.interval.as_mut().unwrap().tick() => break,
+        _ = self.live_mode_receiver.changed() => {
+          if !*self.sleep_mode_active.borrow() {
+            // Only update if we're using live mode
+            self.interval = None;
+          }
+        },
+        _ = self.sleep_mode_receiver.changed() => {
+          if *self.sleep_mode_active.borrow() {
+            // Only update if we're using sleep mode
+            self.interval = None;
+          }
+        },
+        _ = self.sleep_mode_active.changed() => {
+          // TODO(mattklein123): Potentially we should consider firing immediately if we change
+          // from sleep mode to live mode, but given that we use a jittered interval it should
+          // happen soon enough so seems ok to just let it re-init.
+          self.interval = None;
         },
       }
     }
