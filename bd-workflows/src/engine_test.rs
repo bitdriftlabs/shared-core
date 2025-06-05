@@ -501,7 +501,7 @@ async fn engine_initialization_and_update() {
 
   let workflows = vec![
     workflow!("1"; exclusive with a, b),
-    workflow!("2"; parallel with a, b),
+    workflow!("2"; exclusive with a, b),
   ];
 
   let setup = Setup::new();
@@ -519,7 +519,7 @@ async fn engine_initialization_and_update() {
   );
 
   let workflows = vec![
-    workflow!("3"; parallel with a, b),
+    workflow!("3"; exclusive with a, b),
     workflow!("4"; exclusive with a, b),
     workflow!("5"; exclusive with a, b),
   ];
@@ -1046,10 +1046,10 @@ async fn traversals_count_limit_prevents_creation_of_new_workflows() {
   );
 
   let workflows = vec![
-    workflow!("1"; parallel with a, b),
-    workflow!("2"; parallel with a, b),
-    workflow!("3"; parallel with a, b),
-    workflow!("4"; parallel with a, b),
+    workflow!("1"; exclusive with a, b),
+    workflow!("2"; exclusive with a, b),
+    workflow!("3"; exclusive with a, b),
+    workflow!("4"; exclusive with a, b),
   ];
 
   let setup = Setup::new();
@@ -1089,9 +1089,9 @@ async fn traversals_count_limit_prevents_creation_of_new_workflows() {
   );
 
   let workflows = vec![
-    workflow!("11"; parallel with a, b),
-    workflow!("22"; parallel with a, b),
-    workflow!("33"; parallel with a, b),
+    workflow!("11"; exclusive with a, b),
+    workflow!("22"; exclusive with a, b),
+    workflow!("33"; exclusive with a, b),
   ];
 
   // We replace 2 of the existing workflows (each with 1 run that has 1 traversal)
@@ -1129,7 +1129,7 @@ async fn traversals_count_limit_prevents_creation_of_new_workflow_runs() {
     when rule!(log_matches!(message == "foo"); times 100)
   );
 
-  let workflows = vec![workflow!(parallel with a, b)];
+  let workflows = vec![workflow!(exclusive with a, b)];
 
   let setup = Setup::new();
   setup
@@ -1146,11 +1146,9 @@ async fn traversals_count_limit_prevents_creation_of_new_workflow_runs() {
     ))
     .await;
 
+  // In exclusive mode we will only ever have 1 run with a single traversal attempting to hit the
+  // total count.
   engine_process_log!(workflows_engine; "foo");
-  // The traversals limit is first hit as the result of the line below.
-  // This is because at this point:
-  //  * We have 2 runs, each with 1 traversal.
-  //  * Second run matches a "foo" log and so leaves its initial state.
   engine_process_log!(workflows_engine; "foo");
   engine_process_log!(workflows_engine; "foo");
   engine_process_log!(workflows_engine; "foo");
@@ -1158,14 +1156,7 @@ async fn traversals_count_limit_prevents_creation_of_new_workflow_runs() {
 
   setup
     .collector
-    .assert_counter_eq(3, "workflows:traversals_count_limit_hit_total", labels! {});
-
-  // Workflow has parallel execution type so we attempt to create a new run with initial state ->
-  // we hit the limit.
-  engine_process_log!(workflows_engine; "foo");
-  setup
-    .collector
-    .assert_counter_eq(4, "workflows:traversals_count_limit_hit_total", labels! {});
+    .assert_counter_eq(0, "workflows:traversals_count_limit_hit_total", labels! {});
 }
 
 #[tokio::test]
@@ -1199,7 +1190,7 @@ async fn traversals_count_limit_causes_run_removal_after_forking() {
     when rule!(log_matches!(message == "zar"))
   );
 
-  let workflows = vec![workflow!(parallel with a, b, c, d, e, f)];
+  let workflows = vec![workflow!(exclusive with a, b, c, d, e, f)];
 
   let setup = Setup::new();
 
@@ -1340,8 +1331,8 @@ async fn runs_in_initial_state_are_not_persisted() {
   );
 
   let workflows = vec![
-    workflow!("1"; parallel with a, c),
-    workflow!("2"; parallel with b, c),
+    workflow!("1"; exclusive with a, c),
+    workflow!("2"; exclusive with b, c),
   ];
 
   let setup = Setup::new();
@@ -1676,7 +1667,7 @@ async fn engine_processing_log() {
 
   let workflows = vec![
     workflow!("1"; exclusive with a, b),
-    workflow!("2"; parallel with c, d),
+    workflow!("2"; exclusive with c, d),
   ];
 
   let setup = Setup::new();
@@ -1842,88 +1833,6 @@ async fn exclusive_workflow_duration_limit() {
     2,
     "workflows:runs_total",
     labels! { "operation" => "advance" },
-  );
-}
-
-#[tokio::test]
-async fn parallel_workflow_duration_limit() {
-  let mut a = state("A");
-  let mut b = state("B");
-  let c = state("C");
-
-  declare_transition!(
-    &mut a => &b;
-    when rule!(log_matches!(message == "foo"))
-  );
-  declare_transition!(
-    &mut b => &c;
-    when rule!(log_matches!(message == "bar"))
-  );
-
-  let config = workflow!(
-    parallel with a, b, c;
-    matches limit!(count 100);
-    duration limit!(seconds 2)
-  );
-
-  let setup = Setup::new();
-  let mut workflows_engine = setup
-    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
-      vec![config],
-    ))
-    .await;
-
-  let now = time::OffsetDateTime::now_utc();
-
-  // * A new run is created.
-  // * The newly created run doesn't match a log.
-  engine_process_log!(workflows_engine; "bar"; with labels!{}; time now);
-  engine_assert_active_runs!(workflows_engine; 0; "A");
-  setup.collector.assert_counter_eq(
-    1,
-    "workflows:runs_total",
-    labels! { "operation" => "start" },
-  );
-
-  // * The run matches a log and advances. It leaves its initial state.
-  engine_process_log!(workflows_engine; "foo"; with labels!{}; time now + Duration::from_secs(2));
-  engine_assert_active_runs!(workflows_engine; 0; "B");
-  setup.collector.assert_counter_eq(
-    1,
-    "workflows:runs_total",
-    labels! { "operation" => "advance" },
-  );
-
-  // * The first run does not match a log.
-  // * A new run (the second run) in initial state is created.
-  engine_process_log!(workflows_engine; "foo"; with labels!{}; time now + Duration::from_secs(3));
-  engine_assert_active_runs!(workflows_engine; 0; "B", "B");
-  setup.collector.assert_counter_eq(
-    2,
-    "workflows:runs_total",
-    labels! { "operation" => "start" },
-  );
-  setup.collector.assert_counter_eq(
-    2,
-    "workflows:runs_total",
-    labels! { "operation" => "advance" },
-  );
-
-  // * The first run is terminated as it exceeded its maximum duration.
-  // * The second run does not match a log.
-  engine_process_log!(workflows_engine; "bar"; with labels!{}; time now + 5.seconds());
-  setup
-    .collector
-    .assert_counter_eq(1, "workflows:runs_total", labels! { "operation" => "stop" });
-  setup.collector.assert_counter_eq(
-    3,
-    "workflows:runs_total",
-    labels! { "operation" => "advance" },
-  );
-  setup.collector.assert_counter_eq(
-    1,
-    "workflows:runs_total",
-    labels! { "operation" => "completion" },
   );
 }
 
@@ -2619,8 +2528,8 @@ async fn creating_new_runs_after_first_log_processing() {
   let mut workflows_engine = setup
     .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
       vec![
-        workflow!(parallel with c, d, e),
-        workflow!(parallel with a, b),
+        workflow!(exclusive with c, d, e),
+        workflow!(exclusive with a, b),
       ],
     ))
     .await;
@@ -2641,7 +2550,7 @@ async fn creating_new_runs_after_first_log_processing() {
 
   // * State "A" matches log but does not advance as its transition requires 100 matches.
   engine_process_log!(workflows_engine; "foo");
-  engine_assert_active_runs!(workflows_engine; 0; "D", "C");
+  engine_assert_active_runs!(workflows_engine; 0; "C", "D");
   engine_assert_active_runs!(workflows_engine; 1; "A");
   setup
     .collector
@@ -2651,8 +2560,8 @@ async fn creating_new_runs_after_first_log_processing() {
   // * State "D" advances to a final state "E" and the run is completed. The number of traversals
   //   goes from 3 to 2 and we are below traversals count limit.
   // * Before workflows engine starts processing workflow #2 (the one state "A") it checks whether
-  //   the workflow needs a new run (in an initial state). It happens that a new run is needed so so
-  //   a run with initial state "A" is added to workflow #2.
+  //   the workflow needs a new run (in an initial state). It happens that a new run is needed so a
+  //   run with initial state "A" is added to workflow #2.
   // * We process workflow #2. Both of its runs are in state "A" and match a log but do not advance
   //   as a transition requires 100 matches.
   engine_process_log!(workflows_engine; "not matching message"; with labels! { "key" => "value" });
@@ -2662,14 +2571,14 @@ async fn creating_new_runs_after_first_log_processing() {
     .collector
     .assert_counter_eq(0, "workflows:traversals_count_limit_hit_total", labels! {});
 
-  // * We try to create a third run for workflow #2 but fail as a new run would make the workflows
-  //   engine exceed the allowed maximum number of traversals.
+  // In exclusive mode we will not make any new runs because both workflows have runs in the
+  // initial state. With no matches and no traversals we stay under the limit.
   engine_process_log!(workflows_engine; "not matching message");
   engine_assert_active_runs!(workflows_engine; 0; "C");
   engine_assert_active_runs!(workflows_engine; 1; "A", "A");
   setup
     .collector
-    .assert_counter_eq(1, "workflows:traversals_count_limit_hit_total", labels! {});
+    .assert_counter_eq(0, "workflows:traversals_count_limit_hit_total", labels! {});
 }
 
 #[tokio::test]
@@ -2687,8 +2596,9 @@ async fn workflows_state_is_purged_when_session_id_changes() {
     when rule!(log_matches!(message == "bar"))
   );
 
-  let engine_config =
-    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow!(parallel with a, b, c)]);
+  let engine_config = WorkflowsEngineConfig::new_with_workflow_configurations(vec![
+    workflow!(exclusive with a, b, c),
+  ]);
 
   let setup = Setup::new();
   let mut workflows_engine = setup.make_workflows_engine(engine_config.clone()).await;
@@ -2939,11 +2849,9 @@ async fn test_exclusive_workflow_state_reset() {
   // state `B`.
   engine_process_log!(engine; "foo");
   engine_assert_active_runs!(engine; 0; "B");
-  setup.collector.assert_counter_eq(
-    0,
-    "workflows:workflow_resets_total",
-    labels! { "type" => "exclusive" },
-  );
+  setup
+    .collector
+    .assert_counter_eq(0, "workflows:workflow_resets_total", labels! {});
   setup.collector.assert_counter_eq(
     1,
     "workflows:runs_total",
@@ -2961,11 +2869,9 @@ async fn test_exclusive_workflow_state_reset() {
   //   state `C`.
   engine_process_log!(engine; "bar");
   engine_assert_active_runs!(engine; 0; "A", "C");
-  setup.collector.assert_counter_eq(
-    0,
-    "workflows:workflow_resets_total",
-    labels! { "type" => "exclusive" },
-  );
+  setup
+    .collector
+    .assert_counter_eq(0, "workflows:workflow_resets_total", labels! {});
   setup.collector.assert_counter_eq(
     2,
     "workflows:runs_total",
@@ -2980,11 +2886,9 @@ async fn test_exclusive_workflow_state_reset() {
   // The log is not matched by any of the runs.
   engine_process_log!(engine; "not matching");
   engine_assert_active_runs!(engine; 0;  "A", "C");
-  setup.collector.assert_counter_eq(
-    0,
-    "workflows:workflow_resets_total",
-    labels! { "type" => "exclusive" },
-  );
+  setup
+    .collector
+    .assert_counter_eq(0, "workflows:workflow_resets_total", labels! {});
   setup.collector.assert_counter_eq(
     2,
     "workflows:runs_total",
@@ -3001,11 +2905,9 @@ async fn test_exclusive_workflow_state_reset() {
   //   of the run and the removal of the other run.
   engine_process_log!(engine; "foo");
   engine_assert_active_runs!(engine; 0; "B");
-  setup.collector.assert_counter_eq(
-    1,
-    "workflows:workflow_resets_total",
-    labels! { "type" => "exclusive" },
-  );
+  setup
+    .collector
+    .assert_counter_eq(1, "workflows:workflow_resets_total", labels! {});
   setup.collector.assert_counter_eq(
     2,
     "workflows:runs_total",
@@ -3065,33 +2967,17 @@ async fn test_exclusive_workflow_potential_fork() {
   // The log matches and workflow moves to state B.
   engine_process_log!(engine; "foo");
   engine_assert_active_runs!(engine; 0; "B");
-  setup.collector.assert_counter_eq(
-    0,
-    "workflows:workflow_potential_forks_total",
-    labels! { "type" => "exclusive" },
-  );
 
   // * A new run is created and added to the beginning of runs list so that the workflow has a run
   //   that's in an initial state.
   // * The log matches and workflow moves to state C.
   engine_process_log!(engine; "bar");
   engine_assert_active_runs!(engine; 0; "A", "C");
-  setup.collector.assert_counter_eq(
-    0,
-    "workflows:workflow_potential_forks_total",
-    labels! { "type" => "exclusive" },
-  );
 
   // The log matches transition from state `C` to `D` and at the same it matches the transition from
-  // an initial state `A` to `B`. In this case, `workflow_potential_forks_total` stat is emitted and
-  // the workflows advances using `C` to `D` transition.
+  // an initial state `A` to `B`. In this case, the workflow advances using `C` to `D` transition.
   engine_process_log!(engine; "foo");
   engine_assert_active_runs!(engine; 0; "A", "D");
-  setup.collector.assert_counter_eq(
-    1,
-    "workflows:workflow_potential_forks_total",
-    labels! { "type" => "exclusive" },
-  );
 }
 
 fn sankey_workflow() -> crate::config::Config {

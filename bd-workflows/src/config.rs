@@ -13,7 +13,6 @@ use bd_proto::protos::workflow::workflow;
 use bd_proto::protos::workflow::workflow::workflow::action::ActionGenerateLog;
 use bd_proto::protos::workflow::workflow::workflow::transition_extension::Extension_type;
 use bd_proto::protos::workflow::workflow::workflow::{
-  Execution as ExecutionProto,
   LimitDuration as LimitDurationProto,
   LimitMatchedLogsCount,
 };
@@ -30,7 +29,6 @@ use workflow::workflow::action::{
   ActionTakeScreenshot as ActionTakeScreenshotProto,
   Action_type,
 };
-use workflow::workflow::execution::Execution_type;
 use workflow::workflow::rule::Rule_type;
 use workflow::workflow::transition_extension::sankey_diagram_value_extraction;
 use workflow::workflow::{
@@ -80,7 +78,6 @@ impl WorkflowsConfiguration {
 pub struct Config {
   id: String,
   states: Vec<State>,
-  execution: Execution,
   duration_limit: Option<Duration>,
   matched_logs_count_limit: Option<u32>,
 }
@@ -123,7 +120,6 @@ impl Config {
     Ok(Self {
       id: config.id.clone(),
       states,
-      execution: Execution::new(&config.execution)?,
       duration_limit: Self::try_duration_limit_from_proto(&config.limit_duration)?,
       matched_logs_count_limit: Self::try_matched_logs_count_limit_from_proto(
         &config.limit_matched_logs_count,
@@ -137,10 +133,6 @@ impl Config {
 
   pub(crate) fn states(&self) -> &[State] {
     &self.states
-  }
-
-  pub(crate) const fn execution(&self) -> &Execution {
-    &self.execution
   }
 
   pub(crate) const fn duration_limit(&self) -> Option<Duration> {
@@ -254,29 +246,6 @@ impl State {
 
   pub(crate) fn transitions(&self) -> &[Transition] {
     &self.transitions
-  }
-}
-
-//
-// Execution
-//
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Execution {
-  Exclusive,
-  Parallel,
-}
-
-impl Execution {
-  pub fn new(value: &protobuf::MessageField<ExecutionProto>) -> anyhow::Result<Self> {
-    match value
-      .execution_type
-      .as_ref()
-      .ok_or_else(|| anyhow!("invalid execution configuration: missing execution_type"))?
-    {
-      Execution_type::ExecutionExclusive(_) => Ok(Self::Exclusive),
-      Execution_type::ExecutionParallel(_) => Ok(Self::Parallel),
-    }
   }
 }
 

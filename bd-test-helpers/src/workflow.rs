@@ -95,50 +95,11 @@ pub mod macros {
         vec![$($state.clone()),+],
       )
     };
-    (parallel with $($state:expr),+) => {
-      $crate::workflow::make_workflow_config_proto(
-        "workflow_id",
-        bd_proto::protos::workflow::workflow::workflow::execution::Execution_type
-        ::ExecutionParallel(
-          Default::default()
-        ),
-        Default::default(),
-        Default::default(),
-        vec![$($state.clone()),+],
-      )
-    };
-    (
-      parallel with $($state:expr),+;
-      matches $matches_limit:expr;
-      duration $duration_limit:expr) => {
-      $crate::workflow::make_workflow_config_proto(
-        "workflow_id",
-        bd_proto::protos::workflow::workflow::workflow::execution::Execution_type
-        ::ExecutionParallel(
-          Default::default()
-        ),
-        $matches_limit,
-        $duration_limit,
-        vec![$($state.clone()),+],
-      )
-    };
     ($id:expr; exclusive with $($state:expr),+) => {
       $crate::workflow::make_workflow_config_proto(
         $id,
         bd_proto::protos::workflow::workflow::workflow::execution::Execution_type
         ::ExecutionExclusive(
-          Default::default()
-        ),
-        Default::default(),
-        Default::default(),
-        vec![$($state.clone()),+],
-      )
-    };
-    ($id:expr; parallel with $($state:expr),+) => {
-      $crate::workflow::make_workflow_config_proto(
-        $id,
-        bd_proto::protos::workflow::workflow::workflow::execution::Execution_type
-        ::ExecutionParallel(
           Default::default()
         ),
         Default::default(),
