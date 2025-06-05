@@ -69,6 +69,7 @@ impl Strategy {
 
     let now = self.time_provider.now();
 
+    let mut need_callback = false;
     let mut state = guard.as_ref().map_or_else(
       || {
         if let Some(state) = self.store.get(&STATE_KEY) {
@@ -86,7 +87,7 @@ impl Strategy {
             last_activity_write: None,
           };
 
-          self.callbacks.session_id_changed(&state.session_id);
+          need_callback = true;
 
           log::info!(
             "bitdrift Capture initialized with session ID: {:?}",
@@ -119,7 +120,7 @@ impl Strategy {
 
       self.store.set(&STATE_KEY, &state.clone().into());
 
-      self.callbacks.session_id_changed(&session_id);
+      need_callback = true;
     } else if last_activity_storage_needs_write {
       state.last_activity_write = Some(now);
 
@@ -127,8 +128,14 @@ impl Strategy {
     }
 
     let session_id = state.session_id.clone();
-
     *guard = Some(state);
+
+    // Make sure we call the callback with the lock released. There are legitimate cases where
+    // this function may get called again from the context of the callback.
+    drop(guard);
+    if need_callback {
+      self.callbacks.session_id_changed(&session_id);
+    }
 
     session_id
   }
