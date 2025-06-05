@@ -5653,57 +5653,8 @@ pub mod workflow {
             }
         }
 
-        // .bitdrift_public.protobuf.workflow.v1.Workflow.Execution.ExecutionParallel execution_parallel = 2;
-
-        pub fn execution_parallel(&self) -> &execution::ExecutionParallel {
-            match self.execution_type {
-                ::std::option::Option::Some(execution::Execution_type::ExecutionParallel(ref v)) => v,
-                _ => <execution::ExecutionParallel as ::protobuf::Message>::default_instance(),
-            }
-        }
-
-        pub fn clear_execution_parallel(&mut self) {
-            self.execution_type = ::std::option::Option::None;
-        }
-
-        pub fn has_execution_parallel(&self) -> bool {
-            match self.execution_type {
-                ::std::option::Option::Some(execution::Execution_type::ExecutionParallel(..)) => true,
-                _ => false,
-            }
-        }
-
-        // Param is passed by value, moved
-        pub fn set_execution_parallel(&mut self, v: execution::ExecutionParallel) {
-            self.execution_type = ::std::option::Option::Some(execution::Execution_type::ExecutionParallel(v))
-        }
-
-        // Mutable pointer to the field.
-        pub fn mut_execution_parallel(&mut self) -> &mut execution::ExecutionParallel {
-            if let ::std::option::Option::Some(execution::Execution_type::ExecutionParallel(_)) = self.execution_type {
-            } else {
-                self.execution_type = ::std::option::Option::Some(execution::Execution_type::ExecutionParallel(execution::ExecutionParallel::new()));
-            }
-            match self.execution_type {
-                ::std::option::Option::Some(execution::Execution_type::ExecutionParallel(ref mut v)) => v,
-                _ => panic!(),
-            }
-        }
-
-        // Take field
-        pub fn take_execution_parallel(&mut self) -> execution::ExecutionParallel {
-            if self.has_execution_parallel() {
-                match self.execution_type.take() {
-                    ::std::option::Option::Some(execution::Execution_type::ExecutionParallel(v)) => v,
-                    _ => panic!(),
-                }
-            } else {
-                execution::ExecutionParallel::new()
-            }
-        }
-
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut fields = ::std::vec::Vec::with_capacity(1);
             let mut oneofs = ::std::vec::Vec::with_capacity(1);
             fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, execution::ExecutionExclusive>(
                 "execution_exclusive",
@@ -5711,13 +5662,6 @@ pub mod workflow {
                 Execution::execution_exclusive,
                 Execution::mut_execution_exclusive,
                 Execution::set_execution_exclusive,
-            ));
-            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, execution::ExecutionParallel>(
-                "execution_parallel",
-                Execution::has_execution_parallel,
-                Execution::execution_parallel,
-                Execution::mut_execution_parallel,
-                Execution::set_execution_parallel,
             ));
             oneofs.push(execution::Execution_type::generated_oneof_descriptor_data());
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Execution>(
@@ -5741,9 +5685,6 @@ pub mod workflow {
                     10 => {
                         self.execution_type = ::std::option::Option::Some(execution::Execution_type::ExecutionExclusive(is.read_message()?));
                     },
-                    18 => {
-                        self.execution_type = ::std::option::Option::Some(execution::Execution_type::ExecutionParallel(is.read_message()?));
-                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -5762,10 +5703,6 @@ pub mod workflow {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
-                    &execution::Execution_type::ExecutionParallel(ref v) => {
-                        let len = v.compute_size();
-                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-                    },
                 };
             }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -5778,9 +5715,6 @@ pub mod workflow {
                 match v {
                     &execution::Execution_type::ExecutionExclusive(ref v) => {
                         ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
-                    },
-                    &execution::Execution_type::ExecutionParallel(ref v) => {
-                        ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
                     },
                 };
             }
@@ -5801,7 +5735,6 @@ pub mod workflow {
         }
 
         fn clear(&mut self) {
-            self.execution_type = ::std::option::Option::None;
             self.execution_type = ::std::option::Option::None;
             self.special_fields.clear();
         }
@@ -5840,8 +5773,6 @@ pub mod workflow {
         pub enum Execution_type {
             // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Execution.execution_exclusive)
             ExecutionExclusive(ExecutionExclusive),
-            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Execution.execution_parallel)
-            ExecutionParallel(ExecutionParallel),
         }
 
         impl ::protobuf::Oneof for Execution_type {
@@ -5959,109 +5890,6 @@ pub mod workflow {
         }
 
         impl ::protobuf::reflect::ProtobufValue for ExecutionExclusive {
-            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-        }
-
-        // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Execution.ExecutionParallel)
-        #[derive(PartialEq,Clone,Default,Debug)]
-        pub struct ExecutionParallel {
-            // special fields
-            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.Execution.ExecutionParallel.special_fields)
-            pub special_fields: ::protobuf::SpecialFields,
-        }
-
-        impl<'a> ::std::default::Default for &'a ExecutionParallel {
-            fn default() -> &'a ExecutionParallel {
-                <ExecutionParallel as ::protobuf::Message>::default_instance()
-            }
-        }
-
-        impl ExecutionParallel {
-            pub fn new() -> ExecutionParallel {
-                ::std::default::Default::default()
-            }
-
-            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                let mut fields = ::std::vec::Vec::with_capacity(0);
-                let mut oneofs = ::std::vec::Vec::with_capacity(0);
-                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ExecutionParallel>(
-                    "Workflow.Execution.ExecutionParallel",
-                    fields,
-                    oneofs,
-                )
-            }
-        }
-
-        impl ::protobuf::Message for ExecutionParallel {
-            const NAME: &'static str = "ExecutionParallel";
-
-            fn is_initialized(&self) -> bool {
-                true
-            }
-
-            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-                while let Some(tag) = is.read_raw_tag_or_eof()? {
-                    match tag {
-                        tag => {
-                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                        },
-                    };
-                }
-                ::std::result::Result::Ok(())
-            }
-
-            // Compute sizes of nested messages
-            #[allow(unused_variables)]
-            fn compute_size(&self) -> u64 {
-                let mut my_size = 0;
-                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-                self.special_fields.cached_size().set(my_size as u32);
-                my_size
-            }
-
-            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-                os.write_unknown_fields(self.special_fields.unknown_fields())?;
-                ::std::result::Result::Ok(())
-            }
-
-            fn special_fields(&self) -> &::protobuf::SpecialFields {
-                &self.special_fields
-            }
-
-            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-                &mut self.special_fields
-            }
-
-            fn new() -> ExecutionParallel {
-                ExecutionParallel::new()
-            }
-
-            fn clear(&mut self) {
-                self.special_fields.clear();
-            }
-
-            fn default_instance() -> &'static ExecutionParallel {
-                static instance: ExecutionParallel = ExecutionParallel {
-                    special_fields: ::protobuf::SpecialFields::new(),
-                };
-                &instance
-            }
-        }
-
-        impl ::protobuf::MessageFull for ExecutionParallel {
-            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Workflow.Execution.ExecutionParallel").unwrap()).clone()
-            }
-        }
-
-        impl ::std::fmt::Display for ExecutionParallel {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                ::protobuf::text_format::fmt(self, f)
-            }
-        }
-
-        impl ::protobuf::reflect::ProtobufValue for ExecutionParallel {
             type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
         }
     }
@@ -6646,7 +6474,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ic.protobuf.workflow.v1\x1a\x17validate/validate.proto\x1a5bitdrift_publ\
     ic/protobuf/matcher/v1/log_matcher.proto\"f\n\x16WorkflowsConfiguration\
     \x12L\n\tworkflows\x18\x01\x20\x03(\x0b2..bitdrift_public.protobuf.workf\
-    low.v1.WorkflowR\tworkflows\"\xb51\n\x08Workflow\x12\x17\n\x02id\x18\x01\
+    low.v1.WorkflowR\tworkflows\"\xa90\n\x08Workflow\x12\x17\n\x02id\x18\x01\
     \x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12V\n\x06states\x18\x02\
     \x20\x03(\x0b24.bitdrift_public.protobuf.workflow.v1.Workflow.StateR\x06\
     statesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12V\n\texecution\x18\x03\x20\
@@ -6760,20 +6588,17 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     kflow.FieldExtractedH\0R\x0efieldExtractedB\x0f\n\x08tag_type\x12\x03\
     \xf8B\x01\x1a/\n\x14ActionTakeScreenshot\x12\x17\n\x02id\x18\x01\x20\x01\
     (\tR\x02idB\x07\xfaB\x04r\x02\x10\x01B\x12\n\x0baction_type\x12\x03\xf8B\
-    \x01\x1a\xc5\x02\n\tExecution\x12~\n\x13execution_exclusive\x18\x01\x20\
+    \x01\x1a\xb9\x01\n\tExecution\x12~\n\x13execution_exclusive\x18\x01\x20\
     \x01(\x0b2K.bitdrift_public.protobuf.workflow.v1.Workflow.Execution.Exec\
-    utionExclusiveH\0R\x12executionExclusive\x12{\n\x12execution_parallel\
-    \x18\x02\x20\x01(\x0b2J.bitdrift_public.protobuf.workflow.v1.Workflow.Ex\
-    ecution.ExecutionParallelH\0R\x11executionParallel\x1a\x14\n\x12Executio\
-    nExclusive\x1a\x13\n\x11ExecutionParallelB\x10\n\x0eexecution_type\x1a6\
-    \n\x15LimitMatchedLogsCount\x12\x1d\n\x05count\x18\x01\x20\x01(\rR\x05co\
-    untB\x07\xfaB\x04*\x02\x20\0\x1a9\n\rLimitDuration\x12(\n\x0bduration_ms\
-    \x18\x02\x20\x01(\x04R\ndurationMsB\x07\xfaB\x042\x02\x20\0\x1a\xb6\x01\
-    \n\x0eFieldExtracted\x12&\n\nfield_name\x18\x01\x20\x01(\tR\tfieldNameB\
-    \x07\xfaB\x04r\x02\x10\x01\x12[\n\x05exact\x18\x02\x20\x01(\x0b2C.bitdri\
-    ft_public.protobuf.workflow.v1.Workflow.FieldExtracted.ExactH\0R\x05exac\
-    t\x1a\x07\n\x05ExactB\x16\n\x0fextraction_type\x12\x03\xf8B\x01b\x06prot\
-    o3\
+    utionExclusiveH\0R\x12executionExclusive\x1a\x14\n\x12ExecutionExclusive\
+    B\x10\n\x0eexecution_typeJ\x04\x08\x02\x10\x03\x1a6\n\x15LimitMatchedLog\
+    sCount\x12\x1d\n\x05count\x18\x01\x20\x01(\rR\x05countB\x07\xfaB\x04*\
+    \x02\x20\0\x1a9\n\rLimitDuration\x12(\n\x0bduration_ms\x18\x02\x20\x01(\
+    \x04R\ndurationMsB\x07\xfaB\x042\x02\x20\0\x1a\xb6\x01\n\x0eFieldExtract\
+    ed\x12&\n\nfield_name\x18\x01\x20\x01(\tR\tfieldNameB\x07\xfaB\x04r\x02\
+    \x10\x01\x12[\n\x05exact\x18\x02\x20\x01(\x0b2C.bitdrift_public.protobuf\
+    .workflow.v1.Workflow.FieldExtracted.ExactH\0R\x05exact\x1a\x07\n\x05Exa\
+    ctB\x16\n\x0fextraction_type\x12\x03\xf8B\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -6793,7 +6618,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             let mut deps = ::std::vec::Vec::with_capacity(2);
             deps.push(super::validate::file_descriptor().clone());
             deps.push(super::log_matcher::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(32);
+            let mut messages = ::std::vec::Vec::with_capacity(31);
             messages.push(WorkflowsConfiguration::generated_message_descriptor_data());
             messages.push(Workflow::generated_message_descriptor_data());
             messages.push(workflow::State::generated_message_descriptor_data());
@@ -6824,7 +6649,6 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(workflow::action::action_emit_metric::Counter::generated_message_descriptor_data());
             messages.push(workflow::action::action_emit_metric::Histogram::generated_message_descriptor_data());
             messages.push(workflow::execution::ExecutionExclusive::generated_message_descriptor_data());
-            messages.push(workflow::execution::ExecutionParallel::generated_message_descriptor_data());
             messages.push(workflow::field_extracted::Exact::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(0);
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(

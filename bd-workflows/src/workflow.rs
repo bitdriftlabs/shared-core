@@ -16,7 +16,6 @@ use crate::config::{
   ActionFlushBuffers,
   ActionTakeScreenshot,
   Config,
-  Execution,
   Predicate,
 };
 use crate::generate_log::generate_log_action;
@@ -44,15 +43,11 @@ use time::OffsetDateTime;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Workflow {
   id: String,
-  // TODO(Augustyniak): Make newly created runs to be added to the beginning of the list for
-  // parallel workflows so that logic for exclusive and parallel workflows is the same.
-  //
   // The list of runs. Runs are organized in the following way:
   //  * For exclusive workflows, new runs are added to the beginning of the list and the maximum
   //    number of runs is equal to two. If runs list is non-empty then the first run in the list is
   //    guaranteed to be in an initial state. If there are two runs then the second run is
   //    guaranteed not to be in an initial state.
-  //  * For parallel workflows, new runs are added to the end of the list.
   runs: Vec<Run>,
 }
 
@@ -91,13 +86,14 @@ impl Workflow {
 
     if self.needs_new_run() {
       let run = Run::new(config);
-      self.maybe_add_run(
-        config,
+      if self.maybe_add_run(
         run,
         current_traversals_count,
         traversals_count_limit,
         &mut result,
-      );
+      ) {
+        log::trace!("added a new run for workflow {}", self.id);
+      }
     }
 
     let mut did_make_progress = false;
@@ -186,61 +182,47 @@ impl Workflow {
       //     "reset" the workflow by removing the previously evaluated run and replacing it with the
       //     continuation of the run matched in this second step. If this run does not match, we'll
       //     do nothing.
-      if config.execution() == &Execution::Exclusive {
-        debug_assert!(
-          self.runs.len() <= 2,
-          "exclusive workflow should never have more than 2 runs"
-        );
-        // An exclusive workflow can reset or potentially fork only if it has two runs, one that's
-        // in an initial state and another one that is not in an initial state.
-        let has_active_run = self.runs.len() > 1;
-        let has_active_run_and_can_reset = has_active_run && did_make_progress;
+      debug_assert!(
+        self.runs.len() <= 2,
+        "exclusive workflow should never have more than 2 runs"
+      );
 
-        if !has_active_run_and_can_reset {
-          continue;
-        }
+      // An exclusive workflow can reset or potentially fork only if it has two runs, one that's
+      // in an initial state and another one that is not in an initial state.
+      let has_active_run = self.runs.len() > 1;
+      let has_active_run_and_can_reset = has_active_run && did_make_progress;
 
-        // There exists more than two runs and the index of the current run is 0.
-        let is_initial_run = index == 0;
-        if is_initial_run {
-          // Handling of "resetting" logic that's unique to exclusive workflows:
-          // * remove the workflow run processed in previous iteration of the loop (if any), the one
-          //   that was active at the time when the processing of the log started.
-          // * keep the run that advanced in the current iteration of the loop, it moved out of the
-          //   the initial state as result of processing the log.
+      if !has_active_run_and_can_reset {
+        continue;
+      }
 
-          // # Safety
-          // This is safe as `has_active_run == true means that there are at least two runs and
-          // `is_initial_run == true`` means that we are processing run with index == 0.
-          let run = self.runs.remove(index + 1);
+      // There exists more than two runs and the index of the current run is 0.
+      let is_initial_run = index == 0;
+      if is_initial_run {
+        // Handling of "resetting" logic that's unique to exclusive workflows:
+        // * remove the workflow run processed in previous iteration of the loop (if any), the one
+        //   that was active at the time when the processing of the log started.
+        // * keep the run that advanced in the current iteration of the loop, it moved out of the
+        //   the initial state as result of processing the log.
 
-          let removed_traversals_count = run.traversals_count();
-          result.stats.stopped_runs_count += 1;
-          result.stats.stopped_traversals_count += removed_traversals_count;
-          *current_traversals_count =
-            current_traversals_count.saturating_sub(removed_traversals_count);
+        // # Safety
+        // This is safe as `has_active_run == true means that there are at least two runs and
+        // `is_initial_run == true`` means that we are processing run with index == 0.
+        log::trace!("resetting workflow due to initial state transition");
+        let run = self.runs.remove(index + 1);
 
-          result.stats.reset_exclusive_workflows_count += 1;
-        } else {
-          // That's a bit of a hack that we use to track a stat that allows us to understand how
-          // often we run into a somehow controversial edge cases where both the initial state run
-          // and active state run both match processed log. We do not fork in such cases but want to
-          // understand how often such situation occurs.
-          let mut initial_run = Run::new(config);
-          let initial_run_result = initial_run.process_log(config, log);
+        let removed_traversals_count = run.traversals_count();
+        result.stats.stopped_runs_count += 1;
+        result.stats.stopped_traversals_count += removed_traversals_count;
+        *current_traversals_count =
+          current_traversals_count.saturating_sub(removed_traversals_count);
 
-          if initial_run_result.did_make_progress() {
-            // There is a potential for forking since the two of workflows nodes matched the log
-            // that's being processed:
-            // 1. The activate state run.
-            // 2. The initial state run.
-            result.stats.potential_fork_exclusive_workflows_count += 1;
-          }
-
-          // The activate state run made progress and the next run to be processed (if there is any)
-          // is an initial state run that we do not want to expose to the log.
-          break;
-        }
+        result.stats.reset_exclusive_workflows_count += 1;
+      } else {
+        // The active state run made progress and the next run to be processed (if there is any)
+        // is an initial state run that we do not want to expose to the log.
+        log::trace!("active state run made progress");
+        break;
       }
     }
 
@@ -249,7 +231,6 @@ impl Workflow {
 
   fn maybe_add_run(
     &mut self,
-    config: &Config,
     run: Run,
     current_traversals_count: &mut u32,
     traversals_count_limit: u32,
@@ -262,11 +243,7 @@ impl Workflow {
       result.stats.created_traversals_count += run.traversals_count();
 
       *current_traversals_count += run.traversals_count();
-
-      match config.execution() {
-        Execution::Exclusive => self.runs.insert(0, run),
-        Execution::Parallel => self.runs.push(run),
-      }
+      self.runs.insert(0, run);
 
       true
     } else {
@@ -434,7 +411,6 @@ pub(crate) struct WorkflowResultStats {
   pub(crate) traversals_count_limit_hit_count: u32,
 
   pub(crate) reset_exclusive_workflows_count: u32,
-  pub(crate) potential_fork_exclusive_workflows_count: u32,
 
   pub(crate) matched_logs_count: u32,
 }

@@ -643,10 +643,6 @@ impl WorkflowsEngine {
         exclusive_workflow_resets_total,
         reset_exclusive_workflows_count
       );
-      inc_by!(
-        exclusive_workflow_potential_forks_total,
-        potential_fork_exclusive_workflows_count
-      );
       inc_by!(run_starts_total, created_runs_count);
       inc_by!(run_advances_total, advanced_runs_count);
       inc_by!(run_stops_total, stopped_runs_count);
@@ -811,9 +807,6 @@ impl WorkflowsEngine {
   /// Handles deduping metrics based on their tags, ensuring that the same emit metric
   /// action triggered multiple times as part of separate workflows processing the same log results
   /// in only one metric emission.
-  /// TODO (Augustyniak): Fix deduping logic in the case of `parallel` workflows (it works correctly
-  /// for `exclusive` workflows). Currently, multiple metric emission actions triggered by runs of
-  /// the same workflow result in only one metric emission, which is incorrect behavior.
   fn prepare_actions<'a>(
     actions: Vec<TriggeredAction<'a>>,
   ) -> (
@@ -1164,10 +1157,6 @@ struct WorkflowsEngineStats {
   /// The number of times the state of an exclusive was reset and the workflow moved back to its
   /// initial state.
   exclusive_workflow_resets_total: Counter,
-  /// The number of times the exclusive workflow processed a log that matched two of its nodes -
-  /// the currently active node (that's not an initial node of the workflow) and the initial
-  /// workflow node.
-  exclusive_workflow_potential_forks_total: Counter,
 
   /// The number of started runs. Each workflow has at least one and can
   /// have significantly more runs.
@@ -1222,13 +1211,7 @@ impl WorkflowsEngineStats {
     let workflow_stops_total =
       scope.counter_with_labels("workflows_total", labels!("operation" => "stop"));
 
-    let exclusive_workflow_resets_total =
-      scope.counter_with_labels("workflow_resets_total", labels!("type" => "exclusive"));
-
-    let exclusive_workflow_potential_forks_total = scope.counter_with_labels(
-      "workflow_potential_forks_total",
-      labels!("type" => "exclusive"),
-    );
+    let exclusive_workflow_resets_total = scope.counter("workflow_resets_total");
 
     let run_starts_total = scope.counter_with_labels("runs_total", labels!("operation" => "start"));
     let run_advances_total =
@@ -1251,7 +1234,6 @@ impl WorkflowsEngineStats {
       workflow_stops_total,
 
       exclusive_workflow_resets_total,
-      exclusive_workflow_potential_forks_total,
 
       run_starts_total,
       run_advances_total,

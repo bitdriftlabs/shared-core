@@ -219,11 +219,6 @@ fn one_state_workflow() {
   let config = workflow!(exclusive with a);
   let mut workflow = AnnotatedWorkflow::new(config);
   workflow_process_log!(workflow; "foo");
-
-  // test parallel workflow
-  let config = workflow!(parallel with a);
-  let mut workflow = AnnotatedWorkflow::new(config);
-  workflow_process_log!(workflow; "foo");
 }
 
 #[test]
@@ -287,7 +282,6 @@ fn multiple_start_nodes_initial_fork() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 1,
         advanced_runs_count: 1,
         completed_runs_count: 0,
@@ -311,7 +305,6 @@ fn multiple_start_nodes_initial_fork() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 1,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 1,
         advanced_runs_count: 1,
         completed_runs_count: 0,
@@ -339,7 +332,6 @@ fn multiple_start_nodes_initial_fork() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 1,
         advanced_runs_count: 1,
         completed_runs_count: 0,
@@ -398,7 +390,6 @@ fn multiple_start_nodes_initial_branching() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 1,
         advanced_runs_count: 1,
         completed_runs_count: 0,
@@ -423,7 +414,6 @@ fn multiple_start_nodes_initial_branching() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 1,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 1,
         advanced_runs_count: 1,
         completed_runs_count: 0,
@@ -451,7 +441,6 @@ fn multiple_start_nodes_initial_branching() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 1,
         advanced_runs_count: 1,
         completed_runs_count: 1,
@@ -518,7 +507,6 @@ fn basic_exclusive_workflow() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 1,
         advanced_runs_count: 1,
         completed_runs_count: 0,
@@ -549,7 +537,6 @@ fn basic_exclusive_workflow() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 1,
         advanced_runs_count: 1,
         completed_runs_count: 1,
@@ -570,96 +557,6 @@ fn basic_exclusive_workflow() {
   let result = workflow_process_log!(workflow; "not matching");
   assert_eq!(result, WorkflowResult::default());
 
-  assert_active_runs!(workflow; "A");
-  assert!(workflow.is_in_initial_state());
-}
-
-#[test]
-#[allow(clippy::cognitive_complexity)]
-fn basic_parallel_workflow() {
-  let mut a = state("A");
-  let mut b = state("B");
-  let c = state("C");
-
-  declare_transition!(
-    &mut a => &b;
-    when rule!(
-      all!(
-        log_matches!(message == "foo"),
-        log_matches!(tag("key") == "value"),
-      )
-    );
-    do action!(flush_buffers &["foo_buffer_id"]; id "foo")
-  );
-  declare_transition!(
-    &mut b => &c;
-    when rule!(log_matches!(message == "bar"));
-    do action!(flush_buffers &["bar_buffer_id"]; id "bar")
-  );
-
-  let config = workflow!(parallel with a, b, c);
-  let mut workflow = AnnotatedWorkflow::new(config);
-  assert!(workflow.runs().is_empty());
-
-  // * A new run is created to ensure that workflow has a run in initial state.
-  // * The first run moves from "A" to non-final "B" state.
-  let result = workflow_process_log!(workflow; "foo", with labels! { "key" => "value" });
-  assert_eq!(
-    result,
-    WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: "foo".to_string(),
-        buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
-        streaming: None,
-      })],
-      logs_to_inject: BTreeMap::new(),
-      stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
-        matched_logs_count: 1,
-      },
-    }
-  );
-  assert_active_runs!(workflow; "B");
-  assert!(!workflow.is_in_initial_state());
-
-  // * The first run moves from "B" to final "C" state.
-  // * The first run completes.
-  let result = workflow_process_log!(workflow; "bar");
-  assert_eq!(
-    result,
-    WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: "bar".to_string(),
-        buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
-        streaming: None,
-      })],
-      logs_to_inject: BTreeMap::new(),
-      stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 1,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 1,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
-        matched_logs_count: 1,
-      },
-    }
-  );
   assert_active_runs!(workflow; "A");
   assert!(workflow.is_in_initial_state());
 }
@@ -708,7 +605,6 @@ fn exclusive_workflow_matched_logs_count_limit() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 1,
         advanced_runs_count: 1,
         completed_runs_count: 0,
@@ -737,7 +633,6 @@ fn exclusive_workflow_matched_logs_count_limit() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 1,
         advanced_runs_count: 0,
         completed_runs_count: 0,
@@ -767,132 +662,6 @@ fn exclusive_workflow_matched_logs_count_limit() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
-        created_runs_count: 0,
-        advanced_runs_count: 0,
-        completed_runs_count: 0,
-        stopped_runs_count: 1,
-        created_traversals_count: 0,
-        advanced_traversals_count: 0,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 2,
-        traversals_count_limit_hit_count: 0,
-        matched_logs_count: 1,
-      },
-    }
-  );
-  assert_active_runs!(workflow; "A");
-  assert!(workflow.is_in_initial_state());
-}
-
-#[test]
-#[allow(clippy::cognitive_complexity)]
-#[allow(clippy::many_single_char_names)]
-fn parallel_workflow_matched_logs_count_limit() {
-  let mut a = state("A");
-  let mut b = state("B");
-  let c = state("C");
-  let mut d = state("D");
-  let e = state("E");
-
-  declare_transition!(
-    &mut a => &b;
-    when rule!(log_matches!(message == "foo"))
-  );
-  declare_transition!(
-    &mut b => &c;
-    when rule!(log_matches!(message == "bar"); times 3)
-  );
-  declare_transition!(
-    &mut a => &d;
-    when rule!(log_matches!(message == "foo"))
-  );
-  declare_transition!(
-    &mut d => &e;
-    when rule!(log_matches!(message == "zar"))
-  );
-
-  let config = workflow_proto!(
-    parallel with a, b, c, e, d;
-    matches limit!(count 3);
-    duration limit!(seconds 10)
-  );
-  let config = Config::new(config).unwrap();
-  let mut workflow = AnnotatedWorkflow::new(config);
-  assert!(workflow.runs().is_empty());
-
-  // * The first run is created.
-  // * The first run transitions from state "A" into states "B" and "D" as two of its outgoing
-  //   transitions are matched.
-  // * The first run has 2 traversals.
-  let result = workflow_process_log!(workflow; "foo");
-  assert_eq!(
-    result,
-    WorkflowResult {
-      triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
-      stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 2,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
-        matched_logs_count: 2,
-      },
-    }
-  );
-  assert_eq!(1, workflow.runs().len());
-  assert_active_run_traversals!(workflow; 0; "B", "D");
-  assert!(!workflow.is_in_initial_state());
-
-  // * A second run is created so that workflow has a run in an initial state.
-  // * The first traversal of the first run matches but doesn't advance.
-  // * The second traversal of the first does not match.
-  let result = workflow_process_log!(workflow; "bar");
-  assert_eq!(
-    result,
-    WorkflowResult {
-      triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
-      stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 0,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 0,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
-        matched_logs_count: 1,
-      },
-    }
-  );
-  assert_active_run_traversals!(workflow; 0; "B", "D");
-  assert_active_run_traversals!(workflow; 1; "A");
-  assert!(!workflow.is_in_initial_state());
-
-  // * The first traversal of the first run matches.
-  // * The match causes the run to exceed the limit of allowed matches.
-  // * The first run is removed.
-  // * A new run is not created as there is already a run in an initial state.
-  let result = workflow_process_log!(workflow; "bar");
-  assert_eq!(
-    result,
-    WorkflowResult {
-      triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
-      stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 0,
         advanced_runs_count: 0,
         completed_runs_count: 0,
@@ -944,7 +713,6 @@ fn exclusive_workflow_log_rule_count() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 1,
         advanced_runs_count: 0,
         completed_runs_count: 0,
@@ -975,7 +743,6 @@ fn exclusive_workflow_log_rule_count() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 1,
         created_runs_count: 1,
         advanced_runs_count: 1,
         completed_runs_count: 0,
@@ -1012,7 +779,6 @@ fn exclusive_workflow_log_rule_count() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 0,
         advanced_runs_count: 1,
         completed_runs_count: 1,
@@ -1028,162 +794,6 @@ fn exclusive_workflow_log_rule_count() {
   );
   assert_active_runs!(workflow; "A");
   assert!(workflow.is_in_initial_state());
-}
-
-#[test]
-#[allow(clippy::cognitive_complexity)]
-fn parallel_workflow_log_rule_count() {
-  let mut a = state("A");
-  let mut b = state("B");
-  let c = state("C");
-
-  declare_transition!(
-    &mut a => &b;
-    when rule!(log_matches!(message == "foo"); times 2);
-    do action!(flush_buffers &["foo_buffer_id"]; id "foo")
-  );
-  declare_transition!(
-    &mut b => &c;
-    when rule!(log_matches!(message == "bar"));
-    do action!(flush_buffers &["bar_buffer_id"]; id "bar")
-  );
-
-  let config = workflow!(parallel with a, b, c);
-  let mut workflow = AnnotatedWorkflow::new(config);
-  assert!(workflow.runs().is_empty());
-
-  // * The first run is created.
-  // * The first run does not advance.
-  // * Log is matched but no run or traversal advances as the log matching rule has `count` set to
-  //   2.
-  let result = workflow_process_log!(workflow; "foo");
-  assert_eq!(
-    result,
-    WorkflowResult {
-      triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
-      stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 0,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 0,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
-        matched_logs_count: 1,
-      },
-    }
-  );
-  assert_active_runs!(workflow; "A");
-  assert!(!workflow.is_in_initial_state());
-
-  // * A second run is created so that workflow has a run in an initial state.
-  // * The first run moves from "A" to "B" state.
-  // * The second run matches a log but does not advance.
-  let result = workflow_process_log!(workflow; "foo");
-  assert_eq!(
-    result,
-    WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: "foo".to_string(),
-        buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
-        streaming: None,
-      })],
-      logs_to_inject: BTreeMap::new(),
-      stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
-        matched_logs_count: 2,
-      },
-    }
-  );
-  assert_active_runs!(workflow; "B", "A");
-  assert!(!workflow.is_in_initial_state());
-
-  // * The first run does not advance as state "B" does not match "foo".
-  // * The second run moves from "A" to "B" state.
-  // * The third state matches a log but does not advance.
-  let result = workflow_process_log!(workflow; "foo");
-  assert_eq!(
-    result,
-    WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: "foo".to_string(),
-        buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
-        streaming: None,
-      })],
-      logs_to_inject: BTreeMap::new(),
-      stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
-        matched_logs_count: 2,
-      },
-    }
-  );
-  assert_active_runs!(workflow; "B", "B", "A");
-  assert!(!workflow.is_in_initial_state());
-
-  // * A forth run is created so that workflow has a run in an initial state.
-  // * The first and second runs moves from "B" to "C".
-  // * The first and second runs complete.
-  // * The third and forth runs do nothing.
-  let result = workflow_process_log!(workflow; "bar");
-  assert_eq!(
-    result,
-    WorkflowResult {
-      triggered_actions: vec![
-        TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-          id: "bar".to_string(),
-          buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
-          streaming: None,
-        }),
-        TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-          id: "bar".to_string(),
-          buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
-          streaming: None,
-        })
-      ],
-      logs_to_inject: BTreeMap::new(),
-      stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 2,
-        completed_runs_count: 2,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 2,
-        completed_traversals_count: 2,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
-        matched_logs_count: 2,
-      },
-    }
-  );
-  assert_active_runs!(workflow; "A", "A");
-  assert!(!workflow.is_in_initial_state());
 }
 
 #[test]
@@ -1239,7 +849,6 @@ fn branching_exclusive_workflow() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 1,
         advanced_runs_count: 1,
         completed_runs_count: 0,
@@ -1265,7 +874,6 @@ fn branching_exclusive_workflow() {
   assert_eq!(
     WorkflowResultStats {
       reset_exclusive_workflows_count: 0,
-      potential_fork_exclusive_workflows_count: 0,
       created_runs_count: 1,
       advanced_runs_count: 0,
       completed_runs_count: 0,
@@ -1295,7 +903,6 @@ fn branching_exclusive_workflow() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 0,
         advanced_runs_count: 1,
         completed_runs_count: 1,
@@ -1333,7 +940,6 @@ fn branching_exclusive_workflow() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
         created_runs_count: 0,
         advanced_runs_count: 1,
         completed_runs_count: 0,
@@ -1349,237 +955,5 @@ fn branching_exclusive_workflow() {
   );
   assert_eq!(2, workflow.runs()[0].traversals.len());
   assert_active_run_traversals!(workflow; 0; "B", "C");
-  assert!(!workflow.is_in_initial_state());
-}
-
-#[test]
-#[allow(clippy::cognitive_complexity)]
-#[allow(clippy::many_single_char_names)]
-fn branching_parallel_workflow() {
-  let mut a = state("A");
-  let mut b = state("B");
-  let mut c = state("C");
-  let d = state("D");
-  let e = state("E");
-
-  declare_transition!(
-    &mut a => &b;
-    when rule!(
-      any!(
-        log_matches!(message == "foo"),
-        log_matches!(tag("key") == "value"),
-      )
-    );
-    do action!(flush_buffers &["foo_buffer_id"]; id "foo")
-  );
-  declare_transition!(
-    &mut b => &d;
-    when rule!(log_matches!(message == "zoo"));
-    do action!(flush_buffers &["zoo_buffer_id"]; id "zoo")
-  );
-  declare_transition!(
-    &mut a => &c;
-    when rule!(log_matches!(message == "bar"));
-    do action!(flush_buffers &["bar_buffer_id"]; id "bar")
-  );
-  declare_transition!(
-    &mut c => &e;
-    when rule!(log_matches!(message == "zar"));
-    do action!(flush_buffers &["zar_buffer_id"]; id "zar")
-  );
-
-  let config = workflow!(parallel with a, b, c, d, e);
-  let mut workflow = AnnotatedWorkflow::new(config);
-  assert!(workflow.runs().is_empty());
-
-  // * The first run is created.
-  // * The first and only run is moved from "A" to a non-final "B" state.
-  let result = workflow_process_log!(workflow; "foo");
-  assert_eq!(
-    result,
-    WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: "foo".to_string(),
-        buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
-        streaming: None,
-      })],
-      logs_to_inject: BTreeMap::new(),
-      stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
-        matched_logs_count: 1,
-      },
-    }
-  );
-  assert_active_runs!(workflow; "B");
-  assert!(!workflow.is_in_initial_state());
-
-  // * Since the workflow is parallel a second run is created even though the previous run has not
-  //   completed.
-  // * The second run moves from "A" to a non-final "C" state.
-  let result = workflow_process_log!(workflow; "bar");
-  assert_eq!(
-    result,
-    WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: "bar".to_string(),
-        buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
-        streaming: None,
-      })],
-      logs_to_inject: BTreeMap::new(),
-      stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
-        matched_logs_count: 1,
-      },
-    }
-  );
-  assert_active_runs!(workflow; "B", "C");
-  assert!(!workflow.is_in_initial_state());
-
-  // * A second run is created so that workflow has a run in an initial state.
-  // * The first run is moved from "B" to a final "D" state.
-  // * The first run completes.
-  // * A new run is not created as there is already a run in an initial state.
-  let result = workflow_process_log!(workflow; "zoo");
-  assert_eq!(
-    result,
-    WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: "zoo".to_string(),
-        buffer_ids: BTreeSet::from(["zoo_buffer_id".to_string()]),
-        streaming: None,
-      })],
-      logs_to_inject: BTreeMap::new(),
-      stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 1,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 1,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
-        matched_logs_count: 1,
-      },
-    }
-  );
-  assert_active_runs!(workflow; "C", "A");
-
-  // The first run completes.
-  let result = workflow_process_log!(workflow; "zar");
-  assert_eq!(
-    result,
-    WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: "zar".to_string(),
-        buffer_ids: BTreeSet::from(["zar_buffer_id".to_string()]),
-        streaming: None,
-      })],
-      logs_to_inject: BTreeMap::new(),
-      stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
-        created_runs_count: 0,
-        advanced_runs_count: 1,
-        completed_runs_count: 1,
-        stopped_runs_count: 0,
-        created_traversals_count: 0,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 1,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
-        matched_logs_count: 1,
-      },
-    }
-  );
-  assert_active_runs!(workflow; "A");
-  assert!(workflow.is_in_initial_state());
-
-  // * The first run ends up with two traversals.
-  // * First of the traversals moves to state "B", second one to state "C".
-  let result = workflow_process_log!(workflow; "bar", with labels! { "key" => "value" });
-  assert_eq!(
-    result,
-    WorkflowResult {
-      triggered_actions: vec![
-        TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-          id: "foo".to_string(),
-          buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
-          streaming: None,
-        }),
-        TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-          id: "bar".to_string(),
-          buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
-          streaming: None,
-        })
-      ],
-      logs_to_inject: BTreeMap::new(),
-      stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
-        created_runs_count: 0,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
-        matched_logs_count: 2,
-      },
-    }
-  );
-  assert_eq!(1, workflow.runs().len());
-  assert_active_run_traversals!(workflow; 0; "B", "C");
-  assert!(!workflow.is_in_initial_state());
-
-  let result = workflow_process_log!(workflow; "not matching");
-  assert_eq!(
-    result,
-    WorkflowResult {
-      triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
-      stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        potential_fork_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 0,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 0,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
-        matched_logs_count: 0,
-      },
-    }
-  );
-  assert_eq!(2, workflow.runs().len());
-  assert_active_run_traversals!(workflow; 0; "B", "C");
-  assert_active_run_traversals!(workflow; 1; "A");
   assert!(!workflow.is_in_initial_state());
 }
