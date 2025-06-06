@@ -18,6 +18,7 @@ use bd_test_helpers::session::InMemoryStorage;
 use futures_util::poll;
 use std::sync::Arc;
 use tokio::pin;
+use tokio::sync::watch;
 use tokio_test::assert_pending;
 
 #[tokio::test]
@@ -35,6 +36,7 @@ async fn thread_local_logger_guard() {
     device: Arc::new(bd_device::Device::new(store.clone())),
     sdk_version: "1.0.0".into(),
     app_version_repo: Repository::new(store),
+    sleep_mode_active: watch::channel(false).0,
   };
 
   with_thread_local_logger_guard(|| {

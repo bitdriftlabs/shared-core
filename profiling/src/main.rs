@@ -49,6 +49,7 @@ use std::path::Path;
 use std::sync::Arc;
 use time::ext::NumericalDuration;
 use time::OffsetDateTime;
+use tokio::sync::watch;
 
 struct WorkflowConfigurationsInit {
   workflow_states: Vec<Vec<State>>,
@@ -358,7 +359,8 @@ impl Setup {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let (data_tx, _data_rx) = tokio::sync::mpsc::channel(1);
 
-    let (flush_ticker, upload_ticker) = default_stats_flush_triggers(&self.runtime_loader).unwrap();
+    let (flush_ticker, upload_ticker) =
+      default_stats_flush_triggers(watch::channel(false).1, &self.runtime_loader).unwrap();
     let flush_handles = self
       .stats
       .flush_handle(

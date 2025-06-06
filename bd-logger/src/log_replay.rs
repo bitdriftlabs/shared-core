@@ -166,7 +166,7 @@ impl ProcessingPipeline {
     mut log: Log,
     log_processing_completed_tx: Option<oneshot::Sender<()>>,
   ) -> anyhow::Result<Vec<Log>> {
-    self.stats.log_level_counters.record(log.log_level);
+    self.stats.logs_received.inc();
 
     // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
     self.filter_chain.process(&mut log);

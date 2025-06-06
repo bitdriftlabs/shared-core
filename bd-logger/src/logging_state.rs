@@ -15,7 +15,6 @@ use bd_buffer::BuffersWithAck;
 use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::FilterChain;
-use bd_log_primitives::{log_level, LogLevel};
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
@@ -223,7 +222,7 @@ impl UninitializedLoggingContextStats {
 // InitializedLoggingContextStats
 //
 pub struct InitializedLoggingContextStats {
-  pub(crate) log_level_counters: LogLevelCounters,
+  pub(crate) logs_received: Counter,
   pub(crate) streamed_logs: Counter,
   pub(crate) trigger_upload_stats: TriggerUploadStats,
   pub(crate) root_scope: Scope,
@@ -233,7 +232,7 @@ pub struct InitializedLoggingContextStats {
 impl InitializedLoggingContextStats {
   fn new(stats: &UninitializedLoggingContextStats) -> Self {
     Self {
-      log_level_counters: LogLevelCounters::new(&stats.scope),
+      logs_received: stats.scope.counter("logs_received"),
       streamed_logs: stats.scope.counter("streamed_logs"),
       trigger_upload_stats: TriggerUploadStats::new(&stats.scope),
       root_scope: stats.root_scope.clone(),
@@ -269,40 +268,6 @@ impl TriggerUploadStats {
       TrySendError::Closed(_) => {
         self.send_err_closed.inc();
       },
-    }
-  }
-}
-
-#[derive(Debug, Clone)]
-#[allow(clippy::struct_field_names)]
-pub struct LogLevelCounters {
-  // We don't need dynamic labels here so we just maintain explicit counters.
-  trace_counter: Counter,
-  debug_counter: Counter,
-  info_counter: Counter,
-  warn_counter: Counter,
-  error_counter: Counter,
-}
-
-impl LogLevelCounters {
-  fn new(scope: &Scope) -> Self {
-    Self {
-      trace_counter: scope.counter_with_labels("logs_received", labels!("log_level" => "trace")),
-      debug_counter: scope.counter_with_labels("logs_received", labels!("log_level" => "debug")),
-      info_counter: scope.counter_with_labels("logs_received", labels!("log_level" => "info")),
-      warn_counter: scope.counter_with_labels("logs_received", labels!("log_level" => "warn")),
-      error_counter: scope.counter_with_labels("logs_received", labels!("log_level" => "error")),
-    }
-  }
-
-  pub(crate) fn record(&self, level: LogLevel) {
-    match level {
-      log_level::ERROR => self.error_counter.inc(),
-      log_level::WARNING => self.warn_counter.inc(),
-      log_level::INFO => self.info_counter.inc(),
-      log_level::DEBUG => self.debug_counter.inc(),
-      log_level::TRACE => self.trace_counter.inc(),
-      _ => {},
     }
   }
 }

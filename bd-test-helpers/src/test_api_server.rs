@@ -60,9 +60,14 @@ use tokio_stream::wrappers::ReceiverStream;
 //
 
 #[derive(Debug)]
+struct HandshakeAccounting {
+  metadata: HashMap<String, String>,
+  sleep_mode: bool,
+}
+#[derive(Debug)]
 struct StreamAccounting {
   api_key: Option<String>,
-  handshake_received: Option<HashMap<String, String>>,
+  handshake_received: Option<HandshakeAccounting>,
   stream_closed: bool,
 }
 
@@ -141,7 +146,10 @@ impl RequestProcessor {
           .event_tx
           .send(ObservedEvent::StreamEvent(
             self.stream_id,
-            StreamEvent::Handshake(attributes_as_strings),
+            StreamEvent::Handshake {
+              metadata: attributes_as_strings,
+              sleep_mode: h.sleep_mode,
+            },
           ))
           .await
           .expect("event channel should not fail");
@@ -449,8 +457,11 @@ pub enum StreamEvent {
   // Stream creation, with an optional required API key check.
   Created(Option<String>),
   // Handshake event, with an optional required set of client attributes that must be present on
-  // the handshake request.
-  Handshake(HashMap<String, String>),
+  // the handshake request, as well as the indicated sleep mode.
+  Handshake {
+    metadata: HashMap<String, String>,
+    sleep_mode: bool,
+  },
   Closed,
 }
 
@@ -461,7 +472,10 @@ pub enum StreamEvent {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ExpectedStreamEvent {
   Created(Option<String>),
-  Handshake(Option<HandshakeMatcher>),
+  Handshake {
+    matcher: Option<HandshakeMatcher>,
+    sleep_mode: bool,
+  },
   Closed,
 }
 
@@ -798,7 +812,7 @@ impl ServerHandle {
   /// using this function over `next_stream` when the stream is expected to be initialized
   /// immediately.
   #[must_use]
-  pub async fn next_initialized_stream(&self) -> Option<StreamHandle> {
+  pub async fn next_initialized_stream(&self, expect_sleep_mode: bool) -> Option<StreamHandle> {
     let stream = StreamHandle {
       stream_id: self.next_stream().await?,
       timed_event_wait_tx: self.timed_event_wait_tx.clone(),
@@ -807,7 +821,13 @@ impl ServerHandle {
 
     assert!(
       stream
-        .expect_event(ExpectedStreamEvent::Handshake(None), 1.seconds())
+        .expect_event(
+          ExpectedStreamEvent::Handshake {
+            matcher: None,
+            sleep_mode: expect_sleep_mode
+          },
+          1.seconds()
+        )
         .await
     );
 
@@ -1091,8 +1111,15 @@ impl TestEventProcessor {
               .streams
               .insert(stream_id, StreamAccounting::new(maybe_key));
           },
-          StreamEvent::Handshake(attributes) => {
-            self.streams.get_mut(&stream_id).unwrap().handshake_received = Some(attributes);
+          StreamEvent::Handshake {
+            metadata,
+            sleep_mode,
+          } => {
+            self.streams.get_mut(&stream_id).unwrap().handshake_received =
+              Some(HandshakeAccounting {
+                metadata,
+                sleep_mode,
+              });
           },
           StreamEvent::Closed => {
             self.streams.get_mut(&stream_id).unwrap().stream_closed = true;
@@ -1141,13 +1168,20 @@ impl TestEventProcessor {
           .is_some_and(|state| match event {
             ExpectedStreamEvent::Created(key) => state.api_key == *key,
             ExpectedStreamEvent::Closed => state.stream_closed,
-            ExpectedStreamEvent::Handshake(attributes) => attributes.as_ref().map_or_else(
-              || state.handshake_received.is_some(),
-              |attribute_match| {
+            ExpectedStreamEvent::Handshake {
+              matcher,
+              sleep_mode,
+            } => matcher.as_ref().map_or_else(
+              || {
                 state
                   .handshake_received
                   .as_ref()
-                  .is_some_and(|attrs| attribute_match.matches(attrs))
+                  .is_some_and(|h| h.sleep_mode == *sleep_mode)
+              },
+              |attribute_match| {
+                state.handshake_received.as_ref().is_some_and(|h| {
+                  attribute_match.matches(&h.metadata) && h.sleep_mode == *sleep_mode
+                })
               },
             ),
           });

@@ -71,6 +71,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::watch;
 use tokio::time::Instant;
 
 // The amount of time the API has to be in the disconnected state before network quality will be
@@ -148,6 +149,8 @@ struct StreamState {
   stream_event_rx: tokio::sync::mpsc::Receiver<StreamEvent>,
 
   time_provider: Arc<dyn TimeProvider>,
+
+  sleep_mode_active: watch::Receiver<bool>,
 }
 
 impl StreamState {
@@ -157,6 +160,7 @@ impl StreamState {
     stream_event_rx: tokio::sync::mpsc::Receiver<StreamEvent>,
     time_provider: Arc<dyn TimeProvider>,
     stats: &Stats,
+    sleep_mode_active: watch::Receiver<bool>,
   ) -> Self {
     // TODO(mattklein123): We should be pivoting based on the grpc-encoding response header, but
     // currently we are not passing the response headers back to Rust. Given that we currently
@@ -186,6 +190,7 @@ impl StreamState {
       stream_handle,
       stream_event_rx,
       time_provider,
+      sleep_mode_active,
     }
   }
 
@@ -218,8 +223,14 @@ impl StreamState {
 
   async fn send_ping(&mut self) -> anyhow::Result<()> {
     log::debug!("sending ping");
+    let sleep_mode = *self.sleep_mode_active.borrow();
 
-    self.send_request(PingRequest::default()).await
+    self
+      .send_request(PingRequest {
+        sleep_mode,
+        ..Default::default()
+      })
+      .await
   }
 
   // Processes a single upstream event (data/close) being provided by the platform network.
@@ -340,6 +351,7 @@ pub struct Api {
   shutdown: ComponentShutdown,
   data_upload_rx: Receiver<DataUpload>,
   trigger_upload_tx: Sender<TriggerUpload>,
+  sleep_mode_active: watch::Receiver<bool>,
 
   static_metadata: Arc<dyn Metadata + Send + Sync>,
 
@@ -382,6 +394,7 @@ impl Api {
     network_quality_provider: Arc<SimpleNetworkQualityProvider>,
     self_logger: Arc<dyn bd_internal_logging::Logger>,
     stats: &Scope,
+    sleep_mode_active: watch::Receiver<bool>,
   ) -> anyhow::Result<Self> {
     let max_backoff_interval = runtime_loader.register_watch()?;
     let initial_backoff_interval = runtime_loader.register_watch()?;
@@ -408,6 +421,7 @@ impl Api {
       generic_kill_duration,
       unauthenticated_kill_duration,
       config_marked_safe_due_to_offline: false,
+      sleep_mode_active,
     })
   }
 
@@ -626,6 +640,7 @@ impl Api {
         stream_event_rx,
         self.time_provider.clone(),
         &self.stats,
+        self.sleep_mode_active.clone(),
       );
 
       log::debug!("sending handshake");
@@ -876,6 +891,7 @@ impl Api {
     let mut handshake = HandshakeRequest {
       static_device_metadata: metadata.clone(),
       previous_disconnect_reason: previous_disconnect_reason.unwrap_or_default(),
+      sleep_mode: *self.sleep_mode_active.borrow(),
       ..Default::default()
     };
 

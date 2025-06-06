@@ -15,7 +15,7 @@ use crate::log_replay::LoggerReplay;
 use crate::{app_version, MetadataProvider};
 use bd_api::Metadata;
 use bd_bounded_buffer::{self, Sender as MemoryBoundSender};
-use bd_client_stats_store::Scope;
+use bd_client_stats_store::{Counter, Scope};
 use bd_log::warn_every;
 use bd_log_primitives::{
   log_level,
@@ -29,20 +29,22 @@ use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogTy
 use bd_runtime::runtime::Snapshot;
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_shutdown::ComponentShutdownTrigger;
+use bd_stats_common::labels;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::watch;
 
 #[derive(Clone)]
 #[allow(clippy::struct_field_names)]
 pub struct Stats {
   pub(crate) log_emission_counters: bd_bounded_buffer::SendCounters,
-  pub(crate) field_addition_counters: bd_bounded_buffer::SendCounters,
-  pub(crate) field_removal_counters: bd_bounded_buffer::SendCounters,
   pub(crate) state_flushing_counters: bd_bounded_buffer::SendCounters,
   pub(crate) session_replay_duration_histogram: bd_client_stats_store::Histogram,
+  sleep_enabled: Counter,
+  sleep_disabled: Counter,
 }
 
 impl Stats {
@@ -51,25 +53,30 @@ impl Stats {
     let replay_scope = stats.scope("replay");
     let stats_scope = stats.scope("logger");
     let async_log_buffer_scope = stats_scope.scope("async_log_buffer");
+    let sleep_scope = stats.scope("sleep");
 
     Self {
       log_emission_counters: bd_bounded_buffer::SendCounters::new(
         &async_log_buffer_scope,
         "log_enqueueing",
       ),
-      field_addition_counters: bd_bounded_buffer::SendCounters::new(
-        &async_log_buffer_scope,
-        "field_additions",
-      ),
-      field_removal_counters: bd_bounded_buffer::SendCounters::new(
-        &async_log_buffer_scope,
-        "field_removals",
-      ),
       state_flushing_counters: bd_bounded_buffer::SendCounters::new(
         &async_log_buffer_scope,
         "state_flushing",
       ),
       session_replay_duration_histogram: replay_scope.histogram("capture_time_s"),
+      sleep_enabled: sleep_scope.counter_with_labels(
+        "transitions",
+        labels!(
+          "state" => "enabled",
+        ),
+      ),
+      sleep_disabled: sleep_scope.counter_with_labels(
+        "transitions",
+        labels!(
+          "state" => "disabled",
+        ),
+      ),
     }
   }
 }
@@ -111,6 +118,8 @@ pub struct LoggerHandle {
   app_version_repo: app_version::Repository,
 
   stats: Stats,
+
+  sleep_mode_active: watch::Sender<bool>,
 }
 
 impl LoggerHandle {
@@ -172,6 +181,23 @@ impl LoggerHandle {
       None,
       false,
     );
+  }
+
+  pub fn transition_sleep_mode(&self, enable: bool) {
+    self.sleep_mode_active.send_if_modified(|enabled| {
+      if *enabled == enable {
+        false
+      } else {
+        log::debug!("transitioning sleep mode to {enable}");
+        *enabled = enable;
+        if enable {
+          self.stats.sleep_enabled.inc();
+        } else {
+          self.stats.sleep_disabled.inc();
+        }
+        true
+      }
+    });
   }
 
   pub fn log_session_replay_screen(&self, fields: AnnotatedLogFields, duration: time::Duration) {
@@ -312,9 +338,6 @@ impl LoggerHandle {
       if cell.try_borrow().is_ok() {
         let field_name = key.clone();
         let result = AsyncLogBuffer::<LoggerReplay>::add_log_field(&self.tx, key, value);
-
-        self.stats.field_addition_counters.record(&result);
-
         if let Err(e) = result {
           log::warn!("failed to add {field_name:?} log field: {e:?}");
         }
@@ -333,9 +356,6 @@ impl LoggerHandle {
     LOGGER_GUARD.with(|cell| {
       if cell.try_borrow().is_ok() {
         let result = AsyncLogBuffer::<LoggerReplay>::remove_log_field(&self.tx, field_name);
-
-        self.stats.field_removal_counters.record(&result);
-
         if let Err(e) = result {
           log::warn!("failed to remove {field_name:?} log field: {e:?}");
         }
@@ -401,6 +421,10 @@ pub struct InitParams {
 
   // Static metadata used to identify the client when communicating with the backend.
   pub static_metadata: Arc<dyn Metadata + Send + Sync>,
+
+  // Whether the logger should start in sleep mode. It can then be transitioned using the provided
+  // transition APIs.
+  pub start_in_sleep_mode: bool,
 }
 
 /// A single logger instance. This manages the lifetime of the logger and can be used to access
@@ -427,6 +451,8 @@ pub struct Logger {
   pub(crate) stats: Stats,
 
   stats_scope: Scope,
+
+  sleep_mode_active: watch::Sender<bool>,
 }
 
 impl Logger {
@@ -439,6 +465,7 @@ impl Logger {
     device: Arc<bd_device::Device>,
     sdk_version: &str,
     store: Arc<bd_key_value::Store>,
+    sleep_mode_active: watch::Sender<bool>,
   ) -> Self {
     Self {
       shutdown_state: Mutex::new(shutdown_state),
@@ -450,6 +477,7 @@ impl Logger {
       stats: Stats::new(&stats),
       stats_scope: stats,
       store,
+      sleep_mode_active,
     }
   }
 
@@ -490,6 +518,7 @@ impl Logger {
       sdk_version: self.sdk_version.clone(),
       app_version_repo: Repository::new(self.store.clone()),
       stats: self.stats.clone(),
+      sleep_mode_active: self.sleep_mode_active.clone(),
     }
   }
 }
