@@ -59,13 +59,13 @@ axum-server     = { version = "0.7.2", features = ["tls-rustls-no-provider"] }
 backoff         = "0.4.0"
 base64          = "0.22.1"
 base64-url      = "3.0.0"
-base64ct        = { version = "1.7.3", features = ["alloc", "std"] }
+base64ct        = { version = "1.8.0", features = ["alloc", "std"] }
 bincode         = { version = "2.0.1", features = ["serde"] }
 bytes           = "1.10.1"
-cbindgen        = "0.28.0"
-cc              = "1.2.23"
+cbindgen        = "0.29.0"
+cc              = "1.2.27"
+clap            = { version = "4.5.40", features = ["derive", "env"] }
 cmake           = "0.1.54"
-clap            = { version = "4.5.38", features = ["derive", "env"] }
 color-backtrace = "0.7.0"
 concat-string   = "1.0.1"
 crc32fast       = "1.4.2"
@@ -74,7 +74,7 @@ ctor            = "0.4.2"
 dashmap         = "6.1.0"
 flatbuffers     = "25.2.10"
 flatc-rust      = "0.2.0"
-flate2          = { version = "1.1.1", default-features = false }
+flate2          = { version = "1.1.2", default-features = false }
 fs2             = "0.4.3"
 futures         = "0.3.31"
 futures-core    = "0.3.31"
@@ -84,10 +84,14 @@ http-body       = "1.0.1"
 http-body-util  = "0.1.3"
 hyper           = "1.6.0"
 
-hyper-rustls = { version = "0.27.5", default-features = false, features = ["http1", "http2", "webpki-tokio"] }
+hyper-rustls = { version = "0.27.7", default-features = false, features = [
+  "http1",
+  "http2",
+  "webpki-tokio",
+] }
 
 ahash                 = { version = "0.8.12", features = ["serde"] }
-hyper-util            = { version = "0.1.12", features = ["client", "client-legacy"] }
+hyper-util            = { version = "0.1.14", features = ["client", "client-legacy"] }
 intrusive-collections = "0.9.7"
 itertools             = "0.14.0"
 jni                   = "0.21.1"
@@ -98,7 +102,7 @@ memmap2               = "0.9.5"
 mockall               = "0.13.1"
 notify                = "8.0.0"
 parameterized         = "2.0.0"
-parking_lot           = "0.12.3"
+parking_lot           = "0.12.4"
 pretty_assertions     = "1.4.1"
 prometheus            = "0.14.0"
 thread_local          = "1.1"
@@ -115,7 +119,7 @@ protobuf-json-mapping = { git = "https://github.com/bitdriftlabs/rust-protobuf.g
 
 rand       = "0.9.1"
 regex      = "1.11.1"
-reqwest    = { version = "0.12.15", features = ["deflate"] }
+reqwest    = { version = "0.12.20", features = ["deflate"] }
 rstest     = "0.25.0"
 serde      = { version = "1", features = ["derive", "rc"] }
 serde_json = "1.0.140"
@@ -131,20 +135,15 @@ termcolor         = "1.4.1"
 thiserror         = "2.0.12"
 tikv-jemalloc-ctl = "0.6.0"
 time              = { version = "0.3.41", features = ["serde-well-known", "macros"] }
-tokio             = { version = "1.45.0", features = ["full", "test-util"] }
+tokio             = { version = "1.45.1", features = ["full", "test-util"] }
 tokio-stream      = "0.1.17"
 tokio-test        = "0.4.4"
 tower             = { version = "0.5.2", features = ["retry", "util"] }
-
-# Bump to release when https://github.com/tower-rs/tower-http/pull/535 is available.
-tower-http = { git = "https://github.com/tower-rs/tower-http", rev = "d0c522b6da2620bf5314302d12e4cded7295b11c", features = [
-  "compression-deflate",
-] }
-
+tower-http        = { version = "0.6.6", features = ["compression-deflate"] }
 tracing-error     = "0.2.1"
 unwrap-infallible = "0.1.5"
 urlencoding       = "2.1.3"
-uuid              = { version = "1.16.0", features = ["v4"] }
+uuid              = { version = "1.17.0", features = ["v4"] }
 
 [profile.bench]
 debug = true
