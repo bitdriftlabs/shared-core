@@ -9,6 +9,7 @@
 #[path = "./fixed_test.rs"]
 mod fixed_test;
 
+use crate::SessionId;
 use bd_key_value::{Key, Storable, Store};
 use bd_log::warn_every;
 use std::cell::Cell;
@@ -75,7 +76,7 @@ impl Strategy {
   ///
   /// Note that if this is called from within the `generateSessionID` callback, we will return a
   /// random UUID instead of the actual session ID to prevent deadlocks.
-  pub(crate) fn session_id(&self) -> String {
+  pub(crate) fn session_id(&self) -> SessionId {
     // Protect against cases where an attempt to read a session ID is made while already holding a
     // lock. In practice, this happens when a customer of the SDK reads session ID from within a
     // `generateSessionID` closure that they are allowed to provide to the SDK.
@@ -92,14 +93,14 @@ impl Strategy {
       // TODO(snowp): This probably never does what the user expects as this session ID is not a
       // real session ID but a random UUID. We should probably return an error here or just rework
       // how all this works.
-      return Self::generate_uuid();
+      return SessionId::Existing(Self::generate_uuid());
     }
 
     let mut guard = self.state.lock();
     // Clippy's proposal leads to code that doesn't compile.
     #[allow(clippy::option_if_let_else)]
     if let Some(state) = guard.as_ref() {
-      state.session_id.clone()
+      SessionId::Existing(state.session_id.clone())
     } else {
       let previous_process_session_id = if let Some(state) = self.store.get(&STATE_KEY) {
         Some(state.session_id)
@@ -120,7 +121,7 @@ impl Strategy {
 
       log::info!("bitdrift Capture initialized with session ID: {session_id:?}");
 
-      session_id
+      SessionId::New(session_id)
     }
   }
 
