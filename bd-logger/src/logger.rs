@@ -45,6 +45,8 @@ pub struct Stats {
   pub(crate) session_replay_duration_histogram: bd_client_stats_store::Histogram,
   sleep_enabled: Counter,
   sleep_disabled: Counter,
+
+  app_open: Counter,
 }
 
 impl Stats {
@@ -77,6 +79,7 @@ impl Stats {
           "state" => "disabled",
         ),
       ),
+      app_open: stats_scope.counter("app_open"),
     }
   }
 }
@@ -164,6 +167,10 @@ impl LoggerHandle {
         );
       }
     });
+  }
+
+  pub fn record_app_open(&self) {
+    self.stats.app_open.inc();
   }
 
   pub fn log_resource_utilization(&self, mut fields: AnnotatedLogFields, duration: time::Duration) {
