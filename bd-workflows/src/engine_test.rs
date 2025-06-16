@@ -183,6 +183,7 @@ macro_rules! engine_process_log {
         session_id: &$workflows_engine.session_id,
         occurred_at: time::OffsetDateTime::now_utc(),
         fields: &FieldsRef::new(&LogFields::new(), &LogFields::new()),
+        capture_session: false,
       },
       &$workflows_engine.log_destination_buffer_ids,
     )
@@ -200,6 +201,7 @@ macro_rules! engine_process_log {
         ),
         session_id: &$workflows_engine.session_id,
         occurred_at: time::OffsetDateTime::now_utc(),
+        capture_session: false,
       },
       &$workflows_engine.log_destination_buffer_ids,
     )
@@ -217,6 +219,7 @@ macro_rules! engine_process_log {
         ),
         session_id: &$workflows_engine.session_id,
         occurred_at: $current_time,
+        capture_session: false,
       },
       &$workflows_engine.log_destination_buffer_ids,
     )
@@ -1556,6 +1559,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
       ),
       session_id: "foo_session",
       occurred_at: time::OffsetDateTime::now_utc(),
+      capture_session: false,
     },
     &BTreeSet::new(),
   );
@@ -2619,6 +2623,7 @@ async fn workflows_state_is_purged_when_session_id_changes() {
       ),
       session_id: "foo_session",
       occurred_at: time::OffsetDateTime::now_utc(),
+      capture_session: false,
     },
     &BTreeSet::new(),
   );
@@ -2652,6 +2657,7 @@ async fn workflows_state_is_purged_when_session_id_changes() {
       ),
       session_id: "bar_session",
       occurred_at: time::OffsetDateTime::now_utc(),
+      capture_session: false,
     },
     &BTreeSet::new(),
   );
@@ -3115,6 +3121,7 @@ async fn generate_log_multiple() {
         matching_fields: [("_generate_log_id".into(), "id1".into(),)].into(),
         session_id: String::new(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
+        capture_session: false,
       },
       Log {
         log_level: log_level::DEBUG,
@@ -3124,6 +3131,7 @@ async fn generate_log_multiple() {
         matching_fields: [("_generate_log_id".into(), "id2".into(),)].into(),
         session_id: String::new(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
+        capture_session: false,
       }
     ]
   );
@@ -3199,6 +3207,7 @@ async fn generate_log_action() {
       matching_fields: [("_generate_log_id".into(), "id".into(),)].into(),
       session_id: String::new(),
       occurred_at: OffsetDateTime::UNIX_EPOCH,
+      capture_session: false,
     }]
   );
 }

@@ -317,6 +317,7 @@ impl LoggerBuilder {
             .previous_process_session_id()
             .unwrap_or_else(|| session_strategy.session_id()),
           occurred_at: crash_log.timestamp,
+          capture_session: false,
         })
         .collect();
 

@@ -511,6 +511,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           matching_fields: metadata.matching_fields,
           occurred_at: timestamp,
           session_id,
+          capture_session: false,
         };
 
         self
@@ -768,6 +769,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           matching_fields,
           session_id,
           occurred_at,
+          capture_session: false,
         },
         None,
       )

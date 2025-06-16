@@ -23,6 +23,7 @@ use crate::config::{
   ActionFlushBuffers,
   ActionTakeScreenshot,
   Config,
+  Streaming,
   WorkflowsConfiguration,
 };
 use crate::metrics::MetricsCollector;
@@ -47,7 +48,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::task::JoinHandle;
@@ -699,11 +700,26 @@ impl WorkflowsEngine {
     );
 
     let (
-      flush_buffers_actions,
+      mut flush_buffers_actions,
       emit_metric_actions,
       emit_sankey_diagrams_actions,
       capture_screenshot_actions,
     ) = Self::prepare_actions(actions);
+
+    if log.capture_session {
+      static FORCE_FLUSH_BUFFER_ACTION: LazyLock<ActionFlushBuffers> =
+        LazyLock::new(|| ActionFlushBuffers {
+          id: "force_flush_buffers".to_string(),
+          buffer_ids: BTreeSet::new(),
+          streaming: Some(Streaming {
+            max_logs_count: Some(100_000),
+            destination_continuous_buffer_ids: [].into(),
+          }),
+        });
+
+      flush_buffers_actions.insert(&*FORCE_FLUSH_BUFFER_ACTION);
+    }
+
 
     let result = self
       .flush_buffers_actions_resolver

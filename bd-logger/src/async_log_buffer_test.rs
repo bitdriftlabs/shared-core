@@ -286,6 +286,7 @@ fn annotated_log_line_size_is_computed_correctly() {
       matching_fields: [].into(),
       session_id: "foo".into(),
       occurred_at: time::OffsetDateTime::now_utc(),
+      capture_session: false,
     }
   }
 
@@ -533,6 +534,7 @@ async fn initial_logs_are_processed_first() {
           matching_fields: [].into(),
           session_id: "first session".into(),
           occurred_at: t0,
+          capture_session: false,
         }],
       )
       .await;
