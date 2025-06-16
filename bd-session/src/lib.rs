@@ -108,8 +108,7 @@ impl SessionId {
   #[cfg(test)]
   pub fn into_inner(self) -> String {
     match self {
-      SessionId::New(id) => id,
-      SessionId::Existing(id) => id,
+      Self::New(id) | Self::Existing(id) => id,
     }
   }
 }

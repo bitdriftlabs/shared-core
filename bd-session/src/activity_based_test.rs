@@ -408,7 +408,7 @@ fn new_session_metric() {
 
   let strategy = activity_based::Strategy::new(
     Duration::seconds(30),
-    store.clone(),
+    store,
     callbacks,
     time_provider.clone(),
   );
