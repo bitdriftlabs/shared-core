@@ -112,13 +112,10 @@ impl Setup {
     AsyncLogBuffer::new(
       self.make_logging_context(),
       replayer,
-      Arc::new(Strategy::new_fixed(
-        fixed::Strategy::new(
-          Arc::new(Store::new(Box::<InMemoryStorage>::default())),
-          Arc::new(UUIDCallbacks),
-        ),
-        &self.collector.scope("session"),
-      )),
+      Arc::new(Strategy::Fixed(fixed::Strategy::new(
+        Arc::new(Store::new(Box::<InMemoryStorage>::default())),
+        Arc::new(UUIDCallbacks),
+      ))),
       Arc::new(LogMetadata::default()),
       Box::new(EmptyTarget),
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
@@ -142,13 +139,10 @@ impl Setup {
     AsyncLogBuffer::new(
       self.make_logging_context(),
       LoggerReplay {},
-      Arc::new(Strategy::new_fixed(
-        fixed::Strategy::new(
-          Arc::new(Store::new(Box::<InMemoryStorage>::default())),
-          Arc::new(UUIDCallbacks),
-        ),
-        &self.collector.scope("session"),
-      )),
+      Arc::new(Strategy::Fixed(fixed::Strategy::new(
+        Arc::new(Store::new(Box::<InMemoryStorage>::default())),
+        Arc::new(UUIDCallbacks),
+      ))),
       Arc::new(LogMetadata::default()),
       Box::new(EmptyTarget),
       Box::new(bd_test_helpers::session_replay::NoOpTarget),

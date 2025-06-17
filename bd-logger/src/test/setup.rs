@@ -155,10 +155,10 @@ impl Setup {
     let (logger, _, flush_trigger) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: options.sdk_directory.path().into(),
       api_key: "foo-api-key".to_string(),
-      session_strategy: Arc::new(Strategy::new_fixed(
-        fixed::Strategy::new(store.clone(), Arc::new(UUIDCallbacks)),
-        &bd_client_stats_store::Collector::default().scope("session"),
-      )),
+      session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
+        store.clone(),
+        Arc::new(UUIDCallbacks),
+      ))),
       metadata_provider: options.metadata_provider,
       resource_utilization_target: Box::new(EmptyTarget),
       session_replay_target,

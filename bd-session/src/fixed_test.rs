@@ -7,8 +7,6 @@
 
 use super::{Callbacks, State, UUIDCallbacks};
 use crate::fixed::{self, STATE_KEY};
-use bd_client_stats_store::test::StatsHelper;
-use bd_client_stats_store::Collector;
 use bd_key_value::{Storage, Store};
 use pretty_assertions::assert_eq;
 use std::collections::HashMap;
@@ -70,10 +68,7 @@ fn test_session_id() {
   let previous_session_id = strategy.previous_process_session_id();
 
   assert_eq!(1, callbacks.generated_session_ids.lock().len());
-  assert_eq!(
-    callbacks.generated_session_ids.lock()[0],
-    session_id.into_inner()
-  );
+  assert_eq!(callbacks.generated_session_ids.lock()[0], session_id);
   assert_eq!(Some("foo".to_string()), previous_session_id);
 }
 
@@ -93,14 +88,11 @@ fn test_start_new_session() {
   let session_id = strategy.session_id();
 
   assert_eq!(1, callbacks.generated_session_ids.lock().len());
-  assert_eq!(
-    callbacks.generated_session_ids.lock()[0],
-    session_id.into_inner()
-  );
+  assert_eq!(callbacks.generated_session_ids.lock()[0], session_id);
 
   let next_session_id = strategy.start_new_session().unwrap();
 
-  assert_eq!(next_session_id, strategy.session_id().into_inner());
+  assert_eq!(next_session_id, strategy.session_id());
   assert_eq!(2, callbacks.generated_session_ids.lock().len());
   assert_eq!(callbacks.generated_session_ids.lock()[1], next_session_id);
   assert_eq!(
@@ -135,10 +127,7 @@ fn test_previous_process_session_id() {
   );
 
   let strategy = fixed::Strategy::new(store, Arc::new(UUIDCallbacks));
-  assert_eq!(
-    Some(session_id.into_inner()),
-    strategy.previous_process_session_id()
-  );
+  assert_eq!(Some(session_id), strategy.previous_process_session_id());
 }
 
 #[derive(Default)]
@@ -166,7 +155,7 @@ fn handles_re_entry() {
   callbacks.session_strategy.lock().replace(strategy.clone());
 
   // Confirm that it doesn't deadlock and returns a reasonable ID.
-  let session_id = strategy.session_id().into_inner();
+  let session_id = strategy.session_id();
   assert_eq!(36, session_id.len());
 
   // Confirm that it doesn't deadlock and returns a reasonable ID.
@@ -174,25 +163,4 @@ fn handles_re_entry() {
   assert_eq!(36, new_session_id.len());
 
   assert_ne!(session_id, new_session_id);
-}
-
-#[test]
-fn new_session_metric() {
-  let collector = Collector::default();
-  let store = Arc::new(Store::new(Box::<MockStorage>::default()));
-
-  let callbacks = Arc::new(MockCallbacks::default());
-  let strategy = fixed::Strategy::new(store, callbacks.clone());
-
-  let strategy = crate::Strategy::new_fixed(strategy, &collector.scope("session"));
-
-  // This should create the session ID for the first time.
-  strategy.session_id();
-  assert_eq!(1, callbacks.generated_session_ids.lock().len());
-  collector.assert_counter_eq(1, "session:new", [].into());
-
-  // Create a new session. This should be reflected in the metrics.
-  strategy.start_new_session();
-  assert_eq!(2, callbacks.generated_session_ids.lock().len());
-  collector.assert_counter_eq(2, "session:new", [].into());
 }

@@ -21,7 +21,6 @@ use crate::{
 use assert_matches::assert_matches;
 use bd_client_common::error::UnexpectedErrorHandler;
 use bd_client_stats::test::TestTicker;
-use bd_client_stats_store::Collector;
 use bd_key_value::Store;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
@@ -1968,10 +1967,10 @@ fn runtime_caching() {
     let logger = crate::LoggerBuilder::new(InitParams {
       api_key: "foo-api-key".to_string(),
       network,
-      session_strategy: Arc::new(Strategy::new_fixed(
-        fixed::Strategy::new(store.clone(), Arc::new(UUIDCallbacks)),
-        &Collector::default().scope("session"),
-      )),
+      session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
+        store.clone(),
+        Arc::new(UUIDCallbacks),
+      ))),
       static_metadata: Arc::new(EmptyMetadata),
       store,
       resource_utilization_target: Box::new(EmptyTarget),

@@ -9,7 +9,6 @@
 #[path = "./activity_based_test.rs"]
 mod activity_based_test;
 
-use crate::SessionId;
 use bd_key_value::{Key, Storable, Store};
 use bd_time::TimeProvider;
 use std::sync::Arc;
@@ -65,12 +64,12 @@ impl Strategy {
     Uuid::new_v4().to_string()
   }
 
-  pub(crate) fn session_id(&self) -> SessionId {
+  pub(crate) fn session_id(&self) -> String {
     let mut guard = self.state.lock();
 
     let now = self.time_provider.now();
 
-    let mut session_changed = false;
+    let mut need_callback = false;
     let mut state = guard.as_ref().map_or_else(
       || {
         if let Some(state) = self.store.get(&STATE_KEY) {
@@ -88,7 +87,7 @@ impl Strategy {
             last_activity_write: None,
           };
 
-          session_changed = true;
+          need_callback = true;
 
           log::info!(
             "bitdrift Capture initialized with session ID: {:?}",
@@ -121,7 +120,7 @@ impl Strategy {
 
       self.store.set(&STATE_KEY, &state.clone().into());
 
-      session_changed = true;
+      need_callback = true;
     } else if last_activity_storage_needs_write {
       state.last_activity_write = Some(now);
 
@@ -134,13 +133,11 @@ impl Strategy {
     // Make sure we call the callback with the lock released. There are legitimate cases where
     // this function may get called again from the context of the callback.
     drop(guard);
-    if session_changed {
+    if need_callback {
       self.callbacks.session_id_changed(&session_id);
-
-      return SessionId::New(session_id);
     }
 
-    SessionId::Existing(session_id)
+    session_id
   }
 
   pub(crate) fn start_new_session(&self) -> String {
