@@ -587,6 +587,7 @@ impl WorkflowsEngine {
       // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
       // all workflows in their initial states.
       self.state.session_id = log.session_id.to_string();
+      self.stats.sessions_total.inc();
     } else if self.state.session_id != log.session_id {
       log::debug!(
         "workflows engine: moving from \"{}\" to new session \"{}\", cleaning workflows state",
@@ -603,6 +604,7 @@ impl WorkflowsEngine {
       // all workflows in their initial states.
       self.clean_state();
       self.state.session_id = log.session_id.to_string();
+      self.stats.sessions_total.inc();
     }
 
     // Return early if there are no workflows.
@@ -1201,6 +1203,10 @@ struct WorkflowsEngineStats {
   // The number of times the engine failed to send a log upload intent request to the intent
   // negotiator.
   intent_negotiation_channel_send_failures: Counter,
+
+  /// The number of new sessions observed. Note that thrashing between sessions will count the
+  /// same session multiple times.
+  sessions_total: Counter,
 }
 
 impl WorkflowsEngineStats {
@@ -1255,6 +1261,7 @@ impl WorkflowsEngineStats {
         .counter("buffers_to_flush_channel_send_failures_total"),
       intent_negotiation_channel_send_failures: scope
         .counter("intent_negotiation_channel_send_failures_total"),
+      sessions_total: scope.counter("sessions_total"),
     }
   }
 }
