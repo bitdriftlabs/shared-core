@@ -44,8 +44,11 @@ use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdown
 use std::collections::VecDeque;
 use std::mem::size_of_val;
 use std::sync::Arc;
+use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, oneshot};
+
+const BLOCKING_FLUSH_TIMEOUT_SECONDS: Duration = Duration::from_secs(1);
 
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {
@@ -257,7 +260,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       // Create a (sender, receiver) pair only if the caller wants to wait on
       // on the log being pushed through the whole log processing pipeline.
       let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-      (Some(tx), Some(rx))
+      let bd_rx = bd_completion::Receiver::to_bd_completion_rx(rx);
+      (Some(tx), Some(bd_rx))
     } else {
       (None, None)
     };
@@ -292,7 +296,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // Wait for log processing to be completed only if passed `blocking`
     // argument is equal to `true` and we created a relevant one shot Tokio channel.
     if let Some(rx) = log_processing_completed_rx_option {
-      match rx.blocking_recv() {
+      match &rx.blocking_recv_with_timeout(BLOCKING_FLUSH_TIMEOUT_SECONDS) {
         Ok(()) => {
           log::debug!("enqueue_log: log processing completion received");
         },
@@ -303,7 +307,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         },
       }
     }
-
     // Report success even if the `blocking == true` part of the
     // implementation above failed.
     Ok(())
@@ -342,7 +345,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // Wait for the processing to be completed only if passed `blocking` argument is equal to
     // `true`.
     if let Some(completion_rx) = completion_rx {
-      match &completion_rx.blocking_recv() {
+      match &completion_rx.blocking_recv_with_timeout(BLOCKING_FLUSH_TIMEOUT_SECONDS) {
         Ok(()) => {
           log::debug!("flush state: completion received");
         },
@@ -351,7 +354,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         },
       }
     }
-
     Ok(())
   }
 

@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use std::fmt::Debug;
+use std::time::{Duration, Instant};
 
 //
 // Sender
@@ -41,6 +42,12 @@ pub struct Receiver<T: Debug> {
 }
 
 impl<T: Debug> Receiver<T> {
+  /// Create a [`bd_completion`] `Receiver<T>` from a raw `tokio::sync::oneshot::Receiver<T>`
+  #[must_use]
+  pub fn to_bd_completion_rx(rx: tokio::sync::oneshot::Receiver<T>) -> Self {
+    Self { rx }
+  }
+
   pub async fn recv(self) -> anyhow::Result<T> {
     match self.rx.await {
       Ok(value) => Ok(value),
@@ -51,4 +58,35 @@ impl<T: Debug> Receiver<T> {
   pub fn blocking_recv(self) -> anyhow::Result<T> {
     Ok(self.rx.blocking_recv()?)
   }
+
+  pub fn blocking_recv_with_timeout(
+    mut self,
+    timeout: Duration,
+  ) -> Result<T, RecvWithTimeoutError> {
+    let deadline = Instant::now() + timeout;
+
+    loop {
+      if Instant::now() > deadline {
+        return Err(RecvWithTimeoutError::Timeout);
+      }
+
+      match self.rx.try_recv() {
+        Ok(value) => return Ok(value),
+        Err(tokio::sync::oneshot::error::TryRecvError::Closed) => {
+          return Err(RecvWithTimeoutError::ChannelClosed)
+        },
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {
+          std::thread::sleep(Duration::from_millis(5));
+        },
+      }
+    }
+  }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum RecvWithTimeoutError {
+  #[error("timeout duration reached")]
+  Timeout,
+  #[error("the oneshot channel was closed")]
+  ChannelClosed,
 }
