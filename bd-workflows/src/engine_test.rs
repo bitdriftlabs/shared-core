@@ -2274,6 +2274,32 @@ async fn logs_streaming() {
 
 #[tokio::test]
 #[allow(clippy::many_single_char_names)]
+async fn engine_tracks_new_sessions() {
+  let setup = Setup::new();
+
+  let workflows_engine_config = WorkflowsEngineConfig::new(
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![]),
+    BTreeSet::from(["trigger_buffer_id".into()]),
+    BTreeSet::from(["continuous_buffer_id".into()]),
+  );
+
+  let mut workflows_engine = setup
+    .make_workflows_engine(workflows_engine_config.clone())
+    .await;
+
+  engine_process_log!(workflows_engine; "foo"; with labels!{});
+  engine_process_log!(workflows_engine; "foo"; with labels!{});
+  assert_eq!(workflows_engine.stats.sessions_total.get(), 1);
+
+  workflows_engine.session_id = "new session ID".to_string();
+
+  engine_process_log!(workflows_engine; "foo"; with labels!{});
+  engine_process_log!(workflows_engine; "foo"; with labels!{});
+  assert_eq!(workflows_engine.stats.sessions_total.get(), 2);
+}
+
+#[tokio::test]
+#[allow(clippy::many_single_char_names)]
 async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   let mut a = state("A");
   let mut b = state("B");
