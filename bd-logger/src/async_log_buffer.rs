@@ -49,8 +49,7 @@ use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, oneshot};
 
-// The blocking flush timeout threshold given that the Fatal ANR threshold on Android 5 seconds
-const BLOCKING_FLUSH_TIMEOUT_SECONDS: Duration = Duration::from_secs(4);
+const BLOCKING_FLUSH_TIMEOUT_SECONDS: Duration = Duration::from_secs(1);
 
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {

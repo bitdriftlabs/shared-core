@@ -15,7 +15,7 @@ pub enum WaitError {
 }
 
 pub fn blocking_wait_with_timeout(
-  rx: &mut tokio::sync::oneshot::Receiver<()>,
+  receiver: &mut tokio::sync::oneshot::Receiver<()>,
   timeout: Duration,
 ) -> Result<(), WaitError> {
   let deadline = Instant::now() + timeout;
@@ -23,7 +23,7 @@ pub fn blocking_wait_with_timeout(
     if Instant::now() > deadline {
       return Err(WaitError::Timeout);
     }
-    match rx.try_recv() {
+    match receiver.try_recv() {
       Ok(()) => return Ok(()),
       Err(TryRecvError::Closed) => return Err(WaitError::ChannelClosed),
       Err(TryRecvError::Empty) => std::thread::sleep(Duration::from_millis(5)),
