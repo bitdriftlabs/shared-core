@@ -1968,9 +1968,9 @@ fn runtime_caching() {
     let logger = crate::LoggerBuilder::new(InitParams {
       api_key: "foo-api-key".to_string(),
       network,
-      session_strategy: Arc::new(Strategy::new_fixed(
-        fixed::Strategy::new(store.clone(), Arc::new(UUIDCallbacks)),
-        &Collector::default().scope("session"),
+      session_strategy: Strategy::new_fixed(fixed::Strategy::new(
+        store.clone(),
+        Arc::new(UUIDCallbacks),
       )),
       static_metadata: Arc::new(EmptyMetadata),
       store,
@@ -1979,6 +1979,7 @@ fn runtime_caching() {
       events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
       sdk_directory: sdk_directory.path().into(),
       metadata_provider: Arc::new(LogMetadata::default()),
+      collector: Collector::default(),
       device,
       start_in_sleep_mode: false,
     })

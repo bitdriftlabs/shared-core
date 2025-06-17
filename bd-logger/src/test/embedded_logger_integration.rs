@@ -70,9 +70,9 @@ impl Setup {
     let (logger, _, future, _) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: sdk_directory.path().to_owned(),
       network: Box::new(handle),
-      session_strategy: Arc::new(Strategy::new_fixed(
-        fixed::Strategy::new(store.clone(), Arc::new(UUIDCallbacks)),
-        &Collector::default().scope("session"),
+      session_strategy: Strategy::new_fixed(fixed::Strategy::new(
+        store.clone(),
+        Arc::new(UUIDCallbacks),
       )),
       metadata_provider: Arc::new(TestMetadataProvider),
       store,
@@ -80,6 +80,7 @@ impl Setup {
       session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
       events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
       device,
+      collector: Collector::default(),
       static_metadata: Arc::new(EmptyMetadata),
       api_key: "apikey".to_string(),
       start_in_sleep_mode: false,

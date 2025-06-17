@@ -109,16 +109,17 @@ impl Setup {
     self.replayer_logs = replayer.logs.clone();
     self.replayer_fields = replayer.fields.clone();
 
+    let mut session_strategy = Strategy::new_fixed(fixed::Strategy::new(
+      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
+      Arc::new(UUIDCallbacks),
+    ));
+
+    session_strategy.initialize_stats(&Collector::default());
+
     AsyncLogBuffer::new(
       self.make_logging_context(),
       replayer,
-      Arc::new(Strategy::new_fixed(
-        fixed::Strategy::new(
-          Arc::new(Store::new(Box::<InMemoryStorage>::default())),
-          Arc::new(UUIDCallbacks),
-        ),
-        &self.collector.scope("session"),
-      )),
+      Arc::new(session_strategy),
       Arc::new(LogMetadata::default()),
       Box::new(EmptyTarget),
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
@@ -139,16 +140,15 @@ impl Setup {
     AsyncLogBuffer<LoggerReplay>,
     bd_bounded_buffer::Sender<AsyncLogBufferMessage>,
   ) {
+    let mut session_strategy = Strategy::new_fixed(fixed::Strategy::new(
+      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
+      Arc::new(UUIDCallbacks),
+    ));
+    session_strategy.initialize_stats(&self.collector);
     AsyncLogBuffer::new(
       self.make_logging_context(),
       LoggerReplay {},
-      Arc::new(Strategy::new_fixed(
-        fixed::Strategy::new(
-          Arc::new(Store::new(Box::<InMemoryStorage>::default())),
-          Arc::new(UUIDCallbacks),
-        ),
-        &self.collector.scope("session"),
-      )),
+      Arc::new(session_strategy),
       Arc::new(LogMetadata::default()),
       Box::new(EmptyTarget),
       Box::new(bd_test_helpers::session_replay::NoOpTarget),

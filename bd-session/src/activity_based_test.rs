@@ -414,7 +414,9 @@ fn new_session_metric() {
   );
 
   let collector = Collector::default();
-  let strategy = crate::Strategy::new_activity_based(strategy, &collector.scope("session"));
+  let mut strategy = crate::Strategy::new_activity_based(strategy);
+  strategy.initialize_stats(&collector);
+
 
   // This should create the first session.
   strategy.session_id();

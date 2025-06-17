@@ -184,7 +184,8 @@ fn new_session_metric() {
   let callbacks = Arc::new(MockCallbacks::default());
   let strategy = fixed::Strategy::new(store, callbacks.clone());
 
-  let strategy = crate::Strategy::new_fixed(strategy, &collector.scope("session"));
+  let mut strategy = crate::Strategy::new_fixed(strategy);
+  strategy.initialize_stats(&collector);
 
   // This should create the session ID for the first time.
   strategy.session_id();

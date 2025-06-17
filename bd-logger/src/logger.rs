@@ -15,7 +15,7 @@ use crate::log_replay::LoggerReplay;
 use crate::{app_version, MetadataProvider};
 use bd_api::Metadata;
 use bd_bounded_buffer::{self, Sender as MemoryBoundSender};
-use bd_client_stats_store::{Counter, Scope};
+use bd_client_stats_store::{Collector, Counter, Scope};
 use bd_log::warn_every;
 use bd_log_primitives::{
   log_level,
@@ -411,7 +411,7 @@ impl LoggerHandle {
 pub struct InitParams {
   pub sdk_directory: PathBuf,
   pub api_key: String,
-  pub session_strategy: Arc<bd_session::Strategy>,
+  pub session_strategy: bd_session::Strategy,
 
   pub store: Arc<bd_key_value::Store>,
 
@@ -428,6 +428,9 @@ pub struct InitParams {
 
   // Static metadata used to identify the client when communicating with the backend.
   pub static_metadata: Arc<dyn Metadata + Send + Sync>,
+
+  // The collector to be used for collecting client stats.
+  pub collector: Collector,
 
   // Whether the logger should start in sleep mode. It can then be transitioned using the provided
   // transition APIs.

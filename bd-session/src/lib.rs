@@ -8,7 +8,7 @@
 pub mod activity_based;
 pub mod fixed;
 
-use bd_client_stats_store::{Counter, Scope};
+use bd_client_stats_store::{Collector, Counter};
 pub use bd_key_value::Store;
 
 #[cfg(test)]
@@ -28,21 +28,36 @@ enum Inner {
 
 pub struct Strategy {
   inner: Inner,
-  new_session: Counter,
+  new_session: Option<Counter>,
 }
 
 impl Strategy {
-  pub fn new_fixed(fixed: fixed::Strategy, scope: &Scope) -> Self {
+  pub fn new_fixed(fixed: fixed::Strategy) -> Self {
     Self {
       inner: Inner::Fixed(fixed),
-      new_session: scope.counter("new"),
+      new_session: None,
     }
   }
 
-  pub fn new_activity_based(activity_based: activity_based::Strategy, scope: &Scope) -> Self {
+  pub fn new_activity_based(activity_based: activity_based::Strategy) -> Self {
     Self {
       inner: Inner::ActivityBased(activity_based),
-      new_session: scope.counter("new"),
+      new_session: None,
+    }
+  }
+
+  pub fn initialize_stats(&mut self, collector: &Collector) {
+    self.new_session = Some(collector.scope("session").counter("new"));
+  }
+
+  pub fn increment_new_session(&self) {
+    debug_assert!(
+      self.new_session.is_some(),
+      "Cannot increment new session counter when it is not initialized"
+    );
+
+    if let Some(counter) = &self.new_session {
+      counter.inc();
     }
   }
 
@@ -54,7 +69,7 @@ impl Strategy {
 
     match session_id {
       SessionId::New(id) => {
-        self.new_session.inc();
+        self.increment_new_session();
         id
       },
       SessionId::Existing(id) => id,
@@ -67,7 +82,7 @@ impl Strategy {
       Inner::ActivityBased(strategy) => Ok(strategy.start_new_session()),
     };
 
-    self.new_session.inc();
+    self.increment_new_session();
 
     match new_session_id {
       Ok(new_session_id) => log::info!("bitdrift Capture started new session: {new_session_id:?}"),

@@ -120,7 +120,7 @@ impl LoggerBuilder {
   /// resolve when the logger has shut down.
   #[allow(clippy::type_complexity)]
   pub fn build(
-    self,
+    mut self,
   ) -> anyhow::Result<(
     Logger,
     tokio::sync::mpsc::Sender<DataUpload>,
@@ -149,6 +149,8 @@ impl LoggerBuilder {
         .into_inner();
     let collector = Collector::new(Some(max_dynamic_stats));
 
+    self.params.session_strategy.initialize_stats(&collector);
+
     let scope = collector.scope("");
     let stats = bd_client_stats::Stats::new(collector.clone());
     let (sleep_mode_active_tx, sleep_mode_active_rx) =
@@ -176,6 +178,8 @@ impl LoggerBuilder {
     let (flush_buffers_tx, flush_buffers_rx) = tokio::sync::mpsc::channel(1);
     let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
 
+    let session_strategy = Arc::new(self.params.session_strategy);
+
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
@@ -191,7 +195,7 @@ impl LoggerBuilder {
         1024 * 1024,
       ),
       LoggerReplay,
-      self.params.session_strategy.clone(),
+      session_strategy.clone(),
       self.params.metadata_provider.clone(),
       self.params.resource_utilization_target,
       self.params.session_replay_target,
@@ -209,7 +213,7 @@ impl LoggerBuilder {
       runtime_loader.clone(),
       scope.clone(),
       async_log_buffer_communication_tx,
-      self.params.session_strategy.clone(),
+      session_strategy.clone(),
       self.params.device,
       self.params.static_metadata.sdk_version(),
       self.params.store.clone(),
@@ -225,6 +229,8 @@ impl LoggerBuilder {
     };
 
     bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
+
+    let session_strategy = session_strategy.clone();
 
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
@@ -245,9 +251,7 @@ impl LoggerBuilder {
         &self.params.sdk_directory,
         self.params.store.clone(),
         Arc::new(artifact_client),
-        self
-          .params
-          .session_strategy
+        session_strategy
           .previous_process_session_id()
           .unwrap_or_default(),
         shutdown_handle.make_shutdown(),
@@ -295,8 +299,6 @@ impl LoggerBuilder {
       )?;
 
       bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
-
-      let session_strategy = self.params.session_strategy;
 
       // By running it before we start all the other components, we ensure that the crash is
       // processed before cached configuration is loaded, allowing us to pass a fixed set of logs

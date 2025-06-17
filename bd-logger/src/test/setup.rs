@@ -16,6 +16,7 @@ use crate::{
 };
 use bd_client_stats::test::TestTicker;
 use bd_client_stats::FlushTrigger;
+use bd_client_stats_store::Collector;
 use bd_device::Store;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
@@ -155,9 +156,9 @@ impl Setup {
     let (logger, _, flush_trigger) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: options.sdk_directory.path().into(),
       api_key: "foo-api-key".to_string(),
-      session_strategy: Arc::new(Strategy::new_fixed(
-        fixed::Strategy::new(store.clone(), Arc::new(UUIDCallbacks)),
-        &bd_client_stats_store::Collector::default().scope("session"),
+      session_strategy: Strategy::new_fixed(fixed::Strategy::new(
+        store.clone(),
+        Arc::new(UUIDCallbacks),
       )),
       metadata_provider: options.metadata_provider,
       resource_utilization_target: Box::new(EmptyTarget),
@@ -165,6 +166,7 @@ impl Setup {
       events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
       device,
       store: store.clone(),
+      collector: Collector::default(),
       network: Box::new(Self::run_network(server.port, shutdown.make_shutdown())),
       static_metadata: Arc::new(EmptyMetadata),
       start_in_sleep_mode: options.start_in_sleep_mode,
