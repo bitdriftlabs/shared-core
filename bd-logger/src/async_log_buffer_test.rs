@@ -290,7 +290,7 @@ fn annotated_log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 545;
+  let baseline_log_expected_size = 553;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 

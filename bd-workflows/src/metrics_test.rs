@@ -75,6 +75,7 @@ fn metric_increment_value_extraction() {
       log_level: log_level::DEBUG,
       log_type: LogType::Normal,
       fields: &FieldsRef::new(&fields, &matching_only_fields),
+      capture_session: false,
     },
   );
 
@@ -131,6 +132,7 @@ fn counter_label_extraction() {
       log_level: log_level::DEBUG,
       log_type: LogType::Normal,
       fields: &FieldsRef::new(&fields, &matching_only_fields),
+      capture_session: false,
     },
   );
 
