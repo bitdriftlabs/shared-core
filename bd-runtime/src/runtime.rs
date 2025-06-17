@@ -827,3 +827,16 @@ pub mod artifact_upload {
     ONE_MEGABYTE
   );
 }
+
+pub mod session_capture {
+  // How many logs should be streamed as part of an explicit session capture request.
+  //
+  // Typically session capture is driven by remote workflow config that allows server side
+  // control of the number of logs to stream. In the case of an explicit session capture being
+  // requested by the client, this flag controls how many logs to stream.
+  int_feature_flag!(
+    StreamingLogCount,
+    "session_capture.streaming_log_count",
+    100_000
+  );
+}

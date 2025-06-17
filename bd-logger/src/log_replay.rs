@@ -230,7 +230,10 @@ impl ProcessingPipeline {
       &mut self.buffer_producers,
       &result.log_destination_buffer_ids,
       log,
-      result.triggered_flush_buffers_action_ids.iter().copied(),
+      result
+        .triggered_flush_buffers_action_ids
+        .iter()
+        .map(std::convert::AsRef::as_ref),
     )?;
 
     if let Some(extra_matching_buffer) = Self::process_flush_buffers_actions(
@@ -362,7 +365,7 @@ impl ProcessingPipeline {
   }
 
   fn process_flush_buffers_actions(
-    triggered_flush_buffers_action_ids: &BTreeSet<&str>,
+    triggered_flush_buffers_action_ids: &BTreeSet<Cow<'_, str>>,
     buffers: &mut BufferProducers,
     triggered_flushes_buffer_ids: &BTreeSet<Cow<'_, str>>,
     written_to_buffers: &BTreeSet<Cow<'_, str>>,
@@ -411,7 +414,10 @@ impl ProcessingPipeline {
         log.fields.captured_fields,
         log.session_id,
         log.occurred_at,
-        triggered_flush_buffers_action_ids.clone().into_iter(),
+        triggered_flush_buffers_action_ids
+          .clone()
+          .iter()
+          .map(std::convert::AsRef::as_ref),
         std::iter::empty(),
         |synthetic_log| {
           if let Ok(buffer_producer) =

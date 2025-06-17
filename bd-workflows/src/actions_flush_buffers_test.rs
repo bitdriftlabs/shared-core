@@ -23,6 +23,7 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
 use bd_stats_common::labels;
 use pretty_assertions::assert_eq;
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
@@ -298,7 +299,7 @@ fn process_flush_buffers_actions() {
   ]);
 
   let result = resolver.process_flush_buffer_actions(
-    actions.iter().collect(),
+    actions.iter().map(Cow::Borrowed).collect(),
     "foo_session_id",
     &BTreeSet::from([PendingFlushBuffersAction {
       id: "action_id_2".to_string(),
@@ -325,10 +326,10 @@ fn process_flush_buffers_actions() {
         streaming: None,
       }]),
       triggered_flush_buffers_action_ids: BTreeSet::from([
-        "action_id_1",
-        "action_id_2",
-        "action_id_3",
-        "action_id_4",
+        "action_id_1".into(),
+        "action_id_2".into(),
+        "action_id_3".into(),
+        "action_id_4".into(),
       ]),
       triggered_flushes_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into(),])
     },
@@ -377,7 +378,7 @@ fn process_flush_buffer_action_with_no_buffers() {
   }]);
 
   let result = resolver.process_flush_buffer_actions(
-    actions.iter().collect(),
+    actions.iter().map(Cow::Borrowed).collect(),
     "foo_session_id",
     &BTreeSet::new(),
     &[],
@@ -396,7 +397,7 @@ fn process_flush_buffer_action_with_no_buffers() {
           max_logs_count: Some(10),
         }),
       }]),
-      triggered_flush_buffers_action_ids: BTreeSet::from(["action_id",]),
+      triggered_flush_buffers_action_ids: BTreeSet::from(["action_id".into(),]),
       triggered_flushes_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into(),])
     },
     result

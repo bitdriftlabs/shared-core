@@ -41,14 +41,14 @@ use bd_runtime::runtime::workflows::{
   StatePeriodicWriteIntervalFlag,
   TraversalsCountLimitFlag,
 };
-use bd_runtime::runtime::{ConfigLoader, DurationWatch};
+use bd_runtime::runtime::{session_capture, ConfigLoader, DurationWatch, IntWatch};
 use bd_stats_common::labels;
 use bd_time::TimeDurationExt as _;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::task::JoinHandle;
@@ -96,6 +96,8 @@ pub struct WorkflowsEngine {
   metrics_collector: MetricsCollector,
 
   buffers_to_flush_tx: Sender<BuffersToFlush>,
+
+  explicit_session_capture_streaming_log_count: IntWatch<session_capture::StreamingLogCount>,
 }
 
 impl WorkflowsEngine {
@@ -154,6 +156,8 @@ impl WorkflowsEngine {
       metrics_collector: MetricsCollector::new(stats),
       buffers_to_flush_tx,
       pending_buffer_flushes: HashMap::new(),
+
+      explicit_session_capture_streaming_log_count: runtime.register_watch().unwrap(),
     };
 
     (workflows_engine, buffers_to_flush_rx)
@@ -704,29 +708,28 @@ impl WorkflowsEngine {
       "current_traversals_count is not equal to computed traversals count"
     );
 
-    let (
+    let PreparedActions {
       mut flush_buffers_actions,
       emit_metric_actions,
       emit_sankey_diagrams_actions,
       capture_screenshot_actions,
-    ) = Self::prepare_actions(actions);
+    } = Self::prepare_actions(actions);
 
-    log::debug!("capture session: {}", log.capture_session);
     if log.capture_session {
       log::debug!("log requested session capture, capturing session");
 
-      static FORCE_FLUSH_BUFFER_ACTION: LazyLock<ActionFlushBuffers> =
-        LazyLock::new(|| ActionFlushBuffers {
-          id: "force_flush_buffers".to_string(),
-          buffer_ids: BTreeSet::new(),
-          streaming: Some(Streaming {
-            max_logs_count: Some(100_000),
+      let streaming_log_count = self.explicit_session_capture_streaming_log_count.read();
 
-            destination_continuous_buffer_ids: [].into(),
-          }),
-        });
+      let action = ActionFlushBuffers {
+        id: "force_flush_buffers".to_string(),
+        buffer_ids: BTreeSet::new(),
+        streaming: (*streaming_log_count > 0).then_some(Streaming {
+          max_logs_count: Some((*streaming_log_count).into()),
+          destination_continuous_buffer_ids: [].into(),
+        }),
+      };
 
-      flush_buffers_actions.insert(&*FORCE_FLUSH_BUFFER_ACTION);
+      flush_buffers_actions.insert(Cow::Owned(action));
     }
 
     let result = self
@@ -831,28 +834,16 @@ impl WorkflowsEngine {
   /// Handles deduping metrics based on their tags, ensuring that the same emit metric
   /// action triggered multiple times as part of separate workflows processing the same log results
   /// in only one metric emission.
-  fn prepare_actions<'a>(
-    actions: Vec<TriggeredAction<'a>>,
-  ) -> (
-    BTreeSet<&'a ActionFlushBuffers>,
-    BTreeSet<&'a ActionEmitMetric>,
-    BTreeSet<TriggeredActionEmitSankey<'a>>,
-    BTreeSet<&'a ActionTakeScreenshot>,
-  ) {
+  fn prepare_actions<'a>(actions: Vec<TriggeredAction<'a>>) -> PreparedActions<'a> {
     if actions.is_empty() {
-      return (
-        BTreeSet::new(),
-        BTreeSet::new(),
-        BTreeSet::new(),
-        BTreeSet::new(),
-      );
+      return PreparedActions::default();
     }
 
-    let flush_buffers_actions: BTreeSet<&ActionFlushBuffers> = actions
+    let flush_buffers_actions: BTreeSet<Cow<'_, ActionFlushBuffers>> = actions
       .iter()
       .filter_map(|action| {
         if let TriggeredAction::FlushBuffers(flush_buffers_action) = action {
-          Some(*flush_buffers_action)
+          Some(Cow::Borrowed(*flush_buffers_action))
         } else {
           None
         }
@@ -882,7 +873,7 @@ impl WorkflowsEngine {
       })
       .collect();
 
-    let sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>> = actions
+    let emit_sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>> = actions
       .into_iter()
       .filter_map(|action| {
         if let TriggeredAction::SankeyDiagram(action) = action {
@@ -894,12 +885,12 @@ impl WorkflowsEngine {
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
 
-    (
+    PreparedActions {
       flush_buffers_actions,
       emit_metric_actions,
-      sankey_diagrams_actions,
+      emit_sankey_diagrams_actions,
       capture_screenshot_actions,
-    )
+    }
   }
 }
 
@@ -908,6 +899,14 @@ impl Drop for WorkflowsEngine {
     self.flush_buffers_negotiator_join_handle.abort();
     self.sankey_processor_join_handle.abort();
   }
+}
+
+#[derive(Default)]
+struct PreparedActions<'a> {
+  flush_buffers_actions: BTreeSet<Cow<'a, ActionFlushBuffers>>,
+  emit_metric_actions: BTreeSet<&'a ActionEmitMetric>,
+  emit_sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>>,
+  capture_screenshot_actions: BTreeSet<&'a ActionTakeScreenshot>,
 }
 
 //
@@ -919,7 +918,7 @@ pub struct WorkflowsEngineResult<'a> {
   pub log_destination_buffer_ids: Cow<'a, BTreeSet<Cow<'a, str>>>,
 
   // The identifier of workflow actions that triggered buffers flush(es).
-  pub triggered_flush_buffers_action_ids: BTreeSet<&'a str>,
+  pub triggered_flush_buffers_action_ids: BTreeSet<Cow<'a, str>>,
   // The identifier of trigger buffers that should be flushed.
   pub triggered_flushes_buffer_ids: BTreeSet<Cow<'static, str>>,
 

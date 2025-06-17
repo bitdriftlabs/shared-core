@@ -366,7 +366,7 @@ impl Resolver {
   /// buffer actions that require further processing.
   pub(crate) fn process_flush_buffer_actions<'a>(
     &self,
-    actions: BTreeSet<&'a ActionFlushBuffers>,
+    actions: BTreeSet<Cow<'a, ActionFlushBuffers>>,
     session_id: &str,
     pending_actions: &BTreeSet<PendingFlushBuffersAction>,
     streaming_actions: &[StreamingBuffersAction],
@@ -376,7 +376,10 @@ impl Resolver {
     let mut triggered_flushes_buffer_ids = BTreeSet::new();
 
     for action in actions {
-      triggered_flush_buffers_action_ids.insert(action.id.as_str());
+      triggered_flush_buffers_action_ids.insert(match action {
+        Cow::Borrowed(a) => a.id.as_str().into(),
+        Cow::Owned(ref a) => a.id.clone().into(),
+      });
 
       let Some(action) = PendingFlushBuffersAction::new(
         (*action).clone(),
@@ -709,7 +712,7 @@ impl ResolverConfig {
 pub(crate) struct FlushBuffersActionsProcessingResult<'a> {
   pub(crate) new_pending_actions_to_add: BTreeSet<PendingFlushBuffersAction>,
 
-  pub(crate) triggered_flush_buffers_action_ids: BTreeSet<&'a str>,
+  pub(crate) triggered_flush_buffers_action_ids: BTreeSet<Cow<'a, str>>,
   pub(crate) triggered_flushes_buffer_ids: BTreeSet<Cow<'static, str>>,
 }
 

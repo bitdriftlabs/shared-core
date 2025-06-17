@@ -1691,7 +1691,7 @@ async fn engine_processing_log() {
   assert_eq!(
     WorkflowsEngineResult {
       log_destination_buffer_ids: Cow::Owned(BTreeSet::from(["foo_buffer_id".into()])),
-      triggered_flush_buffers_action_ids: BTreeSet::from(["foo_action_id"]),
+      triggered_flush_buffers_action_ids: BTreeSet::from(["foo_action_id".into()]),
       triggered_flushes_buffer_ids: BTreeSet::from(["foo_buffer_id".into()]),
       capture_screenshot: false,
       logs_to_inject: BTreeMap::new(),
@@ -1874,7 +1874,7 @@ async fn log_without_destination() {
   assert_eq!(
     WorkflowsEngineResult {
       log_destination_buffer_ids: Cow::Owned(BTreeSet::new()),
-      triggered_flush_buffers_action_ids: BTreeSet::from(["action"]),
+      triggered_flush_buffers_action_ids: BTreeSet::from(["action".into()]),
       triggered_flushes_buffer_ids: BTreeSet::from(["trigger_buffer_id".into()]),
       capture_screenshot: false,
       logs_to_inject: BTreeMap::new(),
