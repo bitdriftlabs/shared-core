@@ -2273,7 +2273,6 @@ async fn logs_streaming() {
 }
 
 #[tokio::test]
-#[allow(clippy::many_single_char_names)]
 async fn engine_tracks_new_sessions() {
   let setup = Setup::new();
 
