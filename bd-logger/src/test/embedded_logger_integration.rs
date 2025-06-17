@@ -7,7 +7,6 @@
 
 use crate::{log_level, InitParams, LogType, Logger, MetadataProvider};
 use assert_matches::assert_matches;
-use bd_client_stats_store::Collector;
 use bd_key_value::Store;
 use bd_log_metadata::LogFields;
 use bd_proto::protos::client::api::RuntimeUpdate;
@@ -70,10 +69,10 @@ impl Setup {
     let (logger, _, future, _) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: sdk_directory.path().to_owned(),
       network: Box::new(handle),
-      session_strategy: Arc::new(Strategy::new_fixed(
-        fixed::Strategy::new(store.clone(), Arc::new(UUIDCallbacks)),
-        &Collector::default().scope("session"),
-      )),
+      session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
+        store.clone(),
+        Arc::new(UUIDCallbacks),
+      ))),
       metadata_provider: Arc::new(TestMetadataProvider),
       store,
       resource_utilization_target: Box::new(EmptyTarget),

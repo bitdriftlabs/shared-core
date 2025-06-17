@@ -29,10 +29,10 @@ async fn thread_local_logger_guard() {
   let handle = LoggerHandle {
     tx,
     stats: Stats::new(&Collector::default().scope("")),
-    session_strategy: Arc::new(Strategy::new_fixed(
-      fixed::Strategy::new(store.clone(), Arc::new(UUIDCallbacks)),
-      &Collector::default().scope("session"),
-    )),
+    session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
+      store.clone(),
+      Arc::new(UUIDCallbacks),
+    ))),
     device: Arc::new(bd_device::Device::new(store.clone())),
     sdk_version: "1.0.0".into(),
     app_version_repo: Repository::new(store),

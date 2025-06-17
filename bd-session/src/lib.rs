@@ -8,7 +8,6 @@
 pub mod activity_based;
 pub mod fixed;
 
-use bd_client_stats_store::{Counter, Scope};
 pub use bd_key_value::Store;
 
 #[cfg(test)]
@@ -21,53 +20,24 @@ fn test_global_init() {
 // Strategy
 //
 
-enum Inner {
+pub enum Strategy {
   Fixed(fixed::Strategy),
   ActivityBased(activity_based::Strategy),
 }
 
-pub struct Strategy {
-  inner: Inner,
-  new_session: Counter,
-}
-
 impl Strategy {
-  pub fn new_fixed(fixed: fixed::Strategy, scope: &Scope) -> Self {
-    Self {
-      inner: Inner::Fixed(fixed),
-      new_session: scope.counter("new"),
-    }
-  }
-
-  pub fn new_activity_based(activity_based: activity_based::Strategy, scope: &Scope) -> Self {
-    Self {
-      inner: Inner::ActivityBased(activity_based),
-      new_session: scope.counter("new"),
-    }
-  }
-
   pub fn session_id(&self) -> String {
-    let session_id = match &self.inner {
-      Inner::Fixed(strategy) => strategy.session_id(),
-      Inner::ActivityBased(strategy) => strategy.session_id(),
-    };
-
-    match session_id {
-      SessionId::New(id) => {
-        self.new_session.inc();
-        id
-      },
-      SessionId::Existing(id) => id,
+    match self {
+      Self::Fixed(strategy) => strategy.session_id(),
+      Self::ActivityBased(strategy) => strategy.session_id(),
     }
   }
 
   pub fn start_new_session(&self) {
-    let new_session_id = match &self.inner {
-      Inner::Fixed(strategy) => strategy.start_new_session(),
-      Inner::ActivityBased(strategy) => Ok(strategy.start_new_session()),
+    let new_session_id = match self {
+      Self::Fixed(strategy) => strategy.start_new_session(),
+      Self::ActivityBased(strategy) => Ok(strategy.start_new_session()),
     };
-
-    self.new_session.inc();
 
     match new_session_id {
       Ok(new_session_id) => log::info!("bitdrift Capture started new session: {new_session_id:?}"),
@@ -76,39 +46,24 @@ impl Strategy {
   }
 
   pub fn flush(&self) {
-    if let Inner::ActivityBased(strategy) = &self.inner {
+    if let Self::ActivityBased(strategy) = self {
       strategy.flush();
     }
   }
 
   /// The last active session ID from the previous SDK run.
   pub fn previous_process_session_id(&self) -> Option<String> {
-    match &self.inner {
-      Inner::Fixed(strategy) => strategy.previous_process_session_id(),
-      Inner::ActivityBased(strategy) => strategy.previous_process_session_id(),
+    match self {
+      Self::Fixed(strategy) => strategy.previous_process_session_id(),
+      Self::ActivityBased(strategy) => strategy.previous_process_session_id(),
     }
   }
 
   /// Pretty name of the strategy.
   pub const fn type_name(&self) -> &'static str {
-    match &self.inner {
-      Inner::Fixed(_) => "fixed",
-      Inner::ActivityBased(_) => "activity_based",
-    }
-  }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum SessionId {
-  New(String),
-  Existing(String),
-}
-
-impl SessionId {
-  #[cfg(test)]
-  pub fn into_inner(self) -> String {
     match self {
-      Self::New(id) | Self::Existing(id) => id,
+      Self::Fixed(_) => "fixed",
+      Self::ActivityBased(_) => "activity_based",
     }
   }
 }
