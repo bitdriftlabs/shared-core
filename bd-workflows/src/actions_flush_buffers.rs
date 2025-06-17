@@ -433,6 +433,7 @@ impl Resolver {
   ) -> StreamingBuffersActionsProcessingResult<'a> {
     let mut has_changed_streaming_actions = false;
 
+    log::error!("streaming actions: \"{streaming_actions:?}\"");
     // Remove streaming actions that should be terminated.
     streaming_actions.retain_mut(|(a, flush_completed)| {
       let meets_termination_criteria = a.meets_termination_criteria();
@@ -488,6 +489,8 @@ impl Resolver {
       .collect();
 
     let mut has_been_rerouted = false;
+
+    log::error!("streaming actions: \"{streaming_actions:?}\"");
 
     for (action, _) in &mut streaming_actions {
       let intersection: BTreeSet<_> = action

@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::setup::Setup;
+use crate::logger::{Block, CaptureSession};
 use crate::test::setup::SetupOptions;
 use crate::{
   log_level,
@@ -141,6 +142,83 @@ fn log_upload() {
   // TODO(snowp): Either figure out how to use test time or make the
   // intervals configurable so we can avoid having to log a full batch.
   for _ in 0 .. 10 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::Normal,
+      "some log".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "default");
+    uuid::Uuid::parse_str(log_upload.upload_uuid()).unwrap();
+    assert_eq!(log_upload.logs().len(), 10);
+
+    assert_eq!(log_upload.logs()[0].message(), "some log");
+  });
+}
+
+#[test]
+fn explicit_session_capture() {
+  let mut setup = Setup::new();
+  assert!(setup
+    .send_configuration_update(config_helper::configuration_update_from_parts(
+      "",
+      ConfigurationUpdateParts {
+        buffer_config: vec![
+          default_buffer_config(
+            Type::CONTINUOUS,
+            make_buffer_matcher_matching_resource_logs().into(),
+          ),
+          BufferConfigBuilder {
+            name: "trigger_buffer_id",
+            buffer_type: Type::TRIGGER,
+            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+            non_volatile_size: 100_000,
+            volatile_size: 10_000,
+          }
+          .build(),
+        ],
+        workflows: vec![],
+        ..Default::default()
+      },
+    ))
+    .is_none());
+
+  setup.send_runtime_update();
+
+  for _ in 0 .. 9 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::Normal,
+      "some log".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
+
+  setup.log_with_session_capture(
+    log_level::DEBUG,
+    LogType::Normal,
+    "some log".into(),
+    [].into(),
+    [].into(),
+  );
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    uuid::Uuid::parse_str(log_upload.upload_uuid()).unwrap();
+    assert_eq!(log_upload.logs().len(), 10);
+
+    assert_eq!(log_upload.logs()[0].message(), "some log");
+  });
+
+  // Verify that we start streaming logs.
+  for _ in 0 .. 100 {
     setup.log(
       log_level::DEBUG,
       LogType::Normal,
@@ -1866,7 +1944,8 @@ fn logs_before_cache_load() {
       [].into(),
       [].into(),
       None,
-      false,
+      Block::No,
+      CaptureSession::No,
     );
   }
 
@@ -1878,7 +1957,8 @@ fn logs_before_cache_load() {
     [].into(),
     [].into(),
     None,
-    false,
+    Block::No,
+    CaptureSession::No,
   );
 
   setup

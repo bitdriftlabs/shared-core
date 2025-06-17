@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::logger::{Block, CaptureSession};
 use crate::{log_level, InitParams, LogType, Logger, MetadataProvider};
 use assert_matches::assert_matches;
 use bd_key_value::Store;
@@ -175,7 +176,8 @@ async fn configuration_update_with_log_uploads() {
     [].into(),
     [].into(),
     None,
-    false,
+    Block::No,
+    CaptureSession::No,
   );
 
   assert_matches!(setup.server.next_log_upload().await, Some(log_upload) => {

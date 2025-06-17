@@ -237,6 +237,7 @@ fn log_line_size_is_computed_correctly() {
       matching_fields: [].into(),
       attributes_overrides: None,
       log_processing_completed_tx: None,
+      capture_session: false,
     }
   }
 
@@ -368,6 +369,7 @@ async fn logs_are_replayed_in_order() {
         [].into(),
         None,
         false,
+        false,
       );
 
       assert_ok!(result);
@@ -438,6 +440,7 @@ fn enqueuing_log_does_not_block() {
     [].into(),
     None,
     false,
+    false,
   );
 
   assert_ok!(result);
@@ -481,6 +484,7 @@ fn enqueuing_log_blocks() {
     [].into(),
     None,
     true,
+    false,
   );
 
   assert_ok!(result);
@@ -551,6 +555,7 @@ async fn initial_logs_are_processed_first() {
       matching_fields: [].into(),
       attributes_overrides: None,
       log_processing_completed_tx: None,
+      capture_session: false,
     }))
     .unwrap();
 
@@ -678,6 +683,7 @@ async fn logs_resource_utilization_log() {
     matching_fields: AnnotatedLogFields::new(),
     attributes_overrides: None,
     log_processing_completed_tx: None,
+    capture_session: false,
   });
 
   sender.try_send(message).unwrap();

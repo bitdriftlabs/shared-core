@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::setup::Setup;
+use crate::logger::{Block, CaptureSession};
 use crate::test::setup::SetupOptions;
 use crate::wait_for;
 use bd_log_primitives::LogType;
@@ -161,7 +162,8 @@ fn crash_reports_artifact_upload() {
       [].into(),
       [].into(),
       None,
-      true,
+      Block::No,
+      CaptureSession::No,
     );
 
     std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();

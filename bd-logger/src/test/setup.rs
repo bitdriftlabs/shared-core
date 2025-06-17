@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::logger::{Block, CaptureSession};
 use crate::{
   AnnotatedLogFields,
   InitParams,
@@ -281,7 +282,8 @@ impl Setup {
       fields,
       matching_fields,
       attributes_overrides,
-      false,
+      Block::No,
+      CaptureSession::No,
     );
   }
 
@@ -300,7 +302,28 @@ impl Setup {
       fields,
       matching_fields,
       None,
-      true,
+      Block::Yes,
+      CaptureSession::No,
+    );
+  }
+
+  pub fn log_with_session_capture(
+    &self,
+    level: LogLevel,
+    log_type: LogType,
+    message: LogMessage,
+    fields: AnnotatedLogFields,
+    matching_fields: AnnotatedLogFields,
+  ) {
+    self.logger_handle.log(
+      level,
+      log_type,
+      message,
+      fields,
+      matching_fields,
+      None,
+      Block::No,
+      CaptureSession::Yes,
     );
   }
 

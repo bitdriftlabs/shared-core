@@ -606,8 +606,14 @@ impl WorkflowsEngine {
       self.state.session_id = log.session_id.to_string();
     }
 
-    // Return early if there are no workflows.
-    if self.state.workflows.is_empty() {
+    // Return early if there's no work to avoid unnecessary copies.
+    // In order to support explicit session capture even when there are no workflows we need to
+    // proceed with the processing if either this log is requesting a session capture or if there
+    // is an active streaming action.
+    if self.state.workflows.is_empty()
+      && !log.capture_session
+      && self.state.streaming_actions.is_empty()
+    {
       self
         .stats
         .active_traversals_total
@@ -624,7 +630,6 @@ impl WorkflowsEngine {
 
     let mut actions: Vec<TriggeredAction<'_>> = vec![];
     let mut logs_to_inject: BTreeMap<&'a str, Log> = BTreeMap::new();
-    log::trace!("processing log: {log:?}");
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let was_in_initial_state = workflow.is_in_initial_state();
       let result = workflow.process_log(
@@ -706,20 +711,23 @@ impl WorkflowsEngine {
       capture_screenshot_actions,
     ) = Self::prepare_actions(actions);
 
+    log::debug!("capture session: {}", log.capture_session);
     if log.capture_session {
+      log::debug!("log requested session capture, capturing session");
+
       static FORCE_FLUSH_BUFFER_ACTION: LazyLock<ActionFlushBuffers> =
         LazyLock::new(|| ActionFlushBuffers {
           id: "force_flush_buffers".to_string(),
           buffer_ids: BTreeSet::new(),
           streaming: Some(Streaming {
             max_logs_count: Some(100_000),
+
             destination_continuous_buffer_ids: [].into(),
           }),
         });
 
       flush_buffers_actions.insert(&*FORCE_FLUSH_BUFFER_ACTION);
     }
-
 
     let result = self
       .flush_buffers_actions_resolver

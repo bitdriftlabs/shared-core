@@ -94,6 +94,9 @@ pub struct LogLine {
   /// log was written to either a pre-config buffer or one of the final ring buffers used by the
   /// SDK. Neither one of those guarantees that the log is written to a disk.
   pub log_processing_completed_tx: Option<oneshot::Sender<()>>,
+
+  /// Indicates that this log should trigger a session capture.
+  pub capture_session: bool,
 }
 
 //
@@ -252,6 +255,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     matching_fields: AnnotatedLogFields,
     attributes_overrides: Option<LogAttributesOverrides>,
     blocking: bool,
+    capture_session: bool,
   ) -> Result<(), TrySendError> {
     let (log_processing_completed_tx_option, log_processing_completed_rx_option) = if blocking {
       // Create a (sender, receiver) pair only if the caller wants to wait on
@@ -270,6 +274,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       matching_fields,
       attributes_overrides,
       log_processing_completed_tx: log_processing_completed_tx_option,
+      capture_session,
     };
 
     if let Err(e) = tx.try_send(AsyncLogBufferMessage::EmitLog(log)) {
@@ -391,6 +396,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           // and is an extreme edge case so we ignore for now until proven it's an issue.
           attributes_overrides: None,
           log_processing_completed_tx: None,
+          capture_session: log.capture_session,
         }
       }));
     }
@@ -511,7 +517,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           matching_fields: metadata.matching_fields,
           occurred_at: timestamp,
           session_id,
-          capture_session: false,
+          capture_session: log.capture_session,
         };
 
         self

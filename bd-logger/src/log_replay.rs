@@ -209,9 +209,10 @@ impl ProcessingPipeline {
       .collect();
 
     log::debug!(
-      "processed {:?} log, destination buffer(s): {:?}",
+      "processed {:?} log, destination buffer(s): {:?} {}",
       log.message.as_str().unwrap_or("[DATA]"),
       result.log_destination_buffer_ids,
+      log.capture_session
     );
 
     if !result.triggered_flush_buffers_action_ids.is_empty() {

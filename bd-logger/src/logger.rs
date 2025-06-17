@@ -106,6 +106,34 @@ pub fn with_thread_local_logger_guard<R>(f: impl FnOnce() -> R) -> R {
   })
 }
 
+pub enum Block {
+  Yes,
+  No,
+}
+
+impl From<Block> for bool {
+  fn from(block: Block) -> Self {
+    match block {
+      Block::Yes => true,
+      Block::No => false,
+    }
+  }
+}
+
+pub enum CaptureSession {
+  Yes,
+  No,
+}
+
+impl From<CaptureSession> for bool {
+  fn from(capture_session: CaptureSession) -> Self {
+    match capture_session {
+      CaptureSession::Yes => true,
+      CaptureSession::No => false,
+    }
+  }
+}
+
 /// A handle to the logger that can be used to log messages. This is the primary interface for
 /// submitting logs into the system.
 pub struct LoggerHandle {
@@ -133,7 +161,8 @@ impl LoggerHandle {
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
     attributes_overrides: Option<LogAttributesOverrides>,
-    blocking: bool,
+    blocking: Block,
+    capture_session: CaptureSession,
   ) {
     LOGGER_GUARD.with(|cell| {
       // We just need to see if we can borrow - no need to hold it for any longer than that, as
@@ -148,7 +177,8 @@ impl LoggerHandle {
           fields,
           matching_fields,
           attributes_overrides,
-          blocking,
+          blocking.into(),
+          capture_session.into(),
         );
 
         self.stats.log_emission_counters.record(&result);
@@ -179,7 +209,8 @@ impl LoggerHandle {
       fields,
       [].into(),
       None,
-      false,
+      Block::No,
+      CaptureSession::No,
     );
   }
 
@@ -230,7 +261,8 @@ impl LoggerHandle {
       fields,
       [].into(),
       None,
-      false,
+      Block::No,
+      CaptureSession::No,
     );
 
     self
@@ -262,7 +294,8 @@ impl LoggerHandle {
       fields,
       [].into(),
       None,
-      false,
+      Block::No,
+      CaptureSession::No,
     );
   }
 
@@ -329,7 +362,8 @@ impl LoggerHandle {
       fields,
       [].into(),
       None,
-      false,
+      Block::No,
+      CaptureSession::No,
     );
   }
 
