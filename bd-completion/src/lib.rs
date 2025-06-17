@@ -59,18 +59,21 @@ impl<T: Debug> Receiver<T> {
     Ok(self.rx.blocking_recv()?)
   }
 
-  pub fn blocking_recv_with_timeout(mut self, timeout: Duration) -> Result<T, WaitError> {
+  pub fn blocking_recv_with_timeout(
+    mut self,
+    timeout: Duration,
+  ) -> Result<T, RecvWithTimeoutError> {
     let deadline = Instant::now() + timeout;
 
     loop {
       if Instant::now() > deadline {
-        return Err(WaitError::Timeout);
+        return Err(RecvWithTimeoutError::Timeout);
       }
 
       match self.rx.try_recv() {
         Ok(value) => return Ok(value),
         Err(tokio::sync::oneshot::error::TryRecvError::Closed) => {
-          return Err(WaitError::ChannelClosed)
+          return Err(RecvWithTimeoutError::ChannelClosed)
         },
         Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {
           std::thread::sleep(Duration::from_millis(5));
@@ -80,21 +83,10 @@ impl<T: Debug> Receiver<T> {
   }
 }
 
-#[derive(Debug)]
-pub enum WaitError {
+#[derive(thiserror::Error, Debug)]
+pub enum RecvWithTimeoutError {
+  #[error("timeout duration reached")]
   Timeout,
+  #[error("the oneshot channel was closed")]
   ChannelClosed,
 }
-
-impl std::fmt::Display for WaitError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    let message = match self {
-      Self::Timeout => "timeout duration reached",
-      Self::ChannelClosed => "the oneshot channel was closed",
-    };
-
-    write!(f, "{message}")
-  }
-}
-
-impl std::error::Error for WaitError {}

@@ -526,6 +526,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "log",
+ "thiserror 2.0.12",
  "tokio",
 ]
 

@@ -11,4 +11,5 @@ doctest = false
 [dependencies]
 anyhow.workspace = true
 log.workspace    = true
+thiserror.workspace = true
 tokio.workspace  = true
