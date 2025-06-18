@@ -665,7 +665,7 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
         // nothing more to do.
         let _ignored = sender.send_error(status).await;
       },
-    };
+    }
   });
 
   Ok(new_grpc_response(

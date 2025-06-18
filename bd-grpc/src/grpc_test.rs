@@ -196,10 +196,7 @@ impl ServerStreamingHandler<EchoResponse, EchoRequest> for EchoHandler {
       .await
       .unwrap();
 
-    if let Some(mut event_rx) = {
-      let event_rx = self.streaming_event_sender.lock().take();
-      event_rx
-    } {
+    if let Some(mut event_rx) = { self.streaming_event_sender.lock().take() } {
       while let Some(event) = event_rx.recv().await {
         match event {
           StreamingTestEvent::Message(message) => {
