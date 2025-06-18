@@ -11,8 +11,8 @@ mod service_test;
 
 use crate::service::ratelimit::RequestSized;
 use backoff::backoff::Backoff;
-use bd_api::upload::{LogBatch, TrackedLogBatch};
 use bd_api::DataUpload;
+use bd_api::upload::{LogBatch, TrackedLogBatch};
 use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::LogUploadRequest;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch};
@@ -23,8 +23,8 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::task::Poll;
 use tokio::sync::mpsc::Sender;
-use tower::util::BoxCloneService;
 use tower::ServiceBuilder;
+use tower::util::BoxCloneService;
 
 #[path = "./ratelimit.rs"]
 mod ratelimit;

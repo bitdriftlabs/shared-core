@@ -8,10 +8,10 @@
 use super::MetricsCollector;
 use crate::config::{ActionEmitMetric, MetricType, TagValue};
 use bd_client_stats::Stats;
-use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
-use bd_log_primitives::{log_level, FieldsRef, LogRef, LogType};
-use bd_stats_common::{labels, NameType};
+use bd_client_stats_store::test::StatsHelper;
+use bd_log_primitives::{FieldsRef, LogRef, LogType, log_level};
+use bd_stats_common::{NameType, labels};
 use std::collections::BTreeMap;
 
 fn make_metrics_collector() -> (MetricsCollector, Collector) {
@@ -85,9 +85,11 @@ fn metric_increment_value_extraction() {
   collector.assert_workflow_counter_eq(1, "action_id_3", labels! {});
 
   // No counter emitted for action_id_4 as the field does not exist.
-  assert!(collector
-    .find_counter(&NameType::ActionId("action_id_4".to_string()), &labels! {})
-    .is_none());
+  assert!(
+    collector
+      .find_counter(&NameType::ActionId("action_id_4".to_string()), &labels! {})
+      .is_none()
+  );
 
   // Values can be extracted from the matching_only_fields.
   collector.assert_workflow_counter_eq(5, "action_id_5", labels! {});

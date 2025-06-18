@@ -13,7 +13,7 @@ use bd_log_primitives::{
   LogMessage,
   LogType,
 };
-use bd_runtime::runtime::{debugging, BoolWatch, ConfigLoader};
+use bd_runtime::runtime::{BoolWatch, ConfigLoader, debugging};
 
 //
 // Reporter

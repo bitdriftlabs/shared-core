@@ -167,12 +167,14 @@ fn collector_does_not_accept_reserved_fields() {
   };
 
   let mut collector = MetadataCollector::new(Arc::new(metadata));
-  assert!(collector
-    .add_field(
-      "_collector_key".into(),
-      StringOrBytes::String("collector_value".into()),
-    )
-    .is_err());
+  assert!(
+    collector
+      .add_field(
+        "_collector_key".into(),
+        StringOrBytes::String("collector_value".into()),
+      )
+      .is_err()
+  );
 
   let mut tracker =
     global_state::Tracker::new(Arc::new(Store::new(Box::<InMemoryStorage>::default())));
@@ -181,12 +183,14 @@ fn collector_does_not_accept_reserved_fields() {
     .normalized_metadata_with_extra_fields([].into(), [].into(), LogType::Normal, &mut tracker)
     .unwrap();
 
-  assert!(collector
-    .add_field(
-      "app_id".into(),
-      StringOrBytes::String("collector_value".into()),
-    )
-    .is_err());
+  assert!(
+    collector
+      .add_field(
+        "app_id".into(),
+        StringOrBytes::String("collector_value".into()),
+      )
+      .is_err()
+  );
 
   assert_eq!(metadata.fields.len(), 1);
   assert_eq!(

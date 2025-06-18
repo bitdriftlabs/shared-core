@@ -6,15 +6,15 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use assert_matches::assert_matches;
+use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{
   Aggregated,
   Occurred_at,
   Snapshot_type,
 };
-use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::metric::metric::Data;
 use bd_proto::protos::client::metric::{Metric, MetricsList};
-use bd_stats_common::{make_client_sketch, NameType};
+use bd_stats_common::{NameType, make_client_sketch};
 use bd_time::TimestampExt;
 use std::collections::{BTreeMap, HashMap};
 use time::OffsetDateTime;

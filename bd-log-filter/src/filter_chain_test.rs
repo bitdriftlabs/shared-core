@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::FilterChain;
-use bd_log_primitives::{log_level, Log, LogFields, LogType};
+use bd_log_primitives::{Log, LogFields, LogType, log_level};
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
 use bd_test_helpers::filter::macros::regex_match_and_substitute_field;
 use bd_test_helpers::{capture_field, field_value, log_matches, remove_field, set_field};

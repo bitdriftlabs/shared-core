@@ -42,7 +42,7 @@ use bd_runtime::runtime::workflows::{
   StatePeriodicWriteIntervalFlag,
   TraversalsCountLimitFlag,
 };
-use bd_runtime::runtime::{session_capture, ConfigLoader, DurationWatch, IntWatch};
+use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
 use bd_stats_common::labels;
 use bd_time::TimeDurationExt as _;
 use serde::{Deserialize, Serialize};

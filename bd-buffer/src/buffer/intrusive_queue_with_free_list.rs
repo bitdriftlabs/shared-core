@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink};
+use intrusive_collections::{LinkedList, LinkedListLink, intrusive_adapter};
 use std::cell::UnsafeCell;
 
 //

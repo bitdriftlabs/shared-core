@@ -11,12 +11,12 @@ mod recorder_test;
 
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::LogType;
-use bd_runtime::runtime::{session_replay, BoolWatch, ConfigLoader, DurationWatch};
+use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch, session_replay};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_stats_common::labels;
 use bd_time::TimeDurationExt;
 use std::sync::Arc;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::time::{Interval, MissedTickBehavior};
 
 pub const SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE: &str = "Screenshot captured";

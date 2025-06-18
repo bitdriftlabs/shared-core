@@ -13,32 +13,44 @@ fn retain() {
   let collector = Collector::default();
   let c = collector.scope("").counter("c");
   let h = collector.scope("").histogram("h");
-  assert!(collector
-    .find_counter(&NameType::Global("c".to_string()), &labels!())
-    .is_some());
-  assert!(collector
-    .find_histogram(&NameType::Global("h".to_string()), &labels!())
-    .is_some());
+  assert!(
+    collector
+      .find_counter(&NameType::Global("c".to_string()), &labels!())
+      .is_some()
+  );
+  assert!(
+    collector
+      .find_histogram(&NameType::Global("h".to_string()), &labels!())
+      .is_some()
+  );
 
   // Dropping c and h should leave them in the map until we retain.
   drop(c);
   drop(h);
-  assert!(collector
-    .find_counter(&NameType::Global("c".to_string()), &labels!())
-    .is_some());
-  assert!(collector
-    .find_histogram(&NameType::Global("h".to_string()), &labels!())
-    .is_some());
+  assert!(
+    collector
+      .find_counter(&NameType::Global("c".to_string()), &labels!())
+      .is_some()
+  );
+  assert!(
+    collector
+      .find_histogram(&NameType::Global("h".to_string()), &labels!())
+      .is_some()
+  );
 
   collector.retain(|_, _, metric| match metric {
     MetricData::Counter(c) => c.multiple_references(),
     MetricData::Histogram(h) => h.multiple_references(),
   });
 
-  assert!(collector
-    .find_counter(&NameType::Global("c".to_string()), &labels!())
-    .is_none());
-  assert!(collector
-    .find_histogram(&NameType::Global("h".to_string()), &labels!())
-    .is_none());
+  assert!(
+    collector
+      .find_counter(&NameType::Global("c".to_string()), &labels!())
+      .is_none()
+  );
+  assert!(
+    collector
+      .find_histogram(&NameType::Global("h".to_string()), &labels!())
+      .is_none()
+  );
 }

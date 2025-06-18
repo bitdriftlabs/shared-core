@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::InitParams;
 use crate::async_log_buffer::AsyncLogBuffer;
 use crate::client_config::{self, LoggerUpdate};
 use crate::consumer::BufferUploadManager;
@@ -12,27 +13,26 @@ use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
 use crate::logger::Logger;
 use crate::logging_state::UninitializedLoggingContext;
-use crate::InitParams;
-use bd_api::api::SimpleNetworkQualityProvider;
 use bd_api::DataUpload;
+use bd_api::api::SimpleNetworkQualityProvider;
+use bd_client_common::ConfigurationUpdate;
 use bd_client_common::error::handle_unexpected;
 use bd_client_common::file_system::RealFileSystem;
-use bd_client_common::ConfigurationUpdate;
+use bd_client_stats::FlushTrigger;
 use bd_client_stats::stats::{
   JitteredIntervalCreator,
   RuntimeWatchTicker,
   SleepModeAwareRuntimeWatchTicker,
   Ticker,
 };
-use bd_client_stats::FlushTrigger;
 use bd_client_stats_store::Collector;
 use bd_internal_logging::NoopLogger;
-use bd_log_primitives::{log_level, Log, LogType};
+use bd_log_primitives::{Log, LogType, log_level};
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
-use bd_runtime::runtime::{self, sleep_mode, ConfigLoader, Watch};
+use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_time::SystemTimeProvider;
-use futures_util::{try_join, Future};
+use futures_util::{Future, try_join};
 use std::pin::Pin;
 use std::sync::Arc;
 use time::Duration;

@@ -18,22 +18,22 @@ use crate::{
   TriggerUpload,
 };
 use anyhow::anyhow;
+use backoff::SystemClock;
 use backoff::backoff::Backoff;
 use backoff::exponential::ExponentialBackoff;
-use backoff::SystemClock;
+use bd_client_common::ConfigurationUpdate;
 use bd_client_common::error::UnexpectedErrorHandler;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::payload_conversion::{IntoRequest, MuxResponse, ResponseKind};
 use bd_client_common::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
-use bd_client_common::ConfigurationUpdate;
 use bd_client_stats_store::{Counter, CounterWrapper, Scope};
 use bd_grpc_codec::{
   Compression,
   Encoder,
-  OptimizeFor,
   GRPC_ACCEPT_ENCODING_HEADER,
   GRPC_ENCODING_DEFLATE,
   GRPC_ENCODING_HEADER,
+  OptimizeFor,
 };
 use bd_metadata::Metadata;
 use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
@@ -52,15 +52,15 @@ pub use bd_proto::protos::client::api::upload_artifact_intent_response::{
   Drop as ArtifactIntentDecisionDrop,
 };
 use bd_proto::protos::client::api::{
-  handshake_response,
   ApiRequest,
   ApiResponse,
   ClientKillFile,
   HandshakeRequest,
   PingRequest,
+  handshake_response,
 };
-use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::Data as ProtoData;
+use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::DurationWatch;
 use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};

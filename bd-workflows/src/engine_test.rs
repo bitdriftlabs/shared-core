@@ -12,22 +12,22 @@ use crate::engine::{WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::engine_assert_active_runs;
 use crate::workflow::Workflow;
 use assert_matches::assert_matches;
-use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
 use bd_api::DataUpload;
-use bd_client_stats_store::test::StatsHelper;
+use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
 use bd_client_stats_store::Collector;
-use bd_log_primitives::{log_level, FieldsRef, Log, LogFields, LogMessage, LogRef};
+use bd_client_stats_store::test::StatsHelper;
+use bd_log_primitives::{FieldsRef, Log, LogFields, LogMessage, LogRef, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::client::api::log_upload_intent_request::Intent_type::WorkflowActionUpload;
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{
-  log_upload_intent_request,
   SankeyIntentRequest,
   SankeyPathUploadRequest,
+  log_upload_intent_request,
 };
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_stats_common::labels;
-use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_test_helpers::workflow::macros::{
   action,
   any,
@@ -38,11 +38,11 @@ use bd_test_helpers::workflow::macros::{
   state,
 };
 use bd_test_helpers::workflow::{
+  TestFieldRef,
+  TestFieldType,
   make_generate_log_action_proto,
   make_save_field_extraction,
   make_save_timestamp_extraction,
-  TestFieldRef,
-  TestFieldType,
 };
 use bd_test_helpers::{metric_tag, metric_value, sankey_value};
 use bd_time::TimeDurationExt;
@@ -54,9 +54,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use std::vec;
+use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use time::macros::datetime;
-use time::OffsetDateTime;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
@@ -2709,11 +2709,13 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   // stored on a disk is fine.
   assert!(!workflows_engine.needs_state_persistence);
   // In memory state was cleared.
-  assert!(workflows_engine
-    .state
-    .workflows
-    .iter()
-    .all(Workflow::is_in_initial_state));
+  assert!(
+    workflows_engine
+      .state
+      .workflows
+      .iter()
+      .all(Workflow::is_in_initial_state)
+  );
 }
 
 #[tokio::test]

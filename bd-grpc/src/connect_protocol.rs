@@ -12,8 +12,8 @@ use crate::{
   CONTENT_TYPE_GRPC,
   CONTENT_TYPE_PROTO,
 };
-use http::header::CONTENT_TYPE;
 use http::HeaderMap;
+use http::header::CONTENT_TYPE;
 use serde::Serialize;
 
 pub trait ToContentType {

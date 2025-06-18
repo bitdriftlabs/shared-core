@@ -12,18 +12,18 @@ mod logger_test;
 use crate::app_version::{AppVersion, AppVersionExtra, Repository};
 use crate::async_log_buffer::{AsyncLogBuffer, AsyncLogBufferMessage, LogAttributesOverrides};
 use crate::log_replay::LoggerReplay;
-use crate::{app_version, MetadataProvider};
+use crate::{MetadataProvider, app_version};
 use bd_api::Metadata;
 use bd_bounded_buffer::{self, Sender as MemoryBoundSender};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log::warn_every;
 use bd_log_primitives::{
-  log_level,
   AnnotatedLogField,
   AnnotatedLogFields,
   LogFieldValue,
   LogLevel,
   LogMessage,
+  log_level,
 };
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::Snapshot;

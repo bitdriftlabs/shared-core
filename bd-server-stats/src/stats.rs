@@ -10,19 +10,12 @@
 mod stats_test;
 
 use bd_stats_common::{DynCounter, Id};
-use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
+use dashmap::mapref::entry::Entry;
 use parking_lot::Mutex;
 use prometheus::core::Collector as PromCollector;
 use prometheus::proto::MetricFamily;
 use prometheus::{
-  opts,
-  register_histogram_vec_with_registry,
-  register_histogram_with_registry,
-  register_int_counter_vec_with_registry,
-  register_int_counter_with_registry,
-  register_int_gauge_vec_with_registry,
-  register_int_gauge_with_registry,
   Encoder,
   Histogram,
   HistogramOpts,
@@ -34,11 +27,18 @@ use prometheus::{
   Opts,
   Registry,
   TextEncoder,
+  opts,
+  register_histogram_vec_with_registry,
+  register_histogram_with_registry,
+  register_int_counter_vec_with_registry,
+  register_int_counter_with_registry,
+  register_int_gauge_vec_with_registry,
+  register_int_gauge_with_registry,
 };
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // TODO(mattklein123): Potentially add a mechanism to remove unused label variants in long lived
 //                     processes. It's unclear if this will ever actually be an issue in practice.

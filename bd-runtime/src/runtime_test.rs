@@ -8,7 +8,7 @@
 use crate::runtime::{ConfigLoader, FeatureFlag};
 use crate::{bool_feature_flag, duration_feature_flag, int_feature_flag};
 use bd_client_common::{ConfigurationUpdate, HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE};
-use bd_test_helpers::runtime::{make_update, ValueKind};
+use bd_test_helpers::runtime::{ValueKind, make_update};
 use std::borrow::Borrow;
 use std::sync::Arc;
 

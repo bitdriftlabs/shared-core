@@ -6,19 +6,19 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{Api, PlatformNetworkManager, PlatformNetworkStream, SimpleNetworkQualityProvider};
-use crate::api::{StreamEvent, DISCONNECTED_OFFLINE_GRACE_PERIOD};
-use crate::upload::Tracked;
 use crate::DataUpload;
+use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
+use crate::upload::Tracked;
 use anyhow::anyhow;
 use assert_matches::assert_matches;
 use bd_client_common::{
   ConfigurationUpdate,
-  MockConfigurationUpdate,
   HANDSHAKE_FLAG_CONFIG_UP_TO_DATE,
   HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+  MockConfigurationUpdate,
 };
-use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
+use bd_client_stats_store::test::StatsHelper;
 use bd_grpc_codec::{Decompression, Encoder, OptimizeFor};
 use bd_internal_logging::{LogFields, LogLevel, LogType};
 use bd_metadata::{Metadata, Platform};
@@ -45,7 +45,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use time::ext::NumericalDuration;
 use time::{Duration, OffsetDateTime};
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;

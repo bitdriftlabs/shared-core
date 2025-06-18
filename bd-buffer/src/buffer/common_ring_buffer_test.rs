@@ -13,9 +13,8 @@ use crate::buffer::non_volatile_ring_buffer::{
   PerRecordCrc32Check,
 };
 use crate::buffer::test::thread_synchronizer::ThreadSynchronizer;
-use crate::buffer::test::{read_and_verify, reserve_no_commit, Helper as CommonHelper};
+use crate::buffer::test::{Helper as CommonHelper, read_and_verify, reserve_no_commit};
 use crate::buffer::{
-  to_u32,
   AggregateRingBuffer,
   NonVolatileRingBuffer,
   OptionalStatGetter,
@@ -23,6 +22,7 @@ use crate::buffer::{
   RingBufferStats,
   StatsHelper,
   VolatileRingBuffer,
+  to_u32,
 };
 use crate::{AbslCode, Error};
 use assert_matches::assert_matches;

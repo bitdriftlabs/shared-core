@@ -5,19 +5,21 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
 use crate::matcher::Tree;
+use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
 use bd_log_primitives::{
-  log_level,
   FieldsRef,
   LogFields,
   LogLevel,
   LogMessage,
   LogType,
   StringOrBytes,
+  log_level,
 };
-use bd_proto::protos::log_matcher::log_matcher::{log_matcher, LogMatcher};
+use bd_proto::protos::log_matcher::log_matcher::{LogMatcher, log_matcher};
 use bd_test_helpers::workflow::macros::not;
+use log_matcher::base_log_matcher::Match_type::{MessageMatch, TagMatch};
+use log_matcher::base_log_matcher::Operator;
 use log_matcher::base_log_matcher::double_value_match::Double_value_match_type;
 use log_matcher::base_log_matcher::int_value_match::Int_value_match_type;
 use log_matcher::base_log_matcher::string_value_match::String_value_match_type;
@@ -27,9 +29,7 @@ use log_matcher::base_log_matcher::tag_match::Value_match::{
   SemVerValueMatch,
   StringValueMatch,
 };
-use log_matcher::base_log_matcher::Match_type::{MessageMatch, TagMatch};
-use log_matcher::base_log_matcher::Operator;
-use log_matcher::{base_log_matcher, BaseLogMatcher, Matcher, MatcherList};
+use log_matcher::{BaseLogMatcher, Matcher, MatcherList, base_log_matcher};
 use pretty_assertions::assert_eq;
 use protobuf::MessageField;
 use std::collections::BTreeMap;

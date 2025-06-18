@@ -12,7 +12,7 @@ use flatbuffers::{ForwardsUOffset, Vector};
 use std::ptr::null;
 use std::slice;
 
-extern "C-unwind" {
+unsafe extern "C-unwind" {
   fn create_handle(handle: BDProcessorHandle);
   fn dispose_handle(handle: BDProcessorHandle);
   fn load_binary_data_only(handle: BDProcessorHandle, len: *mut u64) -> *const u8;

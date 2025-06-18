@@ -20,8 +20,8 @@ use bd_proto::protos::client::api::{
   HandshakeRequest,
   RuntimeUpdate,
 };
-use bd_proto::protos::client::runtime::runtime::Value;
 use bd_proto::protos::client::runtime::Runtime;
+use bd_proto::protos::client::runtime::runtime::Value;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::fmt::Display;

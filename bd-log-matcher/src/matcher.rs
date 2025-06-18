@@ -10,7 +10,9 @@
 mod matcher_test;
 
 use crate::version;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
+use base_log_matcher::Match_type::{MessageMatch, TagMatch};
+use base_log_matcher::Operator;
 use base_log_matcher::tag_match::Value_match::{
   DoubleValueMatch,
   IntValueMatch,
@@ -18,11 +20,10 @@ use base_log_matcher::tag_match::Value_match::{
   SemVerValueMatch,
   StringValueMatch,
 };
-use base_log_matcher::Match_type::{MessageMatch, TagMatch};
-use base_log_matcher::Operator;
 use bd_log_primitives::{LogLevel, LogMessage, LogType};
 pub use bd_matcher::FieldProvider;
 use bd_proto::protos::log_matcher::log_matcher;
+use log_matcher::LogMatcher;
 use log_matcher::log_matcher::base_log_matcher::double_value_match::Double_value_match_type;
 use log_matcher::log_matcher::base_log_matcher::int_value_match::Int_value_match_type;
 use log_matcher::log_matcher::base_log_matcher::string_value_match::String_value_match_type;
@@ -30,8 +31,7 @@ use log_matcher::log_matcher::base_log_matcher::{
   IntValueMatch as IntValueMatch_type,
   StringValueMatch as StringValueMatch_type,
 };
-use log_matcher::log_matcher::{base_log_matcher, BaseLogMatcher, Matcher};
-use log_matcher::LogMatcher;
+use log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
 use regex::Regex;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -473,7 +473,7 @@ impl Leaf {
             match transform_int_value_match(int_value_match) {
               ValueOrSavedFieldId::Value(v) => v.try_into()?,
               ValueOrSavedFieldId::SaveFieldId(_) => {
-                return Err(anyhow!("log_type must be a value"))
+                return Err(anyhow!("log_type must be a value"));
               },
             },
           )),

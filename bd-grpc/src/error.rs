@@ -5,11 +5,11 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::CONTENT_TYPE_JSON;
 use crate::connect_protocol::{ConnectProtocolType, ErrorResponse};
 use crate::status::{Code, Status};
-use crate::CONTENT_TYPE_JSON;
-use axum::response::Response;
 use axum::BoxError;
+use axum::response::Response;
 use http::header::CONTENT_TYPE;
 
 //

@@ -89,12 +89,14 @@
 //! .unwrap();
 //!
 //! // Note that feature flags are always present so unwrap() can be used safely.
-//! assert!(loader
-//!   .snapshot_watch()
-//!   .borrow()
-//!   .as_ref()
-//!   .unwrap()
-//!   .get_bool("baz", false));
+//! assert!(
+//!   loader
+//!     .snapshot_watch()
+//!     .borrow()
+//!     .as_ref()
+//!     .unwrap()
+//!     .get_bool("baz", false)
+//! );
 //! assert_eq!(
 //!   loader
 //!     .snapshot_watch()
