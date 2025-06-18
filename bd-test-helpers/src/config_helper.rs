@@ -263,6 +263,20 @@ pub fn make_buffer_matcher_matching_everything() -> BufferLogMatcher {
 }
 
 #[must_use]
+pub fn make_buffer_matcher_matching_nothing() -> BufferLogMatcher {
+  BufferLogMatcher {
+    match_type: Some(Match_type::NotMatcher(Box::new(BufferLogMatcher {
+      match_type: Some(Match_type::BaseMatcher(BaseLogMatcher {
+        match_type: Some(base_log_matcher::Match_type::AnyMatch(AnyMatch::default())),
+        ..Default::default()
+      })),
+      ..Default::default()
+    }))),
+    ..Default::default()
+  }
+}
+
+#[must_use]
 pub fn make_buffer_matcher_matching_everything_except_internal_logs() -> BufferLogMatcher {
   BufferLogMatcher {
     match_type: Some(Match_type::NotMatcher(Box::new(BufferLogMatcher {
@@ -395,6 +409,14 @@ pub fn make_workflow_config_flushing_buffer(
 
 #[must_use]
 pub fn make_buffer_config_matching_everything(
+  id: &str,
+  buffer_type: buffer_config::Type,
+) -> Vec<BufferConfig> {
+  make_buffer_config(id, buffer_type, make_buffer_matcher_matching_everything())
+}
+
+#[must_use]
+pub fn make_buffer_config_matching_nothing(
   id: &str,
   buffer_type: buffer_config::Type,
 ) -> Vec<BufferConfig> {

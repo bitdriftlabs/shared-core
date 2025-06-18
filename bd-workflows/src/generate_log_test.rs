@@ -56,6 +56,7 @@ impl Helper {
         matching_fields: [("_generate_log_id".into(), "id".into(),),].into(),
         session_id: String::new(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
+        capture_session: None,
       }),
       generate_log_action(
         &self.extractions,

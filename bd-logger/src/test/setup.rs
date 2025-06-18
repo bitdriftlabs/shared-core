@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::logger::{Block, CaptureSession};
 use crate::{
   AnnotatedLogFields,
   InitParams,
@@ -28,7 +29,9 @@ use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_test_helpers::config_helper::{
   configuration_update,
   default_buffer_config,
+  make_buffer_config_matching_everything,
   make_buffer_matcher_matching_everything,
+  make_buffer_matcher_matching_nothing,
 };
 use bd_test_helpers::metadata::EmptyMetadata;
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -281,7 +284,8 @@ impl Setup {
       fields,
       matching_fields,
       attributes_overrides,
-      false,
+      Block::No,
+      CaptureSession::default(),
     );
   }
 
@@ -300,7 +304,28 @@ impl Setup {
       fields,
       matching_fields,
       None,
-      true,
+      Block::Yes,
+      CaptureSession::default(),
+    );
+  }
+
+  pub fn log_with_session_capture(
+    &self,
+    level: LogLevel,
+    log_type: LogType,
+    message: LogMessage,
+    fields: AnnotatedLogFields,
+    matching_fields: AnnotatedLogFields,
+  ) {
+    self.logger_handle.log(
+      level,
+      log_type,
+      message,
+      fields,
+      matching_fields,
+      None,
+      Block::No,
+      CaptureSession::capture_with_id("test"),
     );
   }
 
@@ -313,6 +338,29 @@ impl Setup {
             buffer_config::Type::CONTINUOUS,
             make_buffer_matcher_matching_everything().into(),
           )],
+          ..Default::default()
+        })
+        .into(),
+        ..Default::default()
+      },
+    ));
+  }
+
+  pub fn configure_default_buffers(&mut self) {
+    self.send_configuration_update(configuration_update(
+      "",
+      StateOfTheWorld {
+        buffer_config_list: Some(BufferConfigList {
+          buffer_config: make_buffer_config_matching_everything(
+            "trigger",
+            buffer_config::Type::TRIGGER,
+          )
+          .into_iter()
+          .chain(std::iter::once(default_buffer_config(
+            buffer_config::Type::CONTINUOUS,
+            make_buffer_matcher_matching_nothing().into(),
+          )))
+          .collect(),
           ..Default::default()
         })
         .into(),
@@ -374,7 +422,7 @@ impl Setup {
     self
       .sdk_directory
       .path()
-      .join("workflows_state_snapshot.7.bin")
+      .join("workflows_state_snapshot.8.bin")
   }
 }
 

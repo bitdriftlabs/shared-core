@@ -23,6 +23,8 @@ use crate::config::{
   ActionFlushBuffers,
   ActionTakeScreenshot,
   Config,
+  FlushBufferId,
+  Streaming,
   WorkflowsConfiguration,
 };
 use crate::metrics::MetricsCollector;
@@ -40,7 +42,7 @@ use bd_runtime::runtime::workflows::{
   StatePeriodicWriteIntervalFlag,
   TraversalsCountLimitFlag,
 };
-use bd_runtime::runtime::{ConfigLoader, DurationWatch};
+use bd_runtime::runtime::{session_capture, ConfigLoader, DurationWatch, IntWatch};
 use bd_stats_common::labels;
 use bd_time::TimeDurationExt as _;
 use serde::{Deserialize, Serialize};
@@ -67,7 +69,7 @@ pub struct WorkflowsEngine {
   configs: Vec<Config>,
   state: WorkflowsState,
   state_store: StateStore,
-  pending_buffer_flushes: HashMap<String, tokio::sync::oneshot::Receiver<()>>,
+  pending_buffer_flushes: HashMap<FlushBufferId, tokio::sync::oneshot::Receiver<()>>,
 
   needs_state_persistence: bool,
 
@@ -95,6 +97,8 @@ pub struct WorkflowsEngine {
   metrics_collector: MetricsCollector,
 
   buffers_to_flush_tx: Sender<BuffersToFlush>,
+
+  explicit_session_capture_streaming_log_count: IntWatch<session_capture::StreamingLogCount>,
 }
 
 impl WorkflowsEngine {
@@ -153,6 +157,8 @@ impl WorkflowsEngine {
       metrics_collector: MetricsCollector::new(stats),
       buffers_to_flush_tx,
       pending_buffer_flushes: HashMap::new(),
+
+      explicit_session_capture_streaming_log_count: runtime.register_watch().unwrap(),
     };
 
     (workflows_engine, buffers_to_flush_rx)
@@ -501,14 +507,14 @@ impl WorkflowsEngine {
           Ok(()) => {
             self.pending_buffer_flushes.remove(&action.id);
             log::debug!(
-              "allowing upload due to pending buffer flush completed: \"{}\"",
+              "allowing upload due to pending buffer flush completed: \"{:?}\"",
               action.id
             );
             true
           },
           Err(TryRecvError::Empty) => {
             log::debug!(
-              "not uploading due to pending buffer flush: \"{}\"",
+              "not uploading due to pending buffer flush: \"{:?}\"",
               action.id
             );
             false
@@ -517,7 +523,7 @@ impl WorkflowsEngine {
             self.pending_buffer_flushes.remove(&action.id);
 
             log::debug!(
-              "pending buffer flush receiver closed without response: \"{}\"",
+              "pending buffer flush receiver closed without response: \"{:?}\"",
               action.id
             );
 
@@ -529,7 +535,7 @@ impl WorkflowsEngine {
       };
 
     log::debug!(
-      "uploading due to flush buffers action: \"{}\"; flush_buffers={}",
+      "uploading due to flush buffers action: \"{:?}\"; flush_buffers={}",
       action.id,
       flush_buffers
     );
@@ -607,8 +613,14 @@ impl WorkflowsEngine {
       self.stats.sessions_total.inc();
     }
 
-    // Return early if there are no workflows.
-    if self.state.workflows.is_empty() {
+    // Return early if there's no work to avoid unnecessary copies.
+    // In order to support explicit session capture even when there are no workflows we need to
+    // proceed with the processing if either this log is requesting a session capture or if there
+    // is an active streaming action.
+    if self.state.workflows.is_empty()
+      && log.capture_session.is_none()
+      && self.state.streaming_actions.is_empty()
+    {
       self
         .stats
         .active_traversals_total
@@ -625,7 +637,6 @@ impl WorkflowsEngine {
 
     let mut actions: Vec<TriggeredAction<'_>> = vec![];
     let mut logs_to_inject: BTreeMap<&'a str, Log> = BTreeMap::new();
-    log::trace!("processing log: {log:?}");
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let was_in_initial_state = workflow.is_in_initial_state();
       let result = workflow.process_log(
@@ -700,12 +711,29 @@ impl WorkflowsEngine {
       "current_traversals_count is not equal to computed traversals count"
     );
 
-    let (
-      flush_buffers_actions,
+    let PreparedActions {
+      mut flush_buffers_actions,
       emit_metric_actions,
       emit_sankey_diagrams_actions,
       capture_screenshot_actions,
-    ) = Self::prepare_actions(actions);
+    } = Self::prepare_actions(actions);
+
+    if let Some(capture_session) = log.capture_session {
+      log::debug!("log requested session capture, capturing session");
+
+      let streaming_log_count = self.explicit_session_capture_streaming_log_count.read();
+
+      let action = ActionFlushBuffers {
+        id: FlushBufferId::ExplicitSessionCapture(capture_session.to_string()),
+        buffer_ids: BTreeSet::new(),
+        streaming: (*streaming_log_count > 0).then_some(Streaming {
+          max_logs_count: Some((*streaming_log_count).into()),
+          destination_continuous_buffer_ids: [].into(),
+        }),
+      };
+
+      flush_buffers_actions.insert(Cow::Owned(action));
+    }
 
     let result = self
       .flush_buffers_actions_resolver
@@ -809,28 +837,16 @@ impl WorkflowsEngine {
   /// Handles deduping metrics based on their tags, ensuring that the same emit metric
   /// action triggered multiple times as part of separate workflows processing the same log results
   /// in only one metric emission.
-  fn prepare_actions<'a>(
-    actions: Vec<TriggeredAction<'a>>,
-  ) -> (
-    BTreeSet<&'a ActionFlushBuffers>,
-    BTreeSet<&'a ActionEmitMetric>,
-    BTreeSet<TriggeredActionEmitSankey<'a>>,
-    BTreeSet<&'a ActionTakeScreenshot>,
-  ) {
+  fn prepare_actions<'a>(actions: Vec<TriggeredAction<'a>>) -> PreparedActions<'a> {
     if actions.is_empty() {
-      return (
-        BTreeSet::new(),
-        BTreeSet::new(),
-        BTreeSet::new(),
-        BTreeSet::new(),
-      );
+      return PreparedActions::default();
     }
 
-    let flush_buffers_actions: BTreeSet<&ActionFlushBuffers> = actions
+    let flush_buffers_actions: BTreeSet<Cow<'_, ActionFlushBuffers>> = actions
       .iter()
       .filter_map(|action| {
         if let TriggeredAction::FlushBuffers(flush_buffers_action) = action {
-          Some(*flush_buffers_action)
+          Some(Cow::Borrowed(*flush_buffers_action))
         } else {
           None
         }
@@ -860,7 +876,7 @@ impl WorkflowsEngine {
       })
       .collect();
 
-    let sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>> = actions
+    let emit_sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>> = actions
       .into_iter()
       .filter_map(|action| {
         if let TriggeredAction::SankeyDiagram(action) = action {
@@ -872,12 +888,12 @@ impl WorkflowsEngine {
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
 
-    (
+    PreparedActions {
       flush_buffers_actions,
       emit_metric_actions,
-      sankey_diagrams_actions,
+      emit_sankey_diagrams_actions,
       capture_screenshot_actions,
-    )
+    }
   }
 }
 
@@ -886,6 +902,14 @@ impl Drop for WorkflowsEngine {
     self.flush_buffers_negotiator_join_handle.abort();
     self.sankey_processor_join_handle.abort();
   }
+}
+
+#[derive(Default)]
+struct PreparedActions<'a> {
+  flush_buffers_actions: BTreeSet<Cow<'a, ActionFlushBuffers>>,
+  emit_metric_actions: BTreeSet<&'a ActionEmitMetric>,
+  emit_sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>>,
+  capture_screenshot_actions: BTreeSet<&'a ActionTakeScreenshot>,
 }
 
 //
@@ -897,7 +921,7 @@ pub struct WorkflowsEngineResult<'a> {
   pub log_destination_buffer_ids: Cow<'a, BTreeSet<Cow<'a, str>>>,
 
   // The identifier of workflow actions that triggered buffers flush(es).
-  pub triggered_flush_buffers_action_ids: BTreeSet<&'a str>,
+  pub triggered_flush_buffers_action_ids: BTreeSet<Cow<'a, FlushBufferId>>,
   // The identifier of trigger buffers that should be flushed.
   pub triggered_flushes_buffer_ids: BTreeSet<Cow<'static, str>>,
 
@@ -977,7 +1001,7 @@ impl StateStore {
     );
 
     Self {
-      state_path: sdk_directory.join("workflows_state_snapshot.7.bin"),
+      state_path: sdk_directory.join("workflows_state_snapshot.8.bin"),
       last_persisted: None,
       stats,
       persistence_write_interval_flag: runtime.register_watch().unwrap(),

@@ -17,6 +17,7 @@ use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
+use bd_workflows::config::FlushBufferId;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -178,6 +179,7 @@ impl ProcessingPipeline {
       fields: &FieldsRef::new(&log.fields, &log.matching_fields),
       session_id: &log.session_id,
       occurred_at: log.occurred_at,
+      capture_session: log.capture_session.as_deref(),
     };
 
     let flush_stats_trigger = self.flush_stats_trigger.clone();
@@ -208,9 +210,10 @@ impl ProcessingPipeline {
       .collect();
 
     log::debug!(
-      "processed {:?} log, destination buffer(s): {:?}",
+      "processed {:?} log, destination buffer(s): {:?}, capture session {:?}",
       log.message.as_str().unwrap_or("[DATA]"),
       result.log_destination_buffer_ids,
+      log.capture_session
     );
 
     if !result.triggered_flush_buffers_action_ids.is_empty() {
@@ -228,7 +231,14 @@ impl ProcessingPipeline {
       &mut self.buffer_producers,
       &result.log_destination_buffer_ids,
       log,
-      result.triggered_flush_buffers_action_ids.iter().copied(),
+      result
+        .triggered_flush_buffers_action_ids
+        .iter()
+        .filter_map(|id| match id.as_ref() {
+          bd_workflows::config::FlushBufferId::WorkflowActionId(workflow) => Some(workflow),
+          bd_workflows::config::FlushBufferId::ExplicitSessionCapture(_) => None,
+        })
+        .map(std::convert::AsRef::as_ref),
     )?;
 
     if let Some(extra_matching_buffer) = Self::process_flush_buffers_actions(
@@ -360,7 +370,7 @@ impl ProcessingPipeline {
   }
 
   fn process_flush_buffers_actions(
-    triggered_flush_buffers_action_ids: &BTreeSet<&str>,
+    triggered_flush_buffers_action_ids: &BTreeSet<Cow<'_, FlushBufferId>>,
     buffers: &mut BufferProducers,
     triggered_flushes_buffer_ids: &BTreeSet<Cow<'_, str>>,
     written_to_buffers: &BTreeSet<Cow<'_, str>>,
@@ -409,7 +419,14 @@ impl ProcessingPipeline {
         log.fields.captured_fields,
         log.session_id,
         log.occurred_at,
-        triggered_flush_buffers_action_ids.clone().into_iter(),
+        triggered_flush_buffers_action_ids
+          .clone()
+          .iter()
+          .filter_map(|id| match id.as_ref() {
+            bd_workflows::config::FlushBufferId::WorkflowActionId(workflow) => Some(workflow),
+            bd_workflows::config::FlushBufferId::ExplicitSessionCapture(_) => None,
+          })
+          .map(std::convert::AsRef::as_ref),
         std::iter::empty(),
         |synthetic_log| {
           if let Ok(buffer_producer) =

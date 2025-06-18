@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::setup::Setup;
+use crate::logger::{Block, CaptureSession};
 use crate::test::setup::SetupOptions;
 use crate::wait_for;
 use bd_log_primitives::LogType;
@@ -79,8 +80,11 @@ fn crash_reports() {
     setup.logger.new_logger_handle().session_id()
   );
 
-  setup.configure_stream_all_logs();
+  setup.configure_default_buffers();
   setup.upload_individual_logs();
+
+  let upload_intent = setup.server.next_log_intent().unwrap();
+  assert_eq!("crash_handler", upload_intent.explicit_session_capture().id);
 
   // Sometimes we get the uploads split up between multiple payloads, so collect all the logs from
   // any number of uploads.
@@ -161,7 +165,8 @@ fn crash_reports_artifact_upload() {
       [].into(),
       [].into(),
       None,
-      true,
+      Block::No,
+      CaptureSession::default(),
     );
 
     std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();

@@ -237,6 +237,7 @@ fn log_line_size_is_computed_correctly() {
       matching_fields: [].into(),
       attributes_overrides: None,
       log_processing_completed_tx: None,
+      capture_session: None,
     }
   }
 
@@ -286,10 +287,11 @@ fn annotated_log_line_size_is_computed_correctly() {
       matching_fields: [].into(),
       session_id: "foo".into(),
       occurred_at: time::OffsetDateTime::now_utc(),
+      capture_session: None,
     }
   }
 
-  let baseline_log_expected_size = 545;
+  let baseline_log_expected_size = 569;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 
@@ -367,6 +369,7 @@ async fn logs_are_replayed_in_order() {
         [].into(),
         None,
         false,
+        None,
       );
 
       assert_ok!(result);
@@ -437,6 +440,7 @@ fn enqueuing_log_does_not_block() {
     [].into(),
     None,
     false,
+    None,
   );
 
   assert_ok!(result);
@@ -480,6 +484,7 @@ fn enqueuing_log_blocks() {
     [].into(),
     None,
     true,
+    None,
   );
 
   assert_ok!(result);
@@ -533,6 +538,7 @@ async fn initial_logs_are_processed_first() {
           matching_fields: [].into(),
           session_id: "first session".into(),
           occurred_at: t0,
+          capture_session: None,
         }],
       )
       .await;
@@ -549,6 +555,7 @@ async fn initial_logs_are_processed_first() {
       matching_fields: [].into(),
       attributes_overrides: None,
       log_processing_completed_tx: None,
+      capture_session: None,
     }))
     .unwrap();
 
@@ -676,6 +683,7 @@ async fn logs_resource_utilization_log() {
     matching_fields: AnnotatedLogFields::new(),
     attributes_overrides: None,
     log_processing_completed_tx: None,
+    capture_session: None,
   });
 
   sender.try_send(message).unwrap();

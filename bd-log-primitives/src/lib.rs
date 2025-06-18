@@ -188,6 +188,8 @@ pub struct Log {
   pub matching_fields: LogFields,
   pub session_id: String,
   pub occurred_at: time::OffsetDateTime,
+
+  pub capture_session: Option<String>,
 }
 
 //
@@ -203,6 +205,8 @@ pub struct LogRef<'a> {
   pub fields: &'a FieldsRef<'a>,
   pub session_id: &'a str,
   pub occurred_at: time::OffsetDateTime,
+
+  pub capture_session: Option<&'a str>,
 }
 
 //

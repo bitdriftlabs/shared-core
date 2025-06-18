@@ -7,7 +7,7 @@
 
 use super::{StateStore, WorkflowsEngine};
 use crate::actions_flush_buffers::BuffersToFlush;
-use crate::config::{Action, WorkflowsConfiguration};
+use crate::config::{Action, FlushBufferId, WorkflowsConfiguration};
 use crate::engine::{WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::engine_assert_active_runs;
 use crate::workflow::Workflow;
@@ -183,6 +183,7 @@ macro_rules! engine_process_log {
         session_id: &$workflows_engine.session_id,
         occurred_at: time::OffsetDateTime::now_utc(),
         fields: &FieldsRef::new(&LogFields::new(), &LogFields::new()),
+        capture_session: None,
       },
       &$workflows_engine.log_destination_buffer_ids,
     )
@@ -200,6 +201,7 @@ macro_rules! engine_process_log {
         ),
         session_id: &$workflows_engine.session_id,
         occurred_at: time::OffsetDateTime::now_utc(),
+        capture_session: None,
       },
       &$workflows_engine.log_destination_buffer_ids,
     )
@@ -217,6 +219,7 @@ macro_rules! engine_process_log {
         ),
         session_id: &$workflows_engine.session_id,
         occurred_at: $current_time,
+        capture_session: None,
       },
       &$workflows_engine.log_destination_buffer_ids,
     )
@@ -485,7 +488,7 @@ impl Setup {
     self
       .sdk_directory
       .path()
-      .join("workflows_state_snapshot.7.bin")
+      .join("workflows_state_snapshot.8.bin")
   }
 }
 
@@ -1556,6 +1559,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
       ),
       session_id: "foo_session",
       occurred_at: time::OffsetDateTime::now_utc(),
+      capture_session: None,
     },
     &BTreeSet::new(),
   );
@@ -1687,7 +1691,9 @@ async fn engine_processing_log() {
   assert_eq!(
     WorkflowsEngineResult {
       log_destination_buffer_ids: Cow::Owned(BTreeSet::from(["foo_buffer_id".into()])),
-      triggered_flush_buffers_action_ids: BTreeSet::from(["foo_action_id"]),
+      triggered_flush_buffers_action_ids: BTreeSet::from([Cow::Owned(
+        FlushBufferId::WorkflowActionId("foo_action_id".into())
+      ),]),
       triggered_flushes_buffer_ids: BTreeSet::from(["foo_buffer_id".into()]),
       capture_screenshot: false,
       logs_to_inject: BTreeMap::new(),
@@ -1870,7 +1876,9 @@ async fn log_without_destination() {
   assert_eq!(
     WorkflowsEngineResult {
       log_destination_buffer_ids: Cow::Owned(BTreeSet::new()),
-      triggered_flush_buffers_action_ids: BTreeSet::from(["action"]),
+      triggered_flush_buffers_action_ids: BTreeSet::from([Cow::Owned(
+        FlushBufferId::WorkflowActionId("action".into())
+      ),]),
       triggered_flushes_buffer_ids: BTreeSet::from(["trigger_buffer_id".into()]),
       capture_screenshot: false,
       logs_to_inject: BTreeMap::new(),
@@ -2644,6 +2652,7 @@ async fn workflows_state_is_purged_when_session_id_changes() {
       ),
       session_id: "foo_session",
       occurred_at: time::OffsetDateTime::now_utc(),
+      capture_session: None,
     },
     &BTreeSet::new(),
   );
@@ -2677,6 +2686,7 @@ async fn workflows_state_is_purged_when_session_id_changes() {
       ),
       session_id: "bar_session",
       occurred_at: time::OffsetDateTime::now_utc(),
+      capture_session: None,
     },
     &BTreeSet::new(),
   );
@@ -3140,6 +3150,7 @@ async fn generate_log_multiple() {
         matching_fields: [("_generate_log_id".into(), "id1".into(),)].into(),
         session_id: String::new(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
+        capture_session: None,
       },
       Log {
         log_level: log_level::DEBUG,
@@ -3149,6 +3160,7 @@ async fn generate_log_multiple() {
         matching_fields: [("_generate_log_id".into(), "id2".into(),)].into(),
         session_id: String::new(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
+        capture_session: None,
       }
     ]
   );
@@ -3224,6 +3236,7 @@ async fn generate_log_action() {
       matching_fields: [("_generate_log_id".into(), "id".into(),)].into(),
       session_id: String::new(),
       occurred_at: OffsetDateTime::UNIX_EPOCH,
+      capture_session: None,
     }]
   );
 }
