@@ -189,7 +189,7 @@ pub struct Log {
   pub session_id: String,
   pub occurred_at: time::OffsetDateTime,
 
-  pub capture_session: bool,
+  pub capture_session: Option<String>,
 }
 
 //
@@ -206,7 +206,7 @@ pub struct LogRef<'a> {
   pub session_id: &'a str,
   pub occurred_at: time::OffsetDateTime,
 
-  pub capture_session: bool,
+  pub capture_session: Option<&'a str>,
 }
 
 //

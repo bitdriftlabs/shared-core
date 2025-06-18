@@ -23,6 +23,7 @@ use crate::config::{
   ActionFlushBuffers,
   ActionTakeScreenshot,
   Config,
+  FlushBufferId,
   Streaming,
   WorkflowsConfiguration,
 };
@@ -68,7 +69,7 @@ pub struct WorkflowsEngine {
   configs: Vec<Config>,
   state: WorkflowsState,
   state_store: StateStore,
-  pending_buffer_flushes: HashMap<String, tokio::sync::oneshot::Receiver<()>>,
+  pending_buffer_flushes: HashMap<FlushBufferId, tokio::sync::oneshot::Receiver<()>>,
 
   needs_state_persistence: bool,
 
@@ -506,14 +507,14 @@ impl WorkflowsEngine {
           Ok(()) => {
             self.pending_buffer_flushes.remove(&action.id);
             log::debug!(
-              "allowing upload due to pending buffer flush completed: \"{}\"",
+              "allowing upload due to pending buffer flush completed: \"{:?}\"",
               action.id
             );
             true
           },
           Err(TryRecvError::Empty) => {
             log::debug!(
-              "not uploading due to pending buffer flush: \"{}\"",
+              "not uploading due to pending buffer flush: \"{:?}\"",
               action.id
             );
             false
@@ -522,7 +523,7 @@ impl WorkflowsEngine {
             self.pending_buffer_flushes.remove(&action.id);
 
             log::debug!(
-              "pending buffer flush receiver closed without response: \"{}\"",
+              "pending buffer flush receiver closed without response: \"{:?}\"",
               action.id
             );
 
@@ -534,7 +535,7 @@ impl WorkflowsEngine {
       };
 
     log::debug!(
-      "uploading due to flush buffers action: \"{}\"; flush_buffers={}",
+      "uploading due to flush buffers action: \"{:?}\"; flush_buffers={}",
       action.id,
       flush_buffers
     );
@@ -615,7 +616,7 @@ impl WorkflowsEngine {
     // proceed with the processing if either this log is requesting a session capture or if there
     // is an active streaming action.
     if self.state.workflows.is_empty()
-      && !log.capture_session
+      && log.capture_session.is_none()
       && self.state.streaming_actions.is_empty()
     {
       self
@@ -715,13 +716,13 @@ impl WorkflowsEngine {
       capture_screenshot_actions,
     } = Self::prepare_actions(actions);
 
-    if log.capture_session {
+    if let Some(capture_session) = log.capture_session {
       log::debug!("log requested session capture, capturing session");
 
       let streaming_log_count = self.explicit_session_capture_streaming_log_count.read();
 
       let action = ActionFlushBuffers {
-        id: "force_flush_buffers".to_string(),
+        id: FlushBufferId::ExplicitSessionCapture(capture_session.to_string()),
         buffer_ids: BTreeSet::new(),
         streaming: (*streaming_log_count > 0).then_some(Streaming {
           max_logs_count: Some((*streaming_log_count).into()),
@@ -918,7 +919,7 @@ pub struct WorkflowsEngineResult<'a> {
   pub log_destination_buffer_ids: Cow<'a, BTreeSet<Cow<'a, str>>>,
 
   // The identifier of workflow actions that triggered buffers flush(es).
-  pub triggered_flush_buffers_action_ids: BTreeSet<Cow<'a, str>>,
+  pub triggered_flush_buffers_action_ids: BTreeSet<Cow<'a, FlushBufferId>>,
   // The identifier of trigger buffers that should be flushed.
   pub triggered_flushes_buffer_ids: BTreeSet<Cow<'static, str>>,
 
@@ -998,7 +999,7 @@ impl StateStore {
     );
 
     Self {
-      state_path: sdk_directory.join("workflows_state_snapshot.7.bin"),
+      state_path: sdk_directory.join("workflows_state_snapshot.8.bin"),
       last_persisted: None,
       stats,
       persistence_write_interval_flag: runtime.register_watch().unwrap(),

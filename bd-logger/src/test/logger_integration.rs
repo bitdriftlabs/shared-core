@@ -2016,7 +2016,7 @@ fn logs_before_cache_load() {
       [].into(),
       None,
       Block::No,
-      CaptureSession::No,
+      CaptureSession::default(),
     );
   }
 
@@ -2029,7 +2029,7 @@ fn logs_before_cache_load() {
     [].into(),
     None,
     Block::No,
-    CaptureSession::No,
+    CaptureSession::default(),
   );
 
   setup

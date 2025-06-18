@@ -440,7 +440,7 @@ impl Action {
         };
 
         Ok(Self::FlushBuffers(ActionFlushBuffers {
-          id: action.id,
+          id: FlushBufferId::WorkflowActionId(action.id.clone()),
           buffer_ids: action.buffer_ids.into_iter().collect::<BTreeSet<_>>(),
           streaming,
         }))
@@ -457,6 +457,17 @@ impl Action {
   }
 }
 
+#[derive(
+  serde::Serialize, serde::Deserialize, Hash, Clone, Debug, PartialEq, Eq, PartialOrd, Ord,
+)]
+pub enum FlushBufferId {
+  /// Flush the buffer due to a workflow action triggering.
+  WorkflowActionId(String),
+  /// Flush the buffer in response to an explicit session capture request. The ID is provided to
+  /// identify the origin of the session capture request.
+  ExplicitSessionCapture(String),
+}
+
 //
 // ActionFlushBuffers
 //
@@ -466,7 +477,7 @@ impl Action {
 pub struct ActionFlushBuffers {
   /// The identifier of an action. It should be attached as
   /// part of the logs upload payload.
-  pub id: String,
+  pub id: FlushBufferId,
   /// The list of buffer IDs to flush.
   pub buffer_ids: BTreeSet<String>,
   /// The streaming configuration.

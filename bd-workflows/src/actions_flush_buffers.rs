@@ -9,11 +9,12 @@
 #[path = "./actions_flush_buffers_test.rs"]
 mod actions_flush_buffers_test;
 
-use crate::config::ActionFlushBuffers;
+use crate::config::{ActionFlushBuffers, FlushBufferId};
 use anyhow::anyhow;
-use bd_api::upload::{IntentDecision, Intent_type, TrackedLogUploadIntent};
+use bd_api::upload::{IntentDecision, Intent_type, TrackedLogUploadIntent, WorkflowActionUpload};
 use bd_api::DataUpload;
 use bd_client_stats_store::{Counter, Scope};
+use bd_proto::protos::client::api::log_upload_intent_request::ExplicitSessionCapture;
 use bd_proto::protos::client::api::LogUploadIntentRequest;
 use bd_stats_common::labels;
 use serde::{Deserialize, Serialize};
@@ -89,7 +90,7 @@ pub(crate) struct Negotiator {
   /// impact on customers, it's worth noting that in the case of long-lived sessions spanning
   /// multiple days (measured in UTC timezone), some upload actions may be rejected prematurely
   /// compared to if the requests to the server were made.
-  rejected_intent_action_ids: BTreeSet<String>,
+  rejected_intent_action_ids: BTreeSet<FlushBufferId>,
 
   stats: NegotiatorStats,
 }
@@ -248,12 +249,20 @@ impl Negotiator {
         .map_or("no_buffer", |id| id.as_ref())
         .to_string(),
       intent_uuid: intent_uuid.clone(),
-      intent_type: Some(Intent_type::WorkflowActionUpload(
-        bd_api::upload::WorkflowActionUpload {
-          workflow_action_ids: vec![action.id.clone()],
-          ..Default::default()
+      intent_type: Some(match &action.id {
+        FlushBufferId::WorkflowActionId(action_id) => {
+          Intent_type::WorkflowActionUpload(WorkflowActionUpload {
+            workflow_action_ids: vec![action_id.clone()],
+            ..Default::default()
+          })
         },
-      )),
+        FlushBufferId::ExplicitSessionCapture(id) => {
+          Intent_type::ExplicitSessionCapture(ExplicitSessionCapture {
+            id: id.clone(),
+            ..Default::default()
+          })
+        },
+      }),
       ..Default::default()
     };
 
@@ -377,8 +386,8 @@ impl Resolver {
 
     for action in actions {
       triggered_flush_buffers_action_ids.insert(match action {
-        Cow::Borrowed(a) => a.id.as_str().into(),
-        Cow::Owned(ref a) => a.id.clone().into(),
+        Cow::Borrowed(a) => Cow::Borrowed(&a.id),
+        Cow::Owned(ref a) => Cow::Owned(a.id.clone()),
       });
 
       let Some(action) = PendingFlushBuffersAction::new(
@@ -388,7 +397,7 @@ impl Resolver {
         &self.continuous_buffer_ids,
       ) else {
         log::debug!(
-          "failed to initialize pending flush buffers action: \"{}\"",
+          "failed to initialize pending flush buffers action: \"{:?}\"",
           action.id
         );
         self.stats.action_initiations_other_drops.inc();
@@ -436,7 +445,6 @@ impl Resolver {
   ) -> StreamingBuffersActionsProcessingResult<'a> {
     let mut has_changed_streaming_actions = false;
 
-    log::error!("streaming actions: \"{streaming_actions:?}\"");
     // Remove streaming actions that should be terminated.
     streaming_actions.retain_mut(|(a, flush_completed)| {
       let meets_termination_criteria = a.meets_termination_criteria();
@@ -712,7 +720,7 @@ impl ResolverConfig {
 pub(crate) struct FlushBuffersActionsProcessingResult<'a> {
   pub(crate) new_pending_actions_to_add: BTreeSet<PendingFlushBuffersAction>,
 
-  pub(crate) triggered_flush_buffers_action_ids: BTreeSet<Cow<'a, str>>,
+  pub(crate) triggered_flush_buffers_action_ids: BTreeSet<Cow<'a, FlushBufferId>>,
   pub(crate) triggered_flushes_buffer_ids: BTreeSet<Cow<'static, str>>,
 }
 
@@ -736,7 +744,7 @@ pub(crate) struct StreamingBuffersActionsProcessingResult<'a> {
 // streaming was configured for the action.
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct PendingFlushBuffersAction {
-  pub(crate) id: String,
+  pub(crate) id: FlushBufferId,
   session_id: String,
 
   trigger_buffer_ids: BTreeSet<Cow<'static, str>>,
@@ -766,6 +774,8 @@ impl PendingFlushBuffersAction {
     trigger_buffer_ids: &BTreeSet<Cow<'static, str>>,
     continuous_buffer_ids: &BTreeSet<Cow<'static, str>>,
   ) -> Option<Self> {
+    log::debug!("evaluating flush buffers action: {action:?}");
+
     let streaming = action.streaming.and_then(|streaming_proto| {
       if continuous_buffer_ids.is_empty() {
         log::debug!("buffers streaming not activated: no configured continuous buffer IDs");
@@ -816,6 +826,7 @@ impl PendingFlushBuffersAction {
     };
 
     if trigger_buffer_ids.is_empty() {
+      log::debug!("buffers flush action not activated: no eligible trigger buffers found",);
       return None;
     }
 
@@ -847,7 +858,7 @@ pub(crate) struct Streaming {
 // The action created in response to flush buffer actions that were accepted for upload and had a
 // streaming configuration attached to them.
 pub(crate) struct StreamingBuffersAction {
-  pub(crate) id: String,
+  pub(crate) id: FlushBufferId,
   session_id: String,
 
   source_trigger_buffer_ids: BTreeSet<Cow<'static, str>>,

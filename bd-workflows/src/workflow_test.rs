@@ -5,7 +5,14 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::config::{ActionEmitMetric, ActionFlushBuffers, Config, MetricType, ValueIncrement};
+use crate::config::{
+  ActionEmitMetric,
+  ActionFlushBuffers,
+  Config,
+  FlushBufferId,
+  MetricType,
+  ValueIncrement,
+};
 use crate::workflow::{Run, TriggeredAction, Workflow, WorkflowResult, WorkflowResultStats};
 use bd_log_primitives::{log_level, FieldsRef, LogFields, LogMessage};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
@@ -60,7 +67,7 @@ macro_rules! workflow_process_log {
         fields: &FieldsRef::new(&LogFields::new(), &LogFields::new()),
         session_id: "foo",
         occurred_at: time::OffsetDateTime::now_utc(),
-        capture_session: false,
+        capture_session: None,
       },
       &mut 0,
       1000,
@@ -79,7 +86,7 @@ macro_rules! workflow_process_log {
         ),
         session_id: "foo",
         occurred_at: time::OffsetDateTime::now_utc(),
-        capture_session: false,
+        capture_session: None,
       },
       &mut 0,
       1000,
@@ -327,7 +334,7 @@ fn multiple_start_nodes_initial_fork() {
     result,
     WorkflowResult {
       triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: "foo".to_string(),
+        id: FlushBufferId::WorkflowActionId("foo".to_string()),
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
@@ -436,7 +443,7 @@ fn multiple_start_nodes_initial_branching() {
     result,
     WorkflowResult {
       triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: "foo".to_string(),
+        id: FlushBufferId::WorkflowActionId("foo".to_string()),
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
@@ -495,7 +502,7 @@ fn basic_exclusive_workflow() {
     WorkflowResult {
       triggered_actions: vec![
         TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-          id: "foo".to_string(),
+          id: FlushBufferId::WorkflowActionId("foo".to_string()),
           buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
           streaming: None,
         }),
@@ -532,7 +539,7 @@ fn basic_exclusive_workflow() {
     result,
     WorkflowResult {
       triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: "bar".to_string(),
+        id: FlushBufferId::WorkflowActionId("bar".to_string()),
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
       })],
@@ -738,7 +745,7 @@ fn exclusive_workflow_log_rule_count() {
     result,
     WorkflowResult {
       triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: "foo".to_string(),
+        id: FlushBufferId::WorkflowActionId("foo".to_string()),
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
@@ -774,7 +781,7 @@ fn exclusive_workflow_log_rule_count() {
     result,
     WorkflowResult {
       triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: "bar".to_string(),
+        id: FlushBufferId::WorkflowActionId("bar".to_string()),
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
       })],
@@ -844,7 +851,7 @@ fn branching_exclusive_workflow() {
     result,
     WorkflowResult {
       triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: "foo".to_string(),
+        id: FlushBufferId::WorkflowActionId("foo".to_string()),
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
@@ -898,7 +905,7 @@ fn branching_exclusive_workflow() {
     result,
     WorkflowResult {
       triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: "zoo".to_string(),
+        id: FlushBufferId::WorkflowActionId("zoo".to_string()),
         buffer_ids: BTreeSet::from(["zoo_buffer_id".to_string()]),
         streaming: None,
       })],
@@ -929,12 +936,12 @@ fn branching_exclusive_workflow() {
     WorkflowResult {
       triggered_actions: vec![
         TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-          id: "foo".to_string(),
+          id: FlushBufferId::WorkflowActionId("foo".to_string()),
           buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
           streaming: None,
         }),
         TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-          id: "bar".to_string(),
+          id: FlushBufferId::WorkflowActionId("bar".to_string()),
           buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
           streaming: None,
         }),

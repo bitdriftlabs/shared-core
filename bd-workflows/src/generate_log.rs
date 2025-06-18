@@ -145,6 +145,6 @@ pub fn generate_log_action(
     // These will be filled in later via the log processor.
     session_id: String::new(),
     occurred_at: OffsetDateTime::UNIX_EPOCH,
-    capture_session: false,
+    capture_session: None,
   })
 }

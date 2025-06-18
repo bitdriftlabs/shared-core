@@ -130,7 +130,7 @@ fn run_runtime_bench<T: Future<Output = WorkflowsEngine>>(
             fields: &FieldsRef::new(&LogFields::new(), &LogFields::new()),
             session_id: "session_id",
             occurred_at: OffsetDateTime::now_utc(),
-            capture_session: false,
+            capture_session: None,
           }),
           &BTreeSet::default(),
         );

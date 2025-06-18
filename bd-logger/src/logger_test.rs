@@ -49,7 +49,7 @@ async fn thread_local_logger_guard() {
       [].into(),
       None,
       Block::No,
-      CaptureSession::No,
+      CaptureSession::default(),
     );
   });
 

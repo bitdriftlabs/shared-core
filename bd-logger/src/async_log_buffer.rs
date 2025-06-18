@@ -95,8 +95,9 @@ pub struct LogLine {
   /// SDK. Neither one of those guarantees that the log is written to a disk.
   pub log_processing_completed_tx: Option<oneshot::Sender<()>>,
 
-  /// Indicates that this log should trigger a session capture.
-  pub capture_session: bool,
+  /// If sets, indicates that the log should trigger a session capture. The provided value is an ID
+  /// that helps identify why the session should be captured.
+  pub capture_session: Option<String>,
 }
 
 //
@@ -255,7 +256,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     matching_fields: AnnotatedLogFields,
     attributes_overrides: Option<LogAttributesOverrides>,
     blocking: bool,
-    capture_session: bool,
+    capture_session: Option<String>,
   ) -> Result<(), TrySendError> {
     let (log_processing_completed_tx_option, log_processing_completed_rx_option) = if blocking {
       // Create a (sender, receiver) pair only if the caller wants to wait on
@@ -775,7 +776,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           matching_fields,
           session_id,
           occurred_at,
-          capture_session: false,
+          capture_session: None,
         },
         None,
       )

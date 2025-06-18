@@ -120,17 +120,16 @@ impl From<Block> for bool {
   }
 }
 
-pub enum CaptureSession {
-  Yes,
-  No,
-}
+//
+// CaptureSession
+//
 
-impl From<CaptureSession> for bool {
-  fn from(capture_session: CaptureSession) -> Self {
-    match capture_session {
-      CaptureSession::Yes => true,
-      CaptureSession::No => false,
-    }
+#[derive(Default)]
+pub struct CaptureSession(Option<String>);
+
+impl CaptureSession {
+  pub fn capture_with_id(id: &str) -> Self {
+    Self(Some(id.to_string()))
   }
 }
 
@@ -178,7 +177,7 @@ impl LoggerHandle {
           matching_fields,
           attributes_overrides,
           blocking.into(),
-          capture_session.into(),
+          capture_session.0,
         );
 
         self.stats.log_emission_counters.record(&result);
@@ -210,7 +209,7 @@ impl LoggerHandle {
       [].into(),
       None,
       Block::No,
-      CaptureSession::No,
+      CaptureSession::default(),
     );
   }
 
@@ -262,7 +261,7 @@ impl LoggerHandle {
       [].into(),
       None,
       Block::No,
-      CaptureSession::No,
+      CaptureSession::default(),
     );
 
     self
@@ -295,7 +294,7 @@ impl LoggerHandle {
       [].into(),
       None,
       Block::No,
-      CaptureSession::No,
+      CaptureSession::default(),
     );
   }
 
@@ -363,7 +362,7 @@ impl LoggerHandle {
       [].into(),
       None,
       Block::No,
-      CaptureSession::No,
+      CaptureSession::default(),
     );
   }
 

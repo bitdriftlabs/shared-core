@@ -15,7 +15,7 @@ use crate::actions_flush_buffers::{
   StreamingBuffersAction,
   StreamingBuffersActionsProcessingResult,
 };
-use crate::config::ActionFlushBuffers;
+use crate::config::{ActionFlushBuffers, FlushBufferId};
 use assert_matches::assert_matches;
 use bd_api::upload::{IntentDecision, IntentResponse};
 use bd_api::DataUpload;
@@ -91,7 +91,7 @@ async fn pending_buffers_standardization_removes_references_to_non_existing_trig
 
   let result = resolver.standardize_pending_actions(BTreeSet::from([
     PendingFlushBuffersAction {
-      id: "action_id_1".to_string(),
+      id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
       session_id: "foo_session_id".to_string(),
       trigger_buffer_ids: BTreeSet::from([
         "existing_trigger_buffer_id_1".into(),
@@ -100,13 +100,13 @@ async fn pending_buffers_standardization_removes_references_to_non_existing_trig
       streaming: None,
     },
     PendingFlushBuffersAction {
-      id: "action_id_2".to_string(),
+      id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
       session_id: "foo_session_id".to_string(),
       trigger_buffer_ids: BTreeSet::from(["unknown_trigger_buffer_id".into()]),
       streaming: None,
     },
     PendingFlushBuffersAction {
-      id: "action_id_3".to_string(),
+      id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
       session_id: "bar_session_id".to_string(),
       trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id_2".into()]),
       streaming: Some(Streaming {
@@ -119,7 +119,7 @@ async fn pending_buffers_standardization_removes_references_to_non_existing_trig
   assert_eq!(
     BTreeSet::from([
       PendingFlushBuffersAction {
-        id: "action_id_1".to_string(),
+        id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
         session_id: "foo_session_id".to_string(),
         trigger_buffer_ids: BTreeSet::from([
           // The unknown trigger buffer ID present in the original flush buffers action is no
@@ -131,7 +131,7 @@ async fn pending_buffers_standardization_removes_references_to_non_existing_trig
       // "action_id_2" is not present anymore as it didn't define any valid (known) source
       // trigger buffer ID.
       PendingFlushBuffersAction {
-        id: "action_id_3".to_string(),
+        id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
         session_id: "bar_session_id".to_string(),
         trigger_buffer_ids: BTreeSet::from([
           // The unknown continuous buffer ID present in the original flush buffers action is
@@ -166,7 +166,7 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
 
   let result = resolver.standardize_streaming_buffers(vec![
     StreamingBuffersAction {
-      id: "action_id_1".to_string(),
+      id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
       session_id: "foo_session_id".to_string(),
       source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id_1".into()]),
       destination_continuous_buffer_ids: BTreeSet::from([
@@ -177,7 +177,7 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
       logs_count: 0,
     },
     StreamingBuffersAction {
-      id: "action_id_2".to_string(),
+      id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
       session_id: "foo_session_id".to_string(),
       source_trigger_buffer_ids: BTreeSet::from(["unknown_trigger_buffer_id".into()]),
       destination_continuous_buffer_ids: BTreeSet::from([
@@ -188,7 +188,7 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
       logs_count: 0,
     },
     StreamingBuffersAction {
-      id: "action_id_3".to_string(),
+      id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
       session_id: "foo_session_id".to_string(),
       source_trigger_buffer_ids: BTreeSet::from([
         "existing_trigger_buffer_id_1".into(),
@@ -202,7 +202,7 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
       logs_count: 0,
     },
     StreamingBuffersAction {
-      id: "action_id_4".to_string(),
+      id: FlushBufferId::WorkflowActionId("action_id_4".to_string()),
       session_id: "foo_session_id".to_string(),
       source_trigger_buffer_ids: BTreeSet::from([
         "existing_trigger_buffer_id_1".into(),
@@ -213,7 +213,7 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
       logs_count: 0,
     },
     StreamingBuffersAction {
-      id: "action_id_5".to_string(),
+      id: FlushBufferId::WorkflowActionId("action_id_5".to_string()),
       session_id: "bar_session_id".to_string(),
       source_trigger_buffer_ids: BTreeSet::from([
         "existing_trigger_buffer_id_1".into(),
@@ -231,7 +231,7 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
   assert_eq!(
     vec![
       StreamingBuffersAction {
-        id: "action_id_1".to_string(),
+        id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
         session_id: "foo_session_id".to_string(),
         source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id_1".into()]),
         destination_continuous_buffer_ids: BTreeSet::from([
@@ -241,7 +241,7 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
         logs_count: 0,
       },
       StreamingBuffersAction {
-        id: "action_id_3".to_string(),
+        id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
         session_id: "foo_session_id".to_string(),
         source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id_1".into(),]),
         destination_continuous_buffer_ids: BTreeSet::from([
@@ -251,7 +251,7 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
         logs_count: 0,
       },
       StreamingBuffersAction {
-        id: "action_id_5".to_string(),
+        id: FlushBufferId::WorkflowActionId("action_id_5".to_string()),
         session_id: "bar_session_id".to_string(),
         source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id_1".into(),]),
         destination_continuous_buffer_ids: BTreeSet::from([
@@ -277,22 +277,22 @@ fn process_flush_buffers_actions() {
 
   let actions = BTreeSet::from([
     ActionFlushBuffers {
-      id: "action_id_1".to_string(),
+      id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
       buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".to_string()]),
       streaming: None,
     },
     ActionFlushBuffers {
-      id: "action_id_2".to_string(),
+      id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
       buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".to_string()]),
       streaming: None,
     },
     ActionFlushBuffers {
-      id: "action_id_3".to_string(),
+      id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
       buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".to_string()]),
       streaming: None,
     },
     ActionFlushBuffers {
-      id: "action_id_4".to_string(),
+      id: FlushBufferId::WorkflowActionId("action_id_4".to_string()),
       buffer_ids: BTreeSet::from(["non_existing_trigger_buffer_id".to_string()]),
       streaming: None,
     },
@@ -302,13 +302,13 @@ fn process_flush_buffers_actions() {
     actions.iter().map(Cow::Borrowed).collect(),
     "foo_session_id",
     &BTreeSet::from([PendingFlushBuffersAction {
-      id: "action_id_2".to_string(),
+      id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
       session_id: "foo_session_id".to_string(),
       trigger_buffer_ids: BTreeSet::new(),
       streaming: None,
     }]),
     &[StreamingBuffersAction {
-      id: "action_id_3".to_string(),
+      id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
       session_id: "foo_session_id".to_string(),
       source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into()]),
       destination_continuous_buffer_ids: BTreeSet::new(),
@@ -320,16 +320,16 @@ fn process_flush_buffers_actions() {
   assert_eq!(
     FlushBuffersActionsProcessingResult {
       new_pending_actions_to_add: BTreeSet::from([PendingFlushBuffersAction {
-        id: "action_id_1".to_string(),
+        id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
         session_id: "foo_session_id".to_string(),
         trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into(),]),
         streaming: None,
       }]),
       triggered_flush_buffers_action_ids: BTreeSet::from([
-        "action_id_1".into(),
-        "action_id_2".into(),
-        "action_id_3".into(),
-        "action_id_4".into(),
+        Cow::Owned(FlushBufferId::WorkflowActionId("action_id_1".into())),
+        Cow::Owned(FlushBufferId::WorkflowActionId("action_id_2".into())),
+        Cow::Owned(FlushBufferId::WorkflowActionId("action_id_3".into())),
+        Cow::Owned(FlushBufferId::WorkflowActionId("action_id_4".into())),
       ]),
       triggered_flushes_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into(),])
     },
@@ -369,7 +369,7 @@ fn process_flush_buffer_action_with_no_buffers() {
   ));
 
   let actions = BTreeSet::from([ActionFlushBuffers {
-    id: "action_id".to_string(),
+    id: FlushBufferId::WorkflowActionId("action_id".to_string()),
     buffer_ids: BTreeSet::new(),
     streaming: Some(crate::config::Streaming {
       destination_continuous_buffer_ids: BTreeSet::new(),
@@ -387,7 +387,7 @@ fn process_flush_buffer_action_with_no_buffers() {
   assert_eq!(
     FlushBuffersActionsProcessingResult {
       new_pending_actions_to_add: BTreeSet::from([PendingFlushBuffersAction {
-        id: "action_id".to_string(),
+        id: FlushBufferId::WorkflowActionId("action_id".to_string()),
         session_id: "foo_session_id".to_string(),
         trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into(),]),
         streaming: Some(Streaming {
@@ -397,7 +397,9 @@ fn process_flush_buffer_action_with_no_buffers() {
           max_logs_count: Some(10),
         }),
       }]),
-      triggered_flush_buffers_action_ids: BTreeSet::from(["action_id".into(),]),
+      triggered_flush_buffers_action_ids: BTreeSet::from([Cow::Owned(
+        FlushBufferId::WorkflowActionId("action_id".into())
+      )]),
       triggered_flushes_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into(),])
     },
     result
@@ -418,7 +420,7 @@ fn process_streaming_buffers_actions() {
     vec![
       (
         StreamingBuffersAction {
-          id: "action_id_1".to_string(),
+          id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
           session_id: "foo_session_id".to_string(),
           source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into()]),
           destination_continuous_buffer_ids: BTreeSet::from(["continuous_buffer_id".into()]),
@@ -429,7 +431,7 @@ fn process_streaming_buffers_actions() {
       ),
       (
         StreamingBuffersAction {
-          id: "action_id_2".to_string(),
+          id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
           session_id: "foo_session_id".to_string(),
           source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into()]),
           destination_continuous_buffer_ids: BTreeSet::from(["continuous_buffer_id".into()]),
@@ -448,7 +450,7 @@ fn process_streaming_buffers_actions() {
       log_destination_buffer_ids: BTreeSet::from(["continuous_buffer_id".into()]),
       has_changed_streaming_actions: true,
       updated_streaming_actions: vec![StreamingBuffersAction {
-        id: "action_id_1".to_string(),
+        id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
         session_id: "foo_session_id".to_string(),
         source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into()]),
         destination_continuous_buffer_ids: BTreeSet::from(["continuous_buffer_id".into()]),
@@ -480,7 +482,7 @@ async fn negotiator_upload_flow() {
   });
 
   let pending_action = PendingFlushBuffersAction {
-    id: "action_id".to_string(),
+    id: FlushBufferId::WorkflowActionId("action_id".to_string()),
     session_id: "session_id".to_string(),
     trigger_buffer_ids: BTreeSet::new(),
     streaming: None,
@@ -540,7 +542,7 @@ async fn negotiator_drop_flow() {
   });
 
   let pending_action = PendingFlushBuffersAction {
-    id: "action_id".to_string(),
+    id: FlushBufferId::WorkflowActionId("action_id".to_string()),
     session_id: "session_id".to_string(),
     trigger_buffer_ids: BTreeSet::new(),
     streaming: None,

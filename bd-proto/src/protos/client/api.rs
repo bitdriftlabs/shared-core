@@ -463,8 +463,57 @@ impl LogUploadIntentRequest {
         }
     }
 
+    // .bitdrift_public.protobuf.client.v1.LogUploadIntentRequest.ExplicitSessionCapture explicit_session_capture = 7;
+
+    pub fn explicit_session_capture(&self) -> &log_upload_intent_request::ExplicitSessionCapture {
+        match self.intent_type {
+            ::std::option::Option::Some(log_upload_intent_request::Intent_type::ExplicitSessionCapture(ref v)) => v,
+            _ => <log_upload_intent_request::ExplicitSessionCapture as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_explicit_session_capture(&mut self) {
+        self.intent_type = ::std::option::Option::None;
+    }
+
+    pub fn has_explicit_session_capture(&self) -> bool {
+        match self.intent_type {
+            ::std::option::Option::Some(log_upload_intent_request::Intent_type::ExplicitSessionCapture(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_explicit_session_capture(&mut self, v: log_upload_intent_request::ExplicitSessionCapture) {
+        self.intent_type = ::std::option::Option::Some(log_upload_intent_request::Intent_type::ExplicitSessionCapture(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_explicit_session_capture(&mut self) -> &mut log_upload_intent_request::ExplicitSessionCapture {
+        if let ::std::option::Option::Some(log_upload_intent_request::Intent_type::ExplicitSessionCapture(_)) = self.intent_type {
+        } else {
+            self.intent_type = ::std::option::Option::Some(log_upload_intent_request::Intent_type::ExplicitSessionCapture(log_upload_intent_request::ExplicitSessionCapture::new()));
+        }
+        match self.intent_type {
+            ::std::option::Option::Some(log_upload_intent_request::Intent_type::ExplicitSessionCapture(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_explicit_session_capture(&mut self) -> log_upload_intent_request::ExplicitSessionCapture {
+        if self.has_explicit_session_capture() {
+            match self.intent_type.take() {
+                ::std::option::Option::Some(log_upload_intent_request::Intent_type::ExplicitSessionCapture(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            log_upload_intent_request::ExplicitSessionCapture::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(6);
+        let mut fields = ::std::vec::Vec::with_capacity(7);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "log_count",
@@ -497,6 +546,13 @@ impl LogUploadIntentRequest {
             LogUploadIntentRequest::workflow_action_upload,
             LogUploadIntentRequest::mut_workflow_action_upload,
             LogUploadIntentRequest::set_workflow_action_upload,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, log_upload_intent_request::ExplicitSessionCapture>(
+            "explicit_session_capture",
+            LogUploadIntentRequest::has_explicit_session_capture,
+            LogUploadIntentRequest::explicit_session_capture,
+            LogUploadIntentRequest::mut_explicit_session_capture,
+            LogUploadIntentRequest::set_explicit_session_capture,
         ));
         oneofs.push(log_upload_intent_request::Intent_type::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<LogUploadIntentRequest>(
@@ -535,6 +591,9 @@ impl ::protobuf::Message for LogUploadIntentRequest {
                 42 => {
                     self.intent_type = ::std::option::Option::Some(log_upload_intent_request::Intent_type::WorkflowActionUpload(is.read_message()?));
                 },
+                58 => {
+                    self.intent_type = ::std::option::Option::Some(log_upload_intent_request::Intent_type::ExplicitSessionCapture(is.read_message()?));
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -568,6 +627,10 @@ impl ::protobuf::Message for LogUploadIntentRequest {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
+                &log_upload_intent_request::Intent_type::ExplicitSessionCapture(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
             };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -596,6 +659,9 @@ impl ::protobuf::Message for LogUploadIntentRequest {
                 &log_upload_intent_request::Intent_type::WorkflowActionUpload(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
                 },
+                &log_upload_intent_request::Intent_type::ExplicitSessionCapture(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
+                },
             };
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
@@ -620,6 +686,7 @@ impl ::protobuf::Message for LogUploadIntentRequest {
         self.buffer_id.clear();
         self.intent_uuid.clear();
         self.session_id.clear();
+        self.intent_type = ::std::option::Option::None;
         self.intent_type = ::std::option::Option::None;
         self.special_fields.clear();
     }
@@ -663,6 +730,8 @@ pub mod log_upload_intent_request {
     pub enum Intent_type {
         // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.LogUploadIntentRequest.workflow_action_upload)
         WorkflowActionUpload(WorkflowActionUpload),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.LogUploadIntentRequest.explicit_session_capture)
+        ExplicitSessionCapture(ExplicitSessionCapture),
     }
 
     impl ::protobuf::Oneof for Intent_type {
@@ -799,6 +868,128 @@ pub mod log_upload_intent_request {
     }
 
     impl ::protobuf::reflect::ProtobufValue for WorkflowActionUpload {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.LogUploadIntentRequest.ExplicitSessionCapture)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct ExplicitSessionCapture {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.LogUploadIntentRequest.ExplicitSessionCapture.id)
+        pub id: ::std::string::String,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.LogUploadIntentRequest.ExplicitSessionCapture.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a ExplicitSessionCapture {
+        fn default() -> &'a ExplicitSessionCapture {
+            <ExplicitSessionCapture as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl ExplicitSessionCapture {
+        pub fn new() -> ExplicitSessionCapture {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "id",
+                |m: &ExplicitSessionCapture| { &m.id },
+                |m: &mut ExplicitSessionCapture| { &mut m.id },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ExplicitSessionCapture>(
+                "LogUploadIntentRequest.ExplicitSessionCapture",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for ExplicitSessionCapture {
+        const NAME: &'static str = "ExplicitSessionCapture";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.id = is.read_string()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.id.is_empty() {
+                my_size += ::protobuf::rt::string_size(1, &self.id);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.id.is_empty() {
+                os.write_string(1, &self.id)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> ExplicitSessionCapture {
+            ExplicitSessionCapture::new()
+        }
+
+        fn clear(&mut self) {
+            self.id.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static ExplicitSessionCapture {
+            static instance: ExplicitSessionCapture = ExplicitSessionCapture {
+                id: ::std::string::String::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for ExplicitSessionCapture {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("LogUploadIntentRequest.ExplicitSessionCapture").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for ExplicitSessionCapture {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for ExplicitSessionCapture {
         type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
     }
 }
@@ -8277,53 +8468,57 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x08R\tsleepMode\x1ar\n\x19StaticDeviceMetadataEntry\x12\x10\n\x03key\
     \x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdr\
     ift_public.protobuf.logging.v1.DataR\x05value:\x028\x01J\x04\x08\x02\x10\
-    \x03J\x04\x08\x05\x10\x06R\x13fields_for_all_logs\"\x92\x03\n\x16LogUplo\
+    \x03J\x04\x08\x05\x10\x06R\x13fields_for_all_logs\"\xd5\x04\n\x16LogUplo\
     adIntentRequest\x12\x1b\n\tlog_count\x18\x01\x20\x01(\rR\x08logCount\x12\
     \x1d\n\nbyte_count\x18\x02\x20\x01(\rR\tbyteCount\x12\x1b\n\tbuffer_id\
     \x18\x03\x20\x01(\tR\x08bufferId\x12\x1f\n\x0bintent_uuid\x18\x04\x20\
     \x01(\tR\nintentUuid\x12\x1d\n\nsession_id\x18\x06\x20\x01(\tR\tsessionI\
     d\x12\x87\x01\n\x16workflow_action_upload\x18\x05\x20\x01(\x0b2O.bitdrif\
     t_public.protobuf.client.v1.LogUploadIntentRequest.WorkflowActionUploadH\
-    \0R\x14workflowActionUpload\x1aF\n\x14WorkflowActionUpload\x12.\n\x13wor\
-    kflow_action_ids\x18\x01\x20\x03(\tR\x11workflowActionIdsB\r\n\x0bintent\
-    _type\"\xbb\x02\n\x17LogUploadIntentResponse\x12\x1f\n\x0bintent_uuid\
-    \x18\x01\x20\x01(\tR\nintentUuid\x12~\n\x12upload_immediately\x18\x02\
-    \x20\x01(\x0b2M.bitdrift_public.protobuf.client.v1.LogUploadIntentRespon\
-    se.UploadImmediatelyH\0R\x11uploadImmediately\x12V\n\x04drop\x18\x03\x20\
-    \x01(\x0b2@.bitdrift_public.protobuf.client.v1.LogUploadIntentResponse.D\
-    ropH\0R\x04drop\x1a\x13\n\x11UploadImmediately\x1a\x06\n\x04DropB\n\n\
-    \x08decision\"\x84\x01\n\x10LogUploadRequest\x12(\n\x0bupload_uuid\x18\
-    \x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x1c\n\x04log\
-    s\x18\x02\x20\x03(\x0cR\x04logsB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12(\n\
-    \x0bbuffer_uuid\x18\x03\x20\x01(\tR\nbufferUuidB\x07\xfaB\x04r\x02\x10\
-    \x01\",\n\x0bPingRequest\x12\x1d\n\nsleep_mode\x18\x01\x20\x01(\x08R\tsl\
-    eepMode\"\xfc\x01\n\x16ConfigurationUpdateAck\x12;\n\x1alast_applied_ver\
-    sion_nonce\x18\x01\x20\x01(\tR\x17lastAppliedVersionNonce\x12S\n\x04nack\
-    \x18\x02\x20\x01(\x0b2?.bitdrift_public.protobuf.client.v1.Configuration\
-    UpdateAck.NackR\x04nack\x1aP\n\x04Nack\x12#\n\rversion_nonce\x18\x01\x20\
-    \x01(\tR\x0cversionNonce\x12#\n\rerror_details\x18\x02\x20\x01(\tR\x0cer\
-    rorDetails\"\xeb\x08\n\nApiRequest\x12T\n\thandshake\x18\x01\x20\x01(\
-    \x0b24.bitdrift_public.protobuf.client.v1.HandshakeRequestH\0R\thandshak\
-    e\x12h\n\x11log_upload_intent\x18\x07\x20\x01(\x0b2:.bitdrift_public.pro\
-    tobuf.client.v1.LogUploadIntentRequestH\0R\x0flogUploadIntent\x12U\n\nlo\
-    g_upload\x18\x02\x20\x01(\x0b24.bitdrift_public.protobuf.client.v1.LogUp\
-    loadRequestH\0R\tlogUpload\x12[\n\x0cstats_upload\x18\x06\x20\x01(\x0b26\
-    .bitdrift_public.protobuf.client.v1.StatsUploadRequestH\0R\x0bstatsUploa\
-    d\x12E\n\x04ping\x18\x03\x20\x01(\x0b2/.bitdrift_public.protobuf.client.\
-    v1.PingRequestH\0R\x04ping\x12v\n\x18configuration_update_ack\x18\x04\
-    \x20\x01(\x0b2:.bitdrift_public.protobuf.client.v1.ConfigurationUpdateAc\
-    kH\0R\x16configurationUpdateAck\x12j\n\x12runtime_update_ack\x18\x05\x20\
-    \x01(\x0b2:.bitdrift_public.protobuf.client.v1.ConfigurationUpdateAckH\0\
-    R\x10runtimeUpdateAck\x12k\n\x12sankey_path_upload\x18\n\x20\x01(\x0b2;.\
-    bitdrift_public.protobuf.client.v1.SankeyPathUploadRequestH\0R\x10sankey\
-    PathUpload\x12^\n\rsankey_intent\x18\x0b\x20\x01(\x0b27.bitdrift_public.\
-    protobuf.client.v1.SankeyIntentRequestH\0R\x0csankeyIntent\x12d\n\x0fart\
-    ifact_upload\x18\x0c\x20\x01(\x0b29.bitdrift_public.protobuf.client.v1.U\
-    ploadArtifactRequestH\0R\x0eartifactUpload\x12j\n\x0fartifact_intent\x18\
-    \r\x20\x01(\x0b2?.bitdrift_public.protobuf.client.v1.UploadArtifactInten\
-    tRequestH\0R\x0eartifactIntentB\x13\n\x0crequest_type\x12\x03\xf8B\x01J\
-    \x04\x08\x08\x10\tJ\x04\x08\t\x10\n\"\x9a\x02\n\x17SankeyPathUploadReque\
-    st\x12(\n\x0bupload_uuid\x18\x04\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\
+    \0R\x14workflowActionUpload\x12\x8d\x01\n\x18explicit_session_capture\
+    \x18\x07\x20\x01(\x0b2Q.bitdrift_public.protobuf.client.v1.LogUploadInte\
+    ntRequest.ExplicitSessionCaptureH\0R\x16explicitSessionCapture\x1aF\n\
+    \x14WorkflowActionUpload\x12.\n\x13workflow_action_ids\x18\x01\x20\x03(\
+    \tR\x11workflowActionIds\x1a1\n\x16ExplicitSessionCapture\x12\x17\n\x02i\
+    d\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01B\r\n\x0bintent_ty\
+    pe\"\xbb\x02\n\x17LogUploadIntentResponse\x12\x1f\n\x0bintent_uuid\x18\
+    \x01\x20\x01(\tR\nintentUuid\x12~\n\x12upload_immediately\x18\x02\x20\
+    \x01(\x0b2M.bitdrift_public.protobuf.client.v1.LogUploadIntentResponse.U\
+    ploadImmediatelyH\0R\x11uploadImmediately\x12V\n\x04drop\x18\x03\x20\x01\
+    (\x0b2@.bitdrift_public.protobuf.client.v1.LogUploadIntentResponse.DropH\
+    \0R\x04drop\x1a\x13\n\x11UploadImmediately\x1a\x06\n\x04DropB\n\n\x08dec\
+    ision\"\x84\x01\n\x10LogUploadRequest\x12(\n\x0bupload_uuid\x18\x01\x20\
+    \x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x1c\n\x04logs\x18\
+    \x02\x20\x03(\x0cR\x04logsB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12(\n\x0bb\
+    uffer_uuid\x18\x03\x20\x01(\tR\nbufferUuidB\x07\xfaB\x04r\x02\x10\x01\",\
+    \n\x0bPingRequest\x12\x1d\n\nsleep_mode\x18\x01\x20\x01(\x08R\tsleepMode\
+    \"\xfc\x01\n\x16ConfigurationUpdateAck\x12;\n\x1alast_applied_version_no\
+    nce\x18\x01\x20\x01(\tR\x17lastAppliedVersionNonce\x12S\n\x04nack\x18\
+    \x02\x20\x01(\x0b2?.bitdrift_public.protobuf.client.v1.ConfigurationUpda\
+    teAck.NackR\x04nack\x1aP\n\x04Nack\x12#\n\rversion_nonce\x18\x01\x20\x01\
+    (\tR\x0cversionNonce\x12#\n\rerror_details\x18\x02\x20\x01(\tR\x0cerrorD\
+    etails\"\xeb\x08\n\nApiRequest\x12T\n\thandshake\x18\x01\x20\x01(\x0b24.\
+    bitdrift_public.protobuf.client.v1.HandshakeRequestH\0R\thandshake\x12h\
+    \n\x11log_upload_intent\x18\x07\x20\x01(\x0b2:.bitdrift_public.protobuf.\
+    client.v1.LogUploadIntentRequestH\0R\x0flogUploadIntent\x12U\n\nlog_uplo\
+    ad\x18\x02\x20\x01(\x0b24.bitdrift_public.protobuf.client.v1.LogUploadRe\
+    questH\0R\tlogUpload\x12[\n\x0cstats_upload\x18\x06\x20\x01(\x0b26.bitdr\
+    ift_public.protobuf.client.v1.StatsUploadRequestH\0R\x0bstatsUpload\x12E\
+    \n\x04ping\x18\x03\x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1.Pin\
+    gRequestH\0R\x04ping\x12v\n\x18configuration_update_ack\x18\x04\x20\x01(\
+    \x0b2:.bitdrift_public.protobuf.client.v1.ConfigurationUpdateAckH\0R\x16\
+    configurationUpdateAck\x12j\n\x12runtime_update_ack\x18\x05\x20\x01(\x0b\
+    2:.bitdrift_public.protobuf.client.v1.ConfigurationUpdateAckH\0R\x10runt\
+    imeUpdateAck\x12k\n\x12sankey_path_upload\x18\n\x20\x01(\x0b2;.bitdrift_\
+    public.protobuf.client.v1.SankeyPathUploadRequestH\0R\x10sankeyPathUploa\
+    d\x12^\n\rsankey_intent\x18\x0b\x20\x01(\x0b27.bitdrift_public.protobuf.\
+    client.v1.SankeyIntentRequestH\0R\x0csankeyIntent\x12d\n\x0fartifact_upl\
+    oad\x18\x0c\x20\x01(\x0b29.bitdrift_public.protobuf.client.v1.UploadArti\
+    factRequestH\0R\x0eartifactUpload\x12j\n\x0fartifact_intent\x18\r\x20\
+    \x01(\x0b2?.bitdrift_public.protobuf.client.v1.UploadArtifactIntentReque\
+    stH\0R\x0eartifactIntentB\x13\n\x0crequest_type\x12\x03\xf8B\x01J\x04\
+    \x08\x08\x10\tJ\x04\x08\t\x10\n\"\x9a\x02\n\x17SankeyPathUploadRequest\
+    \x12(\n\x0bupload_uuid\x18\x04\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\
     \x02\x10\x01\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\
     \x02\x10\x01\x12\x20\n\x07path_id\x18\x02\x20\x01(\tR\x06pathIdB\x07\xfa\
     B\x04r\x02\x10\x01\x12`\n\x05nodes\x18\x03\x20\x03(\x0b2@.bitdrift_publi\
@@ -8472,7 +8667,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(super::config::file_descriptor().clone());
             deps.push(super::payload::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(40);
+            let mut messages = ::std::vec::Vec::with_capacity(41);
             messages.push(ClientKillFile::generated_message_descriptor_data());
             messages.push(HandshakeRequest::generated_message_descriptor_data());
             messages.push(LogUploadIntentRequest::generated_message_descriptor_data());
@@ -8501,6 +8696,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(SankeyIntentResponse::generated_message_descriptor_data());
             messages.push(ApiResponse::generated_message_descriptor_data());
             messages.push(log_upload_intent_request::WorkflowActionUpload::generated_message_descriptor_data());
+            messages.push(log_upload_intent_request::ExplicitSessionCapture::generated_message_descriptor_data());
             messages.push(log_upload_intent_response::UploadImmediately::generated_message_descriptor_data());
             messages.push(log_upload_intent_response::Drop::generated_message_descriptor_data());
             messages.push(configuration_update_ack::Nack::generated_message_descriptor_data());
