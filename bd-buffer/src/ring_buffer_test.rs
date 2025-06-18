@@ -11,8 +11,8 @@ use assert_matches::assert_matches;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
 use bd_proto::protos::config::v1::config::buffer_config::BufferSizes;
-use bd_proto::protos::config::v1::config::{buffer_config, BufferConfig, BufferConfigList};
-use bd_stats_common::{labels, NameType};
+use bd_proto::protos::config::v1::config::{BufferConfig, BufferConfigList, buffer_config};
+use bd_stats_common::{NameType, labels};
 use std::path::{Path, PathBuf};
 
 fn fake_counter() -> Counter {

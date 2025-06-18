@@ -6,13 +6,13 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::{
-  get_fatal_issue_metadata,
-  global_state,
-  Monitor,
-  Path,
   DETAILS_INFERENCE_CONFIG_FILE,
   INGESTION_CONFIG_FILE,
+  Monitor,
+  Path,
   REASON_INFERENCE_CONFIG_FILE,
+  get_fatal_issue_metadata,
+  global_state,
 };
 use bd_device::Store;
 use bd_log_primitives::LogFields;
@@ -26,15 +26,15 @@ use bd_runtime::runtime::{self, FeatureFlag as _};
 use bd_runtime::test::TestConfigLoader;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::make_mut;
-use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_test_helpers::session::InMemoryStorage;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset};
 use itertools::Itertools;
 use mockall::predicate::eq;
 use std::sync::Arc;
 use tempfile::TempDir;
-use time::macros::datetime;
 use time::OffsetDateTime;
+use time::macros::datetime;
 use uuid::Uuid;
 
 struct Setup {

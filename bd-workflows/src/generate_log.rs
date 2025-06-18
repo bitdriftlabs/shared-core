@@ -10,11 +10,11 @@
 mod generate_log_test;
 
 use crate::workflow::TraversalExtractions;
+use action::ActionGenerateLog;
+use action::action_generate_log::ValueReference;
 use action::action_generate_log::generated_field::Generated_field_value_type;
 use action::action_generate_log::value_reference::Value_reference_type;
-use action::action_generate_log::ValueReference;
-use action::ActionGenerateLog;
-use bd_log_primitives::{log_level, FieldsRef, Log, LogFields, LogType, StringOrBytes};
+use bd_log_primitives::{FieldsRef, Log, LogFields, LogType, StringOrBytes, log_level};
 use bd_matcher::FieldProvider;
 use bd_proto::protos::workflow::workflow::workflow::action;
 use bd_proto::protos::workflow::workflow::workflow::action::action_generate_log::ValueReferencePair;

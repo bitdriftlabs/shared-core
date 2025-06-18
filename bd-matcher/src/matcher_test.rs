@@ -5,10 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::matcher::Tree;
 use crate::FieldProvider;
+use crate::matcher::Tree;
 use assert_matches::assert_matches;
-use bd_log_primitives::{log_level, LogFields, LogLevel, LogMessage, LogType, StringOrBytes};
+use bd_log_primitives::{LogFields, LogLevel, LogMessage, LogType, StringOrBytes, log_level};
 use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::{
   self,
   AnyMatch,
@@ -17,7 +17,7 @@ use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::{
   TypeMatch,
 };
 use bd_proto::protos::config::v1::config::log_matcher::{BaseLogMatcher, MatcherList};
-use bd_proto::protos::config::v1::config::{log_matcher, LogMatcher};
+use bd_proto::protos::config::v1::config::{LogMatcher, log_matcher};
 use std::borrow::Cow;
 
 type Input<'a> = (LogType, LogLevel, LogMessage, LogFields);

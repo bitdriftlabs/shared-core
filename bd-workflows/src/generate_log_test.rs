@@ -7,12 +7,12 @@
 
 use crate::generate_log::generate_log_action;
 use crate::workflow::TraversalExtractions;
-use bd_log_primitives::{log_level, FieldsRef, Log, LogFieldKey, LogFields, LogType};
+use bd_log_primitives::{FieldsRef, Log, LogFieldKey, LogFields, LogType, log_level};
 use bd_proto::protos::workflow::workflow::workflow::action::ActionGenerateLog;
-use bd_test_helpers::workflow::{make_generate_log_action, TestFieldRef, TestFieldType};
+use bd_test_helpers::workflow::{TestFieldRef, TestFieldType, make_generate_log_action};
 use pretty_assertions::assert_eq;
-use time::macros::datetime;
 use time::OffsetDateTime;
+use time::macros::datetime;
 use uuid::Uuid;
 
 //

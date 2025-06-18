@@ -5,16 +5,16 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{with_thread_local_logger_guard, Stats};
+use super::{Stats, with_thread_local_logger_guard};
+use crate::LoggerHandle;
 use crate::app_version::Repository;
 use crate::logger::{Block, CaptureSession};
-use crate::LoggerHandle;
 use bd_client_stats_store::Collector;
 use bd_key_value::Store;
 use bd_log_primitives::log_level;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
-use bd_session::fixed::{self, UUIDCallbacks};
 use bd_session::Strategy;
+use bd_session::fixed::{self, UUIDCallbacks};
 use bd_test_helpers::session::InMemoryStorage;
 use futures_util::poll;
 use std::sync::Arc;

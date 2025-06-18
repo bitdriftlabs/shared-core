@@ -18,14 +18,13 @@ use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::PreConfigBuffer;
 use crate::{internal_report, network};
 use anyhow::anyhow;
-use bd_bounded_buffer::{channel, MemorySized, Receiver, Sender, TrySendError};
+use bd_bounded_buffer::{MemorySized, Receiver, Sender, TrySendError, channel};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{
-  log_level,
   AnnotatedLogField,
   AnnotatedLogFields,
   Log,
@@ -35,6 +34,7 @@ use bd_log_primitives::{
   LogLevel,
   LogMessage,
   StringOrBytes,
+  log_level,
 };
 use bd_network_quality::NetworkQualityProvider;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;

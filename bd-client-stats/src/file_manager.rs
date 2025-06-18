@@ -8,11 +8,11 @@
 use bd_api::upload::TrackedStatsUploadRequest;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::file_system::FileSystem;
-use bd_proto::protos::client::api::stats_upload_request::snapshot::{Aggregated, Occurred_at};
-use bd_proto::protos::client::api::stats_upload_request::Snapshot;
 use bd_proto::protos::client::api::StatsUploadRequest;
-use bd_proto::protos::client::metric::pending_aggregation_index::PendingFile;
+use bd_proto::protos::client::api::stats_upload_request::Snapshot;
+use bd_proto::protos::client::api::stats_upload_request::snapshot::{Aggregated, Occurred_at};
 use bd_proto::protos::client::metric::PendingAggregationIndex;
+use bd_proto::protos::client::metric::pending_aggregation_index::PendingFile;
 use bd_runtime::runtime::stats::{MaxAggregatedFilesFlag, MaxAggregationWindowPerFileFlag};
 use bd_runtime::runtime::{ConfigLoader, Watch};
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};

@@ -27,14 +27,14 @@ use crate::{Error, Result};
 use anyhow::anyhow;
 use bd_client_common::error::handle_unexpected;
 use bd_client_stats_store::{Counter, Scope};
-use bd_proto::protos::config::v1::config::{buffer_config, BufferConfigList};
+use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
 use bd_stats_common::labels;
 use futures::future::join_all;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 // TODO(snowp): This file is growing large, consider splitting trigger and continuous into their own

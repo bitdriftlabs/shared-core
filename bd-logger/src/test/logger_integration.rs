@@ -9,8 +9,6 @@ use super::setup::Setup;
 use crate::logger::{Block, CaptureSession};
 use crate::test::setup::SetupOptions;
 use crate::{
-  log_level,
-  wait_for,
   AnnotatedLogField,
   AppVersionExtra,
   InitParams,
@@ -18,6 +16,8 @@ use crate::{
   LogMessage,
   LogType,
   StringOrBytes,
+  log_level,
+  wait_for,
 };
 use assert_matches::assert_matches;
 use bd_client_common::error::UnexpectedErrorHandler;
@@ -26,16 +26,18 @@ use bd_key_value::Store;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
-use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::config::v1::config::BufferConfigList;
+use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
 use bd_runtime::runtime::FeatureFlag;
 use bd_session::fixed::{State, UUIDCallbacks};
-use bd_session::{fixed, Strategy};
+use bd_session::{Strategy, fixed};
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_stats_common::labels;
 use bd_test_helpers::config_helper::{
   self,
+  BufferConfigBuilder,
+  ConfigurationUpdateParts,
   configuration_update,
   configuration_update_from_parts,
   default_buffer_config,
@@ -46,13 +48,11 @@ use bd_test_helpers::config_helper::{
   make_configuration_update_with_workflow_flushing_buffer_on_anything,
   make_workflow_config_flushing_buffer,
   match_message,
-  BufferConfigBuilder,
-  ConfigurationUpdateParts,
 };
 use bd_test_helpers::metadata::EmptyMetadata;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
-use bd_test_helpers::runtime::{make_update, ValueKind};
+use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::session::InMemoryStorage;
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_test_helpers::test_api_server::StreamAction;
@@ -65,19 +65,19 @@ use bd_test_helpers::workflow::macros::{
   workflow_proto,
 };
 use bd_test_helpers::workflow::{
-  make_generate_log_action_proto,
-  make_save_timestamp_extraction,
   TestFieldRef,
   TestFieldType,
+  make_generate_log_action_proto,
+  make_save_timestamp_extraction,
 };
-use bd_test_helpers::{field_value, metric_tag, metric_value, set_field, RecordingErrorReporter};
+use bd_test_helpers::{RecordingErrorReporter, field_value, metric_tag, metric_value, set_field};
 use parking_lot::Mutex;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Instant;
+use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::macros::datetime;
-use time::OffsetDateTime;
 
 #[test]
 fn sleep_mode() {
@@ -164,29 +164,31 @@ fn log_upload() {
 #[test]
 fn explicit_session_capture() {
   let mut setup = Setup::new();
-  assert!(setup
-    .send_configuration_update(config_helper::configuration_update_from_parts(
-      "",
-      ConfigurationUpdateParts {
-        buffer_config: vec![
-          default_buffer_config(
-            Type::CONTINUOUS,
-            make_buffer_matcher_matching_resource_logs().into(),
-          ),
-          BufferConfigBuilder {
-            name: "trigger_buffer_id",
-            buffer_type: Type::TRIGGER,
-            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-            non_volatile_size: 100_000,
-            volatile_size: 10_000,
-          }
-          .build(),
-        ],
-        workflows: vec![],
-        ..Default::default()
-      },
-    ))
-    .is_none());
+  assert!(
+    setup
+      .send_configuration_update(config_helper::configuration_update_from_parts(
+        "",
+        ConfigurationUpdateParts {
+          buffer_config: vec![
+            default_buffer_config(
+              Type::CONTINUOUS,
+              make_buffer_matcher_matching_resource_logs().into(),
+            ),
+            BufferConfigBuilder {
+              name: "trigger_buffer_id",
+              buffer_type: Type::TRIGGER,
+              filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+              non_volatile_size: 100_000,
+              volatile_size: 10_000,
+            }
+            .build(),
+          ],
+          workflows: vec![],
+          ..Default::default()
+        },
+      ))
+      .is_none()
+  );
 
   setup.send_runtime_update();
 
@@ -241,29 +243,31 @@ fn explicit_session_capture() {
 #[test]
 fn explicit_session_capture_disabled_streaming() {
   let mut setup = Setup::new();
-  assert!(setup
-    .send_configuration_update(config_helper::configuration_update_from_parts(
-      "",
-      ConfigurationUpdateParts {
-        buffer_config: vec![
-          default_buffer_config(
-            Type::CONTINUOUS,
-            make_buffer_matcher_matching_resource_logs().into(),
-          ),
-          BufferConfigBuilder {
-            name: "trigger_buffer_id",
-            buffer_type: Type::TRIGGER,
-            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-            non_volatile_size: 100_000,
-            volatile_size: 10_000,
-          }
-          .build(),
-        ],
-        workflows: vec![],
-        ..Default::default()
-      },
-    ))
-    .is_none());
+  assert!(
+    setup
+      .send_configuration_update(config_helper::configuration_update_from_parts(
+        "",
+        ConfigurationUpdateParts {
+          buffer_config: vec![
+            default_buffer_config(
+              Type::CONTINUOUS,
+              make_buffer_matcher_matching_resource_logs().into(),
+            ),
+            BufferConfigBuilder {
+              name: "trigger_buffer_id",
+              buffer_type: Type::TRIGGER,
+              filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+              non_volatile_size: 100_000,
+              volatile_size: 10_000,
+            }
+            .build(),
+          ],
+          workflows: vec![],
+          ..Default::default()
+        },
+      ))
+      .is_none()
+  );
 
   let mut runtime_values = Setup::get_default_runtime_values();
   runtime_values.push((
@@ -1460,14 +1464,16 @@ fn remote_buffer_upload() {
     "",
     StateOfTheWorld {
       buffer_config_list: Some(BufferConfigList {
-        buffer_config: vec![BufferConfigBuilder {
-          name: "default",
-          buffer_type: Type::TRIGGER,
-          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-          non_volatile_size: 100_000,
-          volatile_size: 10_000,
-        }
-        .build()],
+        buffer_config: vec![
+          BufferConfigBuilder {
+            name: "default",
+            buffer_type: Type::TRIGGER,
+            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+            non_volatile_size: 100_000,
+            volatile_size: 10_000,
+          }
+          .build(),
+        ],
         ..Default::default()
       })
       .into(),
@@ -1611,14 +1617,16 @@ fn device_id_matching() {
   let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
     "",
     ConfigurationUpdateParts {
-      buffer_config: vec![BufferConfigBuilder {
-        name: "trigger",
-        buffer_type: Type::TRIGGER,
-        filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-        non_volatile_size: 100_000,
-        volatile_size: 10_000,
-      }
-      .build()],
+      buffer_config: vec![
+        BufferConfigBuilder {
+          name: "trigger",
+          buffer_type: Type::TRIGGER,
+          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+          non_volatile_size: 100_000,
+          volatile_size: 10_000,
+        }
+        .build(),
+      ],
       workflows: make_workflow_config_flushing_buffer(
         "trigger",
         log_matches!(tag("_device_id") == &device_id),
@@ -1669,14 +1677,16 @@ fn matching_on_but_not_capturing_matching_fields() {
   let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
     "",
     ConfigurationUpdateParts {
-      buffer_config: vec![BufferConfigBuilder {
-        name: "trigger",
-        buffer_type: Type::TRIGGER,
-        filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-        non_volatile_size: 100_000,
-        volatile_size: 10_000,
-      }
-      .build()],
+      buffer_config: vec![
+        BufferConfigBuilder {
+          name: "trigger",
+          buffer_type: Type::TRIGGER,
+          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+          non_volatile_size: 100_000,
+          volatile_size: 10_000,
+        }
+        .build(),
+      ],
       workflows: make_workflow_config_flushing_buffer(
         "trigger",
         log_matches!(tag("key") == "value"),
@@ -1795,14 +1805,16 @@ fn continuous_buffer_resume_with_full_buffer() {
     "",
     StateOfTheWorld {
       buffer_config_list: Some(BufferConfigList {
-        buffer_config: vec![BufferConfigBuilder {
-          name: "continuous",
-          buffer_type: Type::CONTINUOUS,
-          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-          non_volatile_size: 240,
-          volatile_size: 200,
-        }
-        .build()],
+        buffer_config: vec![
+          BufferConfigBuilder {
+            name: "continuous",
+            buffer_type: Type::CONTINUOUS,
+            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+            non_volatile_size: 240,
+            volatile_size: 200,
+          }
+          .build(),
+        ],
         ..Default::default()
       })
       .into(),
@@ -2098,11 +2110,13 @@ fn runtime_caching() {
   };
 
   let retry_file = sdk_directory.path().join("runtime").join("retry_count");
-  assert!(sdk_directory
-    .path()
-    .join("runtime")
-    .join("protobuf.pb")
-    .exists());
+  assert!(
+    sdk_directory
+      .path()
+      .join("runtime")
+      .join("protobuf.pb")
+      .exists()
+  );
   assert!(retry_file.exists());
   assert_eq!(std::fs::read(&retry_file).unwrap(), &[0]);
 

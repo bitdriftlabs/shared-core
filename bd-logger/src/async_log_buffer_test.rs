@@ -13,17 +13,17 @@ use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingCo
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_bounded_buffer::{self, MemorySized};
 use bd_client_stats::{FlushTrigger, Stats};
-use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::Collector;
+use bd_client_stats_store::test::StatsHelper;
 use bd_key_value::Store;
 use bd_log_filter::FilterChain;
 use bd_log_primitives::{
-  log_level,
   AnnotatedLogField,
   AnnotatedLogFields,
   Log,
   LogFields,
   StringOrBytes,
+  log_level,
 };
 use bd_matcher::buffer_selector::BufferSelector;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
@@ -31,7 +31,7 @@ use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::fixed::UUIDCallbacks;
-use bd_session::{fixed, Strategy};
+use bd_session::{Strategy, fixed};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::events::NoOpListenerTarget;
@@ -586,10 +586,9 @@ async fn updates_workflow_engine_in_response_to_config_update() {
 
   let config_update1 = setup.make_config_update(WorkflowsConfiguration::default());
   let config_update2 = setup.make_config_update(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![Config::new(
-      workflow_proto!(exclusive with state("a")),
-    )
-    .unwrap()]),
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+      Config::new(workflow_proto!(exclusive with state("a"))).unwrap(),
+    ]),
   );
   let task = std::thread::spawn(move || {
     // Simulate config update with no workflows.

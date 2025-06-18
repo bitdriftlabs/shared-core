@@ -11,19 +11,19 @@ use crate::paths::PATHS;
 use bd_client_common::file::read_compressed_protobuf;
 use bd_client_stats::Stats;
 use bd_client_stats_store::{Collector, Scope};
-use bd_log_primitives::{log_level, FieldsRef, LogLevel, LogMessage, LogRef};
-use bd_logger::builder::default_stats_flush_triggers;
+use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogRef, log_level};
 use bd_logger::LogFields;
+use bd_logger::builder::default_stats_flush_triggers;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::client::api::{RuntimeUpdate, StatsUploadRequest};
 use bd_proto::protos::client::metric::PendingAggregationIndex;
 use bd_proto::protos::workflow::workflow;
+use bd_proto::protos::workflow::workflow::Workflow;
 use bd_proto::protos::workflow::workflow::workflow::execution::{
-  ExecutionExclusive,
   Execution_type,
+  ExecutionExclusive,
 };
 use bd_proto::protos::workflow::workflow::workflow::{Execution, State};
-use bd_proto::protos::workflow::workflow::Workflow;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
@@ -47,8 +47,8 @@ use std::fs::{self};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::Arc;
-use time::ext::NumericalDuration;
 use time::OffsetDateTime;
+use time::ext::NumericalDuration;
 use tokio::sync::watch;
 
 struct WorkflowConfigurationsInit {

@@ -5,14 +5,14 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use std::ffi::{c_char, CString};
+use std::ffi::{CString, c_char};
 use std::io::Write;
 use std::path::Path;
 use std::process::ExitCode;
 use std::{env, fs, slice};
 
 
-extern "C" {
+unsafe extern "C" {
   fn bdrc_make_bin_from_json(
     schema_data: *const u8,
     json_data_path: *const c_char,

@@ -10,8 +10,8 @@ pub mod log_upload;
 use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::routing::post;
-use axum_server::tls_rustls::RustlsConfig;
 use axum_server::Handle;
+use axum_server::tls_rustls::RustlsConfig;
 use bd_grpc::finalize_response_compression;
 use bd_grpc_codec::{Compression, OptimizeFor};
 use bd_proto::protos::client::api::api_request::Request_type;
@@ -20,7 +20,6 @@ use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Updat
 use bd_proto::protos::client::api::handshake_response::StreamSettings;
 use bd_proto::protos::client::api::log_upload_intent_response::{Decision, UploadImmediately};
 use bd_proto::protos::client::api::{
-  upload_artifact_intent_response,
   ApiRequest,
   ApiResponse,
   ConfigurationUpdate,
@@ -39,6 +38,7 @@ use bd_proto::protos::client::api::{
   UploadArtifactIntentResponse,
   UploadArtifactRequest,
   UploadArtifactResponse,
+  upload_artifact_intent_response,
 };
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_time::{TimeDurationExt, ToProtoDuration};
@@ -47,10 +47,10 @@ use log_upload::LogUpload;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
-use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::Duration;
+use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::net::TcpListener;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;

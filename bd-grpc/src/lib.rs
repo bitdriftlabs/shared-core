@@ -22,7 +22,7 @@ pub mod stats;
 pub mod status;
 
 use crate::error::{Error, Result};
-use axum::body::{to_bytes, Body};
+use axum::body::{Body, to_bytes};
 use axum::extract::Request;
 use axum::http::HeaderValue;
 use axum::response::Response;
@@ -34,11 +34,11 @@ use bd_grpc_codec::{
   Decoder,
   DecodingResult,
   Encoder,
-  OptimizeFor,
   GRPC_ACCEPT_ENCODING_HEADER,
   GRPC_ENCODING_DEFLATE,
   GRPC_ENCODING_HEADER,
   LEGACY_GRPC_ENCODING_HEADER,
+  OptimizeFor,
 };
 use bd_log::rate_limit_log::WarnTracker;
 use bd_stats_common::DynCounter;
@@ -665,7 +665,7 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
         // nothing more to do.
         let _ignored = sender.send_error(status).await;
       },
-    };
+    }
   });
 
   Ok(new_grpc_response(

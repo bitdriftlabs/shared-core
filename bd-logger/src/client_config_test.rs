@@ -8,8 +8,8 @@
 use super::{Config, Configuration};
 use anyhow::anyhow;
 use bd_client_common::{ConfigurationUpdate as _, HANDSHAKE_FLAG_CONFIG_UP_TO_DATE};
-use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::ConfigurationUpdate;
+use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use pretty_assertions::assert_eq;
 use tempfile::TempDir;

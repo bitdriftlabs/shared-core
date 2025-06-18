@@ -29,24 +29,28 @@ fn app_version_repo() {
   }));
 
   // Initial app version
-  assert!(repo
-    .set(&AppVersion {
-      app_version: "1.0.0".to_string(),
-      app_version_extra: AppVersionExtra::BuildNumber("1".to_string()),
-    })
-    .is_none());
+  assert!(
+    repo
+      .set(&AppVersion {
+        app_version: "1.0.0".to_string(),
+        app_version_extra: AppVersionExtra::BuildNumber("1".to_string()),
+      })
+      .is_none()
+  );
   // Follow up check
   assert!(!repo.has_changed(&AppVersion {
     app_version: "1.0.0".to_string(),
     app_version_extra: AppVersionExtra::BuildNumber("1".to_string()),
   }));
   // Follow up update with old app version
-  assert!(repo
-    .set(&AppVersion {
-      app_version: "1.0.0".to_string(),
-      app_version_extra: AppVersionExtra::BuildNumber("1".to_string()),
-    })
-    .is_none());
+  assert!(
+    repo
+      .set(&AppVersion {
+        app_version: "1.0.0".to_string(),
+        app_version_extra: AppVersionExtra::BuildNumber("1".to_string()),
+      })
+      .is_none()
+  );
   // Follow up check with new app version
   assert!(repo.has_changed(&AppVersion {
     app_version: "1.0.0".to_string(),
@@ -67,12 +71,14 @@ fn app_version_repo() {
 
   // Simulate a new SDK configuration without app update.
   let repo = super::Repository::new(store.clone());
-  assert!(repo
-    .set(&AppVersion {
-      app_version: "1.0.0".to_string(),
-      app_version_extra: AppVersionExtra::BuildNumber("2".to_string()),
-    })
-    .is_none());
+  assert!(
+    repo
+      .set(&AppVersion {
+        app_version: "1.0.0".to_string(),
+        app_version_extra: AppVersionExtra::BuildNumber("2".to_string()),
+      })
+      .is_none()
+  );
 
   // Simulate a new SDK configuration with app update.
   let repo = super::Repository::new(store);

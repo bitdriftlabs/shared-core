@@ -15,7 +15,7 @@
 #[allow(clippy::wildcard_imports)]
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::*;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, WIPOffset};
-use std::ffi::{c_char, c_void, CStr};
+use std::ffi::{CStr, c_char, c_void};
 use std::ptr::null;
 use std::slice;
 

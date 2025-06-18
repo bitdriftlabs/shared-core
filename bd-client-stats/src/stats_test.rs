@@ -5,30 +5,30 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::Stats;
 use crate::file_manager::{FileManager, PENDING_AGGREGATION_INDEX_FILE, STATS_DIRECTORY};
 use crate::stats::{IntervalCreator, SleepModeAwareRuntimeWatchTicker, Ticker};
 use crate::test::TestTicker;
-use crate::Stats;
 use assert_matches::assert_matches;
-use bd_api::upload::{Tracked, UploadResponse};
 use bd_api::DataUpload;
+use bd_api::upload::{Tracked, UploadResponse};
 use bd_client_common::file::write_compressed_protobuf;
 use bd_client_common::file_system::{FileSystem, RealFileSystem, TestFileSystem};
 use bd_client_stats_store::Collector;
+use bd_proto::protos::client::api::StatsUploadRequest;
+use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapshot;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{
   Aggregated,
   Occurred_at,
   Snapshot_type,
 };
-use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapshot;
-use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::metric::metric::{Data as MetricData, Metric_name_type};
 use bd_proto::protos::client::metric::pending_aggregation_index::PendingFile;
 use bd_proto::protos::client::metric::{Counter, Metric, MetricsList, PendingAggregationIndex};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
-use bd_test_helpers::runtime::{make_simple_update, ValueKind};
+use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeDurationExt, TimeProvider};
 use futures_util::poll;
@@ -39,7 +39,7 @@ use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::{Duration, OffsetDateTime};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinError;
-use tokio::time::{sleep, timeout, MissedTickBehavior};
+use tokio::time::{MissedTickBehavior, sleep, timeout};
 
 async fn write_test_index(fs: &dyn FileSystem, ready_to_upload: bool) {
   let index = PendingAggregationIndex {
@@ -422,9 +422,11 @@ async fn max_files_upload_race() {
       uuid: stats.uuid,
     })
     .unwrap();
-  assert!(timeout(1.std_seconds(), setup.next_stat_upload())
-    .await
-    .is_err());
+  assert!(
+    timeout(1.std_seconds(), setup.next_stat_upload())
+      .await
+      .is_err()
+  );
 }
 
 #[tokio::test(start_paused = true)]

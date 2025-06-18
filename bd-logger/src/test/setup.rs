@@ -15,16 +15,16 @@ use crate::{
   LogType,
   Logger,
 };
-use bd_client_stats::test::TestTicker;
 use bd_client_stats::FlushTrigger;
+use bd_client_stats::test::TestTicker;
 use bd_device::Store;
+use bd_proto::protos::client::api::ConfigurationUpdate;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
-use bd_proto::protos::client::api::ConfigurationUpdate;
-use bd_proto::protos::config::v1::config::{buffer_config, BufferConfigList};
+use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
 use bd_runtime::runtime::FeatureFlag as _;
-use bd_session::fixed::{self, UUIDCallbacks};
 use bd_session::Strategy;
+use bd_session::fixed::{self, UUIDCallbacks};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_test_helpers::config_helper::{
   configuration_update,
@@ -36,11 +36,11 @@ use bd_test_helpers::config_helper::{
 use bd_test_helpers::metadata::EmptyMetadata;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
-use bd_test_helpers::runtime::{make_update, ValueKind};
+use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::session::{DiskStorage, InMemoryStorage};
 use bd_test_helpers::test_api_server::{ExpectedStreamEvent, StreamAction, StreamHandle};
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 use tempfile::TempDir;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc;

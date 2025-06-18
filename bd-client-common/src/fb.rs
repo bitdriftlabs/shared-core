@@ -8,7 +8,6 @@
 use anyhow::anyhow;
 use bd_log_primitives::{LogFields, LogLevel, LogMessage, StringOrBytes};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::{
-  root_as_log as fb_root_as_log,
   BinaryData,
   BinaryDataArgs,
   Data,
@@ -21,6 +20,7 @@ use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::{
   StringDataArgs,
   Timestamp as FbTimestamp,
   TimestampArgs,
+  root_as_log as fb_root_as_log,
 };
 use flatbuffers::{FlatBufferBuilder, UnionWIPOffset, WIPOffset};
 

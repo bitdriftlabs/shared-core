@@ -7,8 +7,8 @@
 
 #![no_main]
 
-use fuzz::buffer_corruption_fuzz_test::BufferCorruptionFuzzTestCase;
 use fuzz::BufferFuzzTest;
+use fuzz::buffer_corruption_fuzz_test::BufferCorruptionFuzzTestCase;
 
 libfuzzer_sys::fuzz_target!(|input: BufferCorruptionFuzzTestCase| {
   BufferFuzzTest::new(input.test_case).run(true);

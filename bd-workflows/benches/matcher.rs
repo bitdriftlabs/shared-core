@@ -8,14 +8,14 @@
 use bd_api::DataUpload;
 use bd_client_stats::Stats;
 use bd_client_stats_store::Collector;
-use bd_log_primitives::{log_level, FieldsRef, LogFields, LogRef, LogType};
+use bd_log_primitives::{FieldsRef, LogFields, LogRef, LogType, log_level};
 use bd_proto::protos::workflow::workflow::Workflow;
 use bd_runtime::runtime::ConfigLoader;
 use bd_test_helpers::workflow::macros::state;
 use bd_test_helpers::{action, declare_transition, log_matches, rule, workflow_proto};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
-use criterion::{criterion_group, criterion_main, Bencher, Criterion};
+use criterion::{Bencher, Criterion, criterion_group, criterion_main};
 use std::collections::BTreeSet;
 use std::future::Future;
 use time::OffsetDateTime;

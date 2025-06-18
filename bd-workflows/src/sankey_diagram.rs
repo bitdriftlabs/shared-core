@@ -6,13 +6,13 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::workflow::SankeyPath;
+use bd_api::DataUpload;
 use bd_api::upload::{
   IntentDecision,
   IntentResponse,
   TrackedSankeyPathUploadIntentRequest,
   TrackedSankeyPathUploadRequest,
 };
-use bd_api::DataUpload;
 use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{SankeyIntentRequest, SankeyPathUploadRequest};

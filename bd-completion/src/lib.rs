@@ -73,7 +73,7 @@ impl<T: Debug> Receiver<T> {
       match self.rx.try_recv() {
         Ok(value) => return Ok(value),
         Err(tokio::sync::oneshot::error::TryRecvError::Closed) => {
-          return Err(RecvWithTimeoutError::ChannelClosed)
+          return Err(RecvWithTimeoutError::ChannelClosed);
         },
         Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {
           std::thread::sleep(Duration::from_millis(5));

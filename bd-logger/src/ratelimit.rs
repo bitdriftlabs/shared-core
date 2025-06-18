@@ -156,7 +156,7 @@ fn try_acquire_ratelimit_permit(request_size: u32, state: &Mutex<SharedState>) -
   match &mut l.state {
     // We have exceeded our rate for this period, immediate rejection.
     State::Limited => false,
-    State::Ready { ref mut rem } => {
+    State::Ready { rem } => {
       // Adjust the remainder based on the size of the request.
       if *rem > request_size {
         *rem -= request_size;
