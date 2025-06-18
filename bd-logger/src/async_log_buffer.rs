@@ -95,7 +95,7 @@ pub struct LogLine {
   /// SDK. Neither one of those guarantees that the log is written to a disk.
   pub log_processing_completed_tx: Option<oneshot::Sender<()>>,
 
-  /// If sets, indicates that the log should trigger a session capture. The provided value is an ID
+  /// If set, indicates that the log should trigger a session capture. The provided value is an ID
   /// that helps identify why the session should be captured.
   pub capture_session: Option<String>,
 }
