@@ -671,7 +671,7 @@ pub mod resource_utilization {
   duration_feature_flag!(
     ResourceUtilizationReportingIntervalFlag,
     "resource_utilization.reporting_interval_ms",
-    6.seconds()
+    0.5.seconds()
   );
 }
 
