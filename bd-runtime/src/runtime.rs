@@ -687,13 +687,13 @@ pub mod session_replay {
   duration_feature_flag!(
     ReportingIntervalFlag,
     "session_replay.screens.interval_ms",
-    3.seconds()
+    0.5.seconds()
   );
 
   bool_feature_flag!(
     ScreenshotsEnabledFlag,
     "session_replay.screenshots.enabled",
-    false
+    true
   );
 }
 
