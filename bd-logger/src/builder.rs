@@ -318,6 +318,8 @@ impl LoggerBuilder {
             .unwrap_or_else(|| session_strategy.session_id()),
           occurred_at: crash_log.timestamp,
           // Always capture the session when we process a crash log.
+          // TODO(snowp): Ideally we should include information like the report and client side
+          // grouping here to help make smarter decisions during intent negotiation.
           capture_session: Some("crash_handler".to_string()),
         })
         .collect();
