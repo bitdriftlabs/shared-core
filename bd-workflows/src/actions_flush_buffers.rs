@@ -501,8 +501,6 @@ impl Resolver {
 
     let mut has_been_rerouted = false;
 
-    log::error!("streaming actions: \"{streaming_actions:?}\"");
-
     for (action, _) in &mut streaming_actions {
       let intersection: BTreeSet<_> = action
         .source_trigger_buffer_ids
