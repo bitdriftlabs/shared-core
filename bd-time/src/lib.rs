@@ -118,6 +118,7 @@ pub trait TimeDurationExt {
   fn sleep(self) -> Sleep;
   fn interval(self, behavior: MissedTickBehavior) -> Interval;
   fn interval_at(self, behavior: MissedTickBehavior) -> Interval;
+  fn jittered(self) -> Duration;
   fn jittered_interval_at(self, behavior: MissedTickBehavior) -> Interval;
   fn timeout<F: IntoFuture>(self, f: F) -> Timeout<F::IntoFuture>;
   fn add_tokio_now(self) -> tokio::time::Instant;
@@ -145,10 +146,16 @@ impl TimeDurationExt for time::Duration {
     i
   }
 
-  fn jittered_interval_at(self, behavior: MissedTickBehavior) -> Interval {
+  fn jittered(self) -> Duration {
     let millis: u64 = self.whole_milliseconds().try_into().unwrap();
-    let jittered = Duration::from_millis(rng().random_range(0 ..= millis));
-    let mut i = interval_at(tokio::time::Instant::now() + jittered, self.unsigned_abs());
+    Duration::from_millis(rng().random_range(0 ..= millis))
+  }
+
+  fn jittered_interval_at(self, behavior: MissedTickBehavior) -> Interval {
+    let mut i = interval_at(
+      tokio::time::Instant::now() + self.jittered(),
+      self.unsigned_abs(),
+    );
     i.set_missed_tick_behavior(behavior);
     i
   }
