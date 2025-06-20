@@ -131,6 +131,7 @@ impl From<Block> for bool {
 pub struct CaptureSession(Option<String>);
 
 impl CaptureSession {
+  #[must_use]
   pub fn capture_with_id(id: &str) -> Self {
     Self(Some(id.to_string()))
   }
