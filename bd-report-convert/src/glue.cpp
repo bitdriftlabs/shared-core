@@ -6,9 +6,9 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <ostream>
 #include <string>
 
 #include <flatbuffers/idl.h>
@@ -26,7 +26,7 @@ enum BDReaderErr {
 
 using namespace bitdrift_public::fbs::issue_reporting::v1;
 extern "C" {
-int bdrc_print_json(char *bin_data_path) {
+char *bdrc_alloc_json(char *bin_data_path) {
   std::ifstream data_file;
   data_file.open(bin_data_path, std::ios::binary | std::ios::in);
   data_file.seekg(0,std::ios::end);
@@ -42,8 +42,11 @@ int bdrc_print_json(char *bin_data_path) {
       ReportTypeTable(),
       false, true, "", true);
 
-  std::cout << output << std::endl;
-  return 0;
+  return strdup(output.c_str());
+}
+
+void bdrc_json_free(char *json) {
+  free(json);
 }
 
 /**

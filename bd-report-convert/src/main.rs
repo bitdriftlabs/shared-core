@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use std::ffi::{CString, c_char};
+use std::ffi::{CStr, CString, c_char};
 use std::io::Write;
 use std::path::Path;
 use std::process::ExitCode;
@@ -19,7 +19,8 @@ unsafe extern "C" {
     length_or_err: *mut i32,
   ) -> *const u8;
 
-  fn bdrc_print_json(bin_data_path: *const c_char) -> i32;
+  fn bdrc_alloc_json(bin_data_path: *const c_char) -> *const c_char;
+  fn bdrc_json_free(json: *const c_char);
 }
 
 fn print_usage(program: &str) -> ExitCode {
@@ -52,12 +53,21 @@ pub fn main() -> Result<ExitCode, std::io::Error> {
 
 fn print_json(input_path: &str) -> Result<ExitCode, std::io::Error> {
   let data_path = CString::new(input_path)?;
-  let result = unsafe { bdrc_print_json(data_path.as_ptr()) };
-  if result == 0 {
-    Ok(ExitCode::SUCCESS)
-  } else {
-    eprintln!("failed to convert file: {result}");
-    Ok(ExitCode::FAILURE)
+  let text = unsafe { bdrc_alloc_json(data_path.as_ptr()) };
+  let text_ptr = unsafe { CStr::from_ptr(text) };
+
+  match text_ptr.to_str() {
+    Ok(json) => {
+      println!("{json}");
+      unsafe {
+        bdrc_json_free(text);
+      }
+      Ok(ExitCode::SUCCESS)
+    },
+    Err(result) => {
+      eprintln!("failed to convert file: {result}");
+      Ok(ExitCode::FAILURE)
+    },
   }
 }
 
