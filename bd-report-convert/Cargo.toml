@@ -5,6 +5,9 @@ name         = "bd-report-convert"
 publish      = false
 version      = "1.0.0"
 
+[dependencies]
+anyhow.workspace     = true
+
 [build-dependencies]
 cc.workspace         = true
 cmake.workspace      = true
