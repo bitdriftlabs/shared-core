@@ -961,6 +961,7 @@ dependencies = [
 name = "bd-report-convert"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
  "cc",
  "cmake",
  "flatc-rust",
