@@ -410,20 +410,17 @@ impl<MessageType: DecodingResult> Decoder<MessageType> {
         std::mem::take(decompressor.get_mut())
       },
       Some(Decompressor::StatelessZlib) => {
-        thread_local! {
-          static DECOMPRESSOR: RefCell<ZlibDecoder<Vec<u8>>> =
-            RefCell::new(ZlibDecoder::new(Vec::new()));
-        }
-
-        // TODO(mattklein123): For mobile we only ever use a single thread for communication, though
-        // this will still keep the memory allocated. We could consider doing on demand allocation
-        // for that case.
+        // TODO(mattklein123): At one point we tried to use a thread local to avoid re-allocating
+        // the decompression buffer, but it's not clear that in some error cases the decompressor
+        // can always be fully reset (inside calls finish()?). For now just allocate a fresh one
+        // each time. This code could likely be optimized by using the raw interfaces directly
+        // and moving back to thread local per the next TODO.
         // TODO(mattklein123): Using Decompress here directly should remove some copies that are
         // required by using the writer interface.
-        DECOMPRESSOR.with_borrow_mut(|decompressor| {
-          decompressor.write_all(&compressed)?;
-          decompressor.reset(Vec::new())
-        })?
+        let mut decompressor = ZlibDecoder::new(Vec::new());
+        decompressor.write_all(&compressed)?;
+        decompressor.flush()?;
+        std::mem::take(decompressor.get_mut())
       },
     };
 
