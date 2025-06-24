@@ -789,20 +789,6 @@ pub mod workflows {
     "workflows.persistence_write_interval_ms",
     1.seconds()
   );
-
-  // The maximum number of workflow traversals that may be active.
-  int_feature_flag!(
-    TraversalsCountLimitFlag,
-    "workflows.traversals_global_count_limit",
-    200
-  );
-
-  // The interval at which workflows state persistence attempts to disk are made.
-  duration_feature_flag!(
-    StatePeriodicWriteIntervalFlag,
-    "workflows.state_periodic_write_interval_ms",
-    5.seconds()
-  );
 }
 
 pub mod platform_events {
