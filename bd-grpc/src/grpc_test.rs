@@ -312,8 +312,8 @@ fn invalid_address() {
 }
 
 #[tokio::test]
-#[ignore]
-// TODO(mattklein123): This test is flaky. It is ignored for now until we can figure out why.
+#[ignore = "TODO(mattklein123): This test is flaky. It is ignored for now until we can figure out \
+            why."]
 async fn connect_timeout() {
   let client =
     Client::new_http("github.com:22".to_string().as_str(), 1.milliseconds(), 1024).unwrap();

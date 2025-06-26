@@ -43,7 +43,7 @@ pub fn json_to_bin<'a>(input_path: &str) -> anyhow::Result<&'a [u8]> {
     bdrc_make_bin_from_json(
       schema_data.as_bytes().as_ptr(),
       data_path.as_ptr(),
-      &mut length_or_err,
+      &raw mut length_or_err,
     )
   };
   if length_or_err > 0 {
