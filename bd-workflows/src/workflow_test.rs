@@ -5,18 +5,11 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::config::{
-  ActionEmitMetric,
-  ActionFlushBuffers,
-  Config,
-  FlushBufferId,
-  MetricType,
-  ValueIncrement,
-};
+use crate::config::{ActionEmitMetric, ActionFlushBuffers, Config, FlushBufferId, ValueIncrement};
 use crate::workflow::{Run, TriggeredAction, Workflow, WorkflowResult, WorkflowResultStats};
 use bd_log_primitives::{FieldsRef, LogFields, LogMessage, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
-use bd_stats_common::labels;
+use bd_stats_common::{MetricType, labels};
 use bd_test_helpers::metric_value;
 use bd_test_helpers::workflow::macros::{
   action,

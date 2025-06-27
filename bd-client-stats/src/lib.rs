@@ -10,9 +10,7 @@ pub mod stats;
 pub mod test;
 
 use crate::stats::Flusher;
-use anyhow::anyhow;
 use bd_api::DataUpload;
-use bd_client_common::error::handle_unexpected;
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats_store::{Collector, Error as StatsError};
 use bd_runtime::runtime::ConfigLoader;
@@ -162,12 +160,6 @@ impl Stats {
   pub fn record_dynamic_counter(&self, tags: BTreeMap<String, String>, id: &str, value: u64) {
     match self.collector.dynamic_counter(tags, id) {
       Ok(counter) => counter.inc_by(value),
-      Err(StatsError::ChangedType) => {
-        handle_unexpected::<(), anyhow::Error>(
-          Err(anyhow!("change in dynamic metric type")),
-          "dynamic counter type change",
-        );
-      },
       Err(StatsError::Overflow) => {
         self.handle_overflow(id);
       },
@@ -177,12 +169,6 @@ impl Stats {
   pub fn record_dynamic_histogram(&self, tags: BTreeMap<String, String>, id: &str, value: f64) {
     match self.collector.dynamic_histogram(tags, id) {
       Ok(histogram) => histogram.observe(value),
-      Err(StatsError::ChangedType) => {
-        handle_unexpected::<(), anyhow::Error>(
-          Err(anyhow!("change in dynamic metric type")),
-          "dynamic histogram type change",
-        );
-      },
       Err(StatsError::Overflow) => {
         self.handle_overflow(id);
       },
