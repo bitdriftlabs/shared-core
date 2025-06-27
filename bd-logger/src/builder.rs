@@ -155,7 +155,7 @@ impl LoggerBuilder {
     let (sleep_mode_active_tx, sleep_mode_active_rx) =
       watch::channel(self.params.start_in_sleep_mode);
 
-    let (_stats_flusher, flusher_trigger) = {
+    let (stats_flusher, flusher_trigger) = {
       let (flush_ticker, upload_ticker) =
         if let Some((flush_ticker, upload_ticker)) = self.client_stats_tickers {
           (flush_ticker, upload_ticker)
@@ -326,22 +326,41 @@ impl LoggerBuilder {
         .collect();
 
       try_join!(
-        async move { api.start().await },
+        async move {
+          api.start().await?;
+
+          log::info!("API ENDED");
+
+          Ok(())
+        },
         async move { buffer_uploader.run().await },
         async move {
           async_log_buffer.run(crash_logs).await;
-          Ok(())
-        },
-        async move { buffer_manager.process_flushes(flush_buffers_rx).await },
-        async move {
-          panic!("panic!");
 
-          #[allow(unreachable_code)]
+          log::info!("ASYNC LOG ENDED");
           Ok(())
         },
-        async move { crash_monitor.run().await },
+        async move {
+          buffer_manager.process_flushes(flush_buffers_rx).await?;
+
+          log::info!("BUFFER MANAGER ENDED");
+          Ok(())
+        },
+        async move {
+          stats_flusher.periodic_flush().await;
+
+          log::info!("STATS FLUSHER ENDED");
+          Ok(())
+        },
+        async move {
+          crash_monitor.run().await?;
+
+          log::info!("CRASH MONITOR ENDED");
+          Ok(())
+        },
         async move {
           artifact_uploader.run().await;
+          log::info!("ARTIFACT UPLOADER ENDED");
           Ok(())
         }
       )
