@@ -16,6 +16,7 @@ use bd_proto::protos::workflow::workflow::workflow::{
   LimitDuration as LimitDurationProto,
   LimitMatchedLogsCount,
 };
+use bd_stats_common::MetricType;
 use protobuf::MessageField;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -669,16 +670,6 @@ impl ActionTakeScreenshot {
   fn try_from_proto(proto: ActionTakeScreenshotProto) -> Self {
     Self { id: proto.id }
   }
-}
-
-//
-// MetricType
-//
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum MetricType {
-  Counter,
-  Histogram,
 }
 
 pub type FieldKey = String;

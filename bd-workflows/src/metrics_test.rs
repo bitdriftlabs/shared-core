@@ -6,12 +6,12 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::MetricsCollector;
-use crate::config::{ActionEmitMetric, MetricType, TagValue};
+use crate::config::{ActionEmitMetric, TagValue};
 use bd_client_stats::Stats;
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
 use bd_log_primitives::{FieldsRef, LogRef, LogType, log_level};
-use bd_stats_common::{NameType, labels};
+use bd_stats_common::{MetricType, NameType, labels};
 use std::collections::BTreeMap;
 
 fn make_metrics_collector() -> (MetricsCollector, Collector) {
@@ -87,7 +87,10 @@ fn metric_increment_value_extraction() {
   // No counter emitted for action_id_4 as the field does not exist.
   assert!(
     collector
-      .find_counter(&NameType::ActionId("action_id_4".to_string()), &labels! {})
+      .find_counter(
+        &NameType::ActionId(MetricType::Counter, "action_id_4".to_string()),
+        &labels! {}
+      )
       .is_none()
   );
 

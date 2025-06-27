@@ -22,7 +22,7 @@ use bd_proto::protos::client::api::stats_upload_request::snapshot::Snapshot_type
 use bd_proto::protos::client::metric::metric::Metric_name_type;
 use bd_proto::protos::client::metric::{Metric as ProtoMetric, MetricsList};
 use bd_shutdown::ComponentShutdown;
-use bd_stats_common::NameType;
+use bd_stats_common::{MetricType, NameType};
 use bd_time::TimeDurationExt;
 #[cfg(test)]
 use stats_test::{TestHooks, TestHooksReceiver};
@@ -503,16 +503,21 @@ impl SnapshotHelper {
     };
 
     let mut new_metrics: MetricsByName = HashMap::new();
-    for metric in metrics.metric {
-      let name = match metric.metric_name_type {
-        Some(Metric_name_type::Name(name)) => NameType::Global(name),
-        Some(Metric_name_type::MetricId(id)) => NameType::ActionId(id),
-        None => continue,
-      };
-
-      let tags = metric.tags.into_iter().collect();
-      if let Some(data) = metric.data {
+    for proto_metric in metrics.metric {
+      let tags = proto_metric.tags.into_iter().collect();
+      if let Some(data) = proto_metric.data {
         if let Some(metric) = MetricData::from_proto(data) {
+          let metric_type = match metric {
+            MetricData::Counter(_) => MetricType::Counter,
+            MetricData::Histogram(_) => MetricType::Histogram,
+          };
+
+          let name = match proto_metric.metric_name_type {
+            Some(Metric_name_type::Name(name)) => NameType::Global(metric_type, name),
+            Some(Metric_name_type::MetricId(id)) => NameType::ActionId(metric_type, id),
+            None => continue,
+          };
+
           let existing = new_metrics.entry(name).or_default().insert(tags, metric);
           debug_assert!(existing.is_none());
         }
@@ -534,7 +539,7 @@ impl SnapshotHelper {
   }
 
   fn add_metric(&mut self, name: NameType, labels: BTreeMap<String, String>, metric: MetricData) {
-    let maybe_limit = if matches!(name, NameType::ActionId(_)) {
+    let maybe_limit = if matches!(name, NameType::ActionId(..)) {
       self.limit
     } else {
       None
@@ -566,8 +571,8 @@ impl SnapshotHelper {
           .into_iter()
           .map(move |(labels, metric)| ProtoMetric {
             metric_name_type: Some(match name.clone() {
-              NameType::Global(name) => Metric_name_type::Name(name),
-              NameType::ActionId(id) => Metric_name_type::MetricId(id),
+              NameType::Global(_, name) => Metric_name_type::Name(name),
+              NameType::ActionId(_, id) => Metric_name_type::MetricId(id),
             }),
             tags: labels.into_iter().collect(),
             data: Some(metric.to_proto()),

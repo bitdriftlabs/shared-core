@@ -14,6 +14,7 @@ use crate::workflow::TriggeredActionEmitSankey;
 use bd_client_stats::Stats;
 use bd_log_primitives::LogRef;
 use bd_matcher::FieldProvider;
+use bd_stats_common::MetricType;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -64,13 +65,13 @@ impl MetricsCollector {
       };
 
       match action.metric_type {
-        crate::config::MetricType::Counter => {
+        MetricType::Counter => {
           #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
           self
             .stats
             .record_dynamic_counter(tags, &action.id, value as u64);
         },
-        crate::config::MetricType::Histogram => {
+        MetricType::Histogram => {
           log::debug!("recording histogram value: {value}");
           self.stats.record_dynamic_histogram(tags, &action.id, value);
         },

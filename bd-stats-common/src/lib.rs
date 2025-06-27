@@ -39,27 +39,37 @@ pub fn make_client_sketch() -> DDSketch {
 }
 
 //
+// MetricType
+//
+
+#[derive(Eq, Hash, PartialEq, Clone, Copy, Debug, PartialOrd, Ord)]
+pub enum MetricType {
+  Counter,
+  Histogram,
+}
+
+//
 // NameType
 //
 
 #[derive(Eq, Hash, PartialEq, Clone)]
 pub enum NameType {
-  Global(String),
-  ActionId(String),
+  Global(MetricType, String),
+  ActionId(MetricType, String),
 }
 
 impl NameType {
   #[must_use]
   pub fn as_str(&self) -> &str {
     match self {
-      Self::Global(name) | Self::ActionId(name) => name,
+      Self::Global(_, name) | Self::ActionId(_, name) => name,
     }
   }
 
   #[must_use]
   pub fn into_string(self) -> String {
     match self {
-      Self::Global(name) | Self::ActionId(name) => name,
+      Self::Global(_, name) | Self::ActionId(_, name) => name,
     }
   }
 }

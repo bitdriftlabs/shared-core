@@ -17,7 +17,7 @@ use bd_proto::protos::client::metric::{
   DDSketchHistogram,
   InlineHistogramValues,
 };
-use bd_stats_common::{DynCounter, NameType, make_client_sketch};
+use bd_stats_common::{DynCounter, MetricType, NameType, make_client_sketch};
 use parking_lot::Mutex;
 use sketches_rust::DDSketch;
 use std::collections::hash_map::Entry;
@@ -49,9 +49,6 @@ const MAX_INLINE_HISTOGRAM_VALUES: usize = 5;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-  #[error("Changed type")]
-  ChangedType,
-
   #[error("Overflow")]
   Overflow,
 }
@@ -285,12 +282,13 @@ impl Scope {
   fn get_common_global(
     inner: &mut CollectorInner,
     name: String,
+    metric_type: MetricType,
     labels: BTreeMap<String, String>,
     constructor: impl FnOnce() -> MetricData,
   ) -> &mut MetricData {
     let by_name = inner
       .metrics_by_name
-      .entry(NameType::Global(name))
+      .entry(NameType::Global(metric_type, name))
       .or_default();
 
     match by_name.entry(labels) {
@@ -302,11 +300,17 @@ impl Scope {
   #[must_use]
   pub fn counter_with_labels(&self, name: &str, labels: BTreeMap<String, String>) -> Counter {
     let mut inner = self.collector.inner.lock();
-    match Self::get_common_global(&mut inner, self.metric_name(name), labels, || {
-      MetricData::Counter(Counter {
-        value: Arc::new(AtomicU64::new(0)),
-      })
-    }) {
+    match Self::get_common_global(
+      &mut inner,
+      self.metric_name(name),
+      MetricType::Counter,
+      labels,
+      || {
+        MetricData::Counter(Counter {
+          value: Arc::new(AtomicU64::new(0)),
+        })
+      },
+    ) {
       MetricData::Counter(counter) => counter.clone(),
       MetricData::Histogram(_) => unreachable!(),
     }
@@ -325,9 +329,13 @@ impl Scope {
   #[must_use]
   pub fn histogram_with_labels(&self, name: &str, labels: BTreeMap<String, String>) -> Histogram {
     let mut inner = self.collector.inner.lock();
-    match Self::get_common_global(&mut inner, self.metric_name(name), labels, || {
-      MetricData::Histogram(Histogram::default())
-    }) {
+    match Self::get_common_global(
+      &mut inner,
+      self.metric_name(name),
+      MetricType::Histogram,
+      labels,
+      || MetricData::Histogram(Histogram::default()),
+    ) {
       MetricData::Histogram(histogram) => histogram.clone(),
       MetricData::Counter(_) => unreachable!(),
     }
@@ -533,12 +541,13 @@ impl Collector {
   fn get_common_workflow(
     inner: &mut CollectorInner,
     action_id: String,
+    metric_type: MetricType,
     labels: BTreeMap<String, String>,
     constructor: impl FnOnce() -> MetricData,
   ) -> Result<&mut MetricData> {
     let by_name = inner
       .metrics_by_name
-      .entry(NameType::ActionId(action_id))
+      .entry(NameType::ActionId(metric_type, action_id))
       .or_default();
 
     let by_name_len = by_name.len();
@@ -560,11 +569,17 @@ impl Collector {
 
   pub fn dynamic_counter(&self, tags: BTreeMap<String, String>, id: &str) -> Result<Counter> {
     let mut inner = self.inner.lock();
-    match Self::get_common_workflow(&mut inner, id.to_string(), tags, || {
-      MetricData::Counter(Counter {
-        value: Arc::new(AtomicU64::new(0)),
-      })
-    })? {
+    match Self::get_common_workflow(
+      &mut inner,
+      id.to_string(),
+      MetricType::Counter,
+      tags,
+      || {
+        MetricData::Counter(Counter {
+          value: Arc::new(AtomicU64::new(0)),
+        })
+      },
+    )? {
       MetricData::Counter(counter) => Ok(counter.clone()),
       MetricData::Histogram(_) => unreachable!(),
     }
@@ -572,9 +587,13 @@ impl Collector {
 
   pub fn dynamic_histogram(&self, tags: BTreeMap<String, String>, id: &str) -> Result<Histogram> {
     let mut inner = self.inner.lock();
-    match Self::get_common_workflow(&mut inner, id.to_string(), tags, || {
-      MetricData::Histogram(Histogram::default())
-    })? {
+    match Self::get_common_workflow(
+      &mut inner,
+      id.to_string(),
+      MetricType::Histogram,
+      tags,
+      || MetricData::Histogram(Histogram::default()),
+    )? {
       MetricData::Histogram(histogram) => Ok(histogram.clone()),
       MetricData::Counter(_) => unreachable!(),
     }

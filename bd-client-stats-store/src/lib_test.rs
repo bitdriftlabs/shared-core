@@ -6,7 +6,15 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::{Collector, MetricData, NameType};
-use bd_stats_common::labels;
+use bd_stats_common::{MetricType, labels};
+use std::collections::BTreeMap;
+
+#[test]
+fn dual_type() {
+  let collector = Collector::default();
+  let _counter = collector.dynamic_counter(BTreeMap::new(), "same_id");
+  let _histogram = collector.dynamic_histogram(BTreeMap::new(), "same_id");
+}
 
 #[test]
 fn retain() {
@@ -15,12 +23,18 @@ fn retain() {
   let h = collector.scope("").histogram("h");
   assert!(
     collector
-      .find_counter(&NameType::Global("c".to_string()), &labels!())
+      .find_counter(
+        &NameType::Global(MetricType::Counter, "c".to_string()),
+        &labels!()
+      )
       .is_some()
   );
   assert!(
     collector
-      .find_histogram(&NameType::Global("h".to_string()), &labels!())
+      .find_histogram(
+        &NameType::Global(MetricType::Histogram, "h".to_string()),
+        &labels!()
+      )
       .is_some()
   );
 
@@ -29,12 +43,18 @@ fn retain() {
   drop(h);
   assert!(
     collector
-      .find_counter(&NameType::Global("c".to_string()), &labels!())
+      .find_counter(
+        &NameType::Global(MetricType::Counter, "c".to_string()),
+        &labels!()
+      )
       .is_some()
   );
   assert!(
     collector
-      .find_histogram(&NameType::Global("h".to_string()), &labels!())
+      .find_histogram(
+        &NameType::Global(MetricType::Histogram, "h".to_string()),
+        &labels!()
+      )
       .is_some()
   );
 
@@ -45,12 +65,18 @@ fn retain() {
 
   assert!(
     collector
-      .find_counter(&NameType::Global("c".to_string()), &labels!())
+      .find_counter(
+        &NameType::Global(MetricType::Counter, "c".to_string()),
+        &labels!()
+      )
       .is_none()
   );
   assert!(
     collector
-      .find_histogram(&NameType::Global("h".to_string()), &labels!())
+      .find_histogram(
+        &NameType::Global(MetricType::Histogram, "h".to_string()),
+        &labels!()
+      )
       .is_none()
   );
 }

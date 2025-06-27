@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::{Collector, HistogramInner, MetricData, NameType};
+use bd_stats_common::MetricType;
 use std::collections::BTreeMap;
 
 pub trait StatsHelper {
@@ -30,7 +31,10 @@ impl StatsHelper for Collector {
     assert_eq!(
       value,
       self
-        .find_counter(&NameType::Global(name.to_string()), &labels)
+        .find_counter(
+          &NameType::Global(MetricType::Counter, name.to_string()),
+          &labels
+        )
         .unwrap_or_else(|| panic!("Counter not found: {name} {labels:?}"))
         .get()
     );
@@ -46,7 +50,10 @@ impl StatsHelper for Collector {
     assert_eq!(
       value,
       self
-        .find_counter(&NameType::ActionId(action_id.to_string()), &labels)
+        .find_counter(
+          &NameType::ActionId(MetricType::Counter, action_id.to_string()),
+          &labels
+        )
         .unwrap_or_else(|| panic!("Counter not found: {action_id} {labels:?}"))
         .get()
     );
@@ -59,7 +66,10 @@ impl StatsHelper for Collector {
     labels: BTreeMap<String, String>,
   ) {
     let histogram_values = match self
-      .find_histogram(&NameType::ActionId(action_id.to_string()), &labels)
+      .find_histogram(
+        &NameType::ActionId(MetricType::Histogram, action_id.to_string()),
+        &labels,
+      )
       .unwrap_or_else(|| panic!("Histogram not found: {action_id} {labels:?}"))
       .snap()
       .unwrap()
