@@ -127,6 +127,7 @@ impl LoggerBuilder {
     Pin<Box<impl Future<Output = anyhow::Result<()>> + 'static>>,
     FlushTrigger,
   )> {
+    bd_panic::default(bd_panic::PanicType::ForceAbort);
     log::info!(
       "bitdrift Capture SDK: {:?}",
       self.params.static_metadata.sdk_version()
