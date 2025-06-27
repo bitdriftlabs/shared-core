@@ -824,6 +824,7 @@ dependencies = [
  "bd-matcher",
  "bd-network-quality",
  "bd-noop-network",
+ "bd-panic",
  "bd-proto",
  "bd-resource-utilization",
  "bd-runtime",

@@ -750,9 +750,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         () = self.session_replay_recorder.run() => {},
         () = self.events_listener.run() => {},
         () = &mut local_shutdown => {
+            log::info!("LOCAL shutdown triggered, stopping async log buffer run loop");
           return self;
         },
         () = &mut self_shutdown => {
+            log::info!("GLOBAL shutdown triggered, stopping async log buffer run loop");
           return self;
         },
       }

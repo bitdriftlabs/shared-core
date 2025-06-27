@@ -566,7 +566,7 @@ impl Collector {
       })
     })? {
       MetricData::Counter(counter) => Ok(counter.clone()),
-      MetricData::Histogram(_) => unreachable!(),
+      MetricData::Histogram(_) => Err(Error::ChangedType),
     }
   }
 
@@ -576,7 +576,7 @@ impl Collector {
       MetricData::Histogram(Histogram::default())
     })? {
       MetricData::Histogram(histogram) => Ok(histogram.clone()),
-      MetricData::Counter(_) => unreachable!(),
+      MetricData::Counter(_) => Err(Error::ChangedType),
     }
   }
 }
