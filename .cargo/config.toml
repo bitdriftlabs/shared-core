@@ -44,6 +44,7 @@ rustflags = [
   "-Aclippy::too-long-first-doc-paragraph",
   "-Aclippy::too-many-arguments",
   "-Aclippy::too-many-lines",
+  "-Aclippy::cognitive_complexity",
 
   # Spurious as of 1.86
   "-Aclippy::future-not-send",

@@ -25,9 +25,9 @@ unsafe extern "C-unwind" {
 fn make_and_dispose_handle_test() {
   let mut handle = null();
   unsafe {
-    create_handle(&mut handle);
+    create_handle(&raw mut handle);
     assert!(!handle.is_null());
-    dispose_handle(&mut handle);
+    dispose_handle(&raw mut handle);
     assert!(handle.is_null());
   }
 }
@@ -36,11 +36,11 @@ fn make_and_dispose_handle_test() {
 fn invalid_handle_no_panics_test() {
   let mut handle = null();
   let mut len = 0;
-  let _ = unsafe { load_full_report(&mut handle, &mut len) };
+  let _ = unsafe { load_full_report(&raw mut handle, &raw mut len) };
   assert_eq!(0, len);
   assert_eq!(null(), handle);
   unsafe {
-    dispose_handle(&mut handle);
+    dispose_handle(&raw mut handle);
   }
 }
 
@@ -48,9 +48,9 @@ fn invalid_handle_no_panics_test() {
 fn create_binary_images_in_order_test() {
   let mut handle = null();
   let report = unsafe {
-    create_handle(&mut handle);
+    create_handle(&raw mut handle);
     let mut len = 0;
-    let buf = load_binary_data_only(&mut handle, &mut len);
+    let buf = load_binary_data_only(&raw mut handle, &raw mut len);
     assert!(!buf.is_null());
     assert_ne!(0, len);
 
@@ -66,7 +66,7 @@ fn create_binary_images_in_order_test() {
 
 
   unsafe {
-    dispose_handle(&mut handle);
+    dispose_handle(&raw mut handle);
   }
 }
 
@@ -74,9 +74,9 @@ fn create_binary_images_in_order_test() {
 fn create_errors_test() {
   let mut handle = null();
   let report = unsafe {
-    create_handle(&mut handle);
+    create_handle(&raw mut handle);
     let mut len = 0;
-    let buf = load_error_data_only(&mut handle, &mut len);
+    let buf = load_error_data_only(&raw mut handle, &raw mut len);
     assert!(!buf.is_null());
     assert_ne!(0, len);
 
@@ -91,7 +91,7 @@ fn create_errors_test() {
   check_errors(&report);
 
   unsafe {
-    dispose_handle(&mut handle);
+    dispose_handle(&raw mut handle);
   }
 }
 
@@ -99,9 +99,9 @@ fn create_errors_test() {
 fn create_threads_test() {
   let mut handle = null();
   let report = unsafe {
-    create_handle(&mut handle);
+    create_handle(&raw mut handle);
     let mut len = 0;
-    let buf = load_thread_data_only(&mut handle, &mut len);
+    let buf = load_thread_data_only(&raw mut handle, &raw mut len);
     assert!(!buf.is_null());
     assert_ne!(0, len);
 
@@ -115,7 +115,7 @@ fn create_threads_test() {
   check_thread_details(&report);
 
   unsafe {
-    dispose_handle(&mut handle);
+    dispose_handle(&raw mut handle);
   }
 }
 
@@ -123,9 +123,9 @@ fn create_threads_test() {
 fn full_report_app_test() {
   let mut handle = null();
   let report = unsafe {
-    create_handle(&mut handle);
+    create_handle(&raw mut handle);
     let mut len = 0;
-    let buf = load_full_report(&mut handle, &mut len);
+    let buf = load_full_report(&raw mut handle, &raw mut len);
     assert!(!buf.is_null());
     assert_ne!(0, len);
 
@@ -150,7 +150,7 @@ fn full_report_app_test() {
   assert_eq!(23_872_786, app.memory().unwrap().total());
 
   unsafe {
-    dispose_handle(&mut handle);
+    dispose_handle(&raw mut handle);
   }
 }
 
@@ -158,9 +158,9 @@ fn full_report_app_test() {
 fn full_report_device_test() {
   let mut handle = null();
   let report = unsafe {
-    create_handle(&mut handle);
+    create_handle(&raw mut handle);
     let mut len = 0;
-    let buf = load_full_report(&mut handle, &mut len);
+    let buf = load_full_report(&raw mut handle, &raw mut len);
     assert!(!buf.is_null());
     assert_ne!(0, len);
 
@@ -205,7 +205,7 @@ fn full_report_device_test() {
   assert_eq!("arm64", abis.get(1));
 
   unsafe {
-    dispose_handle(&mut handle);
+    dispose_handle(&raw mut handle);
   }
 }
 
