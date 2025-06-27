@@ -154,7 +154,7 @@ impl LoggerBuilder {
     let (sleep_mode_active_tx, sleep_mode_active_rx) =
       watch::channel(self.params.start_in_sleep_mode);
 
-    let (stats_flusher, flusher_trigger) = {
+    let (_stats_flusher, flusher_trigger) = {
       let (flush_ticker, upload_ticker) =
         if let Some((flush_ticker, upload_ticker)) = self.client_stats_tickers {
           (flush_ticker, upload_ticker)
@@ -333,7 +333,9 @@ impl LoggerBuilder {
         },
         async move { buffer_manager.process_flushes(flush_buffers_rx).await },
         async move {
-          stats_flusher.periodic_flush().await;
+          panic!("panic!");
+
+          #[allow(unreachable_code)]
           Ok(())
         },
         async move { crash_monitor.run().await },
@@ -342,6 +344,9 @@ impl LoggerBuilder {
           Ok(())
         }
       )
+      .inspect_err(|e| {
+        log::error!("Error running logger: {:?}", e);
+      })
       .map(|_| ())
     };
 
@@ -388,7 +393,12 @@ impl LoggerBuilder {
           .build()
           .unwrap()
           .block_on(async {
-            handle_unexpected(f.await, "logger top level run loop");
+            let result = f.await;
+            log::info!(
+              "bitdrift runtime has finished running with result: {:?}",
+              result
+            );
+            handle_unexpected(result, "logger top level run loop");
           });
       })?;
 
