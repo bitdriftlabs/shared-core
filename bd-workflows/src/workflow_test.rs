@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::config::{ActionEmitMetric, ActionFlushBuffers, Config, FlushBufferId, ValueIncrement};
+use crate::test::TestLog;
 use crate::workflow::{Run, TriggeredAction, Workflow, WorkflowResult, WorkflowResultStats};
 use bd_log_primitives::{FieldsRef, LogFields, LogMessage, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
@@ -24,6 +25,8 @@ use bd_test_helpers::workflow::macros::{
 use pretty_assertions::assert_eq;
 use std::collections::{BTreeMap, BTreeSet};
 use std::vec;
+use time::ext::NumericalDuration;
+use time::macros::datetime;
 
 #[ctor::ctor]
 fn test_global_init() {
@@ -42,44 +45,6 @@ macro_rules! workflow {
       bd_test_helpers::workflow::macros::workflow_proto!($($x)*)
     ).unwrap()
   }
-}
-
-/// A macro that makes a given workflow process a log specified by
-/// a message and/or tags.
-#[macro_export]
-#[allow(clippy::module_name_repetitions)]
-macro_rules! workflow_process_log {
-  ($annotated_workflow:expr; $message:expr) => {
-    $annotated_workflow.workflow.process_log(
-      &$annotated_workflow.config,
-      &bd_log_primitives::LogRef {
-        log_type: LogType::Normal,
-        log_level: log_level::DEBUG,
-        message: &LogMessage::String($message.to_string()),
-        fields: &FieldsRef::new(&LogFields::new(), &LogFields::new()),
-        session_id: "foo",
-        occurred_at: time::OffsetDateTime::now_utc(),
-        capture_session: None,
-      },
-    )
-  };
-  ($annotated_workflow:expr; $message:expr,with $tags:expr) => {
-    $annotated_workflow.workflow.process_log(
-      &$annotated_workflow.config,
-      &bd_log_primitives::LogRef {
-        log_type: LogType::Normal,
-        log_level: log_level::DEBUG,
-        message: &LogMessage::String($message.to_string()),
-        fields: &FieldsRef::new(
-          &bd_test_helpers::workflow::make_tags($tags),
-          &LogFields::new(),
-        ),
-        session_id: "foo",
-        occurred_at: time::OffsetDateTime::now_utc(),
-        capture_session: None,
-      },
-    )
-  };
 }
 
 //
@@ -117,6 +82,25 @@ impl AnnotatedWorkflow {
 
   pub fn traversals_state_list(&self, run_index: usize) -> Vec<String> {
     self.workflow.traversals_states(&self.config, run_index)
+  }
+
+  fn process_log(&mut self, log: TestLog) -> WorkflowResult<'_> {
+    self.workflow.process_log(
+      &self.config,
+      &bd_log_primitives::LogRef {
+        log_type: LogType::Normal,
+        log_level: log_level::DEBUG,
+        message: &LogMessage::String(log.message),
+        session_id: log.session.as_ref().map_or("foo", |s| &**s),
+        occurred_at: log.occurred_at,
+        fields: &FieldsRef::new(
+          &bd_test_helpers::workflow::make_tags(log.tags),
+          &LogFields::new(),
+        ),
+        capture_session: None,
+      },
+      log.now,
+    )
   }
 }
 
@@ -212,10 +196,11 @@ macro_rules! assert_active_run_traversals {
 fn one_state_workflow() {
   let a = state("A");
 
-  // test exclusive workflow
-  let config = workflow!(exclusive with a);
-  let mut workflow = AnnotatedWorkflow::new(config);
-  workflow_process_log!(workflow; "foo");
+  let config = workflow_proto!(a);
+  assert_eq!(
+    Config::new(config).err().unwrap().to_string(),
+    "invalid workflow configuration: initial state must have at least one transition"
+  );
 }
 
 #[test]
@@ -229,11 +214,188 @@ fn unknown_state_reference_workflow() {
     &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
   );
 
-  let config = workflow_proto!(exclusive with a);
+  let config = workflow_proto!(a);
   assert_eq!(
     Config::new(config).err().unwrap().to_string(),
     "invalid workflow state configuration: reference to an unexisting state"
   );
+}
+
+#[test]
+fn timeout_not_start() {
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
+  let d = state("D");
+
+  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
+  b = b
+    .declare_transition_with_actions(
+      &c,
+      rule!(log_matches!(message == "bar")),
+      &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
+    )
+    .with_timeout(
+      &d,
+      1.seconds(),
+      &[action!(emit_counter "bar_metric"; value metric_value!(1))],
+    );
+
+  let config = workflow!(a, b, c, d);
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  // Does not match, no transition and no timeout.
+  workflow.process_log(TestLog::new("something else"));
+  assert_active_runs!(workflow; "A");
+
+  // Transitions to "B", starts the timeout.
+  workflow.process_log(TestLog::new("foo").with_now(datetime!(2023-01-01 00:00 UTC)));
+  assert_active_runs!(workflow; "B");
+
+  // Does not match, does not progress timeout and does not reset.
+  workflow
+    .process_log(TestLog::new("something else").with_now(datetime!(2023-01-01 00:00:00.1 UTC)));
+  assert_active_runs!(workflow; "A", "B");
+
+  // Now hit the timeout, leaving the initial state run.
+  let result = workflow
+    .process_log(TestLog::new("something else").with_now(datetime!(2023-01-01 00:00:01 UTC)));
+  assert_eq!(
+    result,
+    WorkflowResult {
+      triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
+        id: "bar_metric".to_string(),
+        tags: BTreeMap::new(),
+        increment: ValueIncrement::Fixed(1),
+        metric_type: MetricType::Counter,
+      })],
+      logs_to_inject: BTreeMap::new(),
+      stats: WorkflowResultStats {
+        matched_logs_count: 0,
+        processed_timeout: true,
+      },
+    }
+  );
+  assert_active_runs!(workflow; "A");
+
+  // Progress through to make sure not timing out works as expected.
+  workflow.process_log(TestLog::new("foo").with_now(datetime!(2023-01-01 00:00:02 UTC)));
+  assert_active_runs!(workflow; "B");
+  let result =
+    workflow.process_log(TestLog::new("bar").with_now(datetime!(2023-01-01 00:00:02.1 UTC)));
+  assert_eq!(
+    result,
+    WorkflowResult {
+      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
+        id: FlushBufferId::WorkflowActionId("bar".to_string()),
+        buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
+        streaming: None,
+      })],
+      logs_to_inject: BTreeMap::new(),
+      stats: WorkflowResultStats {
+        matched_logs_count: 1,
+        processed_timeout: false,
+      },
+    }
+  );
+  assert_active_runs!(workflow; "A");
+}
+
+#[test]
+fn initial_state_run_does_not_have_timeout() {
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
+  let d = state("D");
+
+  a = a
+    .declare_transition(&b, rule!(log_matches!(message == "foo")))
+    .with_timeout(
+      &c,
+      1.seconds(),
+      &[action!(emit_counter "foo_metric"; value metric_value!(1))],
+    );
+  b = b.declare_transition_with_actions(
+    &d,
+    rule!(log_matches!(message == "bar")),
+    &[action!(emit_counter "bar_metric"; value metric_value!(1))],
+  );
+
+  let config = workflow!(a, b, c, d);
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  // Progress which will move past the initial state timeout.
+  workflow.process_log(TestLog::new("foo").with_now(datetime!(2023-01-01 00:00:02 UTC)));
+  assert_active_runs!(workflow; "B");
+
+  // This log does not match. It will create an initial state run, however we do not expect this
+  // run to have a timeout as there is an active run already.
+  workflow
+    .process_log(TestLog::new("something else").with_now(datetime!(2023-01-01 00:00:02.1 UTC)));
+  assert_active_runs!(workflow; "A", "B");
+  assert!(workflow.runs()[0].traversals()[0].timeout_unix_ms.is_none());
+
+  // This log will complete the active run. At this point we should initialize the timeout on
+  // the initial state run.
+  workflow.process_log(TestLog::new("bar").with_now(datetime!(2023-01-01 00:00:02.2 UTC)));
+  assert_active_runs!(workflow; "A");
+  assert!(workflow.runs()[0].traversals()[0].timeout_unix_ms.is_some());
+}
+
+#[test]
+fn timeout_from_start() {
+  let mut a = state("A");
+  let b = state("B");
+  let c = state("C");
+
+  a = a
+    .declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(message == "foo")),
+      &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+    )
+    .with_timeout(
+      &c,
+      1.seconds(),
+      &[action!(emit_counter "foo_metric"; value metric_value!(1))],
+    );
+
+  let config = workflow!(a, b, c);
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  // The first log will create the run and set the timeout.
+  workflow.process_log(TestLog::new("something else").with_now(datetime!(2023-01-01 00:00 UTC)));
+  assert_active_runs!(workflow; "A");
+
+  // Some other log will not match, but not be long enough in the future to trigger the timeout.
+  // This will make another initial state run without a timeout.
+  workflow.process_log(TestLog::new("blah").with_now(datetime!(2023-01-01 00:00:00.5 UTC)));
+  assert_active_runs!(workflow; "A", "A");
+  assert!(workflow.runs()[0].traversals()[0].timeout_unix_ms.is_none());
+  assert!(workflow.runs()[1].traversals()[0].timeout_unix_ms.is_some());
+
+  // This will not match but will be far enough in the future to trigger the timeout this will
+  // complete the workflow.
+  let result =
+    workflow.process_log(TestLog::new("blah2").with_now(datetime!(2023-01-01 00:00:01.5 UTC)));
+  assert_eq!(
+    result,
+    WorkflowResult {
+      triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
+        id: "foo_metric".to_string(),
+        tags: BTreeMap::new(),
+        increment: ValueIncrement::Fixed(1),
+        metric_type: MetricType::Counter,
+      })],
+      logs_to_inject: BTreeMap::new(),
+      stats: WorkflowResultStats {
+        matched_logs_count: 0,
+        processed_timeout: true,
+      },
+    }
+  );
+  assert_active_runs!(workflow; "A");
+  assert!(workflow.runs()[0].traversals()[0].timeout_unix_ms.is_some());
 }
 
 #[test]
@@ -257,12 +419,12 @@ fn multiple_start_nodes_initial_fork() {
     &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
   );
 
-  let config = workflow!(exclusive with a, b, c, d, e);
+  let config = workflow!(a, b, c, d, e);
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
   // The first log causes a fork since it matches the first two transitions.
-  let result = workflow_process_log!(workflow; "foo");
+  let result = workflow.process_log(TestLog::new("foo"));
   assert_eq!(
     result,
     WorkflowResult {
@@ -270,12 +432,13 @@ fn multiple_start_nodes_initial_fork() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 2,
+        processed_timeout: false,
       },
     }
   );
 
   // Seeing the entry condition again resets all the traversals.
-  let result = workflow_process_log!(workflow; "foo");
+  let result = workflow.process_log(TestLog::new("foo"));
   assert_eq!(
     result,
     WorkflowResult {
@@ -283,12 +446,13 @@ fn multiple_start_nodes_initial_fork() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 2,
+        processed_timeout: false,
       },
     }
   );
 
   // Finalize one of the forks. Only one of the traversals/forks is completed.
-  let result = workflow_process_log!(workflow; "E");
+  let result = workflow.process_log(TestLog::new("E"));
   assert_eq!(
     result,
     WorkflowResult {
@@ -300,6 +464,7 @@ fn multiple_start_nodes_initial_fork() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
+        processed_timeout: false,
       },
     }
   );
@@ -326,12 +491,12 @@ fn multiple_start_nodes_initial_branching() {
     &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
   );
 
-  let config = workflow!(exclusive with a, b, c, d, e);
+  let config = workflow!(a, b, c, d, e);
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
   // The first log progresses the workflow towards the "B" state.
-  let result = workflow_process_log!(workflow; "foo");
+  let result = workflow.process_log(TestLog::new("foo"));
   assert_eq!(
     result,
     WorkflowResult {
@@ -339,13 +504,14 @@ fn multiple_start_nodes_initial_branching() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
+        processed_timeout: false,
       },
     }
   );
 
   // Seeing the initial log resets the workflow, even if the initial condition is not the same as
   // the one that initiated the workflow run.
-  let result = workflow_process_log!(workflow; "bar");
+  let result = workflow.process_log(TestLog::new("bar"));
   assert_eq!(
     result,
     WorkflowResult {
@@ -353,12 +519,13 @@ fn multiple_start_nodes_initial_branching() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
+        processed_timeout: false,
       },
     }
   );
 
   // Finalize the workflow.
-  let result = workflow_process_log!(workflow; "E");
+  let result = workflow.process_log(TestLog::new("E"));
   assert_eq!(
     result,
     WorkflowResult {
@@ -370,6 +537,7 @@ fn multiple_start_nodes_initial_branching() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
+        processed_timeout: false,
       },
     }
   );
@@ -399,13 +567,13 @@ fn basic_exclusive_workflow() {
     &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
   );
 
-  let config = workflow!(exclusive with a, b, c);
+  let config = workflow!(a, b, c);
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
   // * A new run is created to ensure that workflow has a run in initial state.
   // * The first run moves from "A" to non-final "B" state.
-  let result = workflow_process_log!(workflow; "foo", with labels! { "key" => "value" });
+  let result = workflow.process_log(TestLog::new("foo").with_tags(labels! { "key" => "value" }));
   assert_eq!(
     result,
     WorkflowResult {
@@ -425,6 +593,7 @@ fn basic_exclusive_workflow() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
+        processed_timeout: false,
       },
     }
   );
@@ -433,7 +602,7 @@ fn basic_exclusive_workflow() {
 
   // * The first run moves from "B" to final "C" state.
   // * The first run completes.
-  let result = workflow_process_log!(workflow; "bar");
+  let result = workflow.process_log(TestLog::new("bar"));
   assert_eq!(
     result,
     WorkflowResult {
@@ -445,6 +614,7 @@ fn basic_exclusive_workflow() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
+        processed_timeout: false,
       },
     }
   );
@@ -452,7 +622,7 @@ fn basic_exclusive_workflow() {
   assert!(workflow.is_in_initial_state());
 
   // A new run is created to ensure that a workflow has a run in an initial state.
-  let result = workflow_process_log!(workflow; "not matching");
+  let result = workflow.process_log(TestLog::new("not matching"));
   assert_eq!(result, WorkflowResult::default());
 
   assert_active_runs!(workflow; "A");
@@ -475,7 +645,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
   d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
 
   let config: Config =
-    workflow!(exclusive with a, b, c, d, e; matches limit!(count 3); duration limit!(seconds 10));
+    workflow!(a, b, c, d, e; matches limit!(count 3); duration limit!(seconds 10));
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
@@ -483,7 +653,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
   // * The first run transitions from state "A" into states "B" and "D" as two of its outgoing
   //   transitions are matched.
   // * The first run has 2 traversals.
-  let result = workflow_process_log!(workflow; "foo");
+  let result = workflow.process_log(TestLog::new("foo"));
   assert_eq!(
     result,
     WorkflowResult {
@@ -491,6 +661,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 2,
+        processed_timeout: false,
       },
     }
   );
@@ -501,7 +672,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
   //   in an initial state.
   // * The first traversal of the first run matches but doesn't advance.
   // * The second traversal of the first run does not match.
-  let result = workflow_process_log!(workflow; "bar");
+  let result = workflow.process_log(TestLog::new("bar"));
   assert_eq!(
     result,
     WorkflowResult {
@@ -509,6 +680,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
+        processed_timeout: false,
       },
     }
   );
@@ -519,7 +691,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
   // * The first traversal of the second run matches.
   // * The match causes the run to exceed the limit of allowed matches.
   // * The second run is removed.
-  let result = workflow_process_log!(workflow; "bar");
+  let result = workflow.process_log(TestLog::new("bar"));
   assert!(result.triggered_actions.is_empty());
   assert_eq!(
     result,
@@ -528,6 +700,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
+        processed_timeout: false,
       },
     }
   );
@@ -553,7 +726,7 @@ fn exclusive_workflow_log_rule_count() {
     &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
   );
 
-  let config = workflow!(exclusive with a, b, c);
+  let config = workflow!(a, b, c);
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
@@ -561,7 +734,7 @@ fn exclusive_workflow_log_rule_count() {
   // * The first run does not advance.
   // * Log is matched but no run or traversal advances as the log matching rule has `count` set to
   //   2.
-  let result = workflow_process_log!(workflow; "foo");
+  let result = workflow.process_log(TestLog::new("foo"));
   assert_eq!(
     result,
     WorkflowResult {
@@ -569,6 +742,7 @@ fn exclusive_workflow_log_rule_count() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
+        processed_timeout: false,
       },
     }
   );
@@ -577,7 +751,7 @@ fn exclusive_workflow_log_rule_count() {
 
   // A new run in an initial state is created.
   // The first run moves from "A" to "B" state.
-  let result = workflow_process_log!(workflow; "foo");
+  let result = workflow.process_log(TestLog::new("foo"));
   assert_eq!(
     result,
     WorkflowResult {
@@ -589,6 +763,7 @@ fn exclusive_workflow_log_rule_count() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
+        processed_timeout: false,
       },
     }
   );
@@ -596,14 +771,14 @@ fn exclusive_workflow_log_rule_count() {
   assert!(!workflow.is_in_initial_state());
 
   // None of the runs advance as they do not match the log.
-  let result = workflow_process_log!(workflow; "not matching");
+  let result = workflow.process_log(TestLog::new("not matching"));
   assert!(result.triggered_actions.is_empty());
   assert_eq!(WorkflowResultStats::default(), result.stats);
   assert_active_runs!(workflow; "A", "B");
 
   // * The run that was created as first moves from "B" to "C" state.
   // * The run that was created as first completes.
-  let result = workflow_process_log!(workflow; "bar");
+  let result = workflow.process_log(TestLog::new("bar"));
   assert_eq!(
     result,
     WorkflowResult {
@@ -615,6 +790,7 @@ fn exclusive_workflow_log_rule_count() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
+        processed_timeout: false,
       },
     }
   );
@@ -656,12 +832,12 @@ fn branching_exclusive_workflow() {
     &[action!(flush_buffers &["bar_buffer_id"]; id "barbar")],
   );
 
-  let config = workflow!(exclusive with a, b, c, d, e);
+  let config = workflow!(a, b, c, d, e);
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
   // The first and only run is moved from "A" to non-final "B" state.
-  let result = workflow_process_log!(workflow; "foo");
+  let result = workflow.process_log(TestLog::new("foo"));
   assert_eq!(
     result,
     WorkflowResult {
@@ -673,6 +849,7 @@ fn branching_exclusive_workflow() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
+        processed_timeout: false,
       },
     }
   );
@@ -683,11 +860,12 @@ fn branching_exclusive_workflow() {
   //    in an
   // initial state.
   // 2. None of the run match the log.
-  let result = workflow_process_log!(workflow; "fooo");
+  let result = workflow.process_log(TestLog::new("fooo"));
   assert!(result.triggered_actions.is_empty());
   assert_eq!(
     WorkflowResultStats {
       matched_logs_count: 0,
+      processed_timeout: false,
     },
     result.stats
   );
@@ -695,7 +873,7 @@ fn branching_exclusive_workflow() {
 
   // * The second run is moved from "B" to final "D" state.
   // * The second run completes.
-  let result = workflow_process_log!(workflow; "zoo");
+  let result = workflow.process_log(TestLog::new("zoo"));
   assert_eq!(
     result,
     WorkflowResult {
@@ -707,6 +885,7 @@ fn branching_exclusive_workflow() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
+        processed_timeout: false,
       },
     }
   );
@@ -715,7 +894,7 @@ fn branching_exclusive_workflow() {
 
   // * The first and only run ends up with two traversals.
   // * First of the traversals move to state "B", second one to state "C".
-  let result = workflow_process_log!(workflow; "bar", with labels! { "key" => "value" });
+  let result = workflow.process_log(TestLog::new("bar").with_tags(labels! { "key" => "value" }));
   assert_eq!(
     result,
     WorkflowResult {
@@ -734,6 +913,7 @@ fn branching_exclusive_workflow() {
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
         matched_logs_count: 2,
+        processed_timeout: false,
       },
     }
   );

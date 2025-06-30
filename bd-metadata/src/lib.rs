@@ -14,7 +14,8 @@ use std::collections::HashMap;
 // Version 27: Added double matching support.
 // Version 28: Added support for generate log action and client report uploads.
 // Version 29: Added support for out of the band artifact uploads.
-const CONFIGURATION_VERSION: &str = "29";
+// Version 30: Added support for workflow timeout transitions.
+const CONFIGURATION_VERSION: &str = "30";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

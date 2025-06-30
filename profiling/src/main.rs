@@ -141,6 +141,7 @@ impl AnnotatedWorkflowsEngine {
         capture_session: None,
       },
       &BTreeSet::new(),
+      OffsetDateTime::now_utc(),
     );
   }
 

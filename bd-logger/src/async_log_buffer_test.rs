@@ -40,11 +40,12 @@ use bd_test_helpers::resource_utilization::EmptyTarget;
 use bd_test_helpers::runtime::ValueKind;
 use bd_test_helpers::session::InMemoryStorage;
 use bd_test_helpers::workflow::macros::state;
-use bd_test_helpers::workflow_proto;
-use bd_time::TimeDurationExt;
+use bd_test_helpers::{log_matches, rule, workflow_proto};
+use bd_time::{SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::{Config, WorkflowsConfiguration};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use time::macros::datetime;
 use tokio::sync::oneshot::Sender;
@@ -126,6 +127,7 @@ impl Setup {
       Arc::new(SimpleNetworkQualityProvider::default()),
       String::new(),
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
+      Arc::new(SystemTimeProvider),
     )
   }
 
@@ -153,6 +155,7 @@ impl Setup {
       Arc::new(SimpleNetworkQualityProvider::default()),
       String::new(),
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
+      Arc::new(SystemTimeProvider),
     )
   }
 
@@ -214,6 +217,7 @@ impl LogReplay for TestReplay {
     log: Log,
     _log_processing_completed_tx: Option<Sender<()>>,
     _processing_pipeline: &mut ProcessingPipeline,
+    _now: OffsetDateTime,
   ) -> anyhow::Result<Vec<Log>> {
     self.logs_count.fetch_add(1, Ordering::SeqCst);
     if let StringOrBytes::String(message) = &log.message {
@@ -585,9 +589,13 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   let config_update_tx_clone = config_update_tx.clone();
 
   let config_update1 = setup.make_config_update(WorkflowsConfiguration::default());
+  let mut a = state("A");
+  let b = state("B");
+  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
+
   let config_update2 = setup.make_config_update(
     WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
-      Config::new(workflow_proto!(exclusive with state("a"))).unwrap(),
+      Config::new(workflow_proto!(a, b)).unwrap(),
     ]),
   );
   let task = std::thread::spawn(move || {

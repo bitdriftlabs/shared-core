@@ -70,7 +70,7 @@ impl Setup {
       &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
     );
 
-    let config = workflow_proto!(exclusive with a, b);
+    let config = workflow_proto!(a, b);
     self.new_engine(vec![config]).await
   }
 
@@ -84,7 +84,7 @@ impl Setup {
         &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
       );
 
-      let mut config = workflow_proto!(exclusive with a, b);
+      let mut config = workflow_proto!(a, b);
       config.id = format!("foo_{i}");
 
       workflows.push(config);
@@ -97,7 +97,7 @@ impl Setup {
         rule!(log_matches!(message == "baz")),
         &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
       );
-      let mut config = workflow_proto!(exclusive with a, b);
+      let mut config = workflow_proto!(a, b);
       config.id = format!("baz_{i}");
     }
 
@@ -115,6 +115,7 @@ fn run_runtime_bench<T: Future<Output = WorkflowsEngine>>(
     .unwrap()
     .block_on(async {
       let mut engine = engine().await;
+      let now = OffsetDateTime::now_utc();
       bencher.iter(|| {
         engine.process_log(
           std::hint::black_box(&LogRef {
@@ -127,6 +128,7 @@ fn run_runtime_bench<T: Future<Output = WorkflowsEngine>>(
             capture_session: None,
           }),
           &BTreeSet::default(),
+          now,
         );
       });
     });

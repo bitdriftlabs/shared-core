@@ -639,7 +639,7 @@ fn session_replay_actions() {
         Type::TRIGGER,
         make_buffer_matcher_matching_everything().into(),
       )],
-      workflows: vec![workflow_proto!("workflow"; exclusive with a, b)],
+      workflows: vec![workflow_proto!("workflow"; a, b)],
       ..Default::default()
     },
   ));
@@ -997,7 +997,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
         }
         .build(),
       ],
-      workflows: vec![workflow_proto!("workflow"; exclusive with a, b, c)],
+      workflows: vec![workflow_proto!("workflow"; a, b, c)],
       ..Default::default()
     },
   ));
@@ -1160,7 +1160,7 @@ fn workflow_generate_log_to_histogram() {
         Type::TRIGGER,
         make_buffer_matcher_matching_everything().into(),
       )],
-      workflows: vec![workflow_proto!("workflow_1"; exclusive with a, b, c, d)],
+      workflows: vec![workflow_proto!("workflow_1"; a, b, c, d)],
       ..Default::default()
     },
   ));
@@ -1237,8 +1237,8 @@ fn workflow_emit_metric_action_emits_metric() {
         make_buffer_matcher_matching_everything().into(),
       )],
       workflows: vec![
-        workflow_proto!("workflow_1"; exclusive with a, b),
-        workflow_proto!("workflow_2"; exclusive with a, b),
+        workflow_proto!("workflow_1"; a, b),
+        workflow_proto!("workflow_2"; a, b),
       ],
       ..Default::default()
     },
@@ -1309,7 +1309,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
       &[action!(emit_counter "bar"; value metric_value!(1))],
     );
 
-  let workflow = workflow_proto!("1"; exclusive with a, b, c);
+  let workflow = workflow_proto!("1"; a, b, c);
 
   let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
     "",

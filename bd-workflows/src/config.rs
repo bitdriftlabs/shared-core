@@ -20,7 +20,7 @@ use bd_stats_common::MetricType;
 use protobuf::MessageField;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::time::Duration;
+use time::Duration;
 use workflow::Workflow as WorkflowConfigProto;
 use workflow::workflow::action::action_emit_metric::Value_extractor_type;
 use workflow::workflow::action::action_flush_buffers::streaming::termination_criterion;
@@ -118,6 +118,13 @@ impl Config {
       .map(|s| State::try_from_proto(s, &state_index_by_id, &sankey_values_extraction_limit_by_id))
       .collect::<anyhow::Result<Vec<_>>>()?;
 
+    // State 0 must have transitions to be a valid workflow.
+    if states[0].transitions.is_empty() {
+      return Err(anyhow!(
+        "invalid workflow configuration: initial state must have at least one transition"
+      ));
+    }
+
     Ok(Self {
       id: config.id.clone(),
       states,
@@ -150,7 +157,7 @@ impl Config {
     value.as_ref().map_or(Ok(None), |duration_proto| {
       let duration_ms = duration_proto.duration_ms;
       if duration_ms > 0 {
-        Ok(Some(Duration::from_millis(duration_ms)))
+        Ok(Some(Duration::milliseconds(duration_ms.try_into()?)))
       } else {
         Err(anyhow!(
           "invalid duration limit configuration: duration_ms limit is equal to 0"
@@ -188,6 +195,10 @@ impl Config {
     &self.states[traversal.state_index].transitions[transition_index].actions
   }
 
+  pub(crate) fn actions_for_timeout(&self, state_index: usize) -> &[Action] {
+    &self.states[state_index].timeout.as_ref().unwrap().actions
+  }
+
   pub(crate) fn extractions(
     &self,
     traversal: &Traversal,
@@ -203,12 +214,28 @@ impl Config {
   ) -> usize {
     self.states[traversal.state_index].transitions[transition_index].target_state_index
   }
+
+  pub(crate) fn next_state_index_for_timeout(&self, state_index: usize) -> usize {
+    self.states[state_index]
+      .timeout
+      .as_ref()
+      .unwrap()
+      .target_state_index
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct StateTimeout {
+  target_state_index: usize,
+  pub(crate) duration: Duration,
+  actions: Vec<Action>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct State {
   id: StateID,
   transitions: Vec<Transition>,
+  timeout: Option<StateTimeout>,
 }
 
 impl State {
@@ -237,16 +264,40 @@ impl State {
           )
         })
         .collect::<anyhow::Result<Vec<_>>>()?,
+      timeout: state
+        .timeout
+        .into_option()
+        .map(|timeout| {
+          if !state_index_by_id.contains_key(&timeout.target_state_id) {
+            return Err(anyhow!(
+              "invalid workflow state configuration: reference to an unexisting state"
+            ));
+          }
+
+          Ok(StateTimeout {
+            target_state_index: state_index_by_id[&timeout.target_state_id],
+            duration: Duration::milliseconds(timeout.timeout_ms.try_into()?),
+            actions: timeout
+              .actions
+              .into_iter()
+              .map(Action::try_from_proto)
+              .collect::<anyhow::Result<Vec<_>>>()?,
+          })
+        })
+        .transpose()?,
     })
   }
 
-  #[cfg(test)]
   pub(crate) fn id(&self) -> &str {
     &self.id
   }
 
   pub(crate) fn transitions(&self) -> &[Transition] {
     &self.transitions
+  }
+
+  pub(crate) fn timeout(&self) -> Option<&StateTimeout> {
+    self.timeout.as_ref()
   }
 }
 

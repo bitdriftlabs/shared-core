@@ -22,6 +22,7 @@ use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::path::Path;
+use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::oneshot;
 
@@ -43,6 +44,7 @@ pub trait LogReplay {
     log: Log,
     log_processing_completed_tx: Option<oneshot::Sender<()>>,
     pipeline: &mut ProcessingPipeline,
+    now: OffsetDateTime,
   ) -> anyhow::Result<Vec<Log>>;
 }
 
@@ -59,8 +61,11 @@ impl LogReplay for LoggerReplay {
     log: Log,
     log_processing_completed_tx: Option<oneshot::Sender<()>>,
     pipeline: &mut ProcessingPipeline,
+    now: OffsetDateTime,
   ) -> anyhow::Result<Vec<Log>> {
-    pipeline.process_log(log, log_processing_completed_tx).await
+    pipeline
+      .process_log(log, log_processing_completed_tx, now)
+      .await
   }
 }
 
@@ -166,6 +171,7 @@ impl ProcessingPipeline {
     &mut self,
     mut log: Log,
     log_processing_completed_tx: Option<oneshot::Sender<()>>,
+    now: OffsetDateTime,
   ) -> anyhow::Result<Vec<Log>> {
     self.stats.logs_received.inc();
 
@@ -204,7 +210,9 @@ impl ProcessingPipeline {
         .buffer_selector
         .buffers(log.log_type, log.log_level, log.message, log.fields);
 
-    let mut result = self.workflows_engine.process_log(log, &matching_buffers);
+    let mut result = self
+      .workflows_engine
+      .process_log(log, &matching_buffers, now);
     let logs_to_inject = std::mem::take(&mut result.logs_to_inject)
       .into_values()
       .collect();

@@ -41,6 +41,7 @@ use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogTy
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
+use bd_time::TimeProvider;
 use std::collections::VecDeque;
 use std::mem::size_of_val;
 use std::sync::Arc;
@@ -166,6 +167,8 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   logging_state: LoggingState<bd_log_primitives::Log>,
 
   global_state_tracker: global_state::Tracker,
+
+  time_provider: Arc<dyn TimeProvider>,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -183,6 +186,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     network_quality_provider: Arc<dyn NetworkQualityProvider>,
     device_id: String,
     store: Arc<Store>,
+    time_provider: Arc<dyn TimeProvider>,
   ) -> (Self, Sender<AsyncLogBufferMessage>) {
     let (async_log_buffer_communication_tx, async_log_buffer_communication_rx) = channel(
       uninitialized_logging_context
@@ -245,6 +249,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         // async log buffer.
         logging_state: LoggingState::Uninitialized(uninitialized_logging_context),
         global_state_tracker: global_state::Tracker::new(store),
+        time_provider,
       },
       async_log_buffer_communication_tx,
     )
@@ -569,6 +574,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log,
           log_processing_completed_tx,
           &mut initialized_logging_context.processing_pipeline,
+          self.time_provider.now(),
         )
         .await
         .map_err(|e| anyhow!("failed to replay async log buffer log: {e}"))?,
@@ -608,6 +614,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       return;
     };
 
+    let now = self.time_provider.now();
     for log_line in initial_logs.drain(..) {
       if let Err(e) = self
         .replayer
@@ -615,6 +622,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log_line,
           None,
           &mut initialized_logging_context.processing_pipeline,
+          now,
         )
         .await
       {
@@ -629,6 +637,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log_line,
           None,
           &mut initialized_logging_context.processing_pipeline,
+          now,
         )
         .await
       {
