@@ -32,6 +32,7 @@ members = [
   "bd-proto",
   "bd-proto-util",
   "bd-report-convert",
+  "bd-report-parsers",
   "bd-report-writer",
   "bd-report-writer-tests",
   "bd-resilient-kv",
@@ -102,6 +103,7 @@ log                   = "0.4.28"
 matches               = "0.1.10"
 memmap2               = "0.9.8"
 mockall               = "0.13.1"
+nom                   = "8.0.0"
 notify                = "8.2.0"
 parameterized         = "2.0.0"
 parking_lot           = "0.12.4"
