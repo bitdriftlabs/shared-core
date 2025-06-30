@@ -115,45 +115,49 @@ pub mod macros {
   }
 
   impl StateBuilder {
+    #[must_use]
     pub fn declare_transition(
       mut self,
-      to: &StateBuilder,
+      to: &Self,
       rule: bd_proto::protos::workflow::workflow::workflow::Rule,
-    ) -> StateBuilder {
+    ) -> Self {
       crate::workflow::add_transition(&mut self.state, &to.state, rule, &[], vec![]);
 
       self
     }
 
+    #[must_use]
     pub fn declare_transition_with_actions(
       mut self,
-      to: &StateBuilder,
+      to: &Self,
       rule: bd_proto::protos::workflow::workflow::workflow::Rule,
       actions: &[bd_proto::protos::workflow::workflow::workflow::action::Action_type],
-    ) -> StateBuilder {
+    ) -> Self {
       crate::workflow::add_transition(&mut self.state, &to.state, rule, actions, vec![]);
 
       self
     }
 
+    #[must_use]
     pub fn declare_transition_with_extractions(
       mut self,
-      to: &StateBuilder,
+      to: &Self,
       rule: bd_proto::protos::workflow::workflow::workflow::Rule,
       extractions: &[bd_proto::protos::workflow::workflow::workflow::TransitionExtension],
-    ) -> StateBuilder {
+    ) -> Self {
       crate::workflow::add_transition(&mut self.state, &to.state, rule, &[], extractions.to_vec());
 
       self
     }
 
+    #[must_use]
     pub fn declare_transition_with_all(
       mut self,
-      to: &StateBuilder,
+      to: &Self,
       rule: bd_proto::protos::workflow::workflow::workflow::Rule,
       actions: &[bd_proto::protos::workflow::workflow::workflow::action::Action_type],
       extractions: &[bd_proto::protos::workflow::workflow::workflow::TransitionExtension],
-    ) -> StateBuilder {
+    ) -> Self {
       crate::workflow::add_transition(
         &mut self.state,
         &to.state,
