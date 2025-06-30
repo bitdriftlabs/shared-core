@@ -100,9 +100,6 @@ impl Workflow {
       let run_result_did_make_progress = run_result.did_make_progress();
 
       match run_result.state {
-        // If after processing a given log by a workflow run we notice that we end up
-        // over the limit of allowed traversals we remove the `run` which caused the
-        // overflow.
         RunState::Stopped => {
           self.runs.remove(index);
         },

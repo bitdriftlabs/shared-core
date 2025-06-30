@@ -813,8 +813,11 @@ async fn persist_workflows_with_at_least_one_non_initial_state_run_only() {
     ))
     .await;
 
-  // Workflow "1" matches a log and its run is not initial state anymore.
+  // Workflow "1" matches a log and its run is not initial state anymore, but is still at state A.
   engine_process_log!(workflows_engine; "foo");
+  assert!(!workflows_engine.engine.state.workflows[0].is_in_initial_state());
+  engine_assert_active_runs!(workflows_engine; 0; "A");
+  engine_assert_active_runs!(workflows_engine; 1; "C");
 
   setup
     .collector
@@ -855,6 +858,7 @@ async fn needs_persistence_if_workflow_moves_to_an_initial_state() {
 
   // Workflow's run moves to state 'B'.
   engine_process_log!(workflows_engine; "foo");
+  engine_assert_active_runs!(workflows_engine; 0; "B");
 
   setup
     .collector
@@ -865,8 +869,9 @@ async fn needs_persistence_if_workflow_moves_to_an_initial_state() {
   workflows_engine.maybe_persist(false).await;
   assert!(!workflows_engine.needs_state_persistence);
 
-  // Workflow's run moves to its final state 'C' and completes.
+  // Workflow's run moves to its final state 'C' and completes, leaving only the initial state run.
   engine_process_log!(workflows_engine; "bar");
+  engine_assert_active_runs!(workflows_engine; 0; "A");
   // Workflow needs persistence as its state changed.
   assert!(workflows_engine.needs_state_persistence);
 }
@@ -1368,6 +1373,8 @@ async fn engine_processing_log() {
     },
     result
   );
+  assert!(workflows_engine.state.workflows[0].runs().is_empty());
+  assert!(workflows_engine.state.workflows[1].runs().is_empty());
 
   workflows_engine
     .collector
@@ -1389,6 +1396,8 @@ async fn engine_processing_log() {
 
   // Two new runs are created to ensure that each workflow has one run in an initial state.
   engine_process_log!(workflows_engine; "not matching");
+  engine_assert_active_runs!(workflows_engine; 0; "A");
+  engine_assert_active_runs!(workflows_engine; 1; "C");
 }
 
 #[tokio::test]
@@ -2215,6 +2224,8 @@ async fn workflows_state_is_purged_when_session_id_changes() {
 
   // Session ID is empty on first engine initialization.
   assert!(workflows_engine.state.session_id.is_empty());
+  // No traversals as no log has been processed yet.
+  assert!(workflows_engine.state.workflows[0].runs().is_empty());
 
   workflows_engine.process_log(
     &LogRef {
@@ -2266,6 +2277,7 @@ async fn workflows_state_is_purged_when_session_id_changes() {
 
   // Session ID changed.
   assert_eq!("bar_session", workflows_engine.state.session_id);
+  engine_assert_active_runs!(workflows_engine; 0; "A");
 
   assert!(workflows_engine.needs_state_persistence);
   workflows_engine.maybe_persist(false).await;
@@ -2394,14 +2406,17 @@ async fn test_traversals_count_tracking() {
   // Checks that the traversal count does not change if we get update
   // with the same workflow.
   engine.update(engine_config.clone());
+  engine_assert_active_runs!(engine; 0; "A");
 
   // Check that traversals count goes to 0 if empty update happens.
   engine.update(WorkflowsEngineConfig::new_with_workflow_configurations(
     vec![],
   ));
+  assert!(engine.state.workflows.is_empty());
 
-  // Check that traversals stay at since no log has been processed yet.
+  // Check that traversals stay zero at since no log has been processed yet.
   engine.update(engine_config);
+  assert!(engine.state.workflows[0].runs().is_empty());
 
   // A traversal is created to process an incoming log that's not matched.
   engine_process_log!(engine; "no match");
