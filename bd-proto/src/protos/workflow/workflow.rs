@@ -362,6 +362,8 @@ pub mod workflow {
         pub id: ::std::string::String,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.State.transitions)
         pub transitions: ::std::vec::Vec<Transition>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.State.timeout)
+        pub timeout: ::protobuf::MessageField<TransitionTimeout>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.State.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -379,7 +381,7 @@ pub mod workflow {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut fields = ::std::vec::Vec::with_capacity(3);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "id",
@@ -390,6 +392,11 @@ pub mod workflow {
                 "transitions",
                 |m: &State| { &m.transitions },
                 |m: &mut State| { &mut m.transitions },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, TransitionTimeout>(
+                "timeout",
+                |m: &State| { &m.timeout },
+                |m: &mut State| { &mut m.timeout },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<State>(
                 "Workflow.State",
@@ -415,6 +422,9 @@ pub mod workflow {
                     18 => {
                         self.transitions.push(is.read_message()?);
                     },
+                    26 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.timeout)?;
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -434,6 +444,10 @@ pub mod workflow {
                 let len = value.compute_size();
                 my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
             };
+            if let Some(v) = self.timeout.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -446,6 +460,9 @@ pub mod workflow {
             for v in &self.transitions {
                 ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
             };
+            if let Some(v) = self.timeout.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+            }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
         }
@@ -465,6 +482,7 @@ pub mod workflow {
         fn clear(&mut self) {
             self.id.clear();
             self.transitions.clear();
+            self.timeout.clear();
             self.special_fields.clear();
         }
 
@@ -472,6 +490,7 @@ pub mod workflow {
             static instance: State = State {
                 id: ::std::string::String::new(),
                 transitions: ::std::vec::Vec::new(),
+                timeout: ::protobuf::MessageField::none(),
                 special_fields: ::protobuf::SpecialFields::new(),
             };
             &instance
@@ -492,6 +511,165 @@ pub mod workflow {
     }
 
     impl ::protobuf::reflect::ProtobufValue for State {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionTimeout)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct TransitionTimeout {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionTimeout.target_state_id)
+        pub target_state_id: ::std::string::String,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionTimeout.timeout_ms)
+        pub timeout_ms: u64,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionTimeout.actions)
+        pub actions: ::std::vec::Vec<Action>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionTimeout.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a TransitionTimeout {
+        fn default() -> &'a TransitionTimeout {
+            <TransitionTimeout as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl TransitionTimeout {
+        pub fn new() -> TransitionTimeout {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(3);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "target_state_id",
+                |m: &TransitionTimeout| { &m.target_state_id },
+                |m: &mut TransitionTimeout| { &mut m.target_state_id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "timeout_ms",
+                |m: &TransitionTimeout| { &m.timeout_ms },
+                |m: &mut TransitionTimeout| { &mut m.timeout_ms },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "actions",
+                |m: &TransitionTimeout| { &m.actions },
+                |m: &mut TransitionTimeout| { &mut m.actions },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<TransitionTimeout>(
+                "Workflow.TransitionTimeout",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for TransitionTimeout {
+        const NAME: &'static str = "TransitionTimeout";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.target_state_id = is.read_string()?;
+                    },
+                    16 => {
+                        self.timeout_ms = is.read_uint64()?;
+                    },
+                    26 => {
+                        self.actions.push(is.read_message()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.target_state_id.is_empty() {
+                my_size += ::protobuf::rt::string_size(1, &self.target_state_id);
+            }
+            if self.timeout_ms != 0 {
+                my_size += ::protobuf::rt::uint64_size(2, self.timeout_ms);
+            }
+            for value in &self.actions {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.target_state_id.is_empty() {
+                os.write_string(1, &self.target_state_id)?;
+            }
+            if self.timeout_ms != 0 {
+                os.write_uint64(2, self.timeout_ms)?;
+            }
+            for v in &self.actions {
+                ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+            };
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> TransitionTimeout {
+            TransitionTimeout::new()
+        }
+
+        fn clear(&mut self) {
+            self.target_state_id.clear();
+            self.timeout_ms = 0;
+            self.actions.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static TransitionTimeout {
+            static instance: TransitionTimeout = TransitionTimeout {
+                target_state_id: ::std::string::String::new(),
+                timeout_ms: 0,
+                actions: ::std::vec::Vec::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for TransitionTimeout {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("Workflow.TransitionTimeout").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for TransitionTimeout {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for TransitionTimeout {
         type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
     }
 
@@ -6474,7 +6652,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ic.protobuf.workflow.v1\x1a\x17validate/validate.proto\x1a5bitdrift_publ\
     ic/protobuf/matcher/v1/log_matcher.proto\"f\n\x16WorkflowsConfiguration\
     \x12L\n\tworkflows\x18\x01\x20\x03(\x0b2..bitdrift_public.protobuf.workf\
-    low.v1.WorkflowR\tworkflows\"\xa90\n\x08Workflow\x12\x17\n\x02id\x18\x01\
+    low.v1.WorkflowR\tworkflows\"\xc62\n\x08Workflow\x12\x17\n\x02id\x18\x01\
     \x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12V\n\x06states\x18\x02\
     \x20\x03(\x0b24.bitdrift_public.protobuf.workflow.v1.Workflow.StateR\x06\
     statesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12V\n\texecution\x18\x03\x20\
@@ -6482,13 +6660,19 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ecution\x12}\n\x18limit_matched_logs_count\x18\x04\x20\x01(\x0b2D.bitdri\
     ft_public.protobuf.workflow.v1.Workflow.LimitMatchedLogsCountR\x15limitM\
     atchedLogsCount\x12c\n\x0elimit_duration\x18\x05\x20\x01(\x0b2<.bitdrift\
-    _public.protobuf.workflow.v1.Workflow.LimitDurationR\rlimitDuration\x1a}\
-    \n\x05State\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\
-    \x10\x01\x12[\n\x0btransitions\x18\x02\x20\x03(\x0b29.bitdrift_public.pr\
-    otobuf.workflow.v1.Workflow.TransitionR\x0btransitions\x1a\xc5\x02\n\nTr\
-    ansition\x12/\n\x0ftarget_state_id\x18\x01\x20\x01(\tR\rtargetStateIdB\
-    \x07\xfaB\x04r\x02\x10\x01\x12Q\n\x04rule\x18\x02\x20\x01(\x0b23.bitdrif\
-    t_public.protobuf.workflow.v1.Workflow.RuleR\x04ruleB\x08\xfaB\x05\x8a\
+    _public.protobuf.workflow.v1.Workflow.LimitDurationR\rlimitDuration\x1a\
+    \xd9\x01\n\x05State\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\
+    \x04r\x02\x10\x01\x12[\n\x0btransitions\x18\x02\x20\x03(\x0b29.bitdrift_\
+    public.protobuf.workflow.v1.Workflow.TransitionR\x0btransitions\x12Z\n\
+    \x07timeout\x18\x03\x20\x01(\x0b2@.bitdrift_public.protobuf.workflow.v1.\
+    Workflow.TransitionTimeoutR\x07timeout\x1a\xbd\x01\n\x11TransitionTimeou\
+    t\x12/\n\x0ftarget_state_id\x18\x01\x20\x01(\tR\rtargetStateIdB\x07\xfaB\
+    \x04r\x02\x10\x01\x12&\n\ntimeout_ms\x18\x02\x20\x01(\x04R\ttimeoutMsB\
+    \x07\xfaB\x042\x02\x20\0\x12O\n\x07actions\x18\x03\x20\x03(\x0b25.bitdri\
+    ft_public.protobuf.workflow.v1.Workflow.ActionR\x07actions\x1a\xc5\x02\n\
+    \nTransition\x12/\n\x0ftarget_state_id\x18\x01\x20\x01(\tR\rtargetStateI\
+    dB\x07\xfaB\x04r\x02\x10\x01\x12Q\n\x04rule\x18\x02\x20\x01(\x0b23.bitdr\
+    ift_public.protobuf.workflow.v1.Workflow.RuleR\x04ruleB\x08\xfaB\x05\x8a\
     \x01\x02\x10\x01\x12O\n\x07actions\x18\x03\x20\x03(\x0b25.bitdrift_publi\
     c.protobuf.workflow.v1.Workflow.ActionR\x07actions\x12b\n\nextensions\
     \x18\x04\x20\x03(\x0b2B.bitdrift_public.protobuf.workflow.v1.Workflow.Tr\
@@ -6618,10 +6802,11 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             let mut deps = ::std::vec::Vec::with_capacity(2);
             deps.push(super::validate::file_descriptor().clone());
             deps.push(super::log_matcher::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(31);
+            let mut messages = ::std::vec::Vec::with_capacity(32);
             messages.push(WorkflowsConfiguration::generated_message_descriptor_data());
             messages.push(Workflow::generated_message_descriptor_data());
             messages.push(workflow::State::generated_message_descriptor_data());
+            messages.push(workflow::TransitionTimeout::generated_message_descriptor_data());
             messages.push(workflow::Transition::generated_message_descriptor_data());
             messages.push(workflow::Rule::generated_message_descriptor_data());
             messages.push(workflow::TransitionExtension::generated_message_descriptor_data());
