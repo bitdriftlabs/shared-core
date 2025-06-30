@@ -79,21 +79,13 @@ impl Workflow {
     &mut self,
     config: &'a Config,
     log: &LogRef<'_>,
-    current_traversals_count: &mut u32,
-    traversals_count_limit: u32,
   ) -> WorkflowResult<'a> {
     let mut result = WorkflowResult::default();
 
     if self.needs_new_run() {
       let run = Run::new(config);
-      if self.maybe_add_run(
-        run,
-        current_traversals_count,
-        traversals_count_limit,
-        &mut result,
-      ) {
-        log::trace!("added a new run for workflow {}", self.id);
-      }
+      self.add_run(run);
+      log::trace!("added a new run for workflow {}", self.id);
     }
 
     let mut did_make_progress = false;
@@ -105,43 +97,13 @@ impl Workflow {
 
       result.incorporate_run_result(&mut run_result);
 
-      *current_traversals_count += run_result.created_traversals_count;
-      // TODO(Augustyniak): a 'standard' subtracting operation should be sufficient here for
-      // production code but it's no enough for tests due to the way they track
-      // `current_traversals_count` (in tests, the processing of any given always starts with
-      // `current_traversals_count == 0` even if it was != 0 as the result of processing
-      // previous logs). Rework tests to make it possible to replace `saturating_sub` with `-`
-      // operator in here.
-      *current_traversals_count =
-        current_traversals_count.saturating_sub(run_result.completed_traversals_count);
-
-      let is_over_traversals_count_limit = *current_traversals_count > traversals_count_limit;
       let run_result_did_make_progress = run_result.did_make_progress();
 
-      match (run_result.state, is_over_traversals_count_limit) {
-        // If after processing a given log by a workflow run we notice that we end up
-        // over the limit of allowed traversals we remove the `run` which caused the
-        // overflow.
-        (RunState::Stopped, _) | (_, true) => {
-          result.stats.stopped_runs_count += 1;
-
-          if is_over_traversals_count_limit {
-            result.stats.traversals_count_limit_hit_count += 1;
-            log::debug!(
-              "traversals count ({}) is over the limit ({}); stopping run",
-              *current_traversals_count,
-              traversals_count_limit
-            );
-          }
-
-          let stopped_traversals_count = run.traversals_count();
-          result.stats.stopped_traversals_count += stopped_traversals_count;
-          *current_traversals_count =
-            current_traversals_count.saturating_sub(stopped_traversals_count);
-
+      match run_result.state {
+        RunState::Stopped => {
           self.runs.remove(index);
         },
-        (RunState::Completed, _) => {
+        RunState::Completed => {
           debug_assert!(
             self.runs[index].traversals.is_empty(),
             "completing a run with active traversals"
@@ -151,21 +113,11 @@ impl Workflow {
 
           log::trace!("completed run, workflow id={:?}", self.id);
 
-          result.stats.advanced_runs_count += 1;
-          result.stats.completed_runs_count += 1;
-
           self.runs.remove(index);
         },
-        (RunState::Running, _) => {
+        RunState::Running => {
           if run_result_did_make_progress {
             did_make_progress = true;
-          }
-
-          // The run is still running.
-          if run_result.advanced_traversals_count > 0 {
-            // Since at least one traversal was advanced we
-            // consider the enclosing run to be advanced too.
-            result.stats.advanced_runs_count += 1;
           }
         },
       }
@@ -209,15 +161,7 @@ impl Workflow {
         // This is safe as `has_active_run == true means that there are at least two runs and
         // `is_initial_run == true`` means that we are processing run with index == 0.
         log::trace!("resetting workflow due to initial state transition");
-        let run = self.runs.remove(index + 1);
-
-        let removed_traversals_count = run.traversals_count();
-        result.stats.stopped_runs_count += 1;
-        result.stats.stopped_traversals_count += removed_traversals_count;
-        *current_traversals_count =
-          current_traversals_count.saturating_sub(removed_traversals_count);
-
-        result.stats.reset_exclusive_workflows_count += 1;
+        self.runs.remove(index + 1);
       } else {
         // The active state run made progress and the next run to be processed (if there is any)
         // is an initial state run that we do not want to expose to the log.
@@ -229,39 +173,9 @@ impl Workflow {
     result
   }
 
-  fn maybe_add_run(
-    &mut self,
-    run: Run,
-    current_traversals_count: &mut u32,
-    traversals_count_limit: u32,
-    result: &mut WorkflowResult<'_>,
-  ) -> bool {
-    if run.traversals_count() + *current_traversals_count <= traversals_count_limit {
-      log::trace!("workflow={}: creating a new run", self.id);
-
-      result.stats.created_runs_count += 1;
-      result.stats.created_traversals_count += run.traversals_count();
-
-      *current_traversals_count += run.traversals_count();
-      self.runs.insert(0, run);
-
-      true
-    } else {
-      result.stats.traversals_count_limit_hit_count += 1;
-      log::debug!(
-        "workflow={}: traversals count ({}) is over the limit ({}); preventing a new run from \
-         being added",
-        self.id,
-        *current_traversals_count,
-        traversals_count_limit
-      );
-
-      false
-    }
-  }
-
-  pub(crate) fn traversals_count(&self) -> u32 {
-    self.runs.iter().map(Run::traversals_count).sum()
+  fn add_run(&mut self, run: Run) {
+    log::trace!("workflow={}: creating a new run", self.id);
+    self.runs.insert(0, run);
   }
 
   pub(crate) fn needs_new_run(&self) -> bool {
@@ -315,10 +229,6 @@ impl Workflow {
     );
 
     is_in_initial_state
-  }
-
-  pub(crate) fn remove_run(&mut self, index: usize) {
-    self.runs.remove(index);
   }
 
   /// Remove all workflow runs.
@@ -380,9 +290,6 @@ impl<'a> WorkflowResult<'a> {
       .triggered_actions
       .append(&mut run_result.triggered_actions);
     self.logs_to_inject.append(&mut run_result.logs_to_inject);
-    self.stats.created_traversals_count += run_result.created_traversals_count;
-    self.stats.advanced_traversals_count += run_result.advanced_traversals_count;
-    self.stats.completed_traversals_count += run_result.completed_traversals_count;
     self.stats.matched_logs_count += run_result.matched_logs_count;
   }
 }
@@ -396,37 +303,12 @@ impl<'a> WorkflowResult<'a> {
 #[derive(Debug, Default, PartialEq, Eq)]
 #[allow(clippy::struct_field_names)]
 pub(crate) struct WorkflowResultStats {
-  pub(crate) created_runs_count: u32,
-  pub(crate) advanced_runs_count: u32,
-  pub(crate) stopped_runs_count: u32,
-  pub(crate) completed_runs_count: u32,
-
-  pub(crate) created_traversals_count: u32,
-  pub(crate) advanced_traversals_count: u32,
-  pub(crate) stopped_traversals_count: u32,
-  pub(crate) completed_traversals_count: u32,
-
-  /// The number of times the engine prevented a run and/or traversal from being
-  /// created due to a configured traversals count limit.
-  pub(crate) traversals_count_limit_hit_count: u32,
-
-  pub(crate) reset_exclusive_workflows_count: u32,
-
   pub(crate) matched_logs_count: u32,
 }
 
 impl WorkflowResultStats {
   pub(crate) const fn did_make_progress(&self) -> bool {
-    self.created_runs_count > 0
-      || self.advanced_runs_count > 0
-      || self.stopped_runs_count > 0
-      || self.completed_runs_count > 0
-      || self.created_traversals_count > 0
-      || self.advanced_traversals_count > 0
-      || self.stopped_traversals_count > 0
-      || self.completed_traversals_count > 0
-      || self.matched_logs_count > 0
-      || self.reset_exclusive_workflows_count > 0
+    self.matched_logs_count > 0
   }
 }
 
@@ -550,10 +432,6 @@ impl Run {
 
     let mut run_triggered_actions = Vec::<TriggeredAction<'_>>::new();
     let mut run_logs_to_inject = BTreeMap::<&'a str, Log>::new();
-
-    let mut created_traversals_count = 0;
-    let mut advanced_traversals_count = 0;
-    let mut completed_traversals_count = 0;
     let mut run_matched_logs_count = 0;
 
     // Process traversals in reversed order as we may end up modifying the array
@@ -583,9 +461,6 @@ impl Run {
           return RunResult {
             state: RunState::Stopped,
             triggered_actions: vec![],
-            created_traversals_count: 0,
-            advanced_traversals_count: 0,
-            completed_traversals_count: 0,
             matched_logs_count: run_matched_logs_count,
             logs_to_inject: BTreeMap::new(),
           };
@@ -606,9 +481,6 @@ impl Run {
                 return RunResult {
                   state: RunState::Stopped,
                   triggered_actions: vec![],
-                  created_traversals_count: 0,
-                  advanced_traversals_count: 0,
-                  completed_traversals_count: 0,
                   matched_logs_count: run_matched_logs_count,
                   logs_to_inject: BTreeMap::new(),
                 };
@@ -638,20 +510,6 @@ impl Run {
         continue;
       }
 
-      // The currently processed traversal is about to advance.
-      advanced_traversals_count += 1;
-
-      if traversal_result.output_traversals.is_empty() {
-        // Traversal has no successors so it's been completed.
-        completed_traversals_count += 1;
-      } else {
-        #[allow(clippy::cast_possible_truncation)]
-        let output_traversals_count = traversal_result.output_traversals.len() as u32;
-        // The number of created traversals is the number of output traversals
-        // minus the input traversal.
-        created_traversals_count += output_traversals_count - 1;
-      }
-
       // Replace advanced traversals with their successors.
       // Each advanced traversal may have 0 or more successors.
       // Notes:
@@ -675,9 +533,6 @@ impl Run {
     RunResult {
       state,
       triggered_actions: run_triggered_actions,
-      created_traversals_count,
-      advanced_traversals_count,
-      completed_traversals_count,
       matched_logs_count: run_matched_logs_count,
       logs_to_inject: run_logs_to_inject,
     }
@@ -707,12 +562,6 @@ impl Run {
         <= 1
     );
     self.traversals.iter().all(Traversal::is_in_initial_state)
-  }
-
-  pub(crate) fn traversals_count(&self) -> u32 {
-    #[allow(clippy::cast_possible_truncation)]
-    let traversals_count = self.traversals.len() as u32;
-    traversals_count
   }
 }
 
@@ -744,13 +593,6 @@ pub(crate) struct RunResult<'a> {
   state: RunState,
   /// The list of triggered actions.
   triggered_actions: Vec<TriggeredAction<'a>>,
-  /// The number of newly created traversals.
-  created_traversals_count: u32,
-  /// The number of advanced traversals. The traversal is considered
-  /// to be advanced when it transitions to the next state.
-  advanced_traversals_count: u32,
-  /// The number of completed traversals.
-  completed_traversals_count: u32,
   /// The number of matched logs. A single log can be matched multiple times
   matched_logs_count: u32,
   // Logs to be injected back into the workflow engine after field attachment and other processing.

@@ -61,8 +61,6 @@ macro_rules! workflow_process_log {
         occurred_at: time::OffsetDateTime::now_utc(),
         capture_session: None,
       },
-      &mut 0,
-      1000,
     )
   };
   ($annotated_workflow:expr; $message:expr,with $tags:expr) => {
@@ -80,8 +78,6 @@ macro_rules! workflow_process_log {
         occurred_at: time::OffsetDateTime::now_utc(),
         capture_session: None,
       },
-      &mut 0,
-      1000,
     )
   };
 }
@@ -273,16 +269,6 @@ fn multiple_start_nodes_initial_fork() {
       triggered_actions: vec![],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 2,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 2,
       },
     }
@@ -296,16 +282,6 @@ fn multiple_start_nodes_initial_fork() {
       triggered_actions: vec![],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 1,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 1,
-        created_traversals_count: 2,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 2,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 2,
       },
     }
@@ -323,16 +299,6 @@ fn multiple_start_nodes_initial_fork() {
       })],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 1,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 1,
       },
     }
@@ -372,16 +338,6 @@ fn multiple_start_nodes_initial_branching() {
       triggered_actions: vec![],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 1,
       },
     }
@@ -396,16 +352,6 @@ fn multiple_start_nodes_initial_branching() {
       triggered_actions: vec![],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 1,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 1,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 1,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 1,
       },
     }
@@ -423,16 +369,6 @@ fn multiple_start_nodes_initial_branching() {
       })],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 1,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 1,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 1,
       },
     }
@@ -488,16 +424,6 @@ fn basic_exclusive_workflow() {
       ],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 1,
       },
     }
@@ -518,16 +444,6 @@ fn basic_exclusive_workflow() {
       })],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 1,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 1,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 1,
       },
     }
@@ -574,16 +490,6 @@ fn exclusive_workflow_matched_logs_count_limit() {
       triggered_actions: vec![],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 2,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 2,
       },
     }
@@ -602,16 +508,6 @@ fn exclusive_workflow_matched_logs_count_limit() {
       triggered_actions: vec![],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 0,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 0,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 1,
       },
     }
@@ -631,16 +527,6 @@ fn exclusive_workflow_matched_logs_count_limit() {
       triggered_actions: vec![],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        created_runs_count: 0,
-        advanced_runs_count: 0,
-        completed_runs_count: 0,
-        stopped_runs_count: 1,
-        created_traversals_count: 0,
-        advanced_traversals_count: 0,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 2,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 1,
       },
     }
@@ -682,16 +568,6 @@ fn exclusive_workflow_log_rule_count() {
       triggered_actions: vec![],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 0,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 0,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 1,
       },
     }
@@ -712,16 +588,6 @@ fn exclusive_workflow_log_rule_count() {
       })],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 1,
       },
     }
@@ -748,16 +614,6 @@ fn exclusive_workflow_log_rule_count() {
       })],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        created_runs_count: 0,
-        advanced_runs_count: 1,
-        completed_runs_count: 1,
-        stopped_runs_count: 0,
-        created_traversals_count: 0,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 1,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 1,
       },
     }
@@ -816,16 +672,6 @@ fn branching_exclusive_workflow() {
       })],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        created_runs_count: 1,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 1,
       },
     }
@@ -841,16 +687,6 @@ fn branching_exclusive_workflow() {
   assert!(result.triggered_actions.is_empty());
   assert_eq!(
     WorkflowResultStats {
-      reset_exclusive_workflows_count: 0,
-      created_runs_count: 1,
-      advanced_runs_count: 0,
-      completed_runs_count: 0,
-      stopped_runs_count: 0,
-      created_traversals_count: 1,
-      advanced_traversals_count: 0,
-      completed_traversals_count: 0,
-      stopped_traversals_count: 0,
-      traversals_count_limit_hit_count: 0,
       matched_logs_count: 0,
     },
     result.stats
@@ -870,16 +706,6 @@ fn branching_exclusive_workflow() {
       })],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        created_runs_count: 0,
-        advanced_runs_count: 1,
-        completed_runs_count: 1,
-        stopped_runs_count: 0,
-        created_traversals_count: 0,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 1,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 1,
       },
     }
@@ -907,16 +733,6 @@ fn branching_exclusive_workflow() {
       ],
       logs_to_inject: BTreeMap::new(),
       stats: WorkflowResultStats {
-        reset_exclusive_workflows_count: 0,
-        created_runs_count: 0,
-        advanced_runs_count: 1,
-        completed_runs_count: 0,
-        stopped_runs_count: 0,
-        created_traversals_count: 1,
-        advanced_traversals_count: 1,
-        completed_traversals_count: 0,
-        stopped_traversals_count: 0,
-        traversals_count_limit_hit_count: 0,
         matched_logs_count: 2,
       },
     }
