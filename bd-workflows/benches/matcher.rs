@@ -12,7 +12,7 @@ use bd_log_primitives::{FieldsRef, LogFields, LogRef, LogType, log_level};
 use bd_proto::protos::workflow::workflow::Workflow;
 use bd_runtime::runtime::ConfigLoader;
 use bd_test_helpers::workflow::macros::state;
-use bd_test_helpers::{action, declare_transition, log_matches, rule, workflow_proto};
+use bd_test_helpers::{action, log_matches, rule, workflow_proto};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use criterion::{Bencher, Criterion, criterion_group, criterion_main};
@@ -63,13 +63,11 @@ impl Setup {
   }
 
   async fn simple_workflow(&self) -> WorkflowsEngine {
-    let mut a = state("A");
     let b = state("B");
-
-    declare_transition!(
-      &mut a => &b;
-      when rule!(log_matches!(message == "foo"));
-      do action!(flush_buffers &["foo_buffer_id"]; id "foo")
+    let a = state("A").declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(message == "foo")),
+      &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
     );
 
     let config = workflow_proto!(exclusive with a, b);
@@ -79,13 +77,11 @@ impl Setup {
   async fn many_simple_workflows(&self) -> WorkflowsEngine {
     let mut workflows = vec![];
     for i in 0 .. 30 {
-      let mut a = state("A");
       let b = state("B");
-
-      declare_transition!(
-        &mut a => &b;
-        when rule!(log_matches!(message == "foo"));
-        do action!(flush_buffers &["foo_buffer_id"]; id "foo")
+      let a = state("A").declare_transition_with_actions(
+        &b,
+        rule!(log_matches!(message == "foo")),
+        &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
       );
 
       let mut config = workflow_proto!(exclusive with a, b);
@@ -95,13 +91,11 @@ impl Setup {
     }
 
     for i in 0 .. 30 {
-      let mut a = state("A");
       let b = state("B");
-
-      declare_transition!(
-        &mut a => &b;
-        when rule!(log_matches!(message == "baz"));
-        do action!(flush_buffers &["foo_buffer_id"]; id "foo")
+      let a = state("A").declare_transition_with_actions(
+        &b,
+        rule!(log_matches!(message == "baz")),
+        &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
       );
       let mut config = workflow_proto!(exclusive with a, b);
       config.id = format!("baz_{i}");

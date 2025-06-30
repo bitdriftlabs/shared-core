@@ -15,7 +15,6 @@ use bd_test_helpers::workflow::macros::{
   action,
   all,
   any,
-  declare_transition,
   limit,
   log_matches,
   rule,
@@ -228,10 +227,10 @@ fn unknown_state_reference_workflow() {
   let mut a = state("A");
   let b = state("B");
 
-  declare_transition!(
-    &mut a => &b;
-    when rule!(log_matches!(message == "foo"));
-    do action!(flush_buffers &["foo_buffer_id"]; id "foo")
+  a = a.declare_transition_with_actions(
+    &b,
+    rule!(log_matches!(message == "foo")),
+    &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
   );
 
   let config = workflow_proto!(exclusive with a);
@@ -250,25 +249,16 @@ fn multiple_start_nodes_initial_fork() {
   let d = state("D");
   let e = state("E");
 
-  declare_transition!(
-    &mut a => &b;
-    when rule!(log_matches!(message == "foo"))
-  );
+  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
 
-  declare_transition!(
-    &mut b => &d;
-    when rule!(log_matches!(message == "D"))
-  );
+  b = b.declare_transition(&d, rule!(log_matches!(message == "D")));
 
-  declare_transition!(
-    &mut a => &c;
-    when rule!(log_matches!(message == "foo"))
-  );
+  a = a.declare_transition(&c, rule!(log_matches!(message == "foo")));
 
-  declare_transition!(
-    &mut c => &e;
-    when rule!(log_matches!(message == "E"));
-    do action!(flush_buffers &["foo_buffer_id"]; id "foo")
+  c = c.declare_transition_with_actions(
+    &e,
+    rule!(log_matches!(message == "E")),
+    &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
   );
 
   let config = workflow!(exclusive with a, b, c, d, e);
@@ -358,25 +348,16 @@ fn multiple_start_nodes_initial_branching() {
   let d = state("D");
   let e = state("E");
 
-  declare_transition!(
-    &mut a => &b;
-    when rule!(log_matches!(message == "foo"))
-  );
+  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
 
-  declare_transition!(
-    &mut b => &d;
-    when rule!(log_matches!(message == "D"))
-  );
+  b = b.declare_transition(&d, rule!(log_matches!(message == "D")));
 
-  declare_transition!(
-    &mut a => &c;
-    when rule!(log_matches!(message == "bar"))
-  );
+  a = a.declare_transition(&c, rule!(log_matches!(message == "bar")));
 
-  declare_transition!(
-    &mut c => &e;
-    when rule!(log_matches!(message == "E"));
-    do action!(flush_buffers &["foo_buffer_id"]; id "foo")
+  c = c.declare_transition_with_actions(
+    &e,
+    rule!(log_matches!(message == "E")),
+    &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
   );
 
   let config = workflow!(exclusive with a, b, c, d, e);
@@ -465,22 +446,21 @@ fn basic_exclusive_workflow() {
   let mut b = state("B");
   let c = state("C");
 
-  declare_transition!(
-    &mut a => &b;
-    when rule!(
-      all!(
-        log_matches!(message == "foo"),
-        log_matches!(tag("key") == "value"),
-      )
-    );
-    do
+  a = a.declare_transition_with_actions(
+    &b,
+    rule!(all!(
+      log_matches!(message == "foo"),
+      log_matches!(tag("key") == "value"),
+    )),
+    &[
       action!(flush_buffers &["foo_buffer_id"]; id "foo"),
-      action!(emit_counter "foo_metric"; value metric_value!(123))
+      action!(emit_counter "foo_metric"; value metric_value!(123)),
+    ],
   );
-  declare_transition!(
-    &mut b => &c;
-    when rule!(log_matches!(message == "bar"));
-    do action!(flush_buffers &["bar_buffer_id"]; id "bar")
+  b = b.declare_transition_with_actions(
+    &c,
+    rule!(log_matches!(message == "bar")),
+    &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
   );
 
   let config = workflow!(exclusive with a, b, c);
@@ -573,22 +553,10 @@ fn exclusive_workflow_matched_logs_count_limit() {
   let mut d = state("D");
   let e = state("E");
 
-  declare_transition!(
-    &mut a => &b;
-    when rule!(log_matches!(message == "foo"))
-  );
-  declare_transition!(
-    &mut b => &c;
-    when rule!(log_matches!(message == "bar"); times 3)
-  );
-  declare_transition!(
-    &mut a => &d;
-    when rule!(log_matches!(message == "foo"))
-  );
-  declare_transition!(
-    &mut d => &e;
-    when rule!(log_matches!(message == "zar"))
-  );
+  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
+  b = b.declare_transition(&c, rule!(log_matches!(message == "bar"); times 3));
+  a = a.declare_transition(&d, rule!(log_matches!(message == "foo")));
+  d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
 
   let config: Config =
     workflow!(exclusive with a, b, c, d, e; matches limit!(count 3); duration limit!(seconds 10));
@@ -688,15 +656,15 @@ fn exclusive_workflow_log_rule_count() {
   let mut b = state("B");
   let c = state("C");
 
-  declare_transition!(
-    &mut a => &b;
-    when rule!(log_matches!(message == "foo"); times 2);
-    do action!(flush_buffers &["foo_buffer_id"]; id "foo")
+  a = a.declare_transition_with_actions(
+    &b,
+    rule!(log_matches!(message == "foo"); times 2),
+    &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
   );
-  declare_transition!(
-    &mut b => &c;
-    when rule!(log_matches!(message == "bar"));
-    do action!(flush_buffers &["bar_buffer_id"]; id "bar")
+  b = b.declare_transition_with_actions(
+    &c,
+    rule!(log_matches!(message == "bar")),
+    &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
   );
 
   let config = workflow!(exclusive with a, b, c);
@@ -808,30 +776,28 @@ fn branching_exclusive_workflow() {
   let d = state("D");
   let e = state("E");
 
-  declare_transition!(
-    &mut a => &b;
-    when rule!(
-      any!(
-        log_matches!(message == "foo"),
-        log_matches!(tag("key") == "value"),
-      )
-    );
-    do action!(flush_buffers &["foo_buffer_id"]; id "foo")
+  a = a.declare_transition_with_actions(
+    &b,
+    rule!(any!(
+      log_matches!(message == "foo"),
+      log_matches!(tag("key") == "value"),
+    )),
+    &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
   );
-  declare_transition!(
-    &mut b => &d;
-    when rule!(log_matches!(message == "zoo"));
-    do action!(flush_buffers &["zoo_buffer_id"]; id "zoo")
+  b = b.declare_transition_with_actions(
+    &d,
+    rule!(log_matches!(message == "zoo")),
+    &[action!(flush_buffers &["zoo_buffer_id"]; id "zoo")],
   );
-  declare_transition!(
-    &mut a => &c;
-    when rule!(log_matches!(message == "bar"));
-    do action!(flush_buffers &["bar_buffer_id"]; id "bar")
+  a = a.declare_transition_with_actions(
+    &c,
+    rule!(log_matches!(message == "bar")),
+    &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
   );
-  declare_transition!(
-    &mut c => &e;
-    when rule!(log_matches!(message == "barbar"));
-    do action!(flush_buffers &["bar_buffer_id"]; id "barbar")
+  c = c.declare_transition_with_actions(
+    &e,
+    rule!(log_matches!(message == "barbar")),
+    &[action!(flush_buffers &["bar_buffer_id"]; id "barbar")],
   );
 
   let config = workflow!(exclusive with a, b, c, d, e);

@@ -29,7 +29,6 @@ use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::workflow::macros::{
   action,
-  declare_transition,
   log_matches,
   metric_tag,
   metric_value,
@@ -171,144 +170,144 @@ impl AnnotatedWorkflowsEngine {
   fn create_networking_workflows(workflow_configurations: &mut WorkflowConfigurationsInit) {
     let mut a = state("A");
     let b = state("B");
-    declare_transition!(
-      &mut a => &b;
-      when rule!(log_matches!(message == "HTTPRequest"));
-      do action!(emit_counter &Self::generate_action_id(); value metric_value!(1))
+    a = a.declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(message == "HTTPRequest")),
+      &[action!(emit_counter &Self::generate_action_id(); value metric_value!(1))],
     );
-    workflow_configurations.push(vec![a, b]);
+    workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
 
     let mut a = state("A");
     let b = state("B");
-    declare_transition!(
-      &mut a => &b;
-      when rule!(log_matches!(message == "HTTPResponse"));
-      do action!(
+    a = a.declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(message == "HTTPResponse")),
+      &[action!(
         emit_counter &Self::generate_action_id();
         value metric_value!(1);
         tags {
           metric_tag!(extract "result" => "result"),
           metric_tag!(extract "status_code" => "status_code")
         }
-      )
+      )],
     );
-    workflow_configurations.push(vec![a, b]);
+    workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
 
     let mut a = state("A");
     let b = state("B");
-    declare_transition!(
-      &mut a => &b;
-      when rule!(log_matches!(message == "HTTPResponse"));
-      do action!(
+    a = a.declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(message == "HTTPResponse")),
+      &[action!(
         emit_counter &Self::generate_action_id();
         value metric_value!(1);
         tags {
           metric_tag!(extract "result" => "result")
         }
-      )
+      )],
     );
-    workflow_configurations.push(vec![a, b]);
+    workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
 
     let mut a = state("A");
     let b = state("B");
-    declare_transition!(
-      &mut a => &b;
-      when rule!(log_matches!(message == "HTTPResponse"));
-      do action!(
+    a = a.declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(message == "HTTPResponse")),
+      &[action!(
         emit_counter &Self::generate_action_id();
         value metric_value!(1);
         tags {
           metric_tag!(extract "result" => "result"),
           metric_tag!(extract "status_code" => "status_code")
         }
-      )
+      )],
     );
-    workflow_configurations.push(vec![a, b]);
+    workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
 
     let mut a = state("A");
     let b = state("B");
-    declare_transition!(
-      &mut a => &b;
-      when rule!(log_matches!(message == "HTTPResponse"));
-      do action!(
+    a = a.declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(message == "HTTPResponse")),
+      &[action!(
         emit_counter &Self::generate_action_id();
         value metric_value!(extract "body_bytes_sent_count");
         tags {
           metric_tag!(extract "result" => "result"),
           metric_tag!(extract "status_code" => "status_code")
         }
-      )
+      )],
     );
-    workflow_configurations.push(vec![a, b]);
+    workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
 
     let mut a = state("A");
     let b = state("B");
-    declare_transition!(
-      &mut a => &b;
-      when rule!(log_matches!(message == "HTTPResponse"));
-      do action!(
+    a = a.declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(message == "HTTPResponse")),
+      &[action!(
         emit_counter &Self::generate_action_id();
         value metric_value!(extract "body_bytes_sent_count");
         tags {
           metric_tag!(extract "path" => "path")
         }
-      )
+      )],
     );
-    workflow_configurations.push(vec![a, b]);
+    workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
 
     let mut a = state("A");
     let b = state("B");
-    declare_transition!(
-      &mut a => &b;
-      when rule!(log_matches!(message == "HTTPResponse"));
-      do action!(
+    a = a.declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(message == "HTTPResponse")),
+      &[action!(
         emit_counter &Self::generate_action_id();
         value metric_value!(extract "body_bytes_received_count");
         tags {
           metric_tag!(extract "path" => "path")
         }
-      )
+      )],
     );
-    workflow_configurations.push(vec![a, b]);
+    workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
 
     let mut a = state("A");
     let b = state("B");
-    declare_transition!(
-      &mut a => &b;
-      when rule!(log_matches!(message == "HTTPResponse"));
-      do action!(
+    a = a.declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(message == "HTTPResponse")),
+      &[action!(
         emit_counter &Self::generate_action_id();
         value metric_value!(extract "duration_ms");
         tags {
           metric_tag!(extract "path" => "path")
         }
-      )
+      )],
     );
-    workflow_configurations.push(vec![a, b]);
+    workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
   }
 
   fn create_general_health_workflows(workflow_configurations: &mut WorkflowConfigurationsInit) {
     let mut a = state("A");
     let b = state("B");
-    declare_transition!(
-      &mut a => &b;
-      when rule!(log_matches!(message == "SceneDidActivate"));
-      do action!(emit_counter &Self::generate_action_id(); value metric_value!(1))
+    a = a.declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(message == "SceneDidActivate")),
+      &[action!(emit_counter &Self::generate_action_id(); value metric_value!(1))],
     );
-    workflow_configurations.push(vec![a, b]);
+    workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
 
     let mut a = state("A");
     let b = state("B");
-    declare_transition!(
-      &mut a => &b;
-      when rule!(log_matches!(message ~= ".*"));
-      do action!(
+    a = a.declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(message ~= ".*")),
+      &[action!(
         emit_counter &Self::generate_action_id();
         value metric_value!(1);
         tags { metric_tag!(extract "log_level" => "log_level") }
-      )
+      )],
     );
-    workflow_configurations.push(vec![a, b]);
+    workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
   }
 
   fn generate_action_id() -> String {

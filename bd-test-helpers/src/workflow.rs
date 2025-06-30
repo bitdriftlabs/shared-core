@@ -77,7 +77,7 @@ pub mod macros {
         ),
         Default::default(),
         Default::default(),
-        vec![$($state.clone()),+],
+        vec![$($state.clone().into_inner()),+],
       )
     };
     (
@@ -92,7 +92,7 @@ pub mod macros {
         ),
         $matches_limit,
         $duration_limit,
-        vec![$($state.clone()),+],
+        vec![$($state.clone().into_inner()),+],
       )
     };
     ($id:expr; exclusive with $($state:expr),+) => {
@@ -104,37 +104,84 @@ pub mod macros {
         ),
         Default::default(),
         Default::default(),
-        vec![$($state.clone()),+],
+        vec![$($state.clone().into_inner()),+],
       )
     };
   }
 
-  #[must_use]
-  pub fn state(id: &str) -> bd_proto::protos::workflow::workflow::workflow::State {
-    bd_proto::protos::workflow::workflow::workflow::State {
-      id: id.to_string(),
-      ..Default::default()
+  #[derive(Clone)]
+  pub struct StateBuilder {
+    state: bd_proto::protos::workflow::workflow::workflow::State,
+  }
+
+  impl StateBuilder {
+    #[must_use]
+    pub fn declare_transition(
+      mut self,
+      to: &Self,
+      rule: bd_proto::protos::workflow::workflow::workflow::Rule,
+    ) -> Self {
+      crate::workflow::add_transition(&mut self.state, &to.state, rule, &[], vec![]);
+
+      self
+    }
+
+    #[must_use]
+    pub fn declare_transition_with_actions(
+      mut self,
+      to: &Self,
+      rule: bd_proto::protos::workflow::workflow::workflow::Rule,
+      actions: &[bd_proto::protos::workflow::workflow::workflow::action::Action_type],
+    ) -> Self {
+      crate::workflow::add_transition(&mut self.state, &to.state, rule, actions, vec![]);
+
+      self
+    }
+
+    #[must_use]
+    pub fn declare_transition_with_extractions(
+      mut self,
+      to: &Self,
+      rule: bd_proto::protos::workflow::workflow::workflow::Rule,
+      extractions: &[bd_proto::protos::workflow::workflow::workflow::TransitionExtension],
+    ) -> Self {
+      crate::workflow::add_transition(&mut self.state, &to.state, rule, &[], extractions.to_vec());
+
+      self
+    }
+
+    #[must_use]
+    pub fn declare_transition_with_all(
+      mut self,
+      to: &Self,
+      rule: bd_proto::protos::workflow::workflow::workflow::Rule,
+      actions: &[bd_proto::protos::workflow::workflow::workflow::action::Action_type],
+      extractions: &[bd_proto::protos::workflow::workflow::workflow::TransitionExtension],
+    ) -> Self {
+      crate::workflow::add_transition(
+        &mut self.state,
+        &to.state,
+        rule,
+        actions,
+        extractions.to_vec(),
+      );
+
+      self
+    }
+
+    pub fn into_inner(self) -> bd_proto::protos::workflow::workflow::workflow::State {
+      self.state
     }
   }
 
-  /// A macro that creates a transition between two states.
-  /// It allows to specify rules that need to be met for the transition
-  /// to occur and side-effects to perform as the result of the transition.
-  #[macro_export]
-  macro_rules! declare_transition {
-    ($from:expr => $to:expr; when $rule:expr) => {
-      $crate::workflow::add_transition($from, $to, $rule, &[], vec![])
-    };
-    ($from:expr => $to:expr; when $rule:expr; do $($action:expr),+) => {
-      $crate::workflow::add_transition($from, $to, $rule, &[$($action),+], vec![])
-    };
-    ($from:expr => $to:expr; when $rule:expr, with { $($extraction:expr),+ }) => {
-      $crate::workflow::add_transition($from, $to, $rule, &[], vec![$($extraction),+])
-    };
-    ($from:expr => $to:expr; when $rule:expr, with { $($extraction:expr),+ };
-      do $($action:expr),+) => {
-      $crate::workflow::add_transition($from, $to, $rule, &[$($action),+], vec![$($extraction),+])
-    };
+  #[must_use]
+  pub fn state(id: &str) -> StateBuilder {
+    StateBuilder {
+      state: bd_proto::protos::workflow::workflow::workflow::State {
+        id: id.to_string(),
+        ..Default::default()
+      },
+    }
   }
 
   /// A macro that creates a matched logs count or duration limit.
@@ -373,7 +420,6 @@ pub mod macros {
     action,
     all,
     any,
-    declare_transition,
     limit,
     log_matches,
     metric_tag,
