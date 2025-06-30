@@ -56,14 +56,7 @@ use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::session::InMemoryStorage;
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_test_helpers::test_api_server::StreamAction;
-use bd_test_helpers::workflow::macros::{
-  action,
-  declare_transition,
-  log_matches,
-  rule,
-  state,
-  workflow_proto,
-};
+use bd_test_helpers::workflow::macros::{action, log_matches, rule, state, workflow_proto};
 use bd_test_helpers::workflow::{
   TestFieldRef,
   TestFieldType,
@@ -631,12 +624,11 @@ fn session_replay_actions() {
   let mut setup = Setup::new();
   setup.send_runtime_update();
 
-  let mut a = state("A");
   let b = state("B");
-  declare_transition!(
-    &mut a => &b;
-    when rule!(log_matches!(message == "take a screenshot"));
-    do action!(screenshot "screenshot_id")
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    rule!(log_matches!(message == "take a screenshot")),
+    &[action!(screenshot "screenshot_id")],
   );
 
   // Send a configuration that takes a screenshot on "foo" message.
@@ -948,31 +940,35 @@ fn workflow_flush_buffers_action_uploads_buffer() {
 
 #[test]
 fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_starts_streaming() {
-  let mut a = state("A");
   let b = state("B");
   let c = state("C");
-  declare_transition!(
-    &mut a => &b;
-    when rule!(log_matches!(message == "fire flush trigger buffer and start streaming action!"));
-    do action!(
-      flush_buffers &["trigger_buffer_id"];
-      continue_streaming_to vec!["default"];
-      logs_count 10;
-      id "flush_with_streaming_action_id"
-    ),
-    action!(
-      emit_counter "insight_action_id";
-      value metric_value!(1)
+  let a = state("A")
+    .declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(
+        message == "fire flush trigger buffer and start streaming action!"
+      )),
+      &[
+        action!(
+          flush_buffers &["trigger_buffer_id"];
+          continue_streaming_to vec!["default"];
+          logs_count 10;
+          id "flush_with_streaming_action_id"
+        ),
+        action!(
+          emit_counter "insight_action_id";
+          value metric_value!(1)
+        ),
+      ],
     )
-  );
-  declare_transition!(
-    &mut a => &c;
-    when rule!(log_matches!(message == "fire flush trigger buffer action!"));
-    do action!(
-      flush_buffers &["trigger_buffer_id"];
-      id "flush_with_streaming_action_id"
-    )
-  );
+    .declare_transition_with_actions(
+      &c,
+      rule!(log_matches!(message == "fire flush trigger buffer action!")),
+      &[action!(
+        flush_buffers &["trigger_buffer_id"];
+        id "flush_with_streaming_action_id"
+      )],
+    );
 
   let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
     timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
@@ -1122,39 +1118,39 @@ fn workflow_generate_log_to_histogram() {
   let mut c = state("C");
   let d = state("D");
 
-  declare_transition!(
-    &mut a => &b;
-    when rule!(log_matches!(message == "foo")),
-    with {
-      make_save_timestamp_extraction("timestamp1")
-    }
+  a = a.declare_transition_with_extractions(
+    &b,
+    rule!(log_matches!(message == "foo")),
+    &[make_save_timestamp_extraction("timestamp1")],
   );
 
-  declare_transition!(
-    &mut b => &c;
-    when rule!(log_matches!(message == "bar")),
-    with { make_save_timestamp_extraction("timestamp2") };
-    do action!(flush_buffers &["default"]; id "flush_action_id"),
-       action!(generate_log make_generate_log_action_proto("message", &[
+  b = b.declare_transition_with_all(
+    &c,
+    rule!(log_matches!(message == "bar")),
+    &[
+      action!(flush_buffers &["default"]; id "flush_action_id"),
+      action!(generate_log make_generate_log_action_proto("message", &[
       ("_duration_ms",
        TestFieldType::Subtract(
         TestFieldRef::SavedTimestampId("timestamp2"),
         TestFieldRef::SavedTimestampId("timestamp1")
        )),
        ("other", TestFieldType::Single(TestFieldRef::SavedFieldId("id1"))),
-    ], "id", LogType::Span))
+    ], "id", LogType::Span)),
+    ],
+    &[make_save_timestamp_extraction("timestamp2")],
   );
 
-  declare_transition!(
-    &mut c => &d;
-    when rule!(log_matches!(tag("_generate_log_id") == "id"));
-    do action!(
+  c = c.declare_transition_with_actions(
+    &d,
+    rule!(log_matches!(tag("_generate_log_id") == "id")),
+    &[action!(
       emit_histogram "foo_id";
       value metric_value!(extract "_duration_ms");
       tags {
         metric_tag!(fix "fixed_key" => "fixed_value")
       }
-    )
+    )],
   );
 
   let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
@@ -1217,20 +1213,18 @@ fn workflow_emit_metric_action_emits_metric() {
 
   setup.send_runtime_update();
 
-  let mut a = state("A");
   let b = state("B");
-
-  declare_transition!(
-    &mut a => &b;
-    when rule!(log_matches!(message == "fire workflow action!"));
-    do action!(
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    rule!(log_matches!(message == "fire workflow action!")),
+    &[action!(
       emit_counter "foo_id";
       value metric_value!(123);
       tags {
         metric_tag!(fix "fixed_key" => "fixed_value"),
         metric_tag!(extract "extraction_key_from" => "extraction_key_to")
       }
-    )
+    )],
   );
 
   // Send down a configuration with a single buffer ('default') buffer
@@ -1294,31 +1288,26 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
       "stats cap".to_string(),
     )));
 
-  let mut a = state("a");
   let b = state("b");
   let c = state("c");
 
-  declare_transition!(
-    &mut a => &b;
-    when rule!(
-      log_matches!(message == "first log")
-    );
-    do action!(
-      emit_counter "foo";
-      value metric_value!(1);
-      tags {
-        metric_tag!(extract "extracted" => "extracted")
-      }
+  let a = state("a")
+    .declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(message == "first log")),
+      &[action!(
+        emit_counter "foo";
+        value metric_value!(1);
+        tags {
+          metric_tag!(extract "extracted" => "extracted")
+        }
+      )],
     )
-  );
-
-  declare_transition!(
-    &mut a => &c;
-    when rule!(
-      log_matches!(message == "second log")
+    .declare_transition_with_actions(
+      &c,
+      rule!(log_matches!(message == "second log")),
+      &[action!(emit_counter "bar"; value metric_value!(1))],
     );
-    do action!(emit_counter "bar"; value metric_value!(1))
-  );
 
   let workflow = workflow_proto!("1"; exclusive with a, b, c);
 

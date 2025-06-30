@@ -21,7 +21,6 @@ use bd_proto::protos::config::v1::config::log_matcher::{
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
 use bd_proto::protos::workflow::workflow::{Workflow, WorkflowsConfiguration};
 #[rustfmt::skip]
-use crate::declare_transition;
 use crate::workflow::macros::{
   action,
   all,
@@ -203,40 +202,32 @@ pub fn make_benchmarking_configuration_update() -> ConfigurationUpdate {
 
 #[must_use]
 pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationUpdate {
-  let mut a = state("a");
   let b = state("b");
-
-  declare_transition!(
-    &mut a => &b;
-    when rule!(
-      all!(
-        log_matches!(message == "SceneWillEnterFG"),
-        log_matches!(tag("os") == "iOS"),
-      )
-    );
-    do action!(emit_counter "app_open"; value metric_value!(1))
+  let a = state("a").declare_transition_with_actions(
+    &b,
+    rule!(all!(
+      log_matches!(message == "SceneWillEnterFG"),
+      log_matches!(tag("os") == "iOS"),
+    )),
+    &[action!(emit_counter "app_open"; value metric_value!(1))],
   );
 
   let workflow1 = workflow_proto!("1"; exclusive with a, b);
 
-  let mut c = state("c");
   let d = state("d");
-
-  declare_transition!(
-    &mut c => &d;
-    when rule!(
-      any!(
-        all!(
-          log_matches!(message == "SceneDidEnterBG"),
-          log_matches!(tag("os") == "iOS"),
-        ),
-        all!(
-          log_matches!(message == "AppFinishedLaunching"),
-          log_matches!(tag("os") == "iOS"),
-        ),
-      )
-    );
-    do action!(emit_counter "app_close"; value metric_value!(1))
+  let c = state("c").declare_transition_with_actions(
+    &d,
+    rule!(any!(
+      all!(
+        log_matches!(message == "SceneDidEnterBG"),
+        log_matches!(tag("os") == "iOS"),
+      ),
+      all!(
+        log_matches!(message == "AppFinishedLaunching"),
+        log_matches!(tag("os") == "iOS"),
+      ),
+    )),
+    &[action!(emit_counter "app_close"; value metric_value!(1))],
   );
 
   let workflow2 = workflow_proto!("2"; exclusive with c, d);
@@ -332,18 +323,14 @@ pub fn make_configuration_update_with_workflow_flushing_buffer_on_anything(
   buffer_id: &str,
   buffer_type: buffer_config::Type,
 ) -> ConfigurationUpdate {
-  let mut a = state("a");
   let b = state("b");
-
-  declare_transition!(
-    &mut a => &b;
-    when rule!(
-      any!(
-        log_matches!(message == "foo"),
-        not!(crate::log_matches!(message == "foo")),
-      )
-    );
-    do action!(flush_buffers &[buffer_id]; id "flush_action_id")
+  let a = state("a").declare_transition_with_actions(
+    &b,
+    rule!(any!(
+      log_matches!(message == "foo"),
+      not!(crate::log_matches!(message == "foo")),
+    )),
+    &[action!(flush_buffers &[buffer_id]; id "flush_action_id")],
   );
 
   let workflow = workflow_proto!("1"; exclusive with a, b);
@@ -365,15 +352,11 @@ pub fn make_configuration_update_with_workflow_flushing_buffer(
   buffer_matcher: BufferLogMatcher,
   workflow_matcher: LogMatcher,
 ) -> ConfigurationUpdate {
-  let mut a = state("a");
   let b = state("b");
-
-  declare_transition!(
-    &mut a => &b;
-    when rule!(
-      workflow_matcher
-    );
-    do action!(flush_buffers &[buffer_id]; id "flush_action_id")
+  let a = state("a").declare_transition_with_actions(
+    &b,
+    rule!(workflow_matcher),
+    &[action!(flush_buffers &[buffer_id]; id "flush_action_id")],
   );
 
   let workflow = workflow_proto!("1"; exclusive with a, b);
@@ -393,15 +376,11 @@ pub fn make_workflow_config_flushing_buffer(
   buffer_id: &str,
   matcher: bd_proto::protos::log_matcher::log_matcher::LogMatcher,
 ) -> Vec<Workflow> {
-  let mut a = state("a");
   let b = state("b");
-
-  declare_transition!(
-    &mut a => &b;
-    when rule!(
-      matcher
-    );
-    do action!(flush_buffers &[buffer_id]; id "flush_action_id")
+  let a = state("a").declare_transition_with_actions(
+    &b,
+    rule!(matcher),
+    &[action!(flush_buffers &[buffer_id]; id "flush_action_id")],
   );
 
   vec![workflow_proto!("1"; exclusive with a, b)]
