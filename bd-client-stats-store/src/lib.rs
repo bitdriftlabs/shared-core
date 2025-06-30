@@ -595,7 +595,7 @@ impl Collector {
       || MetricData::Histogram(Histogram::default()),
     )? {
       MetricData::Histogram(histogram) => Ok(histogram.clone()),
-      MetricData::Counter(_) => Err(Error::ChangedType),
+      MetricData::Counter(_) => unreachable!(),
     }
   }
 }
