@@ -374,7 +374,7 @@ fn timeout_from_start() {
   assert!(workflow.runs()[0].traversals()[0].timeout_unix_ms.is_none());
   assert!(workflow.runs()[1].traversals()[0].timeout_unix_ms.is_some());
 
-  // This will not match but will be far enough in the future to trigger the timeout this will
+  // This will not match but will be far enough in the future to trigger the timeout. This will
   // complete the workflow.
   let result =
     workflow.process_log(TestLog::new("blah2").with_now(datetime!(2023-01-01 00:00:01.5 UTC)));

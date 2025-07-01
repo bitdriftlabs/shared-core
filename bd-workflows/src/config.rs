@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::workflow::Traversal;
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use bd_log_matcher::matcher::Tree;
 use bd_matcher::FieldProvider;
 use bd_proto::protos::workflow::workflow;
@@ -86,9 +86,7 @@ pub struct Config {
 impl Config {
   pub fn new(config: WorkflowConfigProto) -> anyhow::Result<Self> {
     if config.states.is_empty() {
-      return Err(anyhow!(
-        "invalid workflow states configuration: states list is empty"
-      ));
+      bail!("invalid workflow states configuration: states list is empty");
     }
 
     let state_index_by_id = config
@@ -120,9 +118,7 @@ impl Config {
 
     // State 0 must have transitions to be a valid workflow.
     if states[0].transitions.is_empty() {
-      return Err(anyhow!(
-        "invalid workflow configuration: initial state must have at least one transition"
-      ));
+      bail!("invalid workflow configuration: initial state must have at least one transition");
     }
 
     Ok(Self {
@@ -251,9 +247,7 @@ impl State {
         .into_iter()
         .map(|transition| {
           if !state_index_by_id.contains_key(&transition.target_state_id) {
-            return Err(anyhow!(
-              "invalid workflow state configuration: reference to an unexisting state"
-            ));
+            bail!("invalid workflow state configuration: reference to an unexisting state");
           }
 
           let target_state_index = state_index_by_id[&transition.target_state_id];
@@ -269,9 +263,7 @@ impl State {
         .into_option()
         .map(|timeout| {
           if !state_index_by_id.contains_key(&timeout.target_state_id) {
-            return Err(anyhow!(
-              "invalid workflow state configuration: reference to an unexisting state"
-            ));
+            bail!("invalid workflow state configuration: reference to an unexisting state");
           }
 
           Ok(StateTimeout {
@@ -576,9 +568,7 @@ impl Streaming {
 
     if let Some(max_logs_count) = max_logs_count {
       if max_logs_count == 0 {
-        return Err(anyhow!(
-          "invalid streaming configuration: max_logs_count has to be greater than 0",
-        ));
+        bail!("invalid streaming configuration: max_logs_count has to be greater than 0");
       }
     }
 
