@@ -45,6 +45,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::task::JoinHandle;
@@ -486,6 +487,7 @@ impl WorkflowsEngine {
     &'a mut self,
     log: &LogRef<'_>,
     log_destination_buffer_ids: &'a BTreeSet<Cow<'a, str>>,
+    now: OffsetDateTime,
   ) -> WorkflowsEngineResult<'a> {
     // Measure duration in here even if the list of workflows is empty.
     let _timer = self.stats.process_log_duration.start_timer();
@@ -544,7 +546,7 @@ impl WorkflowsEngine {
     let mut logs_to_inject: BTreeMap<&'a str, Log> = BTreeMap::new();
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let was_in_initial_state = workflow.is_in_initial_state();
-      let result = workflow.process_log(&self.configs[index], log);
+      let result = workflow.process_log(&self.configs[index], log, now);
 
       macro_rules! inc_by {
         ($field:ident, $value:ident) => {
@@ -865,7 +867,7 @@ impl StateStore {
     );
 
     Self {
-      state_path: sdk_directory.join("workflows_state_snapshot.8.bin"),
+      state_path: sdk_directory.join("workflows_state_snapshot.9.bin"),
       last_persisted: None,
       stats,
       persistence_write_interval_flag: runtime.register_watch().unwrap(),

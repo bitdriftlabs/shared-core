@@ -202,6 +202,7 @@ impl LoggerBuilder {
       network_quality_provider.clone(),
       self.params.device.id(),
       self.params.store.clone(),
+      Arc::new(SystemTimeProvider),
     );
 
     let logger = Logger::new(

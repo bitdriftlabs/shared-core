@@ -21,6 +21,7 @@ use crate::config::{
 use crate::generate_log::generate_log_action;
 use bd_log_primitives::{FieldsRef, Log, LogRef};
 use bd_matcher::FieldProvider;
+use bd_time::OffsetDateTimeExt;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
@@ -79,21 +80,30 @@ impl Workflow {
     &mut self,
     config: &'a Config,
     log: &LogRef<'_>,
+    now: OffsetDateTime,
   ) -> WorkflowResult<'a> {
     let mut result = WorkflowResult::default();
 
     if self.needs_new_run() {
-      let run = Run::new(config);
-      self.add_run(run);
-      log::trace!("added a new run for workflow {}", self.id);
+      log::trace!("workflow={}: creating a new run", self.id);
+      // The timeout is only initialized here (if applicable) if this is the primary run. If this
+      // is an initial state run it will not be initialized until the primary run is complete. If
+      // the initial state run happens to progress beyond the timeout on its own that is fine.
+      let run = Run::new(config, now, self.runs.is_empty());
+      if run.traversals[0].timeout_unix_ms.is_some() {
+        result.stats.processed_timeout = true;
+      }
+      self.runs.insert(0, run);
     }
 
     let mut did_make_progress = false;
     // Process runs in reversed order as we may end up modifying the array
     // starting at `index` in any given iteration of the loop.
     for index in (0 .. self.runs.len()).rev() {
+      log::trace!("processing run {index} for workflow {}", self.id);
+      let is_initial_run = index == 0;
       let run = &mut self.runs[index];
-      let mut run_result = run.process_log(config, log);
+      let mut run_result = run.process_log(config, log, now);
 
       result.incorporate_run_result(&mut run_result);
 
@@ -110,10 +120,17 @@ impl Workflow {
           );
 
           did_make_progress = true;
-
-          log::trace!("completed run, workflow id={:?}", self.id);
-
+          log::trace!("completed run, workflow id={}", self.id);
           self.runs.remove(index);
+
+          // In the case where we completed the active run *and* there is a pending initial state
+          // run, we need to see if there is a timeout to initialize on the initial state run. In
+          // this case by definition the initial state run should have a single traversal as it
+          // has not progressed.
+          if !is_initial_run {
+            debug_assert!(self.runs[0].traversals.len() == 1);
+            self.runs[0].traversals[0].initialize_timeout(config, now);
+          }
         },
         RunState::Running => {
           if run_result_did_make_progress {
@@ -149,7 +166,6 @@ impl Workflow {
       }
 
       // There exists more than two runs and the index of the current run is 0.
-      let is_initial_run = index == 0;
       if is_initial_run {
         // Handling of "resetting" logic that's unique to exclusive workflows:
         // * remove the workflow run processed in previous iteration of the loop (if any), the one
@@ -171,11 +187,6 @@ impl Workflow {
     }
 
     result
-  }
-
-  fn add_run(&mut self, run: Run) {
-    log::trace!("workflow={}: creating a new run", self.id);
-    self.runs.insert(0, run);
   }
 
   pub(crate) fn needs_new_run(&self) -> bool {
@@ -291,6 +302,7 @@ impl<'a> WorkflowResult<'a> {
       .append(&mut run_result.triggered_actions);
     self.logs_to_inject.append(&mut run_result.logs_to_inject);
     self.stats.matched_logs_count += run_result.matched_logs_count;
+    self.stats.processed_timeout |= run_result.processed_timeout;
   }
 }
 
@@ -304,11 +316,12 @@ impl<'a> WorkflowResult<'a> {
 #[allow(clippy::struct_field_names)]
 pub(crate) struct WorkflowResultStats {
   pub(crate) matched_logs_count: u32,
+  processed_timeout: bool,
 }
 
 impl WorkflowResultStats {
   pub(crate) const fn did_make_progress(&self) -> bool {
-    self.matched_logs_count > 0
+    self.matched_logs_count > 0 || self.processed_timeout
   }
 }
 
@@ -410,9 +423,15 @@ pub(crate) struct Run {
 }
 
 impl Run {
-  pub(crate) fn new(config: &Config) -> Self {
-    let traversals = Traversal::new(config, 0, TraversalExtractions::default())
-      .map_or_else(Vec::new, |traversal| vec![traversal]);
+  pub(crate) fn new(config: &Config, now: OffsetDateTime, initialize_timeout: bool) -> Self {
+    let traversals = Traversal::new(
+      config,
+      0,
+      TraversalExtractions::default(),
+      now,
+      initialize_timeout,
+    )
+    .map_or_else(Vec::new, |traversal| vec![traversal]);
 
     Self {
       traversals,
@@ -426,24 +445,30 @@ impl Run {
     &self.traversals
   }
 
-  fn process_log<'a>(&mut self, config: &'a Config, log: &LogRef<'_>) -> RunResult<'a> {
+  fn process_log<'a>(
+    &mut self,
+    config: &'a Config,
+    log: &LogRef<'_>,
+    now: OffsetDateTime,
+  ) -> RunResult<'a> {
     // Optimize for the case when no traversal is advanced as it's
     // the most common situation.
 
     let mut run_triggered_actions = Vec::<TriggeredAction<'_>>::new();
     let mut run_logs_to_inject = BTreeMap::<&'a str, Log>::new();
     let mut run_matched_logs_count = 0;
+    let mut run_processed_timeout = false;
 
     // Process traversals in reversed order as we may end up modifying the array
     // starting at `index` in any given iteration of the loop.
     log::trace!(
-      "processing {} traversals for workflow {}",
+      "processing {} traversal(s) for workflow {}",
       self.traversals.len(),
       config.id()
     );
     for index in (0 .. self.traversals.len()).rev() {
       let traversal = &mut self.traversals[index];
-      let mut traversal_result = traversal.process_log(config, log);
+      let mut traversal_result = traversal.process_log(config, log, now);
 
       run_triggered_actions.append(&mut traversal_result.triggered_actions);
       run_logs_to_inject.append(&mut traversal_result.log_to_inject);
@@ -452,6 +477,7 @@ impl Run {
       self.matched_logs_count += traversal_result.matched_logs_count;
       // Independently increment the match count for this specific run
       run_matched_logs_count += traversal_result.matched_logs_count;
+      run_processed_timeout |= traversal_result.processed_timeout;
 
       // Check if we are over the limit of the logs that the workflow run is allowed to match.
       if let Some(matched_logs_count_limit) = config.matched_logs_count_limit() {
@@ -462,6 +488,7 @@ impl Run {
             state: RunState::Stopped,
             triggered_actions: vec![],
             matched_logs_count: run_matched_logs_count,
+            processed_timeout: run_processed_timeout,
             logs_to_inject: BTreeMap::new(),
           };
         }
@@ -482,6 +509,7 @@ impl Run {
                   state: RunState::Stopped,
                   triggered_actions: vec![],
                   matched_logs_count: run_matched_logs_count,
+                  processed_timeout: run_processed_timeout,
                   logs_to_inject: BTreeMap::new(),
                 };
               }
@@ -534,6 +562,7 @@ impl Run {
       state,
       triggered_actions: run_triggered_actions,
       matched_logs_count: run_matched_logs_count,
+      processed_timeout: run_processed_timeout,
       logs_to_inject: run_logs_to_inject,
     }
   }
@@ -595,7 +624,10 @@ pub(crate) struct RunResult<'a> {
   triggered_actions: Vec<TriggeredAction<'a>>,
   /// The number of matched logs. A single log can be matched multiple times
   matched_logs_count: u32,
-  // Logs to be injected back into the workflow engine after field attachment and other processing.
+  /// Whether the run created a timeout or a timeout expired.
+  processed_timeout: bool,
+  /// Logs to be injected back into the workflow engine after field attachment and other
+  /// processing.
   logs_to_inject: BTreeMap<&'a str, Log>,
 }
 
@@ -639,6 +671,8 @@ pub(crate) struct Traversal {
   pub(crate) matched_logs_counts: Vec<u32>,
   /// Extractions folded across all traversals in a path.
   pub(crate) extractions: TraversalExtractions,
+  /// The unix timestamp in milliseconds of when the optional state timeout expires.
+  timeout_unix_ms: Option<i64>,
 }
 
 impl Traversal {
@@ -649,21 +683,78 @@ impl Traversal {
     config: &Config,
     state_index: usize,
     extractions: TraversalExtractions,
+    now: OffsetDateTime,
+    initialize_timeout: bool,
   ) -> Option<Self> {
-    if config.states()[state_index].transitions().is_empty() {
+    let state = &config.states()[state_index];
+    if state.transitions().is_empty() {
+      // If there are no transitions we should never have a timeout.
+      debug_assert!(state.timeout().is_none());
       None
     } else {
-      Some(Self {
+      let mut traversal = Self {
         state_index,
         // The number of logs matched by a given traversal.
         // Start at 0 for a new traversal.
-        matched_logs_counts: vec![0; config.states()[state_index].transitions().len()],
+        matched_logs_counts: vec![0; state.transitions().len()],
         extractions,
-      })
+        timeout_unix_ms: None,
+      };
+
+      if initialize_timeout {
+        traversal.initialize_timeout(config, now);
+      }
+
+      Some(traversal)
     }
   }
 
-  fn process_log<'a>(&mut self, config: &'a Config, log: &LogRef<'_>) -> TraversalResult<'a> {
+  fn initialize_timeout(&mut self, config: &Config, now: OffsetDateTime) {
+    let state = &config.states()[self.state_index];
+    self.timeout_unix_ms = state.timeout().map(|timeout| {
+      log::trace!(
+        "setting timeout for traversal at state {} to {}",
+        state.id(),
+        timeout.duration
+      );
+      now.unix_timestamp_ms() + i64::try_from(timeout.duration.whole_milliseconds()).unwrap()
+    });
+  }
+
+  fn process_log<'a>(
+    &mut self,
+    config: &'a Config,
+    log: &LogRef<'_>,
+    now: OffsetDateTime,
+  ) -> TraversalResult<'a> {
+    fn process_transition<'a>(
+      result: &mut TraversalResult<'a>,
+      mut extractions: TraversalExtractions,
+      actions: &'a [Action],
+      log: &LogRef<'_>,
+      next_state_index: usize,
+      config: &Config,
+      now: OffsetDateTime,
+    ) {
+      result.followed_transitions_count += 1;
+
+      // Collect triggered actions and injected logs.
+      let (triggered_actions, logs_to_inject) =
+        Traversal::triggered_actions(actions, &mut extractions, log.fields);
+
+      result.triggered_actions.extend(triggered_actions);
+      result.log_to_inject.extend(logs_to_inject);
+
+      // Create next traversal. Subsequent traversals always have their timeout initialized if there
+      // is one.
+      if let Some(traversal) = Traversal::new(config, next_state_index, extractions, now, true) {
+        if traversal.timeout_unix_ms.is_some() {
+          result.processed_timeout = true;
+        }
+        result.output_traversals.push(traversal);
+      }
+    }
+
     let transitions = config.transitions_for_traversal(self);
 
     let mut result = TraversalResult::default();
@@ -672,9 +763,10 @@ impl Traversal {
     // currently processed traversal has multiple outgoing transitions and a
     // processed log ends up fulfills conditions for more than 1 of these transitions.
     log::trace!(
-      "processing {} transitions for workflow {}",
+      "processing {} transition(s) for workflow {}/{}",
       transitions.len(),
-      config.id()
+      config.id(),
+      config.states()[self.state_index].id()
     );
     for (index, transition) in transitions.iter().enumerate() {
       match &transition.rule() {
@@ -694,23 +786,15 @@ impl Traversal {
             result.matched_logs_count += 1;
 
             if self.matched_logs_counts[index] == *count {
-              result.followed_transitions_count += 1;
-              // Update extractions.
-              let mut updated_extractions = self.do_extractions(config, index, log);
-
-              // Collect triggered actions and injected logs.
-              let actions = config.actions_for_traversal(self, index);
-              let (triggered_actions, logs_to_inject) =
-                Self::triggered_actions(actions, &mut updated_extractions, log.fields);
-
-              result.triggered_actions.extend(triggered_actions);
-              result.log_to_inject.extend(logs_to_inject);
-
-              // Create next traversal.
-              let next_state_index = config.next_state_index_for_traversal(self, index);
-              if let Some(traversal) = Self::new(config, next_state_index, updated_extractions) {
-                result.output_traversals.push(traversal);
-              }
+              process_transition(
+                &mut result,
+                self.do_extractions(config, index, log),
+                config.actions_for_traversal(self, index),
+                log,
+                config.next_state_index_for_traversal(self, index),
+                config,
+                now,
+              );
 
               log::trace!(
                 "traversal's transition {} matched log ({} matches in total) and is advancing, \
@@ -732,6 +816,27 @@ impl Traversal {
           }
         },
       }
+    }
+
+    if result.output_traversals.is_empty()
+      && let Some(timeout_unix_ms) = self.timeout_unix_ms
+      && now.unix_timestamp_ms() >= timeout_unix_ms
+    {
+      process_transition(
+        &mut result,
+        TraversalExtractions::default(),
+        config.actions_for_timeout(self.state_index),
+        log,
+        config.next_state_index_for_timeout(self.state_index),
+        config,
+        now,
+      );
+      result.processed_timeout = true;
+
+      log::trace!(
+        "traversal timed out and is advancing, workflow id={:?}",
+        config.id(),
+      );
     }
 
     result
@@ -841,7 +946,9 @@ impl Traversal {
 
   // Whether a given traversal is an initial state.
   fn is_in_initial_state(&self) -> bool {
-    self.state_index == 0 && self.matched_logs_counts.iter().all(|&e| e == 0)
+    self.state_index == 0
+      && self.matched_logs_counts.iter().all(|&e| e == 0)
+      && self.timeout_unix_ms.is_none()
   }
 }
 
@@ -883,24 +990,19 @@ struct TraversalResult<'a> {
   /// i.e., when multiple transitions coming out of a given state all match the
   /// same log.
   matched_logs_count: u32,
-  // The number of transitions that were followed in response to processing a log.
+  /// Whether a timeout was created or expired as a result of processing a log.
+  processed_timeout: bool,
+  /// The number of transitions that were followed in response to processing a log. This can
+  /// include a timeout.
   followed_transitions_count: u32,
-  // Logs to be injected back into the workflow engine after field attachment and other processing.
+  /// Logs to be injected back into the workflow engine after field attachment and other
+  /// processing.
   log_to_inject: BTreeMap<&'a str, Log>,
 }
 
 impl TraversalResult<'_> {
-  /// Whether traversal made any progress. As it is now, the check could be reduced
-  /// to checking whether any log was matched but the check is abstracted away to improve
-  /// readability.
+  /// Whether traversal made any progress.
   fn did_make_progress(&self) -> bool {
-    debug_assert!(
-      if self.matched_logs_count == 0 {
-        self.followed_transitions_count == 0
-      } else {
-        true
-      }
-    );
-    self.matched_logs_count > 0
+    self.followed_transitions_count > 0
   }
 }

@@ -68,7 +68,7 @@ pub mod macros {
   #[macro_export]
   #[allow(clippy::module_name_repetitions)]
   macro_rules! workflow_proto {
-    (exclusive with $($state:expr),+) => {
+    ($($state:expr),+) => {
       $crate::workflow::make_workflow_config_proto(
         "workflow_id",
         bd_proto::protos::workflow::workflow::workflow::execution::Execution_type
@@ -81,7 +81,7 @@ pub mod macros {
       )
     };
     (
-      exclusive with $($state:expr),+;
+      $($state:expr),+;
       matches $matches_limit:expr;
       duration $duration_limit:expr) => {
       $crate::workflow::make_workflow_config_proto(
@@ -95,7 +95,7 @@ pub mod macros {
         vec![$($state.clone().into_inner()),+],
       )
     };
-    ($id:expr; exclusive with $($state:expr),+) => {
+    ($id:expr; $($state:expr),+) => {
       $crate::workflow::make_workflow_config_proto(
         $id,
         bd_proto::protos::workflow::workflow::workflow::execution::Execution_type
@@ -171,6 +171,29 @@ pub mod macros {
 
     pub fn into_inner(self) -> bd_proto::protos::workflow::workflow::workflow::State {
       self.state
+    }
+
+    #[must_use]
+    pub fn with_timeout(
+      mut self,
+      to: &Self,
+      duration: Duration,
+      actions: &[bd_proto::protos::workflow::workflow::workflow::action::Action_type],
+    ) -> Self {
+      self.state.timeout = Some(TransitionTimeout {
+        target_state_id: to.state.id.clone(),
+        timeout_ms: duration.whole_milliseconds().try_into().unwrap(),
+        actions: actions
+          .iter()
+          .map(|a| ActionProto {
+            action_type: Some(a.clone()),
+            ..Default::default()
+          })
+          .collect(),
+        ..Default::default()
+      })
+      .into();
+      self
     }
   }
 
@@ -415,6 +438,8 @@ pub mod macros {
     };
   }
 
+  use bd_proto::protos::workflow::workflow::workflow::{Action as ActionProto, TransitionTimeout};
+  use time::Duration;
   #[allow(clippy::module_name_repetitions)]
   pub use {
     action,

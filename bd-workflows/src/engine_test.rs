@@ -10,6 +10,7 @@ use crate::actions_flush_buffers::BuffersToFlush;
 use crate::config::{Action, FlushBufferId, WorkflowsConfiguration};
 use crate::engine::{WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::engine_assert_active_runs;
+use crate::test::TestLog;
 use crate::workflow::Workflow;
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
@@ -159,63 +160,6 @@ macro_rules! engine_assert_active_run_traversals {
   }
 }
 
-/// A macro that makes a given workflow engine process a log specified by
-/// a message.
-#[macro_export]
-macro_rules! engine_process_log {
-  ($workflows_engine:expr; $message:expr) => {{
-    $workflows_engine.engine.process_log(
-      &bd_log_primitives::LogRef {
-        log_type:
-          bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType::Normal,
-        log_level: log_level::DEBUG,
-        message: &LogMessage::String($message.to_string()),
-        session_id: &$workflows_engine.session_id,
-        occurred_at: time::OffsetDateTime::now_utc(),
-        fields: &FieldsRef::new(&LogFields::new(), &LogFields::new()),
-        capture_session: None,
-      },
-      &$workflows_engine.log_destination_buffer_ids,
-    )
-  }};
-  ($workflows_engine:expr; $message:expr; with $tags:expr) => {
-    $workflows_engine.engine.process_log(
-      &bd_log_primitives::LogRef {
-        log_type:
-          bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType::Normal,
-        log_level: log_level::DEBUG,
-        message: &LogMessage::String($message.to_string()),
-        fields: &FieldsRef::new(
-          &bd_test_helpers::workflow::make_tags($tags),
-          &LogFields::new(),
-        ),
-        session_id: &$workflows_engine.session_id,
-        occurred_at: time::OffsetDateTime::now_utc(),
-        capture_session: None,
-      },
-      &$workflows_engine.log_destination_buffer_ids,
-    )
-  };
-  ($workflows_engine:expr; $message:expr; with $tags:expr; time $current_time:expr) => {
-    $workflows_engine.engine.process_log(
-      &bd_log_primitives::LogRef {
-        log_type:
-          bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType::Normal,
-        log_level: log_level::DEBUG,
-        message: &LogMessage::String($message.to_string()),
-        fields: &FieldsRef::new(
-          &bd_test_helpers::workflow::make_tags($tags),
-          &LogFields::new(),
-        ),
-        session_id: &$workflows_engine.session_id,
-        occurred_at: $current_time,
-        capture_session: None,
-      },
-      &$workflows_engine.log_destination_buffer_ids,
-    )
-  };
-}
-
 //
 // AnnotatedWorkflowsEngine
 //
@@ -263,6 +207,26 @@ impl AnnotatedWorkflowsEngine {
 
       task_handle,
     }
+  }
+
+  fn process_log(&mut self, log: TestLog) -> WorkflowsEngineResult<'_> {
+    self.engine.process_log(
+      &bd_log_primitives::LogRef {
+        log_type:
+          bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType::Normal,
+        log_level: log_level::DEBUG,
+        message: &LogMessage::String(log.message),
+        session_id: log.session.as_ref().map_or(&self.session_id, |s| &**s),
+        occurred_at: log.occurred_at,
+        fields: &FieldsRef::new(
+          &bd_test_helpers::workflow::make_tags(log.tags),
+          &LogFields::new(),
+        ),
+        capture_session: None,
+      },
+      &self.log_destination_buffer_ids,
+      log.now,
+    )
   }
 
   async fn run_once_for_test(&mut self) {
@@ -478,7 +442,7 @@ impl Setup {
     self
       .sdk_directory
       .path()
-      .join("workflows_state_snapshot.8.bin")
+      .join("workflows_state_snapshot.9.bin")
   }
 }
 
@@ -487,10 +451,7 @@ async fn engine_initialization_and_update() {
   let b = state("B");
   let a = state("A").declare_transition(&b, rule!(log_matches!(message == "foo")));
 
-  let workflows = vec![
-    workflow!("1"; exclusive with a, b),
-    workflow!("2"; exclusive with a, b),
-  ];
+  let workflows = vec![workflow!("1"; a, b), workflow!("2"; a, b)];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -507,9 +468,9 @@ async fn engine_initialization_and_update() {
   );
 
   let workflows = vec![
-    workflow!("3"; exclusive with a, b),
-    workflow!("4"; exclusive with a, b),
-    workflow!("5"; exclusive with a, b),
+    workflow!("3"; a, b),
+    workflow!("4"; a, b),
+    workflow!("5"; a, b),
   ];
 
   workflows_engine.update(WorkflowsEngineConfig::new_with_workflow_configurations(
@@ -545,8 +506,8 @@ async fn engine_update_after_sdk_update() {
 
   let cached_config_update = WorkflowsEngineConfig::new(
     WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
-      workflow!("2"; exclusive with c, d),
-      workflow!("1"; exclusive with a, b),
+      workflow!("2"; c, d),
+      workflow!("1"; a, b),
     ]),
     BTreeSet::from(["trigger_buffer_id".into()]),
     BTreeSet::from(["continuous_buffer_id".into()]),
@@ -578,9 +539,7 @@ async fn engine_update_after_sdk_update() {
   // streaming configuration portion of the 'flush buffers' action. The engine should replace the
   // old workflow config with its new updated version.
   workflows_engine.update(WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
-      workflow!("1"; exclusive with a, b),
-    ]),
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![workflow!("1"; a, b)]),
     BTreeSet::from(["trigger_buffer_id".into()]),
     BTreeSet::from(["continuous_buffer_id".into()]),
   ));
@@ -605,6 +564,54 @@ async fn engine_update_after_sdk_update() {
 }
 
 #[tokio::test]
+async fn persist_initial_state_timeout() {
+  let mut a = state("A");
+  let b = state("B");
+  let c = state("C");
+
+  a = a
+    .declare_transition(&b, rule!(log_matches!(message == "foo")))
+    .with_timeout(
+      &c,
+      1.seconds(),
+      &[action!(emit_counter "foo_metric"; value metric_value!(1))],
+    );
+
+  let workflows = vec![workflow!(a, b, c)];
+  let setup = Setup::new();
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows.clone(),
+    ))
+    .await;
+
+  // This should start the timeout. And we should persist it.
+  workflows_engine
+    .process_log(TestLog::new("something else").with_now(datetime!(2023-01-01 00:00:00 UTC)));
+  engine_assert_active_runs!(workflows_engine; 0; "A");
+  assert!(workflows_engine.needs_state_persistence);
+  workflows_engine.maybe_persist(false).await;
+  assert!(!workflows_engine.needs_state_persistence);
+
+  let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
+  engine_assert_active_runs!(workflows_engine; 0; "A");
+
+  // The following will not match, will expire the timeout, and then set the timeout on the
+  // initial state run.
+  workflows_engine
+    .process_log(TestLog::new("something else").with_now(datetime!(2023-01-01 00:00:01 UTC)));
+  engine_assert_active_runs!(workflows_engine; 0; "A");
+  workflows_engine
+    .collector
+    .assert_workflow_counter_eq(1, "foo_metric", labels! {});
+}
+
+#[tokio::test]
 #[allow(clippy::many_single_char_names)]
 async fn persistence_succeeds() {
   let mut a = state("A");
@@ -619,10 +626,7 @@ async fn persistence_succeeds() {
 
   d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
 
-  let workflows = vec![
-    workflow!(exclusive with a, b, c, d, e),
-    workflow!(exclusive with a, b, c, d, e),
-  ];
+  let workflows = vec![workflow!(a, b, c, d, e), workflow!(a, b, c, d, e)];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -644,7 +648,7 @@ async fn persistence_succeeds() {
 
   // Create a fork from state A to both B and D by matching "foo" to both transitions.
   // This run has 2 traversals.
-  engine_process_log!(workflows_engine; "foo");
+  workflows_engine.process_log(TestLog::new("foo"));
 
   // [(A -> B) AND (A -> D)] (x2)
   setup
@@ -684,7 +688,7 @@ async fn persistence_skipped_if_no_workflow_progress_is_made() {
   a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
   b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
 
-  let workflows = vec![workflow!(exclusive with a, b, c)];
+  let workflows = vec![workflow!(a, b, c)];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -694,7 +698,7 @@ async fn persistence_skipped_if_no_workflow_progress_is_made() {
     .await;
 
   // No matches, state is not dirty.
-  engine_process_log!(workflows_engine; "bar");
+  workflows_engine.process_log(TestLog::new("bar"));
 
   setup
     .collector
@@ -726,7 +730,7 @@ async fn persistence_skipped_if_workflow_stays_in_an_initial_state() {
   let b = state("B");
   let a = state("A").declare_transition(&b, rule!(log_matches!(message == "foo")));
 
-  let workflows = vec![workflow!(exclusive with a, b)];
+  let workflows = vec![workflow!(a, b)];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -737,7 +741,7 @@ async fn persistence_skipped_if_workflow_stays_in_an_initial_state() {
 
   // Log is matched but the end state is equal to start state is equal to initial state
   // so no persistence is needed.
-  engine_process_log!(workflows_engine; "foo");
+  workflows_engine.process_log(TestLog::new("foo"));
 
   setup
     .collector
@@ -755,10 +759,7 @@ async fn persist_workflows_with_at_least_one_non_initial_state_run_only() {
   a = a.declare_transition(&b, rule!(log_matches!(message == "foo"); times 10));
   c = c.declare_transition(&d, rule!(log_matches!(message == "bar")));
 
-  let workflows = vec![
-    workflow!("1"; exclusive with a, b),
-    workflow!("2"; exclusive with c, d),
-  ];
+  let workflows = vec![workflow!("1"; a, b), workflow!("2"; c, d)];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -768,7 +769,7 @@ async fn persist_workflows_with_at_least_one_non_initial_state_run_only() {
     .await;
 
   // Workflow "1" matches a log and its run is not initial state anymore, but is still at state A.
-  engine_process_log!(workflows_engine; "foo");
+  workflows_engine.process_log(TestLog::new("foo"));
   assert!(!workflows_engine.engine.state.workflows[0].is_in_initial_state());
   engine_assert_active_runs!(workflows_engine; 0; "A");
   engine_assert_active_runs!(workflows_engine; 1; "C");
@@ -795,7 +796,7 @@ async fn needs_persistence_if_workflow_moves_to_an_initial_state() {
   a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
   b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
 
-  let workflows = vec![workflow!(exclusive with a, b, c)];
+  let workflows = vec![workflow!(a, b, c)];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -805,7 +806,7 @@ async fn needs_persistence_if_workflow_moves_to_an_initial_state() {
     .await;
 
   // Workflow's run moves to state 'B'.
-  engine_process_log!(workflows_engine; "foo");
+  workflows_engine.process_log(TestLog::new("foo"));
   engine_assert_active_runs!(workflows_engine; 0; "B");
 
   setup
@@ -818,7 +819,7 @@ async fn needs_persistence_if_workflow_moves_to_an_initial_state() {
   assert!(!workflows_engine.needs_state_persistence);
 
   // Workflow's run moves to its final state 'C' and completes, leaving only the initial state run.
-  engine_process_log!(workflows_engine; "bar");
+  workflows_engine.process_log(TestLog::new("bar"));
   engine_assert_active_runs!(workflows_engine; 0; "A");
   // Workflow needs persistence as its state changed.
   assert!(workflows_engine.needs_state_persistence);
@@ -841,10 +842,7 @@ async fn persistence_is_respected_through_consecutive_workflows() {
 
   x = x.declare_transition(&y, rule!(log_matches!(message == "zoo")));
 
-  let workflows = vec![
-    workflow!(exclusive with a, b, c),
-    workflow!(exclusive with x, y),
-  ];
+  let workflows = vec![workflow!(a, b, c), workflow!(x, y)];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -855,7 +853,7 @@ async fn persistence_is_respected_through_consecutive_workflows() {
 
   // "foo" makes the first workflow advance from "A" to "B" making its state dirty
   // "foo" doesn't match anything in the second workflow so its state remains clean
-  engine_process_log!(workflows_engine; "foo");
+  workflows_engine.process_log(TestLog::new("foo"));
 
   setup
     .collector
@@ -880,7 +878,7 @@ async fn persistence_performed_if_match_is_found_without_advancing() {
   a = a.declare_transition(&b, rule!(log_matches!(message == "foo"); times 2));
   b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
 
-  let workflows = vec![workflow!(exclusive with a, b, c)];
+  let workflows = vec![workflow!(a, b, c)];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -890,7 +888,7 @@ async fn persistence_performed_if_match_is_found_without_advancing() {
     .await;
 
   // Matches, but it doesn't advance the state machine
-  engine_process_log!(workflows_engine; "foo");
+  workflows_engine.process_log(TestLog::new("foo"));
 
   engine_assert_active_runs!(workflows_engine; 0; "A");
   setup
@@ -922,7 +920,7 @@ async fn persistence_to_disk_is_rate_limited() {
   a = a.declare_transition(&d, rule!(log_matches!(message == "foo")));
   d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
 
-  let workflows = vec![workflow!(exclusive with a, b, c, d, e)];
+  let workflows = vec![workflow!(a, b, c, d, e)];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -933,13 +931,13 @@ async fn persistence_to_disk_is_rate_limited() {
 
   // Create a fork from state A to both B and D by matching "foo" to both transitions.
   // This run has 2 traversals.
-  engine_process_log!(workflows_engine; "foo");
+  workflows_engine.process_log(TestLog::new("foo"));
 
   workflows_engine.maybe_persist(false).await;
 
   // We immediately advance the workflow to the next state.
   // * The first traversal of the first run matches this log
-  engine_process_log!(workflows_engine; "bar");
+  workflows_engine.process_log(TestLog::new("bar"));
 
   // This persistance should be skipped due to rate limiting.
   workflows_engine.maybe_persist(false).await;
@@ -983,10 +981,7 @@ async fn runs_in_initial_state_are_not_persisted() {
   a = a.declare_transition(&c, rule!(log_matches!(message == "foo"); times 10));
   b = b.declare_transition(&c, rule!(log_matches!(message == "zar")));
 
-  let workflows = vec![
-    workflow!("1"; exclusive with a, c),
-    workflow!("2"; exclusive with b, c),
-  ];
+  let workflows = vec![workflow!("1"; a, c), workflow!("2"; b, c)];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -998,14 +993,14 @@ async fn runs_in_initial_state_are_not_persisted() {
   // * Workflow #1: The only existing run matches log but does not advance as the transition
   //   requires 10 matches.
   // * Workflow #2: a run in an initial state is created.
-  engine_process_log!(workflows_engine; "foo");
+  workflows_engine.process_log(TestLog::new("foo"));
   engine_assert_active_runs!(workflows_engine; 0; "A");
   engine_assert_active_runs!(workflows_engine; 1; "B");
 
   // * Workflow #1: An extra run with initial state is created as workflow uses parallel execution
   //   type.
   // * Workflow #2: Log is not matched. Nothing happens.
-  engine_process_log!(workflows_engine; "bar");
+  workflows_engine.process_log(TestLog::new("bar"));
   engine_assert_active_runs!(workflows_engine; 0; "A", "A");
   engine_assert_active_runs!(workflows_engine; 1; "B");
 
@@ -1029,7 +1024,7 @@ async fn runs_in_initial_state_are_not_persisted() {
   engine_assert_active_runs!(workflows_engine; 0; "A");
   assert!(workflows_engine.state.workflows[1].runs().is_empty());
 
-  engine_process_log!(workflows_engine; "bar");
+  workflows_engine.process_log(TestLog::new("bar"));
   // * Workflow #1: A new run in an initial state is created as workflow has a parallel execution
   //   type and no runs in initial state.
   // * Workflow #2: A new run in an initial state is created as workflow had not runs.
@@ -1051,7 +1046,7 @@ async fn ignore_persisted_state_if_corrupted() {
   a = a.declare_transition(&d, rule!(log_matches!(message == "foo")));
   d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
 
-  let workflows = vec![workflow!(exclusive with a, b, c, d, e)];
+  let workflows = vec![workflow!(a, b, c, d, e)];
 
   let setup = Setup::new();
 
@@ -1079,7 +1074,7 @@ async fn ignore_persisted_state_if_corrupted() {
   );
 
   // Change workflows state
-  engine_process_log!(workflows_engine; "foo");
+  workflows_engine.process_log(TestLog::new("foo"));
 
   // No errors should be reported since the file should be overwritten
   workflows_engine.maybe_persist(false).await;
@@ -1132,7 +1127,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
   a = a.declare_transition(&d, rule!(log_matches!(message == "foo")));
   d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
 
-  let workflows = vec![workflow!(exclusive with a, b, c, d, e)];
+  let workflows = vec![workflow!(a, b, c, d, e)];
 
   let collector = Collector::default();
   let sdk_directory = PathBuf::from("/invalid/path");
@@ -1174,10 +1169,11 @@ async fn ignore_persisted_state_if_invalid_dir() {
         &LogFields::new(),
       ),
       session_id: "foo_session",
-      occurred_at: time::OffsetDateTime::now_utc(),
+      occurred_at: OffsetDateTime::now_utc(),
       capture_session: None,
     },
     &BTreeSet::new(),
+    OffsetDateTime::now_utc(),
   );
 
   // Persistence is no-op if dir invalid
@@ -1233,10 +1229,7 @@ async fn engine_processing_log() {
     &[action!(emit_counter "foo_metric"; value metric_value!(123))],
   );
 
-  let workflows = vec![
-    workflow!("1"; exclusive with a, b),
-    workflow!("2"; exclusive with c, d),
-  ];
+  let workflows = vec![workflow!("1"; a, b), workflow!("2"; c, d)];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -1251,7 +1244,7 @@ async fn engine_processing_log() {
   // * One run is created for each of the created workflows.
   // * Each workflow run advances from their initial to final state in response to "foo" log.
   workflows_engine.log_destination_buffer_ids = BTreeSet::from(["foo_buffer_id".into()]);
-  let result = engine_process_log!(workflows_engine; "foo");
+  let result = workflows_engine.process_log(TestLog::new("foo"));
   assert_eq!(
     WorkflowsEngineResult {
       log_destination_buffer_ids: Cow::Owned(BTreeSet::from(["foo_buffer_id".into()])),
@@ -1286,7 +1279,7 @@ async fn engine_processing_log() {
     .assert_counter_eq(2, "workflows:matched_logs_total", labels! {});
 
   // Two new runs are created to ensure that each workflow has one run in an initial state.
-  engine_process_log!(workflows_engine; "not matching");
+  workflows_engine.process_log(TestLog::new("not matching"));
   engine_assert_active_runs!(workflows_engine; 0; "A");
   engine_assert_active_runs!(workflows_engine; 1; "C");
 }
@@ -1301,7 +1294,7 @@ async fn exclusive_workflow_duration_limit() {
   b = b.declare_transition(&c, rule!(log_matches!(message == "zar")));
 
   let config = workflow!(
-    exclusive with a, b, c;
+    a, b, c;
     matches limit!(count 100);
     duration limit!(seconds 1)
   );
@@ -1317,23 +1310,24 @@ async fn exclusive_workflow_duration_limit() {
 
   // * A new run is created.
   // * The newly created run doesn't match a log.
-  engine_process_log!(workflows_engine; "bar"; with labels!{}; time now);
+  workflows_engine.process_log(TestLog::new("bar").with_occurred_at(now));
   engine_assert_active_runs!(workflows_engine; 0; "A");
 
   // * The run matches a log and advances. It leaves its initial state.
-  engine_process_log!(workflows_engine; "foo"; with labels!{}; time now + Duration::from_secs(2));
+  workflows_engine.process_log(TestLog::new("foo").with_occurred_at(now + Duration::from_secs(2)));
   engine_assert_active_runs!(workflows_engine; 0; "B");
 
   // * A run in an initial state is created and added to the beginning of runs list.
   // * The run is not an initial state and has exceeded the maximum duration.
   // * The run is stopped.
-  engine_process_log!(workflows_engine; "not matching"; with labels!{}; time now + Duration::from_secs(4));
+  workflows_engine
+    .process_log(TestLog::new("not matching").with_occurred_at(now + Duration::from_secs(4)));
   assert_eq!(workflows_engine.state.workflows[0].runs().len(), 1);
   engine_assert_active_runs!(workflows_engine; 0; "A");
 
   // * A new run in an initial state is created.
   // * The new run matches a log and advances.
-  engine_process_log!(workflows_engine; "foo"; with labels!{}; time now + Duration::from_secs(4));
+  workflows_engine.process_log(TestLog::new("foo").with_occurred_at(now + Duration::from_secs(4)));
   engine_assert_active_runs!(workflows_engine; 0; "B");
 }
 
@@ -1354,9 +1348,7 @@ async fn log_without_destination() {
   );
 
   let workflows_engine_config = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
-      workflow!(exclusive with a, b),
-    ]),
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![workflow!(a, b)]),
     BTreeSet::from(["trigger_buffer_id".into()]),
     BTreeSet::from(["continuous_buffer_id".into()]),
   );
@@ -1366,7 +1358,7 @@ async fn log_without_destination() {
   let mut workflows_engine = setup.make_workflows_engine(workflows_engine_config).await;
   workflows_engine.log_destination_buffer_ids = BTreeSet::new();
 
-  let result = engine_process_log!(workflows_engine; "foo");
+  let result = workflows_engine.process_log(TestLog::new("foo"));
 
   assert_eq!(
     WorkflowsEngineResult {
@@ -1446,9 +1438,9 @@ async fn logs_streaming() {
   );
 
   let workflows_engine_config = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
-      workflow!(exclusive with a, b, c, d, e, f, g, h),
-    ]),
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![workflow!(
+      a, b, c, d, e, f, g, h
+    )]),
     BTreeSet::from(["trigger_buffer_id".into()]),
     BTreeSet::from([
       "continuous_buffer_id_1".into(),
@@ -1476,7 +1468,7 @@ async fn logs_streaming() {
   ]);
 
   // This should trigger a flush of a buffer.
-  let result = engine_process_log!(workflows_engine; "immediate_drop"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("immediate_drop"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["trigger_buffer_id".into()]))
@@ -1506,8 +1498,7 @@ async fn logs_streaming() {
   );
 
   // This should trigger a flush of a buffer.
-  let result =
-    engine_process_log!(workflows_engine; "immediate_upload_no_streaming"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("immediate_upload_no_streaming"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["trigger_buffer_id".into()]))
@@ -1548,7 +1539,7 @@ async fn logs_streaming() {
 
   // This should trigger a flush of a buffer that's followed by logs streaming to continuous log
   // buffer.
-  let result = engine_process_log!(workflows_engine; "immediate_upload_streaming"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("immediate_upload_streaming"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["trigger_buffer_id".into()]))
@@ -1600,8 +1591,7 @@ async fn logs_streaming() {
   );
 
   // This should trigger a flush of a buffer.
-  let result =
-    engine_process_log!(workflows_engine; "relaunch_upload_no_streaming"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("relaunch_upload_no_streaming"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["continuous_buffer_id_2".into()]))
@@ -1609,8 +1599,7 @@ async fn logs_streaming() {
 
   // The resulting flush buffer action should be ignored as the same flush buffer action was
   // triggered above and related logs upload intent is still in-progress.
-  let result =
-    engine_process_log!(workflows_engine; "relaunch_upload_no_streaming"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("relaunch_upload_no_streaming"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["continuous_buffer_id_2".into()]))
@@ -1620,7 +1609,7 @@ async fn logs_streaming() {
   // buffer.
   // Processing of this log also confirms that log can be processed even as the engine has pending
   // logs upload intent(s).
-  let result = engine_process_log!(workflows_engine; "relaunch_upload_streaming"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("relaunch_upload_streaming"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["continuous_buffer_id_2".into()]))
@@ -1651,7 +1640,7 @@ async fn logs_streaming() {
     IntentDecision::UploadImmediately,
   ]);
 
-  let result = engine_process_log!(workflows_engine; "test log"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("test log"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["continuous_buffer_id_2".into()]))
@@ -1685,7 +1674,7 @@ async fn logs_streaming() {
     labels! { "result" => "success" },
   );
 
-  let result = engine_process_log!(workflows_engine; "test log"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("test log"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["continuous_buffer_id_2".into()]))
@@ -1718,7 +1707,7 @@ async fn logs_streaming() {
 
   // This re-triggers `relaunch_upload_streaming` flush and stream logs action but is ignored by the
   // system as the previous action with the same ID is still streaming logs.
-  let result = engine_process_log!(workflows_engine; "relaunch_upload_streaming"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("relaunch_upload_streaming"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from([
@@ -1760,7 +1749,7 @@ async fn logs_streaming() {
   workflows_engine.session_id = "bar_session".to_string();
 
   // Streaming is disabled as a log with a new session ID was emitted.
-  let result = engine_process_log!(workflows_engine; "test log"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("test log"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["trigger_buffer_id".into()]))
@@ -1789,14 +1778,14 @@ async fn engine_tracks_new_sessions() {
     .make_workflows_engine(workflows_engine_config.clone())
     .await;
 
-  engine_process_log!(workflows_engine; "foo"; with labels!{});
-  engine_process_log!(workflows_engine; "foo"; with labels!{});
+  workflows_engine.process_log(TestLog::new("foo"));
+  workflows_engine.process_log(TestLog::new("foo"));
   assert_eq!(workflows_engine.stats.sessions_total.get(), 1);
 
   workflows_engine.session_id = "new session ID".to_string();
 
-  engine_process_log!(workflows_engine; "foo"; with labels!{});
-  engine_process_log!(workflows_engine; "foo"; with labels!{});
+  workflows_engine.process_log(TestLog::new("foo"));
+  workflows_engine.process_log(TestLog::new("foo"));
   assert_eq!(workflows_engine.stats.sessions_total.get(), 2);
 }
 
@@ -1822,9 +1811,7 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   let setup = Setup::new();
 
   let workflows_engine_config = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
-      workflow!(exclusive with a, b, c),
-    ]),
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![workflow!(a, b, c)]),
     BTreeSet::from(["trigger_buffer_id".into()]),
     BTreeSet::from(["continuous_buffer_id".into()]),
   );
@@ -1838,7 +1825,7 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   workflows_engine.set_awaiting_logs_upload_intent_decisions(vec![]);
 
   // The log below should trigger a buffer flush.
-  let result = engine_process_log!(workflows_engine; "foo"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("foo"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["trigger_buffer_id".into()]))
@@ -1848,7 +1835,7 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   // should trigger a partial cleanup of the engine's state. It's worth noting that 'pending
   // actions' should not be cleared.
   workflows_engine.session_id = "new session ID".to_string();
-  let result = engine_process_log!(workflows_engine; "not triggering"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("not triggering"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["trigger_buffer_id".into()]))
@@ -1886,7 +1873,7 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   );
   workflows_engine.complete_flushes();
 
-  let result = engine_process_log!(workflows_engine; "not triggering"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("not triggering"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["trigger_buffer_id".into()]))
@@ -1927,9 +1914,7 @@ async fn engine_continues_to_stream_upload_not_complete() {
   let setup = Setup::new();
 
   let workflows_engine_config = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
-      workflow!(exclusive with a, b, c),
-    ]),
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![workflow!(a, b, c)]),
     BTreeSet::from(["trigger_buffer_id".into()]),
     BTreeSet::from(["continuous_buffer_id".into()]),
   );
@@ -1944,7 +1929,7 @@ async fn engine_continues_to_stream_upload_not_complete() {
     .set_awaiting_logs_upload_intent_decisions(vec![IntentDecision::UploadImmediately]);
 
   // The log below should trigger a buffer flush.
-  let result = engine_process_log!(workflows_engine; "foo"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("foo"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["trigger_buffer_id".into()]))
@@ -1967,7 +1952,7 @@ async fn engine_continues_to_stream_upload_not_complete() {
   );
 
   // Verify that we have transitioned to streaming.
-  let result = engine_process_log!(workflows_engine; "streamed"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("streamed"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["continuous_buffer_id".into()]))
@@ -1976,7 +1961,7 @@ async fn engine_continues_to_stream_upload_not_complete() {
   // Change the session. This would typically cause the engine to stop streaming, but we haven't
   // signaled that the upload is complete yet so the streaming action remains active.
   workflows_engine.session_id = "new session ID".to_string();
-  let result = engine_process_log!(workflows_engine; "streamed"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("streamed"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["continuous_buffer_id".into()]))
@@ -1986,7 +1971,7 @@ async fn engine_continues_to_stream_upload_not_complete() {
 
   // Now that the uploads have been completed, we'll be able to stop the streaming actions and
   // start routing logs back to the original buffer.
-  let result = engine_process_log!(workflows_engine; "not streamed"; with labels!{});
+  let result = workflows_engine.process_log(TestLog::new("not streamed"));
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(BTreeSet::from(["trigger_buffer_id".into()]))
@@ -2037,21 +2022,18 @@ async fn creating_new_runs_after_first_log_processing() {
   // over the list of its workflows in order.
   let mut workflows_engine = setup
     .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
-      vec![
-        workflow!(exclusive with c, d, e),
-        workflow!(exclusive with a, b),
-      ],
+      vec![workflow!(c, d, e), workflow!(a, b)],
     ))
     .await;
   assert!(workflows_engine.state.workflows[0].runs().is_empty());
   assert!(workflows_engine.state.workflows[1].runs().is_empty());
 
-  engine_process_log!(workflows_engine; "bar");
+  workflows_engine.process_log(TestLog::new("bar"));
   engine_assert_active_runs!(workflows_engine; 0; "D");
   engine_assert_active_runs!(workflows_engine; 1; "A");
 
   // * State "A" matches log but does not advance as its transition requires 100 matches.
-  engine_process_log!(workflows_engine; "foo");
+  workflows_engine.process_log(TestLog::new("foo"));
   engine_assert_active_runs!(workflows_engine; 0; "C", "D");
   engine_assert_active_runs!(workflows_engine; 1; "A");
 
@@ -2063,13 +2045,14 @@ async fn creating_new_runs_after_first_log_processing() {
   //   run with initial state "A" is added to workflow #2.
   // * We process workflow #2. Both of its runs are in state "A" and match a log but do not advance
   //   as a transition requires 100 matches.
-  engine_process_log!(workflows_engine; "not matching message"; with labels! { "key" => "value" });
+  workflows_engine
+    .process_log(TestLog::new("not matching message").with_tags(labels!("key" => "value")));
   engine_assert_active_runs!(workflows_engine; 0; "C");
   engine_assert_active_runs!(workflows_engine; 1; "A", "A");
 
   // In exclusive mode we will not make any new runs because both workflows have runs in the
   // initial state. With no matches and no traversals we stay under the limit.
-  engine_process_log!(workflows_engine; "not matching message");
+  workflows_engine.process_log(TestLog::new("not matching message"));
   engine_assert_active_runs!(workflows_engine; 0; "C");
   engine_assert_active_runs!(workflows_engine; 1; "A", "A");
 }
@@ -2083,9 +2066,8 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   a = a.declare_transition(&b, rule!(log_matches!(message == "foo"); times 10));
   b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
 
-  let engine_config = WorkflowsEngineConfig::new_with_workflow_configurations(vec![
-    workflow!(exclusive with a, b, c),
-  ]);
+  let engine_config =
+    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow!(a, b, c)]);
 
   let setup = Setup::new();
   let mut workflows_engine = setup.make_workflows_engine(engine_config.clone()).await;
@@ -2095,21 +2077,7 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   // No traversals as no log has been processed yet.
   assert!(workflows_engine.state.workflows[0].runs().is_empty());
 
-  workflows_engine.process_log(
-    &LogRef {
-      log_type: LogType::Normal,
-      log_level: log_level::DEBUG,
-      message: &LogMessage::String("foo".to_string()),
-      fields: &FieldsRef::new(
-        &bd_test_helpers::workflow::make_tags(labels! {}),
-        &LogFields::new(),
-      ),
-      session_id: "foo_session",
-      occurred_at: time::OffsetDateTime::now_utc(),
-      capture_session: None,
-    },
-    &BTreeSet::new(),
-  );
+  workflows_engine.process_log(TestLog::new("foo").with_session("foo_session"));
 
   // Session ID captured from a process log.
   assert_eq!("foo_session", workflows_engine.state.session_id);
@@ -2127,21 +2095,7 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   engine_assert_active_runs!(workflows_engine; 0; "A");
 
   // Process a log with a new session ID.
-  workflows_engine.process_log(
-    &LogRef {
-      log_type: LogType::Normal,
-      log_level: log_level::DEBUG,
-      message: &LogMessage::String("bar".to_string()),
-      fields: &FieldsRef::new(
-        &bd_test_helpers::workflow::make_tags(labels! {}),
-        &LogFields::new(),
-      ),
-      session_id: "bar_session",
-      occurred_at: time::OffsetDateTime::now_utc(),
-      capture_session: None,
-    },
-    &BTreeSet::new(),
-  );
+  workflows_engine.process_log(TestLog::new("bar").with_session("bar_session"));
 
   // Session ID changed.
   assert_eq!("bar_session", workflows_engine.state.session_id);
@@ -2191,69 +2145,69 @@ async fn test_traversals_count_tracking() {
   b = b.declare_transition(&e, rule!(log_matches!(message == "dar")));
   e = e.declare_transition(&f, rule!(log_matches!(message == "far")));
 
-  let workflow = workflow!(exclusive with a, b, c, d, e, f);
+  let workflow = workflow!(a, b, c, d, e, f);
   let setup = Setup::new();
 
   let engine_config = WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]);
   let mut engine = setup.make_workflows_engine(engine_config.clone()).await;
 
-  engine_process_log!(engine; "foo");
+  engine.process_log(TestLog::new("foo"));
   assert_eq!(1, engine.state.workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "B");
 
   // Log is matched and workflow moves to state "B".
-  engine_process_log!(engine; "foo");
+  engine.process_log(TestLog::new("foo"));
   assert_eq!(1, engine.state.workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "B");
 
   // * A new initial state run is created and added to the beginning of runs list.
   // * Log is matched and workflow moves to state "C".
-  engine_process_log!(engine; "bar");
+  engine.process_log(TestLog::new("bar"));
   assert_eq!(2, engine.state.workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "A", "C");
 
   // Log is not matched.
-  engine_process_log!(engine; "dar");
+  engine.process_log(TestLog::new("dar"));
   assert_eq!(2, engine.state.workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "A", "C");
 
   // Log is matched and workflow is reset to its initial state.
-  engine_process_log!(engine; "foo");
+  engine.process_log(TestLog::new("foo"));
   assert_eq!(1, engine.state.workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "B");
 
   // * A new initial state run is created and added to the beginning of runs list.
   // * Log is matched by the run that's not in an initial state and the run advances to state `C`.
-  engine_process_log!(engine; "bar");
+  engine.process_log(TestLog::new("bar"));
   assert_eq!(2, engine.state.workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "A", "C");
 
   // Log is matched and the more advanced run moves to final state "D" and completes.
-  engine_process_log!(engine; "car");
+  engine.process_log(TestLog::new("car"));
   engine_assert_active_runs!(engine; 0; "A");
 
   // Log is not matched.
-  engine_process_log!(engine; "foo");
+  engine.process_log(TestLog::new("foo"));
   assert_eq!(1, engine.state.workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "B");
 
   // Log is matched and workflow moves to state "B".
-  engine_process_log!(engine; "foo");
+  engine.process_log(TestLog::new("foo"));
   assert_eq!(1, engine.state.workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "B");
 
   // * A new initial state run is created and added to the beginning of runs list.
   // * Log is matched and workflow moves to "E" state.
-  engine_process_log!(engine; "dar");
+  engine.process_log(TestLog::new("dar"));
   assert_eq!(2, engine.state.workflows[0].runs().len());
   engine_assert_active_runs!(engine; 0; "A", "E");
 
   // Log is matched and workflow moves to final state "F" and completes.
-  engine_process_log!(engine; "far");
+  engine.process_log(TestLog::new("far"));
   engine_assert_active_runs!(engine; 0; "A");
 
   // Log is not matched.
-  engine_process_log!(engine; "no match");
+  engine.process_log(TestLog::new("no match"));
   engine_assert_active_runs!(engine; 0; "A");
 
   // Checks that the traversal count does not change if we get update
@@ -2272,7 +2226,7 @@ async fn test_traversals_count_tracking() {
   assert!(engine.state.workflows[0].runs().is_empty());
 
   // A traversal is created to process an incoming log that's not matched.
-  engine_process_log!(engine; "no match");
+  engine.process_log(TestLog::new("no match"));
   engine_assert_active_runs!(engine; 0; "A");
 }
 
@@ -2288,7 +2242,7 @@ async fn test_exclusive_workflow_state_reset() {
   b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
   c = c.declare_transition(&d, rule!(log_matches!(message == "dar")));
 
-  let workflow = workflow!(exclusive with a, b, c, d);
+  let workflow = workflow!(a, b, c, d);
   let setup = Setup::new();
 
   let mut engine = setup
@@ -2299,24 +2253,24 @@ async fn test_exclusive_workflow_state_reset() {
 
   // The log matches the transition coming out of the currently active node and workflow moves to
   // state `B`.
-  engine_process_log!(engine; "foo");
+  engine.process_log(TestLog::new("foo"));
   engine_assert_active_runs!(engine; 0; "B");
 
   // * A new initial state run is created and added to the beginning of runs list so that the
   //   workflow has a run that's in an initial state.
   // * The log matches the transition coming out of the currently active node and workflow moves to
   //   state `C`.
-  engine_process_log!(engine; "bar");
+  engine.process_log(TestLog::new("bar"));
   engine_assert_active_runs!(engine; 0; "A", "C");
 
   // The log is not matched by any of the runs.
-  engine_process_log!(engine; "not matching");
+  engine.process_log(TestLog::new("not matching"));
   engine_assert_active_runs!(engine; 0;  "A", "C");
 
   // * The log is not matched by the run that's not in an initial state.
   // * The log is matched by the run that's in an initial state. That causes the state advancement
   //   of the run and the removal of the other run.
-  engine_process_log!(engine; "foo");
+  engine.process_log(TestLog::new("foo"));
   engine_assert_active_runs!(engine; 0; "B");
 }
 
@@ -2335,7 +2289,7 @@ async fn test_exclusive_workflow_potential_fork() {
   c = c.declare_transition(&d, rule!(log_matches!(message == "foo")));
   d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
 
-  let workflow = workflow!(exclusive with a, b, c, d, e);
+  let workflow = workflow!(a, b, c, d, e);
   let setup = Setup::new();
 
   let mut engine = setup
@@ -2345,18 +2299,18 @@ async fn test_exclusive_workflow_potential_fork() {
     .await;
 
   // The log matches and workflow moves to state B.
-  engine_process_log!(engine; "foo");
+  engine.process_log(TestLog::new("foo"));
   engine_assert_active_runs!(engine; 0; "B");
 
   // * A new run is created and added to the beginning of runs list so that the workflow has a run
   //   that's in an initial state.
   // * The log matches and workflow moves to state C.
-  engine_process_log!(engine; "bar");
+  engine.process_log(TestLog::new("bar"));
   engine_assert_active_runs!(engine; 0; "A", "C");
 
   // The log matches transition from state `C` to `D` and at the same it matches the transition from
   // an initial state `A` to `B`. In this case, the workflow advances using `C` to `D` transition.
-  engine_process_log!(engine; "foo");
+  engine.process_log(TestLog::new("foo"));
   engine_assert_active_runs!(engine; 0; "A", "D");
 }
 
@@ -2396,7 +2350,7 @@ fn sankey_workflow() -> crate::config::Config {
     )],
   );
 
-  workflow!(exclusive with a, b, c, d)
+  workflow!(a, b, c, d)
 }
 
 #[allow(clippy::many_single_char_names)]
@@ -2466,20 +2420,20 @@ async fn generate_log_multiple() {
     &[action!(emit_counter "bar_metric"; value metric_value!(extract "duration"))],
   );
 
-  let workflow = workflow!(exclusive with a, b, c, d, e, f, g);
+  let workflow = workflow!(a, b, c, d, e, f, g);
   let mut engine = setup
     .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
       vec![workflow],
     ))
     .await;
-  let result = engine_process_log!(engine; "foo"; with labels!{};
-                                   time datetime!(2023-01-01 00:00:00 UTC));
+  let result =
+    engine.process_log(TestLog::new("foo").with_occurred_at(datetime!(2023-01-01 00:00:00 UTC)));
   assert!(result.logs_to_inject.is_empty());
-  let result = engine_process_log!(engine; "bar"; with labels!{};
-                                   time datetime!(2023-01-01 00:00:01 UTC));
+  let result =
+    engine.process_log(TestLog::new("bar").with_occurred_at(datetime!(2023-01-01 00:00:01 UTC)));
   assert!(result.logs_to_inject.is_empty());
-  let result = engine_process_log!(engine; "baz"; with labels!{};
-                                   time datetime!(2023-01-01 00:00:02 UTC));
+  let result =
+    engine.process_log(TestLog::new("baz").with_occurred_at(datetime!(2023-01-01 00:00:02 UTC)));
   assert_eq!(
     result.logs_to_inject.into_values().collect_vec(),
     vec![
@@ -2507,15 +2461,19 @@ async fn generate_log_multiple() {
   );
 
   // Simulate pushing both logs back through the engine.
-  engine_process_log!(engine; "message1";
-                      with labels!{"duration" => "1", "_generate_log_id" => "id1"};
-                      time datetime!(2023-01-01 00:00:03 UTC));
+  engine.process_log(
+    TestLog::new("message1")
+      .with_tags(labels! {"duration" => "1", "_generate_log_id" => "id1"})
+      .with_occurred_at(datetime!(2023-01-01 00:00:03 UTC)),
+  );
   engine
     .collector
     .assert_workflow_counter_eq(1, "foo_metric", labels! {});
-  engine_process_log!(engine; "message2";
-                      with labels!{"duration" => "2", "_generate_log_id" => "id2"};
-                      time datetime!(2023-01-01 00:00:03 UTC));
+  engine.process_log(
+    TestLog::new("message2")
+      .with_tags(labels! {"duration" => "2", "_generate_log_id" => "id2"})
+      .with_occurred_at(datetime!(2023-01-01 00:00:03 UTC)),
+  );
   engine
     .collector
     .assert_workflow_counter_eq(2, "bar_metric", labels! {});
@@ -2554,17 +2512,20 @@ async fn generate_log_action() {
     &[make_save_timestamp_extraction("timestamp2")],
   );
 
-  let workflow = workflow!(exclusive with a, b, c);
+  let workflow = workflow!(a, b, c);
   let mut engine = setup
     .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
       vec![workflow],
     ))
     .await;
-  let result = engine_process_log!(engine; "foo"; with labels!{ "field1" => "value1" };
-                                   time datetime!(2023-01-01 00:00:00 UTC));
+  let result = engine.process_log(
+    TestLog::new("foo")
+      .with_tags(labels! { "field1" => "value1" })
+      .with_occurred_at(datetime!(2023-01-01 00:00:00 UTC)),
+  );
   assert!(result.logs_to_inject.is_empty());
-  let result = engine_process_log!(engine; "bar"; with labels!{};
-                                   time datetime!(2023-01-01 00:00:00.003 UTC));
+  let result = engine
+    .process_log(TestLog::new("bar").with_occurred_at(datetime!(2023-01-01 00:00:00.003 UTC)));
   assert_eq!(
     result.logs_to_inject.into_values().collect_vec(),
     vec![Log {
@@ -2603,9 +2564,9 @@ async fn sankey_action() {
     .awaiting_sankey_upload_intent_decisions
     .push(Some(IntentDecision::Drop));
 
-  engine_process_log!(engine; "foo");
-  engine_process_log!(engine; "bar");
-  engine_process_log!(engine; "dar");
+  engine.process_log(TestLog::new("foo"));
+  engine.process_log(TestLog::new("bar"));
+  engine.process_log(TestLog::new("dar"));
 
   1.milliseconds().sleep().await;
 
@@ -2629,12 +2590,16 @@ async fn sankey_action() {
     .awaiting_sankey_upload_intent_decisions
     .push(Some(IntentDecision::UploadImmediately));
 
-  engine_process_log!(engine; "foo");
-  engine_process_log!(engine; "bar_loop");
-  engine_process_log!(engine; "bar_loop");
-  engine_process_log!(engine; "bar_loop");
-  engine_process_log!(engine; "bar"; with labels! { "field_to_extract_key" => "field_to_extract_value" });
-  engine_process_log!(engine; "dar"; with labels! { "field_to_extract_from" => "extracted_value" });
+  engine.process_log(TestLog::new("foo"));
+  engine.process_log(TestLog::new("bar_loop"));
+  engine.process_log(TestLog::new("bar_loop"));
+  engine.process_log(TestLog::new("bar_loop"));
+  engine.process_log(
+    TestLog::new("bar").with_tags(labels! { "field_to_extract_key" => "field_to_extract_value" }),
+  );
+  engine.process_log(
+    TestLog::new("dar").with_tags(labels! { "field_to_extract_from" => "extracted_value" }),
+  );
 
   1.milliseconds().sleep().await;
 
@@ -2687,12 +2652,16 @@ async fn sankey_action() {
   // Emit exactly the same sankey path again. This time the Sankey path should not be uploaded as it
   // was uploaded already previously.
 
-  engine_process_log!(engine; "foo");
-  engine_process_log!(engine; "bar_loop");
-  engine_process_log!(engine; "bar_loop");
-  engine_process_log!(engine; "bar_loop");
-  engine_process_log!(engine; "bar"; with labels! { "field_to_extract_key" => "field_to_extract_value" });
-  engine_process_log!(engine; "dar"; with labels! { "field_to_extract_from" => "extracted_value" });
+  engine.process_log(TestLog::new("foo"));
+  engine.process_log(TestLog::new("bar_loop"));
+  engine.process_log(TestLog::new("bar_loop"));
+  engine.process_log(TestLog::new("bar_loop"));
+  engine.process_log(
+    TestLog::new("bar").with_tags(labels! { "field_to_extract_key" => "field_to_extract_value" }),
+  );
+  engine.process_log(
+    TestLog::new("dar").with_tags(labels! { "field_to_extract_from" => "extracted_value" }),
+  );
 
   1.milliseconds().sleep().await;
 
@@ -2731,9 +2700,9 @@ async fn sankey_action_persistence() {
       .awaiting_sankey_upload_intent_decisions
       .push(None);
 
-    engine_process_log!(engine; "foo");
-    engine_process_log!(engine; "bar");
-    engine_process_log!(engine; "dar");
+    engine.process_log(TestLog::new("foo"));
+    engine.process_log(TestLog::new("bar"));
+    engine.process_log(TestLog::new("dar"));
 
     1.milliseconds().sleep().await;
 
@@ -2782,9 +2751,11 @@ async fn sankey_action_persistence_limit() {
         .awaiting_sankey_upload_intent_decisions
         .push(None);
 
-      engine_process_log!(engine; "foo");
-      engine_process_log!(engine; "bar"; with labels!{ "field_to_extract_key" => format!("value_{}", i) });
-      engine_process_log!(engine; "dar");
+      engine.process_log(TestLog::new("foo"));
+      engine.process_log(
+        TestLog::new("bar").with_tags(labels! { "field_to_extract_key" => format!("value_{}", i) }),
+      );
+      engine.process_log(TestLog::new("dar"));
     }
 
     1.milliseconds().sleep().await;
@@ -2822,7 +2793,7 @@ async fn take_screenshot_action() {
     &[action!(screenshot "screenshot_action_id")],
   );
 
-  let workflow = workflow!(exclusive with a, b);
+  let workflow = workflow!(a, b);
   let setup = Setup::new();
 
   let mut engine = setup
@@ -2831,7 +2802,7 @@ async fn take_screenshot_action() {
     ))
     .await;
 
-  let result = engine_process_log!(engine; "foo");
+  let result = engine.process_log(TestLog::new("foo"));
 
   assert!(result.capture_screenshot);
 }

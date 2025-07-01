@@ -212,7 +212,7 @@ pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationU
     &[action!(emit_counter "app_open"; value metric_value!(1))],
   );
 
-  let workflow1 = workflow_proto!("1"; exclusive with a, b);
+  let workflow1 = workflow_proto!("1"; a, b);
 
   let d = state("d");
   let c = state("c").declare_transition_with_actions(
@@ -230,7 +230,7 @@ pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationU
     &[action!(emit_counter "app_close"; value metric_value!(1))],
   );
 
-  let workflow2 = workflow_proto!("2"; exclusive with c, d);
+  let workflow2 = workflow_proto!("2"; c, d);
 
   configuration_update_from_parts(
     "1",
@@ -333,7 +333,7 @@ pub fn make_configuration_update_with_workflow_flushing_buffer_on_anything(
     &[action!(flush_buffers &[buffer_id]; id "flush_action_id")],
   );
 
-  let workflow = workflow_proto!("1"; exclusive with a, b);
+  let workflow = workflow_proto!("1"; a, b);
 
   configuration_update_from_parts(
     "1",
@@ -359,7 +359,7 @@ pub fn make_configuration_update_with_workflow_flushing_buffer(
     &[action!(flush_buffers &[buffer_id]; id "flush_action_id")],
   );
 
-  let workflow = workflow_proto!("1"; exclusive with a, b);
+  let workflow = workflow_proto!("1"; a, b);
 
   configuration_update_from_parts(
     "1",
@@ -383,7 +383,7 @@ pub fn make_workflow_config_flushing_buffer(
     &[action!(flush_buffers &[buffer_id]; id "flush_action_id")],
   );
 
-  vec![workflow_proto!("1"; exclusive with a, b)]
+  vec![workflow_proto!("1"; a, b)]
 }
 
 #[must_use]
