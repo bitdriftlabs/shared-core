@@ -687,9 +687,7 @@ impl Traversal {
     initialize_timeout: bool,
   ) -> Option<Self> {
     let state = &config.states()[state_index];
-    if state.transitions().is_empty() {
-      // If there are no transitions we should never have a timeout.
-      debug_assert!(state.timeout().is_none());
+    if state.transitions().is_empty() && state.timeout().is_none() {
       None
     } else {
       let mut traversal = Self {
@@ -818,25 +816,26 @@ impl Traversal {
       }
     }
 
-    if result.output_traversals.is_empty()
-      && let Some(timeout_unix_ms) = self.timeout_unix_ms
-      && now.unix_timestamp_ms() >= timeout_unix_ms
-    {
-      process_transition(
-        &mut result,
-        TraversalExtractions::default(),
-        config.actions_for_timeout(self.state_index),
-        log,
-        config.next_state_index_for_timeout(self.state_index),
-        config,
-        now,
-      );
-      result.processed_timeout = true;
+    if result.output_traversals.is_empty() {
+      if let Some(timeout_unix_ms) = self.timeout_unix_ms {
+        if now.unix_timestamp_ms() >= timeout_unix_ms {
+          process_transition(
+            &mut result,
+            TraversalExtractions::default(),
+            config.actions_for_timeout(self.state_index),
+            log,
+            config.next_state_index_for_timeout(self.state_index),
+            config,
+            now,
+          );
+          result.processed_timeout = true;
 
-      log::trace!(
-        "traversal timed out and is advancing, workflow id={:?}",
-        config.id(),
-      );
+          log::trace!(
+            "traversal timed out and is advancing, workflow id={:?}",
+            config.id(),
+          );
+        }
+      }
     }
 
     result
