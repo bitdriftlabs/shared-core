@@ -127,6 +127,7 @@ impl LoggerBuilder {
     Pin<Box<impl Future<Output = anyhow::Result<()>> + 'static>>,
     FlushTrigger,
   )> {
+    bd_panic::default(bd_panic::PanicType::ForceAbort);
     log::info!(
       "bitdrift Capture SDK: {:?}",
       self.params.static_metadata.sdk_version()
@@ -326,23 +327,47 @@ impl LoggerBuilder {
         .collect();
 
       try_join!(
-        async move { api.start().await },
+        async move {
+          api.start().await?;
+
+          log::info!("API ENDED");
+
+          Ok(())
+        },
         async move { buffer_uploader.run().await },
         async move {
           async_log_buffer.run(crash_logs).await;
+
+          log::info!("ASYNC LOG ENDED");
           Ok(())
         },
-        async move { buffer_manager.process_flushes(flush_buffers_rx).await },
+        async move {
+          buffer_manager.process_flushes(flush_buffers_rx).await?;
+
+          log::info!("BUFFER MANAGER ENDED");
+          Ok(())
+        },
         async move {
           stats_flusher.periodic_flush().await;
+
+          log::info!("STATS FLUSHER ENDED");
           Ok(())
         },
-        async move { crash_monitor.run().await },
+        async move {
+          crash_monitor.run().await?;
+
+          log::info!("CRASH MONITOR ENDED");
+          Ok(())
+        },
         async move {
           artifact_uploader.run().await;
+          log::info!("ARTIFACT UPLOADER ENDED");
           Ok(())
         }
       )
+      .inspect_err(|e| {
+        log::error!("Error running logger: {:?}", e);
+      })
       .map(|_| ())
     };
 
@@ -389,7 +414,12 @@ impl LoggerBuilder {
           .build()
           .unwrap()
           .block_on(async {
-            handle_unexpected(f.await, "logger top level run loop");
+            let result = f.await;
+            log::info!(
+              "bitdrift runtime has finished running with result: {:?}",
+              result
+            );
+            handle_unexpected(result, "logger top level run loop");
           });
       })?;
 
