@@ -222,6 +222,110 @@ fn unknown_state_reference_workflow() {
 }
 
 #[test]
+fn timeout_no_parallel_match() {
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
+
+  a = a.declare_transition_with_actions(
+    &b,
+    rule!(log_matches!(message == "foo")),
+    &[action!(emit_counter "foo_metric"; value metric_value!(1))],
+  );
+  b = b.with_timeout(
+    &c,
+    1.seconds(),
+    &[action!(emit_counter "timeout_metric"; value metric_value!(1))],
+  );
+
+  let config = workflow!(a, b, c);
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  // Advance to the timeout.
+  let result = workflow.process_log(TestLog::new("foo").with_now(datetime!(2023-01-01 00:00 UTC)));
+  assert_eq!(
+    result,
+    WorkflowResult {
+      triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
+        id: "foo_metric".to_string(),
+        tags: BTreeMap::new(),
+        increment: ValueIncrement::Fixed(1),
+        metric_type: MetricType::Counter,
+      })],
+      logs_to_inject: BTreeMap::new(),
+      stats: WorkflowResultStats {
+        matched_logs_count: 1,
+        processed_timeout: true,
+      },
+    }
+  );
+  assert_active_runs!(workflow; "B");
+
+  // Some other random log should timeout and leave the initial state run.
+  let result =
+    workflow.process_log(TestLog::new("bar").with_now(datetime!(2023-01-01 00:00:01 UTC)));
+  assert_eq!(
+    result,
+    WorkflowResult {
+      triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
+        id: "timeout_metric".to_string(),
+        tags: BTreeMap::new(),
+        increment: ValueIncrement::Fixed(1),
+        metric_type: MetricType::Counter,
+      })],
+      logs_to_inject: BTreeMap::new(),
+      stats: WorkflowResultStats {
+        matched_logs_count: 0,
+        processed_timeout: true,
+      },
+    }
+  );
+  assert_active_runs!(workflow; "A");
+
+  // Start the timeout again.
+  let result =
+    workflow.process_log(TestLog::new("foo").with_now(datetime!(2023-01-01 00:00:02 UTC)));
+  assert_eq!(
+    result,
+    WorkflowResult {
+      triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
+        id: "foo_metric".to_string(),
+        tags: BTreeMap::new(),
+        increment: ValueIncrement::Fixed(1),
+        metric_type: MetricType::Counter,
+      })],
+      logs_to_inject: BTreeMap::new(),
+      stats: WorkflowResultStats {
+        matched_logs_count: 1,
+        processed_timeout: true,
+      },
+    }
+  );
+  assert_active_runs!(workflow; "B");
+
+  // Reset the workflow which will advance the initial state run and remove the other run.
+  let result =
+    workflow.process_log(TestLog::new("foo").with_now(datetime!(2023-01-01 00:00:02 UTC)));
+  assert_eq!(
+    result,
+    WorkflowResult {
+      triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
+        id: "foo_metric".to_string(),
+        tags: BTreeMap::new(),
+        increment: ValueIncrement::Fixed(1),
+        metric_type: MetricType::Counter,
+      })],
+      logs_to_inject: BTreeMap::new(),
+      stats: WorkflowResultStats {
+        matched_logs_count: 1,
+        processed_timeout: true,
+      },
+    }
+  );
+  assert_active_runs!(workflow; "B");
+}
+
+#[test]
 fn timeout_not_start() {
   let mut a = state("A");
   let mut b = state("B");
