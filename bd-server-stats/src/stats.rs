@@ -404,35 +404,64 @@ impl Scope {
     self.counter_with_labels(name, HashMap::new())
   }
 
+  pub fn counter_checked(&self, name: &str) -> anyhow::Result<IntCounter> {
+    self.counter_with_labels_checked(name, HashMap::new())
+  }
+
   // Create a new counter with scope and provided labels.
   #[must_use]
   pub fn counter_with_labels(&self, name: &str, labels: HashMap<String, String>) -> IntCounter {
-    let name = self.metric_name(name);
-    let labels = self.final_labels(labels);
-    self
-      .collector
-      .inner
-      .counters
-      .entry(Id::new(name.clone(), labels.clone().into_iter().collect()))
-      .or_insert_with(|| {
-        let opts = opts!(name, "-").const_labels(labels);
-        #[allow(clippy::ignored_unit_patterns)]
-        register_int_counter_with_registry!(opts, self.collector.inner.registry).unwrap()
-      })
-      .clone()
+    self.counter_with_labels_checked(name, labels).unwrap()
   }
 
-  // Create a new counter vec that can be used to produce labeled counters.
+  pub fn counter_with_labels_checked(
+    &self,
+    name: &str,
+    labels: HashMap<String, String>,
+  ) -> anyhow::Result<IntCounter> {
+    let name = self.metric_name(name);
+    let labels = self.final_labels(labels);
+    Ok(
+      match self
+        .collector
+        .inner
+        .counters
+        .entry(Id::new(name.clone(), labels.clone().into_iter().collect()))
+      {
+        Entry::Occupied(entry) => entry.get().clone(),
+        Entry::Vacant(entry) => {
+          let opts = opts!(name, "-").const_labels(labels);
+          let counter = register_int_counter_with_registry!(opts, self.collector.inner.registry)?;
+          entry.insert(counter).value().clone()
+        },
+      },
+    )
+  }
+
+  // Create a new counter vec that can be used to produce labeled counters. This does not use
+  // any scope labels. Only the provided labels are used.
   #[must_use]
   pub fn counter_vec(&self, name: &str, labels: &[&str]) -> IntCounterVec {
-    #[allow(clippy::ignored_unit_patterns)]
-    register_int_counter_vec_with_registry!(
-      self.metric_name(name),
-      "-",
-      labels,
-      self.collector.inner.registry
-    )
-    .unwrap()
+    self.counter_vec_checked(name, labels).unwrap()
+  }
+
+  pub fn counter_vec_checked(&self, name: &str, labels: &[&str]) -> anyhow::Result<IntCounterVec> {
+    let id = VecId {
+      name: self.metric_name(name),
+      label_names: labels.iter().map(|&s| s.to_string()).collect(),
+    };
+    Ok(match self.collector.inner.counter_vecs.entry(id) {
+      Entry::Occupied(entry) => entry.get().clone(),
+      Entry::Vacant(entry) => {
+        let counter = register_int_counter_vec_with_registry!(
+          self.metric_name(name),
+          "-",
+          labels,
+          self.collector.inner.registry
+        )?;
+        entry.insert(counter).value().clone()
+      },
+    })
   }
 
   // Create a new gauge with scope labels.
@@ -544,12 +573,18 @@ pub trait GatherMetrics: Send + Sync {
 type OnGatherCallback = Box<dyn Fn() + Send>;
 
 // Wrapper around a prometheus collector.
+#[derive(Hash, Eq, PartialEq)]
+struct VecId {
+  name: String,
+  label_names: Vec<String>,
+}
 struct CollectorInner {
   registry: Registry,
   label_tracker: Arc<LabelTracker>,
   chained_collectors: Mutex<Vec<Arc<dyn GatherMetrics>>>,
   on_gather_callbacks: Mutex<Vec<OnGatherCallback>>,
   counters: DashMap<Id, IntCounter>,
+  counter_vecs: DashMap<VecId, IntCounterVec>,
   gauges: DashMap<Id, IntGauge>,
   histograms: DashMap<Id, Histogram>,
 }
@@ -578,6 +613,7 @@ impl Collector {
         chained_collectors: Mutex::default(),
         on_gather_callbacks: Mutex::default(),
         counters: DashMap::new(),
+        counter_vecs: DashMap::new(),
         gauges: DashMap::new(),
         histograms: DashMap::new(),
       }),

@@ -1059,6 +1059,7 @@ dependencies = [
 name = "bd-server-stats"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
  "bd-log",
  "bd-stats-common",
  "bd-time",
