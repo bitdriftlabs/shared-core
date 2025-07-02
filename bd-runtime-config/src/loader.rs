@@ -143,6 +143,45 @@ impl EventHandler for AsyncEventEventHandler {
 }
 
 //
+// MemoryLoader
+//
+
+/// A loader that provides a memory-backed configuration. This is useful for testing where we don't
+/// need to deal with file watches.
+pub struct MemoryLoader<ConfigType: ?Sized> {
+  snapshot_sender: watch::Sender<ConfigPtr<ConfigType>>,
+  snapshot_receiver: watch::Receiver<ConfigPtr<ConfigType>>,
+}
+
+#[async_trait::async_trait]
+impl<ConfigType: ?Sized + Send + Sync> Loader<ConfigType> for MemoryLoader<ConfigType> {
+  fn snapshot_watch(&self) -> watch::Receiver<ConfigPtr<ConfigType>> {
+    self.snapshot_receiver.clone()
+  }
+
+  async fn shutdown(&self) {
+    // No-op for memory-based file loader.
+  }
+}
+
+impl<ConfigType: ?Sized + Send + Sync + 'static> MemoryLoader<ConfigType> {
+  pub fn new_loader(config: ConfigPtr<ConfigType>) -> Arc<dyn Loader<ConfigType>> {
+    let (snapshot_sender, snapshot_receiver) = watch::channel(config);
+    Arc::new(Self {
+      snapshot_sender,
+      snapshot_receiver,
+    })
+  }
+
+  pub fn update_snapshot(
+    &self,
+    config: ConfigPtr<ConfigType>,
+  ) -> Result<(), watch::error::SendError<ConfigPtr<ConfigType>>> {
+    self.snapshot_sender.send(config)
+  }
+}
+
+//
 // WatchedFileLoader
 //
 

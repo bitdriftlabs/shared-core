@@ -5,7 +5,14 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::loader::{ConfigPtr, Loader, LoaderError, StatsCallbacks, WatchedFileLoader};
+use crate::loader::{
+  ConfigPtr,
+  Loader,
+  LoaderError,
+  MemoryLoader,
+  StatsCallbacks,
+  WatchedFileLoader,
+};
 use rand::Rng;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -69,7 +76,7 @@ enum FeatureFlagValue {
 
 // Contains a hashmap of string name to value.
 #[derive(Deserialize, Debug)]
-struct MemoryFeatureFlags {
+pub struct MemoryFeatureFlags {
   values: HashMap<String, FeatureFlagValue>,
 }
 
@@ -150,6 +157,12 @@ pub fn new_memory_feature_flags_loader(
     },
     stats,
   )
+}
+
+pub fn new_feature_flags_loader_for_test(
+  feature_flags: ConfigPtr<dyn FeatureFlags>,
+) -> Arc<dyn Loader<dyn FeatureFlags>> {
+  MemoryLoader::new_loader(feature_flags)
 }
 
 #[test]
