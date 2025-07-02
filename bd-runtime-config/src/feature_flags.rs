@@ -159,6 +159,7 @@ pub fn new_memory_feature_flags_loader(
   )
 }
 
+#[must_use]
 pub fn new_feature_flags_loader_for_test(
   feature_flags: ConfigPtr<dyn FeatureFlags>,
 ) -> Arc<dyn Loader<dyn FeatureFlags>> {

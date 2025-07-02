@@ -165,6 +165,7 @@ impl<ConfigType: ?Sized + Send + Sync> Loader<ConfigType> for MemoryLoader<Confi
 }
 
 impl<ConfigType: ?Sized + Send + Sync + 'static> MemoryLoader<ConfigType> {
+  #[must_use]
   pub fn new_loader(config: ConfigPtr<ConfigType>) -> Arc<dyn Loader<ConfigType>> {
     let (snapshot_sender, snapshot_receiver) = watch::channel(config);
     Arc::new(Self {
