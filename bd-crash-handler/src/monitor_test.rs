@@ -31,6 +31,7 @@ use bd_test_helpers::session::InMemoryStorage;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset};
 use itertools::Itertools;
 use mockall::predicate::eq;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::OffsetDateTime;
@@ -378,4 +379,38 @@ fn get_fatal_issue_mechanism_without_extension_must_return_error() {
 
   let error_message = metadata.unwrap_err().to_string();
   assert!(error_message.contains("Unknown file extension"));
+}
+
+#[test]
+fn timestamp_from_malformed_filename() {
+  let path = PathBuf::from("/path/to/x_crash_somethingsomething.cap");
+  let timestamp = Monitor::timestamp_from_filepath(&path);
+  assert_eq!(None, timestamp);
+}
+
+#[test]
+fn timestamp_from_filename_millis() {
+  let offset: i128 = 808_142_220_336;
+  let path = PathBuf::from(format!("/path/to/{offset}_crash_somethingsomething.cap"));
+  let timestamp = Monitor::timestamp_from_filepath(&path);
+  assert!(timestamp.is_some());
+  assert_eq!(
+    OffsetDateTime::from_unix_timestamp_nanos(offset * 1_000_000).ok(),
+    timestamp,
+  );
+}
+
+#[test]
+fn timestamp_from_filename_fractional_millis() {
+  let offset: f64 = 808_142_220_346.003_3;
+  let path = PathBuf::from(format!("/path/to/{offset:?}_crash_somethingsomething.cap"));
+  let timestamp = Monitor::timestamp_from_filepath(&path);
+  assert!(timestamp.is_some());
+
+  #[allow(clippy::cast_possible_truncation)]
+  let nanos = (offset * 1_000_000.0) as i128;
+  assert_eq!(
+    OffsetDateTime::from_unix_timestamp_nanos(nanos).ok(),
+    timestamp,
+  );
 }

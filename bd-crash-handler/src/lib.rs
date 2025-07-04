@@ -129,6 +129,27 @@ impl Monitor {
     }
   }
 
+  fn timestamp_from_filepath(path: &Path) -> Option<OffsetDateTime> {
+    path
+      .file_name()
+      .and_then(|name| name.to_str())
+      .and_then(|name| {
+        name.split('_').next().and_then(|timestamp| {
+          let Ok(timestamp) = timestamp.parse::<f64>() else {
+            log::debug!("Failed to parse timestamp from file name: {name:?}");
+            return None;
+          };
+
+          #[allow(clippy::cast_possible_truncation)]
+          let nanoseconds = (timestamp * 1_000_000.0) as i128;
+
+          // We expect to see ms since epoch, so convert from ms to ns to satisfy the
+          // OffsetDateTime interface. Converting back to seconds would be a lossy operation.
+          OffsetDateTime::from_unix_timestamp_nanos(nanoseconds).ok()
+        })
+      })
+  }
+
   fn guess_crash_details(
     report: &[u8],
     candidate_reason_paths: &[JsonPath],
@@ -303,21 +324,7 @@ impl Monitor {
           },
         };
 
-        let timestamp = path
-          .file_name()
-          .and_then(|name| name.to_str())
-          .and_then(|name| {
-            name.split('_').next().and_then(|timestamp| {
-              let Ok(timestamp) = timestamp.parse::<i128>() else {
-                log::debug!("Failed to parse timestamp from file name: {name:?}");
-                return None;
-              };
-
-              // We expect to see ms since epoch, so convert from ms to ns to satisfy the
-              // OffsetDateTime interface. Converting back to seconds would be a lossy operation.
-              OffsetDateTime::from_unix_timestamp_nanos(timestamp * 1_000_000).ok()
-            })
-          });
+        let timestamp = Self::timestamp_from_filepath(&path);
 
         let (crash_reason, crash_details) =
           Self::guess_crash_details(&contents, &crash_reason_paths, &crash_details_paths);
