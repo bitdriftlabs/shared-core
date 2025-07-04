@@ -26,6 +26,7 @@ use bd_client_stats::stats::{
   Ticker,
 };
 use bd_client_stats_store::Collector;
+use bd_crash_handler::FileProcessor;
 use bd_internal_logging::NoopLogger;
 use bd_log_primitives::{Log, LogType, log_level};
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};

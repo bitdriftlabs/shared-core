@@ -8,6 +8,7 @@
 use crate::{
   ConfigMonitor,
   DETAILS_INFERENCE_CONFIG_FILE,
+  FileProcessor,
   INGESTION_CONFIG_FILE,
   Path,
   REASON_INFERENCE_CONFIG_FILE,

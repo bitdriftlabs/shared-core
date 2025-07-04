@@ -62,6 +62,10 @@ pub trait CrashLogger: Send + Sync {
 // Monitor
 //
 
+pub trait FileProcessor {
+  fn process_new_reports(&self) -> impl std::future::Future<Output = Vec<CrashLog>> + Send;
+}
+
 /// Monitors the reports directories for new reports crashes and maintains the configuration file
 /// that tells the platform pre-init where to look for reports. Reports are only read on startup
 /// but the configuration file may be updated at any time in response to a runtime change.
@@ -87,6 +91,142 @@ pub struct ConfigMonitor {
   global_state_reader: global_state::Reader,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
   shutdown: ComponentShutdown,
+}
+
+impl FileProcessor for ConfigMonitor {
+  async fn process_new_reports(&self) -> Vec<CrashLog> {
+    let crash_reason_paths = self.crash_reason_paths().await;
+    let crash_details_paths = self.crash_details_paths().await;
+    let mut dir = match tokio::fs::read_dir(&self.report_directory.join("new")).await {
+      Ok(dir) => dir,
+      Err(e) => {
+        // Do some basic error checking to see why we failed to read the directory. If the
+        // directory just doesn't exist it is not an error.
+        if self.report_directory.join("new").exists() {
+          log::warn!(
+            "Failed to read report directory: {} ({})",
+            self.report_directory.join("new").display(),
+            e,
+          );
+        } else {
+          log::debug!(
+            "Report directory does not exist: {}",
+            self.report_directory.join("new").display()
+          );
+        }
+
+        return vec![];
+      },
+    };
+
+    // TODO(snowp): Add smarter handling to avoid duplicate reporting.
+    // TODO(snowp): Consider only reporting one of the pending reports if there are multiple.
+
+    // Read out the global fields from the previous application run. This is used to populate the
+    // fields in the crash report to attempt to match the fields state at the time of the crash.
+    let global_state_fields = self.global_state_reader.global_state_fields();
+
+    let mut logs = vec![];
+
+    while let Ok(Some(entry)) = dir.next_entry().await {
+      let path = entry.path();
+      if path.is_file() {
+        log::info!("Processing new reports report: {}", path.display());
+        let contents = match tokio::fs::read(&path).await {
+          Ok(contents) => contents,
+          Err(e) => {
+            log::warn!("Failed to read reports report: {} ({e})", path.display());
+            continue;
+          },
+        };
+
+        let timestamp = Self::timestamp_from_filepath(&path);
+
+        let (crash_reason, crash_details) =
+          Self::guess_crash_details(&contents, &crash_reason_paths, &crash_details_paths);
+
+        if crash_reason.is_none() {
+          log::warn!(
+            "Failed to infer crash reason from report {}, dropping.",
+            path.display()
+          );
+          continue;
+        }
+
+        let Ok(fatal_issue_metadata) = get_fatal_issue_metadata(&path) else {
+          log::warn!(
+            "Failed to get fatal issue metadata for path: {}",
+            path.display()
+          );
+          continue;
+        };
+
+        let crash_field = if *self.out_of_band_enabled_flag.read() {
+          log::debug!("uploading report out of band");
+
+          let Ok(artifact_id) = self.artifact_client.enqueue_upload(
+            contents,
+            global_state_fields.clone(),
+            timestamp,
+            self.previous_session_id.clone(),
+          ) else {
+            // TODO(snowp): Should we fall back to passing it via a field at this point?
+            log::warn!(
+              "Failed to enqueue crash report for upload: {}",
+              path.display()
+            );
+            continue;
+          };
+
+          ("_crash_artifact_id".into(), artifact_id.to_string().into())
+        } else {
+          log::debug!("uploading report in band with log line");
+          ("_crash_artifact".into(), contents.into())
+        };
+
+        let message = fatal_issue_metadata.message_value;
+        let mut fields = global_state_fields.clone();
+        fields.extend(std::iter::once(crash_field));
+        fields.extend(
+          [
+            (
+              "_app_exit_reason".into(),
+              fatal_issue_metadata.report_type_value,
+            ),
+            (
+              fatal_issue_metadata.reason_key.clone(),
+              crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
+            ),
+            (
+              fatal_issue_metadata.details_key.clone(),
+              crash_details
+                .unwrap_or_else(|| "unknown".to_string())
+                .into(),
+            ),
+            (
+              "_fatal_issue_mechanism".into(),
+              fatal_issue_metadata.mechanism_type_value.into(),
+            ),
+          ]
+          .into_iter(),
+        );
+
+        logs.push(CrashLog {
+          fields,
+          timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
+          message,
+        });
+      }
+
+      // Clean up files after processing them. If this fails we'll potentially end up
+      // double-reporting in the future.
+      if let Err(e) = tokio::fs::remove_file(&path).await {
+        log::warn!("Failed to remove crash report: {} ({e})", path.display());
+      }
+    }
+
+    logs
+  }
 }
 
 impl ConfigMonitor {
@@ -127,6 +267,27 @@ impl ConfigMonitor {
         e
       );
     }
+  }
+
+  fn timestamp_from_filepath(path: &Path) -> Option<OffsetDateTime> {
+    path
+      .file_name()
+      .and_then(|name| name.to_str())
+      .and_then(|name| {
+        name.split('_').next().and_then(|timestamp| {
+          let Ok(timestamp) = timestamp.parse::<f64>() else {
+            log::debug!("Failed to parse timestamp from file name: {name:?}");
+            return None;
+          };
+
+          #[allow(clippy::cast_possible_truncation)]
+          let nanoseconds = (timestamp * 1_000_000.0) as i128;
+
+          // We expect to see ms since epoch, so convert from ms to ns to satisfy the
+          // OffsetDateTime interface. Converting back to seconds would be a lossy operation.
+          OffsetDateTime::from_unix_timestamp_nanos(nanoseconds).ok()
+        })
+      })
   }
 
   fn guess_crash_details(
@@ -257,154 +418,6 @@ impl ConfigMonitor {
       }
     }
   }
-  pub async fn process_new_reports(&self) -> Vec<CrashLog> {
-    let crash_reason_paths = self.crash_reason_paths().await;
-    let crash_details_paths = self.crash_details_paths().await;
-    let mut dir = match tokio::fs::read_dir(&self.report_directory.join("new")).await {
-      Ok(dir) => dir,
-      Err(e) => {
-        // Do some basic error checking to see why we failed to read the directory. If the
-        // directory just doesn't exist it is not an error.
-        if self.report_directory.join("new").exists() {
-          log::warn!(
-            "Failed to read report directory: {} ({})",
-            self.report_directory.join("new").display(),
-            e,
-          );
-        } else {
-          log::debug!(
-            "Report directory does not exist: {}",
-            self.report_directory.join("new").display()
-          );
-        }
-
-        return vec![];
-      },
-    };
-
-    // TODO(snowp): Add smarter handling to avoid duplicate reporting.
-    // TODO(snowp): Consider only reporting one of the pending reports if there are multiple.
-
-    // Read out the global fields from the previous application run. This is used to populate the
-    // fields in the crash report to attempt to match the fields state at the time of the crash.
-    let global_state_fields = self.global_state_reader.global_state_fields();
-
-    let mut logs = vec![];
-
-    while let Ok(Some(entry)) = dir.next_entry().await {
-      let path = entry.path();
-      if path.is_file() {
-        log::info!("Processing new reports report: {}", path.display());
-        let contents = match tokio::fs::read(&path).await {
-          Ok(contents) => contents,
-          Err(e) => {
-            log::warn!("Failed to read reports report: {} ({e})", path.display());
-            continue;
-          },
-        };
-
-        let timestamp = path
-          .file_name()
-          .and_then(|name| name.to_str())
-          .and_then(|name| {
-            name.split('_').next().and_then(|timestamp| {
-              let Ok(timestamp) = timestamp.parse::<i128>() else {
-                log::debug!("Failed to parse timestamp from file name: {name:?}");
-                return None;
-              };
-
-              // We expect to see ms since epoch, so convert from ms to ns to satisfy the
-              // OffsetDateTime interface. Converting back to seconds would be a lossy operation.
-              OffsetDateTime::from_unix_timestamp_nanos(timestamp * 1_000_000).ok()
-            })
-          });
-
-        let (crash_reason, crash_details) =
-          Self::guess_crash_details(&contents, &crash_reason_paths, &crash_details_paths);
-
-        if crash_reason.is_none() {
-          log::warn!(
-            "Failed to infer crash reason from report {}, dropping.",
-            path.display()
-          );
-          continue;
-        }
-
-        let Ok(fatal_issue_metadata) = get_fatal_issue_metadata(&path) else {
-          log::warn!(
-            "Failed to get fatal issue metadata for path: {}",
-            path.display()
-          );
-          continue;
-        };
-
-        let crash_field = if *self.out_of_band_enabled_flag.read() {
-          log::debug!("uploading report out of band");
-
-          let Ok(artifact_id) = self.artifact_client.enqueue_upload(
-            contents,
-            global_state_fields.clone(),
-            timestamp,
-            self.previous_session_id.clone(),
-          ) else {
-            // TODO(snowp): Should we fall back to passing it via a field at this point?
-            log::warn!(
-              "Failed to enqueue crash report for upload: {}",
-              path.display()
-            );
-            continue;
-          };
-
-          ("_crash_artifact_id".into(), artifact_id.to_string().into())
-        } else {
-          log::debug!("uploading report in band with log line");
-          ("_crash_artifact".into(), contents.into())
-        };
-
-        let message = fatal_issue_metadata.message_value;
-        let mut fields = global_state_fields.clone();
-        fields.extend(std::iter::once(crash_field));
-        fields.extend(
-          [
-            (
-              "_app_exit_reason".into(),
-              fatal_issue_metadata.report_type_value,
-            ),
-            (
-              fatal_issue_metadata.reason_key.clone(),
-              crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
-            ),
-            (
-              fatal_issue_metadata.details_key.clone(),
-              crash_details
-                .unwrap_or_else(|| "unknown".to_string())
-                .into(),
-            ),
-            (
-              "_fatal_issue_mechanism".into(),
-              fatal_issue_metadata.mechanism_type_value.into(),
-            ),
-          ]
-          .into_iter(),
-        );
-
-        logs.push(CrashLog {
-          fields,
-          timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
-          message,
-        });
-      }
-
-      // Clean up files after processing them. If this fails we'll potentially end up
-      // double-reporting in the future.
-      if let Err(e) = tokio::fs::remove_file(&path).await {
-        log::warn!("Failed to remove crash report: {} ({e})", path.display());
-      }
-    }
-
-    logs
-  }
-
   async fn read_json_paths(&self, file: &str) -> Vec<JsonPath> {
     let raw = tokio::fs::read_to_string(&self.report_directory.join(file))
       .await
