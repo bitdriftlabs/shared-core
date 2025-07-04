@@ -73,7 +73,7 @@ pub trait CrashLogger: Send + Sync {
 ///   reports during pre-init.
 /// - `reports/new/` - A directory where new crash reports are placed. The platform layer is
 ///   responsible for copying the raw files into this directory.
-pub struct Monitor {
+pub struct ConfigMonitor {
   // TODO(snowp): Now that we load runtime early enough we can redo how this works a bit to make
   // them less special.
   reports_directories_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashDirectories>,
@@ -89,7 +89,7 @@ pub struct Monitor {
   shutdown: ComponentShutdown,
 }
 
-impl Monitor {
+impl ConfigMonitor {
   pub fn new(
     runtime: &ConfigLoader,
     sdk_directory: &Path,

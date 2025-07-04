@@ -241,7 +241,7 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
       );
 
-      let mut crash_monitor = bd_crash_handler::Monitor::new(
+      let mut crash_monitor = bd_crash_handler::ConfigMonitor::new(
         &runtime_loader,
         &self.params.sdk_directory,
         self.params.store.clone(),

@@ -6,9 +6,9 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::{
+  ConfigMonitor,
   DETAILS_INFERENCE_CONFIG_FILE,
   INGESTION_CONFIG_FILE,
-  Monitor,
   Path,
   REASON_INFERENCE_CONFIG_FILE,
   get_fatal_issue_metadata,
@@ -39,7 +39,7 @@ use uuid::Uuid;
 
 struct Setup {
   directory: TempDir,
-  monitor: Monitor,
+  monitor: ConfigMonitor,
   runtime: TestConfigLoader,
   store: Arc<Store>,
   upload_client: Arc<bd_artifact_upload::MockClient>,
@@ -66,7 +66,7 @@ impl Setup {
     let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
     let upload_client = Arc::new(bd_artifact_upload::MockClient::default());
 
-    let monitor = Monitor::new(
+    let monitor = ConfigMonitor::new(
       &runtime,
       directory.path(),
       store.clone(),
@@ -321,7 +321,7 @@ fn crash_reason_from_empty_errors_vector() {
   );
   builder.finish(report, None);
   let data = builder.finished_data();
-  let (reason, detail) = Monitor::guess_crash_details(data, &[], &[]);
+  let (reason, detail) = ConfigMonitor::guess_crash_details(data, &[], &[]);
   assert_eq!(None, reason);
   assert_eq!(None, detail);
 }
