@@ -349,7 +349,6 @@ dependencies = [
  "backoff",
  "bd-client-common",
  "bd-client-stats-store",
- "bd-device",
  "bd-grpc-codec",
  "bd-internal-logging",
  "bd-metadata",
@@ -394,7 +393,6 @@ dependencies = [
  "ctor",
  "flatbuffers",
  "futures-util",
- "itertools 0.14.0",
  "log",
  "mockall",
  "thiserror 2.0.12",
@@ -458,7 +456,6 @@ dependencies = [
  "async-trait",
  "bd-client-stats-store",
  "bd-log-primitives",
- "bd-matcher",
  "bd-metadata",
  "bd-proto",
  "crc32fast",
@@ -512,7 +509,6 @@ dependencies = [
  "bd-stats-common",
  "bd-test-helpers",
  "ctor",
- "itertools 0.14.0",
  "log",
  "parking_lot",
  "sketches-rust",
@@ -569,16 +565,13 @@ name = "bd-device"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "bd-client-common",
  "bd-key-value",
  "bd-test-helpers",
- "bd-time",
  "ctor",
  "log",
  "parking_lot",
  "pretty_assertions",
  "serde",
- "serde_yaml",
  "time",
  "uuid",
 ]
@@ -694,10 +687,8 @@ dependencies = [
 name = "bd-internal-logging"
 version = "1.0.0"
 dependencies = [
- "anyhow",
  "bd-log-primitives",
  "bd-proto",
- "bd-runtime",
  "tokio",
 ]
 
@@ -787,7 +778,6 @@ name = "bd-log-primitives"
 version = "1.0.0"
 dependencies = [
  "ahash",
- "anyhow",
  "bd-bounded-buffer",
  "bd-proto",
  "serde",
@@ -872,18 +862,10 @@ dependencies = [
 name = "bd-metadata"
 version = "1.0.0"
 dependencies = [
- "anyhow",
- "base64",
- "bd-log",
  "bd-test-helpers",
- "bincode",
  "ctor",
- "log",
  "parking_lot",
  "pretty_assertions",
- "serde",
- "time",
- "tokio",
 ]
 
 [[package]]
@@ -974,7 +956,6 @@ dependencies = [
  "bd-proto",
  "cbindgen",
  "flatbuffers",
- "flatc-rust",
 ]
 
 [[package]]
@@ -993,7 +974,6 @@ name = "bd-resource-utilization"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "bd-internal-logging",
  "bd-log-primitives",
  "bd-runtime",
  "bd-shutdown",
@@ -1067,7 +1047,6 @@ dependencies = [
  "ctor",
  "dashmap",
  "itertools 0.14.0",
- "log",
  "matches",
  "parking_lot",
  "prometheus",
@@ -1082,7 +1061,6 @@ name = "bd-session"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "bd-client-common",
  "bd-key-value",
  "bd-log",
  "bd-test-helpers",
@@ -1092,7 +1070,6 @@ dependencies = [
  "parking_lot",
  "pretty_assertions",
  "serde",
- "serde_yaml",
  "thread_local",
  "time",
  "tokio",
@@ -1106,7 +1083,6 @@ dependencies = [
  "anyhow",
  "bd-client-common",
  "bd-client-stats-store",
- "bd-internal-logging",
  "bd-log-primitives",
  "bd-runtime",
  "bd-shutdown",
@@ -1160,7 +1136,6 @@ dependencies = [
  "bd-proto",
  "bd-resource-utilization",
  "bd-runtime-config",
- "bd-session",
  "bd-session-replay",
  "bd-stats-common",
  "bd-time",
@@ -1405,7 +1380,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40b6887a1d8685cebccf115538db5c0efe625ccac9696ad45c409d96566e910f"
 dependencies = [
  "clap_builder",
- "clap_derive",
 ]
 
 [[package]]
@@ -1418,18 +1392,6 @@ dependencies = [
  "anstyle",
  "clap_lex",
  "strsim",
-]
-
-[[package]]
-name = "clap_derive"
-version = "4.5.40"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2c7947ae4cc3d851207c1adb5b5e260ff0cca11446b1d6d1423788e442257ce"
-dependencies = [
- "heck",
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -3655,7 +3617,6 @@ dependencies = [
  "bd-test-helpers",
  "bd-time",
  "bd-workflows",
- "clap",
  "log",
  "protobuf 4.0.0-alpha.0",
  "rand 0.9.1",

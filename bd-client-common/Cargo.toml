@@ -13,7 +13,6 @@ anyhow.workspace           = true
 async-trait.workspace      = true
 bd-client-stats-store.path = "../bd-client-stats-store"
 bd-log-primitives.path     = "../bd-log-primitives"
-bd-matcher.path            = "../bd-matcher"
 bd-metadata.path           = "../bd-metadata"
 bd-proto.path              = "../bd-proto"
 crc32fast.workspace        = true
@@ -26,4 +25,6 @@ protobuf.workspace         = true
 thiserror.workspace        = true
 time.workspace             = true
 tokio.workspace            = true
-uuid.workspace             = true
+
+[dev-dependencies]
+uuid.workspace = true

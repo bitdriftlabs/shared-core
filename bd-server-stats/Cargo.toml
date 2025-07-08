@@ -15,7 +15,6 @@ bd-time.path            = "../bd-time"
 concat-string.workspace = true
 dashmap.workspace       = true
 itertools.workspace     = true
-log.workspace           = true
 parking_lot.workspace   = true
 prometheus.workspace    = true
 regex.workspace         = true

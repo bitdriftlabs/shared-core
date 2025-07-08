@@ -28,7 +28,6 @@ bd-panic.path            = "../bd-panic"
 bd-proto.path            = "../bd-proto"
 bd-resource-utilization  = { path = "../bd-resource-utilization" }
 bd-runtime-config        = { path = "../bd-runtime-config", optional = true }
-bd-session               = { path = "../bd-session" }
 bd-session-replay        = { path = "../bd-session-replay" }
 bd-stats-common.path     = "../bd-stats-common"
 bd-time.path             = "../bd-time"

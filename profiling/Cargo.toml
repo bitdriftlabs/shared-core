@@ -21,7 +21,6 @@ bd-stats-common.path       = "../bd-stats-common"
 bd-test-helpers.path       = "../bd-test-helpers"
 bd-time.path               = "../bd-time"
 bd-workflows.path          = "../bd-workflows"
-clap.workspace             = true
 log.workspace              = true
 protobuf.workspace         = true
 rand.workspace             = true

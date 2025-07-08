@@ -12,7 +12,15 @@
 )]
 
 #[rustfmt::skip]
-#[allow(clippy::nursery, clippy::pedantic, clippy::style, unsafe_op_in_unsafe_fn)]
+#[allow(
+  clippy::nursery,
+  clippy::pedantic,
+  clippy::style,
+  unsafe_op_in_unsafe_fn,
+// Below needed for nightly as of 1.88
+  unknown_lints,
+  mismatched_lifetime_syntaxes
+)]
 #[cfg(not(tarpaulin_include))]
 pub mod flatbuffers;
 #[allow(

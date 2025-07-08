@@ -9,20 +9,19 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace         = true
-bd-internal-logging.path = "../bd-internal-logging"
-bd-log-primitives.path   = "../bd-log-primitives"
-bd-runtime.path          = "../bd-runtime"
-bd-shutdown.path         = "../bd-shutdown"
-bd-time.path             = "../bd-time"
-ctor.workspace           = true
-log.workspace            = true
-time.workspace           = true
-tokio.workspace          = true
+anyhow.workspace       = true
+bd-log-primitives.path = "../bd-log-primitives"
+bd-runtime.path        = "../bd-runtime"
+bd-shutdown.path       = "../bd-shutdown"
+bd-time.path           = "../bd-time"
+log.workspace          = true
+time.workspace         = true
+tokio.workspace        = true
 
 [dev-dependencies]
 bd-test-helpers.path  = "../bd-test-helpers"
 bd-time.path          = "../bd-time"
+ctor.workspace        = true
 parking_lot.workspace = true
 tempfile.workspace    = true
 time.workspace        = true
