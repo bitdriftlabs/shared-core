@@ -16,13 +16,13 @@ arbitrary.workspace        = true
 bd-buffer.path             = "../bd-buffer"
 bd-client-common.path      = "../bd-client-common"
 bd-client-stats-store.path = "../bd-client-stats-store"
-bd-test-helpers.path       = "../bd-test-helpers"
 libfuzzer-sys.workspace    = true
 log.workspace              = true
 tempfile.workspace         = true
 
 [dev-dependencies]
-ctor.workspace = true
+bd-test-helpers.path = "../bd-test-helpers"
+ctor.workspace       = true
 
 [[bin]]
 doc  = false

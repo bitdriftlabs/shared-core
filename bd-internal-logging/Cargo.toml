@@ -9,8 +9,6 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace       = true
 bd-log-primitives.path = "../bd-log-primitives"
 bd-proto.path          = "../bd-proto"
-bd-runtime.path        = "../bd-runtime"
 tokio.workspace        = true

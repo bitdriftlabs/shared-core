@@ -10,7 +10,6 @@ doctest = false
 
 [dependencies]
 ahash.workspace   = true
-anyhow.workspace  = true
 bd-bounded-buffer = { path = "../bd-bounded-buffer" }
 bd-proto          = { path = "../bd-proto" }
 serde.workspace   = true

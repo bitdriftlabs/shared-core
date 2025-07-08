@@ -22,7 +22,6 @@ bd-runtime.path            = "../bd-runtime"
 bd-shutdown.path           = "../bd-shutdown"
 bd-time.path               = "../bd-time"
 flatbuffers.workspace      = true
-itertools.workspace        = true
 log.workspace              = true
 mockall.workspace          = true
 thiserror.workspace        = true

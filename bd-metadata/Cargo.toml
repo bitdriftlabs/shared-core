@@ -8,16 +8,6 @@ version      = "1.0.0"
 [lib]
 doctest = false
 
-[dependencies]
-anyhow.workspace  = true
-base64.workspace  = true
-bd-log.path       = "../bd-log"
-bincode.workspace = true
-log.workspace     = true
-serde.workspace   = true
-time.workspace    = true
-tokio.workspace   = true
-
 [dev-dependencies]
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
 ctor.workspace              = true

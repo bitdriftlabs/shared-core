@@ -20,7 +20,6 @@ fn test_global_init() {
   bd_test_helpers::test_global_init();
 }
 
-
 //
 // ListenerTarget
 //

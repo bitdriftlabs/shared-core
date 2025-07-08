@@ -10,7 +10,6 @@ doctest = false
 
 [dependencies]
 anyhow.workspace             = true
-bd-time                      = { path = "../bd-time" }
 log.workspace                = true
 parking_lot.workspace        = true
 time.workspace               = true
@@ -19,3 +18,6 @@ tracing.workspace            = true
 tracing-error.workspace      = true
 tracing-log.workspace        = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+bd-time = { path = "../bd-time" }

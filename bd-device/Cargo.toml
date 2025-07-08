@@ -10,13 +10,10 @@ doctest = false
 
 [dependencies]
 anyhow.workspace      = true
-bd-client-common.path = "../bd-client-common"
 bd-key-value.path     = "../bd-key-value"
-bd-time.path          = "../bd-time"
 log.workspace         = true
 parking_lot.workspace = true
 serde.workspace       = true
-serde_yaml.workspace  = true
 time.workspace        = true
 uuid.workspace        = true
 
