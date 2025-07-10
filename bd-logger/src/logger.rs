@@ -500,7 +500,7 @@ impl Logger {
   pub fn new(
     shutdown_state: Option<ComponentShutdownTrigger>,
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
-    stats: Scope,
+    stats_scope: Scope,
     async_log_buffer_tx: MemoryBoundSender<AsyncLogBufferMessage>,
     session_strategy: Arc<bd_session::Strategy>,
     device: Arc<bd_device::Device>,
@@ -508,6 +508,11 @@ impl Logger {
     store: Arc<bd_key_value::Store>,
     sleep_mode_active: watch::Sender<bool>,
   ) -> Self {
+    let stats = Stats::new(&stats_scope);
+
+    // record initial app open for this launch's logger
+    stats.app_open.inc();
+
     Self {
       shutdown_state: Mutex::new(shutdown_state),
       session_strategy,
@@ -515,8 +520,8 @@ impl Logger {
       sdk_version: sdk_version.to_string(),
       runtime_loader,
       async_log_buffer_tx,
-      stats: Stats::new(&stats),
-      stats_scope: stats,
+      stats,
+      stats_scope,
       store,
       sleep_mode_active,
     }
