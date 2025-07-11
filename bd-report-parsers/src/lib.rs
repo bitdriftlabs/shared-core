@@ -1,57 +1,37 @@
-use nom::bytes::complete::{take_till, take_while};
-use nom::bytes::tag;
+// shared-core - bitdrift's common client/server libraries
+// Copyright Bitdrift, Inc. All rights reserved.
+//
+// Use of this source code is governed by a source available license that can be found in the
+// LICENSE file or at:
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
+
+use nom::character::complete::one_of;
+use nom::combinator::{map, recognize};
+use nom::error::{ContextError, ParseError};
+use nom::multi::many1;
 use nom::{IResult, Parser};
 
-pub struct Source {
-  pub path: String,
-  pub lineno: Option<i64>,
+pub mod android;
+
+fn decimal<
+  'a,
+  T: std::str::FromStr + std::default::Default,
+  E: ParseError<&'a str> + ContextError<&'a str>,
+>(
+  input: &'a str,
+) -> IResult<&'a str, T, E> {
+  map(recognize(many1(one_of("0123456789"))), |out: &str| {
+    out.parse::<T>().unwrap_or_default()
+  })
+  .parse(input)
 }
 
-pub fn source_location(input: &str) -> IResult<&str, Source> {
-  let mut file_parser = take_till(|c| c == ':');
-  let (remainder, path) = file_parser.parse(input)?;
-  if remainder.is_empty() {
-    Ok((
-      remainder,
-      Source {
-        path: path.to_owned(),
-        lineno: None,
-      },
-    ))
-  } else {
-    let lineno_parser = take_while(|c: char| c.is_ascii_digit());
-    let (bits, (_, num)) = (tag(":"), lineno_parser).parse(remainder)?;
-    Ok((
-      bits,
-      Source {
-        path: path.to_owned(),
-        lineno: num.parse::<i64>().ok(),
-      },
-    ))
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn source_location_test() {
-    let Ok((remainder, source)) = source_location("File:64") else {
-      panic!("failed to parse");
-    };
-    assert_eq!("", remainder);
-    assert_eq!("File".to_owned(), source.path);
-    assert_eq!(Some(64), source.lineno);
-  }
-
-  #[test]
-  fn source_location_no_lineno_test() {
-    let Ok((remainder, source)) = source_location("generated-source") else {
-      panic!("failed to parse");
-    };
-    assert_eq!("", remainder);
-    assert_eq!("generated-source".to_owned(), source.path);
-    assert_eq!(None, source.lineno);
-  }
+fn hexadecimal<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
+  input: &'a str,
+) -> IResult<&'a str, u64, E> {
+  map(
+    recognize(many1(one_of("0123456789abcdefABCDEF"))),
+    |out: &str| u64::from_str_radix(out, 16).unwrap_or_default(),
+  )
+  .parse(input)
 }
