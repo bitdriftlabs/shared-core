@@ -141,22 +141,34 @@ trait IntHelper {
         self.gt().unwrap()
       )));
     }
+    if self.lt().is_some_and(|lt| value >= lt) {
+      return Err(error::Error::ProtoValidation(format!(
+        "field '{}' in message '{}' must be < {}",
+        field_descriptor.full_name(),
+        message_descriptor.full_name(),
+        self.lt().unwrap()
+      )));
+    }
+    if self.lte().is_some_and(|lte| value > lte) {
+      return Err(error::Error::ProtoValidation(format!(
+        "field '{}' in message '{}' must be <= {}",
+        field_descriptor.full_name(),
+        message_descriptor.full_name(),
+        self.lte().unwrap()
+      )));
+    }
+    if self.gte().is_some_and(|gte| value < gte) {
+      return Err(error::Error::ProtoValidation(format!(
+        "field '{}' in message '{}' must be >= {}",
+        field_descriptor.full_name(),
+        message_descriptor.full_name(),
+        self.gte().unwrap()
+      )));
+    }
 
     not_implemented(
       self.has_const(),
       &format!("{} rules const", type_name::<Self::Item>()),
-    )?;
-    not_implemented(
-      self.lt().is_some(),
-      &format!("{} rules lt", type_name::<Self::Item>()),
-    )?;
-    not_implemented(
-      self.lte().is_some(),
-      &format!("{} rules lte", type_name::<Self::Item>()),
-    )?;
-    not_implemented(
-      self.gte().is_some(),
-      &format!("{} rules gte", type_name::<Self::Item>()),
     )?;
     not_implemented(
       !self.in_().is_empty(),
