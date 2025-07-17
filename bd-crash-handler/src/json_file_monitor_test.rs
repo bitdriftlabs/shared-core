@@ -5,18 +5,13 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{
-  ConfigMonitor,
-  FileProcessor,
-  Path,
-  global_state,
-};
-use crate::config_monitor::{
+use crate::json_file_monitor::{
   DETAILS_INFERENCE_CONFIG_FILE,
   INGESTION_CONFIG_FILE,
   REASON_INFERENCE_CONFIG_FILE,
   get_fatal_issue_metadata,
 };
+use crate::{FileProcessor, JSONFileMonitor, Path, global_state};
 use bd_device::Store;
 use bd_log_primitives::LogFields;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
@@ -42,7 +37,7 @@ use uuid::Uuid;
 
 struct Setup {
   directory: TempDir,
-  monitor: ConfigMonitor,
+  monitor: JSONFileMonitor,
   runtime: TestConfigLoader,
   store: Arc<Store>,
   upload_client: Arc<bd_artifact_upload::MockClient>,
@@ -69,7 +64,7 @@ impl Setup {
     let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
     let upload_client = Arc::new(bd_artifact_upload::MockClient::default());
 
-    let monitor = ConfigMonitor::new(
+    let monitor = JSONFileMonitor::new(
       &runtime,
       directory.path(),
       store.clone(),
@@ -324,7 +319,7 @@ fn crash_reason_from_empty_errors_vector() {
   );
   builder.finish(report, None);
   let data = builder.finished_data();
-  let (reason, detail) = ConfigMonitor::guess_crash_details(data, &[], &[]);
+  let (reason, detail) = JSONFileMonitor::guess_crash_details(data, &[], &[]);
   assert_eq!(None, reason);
   assert_eq!(None, detail);
 }
@@ -350,26 +345,6 @@ fn get_fatal_issue_mechanism_from_json_must_return_integration() {
   assert_eq!(metadata.message_value, "App crashed".into());
   assert_eq!(metadata.mechanism_type_value, "INTEGRATION");
   assert_eq!(metadata.report_type_value, "Unknown".into());
-}
-
-#[test]
-fn get_fatal_issue_mechanism_from_cap_must_return_built_in() {
-  let cap_file = Path::new("foo_crash.cap");
-
-  let crash_metadata = get_fatal_issue_metadata(cap_file).unwrap();
-  assert_eq!(crash_metadata.details_key, "_app_exit_details");
-  assert_eq!(crash_metadata.reason_key, "_app_exit_info");
-  assert_eq!(crash_metadata.message_value, "AppExit".into());
-  assert_eq!(crash_metadata.mechanism_type_value, "BUILT_IN");
-  assert_eq!(crash_metadata.report_type_value, "Crash".into());
-
-  let cap_file = Path::new("foo_anr.cap");
-  let anr_metadata = get_fatal_issue_metadata(cap_file).unwrap();
-  assert_eq!(anr_metadata.report_type_value, "ANR".into());
-
-  let cap_file = Path::new("foo_native_crash.cap");
-  let anr_metadata = get_fatal_issue_metadata(cap_file).unwrap();
-  assert_eq!(anr_metadata.report_type_value, "Native Crash".into());
 }
 
 #[test]

@@ -5,12 +5,12 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-mod config_monitor;
 pub mod global_state;
 mod json_extractor;
+mod json_file_monitor;
 
 use bd_log_primitives::{LogFields, LogMessageValue};
-pub use config_monitor::ConfigMonitor;
+pub use json_file_monitor::JSONFileMonitor;
 use std::path::Path;
 use time::OffsetDateTime;
 use tokio::fs::ReadDir;

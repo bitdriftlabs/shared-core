@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
-#[path = "./config_monitor_test.rs"]
+#[path = "./json_file_monitor_test.rs"]
 mod tests;
 
 use crate::json_extractor::{JsonExtractor, JsonPath};
@@ -26,7 +26,7 @@ pub const REASON_INFERENCE_CONFIG_FILE: &str = "reason_inference";
 pub const DETAILS_INFERENCE_CONFIG_FILE: &str = "details_inference";
 
 //
-// ConfigMonitor
+// JSONFileMonitor
 //
 
 /// Monitors the reports directories for new reports crashes and maintains the configuration file
@@ -40,7 +40,7 @@ pub const DETAILS_INFERENCE_CONFIG_FILE: &str = "details_inference";
 ///   reports during pre-init.
 /// - `reports/new/` - A directory where new crash reports are placed. The platform layer is
 ///   responsible for copying the raw files into this directory.
-pub struct ConfigMonitor {
+pub struct JSONFileMonitor {
   // TODO(snowp): Now that we load runtime early enough we can redo how this works a bit to make
   // them less special.
   reports_directories_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashDirectories>,
@@ -56,7 +56,7 @@ pub struct ConfigMonitor {
   shutdown: ComponentShutdown,
 }
 
-impl FileProcessor for ConfigMonitor {
+impl FileProcessor for JSONFileMonitor {
   async fn process_new_reports(&self) -> Vec<CrashLog> {
     let crash_reason_paths = self.crash_reason_paths().await;
     let crash_details_paths = self.crash_details_paths().await;
@@ -174,7 +174,7 @@ impl FileProcessor for ConfigMonitor {
   }
 }
 
-impl ConfigMonitor {
+impl JSONFileMonitor {
   pub fn new(
     runtime: &ConfigLoader,
     sdk_directory: &Path,
