@@ -302,34 +302,54 @@ fn native_cache_frame_test() {
   assert_eq!(Some("d22b3b69a6db691fdd84720465c7a214"), build_id);
 }
 
+macro_rules! assert_parsed_anr_eq {
+  ($filename:expr) => {
+    let input = read_fixture($filename);
+    let (_, report) = run_parser!(anr, input.as_str());
+    insta::assert_debug_snapshot!(report);
+    let unattached_thread_count = report
+      .threads
+      .iter()
+      .filter(|t| t.header.state == "(not attached)")
+      .count();
+    assert_eq!(
+      report.attached_thread_count + unattached_thread_count,
+      report.threads.len()
+    );
+  };
+}
+
 #[test]
 fn full_anr1_test() {
-  let input = read_fixture("anr1.txt");
-  let (_, report) = run_parser!(anr, input.as_str());
-  insta::assert_debug_snapshot!(report);
-  let unattached_thread_count = report
-    .threads
-    .iter()
-    .filter(|t| t.header.state == "(not attached)")
-    .count();
-  assert_eq!(
-    report.attached_thread_count + unattached_thread_count,
-    report.threads.len()
-  );
+  assert_parsed_anr_eq!("anr1.txt");
 }
 
 #[test]
 fn full_anr2_test() {
-  let input = read_fixture("anr2.txt");
-  let (_, report) = run_parser!(anr, input.as_str());
-  insta::assert_debug_snapshot!(report);
-  let unattached_thread_count = report
-    .threads
-    .iter()
-    .filter(|t| t.header.state == "(not attached)")
-    .count();
-  assert_eq!(
-    report.attached_thread_count + unattached_thread_count,
-    report.threads.len()
-  );
+  assert_parsed_anr_eq!("anr2.txt");
+}
+
+#[test]
+fn anr_blocking_get_test() {
+  assert_parsed_anr_eq!("anr_blocking_get.txt");
+}
+
+#[test]
+fn anr_broadcast_receiver_test() {
+  assert_parsed_anr_eq!("anr_broadcast_receiver.txt");
+}
+
+#[test]
+fn anr_coroutines_test() {
+  assert_parsed_anr_eq!("anr_coroutines.txt");
+}
+
+#[test]
+fn anr_deadlock_test() {
+  assert_parsed_anr_eq!("anr_deadlock.txt");
+}
+
+#[test]
+fn anr_sleep_main_thread_test() {
+  assert_parsed_anr_eq!("anr_sleep_main_thread.txt");
 }
