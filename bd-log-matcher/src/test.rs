@@ -51,6 +51,6 @@ impl FieldProvider for TestFields {
     self
       .0
       .get(key)
-      .and_then(|v| v.as_str().map(|s| std::borrow::Cow::Borrowed(s)))
+      .and_then(|v| v.as_str().map(std::borrow::Cow::Borrowed))
   }
 }

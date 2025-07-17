@@ -107,6 +107,7 @@ pub mod log_level {
 
 /// A convenience enum that can be used to represent log levels in a more type-safe manner.
 #[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypedLogLevel {
   Error,
   Warning,
