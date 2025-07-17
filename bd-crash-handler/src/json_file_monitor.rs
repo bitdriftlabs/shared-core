@@ -10,7 +10,7 @@
 mod tests;
 
 use crate::json_extractor::{JsonExtractor, JsonPath};
-use crate::{CrashLog, FileProcessor, REPORTS_DIRECTORY, global_state, read_report_dir};
+use crate::{CrashLog, FileProcessor, REPORTS_DIRECTORY, global_state};
 use anyhow::bail;
 use bd_log_primitives::{LogFieldKey, LogFieldValue, LogMessageValue};
 use bd_runtime::runtime::{BoolWatch, ConfigLoader, StringWatch};
@@ -57,120 +57,108 @@ pub struct JSONFileMonitor {
 }
 
 impl FileProcessor for JSONFileMonitor {
-  async fn process_new_reports(&self) -> Vec<CrashLog> {
+  fn can_process_file(&self, path: &Path) -> bool {
+    let ext = path.extension().and_then(OsStr::to_str);
+    path.is_file() && (ext == Some("json") || ext == Some("envelope"))
+  }
+
+  async fn process_file(&self, path: &Path) -> Option<CrashLog> {
     let crash_reason_paths = self.crash_reason_paths().await;
     let crash_details_paths = self.crash_details_paths().await;
-    let Ok(mut dir) = read_report_dir(&self.report_directory.join("new")).await else {
-      return vec![];
-    };
-
-    // TODO(snowp): Add smarter handling to avoid duplicate reporting.
-    // TODO(snowp): Consider only reporting one of the pending reports if there are multiple.
-
     // Read out the global fields from the previous application run. This is used to populate the
     // fields in the crash report to attempt to match the fields state at the time of the crash.
     let global_state_fields = self.global_state_reader.global_state_fields();
 
-    let mut logs = vec![];
+    if !path.is_file() {
+      return None;
+    }
+    log::info!("Processing new reports report: {}", path.display());
+    let contents = match tokio::fs::read(&path).await {
+      Ok(contents) => contents,
+      Err(e) => {
+        log::warn!("Failed to read reports report: {} ({e})", path.display());
+        return None;
+      },
+    };
 
-    while let Ok(Some(entry)) = dir.next_entry().await {
-      let path = entry.path();
-      if path.is_file() {
-        log::info!("Processing new reports report: {}", path.display());
-        let contents = match tokio::fs::read(&path).await {
-          Ok(contents) => contents,
-          Err(e) => {
-            log::warn!("Failed to read reports report: {} ({e})", path.display());
-            continue;
-          },
-        };
+    let timestamp = Self::timestamp_from_filepath(path);
 
-        let timestamp = Self::timestamp_from_filepath(&path);
+    let (crash_reason, crash_details) =
+      Self::guess_crash_details(&contents, &crash_reason_paths, &crash_details_paths);
 
-        let (crash_reason, crash_details) =
-          Self::guess_crash_details(&contents, &crash_reason_paths, &crash_details_paths);
-
-        if crash_reason.is_none() {
-          log::warn!(
-            "Failed to infer crash reason from report {}, dropping.",
-            path.display()
-          );
-          continue;
-        }
-
-        let Ok(fatal_issue_metadata) = get_fatal_issue_metadata(&path) else {
-          log::warn!(
-            "Failed to get fatal issue metadata for path: {}",
-            path.display()
-          );
-          continue;
-        };
-
-        let crash_field = if *self.out_of_band_enabled_flag.read() {
-          log::debug!("uploading report out of band");
-
-          let Ok(artifact_id) = self.artifact_client.enqueue_upload(
-            contents,
-            global_state_fields.clone(),
-            timestamp,
-            self.previous_session_id.clone(),
-          ) else {
-            // TODO(snowp): Should we fall back to passing it via a field at this point?
-            log::warn!(
-              "Failed to enqueue crash report for upload: {}",
-              path.display()
-            );
-            continue;
-          };
-
-          ("_crash_artifact_id".into(), artifact_id.to_string().into())
-        } else {
-          log::debug!("uploading report in band with log line");
-          ("_crash_artifact".into(), contents.into())
-        };
-
-        let message = fatal_issue_metadata.message_value;
-        let mut fields = global_state_fields.clone();
-        fields.extend(std::iter::once(crash_field));
-        fields.extend(
-          [
-            (
-              "_app_exit_reason".into(),
-              fatal_issue_metadata.report_type_value,
-            ),
-            (
-              fatal_issue_metadata.reason_key.clone(),
-              crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
-            ),
-            (
-              fatal_issue_metadata.details_key.clone(),
-              crash_details
-                .unwrap_or_else(|| "unknown".to_string())
-                .into(),
-            ),
-            (
-              "_fatal_issue_mechanism".into(),
-              fatal_issue_metadata.mechanism_type_value.into(),
-            ),
-          ]
-          .into_iter(),
-        );
-
-        logs.push(CrashLog {
-          fields,
-          timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
-          message,
-        });
-      }
-
-      // Clean up files after processing them. If this fails we'll potentially end up
-      // double-reporting in the future.
-      if let Err(e) = tokio::fs::remove_file(&path).await {
-        log::warn!("Failed to remove crash report: {} ({e})", path.display());
-      }
+    if crash_reason.is_none() {
+      log::warn!(
+        "Failed to infer crash reason from report {}, dropping.",
+        path.display()
+      );
+      return None;
     }
 
-    logs
+    let Ok(fatal_issue_metadata) = get_fatal_issue_metadata(path) else {
+      log::warn!(
+        "Failed to get fatal issue metadata for path: {}",
+        path.display()
+      );
+      return None;
+    };
+
+    let crash_field = if *self.out_of_band_enabled_flag.read() {
+      log::debug!("uploading report out of band");
+
+      let Ok(artifact_id) = self.artifact_client.enqueue_upload(
+        contents,
+        global_state_fields.clone(),
+        timestamp,
+        self.previous_session_id.clone(),
+      ) else {
+        // TODO(snowp): Should we fall back to passing it via a field at this point?
+        log::warn!(
+          "Failed to enqueue crash report for upload: {}",
+          path.display()
+        );
+        return None;
+      };
+
+      ("_crash_artifact_id".into(), artifact_id.to_string().into())
+    } else {
+      log::debug!("uploading report in band with log line");
+      ("_crash_artifact".into(), contents.into())
+    };
+
+    let message = fatal_issue_metadata.message_value;
+    let mut fields = global_state_fields.clone();
+    fields.extend(std::iter::once(crash_field));
+    fields.extend(
+      [
+        (
+          "_app_exit_reason".into(),
+          fatal_issue_metadata.report_type_value,
+        ),
+        (
+          fatal_issue_metadata.reason_key.clone(),
+          crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
+        ),
+        (
+          fatal_issue_metadata.details_key.clone(),
+          crash_details
+            .unwrap_or_else(|| "unknown".to_string())
+            .into(),
+        ),
+        (
+          "_fatal_issue_mechanism".into(),
+          fatal_issue_metadata.mechanism_type_value.into(),
+        ),
+      ]
+      .into_iter(),
+    );
+
+
+
+    Some(CrashLog {
+      fields,
+      timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
+      message,
+    })
   }
 }
 

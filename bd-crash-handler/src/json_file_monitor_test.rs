@@ -11,7 +11,7 @@ use crate::json_file_monitor::{
   REASON_INFERENCE_CONFIG_FILE,
   get_fatal_issue_metadata,
 };
-use crate::{FileProcessor, JSONFileMonitor, Path, global_state};
+use crate::{JSONFileMonitor, Path, global_state, process_new_reports};
 use bd_device::Store;
 use bd_log_primitives::LogFields;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
@@ -125,9 +125,7 @@ impl Setup {
     // Sort the logs by the first field to make the test deterministic - otherwise this depends on
     // the order of files traversed in the directory.
 
-    self
-      .monitor
-      .process_new_reports()
+    process_new_reports(vec![&self.monitor], self.directory.path())
       .await
       .into_iter()
       .sorted_by_key(|log| {

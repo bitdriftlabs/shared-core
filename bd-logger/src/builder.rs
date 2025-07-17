@@ -26,7 +26,7 @@ use bd_client_stats::stats::{
   Ticker,
 };
 use bd_client_stats_store::Collector;
-use bd_crash_handler::FileProcessor;
+use bd_crash_handler::process_new_reports;
 use bd_internal_logging::NoopLogger;
 use bd_log_primitives::{Log, LogType, log_level};
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
@@ -242,17 +242,16 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
       );
 
-      let mut crash_monitor = bd_crash_handler::JSONFileMonitor::new(
-        &runtime_loader,
-        &self.params.sdk_directory,
-        self.params.store.clone(),
+      let session_strategy = self.params.session_strategy;
+
+      let previous_session_id = session_strategy
+        .previous_process_session_id()
+        .unwrap_or_else(|| session_strategy.session_id());
+
+      let crash_monitor = bd_crash_handler::CapFileCrashMonitor::new(
         Arc::new(artifact_client),
-        self
-          .params
-          .session_strategy
-          .previous_process_session_id()
-          .unwrap_or_default(),
-        shutdown_handle.make_shutdown(),
+        self.params.store.clone(),
+        previous_session_id.clone(),
       );
 
       // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
@@ -280,7 +279,7 @@ impl LoggerBuilder {
       ));
 
       let api = bd_api::api::Api::new(
-        self.params.sdk_directory,
+        self.params.sdk_directory.clone(),
         self.params.api_key,
         self.params.network,
         shutdown_handle.make_shutdown(),
@@ -298,15 +297,12 @@ impl LoggerBuilder {
 
       bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
 
-      let session_strategy = self.params.session_strategy;
-
       // By running it before we start all the other components, we ensure that the crash is
       // processed before cached configuration is loaded, allowing us to pass a fixed set of logs
       // to the async buffer that it can emit once it transitions into the configured mode,
       // emitting these logs before any logs emitted by the application while we were starting
       // up.
-      let crash_logs = crash_monitor
-        .process_new_reports()
+      let crash_logs = process_new_reports(vec![&crash_monitor], &self.params.sdk_directory)
         .await
         .into_iter()
         .map(|crash_log| Log {
@@ -315,9 +311,7 @@ impl LoggerBuilder {
           message: crash_log.message,
           fields: crash_log.fields,
           matching_fields: [].into(),
-          session_id: session_strategy
-            .previous_process_session_id()
-            .unwrap_or_else(|| session_strategy.session_id()),
+          session_id: previous_session_id.clone(),
           occurred_at: crash_log.timestamp,
           // Always capture the session when we process a crash log.
           // TODO(snowp): Ideally we should include information like the report and client side
@@ -338,7 +332,6 @@ impl LoggerBuilder {
           stats_flusher.periodic_flush().await;
           Ok(())
         },
-        async move { crash_monitor.run().await },
         async move {
           artifact_uploader.run().await;
           Ok(())
