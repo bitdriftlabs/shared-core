@@ -105,6 +105,29 @@ pub mod log_level {
   pub const TRACE: LogLevel = 0;
 }
 
+/// A convenience enum that can be used to represent log levels in a more type-safe manner.
+#[repr(u32)]
+pub enum TypedLogLevel {
+  Error,
+  Warning,
+  Info,
+  Debug,
+  Trace,
+}
+
+impl TypedLogLevel {
+  #[must_use]
+  pub fn as_u32(&self) -> LogLevel {
+    match self {
+      Self::Error => log_level::ERROR,
+      Self::Warning => log_level::WARNING,
+      Self::Info => log_level::INFO,
+      Self::Debug => log_level::DEBUG,
+      Self::Trace => log_level::TRACE,
+    }
+  }
+}
+
 pub type LogFieldKey = Cow<'static, str>;
 
 //
