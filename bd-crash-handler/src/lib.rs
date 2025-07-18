@@ -15,6 +15,7 @@ mod json_extractor;
 use anyhow::bail;
 use bd_log_primitives::{LogFieldKey, LogFieldValue, LogFields, LogMessageValue};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs;
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{Platform, Report};
 use bd_runtime::runtime::{BoolWatch, ConfigLoader, StringWatch};
 use bd_shutdown::ComponentShutdown;
 use fbs::issue_reporting::v_1::root_as_report;
@@ -150,19 +151,82 @@ impl Monitor {
       })
   }
 
-  fn guess_crash_details(
-    report: &[u8],
+  fn read_log_fields(
+    path: &Path,
+    report: Option<Report<'_>>,
+    global_state_fields: &LogFields,
+  ) -> (Option<OffsetDateTime>, LogFields) {
+    let timestamp = Self::timestamp_from_filepath(path);
+    let Some(report) = report else {
+      return (timestamp, global_state_fields.clone());
+    };
+
+    let (crash_time, os_version, platform) = report
+      .device_metrics()
+      .map(|dev| {
+        (
+          dev.time(),
+          dev.os_build().and_then(|b| b.version()),
+          dev.platform(),
+        )
+      })
+      .unwrap_or_default();
+
+    let (app_id, app_version, build_number) = report
+      .app_metrics()
+      .map(|app| (app.app_id(), app.version(), app.build_number()))
+      .unwrap_or_default();
+
+    let timestamp = crash_time.and_then(|t| {
+      OffsetDateTime::from_unix_timestamp_nanos(i128::from(
+        (t.seconds() * 1_000_000_000) + u64::from(t.nanos()),
+      ))
+      .ok()
+    });
+    let mut fields = global_state_fields.clone();
+    fields.extend([
+      ("os_version".into(), os_version.unwrap_or("unknown").into()),
+      (
+        "app_version".into(),
+        app_version.unwrap_or("unknown").into(),
+      ),
+    ]);
+
+    if let Some(app_id) = app_id {
+      fields.insert("app_id".into(), app_id.into());
+    }
+
+    match platform {
+      Platform::Android => {
+        let version_code =
+          build_number.map_or_else(|| "unknown".to_string(), |b| b.version_code().to_string());
+        fields.insert("_app_version_code".into(), version_code.into());
+      },
+      Platform::iOS | Platform::macOS => {
+        let bundle_version = build_number
+          .and_then(|b| b.cf_bundle_version())
+          .unwrap_or("unknown");
+        fields.insert("_build_number".into(), bundle_version.into());
+      },
+      _ => {},
+    }
+    (timestamp, fields)
+  }
+
+  fn read_report_contents<'a>(
+    report: &'a [u8],
     candidate_reason_paths: &[JsonPath],
     candidate_details_path: &[JsonPath],
-  ) -> (Option<String>, Option<String>) {
+  ) -> (Option<String>, Option<String>, Option<Report<'a>>) {
     if let Ok(bin_report) = root_as_report(report) {
       return bin_report
         .errors()
         .and_then(|errs| errs.iter().next())
-        .map_or((None, None), |err| {
+        .map_or((None, None, Some(bin_report)), |err| {
           (
             err.name().map(str::to_owned),
             err.reason().map(str::to_owned),
+            Some(bin_report),
           )
         });
     }
@@ -170,18 +234,18 @@ impl Monitor {
     // Defensively handle both to produce a list of objects that we want to inspect to infer the
     // crash reason.
     if report.first() != Some(&b'{') {
-      return (None, None);
+      return (None, None, None);
     }
 
     let Ok(report) = std::str::from_utf8(report) else {
-      return (None, None);
+      return (None, None, None);
     };
 
     let candidates = if let Ok(json) = JsonExtractor::new(report) {
       vec![json]
     } else {
       let Ok(candidates) = report.lines().map(JsonExtractor::new).try_collect() else {
-        return (None, None);
+        return (None, None, None);
       };
 
       candidates
@@ -202,14 +266,14 @@ impl Monitor {
             continue;
           };
 
-          return (Some(value.clone()), Some(details.clone()));
+          return (Some(value.clone()), Some(details.clone()), None);
         }
 
-        return (Some(value.clone()), None);
+        return (Some(value.clone()), None, None);
       }
     }
 
-    (None, None)
+    (None, None, None)
   }
 
   async fn check_for_config_changes(&mut self) -> anyhow::Result<()> {
@@ -324,10 +388,8 @@ impl Monitor {
           },
         };
 
-        let timestamp = Self::timestamp_from_filepath(&path);
-
-        let (crash_reason, crash_details) =
-          Self::guess_crash_details(&contents, &crash_reason_paths, &crash_details_paths);
+        let (crash_reason, crash_details, bin_report) =
+          Self::read_report_contents(&contents, &crash_reason_paths, &crash_details_paths);
 
         if crash_reason.is_none() {
           log::warn!(
@@ -345,12 +407,15 @@ impl Monitor {
           continue;
         };
 
+        let (timestamp, state_fields) =
+          Self::read_log_fields(&path, bin_report, &global_state_fields);
+
         let crash_field = if *self.out_of_band_enabled_flag.read() {
           log::debug!("uploading report out of band");
 
           let Ok(artifact_id) = self.artifact_client.enqueue_upload(
             contents,
-            global_state_fields.clone(),
+            state_fields.clone(),
             timestamp,
             self.previous_session_id.clone(),
           ) else {
@@ -369,7 +434,7 @@ impl Monitor {
         };
 
         let message = fatal_issue_metadata.message_value;
-        let mut fields = global_state_fields.clone();
+        let mut fields = state_fields.clone();
         fields.extend(std::iter::once(crash_field));
         fields.extend(
           [

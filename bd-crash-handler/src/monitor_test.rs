@@ -17,10 +17,23 @@ use crate::{
 use bd_device::Store;
 use bd_log_primitives::LogFields;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
+  AppBuildNumber,
+  AppBuildNumberArgs,
+  AppMetrics,
+  AppMetricsArgs,
+  DeviceMetrics,
+  DeviceMetricsArgs,
   Error,
+  ErrorArgs,
+  ErrorRelation,
+  OSBuild,
+  OSBuildArgs,
+  Platform,
   Report,
   ReportArgs,
+  Timestamp,
 };
+use bd_proto_util::ToFlatBufferString;
 use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::{self, FeatureFlag as _};
 use bd_runtime::test::TestConfigLoader;
@@ -28,7 +41,7 @@ use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::make_mut;
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_test_helpers::session::InMemoryStorage;
-use flatbuffers::{FlatBufferBuilder, ForwardsUOffset};
+use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, WIPOffset};
 use itertools::Itertools;
 use mockall::predicate::eq;
 use std::path::PathBuf;
@@ -309,6 +322,107 @@ async fn config_file() {
   assert!(!setup.config_file_exists(INGESTION_CONFIG_FILE));
 }
 
+#[tokio::test]
+async fn test_log_report_fields() {
+  let mut builder = FlatBufferBuilder::new();
+  let name = "BigProb".to_fb(&mut builder);
+  let reason = "missing meta".to_fb(&mut builder);
+  let error = Error::create(
+    &mut builder,
+    &ErrorArgs {
+      name,
+      reason,
+      stack_trace: None,
+      relation_to_next: ErrorRelation::CausedBy,
+    },
+  );
+  let errors = Some(builder.create_vector::<WIPOffset<Error<'_>>>(&[error]));
+  let app_id = "com.example.foo.widget".to_fb(&mut builder);
+  let version = "4.15".to_fb(&mut builder);
+  let cf_bundle_version = "5".to_fb(&mut builder);
+  let build_number = Some(AppBuildNumber::create(
+    &mut builder,
+    &AppBuildNumberArgs {
+      cf_bundle_version,
+      ..Default::default()
+    },
+  ));
+  let app_metrics = Some(AppMetrics::create(
+    &mut builder,
+    &AppMetricsArgs {
+      app_id,
+      build_number,
+      version,
+      ..Default::default()
+    },
+  ));
+  let os_version = "3.1".to_fb(&mut builder);
+  let os_build = Some(OSBuild::create(
+    &mut builder,
+    &OSBuildArgs {
+      version: os_version,
+      ..Default::default()
+    },
+  ));
+  let unix_timestamp: i64 = 1_752_839_953;
+  let timestamp = Timestamp::new(unix_timestamp.try_into().unwrap(), 0);
+  let device_metrics = Some(DeviceMetrics::create(
+    &mut builder,
+    &DeviceMetricsArgs {
+      time: Some(&timestamp),
+      os_build,
+      platform: Platform::iOS,
+      ..Default::default()
+    },
+  ));
+  let report = Report::create(
+    &mut builder,
+    &ReportArgs {
+      errors,
+      app_metrics,
+      device_metrics,
+      ..Default::default()
+    },
+  );
+  builder.finish(report, None);
+  let data = builder.finished_data();
+
+  let mut setup = Setup::new(true).await;
+  let mut tracker = global_state::Tracker::new(setup.store.clone());
+  tracker.maybe_update_global_state(
+    &[
+      ("os_version".into(), "6".into()),
+      ("app_version".into(), "4.16".into()),
+      ("app_id".into(), "com.example.foo".into()),
+      ("other_stuff".into(), "foo".into()),
+    ]
+    .into(),
+  );
+  setup.make_crash("report.cap", data);
+
+  let uuid = "12345678-1234-5678-1234-5678123456aa".parse().unwrap();
+  setup.expect_artifact_upload(
+    data,
+    uuid,
+    [
+      ("other_stuff".into(), "foo".into()),
+      ("app_version".into(), "4.15".into()),
+      ("os_version".into(), "3.1".into()),
+      ("_build_number".into(), "5".into()),
+      ("app_id".into(), "com.example.foo.widget".into()),
+    ]
+    .into(),
+    OffsetDateTime::from_unix_timestamp(unix_timestamp).ok(),
+  );
+
+  let logs = setup.process_new_reports().await;
+  assert_eq!(1, logs.len());
+  assert_eq!(
+    uuid.to_string(),
+    logs[0]["_crash_artifact_id"].as_str().unwrap()
+  );
+}
+
 #[test]
 fn crash_reason_from_empty_errors_vector() {
   let mut builder = FlatBufferBuilder::new();
@@ -322,9 +436,10 @@ fn crash_reason_from_empty_errors_vector() {
   );
   builder.finish(report, None);
   let data = builder.finished_data();
-  let (reason, detail) = Monitor::guess_crash_details(data, &[], &[]);
+  let (reason, detail, report2) = Monitor::read_report_contents(data, &[], &[]);
   assert_eq!(None, reason);
   assert_eq!(None, detail);
+  assert!(report2.is_some());
 }
 
 #[test]
