@@ -199,10 +199,6 @@ impl LoggerHandle {
     });
   }
 
-  pub fn record_app_open(&self) {
-    self.stats.app_open.inc();
-  }
-
   pub fn log_resource_utilization(&self, mut fields: AnnotatedLogFields, duration: time::Duration) {
     fields.insert(
       "_duration_ms".into(),
