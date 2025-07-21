@@ -35,6 +35,7 @@ uuid.workspace          = true
 
 [dev-dependencies]
 assert_matches.workspace = true
+bd-proto-util.path       = "../bd-proto-util"
 bd-test-helpers          = { path = "../bd-test-helpers", default-features = false }
 ctor.workspace           = true
 futures-util.workspace   = true

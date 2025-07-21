@@ -540,6 +540,7 @@ dependencies = [
  "bd-key-value",
  "bd-log-primitives",
  "bd-proto",
+ "bd-proto-util",
  "bd-runtime",
  "bd-shutdown",
  "bd-test-helpers",
