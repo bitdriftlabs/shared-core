@@ -513,6 +513,9 @@ pub mod debugging {
 }
 
 pub mod crash_handling {
+  // Enables or disables all crash handling functionality
+  bool_feature_flag!(CrashHandlingEnabled, "crash_handling.enabled", false);
+
   // Controls the list of directories that the platform layer should monitor for crash reports.
   // This is a :-separated list of directories of platforms that may be of interest to the platform
   // layer.

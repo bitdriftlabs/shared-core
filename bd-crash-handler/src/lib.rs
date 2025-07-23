@@ -77,6 +77,7 @@ pub trait CrashLogger: Send + Sync {
 pub struct Monitor {
   // TODO(snowp): Now that we load runtime early enough we can redo how this works a bit to make
   // them less special.
+  crash_handling_enabled_flag: BoolWatch<bd_runtime::runtime::crash_handling::CrashHandlingEnabled>,
   reports_directories_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashDirectories>,
   crash_reason_paths_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashReasonPaths>,
   crash_details_paths_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashDetailsPaths>,
@@ -102,6 +103,7 @@ impl Monitor {
     runtime.expect_initialized();
 
     Self {
+      crash_handling_enabled_flag: runtime.register_watch().unwrap(),
       reports_directories_flag: runtime.register_watch().unwrap(),
       crash_reason_paths_flag: runtime.register_watch().unwrap(),
       crash_details_paths_flag: runtime.register_watch().unwrap(),
@@ -115,7 +117,11 @@ impl Monitor {
   }
 
   pub async fn run(&mut self) -> anyhow::Result<()> {
-    self.check_for_config_changes().await
+    if *self.crash_handling_enabled_flag.read() {
+      self.check_for_config_changes().await
+    } else {
+      Ok(())
+    }
   }
 
   async fn try_ensure_directories_exist(&self) {
@@ -343,6 +349,9 @@ impl Monitor {
     }
   }
   pub async fn process_new_reports(&self) -> Vec<CrashLog> {
+    if !*self.crash_handling_enabled_flag.read() {
+      return vec![];
+    }
     let crash_reason_paths = self.crash_reason_paths().await;
     let crash_details_paths = self.crash_details_paths().await;
     let mut dir = match tokio::fs::read_dir(&self.report_directory.join("new")).await {
