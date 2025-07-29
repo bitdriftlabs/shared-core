@@ -8,19 +8,21 @@
 use super::setup::Setup;
 use crate::logger::{Block, CaptureSession};
 use crate::test::setup::SetupOptions;
-use crate::wait_for;
 use bd_log_primitives::LogType;
-use bd_runtime::runtime::crash_handling::CrashDirectories;
 use bd_runtime::runtime::{FeatureFlag, artifact_upload};
 use bd_test_helpers::metadata_provider::LogMetadata;
-use bd_test_helpers::runtime::{ValueKind, make_simple_update, make_update};
+use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::test_api_server::StreamAction;
 use bd_test_helpers::test_api_server::log_upload::LogUpload;
 use itertools::Itertools as _;
 use std::collections::HashSet;
 use std::sync::Arc;
-use time::ext::{NumericalDuration, NumericalStdDuration};
+use time::ext::NumericalDuration;
 use time::macros::datetime;
+
+// empty fbs format report
+#[rustfmt::skip]
+const CRASH_CONTENTS: &str = "\x14\x00\x00\x00\x00\x00\x0e\x00\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x04\x00\x0e\x00\x00\x00\x04\x00\x00\x00\x01\x00\x00\x00\x0c\x00\x00\x00\x00\x00\x06\x00\x08\x00\x04\x00\x06\x00\x00\x00\x04\x00\x00\x00\x06\x00\x00\x00crash1\x00\x00";
 
 #[test]
 fn crash_reports() {
@@ -43,23 +45,8 @@ fn crash_reports() {
     std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();
 
     std::fs::write(
-      setup.sdk_directory.path().join("reports/reason_inference"),
-      "crash",
-    )
-    .unwrap();
-
-    std::fs::write(
-      setup.sdk_directory.path().join("reports/new/crash1.json"),
-      "{\"crash\": \"crash1\"}",
-    )
-    .unwrap();
-
-    std::fs::write(
-      setup.sdk_directory.path().join(format!(
-        "reports/new/{}_crash2.json",
-        timestamp.unix_timestamp_nanos() / 1_000_000
-      )),
-      "{\"crash\": \"crash2\"}",
+      setup.sdk_directory.path().join("reports/new/crash1.cap"),
+      CRASH_CONTENTS,
     )
     .unwrap();
 
@@ -86,45 +73,25 @@ fn crash_reports() {
   let upload_intent = setup.server.next_log_intent().unwrap();
   assert_eq!("crash_handler", upload_intent.explicit_session_capture().id);
 
-  // Sometimes we get the uploads split up between multiple payloads, so collect all the logs from
-  // any number of uploads.
-  let mut uploads: Vec<LogUpload> = vec![];
-  while uploads
-    .iter()
-    .map(|upload| upload.logs().len())
-    .sum::<usize>()
-    < 2
-  {
-    uploads.push(setup.server.blocking_next_log_upload().unwrap());
-  }
+  let uploads: Vec<LogUpload> = vec![setup.server.blocking_next_log_upload().unwrap()];
 
   let logs = uploads
     .iter()
     .flat_map(bd_test_helpers::test_api_server::log_upload::LogUpload::logs)
     .collect_vec();
 
-  let crash1 = logs
+  let Some(crash1) = logs
     .iter()
-    .find(|log| log.field("_crash_reason") == "crash1")
-    .unwrap();
-  assert_eq!(crash1.message(), "App crashed");
+    .find(|log| log.field("_app_exit_info") == "crash1")
+  else {
+    panic!("no crash found with reason!");
+  };
+  assert_eq!(crash1.message(), "AppExit");
   assert_eq!(crash1.session_id(), initial_session_id);
   assert_ne!(crash1.timestamp(), timestamp);
   assert_eq!(crash1.field("_ootb_field"), "ootb");
   let artifact = crash1.binary_field("_crash_artifact");
-  assert_eq!(artifact, b"{\"crash\": \"crash1\"}");
-  assert!(!crash1.has_field("custom"));
-
-  let crash2 = logs
-    .iter()
-    .find(|log| log.field("_crash_reason") == "crash2")
-    .unwrap();
-  assert_eq!(crash2.message(), "App crashed");
-  assert_eq!(crash2.session_id(), initial_session_id);
-  assert_eq!(crash2.timestamp(), timestamp);
-  assert_eq!(crash2.field("_ootb_field"), "ootb");
-  let artifact = crash2.binary_field("_crash_artifact");
-  assert_eq!(artifact, b"{\"crash\": \"crash2\"}");
+  assert_eq!(artifact, CRASH_CONTENTS.as_bytes());
   assert!(!crash1.has_field("custom"));
 }
 
@@ -172,23 +139,8 @@ fn crash_reports_artifact_upload() {
     std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();
 
     std::fs::write(
-      setup.sdk_directory.path().join("reports/reason_inference"),
-      "crash",
-    )
-    .unwrap();
-
-    std::fs::write(
-      setup.sdk_directory.path().join("reports/new/crash1.json"),
-      "{\"crash\": \"crash1\"}",
-    )
-    .unwrap();
-
-    std::fs::write(
-      setup.sdk_directory.path().join(format!(
-        "reports/new/{}_crash2.json",
-        timestamp.unix_timestamp_nanos() / 1_000_000
-      )),
-      "{\"crash\": \"crash2\"}",
+      setup.sdk_directory.path().join("reports/new/crash1.cap"),
+      CRASH_CONTENTS,
     )
     .unwrap();
 
@@ -212,17 +164,7 @@ fn crash_reports_artifact_upload() {
   setup.configure_stream_all_logs();
   setup.upload_individual_logs();
 
-  // Sometimes we get the uploads split up between multiple payloads, so collect all the logs from
-  // any number of uploads.
-  let mut uploads: Vec<LogUpload> = vec![];
-  while uploads
-    .iter()
-    .map(|upload| upload.logs().len())
-    .sum::<usize>()
-    < 2
-  {
-    uploads.push(setup.server.blocking_next_log_upload().unwrap());
-  }
+  let uploads: Vec<LogUpload> = vec![setup.server.blocking_next_log_upload().unwrap()];
 
   let logs = uploads
     .iter()
@@ -231,74 +173,30 @@ fn crash_reports_artifact_upload() {
 
   let crash1 = logs
     .iter()
-    .find(|log| log.field("_crash_reason") == "crash1")
+    .find(|log| log.field("_app_exit_info") == "crash1")
     .unwrap();
-  assert_eq!(crash1.message(), "App crashed");
+  assert_eq!(crash1.message(), "AppExit");
   assert_eq!(crash1.session_id(), initial_session_id);
   assert_ne!(crash1.timestamp(), timestamp);
   assert_eq!(crash1.field("_ootb_field"), "ootb");
   let crash1_uuid = crash1.field("_crash_artifact_id");
   assert!(!crash1.has_field("custom"));
 
-  let crash2 = logs
-    .iter()
-    .find(|log| log.field("_crash_reason") == "crash2")
-    .unwrap();
-  assert_eq!(crash2.message(), "App crashed");
-  assert_eq!(crash2.session_id(), initial_session_id);
-  assert_eq!(crash2.timestamp(), timestamp);
-  assert_eq!(crash2.field("_ootb_field"), "ootb");
-  let crash2_uuid = crash2.field("_crash_artifact_id");
-  assert!(!crash1.has_field("custom"));
-
-  let mut remaining_uploads: HashSet<_> = [crash1_uuid, crash2_uuid].into();
+  let mut remaining_uploads: HashSet<_> = [crash1_uuid].into();
   // Verify that out of band uploads happen.
-  for _ in 0 .. 2 {
+  for _ in 0 .. 1 {
     // Verify that out of band uploads happen.
     let request = setup.server.blocking_next_artifact_intent().unwrap();
     let uuid = request.artifact_id;
 
     let request = setup.server.blocking_next_artifact_upload().unwrap();
     assert_eq!(request.artifact_id, uuid);
-    assert_eq!(
-      request.contents,
-      if uuid == crash1_uuid {
-        b"{\"crash\": \"crash1\"}"
-      } else {
-        b"{\"crash\": \"crash2\"}"
-      }
-    );
+    assert_eq!(request.contents, CRASH_CONTENTS.as_bytes());
     remaining_uploads.remove(uuid.as_str());
   }
 
   assert!(
     remaining_uploads.is_empty(),
     "all uploads should have been seen"
-  );
-}
-
-#[test]
-fn crash_directories_configuration() {
-  let mut setup = Setup::new();
-
-  setup.current_api_stream().blocking_stream_action(
-    bd_test_helpers::test_api_server::StreamAction::SendRuntime(make_simple_update(vec![(
-      CrashDirectories::path(),
-      ValueKind::String("a:b".to_string()),
-    )])),
-  );
-  setup.server.blocking_next_runtime_ack();
-
-  wait_for!(
-    std::fs::read(setup.sdk_directory.path().join("reports/config")).unwrap_or_default() == b"a:b"
-  );
-
-  setup.current_api_stream().blocking_stream_action(
-    bd_test_helpers::test_api_server::StreamAction::SendRuntime(make_simple_update(vec![])),
-  );
-  setup.server.blocking_next_runtime_ack();
-
-  wait_for!(
-    !std::fs::exists(setup.sdk_directory.path().join("reports/config")).unwrap_or_default()
   );
 }
