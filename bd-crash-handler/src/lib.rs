@@ -10,17 +10,16 @@
 mod tests;
 
 pub mod global_state;
-mod json_extractor;
 
-use anyhow::bail;
-use bd_log_primitives::{LogFieldKey, LogFieldValue, LogFields, LogMessageValue};
+use bd_log_primitives::{LogFields, LogMessageValue};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs;
-use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{Platform, Report};
-use bd_runtime::runtime::{BoolWatch, ConfigLoader, StringWatch};
-use bd_shutdown::ComponentShutdown;
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
+  Platform,
+  Report,
+  ReportType,
+};
+use bd_runtime::runtime::{BoolWatch, ConfigLoader};
 use fbs::issue_reporting::v_1::root_as_report;
-use itertools::Itertools as _;
-use json_extractor::{JsonExtractor, JsonPath};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -33,9 +32,6 @@ fn test_global_init() {
 }
 
 const REPORTS_DIRECTORY: &str = "reports";
-const INGESTION_CONFIG_FILE: &str = "config";
-const REASON_INFERENCE_CONFIG_FILE: &str = "reason_inference";
-const DETAILS_INFERENCE_CONFIG_FILE: &str = "details_inference";
 
 //
 // CrashLog
@@ -77,9 +73,6 @@ pub trait CrashLogger: Send + Sync {
 pub struct Monitor {
   // TODO(snowp): Now that we load runtime early enough we can redo how this works a bit to make
   // them less special.
-  reports_directories_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashDirectories>,
-  crash_reason_paths_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashReasonPaths>,
-  crash_details_paths_flag: StringWatch<bd_runtime::runtime::crash_handling::CrashDetailsPaths>,
   out_of_band_enabled_flag: BoolWatch<bd_runtime::runtime::artifact_upload::Enabled>,
 
   previous_session_id: String,
@@ -87,7 +80,6 @@ pub struct Monitor {
   report_directory: PathBuf,
   global_state_reader: global_state::Reader,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
-  shutdown: ComponentShutdown,
 }
 
 impl Monitor {
@@ -97,70 +89,22 @@ impl Monitor {
     store: Arc<bd_device::Store>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
     previous_session_id: String,
-    shutdown: ComponentShutdown,
   ) -> Self {
     runtime.expect_initialized();
 
     Self {
-      reports_directories_flag: runtime.register_watch().unwrap(),
-      crash_reason_paths_flag: runtime.register_watch().unwrap(),
-      crash_details_paths_flag: runtime.register_watch().unwrap(),
       out_of_band_enabled_flag: runtime.register_watch().unwrap(),
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
       global_state_reader: global_state::Reader::new(store),
       artifact_client,
       previous_session_id,
-      shutdown,
     }
-  }
-
-  pub async fn run(&mut self) -> anyhow::Result<()> {
-    self.check_for_config_changes().await
-  }
-
-  async fn try_ensure_directories_exist(&self) {
-    // This can fail and we can't do anything about it, so swallow the error. Everything else needs
-    // to be resilient to the directory not existing.
-    if let Err(e) = tokio::fs::create_dir_all(&self.report_directory).await {
-      log::warn!(
-        "Failed to create crash directory: {} ({})",
-        self.report_directory.display(),
-        e
-      );
-    }
-  }
-
-  fn timestamp_from_filepath(path: &Path) -> Option<OffsetDateTime> {
-    path
-      .file_name()
-      .and_then(|name| name.to_str())
-      .and_then(|name| {
-        name.split('_').next().and_then(|timestamp| {
-          let Ok(timestamp) = timestamp.parse::<f64>() else {
-            log::debug!("Failed to parse timestamp from file name: {name:?}");
-            return None;
-          };
-
-          #[allow(clippy::cast_possible_truncation)]
-          let nanoseconds = (timestamp * 1_000_000.0) as i128;
-
-          // We expect to see ms since epoch, so convert from ms to ns to satisfy the
-          // OffsetDateTime interface. Converting back to seconds would be a lossy operation.
-          OffsetDateTime::from_unix_timestamp_nanos(nanoseconds).ok()
-        })
-      })
   }
 
   fn read_log_fields(
-    path: &Path,
-    report: Option<Report<'_>>,
+    report: Report<'_>,
     global_state_fields: &LogFields,
   ) -> (Option<OffsetDateTime>, LogFields) {
-    let timestamp = Self::timestamp_from_filepath(path);
-    let Some(report) = report else {
-      return (timestamp, global_state_fields.clone());
-    };
-
     let (crash_time, os_version, platform) = report
       .device_metrics()
       .map(|dev| {
@@ -213,13 +157,9 @@ impl Monitor {
     (timestamp, fields)
   }
 
-  fn read_report_contents<'a>(
-    report: &'a [u8],
-    candidate_reason_paths: &[JsonPath],
-    candidate_details_path: &[JsonPath],
-  ) -> (Option<String>, Option<String>, Option<Report<'a>>) {
-    if let Ok(bin_report) = root_as_report(report) {
-      return bin_report
+  fn read_report_contents(report: &[u8]) -> (Option<String>, Option<String>, Option<Report<'_>>) {
+    root_as_report(report).map_or((None, None, None), |bin_report| {
+      bin_report
         .errors()
         .and_then(|errs| errs.iter().next())
         .map_or((None, None, Some(bin_report)), |err| {
@@ -228,123 +168,11 @@ impl Monitor {
             err.reason().map(str::to_owned),
             Some(bin_report),
           )
-        });
-    }
-    // The report may come in either as a single JSON object or as a series of JSON objects.
-    // Defensively handle both to produce a list of objects that we want to inspect to infer the
-    // crash reason.
-    if report.first() != Some(&b'{') {
-      return (None, None, None);
-    }
-
-    let Ok(report) = std::str::from_utf8(report) else {
-      return (None, None, None);
-    };
-
-    let candidates = if let Ok(json) = JsonExtractor::new(report) {
-      vec![json]
-    } else {
-      let Ok(candidates) = report.lines().map(JsonExtractor::new).try_collect() else {
-        return (None, None, None);
-      };
-
-      candidates
-    };
-
-    // For all the candidate files, look for one which matches against a crash reason. Once we find
-    // this candidate, we'll look for the details within the same candidate and return None if we
-    // can't find any.
-
-    for candidate in candidates {
-      for path in candidate_reason_paths {
-        let Some(value) = candidate.extract(path) else {
-          continue;
-        };
-
-        for path in candidate_details_path {
-          let Some(details) = candidate.extract(path) else {
-            continue;
-          };
-
-          return (Some(value.clone()), Some(details.clone()), None);
-        }
-
-        return (Some(value.clone()), None, None);
-      }
-    }
-
-    (None, None, None)
+        })
+    })
   }
 
-  async fn check_for_config_changes(&mut self) -> anyhow::Result<()> {
-    loop {
-      tokio::select! {
-        _ = self.reports_directories_flag.changed() => {},
-        _ = self.crash_reason_paths_flag.changed() => {},
-        () = self.shutdown.cancelled() => return Ok(()),
-      };
-
-      // With the way this is set up there is a chance that we flip-flip the configuration file a
-      // bit during SDK startup as we read the initial value of the flag and then update it with
-      // the value read from the cache. This may not matter as the platform layer reads this value
-      // before the SDK starts, but if we find this problematic we might need to figure out how to
-      // avoid reading the runtime value before the cached value is available.
-
-      let crash_directories = self.reports_directories_flag.read_mark_update().clone();
-      self
-        .write_config_file(
-          &self.report_directory.join(INGESTION_CONFIG_FILE),
-          &crash_directories,
-        )
-        .await;
-
-      let crash_reason_paths = self.crash_reason_paths_flag.read_mark_update().clone();
-      self
-        .write_config_file(
-          &self.report_directory.join(REASON_INFERENCE_CONFIG_FILE),
-          &crash_reason_paths,
-        )
-        .await;
-
-      let crash_details_paths = self.crash_details_paths_flag.read_mark_update().clone();
-      self
-        .write_config_file(
-          &self.report_directory.join(DETAILS_INFERENCE_CONFIG_FILE),
-          &crash_details_paths,
-        )
-        .await;
-    }
-  }
-
-  async fn write_config_file(&self, file: &Path, value: &str) {
-    if value.is_empty() {
-      log::debug!("No report directories configured, removing file");
-
-      if let Err(e) = tokio::fs::remove_file(&file).await {
-        log::warn!(
-          "Failed to remove report directories config file: {} ({e})",
-          file.display()
-        );
-      }
-    } else {
-      log::debug!(
-        "Writing {value:?} to report directories config file {}",
-        file.display()
-      );
-
-      self.try_ensure_directories_exist().await;
-
-      if let Err(e) = tokio::fs::write(file, value).await {
-        log::warn!(
-          "Failed to write report directories config file: {} ({e})",
-          file.display()
-        );
-      }
-    }
-  }
   pub async fn process_new_reports(&self) -> Vec<CrashLog> {
-    let crash_reason_paths = self.crash_reason_paths().await;
-    let crash_details_paths = self.crash_details_paths().await;
     let mut dir = match tokio::fs::read_dir(&self.report_directory.join("new")).await {
       Ok(dir) => dir,
       Err(e) => {
@@ -378,7 +206,8 @@ impl Monitor {
 
     while let Ok(Some(entry)) = dir.next_entry().await {
       let path = entry.path();
-      if path.is_file() {
+      let ext = path.extension().and_then(OsStr::to_str);
+      if path.is_file() && ext == Some("cap") {
         log::info!("Processing new reports report: {}", path.display());
         let contents = match tokio::fs::read(&path).await {
           Ok(contents) => contents,
@@ -388,8 +217,7 @@ impl Monitor {
           },
         };
 
-        let (crash_reason, crash_details, bin_report) =
-          Self::read_report_contents(&contents, &crash_reason_paths, &crash_details_paths);
+        let (crash_reason, crash_details, bin_report) = Self::read_report_contents(&contents);
 
         if crash_reason.is_none() {
           log::warn!(
@@ -399,18 +227,23 @@ impl Monitor {
           continue;
         }
 
-        let Ok(fatal_issue_metadata) = get_fatal_issue_metadata(&path) else {
-          log::warn!(
-            "Failed to get fatal issue metadata for path: {}",
-            path.display()
-          );
+        let Some(bin_report) = bin_report else {
+          log::warn!("Failed to parse report into fbs format, dropping.");
           continue;
         };
 
-        let (timestamp, state_fields) =
-          Self::read_log_fields(&path, bin_report, &global_state_fields);
+        let (timestamp, state_fields) = Self::read_log_fields(bin_report, &global_state_fields);
 
-        let crash_field = if *self.out_of_band_enabled_flag.read() {
+        let report_type = match bin_report.type_() {
+          ReportType::AppNotResponding => "ANR",
+          ReportType::NativeCrash => "Native Crash",
+          ReportType::JVMCrash => "Crash",
+          ReportType::StrictModeViolation => "Strict Mode Violation",
+          ReportType::MemoryTermination => "Memory Termination",
+          _ => "Unknown",
+        };
+
+        let (crash_field_key, crash_field_value) = if *self.out_of_band_enabled_flag.read() {
           log::debug!("uploading report out of band");
 
           let Ok(artifact_id) = self.artifact_client.enqueue_upload(
@@ -433,29 +266,22 @@ impl Monitor {
           ("_crash_artifact".into(), contents.into())
         };
 
-        let message = fatal_issue_metadata.message_value;
         let mut fields = state_fields.clone();
-        fields.extend(std::iter::once(crash_field));
+        fields.insert(crash_field_key, crash_field_value);
         fields.extend(
           [
+            ("_app_exit_reason".into(), report_type.into()),
             (
-              "_app_exit_reason".into(),
-              fatal_issue_metadata.report_type_value,
-            ),
-            (
-              fatal_issue_metadata.reason_key.clone(),
+              "_app_exit_info".into(),
               crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
             ),
             (
-              fatal_issue_metadata.details_key.clone(),
+              "_app_exit_details".into(),
               crash_details
                 .unwrap_or_else(|| "unknown".to_string())
                 .into(),
             ),
-            (
-              "_fatal_issue_mechanism".into(),
-              fatal_issue_metadata.mechanism_type_value.into(),
-            ),
+            ("_fatal_issue_mechanism".into(), "BUILT_IN".into()),
           ]
           .into_iter(),
         );
@@ -463,7 +289,7 @@ impl Monitor {
         logs.push(CrashLog {
           fields,
           timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
-          message,
+          message: "AppExit".into(),
         });
       }
 
@@ -475,72 +301,5 @@ impl Monitor {
     }
 
     logs
-  }
-
-  async fn read_json_paths(&self, file: &str) -> Vec<JsonPath> {
-    let raw = tokio::fs::read_to_string(&self.report_directory.join(file))
-      .await
-      .unwrap_or_default();
-
-    raw.split(',').filter_map(JsonPath::parse).collect()
-  }
-
-  async fn crash_reason_paths(&self) -> Vec<JsonPath> {
-    self.read_json_paths(REASON_INFERENCE_CONFIG_FILE).await
-  }
-
-  async fn crash_details_paths(&self) -> Vec<JsonPath> {
-    self.read_json_paths(DETAILS_INFERENCE_CONFIG_FILE).await
-  }
-}
-
-//
-// FatalIssueMetadata
-//
-
-/// Holds the expected log keys/values and message depending on the report file type
-#[derive(Debug)]
-struct FatalIssueMetadata {
-  details_key: LogFieldKey,
-  mechanism_type_value: &'static str,
-  message_value: LogMessageValue,
-  reason_key: LogFieldKey,
-  report_type_value: LogFieldValue,
-}
-
-fn get_fatal_issue_metadata(path: &Path) -> anyhow::Result<FatalIssueMetadata> {
-  let ext = path.extension().and_then(OsStr::to_str);
-  let file_name = path
-    .file_name()
-    .and_then(|f| f.to_str())
-    .unwrap_or_default();
-
-  let report_type = if file_name.contains("_anr") {
-    "ANR"
-  } else if file_name.contains("_native_crash") {
-    "Native Crash"
-  } else if file_name.contains("_crash") {
-    "Crash"
-  } else {
-    "Unknown"
-  };
-
-  match ext {
-    Some("envelope" | "json") => Ok(FatalIssueMetadata {
-      mechanism_type_value: "INTEGRATION",
-      message_value: "App crashed".into(),
-      details_key: "_crash_details".into(),
-      reason_key: "_crash_reason".into(),
-      report_type_value: report_type.into(),
-    }),
-    Some("cap") => Ok(FatalIssueMetadata {
-      mechanism_type_value: "BUILT_IN",
-      message_value: "AppExit".into(),
-      details_key: "_app_exit_details".into(),
-      reason_key: "_app_exit_info".into(),
-      report_type_value: report_type.into(),
-    }),
-    // TODO(FranAguilera): BIT-5414 Clean up tombstone handling
-    _ => bail!("Unknown file extension for path: {}", path.display()),
   }
 }
