@@ -36,6 +36,7 @@ use std::sync::{Arc, Mutex};
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::watch;
+use bd_crash_handler::Monitor;
 
 #[derive(Clone)]
 #[allow(clippy::struct_field_names)]
@@ -50,6 +51,7 @@ pub struct Stats {
 }
 
 impl Stats {
+  
   fn new(stats: &Scope) -> Self {
     // replay session stats use separate scope for legacy reasons
     let replay_scope = stats.scope("replay");
@@ -490,9 +492,22 @@ pub struct Logger {
   stats_scope: Scope,
 
   sleep_mode_active: watch::Sender<bool>,
+
+  crash_monitor: Mutex<Option<Arc<Monitor>>>,
 }
 
 impl Logger {
+
+  pub fn set_crash_monitor(&self, monitor: Arc<Monitor>) {
+    let mut guard = self.crash_monitor.lock().unwrap();
+    *guard = Some(monitor);
+  }
+
+  pub async fn internal_process_new_reports(&self) -> anyhow::Result<()> {
+    // TBF
+    Ok(())
+  }
+
   pub fn new(
     shutdown_state: Option<ComponentShutdownTrigger>,
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
@@ -520,6 +535,7 @@ impl Logger {
       stats_scope,
       store,
       sleep_mode_active,
+      crash_monitor: Mutex::new(None),
     }
   }
 
