@@ -26,6 +26,7 @@ use bd_client_stats::stats::{
   Ticker,
 };
 use bd_client_stats_store::Collector;
+use bd_crash_handler::Monitor;
 use bd_internal_logging::NoopLogger;
 use bd_log_primitives::{Log, LogType, log_level};
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
@@ -241,7 +242,7 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
       );
 
-      let mut crash_monitor = bd_crash_handler::Monitor::new(
+      let crash_monitor = Monitor::new(
         &runtime_loader,
         &self.params.sdk_directory,
         self.params.store.clone(),
@@ -251,7 +252,6 @@ impl LoggerBuilder {
           .session_strategy
           .previous_process_session_id()
           .unwrap_or_default(),
-        shutdown_handle.make_shutdown(),
       );
 
       // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
@@ -337,7 +337,6 @@ impl LoggerBuilder {
           stats_flusher.periodic_flush().await;
           Ok(())
         },
-        async move { crash_monitor.run().await },
         async move {
           artifact_uploader.run().await;
           Ok(())
