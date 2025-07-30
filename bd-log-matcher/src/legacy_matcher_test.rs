@@ -9,15 +9,7 @@
 
 use crate::matcher::Tree;
 use assert_matches::assert_matches;
-use bd_log_primitives::{
-  FieldsRef,
-  LogFields,
-  LogLevel,
-  LogMessage,
-  LogType,
-  StringOrBytes,
-  log_level,
-};
+use bd_log_primitives::{FieldsRef, LogFields, LogLevel, LogMessage, LogType, log_level};
 use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::AnyMatch;
 use bd_proto::protos::config::v1::config::log_matcher::{
   BaseLogMatcher as LegacyBaseLogMatcherMsg,
@@ -44,8 +36,8 @@ fn log_tag(key: &'static str, value: &'static str) -> Input<'static> {
   (
     LogType::Normal,
     log_level::DEBUG,
-    LogMessage::String("message".into()),
-    [(key.into(), StringOrBytes::String(value.into()))].into(),
+    "message".into(),
+    [(key.into(), value.into())].into(),
   )
 }
 
@@ -62,8 +54,8 @@ fn binary_log_tag(key: &'static str, value: &'static [u8]) -> Input<'static> {
   (
     LogType::Normal,
     log_level::DEBUG,
-    LogMessage::String("message".into()),
-    [(key.into(), StringOrBytes::Bytes(value.into()))].into(),
+    "message".into(),
+    [(key.into(), value.into())].into(),
   )
 }
 
