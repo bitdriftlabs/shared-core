@@ -18,6 +18,7 @@ use bd_log_primitives::{
   StringOrBytes,
   log_level,
 };
+use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::AnyMatch;
 use bd_proto::protos::config::v1::config::log_matcher::{
   BaseLogMatcher as LegacyBaseLogMatcherMsg,
   MatcherList as LegacyMatcherList,
@@ -88,7 +89,7 @@ fn match_test_runner(config: LegacyLogMatcher, cases: Vec<(Input<'_>, bool)>) {
 #[test]
 fn test_any_matcher() {
   let config = simple_log_matcher(LegacyBaseLogMatcher::Match_type::AnyMatch(
-    Default::default(),
+    AnyMatch::default(),
   ));
 
   match_test_runner(config, vec![(log_msg("anything"), true)]);
@@ -368,7 +369,7 @@ fn test_not_matcher() {
   let config = LegacyLogMatcher {
     match_type: Some(legacy_log_matcher::Match_type::NotMatcher(Box::new(
       simple_log_matcher(LegacyBaseLogMatcher::Match_type::AnyMatch(
-        Default::default(),
+        AnyMatch::default(),
       )),
     ))),
     ..Default::default()

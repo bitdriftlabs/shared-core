@@ -810,7 +810,6 @@ dependencies = [
  "bd-log-matcher",
  "bd-log-metadata",
  "bd-log-primitives",
- "bd-matcher",
  "bd-network-quality",
  "bd-noop-network",
  "bd-proto",
@@ -841,20 +840,6 @@ dependencies = [
  "tracing",
  "unwrap-infallible",
  "uuid",
-]
-
-[[package]]
-name = "bd-matcher"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "assert_matches",
- "bd-log-primitives",
- "bd-proto",
- "matches",
- "protobuf 4.0.0-alpha.0",
- "regex",
- "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -1129,7 +1114,6 @@ dependencies = [
  "bd-log",
  "bd-log-metadata",
  "bd-log-primitives",
- "bd-matcher",
  "bd-metadata",
  "bd-panic",
  "bd-proto",
@@ -1180,7 +1164,6 @@ dependencies = [
  "bd-log",
  "bd-log-matcher",
  "bd-log-primitives",
- "bd-matcher",
  "bd-proto",
  "bd-runtime",
  "bd-shutdown",

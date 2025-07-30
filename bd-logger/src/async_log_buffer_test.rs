@@ -7,6 +7,7 @@
 
 use super::AsyncLogBufferMessage;
 use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay};
+use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::log_replay::{LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
@@ -25,7 +26,6 @@ use bd_log_primitives::{
   StringOrBytes,
   log_level,
 };
-use bd_matcher::buffer_selector::BufferSelector;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;

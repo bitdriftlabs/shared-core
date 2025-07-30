@@ -71,7 +71,7 @@ trait MakeValueOrRef<'a, T> {
 
 impl<T> From<T> for ValueOrSavedFieldId<T> {
   fn from(value: T) -> Self {
-    ValueOrSavedFieldId::Value(value)
+    Self::Value(value)
   }
 }
 
@@ -147,7 +147,7 @@ impl Tree {
       .ok_or_else(|| anyhow::anyhow!("missing legacy match type"))?
     {
       legacy_log_matcher::Match_type::BaseMatcher(matcher) => {
-        Ok(Self::Base(Leaf::new_legacy(&matcher)?))
+        Ok(Self::Base(Leaf::new_legacy(matcher)?))
       },
       legacy_log_matcher::Match_type::OrMatcher(sub_matchers) => Ok(Self::Or(
         sub_matchers
@@ -164,7 +164,7 @@ impl Tree {
           .collect::<Result<Vec<Self>>>()?,
       )),
       legacy_log_matcher::Match_type::NotMatcher(matcher) => {
-        Ok(Self::Not(Box::new(Self::new_legacy(&*matcher)?)))
+        Ok(Self::Not(Box::new(Self::new_legacy(matcher)?)))
       },
     }
   }
