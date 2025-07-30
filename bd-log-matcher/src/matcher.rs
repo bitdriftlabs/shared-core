@@ -21,7 +21,7 @@ use base_log_matcher::tag_match::Value_match::{
   StringValueMatch,
 };
 use bd_log_primitives::{LogLevel, LogMessage, LogType};
-pub use bd_matcher::FieldProvider;
+use bd_matcher::FieldProvider;
 use bd_proto::protos::log_matcher::log_matcher;
 use log_matcher::LogMatcher;
 use log_matcher::log_matcher::base_log_matcher::double_value_match::Double_value_match_type;

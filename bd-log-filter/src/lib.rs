@@ -266,7 +266,7 @@ impl SetField {
   }
 
   fn apply(&self, log: &mut Log) {
-    if !self.is_override_allowed && log.field_value(&self.field_name).is_some() {
+    if !self.is_override_allowed && extract_value(log, &self.field_name).is_some() {
       // Return if a field with the desired field name already exists and the transform is not
       // allowed to override existing values.
       return;
@@ -276,7 +276,7 @@ impl SetField {
     let value = match &self.value {
       SetFieldValue::StringValue(value) => value.to_string(),
       SetFieldValue::ExistingField(field_name) => {
-        let Some(value) = log.field_value(field_name) else {
+        let Some(value) = extract_value(log, field_name) else {
           // The field to copy from doesn't exist, the transform is a no-op.
           return;
         };
@@ -384,23 +384,20 @@ fn set_field(fields: &mut LogFields, key: LogFieldKey, value: LogFieldValue) {
   fields.insert(key, value);
 }
 
-trait FieldProvider {
-  fn field_value(&self, key: &str) -> Option<Cow<'_, str>>;
-}
 
-impl FieldProvider for Log {
-  fn field_value(&self, key: &str) -> Option<Cow<'_, str>> {
-    match key {
-      LOG_FIELD_NAME_MESSAGE => self.message.as_str().map(Cow::Borrowed),
-      LOG_FIELD_NAME_LEVEL => Some(Cow::Owned(self.log_level.to_string())),
-      LOG_FIELD_NAME_TYPE => Some(Cow::Owned(self.log_type.0.to_string())),
-      _ => self
-        .fields
-        .iter()
-        .chain(self.matching_fields.iter())
-        .find_map(|(k, v)| (k == key).then_some(v))
-        .and_then(|f| f.as_str())
-        .map(Into::into),
-    }
+/// Extracts a value from the log using the convention that certain names map to the log messsage,
+/// type or log level while others map to an arbitrary field.
+fn extract_value<'a>(log: &'a Log, key: &str) -> Option<Cow<'a, str>> {
+  match key {
+    LOG_FIELD_NAME_MESSAGE => log.message.as_str().map(Cow::Borrowed),
+    LOG_FIELD_NAME_LEVEL => Some(Cow::Owned(log.log_level.to_string())),
+    LOG_FIELD_NAME_TYPE => Some(Cow::Owned(log.log_type.0.to_string())),
+    _ => log
+      .fields
+      .iter()
+      .chain(log.matching_fields.iter())
+      .find_map(|(k, v)| (k == key).then_some(v))
+      .and_then(|f| f.as_str())
+      .map(Into::into),
   }
 }
