@@ -878,7 +878,7 @@ fn match_test_runner_with_extractions(
         log_level,
         bd_log_primitives::LogType(log_type.0),
         &message,
-        &fields,
+        fields,
         extracted_fields,
       ),
       "{input:?} should result in {should_match} but did not",

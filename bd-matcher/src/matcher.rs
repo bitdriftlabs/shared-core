@@ -9,8 +9,8 @@
 #[path = "./matcher_test.rs"]
 mod matcher_test;
 
-use crate::{Error, FieldProvider, Result};
-use bd_log_primitives::{LogLevel, LogMessage, LogType};
+use crate::{Error, Result};
+use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogType};
 use bd_proto::protos;
 use protos::config::v1::config::LogMatcher;
 use protos::config::v1::config::log_matcher::base_log_matcher::log_level_match::ComparisonOperator;
@@ -67,7 +67,7 @@ impl Tree {
     log_type: LogType,
     log_level: LogLevel,
     message: &LogMessage,
-    fields: &impl FieldProvider,
+    fields: FieldsRef<'_>,
   ) -> bool {
     match self {
       Self::Base(base_matcher) => match base_matcher {
@@ -150,11 +150,7 @@ pub enum InputType {
 }
 
 impl InputType {
-  fn get<'a>(
-    &self,
-    message: &'a LogMessage,
-    fields: &'a impl FieldProvider,
-  ) -> Option<Cow<'a, str>> {
+  fn get<'a>(&self, message: &'a LogMessage, fields: FieldsRef<'a>) -> Option<Cow<'a, str>> {
     match self {
       Self::Message => message.as_str().map(Cow::Borrowed),
       Self::Field(field_key) => fields.field_value(field_key),

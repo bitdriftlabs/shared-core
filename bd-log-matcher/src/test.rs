@@ -6,8 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::matcher::Tree;
-use bd_log_primitives::{LogMessage, LogType, StringOrBytes, TypedLogLevel};
-use bd_matcher::FieldProvider;
+use bd_log_primitives::{FieldsRef, LogMessage, LogType, StringOrBytes, TypedLogLevel};
 use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
 use std::collections::HashMap;
 
@@ -31,33 +30,18 @@ impl TestMatcher {
     message: impl Into<LogMessage>,
     fields: impl Into<HashMap<&'a str, &'a str>>,
   ) -> bool {
+    let fields = fields
+      .into()
+      .into_iter()
+      .map(|(k, v)| (k.to_string().into(), StringOrBytes::from(v)))
+      .collect();
+    let matching_fields = [].into();
     self.tree.do_match(
       log_level.as_u32(),
       log_type,
       &message.into(),
-      &TestFields::new(fields.into()),
+      FieldsRef::new(&fields, &matching_fields),
       None,
     )
-  }
-}
-
-struct TestFields(HashMap<String, StringOrBytes<String, Vec<u8>>>);
-
-impl TestFields {
-  pub fn new(fields: HashMap<&str, &str>) -> Self {
-    let fields = fields
-      .into_iter()
-      .map(|(k, v)| (k.to_string(), StringOrBytes::from(v)))
-      .collect();
-    Self(fields)
-  }
-}
-
-impl FieldProvider for TestFields {
-  fn field_value(&self, key: &str) -> Option<std::borrow::Cow<'_, str>> {
-    self
-      .0
-      .get(key)
-      .and_then(|v| v.as_str().map(std::borrow::Cow::Borrowed))
   }
 }

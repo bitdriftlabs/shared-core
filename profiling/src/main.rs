@@ -135,7 +135,7 @@ impl AnnotatedWorkflowsEngine {
         log_type: LogType::Normal,
         log_level,
         message: &LogMessage::String(message.to_string()),
-        fields: &FieldsRef::new(&fields, &[].into()),
+        fields: FieldsRef::new(&fields, &[].into()),
         session_id: "1231231231312312312312",
         occurred_at: OffsetDateTime::now_utc(),
         capture_session: None,

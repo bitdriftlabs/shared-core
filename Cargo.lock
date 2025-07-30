@@ -753,7 +753,6 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "bd-log-primitives",
- "bd-matcher",
  "bd-proto",
  "bd-test-helpers",
  "itertools 0.14.0",
