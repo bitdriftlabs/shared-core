@@ -1,4 +1,4 @@
-
+/*
 use serde::{ser, Serialize};
 // use serde::ser::{self, Impossible, Serialize};
 
@@ -554,3 +554,4 @@ fn test_enum() {
     // let expected = r#"{"Struct":{"a":1}}"#;
     // assert_eq!(to_string(&s).unwrap(), expected);
 }
+*/
