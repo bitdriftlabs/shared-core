@@ -251,7 +251,7 @@ impl ApplyConfig for LoggerUpdate {
       .config_update_tx
       .send(ConfigUpdate {
         buffer_producers: BufferProducers::new(&self.buffer_manager)?,
-        buffer_selector: bd_matcher::buffer_selector::BufferSelector::new(&buffer)?,
+        buffer_selector: crate::buffer_selector::BufferSelector::new(&buffer)?,
         // TODO(Augustyniak): Propagate the information about invalid workflows to server.
         workflows_configuration,
         tail_configs: TailConfigurations::new(

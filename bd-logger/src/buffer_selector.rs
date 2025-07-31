@@ -5,8 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::Result;
-use crate::matcher::Tree;
+use bd_log_matcher::matcher::Tree;
 use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogType};
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use std::borrow::Cow;
@@ -32,14 +31,14 @@ pub struct BufferSelector {
 }
 
 impl BufferSelector {
-  pub fn new(config: &BufferConfigList) -> Result<Self> {
+  pub fn new(config: &BufferConfigList) -> anyhow::Result<Self> {
     let mut buffer_filters = Vec::new();
 
     for buffer_config in &config.buffer_config {
       let mut matchers = Vec::new();
       for filter in &buffer_config.filters {
         if let Some(filter_matcher) = &filter.filter.as_ref() {
-          matchers.push((filter.id.clone(), Tree::new(filter_matcher)?));
+          matchers.push((filter.id.clone(), Tree::new_legacy(filter_matcher)?));
         }
       }
 
@@ -65,7 +64,7 @@ impl BufferSelector {
     let mut buffers = BTreeSet::new();
     for buffer in &self.buffer_filters {
       for (_id, matcher) in &buffer.matchers {
-        if matcher.do_match(log_type, log_level, message, fields) {
+        if matcher.do_match(log_level, log_type, message, fields, None) {
           buffers.insert(Cow::Borrowed(buffer.buffer_id.as_str()));
 
           // No reason to match further.

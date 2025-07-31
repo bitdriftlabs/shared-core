@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::log_replay::ProcessingPipeline;
 use crate::pre_config_buffer::{self, PreConfigBuffer};
@@ -15,7 +16,6 @@ use bd_buffer::BuffersWithAck;
 use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::FilterChain;
-use bd_matcher::buffer_selector::BufferSelector;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_stats_common::labels;

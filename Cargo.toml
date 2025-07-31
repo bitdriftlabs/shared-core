@@ -32,7 +32,6 @@ members = [
   "bd-report-writer-tests",
   "bd-session",
   "bd-key-value",
-  "bd-matcher",
   "bd-session-replay",
   "bd-resource-utilization",
   "bd-rt",

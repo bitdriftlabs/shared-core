@@ -9,6 +9,10 @@
 #[path = "./matcher_test.rs"]
 mod matcher_test;
 
+#[cfg(test)]
+#[path = "./legacy_matcher_test.rs"]
+mod legacy_matcher_test;
+
 use crate::version;
 use anyhow::{Result, anyhow};
 use base_log_matcher::Match_type::{MessageMatch, TagMatch};
@@ -21,6 +25,15 @@ use base_log_matcher::tag_match::Value_match::{
   StringValueMatch,
 };
 use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogType};
+use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::StringMatchType;
+use bd_proto::protos::config::v1::config::log_matcher::{
+  BaseLogMatcher as LegacyBaseLogMatcher,
+  base_log_matcher as legacy_base_log_matcher,
+};
+use bd_proto::protos::config::v1::config::{
+  LogMatcher as LegacyLogMatcher,
+  log_matcher as legacy_log_matcher,
+};
 use bd_proto::protos::log_matcher::log_matcher;
 use log_matcher::LogMatcher;
 use log_matcher::log_matcher::base_log_matcher::double_value_match::Double_value_match_type;
@@ -57,6 +70,12 @@ enum ValueOrRef<'a, T> {
 trait MakeValueOrRef<'a, T> {
   #[allow(clippy::ptr_arg)]
   fn make_value_or_ref(value: &'a String) -> Option<ValueOrRef<'a, T>>;
+}
+
+impl<T> From<T> for ValueOrSavedFieldId<T> {
+  fn from(value: T) -> Self {
+    Self::Value(value)
+  }
 }
 
 impl<'a, T: MakeValueOrRef<'a, T>> ValueOrSavedFieldId<T> {
@@ -124,6 +143,35 @@ pub enum Tree {
 }
 
 impl Tree {
+  pub fn new_legacy(config: &LegacyLogMatcher) -> Result<Self> {
+    match config
+      .match_type
+      .as_ref()
+      .ok_or_else(|| anyhow::anyhow!("missing legacy match type"))?
+    {
+      legacy_log_matcher::Match_type::BaseMatcher(matcher) => {
+        Ok(Self::Base(Leaf::new_legacy(matcher)?))
+      },
+      legacy_log_matcher::Match_type::OrMatcher(sub_matchers) => Ok(Self::Or(
+        sub_matchers
+          .matcher
+          .iter()
+          .map(Self::new_legacy)
+          .collect::<Result<Vec<Self>>>()?,
+      )),
+      legacy_log_matcher::Match_type::AndMatcher(sub_matchers) => Ok(Self::And(
+        sub_matchers
+          .matcher
+          .iter()
+          .map(Self::new_legacy)
+          .collect::<Result<Vec<Self>>>()?,
+      )),
+      legacy_log_matcher::Match_type::NotMatcher(matcher) => {
+        Ok(Self::Not(Box::new(Self::new_legacy(matcher)?)))
+      },
+    }
+  }
+
   // Compiles a match tree from the matching config. Return an error if the config is invalid
   pub fn new(config: &LogMatcher) -> Result<Self> {
     match config
@@ -188,6 +236,7 @@ impl Tree {
           .get(message, fields)
           .is_some_and(|input| criteria.evaluate(input.as_ref())),
         Leaf::IsSetValue(input) => input.get(message, fields).is_some(),
+        Leaf::Any => true,
       },
       Self::Or(or_matchers) => or_matchers
         .iter()
@@ -397,9 +446,82 @@ pub enum Leaf {
 
   /// Whether a given tag is set or not.
   IsSetValue(InputType),
+
+  /// Always true.
+  Any,
 }
 
 impl Leaf {
+  fn new_legacy(log_matcher: &LegacyBaseLogMatcher) -> Result<Self> {
+    fn map_string_value(value: &str, match_type: StringMatchType) -> Result<StringMatch> {
+      let (value, operator) = match match_type {
+        legacy_log_matcher::base_log_matcher::StringMatchType::EXACT => {
+          (value.to_string(), Operator::OPERATOR_EQUALS)
+        },
+        legacy_log_matcher::base_log_matcher::StringMatchType::PREFIX => (
+          format!("^{}.*", regex::escape(value)),
+          Operator::OPERATOR_REGEX,
+        ),
+        legacy_log_matcher::base_log_matcher::StringMatchType::REGEX => {
+          (value.to_string(), Operator::OPERATOR_REGEX)
+        },
+      };
+
+      StringMatch::new(operator, value.into())
+    }
+
+    match log_matcher
+      .match_type
+      .as_ref()
+      .ok_or_else(|| anyhow!("missing legacy log matcher"))?
+    {
+      legacy_log_matcher::base_log_matcher::Match_type::LogLevelMatch(log_level_match) => {
+        Ok(Self::LogLevel(IntMatch {
+          operator: match log_level_match.operator.enum_value_or_default() {
+            legacy_base_log_matcher::log_level_match::ComparisonOperator::LESS_THAN => {
+              Operator::OPERATOR_LESS_THAN
+            },
+            legacy_base_log_matcher::log_level_match::ComparisonOperator::LESS_THAN_OR_EQUAL => {
+              Operator::OPERATOR_LESS_THAN_OR_EQUAL
+            },
+            legacy_base_log_matcher::log_level_match::ComparisonOperator::EQUALS => {
+              Operator::OPERATOR_EQUALS
+            },
+            legacy_base_log_matcher::log_level_match::ComparisonOperator::GREATER_THAN => {
+              Operator::OPERATOR_GREATER_THAN
+            },
+            legacy_base_log_matcher::log_level_match::ComparisonOperator::GREATER_THAN_OR_EQUAL => {
+              Operator::OPERATOR_GREATER_THAN_OR_EQUAL
+            },
+          },
+          value: log_level_match.log_level.value().into(),
+        }))
+      },
+      legacy_log_matcher::base_log_matcher::Match_type::MessageMatch(message_match) => {
+        Ok(Self::StringValue(
+          InputType::Message,
+          map_string_value(
+            &message_match.match_value,
+            message_match.match_type.enum_value_or_default(),
+          )?,
+        ))
+      },
+      legacy_log_matcher::base_log_matcher::Match_type::TagMatch(tag_match) => {
+        Ok(Self::StringValue(
+          InputType::Field(tag_match.tag_key.clone()),
+          map_string_value(
+            &tag_match.match_value,
+            tag_match.match_type.enum_value_or_default(),
+          )?,
+        ))
+      },
+      legacy_log_matcher::base_log_matcher::Match_type::TypeMatch(type_match) => {
+        Ok(Self::LogType(type_match.type_))
+      },
+      legacy_log_matcher::base_log_matcher::Match_type::AnyMatch(_) => Ok(Self::Any),
+    }
+  }
+
   fn new(log_matcher: &BaseLogMatcher) -> Result<Self> {
     fn transform_int_value_match(int_value_match: &IntValueMatch_type) -> ValueOrSavedFieldId<i32> {
       // This used to not be a oneof so supply an equivalent default if the field is not set.

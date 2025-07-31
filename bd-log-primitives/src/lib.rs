@@ -10,7 +10,7 @@ use bd_bounded_buffer::MemorySized;
 pub use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 pub const LOG_FIELD_NAME_TYPE: &str = "log_type";
 pub const LOG_FIELD_NAME_LEVEL: &str = "log_level";
@@ -156,6 +156,10 @@ pub type AnnotatedLogFields = AHashMap<LogFieldKey, AnnotatedLogField>;
 
 /// The list of owned log fields.
 pub type LogFields = AHashMap<LogFieldKey, LogFieldValue>;
+
+/// An empty `LogFields`, useful to referencing an empty set of fields without dealing with
+/// lifetime issues.
+pub static EMPTY_FIELDS: LazyLock<LogFields> = LazyLock::new(AHashMap::new);
 
 //
 // AnnotatedLogField
