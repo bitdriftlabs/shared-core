@@ -80,6 +80,7 @@ impl SetupSingleConsumer {
         max_match_size_bytes: runtime_loader_clone.register_watch().unwrap(),
         batch_deadline_watch: runtime_loader_clone.register_watch().unwrap(),
         upload_lookback_window_feature_flag: runtime_loader_clone.register_watch().unwrap(),
+        streaming_batch_size: runtime_loader_clone.register_watch().unwrap(),
       },
       shutdown_trigger.make_shutdown(),
       "buffer".to_string(),
@@ -886,6 +887,9 @@ async fn log_streaming() {
       consumer,
       log_upload_service: upload_service,
       shutdown: shutdown_trigger.make_shutdown(),
+      batch_size: runtime_loader
+        .register_watch()
+        .unwrap_or_else(|_| panic!("Failed to register batch size watch")),
     }
     .start()
     .await
@@ -896,14 +900,77 @@ async fn log_streaming() {
   producer.write(b"more data").unwrap();
 
   assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::LogsUpload(upload) => {
+      assert_eq!(upload.payload.logs.len(), 2);
     assert_eq!(upload.payload.logs[0], b"data");
+    assert_eq!(upload.payload.logs[1], b"more data");
     upload.response_tx.send(UploadResponse {
       success: true,
       uuid: upload.uuid,
     }).unwrap();
   });
+}
+
+#[tokio::test]
+async fn streaming_batch_size_flag() {
+  use bd_buffer::buffer::VolatileRingBuffer;
+  use bd_client_stats_store::Collector;
+  use std::sync::Arc;
+
+  let buffer = VolatileRingBuffer::new(
+    "test_stream_batch".to_string(),
+    1024 * 1024,
+    Arc::new(bd_buffer::RingBufferStats::default()),
+  );
+
+  let mut producer = buffer.clone().register_producer().unwrap();
+  let consumer = buffer.clone().register_consumer().unwrap();
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let runtime_loader = ConfigLoader::new(&PathBuf::from("."));
+  let (log_upload_tx, mut log_upload_rx) = tokio::sync::mpsc::channel(1);
+  // Set streaming batch size to 2
+  runtime_loader
+    .update_snapshot(&make_simple_update(vec![(
+      bd_runtime::runtime::log_upload::StreamingBatchSizeFlag::path(),
+      ValueKind::Int(2),
+    )]))
+    .await;
+
+  let upload_service = service::new(
+    log_upload_tx,
+    shutdown_trigger.make_shutdown(),
+    &runtime_loader,
+    &Collector::default().scope(""),
+  )
+  .unwrap();
+
+  tokio::task::spawn(async move {
+    StreamedBufferUpload {
+      consumer,
+      log_upload_service: upload_service,
+      batch_size: runtime_loader.register_watch().unwrap(),
+      shutdown: shutdown_trigger.make_shutdown(),
+    }
+    .start()
+    .await
+    .unwrap();
+  });
+
+  // Write three logs; expect the first upload to contain two logs due to batch size
+  producer.write(b"foo").unwrap();
+  producer.write(b"bar").unwrap();
+  producer.write(b"baz").unwrap();
+
+  // Should batch foo+bar (due to batch size = 2)
   assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::LogsUpload(upload) => {
-    assert_eq!(upload.payload.logs[0], b"more data");
+    assert_eq!(upload.payload.logs, vec![b"foo".to_vec(), b"bar".to_vec()]);
+    upload.response_tx.send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    }).unwrap();
+  });
+  // Next upload should contain "baz"
+  assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::LogsUpload(upload) => {
+    assert_eq!(upload.payload.logs, vec![b"baz".to_vec()]);
     upload.response_tx.send(UploadResponse {
       success: true,
       uuid: upload.uuid,
@@ -946,6 +1013,9 @@ async fn log_streaming_shutdown() {
       consumer,
       log_upload_service: upload_service,
       shutdown,
+      batch_size: runtime_loader
+        .register_watch()
+        .unwrap_or_else(|_| panic!("Failed to register batch size watch")),
     }
     .start()
     .await

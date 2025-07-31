@@ -43,6 +43,9 @@ struct Flags {
   // at this point regardless of log activity.
   batch_deadline_watch: IntWatch<bd_runtime::runtime::log_upload::BatchDeadlineFlag>,
 
+  // The maximum number of logs to upload in a single streaming batch.
+  streaming_batch_size: IntWatch<bd_runtime::runtime::log_upload::StreamingBatchSizeFlag>,
+
   // The lookback window for the flush buffer uploads.
   upload_lookback_window_feature_flag:
     Watch<time::Duration, bd_runtime::runtime::log_upload::FlushBufferLookbackWindow>,
@@ -106,6 +109,7 @@ impl BufferUploadManager {
         max_match_size_bytes: runtime_loader.register_watch()?,
         batch_deadline_watch: runtime_loader.register_watch()?,
         upload_lookback_window_feature_flag: runtime_loader.register_watch()?,
+        streaming_batch_size: runtime_loader.register_watch()?,
       },
       shutdown,
       buffer_event_rx,
@@ -299,10 +303,12 @@ impl BufferUploadManager {
         let log_upload_service = self.log_upload_service.clone();
         let consumer = buffer.clone().register_consumer().unwrap();
 
+        let batch_size = self.feature_flags.streaming_batch_size.clone();
         tokio::task::spawn(async move {
           StreamedBufferUpload {
             consumer,
             log_upload_service,
+            batch_size,
             shutdown,
           }
           .start()
@@ -553,6 +559,8 @@ struct StreamedBufferUpload {
   // Service used to send logs to upload to the uploader.
   log_upload_service: service::Upload,
 
+  batch_size: IntWatch<bd_runtime::runtime::log_upload::StreamingBatchSizeFlag>,
+
   shutdown: ComponentShutdown,
 }
 
@@ -561,13 +569,39 @@ impl StreamedBufferUpload {
     loop {
       log::debug!("awaiting stream log");
 
-      let log = tokio::select! {
+      let first_log = tokio::select! {
         log = self.consumer.read() => log,
         () = self.shutdown.cancelled() => return Ok(()),
       }?;
 
-      // TODO(snowp): Consider adding some (small) batch period to batch logs that happen very
-      // close together.
+      log::debug!("received first log, starting stream upload");
+
+      let mut logs = vec![first_log.to_vec()];
+
+      self.consumer.finish_read()?;
+
+      loop {
+        if logs.len() >= *self.batch_size.read() as usize {
+          log::debug!("batch size reached, uploading batch");
+          break;
+        }
+
+
+        match self.consumer.start_read(false) {
+          Ok(log) => {
+            logs.push(log.to_vec());
+            self.consumer.finish_read()?;
+          },
+          Err(bd_buffer::Error::AbslStatus(AbslCode::Unavailable, _)) => {
+            break;
+          },
+          Err(e) => {
+            log::debug!("failed to read from stream buffer: {e:?}");
+            return Err(anyhow!("failed to read from stream buffer: {e:?}"));
+          },
+        }
+      }
+
       let upload_future = async {
         self
           .log_upload_service
@@ -575,7 +609,7 @@ impl StreamedBufferUpload {
           .await
           .unwrap_infallible()
           .call(UploadRequest::new(LogBatch {
-            logs: vec![log.to_vec()],
+            logs,
             buffer_id: "streamed".to_string(),
           }))
           .await
@@ -589,8 +623,6 @@ impl StreamedBufferUpload {
       };
 
       log::debug!("completed stream upload with result: {result:?}");
-
-      self.consumer.finish_read()?;
     }
   }
 }

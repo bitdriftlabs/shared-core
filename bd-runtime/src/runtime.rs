@@ -570,6 +570,15 @@ pub mod log_upload {
     30 * 1000
   ); // 30s
 
+  // This controls the maximum number of logs that will be uploaded in a single streaming upload
+  // request. This is used to batch the uploads to improve the throughput of log streaming in the
+  // case where a lot of logs are being emitted.
+  int_feature_flag!(
+    StreamingBatchSizeFlag,
+    "log_uploader.streaming_batch_size",
+    100
+  );
+
   // This controls how many times we'll retry an upload before giving up. Note that this tracks the
   // number of times the log upload is dispatched to the internal API mux, not direct attempts at
   // sending it over the wire. This has the effect that a retry attempt is only processed while
