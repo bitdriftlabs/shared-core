@@ -8,6 +8,7 @@
 use crate::matcher::Tree;
 use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
 use bd_log_primitives::{
+  EMPTY_FIELDS,
   FieldsRef,
   LogFields,
   LogLevel,
@@ -869,8 +870,7 @@ fn match_test_runner_with_extractions(
   for (input, should_match) in cases {
     let (log_type, log_level, message, fields) = input.clone();
 
-    let matching_fields = &LogFields::new();
-    let fields = FieldsRef::new(&fields, matching_fields);
+    let fields = FieldsRef::new(&fields, &EMPTY_FIELDS);
 
     assert_eq!(
       should_match,

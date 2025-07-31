@@ -9,7 +9,15 @@
 
 use crate::matcher::Tree;
 use assert_matches::assert_matches;
-use bd_log_primitives::{FieldsRef, LogFields, LogLevel, LogMessage, LogType, log_level};
+use bd_log_primitives::{
+  EMPTY_FIELDS,
+  FieldsRef,
+  LogFields,
+  LogLevel,
+  LogMessage,
+  LogType,
+  log_level,
+};
 use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::AnyMatch;
 use bd_proto::protos::config::v1::config::log_matcher::{
   BaseLogMatcher as LegacyBaseLogMatcherMsg,
@@ -67,8 +75,7 @@ fn match_test_runner(config: LegacyLogMatcher, cases: Vec<(Input<'_>, bool)>) {
   for (input, should_match) in cases {
     let (log_type, log_level, message, fields) = input.clone();
 
-    let matching_fields = [].into();
-    let fields_ref = FieldsRef::new(&fields, &matching_fields);
+    let fields_ref = FieldsRef::new(&fields, &EMPTY_FIELDS);
 
     assert_eq!(
       should_match,
