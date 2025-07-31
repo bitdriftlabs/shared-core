@@ -586,7 +586,6 @@ impl StreamedBufferUpload {
           break;
         }
 
-
         match self.consumer.start_read(false) {
           Ok(log) => {
             logs.push(log.to_vec());
@@ -596,8 +595,7 @@ impl StreamedBufferUpload {
             break;
           },
           Err(e) => {
-            log::debug!("failed to read from stream buffer: {e:?}");
-            return Err(anyhow!("failed to read from stream buffer: {e:?}"));
+            anyhow::bail!("failed to read from stream buffer: {e:?}")
           },
         }
       }
