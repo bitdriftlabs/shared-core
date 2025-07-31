@@ -182,7 +182,7 @@ impl ProcessingPipeline {
       log_type: log.log_type,
       log_level: log.log_level,
       message: &log.message,
-      fields: &FieldsRef::new(&log.fields, &log.matching_fields),
+      fields: FieldsRef::new(&log.fields, &log.matching_fields),
       session_id: &log.session_id,
       occurred_at: log.occurred_at,
       capture_session: log.capture_session.as_deref(),

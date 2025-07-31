@@ -93,7 +93,7 @@ impl AnnotatedWorkflow {
         message: &LogMessage::String(log.message),
         session_id: log.session.as_ref().map_or("foo", |s| &**s),
         occurred_at: log.occurred_at,
-        fields: &FieldsRef::new(
+        fields: FieldsRef::new(
           &bd_test_helpers::workflow::make_tags(log.tags),
           &LogFields::new(),
         ),

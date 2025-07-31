@@ -61,7 +61,7 @@ impl Helper {
       generate_log_action(
         &self.extractions,
         action,
-        &FieldsRef::new(&self.captured_fields, &self.matching_fields),
+        FieldsRef::new(&self.captured_fields, &self.matching_fields),
       )
     );
   }
@@ -254,7 +254,7 @@ fn generate_log_with_uuid() {
   let log = generate_log_action(
     &helper.extractions,
     &action,
-    &FieldsRef::new(&helper.captured_fields, &helper.matching_fields),
+    FieldsRef::new(&helper.captured_fields, &helper.matching_fields),
   )
   .unwrap();
 

@@ -74,7 +74,7 @@ fn metric_increment_value_extraction() {
       occurred_at: time::OffsetDateTime::now_utc(),
       log_level: log_level::DEBUG,
       log_type: LogType::Normal,
-      fields: &FieldsRef::new(&fields, &matching_only_fields),
+      fields: FieldsRef::new(&fields, &matching_only_fields),
       capture_session: None,
     },
   );
@@ -136,7 +136,7 @@ fn counter_label_extraction() {
       occurred_at: time::OffsetDateTime::now_utc(),
       log_level: log_level::DEBUG,
       log_type: LogType::Normal,
-      fields: &FieldsRef::new(&fields, &matching_only_fields),
+      fields: FieldsRef::new(&fields, &matching_only_fields),
       capture_session: None,
     },
   );

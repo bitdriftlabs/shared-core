@@ -20,7 +20,6 @@ use crate::config::{
 };
 use crate::generate_log::generate_log_action;
 use bd_log_primitives::{FieldsRef, Log, LogRef};
-use bd_matcher::FieldProvider;
 use bd_time::OffsetDateTimeExt;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -854,7 +853,7 @@ impl Traversal {
 
     let extractions = config.extractions(self, index);
     for extraction in &extractions.sankey_extractions {
-      let Some(extracted_value) = extraction.value.extract_value(log) else {
+      let Some(extracted_value) = extraction.value.extract_value(log.fields) else {
         continue;
       };
 
@@ -880,7 +879,7 @@ impl Traversal {
     }
 
     for extraction in &extractions.field_extractions {
-      if let Some(value) = log.field_value(&extraction.field_name) {
+      if let Some(value) = log.fields.field_value(&extraction.field_name) {
         log::debug!(
           "extracted field value {} for extraction ID {}",
           value,
@@ -899,7 +898,7 @@ impl Traversal {
   fn triggered_actions<'a>(
     actions: &'a [Action],
     extractions: &mut TraversalExtractions,
-    current_log_fields: &FieldsRef<'_>,
+    current_log_fields: FieldsRef<'_>,
   ) -> (Vec<TriggeredAction<'a>>, BTreeMap<&'a str, Log>) {
     let mut triggered_actions = vec![];
     let mut logs_to_inject = BTreeMap::new();

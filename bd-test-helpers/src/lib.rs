@@ -17,7 +17,6 @@ pub mod events;
 #[cfg(feature = "runtime")]
 #[cfg(target_family = "unix")]
 pub mod feature_flags;
-pub mod fields;
 pub mod filter;
 pub mod metadata;
 pub mod metadata_provider;

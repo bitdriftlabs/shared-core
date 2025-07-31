@@ -5,10 +5,17 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::FieldProvider;
 use crate::matcher::Tree;
 use assert_matches::assert_matches;
-use bd_log_primitives::{LogFields, LogLevel, LogMessage, LogType, StringOrBytes, log_level};
+use bd_log_primitives::{
+  FieldsRef,
+  LogFields,
+  LogLevel,
+  LogMessage,
+  LogType,
+  StringOrBytes,
+  log_level,
+};
 use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::{
   self,
   AnyMatch,
@@ -18,7 +25,6 @@ use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::{
 };
 use bd_proto::protos::config::v1::config::log_matcher::{BaseLogMatcher, MatcherList};
 use bd_proto::protos::config::v1::config::{LogMatcher, log_matcher};
-use std::borrow::Cow;
 
 type Input<'a> = (LogType, LogLevel, LogMessage, LogFields);
 
@@ -65,9 +71,12 @@ fn match_test_runner(config: LogMatcher, cases: Vec<(Input<'_>, bool)>) {
   for (input, should_match) in cases {
     let (log_type, log_level, message, fields) = input.clone();
 
+    let matching_fields = [].into();
+    let fields_ref = FieldsRef::new(&fields, &matching_fields);
+
     assert_eq!(
       should_match,
-      match_tree.do_match(log_type, log_level, &message, &fields),
+      match_tree.do_match(log_type, log_level, &message, fields_ref),
       "{input:?} should result in {should_match} but did not",
     );
   }
@@ -345,13 +354,5 @@ fn simple_log_matcher(match_type: base_log_matcher::Match_type) -> LogMatcher {
       ..Default::default()
     })),
     ..Default::default()
-  }
-}
-
-impl FieldProvider for LogFields {
-  fn field_value(&self, field_key: &str) -> Option<Cow<'_, str>> {
-    self
-      .get(field_key)
-      .and_then(|v| Some(Cow::Borrowed(v.as_str()?)))
   }
 }

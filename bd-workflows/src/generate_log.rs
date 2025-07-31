@@ -15,7 +15,6 @@ use action::action_generate_log::ValueReference;
 use action::action_generate_log::generated_field::Generated_field_value_type;
 use action::action_generate_log::value_reference::Value_reference_type;
 use bd_log_primitives::{FieldsRef, Log, LogFields, LogType, StringOrBytes, log_level};
-use bd_matcher::FieldProvider;
 use bd_proto::protos::workflow::workflow::workflow::action;
 use bd_proto::protos::workflow::workflow::workflow::action::action_generate_log::ValueReferencePair;
 use std::borrow::Cow;
@@ -47,7 +46,7 @@ fn fractional_milliseconds_since_epoch(time: OffsetDateTime) -> f64 {
 fn resolve_reference<'a>(
   extractions: &'a TraversalExtractions,
   reference: &'a ValueReference,
-  current_log_fields: &'a FieldsRef<'a>,
+  current_log_fields: FieldsRef<'a>,
 ) -> Option<StringOrFloat<'a>> {
   match reference.value_reference_type.as_ref()? {
     Value_reference_type::Fixed(value) => Some(StringOrFloat::String(value.into())),
@@ -72,7 +71,7 @@ fn resolve_reference<'a>(
 fn pair_to_floats(
   extractions: &TraversalExtractions,
   pair: &ValueReferencePair,
-  current_log_fields: &FieldsRef<'_>,
+  current_log_fields: FieldsRef<'_>,
 ) -> (f64, f64) {
   fn to_float(string_or_float: Option<StringOrFloat<'_>>) -> f64 {
     match string_or_float {
@@ -98,7 +97,7 @@ fn pair_to_floats(
 pub fn generate_log_action(
   extractions: &TraversalExtractions,
   action: &ActionGenerateLog,
-  current_log_fields: &FieldsRef<'_>,
+  current_log_fields: FieldsRef<'_>,
 ) -> Option<Log> {
   let message = action.message.clone();
   let mut fields = LogFields::default();

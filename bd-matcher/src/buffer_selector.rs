@@ -5,9 +5,9 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::Result;
 use crate::matcher::Tree;
-use crate::{FieldProvider, Result};
-use bd_log_primitives::{LogLevel, LogMessage, LogType};
+use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogType};
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -60,7 +60,7 @@ impl BufferSelector {
     log_type: LogType,
     log_level: LogLevel,
     message: &LogMessage,
-    fields: &impl FieldProvider,
+    fields: FieldsRef<'_>,
   ) -> BTreeSet<Cow<'_, str>> {
     let mut buffers = BTreeSet::new();
     for buffer in &self.buffer_filters {

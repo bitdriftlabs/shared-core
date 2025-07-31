@@ -226,7 +226,7 @@ pub struct LogRef<'a> {
   pub log_type: LogType,
   pub log_level: LogLevel,
   pub message: &'a LogMessage,
-  pub fields: &'a FieldsRef<'a>,
+  pub fields: FieldsRef<'a>,
   pub session_id: &'a str,
   pub occurred_at: time::OffsetDateTime,
 
@@ -258,8 +258,25 @@ impl<'a> FieldsRef<'a> {
   }
 
   #[must_use]
-  pub fn matching_field_value(&self, key: &str) -> Option<&str> {
+  pub fn matching_field_value(&self, key: &str) -> Option<&'a str> {
     self.matching_fields.get(key)?.as_str()
+  }
+
+  /// Looks up the field value corresponding to the provided key. If the field doesn't exist or
+  /// contains a binary value, None is returned.
+  #[must_use]
+  pub fn field_value(&self, field_key: &str) -> Option<Cow<'a, str>> {
+    // In cases where there are conflicts between the keys of captured and matching fields, captured
+    // fields take precedence, as they are potentially stored and uploaded to the remote server.
+    if let Some(value) = self
+      .captured_fields
+      .get(field_key)
+      .and_then(|value| value.as_str())
+    {
+      return Some(Cow::Borrowed(value));
+    }
+
+    self.matching_field_value(field_key).map(Cow::Borrowed)
   }
 }
 

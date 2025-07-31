@@ -8,7 +8,7 @@
 use crate::workflow::Traversal;
 use anyhow::{anyhow, bail};
 use bd_log_matcher::matcher::Tree;
-use bd_matcher::FieldProvider;
+use bd_log_primitives::FieldsRef;
 use bd_proto::protos::workflow::workflow;
 use bd_proto::protos::workflow::workflow::workflow::action::ActionGenerateLog;
 use bd_proto::protos::workflow::workflow::workflow::transition_extension::Extension_type;
@@ -742,7 +742,7 @@ pub enum TagValue {
 }
 
 impl TagValue {
-  pub(crate) fn extract_value<'a>(&self, fields: &'a impl FieldProvider) -> Option<Cow<'a, str>> {
+  pub(crate) fn extract_value<'a>(&self, fields: FieldsRef<'a>) -> Option<Cow<'a, str>> {
     match self {
       Self::Extract(field_key) => fields.field_value(field_key),
       Self::Fixed(value) => Some(Cow::Owned(value.to_string())),

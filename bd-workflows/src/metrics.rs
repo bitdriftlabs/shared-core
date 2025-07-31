@@ -13,7 +13,6 @@ use crate::config::{ActionEmitMetric, TagValue};
 use crate::workflow::TriggeredActionEmitSankey;
 use bd_client_stats::Stats;
 use bd_log_primitives::LogRef;
-use bd_matcher::FieldProvider;
 use bd_stats_common::MetricType;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};

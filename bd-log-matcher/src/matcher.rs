@@ -20,8 +20,7 @@ use base_log_matcher::tag_match::Value_match::{
   SemVerValueMatch,
   StringValueMatch,
 };
-use bd_log_primitives::{LogLevel, LogMessage, LogType};
-pub use bd_matcher::FieldProvider;
+use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogType};
 use bd_proto::protos::log_matcher::log_matcher;
 use log_matcher::LogMatcher;
 use log_matcher::log_matcher::base_log_matcher::double_value_match::Double_value_match_type;
@@ -159,7 +158,7 @@ impl Tree {
     log_level: LogLevel,
     log_type: LogType,
     message: &LogMessage,
-    fields: &impl FieldProvider,
+    fields: FieldsRef<'_>,
     extracted_fields: Option<&BTreeMap<String, String>>,
   ) -> bool {
     match self {
@@ -366,11 +365,7 @@ pub enum InputType {
 }
 
 impl InputType {
-  fn get<'a>(
-    &self,
-    message: &'a LogMessage,
-    fields: &'a impl FieldProvider,
-  ) -> Option<Cow<'a, str>> {
+  fn get<'a>(&self, message: &'a LogMessage, fields: FieldsRef<'a>) -> Option<Cow<'a, str>> {
     match self {
       Self::Message => message.as_str().map(Cow::Borrowed),
       Self::Field(field_key) => fields.field_value(field_key),
