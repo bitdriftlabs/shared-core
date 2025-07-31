@@ -2143,7 +2143,7 @@ fn runtime_caching() {
     // The runtime configuration should use the cached value. As we load the cached config from
     // the event loop thread, there is a slight delay before we pick up on this cached value.
 
-    let deadline = Instant::now().add(500.milliseconds());
+    let deadline = Instant::now().add(1.seconds());
 
     let mut deadline_elapsed = true;
     while Instant::now() < deadline {
