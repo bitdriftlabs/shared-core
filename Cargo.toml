@@ -2,6 +2,7 @@
 members = [
   "profiling",
   "bd-api",
+  "bd-bonjson",
   "bd-buffer",
   "bd-client-common",
   "bd-client-stats",
