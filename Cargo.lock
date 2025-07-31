@@ -402,6 +402,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-bonjson"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bd-bounded-buffer"
 version = "1.0.0"
 dependencies = [
