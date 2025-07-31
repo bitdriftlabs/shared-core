@@ -155,7 +155,7 @@ pub fn serialize_f64(dst: &mut [u8], v: f64) -> Result<usize> {
   let bytes = v.to_le_bytes();
   require_bytes(dst, total_size).and_then(|_| {
     dst[0] = TypeCode::Float64 as u8;
-    dst[1 .. bytes.len()].copy_from_slice(&bytes);
+    dst[1 .. bytes.len()+1].copy_from_slice(&bytes);
     Ok(total_size)
   })
 }
