@@ -26,7 +26,10 @@ use base_log_matcher::tag_match::Value_match::{
 };
 use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogType};
 use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::StringMatchType;
-use bd_proto::protos::config::v1::config::log_matcher::BaseLogMatcher as LegacyBaseLogMatcher;
+use bd_proto::protos::config::v1::config::log_matcher::{
+  BaseLogMatcher as LegacyBaseLogMatcher,
+  base_log_matcher as legacy_base_log_matcher,
+};
 use bd_proto::protos::config::v1::config::{
   LogMatcher as LegacyLogMatcher,
   log_matcher as legacy_log_matcher,
@@ -450,16 +453,22 @@ pub enum Leaf {
 
 impl Leaf {
   fn new_legacy(log_matcher: &LegacyBaseLogMatcher) -> Result<Self> {
+    fn map_string_value(value: &str, match_type: StringMatchType) -> Result<StringMatch> {
+      let (value, operator) = match match_type {
+        legacy_log_matcher::base_log_matcher::StringMatchType::EXACT => {
+          (value.to_string(), Operator::OPERATOR_EQUALS)
+        },
+        legacy_log_matcher::base_log_matcher::StringMatchType::PREFIX => (
+          format!("^{}.*", regex::escape(value)),
+          Operator::OPERATOR_REGEX,
+        ),
+        legacy_log_matcher::base_log_matcher::StringMatchType::REGEX => {
+          (value.to_string(), Operator::OPERATOR_REGEX)
+        },
+      };
 
-      fn map_string_value(value: &str, match_type: StringMatchType) -> Result<StringMatch> {
-           let (value, operator  ) = match match_type {
-            legacy_log_matcher::base_log_matcher::StringMatchType::EXACT => (value.to_string(), Operator::OPERATOR_EQUALS),
-            legacy_log_matcher::base_log_matcher::StringMatchType::PREFIX => (format!("^{}.*", regex::escape(value)), Operator::OPERATOR_REGEX),
-            legacy_log_matcher::base_log_matcher::StringMatchType::REGEX => (value.to_string(), Operator::OPERATOR_REGEX)
-        };
-
-           StringMatch::new(operator, value.into())
-      }
+      StringMatch::new(operator, value.into())
+    }
 
     match log_matcher
       .match_type
@@ -469,19 +478,46 @@ impl Leaf {
       legacy_log_matcher::base_log_matcher::Match_type::LogLevelMatch(log_level_match) => {
         Ok(Self::LogLevel(IntMatch {
           operator: match log_level_match.operator.enum_value_or_default() {
-            legacy_log_matcher::base_log_matcher::log_level_match::ComparisonOperator::LESS_THAN => Operator::OPERATOR_LESS_THAN,
-            legacy_log_matcher::base_log_matcher::log_level_match::ComparisonOperator::LESS_THAN_OR_EQUAL => Operator::OPERATOR_LESS_THAN_OR_EQUAL,
-            legacy_log_matcher::base_log_matcher::log_level_match::ComparisonOperator::EQUALS => Operator::OPERATOR_EQUALS,
-            legacy_log_matcher::base_log_matcher::log_level_match::ComparisonOperator::GREATER_THAN => Operator::OPERATOR_GREATER_THAN,
-            legacy_log_matcher::base_log_matcher::log_level_match::ComparisonOperator::GREATER_THAN_OR_EQUAL => Operator::OPERATOR_GREATER_THAN_OR_EQUAL,
-        },
+            legacy_base_log_matcher::log_level_match::ComparisonOperator::LESS_THAN => {
+              Operator::OPERATOR_LESS_THAN
+            },
+            legacy_base_log_matcher::log_level_match::ComparisonOperator::LESS_THAN_OR_EQUAL => {
+              Operator::OPERATOR_LESS_THAN_OR_EQUAL
+            },
+            legacy_base_log_matcher::log_level_match::ComparisonOperator::EQUALS => {
+              Operator::OPERATOR_EQUALS
+            },
+            legacy_base_log_matcher::log_level_match::ComparisonOperator::GREATER_THAN => {
+              Operator::OPERATOR_GREATER_THAN
+            },
+            legacy_base_log_matcher::log_level_match::ComparisonOperator::GREATER_THAN_OR_EQUAL => {
+              Operator::OPERATOR_GREATER_THAN_OR_EQUAL
+            },
+          },
           value: log_level_match.log_level.value().into(),
         }))
       },
-      legacy_log_matcher::base_log_matcher::Match_type::MessageMatch(message_match) => 
-          Ok(Self::StringValue(InputType::Message, map_string_value(&message_match.match_value, message_match.match_type.enum_value_or_default())?)),
-      legacy_log_matcher::base_log_matcher::Match_type::TagMatch(tag_match) => Ok(Self::StringValue(InputType::Field(tag_match.tag_key.clone()), map_string_value(&tag_match.match_value, tag_match.match_type.enum_value_or_default())?)),
-      legacy_log_matcher::base_log_matcher::Match_type::TypeMatch(type_match) => Ok(Self::LogType(type_match.type_)),
+      legacy_log_matcher::base_log_matcher::Match_type::MessageMatch(message_match) => {
+        Ok(Self::StringValue(
+          InputType::Message,
+          map_string_value(
+            &message_match.match_value,
+            message_match.match_type.enum_value_or_default(),
+          )?,
+        ))
+      },
+      legacy_log_matcher::base_log_matcher::Match_type::TagMatch(tag_match) => {
+        Ok(Self::StringValue(
+          InputType::Field(tag_match.tag_key.clone()),
+          map_string_value(
+            &tag_match.match_value,
+            tag_match.match_type.enum_value_or_default(),
+          )?,
+        ))
+      },
+      legacy_log_matcher::base_log_matcher::Match_type::TypeMatch(type_match) => {
+        Ok(Self::LogType(type_match.type_))
+      },
       legacy_log_matcher::base_log_matcher::Match_type::AnyMatch(_) => Ok(Self::Any),
     }
   }
