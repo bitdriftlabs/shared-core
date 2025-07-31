@@ -159,7 +159,7 @@ pub type LogFields = AHashMap<LogFieldKey, LogFieldValue>;
 
 /// An empty `LogFields`, useful to referencing an empty set of fields without dealing with
 /// lifetime issues.
-pub static EMPTY_FIELDS: LazyLock<LogFields> = LazyLock::new(|| AHashMap::new());
+pub static EMPTY_FIELDS: LazyLock<LogFields> = LazyLock::new(AHashMap::new);
 
 //
 // AnnotatedLogField
