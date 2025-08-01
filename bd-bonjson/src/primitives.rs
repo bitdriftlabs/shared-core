@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "./primitives_test.rs"]
+mod primitives_test;
+
 use crate::type_codes::TypeCode;
 use crate::{Error, Result};
 
@@ -84,7 +88,7 @@ pub fn serialize_u64(dst: &mut [u8], v: u64) -> Result<usize> {
   let total_size = payload_size + 1;
   let is_byte_high_bit_set = bytes[index] >> 7;
   let use_signed_form = (!is_byte_high_bit_set) & 1;
-  let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | (index - 1) as u8;
+  let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | index as u8;
   require_bytes(dst, total_size).and_then(|_| {
     dst[0] = type_code;
     dst[1 .. total_size].copy_from_slice(&bytes[.. payload_size]);
@@ -99,7 +103,7 @@ pub fn serialize_i64(dst: &mut [u8], v: i64) -> Result<usize> {
 
   let bytes = v.to_le_bytes();
 
-  let mut index = bytes.len();
+  let mut index = bytes.len() - 1;
   while index > 0 {
     if bytes[index] != 0 && bytes[index] != 0xff {
       break;
@@ -111,7 +115,7 @@ pub fn serialize_i64(dst: &mut [u8], v: i64) -> Result<usize> {
   let is_negative = (v >> 63) as u8;
   let is_byte_high_bit_set = bytes[index] >> 7;
   let use_signed_form = (is_negative | !is_byte_high_bit_set) & 1;
-  let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | (index - 1) as u8;
+  let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | index as u8;
   require_bytes(dst, total_size).and_then(|_| {
     dst[0] = type_code;
     dst[1 .. total_size].copy_from_slice(&bytes[.. payload_size]);
@@ -124,8 +128,8 @@ fn serialize_f16(dst: &mut [u8], v: f32) -> Result<usize> {
   let total_size = 2 + 1;
   require_bytes(dst, total_size).and_then(|_| {
     dst[0] = TypeCode::Float16 as u8;
-    dst[1] = bytes[0];
-    dst[2] = bytes[1];
+    dst[1] = bytes[2];
+    dst[2] = bytes[3];
     return Ok(total_size);
   })
 }
@@ -300,16 +304,29 @@ pub fn deserialize_unsigned_after_type_code(src: &[u8], type_code: u8) -> Result
   let byte_count = ((type_code & 7) + 1) as usize;
   let mut bytes: [u8; 8] = [0; 8];
   copy_bytes_to(src, &mut bytes, byte_count)
-    .and_then(|_| Ok((byte_count + 1, u64::from_le_bytes(bytes))))
+    .and_then(|_| Ok((byte_count, u64::from_le_bytes(bytes))))
 }
 
 pub fn deserialize_unsigned(src: &[u8]) -> Result<(usize, u64)> {
   deserialize_type_code(src).and_then(|(size, type_code)| {
-    if type_code < TypeCode::Unsigned as u8 || type_code > TypeCode::UnsignedEnd as u8 {
-      return Err(Error::InvalidDeserialization);
+    if type_code <= TypeCode::P100 as u8 {
+        return Ok((1, type_code as u64));
     }
-    deserialize_unsigned_after_type_code(&src[1 ..], type_code)
-      .and_then(|(v_size, v)| Ok((size + v_size, v)))
+    if type_code >= TypeCode::Unsigned as u8 && type_code <= TypeCode::UnsignedEnd as u8 {
+      deserialize_unsigned_after_type_code(&src[1 ..], type_code)
+        .and_then(|(v_size, v)| Ok((size + v_size, v)))
+    } else if type_code >= TypeCode::Signed as u8 && type_code <= TypeCode::SignedEnd as u8 {
+      deserialize_signed_after_type_code(&src[1 ..], type_code)
+        .and_then(|(v_size, v)| {
+          if v < 0 {
+            Err(Error::InvalidDeserialization)
+          } else {
+            Ok((size + v_size, v as u64))
+          }
+        })
+    } else {
+      Err(Error::InvalidDeserialization)
+    }
   })
 }
 
@@ -319,24 +336,39 @@ pub fn deserialize_signed_after_type_code(src: &[u8], type_code: u8) -> Result<(
     let is_negative = src[byte_count - 1] >> 7;
     let mut bytes: [u8; 8] = [is_negative * 0xff; 8];
     bytes[.. byte_count].copy_from_slice(&src[.. byte_count]);
-    Ok((byte_count + 1, i64::from_le_bytes(bytes)))
+    Ok((byte_count, i64::from_le_bytes(bytes)))
   })
 }
 
 pub fn deserialize_signed(src: &[u8]) -> Result<(usize, i64)> {
   deserialize_type_code(src).and_then(|(size, type_code)| {
-    if type_code < TypeCode::Signed as u8 || type_code > TypeCode::SignedEnd as u8 {
-      return Err(Error::InvalidDeserialization);
+    if type_code <= TypeCode::P100 as u8 || type_code >= TypeCode::N100 as u8 {
+        return Ok((1, type_code as i8 as i64));
     }
-    deserialize_signed_after_type_code(&src[1 ..], type_code)
-      .and_then(|(v_size, v)| Ok((size + v_size, v)))
+    if type_code >= TypeCode::Signed as u8 && type_code <= TypeCode::SignedEnd as u8 {
+      deserialize_signed_after_type_code(&src[1 ..], type_code)
+        .and_then(|(v_size, v)| Ok((size + v_size, v)))
+    } else if type_code >= TypeCode::Unsigned as u8 && type_code <= TypeCode::UnsignedEnd as u8 {
+      deserialize_unsigned_after_type_code(&src[1 ..], type_code)
+        .and_then(|(v_size, v)| {
+          if v > i64::MAX as u64 {
+            Err(Error::InvalidDeserialization)
+          } else {
+            Ok((size + v_size, v as i64))
+          }
+        })
+    } else {
+      Err(Error::InvalidDeserialization)
+    }
   })
 }
 
 pub fn deserialize_f16_after_type_code(src: &[u8]) -> Result<(usize, f32)> {
   let mut bytes: [u8; 4] = [0; 4];
   // Note: Copying only 2 bytes into a 4 byte buffer because this is a bfloat.
-  copy_bytes_to(src, &mut bytes, 2).and_then(|_| Ok((2, f32::from_le_bytes(bytes))))
+  copy_bytes_to(src, &mut bytes[2..], 2).and_then(|_| {
+    Ok((2, f32::from_le_bytes(bytes)))
+  })
 }
 
 pub fn deserialize_f32_after_type_code(src: &[u8]) -> Result<(usize, f32)> {
@@ -435,9 +467,11 @@ pub fn deserialize_long_string_after_type_code(src: &[u8]) -> Result<(usize, &st
       // TODO: Don't support this
       return Err(Error::InvalidDeserialization);
     }
-    let current = &src[header_size ..];
+    let current = &src[header_size..];
     require_bytes(current, chunk_size)
-      .and_then(|_| deserialize_string_contents(src, header_size + chunk_size))
+      .and_then(|_| deserialize_string_contents(current, chunk_size)).and_then(|(v_size, v)| {
+        Ok((header_size + v_size, v))
+      })
   })
 }
 
