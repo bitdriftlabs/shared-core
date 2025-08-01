@@ -29,7 +29,6 @@ regex.workspace         = true
 serde.workspace         = true
 thiserror.workspace     = true
 time.workspace          = true
-tinyjson                = "2.5.1"
 tokio.workspace         = true
 uuid.workspace          = true
 
