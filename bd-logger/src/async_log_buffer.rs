@@ -21,7 +21,7 @@ use anyhow::anyhow;
 use bd_bounded_buffer::{MemorySized, Receiver, Sender, TrySendError, channel};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
-use bd_crash_handler::global_state;
+use bd_crash_handler::{Monitor, global_state};
 use bd_device::Store;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{
@@ -149,6 +149,7 @@ impl MemorySized for LogLine {
 pub struct AsyncLogBuffer<R: LogReplay> {
   communication_rx: Receiver<AsyncLogBufferMessage>,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
+  report_processor_rx: oneshot::Receiver<(Monitor, String)>,
   shutdown_trigger_handle: ComponentShutdownTriggerHandle,
 
   session_strategy: Arc<bd_session::Strategy>,
@@ -181,6 +182,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     session_replay_target: Box<dyn bd_session_replay::Target + Send + Sync>,
     events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
     config_update_rx: mpsc::Receiver<ConfigUpdate>,
+    report_processor_rx: oneshot::Receiver<(Monitor, String)>,
     shutdown_trigger_handle: ComponentShutdownTriggerHandle,
     runtime_loader: &Arc<ConfigLoader>,
     network_quality_provider: Arc<dyn NetworkQualityProvider>,
@@ -221,6 +223,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       Self {
         communication_rx: async_log_buffer_communication_rx,
         config_update_rx,
+        report_processor_rx,
         shutdown_trigger_handle,
 
         replayer,
@@ -646,20 +649,16 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  pub async fn run(self, initial_logs: Vec<Log>) -> Self {
+  pub async fn run(self) -> Self {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     self
-      .run_with_shutdown(shutdown_trigger.make_shutdown(), initial_logs)
+      .run_with_shutdown(shutdown_trigger.make_shutdown())
       .await
   }
 
   // TODO(mattklein123): This seems to only be used for tests. Figure out how to clean this up
   // so we don't need this just for tests.
-  pub async fn run_with_shutdown(
-    mut self,
-    mut shutdown: ComponentShutdown,
-    mut initial_logs: Vec<Log>,
-  ) -> Self {
+  pub async fn run_with_shutdown(mut self, mut shutdown: ComponentShutdown) -> Self {
     // Processes incoming logs and reacts to workflows config updates.
     //
     // The first workflows config update makes the async log buffer disable
@@ -690,8 +689,43 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           if let Some(pre_config_log_buffer) = maybe_pre_config_buffer {
             self.maybe_replay_pre_config_buffer_logs(
                 pre_config_log_buffer,
-                &mut initial_logs
+                &mut vec![]
             ).await;
+          }
+        },
+        Ok((crash_monitor, session_id)) = &mut self.report_processor_rx => {
+          for crash_log in crash_monitor.process_new_reports().await {
+            let log = LogLine {
+              log_level: log_level::ERROR,
+              log_type: LogType::Lifecycle,
+              message: crash_log.message.clone(),
+              fields: crash_log
+                .fields
+                .iter()
+                .map(|(key, value)| {
+                  (
+                    key.clone(),
+                    AnnotatedLogField {
+                      value: value.clone(),
+                      kind: bd_log_primitives::LogFieldKind::Ootb,
+                    },
+                  )
+                })
+                .collect(),
+              matching_fields: [].into(),
+              attributes_overrides: Some(LogAttributesOverrides::PreviousRunSessionID(
+                session_id.clone(),
+                crash_log.timestamp,
+              )),
+              log_processing_completed_tx: None,
+              // Always capture the session when we process a crash log.
+              // TODO(snowp): Ideally we should include information like the report and client side
+              // grouping here to help make smarter decisions during intent negotiation.
+              capture_session: Some("crash_handler".to_string()),
+            };
+            if let Err(e) = self.process_all_logs(log).await {
+              log::debug!("failed to process crash log: {e}");
+            }
           }
         },
         Some(async_log_buffer_message) = self.communication_rx.recv() => {

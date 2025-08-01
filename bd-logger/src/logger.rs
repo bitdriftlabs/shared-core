@@ -13,9 +13,11 @@ use crate::app_version::{AppVersion, AppVersionExtra, Repository};
 use crate::async_log_buffer::{AsyncLogBuffer, AsyncLogBufferMessage, LogAttributesOverrides};
 use crate::log_replay::LoggerReplay;
 use crate::{MetadataProvider, app_version};
+use anyhow::anyhow;
 use bd_api::Metadata;
 use bd_bounded_buffer::{self, Sender as MemoryBoundSender};
 use bd_client_stats_store::{Counter, Scope};
+use bd_crash_handler::Monitor;
 use bd_log::warn_every;
 use bd_log_primitives::{
   AnnotatedLogField,
@@ -35,7 +37,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::watch;
+use tokio::sync::{oneshot, watch};
 
 #[derive(Clone)]
 #[allow(clippy::struct_field_names)]
@@ -478,6 +480,7 @@ pub struct Logger {
   runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
 
   async_log_buffer_tx: MemoryBoundSender<AsyncLogBufferMessage>,
+  report_processor_tx: Option<oneshot::Sender<(Monitor, String)>>,
 
   session_strategy: Arc<bd_session::Strategy>,
   device: Arc<bd_device::Device>,
@@ -490,6 +493,8 @@ pub struct Logger {
   stats_scope: Scope,
 
   sleep_mode_active: watch::Sender<bool>,
+
+  crash_monitor: Option<Monitor>,
 }
 
 impl Logger {
@@ -498,11 +503,13 @@ impl Logger {
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
     stats_scope: Scope,
     async_log_buffer_tx: MemoryBoundSender<AsyncLogBufferMessage>,
+    report_processor_tx: oneshot::Sender<(Monitor, String)>,
     session_strategy: Arc<bd_session::Strategy>,
     device: Arc<bd_device::Device>,
     sdk_version: &str,
     store: Arc<bd_key_value::Store>,
     sleep_mode_active: watch::Sender<bool>,
+    crash_monitor: Option<Monitor>,
   ) -> Self {
     let stats = Stats::new(&stats_scope);
 
@@ -516,10 +523,12 @@ impl Logger {
       sdk_version: sdk_version.to_string(),
       runtime_loader,
       async_log_buffer_tx,
+      report_processor_tx: Some(report_processor_tx),
       stats,
       stats_scope,
       store,
       sleep_mode_active,
+      crash_monitor,
     }
   }
 
@@ -532,6 +541,19 @@ impl Logger {
     }
 
     Ok(buffer_directory)
+  }
+
+  pub fn process_crash_reports(&mut self, session_id: String) -> anyhow::Result<()> {
+    let Some(crash_monitor) = self.crash_monitor.take() else {
+      anyhow::bail!("no crash monitor set");
+    };
+
+    if let Some(tx) = self.report_processor_tx.take() {
+      tx.send((crash_monitor, session_id))
+        .map_err(|_| anyhow!("oneshot report processor channel closed"))
+    } else {
+      anyhow::bail!("oneshot report processor already used")
+    }
   }
 
   pub fn shutdown(&self, blocking: bool) {
