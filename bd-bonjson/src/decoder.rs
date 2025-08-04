@@ -291,6 +291,7 @@ impl Value {
   }
 
   // JSON-like accessor methods
+  #[must_use]
   pub fn get(&self, key: &str) -> Option<&Self> {
     match self {
       Self::Object(obj) => obj.get(key),
@@ -298,6 +299,7 @@ impl Value {
     }
   }
 
+  #[must_use]
   pub fn get_index(&self, index: usize) -> Option<&Self> {
     match self {
       Self::Array(arr) => arr.get(index),
@@ -305,34 +307,42 @@ impl Value {
     }
   }
 
+  #[must_use]
   pub fn is_null(&self) -> bool {
     matches!(self, Self::Null)
   }
 
+  #[must_use]
   pub fn is_bool(&self) -> bool {
     matches!(self, Self::Bool(_))
   }
 
+  #[must_use]
   pub fn is_integer(&self) -> bool {
     matches!(self, Self::Signed(_))
   }
 
+  #[must_use]
   pub fn is_unsigned(&self) -> bool {
     matches!(self, Self::Unsigned(_))
   }
 
+  #[must_use]
   pub fn is_float(&self) -> bool {
     matches!(self, Self::Float(_))
   }
 
+  #[must_use]
   pub fn is_string(&self) -> bool {
     matches!(self, Self::String(_))
   }
 
+  #[must_use]
   pub fn is_array(&self) -> bool {
     matches!(self, Self::Array(_))
   }
 
+  #[must_use]
   pub fn is_object(&self) -> bool {
     matches!(self, Self::Object(_))
   }
