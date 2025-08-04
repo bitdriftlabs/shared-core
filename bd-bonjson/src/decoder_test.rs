@@ -7,6 +7,7 @@
 
 use super::*;
 use crate::writer::Writer;
+use core::f64;
 use std::io::Cursor;
 
 #[test]
@@ -149,12 +150,12 @@ fn test_decode_floats() {
   let mut writer = Writer {
     writer: &mut cursor,
   };
-  writer.write_float(3.14159).unwrap();
+  writer.write_float(f64::consts::PI).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::Float(3.14159));
+  assert_eq!(value, Value::Float(f64::consts::PI));
 
   // Negative float
   let mut buf = vec![0u8; 16];
@@ -162,12 +163,12 @@ fn test_decode_floats() {
   let mut writer = Writer {
     writer: &mut cursor,
   };
-  writer.write_float(-2.71828).unwrap();
+  writer.write_float(-f64::consts::E).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::Float(-2.71828));
+  assert_eq!(value, Value::Float(-f64::consts::E));
 
   // Float with conversion from f32
   let mut buf = vec![0u8; 16];
@@ -209,7 +210,7 @@ fn test_decode_strings() {
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::String("".to_string()));
+  assert_eq!(value, Value::String(String::new()));
 
   // Long string
   let long_str =
@@ -254,7 +255,7 @@ fn test_decode_array() {
     assert_eq!(items[2], Value::Signed(42));
     assert_eq!(items[3], Value::String("hello".to_string()));
   } else {
-    panic!("Expected array, got {:?}", value);
+    panic!("Expected array, got {value:?}");
   }
 
   // Empty array
@@ -274,7 +275,7 @@ fn test_decode_array() {
   if let Value::Array(items) = value {
     assert_eq!(items.len(), 0);
   } else {
-    panic!("Expected empty array, got {:?}", value);
+    panic!("Expected empty array, got {value:?}");
   }
 }
 
@@ -306,7 +307,7 @@ fn test_decode_object() {
     assert_eq!(map.get("age").unwrap(), &Value::Signed(30));
     assert_eq!(map.get("active").unwrap(), &Value::Bool(true));
   } else {
-    panic!("Expected object, got {:?}", value);
+    panic!("Expected object, got {value:?}");
   }
 
   // Empty object
@@ -326,7 +327,7 @@ fn test_decode_object() {
   if let Value::Object(map) = value {
     assert_eq!(map.len(), 0);
   } else {
-    panic!("Expected empty object, got {:?}", value);
+    panic!("Expected empty object, got {value:?}");
   }
 }
 
