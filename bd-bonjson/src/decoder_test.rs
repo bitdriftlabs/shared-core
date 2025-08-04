@@ -467,12 +467,12 @@ fn test_boundary_values() {
     -1,
     100,
     -100,
-    i8::MIN as i64,
-    i8::MAX as i64,
-    i16::MIN as i64,
-    i16::MAX as i64,
-    i32::MIN as i64,
-    i32::MAX as i64,
+    i64::from(i8::MIN),
+    i64::from(i8::MAX),
+    i64::from(i16::MIN),
+    i64::from(i16::MAX),
+    i64::from(i32::MIN),
+    i64::from(i32::MAX),
     i64::MIN,
     i64::MAX,
   ];
@@ -489,7 +489,7 @@ fn test_boundary_values() {
     let mut decoder = Decoder::new(&buf[..pos]);
     let decoded = decoder.decode().unwrap();
 
-    if value >= 0 && value <= u64::MAX as i64 {
+    if u64::try_from(value).is_ok() {
       // Unsigned conversion may happen
       match decoded {
         Value::Signed(v) => assert_eq!(v, value),
