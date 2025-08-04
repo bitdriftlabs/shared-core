@@ -1,10 +1,11 @@
 [package]
-name = "bd-bonjson"
-version = "0.1.0"
-edition = "2024"
+edition      = "2024"
+license-file = "../LICENSE"
+name         = "bd-bonjson"
+publish      = false
+version      = "1.0.0"
 
 [dependencies]
-serde = { version = "1.0.219", features = ["derive"] }
 tempfile.workspace = true
 
 [dev-dependencies]
