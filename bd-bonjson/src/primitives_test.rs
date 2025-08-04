@@ -1,4 +1,5 @@
-use crate::primitives::*;
+use crate::serialize_primitives::*;
+use crate::deserialize_primitives::*;
 use crate::type_codes::TypeCode;
 
 #[test]

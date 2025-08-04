@@ -2,12 +2,14 @@ pub mod de;
 #[cfg(test)]
 pub mod ser;
 pub mod type_codes;
+pub mod decoder;
 
-mod primitives;
+mod serialize_primitives;
+mod deserialize_primitives;
 mod writer;
 
 pub use crate::writer::Writer;
-pub use crate::primitives::{
+pub use crate::serialize_primitives::{
     serialize_array_begin,
     serialize_map_begin,
     serialize_container_end,
@@ -19,6 +21,8 @@ pub use crate::primitives::{
     serialize_string,
     serialize_boolean,
     serialize_null,
+};
+pub use crate::deserialize_primitives::{
     deserialize_type_code,
     deserialize_null,
     deserialize_array_start,
@@ -40,14 +44,8 @@ pub use crate::primitives::{
     peek_type_code,
 };
 
-#[derive(Debug)]
-pub enum Error {
-  InvalidSerialization,
-  InvalidDeserialization,
-  Io { offset: u64 },
-}
 
-pub type Result<T> = std::result::Result<T, Error>;
+
 
 pub fn add(left: u64, right: u64) -> u64 {
   left + right
