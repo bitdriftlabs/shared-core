@@ -37,7 +37,7 @@ fn writer_does_not_allocate_using_buff_size(buff_size: usize) {
     writer.write_signed(0).unwrap();
     writer.write_unsigned(42).unwrap();
     writer.write_unsigned(0).unwrap();
-    writer.write_float(3.14159).unwrap();
+    writer.write_float(std::f64::consts::PI).unwrap();
     writer.write_f32(2.71f32).unwrap();
     writer.write_str("hello").unwrap();
     writer.write_str("").unwrap();
@@ -46,7 +46,7 @@ fn writer_does_not_allocate_using_buff_size(buff_size: usize) {
     writer.write_container_end().unwrap();
 
     // Also test the std::io::Write implementation
-    writer.write(b"test").unwrap();
+    writer.write_all(b"test").unwrap();
     writer.flush().unwrap();
   });
 }
@@ -82,7 +82,7 @@ fn writer_does_not_allocate_writing_to_file() {
       writer.write_signed(0).unwrap();
       writer.write_unsigned(42).unwrap();
       writer.write_unsigned(0).unwrap();
-      writer.write_float(3.14159).unwrap();
+      writer.write_float(std::f64::consts::PI).unwrap();
       writer.write_f32(2.71f32).unwrap();
       writer.write_str("hello").unwrap();
       writer.write_str("").unwrap();
@@ -91,7 +91,7 @@ fn writer_does_not_allocate_writing_to_file() {
       writer.write_container_end().unwrap();
 
       // Also test the std::io::Write implementation
-      writer.write(b"test").unwrap();
+      writer.write_all(b"test").unwrap();
     }
     writer.flush().unwrap();
   });
