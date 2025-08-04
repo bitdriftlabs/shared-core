@@ -459,6 +459,8 @@ fn test_error_handling() {
 }
 
 #[test]
+#[allow(clippy::cast_possible_wrap)]
+#[allow(clippy::cast_sign_loss)]
 fn test_boundary_values() {
   // Test min/max integers
   let values = [
@@ -494,7 +496,7 @@ fn test_boundary_values() {
       match decoded {
         Value::Signed(v) => assert_eq!(v, value),
         Value::Unsigned(v) => assert_eq!(v as i64, value),
-        _ => panic!("Expected integer or unsigned, got {:?}", decoded),
+        _ => panic!("Expected integer or unsigned, got {decoded:?}"),
       }
     } else {
       assert_eq!(decoded, Value::Signed(value));
@@ -510,9 +512,9 @@ fn test_boundary_values() {
     256,
     65535,
     65536,
-    u8::MAX as u64,
-    u16::MAX as u64,
-    u32::MAX as u64,
+    u64::from(u8::MAX),
+    u64::from(u16::MAX),
+    u64::from(u32::MAX),
     u64::MAX,
   ];
 
@@ -528,12 +530,12 @@ fn test_boundary_values() {
     let mut decoder = Decoder::new(&buf[..pos]);
     let decoded = decoder.decode().unwrap();
 
-    if value <= i64::MAX as u64 {
+    if i64::try_from(value).is_ok() {
       // Integer conversion may happen
       match decoded {
         Value::Signed(v) => assert_eq!(v as u64, value),
         Value::Unsigned(v) => assert_eq!(v, value),
-        _ => panic!("Expected integer or unsigned, got {:?}", decoded),
+        _ => panic!("Expected integer or unsigned, got {decoded:?}"),
       }
     } else {
       assert_eq!(decoded, Value::Unsigned(value));
@@ -547,7 +549,7 @@ fn test_accessor_methods() {
   let null_val = Value::Null;
   let bool_val = Value::Bool(true);
   let int_val = Value::Signed(42);
-  let float_val = Value::Float(3.14);
+  let float_val = Value::Float(3.123);
   let str_val = Value::String("hello".to_string());
 
   let mut arr = Vec::new();
@@ -572,7 +574,7 @@ fn test_accessor_methods() {
   assert!(null_val.as_null().is_ok());
   assert_eq!(bool_val.as_bool().unwrap(), true);
   assert_eq!(int_val.as_integer().unwrap(), 42);
-  assert_eq!(float_val.as_float().unwrap(), 3.14);
+  assert_eq!(float_val.as_float().unwrap(), 3.123);
   assert_eq!(str_val.as_string().unwrap(), "hello");
   assert_eq!(array_val.as_array().unwrap().len(), 2);
   assert_eq!(obj_val.as_object().unwrap().len(), 1);
