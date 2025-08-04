@@ -95,7 +95,7 @@ pub fn serialize_u64(dst: &mut [u8], v: u64) -> Result<usize> {
   let total_size = payload_size + 1;
   let is_byte_high_bit_set = bytes[index] >> 7;
   let use_signed_form = (!is_byte_high_bit_set) & 1;
-  let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | index as u8;
+  let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | u8::try_from(index).unwrap();
   require_bytes(dst, total_size)?;
   dst[0] = type_code;
   dst[1..total_size].copy_from_slice(&bytes[..payload_size]);
@@ -103,7 +103,7 @@ pub fn serialize_u64(dst: &mut [u8], v: u64) -> Result<usize> {
 }
 
 pub fn serialize_i64(dst: &mut [u8], v: i64) -> Result<usize> {
-  if v >= TypeCode::N100 as i8 as i64 && v <= TypeCode::P100 as i64 {
+  if v >= i64::from(TypeCode::N100 as i8) && v <= TypeCode::P100 as i64 {
     return serialize_small_int(dst, v as u8);
   }
 
