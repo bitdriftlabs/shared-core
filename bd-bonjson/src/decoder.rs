@@ -135,6 +135,7 @@ impl<'a> Decoder<'a> {
     Ok(Value::String(str_slice.to_string()))
   }
 
+  #[allow(clippy::cast_possible_wrap)]
   fn decode_unsigned_integer(&mut self, type_code: u8) -> Result<Value> {
     let remaining = self.remaining_data();
     let (size, value) = self.map_err(deserialize_unsigned_after_type_code(remaining, type_code))?;
@@ -275,14 +276,14 @@ impl Value {
     }
   }
 
-  pub fn as_array(&self) -> deserialize_primitives::Result<&Vec<Value>> {
+  pub fn as_array(&self) -> deserialize_primitives::Result<&Vec<Self>> {
     match self {
       Self::Array(arr) => Ok(arr),
       _ => Err(DeserializationError::ExpectedArray),
     }
   }
 
-  pub fn as_object(&self) -> deserialize_primitives::Result<&HashMap<String, Value>> {
+  pub fn as_object(&self) -> deserialize_primitives::Result<&HashMap<String, Self>> {
     match self {
       Self::Object(obj) => Ok(obj),
       _ => Err(DeserializationError::ExpectedMap),
@@ -290,14 +291,14 @@ impl Value {
   }
 
   // JSON-like accessor methods
-  pub fn get(&self, key: &str) -> Option<&Value> {
+  pub fn get(&self, key: &str) -> Option<&Self> {
     match self {
       Self::Object(obj) => obj.get(key),
       _ => None,
     }
   }
 
-  pub fn get_index(&self, index: usize) -> Option<&Value> {
+  pub fn get_index(&self, index: usize) -> Option<&Self> {
     match self {
       Self::Array(arr) => arr.get(index),
       _ => None,
