@@ -37,7 +37,9 @@ pub struct Decoder<'a> {
   position: usize,
 }
 
+
 impl<'a> Decoder<'a> {
+  #[must_use]
   pub fn new(data: &'a [u8]) -> Self {
     Self { data, position: 0 }
   }
@@ -81,8 +83,8 @@ impl<'a> Decoder<'a> {
       code if code == TypeCode::Float16 as u8 => self.decode_f16(),
       code if code == TypeCode::Float32 as u8 => self.decode_f32(),
       code if code == TypeCode::Float64 as u8 => self.decode_f64(),
-      code if code <= TypeCode::P100 as u8 => Ok(Value::Signed(code as i64)),
-      code if code >= TypeCode::N100 as u8 => Ok(Value::Signed(code as i8 as i64)),
+      code if code <= TypeCode::P100 as u8 => Ok(Value::Signed(i64::from(code))),
+      code if code >= TypeCode::N100 as u8 => Ok(Value::Signed(i64::from(code as i8))),
       code if code >= TypeCode::Unsigned as u8 && code <= TypeCode::UnsignedEnd as u8 => {
         self.decode_unsigned_integer(code)
       },
