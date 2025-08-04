@@ -31,13 +31,13 @@ fn test_boolean_roundtrip() {
   let serialize_size = serialize_boolean(&mut buffer, true).unwrap();
   let (deserialize_size, value) = deserialize_bool(&buffer).unwrap();
   assert_eq!(serialize_size, deserialize_size);
-  assert_eq!(value, true);
+  assert!(value);
 
   // Test false
   let serialize_size = serialize_boolean(&mut buffer, false).unwrap();
   let (deserialize_size, value) = deserialize_bool(&buffer).unwrap();
   assert_eq!(serialize_size, deserialize_size);
-  assert_eq!(value, false);
+  assert!(!value);
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn test_u64_roundtrip() {
     let serialize_size = serialize_u64(&mut buffer, value).unwrap();
     let (deserialize_size, decoded_value) = deserialize_unsigned_integer(&buffer).unwrap();
     assert_eq!(serialize_size, deserialize_size);
-    assert_eq!(value, decoded_value, "Failed for value: {}", value);
+    assert_eq!(value, decoded_value, "Failed for value: {value}");
   }
 }
 
@@ -103,7 +103,7 @@ fn test_i64_roundtrip() {
     let serialize_size = serialize_i64(&mut buffer, value).unwrap();
     let (deserialize_size, decoded_value) = deserialize_signed_integer(&buffer).unwrap();
     assert_eq!(serialize_size, deserialize_size);
-    assert_eq!(value, decoded_value, "Failed for value: {}", value);
+    assert_eq!(value, decoded_value, "Failed for value: {value}");
   }
 }
 
@@ -127,7 +127,7 @@ fn test_f32_roundtrip() {
     let serialize_size = serialize_f32(&mut buffer, value).unwrap();
     let (deserialize_size, decoded_value) = deserialize_f32(&buffer).unwrap();
     assert_eq!(serialize_size, deserialize_size);
-    assert_eq!(value, decoded_value, "Failed for value: {}", value);
+    assert_eq!(value, decoded_value, "Failed for value: {value}");
   }
 }
 
@@ -151,7 +151,7 @@ fn test_f64_roundtrip() {
     let serialize_size = serialize_f64(&mut buffer, value).unwrap();
     let (deserialize_size, decoded_value) = deserialize_f64(&buffer).unwrap();
     assert_eq!(serialize_size, deserialize_size);
-    assert_eq!(value, decoded_value, "Failed for value: {}", value);
+    assert_eq!(value, decoded_value, "Failed for value: {value}");
   }
 }
 
