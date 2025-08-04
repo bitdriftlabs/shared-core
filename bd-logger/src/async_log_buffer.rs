@@ -149,7 +149,7 @@ impl MemorySized for LogLine {
 pub struct AsyncLogBuffer<R: LogReplay> {
   communication_rx: Receiver<AsyncLogBufferMessage>,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
-  report_processor_rx: oneshot::Receiver<(Monitor, String)>,
+  report_processor_rx: mpsc::Receiver<(Monitor, Option<String>)>,
   shutdown_trigger_handle: ComponentShutdownTriggerHandle,
 
   session_strategy: Arc<bd_session::Strategy>,
@@ -182,7 +182,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     session_replay_target: Box<dyn bd_session_replay::Target + Send + Sync>,
     events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
     config_update_rx: mpsc::Receiver<ConfigUpdate>,
-    report_processor_rx: oneshot::Receiver<(Monitor, String)>,
+    report_processor_rx: mpsc::Receiver<(Monitor, Option<String>)>,
     shutdown_trigger_handle: ComponentShutdownTriggerHandle,
     runtime_loader: &Arc<ConfigLoader>,
     network_quality_provider: Arc<dyn NetworkQualityProvider>,
@@ -693,8 +693,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             ).await;
           }
         },
-        Ok((crash_monitor, session_id)) = &mut self.report_processor_rx => {
+        Some((crash_monitor, session_id)) = self.report_processor_rx.recv() => {
           for crash_log in crash_monitor.process_new_reports().await {
+            let attributes_overrides = session_id.clone().map(|id| {
+              LogAttributesOverrides::PreviousRunSessionID(
+                  id,
+                  crash_log.timestamp,
+              )
+            });
             let log = LogLine {
               log_level: log_level::ERROR,
               log_type: LogType::Lifecycle,
@@ -713,10 +719,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 })
                 .collect(),
               matching_fields: [].into(),
-              attributes_overrides: Some(LogAttributesOverrides::PreviousRunSessionID(
-                session_id.clone(),
-                crash_log.timestamp,
-              )),
+              attributes_overrides,
               log_processing_completed_tx: None,
               // Always capture the session when we process a crash log.
               // TODO(snowp): Ideally we should include information like the report and client side

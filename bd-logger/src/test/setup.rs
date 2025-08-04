@@ -14,6 +14,7 @@ use crate::{
   LogMessage,
   LogType,
   Logger,
+  ReportProcessingSession,
 };
 use bd_client_stats::FlushTrigger;
 use bd_client_stats::test::TestTicker;
@@ -388,6 +389,12 @@ impl Setup {
       self.server.blocking_next_runtime_ack().0,
       self.current_api_stream().id()
     );
+  }
+
+  pub fn upload_crash_reports(&mut self, session: ReportProcessingSession) {
+    if let Err(e) = self.logger.process_crash_reports(session) {
+      panic!("failed to process reports: {e}");
+    }
   }
 
   pub fn send_configuration_update(&mut self, config: ConfigurationUpdate) -> Option<Nack> {

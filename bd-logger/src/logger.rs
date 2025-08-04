@@ -13,7 +13,6 @@ use crate::app_version::{AppVersion, AppVersionExtra, Repository};
 use crate::async_log_buffer::{AsyncLogBuffer, AsyncLogBufferMessage, LogAttributesOverrides};
 use crate::log_replay::LoggerReplay;
 use crate::{MetadataProvider, app_version};
-use anyhow::anyhow;
 use bd_api::Metadata;
 use bd_bounded_buffer::{self, Sender as MemoryBoundSender};
 use bd_client_stats_store::{Counter, Scope};
@@ -49,6 +48,12 @@ pub struct Stats {
   sleep_disabled: Counter,
 
   app_open: Counter,
+}
+
+pub enum ReportProcessingSession {
+  Current,
+  PreviousRun,
+  Other(String),
 }
 
 impl Stats {
@@ -480,7 +485,7 @@ pub struct Logger {
   runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
 
   async_log_buffer_tx: MemoryBoundSender<AsyncLogBufferMessage>,
-  report_processor_tx: Option<oneshot::Sender<(Monitor, String)>>,
+  report_processor_tx: Option<Sender<(Monitor, Option<String>)>>,
 
   session_strategy: Arc<bd_session::Strategy>,
   device: Arc<bd_device::Device>,
@@ -494,7 +499,7 @@ pub struct Logger {
 
   sleep_mode_active: watch::Sender<bool>,
 
-  crash_monitor: Option<Monitor>,
+  crash_monitor_rx: Option<oneshot::Receiver<Monitor>>,
 }
 
 impl Logger {
@@ -503,13 +508,13 @@ impl Logger {
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
     stats_scope: Scope,
     async_log_buffer_tx: MemoryBoundSender<AsyncLogBufferMessage>,
-    report_processor_tx: oneshot::Sender<(Monitor, String)>,
+    report_processor_tx: Sender<(Monitor, Option<String>)>,
     session_strategy: Arc<bd_session::Strategy>,
     device: Arc<bd_device::Device>,
     sdk_version: &str,
     store: Arc<bd_key_value::Store>,
     sleep_mode_active: watch::Sender<bool>,
-    crash_monitor: Option<Monitor>,
+    crash_monitor_rx: Option<oneshot::Receiver<Monitor>>,
   ) -> Self {
     let stats = Stats::new(&stats_scope);
 
@@ -528,7 +533,7 @@ impl Logger {
       stats_scope,
       store,
       sleep_mode_active,
-      crash_monitor,
+      crash_monitor_rx,
     }
   }
 
@@ -543,14 +548,20 @@ impl Logger {
     Ok(buffer_directory)
   }
 
-  pub fn process_crash_reports(&mut self, session_id: String) -> anyhow::Result<()> {
-    let Some(crash_monitor) = self.crash_monitor.take() else {
-      anyhow::bail!("no crash monitor set");
+  pub fn process_crash_reports(&mut self, session: ReportProcessingSession) -> anyhow::Result<()> {
+    let Some(rx) = self.crash_monitor_rx.take() else {
+      anyhow::bail!("crash monitor rx exhausted");
     };
 
+    let crash_monitor = rx.blocking_recv()?;
+
     if let Some(tx) = self.report_processor_tx.take() {
-      tx.send((crash_monitor, session_id))
-        .map_err(|_| anyhow!("oneshot report processor channel closed"))
+      let session_id = match session {
+        ReportProcessingSession::Current => None,
+        ReportProcessingSession::Other(id) => Some(id),
+        ReportProcessingSession::PreviousRun => crash_monitor.previous_session_id.clone(),
+      };
+      Ok(tx.try_send((crash_monitor, session_id))?)
     } else {
       anyhow::bail!("oneshot report processor already used")
     }

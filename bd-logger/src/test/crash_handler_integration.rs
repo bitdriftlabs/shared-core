@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::setup::Setup;
-use crate::logger::{Block, CaptureSession};
+use crate::logger::{Block, CaptureSession, ReportProcessingSession};
 use crate::test::setup::SetupOptions;
 use bd_log_primitives::LogType;
 use bd_runtime::runtime::{FeatureFlag, artifact_upload};
@@ -69,6 +69,7 @@ fn crash_reports() {
 
   setup.configure_default_buffers();
   setup.upload_individual_logs();
+  setup.upload_crash_reports(ReportProcessingSession::PreviousRun);
 
   let upload_intent = setup.server.next_log_intent().unwrap();
   assert_eq!("crash_handler", upload_intent.explicit_session_capture().id);
@@ -163,6 +164,7 @@ fn crash_reports_artifact_upload() {
 
   setup.configure_stream_all_logs();
   setup.upload_individual_logs();
+  setup.upload_crash_reports(ReportProcessingSession::PreviousRun);
 
   let uploads: Vec<LogUpload> = vec![setup.server.blocking_next_log_upload().unwrap()];
 
@@ -179,8 +181,9 @@ fn crash_reports_artifact_upload() {
   assert_eq!(crash1.session_id(), initial_session_id);
   assert_ne!(crash1.timestamp(), timestamp);
   assert_eq!(crash1.field("_ootb_field"), "ootb");
-  let crash1_uuid = crash1.field("_crash_artifact_id");
+  assert!(!crash1.has_field("_crash_artifact"));
   assert!(!crash1.has_field("custom"));
+  let crash1_uuid = crash1.field("_crash_artifact_id");
 
   let mut remaining_uploads: HashSet<_> = [crash1_uuid].into();
   // Verify that out of band uploads happen.

@@ -175,7 +175,8 @@ impl LoggerBuilder {
     let (trigger_upload_tx, trigger_upload_rx) = tokio::sync::mpsc::channel(1);
     let (flush_buffers_tx, flush_buffers_rx) = tokio::sync::mpsc::channel(1);
     let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-    let (report_proc_tx, report_proc_rx) = tokio::sync::oneshot::channel();
+    let (report_proc_tx, report_proc_rx) = tokio::sync::mpsc::channel(1);
+    let (crash_monitor_tx, crash_monitor_rx) = tokio::sync::oneshot::channel();
 
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
@@ -210,26 +211,6 @@ impl LoggerBuilder {
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
 
-    let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
-      Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
-      data_upload_tx_clone.clone(),
-      Arc::new(SystemTimeProvider),
-      &runtime_loader,
-      &collector_clone,
-      shutdown_handle.make_shutdown(),
-    );
-
-    let crash_monitor = Monitor::new(
-      &runtime_loader,
-      &self.params.sdk_directory,
-      self.params.store.clone(),
-      Arc::new(artifact_client),
-      self
-        .params
-        .session_strategy
-        .previous_process_session_id(),
-    );
-
     let logger = Logger::new(
       maybe_shutdown_trigger,
       runtime_loader.clone(),
@@ -241,7 +222,7 @@ impl LoggerBuilder {
       self.params.static_metadata.sdk_version(),
       self.params.store.clone(),
       sleep_mode_active_tx,
-      Some(crash_monitor),
+      Some(crash_monitor_rx),
     );
     let log = if self.internal_logger {
       Arc::new(InternalLogger::new(
@@ -256,6 +237,27 @@ impl LoggerBuilder {
 
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
+
+      let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
+        Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
+        data_upload_tx_clone.clone(),
+        Arc::new(SystemTimeProvider),
+        &runtime_loader,
+        &collector_clone,
+        shutdown_handle.make_shutdown(),
+      );
+
+      let crash_monitor = Monitor::new(
+        &runtime_loader,
+        &self.params.sdk_directory,
+        self.params.store.clone(),
+        Arc::new(artifact_client),
+        self.params.session_strategy.previous_process_session_id(),
+      );
+
+      if crash_monitor_tx.send(crash_monitor).is_err() {
+        log::error!("failed to deliver monitor");
+      }
 
       // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
       // improve the perceived performance of the logger initialization.

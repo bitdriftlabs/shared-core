@@ -72,7 +72,7 @@ pub struct Monitor {
   // them less special.
   out_of_band_enabled_flag: BoolWatch<bd_runtime::runtime::artifact_upload::Enabled>,
 
-  previous_session_id: Option<String>,
+  pub previous_session_id: Option<String>,
 
   report_directory: PathBuf,
   global_state_reader: global_state::Reader,

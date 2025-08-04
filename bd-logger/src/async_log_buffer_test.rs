@@ -109,7 +109,7 @@ impl Setup {
     self.replayer_logs = replayer.logs.clone();
     self.replayer_fields = replayer.fields.clone();
 
-    let (_, report_rx) = tokio::sync::oneshot::channel();
+    let (_, report_rx) = tokio::sync::mpsc::channel(1);
 
     AsyncLogBuffer::new(
       self.make_logging_context(),
@@ -140,7 +140,7 @@ impl Setup {
     AsyncLogBuffer<LoggerReplay>,
     bd_bounded_buffer::Sender<AsyncLogBufferMessage>,
   ) {
-    let (_, report_rx) = tokio::sync::oneshot::channel();
+    let (_, report_rx) = tokio::sync::mpsc::channel(1);
     AsyncLogBuffer::new(
       self.make_logging_context(),
       LoggerReplay {},
