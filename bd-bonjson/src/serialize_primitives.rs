@@ -173,7 +173,7 @@ pub fn serialize_f64(dst: &mut [u8], v: f64) -> Result<usize> {
 fn serialize_short_string_header(dst: &mut [u8], str: &str) -> Result<usize> {
   let total_size = 1;
   require_bytes(dst, total_size)?;
-  dst[0] = TypeCode::String as u8 + str.len() as u8;
+  dst[0] = TypeCode::String as u8 + u8::try_from(str.len()).unwrap();
   Ok(total_size)
 }
 
@@ -183,7 +183,7 @@ fn serialize_long_string_header(dst: &mut [u8], str: &str) -> Result<usize> {
   let total_size = header_size + 1;
   require_bytes(dst, total_size)?;
   dst[0] = TypeCode::LongString as u8;
-  dst[1..header_size + 1].copy_from_slice(&header[..header_size]);
+  dst[1..=header_size].copy_from_slice(&header[..header_size]);
   Ok(total_size)
 }
 
