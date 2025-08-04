@@ -277,7 +277,7 @@ fn test_edge_cases() {
   // Test small negative integers (should use direct encoding)
   for i in -100..=100i64 {
     let serialize_size = serialize_i64(&mut buffer, i).unwrap();
-    if i >= 0 && i <= 100 {
+    if (0..=100).contains(&i) {
       assert_eq!(serialize_size, 1, "Small int {i} should serialize to 1 byte");
     }
     let (deserialize_size, decoded) = deserialize_signed_integer(&buffer).unwrap();
@@ -287,6 +287,7 @@ fn test_edge_cases() {
 }
 
 #[test]
+#[allow(clippy::float_cmp)]
 fn test_float_optimization() {
   let mut buffer = [0u8; 16];
 
