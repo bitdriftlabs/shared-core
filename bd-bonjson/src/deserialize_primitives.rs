@@ -27,8 +27,8 @@ pub enum DeserializationError {
 }
 
 impl DeserializationError {
-  pub fn kind(&self) -> DeserializationError {
-    *self // Return a copy of the error
+  pub fn kind(self) -> Self {
+    self // Return a copy of the error
   }
 }
 
@@ -111,10 +111,11 @@ pub fn deserialize_unsigned_after_type_code(src: &[u8], type_code: u8) -> Result
   Ok((byte_count, u64::from_le_bytes(bytes)))
 }
 
+#[allow(clippy::cast_sign_loss)]
 pub fn deserialize_unsigned_integer(src: &[u8]) -> Result<(usize, u64)> {
   let (size, type_code) = deserialize_type_code(src)?;
   if type_code <= TypeCode::P100 as u8 {
-    return Ok((1, type_code as u64));
+    return Ok((1, u64::from(type_code)));
   }
   if type_code >= TypeCode::Unsigned as u8 && type_code <= TypeCode::UnsignedEnd as u8 {
     let (v_size, v) = deserialize_unsigned_after_type_code(&src[1..], type_code)?;
