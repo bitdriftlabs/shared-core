@@ -412,6 +412,8 @@ name = "bd-bonjson"
 version = "1.0.0"
 dependencies = [
  "assert_no_alloc",
+ "bd-test-helpers",
+ "ctor",
  "tempfile",
 ]
 

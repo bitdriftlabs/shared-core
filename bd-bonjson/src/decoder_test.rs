@@ -10,6 +10,11 @@ use crate::writer::Writer;
 use core::f64;
 use std::io::Cursor;
 
+#[ctor::ctor]
+fn test_global_init() {
+  bd_test_helpers::test_global_init();
+}
+
 #[test]
 fn test_decode_null() {
   let mut buf = vec![0u8; 10];
