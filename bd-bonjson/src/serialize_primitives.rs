@@ -103,6 +103,7 @@ pub fn serialize_u64(dst: &mut [u8], v: u64) -> Result<usize> {
 }
 
 #[allow(clippy::cast_sign_loss)]
+#[allow(clippy::cast_possible_truncation)]
 pub fn serialize_i64(dst: &mut [u8], v: i64) -> Result<usize> {
   if v >= i64::from(TypeCode::N100 as i8) && v <= TypeCode::P100 as i64 {
     return serialize_small_int(dst, v as u8);
@@ -122,7 +123,7 @@ pub fn serialize_i64(dst: &mut [u8], v: i64) -> Result<usize> {
   let is_negative = (v >> 63) as u8;
   let is_byte_high_bit_set = bytes[index] >> 7;
   let use_signed_form = (is_negative | !is_byte_high_bit_set) & 1;
-  let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | index as u8;
+  let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | u8::try_from(index).unwrap();
   require_bytes(dst, total_size)?;
   dst[0] = type_code;
   dst[1..total_size].copy_from_slice(&bytes[..payload_size]);
@@ -153,9 +154,11 @@ pub fn serialize_f32(dst: &mut [u8], v: f32) -> Result<usize> {
   Ok(total_size)
 }
 
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::float_cmp)]
 pub fn serialize_f64(dst: &mut [u8], v: f64) -> Result<usize> {
   let as_f32 = v as f32;
-  if as_f32 as f64 == v {
+  if f64::from(as_f32) == v {
     return serialize_f32(dst, as_f32);
   }
 
@@ -163,7 +166,7 @@ pub fn serialize_f64(dst: &mut [u8], v: f64) -> Result<usize> {
   let bytes = v.to_le_bytes();
   require_bytes(dst, total_size)?;
   dst[0] = TypeCode::Float64 as u8;
-  dst[1..bytes.len() + 1].copy_from_slice(&bytes);
+  dst[1..=bytes.len()].copy_from_slice(&bytes);
   Ok(total_size)
 }
 
