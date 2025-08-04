@@ -198,10 +198,10 @@ pub fn deserialize_f64(src: &[u8]) -> Result<(usize, f64)> {
   let (size, type_code) = deserialize_type_code(src)?;
   if type_code == TypeCode::Float16 as u8 {
     let (v_size, v) = deserialize_f16_after_type_code(&src[1..])?;
-    Ok((size + v_size, v as f64))
+    Ok((size + v_size, f64::from(v)))
   } else if type_code == TypeCode::Float32 as u8 {
     let (v_size, v) = deserialize_f32_after_type_code(&src[1..])?;
-    Ok((size + v_size, v as f64))
+    Ok((size + v_size, f64::from(v)))
   } else if type_code == TypeCode::Float64 as u8 {
     let (v_size, v) = deserialize_f64_after_type_code(&src[1..])?;
     Ok((size + v_size, v))
@@ -236,7 +236,7 @@ fn decode_chunk_length_header(length_header: u8) -> (usize, usize, usize) {
     (0, 6, 6)
   } else if (length_header & 0x7f) == 0x40 {
     (0, 7, 7)
-  } else if (length_header & 0xff) == 0x80 {
+  } else if length_header == 0x80 {
     (0, 8, 8)
   } else {
     (1, 8, 0)
