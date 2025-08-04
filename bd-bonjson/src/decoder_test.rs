@@ -117,7 +117,7 @@ fn test_decode_unsigned() {
   let mut writer = Writer {
     writer: &mut cursor,
   };
-  let large_val = 4_000_000_000 as i64;
+  let large_val = 4_000_000_000_i64;
   writer.write_unsigned(large_val as u64).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
 
