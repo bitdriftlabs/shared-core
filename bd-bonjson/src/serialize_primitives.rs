@@ -43,10 +43,10 @@ fn derive_chunk_length_header_data(payload: u64) -> (u8, u8, u8, u8) {
 
 // Assumption: dst has at least 9 bytes of space
 fn serialize_chunk_header_unchecked(dst: &mut [u8], length: u64, continuation_bit: bool) -> usize {
-  let payload = (length << 1) | continuation_bit as u64;
+  let payload = (length << 1) | u64::from(continuation_bit);
   let (skip_bytes, copy_bytes, shift_amount, unary_code) = derive_chunk_length_header_data(payload);
   let total_size = (skip_bytes + copy_bytes) as usize;
-  let encoded = (payload << shift_amount) | unary_code as u64;
+  let encoded = (payload << shift_amount) | u64::from(unary_code);
   let bytes = encoded.to_le_bytes();
   dst[0] = unary_code;
   dst[skip_bytes as usize..total_size].copy_from_slice(&bytes[..copy_bytes as usize]);
@@ -79,7 +79,7 @@ fn serialize_small_int(dst: &mut [u8], v: u8) -> Result<usize> {
 
 pub fn serialize_u64(dst: &mut [u8], v: u64) -> Result<usize> {
   if v <= TypeCode::P100 as u64 {
-    return serialize_small_int(dst, v as u8);
+    return serialize_small_int(dst, (v&0xff) as u8);
   }
 
   let bytes = v.to_le_bytes();
