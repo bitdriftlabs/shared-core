@@ -17,7 +17,7 @@ fn test_decode_null() {
     writer: &mut cursor,
   };
   writer.write_null().unwrap();
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
@@ -33,7 +33,7 @@ fn test_decode_booleans() {
     writer: &mut cursor,
   };
   writer.write_boolean(true).unwrap();
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
@@ -46,7 +46,7 @@ fn test_decode_booleans() {
     writer: &mut cursor,
   };
   writer.write_boolean(false).unwrap();
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
@@ -62,7 +62,7 @@ fn test_decode_integers() {
     writer: &mut cursor,
   };
   writer.write_signed(42).unwrap();
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
@@ -75,7 +75,7 @@ fn test_decode_integers() {
     writer: &mut cursor,
   };
   writer.write_signed(-42).unwrap();
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
@@ -89,7 +89,7 @@ fn test_decode_integers() {
   };
   let large_val = 1_000_000_000;
   writer.write_signed(large_val).unwrap();
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
@@ -105,7 +105,7 @@ fn test_decode_unsigned() {
     writer: &mut cursor,
   };
   writer.write_unsigned(42).unwrap();
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
@@ -119,7 +119,7 @@ fn test_decode_unsigned() {
   };
   let large_val = 4_000_000_000;
   writer.write_unsigned(large_val).unwrap();
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
@@ -133,7 +133,7 @@ fn test_decode_unsigned() {
   };
   let huge_val = i64::MAX as u64 + 1;
   writer.write_unsigned(huge_val).unwrap();
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
@@ -149,7 +149,7 @@ fn test_decode_floats() {
     writer: &mut cursor,
   };
   writer.write_float(3.14159).unwrap();
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
@@ -162,7 +162,7 @@ fn test_decode_floats() {
     writer: &mut cursor,
   };
   writer.write_float(-2.71828).unwrap();
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
@@ -175,7 +175,7 @@ fn test_decode_floats() {
     writer: &mut cursor,
   };
   writer.write_f32(1.5f32).unwrap();
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
@@ -191,7 +191,7 @@ fn test_decode_strings() {
     writer: &mut cursor,
   };
   writer.write_str("hello").unwrap();
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
@@ -204,7 +204,7 @@ fn test_decode_strings() {
     writer: &mut cursor,
   };
   writer.write_str("").unwrap();
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
@@ -219,7 +219,7 @@ fn test_decode_strings() {
     writer: &mut cursor,
   };
   writer.write_str(long_str).unwrap();
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
@@ -242,7 +242,7 @@ fn test_decode_array() {
   writer.write_str("hello").unwrap();
   writer.write_container_end().unwrap();
 
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
 
@@ -266,7 +266,7 @@ fn test_decode_array() {
   writer.write_array_begin().unwrap();
   writer.write_container_end().unwrap();
 
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
 
@@ -295,7 +295,7 @@ fn test_decode_object() {
   writer.write_boolean(true).unwrap();
   writer.write_container_end().unwrap();
 
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
 
@@ -318,7 +318,7 @@ fn test_decode_object() {
   writer.write_map_begin().unwrap();
   writer.write_container_end().unwrap();
 
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
 
@@ -362,7 +362,7 @@ fn test_nested_structures() {
   writer.write_container_end().unwrap(); // End array
   writer.write_container_end().unwrap(); // End object
 
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
 
@@ -408,7 +408,7 @@ fn test_decode_multiple_values() {
   writer.write_signed(42).unwrap();
   writer.write_str("hello").unwrap();
 
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
   let mut decoder = Decoder::new(&buf[..pos]);
   let values = decoder.decode_multiple().unwrap();
 
@@ -433,7 +433,7 @@ fn test_error_handling() {
   writer.write_str("John").unwrap();
   // Missing container end
 
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
   let mut decoder = Decoder::new(&buf[..pos]);
   let result = decoder.decode();
   assert!(result.is_err());
@@ -450,7 +450,7 @@ fn test_error_handling() {
   writer.write_str("value").unwrap();
   writer.write_container_end().unwrap();
 
-  let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
   let mut decoder = Decoder::new(&buf[..pos]);
   let result = decoder.decode();
   assert!(result.is_err());
@@ -482,7 +482,7 @@ fn test_boundary_values() {
       writer: &mut cursor,
     };
     writer.write_signed(value).unwrap();
-    let pos = cursor.position() as usize;
+    let pos = usize::try_from(cursor.position()).unwrap();
 
     let mut decoder = Decoder::new(&buf[..pos]);
     let decoded = decoder.decode().unwrap();
@@ -521,7 +521,7 @@ fn test_boundary_values() {
       writer: &mut cursor,
     };
     writer.write_unsigned(value).unwrap();
-    let pos = cursor.position() as usize;
+    let pos = usize::try_from(cursor.position()).unwrap();
 
     let mut decoder = Decoder::new(&buf[..pos]);
     let decoded = decoder.decode().unwrap();
