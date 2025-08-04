@@ -108,6 +108,7 @@ fn test_i64_roundtrip() {
 }
 
 #[test]
+#[allow(clippy::float_cmp)]
 fn test_f32_roundtrip() {
   let test_values = [
     0.0f32,
@@ -138,8 +139,8 @@ fn test_f64_roundtrip() {
     -0.0,
     1.0,
     -1.0,
-    3.141_592_653_589_793,
-    -3.141_592_653_589_793,
+    std::f64::consts::PI,
+    -std::f64::consts::PI,
     f64::MIN,
     f64::MAX,
     f64::EPSILON,
