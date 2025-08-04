@@ -34,7 +34,7 @@ fn derive_chunk_length_header_data(payload: u64) -> (u8, u8, u8, u8) {
     0x4000..=0x1F_FFFF => (0, 3, 3, 0x04),
     0x20_0000..=0xFFF_FFFF => (0, 4, 4, 0x08),
     0x1000_0000..=0x7_FFFF_FFFF => (0, 5, 5, 0x10),
-    0x8000_0000..=0x3FF_FFFF_FFFF => (0, 6, 6, 0x20),
+    0x8_0000_0000..=0x3FF_FFFF_FFFF => (0, 6, 6, 0x20),
     0x4000_0000_0000..=0x1_FFFF_FFFF_FFFF => (0, 7, 7, 0x40),
     0x20_0000_0000_0000..=0xFF_FFFF_FFFF_FFFF => (0, 8, 8, 0x80),
     _ => (1, 8, 0, 0x00),
