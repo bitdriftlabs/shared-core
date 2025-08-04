@@ -26,8 +26,8 @@ fn writer_does_not_allocate_using_buff_size(buff_size: usize) {
     writer.write_null().unwrap();
     writer.write_boolean(true).unwrap();
     writer.write_boolean(false).unwrap();
-    writer.write_integer(-42).unwrap();
-    writer.write_integer(0).unwrap();
+    writer.write_signed(-42).unwrap();
+    writer.write_signed(0).unwrap();
     writer.write_unsigned(42).unwrap();
     writer.write_unsigned(0).unwrap();
     writer.write_float(3.14159).unwrap();
@@ -71,8 +71,8 @@ fn writer_does_not_allocate_writing_to_file() {
       writer.write_null().unwrap();
       writer.write_boolean(true).unwrap();
       writer.write_boolean(false).unwrap();
-      writer.write_integer(-42).unwrap();
-      writer.write_integer(0).unwrap();
+      writer.write_signed(-42).unwrap();
+      writer.write_signed(0).unwrap();
       writer.write_unsigned(42).unwrap();
       writer.write_unsigned(0).unwrap();
       writer.write_float(3.14159).unwrap();

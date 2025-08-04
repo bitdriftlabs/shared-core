@@ -59,7 +59,7 @@ fn test_u64_roundtrip() {
   let mut buffer = [0u8; 16];
   for &value in &test_values {
     let serialize_size = serialize_u64(&mut buffer, value).unwrap();
-    let (deserialize_size, decoded_value) = deserialize_unsigned(&buffer).unwrap();
+    let (deserialize_size, decoded_value) = deserialize_unsigned_integer(&buffer).unwrap();
     assert_eq!(serialize_size, deserialize_size);
     assert_eq!(value, decoded_value, "Failed for value: {}", value);
   }
@@ -94,7 +94,7 @@ fn test_i64_roundtrip() {
   let mut buffer = [0u8; 16];
   for &value in &test_values {
     let serialize_size = serialize_i64(&mut buffer, value).unwrap();
-    let (deserialize_size, decoded_value) = deserialize_signed(&buffer).unwrap();
+    let (deserialize_size, decoded_value) = deserialize_signed_integer(&buffer).unwrap();
     assert_eq!(serialize_size, deserialize_size);
     assert_eq!(value, decoded_value, "Failed for value: {}", value);
   }
@@ -264,7 +264,7 @@ fn test_edge_cases() {
       "Small int {} should serialize to 1 byte",
       i
     );
-    let (deserialize_size, decoded) = deserialize_unsigned(&buffer).unwrap();
+    let (deserialize_size, decoded) = deserialize_unsigned_integer(&buffer).unwrap();
     assert_eq!(serialize_size, deserialize_size);
     assert_eq!(i, decoded);
   }
@@ -279,7 +279,7 @@ fn test_edge_cases() {
         i
       );
     }
-    let (deserialize_size, decoded) = deserialize_signed(&buffer).unwrap();
+    let (deserialize_size, decoded) = deserialize_signed_integer(&buffer).unwrap();
     assert_eq!(serialize_size, deserialize_size);
     assert_eq!(i, decoded);
   }

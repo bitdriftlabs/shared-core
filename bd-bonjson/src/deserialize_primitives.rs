@@ -1,6 +1,6 @@
 use crate::type_codes::TypeCode;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeserializationError {
   PrematureEnd,
   InvalidUTF8,
@@ -17,6 +17,12 @@ pub enum DeserializationError {
   UnexpectedContinuationBit,
   UnterminatedContainer,
   NonStringKeyInMap,
+}
+
+impl DeserializationError {
+  pub fn kind(&self) -> DeserializationError {
+    *self // Return a copy of the error
+  }
 }
 
 pub type Result<T> = std::result::Result<T, DeserializationError>;
@@ -98,7 +104,7 @@ pub fn deserialize_unsigned_after_type_code(src: &[u8], type_code: u8) -> Result
   Ok((byte_count, u64::from_le_bytes(bytes)))
 }
 
-pub fn deserialize_unsigned(src: &[u8]) -> Result<(usize, u64)> {
+pub fn deserialize_unsigned_integer(src: &[u8]) -> Result<(usize, u64)> {
   let (size, type_code) = deserialize_type_code(src)?;
   if type_code <= TypeCode::P100 as u8 {
     return Ok((1, type_code as u64));
@@ -127,7 +133,7 @@ pub fn deserialize_signed_after_type_code(src: &[u8], type_code: u8) -> Result<(
   Ok((byte_count, i64::from_le_bytes(bytes)))
 }
 
-pub fn deserialize_signed(src: &[u8]) -> Result<(usize, i64)> {
+pub fn deserialize_signed_integer(src: &[u8]) -> Result<(usize, i64)> {
   let (size, type_code) = deserialize_type_code(src)?;
   if type_code <= TypeCode::P100 as u8 || type_code >= TypeCode::N100 as u8 {
     return Ok((1, type_code as i8 as i64));

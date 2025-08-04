@@ -4,7 +4,7 @@ mod primitives_test;
 
 use crate::type_codes::TypeCode;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SerializationError {
   BufferFull,
   Io,

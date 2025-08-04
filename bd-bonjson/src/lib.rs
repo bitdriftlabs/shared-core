@@ -13,8 +13,8 @@ pub use crate::deserialize_primitives::{
   deserialize_f16_after_type_code, deserialize_f32, deserialize_f32_after_type_code,
   deserialize_f64, deserialize_f64_after_type_code, deserialize_long_string_after_type_code,
   deserialize_map_start, deserialize_null, deserialize_short_string_after_type_code,
-  deserialize_signed, deserialize_signed_after_type_code, deserialize_string,
-  deserialize_type_code, deserialize_unsigned, deserialize_unsigned_after_type_code,
+  deserialize_signed_after_type_code, deserialize_signed_integer, deserialize_string,
+  deserialize_type_code, deserialize_unsigned_after_type_code, deserialize_unsigned_integer,
   peek_type_code,
 };
 pub use crate::serialize_primitives::{

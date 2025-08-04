@@ -54,12 +54,12 @@ fn test_decode_integers() {
   let mut writer = Writer {
     writer: &mut cursor,
   };
-  writer.write_integer(42).unwrap();
+  writer.write_signed(42).unwrap();
   let pos = cursor.position() as usize;
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::Integer(42));
+  assert_eq!(value, Value::Signed(42));
 
   // Small negative integer
   let mut buf = vec![0u8; 10];
@@ -67,12 +67,12 @@ fn test_decode_integers() {
   let mut writer = Writer {
     writer: &mut cursor,
   };
-  writer.write_integer(-42).unwrap();
+  writer.write_signed(-42).unwrap();
   let pos = cursor.position() as usize;
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::Integer(-42));
+  assert_eq!(value, Value::Signed(-42));
 
   // Large positive integer
   let mut buf = vec![0u8; 16];
@@ -81,12 +81,12 @@ fn test_decode_integers() {
     writer: &mut cursor,
   };
   let large_val = 1_000_000_000;
-  writer.write_integer(large_val).unwrap();
+  writer.write_signed(large_val).unwrap();
   let pos = cursor.position() as usize;
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::Integer(large_val));
+  assert_eq!(value, Value::Signed(large_val));
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn test_decode_unsigned() {
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::Integer(42));
+  assert_eq!(value, Value::Signed(42));
 
   // Large unsigned
   let mut buf = vec![0u8; 16];
@@ -116,7 +116,7 @@ fn test_decode_unsigned() {
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::Integer(large_val as i64));
+  assert_eq!(value, Value::Signed(large_val as i64));
 
   // Huge unsigned
   let mut buf = vec![0u8; 16];
@@ -229,10 +229,10 @@ fn test_decode_array() {
   };
 
   writer.write_array_begin().unwrap();
-  // writer.write_null().unwrap();
-  // writer.write_boolean(true).unwrap();
-  writer.write_integer(42).unwrap();
-  // writer.write_str("hello").unwrap();
+  writer.write_null().unwrap();
+  writer.write_boolean(true).unwrap();
+  writer.write_signed(42).unwrap();
+  writer.write_str("hello").unwrap();
   writer.write_container_end().unwrap();
 
   let pos = cursor.position() as usize;
@@ -240,11 +240,11 @@ fn test_decode_array() {
   let value = decoder.decode().unwrap();
 
   if let Value::Array(items) = value {
-    // assert_eq!(items.len(), 4);
+    assert_eq!(items.len(), 4);
     assert_eq!(items[0], Value::Null);
-    // assert_eq!(items[1], Value::Bool(true));
-    // assert_eq!(items[2], Value::Integer(42));
-    // assert_eq!(items[3], Value::String("hello".to_string()));
+    assert_eq!(items[1], Value::Bool(true));
+    assert_eq!(items[2], Value::Signed(42));
+    assert_eq!(items[3], Value::String("hello".to_string()));
   } else {
     panic!("Expected array, got {:?}", value);
   }
@@ -283,7 +283,7 @@ fn test_decode_object() {
   writer.write_str("name").unwrap();
   writer.write_str("John").unwrap();
   writer.write_str("age").unwrap();
-  writer.write_integer(30).unwrap();
+  writer.write_signed(30).unwrap();
   writer.write_str("active").unwrap();
   writer.write_boolean(true).unwrap();
   writer.write_container_end().unwrap();
@@ -295,7 +295,7 @@ fn test_decode_object() {
   if let Value::Object(map) = value {
     assert_eq!(map.len(), 3);
     assert_eq!(map.get("name").unwrap(), &Value::String("John".to_string()));
-    assert_eq!(map.get("age").unwrap(), &Value::Integer(30));
+    assert_eq!(map.get("age").unwrap(), &Value::Signed(30));
     assert_eq!(map.get("active").unwrap(), &Value::Bool(true));
   } else {
     panic!("Expected object, got {:?}", value);
@@ -341,7 +341,7 @@ fn test_nested_structures() {
   writer.write_str("name").unwrap();
   writer.write_str("Alice").unwrap();
   writer.write_str("id").unwrap();
-  writer.write_unsigned(1).unwrap();
+  writer.write_signed(1).unwrap();
   writer.write_container_end().unwrap();
 
   // Second user
@@ -349,7 +349,7 @@ fn test_nested_structures() {
   writer.write_str("name").unwrap();
   writer.write_str("Bob").unwrap();
   writer.write_str("id").unwrap();
-  writer.write_unsigned(2).unwrap();
+  writer.write_signed(2).unwrap();
   writer.write_container_end().unwrap();
 
   writer.write_container_end().unwrap(); // End array
@@ -369,14 +369,14 @@ fn test_nested_structures() {
           alice.get("name").unwrap(),
           &Value::String("Alice".to_string())
         );
-        assert_eq!(alice.get("id").unwrap(), &Value::Unsigned(1));
+        assert_eq!(alice.get("id").unwrap(), &Value::Signed(1));
       } else {
         panic!("Expected object for first user");
       }
 
       if let Value::Object(bob) = &users[1] {
         assert_eq!(bob.get("name").unwrap(), &Value::String("Bob".to_string()));
-        assert_eq!(bob.get("id").unwrap(), &Value::Unsigned(2));
+        assert_eq!(bob.get("id").unwrap(), &Value::Signed(2));
       } else {
         panic!("Expected object for second user");
       }
@@ -398,7 +398,7 @@ fn test_decode_multiple_values() {
 
   writer.write_null().unwrap();
   writer.write_boolean(true).unwrap();
-  writer.write_integer(42).unwrap();
+  writer.write_signed(42).unwrap();
   writer.write_str("hello").unwrap();
 
   let pos = cursor.position() as usize;
@@ -408,7 +408,7 @@ fn test_decode_multiple_values() {
   assert_eq!(values.len(), 4);
   assert_eq!(values[0], Value::Null);
   assert_eq!(values[1], Value::Bool(true));
-  assert_eq!(values[2], Value::Integer(42));
+  assert_eq!(values[2], Value::Signed(42));
   assert_eq!(values[3], Value::String("hello".to_string()));
 }
 
@@ -439,7 +439,7 @@ fn test_error_handling() {
   };
 
   writer.write_map_begin().unwrap();
-  writer.write_integer(123).unwrap(); // Keys must be strings
+  writer.write_signed(123).unwrap(); // Keys must be strings
   writer.write_str("value").unwrap();
   writer.write_container_end().unwrap();
 
@@ -474,7 +474,7 @@ fn test_boundary_values() {
     let mut writer = Writer {
       writer: &mut cursor,
     };
-    writer.write_integer(value).unwrap();
+    writer.write_signed(value).unwrap();
     let pos = cursor.position() as usize;
 
     let mut decoder = Decoder::new(&buf[..pos]);
@@ -483,12 +483,12 @@ fn test_boundary_values() {
     if value >= 0 && value <= u64::MAX as i64 {
       // Unsigned conversion may happen
       match decoded {
-        Value::Integer(v) => assert_eq!(v, value),
+        Value::Signed(v) => assert_eq!(v, value),
         Value::Unsigned(v) => assert_eq!(v as i64, value),
         _ => panic!("Expected integer or unsigned, got {:?}", decoded),
       }
     } else {
-      assert_eq!(decoded, Value::Integer(value));
+      assert_eq!(decoded, Value::Signed(value));
     }
   }
 
@@ -522,7 +522,7 @@ fn test_boundary_values() {
     if value <= i64::MAX as u64 {
       // Integer conversion may happen
       match decoded {
-        Value::Integer(v) => assert_eq!(v as u64, value),
+        Value::Signed(v) => assert_eq!(v as u64, value),
         Value::Unsigned(v) => assert_eq!(v, value),
         _ => panic!("Expected integer or unsigned, got {:?}", decoded),
       }
@@ -537,13 +537,13 @@ fn test_accessor_methods() {
   // Create test values
   let null_val = Value::Null;
   let bool_val = Value::Bool(true);
-  let int_val = Value::Integer(42);
+  let int_val = Value::Signed(42);
   let float_val = Value::Float(3.14);
   let str_val = Value::String("hello".to_string());
 
   let mut arr = Vec::new();
-  arr.push(Value::Integer(1));
-  arr.push(Value::Integer(2));
+  arr.push(Value::Signed(1));
+  arr.push(Value::Signed(2));
   let array_val = Value::Array(arr);
 
   let mut map = HashMap::new();
@@ -574,8 +574,8 @@ fn test_accessor_methods() {
   assert!(int_val.as_string().is_err());
 
   // Test getters
-  assert_eq!(array_val.get_index(0).unwrap(), &Value::Integer(1));
-  assert_eq!(array_val.get_index(1).unwrap(), &Value::Integer(2));
+  assert_eq!(array_val.get_index(0).unwrap(), &Value::Signed(1));
+  assert_eq!(array_val.get_index(1).unwrap(), &Value::Signed(2));
   assert_eq!(
     obj_val.get("key").unwrap(),
     &Value::String("value".to_string())

@@ -26,7 +26,7 @@ impl Writer<'_> {
     self.write_bytes(&buffer[..size])
   }
 
-  pub fn write_integer(&mut self, v: i64) -> Result<usize> {
+  pub fn write_signed(&mut self, v: i64) -> Result<usize> {
     let mut buffer: [u8; 16] = [0; 16];
     let size = serialize_primitives::serialize_i64(&mut buffer, v)?;
     self.write_bytes(&buffer[..size])

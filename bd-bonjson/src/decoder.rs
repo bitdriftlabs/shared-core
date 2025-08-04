@@ -5,10 +5,9 @@ mod decoder_test;
 use crate::deserialize_primitives;
 use crate::deserialize_primitives::*;
 use crate::type_codes::TypeCode;
-// use crate::{DeserializationError, DeserializationErrorWithOffset, Result};
 use std::collections::HashMap;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeserializationErrorWithOffset {
   Error(DeserializationError, usize),
 }
@@ -19,7 +18,7 @@ pub enum Value {
   Null,
   Bool(bool),
   Float(f64),
-  Integer(i64),
+  Signed(i64),
   Unsigned(u64),
   String(String),
   Array(Vec<Value>),
@@ -48,15 +47,19 @@ impl<'a> Decoder<'a> {
     self.position += bytes;
   }
 
+  fn map_err<T>(&self, result: deserialize_primitives::Result<T>) -> Result<T> {
+    result.map_err(|e| DeserializationErrorWithOffset::Error(e, self.position))
+  }
+
+  fn error_here(&self, error: DeserializationError) -> DeserializationErrorWithOffset {
+    DeserializationErrorWithOffset::Error(error, self.position)
+  }
+
   fn decode_value(&mut self) -> Result<Value> {
     let remaining = self.remaining_data();
 
-    let type_code = deserialize_type_code(remaining)
-      .and_then(|(size, code)| {
-        self.advance(size);
-        Ok(code)
-      })
-      .map_err(|e| DeserializationErrorWithOffset::Error(e, self.position))?;
+    let (size, type_code) = self.map_err(deserialize_type_code(remaining))?;
+    self.advance(size);
 
     match type_code {
       code if code == TypeCode::Null as u8 => Ok(Value::Null),
@@ -71,47 +74,35 @@ impl<'a> Decoder<'a> {
       code if code == TypeCode::Float16 as u8 => self.decode_f16(),
       code if code == TypeCode::Float32 as u8 => self.decode_f32(),
       code if code == TypeCode::Float64 as u8 => self.decode_f64(),
-      code if code <= TypeCode::P100 as u8 => {
-        self.advance(1);
-        Ok(Value::Integer(code as i64))
-      },
-      code if code >= TypeCode::N100 as u8 => {
-        self.advance(1);
-        Ok(Value::Integer(code as i8 as i64))
-      },
+      code if code <= TypeCode::P100 as u8 => Ok(Value::Signed(code as i64)),
+      code if code >= TypeCode::N100 as u8 => Ok(Value::Signed(code as i8 as i64)),
       code if code >= TypeCode::Unsigned as u8 && code <= TypeCode::UnsignedEnd as u8 => {
-        self.decode_unsigned(code)
+        self.decode_unsigned_integer(code)
       },
       code if code >= TypeCode::Signed as u8 && code <= TypeCode::SignedEnd as u8 => {
-        self.decode_integer(code)
+        self.decode_signed_integer(code)
       },
-      _ => Err(DeserializationErrorWithOffset::Error(
-        DeserializationError::UnexpectedTypeCode,
-        self.position,
-      )),
+      _ => Err(self.error_here(DeserializationError::UnexpectedTypeCode)),
     }
   }
 
   fn decode_f16(&mut self) -> Result<Value> {
     let remaining = self.remaining_data();
-    let (size, value) = deserialize_f16_after_type_code(remaining)
-      .map_err(|e| DeserializationErrorWithOffset::Error(e, self.position))?;
+    let (size, value) = self.map_err(deserialize_f16_after_type_code(remaining))?;
     self.advance(size);
     Ok(Value::Float(value as f64))
   }
 
   fn decode_f32(&mut self) -> Result<Value> {
     let remaining = self.remaining_data();
-    let (size, value) = deserialize_f32_after_type_code(remaining)
-      .map_err(|e| DeserializationErrorWithOffset::Error(e, self.position))?;
+    let (size, value) = self.map_err(deserialize_f32_after_type_code(remaining))?;
     self.advance(size);
     Ok(Value::Float(value as f64))
   }
 
   fn decode_f64(&mut self) -> Result<Value> {
     let remaining = self.remaining_data();
-    let (size, value) = deserialize_f64_after_type_code(remaining)
-      .map_err(|e| DeserializationErrorWithOffset::Error(e, self.position))?;
+    let (size, value) = self.map_err(deserialize_f64_after_type_code(remaining))?;
     self.advance(size);
     Ok(Value::Float(value))
   }
@@ -119,8 +110,7 @@ impl<'a> Decoder<'a> {
   fn decode_long_string(&mut self) -> Result<Value> {
     let remaining = &self.data[self.position..];
     // let remaining = self.remaining_data();
-    let (size, str_slice) = deserialize_long_string_after_type_code(remaining)
-      .map_err(|e| DeserializationErrorWithOffset::Error(e, self.position))?;
+    let (size, str_slice) = self.map_err(deserialize_long_string_after_type_code(remaining))?;
     self.advance(size);
     Ok(Value::String(str_slice.to_string()))
   }
@@ -128,47 +118,44 @@ impl<'a> Decoder<'a> {
   fn decode_short_string(&mut self, type_code: u8) -> Result<Value> {
     let remaining = &self.data[self.position..];
     // let remaining = self.remaining_data();
-    let (size, str_slice) = deserialize_short_string_after_type_code(remaining, type_code)
-      .map_err(|e| DeserializationErrorWithOffset::Error(e, self.position))?;
+    let (size, str_slice) = self.map_err(deserialize_short_string_after_type_code(
+      remaining, type_code,
+    ))?;
     self.advance(size);
     Ok(Value::String(str_slice.to_string()))
   }
 
-  fn decode_unsigned(&mut self, type_code: u8) -> Result<Value> {
+  fn decode_unsigned_integer(&mut self, type_code: u8) -> Result<Value> {
     let remaining = self.remaining_data();
-    let (size, value) = deserialize_unsigned_after_type_code(remaining, type_code)
-      .map_err(|e| DeserializationErrorWithOffset::Error(e, self.position))?;
+    let (size, value) = self.map_err(deserialize_unsigned_after_type_code(remaining, type_code))?;
     self.advance(size);
     if value <= i64::MAX as u64 {
-      Ok(Value::Integer(value as i64))
+      Ok(Value::Signed(value as i64))
     } else {
       Ok(Value::Unsigned(value))
     }
   }
 
-  fn decode_integer(&mut self, type_code: u8) -> Result<Value> {
+  fn decode_signed_integer(&mut self, type_code: u8) -> Result<Value> {
     let remaining = self.remaining_data();
-    let (size, value) = deserialize_signed_after_type_code(remaining, type_code)
-      .map_err(|e| DeserializationErrorWithOffset::Error(e, self.position))?;
+    let (size, value) = self.map_err(deserialize_signed_after_type_code(remaining, type_code))?;
     self.advance(size);
-    Ok(Value::Integer(value))
+    Ok(Value::Signed(value))
   }
 
   fn decode_array(&mut self) -> Result<Value> {
     let mut elements = Vec::new();
 
-    // Keep reading values until we hit the container end
     loop {
       let remaining = self.remaining_data();
-      if remaining.is_empty() {
-        return Err(DeserializationErrorWithOffset::Error(
-          DeserializationError::UnterminatedContainer,
-          self.position,
-        ));
-      }
-
-      let type_code = peek_type_code(remaining)
-        .map_err(|e| DeserializationErrorWithOffset::Error(e, self.position))?;
+      let type_code = peek_type_code(remaining).map_err(|e| {
+        let err = if e.kind() == DeserializationError::PrematureEnd {
+          DeserializationError::UnterminatedContainer
+        } else {
+          e
+        };
+        self.error_here(err)
+      })?;
 
       if type_code == TypeCode::ContainerEnd as u8 {
         self.advance(1);
@@ -184,18 +171,16 @@ impl<'a> Decoder<'a> {
   fn decode_object(&mut self) -> Result<Value> {
     let mut object = HashMap::new();
 
-    // Keep reading key-value pairs until we hit the container end
     loop {
       let remaining = self.remaining_data();
-      if remaining.is_empty() {
-        return Err(DeserializationErrorWithOffset::Error(
-          DeserializationError::UnterminatedContainer,
-          self.position,
-        ));
-      }
-
-      let type_code = peek_type_code(remaining)
-        .map_err(|e| DeserializationErrorWithOffset::Error(e, self.position))?;
+      let type_code = peek_type_code(remaining).map_err(|e| {
+        let err = if e.kind() == DeserializationError::PrematureEnd {
+          DeserializationError::UnterminatedContainer
+        } else {
+          e
+        };
+        self.error_here(err)
+      })?;
 
       if type_code == TypeCode::ContainerEnd as u8 {
         self.advance(1);
@@ -205,12 +190,7 @@ impl<'a> Decoder<'a> {
       // Decode key (must be a string in JSON-like format)
       let key = match self.decode_value()? {
         Value::String(s) => s,
-        _ => {
-          return Err(DeserializationErrorWithOffset::Error(
-            DeserializationError::NonStringKeyInMap,
-            self.position,
-          ));
-        },
+        _ => return Err(self.error_here(DeserializationError::NonStringKeyInMap)),
       };
 
       // Decode value
@@ -262,7 +242,7 @@ impl Value {
 
   pub fn as_integer(&self) -> deserialize_primitives::Result<i64> {
     match self {
-      Value::Integer(n) => Ok(*n),
+      Value::Signed(n) => Ok(*n),
       _ => Err(DeserializationError::ExpectedSignedInteger),
     }
   }
@@ -326,7 +306,7 @@ impl Value {
   }
 
   pub fn is_integer(&self) -> bool {
-    matches!(self, Value::Integer(_))
+    matches!(self, Value::Signed(_))
   }
 
   pub fn is_unsigned(&self) -> bool {
