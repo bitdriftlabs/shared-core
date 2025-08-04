@@ -133,6 +133,7 @@ fn test_f32_roundtrip() {
 }
 
 #[test]
+#[allow(clippy::float_cmp)]
 fn test_f64_roundtrip() {
   let test_values = [
     0.0f64,
@@ -171,7 +172,7 @@ fn test_short_string_roundtrip() {
     let serialize_size = serialize_string(&mut buffer, test_str).unwrap();
     let (deserialize_size, decoded_str) = deserialize_string(&buffer).unwrap();
     assert_eq!(serialize_size, deserialize_size);
-    assert_eq!(*test_str, decoded_str, "Failed for string: '{}'", test_str);
+    assert_eq!(*test_str, decoded_str, "Failed for string: '{test_str}'");
   }
 }
 
@@ -251,7 +252,7 @@ fn test_string_header_serialization() {
   let short_str = "hello";
   let header_size = serialize_string_header(&mut buffer, short_str).unwrap();
   assert_eq!(header_size, 1);
-  assert_eq!(buffer[0], TypeCode::String as u8 + short_str.len() as u8);
+  assert_eq!(buffer[0], TypeCode::String as u8 + u8::try_from(short_str.len()).unwrap());
 
   // Long string
   let long_str = "This is a very long string that exceeds 15 characters";
@@ -267,11 +268,7 @@ fn test_edge_cases() {
   // Test small positive integers (should use direct encoding)
   for i in 0..=100u64 {
     let serialize_size = serialize_u64(&mut buffer, i).unwrap();
-    assert_eq!(
-      serialize_size, 1,
-      "Small int {} should serialize to 1 byte",
-      i
-    );
+    assert_eq!(serialize_size, 1, "Small int {i} should serialize to 1 byte");
     let (deserialize_size, decoded) = deserialize_unsigned_integer(&buffer).unwrap();
     assert_eq!(serialize_size, deserialize_size);
     assert_eq!(i, decoded);
@@ -281,11 +278,7 @@ fn test_edge_cases() {
   for i in -100..=100i64 {
     let serialize_size = serialize_i64(&mut buffer, i).unwrap();
     if i >= 0 && i <= 100 {
-      assert_eq!(
-        serialize_size, 1,
-        "Small int {} should serialize to 1 byte",
-        i
-      );
+      assert_eq!(serialize_size, 1, "Small int {i} should serialize to 1 byte");
     }
     let (deserialize_size, decoded) = deserialize_signed_integer(&buffer).unwrap();
     assert_eq!(serialize_size, deserialize_size);
@@ -301,10 +294,7 @@ fn test_float_optimization() {
   let value_f64 = 8.125f64;
   let serialize_size = serialize_f64(&mut buffer, value_f64).unwrap();
   // Should serialize as f32 (5 bytes) not f64 (9 bytes)
-  assert!(
-    serialize_size <= 5,
-    "f64 that fits in f32 should optimize to f32 encoding"
-  );
+  assert!(serialize_size <= 5, "f64 that fits in f32 should optimize to f32 encoding");
 
   let (deserialize_size, decoded) = deserialize_f64(&buffer).unwrap();
   assert_eq!(serialize_size, deserialize_size);
