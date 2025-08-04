@@ -64,6 +64,7 @@ impl<'a> Decoder<'a> {
     DeserializationErrorWithOffset::Error(error, self.position)
   }
 
+  #[allow(clippy::cast_possible_wrap)]
   fn decode_value(&mut self) -> Result<Value> {
     let remaining = self.remaining_data();
 
@@ -99,14 +100,14 @@ impl<'a> Decoder<'a> {
     let remaining = self.remaining_data();
     let (size, value) = self.map_err(deserialize_f16_after_type_code(remaining))?;
     self.advance(size);
-    Ok(Value::Float(value as f64))
+    Ok(Value::Float(f64::from(value)))
   }
 
   fn decode_f32(&mut self) -> Result<Value> {
     let remaining = self.remaining_data();
     let (size, value) = self.map_err(deserialize_f32_after_type_code(remaining))?;
     self.advance(size);
-    Ok(Value::Float(value as f64))
+    Ok(Value::Float(f64::from(value)))
   }
 
   fn decode_f64(&mut self) -> Result<Value> {
@@ -138,7 +139,7 @@ impl<'a> Decoder<'a> {
     let remaining = self.remaining_data();
     let (size, value) = self.map_err(deserialize_unsigned_after_type_code(remaining, type_code))?;
     self.advance(size);
-    if value <= i64::MAX as u64 {
+    if i64::try_from(value).is_ok() {
       Ok(Value::Signed(value as i64))
     } else {
       Ok(Value::Unsigned(value))
@@ -197,10 +198,7 @@ impl<'a> Decoder<'a> {
       }
 
       // Decode key (must be a string in JSON-like format)
-      let key = match self.decode_value()? {
-        Value::String(s) => s,
-        _ => return Err(self.error_here(DeserializationError::NonStringKeyInMap)),
-      };
+      let Value::String(key) = self.decode_value()? else { return Err(self.error_here(DeserializationError::NonStringKeyInMap)) };
 
       // Decode value
       let value = self.decode_value()?;
@@ -237,56 +235,56 @@ pub fn decode_multiple_values(data: &[u8]) -> Result<Vec<Value>> {
 impl Value {
   pub fn as_null(&self) -> deserialize_primitives::Result<()> {
     match self {
-      Value::Null => Ok(()),
+      Self::Null => Ok(()),
       _ => Err(DeserializationError::ExpectedNull),
     }
   }
 
   pub fn as_bool(&self) -> deserialize_primitives::Result<bool> {
     match self {
-      Value::Bool(b) => Ok(*b),
+      Self::Bool(b) => Ok(*b),
       _ => Err(DeserializationError::ExpectedBoolean),
     }
   }
 
   pub fn as_integer(&self) -> deserialize_primitives::Result<i64> {
     match self {
-      Value::Signed(n) => Ok(*n),
+      Self::Signed(n) => Ok(*n),
       _ => Err(DeserializationError::ExpectedSignedInteger),
     }
   }
 
   pub fn as_unsigned(&self) -> deserialize_primitives::Result<u64> {
     match self {
-      Value::Unsigned(n) => Ok(*n),
+      Self::Unsigned(n) => Ok(*n),
       _ => Err(DeserializationError::ExpectedUnsignedInteger),
     }
   }
 
   pub fn as_float(&self) -> deserialize_primitives::Result<f64> {
     match self {
-      Value::Float(n) => Ok(*n),
+      Self::Float(n) => Ok(*n),
       _ => Err(DeserializationError::ExpectedFloat),
     }
   }
 
   pub fn as_string(&self) -> deserialize_primitives::Result<&str> {
     match self {
-      Value::String(s) => Ok(s),
+      Self::String(s) => Ok(s),
       _ => Err(DeserializationError::ExpectedString),
     }
   }
 
   pub fn as_array(&self) -> deserialize_primitives::Result<&Vec<Value>> {
     match self {
-      Value::Array(arr) => Ok(arr),
+      Self::Array(arr) => Ok(arr),
       _ => Err(DeserializationError::ExpectedArray),
     }
   }
 
   pub fn as_object(&self) -> deserialize_primitives::Result<&HashMap<String, Value>> {
     match self {
-      Value::Object(obj) => Ok(obj),
+      Self::Object(obj) => Ok(obj),
       _ => Err(DeserializationError::ExpectedMap),
     }
   }
@@ -294,47 +292,47 @@ impl Value {
   // JSON-like accessor methods
   pub fn get(&self, key: &str) -> Option<&Value> {
     match self {
-      Value::Object(obj) => obj.get(key),
+      Self::Object(obj) => obj.get(key),
       _ => None,
     }
   }
 
   pub fn get_index(&self, index: usize) -> Option<&Value> {
     match self {
-      Value::Array(arr) => arr.get(index),
+      Self::Array(arr) => arr.get(index),
       _ => None,
     }
   }
 
   pub fn is_null(&self) -> bool {
-    matches!(self, Value::Null)
+    matches!(self, Self::Null)
   }
 
   pub fn is_bool(&self) -> bool {
-    matches!(self, Value::Bool(_))
+    matches!(self, Self::Bool(_))
   }
 
   pub fn is_integer(&self) -> bool {
-    matches!(self, Value::Signed(_))
+    matches!(self, Self::Signed(_))
   }
 
   pub fn is_unsigned(&self) -> bool {
-    matches!(self, Value::Unsigned(_))
+    matches!(self, Self::Unsigned(_))
   }
 
   pub fn is_float(&self) -> bool {
-    matches!(self, Value::Float(_))
+    matches!(self, Self::Float(_))
   }
 
   pub fn is_string(&self) -> bool {
-    matches!(self, Value::String(_))
+    matches!(self, Self::String(_))
   }
 
   pub fn is_array(&self) -> bool {
-    matches!(self, Value::Array(_))
+    matches!(self, Self::Array(_))
   }
 
   pub fn is_object(&self) -> bool {
-    matches!(self, Value::Object(_))
+    matches!(self, Self::Object(_))
   }
 }
