@@ -72,7 +72,7 @@ pub struct Monitor {
   // them less special.
   out_of_band_enabled_flag: BoolWatch<bd_runtime::runtime::artifact_upload::Enabled>,
 
-  previous_session_id: String,
+  previous_session_id: Option<String>,
 
   report_directory: PathBuf,
   global_state_reader: global_state::Reader,
@@ -85,7 +85,7 @@ impl Monitor {
     sdk_directory: &Path,
     store: Arc<bd_device::Store>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
-    previous_session_id: String,
+    previous_session_id: Option<String>,
   ) -> Self {
     runtime.expect_initialized();
 
@@ -247,7 +247,7 @@ impl Monitor {
             contents,
             state_fields.clone(),
             timestamp,
-            self.previous_session_id.clone(),
+            self.previous_session_id.clone().unwrap_or_default(),
           ) else {
             // TODO(snowp): Should we fall back to passing it via a field at this point?
             log::warn!(

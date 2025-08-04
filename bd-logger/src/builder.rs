@@ -227,8 +227,7 @@ impl LoggerBuilder {
       self
         .params
         .session_strategy
-        .previous_process_session_id()
-        .unwrap_or_default(),
+        .previous_process_session_id(),
     );
 
     let logger = Logger::new(

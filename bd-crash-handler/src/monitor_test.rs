@@ -73,7 +73,7 @@ impl Setup {
       directory.path(),
       store.clone(),
       upload_client.clone(),
-      "previous_session_id".to_string(),
+      Some("previous_session_id".to_string()),
     );
 
     Self {
