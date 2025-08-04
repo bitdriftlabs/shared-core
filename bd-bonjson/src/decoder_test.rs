@@ -97,6 +97,7 @@ fn test_decode_integers() {
 }
 
 #[test]
+#[allow(clippy::cast_possible_wrap)]
 fn test_decode_unsigned() {
   // Small unsigned
   let mut buf = vec![0u8; 10];
