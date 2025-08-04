@@ -48,7 +48,7 @@ pub use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::L
 pub use bd_resource_utilization::Target as ResourceUtilizationTarget;
 pub use bd_session_replay::Target as SessionReplayTarget;
 pub use builder::LoggerBuilder;
-pub use logger::{Block, CaptureSession, Logger, LoggerHandle};
+pub use logger::{Block, CaptureSession, Logger, LoggerHandle, ReportProcessingSession};
 pub use metadata::LogMetadata;
 
 #[cfg(test)]
