@@ -141,10 +141,11 @@ pub fn deserialize_signed_after_type_code(src: &[u8], type_code: u8) -> Result<(
   Ok((byte_count, i64::from_le_bytes(bytes)))
 }
 
+#[allow(clippy::cast_possible_wrap)]
 pub fn deserialize_signed_integer(src: &[u8]) -> Result<(usize, i64)> {
   let (size, type_code) = deserialize_type_code(src)?;
   if type_code <= TypeCode::P100 as u8 || type_code >= TypeCode::N100 as u8 {
-    return Ok((1, type_code as i8 as i64));
+    return Ok((1, i64::from(type_code as i8)));
   }
   if type_code >= TypeCode::Signed as u8 && type_code <= TypeCode::SignedEnd as u8 {
     let (v_size, v) = deserialize_signed_after_type_code(&src[1..], type_code)?;
