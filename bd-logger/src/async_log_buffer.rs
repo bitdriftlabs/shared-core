@@ -149,7 +149,7 @@ impl MemorySized for LogLine {
 pub struct AsyncLogBuffer<R: LogReplay> {
   communication_rx: Receiver<AsyncLogBufferMessage>,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
-  report_processor_rx: mpsc::Receiver<(Monitor, Option<String>)>,
+  report_processor_rx: mpsc::Receiver<(Monitor, Option<String>, bool)>,
   shutdown_trigger_handle: ComponentShutdownTriggerHandle,
 
   session_strategy: Arc<bd_session::Strategy>,
@@ -182,7 +182,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     session_replay_target: Box<dyn bd_session_replay::Target + Send + Sync>,
     events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
     config_update_rx: mpsc::Receiver<ConfigUpdate>,
-    report_processor_rx: mpsc::Receiver<(Monitor, Option<String>)>,
+    report_processor_rx: mpsc::Receiver<(Monitor, Option<String>, bool)>,
     shutdown_trigger_handle: ComponentShutdownTriggerHandle,
     runtime_loader: &Arc<ConfigLoader>,
     network_quality_provider: Arc<dyn NetworkQualityProvider>,
@@ -693,8 +693,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             ).await;
           }
         },
-        Some((crash_monitor, session_id)) = self.report_processor_rx.recv() => {
-          for crash_log in crash_monitor.process_new_reports().await {
+        Some((crash_monitor, session_id, out_of_band)) = self.report_processor_rx.recv() => {
+          for crash_log in crash_monitor.process_new_reports(out_of_band).await {
             let attributes_overrides = session_id.clone().map(|id| {
               LogAttributesOverrides::PreviousRunSessionID(
                   id,

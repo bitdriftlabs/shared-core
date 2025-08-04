@@ -485,7 +485,7 @@ pub struct Logger {
   runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
 
   async_log_buffer_tx: MemoryBoundSender<AsyncLogBufferMessage>,
-  report_processor_tx: Option<Sender<(Monitor, Option<String>)>>,
+  report_processor_tx: Option<Sender<(Monitor, Option<String>, bool)>>,
 
   session_strategy: Arc<bd_session::Strategy>,
   device: Arc<bd_device::Device>,
@@ -499,7 +499,7 @@ pub struct Logger {
 
   sleep_mode_active: watch::Sender<bool>,
 
-  crash_monitor_rx: Option<oneshot::Receiver<Monitor>>,
+  crash_monitor_rx: Option<oneshot::Receiver<(Monitor, bool)>>,
 }
 
 impl Logger {
@@ -508,13 +508,13 @@ impl Logger {
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
     stats_scope: Scope,
     async_log_buffer_tx: MemoryBoundSender<AsyncLogBufferMessage>,
-    report_processor_tx: Sender<(Monitor, Option<String>)>,
+    report_processor_tx: Sender<(Monitor, Option<String>, bool)>,
     session_strategy: Arc<bd_session::Strategy>,
     device: Arc<bd_device::Device>,
     sdk_version: &str,
     store: Arc<bd_key_value::Store>,
     sleep_mode_active: watch::Sender<bool>,
-    crash_monitor_rx: Option<oneshot::Receiver<Monitor>>,
+    crash_monitor_rx: Option<oneshot::Receiver<(Monitor, bool)>>,
   ) -> Self {
     let stats = Stats::new(&stats_scope);
 
@@ -553,7 +553,7 @@ impl Logger {
       anyhow::bail!("crash monitor rx exhausted");
     };
 
-    let crash_monitor = rx.blocking_recv()?;
+    let (crash_monitor, out_of_band) = rx.blocking_recv()?;
 
     if let Some(tx) = self.report_processor_tx.take() {
       let session_id = match session {
@@ -561,7 +561,7 @@ impl Logger {
         ReportProcessingSession::Other(id) => Some(id),
         ReportProcessingSession::PreviousRun => crash_monitor.previous_session_id.clone(),
       };
-      Ok(tx.try_send((crash_monitor, session_id))?)
+      Ok(tx.try_send((crash_monitor, session_id, out_of_band))?)
     } else {
       anyhow::bail!("oneshot report processor already used")
     }

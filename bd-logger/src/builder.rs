@@ -29,7 +29,7 @@ use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
 use bd_internal_logging::NoopLogger;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
-use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
+use bd_runtime::runtime::{self, ConfigLoader, Watch, artifact_upload, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_time::SystemTimeProvider;
 use futures_util::{Future, try_join};
@@ -248,14 +248,19 @@ impl LoggerBuilder {
       );
 
       let crash_monitor = Monitor::new(
-        &runtime_loader,
         &self.params.sdk_directory,
         self.params.store.clone(),
         Arc::new(artifact_client),
         self.params.session_strategy.previous_process_session_id(),
       );
 
-      if crash_monitor_tx.send(crash_monitor).is_err() {
+      let out_of_band = runtime_loader
+        .register_watch::<bool, artifact_upload::Enabled>()
+        .unwrap();
+      if crash_monitor_tx
+        .send((crash_monitor, *out_of_band.read()))
+        .is_err()
+      {
         log::error!("failed to deliver monitor");
       }
 
