@@ -544,6 +544,7 @@ fn test_boundary_values() {
 }
 
 #[test]
+#[allow(clippy::float_cmp)]
 fn test_accessor_methods() {
   // Create test values
   let null_val = Value::Null;
@@ -552,9 +553,7 @@ fn test_accessor_methods() {
   let float_val = Value::Float(3.123);
   let str_val = Value::String("hello".to_string());
 
-  let mut arr = Vec::new();
-  arr.push(Value::Signed(1));
-  arr.push(Value::Signed(2));
+  let arr = vec![Value::Signed(1), Value::Signed(2)];
   let array_val = Value::Array(arr);
 
   let mut map = HashMap::new();
@@ -572,7 +571,7 @@ fn test_accessor_methods() {
 
   // Test as_ methods
   assert!(null_val.as_null().is_ok());
-  assert_eq!(bool_val.as_bool().unwrap(), true);
+  assert!(bool_val.as_bool().unwrap());
   assert_eq!(int_val.as_integer().unwrap(), 42);
   assert_eq!(float_val.as_float().unwrap(), 3.123);
   assert_eq!(str_val.as_string().unwrap(), "hello");
