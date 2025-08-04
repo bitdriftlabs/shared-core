@@ -6,8 +6,8 @@ use crate::type_codes::TypeCode;
 
 #[derive(Debug)]
 pub enum SerializationError {
-    BufferFull,
-    Io,
+  BufferFull,
+  Io,
 }
 pub type Result<T> = std::result::Result<T, SerializationError>;
 
@@ -22,14 +22,14 @@ fn require_bytes(src: &[u8], byte_count: usize) -> Result<()> {
 // Returns: skip bytes, copy bytes, shift amount, unary code
 fn derive_chunk_length_header_data(payload: u64) -> (u8, u8, u8, u8) {
   match payload {
-    0x00 ..= 0x7F => (0, 1, 1, 0x01),
-    0x80 ..= 0x3FFF => (0, 2, 2, 0x02),
-    0x4000 ..= 0x1FFFFF => (0, 3, 3, 0x04),
-    0x200000 ..= 0xFFFFFFF => (0, 4, 4, 0x08),
-    0x10000000 ..= 0x7FFFFFFFF => (0, 5, 5, 0x10),
-    0x800000000 ..= 0x3FFFFFFFFFF => (0, 6, 6, 0x20),
-    0x40000000000 ..= 0x1FFFFFFFFFFFF => (0, 7, 7, 0x40),
-    0x2000000000000 ..= 0xFFFFFFFFFFFFFF => (0, 8, 8, 0x80),
+    0x00..=0x7F => (0, 1, 1, 0x01),
+    0x80..=0x3FFF => (0, 2, 2, 0x02),
+    0x4000..=0x1FFFFF => (0, 3, 3, 0x04),
+    0x200000..=0xFFFFFFF => (0, 4, 4, 0x08),
+    0x10000000..=0x7FFFFFFFF => (0, 5, 5, 0x10),
+    0x800000000..=0x3FFFFFFFFFF => (0, 6, 6, 0x20),
+    0x40000000000..=0x1FFFFFFFFFFFF => (0, 7, 7, 0x40),
+    0x2000000000000..=0xFFFFFFFFFFFFFF => (0, 8, 8, 0x80),
     _ => (1, 8, 0, 0x00),
   }
 }
@@ -42,15 +42,14 @@ fn serialize_chunk_header_unchecked(dst: &mut [u8], length: u64, continuation_bi
   let encoded = (payload << shift_amount) | unary_code as u64;
   let bytes = encoded.to_le_bytes();
   dst[0] = unary_code;
-  dst[skip_bytes as usize .. total_size].copy_from_slice(&bytes[.. copy_bytes as usize]);
+  dst[skip_bytes as usize..total_size].copy_from_slice(&bytes[..copy_bytes as usize]);
   total_size
 }
 
 fn serialize_type_code(dst: &mut [u8], type_code: TypeCode) -> Result<usize> {
-  require_bytes(dst, 1).and_then(|_| {
-    dst[0] = type_code as u8;
-    Ok(1)
-  })
+  require_bytes(dst, 1)?;
+  dst[0] = type_code as u8;
+  Ok(1)
 }
 
 pub fn serialize_array_begin(dst: &mut [u8]) -> Result<usize> {
@@ -66,10 +65,9 @@ pub fn serialize_container_end(dst: &mut [u8]) -> Result<usize> {
 }
 
 fn serialize_small_int(dst: &mut [u8], v: u8) -> Result<usize> {
-  require_bytes(dst, 1).and_then(|_| {
-    dst[0] = v;
-    Ok(1)
-  })
+  require_bytes(dst, 1)?;
+  dst[0] = v;
+  Ok(1)
 }
 
 pub fn serialize_u64(dst: &mut [u8], v: u64) -> Result<usize> {
@@ -91,11 +89,10 @@ pub fn serialize_u64(dst: &mut [u8], v: u64) -> Result<usize> {
   let is_byte_high_bit_set = bytes[index] >> 7;
   let use_signed_form = (!is_byte_high_bit_set) & 1;
   let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | index as u8;
-  require_bytes(dst, total_size).and_then(|_| {
-    dst[0] = type_code;
-    dst[1 .. total_size].copy_from_slice(&bytes[.. payload_size]);
-    Ok(total_size)
-  })
+  require_bytes(dst, total_size)?;
+  dst[0] = type_code;
+  dst[1..total_size].copy_from_slice(&bytes[..payload_size]);
+  Ok(total_size)
 }
 
 pub fn serialize_i64(dst: &mut [u8], v: i64) -> Result<usize> {
@@ -118,22 +115,20 @@ pub fn serialize_i64(dst: &mut [u8], v: i64) -> Result<usize> {
   let is_byte_high_bit_set = bytes[index] >> 7;
   let use_signed_form = (is_negative | !is_byte_high_bit_set) & 1;
   let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | index as u8;
-  require_bytes(dst, total_size).and_then(|_| {
-    dst[0] = type_code;
-    dst[1 .. total_size].copy_from_slice(&bytes[.. payload_size]);
-    Ok(total_size)
-  })
+  require_bytes(dst, total_size)?;
+  dst[0] = type_code;
+  dst[1..total_size].copy_from_slice(&bytes[..payload_size]);
+  Ok(total_size)
 }
 
 fn serialize_f16(dst: &mut [u8], v: f32) -> Result<usize> {
   let bytes = v.to_le_bytes();
   let total_size = 2 + 1;
-  require_bytes(dst, total_size).and_then(|_| {
-    dst[0] = TypeCode::Float16 as u8;
-    dst[1] = bytes[2];
-    dst[2] = bytes[3];
-    return Ok(total_size);
-  })
+  require_bytes(dst, total_size)?;
+  dst[0] = TypeCode::Float16 as u8;
+  dst[1] = bytes[2];
+  dst[2] = bytes[3];
+  Ok(total_size)
 }
 
 pub fn serialize_f32(dst: &mut [u8], v: f32) -> Result<usize> {
@@ -144,11 +139,10 @@ pub fn serialize_f32(dst: &mut [u8], v: f32) -> Result<usize> {
   }
 
   let total_size = 4 + 1;
-  require_bytes(dst, total_size).and_then(|_| {
-    dst[0] = TypeCode::Float32 as u8;
-    dst[1 .. total_size].copy_from_slice(&bytes);
-    Ok(total_size)
-  })
+  require_bytes(dst, total_size)?;
+  dst[0] = TypeCode::Float32 as u8;
+  dst[1..total_size].copy_from_slice(&bytes);
+  Ok(total_size)
 }
 
 pub fn serialize_f64(dst: &mut [u8], v: f64) -> Result<usize> {
@@ -159,30 +153,27 @@ pub fn serialize_f64(dst: &mut [u8], v: f64) -> Result<usize> {
 
   let total_size = 8 + 1;
   let bytes = v.to_le_bytes();
-  require_bytes(dst, total_size).and_then(|_| {
-    dst[0] = TypeCode::Float64 as u8;
-    dst[1 .. bytes.len()+1].copy_from_slice(&bytes);
-    Ok(total_size)
-  })
+  require_bytes(dst, total_size)?;
+  dst[0] = TypeCode::Float64 as u8;
+  dst[1..bytes.len() + 1].copy_from_slice(&bytes);
+  Ok(total_size)
 }
 
 fn serialize_short_string_header(dst: &mut [u8], str: &str) -> Result<usize> {
   let total_size = 1;
-  require_bytes(dst, total_size).and_then(|_| {
-    dst[0] = TypeCode::String as u8 + str.len() as u8;
-    Ok(total_size)
-  })
+  require_bytes(dst, total_size)?;
+  dst[0] = TypeCode::String as u8 + str.len() as u8;
+  Ok(total_size)
 }
 
 fn serialize_long_string_header(dst: &mut [u8], str: &str) -> Result<usize> {
   let mut header: [u8; 9] = [0; 9];
   let header_size = serialize_chunk_header_unchecked(&mut header, str.len() as u64, false);
   let total_size = header_size + 1;
-  require_bytes(dst, total_size).and_then(|_| {
-    dst[0] = TypeCode::LongString as u8;
-    dst[1 .. header_size + 1].copy_from_slice(&header[.. header_size]);
-    Ok(total_size)
-  })
+  require_bytes(dst, total_size)?;
+  dst[0] = TypeCode::LongString as u8;
+  dst[1..header_size + 1].copy_from_slice(&header[..header_size]);
+  Ok(total_size)
 }
 
 pub fn serialize_string_header(dst: &mut [u8], str: &str) -> Result<usize> {
@@ -195,24 +186,21 @@ pub fn serialize_string_header(dst: &mut [u8], str: &str) -> Result<usize> {
 
 fn serialize_string_contents(dst: &mut [u8], v: &str) -> Result<usize> {
   let string_size = v.len();
-  require_bytes(dst, string_size).and_then(|_| {
-    dst[.. string_size].copy_from_slice(v.as_bytes());
-    Ok(string_size)
-  })
+  require_bytes(dst, string_size)?;
+  dst[..string_size].copy_from_slice(v.as_bytes());
+  Ok(string_size)
 }
 
 fn serialize_short_string(dst: &mut [u8], v: &str) -> Result<usize> {
-  serialize_short_string_header(dst, v).and_then(|header_size| {
-    serialize_string_contents(&mut dst[header_size ..], v)
-      .and_then(|string_size| Ok(header_size + string_size))
-  })
+  let header_size = serialize_short_string_header(dst, v)?;
+  serialize_string_contents(&mut dst[header_size..], v)?;
+  Ok(header_size + v.len())
 }
 
 fn serialize_long_string(dst: &mut [u8], v: &str) -> Result<usize> {
-  serialize_long_string_header(dst, v).and_then(|header_size| {
-    serialize_string_contents(&mut dst[header_size ..], v)
-      .and_then(|string_size| Ok(header_size + string_size))
-  })
+  let header_size = serialize_long_string_header(dst, v)?;
+  serialize_string_contents(&mut dst[header_size..], v)?;
+  Ok(header_size + v.len())
 }
 
 pub fn serialize_string(dst: &mut [u8], v: &str) -> Result<usize> {
