@@ -117,13 +117,13 @@ fn test_decode_unsigned() {
   let mut writer = Writer {
     writer: &mut cursor,
   };
-  let large_val = 4_000_000_000_i64;
-  writer.write_unsigned(large_val as u64).unwrap();
+  let large_val = 4_000_000_000;
+  writer.write_unsigned(large_val).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
 
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::Signed(large_val));
+  assert_eq!(value, Value::Signed(large_val as i64));
 
   // Huge unsigned
   let mut buf = vec![0u8; 16];
