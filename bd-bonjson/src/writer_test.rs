@@ -73,7 +73,7 @@ fn writer_does_not_allocate_writing_to_file() {
       writer: &mut buf_writer,
     };
 
-    for _ in 0..100000 {
+    for _ in 0..100_000 {
       // Test all writer methods
       writer.write_null().unwrap();
       writer.write_boolean(true).unwrap();

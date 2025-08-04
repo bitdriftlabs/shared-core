@@ -36,7 +36,7 @@ fn derive_chunk_length_header_data(payload: u64) -> (u8, u8, u8, u8) {
     0x1000_0000..=0x7_FFFF_FFFF => (0, 5, 5, 0x10),
     0x8000_0000..=0x3FF_FFFF_FFFF => (0, 6, 6, 0x20),
     0x4000_0000_0000..=0x1_FFFF_FFFF_FFFF => (0, 7, 7, 0x40),
-    0x2000_0000_000000..=0xFF_FFFF_FFFF_FFFF => (0, 8, 8, 0x80),
+    0x20_0000_0000_0000..=0xFF_FFFF_FFFF_FFFF => (0, 8, 8, 0x80),
     _ => (1, 8, 0, 0x00),
   }
 }
@@ -141,7 +141,7 @@ fn serialize_f16(dst: &mut [u8], v: f32) -> Result<usize> {
 pub fn serialize_f32(dst: &mut [u8], v: f32) -> Result<usize> {
   let bytes = v.to_le_bytes();
   let as_bits = v.to_bits();
-  if (as_bits & 0xffff0000) == as_bits {
+  if (as_bits & 0xffff_0000) == as_bits {
     return serialize_f16(dst, v);
   }
 
