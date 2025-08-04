@@ -102,6 +102,7 @@ pub fn serialize_u64(dst: &mut [u8], v: u64) -> Result<usize> {
   Ok(total_size)
 }
 
+#[allow(clippy::cast_sign_loss)]
 pub fn serialize_i64(dst: &mut [u8], v: i64) -> Result<usize> {
   if v >= i64::from(TypeCode::N100 as i8) && v <= TypeCode::P100 as i64 {
     return serialize_small_int(dst, v as u8);
