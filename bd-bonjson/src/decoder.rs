@@ -16,19 +16,20 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeserializationErrorWithOffset {
+  // An error that occurred during deserialization, with the byte offset in the data where it occurred.
   Error(DeserializationError, usize),
 }
 pub type Result<T> = std::result::Result<T, PartialDecodeResult>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartialDecodeResult {
-  pub value: Value,
+  pub partial_value: Value, // The value decoded so far, which will be incomplete or possibly None.
   pub error: DeserializationErrorWithOffset,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
-  None,
+  None, // Can only be returned when an error occurs.
   Null,
   Bool(bool),
   Float(f64),
@@ -46,7 +47,7 @@ pub struct Decoder<'a> {
 
 fn propagate_error(error: &PartialDecodeResult, value: Value) -> PartialDecodeResult {
   PartialDecodeResult {
-    value,
+    partial_value: value,
     error: error.error,
   }
 }
@@ -75,7 +76,7 @@ impl<'a> Decoder<'a> {
 
   fn error_here(&self, error: DeserializationError, value: Value) -> PartialDecodeResult {
     PartialDecodeResult {
-      value,
+      partial_value: value,
       error: DeserializationErrorWithOffset::Error(error, self.position),
     }
   }
@@ -108,7 +109,9 @@ impl<'a> Decoder<'a> {
       code if code >= TypeCode::Signed as u8 && code <= TypeCode::SignedEnd as u8 => {
         self.decode_signed_integer(code)
       },
-      code if code == TypeCode::LongNumber as u8 => Err(self.error_here(DeserializationError::LongNumberNotSupported, Value::None)),
+      code if code == TypeCode::LongNumber as u8 => {
+        Err(self.error_here(DeserializationError::LongNumberNotSupported, Value::None))
+      },
       _ => Err(self.error_here(DeserializationError::UnexpectedTypeCode, Value::None)),
     }
   }
@@ -194,8 +197,8 @@ impl<'a> Decoder<'a> {
       }
 
       let value = self.decode_value().map_err(|e| {
-        if e.value != Value::None {
-          elements.push(e.value.clone());
+        if e.partial_value != Value::None {
+          elements.push(e.partial_value.clone());
         }
         propagate_error(&e, Value::Array(elements.clone()))
       })?;
@@ -231,8 +234,8 @@ impl<'a> Decoder<'a> {
       };
 
       let value = self.decode_value().map_err(|e| {
-        if e.value != Value::None {
-          object.insert(key.clone(), e.value.clone());
+        if e.partial_value != Value::None {
+          object.insert(key.clone(), e.partial_value.clone());
         }
         propagate_error(&e, Value::Object(object.clone()))
       })?;

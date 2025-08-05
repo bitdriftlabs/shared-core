@@ -8,6 +8,6 @@
 pub mod decoder;
 pub mod writer;
 
-mod type_codes;
 mod deserialize_primitives;
 mod serialize_primitives;
+mod type_codes;
