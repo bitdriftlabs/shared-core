@@ -44,6 +44,13 @@ pub struct Decoder<'a> {
   position: usize,
 }
 
+fn propagate_error(error: PartialDecodeResult, value: Value) -> PartialDecodeResult {
+  PartialDecodeResult {
+    value,
+    error: error.error,
+  }
+}
+
 impl<'a> Decoder<'a> {
   #[must_use]
   pub fn new(data: &'a [u8]) -> Self {
@@ -70,13 +77,6 @@ impl<'a> Decoder<'a> {
     PartialDecodeResult {
       value,
       error: DeserializationErrorWithOffset::Error(error, self.position),
-    }
-  }
-
-  fn propagate_error(&self, error: PartialDecodeResult, value: Value) -> PartialDecodeResult {
-    PartialDecodeResult {
-      value: value,
-      error: error.error,
     }
   }
 

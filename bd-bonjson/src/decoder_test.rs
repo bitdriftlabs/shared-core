@@ -733,7 +733,7 @@ fn test_partial_decode_with_invalid_type_code() {
   buf[pos] = 0x65; // Invalid type code
 
   // Try to decode
-  let result = decode_value(&buf[..pos + 1]);
+  let result = decode_value(&buf[..=pos]);
   assert!(result.is_err());
 
   let err = result.err().unwrap();
