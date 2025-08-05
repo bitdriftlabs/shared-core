@@ -702,22 +702,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               )
             });
             let log = LogLine {
-              log_level: log_level::ERROR,
               log_type: LogType::Lifecycle,
+              log_level: crash_log.log_level,
               message: crash_log.message.clone(),
-              fields: crash_log
-                .fields
-                .iter()
-                .map(|(key, value)| {
-                  (
-                    key.clone(),
-                    AnnotatedLogField {
-                      value: value.clone(),
-                      kind: bd_log_primitives::LogFieldKind::Ootb,
-                    },
-                  )
-                })
-                .collect(),
+              fields: crash_log.fields,
               matching_fields: [].into(),
               attributes_overrides,
               log_processing_completed_tx: None,

@@ -7,7 +7,7 @@
 
 use crate::{Monitor, global_state};
 use bd_device::Store;
-use bd_log_primitives::LogFields;
+use bd_log_primitives::{AnnotatedLogFields, LogFields};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   AppBuildNumber,
   AppBuildNumberArgs,
@@ -90,7 +90,7 @@ impl Setup {
     std::fs::write(crash_directory.join(name), data).unwrap();
   }
 
-  async fn process_new_reports(&self) -> Vec<LogFields> {
+  async fn process_new_reports(&self) -> Vec<AnnotatedLogFields> {
     // Convert to a HashMap<String, String> for easier testing
     // Sort the logs by the first field to make the test deterministic - otherwise this depends on
     // the order of files traversed in the directory.
@@ -104,6 +104,7 @@ impl Setup {
         log
           .fields
           .get("_crash_artifact_id")
+          .map(|f| f.value.clone())
           .unwrap()
           .as_str()
           .unwrap()
@@ -230,20 +231,20 @@ async fn test_log_report_fields() {
   assert_eq!(1, logs.len());
   assert_eq!(
     uuid.to_string(),
-    logs[0]["_crash_artifact_id"].as_str().unwrap()
+    logs[0]["_crash_artifact_id"].value.as_str().unwrap()
   );
-  assert_eq!("BigProb", logs[0]["_app_exit_info"].as_str().unwrap());
+  assert_eq!("BigProb", logs[0]["_app_exit_info"].value.as_str().unwrap());
   assert_eq!(
     "missing meta",
-    logs[0]["_app_exit_details"].as_str().unwrap()
+    logs[0]["_app_exit_details"].value.as_str().unwrap()
   );
   assert_eq!(
     "Native Crash",
-    logs[0]["_app_exit_reason"].as_str().unwrap()
+    logs[0]["_app_exit_reason"].value.as_str().unwrap()
   );
   assert_eq!(
     "BUILT_IN",
-    logs[0]["_fatal_issue_mechanism"].as_str().unwrap()
+    logs[0]["_fatal_issue_mechanism"].value.as_str().unwrap()
   );
 }
 

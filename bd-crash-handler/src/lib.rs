@@ -11,7 +11,15 @@ mod tests;
 
 pub mod global_state;
 
-use bd_log_primitives::{LogFields, LogMessageValue};
+use bd_log_primitives::{
+  AnnotatedLogField,
+  AnnotatedLogFields,
+  LogFieldKind,
+  LogFields,
+  LogLevel,
+  LogMessageValue,
+  log_level,
+};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Platform,
@@ -38,7 +46,8 @@ const REPORTS_DIRECTORY: &str = "reports";
 
 /// A single crash log to be emitted by the crash logger.
 pub struct CrashLog {
-  pub fields: LogFields,
+  pub log_level: LogLevel,
+  pub fields: AnnotatedLogFields,
   pub timestamp: OffsetDateTime,
   pub message: LogMessageValue,
 }
@@ -275,7 +284,19 @@ impl Monitor {
         );
 
         logs.push(CrashLog {
-          fields,
+          log_level: log_level::ERROR,
+          fields: fields
+            .into_iter()
+            .map(|(key, value)| {
+              (
+                key,
+                AnnotatedLogField {
+                  value,
+                  kind: LogFieldKind::Ootb,
+                },
+              )
+            })
+            .collect(),
           timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
           message: "AppExit".into(),
         });
