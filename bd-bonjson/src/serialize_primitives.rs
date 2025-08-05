@@ -79,7 +79,7 @@ fn serialize_small_int(dst: &mut [u8], v: u8) -> Result<usize> {
 
 pub fn serialize_u64(dst: &mut [u8], v: u64) -> Result<usize> {
   if v <= TypeCode::P100 as u64 {
-    return serialize_small_int(dst, (v&0xff) as u8);
+    return serialize_small_int(dst, (v & 0xff) as u8);
   }
 
   let bytes = v.to_le_bytes();

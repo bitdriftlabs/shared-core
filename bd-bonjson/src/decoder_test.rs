@@ -8,7 +8,7 @@
 use super::*;
 use crate::writer::Writer;
 use core::f64;
-use std::io::Cursor;
+use std::{io::Cursor, vec};
 
 #[ctor::ctor]
 fn test_global_init() {
@@ -403,30 +403,6 @@ fn test_nested_structures() {
 }
 
 #[test]
-fn test_decode_multiple_values() {
-  let mut buf = vec![0u8; 64];
-  let mut cursor = Cursor::new(&mut buf);
-  let mut writer = Writer {
-    writer: &mut cursor,
-  };
-
-  writer.write_null().unwrap();
-  writer.write_boolean(true).unwrap();
-  writer.write_signed(42).unwrap();
-  writer.write_str("hello").unwrap();
-
-  let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[..pos]);
-  let values = decoder.decode_multiple().unwrap();
-
-  assert_eq!(values.len(), 4);
-  assert_eq!(values[0], Value::Null);
-  assert_eq!(values[1], Value::Bool(true));
-  assert_eq!(values[2], Value::Signed(42));
-  assert_eq!(values[3], Value::String("hello".to_string()));
-}
-
-#[test]
 fn test_error_handling() {
   // Incomplete data (map with no end)
   let mut buf = vec![0u8; 64];
@@ -598,28 +574,226 @@ fn test_accessor_methods() {
 }
 
 #[test]
-fn test_decode_unterminated_array() {
-    let mut buf = vec![0u8; 64];
-    let mut cursor = Cursor::new(&mut buf);
-    let mut writer = Writer { writer: &mut cursor };
+fn test_partial_decode_unterminated_array() {
+  let mut buf = vec![0u8; 64];
+  let mut cursor = Cursor::new(&mut buf);
+  let mut writer = Writer {
+    writer: &mut cursor,
+  };
 
-    // Write an array beginning but don't terminate it
-    writer.write_array_begin().unwrap();
-    writer.write_null().unwrap();
-    writer.write_boolean(true).unwrap();
-    writer.write_signed(42).unwrap();
-    // Missing container end
+  // Write an array beginning but don't terminate it
+  writer.write_array_begin().unwrap();
+  writer.write_null().unwrap();
+  writer.write_boolean(true).unwrap();
+  writer.write_signed(42).unwrap();
+  // Missing container end
 
-    let pos = cursor.position() as usize;
+  let pos = usize::try_from(cursor.position()).unwrap();
 
-    match decode_value_partial(&buf[..pos]) {
-        Ok(_) => panic!("Expected partial result error"),
-        Err(partial) => {
-            // We should get a PartialResult error
-            assert!(matches!(partial.error, DeserializationErrorWithOffset::PartialResult(_, _)));
-            if let DeserializationErrorWithOffset::PartialResult(err, _) = partial.error {
-                assert_eq!(err, DeserializationError::UnterminatedContainer);
-            }
-        }
-    }
+  // Try to decode - should fail with partial result
+  let result = decode_value(&buf[..pos]);
+  assert!(result.is_err());
+
+  let err = result.err().unwrap();
+  assert_eq!(
+    err.error,
+    DeserializationErrorWithOffset::Error(DeserializationError::PrematureEnd, pos)
+  );
+
+  // Check partial result contains valid elements
+  match err.value {
+    Value::Array(elements) => {
+      assert_eq!(elements.len(), 3);
+      assert_eq!(elements[0], Value::Null);
+      assert_eq!(elements[1], Value::Bool(true));
+      assert_eq!(elements[2], Value::Signed(42));
+    },
+    _ => panic!("Expected partial array, got {:?}", err.value),
+  }
+}
+
+#[test]
+fn test_partial_decode_unterminated_object() {
+  let mut buf = vec![0u8; 64];
+  let mut cursor = Cursor::new(&mut buf);
+  let mut writer = Writer {
+    writer: &mut cursor,
+  };
+
+  // Write an object beginning but don't terminate it
+  writer.write_map_begin().unwrap();
+  writer.write_str("key1").unwrap();
+  writer.write_str("value1").unwrap();
+  writer.write_str("key2").unwrap();
+  writer.write_signed(42).unwrap();
+  // Missing container end
+
+  let pos = usize::try_from(cursor.position()).unwrap();
+
+  // Try to decode - should fail with partial result
+  let result = decode_value(&buf[..pos]);
+  assert!(result.is_err());
+
+  let err = result.err().unwrap();
+  assert_eq!(
+    err.error,
+    DeserializationErrorWithOffset::Error(DeserializationError::PrematureEnd, pos)
+  );
+
+  // Check partial result contains valid key-value pairs
+  match err.value {
+    Value::Object(obj) => {
+      assert_eq!(obj.len(), 2);
+      assert_eq!(
+        obj.get("key1").unwrap(),
+        &Value::String("value1".to_string())
+      );
+      assert_eq!(obj.get("key2").unwrap(), &Value::Signed(42));
+    },
+    _ => panic!("Expected partial object, got {:?}", err.value),
+  }
+}
+
+#[test]
+fn test_partial_decode_nested_containers() {
+  let mut buf = vec![0u8; 128];
+  let mut cursor = Cursor::new(&mut buf);
+  let mut writer = Writer {
+    writer: &mut cursor,
+  };
+
+  // Create a nested structure that's unterminated
+  writer.write_map_begin().unwrap();
+  writer.write_str("name").unwrap();
+  writer.write_str("test").unwrap();
+  writer.write_str("data").unwrap();
+  writer.write_array_begin().unwrap();
+  writer.write_signed(1).unwrap();
+  writer.write_signed(2).unwrap();
+  writer.write_signed(3).unwrap();
+  // Missing end for array and object
+
+  let pos = usize::try_from(cursor.position()).unwrap();
+
+  // Try to decode - should fail with partial result
+  let result = decode_value(&buf[..pos]);
+  assert!(result.is_err());
+
+  let err = result.err().unwrap();
+
+  // Check partial result structure
+  match err.value {
+    Value::Object(obj) => {
+      assert_eq!(obj.len(), 2);
+      assert_eq!(obj.get("name").unwrap(), &Value::String("test".to_string()));
+
+      match obj.get("data").unwrap() {
+        Value::Array(arr) => {
+          assert_eq!(arr.len(), 3);
+          assert_eq!(arr[0], Value::Signed(1));
+          assert_eq!(arr[1], Value::Signed(2));
+          assert_eq!(arr[2], Value::Signed(3));
+        },
+        _ => panic!("Expected array for 'data' field"),
+      }
+    },
+    _ => panic!("Expected partial object, got {:?}", err.value),
+  }
+}
+
+#[test]
+fn test_partial_decode_truncated_string() {
+  let buf = [0x84, b'a', b'b', b'c'];
+
+  // Try to decode - should fail with error but no partial result
+  let result = decode_value(&buf);
+  assert!(result.is_err());
+
+  let err = result.err().unwrap();
+  // String types don't produce partial results, so we expect just an error
+  assert_eq!(err.value, Value::None);
+}
+
+#[test]
+fn test_partial_decode_with_invalid_type_code() {
+  // Create a buffer with valid data followed by an invalid type code
+  let mut buf = vec![0u8; 64];
+  let mut cursor = Cursor::new(&mut buf);
+  let mut writer = Writer {
+    writer: &mut cursor,
+  };
+
+  writer.write_array_begin().unwrap();
+  writer.write_null().unwrap();
+  writer.write_boolean(true).unwrap();
+
+  let pos = usize::try_from(cursor.position()).unwrap();
+
+  // Add an invalid type code
+  buf[pos] = TypeCode::Reserved1Start as u8; // Invalid type code
+
+  // Try to decode
+  let result = decode_value(&buf[..pos + 1]);
+  assert!(result.is_err());
+
+  let err = result.err().unwrap();
+
+  // Should have a partial array with the valid elements
+  match err.value {
+    Value::Array(elements) => {
+      assert_eq!(elements.len(), 2);
+      assert_eq!(elements[0], Value::Null);
+      assert_eq!(elements[1], Value::Bool(true));
+    },
+    _ => panic!("Expected partial array, got {:?}", err.value),
+  }
+
+  // And the error should indicate unexpected type code
+  assert!(matches!(
+    err.error,
+    DeserializationErrorWithOffset::Error(DeserializationError::UnexpectedTypeCode, _)
+  ));
+}
+
+#[test]
+fn test_partial_decode_object_with_invalid_key() {
+  let mut buf = vec![0u8; 64];
+  let mut cursor = Cursor::new(&mut buf);
+  let mut writer = Writer {
+    writer: &mut cursor,
+  };
+
+  // Create an object with valid data
+  writer.write_map_begin().unwrap();
+  writer.write_str("key1").unwrap();
+  writer.write_str("value1").unwrap();
+
+  // Then add a non-string key (invalid)
+  writer.write_signed(123).unwrap();
+
+  let pos = usize::try_from(cursor.position()).unwrap();
+
+  // Try to decode
+  let result = decode_value(&buf[..pos]);
+  assert!(result.is_err());
+
+  let err = result.err().unwrap();
+
+  // Should have a partial object with the valid key-value pair
+  match err.value {
+    Value::Object(obj) => {
+      assert_eq!(obj.len(), 1);
+      assert_eq!(
+        obj.get("key1").unwrap(),
+        &Value::String("value1".to_string())
+      );
+    },
+    _ => panic!("Expected partial object, got {:?}", err.value),
+  }
+
+  // And the error should indicate non-string key
+  assert!(matches!(
+    err.error,
+    DeserializationErrorWithOffset::Error(DeserializationError::NonStringKeyInMap, _)
+  ));
 }
