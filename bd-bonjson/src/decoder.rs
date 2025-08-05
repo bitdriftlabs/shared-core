@@ -44,7 +44,7 @@ pub struct Decoder<'a> {
   position: usize,
 }
 
-fn propagate_error(error: PartialDecodeResult, value: Value) -> PartialDecodeResult {
+fn propagate_error(error: &PartialDecodeResult, value: Value) -> PartialDecodeResult {
   PartialDecodeResult {
     value,
     error: error.error,
@@ -197,7 +197,7 @@ impl<'a> Decoder<'a> {
         if e.value != Value::None {
           elements.push(e.value.clone());
         }
-        propagate_error(e, Value::Array(elements.clone()))
+        propagate_error(&e, Value::Array(elements.clone()))
       })?;
 
       elements.push(value);
@@ -227,14 +227,14 @@ impl<'a> Decoder<'a> {
             Value::Object(object.clone()),
           ));
         },
-        Err(e) => return Err(propagate_error(e, Value::Object(object.clone()))),
+        Err(e) => return Err(propagate_error(&e, Value::Object(object.clone()))),
       };
 
       let value = self.decode_value().map_err(|e| {
         if e.value != Value::None {
           object.insert(key.clone(), e.value.clone());
         }
-        propagate_error(e, Value::Object(object.clone()))
+        propagate_error(&e, Value::Object(object.clone()))
       })?;
 
       object.insert(key, value);
