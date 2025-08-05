@@ -596,3 +596,30 @@ fn test_accessor_methods() {
     &Value::String("value".to_string())
   );
 }
+
+#[test]
+fn test_decode_unterminated_array() {
+    let mut buf = vec![0u8; 64];
+    let mut cursor = Cursor::new(&mut buf);
+    let mut writer = Writer { writer: &mut cursor };
+
+    // Write an array beginning but don't terminate it
+    writer.write_array_begin().unwrap();
+    writer.write_null().unwrap();
+    writer.write_boolean(true).unwrap();
+    writer.write_signed(42).unwrap();
+    // Missing container end
+
+    let pos = cursor.position() as usize;
+
+    match decode_value_partial(&buf[..pos]) {
+        Ok(_) => panic!("Expected partial result error"),
+        Err(partial) => {
+            // We should get a PartialResult error
+            assert!(matches!(partial.error, DeserializationErrorWithOffset::PartialResult(_, _)));
+            if let DeserializationErrorWithOffset::PartialResult(err, _) = partial.error {
+                assert_eq!(err, DeserializationError::UnterminatedContainer);
+            }
+        }
+    }
+}

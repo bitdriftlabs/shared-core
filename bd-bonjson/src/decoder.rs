@@ -17,8 +17,14 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeserializationErrorWithOffset {
   Error(DeserializationError, usize),
+  PartialResult(DeserializationError, usize),
 }
 pub type Result<T> = std::result::Result<T, DeserializationErrorWithOffset>;
+
+pub struct PartialDecodeResult<T> {
+  pub value: T,
+  pub error: DeserializationErrorWithOffset,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -46,6 +52,22 @@ impl<'a> Decoder<'a> {
 
   pub fn decode(&mut self) -> Result<Value> {
     self.decode_value()
+  }
+
+  pub fn decode_partial(&mut self) -> std::result::Result<Value, PartialDecodeResult<Value>> {
+    match self.decode_value() {
+        Ok(value) => Ok(value),
+        Err(DeserializationErrorWithOffset::PartialResult(err, pos)) => {
+            Err(PartialDecodeResult {
+                value: Value::Null, // This will be replaced with actual partial data
+                error: DeserializationErrorWithOffset::PartialResult(err, pos),
+            })
+        }
+        Err(e) => Err(PartialDecodeResult {
+            value: Value::Null,
+            error: e,
+        }),
+    }
   }
 
   fn remaining_data(&self) -> &[u8] {
@@ -158,22 +180,35 @@ impl<'a> Decoder<'a> {
     let mut elements = Vec::new();
 
     loop {
-      let remaining = self.remaining_data();
-      let type_code = peek_type_code(remaining).map_err(|e| {
-        let err = if e.kind() == DeserializationError::PrematureEnd {
-          DeserializationError::UnterminatedContainer
-        } else {
-          e
+        let remaining = self.remaining_data();
+        let type_code = match peek_type_code(remaining) {
+            Ok(code) => code,
+            Err(e) => {
+                if e.kind() == DeserializationError::PrematureEnd {
+                    // Return the partial array with the elements we've collected so far
+                    return Err(DeserializationErrorWithOffset::PartialResult(
+                        DeserializationError::UnterminatedContainer,
+                        self.position,
+                    ));
+                } else {
+                    return Err(self.error_here(e));
+                }
+            }
         };
-        self.error_here(err)
-      })?;
 
-      if type_code == TypeCode::ContainerEnd as u8 {
-        self.advance(1);
-        break;
-      }
+        if type_code == TypeCode::ContainerEnd as u8 {
+            self.advance(1);
+            break;
+        }
 
-      elements.push(self.decode_value()?);
+        match self.decode_value() {
+            Ok(value) => elements.push(value),
+            Err(DeserializationErrorWithOffset::PartialResult(err, pos)) => {
+                // We have a partial result from a nested container
+                return Err(DeserializationErrorWithOffset::PartialResult(err, pos));
+            }
+            Err(e) => return Err(e),
+        }
     }
 
     Ok(Value::Array(elements))
@@ -183,28 +218,49 @@ impl<'a> Decoder<'a> {
     let mut object = HashMap::new();
 
     loop {
-      let remaining = self.remaining_data();
-      let type_code = peek_type_code(remaining).map_err(|e| {
-        let err = if e.kind() == DeserializationError::PrematureEnd {
-          DeserializationError::UnterminatedContainer
-        } else {
-          e
+        let remaining = self.remaining_data();
+        let type_code = match peek_type_code(remaining) {
+            Ok(code) => code,
+            Err(e) => {
+                if e.kind() == DeserializationError::PrematureEnd {
+                    // Return the partial object with the entries we've collected so far
+                    return Err(DeserializationErrorWithOffset::PartialResult(
+                        DeserializationError::UnterminatedContainer,
+                        self.position,
+                    ));
+                } else {
+                    return Err(self.error_here(e));
+                }
+            }
         };
-        self.error_here(err)
-      })?;
 
-      if type_code == TypeCode::ContainerEnd as u8 {
-        self.advance(1);
-        break;
-      }
+        if type_code == TypeCode::ContainerEnd as u8 {
+            self.advance(1);
+            break;
+        }
 
-      // Decode key (must be a string in JSON-like format)
-      let Value::String(key) = self.decode_value()? else { return Err(self.error_here(DeserializationError::NonStringKeyInMap)) };
+        // Decode key (must be a string in JSON-like format)
+        let key = match self.decode_value() {
+            Ok(Value::String(key)) => key,
+            Ok(_) => return Err(self.error_here(DeserializationError::NonStringKeyInMap)),
+            Err(DeserializationErrorWithOffset::PartialResult(err, pos)) => {
+                // We have a partial result from a nested container
+                return Err(DeserializationErrorWithOffset::PartialResult(err, pos));
+            }
+            Err(e) => return Err(e),
+        };
 
-      // Decode value
-      let value = self.decode_value()?;
+        // Decode value
+        let value = match self.decode_value() {
+            Ok(value) => value,
+            Err(DeserializationErrorWithOffset::PartialResult(err, pos)) => {
+                // We have a partial result from a nested container
+                return Err(DeserializationErrorWithOffset::PartialResult(err, pos));
+            }
+            Err(e) => return Err(e),
+        };
 
-      object.insert(key, value);
+        object.insert(key, value);
     }
 
     Ok(Value::Object(object))
@@ -225,6 +281,11 @@ impl<'a> Decoder<'a> {
 pub fn decode_value(data: &[u8]) -> Result<Value> {
   let mut decoder = Decoder::new(data);
   decoder.decode()
+}
+
+pub fn decode_value_partial(data: &[u8]) -> std::result::Result<Value, PartialDecodeResult<Value>> {
+    let mut decoder = Decoder::new(data);
+    decoder.decode_partial()
 }
 
 pub fn decode_multiple_values(data: &[u8]) -> Result<Vec<Value>> {
