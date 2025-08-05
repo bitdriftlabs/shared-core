@@ -218,7 +218,7 @@ impl<'a> Decoder<'a> {
         break;
       }
 
-      // Decode key (must be a string in JSON-like format)
+      // Key must be a string to match JSON rules.
       let key = match self.decode_value() {
         Ok(Value::String(key)) => key,
         Ok(_) => {
@@ -230,7 +230,6 @@ impl<'a> Decoder<'a> {
         Err(e) => return Err(self.propagate_error(e, Value::Object(object.clone()))),
       };
 
-      // Decode value
       let value = self.decode_value().map_err(|e| {
         if e.value != Value::None {
           object.insert(key.clone(), e.value.clone());
