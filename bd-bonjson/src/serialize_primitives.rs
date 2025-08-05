@@ -5,10 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(test)]
-#[path = "./primitives_test.rs"]
-mod primitives_test;
-
 use crate::type_codes::TypeCode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -192,33 +188,6 @@ pub fn serialize_string_header(dst: &mut [u8], str: &str) -> Result<usize> {
     serialize_short_string_header(dst, str)
   } else {
     serialize_long_string_header(dst, str)
-  }
-}
-
-fn serialize_string_contents(dst: &mut [u8], v: &str) -> Result<usize> {
-  let string_size = v.len();
-  require_bytes(dst, string_size)?;
-  dst[..string_size].copy_from_slice(v.as_bytes());
-  Ok(string_size)
-}
-
-fn serialize_short_string(dst: &mut [u8], v: &str) -> Result<usize> {
-  let header_size = serialize_short_string_header(dst, v)?;
-  serialize_string_contents(&mut dst[header_size..], v)?;
-  Ok(header_size + v.len())
-}
-
-fn serialize_long_string(dst: &mut [u8], v: &str) -> Result<usize> {
-  let header_size = serialize_long_string_header(dst, v)?;
-  serialize_string_contents(&mut dst[header_size..], v)?;
-  Ok(header_size + v.len())
-}
-
-pub fn serialize_string(dst: &mut [u8], v: &str) -> Result<usize> {
-  if v.len() <= 15 {
-    serialize_short_string(dst, v)
-  } else {
-    serialize_long_string(dst, v)
   }
 }
 

@@ -108,6 +108,7 @@ impl<'a> Decoder<'a> {
       code if code >= TypeCode::Signed as u8 && code <= TypeCode::SignedEnd as u8 => {
         self.decode_signed_integer(code)
       },
+      code if code == TypeCode::LongNumber as u8 => Err(self.error_here(DeserializationError::LongNumberNotSupported, Value::None)),
       _ => Err(self.error_here(DeserializationError::UnexpectedTypeCode, Value::None)),
     }
   }

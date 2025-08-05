@@ -730,7 +730,7 @@ fn test_partial_decode_with_invalid_type_code() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   // Add an invalid type code
-  buf[pos] = TypeCode::Reserved1Start as u8; // Invalid type code
+  buf[pos] = 0x65; // Invalid type code
 
   // Try to decode
   let result = decode_value(&buf[..pos + 1]);

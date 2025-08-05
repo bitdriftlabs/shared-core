@@ -9,21 +9,21 @@ use crate::type_codes::TypeCode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeserializationError {
-  PrematureEnd,
-  InvalidUTF8,
-  UnexpectedTypeCode,
-  ExpectedNull,
-  ExpectedBoolean,
-  ExpectedUnsignedInteger,
-  ExpectedSignedInteger,
-  ExpectedFloat32,
-  ExpectedFloat,
-  ExpectedString,
+  ContinuationBitNotSupported,
   ExpectedArray,
+  ExpectedBoolean,
+  ExpectedFloat,
+  ExpectedFloat32,
   ExpectedMap,
-  UnexpectedContinuationBit,
-  UnterminatedContainer,
+  ExpectedNull,
+  ExpectedSignedInteger,
+  ExpectedString,
+  ExpectedUnsignedInteger,
+  InvalidUTF8,
+  LongNumberNotSupported,
   NonStringKeyInMap,
+  PrematureEnd,
+  UnexpectedTypeCode,
 }
 
 impl DeserializationError {
@@ -59,15 +59,6 @@ fn deserialize_string_contents(src: &[u8], size: usize) -> Result<(usize, &str)>
   Ok((size, string))
 }
 
-fn deserialize_specific_type_code(src: &[u8], expected_type_code: TypeCode) -> Result<usize> {
-  let (size, type_code) = deserialize_type_code(src)?;
-  if type_code == expected_type_code as u8 {
-    Ok(size)
-  } else {
-    Err(DeserializationError::UnexpectedTypeCode)
-  }
-}
-
 pub fn peek_type_code(src: &[u8]) -> Result<u8> {
   let (_, type_code) = deserialize_byte(src)?;
   Ok(type_code)
@@ -77,59 +68,11 @@ pub fn deserialize_type_code(src: &[u8]) -> Result<(usize, u8)> {
   deserialize_byte(src)
 }
 
-pub fn deserialize_null(src: &[u8]) -> Result<usize> {
-  deserialize_specific_type_code(src, TypeCode::Null)
-}
-
-pub fn deserialize_array_start(src: &[u8]) -> Result<usize> {
-  deserialize_specific_type_code(src, TypeCode::ArrayStart)
-}
-
-pub fn deserialize_map_start(src: &[u8]) -> Result<usize> {
-  deserialize_specific_type_code(src, TypeCode::MapStart)
-}
-
-pub fn deserialize_container_end(src: &[u8]) -> Result<usize> {
-  deserialize_specific_type_code(src, TypeCode::ContainerEnd)
-}
-
-pub fn deserialize_bool(src: &[u8]) -> Result<(usize, bool)> {
-  let (size, type_code) = deserialize_type_code(src)?;
-  if type_code == TypeCode::True as u8 {
-    Ok((size, true))
-  } else if type_code == TypeCode::False as u8 {
-    Ok((size, false))
-  } else {
-    Err(DeserializationError::ExpectedBoolean)
-  }
-}
-
 pub fn deserialize_unsigned_after_type_code(src: &[u8], type_code: u8) -> Result<(usize, u64)> {
   let byte_count = ((type_code & 7) + 1) as usize;
   let mut bytes: [u8; 8] = [0; 8];
   copy_bytes_to(src, &mut bytes, byte_count)?;
   Ok((byte_count, u64::from_le_bytes(bytes)))
-}
-
-#[allow(clippy::cast_sign_loss)]
-pub fn deserialize_unsigned_integer(src: &[u8]) -> Result<(usize, u64)> {
-  let (size, type_code) = deserialize_type_code(src)?;
-  if type_code <= TypeCode::P100 as u8 {
-    return Ok((1, u64::from(type_code)));
-  }
-  if type_code >= TypeCode::Unsigned as u8 && type_code <= TypeCode::UnsignedEnd as u8 {
-    let (v_size, v) = deserialize_unsigned_after_type_code(&src[1..], type_code)?;
-    Ok((size + v_size, v))
-  } else if type_code >= TypeCode::Signed as u8 && type_code <= TypeCode::SignedEnd as u8 {
-    let (v_size, v) = deserialize_signed_after_type_code(&src[1..], type_code)?;
-    if v < 0 {
-      Err(DeserializationError::ExpectedUnsignedInteger)
-    } else {
-      Ok((size + v_size, v as u64))
-    }
-  } else {
-    Err(DeserializationError::ExpectedUnsignedInteger)
-  }
 }
 
 pub fn deserialize_signed_after_type_code(src: &[u8], type_code: u8) -> Result<(usize, i64)> {
@@ -139,27 +82,6 @@ pub fn deserialize_signed_after_type_code(src: &[u8], type_code: u8) -> Result<(
   let mut bytes: [u8; 8] = [is_negative * 0xff; 8];
   bytes[..byte_count].copy_from_slice(&src[..byte_count]);
   Ok((byte_count, i64::from_le_bytes(bytes)))
-}
-
-#[allow(clippy::cast_possible_wrap)]
-pub fn deserialize_signed_integer(src: &[u8]) -> Result<(usize, i64)> {
-  let (size, type_code) = deserialize_type_code(src)?;
-  if type_code <= TypeCode::P100 as u8 || type_code >= TypeCode::N100 as u8 {
-    return Ok((1, i64::from(type_code as i8)));
-  }
-  if type_code >= TypeCode::Signed as u8 && type_code <= TypeCode::SignedEnd as u8 {
-    let (v_size, v) = deserialize_signed_after_type_code(&src[1..], type_code)?;
-    Ok((size + v_size, v))
-  } else if type_code >= TypeCode::Unsigned as u8 && type_code <= TypeCode::UnsignedEnd as u8 {
-    let (v_size, v) = deserialize_unsigned_after_type_code(&src[1..], type_code)?;
-    if v > i64::MAX as u64 {
-      Err(DeserializationError::ExpectedSignedInteger)
-    } else {
-      Ok((size + v_size, v as i64))
-    }
-  } else {
-    Err(DeserializationError::ExpectedSignedInteger)
-  }
 }
 
 pub fn deserialize_f16_after_type_code(src: &[u8]) -> Result<(usize, f32)> {
@@ -179,35 +101,6 @@ pub fn deserialize_f64_after_type_code(src: &[u8]) -> Result<(usize, f64)> {
   let mut bytes: [u8; 8] = [0; 8];
   copy_bytes_to(src, &mut bytes, 8)?;
   Ok((8, f64::from_le_bytes(bytes)))
-}
-
-pub fn deserialize_f32(src: &[u8]) -> Result<(usize, f32)> {
-  let (size, type_code) = deserialize_type_code(src)?;
-  if type_code == TypeCode::Float16 as u8 {
-    let (v_size, v) = deserialize_f16_after_type_code(&src[1..])?;
-    Ok((size + v_size, v))
-  } else if type_code == TypeCode::Float32 as u8 {
-    let (v_size, v) = deserialize_f32_after_type_code(&src[1..])?;
-    Ok((size + v_size, v))
-  } else {
-    Err(DeserializationError::ExpectedFloat32)
-  }
-}
-
-pub fn deserialize_f64(src: &[u8]) -> Result<(usize, f64)> {
-  let (size, type_code) = deserialize_type_code(src)?;
-  if type_code == TypeCode::Float16 as u8 {
-    let (v_size, v) = deserialize_f16_after_type_code(&src[1..])?;
-    Ok((size + v_size, f64::from(v)))
-  } else if type_code == TypeCode::Float32 as u8 {
-    let (v_size, v) = deserialize_f32_after_type_code(&src[1..])?;
-    Ok((size + v_size, f64::from(v)))
-  } else if type_code == TypeCode::Float64 as u8 {
-    let (v_size, v) = deserialize_f64_after_type_code(&src[1..])?;
-    Ok((size + v_size, v))
-  } else {
-    Err(DeserializationError::ExpectedFloat)
-  }
 }
 
 pub fn deserialize_short_string_after_type_code(
@@ -264,23 +157,10 @@ pub fn deserialize_long_string_after_type_code(src: &[u8]) -> Result<(usize, &st
   let (header_size, chunk_size, continuation_bit) = deserialize_chunk_header(src)?;
   if continuation_bit {
     // Note: Deliberately not supporting chunked strings since we don't use them.
-    return Err(DeserializationError::UnexpectedContinuationBit);
+    return Err(DeserializationError::ContinuationBitNotSupported);
   }
   let current = &src[header_size..];
   require_bytes(current, chunk_size)?;
   let (v_size, v) = deserialize_string_contents(current, chunk_size)?;
   Ok((header_size + v_size, v))
-}
-
-pub fn deserialize_string(src: &[u8]) -> Result<(usize, &str)> {
-  let (size, type_code) = deserialize_type_code(src)?;
-  if type_code >= TypeCode::String as u8 && type_code <= TypeCode::StringEnd as u8 {
-    let (v_size, v) = deserialize_short_string_after_type_code(&src[1..], type_code)?;
-    Ok((size + v_size, v))
-  } else if type_code == TypeCode::LongString as u8 {
-    let (v_size, v) = deserialize_long_string_after_type_code(&src[1..])?;
-    Ok((size + v_size, v))
-  } else {
-    Err(DeserializationError::ExpectedString)
-  }
 }
