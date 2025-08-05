@@ -471,6 +471,14 @@ pub struct InitParams {
   pub start_in_sleep_mode: bool,
 }
 
+pub struct ReportProcessingRequest {
+  /// Monitor for processing files
+  pub crash_monitor: Monitor,
+
+  /// Session ID to use in reports, or None to use the current session
+  pub session_id_override: Option<String>,
+}
+
 /// A single logger instance. This manages the lifetime of the logger and can be used to access
 /// other components of the logger. Logging itself happens via the thread local logger, see
 /// `write_log`.
@@ -485,7 +493,7 @@ pub struct Logger {
   runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
 
   async_log_buffer_tx: MemoryBoundSender<AsyncLogBufferMessage>,
-  report_processor_tx: Option<Sender<(Monitor, Option<String>, bool)>>,
+  report_processor_tx: Sender<ReportProcessingRequest>,
 
   session_strategy: Arc<bd_session::Strategy>,
   device: Arc<bd_device::Device>,
@@ -499,7 +507,9 @@ pub struct Logger {
 
   sleep_mode_active: watch::Sender<bool>,
 
-  crash_monitor_rx: Option<oneshot::Receiver<(Monitor, bool)>>,
+  // Channel for receiving a processor for crash reports, once runtime config
+  // loading is completed
+  crash_monitor_rx: Option<oneshot::Receiver<Monitor>>,
 }
 
 impl Logger {
@@ -508,13 +518,13 @@ impl Logger {
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
     stats_scope: Scope,
     async_log_buffer_tx: MemoryBoundSender<AsyncLogBufferMessage>,
-    report_processor_tx: Sender<(Monitor, Option<String>, bool)>,
+    report_processor_tx: Sender<ReportProcessingRequest>,
     session_strategy: Arc<bd_session::Strategy>,
     device: Arc<bd_device::Device>,
     sdk_version: &str,
     store: Arc<bd_key_value::Store>,
     sleep_mode_active: watch::Sender<bool>,
-    crash_monitor_rx: Option<oneshot::Receiver<(Monitor, bool)>>,
+    crash_monitor_rx: Option<oneshot::Receiver<Monitor>>,
   ) -> Self {
     let stats = Stats::new(&stats_scope);
 
@@ -528,7 +538,7 @@ impl Logger {
       sdk_version: sdk_version.to_string(),
       runtime_loader,
       async_log_buffer_tx,
-      report_processor_tx: Some(report_processor_tx),
+      report_processor_tx,
       stats,
       stats_scope,
       store,
@@ -548,23 +558,34 @@ impl Logger {
     Ok(buffer_directory)
   }
 
+  /// Handler for platform-level code to indicate that platform-specific
+  /// processing is done and the artifacts are ready for dispatch and logging.
+  /// The `session` parameter is used to determine which session ID is used for
+  /// the logs, depending on whether the crash occurred in the current or prior
+  /// session.
+  ///
+  /// This function is **blocking** for whichever thread calls it while the
+  /// crash monitor is constructed (early in the launch cycle) and logs are
+  /// dispatched. Subsequent calls to this function currently have no effect.
   pub fn process_crash_reports(&mut self, session: ReportProcessingSession) -> anyhow::Result<()> {
     let Some(rx) = self.crash_monitor_rx.take() else {
+      // TODO(delisa): converting this function to support multiple invocations
+      // in the future is mostly trivial and only dependent on storing the crash
+      // monitor and updating the processor tx to accept a reference
       anyhow::bail!("crash monitor rx exhausted");
     };
 
-    let (crash_monitor, out_of_band) = rx.blocking_recv()?;
+    let crash_monitor = rx.blocking_recv()?;
 
-    if let Some(tx) = self.report_processor_tx.take() {
-      let session_id = match session {
-        ReportProcessingSession::Current => None,
-        ReportProcessingSession::Other(id) => Some(id),
-        ReportProcessingSession::PreviousRun => crash_monitor.previous_session_id.clone(),
-      };
-      Ok(tx.try_send((crash_monitor, session_id, out_of_band))?)
-    } else {
-      anyhow::bail!("oneshot report processor already used")
-    }
+    let session_id_override = match session {
+      ReportProcessingSession::Current => None,
+      ReportProcessingSession::Other(id) => Some(id),
+      ReportProcessingSession::PreviousRun => crash_monitor.previous_session_id.clone(),
+    };
+    Ok(self.report_processor_tx.try_send(ReportProcessingRequest {
+      crash_monitor,
+      session_id_override,
+    })?)
   }
 
   pub fn shutdown(&self, blocking: bool) {

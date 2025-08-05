@@ -69,6 +69,7 @@ impl Setup {
     let upload_client = Arc::new(bd_artifact_upload::MockClient::default());
 
     let monitor = Monitor::new(
+      true,
       directory.path(),
       store.clone(),
       upload_client.clone(),
@@ -97,7 +98,7 @@ impl Setup {
 
     self
       .monitor
-      .process_new_reports(true)
+      .process_new_reports()
       .await
       .into_iter()
       .sorted_by_key(|log| {

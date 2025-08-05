@@ -247,20 +247,24 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
       );
 
+      let out_of_band_enabled_flag = runtime_loader
+        .register_watch::<bool, artifact_upload::Enabled>()
+        .unwrap();
+
       let crash_monitor = Monitor::new(
+        *out_of_band_enabled_flag.read(),
         &self.params.sdk_directory,
         self.params.store.clone(),
         Arc::new(artifact_client),
         self.params.session_strategy.previous_process_session_id(),
       );
 
-      let out_of_band = runtime_loader
-        .register_watch::<bool, artifact_upload::Enabled>()
-        .unwrap();
-      if crash_monitor_tx
-        .send((crash_monitor, *out_of_band.read()))
-        .is_err()
-      {
+      // Building the crash monitor requires artifact uploader and knowing
+      // whether to send artifacts out-of-band, both of which are dependent on
+      // awaiting loading the config in runtime. This is why the monitor is
+      // then passed to the logger (constructed outside of this future) via a
+      // channel rather than directly.
+      if crash_monitor_tx.send(crash_monitor).is_err() {
         log::error!("failed to deliver monitor");
       }
 
