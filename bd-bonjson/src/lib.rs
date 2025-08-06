@@ -7,6 +7,7 @@
 
 pub mod decoder;
 pub mod writer;
+pub mod ffi;
 
 mod deserialize_primitives;
 mod serialize_primitives;

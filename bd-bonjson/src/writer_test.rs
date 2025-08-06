@@ -23,9 +23,9 @@ fn writer_does_not_allocate() {
 }
 
 fn writer_does_not_allocate_using_buff_size(buff_size: usize) {
-  let mut buf = vec![0u8; buff_size];
-  assert_no_alloc(|| {
-    let mut cursor = Cursor::new(&mut buf[..]);
+  let buf = vec![0u8; buff_size];
+  assert_no_alloc(move || {
+    let mut cursor = Cursor::new(buf);
     let mut writer = Writer {
       writer: &mut cursor,
     };
@@ -67,11 +67,11 @@ fn writer_does_not_allocate_writing_to_file() {
     .unwrap();
 
   // Use BufWriter to avoid frequent system calls
-  let mut buf_writer = BufWriter::new(file);
+  let buf_writer = Box::new(BufWriter::new(file));
 
   assert_no_alloc(|| {
     let mut writer = Writer {
-      writer: &mut buf_writer,
+      writer: buf_writer,
     };
 
     for _ in 0..100_000 {

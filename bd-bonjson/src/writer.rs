@@ -9,14 +9,21 @@
 #[path = "./writer_test.rs"]
 mod writer_test;
 
+use std::ffi::c_void;
+
 use crate::serialize_primitives;
 use crate::serialize_primitives::{Result, SerializationError};
 
-pub struct Writer<'a> {
-  pub(crate) writer: &'a mut dyn std::io::Write,
+pub struct Writer<W: std::io::Write + Send + Sync> {
+  pub(crate) writer: W,
 }
 
-impl Writer<'_> {
+impl<W: std::io::Write + Send + Sync> Writer<W> {
+  #[must_use]
+  pub fn into_raw(&self) -> *const c_void {
+    self as *const Self as *const c_void
+  }
+
   fn write_bytes(&mut self, bytes: &[u8]) -> Result<usize> {
     self.writer.write(bytes).map_err(|_| SerializationError::Io)
   }
@@ -84,7 +91,7 @@ impl Writer<'_> {
   }
 }
 
-impl std::io::Write for Writer<'_> {
+impl<W: std::io::Write + Send + Sync> std::io::Write for Writer<W> {
   fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
     self.writer.write(buf)
   }
