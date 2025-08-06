@@ -11,14 +11,21 @@ mod tests;
 
 pub mod global_state;
 
-use bd_log_primitives::{LogFields, LogMessageValue};
+use bd_log_primitives::{
+  AnnotatedLogField,
+  AnnotatedLogFields,
+  LogFieldKind,
+  LogFields,
+  LogLevel,
+  LogMessageValue,
+  log_level,
+};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Platform,
   Report,
   ReportType,
 };
-use bd_runtime::runtime::{BoolWatch, ConfigLoader};
 use fbs::issue_reporting::v_1::root_as_report;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -39,7 +46,8 @@ const REPORTS_DIRECTORY: &str = "reports";
 
 /// A single crash log to be emitted by the crash logger.
 pub struct CrashLog {
-  pub fields: LogFields,
+  pub log_level: LogLevel,
+  pub fields: AnnotatedLogFields,
   pub timestamp: OffsetDateTime,
   pub message: LogMessageValue,
 }
@@ -65,17 +73,11 @@ pub trait CrashLogger: Send + Sync {
 ///
 /// This uses the following directory layout (within the SDK directory):
 /// - `reports/` - The root directory for all all reports.
-/// - `reports/config` - A file that contains the configuration to look for prior stored crashes.
-//    The platform layer is responsible for reading this file and looking in each of the
-///   reports during pre-init.
 /// - `reports/new/` - A directory where new crash reports are placed. The platform layer is
 ///   responsible for copying the raw files into this directory.
 pub struct Monitor {
-  // TODO(snowp): Now that we load runtime early enough we can redo how this works a bit to make
-  // them less special.
-  out_of_band_enabled_flag: BoolWatch<bd_runtime::runtime::artifact_upload::Enabled>,
-
-  previous_session_id: String,
+  out_of_band_enabled: bool,
+  pub previous_session_id: Option<String>,
 
   report_directory: PathBuf,
   global_state_reader: global_state::Reader,
@@ -84,16 +86,14 @@ pub struct Monitor {
 
 impl Monitor {
   pub fn new(
-    runtime: &ConfigLoader,
+    out_of_band_enabled: bool,
     sdk_directory: &Path,
     store: Arc<bd_device::Store>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
-    previous_session_id: String,
+    previous_session_id: Option<String>,
   ) -> Self {
-    runtime.expect_initialized();
-
     Self {
-      out_of_band_enabled_flag: runtime.register_watch().unwrap(),
+      out_of_band_enabled,
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
       global_state_reader: global_state::Reader::new(store),
       artifact_client,
@@ -243,14 +243,14 @@ impl Monitor {
           _ => "Unknown",
         };
 
-        let (crash_field_key, crash_field_value) = if *self.out_of_band_enabled_flag.read() {
+        let (crash_field_key, crash_field_value) = if self.out_of_band_enabled {
           log::debug!("uploading report out of band");
 
           let Ok(artifact_id) = self.artifact_client.enqueue_upload(
             contents,
             state_fields.clone(),
             timestamp,
-            self.previous_session_id.clone(),
+            self.previous_session_id.clone().unwrap_or_default(),
           ) else {
             // TODO(snowp): Should we fall back to passing it via a field at this point?
             log::warn!(
@@ -287,7 +287,19 @@ impl Monitor {
         );
 
         logs.push(CrashLog {
-          fields,
+          log_level: log_level::ERROR,
+          fields: fields
+            .into_iter()
+            .map(|(key, value)| {
+              (
+                key,
+                AnnotatedLogField {
+                  value,
+                  kind: LogFieldKind::Ootb,
+                },
+              )
+            })
+            .collect(),
           timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
           message: "AppExit".into(),
         });

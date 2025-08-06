@@ -47,7 +47,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
-use time::macros::datetime;
 use tokio::sync::oneshot::Sender;
 use tokio_test::assert_ok;
 
@@ -110,6 +109,8 @@ impl Setup {
     self.replayer_logs = replayer.logs.clone();
     self.replayer_fields = replayer.fields.clone();
 
+    let (_, report_rx) = tokio::sync::mpsc::channel(1);
+
     AsyncLogBuffer::new(
       self.make_logging_context(),
       replayer,
@@ -122,6 +123,7 @@ impl Setup {
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
       Box::new(NoOpListenerTarget),
       config_update_rx,
+      report_rx,
       self.shutdown.as_ref().unwrap().make_handle(),
       &self.runtime,
       Arc::new(SimpleNetworkQualityProvider::default()),
@@ -138,6 +140,7 @@ impl Setup {
     AsyncLogBuffer<LoggerReplay>,
     bd_bounded_buffer::Sender<AsyncLogBufferMessage>,
   ) {
+    let (_, report_rx) = tokio::sync::mpsc::channel(1);
     AsyncLogBuffer::new(
       self.make_logging_context(),
       LoggerReplay {},
@@ -150,6 +153,7 @@ impl Setup {
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
       Box::new(NoOpListenerTarget),
       config_update_rx,
+      report_rx,
       self.shutdown.as_ref().unwrap().make_handle(),
       &self.runtime,
       Arc::new(SimpleNetworkQualityProvider::default()),
@@ -403,7 +407,7 @@ async fn logs_are_replayed_in_order() {
   setup.shutdown_in(1.seconds());
 
   let run_buffer_task = tokio::task::spawn(async move {
-    _ = buffer.run(vec![]).await;
+    _ = buffer.run().await;
   });
 
   shutdown.store(true, Ordering::SeqCst);
@@ -474,7 +478,7 @@ fn enqueuing_log_blocks() {
 
     let shutdown_trigger = ComponentShutdownTrigger::default();
     buffer
-      .run_with_shutdown(shutdown_trigger.make_shutdown(), vec![])
+      .run_with_shutdown(shutdown_trigger.make_shutdown())
       .await;
     shutdown_trigger.shutdown().await;
   });
@@ -510,74 +514,12 @@ async fn creates_workflows_engine_in_response_to_config_update() {
   );
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle =
-    tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown(), vec![]));
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   buffer = handle.await.unwrap();
 
   assert!(buffer.logging_state.workflows_engine().is_some());
-}
-
-#[tokio::test]
-async fn initial_logs_are_processed_first() {
-  let mut setup = Setup::new();
-
-  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-
-  let (buffer, buffer_tx) = setup.make_test_async_log_buffer(config_update_rx);
-
-  let t0 = datetime!(2021-01-01 00:00:00 UTC);
-  let shutdown = setup.shutdown.as_ref().unwrap().make_shutdown();
-
-  let handle = tokio::spawn(async move {
-    buffer
-      .run_with_shutdown(
-        shutdown,
-        vec![Log {
-          log_level: log_level::ERROR,
-          log_type: LogType::Normal,
-          message: "first".into(),
-          fields: [].into(),
-          matching_fields: [].into(),
-          session_id: "first session".into(),
-          occurred_at: t0,
-          capture_session: None,
-        }],
-      )
-      .await;
-  });
-
-  // One log is sent over the channel before the config update.
-
-  buffer_tx
-    .try_send(AsyncLogBufferMessage::EmitLog(LogLine {
-      log_level: log_level::INFO,
-      log_type: LogType::Normal,
-      message: "second".into(),
-      fields: [].into(),
-      matching_fields: [].into(),
-      attributes_overrides: None,
-      log_processing_completed_tx: None,
-      capture_session: None,
-    }))
-    .unwrap();
-
-  // Simulate config update.
-  assert_ok!(
-    config_update_tx
-      .send(setup.make_config_update(WorkflowsConfiguration::default()))
-      .await
-  );
-
-  setup.shutdown_in(1.seconds());
-
-  handle.await.unwrap();
-
-  let logs = setup.replayer_logs.lock().clone();
-  assert_eq!(2, logs.len());
-  assert_eq!("first", logs[0].as_str());
-  assert_eq!("second", logs[1].as_str());
 }
 
 #[tokio::test]
@@ -608,8 +550,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle =
-    tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown(), vec![]));
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   buffer = handle.await.unwrap();
@@ -631,8 +572,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle =
-    tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown(), vec![]));
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   handle.await.unwrap();
@@ -698,8 +638,7 @@ async fn logs_resource_utilization_log() {
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle =
-    tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown(), vec![]));
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
   500.milliseconds().sleep().await;
 
   shutdown_trigger.shutdown().await;

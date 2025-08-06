@@ -16,6 +16,7 @@ use crate::{MetadataProvider, app_version};
 use bd_api::Metadata;
 use bd_bounded_buffer::{self, Sender as MemoryBoundSender};
 use bd_client_stats_store::{Counter, Scope};
+use bd_crash_handler::Monitor;
 use bd_log::warn_every;
 use bd_log_primitives::{
   AnnotatedLogField,
@@ -35,7 +36,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::watch;
+use tokio::sync::{oneshot, watch};
 
 #[derive(Clone)]
 #[allow(clippy::struct_field_names)]
@@ -47,6 +48,12 @@ pub struct Stats {
   sleep_disabled: Counter,
 
   app_open: Counter,
+}
+
+pub enum ReportProcessingSession {
+  Current,
+  PreviousRun,
+  Other(String),
 }
 
 impl Stats {
@@ -464,6 +471,14 @@ pub struct InitParams {
   pub start_in_sleep_mode: bool,
 }
 
+pub struct ReportProcessingRequest {
+  /// Monitor for processing files
+  pub crash_monitor: Monitor,
+
+  /// Session ID to use in reports, or None to use the current session
+  pub session_id_override: Option<String>,
+}
+
 /// A single logger instance. This manages the lifetime of the logger and can be used to access
 /// other components of the logger. Logging itself happens via the thread local logger, see
 /// `write_log`.
@@ -478,6 +493,7 @@ pub struct Logger {
   runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
 
   async_log_buffer_tx: MemoryBoundSender<AsyncLogBufferMessage>,
+  report_processor_tx: Sender<ReportProcessingRequest>,
 
   session_strategy: Arc<bd_session::Strategy>,
   device: Arc<bd_device::Device>,
@@ -490,6 +506,10 @@ pub struct Logger {
   stats_scope: Scope,
 
   sleep_mode_active: watch::Sender<bool>,
+
+  // Channel for receiving a processor for crash reports, once runtime config
+  // loading is completed
+  crash_monitor_rx: Option<oneshot::Receiver<Monitor>>,
 }
 
 impl Logger {
@@ -498,11 +518,13 @@ impl Logger {
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
     stats_scope: Scope,
     async_log_buffer_tx: MemoryBoundSender<AsyncLogBufferMessage>,
+    report_processor_tx: Sender<ReportProcessingRequest>,
     session_strategy: Arc<bd_session::Strategy>,
     device: Arc<bd_device::Device>,
     sdk_version: &str,
     store: Arc<bd_key_value::Store>,
     sleep_mode_active: watch::Sender<bool>,
+    crash_monitor_rx: Option<oneshot::Receiver<Monitor>>,
   ) -> Self {
     let stats = Stats::new(&stats_scope);
 
@@ -516,10 +538,12 @@ impl Logger {
       sdk_version: sdk_version.to_string(),
       runtime_loader,
       async_log_buffer_tx,
+      report_processor_tx,
       stats,
       stats_scope,
       store,
       sleep_mode_active,
+      crash_monitor_rx,
     }
   }
 
@@ -532,6 +556,36 @@ impl Logger {
     }
 
     Ok(buffer_directory)
+  }
+
+  /// Handler for platform-level code to indicate that platform-specific
+  /// processing is done and the artifacts are ready for dispatch and logging.
+  /// The `session` parameter is used to determine which session ID is used for
+  /// the logs, depending on whether the crash occurred in the current or prior
+  /// session.
+  ///
+  /// This function is **blocking** for whichever thread calls it while the
+  /// crash monitor is constructed (early in the launch cycle) and logs are
+  /// dispatched. Subsequent calls to this function currently have no effect.
+  pub fn process_crash_reports(&mut self, session: ReportProcessingSession) -> anyhow::Result<()> {
+    let Some(rx) = self.crash_monitor_rx.take() else {
+      // TODO(delisa): converting this function to support multiple invocations
+      // in the future is mostly trivial and only dependent on storing the crash
+      // monitor and updating the processor tx to accept a reference
+      anyhow::bail!("crash monitor rx exhausted");
+    };
+
+    let crash_monitor = rx.blocking_recv()?;
+
+    let session_id_override = match session {
+      ReportProcessingSession::Current => None,
+      ReportProcessingSession::Other(id) => Some(id),
+      ReportProcessingSession::PreviousRun => crash_monitor.previous_session_id.clone(),
+    };
+    Ok(self.report_processor_tx.try_send(ReportProcessingRequest {
+      crash_monitor,
+      session_id_override,
+    })?)
   }
 
   pub fn shutdown(&self, blocking: bool) {

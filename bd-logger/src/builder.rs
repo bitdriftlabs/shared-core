@@ -28,9 +28,8 @@ use bd_client_stats::stats::{
 use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
 use bd_internal_logging::NoopLogger;
-use bd_log_primitives::{Log, LogType, log_level};
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
-use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
+use bd_runtime::runtime::{self, ConfigLoader, Watch, artifact_upload, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_time::SystemTimeProvider;
 use futures_util::{Future, try_join};
@@ -176,6 +175,8 @@ impl LoggerBuilder {
     let (trigger_upload_tx, trigger_upload_rx) = tokio::sync::mpsc::channel(1);
     let (flush_buffers_tx, flush_buffers_rx) = tokio::sync::mpsc::channel(1);
     let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+    let (report_proc_tx, report_proc_rx) = tokio::sync::mpsc::channel(1);
+    let (crash_monitor_tx, crash_monitor_rx) = tokio::sync::oneshot::channel();
 
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
@@ -198,6 +199,7 @@ impl LoggerBuilder {
       self.params.session_replay_target,
       self.params.events_listener_target,
       config_update_rx,
+      report_proc_rx,
       shutdown_handle.clone(),
       &runtime_loader,
       network_quality_provider.clone(),
@@ -206,16 +208,21 @@ impl LoggerBuilder {
       Arc::new(SystemTimeProvider),
     );
 
+    let data_upload_tx_clone = data_upload_tx.clone();
+    let collector_clone = collector;
+
     let logger = Logger::new(
       maybe_shutdown_trigger,
       runtime_loader.clone(),
       scope.clone(),
       async_log_buffer_communication_tx,
+      report_proc_tx,
       self.params.session_strategy.clone(),
       self.params.device,
       self.params.static_metadata.sdk_version(),
       self.params.store.clone(),
       sleep_mode_active_tx,
+      Some(crash_monitor_rx),
     );
     let log = if self.internal_logger {
       Arc::new(InternalLogger::new(
@@ -228,8 +235,6 @@ impl LoggerBuilder {
 
     bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
 
-    let data_upload_tx_clone = data_upload_tx.clone();
-    let collector_clone = collector;
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
 
@@ -242,17 +247,26 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
       );
 
+      let out_of_band_enabled_flag = runtime_loader
+        .register_watch::<bool, artifact_upload::Enabled>()
+        .unwrap();
+
       let crash_monitor = Monitor::new(
-        &runtime_loader,
+        *out_of_band_enabled_flag.read(),
         &self.params.sdk_directory,
         self.params.store.clone(),
         Arc::new(artifact_client),
-        self
-          .params
-          .session_strategy
-          .previous_process_session_id()
-          .unwrap_or_default(),
+        self.params.session_strategy.previous_process_session_id(),
       );
+
+      // Building the crash monitor requires artifact uploader and knowing
+      // whether to send artifacts out-of-band, both of which are dependent on
+      // awaiting loading the config in runtime. This is why the monitor is
+      // then passed to the logger (constructed outside of this future) via a
+      // channel rather than directly.
+      if crash_monitor_tx.send(crash_monitor).is_err() {
+        log::error!("failed to deliver monitor");
+      }
 
       // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
       // improve the perceived performance of the logger initialization.
@@ -297,39 +311,11 @@ impl LoggerBuilder {
 
       bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
 
-      let session_strategy = self.params.session_strategy;
-
-      // By running it before we start all the other components, we ensure that the crash is
-      // processed before cached configuration is loaded, allowing us to pass a fixed set of logs
-      // to the async buffer that it can emit once it transitions into the configured mode,
-      // emitting these logs before any logs emitted by the application while we were starting
-      // up.
-      let crash_logs = crash_monitor
-        .process_new_reports()
-        .await
-        .into_iter()
-        .map(|crash_log| Log {
-          log_level: log_level::ERROR,
-          log_type: LogType::Lifecycle,
-          message: crash_log.message,
-          fields: crash_log.fields,
-          matching_fields: [].into(),
-          session_id: session_strategy
-            .previous_process_session_id()
-            .unwrap_or_else(|| session_strategy.session_id()),
-          occurred_at: crash_log.timestamp,
-          // Always capture the session when we process a crash log.
-          // TODO(snowp): Ideally we should include information like the report and client side
-          // grouping here to help make smarter decisions during intent negotiation.
-          capture_session: Some("crash_handler".to_string()),
-        })
-        .collect();
-
       try_join!(
         async move { api.start().await },
         async move { buffer_uploader.run().await },
         async move {
-          async_log_buffer.run(crash_logs).await;
+          async_log_buffer.run().await;
           Ok(())
         },
         async move { buffer_manager.process_flushes(flush_buffers_rx).await },
