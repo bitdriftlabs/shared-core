@@ -20,14 +20,15 @@ use crate::deserialize_primitives::{
   deserialize_signed_after_type_code,
   deserialize_type_code,
   deserialize_unsigned_after_type_code,
-  peek_type_code
+  peek_type_code,
 };
 use crate::type_codes::TypeCode;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeserializationErrorWithOffset {
-  // An error that occurred during deserialization, with the byte offset in the data where it occurred.
+  // An error that occurred during deserialization, with the byte offset in the data where it
+  // occurred.
   Error(DeserializationError, usize),
 }
 pub type Result<T> = std::result::Result<T, PartialDecodeResult>;
@@ -74,7 +75,7 @@ impl<'a> Decoder<'a> {
   }
 
   fn remaining_data(&self) -> &[u8] {
-    &self.data[self.position..]
+    &self.data[self.position ..]
   }
 
   fn advance(&mut self, bytes: usize) {
@@ -149,7 +150,7 @@ impl<'a> Decoder<'a> {
   }
 
   fn decode_long_string(&mut self) -> Result<Value> {
-    let remaining = &self.data[self.position..];
+    let remaining = &self.data[self.position ..];
     // let remaining = self.remaining_data();
     let (size, str_slice) = self.map_err(
       deserialize_long_string_after_type_code(remaining),
@@ -160,7 +161,7 @@ impl<'a> Decoder<'a> {
   }
 
   fn decode_short_string(&mut self, type_code: u8) -> Result<Value> {
-    let remaining = &self.data[self.position..];
+    let remaining = &self.data[self.position ..];
     // let remaining = self.remaining_data();
     let (size, str_slice) = self.map_err(
       deserialize_short_string_after_type_code(remaining, type_code),

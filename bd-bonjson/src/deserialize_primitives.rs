@@ -44,7 +44,7 @@ fn require_bytes(src: &[u8], byte_count: usize) -> Result<()> {
 
 fn copy_bytes_to(src: &[u8], dst: &mut [u8], byte_count: usize) -> Result<()> {
   require_bytes(src, byte_count)?;
-  dst[..byte_count].copy_from_slice(&src[..byte_count]);
+  dst[.. byte_count].copy_from_slice(&src[.. byte_count]);
   Ok(())
 }
 
@@ -55,7 +55,7 @@ fn deserialize_byte(src: &[u8]) -> Result<(usize, u8)> {
 
 fn deserialize_string_contents(src: &[u8], size: usize) -> Result<(usize, &str)> {
   require_bytes(src, size)?;
-  let string = std::str::from_utf8(&src[..size]).map_err(|_| DeserializationError::InvalidUTF8)?;
+  let string = std::str::from_utf8(&src[.. size]).map_err(|_| DeserializationError::InvalidUTF8)?;
   Ok((size, string))
 }
 
@@ -80,14 +80,14 @@ pub fn deserialize_signed_after_type_code(src: &[u8], type_code: u8) -> Result<(
   require_bytes(src, byte_count)?;
   let is_negative = src[byte_count - 1] >> 7;
   let mut bytes: [u8; 8] = [is_negative * 0xff; 8];
-  bytes[..byte_count].copy_from_slice(&src[..byte_count]);
+  bytes[.. byte_count].copy_from_slice(&src[.. byte_count]);
   Ok((byte_count, i64::from_le_bytes(bytes)))
 }
 
 pub fn deserialize_f16_after_type_code(src: &[u8]) -> Result<(usize, f32)> {
   let mut bytes: [u8; 4] = [0; 4];
   // Note: Copying only 2 bytes into a 4 byte buffer because this is a bfloat.
-  copy_bytes_to(src, &mut bytes[2..], 2)?;
+  copy_bytes_to(src, &mut bytes[2 ..], 2)?;
   Ok((2, f32::from_le_bytes(bytes)))
 }
 
@@ -159,7 +159,7 @@ pub fn deserialize_long_string_after_type_code(src: &[u8]) -> Result<(usize, &st
     // Note: Deliberately not supporting chunked strings since we don't use them.
     return Err(DeserializationError::ContinuationBitNotSupported);
   }
-  let current = &src[header_size..];
+  let current = &src[header_size ..];
   require_bytes(current, chunk_size)?;
   let (v_size, v) = deserialize_string_contents(current, chunk_size)?;
   Ok((header_size + v_size, v))

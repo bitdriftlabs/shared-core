@@ -5,13 +5,12 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use std::ptr::null;
-use std::{ffi::c_void, fs::File};
-use std::fs::OpenOptions;
-use std::io::{self, Write};
 use crate::writer::Writer;
-use std::io::{BufWriter};
 use libc;
+use std::ffi::c_void;
+use std::fs::{File, OpenOptions};
+use std::io::{self, BufWriter, Write};
+use std::ptr::null;
 
 pub type BDCrashWriterHandle = *mut *const c_void;
 pub type WriterBufWriterFile = Writer<BufWriter<File>>;
@@ -32,7 +31,9 @@ impl TryFrom<BDCrashWriterHandle> for &mut WriterBufWriterFile {
       if handle.is_null() || (*handle).is_null() {
         return Err(FFIError::HandleWasNull);
       }
-      (*handle as *mut WriterBufWriterFile).as_mut().ok_or(FFIError::HandleWasNull)
+      (*handle as *mut WriterBufWriterFile)
+        .as_mut()
+        .ok_or(FFIError::HandleWasNull)
     }
   }
 }
@@ -58,11 +59,16 @@ fn new_writer(path: &str) -> io::Result<WriterBufWriterFile> {
     .write(true)
     .truncate(true)
     .open(path)?;
-  Ok(Writer { writer: BufWriter::new(file) })
+  Ok(Writer {
+    writer: BufWriter::new(file),
+  })
 }
 
 #[unsafe(no_mangle)]
-extern "C-unwind" fn bdcrw_open_writer(handle: BDCrashWriterHandle, path: *const libc::c_char) -> bool {
+extern "C-unwind" fn bdcrw_open_writer(
+  handle: BDCrashWriterHandle,
+  path: *const libc::c_char,
+) -> bool {
   if path.is_null() {
     log::error!("bdcrw_open_writer: path is null");
     return false;
@@ -71,9 +77,9 @@ extern "C-unwind" fn bdcrw_open_writer(handle: BDCrashWriterHandle, path: *const
   let path_str: &str = match unsafe { std::ffi::CStr::from_ptr(path).to_str() } {
     Ok(s) => s,
     Err(e) => {
-        log::error!("bdcrw_open_writer: path contains invalid UTF-8: {e}");
-        return false;
-    }
+      log::error!("bdcrw_open_writer: path contains invalid UTF-8: {e}");
+      return false;
+    },
   };
 
   let writer = match new_writer(path_str) {
@@ -81,7 +87,7 @@ extern "C-unwind" fn bdcrw_open_writer(handle: BDCrashWriterHandle, path: *const
     Err(e) => {
       log::error!("bdcrw_open_writer: failed to open writer: {e}");
       return false;
-    }
+    },
   };
 
   unsafe {
@@ -109,7 +115,7 @@ extern "C-unwind" fn bdcrw_flush_writer(handle: BDCrashWriterHandle) -> bool {
     Err(e) => {
       log::error!("Error: bdcrw_flush_writer: {e:?}");
       false
-    }
+    },
   }
 }
 
@@ -121,114 +127,117 @@ extern "C-unwind" fn bdcrw_write_boolean(handle: BDCrashWriterHandle, value: boo
     Err(e) => {
       log::error!("bdcrw_write_boolean: {e:?}");
       false
-    }
+    },
   }
 }
 
 #[unsafe(no_mangle)]
 extern "C-unwind" fn bdcrw_write_null(handle: BDCrashWriterHandle) -> bool {
-    let writer = try_into_writer!(handle, false);
-    match writer.write_null() {
-        Ok(_) => true,
-        Err(e) => {
-            log::error!("bdcrw_write_null: {e:?}");
-            false
-        }
-    }
+  let writer = try_into_writer!(handle, false);
+  match writer.write_null() {
+    Ok(_) => true,
+    Err(e) => {
+      log::error!("bdcrw_write_null: {e:?}");
+      false
+    },
+  }
 }
 
 #[unsafe(no_mangle)]
 extern "C-unwind" fn bdcrw_write_signed(handle: BDCrashWriterHandle, value: i64) -> bool {
-    let writer = try_into_writer!(handle, false);
-    match writer.write_signed(value) {
-        Ok(_) => true,
-        Err(e) => {
-            log::error!("bdcrw_write_signed: {e:?}");
-            false
-        }
-    }
+  let writer = try_into_writer!(handle, false);
+  match writer.write_signed(value) {
+    Ok(_) => true,
+    Err(e) => {
+      log::error!("bdcrw_write_signed: {e:?}");
+      false
+    },
+  }
 }
 
 #[unsafe(no_mangle)]
 extern "C-unwind" fn bdcrw_write_unsigned(handle: BDCrashWriterHandle, value: u64) -> bool {
-    let writer = try_into_writer!(handle, false);
-    match writer.write_unsigned(value) {
-        Ok(_) => true,
-        Err(e) => {
-            log::error!("bdcrw_write_unsigned: {e:?}");
-            false
-        }
-    }
+  let writer = try_into_writer!(handle, false);
+  match writer.write_unsigned(value) {
+    Ok(_) => true,
+    Err(e) => {
+      log::error!("bdcrw_write_unsigned: {e:?}");
+      false
+    },
+  }
 }
 
 #[unsafe(no_mangle)]
 extern "C-unwind" fn bdcrw_write_float(handle: BDCrashWriterHandle, value: f64) -> bool {
-    let writer = try_into_writer!(handle, false);
-    match writer.write_float(value) {
-        Ok(_) => true,
-        Err(e) => {
-            log::error!("bdcrw_write_float: {e:?}");
-            false
-        }
-    }
+  let writer = try_into_writer!(handle, false);
+  match writer.write_float(value) {
+    Ok(_) => true,
+    Err(e) => {
+      log::error!("bdcrw_write_float: {e:?}");
+      false
+    },
+  }
 }
 
 #[unsafe(no_mangle)]
-extern "C-unwind" fn bdcrw_write_str(handle: BDCrashWriterHandle, value: *const libc::c_char) -> bool {
-    if value.is_null() {
-        log::error!("bdcrw_write_str: value is null");
-        return false;
-    }
-    let cstr = unsafe { std::ffi::CStr::from_ptr(value) };
-    let str_slice = match cstr.to_str() {
-        Ok(s) => s,
-        Err(e) => {
-            log::error!("bdcrw_write_str: invalid UTF-8: {e}");
-            return false;
-        }
-    };
-    let writer = try_into_writer!(handle, false);
-    match writer.write_str(str_slice) {
-        Ok(_) => true,
-        Err(e) => {
-            log::error!("bdcrw_write_str: {e:?}");
-            false
-        }
-    }
+extern "C-unwind" fn bdcrw_write_str(
+  handle: BDCrashWriterHandle,
+  value: *const libc::c_char,
+) -> bool {
+  if value.is_null() {
+    log::error!("bdcrw_write_str: value is null");
+    return false;
+  }
+  let cstr = unsafe { std::ffi::CStr::from_ptr(value) };
+  let str_slice = match cstr.to_str() {
+    Ok(s) => s,
+    Err(e) => {
+      log::error!("bdcrw_write_str: invalid UTF-8: {e}");
+      return false;
+    },
+  };
+  let writer = try_into_writer!(handle, false);
+  match writer.write_str(str_slice) {
+    Ok(_) => true,
+    Err(e) => {
+      log::error!("bdcrw_write_str: {e:?}");
+      false
+    },
+  }
 }
 
 #[unsafe(no_mangle)]
 extern "C-unwind" fn bdcrw_write_array_begin(handle: BDCrashWriterHandle) -> bool {
-    let writer = try_into_writer!(handle, false);
-    match writer.write_array_begin() {
-        Ok(_) => true,
-        Err(e) => {
-            log::error!("bdcrw_write_array_begin: {e:?}");
-            false
-        }
-    }
+  let writer = try_into_writer!(handle, false);
+  match writer.write_array_begin() {
+    Ok(_) => true,
+    Err(e) => {
+      log::error!("bdcrw_write_array_begin: {e:?}");
+      false
+    },
+  }
 }
 
 #[unsafe(no_mangle)]
 extern "C-unwind" fn bdcrw_write_map_begin(handle: BDCrashWriterHandle) -> bool {
-    let writer = try_into_writer!(handle, false);
-    match writer.write_map_begin() {
-        Ok(_) => true,
-        Err(e) => {
-            log::error!("bdcrw_write_map_begin: {e:?}");
-            false
-        }
-    }
+  let writer = try_into_writer!(handle, false);
+  match writer.write_map_begin() {
+    Ok(_) => true,
+    Err(e) => {
+      log::error!("bdcrw_write_map_begin: {e:?}");
+      false
+    },
+  }
 }
 
 #[unsafe(no_mangle)]
 extern "C-unwind" fn bdcrw_write_container_end(handle: BDCrashWriterHandle) -> bool {
-    let writer = try_into_writer!(handle, false);
-    match writer.write_container_end() {
-        Ok(_) => true,
-        Err(e) => {
-            log::error!("bdcrw_write_container_end: {e:?}");
-            false
-        }
-    }
+  let writer = try_into_writer!(handle, false);
+  match writer.write_container_end() {
+    Ok(_) => true,
+    Err(e) => {
+      log::error!("bdcrw_write_container_end: {e:?}");
+      false
+    },
+  }
 }

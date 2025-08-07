@@ -6,8 +6,8 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 pub mod decoder;
-pub mod writer;
 pub mod ffi;
+pub mod writer;
 
 mod deserialize_primitives;
 mod serialize_primitives;

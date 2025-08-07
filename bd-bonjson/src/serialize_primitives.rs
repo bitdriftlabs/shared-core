@@ -25,14 +25,14 @@ fn require_bytes(src: &[u8], byte_count: usize) -> Result<()> {
 // Returns: skip bytes, copy bytes, shift amount, unary code
 fn derive_chunk_length_header_data(payload: u64) -> (u8, u8, u8, u8) {
   match payload {
-    0x00..=0x7F => (0, 1, 1, 0x01),
-    0x80..=0x3FFF => (0, 2, 2, 0x02),
-    0x4000..=0x1F_FFFF => (0, 3, 3, 0x04),
-    0x20_0000..=0xFFF_FFFF => (0, 4, 4, 0x08),
-    0x1000_0000..=0x7_FFFF_FFFF => (0, 5, 5, 0x10),
-    0x8_0000_0000..=0x3FF_FFFF_FFFF => (0, 6, 6, 0x20),
-    0x4000_0000_0000..=0x1_FFFF_FFFF_FFFF => (0, 7, 7, 0x40),
-    0x20_0000_0000_0000..=0xFF_FFFF_FFFF_FFFF => (0, 8, 8, 0x80),
+    0x00 ..= 0x7F => (0, 1, 1, 0x01),
+    0x80 ..= 0x3FFF => (0, 2, 2, 0x02),
+    0x4000 ..= 0x1F_FFFF => (0, 3, 3, 0x04),
+    0x20_0000 ..= 0xFFF_FFFF => (0, 4, 4, 0x08),
+    0x1000_0000 ..= 0x7_FFFF_FFFF => (0, 5, 5, 0x10),
+    0x8_0000_0000 ..= 0x3FF_FFFF_FFFF => (0, 6, 6, 0x20),
+    0x4000_0000_0000 ..= 0x1_FFFF_FFFF_FFFF => (0, 7, 7, 0x40),
+    0x20_0000_0000_0000 ..= 0xFF_FFFF_FFFF_FFFF => (0, 8, 8, 0x80),
     _ => (1, 8, 0, 0x00),
   }
 }
@@ -45,7 +45,7 @@ fn serialize_chunk_header_unchecked(dst: &mut [u8], length: u64, continuation_bi
   let encoded = (payload << shift_amount) | u64::from(unary_code);
   let bytes = encoded.to_le_bytes();
   dst[0] = unary_code;
-  dst[skip_bytes as usize..total_size].copy_from_slice(&bytes[..copy_bytes as usize]);
+  dst[skip_bytes as usize .. total_size].copy_from_slice(&bytes[.. copy_bytes as usize]);
   total_size
 }
 
@@ -94,7 +94,7 @@ pub fn serialize_u64(dst: &mut [u8], v: u64) -> Result<usize> {
   let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | u8::try_from(index).unwrap();
   require_bytes(dst, total_size)?;
   dst[0] = type_code;
-  dst[1..total_size].copy_from_slice(&bytes[..payload_size]);
+  dst[1 .. total_size].copy_from_slice(&bytes[.. payload_size]);
   Ok(total_size)
 }
 
@@ -122,7 +122,7 @@ pub fn serialize_i64(dst: &mut [u8], v: i64) -> Result<usize> {
   let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | u8::try_from(index).unwrap();
   require_bytes(dst, total_size)?;
   dst[0] = type_code;
-  dst[1..total_size].copy_from_slice(&bytes[..payload_size]);
+  dst[1 .. total_size].copy_from_slice(&bytes[.. payload_size]);
   Ok(total_size)
 }
 
@@ -146,7 +146,7 @@ pub fn serialize_f32(dst: &mut [u8], v: f32) -> Result<usize> {
   let total_size = 4 + 1;
   require_bytes(dst, total_size)?;
   dst[0] = TypeCode::Float32 as u8;
-  dst[1..total_size].copy_from_slice(&bytes);
+  dst[1 .. total_size].copy_from_slice(&bytes);
   Ok(total_size)
 }
 
@@ -162,7 +162,7 @@ pub fn serialize_f64(dst: &mut [u8], v: f64) -> Result<usize> {
   let bytes = v.to_le_bytes();
   require_bytes(dst, total_size)?;
   dst[0] = TypeCode::Float64 as u8;
-  dst[1..=bytes.len()].copy_from_slice(&bytes);
+  dst[1 ..= bytes.len()].copy_from_slice(&bytes);
   Ok(total_size)
 }
 
@@ -179,7 +179,7 @@ fn serialize_long_string_header(dst: &mut [u8], str: &str) -> Result<usize> {
   let total_size = header_size + 1;
   require_bytes(dst, total_size)?;
   dst[0] = TypeCode::LongString as u8;
-  dst[1..=header_size].copy_from_slice(&header[..header_size]);
+  dst[1 ..= header_size].copy_from_slice(&header[.. header_size]);
   Ok(total_size)
 }
 
