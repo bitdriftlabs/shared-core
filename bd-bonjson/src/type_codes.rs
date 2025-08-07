@@ -11,7 +11,7 @@ pub enum TypeCode {
   P100         = 0x64,
   // Reserved:   0x65-0x67,
   LongString   = 0x68,
-  LongNumber   = 0x69,
+  LongNumber   = 0x69, // Note: We don't use or support LongNumber.
   Float16      = 0x6a,
   Float32      = 0x6b,
   Float64      = 0x6c,
