@@ -45,7 +45,7 @@ macro_rules! try_into_writer {
   ($handle_ptr_ptr:ident, $failure_ret_val:expr) => {{
     let writer: Result<&mut WriterBufWriterFile, _> = $handle_ptr_ptr.try_into();
     if writer.is_err() {
-      println!("Error converting handle to writer: {:?}", writer.err());
+      log::error!("converting handle to writer: {:?}", writer.err());
       return $failure_ret_val;
     }
     writer.unwrap()
@@ -64,14 +64,14 @@ fn new_writer(path: &str) -> io::Result<WriterBufWriterFile> {
 #[unsafe(no_mangle)]
 extern "C-unwind" fn bdcrw_open_writer(handle: BDCrashWriterHandle, path: *const libc::c_char) -> bool {
   if path.is_null() {
-    println!("Error: bdcrw_open_writer: path is null");
+    log::error!("bdcrw_open_writer: path is null");
     return false;
   }
 
   let path_str: &str = match unsafe { std::ffi::CStr::from_ptr(path).to_str() } {
     Ok(s) => s,
     Err(e) => {
-        println!("Error: bdcrw_open_writer: path contains invalid UTF-8: {e}");
+        log::error!("bdcrw_open_writer: path contains invalid UTF-8: {e}");
         return false;
     }
   };
@@ -79,7 +79,7 @@ extern "C-unwind" fn bdcrw_open_writer(handle: BDCrashWriterHandle, path: *const
   let writer = match new_writer(path_str) {
     Ok(writer) => writer,
     Err(e) => {
-      println!("Error: bdcrw_open_writer: failed to open writer: {e}");
+      log::error!("bdcrw_open_writer: failed to open writer: {e}");
       return false;
     }
   };
@@ -107,7 +107,7 @@ extern "C-unwind" fn bdcrw_flush_writer(handle: BDCrashWriterHandle) -> bool {
   match writer.flush() {
     Ok(()) => true,
     Err(e) => {
-      println!("Error: bdcrw_flush_writer: {e:?}");
+      log::error!("Error: bdcrw_flush_writer: {e:?}");
       false
     }
   }
@@ -119,7 +119,7 @@ extern "C-unwind" fn bdcrw_write_boolean(handle: BDCrashWriterHandle, value: boo
   match writer.write_boolean(value) {
     Ok(_) => true,
     Err(e) => {
-      println!("Error: bdcrw_write_boolean: {e:?}");
+      log::error!("bdcrw_write_boolean: {e:?}");
       false
     }
   }
@@ -131,7 +131,7 @@ extern "C-unwind" fn bdcrw_write_null(handle: BDCrashWriterHandle) -> bool {
     match writer.write_null() {
         Ok(_) => true,
         Err(e) => {
-            println!("Error: bdcrw_write_null: {e:?}");
+            log::error!("bdcrw_write_null: {e:?}");
             false
         }
     }
@@ -143,7 +143,7 @@ extern "C-unwind" fn bdcrw_write_signed(handle: BDCrashWriterHandle, value: i64)
     match writer.write_signed(value) {
         Ok(_) => true,
         Err(e) => {
-            println!("Error: bdcrw_write_signed: {e:?}");
+            log::error!("bdcrw_write_signed: {e:?}");
             false
         }
     }
@@ -155,7 +155,7 @@ extern "C-unwind" fn bdcrw_write_unsigned(handle: BDCrashWriterHandle, value: u6
     match writer.write_unsigned(value) {
         Ok(_) => true,
         Err(e) => {
-            println!("Error: bdcrw_write_unsigned: {e:?}");
+            log::error!("bdcrw_write_unsigned: {e:?}");
             false
         }
     }
@@ -167,7 +167,7 @@ extern "C-unwind" fn bdcrw_write_float(handle: BDCrashWriterHandle, value: f64) 
     match writer.write_float(value) {
         Ok(_) => true,
         Err(e) => {
-            println!("Error: bdcrw_write_float: {e:?}");
+            log::error!("bdcrw_write_float: {e:?}");
             false
         }
     }
@@ -176,14 +176,14 @@ extern "C-unwind" fn bdcrw_write_float(handle: BDCrashWriterHandle, value: f64) 
 #[unsafe(no_mangle)]
 extern "C-unwind" fn bdcrw_write_str(handle: BDCrashWriterHandle, value: *const libc::c_char) -> bool {
     if value.is_null() {
-        println!("Error: bdcrw_write_str: value is null");
+        log::error!("bdcrw_write_str: value is null");
         return false;
     }
     let cstr = unsafe { std::ffi::CStr::from_ptr(value) };
     let str_slice = match cstr.to_str() {
         Ok(s) => s,
         Err(e) => {
-            println!("Error: bdcrw_write_str: invalid UTF-8: {e}");
+            log::error!("bdcrw_write_str: invalid UTF-8: {e}");
             return false;
         }
     };
@@ -191,7 +191,7 @@ extern "C-unwind" fn bdcrw_write_str(handle: BDCrashWriterHandle, value: *const 
     match writer.write_str(str_slice) {
         Ok(_) => true,
         Err(e) => {
-            println!("Error: bdcrw_write_str: {e:?}");
+            log::error!("bdcrw_write_str: {e:?}");
             false
         }
     }
@@ -203,7 +203,7 @@ extern "C-unwind" fn bdcrw_write_array_begin(handle: BDCrashWriterHandle) -> boo
     match writer.write_array_begin() {
         Ok(_) => true,
         Err(e) => {
-            println!("Error: bdcrw_write_array_begin: {e:?}");
+            log::error!("bdcrw_write_array_begin: {e:?}");
             false
         }
     }
@@ -215,7 +215,7 @@ extern "C-unwind" fn bdcrw_write_map_begin(handle: BDCrashWriterHandle) -> bool 
     match writer.write_map_begin() {
         Ok(_) => true,
         Err(e) => {
-            println!("Error: bdcrw_write_map_begin: {e:?}");
+            log::error!("bdcrw_write_map_begin: {e:?}");
             false
         }
     }
@@ -227,7 +227,7 @@ extern "C-unwind" fn bdcrw_write_container_end(handle: BDCrashWriterHandle) -> b
     match writer.write_container_end() {
         Ok(_) => true,
         Err(e) => {
-            println!("Error: bdcrw_write_container_end: {e:?}");
+            log::error!("bdcrw_write_container_end: {e:?}");
             false
         }
     }

@@ -416,6 +416,7 @@ dependencies = [
  "cbindgen",
  "ctor",
  "libc",
+ "log",
  "tempfile",
 ]
 
