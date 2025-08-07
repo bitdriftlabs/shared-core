@@ -64,6 +64,8 @@ fn new_writer(path: &str) -> io::Result<WriterBufWriterFile> {
   })
 }
 
+/// Attempt to open a writer to the specified path.
+/// The writer exists on the heap and must be closed with `bdcrw_close_writer`.
 #[unsafe(no_mangle)]
 extern "C-unwind" fn bdcrw_open_writer(
   handle: BDCrashWriterHandle,

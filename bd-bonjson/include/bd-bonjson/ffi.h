@@ -16,6 +16,10 @@
 
 typedef const void **BDCrashWriterHandle;
 
+/**
+ * Attempt to open a writer to the specified path.
+ * The writer exists on the heap and must be closed with `bdcrw_close_writer`.
+ */
 bool bdcrw_open_writer(BDCrashWriterHandle handle, const char *path);
 
 void bdcrw_close_writer(BDCrashWriterHandle handle);

@@ -39,6 +39,7 @@ pub struct PartialDecodeResult {
   pub error: DeserializationErrorWithOffset,
 }
 
+/// BONJSON has the same value types and structure as JSON.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
   None, // Can only be returned when an error occurs.
@@ -52,6 +53,7 @@ pub enum Value {
   Object(HashMap<String, Value>),
 }
 
+/// Decoder decodes a buffer containing a BONJSON-encoded data into a `Value`.
 pub struct Decoder<'a> {
   data: &'a [u8],
   position: usize,
@@ -70,6 +72,8 @@ impl<'a> Decoder<'a> {
     Self { data, position: 0 }
   }
 
+  /// Decode the entire buffer and return the resulting value.
+  /// On error, it returns the value decoded so far and the error.
   pub fn decode(&mut self) -> Result<Value> {
     self.decode_value()
   }
@@ -259,7 +263,8 @@ impl<'a> Decoder<'a> {
   }
 }
 
-// Convenience functions
+/// Decode a buffer and return the resulting value.
+/// On error, it returns the value decoded so far and the error.
 pub fn decode_value(data: &[u8]) -> Result<Value> {
   let mut decoder = Decoder::new(data);
   decoder.decode()

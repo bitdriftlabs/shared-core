@@ -13,6 +13,7 @@ use crate::serialize_primitives;
 use crate::serialize_primitives::{Result, SerializationError};
 use std::ffi::c_void;
 
+/// A writer that writes BONJSON-encoded data to an underlying writer.
 pub struct Writer<W: std::io::Write + Send + Sync> {
   pub(crate) writer: W,
 }
