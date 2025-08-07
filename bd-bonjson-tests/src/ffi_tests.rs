@@ -7,7 +7,7 @@
 
 use std::ptr::null;
 
-use bd_bonjson::ffi::BDCrashWriterHandle;
+use bd_bonjson::{decoder::{Decoder, Value}, ffi::BDCrashWriterHandle};
 use tempfile::NamedTempFile;
 use libc;
 
@@ -55,13 +55,15 @@ fn test_flush() {
 #[test]
 fn test_write_boolean() {
   let temp_file_path = new_temp_file_path();
-  let mut handle = null();
+
+  let expected = true;
 
   unsafe {
+    let mut handle = null();
     assert!(open_writer(&raw mut handle, temp_file_path.as_ptr() as *const libc::c_char));
     assert!(!handle.is_null());
 
-    let result = write_boolean(&raw mut handle, true);
+    let result = write_boolean(&raw mut handle, expected);
     assert!(result);
 
     assert!(flush_writer(&raw mut handle));
@@ -69,4 +71,9 @@ fn test_write_boolean() {
     close_writer(&raw mut handle);
     assert!(handle.is_null());
   }
+
+    let bytes = std::fs::read(temp_file_path).unwrap();
+    let mut decoder = Decoder::new(&bytes);
+    let value = decoder.decode().unwrap();
+    assert_eq!(value, Value::Bool(expected));
 }
