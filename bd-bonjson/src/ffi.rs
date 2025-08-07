@@ -53,7 +53,6 @@ macro_rules! try_into_writer {
 }
 
 pub fn new_writer(path: &str) -> io::Result<WriterBufWriterFile> {
-  println!("### Creating new writer for path: {}", path);
   let file = OpenOptions::new()
     .create(true)
     .write(true)
@@ -87,7 +86,6 @@ pub extern "C-unwind" fn bdcrw_open_writer(handle: BDCrashWriterHandle, path: *c
 
   unsafe {
     *handle = writer.into_raw();
-    println!("### bdcrw_open_writer: handle: {:?}", *handle);
   }
   true
 }
@@ -117,7 +115,6 @@ pub extern "C-unwind" fn bdcrw_flush_writer(handle: BDCrashWriterHandle) -> bool
 
 #[unsafe(no_mangle)]
 extern "C-unwind" fn bdcrw_write_boolean(handle: BDCrashWriterHandle, value: bool) -> bool {
-  unsafe {println!("### bdcrw_write_boolean: handle: {:?}", *handle);}
   let writer = try_into_writer!(handle, false);
   match writer.write_boolean(value) {
     Ok(_) => true,
