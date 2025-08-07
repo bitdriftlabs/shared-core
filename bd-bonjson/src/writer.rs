@@ -20,7 +20,7 @@ pub struct Writer<W: std::io::Write + Send + Sync> {
 
 impl<W: std::io::Write + Send + Sync> Writer<W> {
   #[must_use]
-  pub fn into_raw(&self) -> *const c_void {
+  pub fn into_raw(self) -> *const c_void {
     Box::into_raw(Box::new(self)) as *const _
   }
 

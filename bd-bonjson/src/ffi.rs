@@ -69,12 +69,12 @@ pub extern "C-unwind" fn bdcrw_open_writer(handle: BDCrashWriterHandle, path: *c
     return false;
   }
 
-  let path_str: &str = unsafe { match std::ffi::CStr::from_ptr(path).to_str() {
+  let path_str: &str = match unsafe { std::ffi::CStr::from_ptr(path).to_str() } {
     Ok(s) => s,
     Err(e) => {
         println!("Error: bdcrw_open_writer: path contains invalid UTF-8: {e}");
         return false;
-    }}
+    }
   };
 
   let writer = match new_writer(path_str) {
