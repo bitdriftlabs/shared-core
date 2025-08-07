@@ -7,7 +7,9 @@
 
 #[repr(u8)]
 pub enum TypeCode {
+  // Integers 0 to 100 are their own type codes.
   P100         = 0x64,
+  // Reserved:   0x65-0x67,
   LongString   = 0x68,
   LongNumber   = 0x69,
   Float16      = 0x6a,
@@ -22,8 +24,10 @@ pub enum TypeCode {
   SignedEnd    = 0x7f,
   String       = 0x80,
   StringEnd    = 0x8f,
+  // Reserved:   0x90-0x98,
   ArrayStart   = 0x99,
   MapStart     = 0x9a,
   ContainerEnd = 0x9b,
   N100         = 0x9c,
+  // Integers -100 to -1 are their own type codes.
 }
