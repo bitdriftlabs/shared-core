@@ -27,3 +27,35 @@ bool flush_writer(BDCrashWriterHandle handle) {
 bool write_boolean(BDCrashWriterHandle handle, bool value) {
     return bdcrw_write_boolean(handle, value);
 }
+
+bool write_null(BDCrashWriterHandle handle) {
+    return bdcrw_write_null(handle);
+}
+
+bool write_signed(BDCrashWriterHandle handle, int64_t value) {
+    return bdcrw_write_signed(handle, value);
+}
+
+bool write_unsigned(BDCrashWriterHandle handle, uint64_t value) {
+    return bdcrw_write_unsigned(handle, value);
+}
+
+bool write_float(BDCrashWriterHandle handle, double value) {
+    return bdcrw_write_float(handle, value);
+}
+
+bool write_str(BDCrashWriterHandle handle, const char* value) {
+    return bdcrw_write_str(handle, value);
+}
+
+bool write_array_begin(BDCrashWriterHandle handle) {
+    return bdcrw_write_array_begin(handle);
+}
+
+bool write_map_begin(BDCrashWriterHandle handle) {
+    return bdcrw_write_map_begin(handle);
+}
+
+bool write_container_end(BDCrashWriterHandle handle) {
+    return bdcrw_write_container_end(handle);
+}

@@ -124,3 +124,111 @@ extern "C-unwind" fn bdcrw_write_boolean(handle: BDCrashWriterHandle, value: boo
     }
   }
 }
+
+#[unsafe(no_mangle)]
+pub extern "C-unwind" fn bdcrw_write_null(handle: BDCrashWriterHandle) -> bool {
+    let writer = try_into_writer!(handle, false);
+    match writer.write_null() {
+        Ok(_) => true,
+        Err(e) => {
+            println!("Error: bdcrw_write_null: {e:?}");
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C-unwind" fn bdcrw_write_signed(handle: BDCrashWriterHandle, value: i64) -> bool {
+    let writer = try_into_writer!(handle, false);
+    match writer.write_signed(value) {
+        Ok(_) => true,
+        Err(e) => {
+            println!("Error: bdcrw_write_signed: {e:?}");
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C-unwind" fn bdcrw_write_unsigned(handle: BDCrashWriterHandle, value: u64) -> bool {
+    let writer = try_into_writer!(handle, false);
+    match writer.write_unsigned(value) {
+        Ok(_) => true,
+        Err(e) => {
+            println!("Error: bdcrw_write_unsigned: {e:?}");
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C-unwind" fn bdcrw_write_float(handle: BDCrashWriterHandle, value: f64) -> bool {
+    let writer = try_into_writer!(handle, false);
+    match writer.write_float(value) {
+        Ok(_) => true,
+        Err(e) => {
+            println!("Error: bdcrw_write_float: {e:?}");
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C-unwind" fn bdcrw_write_str(handle: BDCrashWriterHandle, value: *const libc::c_char) -> bool {
+    if value.is_null() {
+        println!("Error: bdcrw_write_str: value is null");
+        return false;
+    }
+    let cstr = unsafe { std::ffi::CStr::from_ptr(value) };
+    let str_slice = match cstr.to_str() {
+        Ok(s) => s,
+        Err(e) => {
+            println!("Error: bdcrw_write_str: invalid UTF-8: {e}");
+            return false;
+        }
+    };
+    let writer = try_into_writer!(handle, false);
+    match writer.write_str(str_slice) {
+        Ok(_) => true,
+        Err(e) => {
+            println!("Error: bdcrw_write_str: {e:?}");
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C-unwind" fn bdcrw_write_array_begin(handle: BDCrashWriterHandle) -> bool {
+    let writer = try_into_writer!(handle, false);
+    match writer.write_array_begin() {
+        Ok(_) => true,
+        Err(e) => {
+            println!("Error: bdcrw_write_array_begin: {e:?}");
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C-unwind" fn bdcrw_write_map_begin(handle: BDCrashWriterHandle) -> bool {
+    let writer = try_into_writer!(handle, false);
+    match writer.write_map_begin() {
+        Ok(_) => true,
+        Err(e) => {
+            println!("Error: bdcrw_write_map_begin: {e:?}");
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C-unwind" fn bdcrw_write_container_end(handle: BDCrashWriterHandle) -> bool {
+    let writer = try_into_writer!(handle, false);
+    match writer.write_container_end() {
+        Ok(_) => true,
+        Err(e) => {
+            println!("Error: bdcrw_write_container_end: {e:?}");
+            false
+        }
+    }
+}

@@ -23,3 +23,19 @@ void bdcrw_close_writer(BDCrashWriterHandle handle);
 bool bdcrw_flush_writer(BDCrashWriterHandle handle);
 
 bool bdcrw_write_boolean(BDCrashWriterHandle handle, bool value);
+
+bool bdcrw_write_null(BDCrashWriterHandle handle);
+
+bool bdcrw_write_signed(BDCrashWriterHandle handle, int64_t value);
+
+bool bdcrw_write_unsigned(BDCrashWriterHandle handle, uint64_t value);
+
+bool bdcrw_write_float(BDCrashWriterHandle handle, double value);
+
+bool bdcrw_write_str(BDCrashWriterHandle handle, const char *value);
+
+bool bdcrw_write_array_begin(BDCrashWriterHandle handle);
+
+bool bdcrw_write_map_begin(BDCrashWriterHandle handle);
+
+bool bdcrw_write_container_end(BDCrashWriterHandle handle);
