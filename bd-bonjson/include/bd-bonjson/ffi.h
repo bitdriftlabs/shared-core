@@ -14,8 +14,12 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-typedef const void **WriterHandle;
+typedef const void **BDCrashWriterHandle;
 
-WriterHandle bdcrw_open_writer(const char *path);
+bool bdcrw_open_writer(BDCrashWriterHandle handle, const char *path);
 
-bool bdcrw_write_boolean(WriterHandle handle, bool value);
+void bdcrw_close_writer(BDCrashWriterHandle handle);
+
+bool bdcrw_flush_writer(BDCrashWriterHandle handle);
+
+bool bdcrw_write_boolean(BDCrashWriterHandle handle, bool value);

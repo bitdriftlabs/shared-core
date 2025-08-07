@@ -420,6 +420,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-bonjson-tests"
+version = "1.0.0"
+dependencies = [
+ "bd-bonjson",
+ "bd-test-helpers",
+ "cc",
+ "libc",
+ "tempfile",
+]
+
+[[package]]
 name = "bd-bounded-buffer"
 version = "1.0.0"
 dependencies = [

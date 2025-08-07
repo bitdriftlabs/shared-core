@@ -5,38 +5,34 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use std::ptr::null;
 use std::{ffi::c_void, fs::File};
 use std::fs::OpenOptions;
-use std::io;
-use std::ptr::null_mut;
+use std::io::{self, Write};
 use crate::writer::Writer;
 use std::io::{BufWriter};
 use libc;
 
-pub type WriterHandle = *mut *const c_void;
+pub type BDCrashWriterHandle = *mut *const c_void;
 pub type WriterBufWriterFile = Writer<BufWriter<File>>;
 
-pub fn new_writer(path: &str) -> io::Result<WriterBufWriterFile> {
-  let file = OpenOptions::new()
-    .create(true)
-    .write(true)
-    .truncate(true)
-    .open(path)?;
-  Ok(Writer { writer: BufWriter::new(file) })
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FFIError {
+  HandleWasNull,
 }
 
-impl TryFrom<WriterHandle> for &mut WriterBufWriterFile {
-  type Error = ();
+impl TryFrom<BDCrashWriterHandle> for &mut WriterBufWriterFile {
+  type Error = FFIError;
 
   /// # Safety
   /// This function dereferences a raw pointer and must be called with a valid handle
   #[allow(clippy::not_unsafe_ptr_arg_deref)]
-  fn try_from(value: WriterHandle) -> Result<Self, Self::Error> {
+  fn try_from(handle: BDCrashWriterHandle) -> Result<Self, Self::Error> {
     unsafe {
-      if value.is_null() || (*value).is_null() {
-        return Err(());
+      if handle.is_null() || (*handle).is_null() {
+        return Err(FFIError::HandleWasNull);
       }
-      (*value as *mut Writer<BufWriter<File>>).as_mut().ok_or(())
+      (*handle as *mut Writer<BufWriter<File>>).as_mut().ok_or(FFIError::HandleWasNull)
     }
   }
 }
@@ -45,49 +41,81 @@ macro_rules! try_into_writer {
   ($handle_ptr_ptr:ident, $failure_ret_val:expr) => {{
     let writer: Result<&mut Writer<BufWriter<File>>, _> = $handle_ptr_ptr.try_into();
     if writer.is_err() {
+      println!("Error converting handle to writer: {:?}", writer.err());
       return $failure_ret_val;
     }
     writer.unwrap()
   }};
 }
 
+pub fn new_writer(path: &str) -> io::Result<WriterBufWriterFile> {
+  println!("Creating new writer for path: {}", path);
+  let file = OpenOptions::new()
+    .create(true)
+    .write(true)
+    .truncate(true)
+    .open(path)?;
+  Ok(Writer { writer: BufWriter::new(file) })
+}
+
 #[unsafe(no_mangle)]
-pub extern "C-unwind" fn bdcrw_open_writer(path: *const libc::c_char) -> WriterHandle {
+pub extern "C-unwind" fn bdcrw_open_writer(handle: BDCrashWriterHandle, path: *const libc::c_char) -> bool {
   if path.is_null() {
-    return null_mut();
+    println!("bdcrw_open_writer: path is null");
+    return false;
   }
 
   unsafe {
     let path_str: &str = match std::ffi::CStr::from_ptr(path).to_str() {
       Ok(s) => s,
       Err(e) => {
-          println!("Path contains invalid UTF-8: {}", e);
-          return null_mut();
+          println!("bdcrw_open_writer: path contains invalid UTF-8: {e}");
+          return false;
       }
     };
     match new_writer(path_str) {
       Ok(writer) => {
-        let boxed_writer = Box::new(writer);
-        Box::into_raw(boxed_writer) as WriterHandle
+        *handle = writer.into_raw();
+        true
       },
       Err(e) => {
-        println!("Failed to open writer: {}", e);
-        null_mut()
+        println!("bdcrw_open_writer: failed to open writer: {e}");
+        false
       }
     }
   }
 }
 
 #[unsafe(no_mangle)]
-extern "C-unwind" fn bdcrw_write_boolean(
-  handle: WriterHandle,
-  value: bool,
-) -> bool {
+pub extern "C-unwind" fn bdcrw_close_writer(handle: BDCrashWriterHandle) {
+  unsafe {
+    if handle.is_null() || (*handle).is_null() {
+      return;
+    }
+    drop(Box::<WriterBufWriterFile>::from_raw(*handle as *mut _));
+    *handle = null();
+  }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C-unwind" fn bdcrw_flush_writer(handle: BDCrashWriterHandle) -> bool {
+  let writer = try_into_writer!(handle, false);
+  match writer.flush() {
+    Ok(_) => true,
+    Err(e) => {
+      println!("bdcrw_flush_writer: {e:?}");
+      false
+    }
+  }
+}
+
+#[unsafe(no_mangle)]
+extern "C-unwind" fn bdcrw_write_boolean(handle: BDCrashWriterHandle, value: bool) -> bool {
   let writer = try_into_writer!(handle, false);
   match writer.write_boolean(value) {
     Ok(_) => true,
     Err(e) => {
-      println!("Failed to write boolean: {:?}", e);
+      println!("bdcrw_write_boolean: {e:?}");
       false
     }
   }
