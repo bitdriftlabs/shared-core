@@ -385,15 +385,14 @@ impl SankeyState {
       return;
     }
 
-    if self.nodes.iter().filter(|n| n.counts_toward_limit).count() > limit {
-      if let Some((index, _)) = self
+    if self.nodes.iter().filter(|n| n.counts_toward_limit).count() > limit
+      && let Some((index, _)) = self
         .nodes
         .iter()
         .find_position(|node| node.counts_toward_limit)
-      {
-        self.is_trimmed = true;
-        self.nodes.remove(index);
-      }
+    {
+      self.is_trimmed = true;
+      self.nodes.remove(index);
     }
   }
 }
@@ -493,35 +492,35 @@ impl Run {
         }
       }
 
-      if let Some(duration_limit) = config.duration_limit() {
-        if let Some(first_progress_occurred_at) = self.first_progress_occurred_at {
-          let current_time: SystemTime = log.occurred_at.into();
+      if let Some(duration_limit) = config.duration_limit()
+        && let Some(first_progress_occurred_at) = self.first_progress_occurred_at
+      {
+        let current_time: SystemTime = log.occurred_at.into();
 
-          match current_time.duration_since(first_progress_occurred_at) {
-            Ok(duration_since_first_progress) => {
-              if duration_since_first_progress > duration_limit {
-                log::debug!(
-                  "run stopped due to exceeding duration limit ({duration_limit:?}), duration \
-                   since the run first made progress progress: {duration_since_first_progress:?}"
-                );
-                return RunResult {
-                  state: RunState::Stopped,
-                  triggered_actions: vec![],
-                  matched_logs_count: run_matched_logs_count,
-                  processed_timeout: run_processed_timeout,
-                  logs_to_inject: BTreeMap::new(),
-                };
-              }
-            },
-            // `duration_since` fails if `earlier` time (passed as an argument) is after
-            // `current_time`. This can happen as time instances processed in here come from
-            // `TimeProvider` registered by SDK customer and nothing prevents these
-            // providers from returning decreasing times.
-            Err(e) => log::debug!(
-              "failed to calculate time difference between current time {current_time:?} and \
-               first progress occurred at time {first_progress_occurred_at:?}: {e}",
-            ),
-          }
+        match current_time.duration_since(first_progress_occurred_at) {
+          Ok(duration_since_first_progress) => {
+            if duration_since_first_progress > duration_limit {
+              log::debug!(
+                "run stopped due to exceeding duration limit ({duration_limit:?}), duration since \
+                 the run first made progress progress: {duration_since_first_progress:?}"
+              );
+              return RunResult {
+                state: RunState::Stopped,
+                triggered_actions: vec![],
+                matched_logs_count: run_matched_logs_count,
+                processed_timeout: run_processed_timeout,
+                logs_to_inject: BTreeMap::new(),
+              };
+            }
+          },
+          // `duration_since` fails if `earlier` time (passed as an argument) is after
+          // `current_time`. This can happen as time instances processed in here come from
+          // `TimeProvider` registered by SDK customer and nothing prevents these
+          // providers from returning decreasing times.
+          Err(e) => log::debug!(
+            "failed to calculate time difference between current time {current_time:?} and first \
+             progress occurred at time {first_progress_occurred_at:?}: {e}",
+          ),
         }
       }
 
@@ -815,26 +814,25 @@ impl Traversal {
       }
     }
 
-    if result.output_traversals.is_empty() {
-      if let Some(timeout_unix_ms) = self.timeout_unix_ms {
-        if now.unix_timestamp_ms() >= timeout_unix_ms {
-          process_transition(
-            &mut result,
-            TraversalExtractions::default(),
-            config.actions_for_timeout(self.state_index),
-            log,
-            config.next_state_index_for_timeout(self.state_index),
-            config,
-            now,
-          );
-          result.processed_timeout = true;
+    if result.output_traversals.is_empty()
+      && let Some(timeout_unix_ms) = self.timeout_unix_ms
+      && now.unix_timestamp_ms() >= timeout_unix_ms
+    {
+      process_transition(
+        &mut result,
+        TraversalExtractions::default(),
+        config.actions_for_timeout(self.state_index),
+        log,
+        config.next_state_index_for_timeout(self.state_index),
+        config,
+        now,
+      );
+      result.processed_timeout = true;
 
-          log::trace!(
-            "traversal timed out and is advancing, workflow id={:?}",
-            config.id(),
-          );
-        }
-      }
+      log::trace!(
+        "traversal timed out and is advancing, workflow id={:?}",
+        config.id(),
+      );
     }
 
     result

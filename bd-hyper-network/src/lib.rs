@@ -156,19 +156,19 @@ impl HyperNetwork {
       ));
     }
 
-    if let Some(grpc_status) = response.headers().get("grpc-status") {
-      if grpc_status != "0" {
-        // TODO(snowp): The grpc-message is url encoded, it would be nice to decode it.
-        log::debug!(
-          "closing stream due to bad response grpc-status {:?}, messsage: {:?}",
-          std::str::from_utf8(grpc_status.as_bytes()).unwrap_or_default(),
-          response.headers().get("grpc-message")
-        );
+    if let Some(grpc_status) = response.headers().get("grpc-status")
+      && grpc_status != "0"
+    {
+      // TODO(snowp): The grpc-message is url encoded, it would be nice to decode it.
+      log::debug!(
+        "closing stream due to bad response grpc-status {:?}, messsage: {:?}",
+        std::str::from_utf8(grpc_status.as_bytes()).unwrap_or_default(),
+        response.headers().get("grpc-message")
+      );
 
-        return Some(bd_api::StreamEvent::StreamClosed(
-          "bad grpc response code".to_string(),
-        ));
-      }
+      return Some(bd_api::StreamEvent::StreamClosed(
+        "bad grpc response code".to_string(),
+      ));
     }
 
     loop {

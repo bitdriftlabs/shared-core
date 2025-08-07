@@ -566,10 +566,10 @@ impl Streaming {
       })
       .min();
 
-    if let Some(max_logs_count) = max_logs_count {
-      if max_logs_count == 0 {
-        bail!("invalid streaming configuration: max_logs_count has to be greater than 0");
-      }
+    if let Some(max_logs_count) = max_logs_count
+      && max_logs_count == 0
+    {
+      bail!("invalid streaming configuration: max_logs_count has to be greater than 0");
     }
 
     Ok(Self {

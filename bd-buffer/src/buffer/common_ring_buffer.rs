@@ -652,13 +652,12 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
 
     // TODO(mattklein123): Handle the case in which the target committed write start gets
     // overwritten.
-    if let Some(wait_for_drain_data) = &guard.wait_for_drain_data {
-      if wait_for_drain_data.committed_write_start.is_none()
-        || wait_for_drain_data.committed_write_start.unwrap() == reservation.start
-      {
-        conditions.drain_complete.notify_all();
-        guard.wait_for_drain_data = None;
-      }
+    if let Some(wait_for_drain_data) = &guard.wait_for_drain_data
+      && (wait_for_drain_data.committed_write_start.is_none()
+        || wait_for_drain_data.committed_write_start.unwrap() == reservation.start)
+    {
+      conditions.drain_complete.notify_all();
+      guard.wait_for_drain_data = None;
     }
 
     guard.maybe_do_total_data_loss_reset();

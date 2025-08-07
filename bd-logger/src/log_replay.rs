@@ -439,10 +439,9 @@ impl ProcessingPipeline {
         |synthetic_log| {
           if let Ok(buffer_producer) =
             BufferProducers::producer(&mut buffers.buffers, arbitrary_buffer_id_to_flush.as_str())
+            && let Err(e) = buffer_producer.write(synthetic_log)
           {
-            if let Err(e) = buffer_producer.write(synthetic_log) {
-              log::debug!("failed to write synthetic log to buffer: {e}");
-            }
+            log::debug!("failed to write synthetic log to buffer: {e}");
           }
 
           Ok(())

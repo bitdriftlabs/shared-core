@@ -98,15 +98,16 @@ fn validate_bool(
   message_descriptor: &MessageDescriptor,
   message: &dyn protobuf::MessageDyn,
 ) -> error::Result<()> {
-  if let Some(ReflectValueRef::Bool(value)) = get_singular_or_default(field_descriptor, message) {
-    if rules.has_const() && rules.const_() != value {
-      return Err(error::Error::ProtoValidation(format!(
-        "field '{}' in message '{}' must be constant {}",
-        field_descriptor.full_name(),
-        message_descriptor.full_name(),
-        rules.const_()
-      )));
-    }
+  if let Some(ReflectValueRef::Bool(value)) = get_singular_or_default(field_descriptor, message)
+    && rules.has_const()
+    && rules.const_() != value
+  {
+    return Err(error::Error::ProtoValidation(format!(
+      "field '{}' in message '{}' must be constant {}",
+      field_descriptor.full_name(),
+      message_descriptor.full_name(),
+      rules.const_()
+    )));
   }
 
   Ok(())
@@ -389,19 +390,17 @@ fn validate_field(
           }
 
           // See if the field has duration rules, exists, and is the duration type.
-          if rules.has_duration() {
-            if let Some(ReflectValueRef::Message(duration)) = field_descriptor.get_singular(message)
-            {
-              if duration.descriptor_dyn().full_name() == "google.protobuf.Duration" {
-                validate_duration(
-                  rules.duration(),
-                  field_descriptor,
-                  message_descriptor,
-                  duration.downcast_ref().unwrap(),
-                )?;
-                return Ok(false); // Do not recurse.
-              }
-            }
+          if rules.has_duration()
+            && let Some(ReflectValueRef::Message(duration)) = field_descriptor.get_singular(message)
+            && duration.descriptor_dyn().full_name() == "google.protobuf.Duration"
+          {
+            validate_duration(
+              rules.duration(),
+              field_descriptor,
+              message_descriptor,
+              duration.downcast_ref().unwrap(),
+            )?;
+            return Ok(false); // Do not recurse.
           }
         },
         RuntimeType::String => {
@@ -415,47 +414,43 @@ fn validate_field(
           }
         },
         RuntimeType::I32 => {
-          if rules.has_int32() {
-            if let Some(ReflectValueRef::I32(value)) =
+          if rules.has_int32()
+            && let Some(ReflectValueRef::I32(value)) =
               get_singular_or_default(field_descriptor, message)
-            {
-              rules
-                .int32()
-                .validate_all_int_rules(value, field_descriptor, message_descriptor)?;
-            }
+          {
+            rules
+              .int32()
+              .validate_all_int_rules(value, field_descriptor, message_descriptor)?;
           }
         },
         RuntimeType::I64 => {
-          if rules.has_int64() {
-            if let Some(ReflectValueRef::I64(value)) =
+          if rules.has_int64()
+            && let Some(ReflectValueRef::I64(value)) =
               get_singular_or_default(field_descriptor, message)
-            {
-              rules
-                .int64()
-                .validate_all_int_rules(value, field_descriptor, message_descriptor)?;
-            }
+          {
+            rules
+              .int64()
+              .validate_all_int_rules(value, field_descriptor, message_descriptor)?;
           }
         },
         RuntimeType::U32 => {
-          if rules.has_uint32() {
-            if let Some(ReflectValueRef::U32(value)) =
+          if rules.has_uint32()
+            && let Some(ReflectValueRef::U32(value)) =
               get_singular_or_default(field_descriptor, message)
-            {
-              rules
-                .uint32()
-                .validate_all_int_rules(value, field_descriptor, message_descriptor)?;
-            }
+          {
+            rules
+              .uint32()
+              .validate_all_int_rules(value, field_descriptor, message_descriptor)?;
           }
         },
         RuntimeType::U64 => {
-          if rules.has_uint64() {
-            if let Some(ReflectValueRef::U64(value)) =
+          if rules.has_uint64()
+            && let Some(ReflectValueRef::U64(value)) =
               get_singular_or_default(field_descriptor, message)
-            {
-              rules
-                .uint64()
-                .validate_all_int_rules(value, field_descriptor, message_descriptor)?;
-            }
+          {
+            rules
+              .uint64()
+              .validate_all_int_rules(value, field_descriptor, message_descriptor)?;
           }
         },
         RuntimeType::F32 => {
