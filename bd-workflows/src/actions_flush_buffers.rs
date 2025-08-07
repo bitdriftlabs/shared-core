@@ -914,11 +914,11 @@ impl StreamingBuffersAction {
   }
 
   const fn meets_termination_criteria(&self) -> bool {
-    if let Some(max_logs_count) = self.max_logs_count {
-      if self.logs_count >= max_logs_count {
-        // The streaming action hit the number of logs it was supposed to stream.
-        return true;
-      }
+    if let Some(max_logs_count) = self.max_logs_count
+      && self.logs_count >= max_logs_count
+    {
+      // The streaming action hit the number of logs it was supposed to stream.
+      return true;
     }
     false
   }

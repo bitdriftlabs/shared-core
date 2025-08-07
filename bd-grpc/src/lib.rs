@@ -205,18 +205,18 @@ impl<IncomingType: DecodingResult> StreamingApiReceiver<IncomingType> {
   // indicates the stream is complete.
   pub async fn next(&mut self) -> Result<Option<Vec<IncomingType>>> {
     loop {
-      if let Some(read_stop) = &mut self.read_stop {
-        if *read_stop.borrow_and_update() {
-          log::trace!("read stop triggered");
-          if let Err(e) = read_stop.changed().await {
-            // This is a programming error and reasonably might only happen during shutdown.
-            // Issue a debug assert and end the stream.
-            debug_assert!(false, "read stop watch error: {e}");
-            return Ok(None);
-          }
-          log::trace!("read stop cleared");
-          continue;
+      if let Some(read_stop) = &mut self.read_stop
+        && *read_stop.borrow_and_update()
+      {
+        log::trace!("read stop triggered");
+        if let Err(e) = read_stop.changed().await {
+          // This is a programming error and reasonably might only happen during shutdown.
+          // Issue a debug assert and end the stream.
+          debug_assert!(false, "read stop watch error: {e}");
+          return Ok(None);
         }
+        log::trace!("read stop cleared");
+        continue;
       }
 
       let frame = tokio::select! {
@@ -643,10 +643,10 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
         let _ignored = sender.send_ok_trailers().await;
       },
       Err(e) => {
-        if let Some(warning) = e.warn_every_message() {
-          if warn_tracker.should_warn(15.seconds()) {
-            log::warn!("{path} failed: {warning}");
-          }
+        if let Some(warning) = e.warn_every_message()
+          && warn_tracker.should_warn(15.seconds())
+        {
+          log::warn!("{path} failed: {warning}");
         }
 
         if let Some(stream_stats) = &stream_stats {
@@ -732,10 +732,10 @@ pub fn make_unary_router<OutgoingType: MessageFull, IncomingType: MessageFull>(
       .await;
 
       if let Err(e) = &result {
-        if let Some(warning) = e.warn_every_message() {
-          if warn_tracker.should_warn(15.seconds()) {
-            log::warn!("{full_path} failed: {warning}");
-          }
+        if let Some(warning) = e.warn_every_message()
+          && warn_tracker.should_warn(15.seconds())
+        {
+          log::warn!("{full_path} failed: {warning}");
         }
 
         error_handler(e);

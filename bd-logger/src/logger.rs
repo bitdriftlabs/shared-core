@@ -591,10 +591,10 @@ impl Logger {
   pub fn shutdown(&self, blocking: bool) {
     let shutdown_trigger = self.shutdown_state.lock().unwrap().take();
 
-    if let Some(shutdown_trigger) = shutdown_trigger {
-      if blocking {
-        shutdown_trigger.shutdown_blocking();
-      }
+    if let Some(shutdown_trigger) = shutdown_trigger
+      && blocking
+    {
+      shutdown_trigger.shutdown_blocking();
     }
   }
 

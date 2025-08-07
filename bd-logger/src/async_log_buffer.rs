@@ -563,10 +563,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           anyhow::bail!("failed to push log to a pre-config buffer: {e}");
         }
 
-        if let Some(tx) = log_processing_completed_tx {
-          if let Err(e) = tx.send(()) {
-            anyhow::bail!("failed to send log processing completion message: {e:?}");
-          }
+        if let Some(tx) = log_processing_completed_tx
+          && let Err(e) = tx.send(())
+        {
+          anyhow::bail!("failed to send log processing completion message: {e:?}");
         }
 
         vec![]

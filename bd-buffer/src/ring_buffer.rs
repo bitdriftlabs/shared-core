@@ -217,10 +217,8 @@ impl Manager {
         }
       }
 
-      if flush_all_buffers {
-        if let Some(stream_buffer) = &self.buffers.lock().1 {
-          stream_buffer.flush();
-        }
+      if flush_all_buffers && let Some(stream_buffer) = &self.buffers.lock().1 {
+        stream_buffer.flush();
       }
 
       if let Some(completed_tx) = buffers_with_ack.completed_tx {

@@ -505,22 +505,22 @@ impl SnapshotHelper {
     let mut new_metrics: MetricsByName = HashMap::new();
     for proto_metric in metrics.metric {
       let tags = proto_metric.tags.into_iter().collect();
-      if let Some(data) = proto_metric.data {
-        if let Some(metric) = MetricData::from_proto(data) {
-          let metric_type = match metric {
-            MetricData::Counter(_) => MetricType::Counter,
-            MetricData::Histogram(_) => MetricType::Histogram,
-          };
+      if let Some(data) = proto_metric.data
+        && let Some(metric) = MetricData::from_proto(data)
+      {
+        let metric_type = match metric {
+          MetricData::Counter(_) => MetricType::Counter,
+          MetricData::Histogram(_) => MetricType::Histogram,
+        };
 
-          let name = match proto_metric.metric_name_type {
-            Some(Metric_name_type::Name(name)) => NameType::Global(metric_type, name),
-            Some(Metric_name_type::MetricId(id)) => NameType::ActionId(metric_type, id),
-            None => continue,
-          };
+        let name = match proto_metric.metric_name_type {
+          Some(Metric_name_type::Name(name)) => NameType::Global(metric_type, name),
+          Some(Metric_name_type::MetricId(id)) => NameType::ActionId(metric_type, id),
+          None => continue,
+        };
 
-          let existing = new_metrics.entry(name).or_default().insert(tags, metric);
-          debug_assert!(existing.is_none());
-        }
+        let existing = new_metrics.entry(name).or_default().insert(tags, metric);
+        debug_assert!(existing.is_none());
       }
     }
 
@@ -546,16 +546,16 @@ impl SnapshotHelper {
     };
 
     let by_name = self.metrics.entry(name.clone()).or_default();
-    if let Some(limit) = maybe_limit {
-      if by_name.len() >= limit as usize {
-        log::debug!("metric overflow during snapshot insert");
-        self
-          .overflows
-          .entry(name.into_string())
-          .and_modify(|e| *e += 1)
-          .or_insert(1);
-        return;
-      }
+    if let Some(limit) = maybe_limit
+      && by_name.len() >= limit as usize
+    {
+      log::debug!("metric overflow during snapshot insert");
+      self
+        .overflows
+        .entry(name.into_string())
+        .and_modify(|e| *e += 1)
+        .or_insert(1);
+      return;
     }
 
     let existing = by_name.insert(labels, metric);
