@@ -10,7 +10,18 @@
 mod decoder_test;
 
 use crate::deserialize_primitives;
-use crate::deserialize_primitives::*;
+use crate::deserialize_primitives::{
+  DeserializationError,
+  deserialize_f16_after_type_code,
+  deserialize_f32_after_type_code,
+  deserialize_f64_after_type_code,
+  deserialize_long_string_after_type_code,
+  deserialize_short_string_after_type_code,
+  deserialize_signed_after_type_code,
+  deserialize_type_code,
+  deserialize_unsigned_after_type_code,
+  peek_type_code
+};
 use crate::type_codes::TypeCode;
 use std::collections::HashMap;
 

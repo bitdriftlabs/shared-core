@@ -52,7 +52,7 @@ macro_rules! try_into_writer {
   }};
 }
 
-pub fn new_writer(path: &str) -> io::Result<WriterBufWriterFile> {
+fn new_writer(path: &str) -> io::Result<WriterBufWriterFile> {
   let file = OpenOptions::new()
     .create(true)
     .write(true)
@@ -62,7 +62,7 @@ pub fn new_writer(path: &str) -> io::Result<WriterBufWriterFile> {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C-unwind" fn bdcrw_open_writer(handle: BDCrashWriterHandle, path: *const libc::c_char) -> bool {
+extern "C-unwind" fn bdcrw_open_writer(handle: BDCrashWriterHandle, path: *const libc::c_char) -> bool {
   if path.is_null() {
     println!("Error: bdcrw_open_writer: path is null");
     return false;
@@ -91,7 +91,7 @@ pub extern "C-unwind" fn bdcrw_open_writer(handle: BDCrashWriterHandle, path: *c
 }
 
 #[unsafe(no_mangle)]
-pub extern "C-unwind" fn bdcrw_close_writer(handle: BDCrashWriterHandle) {
+extern "C-unwind" fn bdcrw_close_writer(handle: BDCrashWriterHandle) {
   unsafe {
     if handle.is_null() || (*handle).is_null() {
       return;
@@ -102,10 +102,10 @@ pub extern "C-unwind" fn bdcrw_close_writer(handle: BDCrashWriterHandle) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C-unwind" fn bdcrw_flush_writer(handle: BDCrashWriterHandle) -> bool {
+extern "C-unwind" fn bdcrw_flush_writer(handle: BDCrashWriterHandle) -> bool {
   let writer = try_into_writer!(handle, false);
   match writer.flush() {
-    Ok(_) => true,
+    Ok(()) => true,
     Err(e) => {
       println!("Error: bdcrw_flush_writer: {e:?}");
       false
@@ -126,7 +126,7 @@ extern "C-unwind" fn bdcrw_write_boolean(handle: BDCrashWriterHandle, value: boo
 }
 
 #[unsafe(no_mangle)]
-pub extern "C-unwind" fn bdcrw_write_null(handle: BDCrashWriterHandle) -> bool {
+extern "C-unwind" fn bdcrw_write_null(handle: BDCrashWriterHandle) -> bool {
     let writer = try_into_writer!(handle, false);
     match writer.write_null() {
         Ok(_) => true,
@@ -138,7 +138,7 @@ pub extern "C-unwind" fn bdcrw_write_null(handle: BDCrashWriterHandle) -> bool {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C-unwind" fn bdcrw_write_signed(handle: BDCrashWriterHandle, value: i64) -> bool {
+extern "C-unwind" fn bdcrw_write_signed(handle: BDCrashWriterHandle, value: i64) -> bool {
     let writer = try_into_writer!(handle, false);
     match writer.write_signed(value) {
         Ok(_) => true,
@@ -150,7 +150,7 @@ pub extern "C-unwind" fn bdcrw_write_signed(handle: BDCrashWriterHandle, value: 
 }
 
 #[unsafe(no_mangle)]
-pub extern "C-unwind" fn bdcrw_write_unsigned(handle: BDCrashWriterHandle, value: u64) -> bool {
+extern "C-unwind" fn bdcrw_write_unsigned(handle: BDCrashWriterHandle, value: u64) -> bool {
     let writer = try_into_writer!(handle, false);
     match writer.write_unsigned(value) {
         Ok(_) => true,
@@ -162,7 +162,7 @@ pub extern "C-unwind" fn bdcrw_write_unsigned(handle: BDCrashWriterHandle, value
 }
 
 #[unsafe(no_mangle)]
-pub extern "C-unwind" fn bdcrw_write_float(handle: BDCrashWriterHandle, value: f64) -> bool {
+extern "C-unwind" fn bdcrw_write_float(handle: BDCrashWriterHandle, value: f64) -> bool {
     let writer = try_into_writer!(handle, false);
     match writer.write_float(value) {
         Ok(_) => true,
@@ -174,7 +174,7 @@ pub extern "C-unwind" fn bdcrw_write_float(handle: BDCrashWriterHandle, value: f
 }
 
 #[unsafe(no_mangle)]
-pub extern "C-unwind" fn bdcrw_write_str(handle: BDCrashWriterHandle, value: *const libc::c_char) -> bool {
+extern "C-unwind" fn bdcrw_write_str(handle: BDCrashWriterHandle, value: *const libc::c_char) -> bool {
     if value.is_null() {
         println!("Error: bdcrw_write_str: value is null");
         return false;
@@ -198,7 +198,7 @@ pub extern "C-unwind" fn bdcrw_write_str(handle: BDCrashWriterHandle, value: *co
 }
 
 #[unsafe(no_mangle)]
-pub extern "C-unwind" fn bdcrw_write_array_begin(handle: BDCrashWriterHandle) -> bool {
+extern "C-unwind" fn bdcrw_write_array_begin(handle: BDCrashWriterHandle) -> bool {
     let writer = try_into_writer!(handle, false);
     match writer.write_array_begin() {
         Ok(_) => true,
@@ -210,7 +210,7 @@ pub extern "C-unwind" fn bdcrw_write_array_begin(handle: BDCrashWriterHandle) ->
 }
 
 #[unsafe(no_mangle)]
-pub extern "C-unwind" fn bdcrw_write_map_begin(handle: BDCrashWriterHandle) -> bool {
+extern "C-unwind" fn bdcrw_write_map_begin(handle: BDCrashWriterHandle) -> bool {
     let writer = try_into_writer!(handle, false);
     match writer.write_map_begin() {
         Ok(_) => true,
@@ -222,7 +222,7 @@ pub extern "C-unwind" fn bdcrw_write_map_begin(handle: BDCrashWriterHandle) -> b
 }
 
 #[unsafe(no_mangle)]
-pub extern "C-unwind" fn bdcrw_write_container_end(handle: BDCrashWriterHandle) -> bool {
+extern "C-unwind" fn bdcrw_write_container_end(handle: BDCrashWriterHandle) -> bool {
     let writer = try_into_writer!(handle, false);
     match writer.write_container_end() {
         Ok(_) => true,

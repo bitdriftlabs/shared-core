@@ -736,7 +736,7 @@ fn test_decode_special_strings() {
   
   let mut decoder = Decoder::new(&buf[..pos]);
   let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::String("".to_string()));
+  assert_eq!(value, Value::String(String::new()));
   
   // Test emoji and multi-byte characters
   let special_str = "こんにちは世界 🌍 emoji test";

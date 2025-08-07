@@ -9,7 +9,6 @@ use std::ptr::null;
 
 use bd_bonjson::{decoder::{Decoder, Value}, ffi::BDCrashWriterHandle};
 use tempfile::NamedTempFile;
-use libc;
 use assert_no_alloc::*;
 
 #[cfg(debug_assertions)]
@@ -41,7 +40,7 @@ fn test_open_and_close_writer() {
   let mut handle = null();
 
   unsafe {
-    assert!(open_writer(&raw mut handle, temp_file_path.as_ptr() as *const libc::c_char));
+    assert!(open_writer(&raw mut handle, temp_file_path.as_ptr().cast::<libc::c_char>()));
     assert!(!handle.is_null());
     close_writer(&raw mut handle);
     assert!(handle.is_null());
@@ -54,7 +53,7 @@ fn test_flush() {
   let mut handle = null();
 
   unsafe {
-    assert!(open_writer(&raw mut handle, temp_file_path.as_ptr() as *const libc::c_char));
+    assert!(open_writer(&raw mut handle, temp_file_path.as_ptr().cast::<libc::c_char>()));
     assert!(!handle.is_null());
 
     assert!(flush_writer(&raw mut handle));
@@ -72,7 +71,7 @@ fn test_write_boolean() {
 
   unsafe {
     let mut handle = null();
-    assert!(open_writer(&raw mut handle, temp_file_path.as_ptr() as *const libc::c_char));
+    assert!(open_writer(&raw mut handle, temp_file_path.as_ptr().cast::<libc::c_char>()));
     assert!(!handle.is_null());
 
     let result = write_boolean(&raw mut handle, expected);
@@ -95,7 +94,7 @@ fn test_write_null() {
     let temp_file_path = new_temp_file_path();
     unsafe {
         let mut handle = null();
-        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr() as *const libc::c_char));
+        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr().cast::<libc::c_char>()));
         assert!(!handle.is_null());
 
         assert!(write_null(&raw mut handle));
@@ -116,7 +115,7 @@ fn test_write_signed() {
     let expected = -12345i64;
     unsafe {
         let mut handle = null();
-        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr() as *const libc::c_char));
+        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr().cast::<libc::c_char>()));
         assert!(!handle.is_null());
 
         assert!(write_signed(&raw mut handle, expected));
@@ -137,7 +136,7 @@ fn test_write_unsigned() {
     let expected = u64::MAX;
     unsafe {
         let mut handle = null();
-        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr() as *const libc::c_char));
+        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr().cast::<libc::c_char>()));
         assert!(!handle.is_null());
 
         assert!(write_unsigned(&raw mut handle, expected));
@@ -155,10 +154,10 @@ fn test_write_unsigned() {
 #[test]
 fn test_write_float() {
     let temp_file_path = new_temp_file_path();
-    let expected = 3.14159f64;
+    let expected = 3.819_242_f64;
     unsafe {
         let mut handle = null();
-        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr() as *const libc::c_char));
+        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr().cast::<libc::c_char>()));
         assert!(!handle.is_null());
 
         assert!(write_float(&raw mut handle, expected));
@@ -179,7 +178,7 @@ fn test_write_str() {
     let expected = "hello ffi";
     unsafe {
         let mut handle = null();
-        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr() as *const libc::c_char));
+        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr().cast::<libc::c_char>()));
         assert!(!handle.is_null());
 
         let cstr = std::ffi::CString::new(expected).unwrap();
@@ -200,7 +199,7 @@ fn test_write_array() {
     let temp_file_path = new_temp_file_path();
     unsafe {
         let mut handle = null();
-        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr() as *const libc::c_char));
+        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr().cast::<libc::c_char>()));
         assert!(!handle.is_null());
 
         assert!(write_array_begin(&raw mut handle));
@@ -228,7 +227,7 @@ fn test_write_map() {
     let temp_file_path = new_temp_file_path();
     unsafe {
         let mut handle = null();
-        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr() as *const libc::c_char));
+        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr().cast::<libc::c_char>()));
         assert!(!handle.is_null());
 
         assert!(write_map_begin(&raw mut handle));
@@ -258,7 +257,7 @@ fn test_write_deeply_nested_structure() {
     let temp_file_path = new_temp_file_path();
     unsafe {
         let mut handle = null();
-        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr() as *const libc::c_char));
+        assert!(open_writer(&raw mut handle, temp_file_path.as_ptr().cast::<libc::c_char>()));
         assert!(!handle.is_null());
 
         let outer_key = std::ffi::CString::new("outer").unwrap();
