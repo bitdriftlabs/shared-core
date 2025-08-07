@@ -44,6 +44,8 @@ fn serialize_chunk_header_unchecked(dst: &mut [u8], length: u64, continuation_bi
   let total_size = (skip_bytes + copy_bytes) as usize;
   let encoded = (payload << shift_amount) | u64::from(unary_code);
   let bytes = encoded.to_le_bytes();
+  // Note: dst[0] will get overwritten unless the payload is > 56 bits.
+  //       See the last entry in derive_chunk_length_header_data().
   dst[0] = unary_code;
   dst[skip_bytes as usize .. total_size].copy_from_slice(&bytes[.. copy_bytes as usize]);
   total_size
@@ -162,7 +164,7 @@ pub fn serialize_f64(dst: &mut [u8], v: f64) -> Result<usize> {
   let bytes = v.to_le_bytes();
   require_bytes(dst, total_size)?;
   dst[0] = TypeCode::Float64 as u8;
-  dst[1 ..= bytes.len()].copy_from_slice(&bytes);
+  dst[1 .. total_size].copy_from_slice(&bytes);
   Ok(total_size)
 }
 
