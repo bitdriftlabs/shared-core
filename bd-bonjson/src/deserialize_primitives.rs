@@ -26,12 +26,6 @@ pub enum DeserializationError {
   UnexpectedTypeCode,
 }
 
-impl DeserializationError {
-  pub fn kind(self) -> Self {
-    self // Return a copy of the error
-  }
-}
-
 pub type Result<T> = std::result::Result<T, DeserializationError>;
 
 fn require_bytes(src: &[u8], byte_count: usize) -> Result<()> {

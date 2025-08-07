@@ -156,6 +156,7 @@ pub fn serialize_f32(dst: &mut [u8], v: f32) -> Result<usize> {
 #[allow(clippy::float_cmp)]
 pub fn serialize_f64(dst: &mut [u8], v: f64) -> Result<usize> {
   let as_f32 = v as f32;
+  // This needs to be an exact match to ensure that we can round-trip without any loss.
   if f64::from(as_f32) == v {
     return serialize_f32(dst, as_f32);
   }
