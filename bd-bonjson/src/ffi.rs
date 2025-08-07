@@ -69,26 +69,27 @@ pub extern "C-unwind" fn bdcrw_open_writer(handle: BDCrashWriterHandle, path: *c
     return false;
   }
 
-  unsafe {
-    let path_str: &str = match std::ffi::CStr::from_ptr(path).to_str() {
-      Ok(s) => s,
-      Err(e) => {
-          println!("Error: bdcrw_open_writer: path contains invalid UTF-8: {e}");
-          return false;
-      }
-    };
-    match new_writer(path_str) {
-      Ok(writer) => {
-        *handle = writer.into_raw();
-        println!("### bdcrw_open_writer: handle: {:?}", *handle);
-        true
-      },
-      Err(e) => {
-        println!("Error: bdcrw_open_writer: failed to open writer: {e}");
-        false
-      }
+  let path_str: &str = unsafe { match std::ffi::CStr::from_ptr(path).to_str() {
+    Ok(s) => s,
+    Err(e) => {
+        println!("Error: bdcrw_open_writer: path contains invalid UTF-8: {e}");
+        return false;
+    }}
+  };
+
+  let writer = match new_writer(path_str) {
+    Ok(writer) => writer,
+    Err(e) => {
+      println!("Error: bdcrw_open_writer: failed to open writer: {e}");
+      return false;
     }
+  };
+
+  unsafe {
+    *handle = writer.into_raw();
+    println!("### bdcrw_open_writer: handle: {:?}", *handle);
   }
+  true
 }
 
 #[unsafe(no_mangle)]
