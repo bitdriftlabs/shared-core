@@ -19,13 +19,17 @@ unsafe extern "C-unwind" {
   fn write_boolean(handle: BDCrashWriterHandle, value: bool) -> bool;
 }
 
+fn new_temp_file_path() -> String {
+  NamedTempFile::new().unwrap().path().to_str().unwrap().to_string()
+}
+
 #[test]
 fn test_open_and_close_writer() {
-  let temp_file = NamedTempFile::new().unwrap();
+  let temp_file_path = new_temp_file_path();
   let mut handle = null();
 
   unsafe {
-    assert!(open_writer(&raw mut handle, temp_file.path().to_str().unwrap().as_ptr() as *const libc::c_char));
+    assert!(open_writer(&raw mut handle, temp_file_path.as_ptr() as *const libc::c_char));
     assert!(!handle.is_null());
     close_writer(&raw mut handle);
     assert!(handle.is_null());
@@ -34,11 +38,11 @@ fn test_open_and_close_writer() {
 
 #[test]
 fn test_flush() {
-  let temp_file = NamedTempFile::new().unwrap();
+  let temp_file_path = new_temp_file_path();
   let mut handle = null();
 
   unsafe {
-    assert!(open_writer(&raw mut handle, temp_file.path().to_str().unwrap().as_ptr() as *const libc::c_char));
+    assert!(open_writer(&raw mut handle, temp_file_path.as_ptr() as *const libc::c_char));
     assert!(!handle.is_null());
 
     assert!(flush_writer(&raw mut handle));
@@ -50,11 +54,11 @@ fn test_flush() {
 
 #[test]
 fn test_write_boolean() {
-  let temp_file = NamedTempFile::new().unwrap();
+  let temp_file_path = new_temp_file_path();
   let mut handle = null();
 
   unsafe {
-    assert!(open_writer(&raw mut handle, temp_file.path().to_str().unwrap().as_ptr() as *const libc::c_char));
+    assert!(open_writer(&raw mut handle, temp_file_path.as_ptr() as *const libc::c_char));
     assert!(!handle.is_null());
 
     let result = write_boolean(&raw mut handle, true);

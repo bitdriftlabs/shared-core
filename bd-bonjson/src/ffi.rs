@@ -32,14 +32,18 @@ impl TryFrom<BDCrashWriterHandle> for &mut WriterBufWriterFile {
       if handle.is_null() || (*handle).is_null() {
         return Err(FFIError::HandleWasNull);
       }
-      (*handle as *mut Writer<BufWriter<File>>).as_mut().ok_or(FFIError::HandleWasNull)
+      (*handle as *mut WriterBufWriterFile).as_mut().ok_or(FFIError::HandleWasNull)
     }
   }
 }
 
+/// Attempt to convert a raw handle into a reference to a `WriterBufWriterFile`
+///
+/// * `$handle_ptr_ptr`  - raw handle
+/// * `$failure_ret_val` - value to return upon failure to convert
 macro_rules! try_into_writer {
   ($handle_ptr_ptr:ident, $failure_ret_val:expr) => {{
-    let writer: Result<&mut Writer<BufWriter<File>>, _> = $handle_ptr_ptr.try_into();
+    let writer: Result<&mut WriterBufWriterFile, _> = $handle_ptr_ptr.try_into();
     if writer.is_err() {
       println!("Error converting handle to writer: {:?}", writer.err());
       return $failure_ret_val;
@@ -49,7 +53,7 @@ macro_rules! try_into_writer {
 }
 
 pub fn new_writer(path: &str) -> io::Result<WriterBufWriterFile> {
-  println!("Creating new writer for path: {}", path);
+  println!("### Creating new writer for path: {}", path);
   let file = OpenOptions::new()
     .create(true)
     .write(true)
@@ -61,7 +65,7 @@ pub fn new_writer(path: &str) -> io::Result<WriterBufWriterFile> {
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn bdcrw_open_writer(handle: BDCrashWriterHandle, path: *const libc::c_char) -> bool {
   if path.is_null() {
-    println!("bdcrw_open_writer: path is null");
+    println!("Error: bdcrw_open_writer: path is null");
     return false;
   }
 
@@ -69,17 +73,18 @@ pub extern "C-unwind" fn bdcrw_open_writer(handle: BDCrashWriterHandle, path: *c
     let path_str: &str = match std::ffi::CStr::from_ptr(path).to_str() {
       Ok(s) => s,
       Err(e) => {
-          println!("bdcrw_open_writer: path contains invalid UTF-8: {e}");
+          println!("Error: bdcrw_open_writer: path contains invalid UTF-8: {e}");
           return false;
       }
     };
     match new_writer(path_str) {
       Ok(writer) => {
         *handle = writer.into_raw();
+        println!("### bdcrw_open_writer: handle: {:?}", *handle);
         true
       },
       Err(e) => {
-        println!("bdcrw_open_writer: failed to open writer: {e}");
+        println!("Error: bdcrw_open_writer: failed to open writer: {e}");
         false
       }
     }
@@ -103,7 +108,7 @@ pub extern "C-unwind" fn bdcrw_flush_writer(handle: BDCrashWriterHandle) -> bool
   match writer.flush() {
     Ok(_) => true,
     Err(e) => {
-      println!("bdcrw_flush_writer: {e:?}");
+      println!("Error: bdcrw_flush_writer: {e:?}");
       false
     }
   }
@@ -111,11 +116,12 @@ pub extern "C-unwind" fn bdcrw_flush_writer(handle: BDCrashWriterHandle) -> bool
 
 #[unsafe(no_mangle)]
 extern "C-unwind" fn bdcrw_write_boolean(handle: BDCrashWriterHandle, value: bool) -> bool {
+  unsafe {println!("### bdcrw_write_boolean: handle: {:?}", *handle);}
   let writer = try_into_writer!(handle, false);
   match writer.write_boolean(value) {
     Ok(_) => true,
     Err(e) => {
-      println!("bdcrw_write_boolean: {e:?}");
+      println!("Error: bdcrw_write_boolean: {e:?}");
       false
     }
   }

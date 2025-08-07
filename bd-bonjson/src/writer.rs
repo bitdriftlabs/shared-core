@@ -21,7 +21,7 @@ pub struct Writer<W: std::io::Write + Send + Sync> {
 impl<W: std::io::Write + Send + Sync> Writer<W> {
   #[must_use]
   pub fn into_raw(&self) -> *const c_void {
-    self as *const Self as *const c_void
+    Box::into_raw(Box::new(self)) as *const _
   }
 
   fn write_bytes(&mut self, bytes: &[u8]) -> Result<usize> {
