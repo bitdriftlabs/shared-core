@@ -13,6 +13,7 @@ cargo-fuzz = true
 
 [dependencies]
 arbitrary.workspace        = true
+bd-bonjson.path            = "../bd-bonjson"
 bd-buffer.path             = "../bd-buffer"
 bd-client-common.path      = "../bd-client-common"
 bd-client-stats-store.path = "../bd-client-stats-store"
@@ -41,3 +42,10 @@ doc  = false
 name = "buffer_corruption_fuzz_test"
 path = "fuzz_targets/buffer_corruption_fuzz_test.rs"
 test = false
+
+[[bin]]
+name = "bonjson"
+path = "fuzz_targets/bonjson.rs"
+test = false
+doc = false
+bench = false

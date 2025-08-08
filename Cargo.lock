@@ -124,6 +124,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b34d609dfbaf33d6889b2b7106d3ca345eacad44200913df5ba02bfd31d2ba9"
 
 [[package]]
+name = "assert_no_alloc"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "55ca83137a482d61d916ceb1eba52a684f98004f18e0cafea230fe5579c178a3"
+
+[[package]]
 name = "async-compression"
 version = "0.4.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -399,6 +405,31 @@ dependencies = [
  "time",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "bd-bonjson"
+version = "1.0.0"
+dependencies = [
+ "assert_no_alloc",
+ "bd-test-helpers",
+ "cbindgen",
+ "ctor",
+ "libc",
+ "log",
+ "tempfile",
+]
+
+[[package]]
+name = "bd-bonjson-tests"
+version = "1.0.0"
+dependencies = [
+ "assert_no_alloc",
+ "bd-bonjson",
+ "bd-test-helpers",
+ "cc",
+ "libc",
+ "tempfile",
 ]
 
 [[package]]
@@ -1877,6 +1908,7 @@ name = "fuzz"
 version = "0.0.0"
 dependencies = [
  "arbitrary",
+ "bd-bonjson",
  "bd-buffer",
  "bd-client-common",
  "bd-client-stats-store",

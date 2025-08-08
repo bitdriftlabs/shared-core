@@ -1,0 +1,22 @@
+[package]
+edition      = "2024"
+license-file = "../LICENSE"
+name         = "bd-bonjson-tests"
+publish      = false
+version      = "1.0.0"
+
+[lib]
+doctest = false
+
+[dependencies]
+bd-bonjson.path = "../bd-bonjson"
+
+[dev-dependencies]
+assert_no_alloc = "1.1.2"
+bd-test-helpers.path = "../bd-test-helpers"
+libc = "0.2.174"
+tempfile.workspace = true
+
+[build-dependencies]
+bd-bonjson.path = "../bd-bonjson"
+cc.workspace          = true
