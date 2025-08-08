@@ -140,7 +140,7 @@ fn deserialize_chunk_header(src: &[u8]) -> Result<(usize, usize, bool)> {
     decode_chunk_length_header(length_header);
   let length_total_size = length_skip_size + length_payload_size;
   let mut bytes: [u8; 8] = [0; 8];
-  copy_bytes_to(&src[length_skip_size..], &mut bytes, length_payload_size)?;
+  copy_bytes_to(&src[length_skip_size ..], &mut bytes, length_payload_size)?;
   let payload = u64::from_le_bytes(bytes) >> length_shift_by;
   let continuation_bit = (payload & 1) == 1;
   let length = payload >> 1;
