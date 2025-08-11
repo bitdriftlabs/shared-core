@@ -5,15 +5,16 @@ name         = "bd-bonjson"
 publish      = false
 version      = "1.0.0"
 
+[dependencies]
+libc                 = "0.2.174"
+log                  = "0.4.27"
+
 [dev-dependencies]
-assert_no_alloc = "1.1.2"
-bd-test-helpers.path     = "../bd-test-helpers"
-ctor.workspace           = true
-tempfile.workspace = true
+bd-test-helpers.path = "../bd-test-helpers"
+assert_no_alloc      = "1.1.2"
+ctor                 = "0.4.2"
+tempfile             = "3.20.0"
 
 [build-dependencies]
 cbindgen.workspace   = true
 
-[dependencies]
-libc = "0.2.174"
-log.workspace              = true
