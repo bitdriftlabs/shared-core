@@ -25,7 +25,7 @@ fn main() -> anyhow::Result<()> {
   std::fs::create_dir_all(&sdk_directory)?;
 
   let mut logger =
-    crate::logger::make_logger(&sdk_directory, args.api_key, args.api_url, args.session_id)?;
+    crate::logger::make_logger(&sdk_directory, args.api_key, &args.api_url, args.session_id)?;
 
   match args.command {
     Command::EnqueueArtifacts(cmd) => {

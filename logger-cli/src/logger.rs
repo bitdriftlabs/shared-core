@@ -24,13 +24,20 @@ pub type LoggerFuture =
 pub struct LoggerHolder {
   logger: Logger,
   future: Mutex<Option<LoggerFuture>>,
+  #[allow(dead_code)] // holding it to avoid drop before the logger itself
+  shutdown_trigger: bd_shutdown::ComponentShutdownTrigger,
 }
 
 impl LoggerHolder {
-  pub fn new(logger: Logger, future: LoggerFuture) -> Self {
+  pub fn new(
+    logger: Logger,
+    future: LoggerFuture,
+    shutdown_trigger: bd_shutdown::ComponentShutdownTrigger,
+  ) -> Self {
     Self {
       logger,
       future: Mutex::new(Some(future)),
+      shutdown_trigger,
     }
   }
 
@@ -100,7 +107,7 @@ impl fixed::Callbacks for MaybeStaticSessionGenerator {
 pub fn make_logger(
   sdk_directory: &Path,
   api_key: String,
-  api_url: String,
+  api_url: &str,
   session_id: Option<String>,
 ) -> anyhow::Result<LoggerHolder> {
   let session_callbacks = Arc::new(MaybeStaticSessionGenerator { session_id });
@@ -110,7 +117,7 @@ pub fn make_logger(
   let device = Arc::new(bd_device::Device::new(store.clone()));
   let shutdown_trigger = bd_shutdown::ComponentShutdownTrigger::default();
   let shutdown = shutdown_trigger.make_shutdown();
-  let network = bd_hyper_network::HyperNetwork::run_on_thread(&api_url, shutdown);
+  let network = bd_hyper_network::HyperNetwork::run_on_thread(api_url, shutdown);
 
   let (logger, _, future, _) = bd_logger::LoggerBuilder::new(InitParams {
     sdk_directory: sdk_directory.to_path_buf(),
@@ -134,5 +141,5 @@ pub fn make_logger(
     start_in_sleep_mode: false,
   })
   .build()?;
-  Ok(LoggerHolder::new(logger, future))
+  Ok(LoggerHolder::new(logger, future, shutdown_trigger))
 }
