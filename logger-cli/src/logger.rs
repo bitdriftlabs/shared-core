@@ -12,7 +12,7 @@ use bd_logger::{CaptureSession, InitParams, Logger};
 use bd_session::{Strategy, fixed};
 use bd_test_helpers::metadata_provider::LogMetadata;
 use parking_lot::Mutex;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::thread::sleep;
@@ -20,6 +20,8 @@ use time::ext::NumericalStdDuration;
 
 pub type LoggerFuture =
   Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'static + std::marker::Send>>;
+
+pub const SESSION_FILE: &str = "session_id";
 
 pub struct LoggerHolder {
   logger: Logger,
@@ -92,21 +94,26 @@ impl LoggerHolder {
 }
 
 struct MaybeStaticSessionGenerator {
-  session_id: Option<String>,
+  config_path: PathBuf,
 }
 
 impl fixed::Callbacks for MaybeStaticSessionGenerator {
   fn generate_session_id(&self) -> anyhow::Result<String> {
-    self.session_id.as_ref().map_or_else(
-      || fixed::UUIDCallbacks.generate_session_id(),
-      |id| Ok(id.clone()),
-    )
+    if let Ok(contents) = std::fs::read(self.config_path.clone()) {
+      Ok(String::from_utf8(contents)?)
+    } else {
+      let id = fixed::UUIDCallbacks.generate_session_id()?;
+      if let Err(e) = std::fs::write(self.config_path.clone(), &id) {
+        log::warn!("failed to save session ID to disk: {e}");
+      }
+      Ok(id)
+    }
   }
 }
 
 pub fn make_logger(sdk_directory: &Path, config: &Options) -> anyhow::Result<LoggerHolder> {
   let session_callbacks = Arc::new(MaybeStaticSessionGenerator {
-    session_id: config.session_id.clone(),
+    config_path: sdk_directory.join(SESSION_FILE),
   });
   let storage_db = sdk_directory.join("defaults.db");
   let storage = SQLiteStorage::new(&storage_db);

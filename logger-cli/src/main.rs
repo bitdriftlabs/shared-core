@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::cli::Command;
+use crate::logger::SESSION_FILE;
 use bd_log::SwapLogger;
 use clap::Parser;
 use std::env;
@@ -48,6 +49,10 @@ fn main() -> anyhow::Result<()> {
       logger.start();
       logger.log(cmd, true);
       logger.stop();
+    },
+    Command::NewSession => {
+      let session_config = sdk_directory.join(SESSION_FILE);
+      std::fs::remove_file(session_config)?;
     },
   }
 

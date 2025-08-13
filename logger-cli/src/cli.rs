@@ -54,10 +54,6 @@ pub struct Options {
   #[clap(long, required = false, default_value = "1.0.0")]
   pub app_version: String,
 
-  /// Session ID to use with emitted logs
-  #[clap(env, long)]
-  pub session_id: Option<String>,
-
   /// Device platform
   #[clap(long, required = false, default_value = "apple")]
   pub platform: CliPlatform,
@@ -81,6 +77,9 @@ pub enum Command {
 
   /// Send any pending artifacts to the server
   UploadArtifacts,
+
+  /// Generate a new session
+  NewSession,
 }
 
 #[derive(Args, Debug)]
