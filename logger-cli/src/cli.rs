@@ -58,8 +58,13 @@ pub struct Options {
   #[clap(env, long)]
   pub session_id: Option<String>,
 
+  /// Device platform
   #[clap(long, required = false, default_value = "apple")]
   pub platform: CliPlatform,
+
+  /// Device model
+  #[clap(long, required = false, default_value = "iPhone12,1")]
+  pub model: String,
 
   /// Command to run
   #[command(subcommand)]
@@ -126,6 +131,15 @@ impl From<CliLogType> for LogType {
       CliLogType::Span => Self::Span,
       CliLogType::UX => Self::UX,
       CliLogType::View => Self::View,
+    }
+  }
+}
+
+impl From<CliPlatform> for bd_api::Platform {
+  fn from(value: CliPlatform) -> Self {
+    match value {
+      CliPlatform::Apple => Self::Apple,
+      CliPlatform::Android => Self::Android,
     }
   }
 }

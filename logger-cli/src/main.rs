@@ -13,6 +13,7 @@ use std::path::Path;
 
 mod cli;
 mod logger;
+mod metadata;
 mod storage;
 
 fn main() -> anyhow::Result<()> {
@@ -24,8 +25,7 @@ fn main() -> anyhow::Result<()> {
   let sdk_directory = Path::new(&home).join(".local").join("bd-logger-cli");
   std::fs::create_dir_all(&sdk_directory)?;
 
-  let mut logger =
-    crate::logger::make_logger(&sdk_directory, args.api_key, &args.api_url, args.session_id)?;
+  let mut logger = crate::logger::make_logger(&sdk_directory, &args)?;
 
   match args.command {
     Command::EnqueueArtifacts(cmd) => {

@@ -5,11 +5,11 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::cli::{FieldPairs, LogCommand};
+use crate::cli::{FieldPairs, LogCommand, Options};
+use crate::metadata::Metadata;
 use crate::storage::SQLiteStorage;
 use bd_logger::{CaptureSession, InitParams, Logger};
 use bd_session::{Strategy, fixed};
-use bd_test_helpers::metadata::EmptyMetadata;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use parking_lot::Mutex;
 use std::path::Path;
@@ -104,30 +104,34 @@ impl fixed::Callbacks for MaybeStaticSessionGenerator {
   }
 }
 
-pub fn make_logger(
-  sdk_directory: &Path,
-  api_key: String,
-  api_url: &str,
-  session_id: Option<String>,
-) -> anyhow::Result<LoggerHolder> {
-  let session_callbacks = Arc::new(MaybeStaticSessionGenerator { session_id });
+pub fn make_logger(sdk_directory: &Path, config: &Options) -> anyhow::Result<LoggerHolder> {
+  let session_callbacks = Arc::new(MaybeStaticSessionGenerator {
+    session_id: config.session_id.clone(),
+  });
   let storage_db = sdk_directory.join("defaults.db");
   let storage = SQLiteStorage::new(&storage_db);
   let store = Arc::new(bd_key_value::Store::new(Box::new(storage)));
   let device = Arc::new(bd_device::Device::new(store.clone()));
   let shutdown_trigger = bd_shutdown::ComponentShutdownTrigger::default();
   let shutdown = shutdown_trigger.make_shutdown();
-  let network = bd_hyper_network::HyperNetwork::run_on_thread(api_url, shutdown);
+  let network = bd_hyper_network::HyperNetwork::run_on_thread(&config.api_url, shutdown);
+
+  let static_metadata = Arc::new(Metadata {
+    app_id: Some(config.app_id.clone()),
+    app_version: Some(config.app_version.clone()),
+    platform: config.platform.clone().into(),
+    device: device.clone(),
+    model: config.model.clone(),
+  });
 
   let (logger, _, future, _) = bd_logger::LoggerBuilder::new(InitParams {
     sdk_directory: sdk_directory.to_path_buf(),
-    api_key,
+    api_key: config.api_key.clone(),
     session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
       store.clone(),
       session_callbacks,
     ))),
     metadata_provider: Arc::new(LogMetadata {
-      // TODO: app id, version, platform
       timestamp: time::OffsetDateTime::now_utc().into(),
       ..Default::default()
     }),
@@ -137,7 +141,7 @@ pub fn make_logger(
     device,
     store,
     network: Box::new(network),
-    static_metadata: Arc::new(EmptyMetadata),
+    static_metadata,
     start_in_sleep_mode: false,
   })
   .build()?;
