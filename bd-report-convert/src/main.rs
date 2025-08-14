@@ -28,13 +28,18 @@ pub fn main() -> Result<ExitCode, std::io::Error> {
   }
 
   let (action, input_path) = (&args[1], &args[2]);
-  if !Path::new(input_path).exists() {
-    eprintln!("Input file not found: {input_path}");
-    return Ok(ExitCode::from(74));
-  }
+  let input_path = if input_path == "-" {
+    "/dev/stdin"
+  } else {
+    if !Path::new(input_path).exists() {
+      eprintln!("Input file not found: {input_path}");
+      return Ok(ExitCode::from(74));
+    }
+    input_path
+  };
   match (args.len(), action.as_str()) {
-    (3, "to-json") => Ok(print_json(input_path.as_str())),
-    (4, "to-bin") => write_bin(input_path.as_str(), &args[3]),
+    (3, "to-json") => Ok(print_json(input_path)),
+    (4, "to-bin") => write_bin(input_path, &args[3]),
     _ => Ok(print_usage(&args[0])),
   }
 }

@@ -8,7 +8,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
-#include <iostream>
 #include <string>
 
 #include <flatbuffers/idl.h>
@@ -27,15 +26,12 @@ enum BDReaderErr {
 using namespace bitdrift_public::fbs::issue_reporting::v1;
 extern "C" {
 char *bdrc_alloc_json(char *bin_data_path) {
-  std::ifstream data_file;
-  data_file.open(bin_data_path, std::ios::binary | std::ios::in);
-  data_file.seekg(0,std::ios::end);
-
-  int length = data_file.tellg();
-  data_file.seekg(0,std::ios::beg);
-  char *bin_data = new char[length];
-  data_file.read(bin_data, length);
-  data_file.close();
+  std::ifstream data_file(bin_data_path);
+  std::string contents(
+    (std::istreambuf_iterator<char>(data_file)),
+    (std::istreambuf_iterator<char>())
+  );
+  char *bin_data = (char *)contents.c_str();
 
   auto output = flatbuffers::FlatBufferToString(
       reinterpret_cast<uint8_t *>(bin_data),
