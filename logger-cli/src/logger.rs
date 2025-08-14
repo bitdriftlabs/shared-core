@@ -74,17 +74,17 @@ impl LoggerHolder {
     self.logger.shutdown(true);
   }
 
-  pub fn log(&self, cmd: LogCommand, capture_session: bool) {
+  pub fn log(&self, cmd: &LogCommand, capture_session: bool) {
     let session_capture = if capture_session {
       CaptureSession::capture_with_id("cli command")
     } else {
       CaptureSession::default()
     };
     self.logger.new_logger_handle().log(
-      cmd.log_level.into(),
-      cmd.log_type.into(),
-      cmd.message.into(),
-      FieldPairs(cmd.field).into(),
+      cmd.log_level.clone().into(),
+      cmd.log_type.clone().into(),
+      cmd.message.clone().into(),
+      FieldPairs(cmd.field.clone()).into(),
       [].into(),
       None,
       bd_logger::Block::Yes,

@@ -5,8 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::cli::Command;
-use crate::logger::{MaybeStaticSessionGenerator, SESSION_FILE};
+use crate::cli::{Command, Options};
+use crate::logger::{LoggerHolder, MaybeStaticSessionGenerator, SESSION_FILE};
 use bd_log::SwapLogger;
 use clap::Parser;
 use std::env;
@@ -26,8 +26,6 @@ fn main() -> anyhow::Result<()> {
   let sdk_directory = Path::new(&home).join(".local").join("bd-logger-cli");
   std::fs::create_dir_all(&sdk_directory)?;
 
-  let mut logger = crate::logger::make_logger(&sdk_directory, &args)?;
-
   match args.command {
     Command::EnqueueArtifacts(cmd) => {
       let report_dir = &sdk_directory.join("reports/new");
@@ -40,16 +38,13 @@ fn main() -> anyhow::Result<()> {
         )?;
       }
     },
-    Command::UploadArtifacts => {
-      logger.start();
-      logger.process_crash_reports()?;
-      logger.stop();
-    },
-    Command::Log(cmd) => {
-      logger.start();
+    Command::UploadArtifacts => with_logger(&args, &sdk_directory, |logger| {
+      logger.process_crash_reports()
+    })?,
+    Command::Log(ref cmd) => with_logger(&args, &sdk_directory, |logger| {
       logger.log(cmd, true);
-      logger.stop();
-    },
+      Ok(())
+    })?,
     Command::NewSession => {
       let session_config = sdk_directory.join(SESSION_FILE);
       std::fs::remove_file(session_config)?;
@@ -60,12 +55,25 @@ fn main() -> anyhow::Result<()> {
       if let Ok(session_id) = generator.cached_session_id() {
         let base_url = args.api_url.replace("api.", "timeline.");
         let session_url = format!("{base_url}/session/{session_id}");
-        std::process::Command::new("open").arg(session_url).output()?;
+        std::process::Command::new("open")
+          .arg(session_url)
+          .output()?;
       } else {
         eprintln!("No session ID set");
       }
     },
   }
 
+  Ok(())
+}
+
+fn with_logger<F>(args: &Options, sdk_directory: &Path, f: F) -> anyhow::Result<()>
+where
+  F: FnOnce(&mut LoggerHolder) -> anyhow::Result<()>,
+{
+  let mut logger = crate::logger::make_logger(sdk_directory, args)?;
+  logger.start();
+  f(&mut logger)?;
+  logger.stop();
   Ok(())
 }
