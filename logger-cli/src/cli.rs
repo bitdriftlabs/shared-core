@@ -80,6 +80,9 @@ pub enum Command {
 
   /// Generate a new session
   NewSession,
+
+  /// Open the timeline for the current session in the default browser
+  Timeline,
 }
 
 #[derive(Args, Debug)]

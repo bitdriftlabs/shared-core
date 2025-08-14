@@ -93,14 +93,21 @@ impl LoggerHolder {
   }
 }
 
-struct MaybeStaticSessionGenerator {
-  config_path: PathBuf,
+pub struct MaybeStaticSessionGenerator {
+  pub config_path: PathBuf,
+}
+
+impl MaybeStaticSessionGenerator {
+  pub fn cached_session_id(&self) -> anyhow::Result<String> {
+    let contents = std::fs::read(self.config_path.clone())?;
+    Ok(String::from_utf8(contents)?)
+  }
 }
 
 impl fixed::Callbacks for MaybeStaticSessionGenerator {
   fn generate_session_id(&self) -> anyhow::Result<String> {
-    if let Ok(contents) = std::fs::read(self.config_path.clone()) {
-      Ok(String::from_utf8(contents)?)
+    if let Ok(id) = self.cached_session_id() {
+      Ok(id)
     } else {
       let id = fixed::UUIDCallbacks.generate_session_id()?;
       if let Err(e) = std::fs::write(self.config_path.clone(), &id) {

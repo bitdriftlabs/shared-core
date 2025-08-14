@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::cli::Command;
-use crate::logger::SESSION_FILE;
+use crate::logger::{MaybeStaticSessionGenerator, SESSION_FILE};
 use bd_log::SwapLogger;
 use clap::Parser;
 use std::env;
@@ -53,6 +53,17 @@ fn main() -> anyhow::Result<()> {
     Command::NewSession => {
       let session_config = sdk_directory.join(SESSION_FILE);
       std::fs::remove_file(session_config)?;
+    },
+    Command::Timeline => {
+      let config_path = sdk_directory.join(SESSION_FILE);
+      let generator = MaybeStaticSessionGenerator { config_path };
+      if let Ok(session_id) = generator.cached_session_id() {
+        let base_url = args.api_url.replace("api.", "timeline.");
+        let session_url = format!("{base_url}/session/{session_id}");
+        std::process::Command::new("open").arg(session_url).output()?;
+      } else {
+        eprintln!("No session ID set");
+      }
     },
   }
 
