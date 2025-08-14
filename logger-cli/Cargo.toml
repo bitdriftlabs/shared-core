@@ -1,0 +1,28 @@
+[package]
+edition      = "2024"
+license-file = "../LICENSE"
+name         = "logger-cli"
+version      = "1.0.0"
+publish      = false
+
+[dependencies]
+anyhow.workspace = true
+bd-api.path = "../bd-api"
+bd-device.path = "../bd-device"
+bd-hyper-network.path = "../bd-hyper-network"
+bd-key-value.path = "../bd-key-value"
+bd-log.path = "../bd-log"
+bd-logger.path = "../bd-logger"
+bd-session.path = "../bd-session"
+bd-shutdown.path = "../bd-shutdown"
+bd-test-helpers.path = "../bd-test-helpers"
+clap.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+sqlite.workspace = true
+time.workspace = true
+tokio.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
