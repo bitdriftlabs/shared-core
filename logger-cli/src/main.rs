@@ -5,12 +5,13 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::cli::{Command, Options};
+use crate::cli::{Command, Options, RuntimeValueType};
 use crate::logger::{LoggerHolder, MaybeStaticSessionGenerator, SESSION_FILE};
 use bd_log::SwapLogger;
 use clap::Parser;
 use std::env;
 use std::path::Path;
+use time::Duration;
 
 mod cli;
 mod logger;
@@ -62,6 +63,19 @@ fn main() -> anyhow::Result<()> {
         eprintln!("No session ID set");
       }
     },
+    Command::LogRuntimeValue(ref cmd) => with_logger(&args, &sdk_directory, |logger| {
+      let name = cmd.name.clone();
+      let snapshot = logger.logger.runtime_snapshot();
+      log::error!("Requested runtime value {name}: {}", match cmd.type_ {
+        RuntimeValueType::Bool => format!("{}", snapshot.get_bool(&name, false)),
+        RuntimeValueType::String => format!("'{}'", snapshot.get_string(&name, "".to_string())),
+        RuntimeValueType::Int => format!("{}", snapshot.get_integer(&name, 0)),
+        RuntimeValueType::Duration => {
+          format!("{}", snapshot.get_duration(&name, Duration::seconds(0)))
+        },
+      });
+      Ok(())
+    })?,
   }
 
   Ok(())

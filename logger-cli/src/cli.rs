@@ -35,6 +35,14 @@ pub enum CliPlatform {
   Apple,
 }
 
+#[derive(clap::ValueEnum, Debug, Clone)]
+pub enum RuntimeValueType {
+  Bool,
+  String,
+  Int,
+  Duration,
+}
+
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
 pub struct Options {
@@ -83,6 +91,9 @@ pub enum Command {
 
   /// Open the timeline for the current session in the default browser
   Timeline,
+
+  /// Log a runtime config value
+  LogRuntimeValue(RuntimeValueCommand),
 }
 
 #[derive(Args, Debug)]
@@ -108,6 +119,16 @@ pub struct EnqueueCommand {
   /// Path(s) to the file(s) to upload
   #[clap(action=ArgAction::Append)]
   pub path: Vec<String>,
+}
+
+
+#[derive(Args, Debug)]
+pub struct RuntimeValueCommand {
+  /// Expected value type
+  #[clap(long, required = false, value_enum, default_value = "bool")]
+  pub type_: RuntimeValueType,
+
+  pub name: String,
 }
 
 impl From<CliLogLevel> for LogLevel {
