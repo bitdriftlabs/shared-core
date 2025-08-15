@@ -24,7 +24,7 @@ pub type LoggerFuture =
 pub const SESSION_FILE: &str = "session_id";
 
 pub struct LoggerHolder {
-  logger: Logger,
+  pub logger: Logger,
   future: Mutex<Option<LoggerFuture>>,
   #[allow(dead_code)] // holding it to avoid drop before the logger itself
   shutdown_trigger: bd_shutdown::ComponentShutdownTrigger,
