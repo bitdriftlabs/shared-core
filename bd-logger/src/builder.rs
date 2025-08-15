@@ -365,11 +365,10 @@ impl LoggerBuilder {
     f: impl Future<Output = anyhow::Result<()>> + Send + 'static,
   ) -> anyhow::Result<()> {
     std::thread::Builder::new()
-      .name("io.bitdrift.capture.logger".to_string())
+      .name("bitdrift-tokio".to_string())
       .spawn(move || {
         tokio::runtime::Builder::new_current_thread()
-          .thread_name("io.bitdrift.capture.logger")
-          .thread_name_fn(|| "io.bitdrift.capture.logger.worker".to_string())
+          .thread_name("bitdrift-tokio-worker")
           .enable_all()
           .build()
           .unwrap()
