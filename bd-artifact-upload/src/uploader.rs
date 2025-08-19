@@ -75,8 +75,6 @@ impl std::fmt::Display for NewUpload {
 
 impl MemorySized for NewUpload {
   fn size(&self) -> usize {
-    // The size of the file is not included in the size as it is not known at this point.
-    // The file will be read from disk when it is uploaded.
     std::mem::size_of::<Uuid>()
       + self.state.size()
       + std::mem::size_of::<Option<OffsetDateTime>>()
