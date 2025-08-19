@@ -167,6 +167,7 @@ impl FileSystem for TestFileSystem {
       .write_all(data)
       .await
       .map_err(|e| anyhow!("failed to write file {}: {}", file_path.display(), e))?;
+    file.sync_all().await.unwrap();
 
     Ok(())
   }
