@@ -24,6 +24,7 @@ bd-time.path            = "../bd-time"
 flatbuffers.workspace   = true
 itertools.workspace     = true
 log.workspace           = true
+memmap2.workspace       = true
 mockall.workspace       = true
 regex.workspace         = true
 serde.workspace         = true

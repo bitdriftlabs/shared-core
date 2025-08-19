@@ -131,9 +131,9 @@ checksum = "55ca83137a482d61d916ceb1eba52a684f98004f18e0cafea230fe5579c178a3"
 
 [[package]]
 name = "async-compression"
-version = "0.4.25"
+version = "0.4.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40f6024f3f856663b45fd0c9b6f2024034a702f453549449e0d84a305900dad4"
+checksum = "ddb939d66e4ae03cee6091612804ba446b12878410cfa17f785f4dd67d4014e8"
 dependencies = [
  "flate2",
  "futures-core",
@@ -401,6 +401,7 @@ dependencies = [
  "futures-util",
  "log",
  "mockall",
+ "tempfile",
  "thiserror 2.0.12",
  "time",
  "tokio",
@@ -484,6 +485,7 @@ name = "bd-client-common"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "async-compression",
  "async-trait",
  "bd-client-stats-store",
  "bd-log-primitives",
@@ -496,10 +498,12 @@ dependencies = [
  "mockall",
  "parking_lot",
  "protobuf 4.0.0-alpha.0",
+ "tempfile",
  "thiserror 2.0.12",
  "time",
  "tokio",
  "uuid",
+ "walkdir",
 ]
 
 [[package]]
@@ -581,6 +585,7 @@ dependencies = [
  "futures-util",
  "itertools 0.14.0",
  "log",
+ "memmap2",
  "mockall",
  "regex",
  "serde",

@@ -35,7 +35,7 @@ use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_test_helpers::session::InMemoryStorage;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, WIPOffset};
 use itertools::Itertools;
-use mockall::predicate::eq;
+use std::io::Read;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::OffsetDateTime;
@@ -122,14 +122,17 @@ impl Setup {
     state: LogFields,
     timestamp: Option<OffsetDateTime>,
   ) {
+    let content = content.to_vec();
     make_mut(&mut self.upload_client)
       .expect_enqueue_upload()
-      .with(
-        eq(content.to_vec()),
-        eq(state),
-        eq(timestamp),
-        eq("previous_session_id".to_string()),
-      )
+      .withf(move |mut file, fstate, ftimestamp, session_id| {
+        let mut output = vec![];
+        file.read_to_end(&mut output).unwrap();
+        output == content
+          && &state == fstate
+          && &timestamp == ftimestamp
+          && session_id == "previous_session_id"
+      })
       .returning(move |_, _, _, _| Ok(uuid));
   }
 }
