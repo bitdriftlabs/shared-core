@@ -133,7 +133,7 @@ impl FileSystem for TestFileSystem {
 
     walkdir::WalkDir::new(self.directory.path().join(directory))
       .into_iter()
-      .filter_map(|e| e.ok())
+      .filter_map(std::result::Result::ok)
       .filter(|e| e.file_type().is_file())
       .for_each(|e| {
         files.push(e.path().to_string_lossy().to_string());
@@ -239,7 +239,7 @@ impl TestFileSystem {
   pub fn files(&self) -> HashMap<String, Vec<u8>> {
     walkdir::WalkDir::new(self.directory.path())
       .into_iter()
-      .filter_map(|e| e.ok())
+      .filter_map(std::result::Result::ok)
       .filter(|e| e.file_type().is_file())
       .map(|e| {
         let data = std::fs::read(e.path()).expect("failed to read file");

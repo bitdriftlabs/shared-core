@@ -193,7 +193,6 @@ async fn basic_flow() {
   setup.upload_complete_rx.recv().await.unwrap();
 
   let files = setup.filesystem.files();
-  log::error!("Files: {:?}", files);
   let index_file = &files[&super::REPORT_DIRECTORY
     .join(&*super::REPORT_INDEX_FILE)
     .to_str()

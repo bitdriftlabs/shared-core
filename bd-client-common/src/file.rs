@@ -31,7 +31,7 @@ pub fn write_compressed(bytes: &[u8]) -> Vec<u8> {
   compressed_bytes
 }
 
-#[must_use]
+/// Writes the data from the reader to the writer using zlib compression.
 pub async fn async_write_compressed(
   mut reader: impl AsyncReadExt + Unpin,
   writer: impl AsyncWrite + Unpin,
@@ -81,9 +81,8 @@ pub fn write_checksummed_data(bytes: &[u8]) -> Vec<u8> {
   result
 }
 
-/// Writes the data and appends a CRC checksum at the end of the slice. The checksum is a 4-byte
-/// little-endian CRC32 checksum of the data.
-#[must_use]
+/// Writes the data from the reader to the writer and appends a CRC checksum at the end of the
+/// slice. The checksum is a 4-byte little-endian CRC32 checksum of the data.
 pub async fn async_write_checksummed_data(
   mut reader: impl AsyncReadExt + Unpin,
   mut writer: impl AsyncWriteExt + Unpin,
