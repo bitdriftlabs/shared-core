@@ -10,6 +10,7 @@ doctest = false
 
 [dependencies]
 anyhow.workspace           = true
+async-compression          = { version = "0.4.27", features = ["zlib"], default-features = false }
 async-trait.workspace      = true
 bd-client-stats-store.path = "../bd-client-stats-store"
 bd-log-primitives.path     = "../bd-log-primitives"
@@ -22,9 +23,11 @@ log.workspace              = true
 mockall.workspace          = true
 parking_lot.workspace      = true
 protobuf.workspace         = true
+tempfile.workspace         = true
 thiserror.workspace        = true
 time.workspace             = true
 tokio.workspace            = true
+walkdir = "2.5.0"
 
 [dev-dependencies]
 uuid.workspace = true

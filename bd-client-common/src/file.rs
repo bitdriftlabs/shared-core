@@ -13,6 +13,7 @@ use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use flate2::Compression;
 use flate2::read::{ZlibDecoder, ZlibEncoder};
 use std::io::Read;
+use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub fn write_compressed_protobuf<T: protobuf::Message>(message: &T) -> Vec<u8> {
   let bytes = message.write_to_bytes().unwrap();
@@ -28,6 +29,18 @@ pub fn write_compressed(bytes: &[u8]) -> Vec<u8> {
   let mut compressed_bytes = Vec::new();
   encoder.read_to_end(&mut compressed_bytes).unwrap();
   compressed_bytes
+}
+
+#[must_use]
+pub async fn async_write_compressed(
+  mut reader: impl AsyncReadExt + Unpin,
+  writer: impl AsyncWrite + Unpin,
+) -> anyhow::Result<()> {
+  let mut encoder = async_compression::tokio::write::ZlibEncoder::new(writer);
+
+  tokio::io::copy(&mut reader, &mut encoder).await?;
+
+  Ok(())
 }
 
 pub fn read_compressed(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
@@ -66,6 +79,30 @@ pub fn write_checksummed_data(bytes: &[u8]) -> Vec<u8> {
   result.extend_from_slice(bytes);
   result.extend_from_slice(&crc.to_le_bytes());
   result
+}
+
+/// Writes the data and appends a CRC checksum at the end of the slice. The checksum is a 4-byte
+/// little-endian CRC32 checksum of the data.
+#[must_use]
+pub async fn async_write_checksummed_data(
+  mut reader: impl AsyncReadExt + Unpin,
+  mut writer: impl AsyncWriteExt + Unpin,
+) -> anyhow::Result<()> {
+  let mut crc = crc32fast::Hasher::new();
+  let mut buffer = vec![0; 1024];
+  while let Ok(bytes_read) = reader.read(&mut buffer).await
+    && bytes_read > 0
+  {
+    crc.update(&buffer[.. bytes_read]);
+    writer.write_all(&buffer[.. bytes_read]).await?;
+  }
+
+  let crc = crc.finalize();
+  // Write the CRC at the end of the data.
+  let crc_bytes = crc.to_le_bytes();
+  writer.write_all(&crc_bytes).await?;
+
+  Ok(())
 }
 
 /// Reads the data and checks the CRC checksum at the end of the slice. If the checksum is valid, it

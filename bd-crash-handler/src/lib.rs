@@ -27,7 +27,9 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   ReportType,
 };
 use fbs::issue_reporting::v_1::root_as_report;
+use memmap2::Mmap;
 use std::ffi::OsStr;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -208,16 +210,23 @@ impl Monitor {
       let path = entry.path();
       let ext = path.extension().and_then(OsStr::to_str);
       if path.is_file() && ext == Some("cap") {
-        log::info!("Processing new reports report: {}", path.display());
-        let contents = match tokio::fs::read(&path).await {
-          Ok(contents) => contents,
-          Err(e) => {
-            log::warn!("Failed to read reports report: {} ({e})", path.display());
-            continue;
-          },
+        let Ok(file) = File::open(&path) else {
+          log::warn!("Failed to open reports report: {} ()", path.display());
+          continue;
         };
 
-        let (crash_reason, crash_details, bin_report) = Self::read_report_contents(&contents);
+        log::info!("Processing new reports report: {}", path.display());
+        let Ok(mapped_file) = unsafe { Mmap::map(&file) }.map_err(|e| {
+          log::warn!(
+            "Failed to memory-map reports report: {} ({e})",
+            path.display()
+          );
+          e
+        }) else {
+          continue;
+        };
+
+        let (crash_reason, crash_details, bin_report) = Self::read_report_contents(&mapped_file);
 
         if crash_reason.is_none() {
           log::warn!(
@@ -247,7 +256,7 @@ impl Monitor {
           log::debug!("uploading report out of band");
 
           let Ok(artifact_id) = self.artifact_client.enqueue_upload(
-            contents,
+            file,
             state_fields.clone(),
             timestamp,
             self.previous_session_id.clone().unwrap_or_default(),
@@ -263,7 +272,7 @@ impl Monitor {
           ("_crash_artifact_id".into(), artifact_id.to_string().into())
         } else {
           log::debug!("uploading report in band with log line");
-          ("_crash_artifact".into(), contents.into())
+          ("_crash_artifact".into(), mapped_file.to_vec().into())
         };
 
         let mut fields = state_fields.clone();
