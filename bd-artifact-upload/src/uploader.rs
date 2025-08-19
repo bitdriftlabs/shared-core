@@ -556,7 +556,6 @@ impl Uploader {
       },
     };
 
-    // Compress the file as we write it to disk to save space.
     if let Err(e) = async_write_checksummed_data(tokio::fs::File::from_std(file), target_file).await
     {
       log::warn!("failed to write artifact to disk: {uuid} to disk: {e}");
