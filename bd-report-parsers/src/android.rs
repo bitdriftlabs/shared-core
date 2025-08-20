@@ -11,7 +11,7 @@ use nom::bytes::complete::{take_till, take_until, take_until1, take_while1};
 use nom::bytes::{tag, take};
 use nom::character::complete::multispace1;
 use nom::combinator::{map, opt};
-use nom::error::{ContextError, ErrorKind, ParseError, context};
+use nom::error::{ErrorKind, ParseError};
 use nom::multi::{many0, many1, separated_list0, separated_list1};
 use nom::sequence::{delimited, pair, preceded, separated_pair, terminated};
 use nom::{IResult, Parser};
@@ -69,26 +69,7 @@ pub enum Frame<'a> {
   },
 }
 
-pub fn anr<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, ANR<'a>, E> {
-  let subject_parser = context("subject", opt(preceded(tag("Subject: "), take_until("\n"))));
-  let process_start_parser = context(
-    "pid start",
-    (
-      delimited(
-        (take_until("----- pid "), tag("----- pid ")),
-        decimal::<u64, _>,
-        tag(" at "),
-      ),
-      terminated(take_until(" -----"), tag(" -----\n")),
-    ),
-  );
-  let thread_counter = delimited(
-    (take_until("DALVIK THREADS ("), tag("DALVIK THREADS (")),
-    decimal::<usize, _>,
-    tag("):\n"),
-  );
+pub fn anr<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, ANR<'a>, E> {
   map(
     (
       subject_parser,
@@ -109,7 +90,36 @@ pub fn anr<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
   .parse(input)
 }
 
-fn process_properties<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
+fn thread_counter<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, usize, E> {
+  delimited(
+    (take_until("DALVIK THREADS ("), tag("DALVIK THREADS (")),
+    decimal::<usize, _>,
+    tag("):\n"),
+  )
+  .parse(input)
+}
+
+fn subject_parser<'a, E: ParseError<&'a str>>(
+  input: &'a str,
+) -> IResult<&'a str, Option<&'a str>, E> {
+  opt(preceded(tag("Subject: "), take_until("\n"))).parse(input)
+}
+
+fn process_start_parser<'a, E: ParseError<&'a str>>(
+  input: &'a str,
+) -> IResult<&'a str, (u64, &'a str), E> {
+  (
+    delimited(
+      (take_until("----- pid "), tag("----- pid ")),
+      decimal::<u64, _>,
+      tag(" at "),
+    ),
+    terminated(take_until(" -----"), tag(" -----\n")),
+  )
+    .parse(input)
+}
+
+fn process_properties<'a, E: ParseError<&'a str>>(
   input: &'a str,
 ) -> IResult<&'a str, BTreeMap<&'a str, &'a str>, E> {
   map(many1(process_property), |pairs| {
@@ -118,7 +128,7 @@ fn process_properties<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
   .parse(input)
 }
 
-fn process_property<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
+fn process_property<'a, E: ParseError<&'a str>>(
   input: &'a str,
 ) -> IResult<&'a str, (&'a str, &'a str), E> {
   let line_end = input.find('\n').unwrap_or(input.len());
@@ -129,35 +139,28 @@ fn process_property<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
       ErrorKind::TakeUntil,
     )));
   }
-  context(
-    "process_property",
-    map(
-      terminated(
-        alt((
-          separated_pair(take_until(":\t"), tag(":\t"), take_until("\n")),
-          separated_pair(take_until(": "), tag(": "), take_until("\n")),
-          separated_pair(take_until("="), tag("="), take_until("\n")),
-          pair(take_till(|c: char| c.is_ascii_digit()), take_until("\n")),
-          map(take_until1("\n"), |s: &str| (s, "")),
-        )),
-        tag("\n"),
-      ),
-      |(key, value)| (key.trim(), value),
+  map(
+    terminated(
+      alt((
+        separated_pair(take_until(":\t"), tag(":\t"), take_until("\n")),
+        separated_pair(take_until(": "), tag(": "), take_until("\n")),
+        separated_pair(take_until("="), tag("="), take_until("\n")),
+        pair(take_till(|c: char| c.is_ascii_digit()), take_until("\n")),
+        map(take_until1("\n"), |s: &str| (s, "")),
+      )),
+      tag("\n"),
     ),
+    |(key, value)| (key.trim(), value),
   )
   .parse(line)
   .map(|(_, values)| (&input[line.len() ..], values))
 }
 
-fn threads<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, Vec<Thread<'a>>, E> {
+fn threads<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Vec<Thread<'a>>, E> {
   separated_list1(tag("\n"), any_thread).parse(input)
 }
 
-fn any_thread<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, Thread<'a>, E> {
+fn any_thread<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Thread<'a>, E> {
   map(
     terminated(
       (
@@ -182,7 +185,7 @@ fn any_thread<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
   .parse(input)
 }
 
-fn thread_header<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
+fn thread_header<'a, E: ParseError<&'a str>>(
   input: &'a str,
 ) -> IResult<&'a str, ThreadHeader<'a>, E> {
   let name_parser = delimited(tag("\""), take_till(|c| c == '"'), tag("\""));
@@ -212,13 +215,11 @@ fn thread_header<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
   .parse(input)
 }
 
-fn any_frame<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, Frame<'a>, E> {
+fn any_frame<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Frame<'a>, E> {
   preceded(multispace1, alt((java_frame, native_frame))).parse(input)
 }
 
-fn thread_props<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
+fn thread_props<'a, E: ParseError<&'a str>>(
   input: &'a str,
 ) -> IResult<&'a str, Vec<(&'a str, &'a str)>, E> {
   terminated(
@@ -237,9 +238,7 @@ fn thread_props<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
   .parse(input)
 }
 
-fn thread_prop_value<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, &'a str, E> {
+fn thread_prop_value<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
   let line_end = input.find('\n').unwrap_or(input.len());
   let value_end = input[.. line_end]
     .find('=')
@@ -248,9 +247,7 @@ fn thread_prop_value<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
   take(value_end).parse(input)
 }
 
-fn java_frame<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, Frame<'a>, E> {
+fn java_frame<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Frame<'a>, E> {
   let symbol_parser = take_till(|c| c == '(' || c == '\n');
   map(
     (
@@ -270,9 +267,7 @@ fn java_frame<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
   .parse(input)
 }
 
-fn native_frame<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, Frame<'a>, E> {
+fn native_frame<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Frame<'a>, E> {
   let build_id_parser = delimited(
     tag(" (BuildId: "),
     take_till(|c| c == ')' || c == '\n'),
@@ -300,34 +295,29 @@ fn native_frame<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
   .parse(input)
 }
 
-fn native_symbol_parser<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
+fn native_symbol_parser<'a, E: ParseError<&'a str>>(
   input: &'a str,
 ) -> IResult<&'a str, (&'a str, Option<u64>), E> {
-  context(
-    "native_symbol_parser",
-    delimited(
-      tag(" ("),
-      alt((
-        map(
-          (
-            take_till(|c| c == '+' || c == '\n'),
-            preceded(tag("+"), decimal),
-          ),
-          |(symbol, offset)| (symbol, Some(offset)),
+  delimited(
+    tag(" ("),
+    alt((
+      map(
+        (
+          take_till(|c| c == '+' || c == '\n'),
+          preceded(tag("+"), decimal),
         ),
-        map(take_till(|c| c == ')' || c == '\n'), |symbol: &str| {
-          (symbol, None)
-        }),
-      )),
-      tag(")"),
-    ),
+        |(symbol, offset)| (symbol, Some(offset)),
+      ),
+      map(take_till(|c| c == ')' || c == '\n'), |symbol: &str| {
+        (symbol, None)
+      }),
+    )),
+    tag(")"),
   )
   .parse(input)
 }
 
-fn native_path_parser<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, &'a str, E> {
+fn native_path_parser<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
   let line_end = input.find('\n').unwrap_or(input.len());
   let line = &input[.. line_end];
   let path_end = line
@@ -338,9 +328,7 @@ fn native_path_parser<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
   take(path_end).parse(input)
 }
 
-fn source_location<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, Source<'a>, E> {
+fn source_location<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Source<'a>, E> {
   let (remainder, path) = take_while1(|c| c != ')' && c != ':').parse(input)?;
   if remainder.is_empty() || remainder.starts_with(')') {
     Ok((remainder, Source { path, lineno: None }))
