@@ -143,6 +143,7 @@ fn process_property<'a, E: ParseError<&'a str>>(
     terminated(
       alt((
         separated_pair(take_until(":\t"), tag(":\t"), take_until("\n")),
+        separated_pair(take_until(": "), tag(": "), delimited(tag("'"), take_until("'"), tag("'"))),
         separated_pair(take_until(": "), tag(": "), take_until("\n")),
         separated_pair(take_until("="), tag("="), take_until("\n")),
         pair(take_till(|c: char| c.is_ascii_digit()), take_until("\n")),
