@@ -10,8 +10,8 @@ ANR {
     pid: 3994,
     timestamp: "2025-04-10 15:37:52.936768373+0200",
     metrics: {
-        "ABI": "'arm64'",
-        "Build fingerprint": "'Android/sdk_phone64_arm64/emu64a:14/UE1A.230829.036.A1/11228894:userdebug/test-keys'",
+        "ABI": "arm64",
+        "Build fingerprint": "Android/sdk_phone64_arm64/emu64a:14/UE1A.230829.036.A1/11228894:userdebug/test-keys",
         "Build type": "optimized",
         "Cmd line": "io.bitdrift.capture",
         "suspend all histogram": "Sum: 209us 99% C.I. 0.086us-119.360us Avg: 7.740us Max: 122us",
