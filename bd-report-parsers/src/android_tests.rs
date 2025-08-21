@@ -68,7 +68,7 @@ fn android_thread_header_test() {
   assert_eq!("", remainder);
   assert_eq!("FinalizerWatchdogDaemon", thread.name);
   assert!(thread.is_daemon);
-  assert_eq!(Some(5), thread.priority);
+  assert_eq!(Some(5.0), thread.priority);
   assert_eq!(Some(13), thread.tid);
   assert_eq!("Waiting", thread.state);
 
@@ -77,7 +77,7 @@ fn android_thread_header_test() {
   assert_eq!("", remainder);
   assert_eq!("tokio-runtime-w", thread.name);
   assert!(!thread.is_daemon);
-  assert_eq!(Some(10), thread.priority);
+  assert_eq!(Some(10.0), thread.priority);
   assert_eq!(None, thread.tid);
   assert_eq!("(not attached)", thread.state);
 }
