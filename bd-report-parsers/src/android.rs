@@ -41,8 +41,8 @@ pub struct Source<'a> {
 pub struct ThreadHeader<'a> {
   pub name: &'a str,
   pub is_daemon: bool,
-  pub tid: Option<u64>,
-  pub priority: Option<u64>,
+  pub tid: Option<u32>,
+  pub priority: Option<f32>,
   pub state: &'a str,
 }
 
@@ -190,13 +190,14 @@ fn thread_header<'a, E: ParseError<&'a str>>(
 ) -> IResult<&'a str, ThreadHeader<'a>, E> {
   let name_parser = delimited(tag("\""), take_till(|c| c == '"'), tag("\""));
   let int_transform = |num: &str| num.parse().unwrap_or_default();
+  let float_transform = |num: &str| num.parse().unwrap_or_default();
   map(
     (
       terminated(name_parser, tag(" ")),
       opt(map(terminated(tag("daemon"), tag(" ")), |_| true)),
       opt(map(
         delimited(tag("prio="), take_till(|c| c == ' '), tag(" ")),
-        int_transform,
+        float_transform,
       )),
       opt(map(
         delimited(tag("tid="), take_till(|c| c == ' '), tag(" ")),

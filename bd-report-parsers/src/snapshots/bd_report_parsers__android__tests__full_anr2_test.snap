@@ -25,7 +25,7 @@ ANR {
                     1,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Blocked",
             },
@@ -213,7 +213,7 @@ ANR {
                     4,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Blocked",
             },
@@ -263,7 +263,7 @@ ANR {
                     10,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Waiting",
             },
@@ -372,7 +372,7 @@ ANR {
                     11,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Waiting",
             },
@@ -471,7 +471,7 @@ ANR {
                     12,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Sleeping",
             },
@@ -590,7 +590,7 @@ ANR {
                     33,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Waiting",
             },
@@ -679,7 +679,7 @@ ANR {
                     2,
                 ),
                 priority: Some(
-                    10,
+                    10.0,
                 ),
                 state: "Runnable",
             },
@@ -892,7 +892,7 @@ ANR {
                     3,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Native",
             },
@@ -1057,7 +1057,7 @@ ANR {
                     5,
                 ),
                 priority: Some(
-                    10,
+                    10.0,
                 ),
                 state: "Runnable",
             },
@@ -1220,7 +1220,7 @@ ANR {
                     7,
                 ),
                 priority: Some(
-                    10,
+                    10.0,
                 ),
                 state: "Native (still starting up)",
             },
@@ -1321,7 +1321,7 @@ ANR {
                     8,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "WaitingForTaskProcessor",
             },
@@ -1832,7 +1832,7 @@ ANR {
                     9,
                 ),
                 priority: Some(
-                    0,
+                    0.0,
                 ),
                 state: "WaitingInMainDebuggerLoop",
             },
@@ -1965,7 +1965,7 @@ ANR {
                     13,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Native",
             },
@@ -2114,7 +2114,7 @@ ANR {
                     14,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Native",
             },
@@ -2279,7 +2279,7 @@ ANR {
                     15,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Native",
             },
@@ -2604,7 +2604,7 @@ ANR {
                     16,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Native",
             },
@@ -2769,7 +2769,7 @@ ANR {
                     17,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Native",
             },
@@ -2902,7 +2902,7 @@ ANR {
                     18,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Native",
             },
@@ -3483,7 +3483,7 @@ ANR {
                     20,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Native",
             },
@@ -4064,7 +4064,7 @@ ANR {
                     21,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Native",
             },
@@ -4645,7 +4645,7 @@ ANR {
                     22,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Waiting",
             },
@@ -4792,7 +4792,7 @@ ANR {
                     23,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Waiting",
             },
@@ -4939,7 +4939,7 @@ ANR {
                     25,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "TimedWaiting",
             },
@@ -5056,7 +5056,7 @@ ANR {
                     26,
                 ),
                 priority: Some(
-                    10,
+                    10.0,
                 ),
                 state: "Native",
             },
@@ -5673,7 +5673,7 @@ ANR {
                     27,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Native",
             },
@@ -6254,7 +6254,7 @@ ANR {
                     28,
                 ),
                 priority: Some(
-                    10,
+                    10.0,
                 ),
                 state: "TimedWaiting",
             },
@@ -6371,7 +6371,7 @@ ANR {
                     29,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Waiting",
             },
@@ -6518,7 +6518,7 @@ ANR {
                     30,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Waiting",
             },
@@ -6665,7 +6665,7 @@ ANR {
                     31,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Native",
             },
@@ -7246,7 +7246,7 @@ ANR {
                     32,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Waiting",
             },
@@ -7403,7 +7403,7 @@ ANR {
                     34,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Native",
             },
@@ -7710,7 +7710,7 @@ ANR {
                     35,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Waiting",
             },
@@ -7857,7 +7857,7 @@ ANR {
                     36,
                 ),
                 priority: Some(
-                    7,
+                    7.0,
                 ),
                 state: "Native",
             },
@@ -8070,7 +8070,7 @@ ANR {
                     37,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Waiting",
             },
@@ -8217,7 +8217,7 @@ ANR {
                     38,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Native",
             },
@@ -8798,7 +8798,7 @@ ANR {
                     39,
                 ),
                 priority: Some(
-                    6,
+                    6.0,
                 ),
                 state: "Native",
             },
@@ -8979,7 +8979,7 @@ ANR {
                     40,
                 ),
                 priority: Some(
-                    6,
+                    6.0,
                 ),
                 state: "Native",
             },
@@ -9160,7 +9160,7 @@ ANR {
                     41,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Native",
             },
@@ -9741,7 +9741,7 @@ ANR {
                     42,
                 ),
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "Waiting",
             },
@@ -9886,7 +9886,7 @@ ANR {
                 is_daemon: false,
                 tid: None,
                 priority: Some(
-                    10,
+                    10.0,
                 ),
                 state: "(not attached)",
             },
@@ -10196,7 +10196,7 @@ ANR {
                 is_daemon: false,
                 tid: None,
                 priority: Some(
-                    10,
+                    10.0,
                 ),
                 state: "(not attached)",
             },
@@ -10548,7 +10548,7 @@ ANR {
                 is_daemon: false,
                 tid: None,
                 priority: Some(
-                    10,
+                    10.0,
                 ),
                 state: "(not attached)",
             },
@@ -10900,7 +10900,7 @@ ANR {
                 is_daemon: false,
                 tid: None,
                 priority: Some(
-                    10,
+                    10.0,
                 ),
                 state: "(not attached)",
             },
@@ -11210,7 +11210,7 @@ ANR {
                 is_daemon: false,
                 tid: None,
                 priority: Some(
-                    5,
+                    5.0,
                 ),
                 state: "(not attached)",
             },
