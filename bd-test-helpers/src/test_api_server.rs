@@ -586,7 +586,8 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
 
   log::debug!("binding test server to {local_addr}");
 
-  std::thread::spawn(move || {
+  let shutdown_tx_clone = shutdown_tx.clone();
+  let join_handle = std::thread::spawn(move || {
     tokio::runtime::Builder::new_current_thread()
       .enable_all()
       .build()
@@ -598,7 +599,7 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
           ping_interval,
           stream_id_generator: Arc::new(AtomicI32::new(0)),
           event_tx,
-          shutdown_tx,
+          shutdown_tx: shutdown_tx_clone,
           per_stream_action_txs: per_stream_action_txs.clone(),
           log_upload_tx,
           log_intent_tx,
@@ -639,6 +640,8 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
     configuration_ack_rx,
     runtime_ack_rx,
     port: local_addr.port(),
+    shutdown_tx,
+    join_handle: Some(join_handle),
   })
 }
 
@@ -743,6 +746,9 @@ pub struct ServerHandle {
 
   // The port this server is bound to.
   pub port: u16,
+
+  shutdown_tx: broadcast::Sender<()>,
+  join_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 impl ServerHandle {
@@ -916,6 +922,14 @@ impl ServerHandle {
 
     assert_eq!(id, stream.stream_id);
     assert!(ack.nack.is_none());
+  }
+}
+
+impl Drop for ServerHandle {
+  fn drop(&mut self) {
+    log::debug!("shutting down server");
+    self.shutdown_tx.send(()).unwrap();
+    self.join_handle.take().unwrap().join().unwrap();
   }
 }
 
