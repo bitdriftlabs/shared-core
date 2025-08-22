@@ -1,126 +1,172 @@
 ---
-source: bd-report-parsers/src/android.rs
-assertion_line: 391
+source: bd-report-parsers/src/./android_fbs_tests.rs
+assertion_line: 89
 expression: thread
 ---
 Thread {
-    header: ThreadHeader {
-        name: "ADB-JDWP Connection Control Thread",
-        is_daemon: true,
-        tid: Some(
-            7,
-        ),
-        priority: Some(
-            0.0,
-        ),
-        state: "WaitingInMainDebuggerLoop",
-    },
-    props: {
-        "HZ": "100",
-        "cgrp": "top-app",
-        "core": "3",
-        "flags": "1",
-        "group": "\"system\"",
-        "handle": "0x72c93ffcb0",
-        "held mutexes": "",
-        "nice": "-20",
-        "obj": "0x13040270",
-        "sCount": "1",
-        "sched": "0/0",
-        "schedstat": "( 1062749 127626 10 )",
-        "self": "0xb400007453a03140",
-        "stack": "0x72c9308000-0x72c930a000",
-        "stackSize": "991KB",
-        "state": "S",
-        "stm": "0",
-        "sysTid": "18571",
-        "ucsCount": "0",
-        "utm": "0",
-    },
-    frames: [
-        Native {
-            index: 0,
-            address: 648856,
-            path: "/apex/com.android.runtime/lib64/bionic/libc.so",
-            symbol: Some(
-                (
+    name: Some(
+        "ADB-JDWP Connection Control Thread",
+    ),
+    active: false,
+    index: 7,
+    state: Some(
+        "WaitingInMainDebuggerLoop",
+    ),
+    priority: 0.0,
+    quality_of_service: -1,
+    stack_trace: Some(
+        [
+            Frame {
+                type_: AndroidNative,
+                class_name: None,
+                symbol_name: Some(
                     "__ppoll",
-                    Some(
-                        8,
-                    ),
                 ),
-            ),
-            build_id: None,
-        },
-        Native {
-            index: 1,
-            address: 375568,
-            path: "/apex/com.android.runtime/lib64/bionic/libc.so",
-            symbol: Some(
-                (
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "/apex/com.android.runtime/lib64/bionic/libc.so",
+                        ),
+                        line: 0,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 648856,
+                symbol_address: 648848,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: AndroidNative,
+                class_name: None,
+                symbol_name: Some(
                     "poll",
-                    Some(
-                        92,
-                    ),
                 ),
-            ),
-            build_id: None,
-        },
-        Native {
-            index: 2,
-            address: 40364,
-            path: "/apex/com.android.art/lib64/libadbconnection.so",
-            symbol: Some(
-                (
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "/apex/com.android.runtime/lib64/bionic/libc.so",
+                        ),
+                        line: 0,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 375568,
+                symbol_address: 375476,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: AndroidNative,
+                class_name: None,
+                symbol_name: Some(
                     "adbconnection::AdbConnectionState::RunPollLoop(art::Thread*)",
-                    Some(
-                        752,
-                    ),
                 ),
-            ),
-            build_id: None,
-        },
-        Native {
-            index: 3,
-            address: 33804,
-            path: "/apex/com.android.art/lib64/libadbconnection.so",
-            symbol: Some(
-                (
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "/apex/com.android.art/lib64/libadbconnection.so",
+                        ),
+                        line: 0,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 40364,
+                symbol_address: 39612,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: AndroidNative,
+                class_name: None,
+                symbol_name: Some(
                     "adbconnection::CallbackFunction(void*)",
-                    Some(
-                        1484,
-                    ),
                 ),
-            ),
-            build_id: None,
-        },
-        Native {
-            index: 4,
-            address: 727312,
-            path: "/apex/com.android.runtime/lib64/bionic/libc.so",
-            symbol: Some(
-                (
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "/apex/com.android.art/lib64/libadbconnection.so",
+                        ),
+                        line: 0,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 33804,
+                symbol_address: 32320,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: AndroidNative,
+                class_name: None,
+                symbol_name: Some(
                     "__pthread_start(void*)",
-                    Some(
-                        264,
-                    ),
                 ),
-            ),
-            build_id: None,
-        },
-        Native {
-            index: 5,
-            address: 332784,
-            path: "/apex/com.android.runtime/lib64/bionic/libc.so",
-            symbol: Some(
-                (
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "/apex/com.android.runtime/lib64/bionic/libc.so",
+                        ),
+                        line: 0,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 727312,
+                symbol_address: 727048,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: AndroidNative,
+                class_name: None,
+                symbol_name: Some(
                     "__start_thread",
-                    Some(
-                        64,
-                    ),
                 ),
-            ),
-            build_id: None,
-        },
-    ],
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "/apex/com.android.runtime/lib64/bionic/libc.so",
+                        ),
+                        line: 0,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 332784,
+                symbol_address: 332720,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+        ],
+    ),
+    summary: None,
 }

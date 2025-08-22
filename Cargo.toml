@@ -141,7 +141,7 @@ tempfile          = "3.21.0"
 termcolor         = "1.4.1"
 thiserror         = "2.0.16"
 tikv-jemalloc-ctl = "0.6.0"
-time              = { version = "0.3.43", features = ["serde-well-known", "macros"] }
+time              = { version = "0.3.43", features = ["serde-well-known", "macros", "parsing"] }
 tokio             = { version = "1.47.1", features = ["full", "test-util"] }
 tokio-stream      = "0.1.17"
 tokio-test        = "0.4.4"

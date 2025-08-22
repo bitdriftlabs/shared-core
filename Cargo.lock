@@ -1011,9 +1011,13 @@ dependencies = [
 name = "bd-report-parsers"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
+ "bd-proto",
+ "flatbuffers",
  "insta",
  "nom 8.0.0",
  "nom-language",
+ "time",
 ]
 
 [[package]]

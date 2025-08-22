@@ -4,8 +4,15 @@ version = "1.0.0"
 edition = "2024"
 
 [dependencies]
+bd-proto.path = "../bd-proto"
+anyhow.workspace = true
 nom.workspace = true
+# defined separately to the workspace to allow compilation with
+# bazel/crate_universe within the sdk project
+flatbuffers   = "25.2.10"
+time.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
 nom-language.workspace = true
+
