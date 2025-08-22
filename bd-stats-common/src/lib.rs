@@ -54,22 +54,22 @@ pub enum MetricType {
 
 #[derive(Eq, Hash, PartialEq, Clone)]
 pub enum NameType {
-  Global(MetricType, String),
-  ActionId(MetricType, String),
+  Global(String),
+  ActionId(String),
 }
 
 impl NameType {
   #[must_use]
   pub fn as_str(&self) -> &str {
     match self {
-      Self::Global(_, name) | Self::ActionId(_, name) => name,
+      Self::Global(name) | Self::ActionId(name) => name,
     }
   }
 
   #[must_use]
   pub fn into_string(self) -> String {
     match self {
-      Self::Global(_, name) | Self::ActionId(_, name) => name,
+      Self::Global(name) | Self::ActionId(name) => name,
     }
   }
 }

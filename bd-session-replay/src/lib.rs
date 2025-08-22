@@ -10,6 +10,7 @@
 mod recorder_test;
 
 use bd_client_stats_store::{Counter, Scope};
+use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::LogType;
 use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch, session_replay};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
@@ -301,7 +302,7 @@ impl bd_log_primitives::LogInterceptor for ScreenshotLogInterceptor {
       return;
     }
 
-    bd_client_common::error::handle_unexpected(
+    handle_unexpected(
       self.next_screenshot_tx.try_send(()),
       "failed to send ready for next screenshot signal",
     );

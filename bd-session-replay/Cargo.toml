@@ -12,6 +12,7 @@ doctest = false
 anyhow.workspace           = true
 bd-client-common.path      = "../bd-client-common"
 bd-client-stats-store.path = "../bd-client-stats-store"
+bd-error-reporter.path     = "../bd-error-reporter"
 bd-log-primitives.path     = "../bd-log-primitives"
 bd-runtime.path            = "../bd-runtime"
 bd-shutdown.path           = "../bd-shutdown"

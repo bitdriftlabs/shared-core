@@ -14,8 +14,9 @@ use crate::{FlushTriggerCompletionSender, Stats};
 use async_trait::async_trait;
 use bd_api::DataUpload;
 use bd_api::upload::{TrackedStatsUploadRequest, UploadResponse};
-use bd_client_common::error::handle_unexpected;
-use bd_client_stats_store::{Collector, Histogram, MetricData, MetricsByName};
+use bd_client_common::{maybe_await, maybe_await_interval};
+use bd_client_stats_store::{Collector, Histogram, MetricData, MetricsByNameCore};
+use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapshot;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::Snapshot_type;
@@ -24,6 +25,7 @@ use bd_proto::protos::client::metric::{Metric as ProtoMetric, MetricsList};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::{MetricType, NameType};
 use bd_time::TimeDurationExt;
+use itertools::Itertools;
 #[cfg(test)]
 use stats_test::{TestHooks, TestHooksReceiver};
 use std::collections::{BTreeMap, HashMap};
@@ -77,7 +79,7 @@ impl Ticker for RuntimeWatchTicker {
 
     loop {
       tokio::select! {
-        _ = self.interval.as_mut().unwrap().tick() => break,
+        () = maybe_await_interval(self.interval.as_mut()) => break,
         _ = self.receiver.changed() => {
           self.interval = Some(
             self.receiver.borrow_and_update().jittered_interval_at(MissedTickBehavior::Delay)
@@ -145,7 +147,7 @@ impl<T: IntervalCreator> Ticker for SleepModeAwareRuntimeWatchTicker<T> {
       }
 
       tokio::select! {
-        _ = self.interval.as_mut().unwrap().tick() => break,
+        () = maybe_await_interval(self.interval.as_mut()) => break,
         _ = self.live_mode_receiver.changed() => {
           if !*self.sleep_mode_active.borrow() {
             // Only update if we're using live mode
@@ -242,7 +244,7 @@ impl Flusher {
 
           upload_rx = self.upload_from_disk(false).await;
         },
-        upload_result = async { upload_rx.as_mut().unwrap().await }, if upload_rx.is_some() => {
+        upload_result = maybe_await(&mut upload_rx) => {
           upload_rx = self.process_pending_upload_completion(
             upload_result.unwrap_or(UploadResponse { success: false, uuid: String::new() })
           ).await;
@@ -266,9 +268,10 @@ impl Flusher {
     let mut handle = self.file_manager.get_or_create_snapshot().await?;
     let mut new_or_existing_snapshot = SnapshotHelper::new(handle.snapshot(), self.stats.limit());
 
-    for (name, metrics) in delta_snapshot.metrics {
+    for ((metric_type, name), metrics) in delta_snapshot.metrics {
       for (labels, metric) in metrics {
-        let Some(cached_metric) = new_or_existing_snapshot.mut_metric(&name, &labels) else {
+        let Some(cached_metric) = new_or_existing_snapshot.mut_metric(metric_type, &name, &labels)
+        else {
           log::trace!("adding new metric to snapshot: {}{labels:?}", name.as_str());
           new_or_existing_snapshot.add_metric(name.clone(), labels, metric);
           continue;
@@ -286,12 +289,12 @@ impl Flusher {
           },
           (MetricData::Histogram(h), MetricData::Histogram(cached_histogram)) => {
             log::trace!("merging histogram {}{labels:?}", name.as_str());
-            cached_histogram.merge_from(h);
+            cached_histogram.merge_from(h)?;
           },
           _ => {
             // We don't support metrics changing type ever, so do nothing but record an error so we
             // know if this happens.
-            bd_client_common::error::handle_unexpected::<(), anyhow::Error>(
+            handle_unexpected::<(), anyhow::Error>(
               Err(anyhow::anyhow!("metrics inconsistency")),
               "stats merging",
             );
@@ -328,7 +331,7 @@ impl Flusher {
     // might not be able to propagate the stats values.
     self
       .file_manager
-      .write_snapshot(handle, new_or_existing_snapshot.into_proto())
+      .write_snapshot(handle, new_or_existing_snapshot.into_proto()?)
       .await
   }
 
@@ -347,10 +350,7 @@ impl Flusher {
     // seems not completely terrible. If we want to slightly improve this in the future we could
     // decide to re-merge the deltas back into the collectors if we fail to write to disk.
     if let Err(e) = self.merge_delta_snapshot_to_disk(delta_snapshot).await {
-      bd_client_common::error::handle_unexpected::<(), anyhow::Error>(
-        Err(e),
-        "writing stats to disk",
-      );
+      handle_unexpected::<(), anyhow::Error>(Err(e), "writing stats to disk");
     }
 
     #[cfg(test)]
@@ -479,30 +479,34 @@ impl Flusher {
 //
 
 struct SnapshotHelper {
-  metrics: MetricsByName,
+  metrics: MetricsByNameCore<(MetricType, NameType), MetricData>,
   overflows: HashMap<String, u64>,
   limit: Option<u32>,
 }
 
+#[derive(Default)]
+struct MetricsFromSnapshotResult {
+  metrics: MetricsByNameCore<(MetricType, NameType), MetricData>,
+  overflows: HashMap<String, u64>,
+}
+
 impl SnapshotHelper {
   fn new(snapshot: Option<StatsSnapshot>, limit: Option<u32>) -> Self {
-    let (metrics, overflows) = Self::metrics_from_snapshot(snapshot).unwrap_or_default();
+    let result = Self::metrics_from_snapshot(snapshot).unwrap_or_default();
     Self {
-      metrics,
-      overflows,
+      metrics: result.metrics,
+      overflows: result.overflows,
       limit,
     }
   }
 
-  fn metrics_from_snapshot(
-    snapshot: Option<StatsSnapshot>,
-  ) -> Option<(MetricsByName, HashMap<String, u64>)> {
+  fn metrics_from_snapshot(snapshot: Option<StatsSnapshot>) -> Option<MetricsFromSnapshotResult> {
     let snapshot = snapshot?;
     let Some(Snapshot_type::Metrics(metrics)) = snapshot.snapshot_type else {
       return None;
     };
 
-    let mut new_metrics: MetricsByName = HashMap::new();
+    let mut new_metrics: MetricsByNameCore<(MetricType, NameType), MetricData> = HashMap::new();
     for proto_metric in metrics.metric {
       let tags = proto_metric.tags.into_iter().collect();
       if let Some(data) = proto_metric.data
@@ -514,27 +518,34 @@ impl SnapshotHelper {
         };
 
         let name = match proto_metric.metric_name_type {
-          Some(Metric_name_type::Name(name)) => NameType::Global(metric_type, name),
-          Some(Metric_name_type::MetricId(id)) => NameType::ActionId(metric_type, id),
+          Some(Metric_name_type::Name(name)) => NameType::Global(name),
+          Some(Metric_name_type::MetricId(id)) => NameType::ActionId(id),
           None => continue,
         };
 
-        let existing = new_metrics.entry(name).or_default().insert(tags, metric);
+        let existing = new_metrics
+          .entry((metric_type, name))
+          .or_default()
+          .insert(tags, metric);
         debug_assert!(existing.is_none());
       }
     }
 
-    Some((new_metrics, snapshot.metric_id_overflows))
+    Some(MetricsFromSnapshotResult {
+      metrics: new_metrics,
+      overflows: snapshot.metric_id_overflows,
+    })
   }
 
   fn mut_metric(
     &mut self,
+    metric_type: MetricType,
     name: &NameType,
     labels: &BTreeMap<String, String>,
   ) -> Option<&mut MetricData> {
     self
       .metrics
-      .get_mut(name)
+      .get_mut(&(metric_type, name.clone()))
       .and_then(|metrics| metrics.get_mut(labels))
   }
 
@@ -545,7 +556,10 @@ impl SnapshotHelper {
       None
     };
 
-    let by_name = self.metrics.entry(name.clone()).or_default();
+    let by_name = self
+      .metrics
+      .entry((metric.metric_type(), name.clone()))
+      .or_default();
     if let Some(limit) = maybe_limit
       && by_name.len() >= limit as usize
     {
@@ -562,32 +576,32 @@ impl SnapshotHelper {
     debug_assert!(existing.is_none());
   }
 
-  fn into_proto(self) -> StatsSnapshot {
+  fn into_proto(self) -> anyhow::Result<StatsSnapshot> {
     let proto_metrics: Vec<ProtoMetric> = self
       .metrics
       .into_iter()
       .flat_map(|(name, metrics)| {
-        metrics
-          .into_iter()
-          .map(move |(labels, metric)| ProtoMetric {
+        metrics.into_iter().map(move |(labels, metric)| {
+          Ok::<_, anyhow::Error>(ProtoMetric {
             metric_name_type: Some(match name.clone() {
-              NameType::Global(_, name) => Metric_name_type::Name(name),
-              NameType::ActionId(_, id) => Metric_name_type::MetricId(id),
+              (_, NameType::Global(name)) => Metric_name_type::Name(name),
+              (_, NameType::ActionId(id)) => Metric_name_type::MetricId(id),
             }),
             tags: labels.into_iter().collect(),
-            data: Some(metric.to_proto()),
+            data: Some(metric.to_proto()?),
             ..Default::default()
           })
+        })
       })
-      .collect();
+      .try_collect()?;
 
-    StatsSnapshot {
+    Ok(StatsSnapshot {
       snapshot_type: Some(Snapshot_type::Metrics(MetricsList {
         metric: proto_metrics,
         ..Default::default()
       })),
       metric_id_overflows: self.overflows,
       ..Default::default()
-    }
+    })
   }
 }

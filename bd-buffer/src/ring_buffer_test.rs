@@ -12,7 +12,7 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
 use bd_proto::protos::config::v1::config::buffer_config::BufferSizes;
 use bd_proto::protos::config::v1::config::{BufferConfig, BufferConfigList, buffer_config};
-use bd_stats_common::{MetricType, NameType, labels};
+use bd_stats_common::{NameType, labels};
 use std::path::{Path, PathBuf};
 
 fn fake_counter() -> Counter {
@@ -260,10 +260,7 @@ async fn ring_buffer_stats() {
   assert!(
     collector
       .find_counter(
-        &NameType::Global(
-          MetricType::Counter,
-          "ring_buffer:volatile_overwrite".to_string()
-        ),
+        &NameType::Global("ring_buffer:volatile_overwrite".to_string()),
         &labels! { "buffer_id" => "some-buffer" },
       )
       .unwrap()

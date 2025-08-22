@@ -20,8 +20,8 @@ use crate::{
   wait_for,
 };
 use assert_matches::assert_matches;
-use bd_client_common::error::UnexpectedErrorHandler;
 use bd_client_stats::test::TestTicker;
+use bd_error_reporter::reporter::UnexpectedErrorHandler;
 use bd_key_value::Store;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};

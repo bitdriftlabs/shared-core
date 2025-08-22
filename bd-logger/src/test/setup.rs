@@ -264,7 +264,8 @@ impl Setup {
     let (sender, receiver) = bd_completion::Sender::new();
     self
       .stats_flush_trigger
-      .blocking_flush_for_test(Some(sender));
+      .blocking_flush_for_test(Some(sender))
+      .unwrap();
     receiver.blocking_recv().unwrap();
     self.stats_upload_tx.blocking_send(()).unwrap();
   }

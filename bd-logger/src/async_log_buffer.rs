@@ -18,12 +18,13 @@ use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::PreConfigBuffer;
 use crate::{internal_report, network};
 use anyhow::anyhow;
-use bd_bounded_buffer::{MemorySized, Receiver, Sender, TrySendError, channel};
+use bd_bounded_buffer::{Receiver, Sender, TrySendError, channel};
 use bd_buffer::BuffersWithAck;
-use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_crash_handler::global_state;
 use bd_device::Store;
+use bd_error_reporter::reporter::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_log_metadata::MetadataProvider;
+use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,

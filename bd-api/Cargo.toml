@@ -14,6 +14,7 @@ async-trait.workspace      = true
 backoff.workspace          = true
 bd-client-common.path      = "../bd-client-common"
 bd-client-stats-store.path = "../bd-client-stats-store"
+bd-error-reporter.path     = "../bd-error-reporter"
 bd-grpc-codec.path         = "../bd-grpc-codec"
 bd-internal-logging.path   = "../bd-internal-logging"
 bd-metadata.path           = "../bd-metadata"
