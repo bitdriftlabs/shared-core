@@ -49,30 +49,6 @@ impl Reporter for DefaultErrorReporter {
 }
 
 //
-// PanickingErrorReporter
-//
-
-#[derive(Default)]
-pub struct PanickingErrorReporter;
-
-impl PanickingErrorReporter {
-  pub fn enable() {
-    UnexpectedErrorHandler::set_reporter(Arc::new(Self));
-  }
-}
-
-impl Reporter for PanickingErrorReporter {
-  fn report(
-    &self,
-    message: &str,
-    details: &Option<String>,
-    fields: &HashMap<Cow<'_, str>, Cow<'_, str>>,
-  ) {
-    panic!("unexpected error: {message} {details:?} {fields:?}");
-  }
-}
-
-//
 // SessionProvider
 //
 

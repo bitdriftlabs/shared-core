@@ -80,7 +80,7 @@ impl RingBufferProducer for ProducerImpl {
 
     let mut common_ring_buffer = parent.common_ring_buffer.locked_data.lock();
     let actual_size = common_ring_buffer.start_reserve_common(size)?;
-    let temp_reservation_data = common_ring_buffer.calculate_next_write_start(actual_size);
+    let temp_reservation_data = common_ring_buffer.calculate_next_write_start(actual_size)?;
 
     // If there is a concurrent reader block the write and drop the data.
     let read_reservation = common_ring_buffer
@@ -89,9 +89,9 @@ impl RingBufferProducer for ProducerImpl {
       .as_ref()
       .and_then(|c| c.reservation.as_ref())
       .cloned();
-    if read_reservation
-      .is_some_and(|r| common_ring_buffer.intersect_reservation(&temp_reservation_data, &r))
-    {
+    if read_reservation.map_or(Ok(false), |r| {
+      common_ring_buffer.intersect_reservation(&temp_reservation_data, &r)
+    })? {
       log::trace!(
         "({}) writing into concurrent read. Dropping due to no space left",
         common_ring_buffer.name
@@ -108,9 +108,9 @@ impl RingBufferProducer for ProducerImpl {
       .reservations
       .front()
       .cloned();
-    if first_reservation
-      .is_some_and(|r| common_ring_buffer.intersect_reservation(&temp_reservation_data, &r.range))
-    {
+    if first_reservation.map_or(Ok(false), |r| {
+      common_ring_buffer.intersect_reservation(&temp_reservation_data, &r.range)
+    })? {
       log::trace!(
         "({}) writing into concurrent write. Dropping due to no space left",
         common_ring_buffer.name
@@ -142,7 +142,7 @@ impl RingBufferProducer for ProducerImpl {
         temp_reservation_data.last_write_end_before_wrap;
     }
 
-    let memory = common_ring_buffer.finish_reservation(&reservation.range, size);
+    let memory = common_ring_buffer.finish_reservation(&reservation.range, size)?;
     let memory = unsafe {
       // Safety: This is safe insofar as we are theoretically not handing out overlapping ranges
       // at the same time. The transmute drops the shared mutability check and propagates the
@@ -184,7 +184,7 @@ impl RingBufferProducer for ProducerImpl {
         reservation.range.clone()
       },
     );
-    common_ring_buffer.finish_commit_common(&reservation_range);
+    common_ring_buffer.finish_commit_common(&reservation_range.ok_or(Error::Invariant)?)?;
 
     loop {
       let Some(front) = common_ring_buffer.extra_locked_data.reservations.front() else {
@@ -201,7 +201,7 @@ impl RingBufferProducer for ProducerImpl {
       let range = front.range.clone();
 
       common_ring_buffer
-        .advance_next_commited_write_start(&parent.common_ring_buffer.conditions, &range);
+        .advance_next_commited_write_start(&parent.common_ring_buffer.conditions, &range)?;
       common_ring_buffer
         .extra_locked_data
         .reservations
@@ -237,7 +237,7 @@ impl ConsumerImpl {
       .extra_locked_data
       .consumer
       .as_ref()
-      .unwrap()
+      .ok_or(Error::Invariant)?
       .reservation
       .clone();
     let start_read_data = LockedData::start_read(
@@ -251,7 +251,7 @@ impl ConsumerImpl {
       .extra_locked_data
       .consumer
       .as_mut()
-      .unwrap()
+      .ok_or(Error::Invariant)?
       .reservation = existing_reservation;
 
     Ok(unsafe {
@@ -296,10 +296,7 @@ impl RingBufferConsumer for ConsumerImpl {
         }
       }
 
-      readable
-        .changed()
-        .await
-        .expect("read watch channel should never be closed");
+      readable.changed().await.map_err(|_| Error::Invariant)?;
     }
   }
 
@@ -332,7 +329,7 @@ impl RingBufferConsumer for ConsumerImpl {
       .extra_locked_data
       .consumer
       .as_ref()
-      .unwrap()
+      .ok_or(Error::Invariant)?
       .reservation
       .clone();
 
@@ -347,13 +344,13 @@ impl RingBufferConsumer for ConsumerImpl {
       .extra_locked_data
       .consumer
       .as_mut()
-      .unwrap()
+      .ok_or(Error::Invariant)?
       .reservation = None;
     LockedData::finish_read_common(
       &mut common_ring_buffer,
       &parent.common_ring_buffer.conditions,
-      &reservation.unwrap(),
-    );
+      &reservation.ok_or(Error::Invariant)?,
+    )?;
     Ok(())
   }
 }

@@ -119,7 +119,7 @@ pub struct ConfigLoader {
 impl ConfigurationUpdate for ConfigLoader {
   async fn try_apply_config(&self, response: &ApiResponse) -> Option<ApiRequest> {
     let update = RuntimeUpdate::from_response(response)?;
-    log::debug!("applying runtime update: {}", update);
+    log::debug!("applying runtime update: {update}");
     self.update_snapshot(update).await;
 
     Some(

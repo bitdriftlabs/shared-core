@@ -9,6 +9,7 @@
 #[path = "./uploader_test.rs"]
 mod tests;
 
+use anyhow::anyhow;
 use backoff::ExponentialBackoff;
 use backoff::backoff::Backoff;
 use bd_api::DataUpload;
@@ -34,11 +35,13 @@ use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
 use mockall::automock;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::future::pending;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 #[cfg(test)]
 use tests::TestHooks;
 use time::OffsetDateTime;
+use time::ext::NumericalStdDuration;
 use uuid::Uuid;
 
 /// Root directory for all files used for storage and uploading.
@@ -203,7 +206,7 @@ impl Uploader {
     runtime: &ConfigLoader,
     collector: &Collector,
     shutdown: ComponentShutdown,
-  ) -> (Self, UploadClient) {
+  ) -> anyhow::Result<(Self, UploadClient)> {
     runtime.expect_initialized();
 
     let scope = collector.scope("artifact_upload");
@@ -212,12 +215,10 @@ impl Uploader {
     // runtime flags. This buffer cannot be recreated on config change so we're only reading it on
     // startup.
     let buffer_capacity = *runtime
-      .register_watch::<u32, artifact_upload::BufferCountLimit>()
-      .unwrap()
+      .register_watch::<u32, artifact_upload::BufferCountLimit>()?
       .read();
     let buffer_memory_capacity = *runtime
-      .register_watch::<u32, artifact_upload::BufferByteLimit>()
-      .unwrap()
+      .register_watch::<u32, artifact_upload::BufferByteLimit>()?
       .read();
 
     let (upload_tx, upload_rx) = bd_bounded_buffer::channel(
@@ -232,9 +233,9 @@ impl Uploader {
       time_provider,
       file_system,
       index: VecDeque::default(),
-      max_entries: runtime.register_watch().unwrap(),
-      initial_backoff_interval: runtime.register_watch().unwrap(),
-      max_backoff_interval: runtime.register_watch().unwrap(),
+      max_entries: runtime.register_watch()?,
+      initial_backoff_interval: runtime.register_watch()?,
+      max_backoff_interval: runtime.register_watch()?,
       upload_task_handle: None,
       intent_task_handle: None,
       stats: Stats::new(&scope),
@@ -247,7 +248,7 @@ impl Uploader {
       counter_stats: SendCounters::new(&scope, "enqueue"),
     };
 
-    (uploader, client)
+    Ok((uploader, client))
   }
 
   pub async fn run(self) {
@@ -268,9 +269,8 @@ impl Uploader {
       // next entry in the list and perform the next step.
       if self.intent_task_handle.is_none()
         && self.upload_task_handle.is_none()
-        && !self.index.is_empty()
+        && let Some(next) = self.index.front().cloned()
       {
-        let next = self.index.front().unwrap().clone();
         if next.pending_intent_negotiation {
           log::debug!("starting intent negotiation for {:?}", next.name);
           self.intent_task_handle = Some(tokio::spawn(Self::perform_intent_negotiation(
@@ -350,18 +350,26 @@ impl Uploader {
           self.track_new_upload(uuid, contents, state, session_id, timestamp).await;
         }
         intent_decision = async {
-          self.intent_task_handle.as_mut().unwrap().await?
-        }, if self.intent_task_handle.is_some() => {
-            self.handle_intent_negotiation_decision(intent_decision?).await;
+          if let Some(intent_task_handle) = self.intent_task_handle.as_mut() {
+            intent_task_handle.await?
+          } else {
+            pending().await
+          }
+        } => {
+            self.handle_intent_negotiation_decision(intent_decision?).await?;
             self.intent_task_handle = None;
         }
         result = async {
-          self.upload_task_handle.as_mut().unwrap().await?
-        }, if self.upload_task_handle.is_some() => {
+          if let Some(upload_task_handle) = self.upload_task_handle.as_mut() {
+            upload_task_handle.await?
+          } else {
+            pending().await
+          }
+        } => {
             result?;
 
             #[allow(unused)]
-            let name = self.handle_upload_complete().await;
+            let name = self.handle_upload_complete().await?;
             self.upload_task_handle = None;
 
             #[cfg(test)]
@@ -446,7 +454,11 @@ impl Uploader {
         continue;
       }
 
-      if !filenames.contains(file.split('/').next_back().unwrap()) {
+      let Some(back) = file.split('/').next_back() else {
+        continue;
+      };
+
+      if !filenames.contains(back) {
         log::debug!("removing artifact {file} from disk, not in index");
         if let Err(e) = self.file_system.delete_file(&PathBuf::from(&file)).await {
           log::warn!("failed to delete artifact {file:?}: {e}");
@@ -455,11 +467,14 @@ impl Uploader {
     }
   }
 
-  async fn handle_intent_negotiation_decision(&mut self, decision: IntentDecision) {
+  async fn handle_intent_negotiation_decision(&mut self, decision: IntentDecision) -> Result<()> {
     match decision {
       IntentDecision::Drop => {
         self.stats.dropped_intent.inc();
-        let entry = &self.index.pop_front().unwrap();
+        let entry = &self
+          .index
+          .pop_front()
+          .ok_or_else(|| anyhow!("failed to pop front"))?;
 
         if let Err(e) = self
           .file_system
@@ -478,18 +493,25 @@ impl Uploader {
       },
       IntentDecision::UploadImmediately => {
         self.stats.accepted_intent.inc();
-        let entry = self.index.front_mut().unwrap();
+        let entry = self
+          .index
+          .front_mut()
+          .ok_or_else(|| anyhow!("failed to get front"))?;
         // Mark the file as being ready for uploads and persist this to the index.
         entry.pending_intent_negotiation = false;
         self.write_index().await;
       },
     }
+    Ok(())
   }
 
-  async fn handle_upload_complete(&mut self) -> String {
+  async fn handle_upload_complete(&mut self) -> Result<String> {
     self.stats.uploaded.inc();
 
-    let entry = self.index.pop_front().unwrap();
+    let entry = self
+      .index
+      .pop_front()
+      .ok_or_else(|| anyhow!("failed to pop front"))?;
     let file_path = REPORT_DIRECTORY.join(&entry.name);
 
     if let Err(e) = self.file_system.delete_file(&file_path).await {
@@ -498,7 +520,7 @@ impl Uploader {
 
     self.write_index().await;
 
-    entry.name
+    Ok(entry.name)
   }
 
   fn stop_current_upload(&mut self) {
@@ -605,12 +627,16 @@ impl Uploader {
       ..Default::default()
     };
 
-    let compressed = write_compressed_protobuf(&index);
-    if let Err(e) = self
-      .file_system
-      .as_ref()
-      .write_file(&REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE), &compressed)
-      .await
+
+    if let Err(e) = async {
+      let compressed = write_compressed_protobuf(&index)?;
+      self
+        .file_system
+        .as_ref()
+        .write_file(&REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE), &compressed)
+        .await
+    }
+    .await
     {
       log::debug!("failed to write index: {e}");
     }
@@ -631,7 +657,6 @@ impl Uploader {
     // Use exponential backoff to avoid retrying over and over again in case something is going
     // wrong. We put no overall timeout as the device might be offline for a long time and we want
     // to give it whatever time it needs to perform the upload.
-
 
     loop {
       let upload_uuid = TrackedArtifactUpload::upload_uuid();
@@ -659,7 +684,9 @@ impl Uploader {
         break;
       }
 
-      let delay = retry_policy.next_backoff().unwrap();
+      let delay = retry_policy
+        .next_backoff()
+        .unwrap_or_else(|| 1.std_minutes());
 
       log::debug!("upload of artifact: {name} failed, retrying in {delay:?}");
       tokio::time::sleep(delay).await;
@@ -698,7 +725,9 @@ impl Uploader {
         break Ok(response.decision);
       }
 
-      let delay = retry_policy.next_backoff().unwrap();
+      let delay = retry_policy
+        .next_backoff()
+        .unwrap_or_else(|| 1.std_minutes());
       log::debug!("intent negotiation for artifact: {id} failed, retrying in {delay:?}");
       tokio::time::sleep(delay).await;
     }

@@ -962,7 +962,7 @@ impl StateStore {
 
   async fn store(state_path: &Path, state: &WorkflowsState) -> anyhow::Result<()> {
     let bytes = bincode::serde::encode_to_vec(state, bincode::config::standard())?;
-    tokio::fs::write(state_path, write_compressed(&bytes)).await?;
+    tokio::fs::write(state_path, write_compressed(&bytes)?).await?;
 
     Ok(())
   }

@@ -79,7 +79,7 @@ impl InitializedInner {
       ..Default::default()
     };
 
-    let compressed = write_compressed_protobuf(&index);
+    let compressed = write_compressed_protobuf(&index)?;
     self
       .file_system
       .as_ref()
@@ -264,7 +264,7 @@ impl FileManager {
     handle.stats_upload_request.snapshot = vec![snapshot];
     let path = STATS_DIRECTORY.join(&initialized_inner.index[handle.index].name);
     log::debug!("writing snapshot: {}", path.display());
-    let compressed = write_compressed_protobuf(&handle.stats_upload_request);
+    let compressed = write_compressed_protobuf(&handle.stats_upload_request)?;
 
     initialized_inner
       .file_system

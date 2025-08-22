@@ -66,10 +66,12 @@ use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
 use parking_lot::RwLock;
 use std::collections::HashMap;
+use std::future::pending;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
 use time::Duration;
+use time::ext::NumericalStdDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::watch;
 use tokio::time::Instant;
@@ -524,7 +526,7 @@ impl Api {
       kill_until: kill_until.into_proto(),
       ..Default::default()
     };
-    let compressed = write_compressed_protobuf(&kill_file);
+    let compressed = write_compressed_protobuf(&kill_file)?;
     tokio::fs::write(self.kill_file_path(), compressed).await?;
 
     Ok(())
@@ -534,7 +536,7 @@ impl Api {
   async fn do_reconnect_backoff(&mut self, backoff: &mut ExponentialBackoff<SystemClock>) -> bool {
     // We have no max timeout, hence this should always return a backoff value.
     // Before moving to the next iteration, sleep according to the backoff strategy.
-    let reconnect_delay = backoff.next_backoff().unwrap();
+    let reconnect_delay = backoff.next_backoff().unwrap_or_else(|| 1.std_minutes());
     log::debug!("reconnecting in {} ms", reconnect_delay.as_millis());
 
     // Pause execution until we are ready to reconnect, or the task is canceled.
@@ -721,7 +723,9 @@ impl Api {
             return Ok(());
           },
           // Fire a ping timer if the ping timer elapses.
-          () = async { ping_timer.unwrap().await }, if ping_timer.is_some() => {
+          () = async {
+            if let Some(ping_timer) = ping_timer { ping_timer.await } else { pending().await }
+          } => {
             stream_state.ping_deadline = None;
             stream_state.send_ping().await?;
             continue;
@@ -919,9 +923,9 @@ impl Api {
       match stream_state.handle_upstream_event(event)? {
         UpstreamEvent::UpstreamMessages(responses) => {
           // This happens if we received data, but not enough to form a full gRPC message.
-          if responses.is_empty() {
+          let Some((first, rest)) = responses.split_first() else {
             continue;
-          }
+          };
 
           // Since we process raw bytes, we might have received more than one frame.
           // First we look at the first response message, and make sure that this is a handshake
@@ -931,7 +935,6 @@ impl Api {
           // it and pass it back up as well as any other frames we decoded for immediate
           // processing. The response decoder might still contain data, so we continue to use
           // it for further decoding.
-          let (first, rest) = responses.split_first().unwrap();
           match first.demux() {
             Some(ResponseKind::Handshake(h)) => {
               log::debug!("received handshake");

@@ -245,7 +245,7 @@ impl LoggerBuilder {
         &runtime_loader,
         &collector_clone,
         shutdown_handle.make_shutdown(),
-      );
+      )?;
 
       let out_of_band_enabled_flag = runtime_loader
         .register_watch::<bool, artifact_upload::Enabled>()
@@ -272,7 +272,7 @@ impl LoggerBuilder {
       // improve the perceived performance of the logger initialization.
       let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;
       let (buffer_manager, buffer_event_rx) =
-        bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader);
+        bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader)?;
       let buffer_uploader = BufferUploadManager::new(
         data_upload_tx_clone.clone(),
         &runtime_loader,

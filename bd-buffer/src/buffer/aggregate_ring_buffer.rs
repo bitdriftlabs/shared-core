@@ -51,14 +51,10 @@ struct SharedData {
 }
 
 impl SharedData {
-  fn flush_thread_func(&self) {
+  fn flush_thread_func(&self) -> Result<()> {
     log::debug!("starting flush thread func");
-    let mut consumer = self.volatile_buffer.clone().register_consumer().unwrap();
-    let mut producer = self
-      .non_volatile_buffer
-      .clone()
-      .register_producer()
-      .unwrap();
+    let mut consumer = self.volatile_buffer.clone().register_consumer()?;
+    let mut producer = self.non_volatile_buffer.clone().register_producer()?;
 
     while !self.shutdown_flush_thread.load(Ordering::Relaxed) {
       #[cfg(test)]
@@ -84,7 +80,7 @@ impl SharedData {
       {
         Ok(write_reservation) => {
           write_reservation.copy_from_slice(read_reservation);
-          producer.as_mut().commit().unwrap();
+          producer.as_mut().commit()?;
         },
         Err(Error::AbslStatus(AbslCode::Unavailable, ref message)) => {
           // In this case we drop the write if the buffer is unavailable due to total data loss
@@ -106,9 +102,10 @@ impl SharedData {
       // The order of the commit and the finish read operations matters for properly implementing
       // flush(). The commit to the underlying non volatile storage must come before we finish the
       // read which may unblock anyone waiting on flush callback.
-      consumer.as_mut().finish_read().unwrap();
+      consumer.as_mut().finish_read()?;
     }
     log::debug!("stopping flush thread func");
+    Ok(())
   }
 }
 
@@ -123,7 +120,7 @@ impl SharedData {
 // 4) Allows a single consumer to read from the internal non-volatile space.
 pub struct RingBufferImpl {
   shared_data: Arc<SharedData>,
-  flush_thread: Option<std::thread::JoinHandle<()>>,
+  flush_thread: Option<std::thread::JoinHandle<Result<()>>>,
   shutdown_lock_handle: Mutex<Option<Box<dyn LockHandle>>>,
 }
 
@@ -183,9 +180,7 @@ impl RingBufferImpl {
     let cloned_shared_data = shared_data.clone();
     let flush_thread = std::thread::Builder::new()
       .name(format!("bitdrift-buffer-{name}"))
-      .spawn(move || {
-        cloned_shared_data.flush_thread_func();
-      })
+      .spawn(move || cloned_shared_data.flush_thread_func())
       .map_err(|e| Error::ThreadStartFailure(e.to_string()))?;
 
     Ok(Arc::new(Self {
@@ -204,7 +199,9 @@ impl RingBufferImpl {
 impl Drop for RingBufferImpl {
   fn drop(&mut self) {
     self.shutdown();
-    self.flush_thread.take().unwrap().join().unwrap();
+    if let Some(flush_thread) = self.flush_thread.take() {
+      let _ignored = flush_thread.join();
+    }
   }
 }
 
@@ -253,10 +250,9 @@ impl RingBuffer for RingBufferImpl {
 
       // Make sure all reservations are drained. This should always be true at shutdown time but we
       // check anyway.
-      shutdown_lock_handle
-        .as_ref()
-        .unwrap()
-        .await_reservations_drained();
+      if let Some(shutdown_lock_handle) = shutdown_lock_handle.as_ref() {
+        shutdown_lock_handle.await_reservations_drained();
+      }
     }
 
     if matches!(self.shared_data.allow_overwrite, AllowOverwrite::Yes) {

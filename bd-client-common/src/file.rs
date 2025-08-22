@@ -14,20 +14,19 @@ use flate2::Compression;
 use flate2::read::{ZlibDecoder, ZlibEncoder};
 use std::io::Read;
 
-pub fn write_compressed_protobuf<T: protobuf::Message>(message: &T) -> Vec<u8> {
-  let bytes = message.write_to_bytes().unwrap();
+pub fn write_compressed_protobuf<T: protobuf::Message>(message: &T) -> anyhow::Result<Vec<u8>> {
+  let bytes = message.write_to_bytes()?;
   write_compressed(&bytes)
 }
 
-#[must_use]
-pub fn write_compressed(bytes: &[u8]) -> Vec<u8> {
+pub fn write_compressed(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
   let mut encoder = ZlibEncoder::new(
     bytes,
     Compression::new(DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL),
   );
   let mut compressed_bytes = Vec::new();
-  encoder.read_to_end(&mut compressed_bytes).unwrap();
-  compressed_bytes
+  encoder.read_to_end(&mut compressed_bytes)?;
+  Ok(compressed_bytes)
 }
 
 pub fn read_compressed(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
@@ -76,7 +75,7 @@ pub fn read_checksummed_data(bytes: &[u8]) -> anyhow::Result<&[u8]> {
   }
 
   let (data, crc_bytes) = bytes.split_at(bytes.len() - 4);
-  let crc = u32::from_le_bytes(crc_bytes.try_into().unwrap());
+  let crc = u32::from_le_bytes(crc_bytes.try_into()?);
   let expected_crc = crc32fast::hash(data);
 
   if expected_crc != crc {

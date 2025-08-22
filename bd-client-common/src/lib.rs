@@ -5,6 +5,15 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![deny(
+  clippy::expect_used,
+  clippy::panic,
+  clippy::todo,
+  clippy::unimplemented,
+  clippy::unreachable,
+  clippy::unwrap_used
+)]
+
 use bd_proto::protos::client::api::{ApiRequest, ApiResponse, HandshakeRequest};
 use error::handle_unexpected;
 use std::future::Future;
@@ -15,6 +24,7 @@ pub mod file;
 pub mod file_system;
 pub mod payload_conversion;
 pub mod safe_file_cache;
+pub mod test;
 pub mod zlib;
 
 pub fn spawn_error_handling_task<E: std::error::Error + Sync + Send + 'static>(
