@@ -41,13 +41,13 @@ pub struct ThreadHeader<'a> {
   pub state: &'a str,
 }
 
-pub fn build_anr<'a, 'fbb, E: ParseError<&'a str>>(
+pub fn build_anr<'a, 'fbb>(
   mut builder: &mut flatbuffers::FlatBufferBuilder<'fbb>,
   app_info: &mut v_1::AppMetricsArgs<'fbb>,
   device_info: &mut v_1::DeviceMetricsArgs<'fbb>,
   event_time: &'fbb mut Option<v_1::Timestamp>,
   input: &'a str,
-) -> IResult<&'a str, flatbuffers::WIPOffset<v_1::Report<'fbb>>, E> {
+) -> IResult<&'a str, flatbuffers::WIPOffset<v_1::Report<'fbb>>, nom::error::Error<&'a str>> {
   let (remainder, (subject, (pid, timestamp), metrics, _attached_count, thread_offsets)) = (
     subject_parser,
     process_start_parser,
