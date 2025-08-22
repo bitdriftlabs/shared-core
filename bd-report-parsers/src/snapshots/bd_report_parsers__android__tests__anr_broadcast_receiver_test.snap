@@ -8,7 +8,9 @@ Report {
     type_: Unknown,
     app_metrics: Some(
         AppMetrics {
-            app_id: None,
+            app_id: Some(
+                "com.example.MyApp",
+            ),
             memory: None,
             version: None,
             build_number: None,
@@ -34,7 +36,9 @@ Report {
             arch: Unknown,
             display: None,
             manufacturer: None,
-            model: None,
+            model: Some(
+                "Monaco",
+            ),
             os_build: None,
             platform: Android,
             cpu_abis: Some(
