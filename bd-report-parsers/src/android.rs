@@ -43,6 +43,9 @@ pub struct ThreadHeader<'a> {
 
 pub fn build_anr<'a, 'fbb, E: ParseError<&'a str>>(
   mut builder: &mut flatbuffers::FlatBufferBuilder<'fbb>,
+  app_info: &mut v_1::AppMetricsArgs<'fbb>,
+  device_info: &mut v_1::DeviceMetricsArgs<'fbb>,
+  event_time: &'fbb mut Option<v_1::Timestamp>,
   input: &'a str,
 ) -> IResult<&'a str, flatbuffers::WIPOffset<v_1::Report<'fbb>>, E> {
   let (remainder, (subject, (pid, timestamp), metrics, _attached_count, thread_offsets)) = (
@@ -54,31 +57,25 @@ pub fn build_anr<'a, 'fbb, E: ParseError<&'a str>>(
   )
     .parse(input)?;
 
-  let time = OffsetDateTime::parse(&timestamp.replace(" ", "T"), &Iso8601::DEFAULT).map_or(
-    v_1::Timestamp::default(),
-    |stamp| {
+  *event_time = OffsetDateTime::parse(&timestamp.replace(" ", "T"), &Iso8601::DEFAULT)
+    .map(|stamp| {
       v_1::Timestamp::new(
         u64::try_from(stamp.unix_timestamp()).unwrap_or_default(),
         stamp.nanosecond(),
       )
-    },
-  );
-  let app_args = v_1::AppMetricsArgs {
-    // TODO: app_id, etc
-    process_id: u32::try_from(pid).unwrap_or_default(),
-    ..Default::default()
-  };
-  let cpu_abis = metrics.get("ABI").map(|abi| {
+    })
+    .ok();
+  if let Ok(pid) = u32::try_from(pid) {
+    app_info.process_id = pid;
+  }
+  device_info.platform = v_1::Platform::Android;
+  device_info.cpu_abis = metrics.get("ABI").map(|abi| {
     let abi = builder.create_string(abi);
     builder.create_vector(&[abi])
   });
-  let device_args = v_1::DeviceMetricsArgs {
-    time: Some(&time),
-    platform: v_1::Platform::Android,
-    // TODO: architecture, model, etc
-    cpu_abis,
-    ..Default::default()
-  };
+  if let Some(time) = event_time.as_ref() {
+    device_info.time = Some(&time);
+  }
   let error_args = v_1::ErrorArgs {
     name: Some(builder.create_string(anr_name(subject))),
     reason: subject.map(|sub| builder.create_string(sub)),
@@ -95,8 +92,8 @@ pub fn build_anr<'a, 'fbb, E: ParseError<&'a str>>(
   );
   let args = v_1::ReportArgs {
     errors: Some(builder.create_vector(&[error])),
-    app_metrics: Some(v_1::AppMetrics::create(&mut builder, &app_args)),
-    device_metrics: Some(v_1::DeviceMetrics::create(&mut builder, &device_args)),
+    app_metrics: Some(v_1::AppMetrics::create(&mut builder, app_info)),
+    device_metrics: Some(v_1::DeviceMetrics::create(&mut builder, device_info)),
     thread_details: Some(thread_details),
     ..Default::default()
   };
