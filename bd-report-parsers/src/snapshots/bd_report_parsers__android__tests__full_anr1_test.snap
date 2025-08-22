@@ -51,7 +51,7 @@ Report {
         [
             Error {
                 name: Some(
-                    "ANR",
+                    "Undetermined ANR",
                 ),
                 reason: None,
                 stack_trace: None,

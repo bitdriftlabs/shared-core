@@ -113,6 +113,40 @@ macro_rules! assert_parsed_anr_eq {
 }
 
 #[test]
+fn anr_name_test() {
+  assert_eq!(
+    "User Perceived ANR",
+    anr_name(Some("Input dispatching timed out"))
+  );
+  assert_eq!(
+    "User Perceived ANR",
+    anr_name(Some("User request after error"))
+  );
+
+  assert_eq!(
+    "Broadcast Receiver ANR",
+    anr_name(Some(
+      "Broadcast of Intent { act=android.intent.action.MAIN cmp=com.example.app/.MainActivity}"
+    ))
+  );
+  assert_eq!(
+    "Service ANR",
+    anr_name(Some(
+      "Executing service. { act=android.intent.action.MAIN \ncmp=com.example.app/.MainActivity}"
+    ))
+  );
+  assert_eq!(
+    "Background ANR",
+    anr_name(Some(
+      "bg anr: Input dispatching timed out (85a07c0 com.acme.app/com.acme.app.MainActivity is not \
+       responding. Waited 5001ms for MotionEvent)\n"
+    ))
+  );
+  assert_eq!("Undetermined ANR", anr_name(Some("Full moon")));
+  assert_eq!("Undetermined ANR", anr_name(None));
+}
+
+#[test]
 fn full_anr1_test() {
   assert_parsed_anr_eq!("anr1.txt");
 }

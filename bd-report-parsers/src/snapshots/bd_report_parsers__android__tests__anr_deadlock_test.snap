@@ -51,7 +51,7 @@ Report {
         [
             Error {
                 name: Some(
-                    "ANR",
+                    "User Perceived ANR",
                 ),
                 reason: Some(
                     "Input dispatching timed out (d52282 io.bitdrift.gradletestapp/io.bitdrift.gradletestapp.MainActivity (server) is not responding. Waited 5002ms for MotionEvent(deviceId=3, eventTime=103528768662000, source=TOUCHSCREEN | STYLUS, displayId=0, action=DOWN, actionButton=0x00000000, flags=0x00000000, metaState=0x00000000, buttonState=0x00000000, classification=NONE, edgeFlags=0x00000000, xPrecision=42.7, yPrecision=25.6, xCursorPosition=nan, yCursorPosition=nan, pointers=[0: (498.0, 895.9)]), policyFlags=0x62000000)",

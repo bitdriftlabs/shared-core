@@ -79,9 +79,8 @@ pub fn build_anr<'a, 'fbb, E: ParseError<&'a str>>(
     cpu_abis,
     ..Default::default()
   };
-  // TODO: improved name parsing
   let error_args = v_1::ErrorArgs {
-    name: Some(builder.create_string("ANR")),
+    name: Some(builder.create_string(anr_name(subject))),
     reason: subject.map(|sub| builder.create_string(sub)),
     ..Default::default()
   };
@@ -431,4 +430,43 @@ fn source_location<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a st
     })
     .parse(remainder)
   }
+}
+
+fn anr_name(description: Option<&str>) -> &'static str {
+  let anr_types = vec![
+    ("Background ANR", vec!["bg anr"]),
+    (
+      "User Perceived ANR",
+      vec!["input dispatching timed out", "user request after error"],
+    ),
+    ("Broadcast Receiver ANR", vec!["broadcast of intent"]),
+    ("Content Provider ANR", vec!["content provider timeout"]),
+    ("App Registered ANR", vec!["app registered timeout"]),
+    ("App Start ANR", vec!["app start timeout"]),
+    (
+      "Service ANR",
+      vec![
+        "executing service",
+        "service.startforeground() not called",
+        "short fgs timeout",
+        "timed out while trying to bind",
+        "job service timeout",
+        "no response to onstopjob",
+        "service start timeout",
+      ],
+    ),
+  ];
+
+  if let Some(description) = description {
+    let normalized = description.to_lowercase();
+    for (name, snippets) in anr_types {
+      for snippet in snippets {
+        if normalized.contains(snippet) {
+          return name;
+        }
+      }
+    }
+  }
+
+  "Undetermined ANR"
 }
