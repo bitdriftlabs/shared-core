@@ -15,7 +15,7 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Thread,
 };
 use flatbuffers::FlatBufferBuilder;
-use nom_language::error::{VerboseError, convert_error};
+use nom_language::error::convert_error;
 
 /// Run a parser and either return the successful value or print a verbose
 /// description of where the parser failed
@@ -25,10 +25,10 @@ use nom_language::error::{VerboseError, convert_error};
 /// ```
 macro_rules! run_parser {
   ($parser:ident, $builder:ident, $input:expr) => {
-    match $parser::<VerboseError<&str>>(&mut $builder, $input.clone()) {
+    match $parser(&mut $builder, $input.clone()) {
       Ok(value) => value,
       Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
-        panic!("failed to parse: {:#?}", convert_error($input, e.into()))
+        panic!("failed to parse: {:#?}", convert_error($input, e))
       },
       Err(e) => panic!("failed to parse: {e:#?}"),
     }
@@ -117,7 +117,7 @@ macro_rules! assert_parsed_anr_eq {
       ..Default::default()
     };
     let mut timestamp = None;
-    match build_anr::<VerboseError<&str>>(
+    match build_anr(
       &mut builder,
       &mut app_info,
       &mut device_info,
@@ -129,7 +129,7 @@ macro_rules! assert_parsed_anr_eq {
         insta::assert_debug_snapshot!(report);
       },
       Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
-        panic!("failed to parse: {:#?}", convert_error(input, e.into()))
+        panic!("failed to parse: {:#?}", e)
       },
       Err(e) => panic!("failed to parse: {e:#?}"),
     }
