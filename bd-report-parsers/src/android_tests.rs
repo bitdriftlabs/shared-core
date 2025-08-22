@@ -7,6 +7,8 @@
 
 use super::*;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
+  AppMetricsArgs,
+  DeviceMetricsArgs,
   Frame,
   FrameType,
   Report,
@@ -106,9 +108,31 @@ macro_rules! assert_parsed_anr_eq {
   ($filename:expr) => {
     let mut builder = FlatBufferBuilder::new();
     let input = read_fixture($filename);
-    let (_, offset) = run_parser!(build_anr, builder, input.as_str());
-    let report = get_table!(Report, builder, offset);
-    insta::assert_debug_snapshot!(report);
+    let mut app_info = AppMetricsArgs {
+      app_id: Some(builder.create_string("com.example.MyApp")),
+      ..Default::default()
+    };
+    let mut device_info = DeviceMetricsArgs {
+      model: Some(builder.create_string("Monaco")),
+      ..Default::default()
+    };
+    let mut timestamp = None;
+    match build_anr::<VerboseError<&str>>(
+      &mut builder,
+      &mut app_info,
+      &mut device_info,
+      &mut timestamp,
+      &input.clone(),
+    ) {
+      Ok((_, offset)) => {
+        let report = get_table!(Report, builder, offset);
+        insta::assert_debug_snapshot!(report);
+      },
+      Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
+        panic!("failed to parse: {:#?}", convert_error(input, e.into()))
+      },
+      Err(e) => panic!("failed to parse: {e:#?}"),
+    }
   };
 }
 
