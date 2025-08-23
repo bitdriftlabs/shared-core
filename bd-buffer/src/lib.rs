@@ -27,6 +27,7 @@ pub use crate::buffer::{
   RingBufferStats,
   StatsTestHelper,
 };
+use bd_client_common::error::InvariantError;
 pub use ffi::AbslCode;
 pub use ring_buffer::{
   BufferEvent,
@@ -51,8 +52,8 @@ pub enum Error {
   InvalidFileName,
   #[error("Failed to start a thread: {0}")]
   ThreadStartFailure(String),
-  #[error("Invariant violation")]
-  Invariant,
+  #[error("{0}")]
+  Invariant(#[from] InvariantError),
 }
 
 type Result<T> = std::result::Result<T, Error>;

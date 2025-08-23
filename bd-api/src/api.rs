@@ -21,11 +21,11 @@ use anyhow::anyhow;
 use backoff::SystemClock;
 use backoff::backoff::Backoff;
 use backoff::exponential::ExponentialBackoff;
-use bd_client_common::ConfigurationUpdate;
 use bd_client_common::error::UnexpectedErrorHandler;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::payload_conversion::{IntoRequest, MuxResponse, ResponseKind};
 use bd_client_common::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
+use bd_client_common::{ConfigurationUpdate, maybe_await};
 use bd_client_stats_store::{Counter, CounterWrapper, Scope};
 use bd_grpc_codec::{
   Compression,
@@ -66,15 +66,15 @@ use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
 use parking_lot::RwLock;
 use std::collections::HashMap;
-use std::future::pending;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
 use time::Duration;
 use time::ext::NumericalStdDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::watch;
-use tokio::time::Instant;
+use tokio::time::{Instant, Sleep, sleep};
 
 // The amount of time the API has to be in the disconnected state before network quality will be
 // switched to "offline". This offline grace period also governs when cached configuration will
@@ -142,7 +142,7 @@ struct StreamState {
   request_encoder: Encoder<ApiRequest>,
   response_decoder: bd_grpc_codec::Decoder<ApiResponse>,
   ping_interval: Option<tokio::time::Duration>,
-  ping_deadline: Option<tokio::time::Instant>,
+  ping_sleep: Option<Pin<Box<Sleep>>>,
 
   upload_state_tracker: upload::StateTracker,
 
@@ -187,7 +187,7 @@ impl StreamState {
       request_encoder: encoder,
       response_decoder: decoder,
       ping_interval: None,
-      ping_deadline: None,
+      ping_sleep: None,
       upload_state_tracker: StateTracker::new(),
       stream_handle,
       stream_event_rx,
@@ -211,10 +211,10 @@ impl StreamState {
   }
 
   fn maybe_schedule_ping(&mut self) {
-    self.ping_deadline = self.ping_interval.map(|ping_in| {
+    self.ping_sleep = self.ping_interval.map(|ping_in| {
       log::debug!("scheduling ping in {ping_in:?}");
 
-      Instant::now() + ping_in
+      Box::pin(sleep(ping_in))
     });
   }
 
@@ -715,7 +715,6 @@ impl Api {
       // At this point we have established the stream, so we should start the general
       // request/response handling.
       loop {
-        let ping_timer = stream_state.ping_deadline.map(tokio::time::sleep_until);
         let upstream_event = tokio::select! {
           // If we receive the shutdown signal, shut down the loop.
           () = self.shutdown.cancelled() => {
@@ -723,10 +722,7 @@ impl Api {
             return Ok(());
           },
           // Fire a ping timer if the ping timer elapses.
-          () = async {
-            if let Some(ping_timer) = ping_timer { ping_timer.await } else { pending().await }
-          } => {
-            stream_state.ping_deadline = None;
+          () = maybe_await(&mut stream_state.ping_sleep) => {
             stream_state.send_ping().await?;
             continue;
           }

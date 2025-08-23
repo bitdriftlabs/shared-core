@@ -13,6 +13,7 @@ mod common_ring_buffer_test;
 use super::test::thread_synchronizer::ThreadSynchronizer;
 use super::{RingBufferStats, to_u32};
 use crate::{AbslCode, Error, Result};
+use bd_client_common::error::InvariantError;
 use parking_lot::{Condvar, Mutex, MutexGuard};
 use std::fmt::Display;
 use std::ptr::NonNull;
@@ -267,12 +268,16 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     // value must be invalid and should be reset.
     if self.last_write_end_before_wrap().is_some()
       && reservation.start + original_size + self.extra_bytes_per_record - 1
-        > self.last_write_end_before_wrap().ok_or(Error::Invariant)?
+        > self
+          .last_write_end_before_wrap()
+          .ok_or(InvariantError::Invariant)?
     {
       log::trace!(
         "({}) removing previous last write before wrap: {}",
         self.name.clone(),
-        self.last_write_end_before_wrap().ok_or(Error::Invariant)?
+        self
+          .last_write_end_before_wrap()
+          .ok_or(InvariantError::Invariant)?
       );
       *self.last_write_end_before_wrap() = None;
     }
@@ -288,7 +293,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
   fn load_next_read_size(&mut self, cursor: Cursor) -> Result<u32> {
     let next_read_start_to_use = self
       .next_read_start_to_use(cursor)
-      .ok_or(Error::Invariant)?;
+      .ok_or(InvariantError::Invariant)?;
 
     // This checks that we are attempting to read the record length from within the buffer address
     // space. This can overflow but as long as we are within the memory space crc checks will catch
@@ -305,7 +310,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     let size = u32::from_ne_bytes(
       self.memory()[size_index_as_usize .. size_index_as_usize + 4]
         .try_into()
-        .map_err(|_| Error::Invariant)?,
+        .map_err(|_| InvariantError::Invariant)?,
     );
     // The following makes sure that the next read size is actually within the buffer memory. If
     // it's not there is guaranteed corruption. If it is, non-volatile crc checks will catch an
@@ -336,12 +341,12 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     let wrap_gap = Range {
       start: reservation_data
         .last_write_end_before_wrap
-        .ok_or(Error::Invariant)?
+        .ok_or(InvariantError::Invariant)?
         + 1,
       size: to_u32(self.memory.0.len())
         - (reservation_data
           .last_write_end_before_wrap
-          .ok_or(Error::Invariant)?
+          .ok_or(InvariantError::Invariant)?
           + 1),
     };
     Ok(intersect(&wrap_gap, range))
@@ -393,7 +398,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
 
       let mut overwrite_record: bool = false;
       let next_read = Range {
-        start: guard.next_read_start().ok_or(Error::Invariant)?,
+        start: guard.next_read_start().ok_or(InvariantError::Invariant)?,
         size: next_read_actual_size,
       };
 
@@ -447,7 +452,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
         }
         // When overwriting we zero out any extra data, to make sure that CRCs, etc. become so the
         // overwritten record is skipped correctly if corruption lands us in it somehow.
-        let next_read_start = guard.next_read_start().ok_or(Error::Invariant)?;
+        let next_read_start = guard.next_read_start().ok_or(InvariantError::Invariant)?;
         guard.zero_extra_data(next_read_start);
         guard.advance_next_read(next_read_actual_size, Cursor::No)?;
       } else {
@@ -477,7 +482,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
         reservation_data
           .last_write_end_before_wrap
           .as_ref()
-          .ok_or(Error::Invariant)?
+          .ok_or(InvariantError::Invariant)?
       );
       reservation_data.range.start = 0;
       reservation_data.next_write_start = write_size;
@@ -546,7 +551,10 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
 
     // TODO(snowp): Consider moving this deeper into the ring buffer where we notify the condvars
     // if calling it repeatedly on every log ends up being expensive.
-    self.readable.send(true).map_err(|_| Error::Invariant)?;
+    self
+      .readable
+      .send(true)
+      .map_err(|_| InvariantError::Invariant)?;
 
     // Return the extra space at the beginning (not counting the size) if there is any.
     Ok(self.extra_data(reservation.start))
@@ -568,7 +576,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
       log::trace!(
         "({}) initializing next read start: {}",
         self.name.clone(),
-        self.next_read_start().ok_or(Error::Invariant)?
+        self.next_read_start().ok_or(InvariantError::Invariant)?
       );
     }
     if self.next_cursor_read_start.is_none() {
@@ -577,14 +585,18 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
       log::trace!(
         "({}) initializing next cursor read start: {}",
         self.name,
-        self.next_cursor_read_start.ok_or(Error::Invariant)?
+        self
+          .next_cursor_read_start
+          .ok_or(InvariantError::Invariant)?
       );
     }
 
     log::trace!(
       "({}) new committed write start: {}",
       self.name.clone(),
-      self.committed_write_start().ok_or(Error::Invariant)?
+      self
+        .committed_write_start()
+        .ok_or(InvariantError::Invariant)?
     );
 
     if new_data_to_read {
@@ -611,14 +623,18 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     // overwritten them.
     if self
       .next_read_start_to_use(cursor)
-      .ok_or(Error::Invariant)?
-      != self.committed_write_start().ok_or(Error::Invariant)?
+      .ok_or(InvariantError::Invariant)?
+      != self
+        .committed_write_start()
+        .ok_or(InvariantError::Invariant)?
     {
       if self.last_write_end_before_wrap().is_some()
-        && self.last_write_end_before_wrap().ok_or(Error::Invariant)?
+        && self
+          .last_write_end_before_wrap()
+          .ok_or(InvariantError::Invariant)?
           == self
             .next_read_start_to_use(cursor)
-            .ok_or(Error::Invariant)?
+            .ok_or(InvariantError::Invariant)?
             + size
             - 1
       {
@@ -630,7 +646,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
         *self.next_read_start_to_use(cursor) = Some(
           self
             .next_read_start_to_use(cursor)
-            .ok_or(Error::Invariant)?
+            .ok_or(InvariantError::Invariant)?
             + size,
         );
       }
@@ -640,7 +656,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
         matches!(cursor, Cursor::Yes),
         self
           .next_read_start_to_use(cursor)
-          .ok_or(Error::Invariant)?
+          .ok_or(InvariantError::Invariant)?
       );
 
       return Ok(());
@@ -684,7 +700,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
       && (wait_for_drain_data.committed_write_start.is_none()
         || wait_for_drain_data
           .committed_write_start
-          .ok_or(Error::Invariant)?
+          .ok_or(InvariantError::Invariant)?
           == reservation.start)
     {
       conditions.drain_complete.notify_all();
@@ -812,7 +828,10 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
         } else {
           log::trace!("({}) non-blocking no more data to read", guard.name);
 
-          guard.readable.send(false).map_err(|_| Error::Invariant)?;
+          guard
+            .readable
+            .send(false)
+            .map_err(|_| InvariantError::Invariant)?;
 
           return Err(Error::AbslStatus(
             AbslCode::Unavailable,
@@ -834,10 +853,10 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     *reserved_read = Some(Range {
       start: guard
         .next_read_start_to_use(cursor)
-        .ok_or(Error::Invariant)?,
+        .ok_or(InvariantError::Invariant)?,
       size: next_read_size + guard.extra_bytes_per_record,
     });
-    let reserved_read = reserved_read.as_ref().ok_or(Error::Invariant)?;
+    let reserved_read = reserved_read.as_ref().ok_or(InvariantError::Invariant)?;
     log::trace!(
       "({}) start read (cursor={}): {}",
       guard.name,

@@ -16,7 +16,7 @@
 
 use bd_proto::protos::client::api::{ApiRequest, ApiResponse, HandshakeRequest};
 use error::handle_unexpected;
-use std::future::Future;
+use std::future::{Future, pending};
 
 pub mod error;
 pub mod fb;
@@ -26,6 +26,18 @@ pub mod payload_conversion;
 pub mod safe_file_cache;
 pub mod test;
 pub mod zlib;
+
+// This is a helper for use in tokio::select to avoid unwrap() in the typical pattern:
+// async { foo.unwrap().await }, if foo.is_some().
+pub async fn maybe_await<R, F: Future<Output = R> + Unpin>(future: &mut Option<F>) -> R {
+  if let Some(f) = future {
+    let result = f.await;
+    *future = None;
+    result
+  } else {
+    pending().await
+  }
+}
 
 pub fn spawn_error_handling_task<E: std::error::Error + Sync + Send + 'static>(
   f: impl Future<Output = std::result::Result<(), E>> + Send + 'static,

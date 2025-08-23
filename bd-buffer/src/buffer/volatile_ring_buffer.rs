@@ -30,6 +30,7 @@ use super::{
   RingBufferStats,
 };
 use crate::{AbslCode, Error, Result};
+use bd_client_common::error::InvariantError;
 use parking_lot::{Condvar, MutexGuard};
 #[cfg(test)]
 use std::any::Any;
@@ -184,7 +185,8 @@ impl RingBufferProducer for ProducerImpl {
         reservation.range.clone()
       },
     );
-    common_ring_buffer.finish_commit_common(&reservation_range.ok_or(Error::Invariant)?)?;
+    common_ring_buffer
+      .finish_commit_common(&reservation_range.ok_or(InvariantError::Invariant)?)?;
 
     loop {
       let Some(front) = common_ring_buffer.extra_locked_data.reservations.front() else {
@@ -237,7 +239,7 @@ impl ConsumerImpl {
       .extra_locked_data
       .consumer
       .as_ref()
-      .ok_or(Error::Invariant)?
+      .ok_or(InvariantError::Invariant)?
       .reservation
       .clone();
     let start_read_data = LockedData::start_read(
@@ -251,7 +253,7 @@ impl ConsumerImpl {
       .extra_locked_data
       .consumer
       .as_mut()
-      .ok_or(Error::Invariant)?
+      .ok_or(InvariantError::Invariant)?
       .reservation = existing_reservation;
 
     Ok(unsafe {
@@ -296,7 +298,10 @@ impl RingBufferConsumer for ConsumerImpl {
         }
       }
 
-      readable.changed().await.map_err(|_| Error::Invariant)?;
+      readable
+        .changed()
+        .await
+        .map_err(|_| InvariantError::Invariant)?;
     }
   }
 
@@ -329,7 +334,7 @@ impl RingBufferConsumer for ConsumerImpl {
       .extra_locked_data
       .consumer
       .as_ref()
-      .ok_or(Error::Invariant)?
+      .ok_or(InvariantError::Invariant)?
       .reservation
       .clone();
 
@@ -344,12 +349,12 @@ impl RingBufferConsumer for ConsumerImpl {
       .extra_locked_data
       .consumer
       .as_mut()
-      .ok_or(Error::Invariant)?
+      .ok_or(InvariantError::Invariant)?
       .reservation = None;
     LockedData::finish_read_common(
       &mut common_ring_buffer,
       &parent.common_ring_buffer.conditions,
-      &reservation.ok_or(Error::Invariant)?,
+      &reservation.ok_or(InvariantError::Invariant)?,
     )?;
     Ok(())
   }

@@ -18,6 +18,12 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Arc, LazyLock};
 
+#[derive(thiserror::Error, Debug)]
+pub enum InvariantError {
+  #[error("Invariant violation")]
+  Invariant,
+}
+
 //
 // Reporter
 //

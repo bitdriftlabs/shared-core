@@ -15,7 +15,6 @@ use backoff::backoff::Backoff;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
 use bd_bounded_buffer::{MemorySized, SendCounters};
-use bd_client_common::error;
 use bd_client_common::file::{
   read_checksummed_data,
   read_compressed_protobuf,
@@ -23,6 +22,7 @@ use bd_client_common::file::{
   write_compressed_protobuf,
 };
 use bd_client_common::file_system::FileSystem;
+use bd_client_common::{error, maybe_await};
 use bd_client_stats_store::{Collector, Counter, Scope};
 use bd_log_primitives::LogFields;
 use bd_proto::protos::client::api::{UploadArtifactIntentRequest, UploadArtifactRequest};
@@ -35,7 +35,6 @@ use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
 use mockall::automock;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::future::pending;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 #[cfg(test)]
@@ -349,28 +348,14 @@ impl Uploader {
           log::debug!("tracking artifact: {uuid} for upload");
           self.track_new_upload(uuid, contents, state, session_id, timestamp).await;
         }
-        intent_decision = async {
-          if let Some(intent_task_handle) = self.intent_task_handle.as_mut() {
-            intent_task_handle.await?
-          } else {
-            pending().await
-          }
-        } => {
-            self.handle_intent_negotiation_decision(intent_decision?).await?;
-            self.intent_task_handle = None;
+        intent_decision = maybe_await(&mut self.intent_task_handle) => {
+            self.handle_intent_negotiation_decision(intent_decision??).await?;
         }
-        result = async {
-          if let Some(upload_task_handle) = self.upload_task_handle.as_mut() {
-            upload_task_handle.await?
-          } else {
-            pending().await
-          }
-        } => {
-            result?;
+        result = maybe_await(&mut self.upload_task_handle) => {
+            result??;
 
             #[allow(unused)]
             let name = self.handle_upload_complete().await?;
-            self.upload_task_handle = None;
 
             #[cfg(test)]
             if let Some(hooks) = &self.test_hooks {
