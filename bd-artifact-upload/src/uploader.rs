@@ -9,12 +9,12 @@
 #[path = "./uploader_test.rs"]
 mod tests;
 
-use anyhow::anyhow;
 use backoff::ExponentialBackoff;
 use backoff::backoff::Backoff;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
 use bd_bounded_buffer::{MemorySized, SendCounters};
+use bd_client_common::error::InvariantError;
 use bd_client_common::file::{
   read_checksummed_data,
   read_compressed_protobuf,
@@ -169,6 +169,12 @@ impl From<anyhow::Error> for Error {
 
 impl From<tokio::task::JoinError> for Error {
   fn from(value: tokio::task::JoinError) -> Self {
+    Self::Unhandled(value.into())
+  }
+}
+
+impl From<InvariantError> for Error {
+  fn from(value: InvariantError) -> Self {
     Self::Unhandled(value.into())
   }
 }
@@ -456,10 +462,7 @@ impl Uploader {
     match decision {
       IntentDecision::Drop => {
         self.stats.dropped_intent.inc();
-        let entry = &self
-          .index
-          .pop_front()
-          .ok_or_else(|| anyhow!("failed to pop front"))?;
+        let entry = &self.index.pop_front().ok_or(InvariantError::Invariant)?;
 
         if let Err(e) = self
           .file_system
@@ -478,10 +481,7 @@ impl Uploader {
       },
       IntentDecision::UploadImmediately => {
         self.stats.accepted_intent.inc();
-        let entry = self
-          .index
-          .front_mut()
-          .ok_or_else(|| anyhow!("failed to get front"))?;
+        let entry = self.index.front_mut().ok_or(InvariantError::Invariant)?;
         // Mark the file as being ready for uploads and persist this to the index.
         entry.pending_intent_negotiation = false;
         self.write_index().await;
@@ -493,10 +493,7 @@ impl Uploader {
   async fn handle_upload_complete(&mut self) -> Result<String> {
     self.stats.uploaded.inc();
 
-    let entry = self
-      .index
-      .pop_front()
-      .ok_or_else(|| anyhow!("failed to pop front"))?;
+    let entry = self.index.pop_front().ok_or(InvariantError::Invariant)?;
     let file_path = REPORT_DIRECTORY.join(&entry.name);
 
     if let Err(e) = self.file_system.delete_file(&file_path).await {
