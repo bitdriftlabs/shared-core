@@ -10,22 +10,24 @@
 mod consumer_test;
 
 use crate::service::{self, UploadRequest};
-use anyhow::anyhow;
 use bd_api::upload::LogBatch;
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
+use bd_client_common::error::InvariantError;
 use bd_client_common::fb::root_as_log;
+use bd_client_common::maybe_await;
 use bd_client_stats_store::{Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected_error_with_details;
 use bd_runtime::runtime::{ConfigLoader, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use futures_util::future::try_join_all;
 use std::collections::{HashMap, HashSet};
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
-use tokio::time::Instant;
+use tokio::time::{Sleep, sleep};
 use tower::{Service, ServiceExt};
 use tracing::Instrument as _;
 use unwrap_infallible::UnwrapInfallible;
@@ -212,7 +214,9 @@ impl BufferUploadManager {
               },
             }
 
-            single_upload_complete_tx.send(()).unwrap();
+            single_upload_complete_tx
+              .send(())
+              .map_err(|()| InvariantError::Invariant)?;
 
             // TODO(mattklein123): Should we pass this into the trigger consumer and actually
             // try to bail quickly if it's taking a long time and we are trying to shutdown?
@@ -220,7 +224,7 @@ impl BufferUploadManager {
             upload_complete_tx
               .send(buffer_id_clone)
               .await
-              .map_err(|_| anyhow!("trigger complete"))
+              .map_err(|_| InvariantError::Invariant)
           }
           .instrument(tracing::debug_span!(
             "trigger_consumer",
@@ -301,7 +305,7 @@ impl BufferUploadManager {
         self.stream_buffer_shutdown_trigger = Some(shutdown_trigger);
 
         let log_upload_service = self.log_upload_service.clone();
-        let consumer = buffer.clone().register_consumer().unwrap();
+        let consumer = buffer.clone().register_consumer()?;
 
         let batch_size = self.feature_flags.streaming_batch_size.clone();
         tokio::task::spawn(async move {
@@ -434,7 +438,7 @@ struct ContinuousBufferUploader {
   shutdown: ComponentShutdown,
 
   // Used to track when we should force flush a partial batch.
-  flush_batch_deadline: Option<Instant>,
+  flush_batch_sleep: Option<Pin<Box<Sleep>>>,
 
   // Used to construct the log payload and enforce batch limits.
   batch_builder: BatchBuilder,
@@ -456,7 +460,7 @@ impl ContinuousBufferUploader {
       consumer,
       log_upload_service,
       shutdown,
-      flush_batch_deadline: None,
+      flush_batch_sleep: None,
       batch_builder: BatchBuilder::new(feature_flags.clone()),
       feature_flags,
       buffer_id,
@@ -469,16 +473,13 @@ impl ContinuousBufferUploader {
     log::debug!("starting continous log upload");
 
     loop {
-      let flush_batch_timer = self.flush_batch_deadline.map(tokio::time::sleep_until);
-
       tokio::select! {
         () = self.shutdown.cancelled() => return Ok(()),
         entry = self.consumer.read() => {
             debug_assert!(entry.is_ok(), "consumer should not fail");
             self.batch_builder.add_log(entry?.to_vec());
         },
-        () = async { flush_batch_timer.unwrap().await },
-          if flush_batch_timer.is_some() => {
+        () = maybe_await(&mut self.flush_batch_sleep) => {
             log::debug!("flushing logs due to deadline hit");
             self.flush_current_batch().await?;
             continue;
@@ -495,11 +496,10 @@ impl ContinuousBufferUploader {
       // Arm the flush timer if we have pending logs and there isn't already one present. This
       // ensures that logs won't sit in the current batch for more than the specified
       // deadline.
-      if !self.batch_builder.logs.is_empty() && self.flush_batch_deadline.is_none() {
-        self.flush_batch_deadline = Some(
-          Instant::now()
-            + Duration::from_millis((*self.feature_flags.batch_deadline_watch.read()).into()),
-        );
+      if !self.batch_builder.logs.is_empty() && self.flush_batch_sleep.is_none() {
+        self.flush_batch_sleep = Some(Box::pin(sleep(Duration::from_millis(
+          (*self.feature_flags.batch_deadline_watch.read()).into(),
+        ))));
       }
     }
   }
@@ -507,7 +507,7 @@ impl ContinuousBufferUploader {
   // Consumes the current_batch and performs a log flush.
   async fn flush_current_batch(&mut self) -> anyhow::Result<()> {
     // Disarm the deadline which forces a partial flush to fire.
-    self.flush_batch_deadline = None;
+    self.flush_batch_sleep = None;
 
     let logs = self.batch_builder.take();
     let logs_len = logs.len();
@@ -692,7 +692,7 @@ impl CompleteBufferUpload {
               // There should always be a timestamp on the log, but this relies on the log being
               // correctly constructed so we stay on the safe side and check for None.
               if let Some(ts) = log.timestamp() {
-                let ts = OffsetDateTime::from_unix_timestamp(ts.seconds()).unwrap()
+                let ts = OffsetDateTime::from_unix_timestamp(ts.seconds())?
                   + time::Duration::nanoseconds(i64::from(ts.nanos()));
                 if ts < lookback_window {
                   log::debug!("skipping log, outside lookback window");

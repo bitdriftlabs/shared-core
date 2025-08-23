@@ -632,6 +632,7 @@ dependencies = [
 name = "bd-events"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
  "bd-runtime",
  "bd-shutdown",
  "bd-test-helpers",
@@ -694,7 +695,6 @@ dependencies = [
 name = "bd-grpc-codec"
 version = "1.0.0"
 dependencies = [
- "anyhow",
  "bd-stats-common",
  "bd-test-helpers",
  "bytes",

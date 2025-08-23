@@ -35,7 +35,7 @@ impl Setup {
   }
 
   fn create_listener(&self, target: Box<dyn ListenerTarget + Send + Sync>) -> Listener {
-    Listener::new(target, &self.runtime)
+    Listener::new(target, &self.runtime).unwrap()
   }
 
   #[allow(dead_code)]

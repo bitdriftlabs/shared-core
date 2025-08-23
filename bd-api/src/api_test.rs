@@ -325,7 +325,7 @@ impl Setup {
       .clone();
 
     let mut encoder = Encoder::new(None);
-    let encoded = encoder.encode(&response);
+    let encoded = encoder.encode(&response).unwrap();
     tx.send(StreamEvent::Data(encoded.to_vec())).await.unwrap();
   }
 

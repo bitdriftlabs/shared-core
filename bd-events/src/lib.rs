@@ -5,6 +5,15 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![deny(
+  clippy::expect_used,
+  clippy::panic,
+  clippy::todo,
+  clippy::unimplemented,
+  clippy::unreachable,
+  clippy::unwrap_used
+)]
+
 #[cfg(test)]
 #[path = "./listener_test.rs"]
 mod listener_test;
@@ -49,14 +58,14 @@ impl Listener {
   pub fn new(
     target: Box<dyn ListenerTarget + Send + Sync>,
     runtime_loader: &Arc<ConfigLoader>,
-  ) -> Self {
-    let is_enabled_flag = ListenerEnabledFlag::register(runtime_loader).unwrap();
+  ) -> anyhow::Result<Self> {
+    let is_enabled_flag = ListenerEnabledFlag::register(runtime_loader)?;
 
-    Self {
+    Ok(Self {
       target,
       has_seen_is_enabled_flag_update: false,
       is_enabled_flag,
-    }
+    })
   }
 
   pub async fn run(&mut self) {

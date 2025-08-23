@@ -401,7 +401,10 @@ impl StringMatch {
       Operator::OPERATOR_GREATER_THAN => *candidate > **value,
       Operator::OPERATOR_GREATER_THAN_OR_EQUAL => *candidate >= **value,
       Operator::OPERATOR_NOT_EQUALS => candidate != *value,
-      Operator::OPERATOR_REGEX => self.regex.as_ref().unwrap().is_match(candidate),
+      Operator::OPERATOR_REGEX => self
+        .regex
+        .as_ref()
+        .is_some_and(|regex| regex.is_match(candidate)),
     }
   }
 }
