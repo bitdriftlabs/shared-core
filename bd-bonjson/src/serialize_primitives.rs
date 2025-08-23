@@ -11,8 +11,15 @@ use crate::type_codes::TypeCode;
 pub enum SerializationError {
   BufferFull,
   Io,
+  Invariant,
 }
 pub type Result<T> = std::result::Result<T, SerializationError>;
+
+impl From<std::num::TryFromIntError> for SerializationError {
+  fn from(_err: std::num::TryFromIntError) -> Self {
+    Self::Invariant
+  }
+}
 
 fn require_bytes(src: &[u8], byte_count: usize) -> Result<()> {
   if byte_count > src.len() {
@@ -93,7 +100,7 @@ pub fn serialize_u64(dst: &mut [u8], v: u64) -> Result<usize> {
   let total_size = payload_size + 1;
   let is_byte_high_bit_set = bytes[index] >> 7;
   let use_signed_form = (!is_byte_high_bit_set) & 1;
-  let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | u8::try_from(index).unwrap();
+  let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | u8::try_from(index)?;
   require_bytes(dst, total_size)?;
   dst[0] = type_code;
   dst[1 .. total_size].copy_from_slice(&bytes[.. payload_size]);
@@ -121,7 +128,7 @@ pub fn serialize_i64(dst: &mut [u8], v: i64) -> Result<usize> {
   let is_negative = (v >> 63) as u8;
   let is_byte_high_bit_set = bytes[index] >> 7;
   let use_signed_form = (is_negative | !is_byte_high_bit_set) & 1;
-  let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | u8::try_from(index).unwrap();
+  let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | u8::try_from(index)?;
   require_bytes(dst, total_size)?;
   dst[0] = type_code;
   dst[1 .. total_size].copy_from_slice(&bytes[.. payload_size]);
@@ -171,7 +178,7 @@ pub fn serialize_f64(dst: &mut [u8], v: f64) -> Result<usize> {
 fn serialize_short_string_header(dst: &mut [u8], str: &str) -> Result<usize> {
   let total_size = 1;
   require_bytes(dst, total_size)?;
-  dst[0] = TypeCode::String as u8 + u8::try_from(str.len()).unwrap();
+  dst[0] = TypeCode::String as u8 + u8::try_from(str.len())?;
   Ok(total_size)
 }
 

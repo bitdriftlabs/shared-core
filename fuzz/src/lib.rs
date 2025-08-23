@@ -19,7 +19,7 @@ use bd_buffer::buffer::{
   RingBufferCursorConsumer,
   RingBufferProducer,
   RingBufferStats,
-  StatsHelper,
+  StatsTestHelper,
   VolatileRingBuffer,
   to_u32,
 };
@@ -222,7 +222,7 @@ impl BufferFuzzTest {
   #[must_use]
   pub fn new(test_case: BufferFuzzTestCase) -> Self {
     let temp_dir = TempDir::with_prefix("buffer_fuzz").unwrap();
-    let stats = StatsHelper::new(&Collector::default().scope(""));
+    let stats = StatsTestHelper::new(&Collector::default().scope(""));
     let buffer_state = BufferState::new(&test_case, &temp_dir, stats.stats.clone(), false);
     assert!(buffer_state.is_some());
 

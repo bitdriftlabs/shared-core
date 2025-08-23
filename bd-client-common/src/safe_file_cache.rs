@@ -164,8 +164,12 @@ impl<T: Message> SafeFileCache<T> {
   }
 
   pub async fn cache_update(&self, protobuf: &T) {
-    if let Err(e) =
-      tokio::fs::write(&self.protobuf_file(), write_compressed_protobuf(protobuf)).await
+    if let Err(e) = async {
+      Ok::<_, anyhow::Error>(
+        tokio::fs::write(&self.protobuf_file(), write_compressed_protobuf(protobuf)?).await?,
+      )
+    }
+    .await
     {
       log::debug!("failed to write cached config for {}: {e}", self.name,);
     }

@@ -13,6 +13,7 @@ mod common_ring_buffer_test;
 use super::test::thread_synchronizer::ThreadSynchronizer;
 use super::{RingBufferStats, to_u32};
 use crate::{AbslCode, Error, Result};
+use bd_client_common::error::InvariantError;
 use parking_lot::{Condvar, Mutex, MutexGuard};
 use std::fmt::Display;
 use std::ptr::NonNull;
@@ -247,7 +248,11 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
   }
 
   // Finish a reservation by writing the size and returning the memory to the caller.
-  pub fn finish_reservation(&mut self, reservation: &Range, original_size: u32) -> &mut [u8] {
+  pub fn finish_reservation(
+    &mut self,
+    reservation: &Range,
+    original_size: u32,
+  ) -> Result<&mut [u8]> {
     // Move the size into the beginning of the buffer.
     let offset = self.record_size_offset(reservation.start) as usize;
     self.memory()[offset .. offset + std::mem::size_of::<u32>()]
@@ -263,12 +268,16 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     // value must be invalid and should be reset.
     if self.last_write_end_before_wrap().is_some()
       && reservation.start + original_size + self.extra_bytes_per_record - 1
-        > self.last_write_end_before_wrap().unwrap()
+        > self
+          .last_write_end_before_wrap()
+          .ok_or(InvariantError::Invariant)?
     {
       log::trace!(
         "({}) removing previous last write before wrap: {}",
         self.name.clone(),
-        self.last_write_end_before_wrap().unwrap()
+        self
+          .last_write_end_before_wrap()
+          .ok_or(InvariantError::Invariant)?
       );
       *self.last_write_end_before_wrap() = None;
     }
@@ -276,13 +285,15 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     // Reduce the size to what the caller expects to remove the size prefix.
     log::trace!("({}) reserving {}", self.name, reservation);
     let data_start = (reservation.start + self.extra_bytes_per_record) as usize;
-    &mut self.memory()[data_start .. data_start + original_size as usize]
+    Ok(&mut self.memory()[data_start .. data_start + original_size as usize])
   }
 
   // Load the next read size based on the position of next_read_start_ or next_cursor_read_start_,
   // depending on the value of use_cursor.
   fn load_next_read_size(&mut self, cursor: Cursor) -> Result<u32> {
-    let next_read_start_to_use = self.next_read_start_to_use(cursor).unwrap();
+    let next_read_start_to_use = self
+      .next_read_start_to_use(cursor)
+      .ok_or(InvariantError::Invariant)?;
 
     // This checks that we are attempting to read the record length from within the buffer address
     // space. This can overflow but as long as we are within the memory space crc checks will catch
@@ -299,7 +310,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     let size = u32::from_ne_bytes(
       self.memory()[size_index_as_usize .. size_index_as_usize + 4]
         .try_into()
-        .unwrap(),
+        .map_err(|_| InvariantError::Invariant)?,
     );
     // The following makes sure that the next read size is actually within the buffer memory. If
     // it's not there is guaranteed corruption. If it is, non-volatile crc checks will catch an
@@ -319,29 +330,38 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
 
   // Checks to see if the wrap gap (the space after last_write_end_before_wrap) in this reservation
   // (if applicable) intersects with another range.
-  const fn intersect_in_wrap_gap(
+  fn intersect_in_wrap_gap(
     &self,
     reservation_data: &TempReservationData,
     range: &Range,
-  ) -> bool {
+  ) -> Result<bool> {
     if reservation_data.last_write_end_before_wrap.is_none() {
-      return false;
+      return Ok(false);
     }
     let wrap_gap = Range {
-      start: reservation_data.last_write_end_before_wrap.unwrap() + 1,
+      start: reservation_data
+        .last_write_end_before_wrap
+        .ok_or(InvariantError::Invariant)?
+        + 1,
       size: to_u32(self.memory.0.len())
-        - (reservation_data.last_write_end_before_wrap.unwrap() + 1),
+        - (reservation_data
+          .last_write_end_before_wrap
+          .ok_or(InvariantError::Invariant)?
+          + 1),
     };
-    intersect(&wrap_gap, range)
+    Ok(intersect(&wrap_gap, range))
   }
 
   // Checks to see if a reservation's range or its wrap gap intersects with another range.
-  pub const fn intersect_reservation(
+  pub fn intersect_reservation(
     &self,
     reservation_data: &TempReservationData,
     range: &Range,
-  ) -> bool {
-    intersect(range, &reservation_data.range) || self.intersect_in_wrap_gap(reservation_data, range)
+  ) -> Result<bool> {
+    Ok(
+      intersect(range, &reservation_data.range)
+        || self.intersect_in_wrap_gap(reservation_data, range)?,
+    )
   }
 
   // If we are about to write into already written data (consumer is not consuming), we need to
@@ -378,7 +398,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
 
       let mut overwrite_record: bool = false;
       let next_read = Range {
-        start: guard.next_read_start().unwrap(),
+        start: guard.next_read_start().ok_or(InvariantError::Invariant)?,
         size: next_read_actual_size,
       };
 
@@ -386,7 +406,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
       // are effectively overwriting them. Thus, this intersection check looks at whether the next
       // record to read is in the gap space between the last write end before wrap (the last
       // In the second case we have a direct intersection so we overwrite.
-      if guard.intersect_reservation(reservation_data, &next_read) {
+      if guard.intersect_reservation(reservation_data, &next_read)? {
         overwrite_record = true;
       }
 
@@ -432,9 +452,9 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
         }
         // When overwriting we zero out any extra data, to make sure that CRCs, etc. become so the
         // overwritten record is skipped correctly if corruption lands us in it somehow.
-        let next_read_start = guard.next_read_start().unwrap();
+        let next_read_start = guard.next_read_start().ok_or(InvariantError::Invariant)?;
         guard.zero_extra_data(next_read_start);
-        guard.advance_next_read(next_read_actual_size, Cursor::No);
+        guard.advance_next_read(next_read_actual_size, Cursor::No)?;
       } else {
         break;
       }
@@ -445,7 +465,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
 
   // Calculate the next write start position based on the write size, a current write start
   // position, and temporary reservation data.
-  pub fn calculate_next_write_start(&mut self, write_size: u32) -> TempReservationData {
+  pub fn calculate_next_write_start(&mut self, write_size: u32) -> Result<TempReservationData> {
     let mut reservation_data = TempReservationData::default();
     let next_write_start = *self.next_write_start();
 
@@ -462,13 +482,13 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
         reservation_data
           .last_write_end_before_wrap
           .as_ref()
-          .unwrap()
+          .ok_or(InvariantError::Invariant)?
       );
       reservation_data.range.start = 0;
       reservation_data.next_write_start = write_size;
     }
     reservation_data.range.size = write_size;
-    reservation_data
+    Ok(reservation_data)
   }
 
   // Common handling for starting a write reservation. Returns the reserved index or an error.
@@ -526,7 +546,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
   }
 
   // Common handling for finishing a write commit. Returns the extra space, if any.
-  pub fn finish_commit_common(&mut self, reservation: &Range) -> &mut [u8] {
+  pub fn finish_commit_common(&mut self, reservation: &Range) -> Result<&mut [u8]> {
     log::trace!("({}) committing {}", self.name, reservation);
 
     // TODO(snowp): Consider moving this deeper into the ring buffer where we notify the condvars
@@ -534,10 +554,10 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     self
       .readable
       .send(true)
-      .expect("readable send should never fail");
+      .map_err(|_| InvariantError::Invariant)?;
 
     // Return the extra space at the beginning (not counting the size) if there is any.
-    self.extra_data(reservation.start)
+    Ok(self.extra_data(reservation.start))
   }
 
   // Advance committed write start and initialize next read start if applicable.
@@ -545,7 +565,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     &mut self,
     conditions: &Conditions,
     reservation: &Range,
-  ) {
+  ) -> Result<()> {
     // The new committed write start is the start of this commit.
     *self.committed_write_start() = Some(reservation.start);
     // If there is no pending read, set pending read to this commit.
@@ -556,7 +576,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
       log::trace!(
         "({}) initializing next read start: {}",
         self.name.clone(),
-        self.next_read_start().unwrap()
+        self.next_read_start().ok_or(InvariantError::Invariant)?
       );
     }
     if self.next_cursor_read_start.is_none() {
@@ -565,14 +585,18 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
       log::trace!(
         "({}) initializing next cursor read start: {}",
         self.name,
-        self.next_cursor_read_start.unwrap()
+        self
+          .next_cursor_read_start
+          .ok_or(InvariantError::Invariant)?
       );
     }
 
     log::trace!(
       "({}) new committed write start: {}",
       self.name.clone(),
-      self.committed_write_start().unwrap()
+      self
+        .committed_write_start()
+        .ok_or(InvariantError::Invariant)?
     );
 
     if new_data_to_read {
@@ -588,35 +612,54 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     if let Some(stat) = &self.stats.bytes_written {
       stat.inc_by((reservation.size - self.extra_bytes_per_record).into());
     }
+    Ok(())
   }
 
   // Advance the next read index.
-  fn advance_next_read(&mut self, size: u32, cursor: Cursor) {
+  fn advance_next_read(&mut self, size: u32, cursor: Cursor) -> Result<()> {
     // If read start is equal to committed write start, the consumer has read all writes, thus there
     // is nothing to do. Otherwise, advance to the next read (which may include a wrap). This needs
     // to take into account any gaps. Read gaps should be exact, otherwise another write would have
     // overwritten them.
-    if self.next_read_start_to_use(cursor).unwrap() != self.committed_write_start().unwrap() {
+    if self
+      .next_read_start_to_use(cursor)
+      .ok_or(InvariantError::Invariant)?
+      != self
+        .committed_write_start()
+        .ok_or(InvariantError::Invariant)?
+    {
       if self.last_write_end_before_wrap().is_some()
-        && self.last_write_end_before_wrap().unwrap()
-          == self.next_read_start_to_use(cursor).unwrap() + size - 1
+        && self
+          .last_write_end_before_wrap()
+          .ok_or(InvariantError::Invariant)?
+          == self
+            .next_read_start_to_use(cursor)
+            .ok_or(InvariantError::Invariant)?
+            + size
+            - 1
       {
         if matches!(cursor, Cursor::No) {
           *self.last_write_end_before_wrap() = None;
         }
         *self.next_read_start_to_use(cursor) = Some(0);
       } else {
-        *self.next_read_start_to_use(cursor) =
-          Some(self.next_read_start_to_use(cursor).unwrap() + size);
+        *self.next_read_start_to_use(cursor) = Some(
+          self
+            .next_read_start_to_use(cursor)
+            .ok_or(InvariantError::Invariant)?
+            + size,
+        );
       }
       log::trace!(
         "({}) advance next read start (cursor={}): {}",
         self.name.clone(),
         matches!(cursor, Cursor::Yes),
-        self.next_read_start_to_use(cursor).unwrap()
+        self
+          .next_read_start_to_use(cursor)
+          .ok_or(InvariantError::Invariant)?
       );
 
-      return;
+      return Ok(());
     }
     log::trace!(
       "({}) advance next read start (cursor={}): no further data to read",
@@ -627,6 +670,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     if matches!(cursor, Cursor::No) {
       *self.committed_write_start() = None;
     }
+    Ok(())
   }
 
   // Common handling for finishing a read.
@@ -634,8 +678,8 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     guard: &mut MutexGuard<'_, Self>,
     conditions: &Conditions,
     reservation: &Range,
-  ) {
-    guard.advance_next_read(reservation.size, Cursor::No);
+  ) -> Result<()> {
+    guard.advance_next_read(reservation.size, Cursor::No)?;
     conditions.next_read_complete.notify_all();
 
     let record_size = reservation.size - guard.extra_bytes_per_record;
@@ -654,13 +698,17 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     // overwritten.
     if let Some(wait_for_drain_data) = &guard.wait_for_drain_data
       && (wait_for_drain_data.committed_write_start.is_none()
-        || wait_for_drain_data.committed_write_start.unwrap() == reservation.start)
+        || wait_for_drain_data
+          .committed_write_start
+          .ok_or(InvariantError::Invariant)?
+          == reservation.start)
     {
       conditions.drain_complete.notify_all();
       guard.wait_for_drain_data = None;
     }
 
     guard.maybe_do_total_data_loss_reset();
+    Ok(())
   }
 
   // Finish a total data loss reset if there are no outstanding readers/writers.
@@ -783,7 +831,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
           guard
             .readable
             .send(false)
-            .expect("watch update should not fail");
+            .map_err(|_| InvariantError::Invariant)?;
 
           return Err(Error::AbslStatus(
             AbslCode::Unavailable,
@@ -803,10 +851,12 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     };
 
     *reserved_read = Some(Range {
-      start: guard.next_read_start_to_use(cursor).unwrap(),
+      start: guard
+        .next_read_start_to_use(cursor)
+        .ok_or(InvariantError::Invariant)?,
       size: next_read_size + guard.extra_bytes_per_record,
     });
-    let reserved_read = reserved_read.as_ref().unwrap();
+    let reserved_read = reserved_read.as_ref().ok_or(InvariantError::Invariant)?;
     log::trace!(
       "({}) start read (cursor={}): {}",
       guard.name,
@@ -818,7 +868,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     // doing a cursor read, in which case we must advance the cursor now so that there can be
     // further cursor reads.
     if matches!(cursor, Cursor::Yes) {
-      guard.advance_next_read(reserved_read.size, cursor);
+      guard.advance_next_read(reserved_read.size, cursor)?;
     }
 
     // Return the fixed up data.

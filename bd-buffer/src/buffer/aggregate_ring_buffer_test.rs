@@ -18,7 +18,7 @@ use crate::buffer::test::{
   read_and_verify,
   start_read_and_verify,
 };
-use crate::buffer::{RingBuffer, RingBufferStats, StatsHelper, to_u32};
+use crate::buffer::{RingBuffer, RingBufferStats, StatsTestHelper, to_u32};
 use bd_client_stats_store::Collector;
 use futures::poll;
 use std::sync::Arc;
@@ -32,7 +32,7 @@ struct Helper {
   temp_dir: TempDir,
   #[allow(clippy::struct_field_names)]
   helper: Option<CommonHelper>,
-  stats: StatsHelper,
+  stats: StatsTestHelper,
 }
 
 impl Helper {
@@ -43,7 +43,7 @@ impl Helper {
     cursor: Cursor,
   ) -> Self {
     let temp_dir = TempDir::with_prefix("buffer_test").unwrap();
-    let stats = StatsHelper::new(&Collector::default().scope(""));
+    let stats = StatsTestHelper::new(&Collector::default().scope(""));
     let buffer = RingBufferImpl::new(
       "test",
       volatile_size,

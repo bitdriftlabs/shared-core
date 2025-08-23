@@ -76,6 +76,7 @@ impl Setup {
         &collector.scope(""),
         runtime,
       )
+      .unwrap()
       .0,
       runtime: Self::make_runtime(&tmp_dir),
       collector,

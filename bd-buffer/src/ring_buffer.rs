@@ -90,7 +90,9 @@ pub struct BufferEventWithResponse {
 
 impl Drop for BufferEventWithResponse {
   fn drop(&mut self) {
-    let _ignored = self.on_processed_tx.take().unwrap().send(());
+    if let Some(on_processed_tx) = self.on_processed_tx.take() {
+      let _ignored = on_processed_tx.send(());
+    }
   }
 }
 
@@ -168,23 +170,23 @@ impl Manager {
     buffer_directory: PathBuf,
     stats: &Scope,
     runtime: &bd_runtime::runtime::ConfigLoader,
-  ) -> (
+  ) -> anyhow::Result<(
     Arc<Self>,
     tokio::sync::mpsc::Receiver<BufferEventWithResponse>,
-  ) {
+  )> {
     let scope = stats.scope("ring_buffer");
     let (buffer_event_tx, buffer_event_rx) = tokio::sync::mpsc::channel(1);
 
-    (
+    Ok((
       Arc::new(Self {
         buffers: parking_lot::Mutex::new((HashMap::new(), None)),
         buffer_directory,
         buffer_event_tx,
         scope,
-        stream_buffer_size_flag: runtime.register_watch().unwrap(),
+        stream_buffer_size_flag: runtime.register_watch()?,
       }),
       buffer_event_rx,
-    )
+    ))
   }
 
   #[tracing::instrument(level = "debug", skip(self))]
@@ -423,11 +425,11 @@ impl Manager {
         ));
 
         Some(BufferEventWithResponse::new(
-          BufferEvent::StreamBufferAdded(updated_stream_buffer.clone().unwrap()),
+          BufferEvent::StreamBufferAdded(updated_stream_buffer.clone()?),
         ))
       },
       (false, Some(_)) => Some(BufferEventWithResponse::new(
-        BufferEvent::StreamBufferRemoved(stream_buffer.take().unwrap()),
+        BufferEvent::StreamBufferRemoved(stream_buffer.take()?),
       )),
     }?;
 

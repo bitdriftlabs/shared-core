@@ -18,6 +18,12 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Arc, LazyLock};
 
+#[derive(thiserror::Error, Debug)]
+pub enum InvariantError {
+  #[error("Invariant violation")]
+  Invariant,
+}
+
 //
 // Reporter
 //
@@ -45,30 +51,6 @@ impl Reporter for DefaultErrorReporter {
     _headers: &HashMap<Cow<'_, str>, Cow<'_, str>>,
   ) {
     debug_assert!(false, "unexpected error: {message}");
-  }
-}
-
-//
-// PanickingErrorReporter
-//
-
-#[derive(Default)]
-pub struct PanickingErrorReporter;
-
-impl PanickingErrorReporter {
-  pub fn enable() {
-    UnexpectedErrorHandler::set_reporter(Arc::new(Self));
-  }
-}
-
-impl Reporter for PanickingErrorReporter {
-  fn report(
-    &self,
-    message: &str,
-    details: &Option<String>,
-    fields: &HashMap<Cow<'_, str>, Cow<'_, str>>,
-  ) {
-    panic!("unexpected error: {message} {details:?} {fields:?}");
   }
 }
 

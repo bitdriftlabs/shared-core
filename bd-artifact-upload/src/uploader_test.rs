@@ -11,7 +11,8 @@ use assert_matches::assert_matches;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentResponse, UploadResponse};
 use bd_client_common::file::read_compressed_protobuf;
-use bd_client_common::file_system::{FileSystem, TestFileSystem};
+use bd_client_common::file_system::FileSystem;
+use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::logging::payload::Data;
@@ -61,7 +62,8 @@ impl Setup {
       &runtime,
       &Collector::default(),
       shutdown.make_shutdown(),
-    );
+    )
+    .unwrap();
 
     let (upload_complete_tx, upload_complete_rx) = tokio::sync::mpsc::channel(1);
     let (entry_received_tx, entry_received_rx) = tokio::sync::mpsc::channel(1);
@@ -109,7 +111,8 @@ impl Setup {
       &config_loader,
       &Collector::default(),
       shutdown.make_shutdown(),
-    );
+    )
+    .unwrap();
 
     let (upload_complete_tx, upload_complete_rx) = tokio::sync::mpsc::channel(1);
     let (entry_received_tx, entry_received_rx) = tokio::sync::mpsc::channel(1);

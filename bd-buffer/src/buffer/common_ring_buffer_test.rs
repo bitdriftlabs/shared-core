@@ -20,7 +20,7 @@ use crate::buffer::{
   OptionalStatGetter,
   RingBuffer,
   RingBufferStats,
-  StatsHelper,
+  StatsTestHelper,
   VolatileRingBuffer,
   to_u32,
 };
@@ -65,13 +65,13 @@ struct Helper {
   #[allow(clippy::struct_field_names)]
   helper: CommonHelper,
   _temp_dir: TempDir,
-  stats: StatsHelper,
+  stats: StatsTestHelper,
 }
 
 impl Helper {
   fn new(size: u32, test_type: TestType) -> Self {
     let temp_dir = TempDir::with_prefix("buffer_test").unwrap();
-    let stats = StatsHelper::new(&Collector::default().scope(""));
+    let stats = StatsTestHelper::new(&Collector::default().scope(""));
     let buffer = match test_type {
       TestType::Volatile => VolatileRingBuffer::new("test".to_string(), size, stats.stats.clone())
         as Arc<dyn RingBuffer>,
