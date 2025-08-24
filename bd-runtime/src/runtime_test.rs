@@ -20,8 +20,8 @@ async fn feature_flag_registration() {
   let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
   let loader = ConfigLoader::new(sdk_directory.path());
 
-  let mut int_feature_flag = TestFlag::register(&loader).unwrap();
-  let mut bool_feature_flag = BoolFlag::register(&loader).unwrap();
+  let mut int_feature_flag = TestFlag::register(&loader);
+  let mut bool_feature_flag = BoolFlag::register(&loader);
 
   // Initially the value is the specified default.
   assert_eq!(*int_feature_flag.read_mark_update(), 1);
@@ -69,27 +69,11 @@ async fn registration_after_update() {
     ))
     .await;
 
-  let feature_flag = TestFlag::register(&loader).unwrap();
+  let feature_flag = TestFlag::register(&loader);
 
   // The initial value of the watch should be 10.
   assert!(!feature_flag.watch.has_changed().unwrap());
   assert_eq!(*feature_flag.read(), 10);
-}
-
-#[test]
-fn incompatible_registration() {
-  int_feature_flag!(IntTestFlag, "test.path", 1);
-  bool_feature_flag!(BoolTestFlag, "test.path", false);
-
-  let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
-  let loader = ConfigLoader::new(sdk_directory.path());
-
-  let _int_feature_flag = IntTestFlag::register(&loader).unwrap();
-  let bool_feature_flag = BoolTestFlag::register(&loader);
-  assert_eq!(
-    bool_feature_flag.err().unwrap().to_string(),
-    anyhow::anyhow!("Incompatible runtime subscription").to_string(),
-  );
 }
 
 #[tokio::test]
@@ -99,7 +83,7 @@ async fn duration_flag() {
   let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
   let loader = ConfigLoader::new(sdk_directory.path());
 
-  let flag = DurationFlag::register(&loader).unwrap();
+  let flag = DurationFlag::register(&loader);
 
   assert_eq!(*flag.borrow().read(), time::Duration::seconds(5));
 
@@ -162,7 +146,7 @@ async fn disk_persistence_happy_path() {
 
   loader.handle_cached_config().await;
 
-  let flag = TestFlag::register(&loader).unwrap();
+  let flag = TestFlag::register(&loader);
   assert_eq!(*flag.read(), 10);
   assert_eq!(loader.snapshot().nonce, Some("1".to_string()));
 
@@ -202,7 +186,7 @@ async fn disk_persistence_config_corruption() {
   let loader = setup.new_loader();
   loader.handle_cached_config().await;
 
-  let flag = TestFlag::register(&loader).unwrap();
+  let flag = TestFlag::register(&loader);
   assert_eq!(*flag.read(), 1);
   assert_eq!(loader.snapshot().nonce, None);
 }
@@ -229,7 +213,7 @@ async fn disk_persistence_retry_corruption() {
   let loader = setup.new_loader();
   loader.handle_cached_config().await;
 
-  let flag = TestFlag::register(&loader).unwrap();
+  let flag = TestFlag::register(&loader);
   assert_eq!(*flag.read(), 1);
   assert_eq!(loader.snapshot().nonce, None);
 }
@@ -253,14 +237,14 @@ async fn disk_persistence_retry_limit() {
   for _ in 0 .. 6 {
     let loader = setup.new_loader();
     loader.handle_cached_config().await;
-    let flag = TestFlag::register(&loader).unwrap();
+    let flag = TestFlag::register(&loader);
     assert_eq!(*flag.read(), 10);
   }
 
   // On the 6th go we hit the limit and will treat it as an error, wiping all state.
   let loader = setup.new_loader();
   loader.handle_cached_config().await;
-  let flag = TestFlag::register(&loader).unwrap();
+  let flag = TestFlag::register(&loader);
   assert_eq!(*flag.read(), 1);
   assert!(!setup.protobuf_file().exists());
   assert!(!setup.retry_file().exists());
@@ -285,7 +269,7 @@ async fn disk_persistence_retry_marked_safe() {
   for _ in 0 .. 5 {
     let loader = setup.new_loader();
     loader.handle_cached_config().await;
-    let flag = TestFlag::register(&loader).unwrap();
+    let flag = TestFlag::register(&loader);
     assert_eq!(*flag.read(), 10);
 
     loader.file_cache.mark_safe().await;
@@ -294,7 +278,7 @@ async fn disk_persistence_retry_marked_safe() {
   // On the 6th we would have hit the limit but we've been marking the uploads as safe.
   let loader = setup.new_loader();
   loader.handle_cached_config().await;
-  let flag = TestFlag::register(&loader).unwrap();
+  let flag = TestFlag::register(&loader);
   assert_eq!(*flag.read(), 10);
   assert_eq!(std::fs::read(setup.retry_file()).unwrap(), &[1]);
 }
@@ -323,7 +307,7 @@ async fn disk_persistence_missing_config_file() {
   // falling back to the default.
   let loader = setup.new_loader();
   loader.handle_cached_config().await;
-  let flag = TestFlag::register(&loader).unwrap();
+  let flag = TestFlag::register(&loader);
   assert_eq!(*flag.read(), 1);
 
   assert!(!setup.retry_file().exists());
@@ -353,7 +337,7 @@ async fn disk_persistence_missing_retry_file() {
   // falling back to the default.
   let loader = setup.new_loader();
   loader.handle_cached_config().await;
-  let flag = TestFlag::register(&loader).unwrap();
+  let flag = TestFlag::register(&loader);
   assert_eq!(*flag.read(), 1);
 
   assert!(!setup.protobuf_file().exists());
@@ -384,7 +368,7 @@ async fn disk_persistence_cannot_update_retry() {
 
   let loader = setup.new_loader();
   loader.handle_cached_config().await;
-  let flag = TestFlag::register(&loader).unwrap();
+  let flag = TestFlag::register(&loader);
   assert_eq!(*flag.read(), 1);
 
   assert!(!setup.protobuf_file().exists());

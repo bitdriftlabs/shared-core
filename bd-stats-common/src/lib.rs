@@ -5,6 +5,15 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![deny(
+  clippy::expect_used,
+  clippy::panic,
+  clippy::todo,
+  clippy::unimplemented,
+  clippy::unreachable,
+  clippy::unwrap_used
+)]
+
 use sketches_rust::DDSketch;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
@@ -35,6 +44,11 @@ pub fn make_client_sketch() -> DDSketch {
   // variant seems the best. 0.02 relative accuracy is arbitrary as well as a max of 128
   // buckets. We can tune this later as we have more time to devote to understanding the
   // math.
+
+  // TODO(mattklein123): This can only fail due to bad parameters which we control. Leaking errors
+  // from this makes calling code much more complicated. Figure out how to refactor the sketch
+  // library to not fail for known good inputs.
+  #[allow(clippy::unwrap_used)]
   DDSketch::logarithmic_collapsing_lowest_dense(0.02, 128).unwrap()
 }
 

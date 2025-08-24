@@ -213,7 +213,7 @@ impl Uploader {
     runtime: &ConfigLoader,
     collector: &Collector,
     shutdown: ComponentShutdown,
-  ) -> anyhow::Result<(Self, UploadClient)> {
+  ) -> (Self, UploadClient) {
     runtime.expect_initialized();
 
     let scope = collector.scope("artifact_upload");
@@ -222,10 +222,10 @@ impl Uploader {
     // runtime flags. This buffer cannot be recreated on config change so we're only reading it on
     // startup.
     let buffer_capacity = *runtime
-      .register_watch::<u32, artifact_upload::BufferCountLimit>()?
+      .register_int_watch::<artifact_upload::BufferCountLimit>()
       .read();
     let buffer_memory_capacity = *runtime
-      .register_watch::<u32, artifact_upload::BufferByteLimit>()?
+      .register_int_watch::<artifact_upload::BufferByteLimit>()
       .read();
 
     let (upload_tx, upload_rx) = bd_bounded_buffer::channel(
@@ -240,9 +240,9 @@ impl Uploader {
       time_provider,
       file_system,
       index: VecDeque::default(),
-      max_entries: runtime.register_watch()?,
-      initial_backoff_interval: runtime.register_watch()?,
-      max_backoff_interval: runtime.register_watch()?,
+      max_entries: runtime.register_int_watch(),
+      initial_backoff_interval: runtime.register_duration_watch(),
+      max_backoff_interval: runtime.register_duration_watch(),
       upload_task_handle: None,
       intent_task_handle: None,
       stats: Stats::new(&scope),
@@ -255,7 +255,7 @@ impl Uploader {
       counter_stats: SendCounters::new(&scope, "enqueue"),
     };
 
-    Ok((uploader, client))
+    (uploader, client)
   }
 
   pub async fn run(self) {

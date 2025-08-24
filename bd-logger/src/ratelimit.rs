@@ -27,11 +27,11 @@ pub struct Rate {
 
 impl Rate {
   /// Create a new rate.
-  pub fn new(runtime_loader: &ConfigLoader) -> anyhow::Result<Self> {
-    Ok(Self {
-      num: runtime_loader.register_watch()?,
-      per: runtime_loader.register_watch()?,
-    })
+  pub fn new(runtime_loader: &ConfigLoader) -> Self {
+    Self {
+      num: runtime_loader.register_int_watch(),
+      per: runtime_loader.register_duration_watch(),
+    }
   }
 
   pub(crate) fn num(&self) -> u32 {

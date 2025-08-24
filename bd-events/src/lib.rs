@@ -58,14 +58,14 @@ impl Listener {
   pub fn new(
     target: Box<dyn ListenerTarget + Send + Sync>,
     runtime_loader: &Arc<ConfigLoader>,
-  ) -> anyhow::Result<Self> {
-    let is_enabled_flag = ListenerEnabledFlag::register(runtime_loader)?;
+  ) -> Self {
+    let is_enabled_flag = ListenerEnabledFlag::register(runtime_loader);
 
-    Ok(Self {
+    Self {
       target,
       has_seen_is_enabled_flag_update: false,
       is_enabled_flag,
-    })
+    }
   }
 
   pub async fn run(&mut self) {

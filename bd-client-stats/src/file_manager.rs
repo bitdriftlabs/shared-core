@@ -159,13 +159,13 @@ impl FileManager {
     file_system: Box<dyn FileSystem>,
     time_provider: Arc<dyn TimeProvider>,
     runtime_loader: &ConfigLoader,
-  ) -> anyhow::Result<Self> {
-    Ok(Self {
+  ) -> Self {
+    Self {
       inner: Mutex::new(Inner::NotInitialized(Some(file_system))),
       time_provider,
-      max_aggregated_files: runtime_loader.register_watch()?,
-      max_aggregation_window_per_file: runtime_loader.register_watch()?,
-    })
+      max_aggregated_files: runtime_loader.register_int_watch(),
+      max_aggregation_window_per_file: runtime_loader.register_duration_watch(),
+    }
   }
 
   // Read an existing snapshot from disk to merge into, or create a new one.

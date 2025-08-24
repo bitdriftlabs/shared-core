@@ -397,13 +397,13 @@ impl Api {
     self_logger: Arc<dyn bd_internal_logging::Logger>,
     stats: &Scope,
     sleep_mode_active: watch::Receiver<bool>,
-  ) -> anyhow::Result<Self> {
-    let max_backoff_interval = runtime_loader.register_watch()?;
-    let initial_backoff_interval = runtime_loader.register_watch()?;
-    let generic_kill_duration = runtime_loader.register_watch()?;
-    let unauthenticated_kill_duration = runtime_loader.register_watch()?;
+  ) -> Self {
+    let max_backoff_interval = runtime_loader.register_duration_watch();
+    let initial_backoff_interval = runtime_loader.register_duration_watch();
+    let generic_kill_duration = runtime_loader.register_duration_watch();
+    let unauthenticated_kill_duration = runtime_loader.register_duration_watch();
 
-    Ok(Self {
+    Self {
       sdk_directory,
       api_key,
       manager,
@@ -424,7 +424,7 @@ impl Api {
       unauthenticated_kill_duration,
       config_marked_safe_due_to_offline: false,
       sleep_mode_active,
-    })
+    }
   }
 
   pub async fn start(mut self) -> anyhow::Result<()> {

@@ -9,4 +9,5 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
+anyhow.workspace        = true
 sketches-rust.workspace = true

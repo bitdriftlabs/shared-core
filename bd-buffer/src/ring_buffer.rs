@@ -170,23 +170,23 @@ impl Manager {
     buffer_directory: PathBuf,
     stats: &Scope,
     runtime: &bd_runtime::runtime::ConfigLoader,
-  ) -> anyhow::Result<(
+  ) -> (
     Arc<Self>,
     tokio::sync::mpsc::Receiver<BufferEventWithResponse>,
-  )> {
+  ) {
     let scope = stats.scope("ring_buffer");
     let (buffer_event_tx, buffer_event_rx) = tokio::sync::mpsc::channel(1);
 
-    Ok((
+    (
       Arc::new(Self {
         buffers: parking_lot::Mutex::new((HashMap::new(), None)),
         buffer_directory,
         buffer_event_tx,
         scope,
-        stream_buffer_size_flag: runtime.register_watch()?,
+        stream_buffer_size_flag: runtime.register_int_watch(),
       }),
       buffer_event_rx,
-    ))
+    )
   }
 
   #[tracing::instrument(level = "debug", skip(self))]

@@ -77,7 +77,6 @@ impl Setup {
         &collector.scope(""),
         runtime,
       )
-      .unwrap()
       .0,
       runtime: Self::make_runtime(&tmp_dir),
       collector,
@@ -133,7 +132,6 @@ impl Setup {
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
       Arc::new(SystemTimeProvider),
     )
-    .unwrap()
   }
 
   fn make_real_async_log_buffer(
@@ -164,7 +162,6 @@ impl Setup {
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
       Arc::new(SystemTimeProvider),
     )
-    .unwrap()
   }
 
   fn make_logging_context(&self) -> UninitializedLoggingContext<Log> {
