@@ -120,8 +120,8 @@ impl Stats {
     data_flush_tx: tokio::sync::mpsc::Sender<DataUpload>,
     flush_ticker: Box<dyn Ticker>,
     upload_ticker: Box<dyn Ticker>,
-  ) -> anyhow::Result<FlushHandles> {
-    Ok(self.flush_handle_helper(
+  ) -> FlushHandles {
+    self.flush_handle_helper(
       flush_ticker,
       upload_ticker,
       shutdown,
@@ -130,8 +130,8 @@ impl Stats {
         Box::new(RealFileSystem::new(sdk_directory.to_path_buf())),
         Arc::new(SystemTimeProvider),
         runtime_loader,
-      )?),
-    ))
+      )),
+    )
   }
 
   fn flush_handle_helper(

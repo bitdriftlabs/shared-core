@@ -5,9 +5,20 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![deny(
+  clippy::expect_used,
+  clippy::panic,
+  clippy::todo,
+  clippy::unimplemented,
+  clippy::unreachable,
+  clippy::unwrap_used
+)]
+
 #[cfg(test)]
 #[path = "./reporter_test.rs"]
 mod reporter_test;
+
+use bd_client_common::maybe_await_interval;
 use bd_runtime::runtime::resource_utilization::{
   ResourceUtilizationEnabledFlag,
   ResourceUtilizationReportingIntervalFlag,
@@ -53,9 +64,9 @@ pub struct Reporter {
 
 impl Reporter {
   pub fn new(target: Box<dyn Target + Send + Sync>, runtime_loader: &Arc<ConfigLoader>) -> Self {
-    let mut is_enabled_flag = ResourceUtilizationEnabledFlag::register(runtime_loader).unwrap();
+    let mut is_enabled_flag = ResourceUtilizationEnabledFlag::register(runtime_loader);
     let mut reporting_interval_flag =
-      ResourceUtilizationReportingIntervalFlag::register(runtime_loader).unwrap();
+      ResourceUtilizationReportingIntervalFlag::register(runtime_loader);
 
     let rate = *reporting_interval_flag.read_mark_update();
     let is_enabled = *is_enabled_flag.read_mark_update();
@@ -105,8 +116,7 @@ impl Reporter {
 
     loop {
       tokio::select! {
-        () = async { self.reporting_interval.as_mut().unwrap().tick().await; },
-          if self.reporting_interval.is_some() && self.is_enabled => {
+        () = maybe_await_interval(self.reporting_interval.as_mut()), if self.is_enabled => {
           log::debug!("resource utilization reporter tick");
           self.target.tick();
         },

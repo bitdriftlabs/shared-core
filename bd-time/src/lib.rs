@@ -5,6 +5,15 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![deny(
+  clippy::expect_used,
+  clippy::panic,
+  clippy::todo,
+  clippy::unimplemented,
+  clippy::unreachable,
+  clippy::unwrap_used
+)]
+
 #[cfg(test)]
 #[path = "./lib_test.rs"]
 mod test;
@@ -76,7 +85,7 @@ impl OffsetDateTimeExt for OffsetDateTime {
 
     let unix_timestamp = self.unix_timestamp();
     let rounded_down = unix_timestamp - unix_timestamp.rem_euclid(interval.whole_seconds());
-    Self::from_unix_timestamp(rounded_down).unwrap()
+    Self::from_unix_timestamp(rounded_down).unwrap_or(Self::UNIX_EPOCH)
   }
 
   fn ceil(&self, interval: time::Duration) -> OffsetDateTime {
@@ -90,7 +99,7 @@ impl OffsetDateTimeExt for OffsetDateTime {
 
     let rounded_up = unix_timestamp + interval.whole_seconds()
       - unix_timestamp.rem_euclid(interval.whole_seconds());
-    Self::from_unix_timestamp(rounded_up).unwrap()
+    Self::from_unix_timestamp(rounded_up).unwrap_or(Self::UNIX_EPOCH)
   }
 }
 
@@ -104,7 +113,7 @@ pub trait TimestampExt {
 
 impl TimestampExt for Timestamp {
   fn to_offset_date_time(&self) -> OffsetDateTime {
-    OffsetDateTime::from_unix_timestamp(self.seconds).unwrap()
+    OffsetDateTime::from_unix_timestamp(self.seconds).unwrap_or(OffsetDateTime::UNIX_EPOCH)
       + std::time::Duration::from_nanos(self.nanos.try_into().unwrap_or_default())
   }
 }
@@ -147,7 +156,7 @@ impl TimeDurationExt for time::Duration {
   }
 
   fn jittered(self) -> Duration {
-    let millis: u64 = self.whole_milliseconds().try_into().unwrap();
+    let millis: u64 = self.whole_milliseconds().try_into().unwrap_or_default();
     Duration::from_millis(rng().random_range(0 ..= millis))
   }
 

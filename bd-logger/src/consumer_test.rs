@@ -73,14 +73,13 @@ impl SetupSingleConsumer {
         global_shutdown_trigger.make_shutdown(),
         &runtime_loader,
         &collector.scope(""),
-      )
-      .unwrap(),
+      ),
       Flags {
-        max_batch_size_logs: runtime_loader_clone.register_watch().unwrap(),
-        max_match_size_bytes: runtime_loader_clone.register_watch().unwrap(),
-        batch_deadline_watch: runtime_loader_clone.register_watch().unwrap(),
-        upload_lookback_window_feature_flag: runtime_loader_clone.register_watch().unwrap(),
-        streaming_batch_size: runtime_loader_clone.register_watch().unwrap(),
+        max_batch_size_logs: runtime_loader_clone.register_int_watch(),
+        max_match_size_bytes: runtime_loader_clone.register_int_watch(),
+        batch_deadline_watch: runtime_loader_clone.register_int_watch(),
+        upload_lookback_window_feature_flag: runtime_loader_clone.register_duration_watch(),
+        streaming_batch_size: runtime_loader_clone.register_int_watch(),
       },
       shutdown_trigger.make_shutdown(),
       "buffer".to_string(),
@@ -620,7 +619,6 @@ impl SetupMultiConsumer {
         &collector_clone.scope("consumer"),
         bd_internal_logging::NoopLogger::new(),
       )
-      .unwrap()
       .run()
       .await
       .unwrap();
@@ -879,17 +877,14 @@ async fn log_streaming() {
     shutdown_trigger.make_shutdown(),
     &runtime_loader,
     &Collector::default().scope(""),
-  )
-  .unwrap();
+  );
 
   tokio::task::spawn(async move {
     StreamedBufferUpload {
       consumer,
       log_upload_service: upload_service,
       shutdown: shutdown_trigger.make_shutdown(),
-      batch_size: runtime_loader
-        .register_watch()
-        .unwrap_or_else(|_| panic!("Failed to register batch size watch")),
+      batch_size: runtime_loader.register_int_watch(),
     }
     .start()
     .await
@@ -940,14 +935,13 @@ async fn streaming_batch_size_flag() {
     shutdown_trigger.make_shutdown(),
     &runtime_loader,
     &Collector::default().scope(""),
-  )
-  .unwrap();
+  );
 
   tokio::task::spawn(async move {
     StreamedBufferUpload {
       consumer,
       log_upload_service: upload_service,
-      batch_size: runtime_loader.register_watch().unwrap(),
+      batch_size: runtime_loader.register_int_watch(),
       shutdown: shutdown_trigger.make_shutdown(),
     }
     .start()
@@ -1003,8 +997,7 @@ async fn log_streaming_shutdown() {
     global_shutdown_trigger.make_shutdown(),
     &runtime_loader,
     &Collector::default().scope(""),
-  )
-  .unwrap();
+  );
 
   let shutdown = shutdown_trigger.make_shutdown();
 
@@ -1013,9 +1006,7 @@ async fn log_streaming_shutdown() {
       consumer,
       log_upload_service: upload_service,
       shutdown,
-      batch_size: runtime_loader
-        .register_watch()
-        .unwrap_or_else(|_| panic!("Failed to register batch size watch")),
+      batch_size: runtime_loader.register_int_watch(),
     }
     .start()
     .await

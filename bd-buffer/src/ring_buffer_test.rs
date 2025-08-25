@@ -130,8 +130,7 @@ async fn test_ring_buffer_manager() {
     dir.path().to_path_buf(),
     &Collector::default().scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
-  )
-  .unwrap();
+  );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the
   // lifetime of removed buffers.
@@ -178,8 +177,7 @@ async fn ring_buffer_stats() {
     diretory.path().to_owned(),
     &collector.scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
-  )
-  .unwrap();
+  );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the
   // lifetime of removed buffers.
@@ -278,8 +276,7 @@ async fn write_failure_stats() {
     diretory.path().to_owned(),
     &collector.scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
-  )
-  .unwrap();
+  );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the
   // lifetime of removed buffers.
@@ -323,8 +320,7 @@ async fn buffer_never_resizes() {
     buffer_directory.path().to_path_buf(),
     &Collector::default().scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from("")),
-  )
-  .unwrap();
+  );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the
   // lifetime of removed buffers.

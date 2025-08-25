@@ -40,32 +40,31 @@ pub fn new(
   shutdown: ComponentShutdown,
   runtime_loader: &ConfigLoader,
   stats: &Scope,
-) -> anyhow::Result<Upload> {
+) -> Upload {
   let scope = stats.scope("uploader");
   let retry_limit_exceeded = scope.counter("retry_limit_exceeded");
   let retry_limit_exceeded_dropped_logs = scope.counter("retry_limit_exceeded_dropped_logs");
 
-  let ratelimit = ratelimit::RateLimitLayer::new(ratelimit::Rate::new(runtime_loader)?);
+  let ratelimit = ratelimit::RateLimitLayer::new(ratelimit::Rate::new(runtime_loader));
   // TODO(snowp): Consider adding concurrency limits. With the way we do uploads, this only matters
   // if we have multiple buffers being uploaded at the same time.
-  Ok(
-    ServiceBuilder::new()
-      .boxed_clone()
-      .layer(ratelimit)
-      .retry(RetryPolicy {
-        attempts: 0,
-        max_retries: runtime_loader.register_watch()?,
-        retry_limit_exceeded,
-        retry_limit_exceeded_dropped_logs,
-        backoff: None,
-        backoff_provider: BackoffProvider::new(runtime_loader)?,
-      })
-      .service(Uploader {
-        data_upload_tx,
-        shutdown,
-        scope,
-      }),
-  )
+
+  ServiceBuilder::new()
+    .boxed_clone()
+    .layer(ratelimit)
+    .retry(RetryPolicy {
+      attempts: 0,
+      max_retries: runtime_loader.register_int_watch(),
+      retry_limit_exceeded,
+      retry_limit_exceeded_dropped_logs,
+      backoff: None,
+      backoff_provider: BackoffProvider::new(runtime_loader),
+    })
+    .service(Uploader {
+      data_upload_tx,
+      shutdown,
+      scope,
+    })
 }
 
 // An upload request is a UUID and a set of logs.
@@ -283,11 +282,11 @@ struct BackoffProvider {
 }
 
 impl BackoffProvider {
-  fn new(runtime: &ConfigLoader) -> anyhow::Result<Self> {
-    Ok(Self {
-      initial_backoff: runtime.register_watch()?,
-      max_backoff: runtime.register_watch()?,
-    })
+  fn new(runtime: &ConfigLoader) -> Self {
+    Self {
+      initial_backoff: runtime.register_duration_watch(),
+      max_backoff: runtime.register_duration_watch(),
+    }
   }
 
   fn backoff(&self) -> backoff::ExponentialBackoff {

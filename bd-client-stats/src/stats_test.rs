@@ -155,7 +155,7 @@ impl Setup {
       Box::new(upload_ticker),
       shutdown_trigger.make_shutdown(),
       data_tx,
-      Arc::new(FileManager::new(fs, test_time.clone(), &runtime_loader).unwrap()),
+      Arc::new(FileManager::new(fs, test_time.clone(), &runtime_loader)),
     );
 
     let test_hooks = flush_handles.flusher.test_hooks();

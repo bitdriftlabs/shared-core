@@ -1010,6 +1010,7 @@ name = "bd-resource-utilization"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "bd-client-common",
  "bd-log-primitives",
  "bd-runtime",
  "bd-shutdown",
@@ -1147,6 +1148,7 @@ dependencies = [
 name = "bd-stats-common"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
  "sketches-rust",
 ]
 

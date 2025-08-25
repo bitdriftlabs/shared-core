@@ -103,15 +103,15 @@ impl BufferUploadManager {
     trigger_upload_rx: Receiver<TriggerUpload>,
     stats: &Scope,
     logging: Arc<dyn bd_internal_logging::Logger>,
-  ) -> anyhow::Result<Self> {
-    Ok(Self {
-      log_upload_service: service::new(data_upload_tx, shutdown.clone(), runtime_loader, stats)?,
+  ) -> Self {
+    Self {
+      log_upload_service: service::new(data_upload_tx, shutdown.clone(), runtime_loader, stats),
       feature_flags: Flags {
-        max_batch_size_logs: runtime_loader.register_watch()?,
-        max_match_size_bytes: runtime_loader.register_watch()?,
-        batch_deadline_watch: runtime_loader.register_watch()?,
-        upload_lookback_window_feature_flag: runtime_loader.register_watch()?,
-        streaming_batch_size: runtime_loader.register_watch()?,
+        max_batch_size_logs: runtime_loader.register_int_watch(),
+        max_match_size_bytes: runtime_loader.register_int_watch(),
+        batch_deadline_watch: runtime_loader.register_int_watch(),
+        upload_lookback_window_feature_flag: runtime_loader.register_duration_watch(),
+        streaming_batch_size: runtime_loader.register_int_watch(),
       },
       shutdown,
       buffer_event_rx,
@@ -122,7 +122,7 @@ impl BufferUploadManager {
       logging,
       stream_buffer_shutdown_trigger: None,
       old_logs_dropped: stats.counter("old_logs_dropped"),
-    })
+    }
   }
 
   #[tracing::instrument(level = "debug", skip(self), name = "BufferUploadManager")]

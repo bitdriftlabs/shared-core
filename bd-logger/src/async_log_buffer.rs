@@ -191,7 +191,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     device_id: String,
     store: Arc<Store>,
     time_provider: Arc<dyn TimeProvider>,
-  ) -> anyhow::Result<(Self, Sender<AsyncLogBufferMessage>)> {
+  ) -> (Self, Sender<AsyncLogBufferMessage>) {
     let (async_log_buffer_communication_tx, async_log_buffer_communication_rx) = channel(
       uninitialized_logging_context
         .pre_config_log_buffer
@@ -212,7 +212,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     );
 
     let internal_periodic_fields_reporter =
-      Arc::new(internal_report::Reporter::new(runtime_loader)?);
+      Arc::new(internal_report::Reporter::new(runtime_loader));
     let bandwidth_usage_tracker = Arc::new(network::HTTPTrafficDataUsageTracker::new(
       Arc::new(SystemTimeProvider),
       network_quality_provider.clone(),
@@ -221,7 +221,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       Arc::new(NetworkQualityInterceptor::new(network_quality_provider));
     let device_id_interceptor = Arc::new(DeviceIdInterceptor::new(device_id));
 
-    Ok((
+    (
       Self {
         communication_rx: async_log_buffer_communication_rx,
         config_update_rx,
@@ -240,7 +240,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         session_replay_recorder,
         session_replay_capture_screenshot_handler,
 
-        events_listener: bd_events::Listener::new(events_listener_target, runtime_loader)?,
+        events_listener: bd_events::Listener::new(events_listener_target, runtime_loader),
 
         interceptors: vec![
           internal_periodic_fields_reporter,
@@ -257,7 +257,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         time_provider,
       },
       async_log_buffer_communication_tx,
-    ))
+    )
   }
 
   pub fn enqueue_log(

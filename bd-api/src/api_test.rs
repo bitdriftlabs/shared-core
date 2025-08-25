@@ -222,8 +222,7 @@ impl Setup {
       Arc::new(TestLog {}),
       &collector.scope("api"),
       sleep_mode_active_rx,
-    )
-    .unwrap();
+    );
 
     let api_task = tokio::task::spawn(async move {
       runtime_loader.try_load_persisted_config().await;
@@ -284,8 +283,7 @@ impl Setup {
       Arc::new(TestLog {}),
       &self.collector.scope("api"),
       self.sleep_mode_active.subscribe(),
-    )
-    .unwrap();
+    );
 
     self.api_task = Some(tokio::task::spawn(api.start()));
     self.start_stream_rx = start_stream_rx;

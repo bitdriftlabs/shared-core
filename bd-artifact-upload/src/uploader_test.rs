@@ -62,8 +62,7 @@ impl Setup {
       &runtime,
       &Collector::default(),
       shutdown.make_shutdown(),
-    )
-    .unwrap();
+    );
 
     let (upload_complete_tx, upload_complete_rx) = tokio::sync::mpsc::channel(1);
     let (entry_received_tx, entry_received_rx) = tokio::sync::mpsc::channel(1);
@@ -111,8 +110,7 @@ impl Setup {
       &config_loader,
       &Collector::default(),
       shutdown.make_shutdown(),
-    )
-    .unwrap();
+    );
 
     let (upload_complete_tx, upload_complete_rx) = tokio::sync::mpsc::channel(1);
     let (entry_received_tx, entry_received_rx) = tokio::sync::mpsc::channel(1);
