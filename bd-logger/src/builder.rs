@@ -144,9 +144,7 @@ impl LoggerBuilder {
     let runtime_loader = runtime::ConfigLoader::new(&self.params.sdk_directory);
 
     let max_dynamic_stats =
-      bd_runtime::runtime::stats::MaxDynamicCountersFlag::register(&runtime_loader)
-        .unwrap()
-        .into_inner();
+      bd_runtime::runtime::stats::MaxDynamicCountersFlag::register(&runtime_loader)?.into_inner();
     let collector = Collector::new(Some(max_dynamic_stats));
 
     let scope = collector.scope("");
@@ -179,34 +177,35 @@ impl LoggerBuilder {
     let (crash_monitor_tx, crash_monitor_rx) = tokio::sync::oneshot::channel();
 
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
-    let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
-      UninitializedLoggingContext::new(
-        &self.params.sdk_directory,
+    let (async_log_buffer, async_log_buffer_communication_tx) =
+      AsyncLogBuffer::<LoggerReplay>::new(
+        UninitializedLoggingContext::new(
+          &self.params.sdk_directory,
+          &runtime_loader,
+          scope.clone(),
+          stats,
+          trigger_upload_tx.clone(),
+          data_upload_tx.clone(),
+          flush_buffers_tx,
+          flusher_trigger.clone(),
+          512,
+          1024 * 1024,
+        ),
+        LoggerReplay,
+        self.params.session_strategy.clone(),
+        self.params.metadata_provider.clone(),
+        self.params.resource_utilization_target,
+        self.params.session_replay_target,
+        self.params.events_listener_target,
+        config_update_rx,
+        report_proc_rx,
+        shutdown_handle.clone(),
         &runtime_loader,
-        scope.clone(),
-        stats,
-        trigger_upload_tx.clone(),
-        data_upload_tx.clone(),
-        flush_buffers_tx,
-        flusher_trigger.clone(),
-        512,
-        1024 * 1024,
-      ),
-      LoggerReplay,
-      self.params.session_strategy.clone(),
-      self.params.metadata_provider.clone(),
-      self.params.resource_utilization_target,
-      self.params.session_replay_target,
-      self.params.events_listener_target,
-      config_update_rx,
-      report_proc_rx,
-      shutdown_handle.clone(),
-      &runtime_loader,
-      network_quality_provider.clone(),
-      self.params.device.id(),
-      self.params.store.clone(),
-      Arc::new(SystemTimeProvider),
-    );
+        network_quality_provider.clone(),
+        self.params.device.id(),
+        self.params.store.clone(),
+        Arc::new(SystemTimeProvider),
+      )?;
 
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
@@ -247,9 +246,8 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
       )?;
 
-      let out_of_band_enabled_flag = runtime_loader
-        .register_watch::<bool, artifact_upload::Enabled>()
-        .unwrap();
+      let out_of_band_enabled_flag =
+        runtime_loader.register_watch::<bool, artifact_upload::Enabled>()?;
 
       let crash_monitor = Monitor::new(
         *out_of_band_enabled_flag.read(),
@@ -370,11 +368,11 @@ impl LoggerBuilder {
         tokio::runtime::Builder::new_current_thread()
           .thread_name("bitdrift-tokio-worker")
           .enable_all()
-          .build()
-          .unwrap()
+          .build()?
           .block_on(async {
             handle_unexpected(f.await, "logger top level run loop");
           });
+        Ok::<_, anyhow::Error>(())
       })?;
 
     Ok(())

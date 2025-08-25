@@ -9,7 +9,6 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace     = true
 bd-stats-common.path = "../bd-stats-common"
 bytes.workspace      = true
 flate2               = { workspace = true, default-features = false }

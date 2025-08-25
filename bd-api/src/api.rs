@@ -219,7 +219,7 @@ impl StreamState {
   }
 
   async fn send_request<R: IntoRequest>(&mut self, request: R) -> anyhow::Result<()> {
-    let framed_message = self.request_encoder.encode(&request.into_request());
+    let framed_message = self.request_encoder.encode(&request.into_request())?;
     self.stream_handle.send_data(&framed_message).await
   }
 

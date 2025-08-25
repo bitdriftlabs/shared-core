@@ -314,7 +314,7 @@ impl<ResponseType: Message> StreamingApiSender<ResponseType> {
 
   // Send a message on the stream.
   pub async fn send(&mut self, message: ResponseType) -> Result<()> {
-    let encoded = self.encoder.encode(&message);
+    let encoded = self.encoder.encode(&message)?;
     self.send_raw_inner(encoded).await
   }
 
@@ -544,7 +544,7 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   let (tx, rx) = mpsc::channel::<std::result::Result<_, Infallible>>(2);
 
   let mut encoder = Encoder::new(compression);
-  let encoded_data = encoder.encode(&response);
+  let encoded_data = encoder.encode(&response)?;
 
   tx.send(Ok(Frame::data(encoded_data))).await.unwrap();
 

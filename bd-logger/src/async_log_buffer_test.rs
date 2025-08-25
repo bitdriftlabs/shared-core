@@ -133,6 +133,7 @@ impl Setup {
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
       Arc::new(SystemTimeProvider),
     )
+    .unwrap()
   }
 
   fn make_real_async_log_buffer(
@@ -163,6 +164,7 @@ impl Setup {
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
       Arc::new(SystemTimeProvider),
     )
+    .unwrap()
   }
 
   fn make_logging_context(&self) -> UninitializedLoggingContext<Log> {

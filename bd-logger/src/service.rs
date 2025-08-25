@@ -22,6 +22,7 @@ use futures_util::future::BoxFuture;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::task::Poll;
+use time::ext::NumericalStdDuration;
 use tokio::sync::mpsc::Sender;
 use tower::ServiceBuilder;
 use tower::util::BoxCloneService;
@@ -94,7 +95,7 @@ impl RequestSized for UploadRequest {
       .map(Vec::len)
       .sum::<usize>()
       .try_into()
-      .unwrap()
+      .unwrap_or(u32::MAX)
   }
 }
 
@@ -251,7 +252,7 @@ impl tower::retry::Policy<UploadRequest, UploadResult, Infallible> for RetryPoli
     let backoff = self
       .backoff
       .get_or_insert_with(|| self.backoff_provider.backoff());
-    let backoff_delay = backoff.next_backoff().unwrap();
+    let backoff_delay = backoff.next_backoff().unwrap_or_else(|| 1.std_minutes());
     self.attempts += 1;
 
     match result {

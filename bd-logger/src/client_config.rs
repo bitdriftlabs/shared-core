@@ -13,6 +13,7 @@ use crate::logging_state::{BufferProducers, ConfigUpdate};
 use anyhow::anyhow;
 use bd_buffer::{AbslCode, RingBuffer as _};
 use bd_client_common::HANDSHAKE_FLAG_CONFIG_UP_TO_DATE;
+use bd_client_common::error::InvariantError;
 use bd_client_common::fb::make_log;
 use bd_client_common::payload_conversion::{ClientConfigurationUpdate, FromResponse, IntoRequest};
 use bd_client_common::safe_file_cache::SafeFileCache;
@@ -259,11 +260,14 @@ impl ApplyConfig for LoggerUpdate {
           || {
             // This is only called if we have active streams, which means we should have an active
             // stream buffer.
-            // register_producer never fails for the volatile buffer.
-            maybe_stream_buffer.unwrap().register_producer().unwrap()
+            Ok(
+              maybe_stream_buffer
+                .ok_or(InvariantError::Invariant)?
+                .register_producer()?,
+            )
           },
           || self.stream_config_parse_failure.inc(),
-        ),
+        )?,
         filter_chain,
       })
       .await
@@ -336,12 +340,12 @@ pub struct TailConfigurations {
 impl TailConfigurations {
   fn new(
     config: BdTailConfigurations,
-    producer: impl FnOnce() -> bd_buffer::Producer,
+    producer: impl FnOnce() -> anyhow::Result<bd_buffer::Producer>,
     on_parse_failure: impl Fn(),
-  ) -> Self {
+  ) -> anyhow::Result<Self> {
     if config.active_streams.is_empty() {
       log::debug!("zero active bdtail streams");
-      return Self::default();
+      return Ok(Self::default());
     }
 
     let mut active_streams = Vec::new();
@@ -366,12 +370,12 @@ impl TailConfigurations {
 
     log::debug!("{} active bdtail streams", active_streams.len());
 
-    Self {
+    Ok(Self {
       inner: Some(Inner {
         active_streams,
-        stream_producer: producer(),
+        stream_producer: producer()?,
       }),
-    }
+    })
   }
 
   pub(crate) fn maybe_stream_log(

@@ -11,8 +11,9 @@ mod ratelimit_test;
 
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch};
 use futures_util::future::BoxFuture;
+use parking_lot::Mutex;
 use std::convert::Infallible;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::time::Instant;
 use tower::{Layer, Service};
@@ -132,7 +133,7 @@ where
 
         log::debug!("ratelimit limits hit, sleeping");
 
-        let sleep_until = state.lock().unwrap().sleep_until;
+        let sleep_until = state.lock().sleep_until;
         tokio::time::sleep_until(sleep_until).await;
       }
     })
@@ -141,7 +142,7 @@ where
 
 /// Attempts to acquire a ratelimit permit from the shared state.
 fn try_acquire_ratelimit_permit(request_size: u32, state: &Mutex<SharedState>) -> bool {
-  let mut l = state.lock().unwrap();
+  let mut l = state.lock();
 
   // First check to see if time has exceeded the next fill instant. If so, we reset the remainder
   // and specify when the next fill interval is.

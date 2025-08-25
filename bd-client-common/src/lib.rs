@@ -30,10 +30,24 @@ pub mod zlib;
 // This is a helper for use in tokio::select to avoid unwrap() in the typical pattern:
 // async { foo.unwrap().await }, if foo.is_some().
 pub async fn maybe_await<R, F: Future<Output = R> + Unpin>(future: &mut Option<F>) -> R {
+  let result = if let Some(f) = future {
+    f.await
+  } else {
+    pending().await
+  };
+  *future = None;
+  result
+}
+
+// Same as above but allows mapping into the option to get the future. This version does not
+// clear the option since in the mapping version it's unlikely we want clearing if the option
+// exists as this is generating some other future.
+pub async fn maybe_await_map<'a, T, R, F: Future<Output = R>>(
+  future: Option<&'a mut T>,
+  map: impl FnOnce(&'a mut T) -> F,
+) -> R {
   if let Some(f) = future {
-    let result = f.await;
-    *future = None;
-    result
+    map(f).await
   } else {
     pending().await
   }
