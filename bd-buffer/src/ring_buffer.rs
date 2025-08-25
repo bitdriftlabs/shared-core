@@ -25,8 +25,8 @@ use crate::buffer::{
 use crate::ffi::AbslCode;
 use crate::{Error, Result};
 use anyhow::anyhow;
-use bd_client_common::error::handle_unexpected;
 use bd_client_stats_store::{Counter, Scope};
+use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
 use bd_stats_common::labels;
 use futures::future::join_all;

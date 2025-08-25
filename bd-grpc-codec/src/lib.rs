@@ -12,7 +12,6 @@ mod coding_test;
 pub mod stats;
 
 use crate::stats::DeferredCounter;
-use bd_client_common::error::handle_unexpected_error_with_details;
 use bd_stats_common::DynCounter;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use flate2::write::{ZlibDecoder, ZlibEncoder};
@@ -122,11 +121,9 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
       (Some(compressor), true) => match Self::encode_compressed(compressor, message) {
         Ok(compressed) => compressed,
         Err(e) => {
-          handle_unexpected_error_with_details(
-            e,
+          log::debug!(
             "gRPC compression failed, falling back to uncompressed stream and disabling \
-             compression",
-            || None,
+             compression: {e}",
           );
           // Compression failed, fallback to uncompressed and nullify compressor so that
           // the encoder doesn't make further attempt to compress incoming messages. This is to

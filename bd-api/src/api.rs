@@ -21,12 +21,12 @@ use anyhow::anyhow;
 use backoff::SystemClock;
 use backoff::backoff::Backoff;
 use backoff::exponential::ExponentialBackoff;
-use bd_client_common::error::UnexpectedErrorHandler;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::payload_conversion::{IntoRequest, MuxResponse, ResponseKind};
 use bd_client_common::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use bd_client_common::{ConfigurationUpdate, maybe_await};
 use bd_client_stats_store::{Counter, CounterWrapper, Scope};
+use bd_error_reporter::reporter::UnexpectedErrorHandler;
 use bd_grpc_codec::{
   Compression,
   Encoder,

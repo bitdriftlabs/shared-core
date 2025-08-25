@@ -16,7 +16,6 @@ use crate::logging_state::UninitializedLoggingContext;
 use bd_api::DataUpload;
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_client_common::ConfigurationUpdate;
-use bd_client_common::error::handle_unexpected;
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats::FlushTrigger;
 use bd_client_stats::stats::{
@@ -27,6 +26,7 @@ use bd_client_stats::stats::{
 };
 use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
+use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
 use bd_internal_logging::NoopLogger;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
 use bd_runtime::runtime::{self, ConfigLoader, Watch, artifact_upload, sleep_mode};
@@ -233,7 +233,7 @@ impl LoggerBuilder {
       Arc::new(NoopLogger) as Arc<dyn bd_internal_logging::Logger>
     };
 
-    bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
+    UnexpectedErrorHandler::register_stats(&scope);
 
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
@@ -309,7 +309,7 @@ impl LoggerBuilder {
         sleep_mode_active_rx,
       )?;
 
-      bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
+      UnexpectedErrorHandler::register_stats(&scope);
 
       try_join!(
         async move { api.start().await },

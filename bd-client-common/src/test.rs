@@ -8,40 +8,13 @@
 // Test code only.
 #![allow(clippy::panic, clippy::unwrap_used)]
 
-use crate::error::{Reporter, UnexpectedErrorHandler};
 use crate::file_system::FileSystem;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use parking_lot::Mutex;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-
-//
-// PanickingErrorReporter
-//
-
-#[derive(Default)]
-pub struct PanickingErrorReporter;
-
-impl PanickingErrorReporter {
-  pub fn enable() {
-    UnexpectedErrorHandler::set_reporter(Arc::new(Self));
-  }
-}
-
-impl Reporter for PanickingErrorReporter {
-  fn report(
-    &self,
-    message: &str,
-    details: &Option<String>,
-    fields: &HashMap<Cow<'_, str>, Cow<'_, str>>,
-  ) {
-    panic!("unexpected error: {message} {details:?} {fields:?}");
-  }
-}
 
 //
 // TestFileSystem

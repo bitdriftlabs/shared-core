@@ -35,6 +35,7 @@ use bd_api::DataUpload;
 use bd_client_common::file::{read_compressed, write_compressed};
 use bd_client_stats::Stats;
 use bd_client_stats_store::{Counter, Histogram, Scope};
+use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::{Log, LogRef};
 use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
@@ -855,7 +856,7 @@ impl StateStore {
       "failed to deserialize workflows: invalid sdk dir: {}",
       sdk_directory.display()
     );
-    bd_client_common::error::handle_unexpected::<(), anyhow::Error>(
+    handle_unexpected::<(), anyhow::Error>(
       if sdk_directory.is_dir() {
         Ok(())
       } else {

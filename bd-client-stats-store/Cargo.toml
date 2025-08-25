@@ -9,6 +9,8 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
+anyhow.workspace        = true
+bd-client-common        = { path = "../bd-client-common" }
 bd-proto                = { path = "../bd-proto" }
 bd-stats-common         = { path = "../bd-stats-common" }
 log.workspace           = true

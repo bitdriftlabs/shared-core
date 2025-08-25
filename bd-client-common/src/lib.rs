@@ -15,8 +15,8 @@
 )]
 
 use bd_proto::protos::client::api::{ApiRequest, ApiResponse, HandshakeRequest};
-use error::handle_unexpected;
 use std::future::{Future, pending};
+use tokio::time::Interval;
 
 pub mod error;
 pub mod fb;
@@ -39,11 +39,13 @@ pub async fn maybe_await<R, F: Future<Output = R> + Unpin>(future: &mut Option<F
   }
 }
 
-pub fn spawn_error_handling_task<E: std::error::Error + Sync + Send + 'static>(
-  f: impl Future<Output = std::result::Result<(), E>> + Send + 'static,
-  description: &'static str,
-) {
-  tokio::spawn(async move { handle_unexpected(f.await, description) });
+// Same as above but for an Interval that may or may not exist.
+pub async fn maybe_await_interval(interval: Option<&mut Interval>) {
+  if let Some(f) = interval {
+    f.tick().await;
+  } else {
+    pending::<()>().await;
+  }
 }
 
 // Flags used in the handshake to indicate which configs are up to date.

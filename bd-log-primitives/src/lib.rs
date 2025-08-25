@@ -5,8 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+pub mod size;
+
+use crate::size::MemorySized;
 use ahash::AHashMap;
-use bd_bounded_buffer::MemorySized;
 pub use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;

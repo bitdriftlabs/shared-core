@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_api::upload::TrackedStatsUploadRequest;
+use bd_client_common::error::InvariantError;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::file_system::FileSystem;
 use bd_proto::protos::client::api::StatsUploadRequest;
@@ -120,7 +121,7 @@ impl Inner {
     match self {
       Self::Initialized(inner) => Ok(inner),
       Self::NotInitialized(file_system) => {
-        let file_system_ref = file_system.as_ref().unwrap();
+        let file_system_ref = file_system.as_ref().ok_or(InvariantError::Invariant)?;
         let path = STATS_DIRECTORY.join(&*PENDING_AGGREGATION_INDEX_FILE);
         log::debug!("initializing pending aggregation index: {}", path.display());
         let index = match file_system_ref
@@ -140,13 +141,13 @@ impl Inner {
         };
 
         *self = Self::Initialized(InitializedInner {
-          file_system: file_system.take().unwrap(),
+          file_system: file_system.take().ok_or(InvariantError::Invariant)?,
           index: index.pending_files.into(),
         });
 
         Ok(match self {
           Self::Initialized(inner) => inner,
-          Self::NotInitialized(_) => unreachable!(),
+          Self::NotInitialized(_) => return Err(InvariantError::Invariant.into()),
         })
       },
     }
@@ -189,8 +190,7 @@ impl FileManager {
     });
 
     if create_new_snapshot {
-      if *self.max_aggregated_files.read() <= u32::try_from(initialized_inner.index.len()).unwrap()
-      {
+      if *self.max_aggregated_files.read() <= u32::try_from(initialized_inner.index.len())? {
         log::debug!("max files reached, popping oldest snapshot");
         initialized_inner.delete_oldest_snapshot().await?;
       }
@@ -207,7 +207,13 @@ impl FileManager {
 
     // Read the file back or make a new one. We don't count an error reading the file or file
     // corruption as a fatal error.
-    let path = STATS_DIRECTORY.join(&initialized_inner.index.back().unwrap().name);
+    let path = STATS_DIRECTORY.join(
+      &initialized_inner
+        .index
+        .back()
+        .ok_or(InvariantError::Invariant)?
+        .name,
+    );
     let stats_upload_request = if create_new_snapshot {
       None
     } else {
@@ -224,10 +230,20 @@ impl FileManager {
         })
         .ok()
     }
-    .unwrap_or_else(|| StatsUploadRequest {
-      upload_uuid: initialized_inner.index.back().unwrap().name.clone(),
-      ..Default::default()
-    });
+    .map_or_else(
+      || {
+        Ok(StatsUploadRequest {
+          upload_uuid: initialized_inner
+            .index
+            .back()
+            .ok_or(InvariantError::Invariant)?
+            .name
+            .clone(),
+          ..Default::default()
+        })
+      },
+      Ok::<_, anyhow::Error>,
+    )?;
 
     Ok(StatsUploadRequestHandle {
       index: initialized_inner.index.len() - 1,
@@ -241,10 +257,21 @@ impl FileManager {
     let mut inner = self.inner.lock().await;
     let initialized_inner = inner.get_initialized().await?;
 
-    debug_assert!(!initialized_inner.index.back().unwrap().period_end.is_some());
+    debug_assert!(
+      !initialized_inner
+        .index
+        .back()
+        .ok_or(InvariantError::Invariant)?
+        .period_end
+        .is_some()
+    );
     log::debug!(
       "removing empty snapshot from index: {}",
-      initialized_inner.index.back().unwrap().name
+      initialized_inner
+        .index
+        .back()
+        .ok_or(InvariantError::Invariant)?
+        .name
     );
     initialized_inner.index.pop_back();
     initialized_inner.write_index().await?;

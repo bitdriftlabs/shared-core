@@ -8,8 +8,8 @@
 #[cfg(test)]
 #[path = "./pre_config_buffer_test.rs"]
 mod pre_config_buffer_test;
-use bd_bounded_buffer::MemorySized;
 use bd_client_stats_store::{Counter, Scope};
+use bd_log_primitives::size::MemorySized;
 use bd_stats_common::labels;
 
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]

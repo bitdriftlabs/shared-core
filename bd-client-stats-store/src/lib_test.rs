@@ -5,8 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{Collector, MetricData, NameType};
-use bd_stats_common::{MetricType, labels};
+use crate::{Collector, MetricDataRef, NameType};
+use bd_stats_common::labels;
 use std::collections::BTreeMap;
 
 #[test]
@@ -23,18 +23,12 @@ fn retain() {
   let h = collector.scope("").histogram("h");
   assert!(
     collector
-      .find_counter(
-        &NameType::Global(MetricType::Counter, "c".to_string()),
-        &labels!()
-      )
+      .find_counter(&NameType::Global("c".to_string()), &labels!())
       .is_some()
   );
   assert!(
     collector
-      .find_histogram(
-        &NameType::Global(MetricType::Histogram, "h".to_string()),
-        &labels!()
-      )
+      .find_histogram(&NameType::Global("h".to_string()), &labels!())
       .is_some()
   );
 
@@ -43,40 +37,28 @@ fn retain() {
   drop(h);
   assert!(
     collector
-      .find_counter(
-        &NameType::Global(MetricType::Counter, "c".to_string()),
-        &labels!()
-      )
+      .find_counter(&NameType::Global("c".to_string()), &labels!())
       .is_some()
   );
   assert!(
     collector
-      .find_histogram(
-        &NameType::Global(MetricType::Histogram, "h".to_string()),
-        &labels!()
-      )
+      .find_histogram(&NameType::Global("h".to_string()), &labels!())
       .is_some()
   );
 
   collector.retain(|_, _, metric| match metric {
-    MetricData::Counter(c) => c.multiple_references(),
-    MetricData::Histogram(h) => h.multiple_references(),
+    MetricDataRef::Counter(c) => c.multiple_references(),
+    MetricDataRef::Histogram(h) => h.multiple_references(),
   });
 
   assert!(
     collector
-      .find_counter(
-        &NameType::Global(MetricType::Counter, "c".to_string()),
-        &labels!()
-      )
+      .find_counter(&NameType::Global("c".to_string()), &labels!())
       .is_none()
   );
   assert!(
     collector
-      .find_histogram(
-        &NameType::Global(MetricType::Histogram, "h".to_string()),
-        &labels!()
-      )
+      .find_histogram(&NameType::Global("h".to_string()), &labels!())
       .is_none()
   );
 }

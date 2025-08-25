@@ -13,7 +13,7 @@ use backoff::ExponentialBackoff;
 use backoff::backoff::Backoff;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
-use bd_bounded_buffer::{MemorySized, SendCounters};
+use bd_bounded_buffer::SendCounters;
 use bd_client_common::error::InvariantError;
 use bd_client_common::file::{
   read_checksummed_data,
@@ -22,9 +22,11 @@ use bd_client_common::file::{
   write_compressed_protobuf,
 };
 use bd_client_common::file_system::FileSystem;
-use bd_client_common::{error, maybe_await};
+use bd_client_common::maybe_await;
 use bd_client_stats_store::{Collector, Counter, Scope};
+use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::LogFields;
+use bd_log_primitives::size::MemorySized;
 use bd_proto::protos::client::api::{UploadArtifactIntentRequest, UploadArtifactRequest};
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
@@ -258,7 +260,7 @@ impl Uploader {
 
   pub async fn run(self) {
     if let Err(Error::Unhandled(e)) = self.run_inner().await {
-      error::handle_unexpected(Err::<(), _>(e), "artifact uploader");
+      handle_unexpected(Err::<(), _>(e), "artifact uploader");
     }
   }
 

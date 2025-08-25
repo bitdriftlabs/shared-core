@@ -5,6 +5,9 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+// Test code only.
+#![allow(clippy::unwrap_used)]
+
 use crate::stats::Ticker;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
