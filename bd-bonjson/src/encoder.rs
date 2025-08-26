@@ -30,10 +30,12 @@ pub struct Encoder {
 }
 
 impl Encoder {
+  #[must_use]
   pub fn new() -> Self {
     Self { buffer: Vec::new() }
   }
 
+  #[must_use]
   pub fn with_capacity(capacity: usize) -> Self {
     Self {
       buffer: Vec::with_capacity(capacity),
@@ -152,6 +154,7 @@ impl Encoder {
   }
 
   /// Returns the current buffer contents without consuming the encoder.
+  #[must_use]
   pub fn buffer(&self) -> &[u8] {
     &self.buffer
   }
@@ -163,6 +166,153 @@ impl Encoder {
 }
 
 impl Default for Encoder {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+/// An in-place encoder for converting `Value` instances into BONJSON byte format
+/// using a pre-allocated slice.
+pub struct InPlaceEncoder {
+  position: usize,
+}
+
+impl InPlaceEncoder {
+  /// Creates a new in-place encoder.
+  ///
+  /// # Returns
+  /// A new `InPlaceEncoder` instance
+  #[must_use]
+  pub fn new() -> Self {
+    Self { position: 0 }
+  }
+
+  /// Encodes a `Value` into BONJSON format in the provided buffer.
+  ///
+  /// # Arguments
+  /// * `buffer` - The mutable slice to encode into
+  /// * `value` - The value to encode
+  ///
+  /// # Returns
+  /// * `Ok(usize)` - The number of bytes written on success
+  /// * `Err(SerializationError)` - If encoding fails (including buffer full)
+  pub fn encode(&mut self, buffer: &mut [u8], value: &Value) -> Result<usize, SerializationError> {
+    self.position = 0;
+    self.encode_value(buffer, value)?;
+    Ok(self.position)
+  }
+
+  /// Writes bytes to the buffer at the current position.
+  fn write_bytes(&mut self, buffer: &mut [u8], data: &[u8]) -> Result<(), SerializationError> {
+    let bytes_needed = data.len();
+    if self.position + bytes_needed > buffer.len() {
+      return Err(SerializationError::BufferFull);
+    }
+    
+    buffer[self.position..self.position + bytes_needed].copy_from_slice(data);
+    self.position += bytes_needed;
+    Ok(())
+  }
+
+  /// Encodes a value into the buffer at the current position.
+  fn encode_value(&mut self, buffer: &mut [u8], value: &Value) -> Result<(), SerializationError> {
+    match value {
+      Value::Null => {
+        let mut temp_buffer: [u8; 1] = [0; 1];
+        let size = serialize_null(&mut temp_buffer)?;
+        self.write_bytes(buffer, &temp_buffer[..size])?;
+      },
+      Value::Bool(b) => {
+        let mut temp_buffer: [u8; 1] = [0; 1];
+        let size = serialize_boolean(&mut temp_buffer, *b)?;
+        self.write_bytes(buffer, &temp_buffer[..size])?;
+      },
+      Value::Float(f) => {
+        let mut temp_buffer: [u8; 16] = [0; 16];
+        let size = serialize_f64(&mut temp_buffer, *f)?;
+        self.write_bytes(buffer, &temp_buffer[..size])?;
+      },
+      Value::Signed(i) => {
+        let mut temp_buffer: [u8; 16] = [0; 16];
+        let size = serialize_i64(&mut temp_buffer, *i)?;
+        self.write_bytes(buffer, &temp_buffer[..size])?;
+      },
+      Value::Unsigned(u) => {
+        let mut temp_buffer: [u8; 16] = [0; 16];
+        let size = serialize_u64(&mut temp_buffer, *u)?;
+        self.write_bytes(buffer, &temp_buffer[..size])?;
+      },
+      Value::String(s) => {
+        self.encode_string(buffer, s)?;
+      },
+      Value::Array(arr) => {
+        self.encode_array(buffer, arr)?;
+      },
+      Value::Object(obj) => {
+        self.encode_object(buffer, obj)?;
+      },
+    }
+    Ok(())
+  }
+
+  /// Encodes a string value into the buffer.
+  fn encode_string(&mut self, buffer: &mut [u8], s: &str) -> Result<(), SerializationError> {
+    // String header
+    let mut temp_buffer: [u8; 16] = [0; 16]; // Should be enough for any string header
+    let header_size = serialize_string_header(&mut temp_buffer, s)?;
+    self.write_bytes(buffer, &temp_buffer[..header_size])?;
+
+    // String content
+    self.write_bytes(buffer, s.as_bytes())?;
+
+    Ok(())
+  }
+
+  /// Encodes an array value.
+  fn encode_array(&mut self, buffer: &mut [u8], arr: &[Value]) -> Result<(), SerializationError> {
+    // Array start marker
+    let mut temp_buffer: [u8; 1] = [0; 1];
+    let size = serialize_array_begin(&mut temp_buffer)?;
+    self.write_bytes(buffer, &temp_buffer[..size])?;
+
+    // Encode each element
+    for item in arr {
+      self.encode_value(buffer, item)?;
+    }
+
+    // Array end marker
+    let mut temp_buffer: [u8; 1] = [0; 1];
+    let size = serialize_container_end(&mut temp_buffer)?;
+    self.write_bytes(buffer, &temp_buffer[..size])?;
+
+    Ok(())
+  }
+
+  /// Encodes an object value.
+  fn encode_object(&mut self, buffer: &mut [u8], obj: &HashMap<String, Value>) -> Result<(), SerializationError> {
+    // Object start marker
+    let mut temp_buffer: [u8; 1] = [0; 1];
+    let size = serialize_map_begin(&mut temp_buffer)?;
+    self.write_bytes(buffer, &temp_buffer[..size])?;
+
+    // Encode each key-value pair
+    for (key, value) in obj {
+      // Encode key as string
+      self.encode_string(buffer, key)?;
+      // Encode value
+      self.encode_value(buffer, value)?;
+    }
+
+    // Object end marker
+    let mut temp_buffer: [u8; 1] = [0; 1];
+    let size = serialize_container_end(&mut temp_buffer)?;
+    self.write_bytes(buffer, &temp_buffer[..size])?;
+
+    Ok(())
+  }
+}
+
+impl Default for InPlaceEncoder {
   fn default() -> Self {
     Self::new()
   }

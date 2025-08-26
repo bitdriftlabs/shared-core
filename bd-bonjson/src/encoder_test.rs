@@ -762,3 +762,182 @@ fn test_encode_deeply_nested_mixed_structures() {
     panic!("Expected root object");
   }
 }
+
+// Tests for InPlaceEncoder
+
+use crate::encoder::InPlaceEncoder;
+use crate::serialize_primitives::SerializationError;
+
+#[test]
+fn test_in_place_encode_null() {
+  let mut buffer = [0u8; 16];
+  let mut encoder = InPlaceEncoder::new();
+  let value = Value::Null;
+
+  let bytes_written = encoder.encode(&mut buffer, &value).expect("Failed to encode null");
+  assert_eq!(bytes_written, 1);
+
+  // Verify we can decode it back
+  let mut decoder = Decoder::new(&buffer[..bytes_written]);
+  let decoded = decoder.decode().expect("Failed to decode");
+  assert_eq!(decoded, value);
+}
+
+#[test]
+fn test_in_place_encode_bool() {
+  let mut buffer = [0u8; 16];
+  let mut encoder = InPlaceEncoder::new();
+  let value = Value::Bool(true);
+
+  let bytes_written = encoder.encode(&mut buffer, &value).expect("Failed to encode bool");
+  assert_eq!(bytes_written, 1);
+
+  // Verify we can decode it back
+  let mut decoder = Decoder::new(&buffer[..bytes_written]);
+  let decoded = decoder.decode().expect("Failed to decode");
+  assert_eq!(decoded, value);
+}
+
+#[test]
+fn test_in_place_encode_string() {
+  let mut buffer = [0u8; 32];
+  let mut encoder = InPlaceEncoder::new();
+  let value = Value::String("hello".to_string());
+
+  let bytes_written = encoder.encode(&mut buffer, &value).expect("Failed to encode string");
+  
+  // Verify we can decode it back
+  let mut decoder = Decoder::new(&buffer[..bytes_written]);
+  let decoded = decoder.decode().expect("Failed to decode");
+  assert_eq!(decoded, value);
+}
+
+#[test]
+fn test_in_place_encode_array() {
+  let mut buffer = [0u8; 64];
+  let mut encoder = InPlaceEncoder::new();
+  let value = Value::Array(vec![
+    Value::Signed(1),
+    Value::Signed(2),
+    Value::String("test".to_string()),
+  ]);
+
+  let bytes_written = encoder.encode(&mut buffer, &value).expect("Failed to encode array");
+  
+  // Verify we can decode it back
+  let mut decoder = Decoder::new(&buffer[..bytes_written]);
+  let decoded = decoder.decode().expect("Failed to decode");
+  assert_eq!(decoded, value);
+}
+
+#[test]
+fn test_in_place_encode_object() {
+  let mut buffer = [0u8; 128];
+  let mut encoder = InPlaceEncoder::new();
+  
+  let mut obj = HashMap::new();
+  obj.insert("name".to_string(), Value::String("test".to_string()));
+  obj.insert("age".to_string(), Value::Signed(25));
+  let value = Value::Object(obj);
+
+  let bytes_written = encoder.encode(&mut buffer, &value).expect("Failed to encode object");
+  
+  // Verify we can decode it back
+  let mut decoder = Decoder::new(&buffer[..bytes_written]);
+  let decoded = decoder.decode().expect("Failed to decode");
+  
+  // Since HashMap ordering is not guaranteed, we need to check content differently
+  if let Value::Object(decoded_obj) = decoded {
+    assert_eq!(decoded_obj.len(), 2);
+    assert_eq!(decoded_obj.get("name").unwrap(), &Value::String("test".to_string()));
+    assert_eq!(decoded_obj.get("age").unwrap(), &Value::Signed(25));
+  } else {
+    panic!("Expected object");
+  }
+}
+
+#[test]
+fn test_in_place_encode_buffer_full() {
+  let mut buffer = [0u8; 2]; // Very small buffer
+  let mut encoder = InPlaceEncoder::new();
+  let value = Value::String("this is a long string that won't fit".to_string());
+
+  let result = encoder.encode(&mut buffer, &value);
+  assert!(result.is_err());
+  assert_eq!(result.unwrap_err(), SerializationError::BufferFull);
+}
+
+#[test]
+fn test_in_place_encode_position_tracking() {
+  let mut buffer = [0u8; 16];
+  let mut encoder = InPlaceEncoder::new();
+  
+  let value = Value::Null;
+  let bytes_written = encoder.encode(&mut buffer, &value).expect("Failed to encode null");
+  
+  assert_eq!(bytes_written, 1);
+  
+  // Reset encoder and test multiple encodes don't interfere
+  let value2 = Value::Bool(true);
+  let bytes_written2 = encoder.encode(&mut buffer, &value2).expect("Failed to encode bool");
+  
+  assert_eq!(bytes_written2, 1);
+}
+
+#[test]
+fn test_in_place_encode_exact_fit() {
+  // Create a value that will exactly fit in the buffer
+  let mut buffer = [0u8; 8]; // Exactly the size needed for a small signed integer
+  let mut encoder = InPlaceEncoder::new();
+  let value = Value::Signed(42);
+
+  let bytes_written = encoder.encode(&mut buffer, &value).expect("Failed to encode");
+  assert!(bytes_written <= buffer.len());
+  
+  // Verify we can decode it back
+  let mut decoder = Decoder::new(&buffer[..bytes_written]);
+  let decoded = decoder.decode().expect("Failed to decode");
+  assert_eq!(decoded, value);
+}
+
+#[test]
+fn test_in_place_encode_reuse() {
+  let mut buffer = [0u8; 32];
+  let mut encoder = InPlaceEncoder::new();
+  
+  // First encoding
+  let value1 = Value::Signed(123);
+  encoder.encode(&mut buffer, &value1).expect("Failed to encode first value");
+  
+  // Second encoding (should reset position)
+  let value2 = Value::String("hello".to_string());
+  let bytes_written2 = encoder.encode(&mut buffer, &value2).expect("Failed to encode second value");
+  
+  // Verify the second value overwrote the first
+  let mut decoder = Decoder::new(&buffer[..bytes_written2]);
+  let decoded = decoder.decode().expect("Failed to decode");
+  assert_eq!(decoded, value2);
+}
+
+#[test]
+fn test_in_place_encode_deeply_nested() {
+  let mut buffer = [0u8; 256];
+  let mut encoder = InPlaceEncoder::new();
+  
+  // Create deeply nested structure
+  let nested_value = Value::Array(vec![
+    Value::Array(vec![
+      Value::Array(vec![
+        Value::String("deep".to_string()),
+        Value::Signed(42),
+      ]),
+    ]),
+  ]);
+
+  let bytes_written = encoder.encode(&mut buffer, &nested_value).expect("Failed to encode nested structure");
+  
+  // Verify we can decode it back
+  let mut decoder = Decoder::new(&buffer[..bytes_written]);
+  let decoded = decoder.decode().expect("Failed to decode");
+  assert_eq!(decoded, nested_value);
+}
