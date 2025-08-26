@@ -51,10 +51,10 @@ impl Encoder {
   /// * `Ok(Vec<u8>)` - The encoded bytes on success
   /// * `Err(SerializationError)` - If encoding fails
   pub fn encode(&mut self, value: &Value) -> Result<Vec<u8>, SerializationError> {
-    self.buffer.clear();
-
     // Start with a reasonable initial capacity
     const INITIAL_CAPACITY: usize = 1024;
+    
+    self.buffer.clear();
     if self.buffer.capacity() < INITIAL_CAPACITY {
       self.buffer.reserve(INITIAL_CAPACITY);
     }
