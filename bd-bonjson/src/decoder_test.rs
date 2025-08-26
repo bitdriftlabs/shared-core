@@ -582,19 +582,19 @@ fn test_partial_decode_unterminated_array() {
 
   let err = result.err().unwrap();
   assert_eq!(
-    err.error,
+    *err.error(),
     DeserializationErrorWithOffset::Error(DeserializationError::PrematureEnd, pos)
   );
 
   // Check partial result contains valid elements
-  match err.partial_value {
-    Value::Array(elements) => {
+  match err.partial_value() {
+    Some(Value::Array(elements)) => {
       assert_eq!(elements.len(), 3);
       assert_eq!(elements[0], Value::Null);
       assert_eq!(elements[1], Value::Bool(true));
       assert_eq!(elements[2], Value::Signed(42));
     },
-    _ => panic!("Expected partial array, got {:?}", err.partial_value),
+    _ => panic!("Expected partial array, got {:?}", err.partial_value()),
   }
 }
 
@@ -622,13 +622,13 @@ fn test_partial_decode_unterminated_object() {
 
   let err = result.err().unwrap();
   assert_eq!(
-    err.error,
+    *err.error(),
     DeserializationErrorWithOffset::Error(DeserializationError::PrematureEnd, pos)
   );
 
   // Check partial result contains valid key-value pairs
-  match err.partial_value {
-    Value::Object(obj) => {
+  match err.partial_value() {
+    Some(Value::Object(obj)) => {
       assert_eq!(obj.len(), 2);
       assert_eq!(
         obj.get("key1").unwrap(),
@@ -636,7 +636,7 @@ fn test_partial_decode_unterminated_object() {
       );
       assert_eq!(obj.get("key2").unwrap(), &Value::Signed(42));
     },
-    _ => panic!("Expected partial object, got {:?}", err.partial_value),
+    _ => panic!("Expected partial object, got {:?}", err.partial_value()),
   }
 }
 
@@ -668,8 +668,8 @@ fn test_partial_decode_nested_containers() {
   let err = result.err().unwrap();
 
   // Check partial result structure
-  match err.partial_value {
-    Value::Object(obj) => {
+  match err.partial_value() {
+    Some(Value::Object(obj)) => {
       assert_eq!(obj.len(), 2);
       assert_eq!(obj.get("name").unwrap(), &Value::String("test".to_string()));
 
@@ -683,7 +683,7 @@ fn test_partial_decode_nested_containers() {
         _ => panic!("Expected array for 'data' field"),
       }
     },
-    _ => panic!("Expected partial object, got {:?}", err.partial_value),
+    _ => panic!("Expected partial object, got {:?}", err.partial_value()),
   }
 }
 
@@ -696,8 +696,9 @@ fn test_partial_decode_truncated_string() {
   assert!(result.is_err());
 
   let err = result.err().unwrap();
-  // String types don't produce partial results, so we expect just an error
-  assert_eq!(err.partial_value, Value::None);
+  // String types don't produce partial results, so we expect just a fatal error
+  assert!(err.is_fatal());
+  assert_eq!(err.partial_value(), None);
 }
 
 #[test]
@@ -725,18 +726,18 @@ fn test_partial_decode_with_invalid_type_code() {
   let err = result.err().unwrap();
 
   // Should have a partial array with the valid elements
-  match err.partial_value {
-    Value::Array(elements) => {
+  match err.partial_value() {
+    Some(Value::Array(elements)) => {
       assert_eq!(elements.len(), 2);
       assert_eq!(elements[0], Value::Null);
       assert_eq!(elements[1], Value::Bool(true));
     },
-    _ => panic!("Expected partial array, got {:?}", err.partial_value),
+    _ => panic!("Expected partial array, got {:?}", err.partial_value()),
   }
 
   // And the error should indicate unexpected type code
   assert!(matches!(
-    err.error,
+    *err.error(),
     DeserializationErrorWithOffset::Error(DeserializationError::UnexpectedTypeCode, _)
   ));
 }
@@ -766,20 +767,20 @@ fn test_partial_decode_object_with_invalid_key() {
   let err = result.err().unwrap();
 
   // Should have a partial object with the valid key-value pair
-  match err.partial_value {
-    Value::Object(obj) => {
+  match err.partial_value() {
+    Some(Value::Object(obj)) => {
       assert_eq!(obj.len(), 1);
       assert_eq!(
         obj.get("key1").unwrap(),
         &Value::String("value1".to_string())
       );
     },
-    _ => panic!("Expected partial object, got {:?}", err.partial_value),
+    _ => panic!("Expected partial object, got {:?}", err.partial_value()),
   }
 
   // And the error should indicate non-string key
   assert!(matches!(
-    err.error,
+    *err.error(),
     DeserializationErrorWithOffset::Error(DeserializationError::NonStringKeyInMap, _)
   ));
 }
@@ -1016,4 +1017,94 @@ fn test_decode_position_tracking() {
   let value = decoder.decode().unwrap();
   assert_eq!(value, Value::String("test".to_string()));
   assert_eq!(decoder.position, 8);
+}
+
+#[test]
+fn test_value_none_removed_successful_decode() {
+  // Test that valid data decodes successfully without Value::None
+  let valid_data = [0x85, 0x48, 0x65, 0x6c, 0x6c, 0x6f]; // "Hello"
+  match decode_value(&valid_data) {
+    Ok(Value::String(s)) => assert_eq!(s, "Hello"),
+    Ok(other) => panic!("Expected string, got: {:?}", other),
+    Err(e) => panic!("Unexpected error: {:?}", e),
+  }
+}
+
+#[test]
+fn test_value_none_removed_fatal_errors() {
+  // Test that invalid data returns fatal errors (no partial value)
+  let invalid_data = [0x65]; // Invalid type code
+  match decode_value(&invalid_data) {
+    Ok(value) => panic!("Expected error, got: {:?}", value),
+    Err(err) => {
+      assert!(err.is_fatal(), "Expected fatal error, got: {:?}", err);
+      assert!(err.partial_value().is_none(), "Expected no partial value");
+    },
+  }
+}
+
+#[test]
+fn test_value_none_removed_partial_errors() {
+  // Test that truncated data returns partial results
+  let truncated_array = [0x9a, 0x6d, 0x85, 0x48, 0x65, 0x6c, 0x6c, 0x6f]; // Start of array with null and "Hello", but no end
+  match decode_value(&truncated_array) {
+    Ok(value) => panic!("Expected error, got: {:?}", value),
+    Err(err) => {
+      assert!(
+        !err.is_fatal(),
+        "Expected partial error, got fatal: {:?}",
+        err
+      );
+      assert!(err.partial_value().is_some(), "Expected partial value");
+    },
+  }
+}
+
+#[test]
+fn test_all_variants() {
+  use std::collections::HashMap;
+
+  let all_value_types = vec![
+    Value::Null,
+    Value::Bool(true),
+    Value::Float(3.14),
+    Value::Signed(-42),
+    Value::Unsigned(42),
+    Value::String("test".to_string()),
+    Value::Array(vec![]),
+    Value::Object(HashMap::new()),
+  ];
+
+  assert_eq!(all_value_types.len(), 8);
+
+  assert!(matches!(all_value_types[0], Value::Null));
+  assert!(matches!(all_value_types[1], Value::Bool(true)));
+  assert!(matches!(all_value_types[2], Value::Float(_)));
+  assert!(matches!(all_value_types[3], Value::Signed(-42)));
+  assert!(matches!(all_value_types[4], Value::Unsigned(42)));
+  assert!(matches!(all_value_types[5], Value::String(_)));
+  assert!(matches!(all_value_types[6], Value::Array(_)));
+  assert!(matches!(all_value_types[7], Value::Object(_)));
+}
+
+#[test]
+fn test_decode_error_convenience_methods() {
+  use crate::deserialize_primitives::DeserializationError;
+
+  let fatal_error = DecodeError::Fatal(DeserializationErrorWithOffset::Error(
+    DeserializationError::UnexpectedTypeCode,
+    0,
+  ));
+
+  assert!(fatal_error.is_fatal());
+  assert!(fatal_error.partial_value().is_none());
+
+  let partial_error = DecodeError::Partial {
+    partial_value: Value::Null,
+    error: DeserializationErrorWithOffset::Error(DeserializationError::UnexpectedTypeCode, 0),
+  };
+
+  assert!(!partial_error.is_fatal());
+  assert!(partial_error.partial_value().is_some());
+  matches!(partial_error.partial_value(), Some(Value::Null));
 }
