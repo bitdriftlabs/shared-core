@@ -233,19 +233,24 @@ impl<'a> Decoder<'a> {
         break;
       }
 
-      let value = self.decode_value().map_err(|e| match e {
-        DecodeError::Fatal(_) => propagate_partial_decode(&e, Value::Array(elements.clone())),
-        DecodeError::Partial {
-          partial_value,
-          error,
-        } => {
-          elements.push(partial_value);
+      let value = match self.decode_value() {
+        Ok(value) => value,
+        Err(e) => match e {
+          DecodeError::Fatal(_) => {
+            return Err(propagate_partial_decode(&e, Value::Array(elements)));
+          },
           DecodeError::Partial {
-            partial_value: Value::Array(elements.clone()),
+            partial_value,
             error,
-          }
+          } => {
+            elements.push(partial_value);
+            return Err(DecodeError::Partial {
+              partial_value: Value::Array(elements),
+              error,
+            });
+          },
         },
-      })?;
+      };
 
       elements.push(value);
     }
@@ -280,19 +285,22 @@ impl<'a> Decoder<'a> {
         Err(e) => return Err(propagate_partial_decode(&e, Value::Object(object))),
       };
 
-      let value = self.decode_value().map_err(|e| match e {
-        DecodeError::Fatal(_) => propagate_partial_decode(&e, Value::Object(object.clone())),
-        DecodeError::Partial {
-          partial_value,
-          error,
-        } => {
-          object.insert(key.clone(), partial_value);
+      let value = match self.decode_value() {
+        Ok(value) => value,
+        Err(e) => match e {
+          DecodeError::Fatal(_) => return Err(propagate_partial_decode(&e, Value::Object(object))),
           DecodeError::Partial {
-            partial_value: Value::Object(object.clone()),
+            partial_value,
             error,
-          }
+          } => {
+            object.insert(key, partial_value);
+            return Err(DecodeError::Partial {
+              partial_value: Value::Object(object),
+              error,
+            });
+          },
         },
-      })?;
+      };
 
       object.insert(key, value);
     }
