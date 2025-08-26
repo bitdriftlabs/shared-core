@@ -9,6 +9,7 @@
 #[path = "./encoder_test.rs"]
 mod encoder_test;
 
+use crate::Value;
 use crate::serialize_primitives::{
   SerializationError,
   serialize_array_begin,
@@ -21,7 +22,6 @@ use crate::serialize_primitives::{
   serialize_string_header,
   serialize_u64,
 };
-use crate::Value;
 use std::collections::HashMap;
 
 /// An encoder for converting `Value` instances into BONJSON byte format.
@@ -30,14 +30,10 @@ pub struct Encoder {
 }
 
 impl Encoder {
-  /// Creates a new encoder with an initial buffer capacity.
   pub fn new() -> Self {
-    Self {
-      buffer: Vec::new(),
-    }
+    Self { buffer: Vec::new() }
   }
 
-  /// Creates a new encoder with a specified initial capacity.
   pub fn with_capacity(capacity: usize) -> Self {
     Self {
       buffer: Vec::with_capacity(capacity),
@@ -45,10 +41,10 @@ impl Encoder {
   }
 
   /// Encodes a `Value` into BONJSON format and returns the resulting bytes.
-  /// 
+  ///
   /// # Arguments
   /// * `value` - The value to encode
-  /// 
+  ///
   /// # Returns
   /// * `Ok(Vec<u8>)` - The encoded bytes on success
   /// * `Err(SerializationError)` - If encoding fails
@@ -64,27 +60,27 @@ impl Encoder {
       Value::Null => {
         let mut temp_buffer: [u8; 1] = [0; 1];
         let size = serialize_null(&mut temp_buffer)?;
-        self.buffer.extend_from_slice(&temp_buffer[..size]);
+        self.buffer.extend_from_slice(&temp_buffer[.. size]);
       },
       Value::Bool(b) => {
         let mut temp_buffer: [u8; 1] = [0; 1];
         let size = serialize_boolean(&mut temp_buffer, *b)?;
-        self.buffer.extend_from_slice(&temp_buffer[..size]);
+        self.buffer.extend_from_slice(&temp_buffer[.. size]);
       },
       Value::Float(f) => {
         let mut temp_buffer: [u8; 16] = [0; 16];
         let size = serialize_f64(&mut temp_buffer, *f)?;
-        self.buffer.extend_from_slice(&temp_buffer[..size]);
+        self.buffer.extend_from_slice(&temp_buffer[.. size]);
       },
       Value::Signed(i) => {
         let mut temp_buffer: [u8; 16] = [0; 16];
         let size = serialize_i64(&mut temp_buffer, *i)?;
-        self.buffer.extend_from_slice(&temp_buffer[..size]);
+        self.buffer.extend_from_slice(&temp_buffer[.. size]);
       },
       Value::Unsigned(u) => {
         let mut temp_buffer: [u8; 16] = [0; 16];
         let size = serialize_u64(&mut temp_buffer, *u)?;
-        self.buffer.extend_from_slice(&temp_buffer[..size]);
+        self.buffer.extend_from_slice(&temp_buffer[.. size]);
       },
       Value::String(s) => {
         self.encode_string(s)?;
@@ -104,11 +100,11 @@ impl Encoder {
     // String header
     let mut temp_buffer: [u8; 16] = [0; 16]; // Should be enough for any string header
     let header_size = serialize_string_header(&mut temp_buffer, s)?;
-    self.buffer.extend_from_slice(&temp_buffer[..header_size]);
-    
+    self.buffer.extend_from_slice(&temp_buffer[.. header_size]);
+
     // String content
     self.buffer.extend_from_slice(s.as_bytes());
-    
+
     Ok(())
   }
 
@@ -117,7 +113,7 @@ impl Encoder {
     // Array start marker
     let mut temp_buffer: [u8; 1] = [0; 1];
     let size = serialize_array_begin(&mut temp_buffer)?;
-    self.buffer.extend_from_slice(&temp_buffer[..size]);
+    self.buffer.extend_from_slice(&temp_buffer[.. size]);
 
     // Encode each element
     for item in arr {
@@ -127,7 +123,7 @@ impl Encoder {
     // Array end marker
     let mut temp_buffer: [u8; 1] = [0; 1];
     let size = serialize_container_end(&mut temp_buffer)?;
-    self.buffer.extend_from_slice(&temp_buffer[..size]);
+    self.buffer.extend_from_slice(&temp_buffer[.. size]);
 
     Ok(())
   }
@@ -137,7 +133,7 @@ impl Encoder {
     // Object start marker
     let mut temp_buffer: [u8; 1] = [0; 1];
     let size = serialize_map_begin(&mut temp_buffer)?;
-    self.buffer.extend_from_slice(&temp_buffer[..size]);
+    self.buffer.extend_from_slice(&temp_buffer[.. size]);
 
     // Encode each key-value pair
     for (key, value) in obj {
@@ -150,7 +146,7 @@ impl Encoder {
     // Object end marker
     let mut temp_buffer: [u8; 1] = [0; 1];
     let size = serialize_container_end(&mut temp_buffer)?;
-    self.buffer.extend_from_slice(&temp_buffer[..size]);
+    self.buffer.extend_from_slice(&temp_buffer[.. size]);
 
     Ok(())
   }

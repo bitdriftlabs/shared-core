@@ -5,18 +5,18 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::Value;
 use crate::decoder::Decoder;
 use crate::encoder::Encoder;
-use crate::Value;
 use std::collections::HashMap;
 
 #[test]
 fn test_encode_null() {
   let mut encoder = Encoder::new();
   let value = Value::Null;
-  
+
   let result = encoder.encode(&value).expect("Failed to encode null");
-  
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -27,9 +27,9 @@ fn test_encode_null() {
 fn test_encode_bool_true() {
   let mut encoder = Encoder::new();
   let value = Value::Bool(true);
-  
+
   let result = encoder.encode(&value).expect("Failed to encode bool");
-  
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -40,9 +40,9 @@ fn test_encode_bool_true() {
 fn test_encode_bool_false() {
   let mut encoder = Encoder::new();
   let value = Value::Bool(false);
-  
+
   let result = encoder.encode(&value).expect("Failed to encode bool");
-  
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -53,9 +53,9 @@ fn test_encode_bool_false() {
 fn test_encode_float() {
   let mut encoder = Encoder::new();
   let value = Value::Float(3.14159);
-  
+
   let result = encoder.encode(&value).expect("Failed to encode float");
-  
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -66,9 +66,9 @@ fn test_encode_float() {
 fn test_encode_signed_positive() {
   let mut encoder = Encoder::new();
   let value = Value::Signed(12345);
-  
+
   let result = encoder.encode(&value).expect("Failed to encode signed");
-  
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -79,9 +79,9 @@ fn test_encode_signed_positive() {
 fn test_encode_signed_negative() {
   let mut encoder = Encoder::new();
   let value = Value::Signed(-6789);
-  
+
   let result = encoder.encode(&value).expect("Failed to encode signed");
-  
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -92,14 +92,14 @@ fn test_encode_signed_negative() {
 fn test_encode_unsigned() {
   let mut encoder = Encoder::new();
   let value = Value::Unsigned(98765);
-  
+
   let result = encoder.encode(&value).expect("Failed to encode unsigned");
-  
+
   // Verify we can decode it back
   // Note: The decoder may convert unsigned values that fit in i64 to Signed
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
-  
+
   // Check if the value was converted to signed (this is expected behavior)
   match decoded {
     Value::Signed(v) => assert_eq!(v, 98765),
@@ -112,9 +112,9 @@ fn test_encode_unsigned() {
 fn test_encode_string() {
   let mut encoder = Encoder::new();
   let value = Value::String("Hello, World!".to_string());
-  
+
   let result = encoder.encode(&value).expect("Failed to encode string");
-  
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -125,9 +125,11 @@ fn test_encode_string() {
 fn test_encode_empty_string() {
   let mut encoder = Encoder::new();
   let value = Value::String(String::new());
-  
-  let result = encoder.encode(&value).expect("Failed to encode empty string");
-  
+
+  let result = encoder
+    .encode(&value)
+    .expect("Failed to encode empty string");
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -138,9 +140,11 @@ fn test_encode_empty_string() {
 fn test_encode_string_with_unicode() {
   let mut encoder = Encoder::new();
   let value = Value::String("🦀 Rust is awesome! 🚀".to_string());
-  
-  let result = encoder.encode(&value).expect("Failed to encode unicode string");
-  
+
+  let result = encoder
+    .encode(&value)
+    .expect("Failed to encode unicode string");
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -151,9 +155,11 @@ fn test_encode_string_with_unicode() {
 fn test_encode_empty_array() {
   let mut encoder = Encoder::new();
   let value = Value::Array(Vec::new());
-  
-  let result = encoder.encode(&value).expect("Failed to encode empty array");
-  
+
+  let result = encoder
+    .encode(&value)
+    .expect("Failed to encode empty array");
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -169,9 +175,9 @@ fn test_encode_array_with_values() {
     Value::Signed(42),
     Value::String("test".to_string()),
   ]);
-  
+
   let result = encoder.encode(&value).expect("Failed to encode array");
-  
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -183,11 +189,16 @@ fn test_encode_nested_arrays() {
   let mut encoder = Encoder::new();
   let value = Value::Array(vec![
     Value::Array(vec![Value::Signed(1), Value::Signed(2)]),
-    Value::Array(vec![Value::String("a".to_string()), Value::String("b".to_string())]),
+    Value::Array(vec![
+      Value::String("a".to_string()),
+      Value::String("b".to_string()),
+    ]),
   ]);
-  
-  let result = encoder.encode(&value).expect("Failed to encode nested arrays");
-  
+
+  let result = encoder
+    .encode(&value)
+    .expect("Failed to encode nested arrays");
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -198,9 +209,11 @@ fn test_encode_nested_arrays() {
 fn test_encode_empty_object() {
   let mut encoder = Encoder::new();
   let value = Value::Object(HashMap::new());
-  
-  let result = encoder.encode(&value).expect("Failed to encode empty object");
-  
+
+  let result = encoder
+    .encode(&value)
+    .expect("Failed to encode empty object");
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -215,11 +228,11 @@ fn test_encode_object_with_values() {
   obj.insert("bool_key".to_string(), Value::Bool(false));
   obj.insert("number_key".to_string(), Value::Signed(123));
   obj.insert("string_key".to_string(), Value::String("value".to_string()));
-  
+
   let value = Value::Object(obj);
-  
+
   let result = encoder.encode(&value).expect("Failed to encode object");
-  
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -229,18 +242,23 @@ fn test_encode_object_with_values() {
 #[test]
 fn test_encode_nested_objects() {
   let mut encoder = Encoder::new();
-  
+
   let mut inner_obj = HashMap::new();
-  inner_obj.insert("inner_key".to_string(), Value::String("inner_value".to_string()));
-  
+  inner_obj.insert(
+    "inner_key".to_string(),
+    Value::String("inner_value".to_string()),
+  );
+
   let mut outer_obj = HashMap::new();
   outer_obj.insert("outer_key".to_string(), Value::Object(inner_obj));
   outer_obj.insert("simple_key".to_string(), Value::Signed(42));
-  
+
   let value = Value::Object(outer_obj);
-  
-  let result = encoder.encode(&value).expect("Failed to encode nested objects");
-  
+
+  let result = encoder
+    .encode(&value)
+    .expect("Failed to encode nested objects");
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -250,23 +268,28 @@ fn test_encode_nested_objects() {
 #[test]
 fn test_encode_mixed_nested_structure() {
   let mut encoder = Encoder::new();
-  
+
   let mut obj = HashMap::new();
-  obj.insert("array".to_string(), Value::Array(vec![
-    Value::Signed(1),
-    Value::Signed(2),
-    Value::Array(vec![Value::String("nested".to_string())]),
-  ]));
+  obj.insert(
+    "array".to_string(),
+    Value::Array(vec![
+      Value::Signed(1),
+      Value::Signed(2),
+      Value::Array(vec![Value::String("nested".to_string())]),
+    ]),
+  );
   obj.insert("object".to_string(), {
     let mut inner = HashMap::new();
     inner.insert("key".to_string(), Value::Bool(true));
     Value::Object(inner)
   });
-  
+
   let value = Value::Object(obj);
-  
-  let result = encoder.encode(&value).expect("Failed to encode mixed structure");
-  
+
+  let result = encoder
+    .encode(&value)
+    .expect("Failed to encode mixed structure");
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -276,20 +299,24 @@ fn test_encode_mixed_nested_structure() {
 #[test]
 fn test_encoder_reuse() {
   let mut encoder = Encoder::new();
-  
+
   // Encode first value
   let value1 = Value::String("first".to_string());
-  let result1 = encoder.encode(&value1).expect("Failed to encode first value");
-  
+  let result1 = encoder
+    .encode(&value1)
+    .expect("Failed to encode first value");
+
   // Encode second value (should reuse the encoder)
   let value2 = Value::Signed(42);
-  let result2 = encoder.encode(&value2).expect("Failed to encode second value");
-  
+  let result2 = encoder
+    .encode(&value2)
+    .expect("Failed to encode second value");
+
   // Verify both encodings work
   let mut decoder1 = Decoder::new(&result1);
   let decoded1 = decoder1.decode().expect("Failed to decode first");
   assert_eq!(decoded1, value1);
-  
+
   let mut decoder2 = Decoder::new(&result2);
   let decoded2 = decoder2.decode().expect("Failed to decode second");
   assert_eq!(decoded2, value2);
@@ -299,9 +326,11 @@ fn test_encoder_reuse() {
 fn test_encoder_with_capacity() {
   let mut encoder = Encoder::with_capacity(1024);
   let value = Value::String("test".to_string());
-  
-  let result = encoder.encode(&value).expect("Failed to encode with capacity");
-  
+
+  let result = encoder
+    .encode(&value)
+    .expect("Failed to encode with capacity");
+
   // Verify we can decode it back
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -311,16 +340,18 @@ fn test_encoder_with_capacity() {
 #[test]
 fn test_encoder_clear() {
   let mut encoder = Encoder::new();
-  
+
   // Encode a value
   let value = Value::String("test".to_string());
   encoder.encode(&value).expect("Failed to encode");
-  
+
   // Clear and encode another value
   encoder.clear();
   let value2 = Value::Signed(123);
-  let result = encoder.encode(&value2).expect("Failed to encode after clear");
-  
+  let result = encoder
+    .encode(&value2)
+    .expect("Failed to encode after clear");
+
   // Verify the second encoding works
   let mut decoder = Decoder::new(&result);
   let decoded = decoder.decode().expect("Failed to decode");
@@ -331,13 +362,13 @@ fn test_encoder_clear() {
 fn test_encoder_buffer_access() {
   let mut encoder = Encoder::new();
   let value = Value::String("test".to_string());
-  
+
   encoder.encode(&value).expect("Failed to encode");
-  
+
   // Access buffer without consuming encoder
   let buffer = encoder.buffer();
   assert!(!buffer.is_empty());
-  
+
   // Verify we can still use the encoder
   let value2 = Value::Signed(456);
   encoder.encode(&value2).expect("Failed to encode again");
@@ -346,24 +377,30 @@ fn test_encoder_buffer_access() {
 #[test]
 fn test_encode_large_numbers() {
   let mut encoder = Encoder::new();
-  
+
   // Test large positive signed
   let value1 = Value::Signed(i64::MAX);
-  let result1 = encoder.encode(&value1).expect("Failed to encode large positive");
+  let result1 = encoder
+    .encode(&value1)
+    .expect("Failed to encode large positive");
   let mut decoder1 = Decoder::new(&result1);
   let decoded1 = decoder1.decode().expect("Failed to decode");
   assert_eq!(decoded1, value1);
-  
+
   // Test large negative signed
   let value2 = Value::Signed(i64::MIN);
-  let result2 = encoder.encode(&value2).expect("Failed to encode large negative");
+  let result2 = encoder
+    .encode(&value2)
+    .expect("Failed to encode large negative");
   let mut decoder2 = Decoder::new(&result2);
   let decoded2 = decoder2.decode().expect("Failed to decode");
   assert_eq!(decoded2, value2);
-  
+
   // Test large unsigned that requires staying unsigned
   let value3 = Value::Unsigned(u64::MAX);
-  let result3 = encoder.encode(&value3).expect("Failed to encode large unsigned");
+  let result3 = encoder
+    .encode(&value3)
+    .expect("Failed to encode large unsigned");
   let mut decoder3 = Decoder::new(&result3);
   let decoded3 = decoder3.decode().expect("Failed to decode");
   assert_eq!(decoded3, value3); // u64::MAX cannot fit in i64, so should stay unsigned
@@ -372,35 +409,39 @@ fn test_encode_large_numbers() {
 #[test]
 fn test_encode_special_floats() {
   let mut encoder = Encoder::new();
-  
+
   // Test zero
   let value1 = Value::Float(0.0);
   let result1 = encoder.encode(&value1).expect("Failed to encode zero");
   let mut decoder1 = Decoder::new(&result1);
   let decoded1 = decoder1.decode().expect("Failed to decode");
   assert_eq!(decoded1, value1);
-  
+
   // Test negative zero
   let value2 = Value::Float(-0.0);
-  let result2 = encoder.encode(&value2).expect("Failed to encode negative zero");
+  let result2 = encoder
+    .encode(&value2)
+    .expect("Failed to encode negative zero");
   let mut decoder2 = Decoder::new(&result2);
   let decoded2 = decoder2.decode().expect("Failed to decode");
   assert_eq!(decoded2, value2);
-  
+
   // Test infinity
   let value3 = Value::Float(f64::INFINITY);
   let result3 = encoder.encode(&value3).expect("Failed to encode infinity");
   let mut decoder3 = Decoder::new(&result3);
   let decoded3 = decoder3.decode().expect("Failed to decode");
   assert_eq!(decoded3, value3);
-  
+
   // Test negative infinity
   let value4 = Value::Float(f64::NEG_INFINITY);
-  let result4 = encoder.encode(&value4).expect("Failed to encode negative infinity");
+  let result4 = encoder
+    .encode(&value4)
+    .expect("Failed to encode negative infinity");
   let mut decoder4 = Decoder::new(&result4);
   let decoded4 = decoder4.decode().expect("Failed to decode");
   assert_eq!(decoded4, value4);
-  
+
   // Test NaN (Note: NaN != NaN, so we need special handling)
   let value5 = Value::Float(f64::NAN);
   let result5 = encoder.encode(&value5).expect("Failed to encode NaN");
@@ -410,5 +451,314 @@ fn test_encode_special_floats() {
     assert!(f.is_nan());
   } else {
     panic!("Expected Float value");
+  }
+}
+
+#[test]
+fn test_encode_deeply_nested_mixed_structures() {
+  let mut encoder = Encoder::new();
+
+  // Build a complex deeply nested structure with mixed arrays and objects
+  let mut root_obj = HashMap::new();
+
+  // Add a deeply nested array structure (5 levels deep)
+  let deep_array = Value::Array(vec![
+    Value::Array(vec![
+      Value::Array(vec![
+        Value::Array(vec![
+          Value::Array(vec![
+            Value::Signed(42),
+            Value::String("deep".to_string()),
+            Value::Bool(true),
+          ]),
+          Value::Null,
+        ]),
+        Value::Float(3.14159),
+      ]),
+      Value::String("level3".to_string()),
+    ]),
+    Value::Signed(100),
+  ]);
+  root_obj.insert("deep_arrays".to_string(), deep_array);
+
+  // Add a mixed object-array-object structure
+  let mut level1_obj = HashMap::new();
+  level1_obj.insert(
+    "data".to_string(),
+    Value::Array(vec![
+      Value::Signed(1),
+      Value::Signed(2),
+      {
+        let mut nested_obj = HashMap::new();
+        nested_obj.insert(
+          "inner".to_string(),
+          Value::Array(vec![Value::String("nested_string".to_string()), {
+            let mut deep_obj = HashMap::new();
+            deep_obj.insert("deepest".to_string(), Value::Bool(false));
+            deep_obj.insert(
+              "numbers".to_string(),
+              Value::Array(vec![
+                Value::Unsigned(u64::MAX), // Use a value that won't fit in i64
+                Value::Float(-123.456),
+                Value::Signed(-789),
+              ]),
+            );
+            Value::Object(deep_obj)
+          }]),
+        );
+        nested_obj.insert("sibling".to_string(), Value::Null);
+        Value::Object(nested_obj)
+      },
+      Value::String("after_object".to_string()),
+    ]),
+  );
+  level1_obj.insert("metadata".to_string(), Value::String("info".to_string()));
+  root_obj.insert("mixed_structure".to_string(), Value::Object(level1_obj));
+
+  // Add an array of objects with various data types
+  let objects_array = Value::Array(vec![
+    {
+      let mut obj1 = HashMap::new();
+      obj1.insert("type".to_string(), Value::String("first".to_string()));
+      obj1.insert("value".to_string(), Value::Signed(123));
+      obj1.insert("active".to_string(), Value::Bool(true));
+      Value::Object(obj1)
+    },
+    {
+      let mut obj2 = HashMap::new();
+      obj2.insert("type".to_string(), Value::String("second".to_string()));
+      obj2.insert(
+        "coordinates".to_string(),
+        Value::Array(vec![
+          Value::Float(12.34),
+          Value::Float(56.78),
+          Value::Float(90.12),
+        ]),
+      );
+      obj2.insert(
+        "tags".to_string(),
+        Value::Array(vec![
+          Value::String("tag1".to_string()),
+          Value::String("tag2".to_string()),
+        ]),
+      );
+      Value::Object(obj2)
+    },
+    {
+      let mut obj3 = HashMap::new();
+      obj3.insert("type".to_string(), Value::String("third".to_string()));
+      obj3.insert("empty_array".to_string(), Value::Array(vec![]));
+      obj3.insert("empty_object".to_string(), Value::Object(HashMap::new()));
+      obj3.insert("null_value".to_string(), Value::Null);
+      Value::Object(obj3)
+    },
+  ]);
+  root_obj.insert("object_array".to_string(), objects_array);
+
+  // Add some simple values for completeness
+  root_obj.insert(
+    "simple_string".to_string(),
+    Value::String("simple".to_string()),
+  );
+  root_obj.insert("simple_number".to_string(), Value::Signed(999));
+  root_obj.insert("simple_bool".to_string(), Value::Bool(false));
+  root_obj.insert("simple_null".to_string(), Value::Null);
+
+  let complex_value = Value::Object(root_obj);
+
+  // Encode the complex structure
+  let result = encoder
+    .encode(&complex_value)
+    .expect("Failed to encode deeply nested structure");
+
+  // Verify we can decode it back
+  let mut decoder = Decoder::new(&result);
+  let decoded = decoder
+    .decode()
+    .expect("Failed to decode deeply nested structure");
+
+  // Since HashMap order is not guaranteed, we'll verify the structure piece by piece
+  // instead of doing a direct equality check
+  if let Value::Object(root) = &decoded {
+    // Verify the structure has the expected keys
+    assert_eq!(root.len(), 7); // Should have 7 top-level keys
+    assert!(root.contains_key("deep_arrays"));
+    assert!(root.contains_key("mixed_structure"));
+    assert!(root.contains_key("object_array"));
+    assert!(root.contains_key("simple_string"));
+    assert!(root.contains_key("simple_number"));
+    assert!(root.contains_key("simple_bool"));
+    assert!(root.contains_key("simple_null"));
+
+    // Verify the deeply nested array structure
+    if let Value::Array(deep_arrays) = root.get("deep_arrays").unwrap() {
+      assert_eq!(deep_arrays.len(), 2);
+      assert_eq!(deep_arrays[1], Value::Signed(100));
+
+      if let Value::Array(level1) = &deep_arrays[0] {
+        assert_eq!(level1.len(), 2);
+        assert_eq!(level1[1], Value::String("level3".to_string()));
+
+        if let Value::Array(level2) = &level1[0] {
+          assert_eq!(level2.len(), 2);
+          assert_eq!(level2[1], Value::Float(3.14159));
+
+          if let Value::Array(level3) = &level2[0] {
+            assert_eq!(level3.len(), 2);
+            assert_eq!(level3[1], Value::Null);
+
+            if let Value::Array(level4) = &level3[0] {
+              assert_eq!(level4.len(), 3); // This array has 3 elements
+              assert_eq!(level4[0], Value::Signed(42));
+              assert_eq!(level4[1], Value::String("deep".to_string()));
+              assert_eq!(level4[2], Value::Bool(true));
+            } else {
+              panic!("Expected array at level 4");
+            }
+          } else {
+            panic!("Expected array at level 3");
+          }
+        } else {
+          panic!("Expected array at level 2");
+        }
+      } else {
+        panic!("Expected array at level 1");
+      }
+    } else {
+      panic!("Expected array for deep_arrays");
+    }
+
+    // Verify the mixed structure
+    if let Value::Object(mixed) = root.get("mixed_structure").unwrap() {
+      assert_eq!(mixed.len(), 2);
+      assert_eq!(
+        mixed.get("metadata").unwrap(),
+        &Value::String("info".to_string())
+      );
+
+      if let Value::Array(data_array) = mixed.get("data").unwrap() {
+        assert_eq!(data_array.len(), 4);
+        assert_eq!(data_array[0], Value::Signed(1));
+        assert_eq!(data_array[1], Value::Signed(2));
+        assert_eq!(data_array[3], Value::String("after_object".to_string()));
+
+        if let Value::Object(nested_obj) = &data_array[2] {
+          assert_eq!(nested_obj.len(), 2);
+          assert_eq!(nested_obj.get("sibling").unwrap(), &Value::Null);
+
+          if let Value::Array(inner_array) = nested_obj.get("inner").unwrap() {
+            assert_eq!(inner_array.len(), 2);
+            assert_eq!(inner_array[0], Value::String("nested_string".to_string()));
+
+            if let Value::Object(deep_obj) = &inner_array[1] {
+              assert_eq!(deep_obj.len(), 2);
+              assert_eq!(deep_obj.get("deepest").unwrap(), &Value::Bool(false));
+
+              if let Value::Array(numbers) = deep_obj.get("numbers").unwrap() {
+                assert_eq!(numbers.len(), 3);
+                assert_eq!(numbers[0], Value::Unsigned(u64::MAX)); // Should stay unsigned
+                assert_eq!(numbers[1], Value::Float(-123.456));
+                assert_eq!(numbers[2], Value::Signed(-789));
+              } else {
+                panic!("Expected array for numbers");
+              }
+            } else {
+              panic!("Expected object in inner array");
+            }
+          } else {
+            panic!("Expected array for inner");
+          }
+        } else {
+          panic!("Expected object in data array");
+        }
+      } else {
+        panic!("Expected array for data");
+      }
+    } else {
+      panic!("Expected object for mixed_structure");
+    }
+
+    // Verify the array of objects
+    if let Value::Array(obj_array) = root.get("object_array").unwrap() {
+      assert_eq!(obj_array.len(), 3);
+
+      // Check first object
+      if let Value::Object(obj1) = &obj_array[0] {
+        assert_eq!(obj1.len(), 3);
+        assert_eq!(
+          obj1.get("type").unwrap(),
+          &Value::String("first".to_string())
+        );
+        assert_eq!(obj1.get("value").unwrap(), &Value::Signed(123));
+        assert_eq!(obj1.get("active").unwrap(), &Value::Bool(true));
+      } else {
+        panic!("Expected object at index 0");
+      }
+
+      // Check second object with nested arrays
+      if let Value::Object(obj2) = &obj_array[1] {
+        assert_eq!(obj2.len(), 3);
+        assert_eq!(
+          obj2.get("type").unwrap(),
+          &Value::String("second".to_string())
+        );
+
+        if let Value::Array(coords) = obj2.get("coordinates").unwrap() {
+          assert_eq!(coords.len(), 3);
+          assert_eq!(coords[0], Value::Float(12.34));
+          assert_eq!(coords[1], Value::Float(56.78));
+          assert_eq!(coords[2], Value::Float(90.12));
+        } else {
+          panic!("Expected array for coordinates");
+        }
+
+        if let Value::Array(tags) = obj2.get("tags").unwrap() {
+          assert_eq!(tags.len(), 2);
+          assert_eq!(tags[0], Value::String("tag1".to_string()));
+          assert_eq!(tags[1], Value::String("tag2".to_string()));
+        } else {
+          panic!("Expected array for tags");
+        }
+      } else {
+        panic!("Expected object at index 1");
+      }
+
+      // Check third object with empty containers
+      if let Value::Object(obj3) = &obj_array[2] {
+        assert_eq!(obj3.len(), 4);
+        assert_eq!(
+          obj3.get("type").unwrap(),
+          &Value::String("third".to_string())
+        );
+        assert_eq!(obj3.get("null_value").unwrap(), &Value::Null);
+
+        if let Value::Array(empty_arr) = obj3.get("empty_array").unwrap() {
+          assert!(empty_arr.is_empty());
+        } else {
+          panic!("Expected array for empty_array");
+        }
+
+        if let Value::Object(empty_obj) = obj3.get("empty_object").unwrap() {
+          assert!(empty_obj.is_empty());
+        } else {
+          panic!("Expected object for empty_object");
+        }
+      } else {
+        panic!("Expected object at index 2");
+      }
+    } else {
+      panic!("Expected array for object_array");
+    }
+
+    // Verify simple values are preserved
+    assert_eq!(
+      root.get("simple_string").unwrap(),
+      &Value::String("simple".to_string())
+    );
+    assert_eq!(root.get("simple_number").unwrap(), &Value::Signed(999));
+    assert_eq!(root.get("simple_bool").unwrap(), &Value::Bool(false));
+    assert_eq!(root.get("simple_null").unwrap(), &Value::Null);
+  } else {
+    panic!("Expected root object");
   }
 }
