@@ -3,6 +3,7 @@
 
 // @generated
 
+use crate::common_generated::*;
 use core::mem;
 use core::cmp::Ordering;
 
@@ -12,6 +13,7 @@ use self::flatbuffers::{EndianScalar, Follow};
 #[allow(unused_imports, dead_code)]
 pub mod bitdrift_public {
 
+  use crate::common_generated::*;
   use core::mem;
   use core::cmp::Ordering;
 
@@ -20,6 +22,7 @@ pub mod bitdrift_public {
 #[allow(unused_imports, dead_code)]
 pub mod fbs {
 
+  use crate::common_generated::*;
   use core::mem;
   use core::cmp::Ordering;
 
@@ -28,6 +31,7 @@ pub mod fbs {
 #[allow(unused_imports, dead_code)]
 pub mod issue_reporting {
 
+  use crate::common_generated::*;
   use core::mem;
   use core::cmp::Ordering;
 
@@ -36,6 +40,7 @@ pub mod issue_reporting {
 #[allow(unused_imports, dead_code)]
 pub mod v_1 {
 
+  use crate::common_generated::*;
   use core::mem;
   use core::cmp::Ordering;
 
@@ -1297,6 +1302,120 @@ impl core::fmt::Debug for AppBuildNumber<'_> {
       ds.finish()
   }
 }
+pub enum ProcessorUsageOffset {}
+#[derive(Copy, Clone, PartialEq)]
+
+pub struct ProcessorUsage<'a> {
+  pub _tab: flatbuffers::Table<'a>,
+}
+
+impl<'a> flatbuffers::Follow<'a> for ProcessorUsage<'a> {
+  type Inner = ProcessorUsage<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: flatbuffers::Table::new(buf, loc) }
+  }
+}
+
+impl<'a> ProcessorUsage<'a> {
+  pub const VT_DURATION_SECONDS: flatbuffers::VOffsetT = 4;
+  pub const VT_USED_PERCENT: flatbuffers::VOffsetT = 6;
+
+  #[inline]
+  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
+    ProcessorUsage { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args ProcessorUsageArgs
+  ) -> flatbuffers::WIPOffset<ProcessorUsage<'bldr>> {
+    let mut builder = ProcessorUsageBuilder::new(_fbb);
+    builder.add_duration_seconds(args.duration_seconds);
+    builder.add_used_percent(args.used_percent);
+    builder.finish()
+  }
+
+
+  #[inline]
+  pub fn duration_seconds(&self) -> u64 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u64>(ProcessorUsage::VT_DURATION_SECONDS, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn used_percent(&self) -> u8 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u8>(ProcessorUsage::VT_USED_PERCENT, Some(0)).unwrap()}
+  }
+}
+
+impl flatbuffers::Verifiable for ProcessorUsage<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    v.visit_table(pos)?
+     .visit_field::<u64>("duration_seconds", Self::VT_DURATION_SECONDS, false)?
+     .visit_field::<u8>("used_percent", Self::VT_USED_PERCENT, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct ProcessorUsageArgs {
+    pub duration_seconds: u64,
+    pub used_percent: u8,
+}
+impl<'a> Default for ProcessorUsageArgs {
+  #[inline]
+  fn default() -> Self {
+    ProcessorUsageArgs {
+      duration_seconds: 0,
+      used_percent: 0,
+    }
+  }
+}
+
+pub struct ProcessorUsageBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> ProcessorUsageBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_duration_seconds(&mut self, duration_seconds: u64) {
+    self.fbb_.push_slot::<u64>(ProcessorUsage::VT_DURATION_SECONDS, duration_seconds, 0);
+  }
+  #[inline]
+  pub fn add_used_percent(&mut self, used_percent: u8) {
+    self.fbb_.push_slot::<u8>(ProcessorUsage::VT_USED_PERCENT, used_percent, 0);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> ProcessorUsageBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    ProcessorUsageBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> flatbuffers::WIPOffset<ProcessorUsage<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    flatbuffers::WIPOffset::new(o.value())
+  }
+}
+
+impl core::fmt::Debug for ProcessorUsage<'_> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    let mut ds = f.debug_struct("ProcessorUsage");
+      ds.field("duration_seconds", &self.duration_seconds());
+      ds.field("used_percent", &self.used_percent());
+      ds.finish()
+  }
+}
 pub enum AppMetricsOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -1318,6 +1437,10 @@ impl<'a> AppMetrics<'a> {
   pub const VT_VERSION: flatbuffers::VOffsetT = 8;
   pub const VT_BUILD_NUMBER: flatbuffers::VOffsetT = 10;
   pub const VT_RUNNING_STATE: flatbuffers::VOffsetT = 12;
+  pub const VT_PROCESS_ID: flatbuffers::VOffsetT = 14;
+  pub const VT_REGION_FORMAT: flatbuffers::VOffsetT = 16;
+  pub const VT_CPU_USAGE: flatbuffers::VOffsetT = 18;
+  pub const VT_LIFECYCLE_EVENT: flatbuffers::VOffsetT = 20;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -1329,6 +1452,10 @@ impl<'a> AppMetrics<'a> {
     args: &'args AppMetricsArgs<'args>
   ) -> flatbuffers::WIPOffset<AppMetrics<'bldr>> {
     let mut builder = AppMetricsBuilder::new(_fbb);
+    if let Some(x) = args.lifecycle_event { builder.add_lifecycle_event(x); }
+    if let Some(x) = args.cpu_usage { builder.add_cpu_usage(x); }
+    if let Some(x) = args.region_format { builder.add_region_format(x); }
+    builder.add_process_id(args.process_id);
     if let Some(x) = args.running_state { builder.add_running_state(x); }
     if let Some(x) = args.build_number { builder.add_build_number(x); }
     if let Some(x) = args.version { builder.add_version(x); }
@@ -1373,6 +1500,34 @@ impl<'a> AppMetrics<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(AppMetrics::VT_RUNNING_STATE, None)}
   }
+  #[inline]
+  pub fn process_id(&self) -> u32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u32>(AppMetrics::VT_PROCESS_ID, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn region_format(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(AppMetrics::VT_REGION_FORMAT, None)}
+  }
+  #[inline]
+  pub fn cpu_usage(&self) -> Option<ProcessorUsage<'a>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<ProcessorUsage>>(AppMetrics::VT_CPU_USAGE, None)}
+  }
+  #[inline]
+  pub fn lifecycle_event(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(AppMetrics::VT_LIFECYCLE_EVENT, None)}
+  }
 }
 
 impl flatbuffers::Verifiable for AppMetrics<'_> {
@@ -1387,6 +1542,10 @@ impl flatbuffers::Verifiable for AppMetrics<'_> {
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("version", Self::VT_VERSION, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<AppBuildNumber>>("build_number", Self::VT_BUILD_NUMBER, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("running_state", Self::VT_RUNNING_STATE, false)?
+     .visit_field::<u32>("process_id", Self::VT_PROCESS_ID, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("region_format", Self::VT_REGION_FORMAT, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<ProcessorUsage>>("cpu_usage", Self::VT_CPU_USAGE, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("lifecycle_event", Self::VT_LIFECYCLE_EVENT, false)?
      .finish();
     Ok(())
   }
@@ -1397,6 +1556,10 @@ pub struct AppMetricsArgs<'a> {
     pub version: Option<flatbuffers::WIPOffset<&'a str>>,
     pub build_number: Option<flatbuffers::WIPOffset<AppBuildNumber<'a>>>,
     pub running_state: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub process_id: u32,
+    pub region_format: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub cpu_usage: Option<flatbuffers::WIPOffset<ProcessorUsage<'a>>>,
+    pub lifecycle_event: Option<flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for AppMetricsArgs<'a> {
   #[inline]
@@ -1407,6 +1570,10 @@ impl<'a> Default for AppMetricsArgs<'a> {
       version: None,
       build_number: None,
       running_state: None,
+      process_id: 0,
+      region_format: None,
+      cpu_usage: None,
+      lifecycle_event: None,
     }
   }
 }
@@ -1437,6 +1604,22 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> AppMetricsBuilder<'a, 'b, A> {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(AppMetrics::VT_RUNNING_STATE, running_state);
   }
   #[inline]
+  pub fn add_process_id(&mut self, process_id: u32) {
+    self.fbb_.push_slot::<u32>(AppMetrics::VT_PROCESS_ID, process_id, 0);
+  }
+  #[inline]
+  pub fn add_region_format(&mut self, region_format: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(AppMetrics::VT_REGION_FORMAT, region_format);
+  }
+  #[inline]
+  pub fn add_cpu_usage(&mut self, cpu_usage: flatbuffers::WIPOffset<ProcessorUsage<'b >>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<ProcessorUsage>>(AppMetrics::VT_CPU_USAGE, cpu_usage);
+  }
+  #[inline]
+  pub fn add_lifecycle_event(&mut self, lifecycle_event: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(AppMetrics::VT_LIFECYCLE_EVENT, lifecycle_event);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> AppMetricsBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     AppMetricsBuilder {
@@ -1459,6 +1642,10 @@ impl core::fmt::Debug for AppMetrics<'_> {
       ds.field("version", &self.version());
       ds.field("build_number", &self.build_number());
       ds.field("running_state", &self.running_state());
+      ds.field("process_id", &self.process_id());
+      ds.field("region_format", &self.region_format());
+      ds.field("cpu_usage", &self.cpu_usage());
+      ds.field("lifecycle_event", &self.lifecycle_event());
       ds.finish()
   }
 }
@@ -1883,6 +2070,9 @@ impl<'a> DeviceMetrics<'a> {
   pub const VT_OS_BUILD: flatbuffers::VOffsetT = 22;
   pub const VT_PLATFORM: flatbuffers::VOffsetT = 24;
   pub const VT_CPU_ABIS: flatbuffers::VOffsetT = 26;
+  pub const VT_LOW_POWER_MODE_ENABLED: flatbuffers::VOffsetT = 28;
+  pub const VT_CPU_USAGE: flatbuffers::VOffsetT = 30;
+  pub const VT_THERMAL_STATE: flatbuffers::VOffsetT = 32;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -1894,6 +2084,7 @@ impl<'a> DeviceMetrics<'a> {
     args: &'args DeviceMetricsArgs<'args>
   ) -> flatbuffers::WIPOffset<DeviceMetrics<'bldr>> {
     let mut builder = DeviceMetricsBuilder::new(_fbb);
+    if let Some(x) = args.cpu_usage { builder.add_cpu_usage(x); }
     if let Some(x) = args.cpu_abis { builder.add_cpu_abis(x); }
     if let Some(x) = args.os_build { builder.add_os_build(x); }
     if let Some(x) = args.model { builder.add_model(x); }
@@ -1902,6 +2093,8 @@ impl<'a> DeviceMetrics<'a> {
     if let Some(x) = args.power_metrics { builder.add_power_metrics(x); }
     if let Some(x) = args.timezone { builder.add_timezone(x); }
     if let Some(x) = args.time { builder.add_time(x); }
+    builder.add_thermal_state(args.thermal_state);
+    builder.add_low_power_mode_enabled(args.low_power_mode_enabled);
     builder.add_platform(args.platform);
     builder.add_arch(args.arch);
     builder.add_rotation(args.rotation);
@@ -1994,6 +2187,27 @@ impl<'a> DeviceMetrics<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<&'a str>>>>(DeviceMetrics::VT_CPU_ABIS, None)}
   }
+  #[inline]
+  pub fn low_power_mode_enabled(&self) -> bool {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<bool>(DeviceMetrics::VT_LOW_POWER_MODE_ENABLED, Some(false)).unwrap()}
+  }
+  #[inline]
+  pub fn cpu_usage(&self) -> Option<ProcessorUsage<'a>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<ProcessorUsage>>(DeviceMetrics::VT_CPU_USAGE, None)}
+  }
+  #[inline]
+  pub fn thermal_state(&self) -> u8 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u8>(DeviceMetrics::VT_THERMAL_STATE, Some(0)).unwrap()}
+  }
 }
 
 impl flatbuffers::Verifiable for DeviceMetrics<'_> {
@@ -2015,6 +2229,9 @@ impl flatbuffers::Verifiable for DeviceMetrics<'_> {
      .visit_field::<flatbuffers::ForwardsUOffset<OSBuild>>("os_build", Self::VT_OS_BUILD, false)?
      .visit_field::<Platform>("platform", Self::VT_PLATFORM, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&'_ str>>>>("cpu_abis", Self::VT_CPU_ABIS, false)?
+     .visit_field::<bool>("low_power_mode_enabled", Self::VT_LOW_POWER_MODE_ENABLED, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<ProcessorUsage>>("cpu_usage", Self::VT_CPU_USAGE, false)?
+     .visit_field::<u8>("thermal_state", Self::VT_THERMAL_STATE, false)?
      .finish();
     Ok(())
   }
@@ -2032,6 +2249,9 @@ pub struct DeviceMetricsArgs<'a> {
     pub os_build: Option<flatbuffers::WIPOffset<OSBuild<'a>>>,
     pub platform: Platform,
     pub cpu_abis: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<&'a str>>>>,
+    pub low_power_mode_enabled: bool,
+    pub cpu_usage: Option<flatbuffers::WIPOffset<ProcessorUsage<'a>>>,
+    pub thermal_state: u8,
 }
 impl<'a> Default for DeviceMetricsArgs<'a> {
   #[inline]
@@ -2049,6 +2269,9 @@ impl<'a> Default for DeviceMetricsArgs<'a> {
       os_build: None,
       platform: Platform::Unknown,
       cpu_abis: None,
+      low_power_mode_enabled: false,
+      cpu_usage: None,
+      thermal_state: 0,
     }
   }
 }
@@ -2107,6 +2330,18 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> DeviceMetricsBuilder<'a, 'b, A>
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(DeviceMetrics::VT_CPU_ABIS, cpu_abis);
   }
   #[inline]
+  pub fn add_low_power_mode_enabled(&mut self, low_power_mode_enabled: bool) {
+    self.fbb_.push_slot::<bool>(DeviceMetrics::VT_LOW_POWER_MODE_ENABLED, low_power_mode_enabled, false);
+  }
+  #[inline]
+  pub fn add_cpu_usage(&mut self, cpu_usage: flatbuffers::WIPOffset<ProcessorUsage<'b >>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<ProcessorUsage>>(DeviceMetrics::VT_CPU_USAGE, cpu_usage);
+  }
+  #[inline]
+  pub fn add_thermal_state(&mut self, thermal_state: u8) {
+    self.fbb_.push_slot::<u8>(DeviceMetrics::VT_THERMAL_STATE, thermal_state, 0);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> DeviceMetricsBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     DeviceMetricsBuilder {
@@ -2136,6 +2371,9 @@ impl core::fmt::Debug for DeviceMetrics<'_> {
       ds.field("os_build", &self.os_build());
       ds.field("platform", &self.platform());
       ds.field("cpu_abis", &self.cpu_abis());
+      ds.field("low_power_mode_enabled", &self.low_power_mode_enabled());
+      ds.field("cpu_usage", &self.cpu_usage());
+      ds.field("thermal_state", &self.thermal_state());
       ds.finish()
   }
 }
@@ -2708,6 +2946,7 @@ impl<'a> Thread<'a> {
   pub const VT_PRIORITY: flatbuffers::VOffsetT = 12;
   pub const VT_QUALITY_OF_SERVICE: flatbuffers::VOffsetT = 14;
   pub const VT_STACK_TRACE: flatbuffers::VOffsetT = 16;
+  pub const VT_SUMMARY: flatbuffers::VOffsetT = 18;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -2719,6 +2958,7 @@ impl<'a> Thread<'a> {
     args: &'args ThreadArgs<'args>
   ) -> flatbuffers::WIPOffset<Thread<'bldr>> {
     let mut builder = ThreadBuilder::new(_fbb);
+    if let Some(x) = args.summary { builder.add_summary(x); }
     if let Some(x) = args.stack_trace { builder.add_stack_trace(x); }
     builder.add_priority(args.priority);
     if let Some(x) = args.state { builder.add_state(x); }
@@ -2779,6 +3019,13 @@ impl<'a> Thread<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<Frame>>>>(Thread::VT_STACK_TRACE, None)}
   }
+  #[inline]
+  pub fn summary(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(Thread::VT_SUMMARY, None)}
+  }
 }
 
 impl flatbuffers::Verifiable for Thread<'_> {
@@ -2795,6 +3042,7 @@ impl flatbuffers::Verifiable for Thread<'_> {
      .visit_field::<f32>("priority", Self::VT_PRIORITY, false)?
      .visit_field::<i8>("quality_of_service", Self::VT_QUALITY_OF_SERVICE, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<Frame>>>>("stack_trace", Self::VT_STACK_TRACE, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("summary", Self::VT_SUMMARY, false)?
      .finish();
     Ok(())
   }
@@ -2807,6 +3055,7 @@ pub struct ThreadArgs<'a> {
     pub priority: f32,
     pub quality_of_service: i8,
     pub stack_trace: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<Frame<'a>>>>>,
+    pub summary: Option<flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for ThreadArgs<'a> {
   #[inline]
@@ -2819,6 +3068,7 @@ impl<'a> Default for ThreadArgs<'a> {
       priority: 0.0,
       quality_of_service: -1,
       stack_trace: None,
+      summary: None,
     }
   }
 }
@@ -2857,6 +3107,10 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> ThreadBuilder<'a, 'b, A> {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Thread::VT_STACK_TRACE, stack_trace);
   }
   #[inline]
+  pub fn add_summary(&mut self, summary: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Thread::VT_SUMMARY, summary);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> ThreadBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     ThreadBuilder {
@@ -2881,6 +3135,7 @@ impl core::fmt::Debug for Thread<'_> {
       ds.field("priority", &self.priority());
       ds.field("quality_of_service", &self.quality_of_service());
       ds.field("stack_trace", &self.stack_trace());
+      ds.field("summary", &self.summary());
       ds.finish()
   }
 }
@@ -3391,6 +3646,120 @@ impl core::fmt::Debug for SDKInfo<'_> {
       ds.finish()
   }
 }
+pub enum FeatureFlagOffset {}
+#[derive(Copy, Clone, PartialEq)]
+
+pub struct FeatureFlag<'a> {
+  pub _tab: flatbuffers::Table<'a>,
+}
+
+impl<'a> flatbuffers::Follow<'a> for FeatureFlag<'a> {
+  type Inner = FeatureFlag<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: flatbuffers::Table::new(buf, loc) }
+  }
+}
+
+impl<'a> FeatureFlag<'a> {
+  pub const VT_NAME: flatbuffers::VOffsetT = 4;
+  pub const VT_VALUE: flatbuffers::VOffsetT = 6;
+
+  #[inline]
+  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
+    FeatureFlag { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args FeatureFlagArgs<'args>
+  ) -> flatbuffers::WIPOffset<FeatureFlag<'bldr>> {
+    let mut builder = FeatureFlagBuilder::new(_fbb);
+    if let Some(x) = args.value { builder.add_value(x); }
+    if let Some(x) = args.name { builder.add_name(x); }
+    builder.finish()
+  }
+
+
+  #[inline]
+  pub fn name(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(FeatureFlag::VT_NAME, None)}
+  }
+  #[inline]
+  pub fn value(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(FeatureFlag::VT_VALUE, None)}
+  }
+}
+
+impl flatbuffers::Verifiable for FeatureFlag<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    v.visit_table(pos)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("value", Self::VT_VALUE, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct FeatureFlagArgs<'a> {
+    pub name: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub value: Option<flatbuffers::WIPOffset<&'a str>>,
+}
+impl<'a> Default for FeatureFlagArgs<'a> {
+  #[inline]
+  fn default() -> Self {
+    FeatureFlagArgs {
+      name: None,
+      value: None,
+    }
+  }
+}
+
+pub struct FeatureFlagBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> FeatureFlagBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_name(&mut self, name: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(FeatureFlag::VT_NAME, name);
+  }
+  #[inline]
+  pub fn add_value(&mut self, value: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(FeatureFlag::VT_VALUE, value);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> FeatureFlagBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    FeatureFlagBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> flatbuffers::WIPOffset<FeatureFlag<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    flatbuffers::WIPOffset::new(o.value())
+  }
+}
+
+impl core::fmt::Debug for FeatureFlag<'_> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    let mut ds = f.debug_struct("FeatureFlag");
+      ds.field("name", &self.name());
+      ds.field("value", &self.value());
+      ds.finish()
+  }
+}
 pub enum ReportOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -3414,6 +3783,8 @@ impl<'a> Report<'a> {
   pub const VT_ERRORS: flatbuffers::VOffsetT = 12;
   pub const VT_THREAD_DETAILS: flatbuffers::VOffsetT = 14;
   pub const VT_BINARY_IMAGES: flatbuffers::VOffsetT = 16;
+  pub const VT_STATE: flatbuffers::VOffsetT = 18;
+  pub const VT_FEATURE_FLAGS: flatbuffers::VOffsetT = 20;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -3425,6 +3796,8 @@ impl<'a> Report<'a> {
     args: &'args ReportArgs<'args>
   ) -> flatbuffers::WIPOffset<Report<'bldr>> {
     let mut builder = ReportBuilder::new(_fbb);
+    if let Some(x) = args.feature_flags { builder.add_feature_flags(x); }
+    if let Some(x) = args.state { builder.add_state(x); }
     if let Some(x) = args.binary_images { builder.add_binary_images(x); }
     if let Some(x) = args.thread_details { builder.add_thread_details(x); }
     if let Some(x) = args.errors { builder.add_errors(x); }
@@ -3485,6 +3858,20 @@ impl<'a> Report<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<BinaryImage>>>>(Report::VT_BINARY_IMAGES, None)}
   }
+  #[inline]
+  pub fn state(&self) -> Option<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'a>>>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field>>>>(Report::VT_STATE, None)}
+  }
+  #[inline]
+  pub fn feature_flags(&self) -> Option<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<FeatureFlag<'a>>>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<FeatureFlag>>>>(Report::VT_FEATURE_FLAGS, None)}
+  }
 }
 
 impl flatbuffers::Verifiable for Report<'_> {
@@ -3501,6 +3888,8 @@ impl flatbuffers::Verifiable for Report<'_> {
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<Error>>>>("errors", Self::VT_ERRORS, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<ThreadDetails>>("thread_details", Self::VT_THREAD_DETAILS, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<BinaryImage>>>>("binary_images", Self::VT_BINARY_IMAGES, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field>>>>("state", Self::VT_STATE, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<FeatureFlag>>>>("feature_flags", Self::VT_FEATURE_FLAGS, false)?
      .finish();
     Ok(())
   }
@@ -3513,6 +3902,8 @@ pub struct ReportArgs<'a> {
     pub errors: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<Error<'a>>>>>,
     pub thread_details: Option<flatbuffers::WIPOffset<ThreadDetails<'a>>>,
     pub binary_images: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<BinaryImage<'a>>>>>,
+    pub state: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'a>>>>>,
+    pub feature_flags: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<FeatureFlag<'a>>>>>,
 }
 impl<'a> Default for ReportArgs<'a> {
   #[inline]
@@ -3525,6 +3916,8 @@ impl<'a> Default for ReportArgs<'a> {
       errors: None,
       thread_details: None,
       binary_images: None,
+      state: None,
+      feature_flags: None,
     }
   }
 }
@@ -3563,6 +3956,14 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> ReportBuilder<'a, 'b, A> {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Report::VT_BINARY_IMAGES, binary_images);
   }
   #[inline]
+  pub fn add_state(&mut self, state: flatbuffers::WIPOffset<flatbuffers::Vector<'b , flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'b >>>>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Report::VT_STATE, state);
+  }
+  #[inline]
+  pub fn add_feature_flags(&mut self, feature_flags: flatbuffers::WIPOffset<flatbuffers::Vector<'b , flatbuffers::ForwardsUOffset<FeatureFlag<'b >>>>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Report::VT_FEATURE_FLAGS, feature_flags);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> ReportBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     ReportBuilder {
@@ -3587,6 +3988,8 @@ impl core::fmt::Debug for Report<'_> {
       ds.field("errors", &self.errors());
       ds.field("thread_details", &self.thread_details());
       ds.field("binary_images", &self.binary_images());
+      ds.field("state", &self.state());
+      ds.field("feature_flags", &self.feature_flags());
       ds.finish()
   }
 }
