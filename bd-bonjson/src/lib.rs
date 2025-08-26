@@ -40,6 +40,10 @@ pub enum Value {
 
 // Helper methods for Value
 impl Value {
+  /// Extract null value from this Value.
+  ///
+  /// # Errors
+  /// Returns `DeserializationError::ExpectedNull` if this Value is not null.
   pub fn as_null(&self) -> deserialize_primitives::Result<()> {
     match self {
       Self::Null => Ok(()),
@@ -47,6 +51,10 @@ impl Value {
     }
   }
 
+  /// Extract boolean value from this Value.
+  ///
+  /// # Errors
+  /// Returns `DeserializationError::ExpectedBoolean` if this Value is not a boolean.
   pub fn as_bool(&self) -> deserialize_primitives::Result<bool> {
     match self {
       Self::Bool(b) => Ok(*b),
@@ -54,6 +62,10 @@ impl Value {
     }
   }
 
+  /// Extract signed integer value from this Value.
+  ///
+  /// # Errors
+  /// Returns `DeserializationError::ExpectedSignedInteger` if this Value is not a signed integer.
   pub fn as_integer(&self) -> deserialize_primitives::Result<i64> {
     match self {
       Self::Signed(n) => Ok(*n),
@@ -61,6 +73,11 @@ impl Value {
     }
   }
 
+  /// Extract unsigned integer value from this Value.
+  ///
+  /// # Errors
+  /// Returns `DeserializationError::ExpectedUnsignedInteger` if this Value is not an unsigned
+  /// integer.
   pub fn as_unsigned(&self) -> deserialize_primitives::Result<u64> {
     match self {
       Self::Unsigned(n) => Ok(*n),
@@ -68,6 +85,10 @@ impl Value {
     }
   }
 
+  /// Extract floating point value from this Value.
+  ///
+  /// # Errors
+  /// Returns `DeserializationError::ExpectedFloat` if this Value is not a float.
   pub fn as_float(&self) -> deserialize_primitives::Result<f64> {
     match self {
       Self::Float(n) => Ok(*n),
@@ -75,6 +96,10 @@ impl Value {
     }
   }
 
+  /// Extract string value from this Value.
+  ///
+  /// # Errors
+  /// Returns `DeserializationError::ExpectedString` if this Value is not a string.
   pub fn as_string(&self) -> deserialize_primitives::Result<&str> {
     match self {
       Self::String(s) => Ok(s),
@@ -82,6 +107,10 @@ impl Value {
     }
   }
 
+  /// Extract array value from this Value.
+  ///
+  /// # Errors
+  /// Returns `DeserializationError::ExpectedArray` if this Value is not an array.
   pub fn as_array(&self) -> deserialize_primitives::Result<&Vec<Self>> {
     match self {
       Self::Array(arr) => Ok(arr),
@@ -89,6 +118,10 @@ impl Value {
     }
   }
 
+  /// Extract object value from this Value.
+  ///
+  /// # Errors
+  /// Returns `DeserializationError::ExpectedMap` if this Value is not an object.
   pub fn as_object(&self) -> deserialize_primitives::Result<&HashMap<String, Self>> {
     match self {
       Self::Object(obj) => Ok(obj),

@@ -1025,8 +1025,8 @@ fn test_value_none_removed_successful_decode() {
   let valid_data = [0x85, 0x48, 0x65, 0x6c, 0x6c, 0x6f]; // "Hello"
   match decode_value(&valid_data) {
     Ok(Value::String(s)) => assert_eq!(s, "Hello"),
-    Ok(other) => panic!("Expected string, got: {:?}", other),
-    Err(e) => panic!("Unexpected error: {:?}", e),
+    Ok(other) => panic!("Expected string, got: {other:?}"),
+    Err(e) => panic!("Unexpected error: {e:?}"),
   }
 }
 
@@ -1035,9 +1035,9 @@ fn test_value_none_removed_fatal_errors() {
   // Test that invalid data returns fatal errors (no partial value)
   let invalid_data = [0x65]; // Invalid type code
   match decode_value(&invalid_data) {
-    Ok(value) => panic!("Expected error, got: {:?}", value),
+    Ok(value) => panic!("Expected error, got: {value:?}"),
     Err(err) => {
-      assert!(err.is_fatal(), "Expected fatal error, got: {:?}", err);
+      assert!(err.is_fatal(), "Expected fatal error, got: {err:?}");
       assert!(err.partial_value().is_none(), "Expected no partial value");
     },
   }
@@ -1048,12 +1048,11 @@ fn test_value_none_removed_partial_errors() {
   // Test that truncated data returns partial results
   let truncated_array = [0x9a, 0x6d, 0x85, 0x48, 0x65, 0x6c, 0x6c, 0x6f]; // Start of array with null and "Hello", but no end
   match decode_value(&truncated_array) {
-    Ok(value) => panic!("Expected error, got: {:?}", value),
+    Ok(value) => panic!("Expected error, got: {value:?}"),
     Err(err) => {
       assert!(
         !err.is_fatal(),
-        "Expected partial error, got fatal: {:?}",
-        err
+        "Expected partial error, got fatal: {err:?}"
       );
       assert!(err.partial_value().is_some(), "Expected partial value");
     },
@@ -1067,7 +1066,7 @@ fn test_all_variants() {
   let all_value_types = vec![
     Value::Null,
     Value::Bool(true),
-    Value::Float(3.14),
+    Value::Float(std::f64::consts::PI),
     Value::Signed(-42),
     Value::Unsigned(42),
     Value::String("test".to_string()),

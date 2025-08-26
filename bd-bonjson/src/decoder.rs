@@ -98,6 +98,9 @@ impl<'a> Decoder<'a> {
 
   /// Decode the entire buffer and return the resulting value.
   /// On error, it returns the value decoded so far and the error.
+  ///
+  /// # Errors
+  /// Returns `DecodeError` if the buffer contains invalid BONJSON data.
   pub fn decode(&mut self) -> Result<Value> {
     self.decode_value()
   }
@@ -311,6 +314,9 @@ impl<'a> Decoder<'a> {
 
 /// Decode a buffer and return the resulting value.
 /// On error, it returns the value decoded so far and the error.
+///
+/// # Errors
+/// Returns `DecodeError` if the buffer contains invalid BONJSON data.
 pub fn decode_value(data: &[u8]) -> Result<Value> {
   let mut decoder = Decoder::new(data);
   decoder.decode()
