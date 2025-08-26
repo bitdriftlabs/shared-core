@@ -9,7 +9,7 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace     = true
+anyhow.workspace = true
 
 [build-dependencies]
 cc.workspace         = true

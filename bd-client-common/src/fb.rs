@@ -8,19 +8,21 @@
 use anyhow::anyhow;
 use bd_log_primitives::{LogFields, LogLevel, LogMessage, StringOrBytes};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::{
+  Log,
+  LogArgs,
+  LogType,
+  Timestamp as FbTimestamp,
+  TimestampArgs,
+  root_as_log as fb_root_as_log,
+};
+use bd_proto::flatbuffers::common::bitdrift_public::fbs::common::v_1::{
   BinaryData,
   BinaryDataArgs,
   Data,
   Field,
   FieldArgs,
-  Log,
-  LogArgs,
-  LogType,
   StringData,
   StringDataArgs,
-  Timestamp as FbTimestamp,
-  TimestampArgs,
-  root_as_log as fb_root_as_log,
 };
 use flatbuffers::{FlatBufferBuilder, UnionWIPOffset, WIPOffset};
 

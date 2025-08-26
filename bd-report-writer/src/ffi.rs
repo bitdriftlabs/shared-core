@@ -230,6 +230,8 @@ extern "C-unwind" fn bdrw_get_completed_buffer(
       device_metrics: processor.device,
       errors: Some(errors),
       thread_details,
+      feature_flags: None,
+      state: None,
     },
   );
   processor.builder.finish(report, None);
@@ -330,6 +332,7 @@ extern "C-unwind" fn bdrw_add_thread(
         priority: thread.priority,
         quality_of_service: thread.quality_of_service,
         stack_trace: Some(stack_trace),
+        summary: None,
       },
     );
     processor.threads.push(thread);
@@ -442,6 +445,9 @@ extern "C-unwind" fn bdrw_add_device(
         os_build: Some(os_build),
         platform: Platform(device.platform),
         cpu_abis,
+        low_power_mode_enabled: false,
+        cpu_usage: None,
+        thermal_state: 0,
       },
     );
     processor.device = Some(metrics);
@@ -481,6 +487,10 @@ extern "C-unwind" fn bdrw_add_app(handle: BDProcessorHandle, app_ptr: *const BDA
         version,
         build_number: Some(build_number),
         running_state,
+        process_id: 0,
+        lifecycle_event: None,
+        region_format: None,
+        cpu_usage: None,
       },
     );
     processor.app = Some(metrics);
