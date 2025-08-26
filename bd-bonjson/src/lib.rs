@@ -15,6 +15,7 @@
 )]
 
 pub mod decoder;
+pub mod encoder;
 pub mod ffi;
 pub mod writer;
 
