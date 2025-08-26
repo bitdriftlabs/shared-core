@@ -52,33 +52,33 @@ impl Encoder {
   /// * `Err(SerializationError)` - If encoding fails
   pub fn encode(&mut self, value: &Value) -> Result<Vec<u8>, SerializationError> {
     self.buffer.clear();
-    
+
     // Start with a reasonable initial capacity
     const INITIAL_CAPACITY: usize = 1024;
     if self.buffer.capacity() < INITIAL_CAPACITY {
       self.buffer.reserve(INITIAL_CAPACITY);
     }
-    
+
     loop {
       // Resize buffer to current capacity
       self.buffer.resize(self.buffer.capacity(), 0);
-      
+
       // Try to encode in place
       match encode_into(&mut self.buffer, value) {
         Ok(bytes_written) => {
           // Success! Truncate to actual size and return
           self.buffer.truncate(bytes_written);
           return Ok(self.buffer.clone());
-        }
+        },
         Err(SerializationError::BufferFull) => {
           // Buffer too small, double the capacity and try again
           let new_capacity = self.buffer.capacity() * 2;
           self.buffer.reserve(new_capacity - self.buffer.capacity());
-        }
+        },
         Err(e) => {
           // Other error, propagate it
           return Err(e);
-        }
+        },
       }
     }
   }
@@ -115,115 +115,136 @@ impl Default for Encoder {
 /// * `Ok(usize)` - The number of bytes written on success
 /// * `Err(SerializationError)` - If encoding fails (including buffer full)
 pub fn encode_into(buffer: &mut [u8], value: &Value) -> Result<usize, SerializationError> {
-  let mut position = 0;
-  encode_value_into(buffer, value, &mut position)?;
-  Ok(position)
+  encode_value_into(buffer, value)
 }
 
-/// Writes bytes to the buffer at the current position.
-fn write_bytes_into(buffer: &mut [u8], data: &[u8], position: &mut usize) -> Result<(), SerializationError> {
+/// Writes bytes to the buffer and returns the number of bytes written.
+fn write_bytes_into(buffer: &mut [u8], data: &[u8]) -> Result<usize, SerializationError> {
   let bytes_needed = data.len();
-  if *position + bytes_needed > buffer.len() {
+  if bytes_needed > buffer.len() {
     return Err(SerializationError::BufferFull);
   }
-  
-  buffer[*position..*position + bytes_needed].copy_from_slice(data);
-  *position += bytes_needed;
-  Ok(())
+
+  buffer[.. bytes_needed].copy_from_slice(data);
+  Ok(bytes_needed)
 }
 
-/// Encodes a value into the buffer at the current position.
-fn encode_value_into(buffer: &mut [u8], value: &Value, position: &mut usize) -> Result<(), SerializationError> {
+/// Encodes a value into a buffer.
+fn encode_value_into(buffer: &mut [u8], value: &Value) -> Result<usize, SerializationError> {
   match value {
     Value::Null => {
       let mut temp_buffer: [u8; 1] = [0; 1];
       let size = serialize_null(&mut temp_buffer)?;
-      write_bytes_into(buffer, &temp_buffer[..size], position)?;
+      write_bytes_into(buffer, &temp_buffer[.. size])
     },
     Value::Bool(b) => {
       let mut temp_buffer: [u8; 1] = [0; 1];
       let size = serialize_boolean(&mut temp_buffer, *b)?;
-      write_bytes_into(buffer, &temp_buffer[..size], position)?;
+      write_bytes_into(buffer, &temp_buffer[.. size])
     },
     Value::Float(f) => {
       let mut temp_buffer: [u8; 16] = [0; 16];
       let size = serialize_f64(&mut temp_buffer, *f)?;
-      write_bytes_into(buffer, &temp_buffer[..size], position)?;
+      write_bytes_into(buffer, &temp_buffer[.. size])
     },
     Value::Signed(i) => {
       let mut temp_buffer: [u8; 16] = [0; 16];
       let size = serialize_i64(&mut temp_buffer, *i)?;
-      write_bytes_into(buffer, &temp_buffer[..size], position)?;
+      write_bytes_into(buffer, &temp_buffer[.. size])
     },
     Value::Unsigned(u) => {
       let mut temp_buffer: [u8; 16] = [0; 16];
       let size = serialize_u64(&mut temp_buffer, *u)?;
-      write_bytes_into(buffer, &temp_buffer[..size], position)?;
+      write_bytes_into(buffer, &temp_buffer[.. size])
     },
-    Value::String(s) => {
-      encode_string_into(buffer, s, position)?;
-    },
-    Value::Array(arr) => {
-      encode_array_into(buffer, arr, position)?;
-    },
-    Value::Object(obj) => {
-      encode_object_into(buffer, obj, position)?;
-    },
+    Value::String(s) => encode_string_into(buffer, s),
+    Value::Array(arr) => encode_array_into(buffer, arr),
+    Value::Object(obj) => encode_object_into(buffer, obj),
   }
-  Ok(())
-}
-/// Encodes a string value into the buffer.
-fn encode_string_into(buffer: &mut [u8], s: &str, position: &mut usize) -> Result<(), SerializationError> {
-  // String header
-  let mut temp_buffer: [u8; 16] = [0; 16]; // Should be enough for any string header
-  let header_size = serialize_string_header(&mut temp_buffer, s)?;
-  write_bytes_into(buffer, &temp_buffer[..header_size], position)?;
-
-  // String content
-  write_bytes_into(buffer, s.as_bytes(), position)?;
-
-  Ok(())
 }
 
-/// Encodes an array value.
-fn encode_array_into(buffer: &mut [u8], arr: &[Value], position: &mut usize) -> Result<(), SerializationError> {
+/// Encodes an array into a buffer.
+fn encode_array_into(buffer: &mut [u8], arr: &[Value]) -> Result<usize, SerializationError> {
+  let mut position = 0;
+
   // Array start marker
   let mut temp_buffer: [u8; 1] = [0; 1];
   let size = serialize_array_begin(&mut temp_buffer)?;
-  write_bytes_into(buffer, &temp_buffer[..size], position)?;
+  if position + size > buffer.len() {
+    return Err(SerializationError::BufferFull);
+  }
+  buffer[position .. position + size].copy_from_slice(&temp_buffer[.. size]);
+  position += size;
 
   // Encode each element
   for item in arr {
-    encode_value_into(buffer, item, position)?;
+    let bytes_written = encode_value_into(&mut buffer[position ..], item)?;
+    position += bytes_written;
   }
 
   // Array end marker
-  let mut temp_buffer: [u8; 1] = [0; 1];
   let size = serialize_container_end(&mut temp_buffer)?;
-  write_bytes_into(buffer, &temp_buffer[..size], position)?;
+  if position + size > buffer.len() {
+    return Err(SerializationError::BufferFull);
+  }
+  buffer[position .. position + size].copy_from_slice(&temp_buffer[.. size]);
+  position += size;
 
-  Ok(())
+  Ok(position)
 }
 
-/// Encodes an object value.
-fn encode_object_into(buffer: &mut [u8], obj: &HashMap<String, Value>, position: &mut usize) -> Result<(), SerializationError> {
+/// Encodes an object into a buffer.
+fn encode_object_into(
+  buffer: &mut [u8],
+  obj: &HashMap<String, Value>,
+) -> Result<usize, SerializationError> {
+  let mut position = 0;
+
   // Object start marker
   let mut temp_buffer: [u8; 1] = [0; 1];
   let size = serialize_map_begin(&mut temp_buffer)?;
-  write_bytes_into(buffer, &temp_buffer[..size], position)?;
+  if position + size > buffer.len() {
+    return Err(SerializationError::BufferFull);
+  }
+  buffer[position .. position + size].copy_from_slice(&temp_buffer[.. size]);
+  position += size;
 
   // Encode each key-value pair
   for (key, value) in obj {
     // Encode key as string
-    encode_string_into(buffer, key, position)?;
+    let bytes_written = encode_string_into(&mut buffer[position ..], key)?;
+    position += bytes_written;
+
     // Encode value
-    encode_value_into(buffer, value, position)?;
+    let bytes_written = encode_value_into(&mut buffer[position ..], value)?;
+    position += bytes_written;
   }
 
   // Object end marker
-  let mut temp_buffer: [u8; 1] = [0; 1];
   let size = serialize_container_end(&mut temp_buffer)?;
-  write_bytes_into(buffer, &temp_buffer[..size], position)?;
+  if position + size > buffer.len() {
+    return Err(SerializationError::BufferFull);
+  }
+  buffer[position .. position + size].copy_from_slice(&temp_buffer[.. size]);
+  position += size;
 
-  Ok(())
+  Ok(position)
+}
+
+/// Encodes a string into a buffer.
+fn encode_string_into(buffer: &mut [u8], s: &str) -> Result<usize, SerializationError> {
+  let mut temp_buffer: [u8; 16] = [0; 16];
+  let header_size = serialize_string_header(&mut temp_buffer, s)?;
+
+  let total_needed = header_size + s.len();
+  if total_needed > buffer.len() {
+    return Err(SerializationError::BufferFull);
+  }
+
+  // Write header
+  buffer[.. header_size].copy_from_slice(&temp_buffer[.. header_size]);
+  // Write string data
+  buffer[header_size .. header_size + s.len()].copy_from_slice(s.as_bytes());
+
+  Ok(total_needed)
 }
