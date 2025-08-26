@@ -64,6 +64,7 @@ impl MetadataCollector {
       fields: [].into(),
     }
   }
+
   /// Returns metadata created by combining values acquired by combining the receiver's fields and
   /// passed `fields` argument. It ensures that the `fields` property of the output value does
   /// not have duplicate keys. The combining logic gives precedence to fields coming from the field
