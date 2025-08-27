@@ -861,6 +861,6 @@ pub mod global_state {
   duration_feature_flag!(
     CoalesceWindow,
     "global_state.coalesce_window_ms",
-    30.seconds()
+    1.seconds()
   );
 }
