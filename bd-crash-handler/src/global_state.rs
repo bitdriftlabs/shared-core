@@ -23,6 +23,14 @@ struct State(LogFields);
 
 impl Storable for State {}
 
+/// Results of attempting to update the global state. This is exposed for testing purposes..
+#[derive(Debug, PartialEq, Eq)]
+pub enum UpdateResult {
+  NoChange,
+  Updated,
+  Deferred,
+}
+
 //
 // Tracker
 //
@@ -52,7 +60,7 @@ impl Tracker {
     }
   }
 
-  pub fn maybe_update_global_state(&mut self, new_global_state: &LogFields) -> bool {
+  pub fn maybe_update_global_state(&mut self, new_global_state: &LogFields) -> UpdateResult {
     // In order to avoid writing too frequently, we coalesce writes that happen within a short time
     // window. The first write happens immediately, and subsequent writes within the coalesce window
     // are delayed until the window has passed. Given the ootb frequency of logs we should expect
@@ -72,24 +80,24 @@ impl Tracker {
           log::trace!("Writing coalesced global state");
           self.current_global_state = State(new_global_state.clone());
           self.write_global_state();
-          return true;
+          return UpdateResult::Updated;
         } else {
           log::trace!(
             "No change to global state at coalesced write time, not writing but clearing timer"
           );
-          return false;
+          return UpdateResult::NoChange;
         }
       } else {
         // We have a pending write scheduled, but it's not time yet. Just return.
         log::trace!("Deferring global state write for {:?}", next_write - now);
-        return false;
+        return UpdateResult::Deferred;
       }
     }
 
     // No write is scheduled and there has been no change, no need to do anything.
     if self.current_global_state.0 == *new_global_state {
       log::trace!("No change to global state, not writing");
-      return false;
+      return UpdateResult::NoChange;
     }
 
     match (self.last_write, self.next_write) {
@@ -98,7 +106,7 @@ impl Tracker {
         log::trace!("Writing initial global state");
         self.current_global_state = State(new_global_state.clone());
         self.write_global_state();
-        true
+        UpdateResult::Updated
       },
       // We have written before, but there is no pending write. Schedule one based on the runtime
       // flag value.
@@ -112,16 +120,16 @@ impl Tracker {
           self.next_write =
             Some(self.last_write.unwrap().into_std() + coalesce_window).map(Instant::from_std);
           log::trace!("Scheduling global state write at {:?}", self.next_write);
-          false
+          UpdateResult::Deferred
         } else {
           log::trace!("Writing global state immediately");
           self.current_global_state = State(new_global_state.clone());
           self.write_global_state();
-          true
+          UpdateResult::Updated
         }
       },
       // We have a pending write scheduled, but it's not time yet. Just return.
-      (Some(_), Some(_)) => false,
+      (Some(_), Some(_)) => UpdateResult::Deferred,
     }
   }
 

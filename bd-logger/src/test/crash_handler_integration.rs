@@ -93,7 +93,7 @@ fn crash_reports() {
   assert_eq!(crash1.field("_ootb_field"), "ootb");
   let artifact = crash1.binary_field("_crash_artifact");
   assert_eq!(artifact, CRASH_CONTENTS.as_bytes());
-  assert!(!crash1.has_field("custom"));
+  assert!(crash1.has_field("custom"));
 }
 
 #[test]
@@ -182,7 +182,7 @@ fn crash_reports_artifact_upload() {
   assert_ne!(crash1.timestamp(), timestamp);
   assert_eq!(crash1.field("_ootb_field"), "ootb");
   assert!(!crash1.has_field("_crash_artifact"));
-  assert!(!crash1.has_field("custom"));
+  assert!(crash1.has_field("custom"));
   let crash1_uuid = crash1.field("_crash_artifact_id");
 
   let mut remaining_uploads: HashSet<_> = [crash1_uuid].into();

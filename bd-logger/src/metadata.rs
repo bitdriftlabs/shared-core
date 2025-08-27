@@ -135,6 +135,7 @@ impl MetadataCollector {
     ]
     .into_iter()
     .flatten()
+    .unique_by(|(key, _)| key.clone())
     .collect();
 
 
