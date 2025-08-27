@@ -6,7 +6,8 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use assert_no_alloc::*;
-use bd_bonjson::decoder::{Decoder, Value};
+use bd_bonjson::Value;
+use bd_bonjson::decoder::Decoder;
 use bd_bonjson::ffi::BDCrashWriterHandle;
 use std::ptr::null;
 use tempfile::NamedTempFile;
