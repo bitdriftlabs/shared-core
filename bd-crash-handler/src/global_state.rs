@@ -69,6 +69,10 @@ impl Tracker {
     // TODO(snowp): If we ever need to support a situation in which logs are being written more
     // slowly we'd likely need to revisit this logic to avoid global state getting out of date.
 
+    // TODO(snowp): All of this is likely going to be replaced by the crash safe k-v map, but
+    // this will require a bit more work to integrate with so that the reports can be constructed
+    // with the map directly.
+
     // If we have a pending write scheduled, check if it's time to do it.
     let now = Instant::now();
     if let Some(next_write) = self.next_write {
