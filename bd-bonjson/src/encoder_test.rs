@@ -126,8 +126,7 @@ fn test_encode_empty_string() {
   let mut buffer = Vec::new();
   let value = Value::String(String::new());
 
-  let result = encode(&mut buffer, &value)
-    .expect("Failed to encode");
+  let result = encode(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
@@ -140,8 +139,7 @@ fn test_encode_string_with_unicode() {
   let mut buffer = Vec::new();
   let value = Value::String("🦀 Rust is awesome! 🚀".to_string());
 
-  let result = encode(&mut buffer, &value)
-    .expect("Failed to encode");
+  let result = encode(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
@@ -154,8 +152,7 @@ fn test_encode_empty_array() {
   let mut buffer = Vec::new();
   let value = Value::Array(Vec::new());
 
-  let result = encode(&mut buffer, &value)
-    .expect("Failed to encode");
+  let result = encode(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
@@ -192,8 +189,7 @@ fn test_encode_nested_arrays() {
     ]),
   ]);
 
-  let result = encode(&mut buffer, &value)
-    .expect("Failed to encode");
+  let result = encode(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
@@ -206,8 +202,7 @@ fn test_encode_empty_object() {
   let mut buffer = Vec::new();
   let value = Value::Object(HashMap::new());
 
-  let result = encode(&mut buffer, &value)
-    .expect("Failed to encode");
+  let result = encode(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
@@ -250,8 +245,7 @@ fn test_encode_nested_objects() {
 
   let value = Value::Object(outer_obj);
 
-  let result = encode(&mut buffer, &value)
-    .expect("Failed to encode");
+  let result = encode(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
@@ -280,8 +274,7 @@ fn test_encode_mixed_nested_structure() {
 
   let value = Value::Object(obj);
 
-  let result = encode(&mut buffer, &value)
-    .expect("Failed to encode");
+  let result = encode(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
@@ -295,13 +288,11 @@ fn test_encoder_reuse() {
 
   // Encode first value
   let value1 = Value::String("first".to_string());
-  let result1 = encode(&mut buffer, &value1)
-    .expect("Failed to encode");
+  let result1 = encode(&mut buffer, &value1).expect("Failed to encode");
 
   // Encode second value (should reuse the encoder)
   let value2 = Value::Signed(42);
-  let result2 = encode(&mut buffer, &value2)
-    .expect("Failed to encode");
+  let result2 = encode(&mut buffer, &value2).expect("Failed to encode");
 
   // Verify both encodings work
   let data_slice1 = &result1;
@@ -318,8 +309,7 @@ fn test_encoder_with_capacity() {
   let mut buffer = Vec::with_capacity(1024);
   let value = Value::String("test".to_string());
 
-  let result = encode(&mut buffer, &value)
-    .expect("Failed to encode");
+  let result = encode(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
@@ -359,7 +349,7 @@ fn test_encoder_buffer_access() {
   // Verify we can still use the buffer for more encoding
   let value2 = Value::Signed(456);
   let second_result = encode(&mut buffer, &value2).expect("Failed to encode again");
-  
+
   // The buffer now contains the second encoding result
   let data_slice = &second_result;
   let decoded = decode(data_slice).expect("Failed to decode");
@@ -372,24 +362,21 @@ fn test_encode_large_numbers() {
 
   // Test large positive signed
   let value1 = Value::Signed(i64::MAX);
-  let result1 = encode(&mut buffer, &value1)
-    .expect("Failed to encode");
+  let result1 = encode(&mut buffer, &value1).expect("Failed to encode");
   let data_slice1 = &result1;
   let decoded1 = decode(data_slice1).expect("Failed to decode");
   assert_eq!(decoded1, value1);
 
   // Test large negative signed
   let value2 = Value::Signed(i64::MIN);
-  let result2 = encode(&mut buffer, &value2)
-    .expect("Failed to encode");
+  let result2 = encode(&mut buffer, &value2).expect("Failed to encode");
   let data_slice2 = &result2;
   let decoded2 = decode(data_slice2).expect("Failed to decode");
   assert_eq!(decoded2, value2);
 
   // Test large unsigned that requires staying unsigned
   let value3 = Value::Unsigned(u64::MAX);
-  let result3 = encode(&mut buffer, &value3)
-    .expect("Failed to encode");
+  let result3 = encode(&mut buffer, &value3).expect("Failed to encode");
   let data_slice3 = &result3;
   let decoded3 = decode(data_slice3).expect("Failed to decode");
   assert_eq!(decoded3, value3); // u64::MAX cannot fit in i64, so should stay unsigned
@@ -408,8 +395,7 @@ fn test_encode_special_floats() {
 
   // Test negative zero
   let value2 = Value::Float(-0.0);
-  let result2 = encode(&mut buffer, &value2)
-    .expect("Failed to encode");
+  let result2 = encode(&mut buffer, &value2).expect("Failed to encode");
   let data_slice2 = &result2;
   let decoded2 = decode(data_slice2).expect("Failed to decode");
   assert_eq!(decoded2, value2);
@@ -423,8 +409,7 @@ fn test_encode_special_floats() {
 
   // Test negative infinity
   let value4 = Value::Float(f64::NEG_INFINITY);
-  let result4 = encode(&mut buffer, &value4)
-    .expect("Failed to encode");
+  let result4 = encode(&mut buffer, &value4).expect("Failed to encode");
   let data_slice4 = &result4;
   let decoded4 = decode(data_slice4).expect("Failed to decode");
   assert_eq!(decoded4, value4);
@@ -554,13 +539,12 @@ fn test_encode_deeply_nested_mixed_structures() {
   let complex_value = Value::Object(root_obj);
 
   // Encode the complex structure
-  let result = encode(&mut buffer, &complex_value)
-    .expect("Failed to encode deeply nested structure");
+  let result =
+    encode(&mut buffer, &complex_value).expect("Failed to encode deeply nested structure");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice)
-    .expect("Failed to decode deeply nested structure");
+  let decoded = decode(data_slice).expect("Failed to decode deeply nested structure");
 
   // Since HashMap order is not guaranteed, we'll verify the structure piece by piece
   // instead of doing a direct equality check
@@ -937,7 +921,7 @@ fn test_standalone_encode_function() {
   // Verify buffer was reused correctly
   let second_value = Value::String("second test".to_string());
   let second_result = encode(&mut buffer, &second_value).expect("Failed to encode second value");
-  
+
   let second_decoded = decode(&second_result).expect("Failed to decode second value");
   assert_eq!(second_decoded, second_value);
 }

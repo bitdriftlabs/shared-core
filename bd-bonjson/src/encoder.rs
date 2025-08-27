@@ -39,7 +39,7 @@ use std::collections::HashMap;
 pub fn encode(buffer: &mut Vec<u8>, value: &Value) -> Result<Vec<u8>, SerializationError> {
   // Start with a reasonable initial capacity
   const INITIAL_CAPACITY: usize = 1024;
-  
+
   buffer.clear();
   if buffer.capacity() < INITIAL_CAPACITY {
     buffer.reserve(INITIAL_CAPACITY);
