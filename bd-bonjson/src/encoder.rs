@@ -69,54 +69,6 @@ pub fn encode(buffer: &mut Vec<u8>, value: &Value) -> Result<Vec<u8>, Serializat
   }
 }
 
-/// An encoder for converting `Value` instances into BONJSON byte format.
-pub struct Encoder {
-  buffer: Vec<u8>,
-}
-
-impl Encoder {
-  #[must_use]
-  pub fn new() -> Self {
-    Self { buffer: Vec::new() }
-  }
-
-  #[must_use]
-  pub fn with_capacity(capacity: usize) -> Self {
-    Self {
-      buffer: Vec::with_capacity(capacity),
-    }
-  }
-
-  /// Encodes a `Value` into BONJSON format and returns the resulting bytes.
-  ///
-  /// # Arguments
-  /// * `value` - The value to encode
-  ///
-  /// # Returns
-  /// * `Ok(Vec<u8>)` - The encoded bytes on success
-  /// * `Err(SerializationError)` - If encoding fails
-  pub fn encode(&mut self, value: &Value) -> Result<Vec<u8>, SerializationError> {
-    encode(&mut self.buffer, value)
-  }
-
-  /// Returns the current buffer contents without consuming the encoder.
-  #[must_use]
-  pub fn buffer(&self) -> &[u8] {
-    &self.buffer
-  }
-
-  /// Clears the internal buffer for reuse.
-  pub fn clear(&mut self) {
-    self.buffer.clear();
-  }
-}
-
-impl Default for Encoder {
-  fn default() -> Self {
-    Self::new()
-  }
-}
-
 /// Encodes a `Value` into BONJSON format in the provided buffer.
 ///
 /// This function writes BONJSON data directly to a mutable slice without
