@@ -25,6 +25,16 @@ use crate::type_codes::TypeCode;
 use crate::{Value, deserialize_primitives};
 use std::collections::HashMap;
 
+/// Decode a buffer and return the resulting value.
+/// On error, it returns the value decoded so far and the error.
+///
+/// # Errors
+/// Returns `DecodeError` if the buffer contains invalid BONJSON data.
+pub fn decode(data: &[u8]) -> Result<Value> {
+  let mut context = DecoderContext::new(data);
+  context.decode_value()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeserializationErrorWithOffset {
   // An error that occurred during deserialization, with the byte offset in the data where it
@@ -298,14 +308,4 @@ impl<'a> DecoderContext<'a> {
 
     Ok(Value::Object(object))
   }
-}
-
-/// Decode a buffer and return the resulting value.
-/// On error, it returns the value decoded so far and the error.
-///
-/// # Errors
-/// Returns `DecodeError` if the buffer contains invalid BONJSON data.
-pub fn decode_value(data: &[u8]) -> Result<Value> {
-  let mut context = DecoderContext::new(data);
-  context.decode_value()
 }
