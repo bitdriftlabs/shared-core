@@ -360,6 +360,17 @@ impl<T, P: FeatureFlag<T>> Watch<T, P> {
   pub fn into_inner(self) -> tokio::sync::watch::Receiver<T> {
     self.watch
   }
+
+  pub fn new_for_testing(default: T) -> Self
+  where
+    T: Clone,
+  {
+    let (_, rx) = tokio::sync::watch::channel(default);
+    Self {
+      watch: rx,
+      _type: PhantomData,
+    }
+  }
 }
 
 pub type BoolWatch<P> = Watch<bool, P>;
@@ -838,5 +849,18 @@ pub mod session_capture {
     StreamingLogCount,
     "session_capture.streaming_log_count",
     100_000
+  );
+}
+
+pub mod global_state {
+  use time::ext::NumericalDuration as _;
+
+  // Controls the time window within which multiple updates to the global state are coalesced into a
+  // single write. The first write happens immediately, and subsequent writes within the coalesce
+  // window are delayed until the window has passed.
+  duration_feature_flag!(
+    CoalesceWindow,
+    "global_state.coalesce_window_ms",
+    1.seconds()
   );
 }
