@@ -26,6 +26,7 @@ pub enum Code {
   Unavailable,
   Unauthenticated,
   NotFound,
+  PermissionDenied,
 }
 
 impl Code {
@@ -36,8 +37,9 @@ impl Code {
       Self::Ok => 0,
       Self::Unknown => 2,
       Self::InvalidArgument => 3,
-      Self::FailedPrecondition => 9,
       Self::NotFound => 5,
+      Self::PermissionDenied => 7,
+      Self::FailedPrecondition => 9,
       Self::Internal => 13,
       Self::Unavailable => 14,
       Self::Unauthenticated => 16,
@@ -51,6 +53,7 @@ impl Code {
       "0" => Self::Ok,
       "3" => Self::InvalidArgument,
       "5" => Self::NotFound,
+      "7" => Self::PermissionDenied,
       "9" => Self::FailedPrecondition,
       "13" => Self::Internal,
       "14" => Self::Unavailable,
@@ -69,6 +72,7 @@ impl Code {
       Self::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
       Self::Unauthenticated => StatusCode::UNAUTHORIZED,
       Self::NotFound => StatusCode::NOT_FOUND,
+      Self::PermissionDenied => StatusCode::FORBIDDEN,
     }
   }
 
@@ -84,6 +88,7 @@ impl Code {
       Self::Unavailable => "unavailable",
       Self::Unauthenticated => "unauthenticated",
       Self::NotFound => "not_found",
+      Self::PermissionDenied => "permission_denied",
     }
   }
 }
