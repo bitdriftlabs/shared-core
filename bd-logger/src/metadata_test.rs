@@ -128,7 +128,7 @@ fn collector_fields_hierarchy() {
     )
     .unwrap();
 
-  let captured_global_fields = Reader::new(store.clone())
+  let captured_global_fields = Reader::new(store)
     .global_state_fields()
     .into_iter()
     .sorted_by_key(|(k, _)| k.clone())
