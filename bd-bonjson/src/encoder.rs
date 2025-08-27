@@ -86,45 +86,14 @@ pub fn encode_into(buffer: &mut [u8], value: &Value) -> Result<usize, Serializat
   encode_value_into(buffer, value)
 }
 
-/// Writes bytes to the buffer and returns the number of bytes written.
-fn write_bytes_into(buffer: &mut [u8], data: &[u8]) -> Result<usize, SerializationError> {
-  let bytes_needed = data.len();
-  if bytes_needed > buffer.len() {
-    return Err(SerializationError::BufferFull);
-  }
-
-  buffer[.. bytes_needed].copy_from_slice(data);
-  Ok(bytes_needed)
-}
-
 /// Encodes a value into a buffer.
 fn encode_value_into(buffer: &mut [u8], value: &Value) -> Result<usize, SerializationError> {
   match value {
-    Value::Null => {
-      let mut temp_buffer: [u8; 1] = [0; 1];
-      let size = serialize_null(&mut temp_buffer)?;
-      write_bytes_into(buffer, &temp_buffer[.. size])
-    },
-    Value::Bool(b) => {
-      let mut temp_buffer: [u8; 1] = [0; 1];
-      let size = serialize_boolean(&mut temp_buffer, *b)?;
-      write_bytes_into(buffer, &temp_buffer[.. size])
-    },
-    Value::Float(f) => {
-      let mut temp_buffer: [u8; 16] = [0; 16];
-      let size = serialize_f64(&mut temp_buffer, *f)?;
-      write_bytes_into(buffer, &temp_buffer[.. size])
-    },
-    Value::Signed(i) => {
-      let mut temp_buffer: [u8; 16] = [0; 16];
-      let size = serialize_i64(&mut temp_buffer, *i)?;
-      write_bytes_into(buffer, &temp_buffer[.. size])
-    },
-    Value::Unsigned(u) => {
-      let mut temp_buffer: [u8; 16] = [0; 16];
-      let size = serialize_u64(&mut temp_buffer, *u)?;
-      write_bytes_into(buffer, &temp_buffer[.. size])
-    },
+    Value::Null => serialize_null(buffer),
+    Value::Bool(b) => serialize_boolean(buffer, *b),
+    Value::Float(f) => serialize_f64(buffer, *f),
+    Value::Signed(i) => serialize_i64(buffer, *i),
+    Value::Unsigned(u) => serialize_u64(buffer, *u),
     Value::String(s) => encode_string_into(buffer, s),
     Value::Array(arr) => encode_array_into(buffer, arr),
     Value::Object(obj) => encode_object_into(buffer, obj),
@@ -136,12 +105,7 @@ fn encode_array_into(buffer: &mut [u8], arr: &[Value]) -> Result<usize, Serializ
   let mut position = 0;
 
   // Array start marker
-  let mut temp_buffer: [u8; 1] = [0; 1];
-  let size = serialize_array_begin(&mut temp_buffer)?;
-  if position + size > buffer.len() {
-    return Err(SerializationError::BufferFull);
-  }
-  buffer[position .. position + size].copy_from_slice(&temp_buffer[.. size]);
+  let size = serialize_array_begin(&mut buffer[position ..])?;
   position += size;
 
   // Encode each element
@@ -151,11 +115,7 @@ fn encode_array_into(buffer: &mut [u8], arr: &[Value]) -> Result<usize, Serializ
   }
 
   // Array end marker
-  let size = serialize_container_end(&mut temp_buffer)?;
-  if position + size > buffer.len() {
-    return Err(SerializationError::BufferFull);
-  }
-  buffer[position .. position + size].copy_from_slice(&temp_buffer[.. size]);
+  let size = serialize_container_end(&mut buffer[position ..])?;
   position += size;
 
   Ok(position)
@@ -169,12 +129,7 @@ fn encode_object_into(
   let mut position = 0;
 
   // Object start marker
-  let mut temp_buffer: [u8; 1] = [0; 1];
-  let size = serialize_map_begin(&mut temp_buffer)?;
-  if position + size > buffer.len() {
-    return Err(SerializationError::BufferFull);
-  }
-  buffer[position .. position + size].copy_from_slice(&temp_buffer[.. size]);
+  let size = serialize_map_begin(&mut buffer[position ..])?;
   position += size;
 
   // Encode each key-value pair
@@ -189,11 +144,7 @@ fn encode_object_into(
   }
 
   // Object end marker
-  let size = serialize_container_end(&mut temp_buffer)?;
-  if position + size > buffer.len() {
-    return Err(SerializationError::BufferFull);
-  }
-  buffer[position .. position + size].copy_from_slice(&temp_buffer[.. size]);
+  let size = serialize_container_end(&mut buffer[position ..])?;
   position += size;
 
   Ok(position)
@@ -201,18 +152,16 @@ fn encode_object_into(
 
 /// Encodes a string into a buffer.
 fn encode_string_into(buffer: &mut [u8], s: &str) -> Result<usize, SerializationError> {
-  let mut temp_buffer: [u8; 16] = [0; 16];
-  let header_size = serialize_string_header(&mut temp_buffer, s)?;
+  // Serialize header directly into the output buffer
+  let header_size = serialize_string_header(buffer, s)?;
 
-  let total_needed = header_size + s.len();
-  if total_needed > buffer.len() {
+  // Check if there's enough space for the string data
+  if header_size + s.len() > buffer.len() {
     return Err(SerializationError::BufferFull);
   }
 
-  // Write header
-  buffer[.. header_size].copy_from_slice(&temp_buffer[.. header_size]);
-  // Write string data
+  // Write string data after the header
   buffer[header_size .. header_size + s.len()].copy_from_slice(s.as_bytes());
 
-  Ok(total_needed)
+  Ok(header_size + s.len())
 }
