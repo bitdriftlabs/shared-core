@@ -71,8 +71,8 @@ impl DecodeError {
 
 pub type Result<T> = std::result::Result<T, DecodeError>;
 
-/// Decoder decodes a buffer containing a BONJSON-encoded data into a `Value`.
-pub struct Decoder<'a> {
+/// Internal decoder context to track position and data during decoding
+struct DecoderContext<'a> {
   data: &'a [u8],
   position: usize,
 }
@@ -90,19 +90,9 @@ fn propagate_partial_decode(error: &DecodeError, value: Value) -> DecodeError {
   }
 }
 
-impl<'a> Decoder<'a> {
-  #[must_use]
-  pub fn new(data: &'a [u8]) -> Self {
+impl<'a> DecoderContext<'a> {
+  fn new(data: &'a [u8]) -> Self {
     Self { data, position: 0 }
-  }
-
-  /// Decode the entire buffer and return the resulting value.
-  /// On error, it returns the value decoded so far and the error.
-  ///
-  /// # Errors
-  /// Returns `DecodeError` if the buffer contains invalid BONJSON data.
-  pub fn decode(&mut self) -> Result<Value> {
-    self.decode_value()
   }
 
   fn remaining_data(&self) -> &[u8] {
@@ -186,7 +176,6 @@ impl<'a> Decoder<'a> {
 
   fn decode_long_string(&mut self) -> Result<Value> {
     let remaining = &self.data[self.position ..];
-    // let remaining = self.remaining_data();
     let (size, str_slice) = self.map_err(deserialize_long_string_after_type_code(remaining))?;
     self.advance(size);
     Ok(Value::String(str_slice.to_string()))
@@ -194,7 +183,6 @@ impl<'a> Decoder<'a> {
 
   fn decode_short_string(&mut self, type_code: u8) -> Result<Value> {
     let remaining = &self.data[self.position ..];
-    // let remaining = self.remaining_data();
     let (size, str_slice) = self.map_err(deserialize_short_string_after_type_code(
       remaining, type_code,
     ))?;
@@ -318,6 +306,6 @@ impl<'a> Decoder<'a> {
 /// # Errors
 /// Returns `DecodeError` if the buffer contains invalid BONJSON data.
 pub fn decode_value(data: &[u8]) -> Result<Value> {
-  let mut decoder = Decoder::new(data);
-  decoder.decode()
+  let mut context = DecoderContext::new(data);
+  context.decode_value()
 }

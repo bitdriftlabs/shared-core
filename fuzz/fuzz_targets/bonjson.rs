@@ -7,12 +7,11 @@
 
 #![no_main]
 
-use bd_bonjson::decoder::Decoder;
+use bd_bonjson::decoder::decode_value;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-  let mut decoder = Decoder::new(data);
-  match decoder.decode() {
+  match decode_value(data) {
     Ok(_) | Err(_) => {},
   }
 });

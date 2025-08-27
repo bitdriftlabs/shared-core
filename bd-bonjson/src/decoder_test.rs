@@ -25,8 +25,8 @@ fn test_decode_null() {
   };
   writer.write_null().unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::Null);
 }
 
@@ -40,8 +40,8 @@ fn test_decode_booleans() {
   };
   writer.write_boolean(true).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::Bool(true));
 
   // Test false
@@ -52,8 +52,8 @@ fn test_decode_booleans() {
   };
   writer.write_boolean(false).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::Bool(false));
 }
 
@@ -67,8 +67,8 @@ fn test_decode_integers() {
   };
   writer.write_signed(42).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::Signed(42));
 
   // Small negative integer
@@ -79,8 +79,8 @@ fn test_decode_integers() {
   };
   writer.write_signed(-42).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::Signed(-42));
 
   // Large positive integer
@@ -92,8 +92,8 @@ fn test_decode_integers() {
   let large_val = 1_000_000_000;
   writer.write_signed(large_val).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::Signed(large_val));
 }
 
@@ -108,8 +108,8 @@ fn test_decode_unsigned() {
   };
   writer.write_unsigned(42).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::Signed(42));
 
   // Large unsigned
@@ -121,8 +121,8 @@ fn test_decode_unsigned() {
   let large_val = 4_000_000_000;
   writer.write_unsigned(large_val).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::Signed(large_val as i64));
 
   // Huge unsigned
@@ -134,8 +134,8 @@ fn test_decode_unsigned() {
   let huge_val = i64::MAX as u64 + 1;
   writer.write_unsigned(huge_val).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::Unsigned(huge_val));
 }
 
@@ -149,8 +149,8 @@ fn test_decode_floats() {
   };
   writer.write_float(f64::consts::PI).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::Float(f64::consts::PI));
 
   // Negative float
@@ -161,8 +161,8 @@ fn test_decode_floats() {
   };
   writer.write_float(-f64::consts::E).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::Float(-f64::consts::E));
 
   // Float with conversion from f32
@@ -173,8 +173,8 @@ fn test_decode_floats() {
   };
   writer.write_f32(1.5f32).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::Float(1.5));
 }
 
@@ -188,8 +188,8 @@ fn test_decode_strings() {
   };
   writer.write_str("hello").unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::String("hello".to_string()));
 
   // Empty string
@@ -200,8 +200,8 @@ fn test_decode_strings() {
   };
   writer.write_str("").unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::String(String::new()));
 
   // Long string
@@ -214,8 +214,8 @@ fn test_decode_strings() {
   };
   writer.write_str(long_str).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::String(long_str.to_string()));
 }
 
@@ -236,8 +236,8 @@ fn test_decode_array() {
   writer.write_container_end().unwrap();
 
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
 
   if let Value::Array(items) = value {
     assert_eq!(items.len(), 4);
@@ -260,8 +260,8 @@ fn test_decode_array() {
   writer.write_container_end().unwrap();
 
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
 
   if let Value::Array(items) = value {
     assert_eq!(items.len(), 0);
@@ -289,8 +289,8 @@ fn test_decode_object() {
   writer.write_container_end().unwrap();
 
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
 
   if let Value::Object(map) = value {
     assert_eq!(map.len(), 3);
@@ -312,8 +312,8 @@ fn test_decode_object() {
   writer.write_container_end().unwrap();
 
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
 
   if let Value::Object(map) = value {
     assert_eq!(map.len(), 0);
@@ -356,8 +356,8 @@ fn test_nested_structures() {
   writer.write_container_end().unwrap(); // End object
 
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
 
   // Verify structure
   if let Value::Object(map) = &value {
@@ -403,8 +403,8 @@ fn test_error_handling() {
   // Missing container end
 
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let result = decoder.decode();
+  let data_slice = &buf[.. pos];
+  let result = decode_value(data_slice);
   assert!(result.is_err());
 
   // Invalid map key (not a string)
@@ -420,8 +420,8 @@ fn test_error_handling() {
   writer.write_container_end().unwrap();
 
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let result = decoder.decode();
+  let data_slice = &buf[.. pos];
+  let result = decode_value(data_slice);
   assert!(result.is_err());
 }
 
@@ -455,8 +455,8 @@ fn test_boundary_values() {
     writer.write_signed(value).unwrap();
     let pos = usize::try_from(cursor.position()).unwrap();
 
-    let mut decoder = Decoder::new(&buf[.. pos]);
-    let decoded = decoder.decode().unwrap();
+    let data_slice = &buf[.. pos];
+    let decoded = decode_value(data_slice).unwrap();
 
     if u64::try_from(value).is_ok() {
       // Unsigned conversion may happen
@@ -494,8 +494,8 @@ fn test_boundary_values() {
     writer.write_unsigned(value).unwrap();
     let pos = usize::try_from(cursor.position()).unwrap();
 
-    let mut decoder = Decoder::new(&buf[.. pos]);
-    let decoded = decoder.decode().unwrap();
+    let data_slice = &buf[.. pos];
+    let decoded = decode_value(data_slice).unwrap();
 
     if i64::try_from(value).is_ok() {
       // Integer conversion may happen
@@ -796,8 +796,8 @@ fn test_decode_special_strings() {
   writer.write_str("").unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
 
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::String(String::new()));
 
   // Test emoji and multi-byte characters
@@ -810,8 +810,8 @@ fn test_decode_special_strings() {
   writer.write_str(special_str).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
 
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::String(special_str.to_string()));
 
   // Test string with control characters
@@ -824,8 +824,8 @@ fn test_decode_special_strings() {
   writer.write_str(control_str).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
 
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
   assert_eq!(value, Value::String(control_str.to_string()));
 }
 
@@ -833,8 +833,8 @@ fn test_decode_special_strings() {
 fn test_decode_empty_input() {
   // Test with completely empty input
   let buf = [];
-  let mut decoder = Decoder::new(&buf);
-  let result = decoder.decode();
+  let data_slice = &buf;
+  let result = decode_value(data_slice);
   assert!(result.is_err());
 }
 
@@ -872,8 +872,8 @@ fn test_deeply_nested_structures() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   // Test decoding the deeply nested structure
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
 
   // Verify the structure at each level
   if let Value::Array(level1) = value {
@@ -945,8 +945,8 @@ fn test_mixed_object_and_array_nesting() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   // Test decoding the mixed nested structure
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode_value(data_slice).unwrap();
 
   // Verify the structure
   if let Value::Object(root) = &value {
@@ -978,45 +978,6 @@ fn test_mixed_object_and_array_nesting() {
   } else {
     panic!("Expected object at root");
   }
-}
-
-#[test]
-fn test_decode_position_tracking() {
-  // Test that the decoder properly advances its position
-  let mut buf = vec![0u8; 128];
-  let mut cursor = Cursor::new(&mut buf);
-  let mut writer = Writer {
-    writer: &mut cursor,
-  };
-
-  writer.write_null().unwrap();
-  writer.write_boolean(true).unwrap();
-  writer.write_signed(42).unwrap();
-  writer.write_str("test").unwrap();
-
-  // Should be: [0x6d, 0x6f, 0x2a, 0x84, b't', b'e', b's', b't'];
-
-  let mut decoder = Decoder::new(&buf);
-
-  // First value (null)
-  let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::Null);
-  assert_eq!(decoder.position, 1);
-
-  // Second value (bool)
-  let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::Bool(true));
-  assert_eq!(decoder.position, 2);
-
-  // Third value (int)
-  let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::Signed(42));
-  assert_eq!(decoder.position, 3);
-
-  // Fourth value (string)
-  let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::String("test".to_string()));
-  assert_eq!(decoder.position, 8);
 }
 
 #[test]

@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::Value;
-use crate::decoder::Decoder;
+use crate::decoder::decode_value;
 use crate::encoder::encode;
 use std::collections::HashMap;
 
@@ -18,8 +18,8 @@ fn test_encode_null() {
   let result = encode(&mut buffer, &value).expect("Failed to encode null");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -31,8 +31,8 @@ fn test_encode_bool_true() {
   let result = encode(&mut buffer, &value).expect("Failed to encode bool");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -44,8 +44,8 @@ fn test_encode_bool_false() {
   let result = encode(&mut buffer, &value).expect("Failed to encode bool");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -57,8 +57,8 @@ fn test_encode_float() {
   let result = encode(&mut buffer, &value).expect("Failed to encode float");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -70,8 +70,8 @@ fn test_encode_signed_positive() {
   let result = encode(&mut buffer, &value).expect("Failed to encode signed");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -83,8 +83,8 @@ fn test_encode_signed_negative() {
   let result = encode(&mut buffer, &value).expect("Failed to encode signed");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -97,8 +97,8 @@ fn test_encode_unsigned() {
 
   // Verify we can decode it back
   // Note: The decoder may convert unsigned values that fit in i64 to Signed
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
 
   // Check if the value was converted to signed (this is expected behavior)
   match decoded {
@@ -116,8 +116,8 @@ fn test_encode_string() {
   let result = encode(&mut buffer, &value).expect("Failed to encode string");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -130,8 +130,8 @@ fn test_encode_empty_string() {
     .expect("Failed to encode");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -144,8 +144,8 @@ fn test_encode_string_with_unicode() {
     .expect("Failed to encode");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -158,8 +158,8 @@ fn test_encode_empty_array() {
     .expect("Failed to encode");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -176,8 +176,8 @@ fn test_encode_array_with_values() {
   let result = encode(&mut buffer, &value).expect("Failed to encode array");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -196,8 +196,8 @@ fn test_encode_nested_arrays() {
     .expect("Failed to encode");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -210,8 +210,8 @@ fn test_encode_empty_object() {
     .expect("Failed to encode");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -229,8 +229,8 @@ fn test_encode_object_with_values() {
   let result = encode(&mut buffer, &value).expect("Failed to encode object");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -254,8 +254,8 @@ fn test_encode_nested_objects() {
     .expect("Failed to encode");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -284,8 +284,8 @@ fn test_encode_mixed_nested_structure() {
     .expect("Failed to encode");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -304,12 +304,12 @@ fn test_encoder_reuse() {
     .expect("Failed to encode");
 
   // Verify both encodings work
-  let mut decoder1 = Decoder::new(&result1);
-  let decoded1 = decoder1.decode().expect("Failed to decode first");
+  let data_slice1 = &result1;
+  let decoded1 = decode_value(data_slice1).expect("Failed to decode first");
   assert_eq!(decoded1, value1);
 
-  let mut decoder2 = Decoder::new(&result2);
-  let decoded2 = decoder2.decode().expect("Failed to decode second");
+  let data_slice2 = &result2;
+  let decoded2 = decode_value(data_slice2).expect("Failed to decode second");
   assert_eq!(decoded2, value2);
 }
 
@@ -322,8 +322,8 @@ fn test_encoder_with_capacity() {
     .expect("Failed to encode");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -341,8 +341,8 @@ fn test_encoder_clear() {
   let result = encode(&mut buffer, &value2).expect("Failed to encode after clear");
 
   // Verify the second encoding works
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value2);
 }
 
@@ -361,8 +361,8 @@ fn test_encoder_buffer_access() {
   let second_result = encode(&mut buffer, &value2).expect("Failed to encode again");
   
   // The buffer now contains the second encoding result
-  let mut decoder = Decoder::new(&second_result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &second_result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value2);
 }
 
@@ -374,24 +374,24 @@ fn test_encode_large_numbers() {
   let value1 = Value::Signed(i64::MAX);
   let result1 = encode(&mut buffer, &value1)
     .expect("Failed to encode");
-  let mut decoder1 = Decoder::new(&result1);
-  let decoded1 = decoder1.decode().expect("Failed to decode");
+  let data_slice1 = &result1;
+  let decoded1 = decode_value(data_slice1).expect("Failed to decode");
   assert_eq!(decoded1, value1);
 
   // Test large negative signed
   let value2 = Value::Signed(i64::MIN);
   let result2 = encode(&mut buffer, &value2)
     .expect("Failed to encode");
-  let mut decoder2 = Decoder::new(&result2);
-  let decoded2 = decoder2.decode().expect("Failed to decode");
+  let data_slice2 = &result2;
+  let decoded2 = decode_value(data_slice2).expect("Failed to decode");
   assert_eq!(decoded2, value2);
 
   // Test large unsigned that requires staying unsigned
   let value3 = Value::Unsigned(u64::MAX);
   let result3 = encode(&mut buffer, &value3)
     .expect("Failed to encode");
-  let mut decoder3 = Decoder::new(&result3);
-  let decoded3 = decoder3.decode().expect("Failed to decode");
+  let data_slice3 = &result3;
+  let decoded3 = decode_value(data_slice3).expect("Failed to decode");
   assert_eq!(decoded3, value3); // u64::MAX cannot fit in i64, so should stay unsigned
 }
 
@@ -402,38 +402,38 @@ fn test_encode_special_floats() {
   // Test zero
   let value1 = Value::Float(0.0);
   let result1 = encode(&mut buffer, &value1).expect("Failed to encode zero");
-  let mut decoder1 = Decoder::new(&result1);
-  let decoded1 = decoder1.decode().expect("Failed to decode");
+  let data_slice1 = &result1;
+  let decoded1 = decode_value(data_slice1).expect("Failed to decode");
   assert_eq!(decoded1, value1);
 
   // Test negative zero
   let value2 = Value::Float(-0.0);
   let result2 = encode(&mut buffer, &value2)
     .expect("Failed to encode");
-  let mut decoder2 = Decoder::new(&result2);
-  let decoded2 = decoder2.decode().expect("Failed to decode");
+  let data_slice2 = &result2;
+  let decoded2 = decode_value(data_slice2).expect("Failed to decode");
   assert_eq!(decoded2, value2);
 
   // Test infinity
   let value3 = Value::Float(f64::INFINITY);
   let result3 = encode(&mut buffer, &value3).expect("Failed to encode infinity");
-  let mut decoder3 = Decoder::new(&result3);
-  let decoded3 = decoder3.decode().expect("Failed to decode");
+  let data_slice3 = &result3;
+  let decoded3 = decode_value(data_slice3).expect("Failed to decode");
   assert_eq!(decoded3, value3);
 
   // Test negative infinity
   let value4 = Value::Float(f64::NEG_INFINITY);
   let result4 = encode(&mut buffer, &value4)
     .expect("Failed to encode");
-  let mut decoder4 = Decoder::new(&result4);
-  let decoded4 = decoder4.decode().expect("Failed to decode");
+  let data_slice4 = &result4;
+  let decoded4 = decode_value(data_slice4).expect("Failed to decode");
   assert_eq!(decoded4, value4);
 
   // Test NaN (Note: NaN != NaN, so we need special handling)
   let value5 = Value::Float(f64::NAN);
   let result5 = encode(&mut buffer, &value5).expect("Failed to encode NaN");
-  let mut decoder5 = Decoder::new(&result5);
-  let decoded5 = decoder5.decode().expect("Failed to decode");
+  let data_slice5 = &result5;
+  let decoded5 = decode_value(data_slice5).expect("Failed to decode");
   if let Value::Float(f) = decoded5 {
     assert!(f.is_nan());
   } else {
@@ -558,9 +558,8 @@ fn test_encode_deeply_nested_mixed_structures() {
     .expect("Failed to encode deeply nested structure");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder
-    .decode()
+  let data_slice = &result;
+  let decoded = decode_value(data_slice)
     .expect("Failed to decode deeply nested structure");
 
   // Since HashMap order is not guaranteed, we'll verify the structure piece by piece
@@ -763,8 +762,8 @@ fn test_in_place_encode_null() {
   assert_eq!(bytes_written, 1);
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&buffer[.. bytes_written]);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &buffer[.. bytes_written];
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -777,8 +776,8 @@ fn test_in_place_encode_bool() {
   assert_eq!(bytes_written, 1);
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&buffer[.. bytes_written]);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &buffer[.. bytes_written];
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -790,8 +789,8 @@ fn test_in_place_encode_string() {
   let bytes_written = encode_into(&mut buffer, &value).expect("Failed to encode string");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&buffer[.. bytes_written]);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &buffer[.. bytes_written];
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -807,8 +806,8 @@ fn test_in_place_encode_array() {
   let bytes_written = encode_into(&mut buffer, &value).expect("Failed to encode array");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&buffer[.. bytes_written]);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &buffer[.. bytes_written];
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -824,8 +823,8 @@ fn test_in_place_encode_object() {
   let bytes_written = encode_into(&mut buffer, &value).expect("Failed to encode object");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&buffer[.. bytes_written]);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &buffer[.. bytes_written];
+  let decoded = decode_value(data_slice).expect("Failed to decode");
 
   // Since HashMap ordering is not guaranteed, we need to check content differently
   if let Value::Object(decoded_obj) = decoded {
@@ -876,8 +875,8 @@ fn test_in_place_encode_exact_fit() {
   assert!(bytes_written <= buffer.len());
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&buffer[.. bytes_written]);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &buffer[.. bytes_written];
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 }
 
@@ -894,8 +893,8 @@ fn test_in_place_encode_reuse() {
   let bytes_written2 = encode_into(&mut buffer, &value2).expect("Failed to encode second value");
 
   // Verify the second value overwrote the first
-  let mut decoder = Decoder::new(&buffer[.. bytes_written2]);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &buffer[.. bytes_written2];
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value2);
 }
 
@@ -913,8 +912,8 @@ fn test_in_place_encode_deeply_nested() {
     encode_into(&mut buffer, &nested_value).expect("Failed to encode nested structure");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&buffer[.. bytes_written]);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &buffer[.. bytes_written];
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, nested_value);
 }
 
@@ -931,15 +930,14 @@ fn test_standalone_encode_function() {
   let result = encode(&mut buffer, &value).expect("Failed to encode with standalone function");
 
   // Verify we can decode it back
-  let mut decoder = Decoder::new(&result);
-  let decoded = decoder.decode().expect("Failed to decode");
+  let data_slice = &result;
+  let decoded = decode_value(data_slice).expect("Failed to decode");
   assert_eq!(decoded, value);
 
   // Verify buffer was reused correctly
   let second_value = Value::String("second test".to_string());
   let second_result = encode(&mut buffer, &second_value).expect("Failed to encode second value");
   
-  let mut second_decoder = Decoder::new(&second_result);
-  let second_decoded = second_decoder.decode().expect("Failed to decode second value");
+  let second_decoded = decode_value(&second_result).expect("Failed to decode second value");
   assert_eq!(second_decoded, second_value);
 }
