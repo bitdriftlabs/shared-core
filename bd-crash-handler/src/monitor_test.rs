@@ -39,6 +39,7 @@ use mockall::predicate::eq;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::OffsetDateTime;
+use time::ext::NumericalDuration;
 use uuid::Uuid;
 
 struct Setup {
@@ -201,7 +202,10 @@ async fn test_log_report_fields() {
   let data = builder.finished_data();
 
   let mut setup = Setup::new(true).await;
-  let mut tracker = global_state::Tracker::new(setup.store.clone());
+  let mut tracker = global_state::Tracker::new(
+    setup.store.clone(),
+    runtime::Watch::new_for_testing(10.seconds()),
+  );
   tracker.maybe_update_global_state(
     &[
       ("os_version".into(), "6".into()),

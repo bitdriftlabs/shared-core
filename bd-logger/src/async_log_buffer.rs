@@ -253,7 +253,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         // The size of the pre-config buffer matches the size of the enclosing
         // async log buffer.
         logging_state: LoggingState::Uninitialized(uninitialized_logging_context),
-        global_state_tracker: global_state::Tracker::new(store),
+        global_state_tracker: global_state::Tracker::new(
+          store,
+          runtime_loader.register_duration_watch(),
+        ),
         time_provider,
       },
       async_log_buffer_communication_tx,

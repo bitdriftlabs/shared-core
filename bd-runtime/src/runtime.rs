@@ -360,6 +360,17 @@ impl<T, P: FeatureFlag<T>> Watch<T, P> {
   pub fn into_inner(self) -> tokio::sync::watch::Receiver<T> {
     self.watch
   }
+
+  pub fn new_for_testing(default: T) -> Self
+  where
+    T: Clone,
+  {
+    let (_, rx) = tokio::sync::watch::channel(default);
+    Self {
+      watch: rx,
+      _type: PhantomData,
+    }
+  }
 }
 
 pub type BoolWatch<P> = Watch<bool, P>;
