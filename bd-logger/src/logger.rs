@@ -31,9 +31,10 @@ use bd_runtime::runtime::Snapshot;
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
+use parking_lot::Mutex;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{oneshot, watch};
@@ -589,7 +590,7 @@ impl Logger {
   }
 
   pub fn shutdown(&self, blocking: bool) {
-    let shutdown_trigger = self.shutdown_state.lock().unwrap().take();
+    let shutdown_trigger = self.shutdown_state.lock().take();
 
     if let Some(shutdown_trigger) = shutdown_trigger
       && blocking

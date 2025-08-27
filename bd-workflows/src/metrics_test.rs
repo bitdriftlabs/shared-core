@@ -87,10 +87,7 @@ fn metric_increment_value_extraction() {
   // No counter emitted for action_id_4 as the field does not exist.
   assert!(
     collector
-      .find_counter(
-        &NameType::ActionId(MetricType::Counter, "action_id_4".to_string()),
-        &labels! {}
-      )
+      .find_counter(&NameType::ActionId("action_id_4".to_string()), &labels! {})
       .is_none()
   );
 

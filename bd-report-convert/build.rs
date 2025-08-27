@@ -7,9 +7,29 @@
 
 use std::path::Path;
 
-const SPECPATH: &str = "../api/src/bitdrift_public/fbs/issue-reporting/v1/report.fbs";
+const FBS: &[&str] = &[
+  "../api/src/bitdrift_public/fbs/common/v1/common.fbs",
+  "../api/src/bitdrift_public/fbs/issue-reporting/v1/report.fbs",
+];
 
 pub fn main() {
+  if std::env::var("SKIP_PROTO_GEN").is_err() {
+    for &spec in FBS {
+      println!("cargo:rerun-if-changed={spec}");
+    }
+    std::fs::create_dir_all("src/flatbuffers").unwrap();
+
+    flatc_rust::run(flatc_rust::Args {
+      lang: "cpp",
+      inputs: &FBS.iter().map(Path::new).collect::<Vec<_>>(),
+      out_dir: Path::new("src/flatbuffers"),
+      includes: &[Path::new("../api/src")],
+      extra: &["--reflect-names"],
+      ..flatc_rust::Args::default()
+    })
+    .unwrap();
+  }
+
   let fbs = cmake::Config::new("../thirdparty/flatbuffers")
     .build_target("flatbuffers")
     .build();
@@ -25,19 +45,4 @@ pub fn main() {
     .include("../thirdparty/flatbuffers/include")
     .std("c++17")
     .compile("bdrc");
-
-  if std::env::var("SKIP_PROTO_GEN").is_ok() {
-    return; // these aren't protos, but shouldn't build in the same cases
-  }
-
-  println!("cargo:rerun-if-changed={SPECPATH}");
-  std::fs::create_dir_all("src/flatbuffers").unwrap();
-  flatc_rust::run(flatc_rust::Args {
-    lang: "cpp",
-    inputs: &[Path::new(SPECPATH)],
-    out_dir: Path::new("src/flatbuffers"),
-    extra: &["--reflect-names"],
-    ..flatc_rust::Args::default()
-  })
-  .unwrap();
 }

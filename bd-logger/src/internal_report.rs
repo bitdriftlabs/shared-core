@@ -28,7 +28,7 @@ pub struct Reporter {
 impl Reporter {
   pub fn new(runtime: &ConfigLoader) -> Self {
     Self {
-      is_enabled_flag: runtime.register_watch().unwrap(),
+      is_enabled_flag: runtime.register_bool_watch(),
 
       state: parking_lot::Mutex::new(State::default()),
     }

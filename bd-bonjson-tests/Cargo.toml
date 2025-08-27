@@ -12,11 +12,11 @@ doctest = false
 bd-bonjson.path = "../bd-bonjson"
 
 [dev-dependencies]
-assert_no_alloc = "1.1.2"
+assert_no_alloc      = "1.1.2"
 bd-test-helpers.path = "../bd-test-helpers"
-libc = "0.2.174"
-tempfile.workspace = true
+libc                 = "0.2.175"
+tempfile.workspace   = true
 
 [build-dependencies]
 bd-bonjson.path = "../bd-bonjson"
-cc.workspace          = true
+cc.workspace    = true

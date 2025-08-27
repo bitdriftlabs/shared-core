@@ -407,11 +407,13 @@ impl ProcessingPipeline {
     // The log that triggered a flush of the buffer(s) has not been written to any of the buffers,
     // so it's not going to be flushed. To work around that, create a synthetic log that
     // resembles the original log and add it to one of the buffers scheduled to be uploaded.
-    if !is_log_about_to_be_uploaded && !triggered_flushes_buffer_ids.is_empty() {
+    if !is_log_about_to_be_uploaded
       // Select a 'random' buffer from the 'list' of buffers scheduled for flushing.
-      let arbitrary_buffer_id_to_flush =
-        (*triggered_flushes_buffer_ids.iter().next().unwrap()).to_string();
-
+      && let Some(arbitrary_buffer_id_to_flush) = triggered_flushes_buffer_ids
+        .iter()
+        .next()
+        .map(std::string::ToString::to_string)
+    {
       log::debug!(
         "adding synthetic log \"{:?}\" to \"{}\" buffer; flush buffer action IDs {:?}",
         log.message,

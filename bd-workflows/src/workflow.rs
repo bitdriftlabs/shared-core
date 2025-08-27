@@ -89,7 +89,11 @@ impl Workflow {
       // is an initial state run it will not be initialized until the primary run is complete. If
       // the initial state run happens to progress beyond the timeout on its own that is fine.
       let run = Run::new(config, now, self.runs.is_empty());
-      if run.traversals[0].timeout_unix_ms.is_some() {
+      if run
+        .traversals
+        .first()
+        .is_some_and(|t| t.timeout_unix_ms.is_some())
+      {
         result.stats.processed_timeout = true;
       }
       self.runs.insert(0, run);
@@ -101,7 +105,9 @@ impl Workflow {
     for index in (0 .. self.runs.len()).rev() {
       log::trace!("processing run {index} for workflow {}", self.id);
       let is_initial_run = index == 0;
-      let run = &mut self.runs[index];
+      let Some(run) = self.runs.get_mut(index) else {
+        continue;
+      };
       let mut run_result = run.process_log(config, log, now);
 
       result.incorporate_run_result(&mut run_result);
@@ -114,7 +120,7 @@ impl Workflow {
         },
         RunState::Completed => {
           debug_assert!(
-            self.runs[index].traversals.is_empty(),
+            run.traversals.is_empty(),
             "completing a run with active traversals"
           );
 
@@ -127,8 +133,10 @@ impl Workflow {
           // this case by definition the initial state run should have a single traversal as it
           // has not progressed.
           if !is_initial_run {
-            debug_assert!(self.runs[0].traversals.len() == 1);
-            self.runs[0].traversals[0].initialize_timeout(config, now);
+            debug_assert!(self.runs.first().map(|r| r.traversals.len()) == Some(1));
+            if let Some(f) = self.runs.first_mut().and_then(|r| r.traversals.get_mut(0)) {
+              f.initialize_timeout(config, now);
+            }
           }
         },
         RunState::Running => {
@@ -465,7 +473,9 @@ impl Run {
       config.id()
     );
     for index in (0 .. self.traversals.len()).rev() {
-      let traversal = &mut self.traversals[index];
+      let Some(traversal) = self.traversals.get_mut(index) else {
+        continue;
+      };
       let mut traversal_result = traversal.process_log(config, log, now);
 
       run_triggered_actions.append(&mut traversal_result.triggered_actions);
@@ -684,7 +694,7 @@ impl Traversal {
     now: OffsetDateTime,
     initialize_timeout: bool,
   ) -> Option<Self> {
-    let state = &config.states()[state_index];
+    let state = &config.states().get(state_index)?;
     if state.transitions().is_empty() && state.timeout().is_none() {
       None
     } else {
@@ -706,14 +716,17 @@ impl Traversal {
   }
 
   fn initialize_timeout(&mut self, config: &Config, now: OffsetDateTime) {
-    let state = &config.states()[self.state_index];
+    let Some(state) = &config.states().get(self.state_index) else {
+      return;
+    };
     self.timeout_unix_ms = state.timeout().map(|timeout| {
       log::trace!(
         "setting timeout for traversal at state {} to {}",
         state.id(),
         timeout.duration
       );
-      now.unix_timestamp_ms() + i64::try_from(timeout.duration.whole_milliseconds()).unwrap()
+      now.unix_timestamp_ms()
+        + i64::try_from(timeout.duration.whole_milliseconds()).unwrap_or_default()
     });
   }
 
@@ -751,7 +764,7 @@ impl Traversal {
       }
     }
 
-    let transitions = config.transitions_for_traversal(self);
+    let transitions = config.transitions_for_traversal(self).unwrap_or_default();
 
     let mut result = TraversalResult::default();
     // In majority of cases each traversal has 0 or 1 successor. A case when
@@ -762,7 +775,11 @@ impl Traversal {
       "processing {} transition(s) for workflow {}/{}",
       transitions.len(),
       config.id(),
-      config.states()[self.state_index].id()
+      config
+        .states()
+        .get(self.state_index)
+        .map(super::config::State::id)
+        .unwrap_or_default()
     );
     for (index, transition) in transitions.iter().enumerate() {
       match &transition.rule() {
@@ -774,20 +791,27 @@ impl Traversal {
             log.fields,
             self.extractions.fields.as_ref(),
           ) {
-            self.matched_logs_counts[index] += 1;
+            let Some(matched_logs_counts) = self.matched_logs_counts.get_mut(index) else {
+              continue;
+            };
+            *matched_logs_counts += 1;
+            let matched_logs_counts = *matched_logs_counts;
 
             // We do mark the log being matched on the `Run` level even if
             // the transition doesn't end up happening for when
             // self.matched_logs_count < *count.
             result.matched_logs_count += 1;
 
-            if self.matched_logs_counts[index] == *count {
+            if matched_logs_counts == *count
+              && let Some(actions) = config.actions_for_traversal(self, index)
+              && let Some(next_state_index) = config.next_state_index_for_traversal(self, index)
+            {
               process_transition(
                 &mut result,
                 self.do_extractions(config, index, log),
-                config.actions_for_traversal(self, index),
+                actions,
                 log,
-                config.next_state_index_for_traversal(self, index),
+                next_state_index,
                 config,
                 now,
               );
@@ -796,7 +820,7 @@ impl Traversal {
                 "traversal's transition {} matched log ({} matches in total) and is advancing, \
                  workflow id={:?}",
                 index,
-                self.matched_logs_counts[index],
+                matched_logs_counts,
                 config.id(),
               );
             } else {
@@ -804,7 +828,7 @@ impl Traversal {
                 "traversal's transition {} matched log ({} matches in total) but needs {} matches \
                  to advance, workflow id={:?}",
                 index,
-                self.matched_logs_counts[index],
+                matched_logs_counts,
                 *count,
                 config.id(),
               );
@@ -817,13 +841,15 @@ impl Traversal {
     if result.output_traversals.is_empty()
       && let Some(timeout_unix_ms) = self.timeout_unix_ms
       && now.unix_timestamp_ms() >= timeout_unix_ms
+      && let Some(actions) = config.actions_for_timeout(self.state_index)
+      && let Some(next_state_index) = config.next_state_index_for_timeout(self.state_index)
     {
       process_transition(
         &mut result,
         TraversalExtractions::default(),
-        config.actions_for_timeout(self.state_index),
+        actions,
         log,
-        config.next_state_index_for_timeout(self.state_index),
+        next_state_index,
         config,
         now,
       );
@@ -849,7 +875,9 @@ impl Traversal {
     // Maybe some CoW thing.
     let mut new_extractions = self.extractions.clone();
 
-    let extractions = config.extractions(self, index);
+    let Some(extractions) = config.extractions(self, index) else {
+      return new_extractions;
+    };
     for extraction in &extractions.sankey_extractions {
       let Some(extracted_value) = extraction.value.extract_value(log.fields) else {
         continue;

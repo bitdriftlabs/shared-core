@@ -362,17 +362,14 @@ impl Setup {
 
     let (flush_ticker, upload_ticker) =
       default_stats_flush_triggers(watch::channel(false).1, &self.runtime_loader).unwrap();
-    let flush_handles = self
-      .stats
-      .flush_handle(
-        &self.runtime_loader,
-        shutdown_trigger.make_shutdown(),
-        self.directory.path(),
-        data_tx,
-        flush_ticker,
-        upload_ticker,
-      )
-      .unwrap();
+    let flush_handles = self.stats.flush_handle(
+      &self.runtime_loader,
+      shutdown_trigger.make_shutdown(),
+      self.directory.path(),
+      data_tx,
+      flush_ticker,
+      upload_ticker,
+    );
 
     let flush_handle = tokio::spawn(async move {
       flush_handles.flusher.periodic_flush().await;

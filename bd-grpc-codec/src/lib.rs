@@ -5,6 +5,15 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![deny(
+  clippy::expect_used,
+  clippy::panic,
+  clippy::todo,
+  clippy::unimplemented,
+  clippy::unreachable,
+  clippy::unwrap_used
+)]
+
 #[cfg(test)]
 #[path = "./coding_test.rs"]
 mod coding_test;
@@ -12,7 +21,6 @@ mod coding_test;
 pub mod stats;
 
 use crate::stats::DeferredCounter;
-use bd_client_common::error::handle_unexpected_error_with_details;
 use bd_stats_common::DynCounter;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use flate2::write::{ZlibDecoder, ZlibEncoder};
@@ -103,7 +111,7 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
   }
 
   // Converts a Protobuf message into a gRPC frame, potentially compressing the message.
-  pub fn encode(&mut self, message: &MessageType) -> Bytes {
+  pub fn encode(&mut self, message: &MessageType) -> Result<Bytes> {
     // Serialize the Protobuf message then prefix it with the compression byte and the length in big
     // endian (the default for BufMut).
     // See https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#requests for an
@@ -122,25 +130,23 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
       (Some(compressor), true) => match Self::encode_compressed(compressor, message) {
         Ok(compressed) => compressed,
         Err(e) => {
-          handle_unexpected_error_with_details(
-            e,
+          log::debug!(
             "gRPC compression failed, falling back to uncompressed stream and disabling \
-             compression",
-            || None,
+             compression: {e}",
           );
           // Compression failed, fallback to uncompressed and nullify compressor so that
           // the encoder doesn't make further attempt to compress incoming messages. This is to
           // avoid compressing with the use of compressor that's potentially in a bad state.
           self.compressor = None;
-          Self::encode_uncompressed(message)
+          Self::encode_uncompressed(message)?
         },
       },
-      _ => Self::encode_uncompressed(message),
+      _ => Self::encode_uncompressed(message)?,
     };
 
     self.tx_bytes.inc_by(bytes.len());
 
-    bytes
+    Ok(bytes)
   }
 
   #[must_use]
@@ -215,7 +221,7 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
     Ok(buffer.into())
   }
 
-  fn encode_uncompressed(message: &MessageType) -> Bytes {
+  fn encode_uncompressed(message: &MessageType) -> Result<Bytes> {
     #[allow(clippy::cast_possible_truncation)]
     let message_size: usize = message.compute_size() as usize;
     // Create a buffer with enough size to serialize the message as well as the 5 byte prefix.
@@ -230,15 +236,13 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
     // slice. This is safe as we guarantee the capacity above.
     unsafe { buffer.set_len(total_size) };
     {
-      let message_slice = buffer.get_mut(GRPC_MESSAGE_PREFIX_LEN ..).unwrap();
+      let message_slice = &mut buffer[GRPC_MESSAGE_PREFIX_LEN ..];
       let mut output_stream = CodedOutputStream::bytes(message_slice);
-      message
-        .write_to_with_cached_sizes(&mut output_stream)
-        .unwrap();
+      message.write_to_with_cached_sizes(&mut output_stream)?;
       log::trace!("writing message len={message_size}");
     }
 
-    buffer.freeze()
+    Ok(buffer.freeze())
   }
 }
 
@@ -362,8 +366,13 @@ impl<MessageType: DecodingResult> Decoder<MessageType> {
             self.current_message_flags = self.input_buffer.get_u8();
             log::trace!("next message flags={}", self.current_message_flags);
             // Read the message size as big endian.
-            self.current_message_size = Some(self.input_buffer.get_u32().try_into().unwrap());
-            log::trace!("next message len={}", self.current_message_size.unwrap());
+            let current_message_size = self
+              .input_buffer
+              .get_u32()
+              .try_into()
+              .map_err(|_| Error::Protocol("invalid message size"))?;
+            log::trace!("next message len={current_message_size}");
+            self.current_message_size = Some(current_message_size);
 
             continue;
           }

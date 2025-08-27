@@ -32,6 +32,7 @@ use super::{
   to_u32,
 };
 use crate::{AbslCode, Error, Result};
+use bd_client_common::error::InvariantError;
 use crc32fast::Hasher;
 use fs2::FileExt;
 use intrusive_collections::offset_of;
@@ -87,7 +88,7 @@ impl RingBufferProducer for ProducerImpl {
       .extra_locked_data
       .producer
       .as_ref()
-      .unwrap()
+      .ok_or(InvariantError::Invariant)?
       .reservation
       .is_some()
     {
@@ -98,7 +99,7 @@ impl RingBufferProducer for ProducerImpl {
     }
 
     let actual_size = common_ring_buffer.start_reserve_common(size)?;
-    let temp_reservation_data = common_ring_buffer.calculate_next_write_start(actual_size);
+    let temp_reservation_data = common_ring_buffer.calculate_next_write_start(actual_size)?;
 
     // If there is a concurrent reader block the write and drop the data.
     loop {
@@ -114,7 +115,7 @@ impl RingBufferProducer for ProducerImpl {
       match read_reservation {
         None => break,
         Some(read_reservation) => {
-          if !common_ring_buffer.intersect_reservation(&temp_reservation_data, &read_reservation) {
+          if !common_ring_buffer.intersect_reservation(&temp_reservation_data, &read_reservation)? {
             break;
           }
         },
@@ -176,7 +177,7 @@ impl RingBufferProducer for ProducerImpl {
         temp_reservation_data.last_write_end_before_wrap;
     }
 
-    let memory = common_ring_buffer.finish_reservation(&temp_reservation_data.range, size);
+    let memory = common_ring_buffer.finish_reservation(&temp_reservation_data.range, size)?;
     let memory = unsafe {
       // Safety: This is safe insofar as we are theoretically not handing out overlapping ranges at
       // the same time. The transmute drops the shared mutability check and propagates the lifetime
@@ -189,7 +190,7 @@ impl RingBufferProducer for ProducerImpl {
       .extra_locked_data
       .producer
       .as_mut()
-      .unwrap()
+      .ok_or(InvariantError::Invariant)?
       .reservation = Some(temp_reservation_data.range);
 
     write_header_crc32(&mut common_ring_buffer);
@@ -209,7 +210,7 @@ impl RingBufferProducer for ProducerImpl {
       .extra_locked_data
       .producer
       .as_ref()
-      .unwrap()
+      .ok_or(InvariantError::Invariant)?
       .reservation
       .clone();
     if reservation.is_none() {
@@ -226,11 +227,11 @@ impl RingBufferProducer for ProducerImpl {
 
     common_ring_buffer.advance_next_commited_write_start(
       &parent.common_ring_buffer.conditions,
-      reservation.as_ref().unwrap(),
-    );
+      reservation.as_ref().ok_or(InvariantError::Invariant)?,
+    )?;
 
-    let extra_record_header_space =
-      common_ring_buffer.finish_commit_common(reservation.as_ref().unwrap());
+    let extra_record_header_space = common_ring_buffer
+      .finish_commit_common(reservation.as_ref().ok_or(InvariantError::Invariant)?)?;
     let extra_record_header_space: &mut [u8] = unsafe {
       // Safety: This is safe insofar as we should not be writing to the same region from
       // multiple threads.
@@ -244,7 +245,7 @@ impl RingBufferProducer for ProducerImpl {
       debug_assert!(extra_record_header_space.len() == 4);
       let data_crc32 = per_record_crc32(
         &mut common_ring_buffer,
-        reservation.as_ref().unwrap(),
+        reservation.as_ref().ok_or(InvariantError::Invariant)?,
         extra_record_header_space.len(),
       );
       extra_record_header_space.copy_from_slice(&data_crc32.to_ne_bytes());
@@ -253,7 +254,7 @@ impl RingBufferProducer for ProducerImpl {
       .extra_locked_data
       .producer
       .as_mut()
-      .unwrap()
+      .ok_or(InvariantError::Invariant)?
       .reservation = None;
 
     common_ring_buffer.maybe_do_total_data_loss_reset();
@@ -292,10 +293,10 @@ impl ConsumerImpl {
       .extra_locked_data
       .consumer
       .as_ref()
-      .unwrap()
+      .ok_or(InvariantError::Invariant)?
     {
       ConsumerType::Consumer(c) => c.clone(),
-      ConsumerType::CursorConsumer(_) => unreachable!(),
+      ConsumerType::CursorConsumer(_) => return Err(InvariantError::Invariant.into()),
     };
 
     let result = common_consumer_start_read(
@@ -315,10 +316,10 @@ impl ConsumerImpl {
       .extra_locked_data
       .consumer
       .as_mut()
-      .unwrap()
+      .ok_or(InvariantError::Invariant)?
     {
       ConsumerType::Consumer(c) => *c = existing_reservation,
-      ConsumerType::CursorConsumer(_) => unreachable!(),
+      ConsumerType::CursorConsumer(_) => return Err(InvariantError::Invariant.into()),
     }
 
     result
@@ -358,7 +359,7 @@ impl RingBufferConsumer for ConsumerImpl {
       readable
         .changed()
         .await
-        .expect("read watch channel should never be closed");
+        .map_err(|_| InvariantError::Invariant)?;
     }
   }
 
@@ -390,10 +391,10 @@ impl RingBufferConsumer for ConsumerImpl {
       .extra_locked_data
       .consumer
       .as_ref()
-      .unwrap()
+      .ok_or(InvariantError::Invariant)?
     {
       ConsumerType::Consumer(c) => c.clone(),
-      ConsumerType::CursorConsumer(_) => unreachable!(),
+      ConsumerType::CursorConsumer(_) => return Err(InvariantError::Invariant.into()),
     };
 
     if reservation.is_none() {
@@ -407,16 +408,16 @@ impl RingBufferConsumer for ConsumerImpl {
       .extra_locked_data
       .consumer
       .as_mut()
-      .unwrap()
+      .ok_or(InvariantError::Invariant)?
     {
       ConsumerType::Consumer(c) => *c = None,
-      ConsumerType::CursorConsumer(_) => unreachable!(),
+      ConsumerType::CursorConsumer(_) => return Err(InvariantError::Invariant.into()),
     }
     LockedData::finish_read_common(
       &mut common_ring_buffer,
       &parent.common_ring_buffer.conditions,
-      &reservation.unwrap(),
-    );
+      &reservation.ok_or(InvariantError::Invariant)?,
+    )?;
     write_header_crc32(&mut common_ring_buffer);
     parent.no_consumer_reservation_condition.notify_all();
 
@@ -449,19 +450,29 @@ struct CursorConsumerImpl {
 impl CursorConsumerImpl {
   fn get_reservations<'a>(
     guard: &'a MutexGuard<'_, LockedData<ExtraLockedData>>,
-  ) -> &'a IntrusiveQueueWithFreeList<Range> {
-    match guard.extra_locked_data.consumer.as_ref().unwrap() {
-      ConsumerType::Consumer(_) => unreachable!(),
-      ConsumerType::CursorConsumer(c) => c,
+  ) -> Result<&'a IntrusiveQueueWithFreeList<Range>> {
+    match guard
+      .extra_locked_data
+      .consumer
+      .as_ref()
+      .ok_or(InvariantError::Invariant)?
+    {
+      ConsumerType::Consumer(_) => Err(InvariantError::Invariant.into()),
+      ConsumerType::CursorConsumer(c) => Ok(c),
     }
   }
 
   fn get_reservations_mut<'a>(
     guard: &'a mut MutexGuard<'_, LockedData<ExtraLockedData>>,
-  ) -> &'a mut IntrusiveQueueWithFreeList<Range> {
-    match guard.extra_locked_data.consumer.as_mut().unwrap() {
-      ConsumerType::Consumer(_) => unreachable!(),
-      ConsumerType::CursorConsumer(c) => c,
+  ) -> Result<&'a mut IntrusiveQueueWithFreeList<Range>> {
+    match guard
+      .extra_locked_data
+      .consumer
+      .as_mut()
+      .ok_or(InvariantError::Invariant)?
+    {
+      ConsumerType::Consumer(_) => Err(InvariantError::Invariant.into()),
+      ConsumerType::CursorConsumer(c) => Ok(c),
     }
   }
 
@@ -490,11 +501,11 @@ impl CursorConsumerImpl {
       .extra_locked_data
       .consumer
       .as_mut()
-      .unwrap()
+      .ok_or(InvariantError::Invariant)?
     {
-      ConsumerType::Consumer(_) => unreachable!(),
+      ConsumerType::Consumer(_) => return Err(InvariantError::Invariant.into()),
       ConsumerType::CursorConsumer(c) => {
-        c.emplace_back(reservation.unwrap());
+        c.emplace_back(reservation.ok_or(InvariantError::Invariant)?);
       },
     }
 
@@ -541,7 +552,7 @@ impl RingBufferCursorConsumer for CursorConsumerImpl {
       readable
         .changed()
         .await
-        .expect("read watch channel should never be closed");
+        .map_err(|_| InvariantError::Invariant)?;
     }
   }
 
@@ -569,23 +580,23 @@ impl RingBufferCursorConsumer for CursorConsumerImpl {
     };
 
     let mut common_ring_buffer = parent.common_ring_buffer.locked_data.lock();
-    if Self::get_reservations(&common_ring_buffer).is_empty() {
+    if Self::get_reservations(&common_ring_buffer)?.is_empty() {
       return Err(Error::AbslStatus(
         AbslCode::FailedPrecondition,
         "no previous read to advance".to_string(),
       ));
     }
 
-    let next_reservation = Self::get_reservations(&common_ring_buffer)
+    let next_reservation = Self::get_reservations(&common_ring_buffer)?
       .front()
-      .unwrap()
+      .ok_or(InvariantError::Invariant)?
       .clone();
-    Self::get_reservations_mut(&mut common_ring_buffer).pop_front();
+    Self::get_reservations_mut(&mut common_ring_buffer)?.pop_front();
     LockedData::finish_read_common(
       &mut common_ring_buffer,
       &parent.common_ring_buffer.conditions,
       &next_reservation,
-    );
+    )?;
     write_header_crc32(&mut common_ring_buffer);
     parent.no_consumer_reservation_condition.notify_all();
     Ok(())
@@ -794,7 +805,11 @@ impl RingBufferImpl {
 
     #[allow(clippy::ptr_as_ptr, clippy::cast_ptr_alignment)]
     let file_header_address = memory.as_mut_ptr() as *mut FileHeader;
-    let file_header = unsafe { file_header_address.as_mut().unwrap() };
+    let file_header = unsafe {
+      file_header_address
+        .as_mut()
+        .ok_or(InvariantError::Invariant)?
+    };
 
     if created_file {
       // Fully initialize the file header for anything that needs initializing. This should not be
@@ -1088,15 +1103,22 @@ fn common_consumer_start_read<'a>(
       debug_assert_eq!(result.extra_space.len(), 4);
       let data_crc32 = per_record_crc32(
         common_ring_buffer,
-        reservation.as_ref().unwrap(),
+        reservation.as_ref().ok_or(InvariantError::Invariant)?,
         result.extra_space.len(),
       );
-      let crc_equal = data_crc32 == u32::from_ne_bytes(result.extra_space.try_into().unwrap());
+      let crc_equal = data_crc32
+        == u32::from_ne_bytes(
+          result
+            .extra_space
+            .try_into()
+            .map_err(|_| InvariantError::Invariant)?,
+        );
 
       // If we are not operating in cursor mode, zero out extra data (CRCs, etc.) so that this
       // record cannot be read again if we land on it again somehow due to corruption.
       if matches!(cursor, Cursor::No) {
-        common_ring_buffer.zero_extra_data(reservation.as_ref().unwrap().start);
+        common_ring_buffer
+          .zero_extra_data(reservation.as_ref().ok_or(InvariantError::Invariant)?.start);
       }
 
       if !crc_equal {
@@ -1116,8 +1138,8 @@ fn common_consumer_start_read<'a>(
           LockedData::finish_read_common(
             common_ring_buffer,
             conditions,
-            reservation.as_ref().unwrap(),
-          );
+            reservation.as_ref().ok_or(InvariantError::Invariant)?,
+          )?;
           write_header_crc32(common_ring_buffer);
         }
 

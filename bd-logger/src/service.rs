@@ -22,6 +22,7 @@ use futures_util::future::BoxFuture;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::task::Poll;
+use time::ext::NumericalStdDuration;
 use tokio::sync::mpsc::Sender;
 use tower::ServiceBuilder;
 use tower::util::BoxCloneService;
@@ -39,32 +40,31 @@ pub fn new(
   shutdown: ComponentShutdown,
   runtime_loader: &ConfigLoader,
   stats: &Scope,
-) -> anyhow::Result<Upload> {
+) -> Upload {
   let scope = stats.scope("uploader");
   let retry_limit_exceeded = scope.counter("retry_limit_exceeded");
   let retry_limit_exceeded_dropped_logs = scope.counter("retry_limit_exceeded_dropped_logs");
 
-  let ratelimit = ratelimit::RateLimitLayer::new(ratelimit::Rate::new(runtime_loader)?);
+  let ratelimit = ratelimit::RateLimitLayer::new(ratelimit::Rate::new(runtime_loader));
   // TODO(snowp): Consider adding concurrency limits. With the way we do uploads, this only matters
   // if we have multiple buffers being uploaded at the same time.
-  Ok(
-    ServiceBuilder::new()
-      .boxed_clone()
-      .layer(ratelimit)
-      .retry(RetryPolicy {
-        attempts: 0,
-        max_retries: runtime_loader.register_watch()?,
-        retry_limit_exceeded,
-        retry_limit_exceeded_dropped_logs,
-        backoff: None,
-        backoff_provider: BackoffProvider::new(runtime_loader)?,
-      })
-      .service(Uploader {
-        data_upload_tx,
-        shutdown,
-        scope,
-      }),
-  )
+
+  ServiceBuilder::new()
+    .boxed_clone()
+    .layer(ratelimit)
+    .retry(RetryPolicy {
+      attempts: 0,
+      max_retries: runtime_loader.register_int_watch(),
+      retry_limit_exceeded,
+      retry_limit_exceeded_dropped_logs,
+      backoff: None,
+      backoff_provider: BackoffProvider::new(runtime_loader),
+    })
+    .service(Uploader {
+      data_upload_tx,
+      shutdown,
+      scope,
+    })
 }
 
 // An upload request is a UUID and a set of logs.
@@ -94,7 +94,7 @@ impl RequestSized for UploadRequest {
       .map(Vec::len)
       .sum::<usize>()
       .try_into()
-      .unwrap()
+      .unwrap_or(u32::MAX)
   }
 }
 
@@ -251,7 +251,7 @@ impl tower::retry::Policy<UploadRequest, UploadResult, Infallible> for RetryPoli
     let backoff = self
       .backoff
       .get_or_insert_with(|| self.backoff_provider.backoff());
-    let backoff_delay = backoff.next_backoff().unwrap();
+    let backoff_delay = backoff.next_backoff().unwrap_or_else(|| 1.std_minutes());
     self.attempts += 1;
 
     match result {
@@ -282,11 +282,11 @@ struct BackoffProvider {
 }
 
 impl BackoffProvider {
-  fn new(runtime: &ConfigLoader) -> anyhow::Result<Self> {
-    Ok(Self {
-      initial_backoff: runtime.register_watch()?,
-      max_backoff: runtime.register_watch()?,
-    })
+  fn new(runtime: &ConfigLoader) -> Self {
+    Self {
+      initial_backoff: runtime.register_duration_watch(),
+      max_backoff: runtime.register_duration_watch(),
+    }
   }
 
   fn backoff(&self) -> backoff::ExponentialBackoff {

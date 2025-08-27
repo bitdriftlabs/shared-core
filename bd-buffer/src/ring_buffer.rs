@@ -25,8 +25,8 @@ use crate::buffer::{
 use crate::ffi::AbslCode;
 use crate::{Error, Result};
 use anyhow::anyhow;
-use bd_client_common::error::handle_unexpected;
 use bd_client_stats_store::{Counter, Scope};
+use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
 use bd_stats_common::labels;
 use futures::future::join_all;
@@ -90,7 +90,9 @@ pub struct BufferEventWithResponse {
 
 impl Drop for BufferEventWithResponse {
   fn drop(&mut self) {
-    let _ignored = self.on_processed_tx.take().unwrap().send(());
+    if let Some(on_processed_tx) = self.on_processed_tx.take() {
+      let _ignored = on_processed_tx.send(());
+    }
   }
 }
 
@@ -181,7 +183,7 @@ impl Manager {
         buffer_directory,
         buffer_event_tx,
         scope,
-        stream_buffer_size_flag: runtime.register_watch().unwrap(),
+        stream_buffer_size_flag: runtime.register_int_watch(),
       }),
       buffer_event_rx,
     )
@@ -423,11 +425,11 @@ impl Manager {
         ));
 
         Some(BufferEventWithResponse::new(
-          BufferEvent::StreamBufferAdded(updated_stream_buffer.clone().unwrap()),
+          BufferEvent::StreamBufferAdded(updated_stream_buffer.clone()?),
         ))
       },
       (false, Some(_)) => Some(BufferEventWithResponse::new(
-        BufferEvent::StreamBufferRemoved(stream_buffer.take().unwrap()),
+        BufferEvent::StreamBufferRemoved(stream_buffer.take()?),
       )),
     }?;
 

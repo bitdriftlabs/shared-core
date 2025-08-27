@@ -9,8 +9,7 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-ahash.workspace   = true
-bd-bounded-buffer = { path = "../bd-bounded-buffer" }
-bd-proto          = { path = "../bd-proto" }
-serde.workspace   = true
-time.workspace    = true
+ahash.workspace = true
+bd-proto        = { path = "../bd-proto" }
+serde.workspace = true
+time.workspace  = true

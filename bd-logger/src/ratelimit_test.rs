@@ -64,7 +64,7 @@ async fn ratelimit() {
     ]))
     .await;
 
-  let rate_limit = RateLimitLayer::new(super::Rate::new(&runtime_loader).unwrap());
+  let rate_limit = RateLimitLayer::new(super::Rate::new(&runtime_loader));
   let mut service = tower::ServiceBuilder::new()
     .layer(rate_limit)
     .service(TestService {});
@@ -108,7 +108,7 @@ async fn shared_quota() {
     ]))
     .await;
 
-  let rate_limit = RateLimitLayer::new(super::Rate::new(&runtime_loader).unwrap());
+  let rate_limit = RateLimitLayer::new(super::Rate::new(&runtime_loader));
   let mut service1 = tower::ServiceBuilder::new()
     .layer(rate_limit.clone())
     .service(TestService {});

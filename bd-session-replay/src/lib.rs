@@ -5,11 +5,22 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![deny(
+  clippy::expect_used,
+  clippy::panic,
+  clippy::todo,
+  clippy::unimplemented,
+  clippy::unreachable,
+  clippy::unwrap_used
+)]
+
 #[cfg(test)]
 #[path = "./recorder_test.rs"]
 mod recorder_test;
 
+use bd_client_common::maybe_await_interval;
 use bd_client_stats_store::{Counter, Scope};
+use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::LogType;
 use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch, session_replay};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
@@ -93,15 +104,14 @@ impl Recorder {
     let (next_screenshot_tx, next_screenshot_rx) = channel(1);
 
     let mut is_periodic_reporting_enabled_flag =
-      session_replay::PeriodicScreensEnabledFlag::register(runtime_loader).unwrap();
+      session_replay::PeriodicScreensEnabledFlag::register(runtime_loader);
     let is_periodic_reporting_enabled = *is_periodic_reporting_enabled_flag.read_mark_update();
 
-    let reporting_interval_rate = *session_replay::ReportingIntervalFlag::register(runtime_loader)
-      .unwrap()
-      .read_mark_update();
+    let reporting_interval_rate =
+      *session_replay::ReportingIntervalFlag::register(runtime_loader).read_mark_update();
 
     let mut is_capture_screenshots_enabled_flag =
-      session_replay::ScreenshotsEnabledFlag::register(runtime_loader).unwrap();
+      session_replay::ScreenshotsEnabledFlag::register(runtime_loader);
     let is_capture_screenshots_enabled = *is_capture_screenshots_enabled_flag.read_mark_update();
 
     let stats = Stats::new(scope);
@@ -120,8 +130,7 @@ impl Recorder {
         is_periodic_reporting_enabled,
         reporting_interval_rate_flag: session_replay::ReportingIntervalFlag::register(
           runtime_loader,
-        )
-        .unwrap(),
+        ),
         reporting_interval_rate,
         reporting_interval: None,
         is_capture_screenshots_enabled_flag,
@@ -168,8 +177,8 @@ impl Recorder {
 
     loop {
       tokio::select! {
-        () = async { self.reporting_interval.as_mut().unwrap().tick().await; },
-          if self.reporting_interval.is_some() && self.is_periodic_reporting_enabled => {
+        () = maybe_await_interval(self.reporting_interval.as_mut()),
+        if self.is_periodic_reporting_enabled => {
           log::debug!("session replay recorder capturing screen");
           // We capture a screen once per 3s (by default) so backlogging shouldn't be a problem
           // here (since taking a screenshot takes not more than ~tens of ms).
@@ -301,7 +310,7 @@ impl bd_log_primitives::LogInterceptor for ScreenshotLogInterceptor {
       return;
     }
 
-    bd_client_common::error::handle_unexpected(
+    handle_unexpected(
       self.next_screenshot_tx.try_send(()),
       "failed to send ready for next screenshot signal",
     );

@@ -5,20 +5,23 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+// Test code only.
+#![allow(clippy::unwrap_used)]
+
 use super::RingBufferStats;
 use bd_client_stats_store::{Counter, Scope};
 use std::sync::Arc;
 use time::ext::NumericalStdDuration;
 
 //
-// StatsHelper
+// StatsTestHelper
 //
 
-pub struct StatsHelper {
+pub struct StatsTestHelper {
   pub stats: Arc<RingBufferStats>,
 }
 
-impl StatsHelper {
+impl StatsTestHelper {
   #[must_use]
   pub fn new(scope: &Scope) -> Self {
     Self {

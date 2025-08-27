@@ -5,6 +5,15 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![deny(
+  clippy::expect_used,
+  clippy::panic,
+  clippy::todo,
+  clippy::unimplemented,
+  clippy::unreachable,
+  clippy::unwrap_used
+)]
+
 pub mod buffer;
 mod ffi;
 mod ring_buffer;
@@ -16,8 +25,9 @@ pub use crate::buffer::{
   RingBuffer,
   RingBufferConsumer,
   RingBufferStats,
-  StatsHelper,
+  StatsTestHelper,
 };
+use bd_client_common::error::InvariantError;
 pub use ffi::AbslCode;
 pub use ring_buffer::{
   BufferEvent,
@@ -42,6 +52,8 @@ pub enum Error {
   InvalidFileName,
   #[error("Failed to start a thread: {0}")]
   ThreadStartFailure(String),
+  #[error("{0}")]
+  Invariant(#[from] InvariantError),
 }
 
 type Result<T> = std::result::Result<T, Error>;

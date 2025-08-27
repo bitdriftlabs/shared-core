@@ -93,7 +93,10 @@ struct LoaderState {
   snapshot: Arc<Snapshot>,
 
   /// Tracks watches for each runtime key.
-  watches: HashMap<&'static str, InternalWatchKind>,
+  int_watches: HashMap<&'static str, InternalWatch<u32>>,
+  bool_watches: HashMap<&'static str, InternalWatch<bool>>,
+  duration_watches: HashMap<&'static str, InternalWatch<time::Duration>>,
+  string_watches: HashMap<&'static str, InternalWatch<String>>,
 
   initialized: bool,
 }
@@ -102,7 +105,10 @@ impl LoaderState {
   fn new(runtime: Runtime, version_nonce: Option<String>) -> Self {
     Self {
       snapshot: Arc::new(Snapshot::new(runtime, version_nonce)),
-      watches: HashMap::new(),
+      int_watches: HashMap::new(),
+      bool_watches: HashMap::new(),
+      duration_watches: HashMap::new(),
+      string_watches: HashMap::new(),
       initialized: false,
     }
   }
@@ -119,7 +125,7 @@ pub struct ConfigLoader {
 impl ConfigurationUpdate for ConfigLoader {
   async fn try_apply_config(&self, response: &ApiResponse) -> Option<ApiRequest> {
     let update = RuntimeUpdate::from_response(response)?;
-    log::debug!("applying runtime update: {}", update);
+    log::debug!("applying runtime update: {update}");
     self.update_snapshot(update).await;
 
     Some(
@@ -164,35 +170,66 @@ impl ConfigLoader {
     self.state.lock().snapshot.clone()
   }
 
+  pub fn register_int_watch<C: FeatureFlag<u32>>(&self) -> Watch<u32, C> {
+    let mut l = self.state.lock();
+    let l = &mut *l;
+    Self::register_watch(&mut l.int_watches, &l.snapshot)
+  }
+
+  pub fn register_bool_watch<C: FeatureFlag<bool>>(&self) -> Watch<bool, C> {
+    let mut l = self.state.lock();
+    let l = &mut *l;
+    Self::register_watch(&mut l.bool_watches, &l.snapshot)
+  }
+
+  pub fn register_duration_watch<C: FeatureFlag<time::Duration>>(
+    &self,
+  ) -> Watch<time::Duration, C> {
+    let mut l = self.state.lock();
+    let l = &mut *l;
+    Self::register_watch(&mut l.duration_watches, &l.snapshot)
+  }
+
+  pub fn register_string_watch<C: FeatureFlag<String>>(&self) -> Watch<String, C> {
+    let mut l = self.state.lock();
+    let l = &mut *l;
+    Self::register_watch(&mut l.string_watches, &l.snapshot)
+  }
+
   /// Registers a watch for the runtime flag given by the provided type.
-  pub fn register_watch<T, C: FeatureFlag<T>>(&self) -> anyhow::Result<Watch<T, C>>
+  fn register_watch<T, C: FeatureFlag<T>>(
+    watches: &mut HashMap<&'static str, InternalWatch<T>>,
+    snapshot: &Snapshot,
+  ) -> Watch<T, C>
   where
     Snapshot: ReadValue<T>,
-    InternalWatchKind: TypedWatch<T> + From<(T, tokio::sync::watch::Sender<T>)>,
   {
-    let mut l = self.state.lock();
-
     // If there is already a watch for this path, just return it directly.
     // TODO(snowp): If there are two flags that specify the same path we might be in trouble
     // since we just key off the path. Fix this.
-    if let Some(existing_watch) = l.watches.get(C::path()) {
-      return Ok(Watch {
-        watch: existing_watch.typed_watch()?,
+    if let Some(existing_watch) = watches.get(C::path()) {
+      return Watch {
+        watch: existing_watch.watch.subscribe(),
         _type: PhantomData,
-      });
+      };
     }
 
     // Initialize the watch with the current (or default if absent) value.
     let (watch_tx, watch_rx) =
-      tokio::sync::watch::channel(l.snapshot.read_value(C::path(), C::default()));
+      tokio::sync::watch::channel(snapshot.read_value(C::path(), C::default()));
 
-    l.watches.insert(C::path(), (C::default(), watch_tx).into());
-    drop(l);
+    watches.insert(
+      C::path(),
+      InternalWatch {
+        default: C::default(),
+        watch: watch_tx,
+      },
+    );
 
-    Ok(Watch {
+    Watch {
       watch: watch_rx,
       _type: PhantomData,
-    })
+    }
   }
 
   fn send_if_modified<T: PartialEq + Display + Clone>(
@@ -248,17 +285,17 @@ impl ConfigLoader {
     ));
 
     // Update the value for each active watch if the data changed.
-    for (k, mut watch) in &mut l.watches {
-      match &mut watch {
-        InternalWatchKind::Int(watch) => Self::send_if_modified(k, &snapshot, watch),
-        InternalWatchKind::Bool(watch) => Self::send_if_modified(k, &snapshot, watch),
-        InternalWatchKind::Duration(watch) => {
-          Self::send_if_modified(k, &snapshot, watch);
-        },
-        InternalWatchKind::String(watch) => {
-          Self::send_if_modified(k, &snapshot, watch);
-        },
-      }
+    for (k, watch) in &mut l.int_watches {
+      Self::send_if_modified(k, &snapshot, watch);
+    }
+    for (k, watch) in &mut l.bool_watches {
+      Self::send_if_modified(k, &snapshot, watch);
+    }
+    for (k, watch) in &mut l.duration_watches {
+      Self::send_if_modified(k, &snapshot, watch);
+    }
+    for (k, watch) in &mut l.string_watches {
+      Self::send_if_modified(k, &snapshot, watch);
     }
 
     l.snapshot = snapshot;
@@ -355,17 +392,6 @@ pub struct InternalWatch<T> {
 }
 
 //
-// InternalWatchKind
-//
-
-pub enum InternalWatchKind {
-  Int(InternalWatch<u32>),
-  Bool(InternalWatch<bool>),
-  Duration(InternalWatch<time::Duration>),
-  String(InternalWatch<String>),
-}
-
-//
 // ReadValue
 //
 
@@ -375,50 +401,23 @@ pub trait ReadValue<T> {
   fn read_value(&self, path: &str, default: T) -> T;
 }
 
-//
-// TypedWatch
-//
-
-/// Constructs a typed watch subscriber. This is used to provide a type-generic function that be
-/// used to extract the correct watch type from a `InternalWatchKind`.
-pub trait TypedWatch<T> {
-  /// Returns an appropriately typed watch if the underlying object matches the requested type,
-  /// otherwise an error is returned.
-  fn typed_watch(&self) -> anyhow::Result<tokio::sync::watch::Receiver<T>>;
-}
-
 // Defines the necessary traits allowing for the feature_flag! macro to work for the different
 // primitive types. Since the generic code assumes Copy this cannot currently be used for String
 // flags.
 macro_rules! define_primitive_flag_type {
-  ($primitive:ty, $kind_type:tt, $getter:tt) => {
-    impl From<($primitive, tokio::sync::watch::Sender<$primitive>)> for InternalWatchKind {
-      fn from((default, watch): ($primitive, tokio::sync::watch::Sender<$primitive>)) -> Self {
-        Self::$kind_type(InternalWatch { default, watch })
-      }
-    }
-
+  ($primitive:ty, $getter:tt) => {
     impl ReadValue<$primitive> for Snapshot {
       fn read_value(&self, path: &str, default: $primitive) -> $primitive {
         self.$getter(path, default)
       }
     }
-
-    impl TypedWatch<$primitive> for InternalWatchKind {
-      fn typed_watch(&self) -> anyhow::Result<tokio::sync::watch::Receiver<$primitive>> {
-        match self {
-          Self::$kind_type(w) => Ok(w.watch.subscribe()),
-          _ => Err(anyhow::anyhow!("Incompatible runtime subscription")),
-        }
-      }
-    }
   };
 }
 
-define_primitive_flag_type!(u32, Int, get_integer);
-define_primitive_flag_type!(bool, Bool, get_bool);
-define_primitive_flag_type!(time::Duration, Duration, get_duration);
-define_primitive_flag_type!(String, String, get_string);
+define_primitive_flag_type!(u32, get_integer);
+define_primitive_flag_type!(bool, get_bool);
+define_primitive_flag_type!(time::Duration, get_duration);
+define_primitive_flag_type!(String, get_string);
 
 /// Defines a statically typed feature flag that reads runtime from a specific path, returning a
 /// default value if the path is not set.
@@ -429,7 +428,7 @@ define_primitive_flag_type!(String, String, get_string);
 // TODO(snowp): Support the different integral types.
 #[macro_export]
 macro_rules! feature_flag {
-  ($name:tt, $flag_type:ty, $path:literal, $default:expr) => {
+  ($name:tt, $flag_type:ty, $register_fn:ident, $path:literal, $default:expr) => {
     #[derive(Clone, Debug)]
     pub struct $name;
 
@@ -437,8 +436,8 @@ macro_rules! feature_flag {
       #[allow(unused)]
       pub fn register(
         loader: &$crate::runtime::ConfigLoader,
-      ) -> anyhow::Result<$crate::runtime::Watch<$flag_type, Self>> {
-        loader.register_watch()
+      ) -> $crate::runtime::Watch<$flag_type, Self> {
+        loader.$register_fn()
       }
     }
 
@@ -461,7 +460,7 @@ macro_rules! feature_flag {
 #[macro_export]
 macro_rules! int_feature_flag {
   ($name:tt, $path:literal, $default:expr) => {
-    $crate::feature_flag!($name, u32, $path, $default);
+    $crate::feature_flag!($name, u32, register_int_watch, $path, $default);
   };
 }
 
@@ -470,7 +469,7 @@ macro_rules! int_feature_flag {
 #[macro_export]
 macro_rules! bool_feature_flag {
   ($name:tt, $path:literal, $default:expr) => {
-    $crate::feature_flag!($name, bool, $path, $default);
+    $crate::feature_flag!($name, bool, register_bool_watch, $path, $default);
   };
 }
 
@@ -479,14 +478,20 @@ macro_rules! bool_feature_flag {
 #[macro_export]
 macro_rules! string_feature_flag {
   ($name:tt, $path:literal, $default:expr) => {
-    $crate::feature_flag!($name, String, $path, $default);
+    $crate::feature_flag!($name, String, register_string_watch, $path, $default);
   };
 }
 
 #[macro_export]
 macro_rules! duration_feature_flag {
   ($name:tt, $path:literal, $default:expr) => {
-    $crate::feature_flag!($name, time::Duration, $path, $default);
+    $crate::feature_flag!(
+      $name,
+      time::Duration,
+      register_duration_watch,
+      $path,
+      $default
+    );
   };
 }
 

@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_client_common::error::UnexpectedErrorHandler;
+use bd_error_reporter::reporter::{Reporter, UnexpectedErrorHandler};
 use bd_panic::PanicType;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -102,7 +102,7 @@ impl Drop for RecordingErrorReporter {
   }
 }
 
-impl bd_client_common::error::Reporter for RecordingErrorReporter {
+impl Reporter for RecordingErrorReporter {
   fn report(
     &self,
     message: &str,

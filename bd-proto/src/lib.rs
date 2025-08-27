@@ -31,3 +31,10 @@ pub mod flatbuffers;
 )]
 #[cfg(not(tarpaulin_include))]
 pub mod protos;
+
+// This is a magic module that re-exports the generated FlatBuffers code for common so that
+// sets up the module hierarchy correctly so that the buffer_log.rs and report.rs files can refer to
+// common types via crate::flatbuffers::common_generated::common.
+mod common_generated {
+  pub use crate::flatbuffers::common::bitdrift_public::fbs::common;
+}

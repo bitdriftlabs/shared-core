@@ -14,7 +14,7 @@ use bd_proto::protos::client::api::stats_upload_request::snapshot::{
 };
 use bd_proto::protos::client::metric::metric::Data;
 use bd_proto::protos::client::metric::{Metric, MetricsList};
-use bd_stats_common::{MetricType, NameType, make_client_sketch};
+use bd_stats_common::{NameType, make_client_sketch};
 use bd_time::TimestampExt;
 use std::collections::{BTreeMap, HashMap};
 use time::OffsetDateTime;
@@ -103,8 +103,8 @@ impl StatsRequestHelper {
       .metric
       .iter()
       .find(|metric| match &name {
-        NameType::Global(_, name) => metric.name() == name,
-        NameType::ActionId(_, id) => metric.metric_id() == id,
+        NameType::Global(name) => metric.name() == name,
+        NameType::ActionId(id) => metric.metric_id() == id,
       } && metric.tags == fields_str)
   }
 
@@ -112,10 +112,7 @@ impl StatsRequestHelper {
   #[must_use]
   pub fn get_inline_histogram(&self, id: &str, fields: BTreeMap<&str, &str>) -> Option<Vec<f64>> {
     self
-      .get_metric(
-        NameType::ActionId(MetricType::Histogram, id.to_string()),
-        fields,
-      )
+      .get_metric(NameType::ActionId(id.to_string()), fields)
       .and_then(|metric| {
         metric.data.as_ref().map(|data| match data {
           Data::InlineHistogramValues(h) => h.values.clone(),
@@ -135,10 +132,7 @@ impl StatsRequestHelper {
     count: u64,
   ) {
     let histogram = self
-      .get_metric(
-        NameType::Global(MetricType::Histogram, name.to_string()),
-        fields,
-      )
+      .get_metric(NameType::Global(name.to_string()), fields)
       .and_then(|c| c.has_ddsketch_histogram().then(|| c.ddsketch_histogram()))
       .expect("missing histogram");
 
@@ -157,10 +151,7 @@ impl StatsRequestHelper {
 
   pub fn expect_inline_histogram(&self, name: &str, fields: BTreeMap<&str, &str>, values: &[f64]) {
     let histogram = self
-      .get_metric(
-        NameType::Global(MetricType::Histogram, name.to_string()),
-        fields,
-      )
+      .get_metric(NameType::Global(name.to_string()), fields)
       .and_then(|c| {
         c.has_inline_histogram_values()
           .then(|| c.inline_histogram_values())
@@ -173,19 +164,13 @@ impl StatsRequestHelper {
   #[allow(clippy::needless_pass_by_value)]
   #[must_use]
   pub fn get_counter(&self, name: &str, fields: BTreeMap<&str, &str>) -> Option<u64> {
-    self.get_counter_inner(
-      NameType::Global(MetricType::Counter, name.to_string()),
-      fields,
-    )
+    self.get_counter_inner(NameType::Global(name.to_string()), fields)
   }
 
   #[allow(clippy::needless_pass_by_value)]
   #[must_use]
   pub fn get_workflow_counter(&self, id: &str, fields: BTreeMap<&str, &str>) -> Option<u64> {
-    self.get_counter_inner(
-      NameType::ActionId(MetricType::Counter, id.to_string()),
-      fields,
-    )
+    self.get_counter_inner(NameType::ActionId(id.to_string()), fields)
   }
 
   #[allow(clippy::needless_pass_by_value)]

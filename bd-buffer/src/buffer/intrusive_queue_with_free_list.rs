@@ -50,13 +50,13 @@ impl<T> IntrusiveQueueWithFreeList<T> {
     &mut self,
     item: *mut Container<T>,
     f: F,
-  ) -> ResultType {
+  ) -> Option<ResultType> {
     let item = unsafe {
       // Safety: We hold exclusive (&mut self) access. Thus, we can dereference safely assuming no
       // dangling entry pointers that have been popped.
-      item.as_mut().unwrap()
+      item.as_mut()?
     };
-    f(item.value.get_mut())
+    Some(f(item.value.get_mut()))
   }
 
   // Return whether the queue is empty.
