@@ -24,19 +24,24 @@ use crate::serialize_primitives::{
 };
 use std::collections::HashMap;
 
-/// Encodes a `Value` into BONJSON format and returns the resulting bytes.
+/// Encodes a `Value` into BONJSON format and returns the modified buffer.
 ///
-/// This function manages its own buffer allocation and automatically resizes
+/// This function will automatically resize the passed-in buffer
 /// as needed to accommodate the encoded data.
+///
+/// Note: The buffer will automatically reserve 1024 bytes if it's smaller.
 ///
 /// # Arguments
 /// * `buffer` - The buffer to use for encoding (will be cleared and reused)
 /// * `value` - The value to encode
 ///
 /// # Returns
-/// * `Ok(Vec<u8>)` - The encoded bytes on success
+/// * `Ok(&mut Vec<u8>)` - The encoded buffer on success
 /// * `Err(SerializationError)` - If encoding fails
-pub fn encode(buffer: &mut Vec<u8>, value: &Value) -> Result<Vec<u8>, SerializationError> {
+pub fn encode<'a>(
+  buffer: &'a mut Vec<u8>,
+  value: &Value,
+) -> Result<&'a mut Vec<u8>, SerializationError> {
   // Start with a reasonable initial capacity
   const INITIAL_CAPACITY: usize = 1024;
 
@@ -50,11 +55,11 @@ pub fn encode(buffer: &mut Vec<u8>, value: &Value) -> Result<Vec<u8>, Serializat
     buffer.resize(buffer.capacity(), 0);
 
     // Try to encode in place
-    match encode_into(buffer, value) {
+    match encode_into(buffer.as_mut(), value) {
       Ok(bytes_written) => {
         // Success! Truncate to actual size and return
         buffer.truncate(bytes_written);
-        return Ok(buffer.clone());
+        return Ok(buffer);
       },
       Err(SerializationError::BufferFull) => {
         // Buffer too small, double the capacity and try again

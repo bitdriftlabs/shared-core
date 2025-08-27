@@ -288,19 +288,21 @@ fn test_encoder_reuse() {
 
   // Encode first value
   let value1 = Value::String("first".to_string());
-  let result1 = encode(&mut buffer, &value1).expect("Failed to encode");
+  let result1 = encode(&mut buffer, &value1)
+    .expect("Failed to encode")
+    .to_vec();
 
   // Encode second value (should reuse the encoder)
   let value2 = Value::Signed(42);
-  let result2 = encode(&mut buffer, &value2).expect("Failed to encode");
+  let result2 = encode(&mut buffer, &value2)
+    .expect("Failed to encode")
+    .to_vec();
 
   // Verify both encodings work
-  let data_slice1 = &result1;
-  let decoded1 = decode(data_slice1).expect("Failed to decode first");
+  let decoded1 = decode(&result1).expect("Failed to decode first");
   assert_eq!(decoded1, value1);
 
-  let data_slice2 = &result2;
-  let decoded2 = decode(data_slice2).expect("Failed to decode second");
+  let decoded2 = decode(&result2).expect("Failed to decode second");
   assert_eq!(decoded2, value2);
 }
 
