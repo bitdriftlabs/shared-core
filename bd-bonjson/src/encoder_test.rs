@@ -52,7 +52,7 @@ fn test_encode_bool_false() {
 #[test]
 fn test_encode_float() {
   let mut buffer = Vec::new();
-  let value = Value::Float(3.14159);
+  let value = Value::Float(std::f64::consts::PI);
 
   let result = encode(&mut buffer, &value).expect("Failed to encode float");
 
@@ -104,7 +104,7 @@ fn test_encode_unsigned() {
   match decoded {
     Value::Signed(v) => assert_eq!(v, 98765),
     Value::Unsigned(v) => assert_eq!(v, 98765),
-    _ => panic!("Expected integer value, got {:?}", decoded),
+    _ => panic!("Expected integer value, got {decoded:?}"),
   }
 }
 
@@ -290,13 +290,13 @@ fn test_encoder_reuse() {
   let value1 = Value::String("first".to_string());
   let result1 = encode(&mut buffer, &value1)
     .expect("Failed to encode")
-    .to_vec();
+    .clone();
 
   // Encode second value (should reuse the encoder)
   let value2 = Value::Signed(42);
   let result2 = encode(&mut buffer, &value2)
     .expect("Failed to encode")
-    .to_vec();
+    .clone();
 
   // Verify both encodings work
   let decoded1 = decode(&result1).expect("Failed to decode first");
@@ -447,7 +447,7 @@ fn test_encode_deeply_nested_mixed_structures() {
           ]),
           Value::Null,
         ]),
-        Value::Float(3.14159),
+        Value::Float(std::f64::consts::PI),
       ]),
       Value::String("level3".to_string()),
     ]),
@@ -572,7 +572,7 @@ fn test_encode_deeply_nested_mixed_structures() {
 
         if let Value::Array(level2) = &level1[0] {
           assert_eq!(level2.len(), 2);
-          assert_eq!(level2[1], Value::Float(3.14159));
+          assert_eq!(level2[1], Value::Float(std::f64::consts::PI));
 
           if let Value::Array(level3) = &level2[0] {
             assert_eq!(level3.len(), 2);
@@ -924,6 +924,6 @@ fn test_standalone_encode_function() {
   let second_value = Value::String("second test".to_string());
   let second_result = encode(&mut buffer, &second_value).expect("Failed to encode second value");
 
-  let second_decoded = decode(&second_result).expect("Failed to decode second value");
+  let second_decoded = decode(second_result).expect("Failed to decode second value");
   assert_eq!(second_decoded, second_value);
 }
