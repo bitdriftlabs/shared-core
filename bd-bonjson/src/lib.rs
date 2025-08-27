@@ -27,6 +27,7 @@ use deserialize_primitives::DeserializationError;
 use std::collections::HashMap;
 
 /// BONJSON has the same value types and structure as JSON.
+/// Internally, the "Number" type can be a signed integer, unsigned integer, or float.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
   Null,
