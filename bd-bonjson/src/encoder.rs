@@ -24,6 +24,51 @@ use crate::serialize_primitives::{
 };
 use std::collections::HashMap;
 
+/// Encodes a `Value` into BONJSON format and returns the resulting bytes.
+///
+/// This function manages its own buffer allocation and automatically resizes
+/// as needed to accommodate the encoded data.
+///
+/// # Arguments
+/// * `buffer` - The buffer to use for encoding (will be cleared and reused)
+/// * `value` - The value to encode
+///
+/// # Returns
+/// * `Ok(Vec<u8>)` - The encoded bytes on success
+/// * `Err(SerializationError)` - If encoding fails
+pub fn encode(buffer: &mut Vec<u8>, value: &Value) -> Result<Vec<u8>, SerializationError> {
+  // Start with a reasonable initial capacity
+  const INITIAL_CAPACITY: usize = 1024;
+  
+  buffer.clear();
+  if buffer.capacity() < INITIAL_CAPACITY {
+    buffer.reserve(INITIAL_CAPACITY);
+  }
+
+  loop {
+    // Resize buffer to current capacity
+    buffer.resize(buffer.capacity(), 0);
+
+    // Try to encode in place
+    match encode_into(buffer, value) {
+      Ok(bytes_written) => {
+        // Success! Truncate to actual size and return
+        buffer.truncate(bytes_written);
+        return Ok(buffer.clone());
+      },
+      Err(SerializationError::BufferFull) => {
+        // Buffer too small, double the capacity and try again
+        let new_capacity = buffer.capacity() * 2;
+        buffer.reserve(new_capacity - buffer.capacity());
+      },
+      Err(e) => {
+        // Other error, propagate it
+        return Err(e);
+      },
+    }
+  }
+}
+
 /// An encoder for converting `Value` instances into BONJSON byte format.
 pub struct Encoder {
   buffer: Vec<u8>,
@@ -51,36 +96,7 @@ impl Encoder {
   /// * `Ok(Vec<u8>)` - The encoded bytes on success
   /// * `Err(SerializationError)` - If encoding fails
   pub fn encode(&mut self, value: &Value) -> Result<Vec<u8>, SerializationError> {
-    // Start with a reasonable initial capacity
-    const INITIAL_CAPACITY: usize = 1024;
-    
-    self.buffer.clear();
-    if self.buffer.capacity() < INITIAL_CAPACITY {
-      self.buffer.reserve(INITIAL_CAPACITY);
-    }
-
-    loop {
-      // Resize buffer to current capacity
-      self.buffer.resize(self.buffer.capacity(), 0);
-
-      // Try to encode in place
-      match encode_into(&mut self.buffer, value) {
-        Ok(bytes_written) => {
-          // Success! Truncate to actual size and return
-          self.buffer.truncate(bytes_written);
-          return Ok(self.buffer.clone());
-        },
-        Err(SerializationError::BufferFull) => {
-          // Buffer too small, double the capacity and try again
-          let new_capacity = self.buffer.capacity() * 2;
-          self.buffer.reserve(new_capacity - self.buffer.capacity());
-        },
-        Err(e) => {
-          // Other error, propagate it
-          return Err(e);
-        },
-      }
-    }
+    encode(&mut self.buffer, value)
   }
 
   /// Returns the current buffer contents without consuming the encoder.

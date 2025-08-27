@@ -7,7 +7,7 @@
 
 use crate::Value;
 use crate::decoder::Decoder;
-use crate::encoder::Encoder;
+use crate::encoder::{Encoder, encode};
 use std::collections::HashMap;
 
 #[test]
@@ -930,4 +930,30 @@ fn test_in_place_encode_deeply_nested() {
   let mut decoder = Decoder::new(&buffer[.. bytes_written]);
   let decoded = decoder.decode().expect("Failed to decode");
   assert_eq!(decoded, nested_value);
+}
+
+#[test]
+fn test_standalone_encode_function() {
+  let mut buffer = Vec::new();
+  let value = Value::Object({
+    let mut map = HashMap::new();
+    map.insert("test".to_string(), Value::Signed(42));
+    map.insert("flag".to_string(), Value::Bool(true));
+    map
+  });
+
+  let result = encode(&mut buffer, &value).expect("Failed to encode with standalone function");
+
+  // Verify we can decode it back
+  let mut decoder = Decoder::new(&result);
+  let decoded = decoder.decode().expect("Failed to decode");
+  assert_eq!(decoded, value);
+
+  // Verify buffer was reused correctly
+  let second_value = Value::String("second test".to_string());
+  let second_result = encode(&mut buffer, &second_value).expect("Failed to encode second value");
+  
+  let mut second_decoder = Decoder::new(&second_result);
+  let second_decoded = second_decoder.decode().expect("Failed to decode second value");
+  assert_eq!(second_decoded, second_value);
 }
