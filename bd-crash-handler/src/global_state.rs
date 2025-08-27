@@ -76,22 +76,20 @@ impl Tracker {
         self.next_write = None;
         // Check again at this point to see if the state has changed since we last checked. If it's
         // the same we don't have to do anything.
-        if self.current_global_state.0 != *new_global_state {
-          log::trace!("Writing coalesced global state");
-          self.current_global_state = State(new_global_state.clone());
-          self.write_global_state();
-          return UpdateResult::Updated;
-        } else {
+        if self.current_global_state.0 == *new_global_state {
           log::trace!(
             "No change to global state at coalesced write time, not writing but clearing timer"
           );
           return UpdateResult::NoChange;
         }
-      } else {
-        // We have a pending write scheduled, but it's not time yet. Just return.
-        log::trace!("Deferring global state write for {:?}", next_write - now);
-        return UpdateResult::Deferred;
+        log::trace!("Writing coalesced global state");
+        self.current_global_state = State(new_global_state.clone());
+        self.write_global_state();
+        return UpdateResult::Updated;
       }
+      // We have a pending write scheduled, but it's not time yet. Just return.
+      log::trace!("Deferring global state write for {:?}", next_write - now);
+      return UpdateResult::Deferred;
     }
 
     // No write is scheduled and there has been no change, no need to do anything.
@@ -112,13 +110,9 @@ impl Tracker {
       // flag value.
       (Some(last_write), None) => {
         let coalesce_window = *self.coalesce_window.read();
-        log::trace!(
-          "Scheduling global state write with coalesce window of {:?}",
-          coalesce_window
-        );
+        log::trace!("Scheduling global state write with coalesce window of {coalesce_window:?}");
         if last_write.elapsed() < coalesce_window {
-          self.next_write =
-            Some(self.last_write.unwrap().into_std() + coalesce_window).map(Instant::from_std);
+          self.next_write = Some(Instant::from_std(last_write.into_std() + coalesce_window));
           log::trace!("Scheduling global state write at {:?}", self.next_write);
           UpdateResult::Deferred
         } else {

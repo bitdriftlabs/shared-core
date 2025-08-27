@@ -108,7 +108,7 @@ async fn write_is_scheduled_and_deferred() {
 async fn no_scheduled_write_on_same_data() {
   tokio::time::pause();
   let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
-  let mut tracker = Tracker::new(store.clone(), Watch::new_for_testing(6.seconds()));
+  let mut tracker = Tracker::new(store, Watch::new_for_testing(6.seconds()));
   let original = [("m".into(), "n".into())].into();
   assert_eq!(
     UpdateResult::Updated,
