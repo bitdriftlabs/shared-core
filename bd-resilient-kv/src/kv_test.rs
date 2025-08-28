@@ -348,3 +348,232 @@ fn test_byte_buffer_trait() {
   // Verify the changes
   assert_eq!(buffer.as_slice(), &[10, 2, 3, 4, 50]);
 }
+
+#[test]
+fn test_float_values() {
+  let buffer = BasicByteBuffer::new(vec![0; 256]);
+  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+
+  // Test positive float
+  kv.set("pi", &Value::Float(3.14159)).unwrap();
+  let map = kv.as_hashmap().unwrap();
+  assert_eq!(map.get("pi"), Some(&Value::Float(3.14159)));
+
+  // Test negative float
+  kv.set("temp", &Value::Float(-273.15)).unwrap();
+  let map = kv.as_hashmap().unwrap();
+  assert_eq!(map.get("temp"), Some(&Value::Float(-273.15)));
+
+  // Test zero float
+  kv.set("zero", &Value::Float(0.0)).unwrap();
+  let map = kv.as_hashmap().unwrap();
+  assert_eq!(map.get("zero"), Some(&Value::Float(0.0)));
+
+  // Test very small and large floats
+  kv.set("small", &Value::Float(1e-10)).unwrap();
+  kv.set("large", &Value::Float(1e10)).unwrap();
+  let map = kv.as_hashmap().unwrap();
+  assert_eq!(map.get("small"), Some(&Value::Float(1e-10)));
+  assert_eq!(map.get("large"), Some(&Value::Float(1e10)));
+}
+
+#[test]
+fn test_unsigned_values() {
+  let buffer = BasicByteBuffer::new(vec![0; 256]);
+  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+
+  // Test small unsigned values (will be decoded as signed when they fit)
+  kv.set("count", &Value::Unsigned(42)).unwrap();
+  let map = kv.as_hashmap().unwrap();
+  assert_eq!(map.get("count"), Some(&Value::Signed(42))); // BONJSON converts small unsigned to signed
+
+  // Test zero unsigned
+  kv.set("zero", &Value::Unsigned(0)).unwrap();
+  let map = kv.as_hashmap().unwrap();
+  assert_eq!(map.get("zero"), Some(&Value::Signed(0))); // BONJSON converts 0 to signed
+
+  // Test large unsigned that stays unsigned (larger than i64::MAX)
+  let large_unsigned = (i64::MAX as u64) + 1;
+  kv.set("max", &Value::Unsigned(large_unsigned)).unwrap();
+  let map = kv.as_hashmap().unwrap();
+  assert_eq!(map.get("max"), Some(&Value::Unsigned(large_unsigned))); // This stays unsigned
+
+  // Test another truly large unsigned
+  kv.set("big", &Value::Unsigned(18446744073709551615))
+    .unwrap();
+  let map = kv.as_hashmap().unwrap();
+  assert_eq!(map.get("big"), Some(&Value::Unsigned(18446744073709551615)));
+}
+
+#[test]
+fn test_array_values() {
+  let buffer = BasicByteBuffer::new(vec![0; 512]);
+  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+
+  // Test empty array
+  let empty_array = Value::Array(vec![]);
+  kv.set("empty", &empty_array).unwrap();
+  let map = kv.as_hashmap().unwrap();
+  assert_eq!(map.get("empty"), Some(&empty_array));
+
+  // Test array with mixed types
+  let mixed_array = Value::Array(vec![
+    Value::String("hello".to_string()),
+    Value::Signed(42),
+    Value::Bool(true),
+    Value::Float(3.14),
+    Value::Unsigned(100),
+  ]);
+  kv.set("mixed", &mixed_array).unwrap();
+  let map = kv.as_hashmap().unwrap();
+  // Note: BONJSON converts small unsigned values to signed when possible
+  let expected_array = Value::Array(vec![
+    Value::String("hello".to_string()),
+    Value::Signed(42),
+    Value::Bool(true),
+    Value::Float(3.14),
+    Value::Signed(100), // 100 fits in signed, so BONJSON converts it
+  ]);
+  assert_eq!(map.get("mixed"), Some(&expected_array));
+
+  // Test nested arrays
+  let nested_array = Value::Array(vec![
+    Value::Array(vec![Value::Signed(1), Value::Signed(2)]),
+    Value::Array(vec![
+      Value::String("a".to_string()),
+      Value::String("b".to_string()),
+    ]),
+  ]);
+  kv.set("nested", &nested_array).unwrap();
+  let map = kv.as_hashmap().unwrap();
+  assert_eq!(map.get("nested"), Some(&nested_array));
+}
+
+#[test]
+fn test_object_values() {
+  let buffer = BasicByteBuffer::new(vec![0; 512]);
+  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+
+  // Test empty object
+  let empty_object = Value::Object(std::collections::HashMap::new());
+  kv.set("empty_obj", &empty_object).unwrap();
+  let map = kv.as_hashmap().unwrap();
+  assert_eq!(map.get("empty_obj"), Some(&empty_object));
+
+  // Test object with mixed value types
+  let mut obj_map = std::collections::HashMap::new();
+  obj_map.insert("name".to_string(), Value::String("Alice".to_string()));
+  obj_map.insert("age".to_string(), Value::Unsigned(30));
+  obj_map.insert("score".to_string(), Value::Float(95.5));
+  obj_map.insert("active".to_string(), Value::Bool(true));
+  obj_map.insert("negative".to_string(), Value::Signed(-10));
+
+  let mixed_object = Value::Object(obj_map);
+  kv.set("user", &mixed_object).unwrap();
+  let map = kv.as_hashmap().unwrap();
+
+  // Note: BONJSON converts small unsigned values to signed when possible
+  let retrieved = map.get("user").unwrap();
+  if let Value::Object(obj) = retrieved {
+    assert_eq!(obj.get("name"), Some(&Value::String("Alice".to_string())));
+    assert_eq!(obj.get("age"), Some(&Value::Signed(30))); // 30 converted to signed
+    assert_eq!(obj.get("score"), Some(&Value::Float(95.5)));
+    assert_eq!(obj.get("active"), Some(&Value::Bool(true)));
+    assert_eq!(obj.get("negative"), Some(&Value::Signed(-10)));
+  } else {
+    panic!("Expected Object value");
+  }
+
+  // Test nested object
+  let mut inner_map = std::collections::HashMap::new();
+  inner_map.insert("city".to_string(), Value::String("Seattle".to_string()));
+  inner_map.insert("zipcode".to_string(), Value::Unsigned(98101));
+
+  let mut outer_map = std::collections::HashMap::new();
+  outer_map.insert("name".to_string(), Value::String("Bob".to_string()));
+  outer_map.insert("address".to_string(), Value::Object(inner_map));
+
+  let nested_object = Value::Object(outer_map);
+  kv.set("profile", &nested_object).unwrap();
+  let map = kv.as_hashmap().unwrap();
+
+  // Note: BONJSON converts small unsigned values to signed when possible
+  let retrieved = map.get("profile").unwrap();
+  if let Value::Object(obj) = retrieved {
+    assert_eq!(obj.get("name"), Some(&Value::String("Bob".to_string())));
+    if let Some(Value::Object(addr)) = obj.get("address") {
+      assert_eq!(
+        addr.get("city"),
+        Some(&Value::String("Seattle".to_string()))
+      );
+      assert_eq!(addr.get("zipcode"), Some(&Value::Signed(98101))); // Converted to signed
+    } else {
+      panic!("Expected nested Object");
+    }
+  } else {
+    panic!("Expected Object value");
+  }
+}
+
+#[test]
+fn test_complex_nested_structures() {
+  let buffer = BasicByteBuffer::new(vec![0; 1024]);
+  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+
+  // Test array containing objects
+  let mut obj1 = std::collections::HashMap::new();
+  obj1.insert("id".to_string(), Value::Unsigned(1));
+  obj1.insert("name".to_string(), Value::String("Item 1".to_string()));
+
+  let mut obj2 = std::collections::HashMap::new();
+  obj2.insert("id".to_string(), Value::Unsigned(2));
+  obj2.insert("name".to_string(), Value::String("Item 2".to_string()));
+
+  let array_of_objects = Value::Array(vec![Value::Object(obj1), Value::Object(obj2)]);
+
+  kv.set("items", &array_of_objects).unwrap();
+  let map = kv.as_hashmap().unwrap();
+
+  // Note: BONJSON converts small unsigned values to signed when possible
+  let retrieved = map.get("items").unwrap();
+  if let Value::Array(arr) = retrieved {
+    assert_eq!(arr.len(), 2);
+    if let Value::Object(obj) = &arr[0] {
+      assert_eq!(obj.get("id"), Some(&Value::Signed(1))); // Converted to signed
+      assert_eq!(obj.get("name"), Some(&Value::String("Item 1".to_string())));
+    } else {
+      panic!("Expected Object in array");
+    }
+    if let Value::Object(obj) = &arr[1] {
+      assert_eq!(obj.get("id"), Some(&Value::Signed(2))); // Converted to signed
+      assert_eq!(obj.get("name"), Some(&Value::String("Item 2".to_string())));
+    } else {
+      panic!("Expected Object in array");
+    }
+  } else {
+    panic!("Expected Array value");
+  }
+
+  // Test object containing arrays
+  let mut config_map = std::collections::HashMap::new();
+  config_map.insert(
+    "tags".to_string(),
+    Value::Array(vec![
+      Value::String("rust".to_string()),
+      Value::String("database".to_string()),
+    ]),
+  );
+  config_map.insert(
+    "scores".to_string(),
+    Value::Array(vec![
+      Value::Float(1.5),
+      Value::Float(2.7),
+      Value::Float(3.9),
+    ]),
+  );
+
+  let object_with_arrays = Value::Object(config_map);
+  kv.set("config", &object_with_arrays).unwrap();
+  let map = kv.as_hashmap().unwrap();
+  assert_eq!(map.get("config"), Some(&object_with_arrays));
+}
