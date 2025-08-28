@@ -12,10 +12,10 @@ mod kv_test;
 use bd_bonjson::Value;
 use bd_bonjson::decoder::decode;
 use bd_bonjson::encoder::encode_into;
-use bd_bonjson::type_codes::TypeCode;
+use bd_bonjson::serialize_primitives::{serialize_array_begin, serialize_container_end, serialize_map_begin};
 use std::collections::HashMap;
 
-/// A ByteBuffer provides a way to access a contiguous block of memory as a byte slice.
+/// A `ByteBuffer` provides a way to access a contiguous block of memory as a byte slice.
 pub trait ByteBuffer {
   fn as_slice(&self) -> &[u8];
   fn as_mutable_slice(&mut self) -> &mut [u8];
@@ -69,9 +69,24 @@ impl ResilientKv {
     // The last Container End byte (to terminate the array) is not stored in the file.
 
     kv.set_version(1);
-    kv.set_byte(16, TypeCode::ArrayStart as u8);
-    kv.set_position(17);
+    let mut position = 16;
+    position += serialize_array_begin(kv.buffer_at_position(position)).unwrap();
+    kv.set_position(position);
     // println!("Initial buffer: {:x?}", &kv.buffer.as_slice());
+
+    kv
+  }
+
+  pub fn from_kv_store(buffer: Box<dyn ByteBuffer>, kv_store: &mut Self) -> Self {
+    let mut kv = Self::new(buffer);
+    let mut position = kv.position;
+    position += serialize_map_begin(kv.buffer_at_position(position)).unwrap();
+    for (k, v) in kv_store.as_hashmap() {
+      position += encode_into(kv.buffer_at_position(position), &Value::String(k)).unwrap();
+      position += encode_into(kv.buffer_at_position(position), &v).unwrap();
+    }
+    position += serialize_container_end(kv.buffer_at_position(position)).unwrap();
+    kv.set_position(position);
 
     kv
   }
@@ -86,16 +101,8 @@ impl ResilientKv {
     self.set_bytes(8, &(position as u64).to_le_bytes());
   }
 
-  fn buffer_at_position(&mut self, offset: usize) -> &mut [u8] {
-    &mut self.buffer.as_mutable_slice()[offset ..]
-  }
-
-  fn buffer_at_current_position(&mut self) -> &mut [u8] {
-    self.buffer_at_position(self.position)
-  }
-
-  fn set_byte(&mut self, position: usize, byte: u8) {
-    self.buffer_at_position(position)[0] = byte;
+  fn buffer_at_position(&mut self, position: usize) -> &mut [u8] {
+    &mut self.buffer.as_mutable_slice()[position ..]
   }
 
   fn set_bytes(&mut self, position: usize, bytes: &[u8]) {
@@ -103,40 +110,36 @@ impl ResilientKv {
     buffer[.. bytes.len()].copy_from_slice(bytes);
   }
 
-  fn increment_position(&mut self, length: usize) {
-    self.set_position(self.position + length);
-  }
-
-  /// Serialize a journal entry consisting of non-recursive key-value pairs.
-  fn write_journal_entry(&mut self, value: &HashMap<String, Value>) {
-    let v = Value::Object(value.clone());
-    let byte_count = match encode_into(self.buffer_at_current_position(), &v) {
-        Ok(count) => count,
-        Err(e) => {
-            eprintln!("Failed to encode journal entry: {:?}", e);
-            return;
-        }
-    };
-    self.increment_position(byte_count);
+  #[allow(clippy::needless_pass_by_value)]
+  fn write_journal_entry(&mut self, key: &str, value: Value) {
+    let mut position = self.position;
+    // Fill in the map containing the next journal entry
+    position += serialize_map_begin(self.buffer_at_position(position)).unwrap();
+    position += encode_into(self.buffer_at_position(position), &Value::String(key.to_string())).unwrap();
+    position += encode_into(self.buffer_at_position(position), &value).unwrap();
+    position += serialize_container_end(self.buffer_at_position(position)).unwrap();
+    // Then update position to commit the change
+    self.set_position(position);
   }
 
   /// Set key to value in this kv store.
   /// This will create a new journal entry.
-  pub fn set(&mut self, key: &str, value: &Value) {
-    let mut entry = HashMap::new();
-    entry.insert(key.to_string(), value.clone());
-    self.write_journal_entry(&entry);
+  pub fn set(&mut self, key: &str, value: Value) {
+    self.write_journal_entry(key, value);
   }
 
   /// Delete a key from this kv store.
   /// This will create a new journal entry.
   pub fn delete(&mut self, key: &str) {
-    self.set(key, &Value::Null);
+    self.set(key, Value::Null);
   }
 
-  /// Get the current state of the kv store as a HashMap.
+  /// Get the current state of the kv store as a `HashMap`.
   pub fn as_hashmap(&mut self) -> HashMap<String, Value> {
-    self.set_byte(self.position, TypeCode::ContainerEnd as u8);
+    // Position points to one past the end of the last committed change.
+    // Recall that the beginning of a kv store has an "array open" (at position 16). We close it here.
+    // Then the entire journal can be read as a single BONJSON document consisting of an array of journal entries.
+    serialize_container_end(self.buffer_at_position(self.position)).unwrap();
     // println!("Buffer, full: {:x?}", self.buffer.as_slice());
     let buffer = self.buffer_at_position(16);
     // println!("Buffer, pos 16: {:x?}", buffer);

@@ -19,9 +19,9 @@ pub mod encoder;
 pub mod ffi;
 pub mod writer;
 
-mod deserialize_primitives;
-mod serialize_primitives;
-pub mod type_codes;
+pub mod deserialize_primitives;
+pub mod serialize_primitives;
+mod type_codes;
 
 use deserialize_primitives::DeserializationError;
 use std::collections::HashMap;
