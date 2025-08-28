@@ -11,16 +11,7 @@ mod encoder_test;
 
 use crate::Value;
 use crate::serialize_primitives::{
-  SerializationError,
-  serialize_array_begin,
-  serialize_boolean,
-  serialize_container_end,
-  serialize_f64,
-  serialize_i64,
-  serialize_map_begin,
-  serialize_null,
-  serialize_string_header,
-  serialize_u64,
+  serialize_array_begin, serialize_boolean, serialize_container_end, serialize_f64, serialize_i64, serialize_map_begin, serialize_null, serialize_string, serialize_u64, SerializationError
 };
 use std::collections::HashMap;
 
@@ -99,7 +90,7 @@ fn encode_value_into(buffer: &mut [u8], value: &Value) -> Result<usize, Serializ
     Value::Float(f) => serialize_f64(buffer, *f),
     Value::Signed(i) => serialize_i64(buffer, *i),
     Value::Unsigned(u) => serialize_u64(buffer, *u),
-    Value::String(s) => encode_string_into(buffer, s),
+    Value::String(s) => serialize_string(buffer, s),
     Value::Array(arr) => encode_array_into(buffer, arr),
     Value::Object(obj) => encode_object_into(buffer, obj),
   }
@@ -140,7 +131,7 @@ fn encode_object_into(
   // Encode each key-value pair
   for (key, value) in obj {
     // Encode key as string
-    let bytes_written = encode_string_into(&mut buffer[position ..], key)?;
+    let bytes_written = serialize_string(&mut buffer[position ..], key)?;
     position += bytes_written;
 
     // Encode value
@@ -153,20 +144,4 @@ fn encode_object_into(
   position += size;
 
   Ok(position)
-}
-
-/// Encodes a string into a buffer.
-fn encode_string_into(buffer: &mut [u8], s: &str) -> Result<usize, SerializationError> {
-  // Serialize header directly into the output buffer
-  let header_size = serialize_string_header(buffer, s)?;
-
-  // Check if there's enough space for the string data
-  if header_size + s.len() > buffer.len() {
-    return Err(SerializationError::BufferFull);
-  }
-
-  // Write string data after the header
-  buffer[header_size .. header_size + s.len()].copy_from_slice(s.as_bytes());
-
-  Ok(header_size + s.len())
 }

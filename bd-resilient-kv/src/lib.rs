@@ -12,7 +12,7 @@ mod kv_test;
 use bd_bonjson::Value;
 use bd_bonjson::decoder::decode;
 use bd_bonjson::encoder::encode_into;
-use bd_bonjson::serialize_primitives::{serialize_array_begin, serialize_container_end, serialize_map_begin};
+use bd_bonjson::serialize_primitives::{serialize_array_begin, serialize_container_end, serialize_map_begin, serialize_string};
 use std::collections::HashMap;
 
 /// A `ByteBuffer` provides a way to access a contiguous block of memory as a byte slice.
@@ -82,7 +82,7 @@ impl ResilientKv {
     let mut position = kv.position;
     position += serialize_map_begin(kv.buffer_at_position(position)).unwrap();
     for (k, v) in kv_store.as_hashmap() {
-      position += encode_into(kv.buffer_at_position(position), &Value::String(k)).unwrap();
+      position += serialize_string(kv.buffer_at_position(position), &k).unwrap();
       position += encode_into(kv.buffer_at_position(position), &v).unwrap();
     }
     position += serialize_container_end(kv.buffer_at_position(position)).unwrap();
@@ -114,7 +114,7 @@ impl ResilientKv {
     let mut position = self.position;
     // Fill in the map containing the next journal entry
     position += serialize_map_begin(self.buffer_at_position(position)).unwrap();
-    position += encode_into(self.buffer_at_position(position), &Value::String(key.to_string())).unwrap();
+    position += serialize_string(self.buffer_at_position(position), key).unwrap();
     position += encode_into(self.buffer_at_position(position), value).unwrap();
     position += serialize_container_end(self.buffer_at_position(position)).unwrap();
     // Then update position to commit the change
