@@ -110,13 +110,12 @@ impl ResilientKv {
     buffer[.. bytes.len()].copy_from_slice(bytes);
   }
 
-  #[allow(clippy::needless_pass_by_value)]
-  fn write_journal_entry(&mut self, key: &str, value: Value) {
+  fn write_journal_entry(&mut self, key: &str, value: &Value) {
     let mut position = self.position;
     // Fill in the map containing the next journal entry
     position += serialize_map_begin(self.buffer_at_position(position)).unwrap();
     position += encode_into(self.buffer_at_position(position), &Value::String(key.to_string())).unwrap();
-    position += encode_into(self.buffer_at_position(position), &value).unwrap();
+    position += encode_into(self.buffer_at_position(position), value).unwrap();
     position += serialize_container_end(self.buffer_at_position(position)).unwrap();
     // Then update position to commit the change
     self.set_position(position);
@@ -124,14 +123,14 @@ impl ResilientKv {
 
   /// Set key to value in this kv store.
   /// This will create a new journal entry.
-  pub fn set(&mut self, key: &str, value: Value) {
+  pub fn set(&mut self, key: &str, value: &Value) {
     self.write_journal_entry(key, value);
   }
 
   /// Delete a key from this kv store.
   /// This will create a new journal entry.
   pub fn delete(&mut self, key: &str) {
-    self.set(key, Value::Null);
+    self.set(key, &Value::Null);
   }
 
   /// Get the current state of the kv store as a `HashMap`.

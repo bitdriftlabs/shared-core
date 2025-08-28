@@ -20,7 +20,7 @@ fn test_set_and_get_string_value() {
   let buffer = BasicByteBuffer::new(vec![0; 64]);
   let mut kv = ResilientKv::new(Box::new(buffer));
 
-  kv.set("test_key", Value::String("test_value".to_string()));
+  kv.set("test_key", &Value::String("test_value".to_string()));
 
   let map = kv.as_hashmap();
   assert_eq!(map.len(), 1);
@@ -35,7 +35,7 @@ fn test_set_and_get_integer_value() {
   let buffer = BasicByteBuffer::new(vec![0; 64]);
   let mut kv = ResilientKv::new(Box::new(buffer));
 
-  kv.set("number", Value::Signed(42));
+  kv.set("number", &Value::Signed(42));
 
   let map = kv.as_hashmap();
   assert_eq!(map.len(), 1);
@@ -47,7 +47,7 @@ fn test_set_and_get_boolean_value() {
   let buffer = BasicByteBuffer::new(vec![0; 32]);
   let mut kv = ResilientKv::new(Box::new(buffer));
 
-  kv.set("flag", Value::Bool(true));
+  kv.set("flag", &Value::Bool(true));
 
   let map = kv.as_hashmap();
   assert_eq!(map.len(), 1);
@@ -59,9 +59,9 @@ fn test_set_multiple_values() {
   let buffer = BasicByteBuffer::new(vec![0; 256]);
   let mut kv = ResilientKv::new(Box::new(buffer));
 
-  kv.set("key1", Value::String("value1".to_string()));
-  kv.set("key2", Value::Signed(123));
-  kv.set("key3", Value::Bool(false));
+  kv.set("key1", &Value::String("value1".to_string()));
+  kv.set("key2", &Value::Signed(123));
+  kv.set("key3", &Value::Bool(false));
 
   let map = kv.as_hashmap();
   assert_eq!(map.len(), 3);
@@ -75,8 +75,8 @@ fn test_overwrite_existing_key() {
   let buffer = BasicByteBuffer::new(vec![0; 256]);
   let mut kv = ResilientKv::new(Box::new(buffer));
 
-  kv.set("key", Value::String("old_value".to_string()));
-  kv.set("key", Value::String("new_value".to_string()));
+  kv.set("key", &Value::String("old_value".to_string()));
+  kv.set("key", &Value::String("new_value".to_string()));
 
   let map = kv.as_hashmap();
   assert_eq!(map.len(), 1);
@@ -88,7 +88,7 @@ fn test_delete_key() {
   let buffer = BasicByteBuffer::new(vec![0; 64]);
   let mut kv = ResilientKv::new(Box::new(buffer));
 
-  kv.set("key", Value::String("value".to_string()));
+  kv.set("key", &Value::String("value".to_string()));
   kv.delete("key");
 
   let map = kv.as_hashmap();
@@ -100,7 +100,7 @@ fn test_set_null_value() {
   let buffer = BasicByteBuffer::new(vec![0; 64]);
   let mut kv = ResilientKv::new(Box::new(buffer));
 
-  kv.set("null_key", Value::Null);
+  kv.set("null_key", &Value::Null);
 
   let map = kv.as_hashmap();
   assert_eq!(map.len(), 0);
@@ -122,25 +122,25 @@ fn test_create_kv_from_existing_store_with_many_entries() {
   let mut original_kv = ResilientKv::new(Box::new(buffer1));
 
   // Add initial entries
-  original_kv.set("user:1", Value::String("alice".to_string()));
-  original_kv.set("user:2", Value::String("bob".to_string()));
-  original_kv.set("user:3", Value::String("charlie".to_string()));
-  original_kv.set("config:debug", Value::Bool(true));
-  original_kv.set("config:port", Value::Signed(8080));
-  original_kv.set("config:timeout", Value::Signed(30));
-  original_kv.set("stats:requests", Value::Signed(0));
-  original_kv.set("stats:errors", Value::Signed(0));
+  original_kv.set("user:1", &Value::String("alice".to_string()));
+  original_kv.set("user:2", &Value::String("bob".to_string()));
+  original_kv.set("user:3", &Value::String("charlie".to_string()));
+  original_kv.set("config:debug", &Value::Bool(true));
+  original_kv.set("config:port", &Value::Signed(8080));
+  original_kv.set("config:timeout", &Value::Signed(30));
+  original_kv.set("stats:requests", &Value::Signed(0));
+  original_kv.set("stats:errors", &Value::Signed(0));
   
   // Replace some existing entries
-  original_kv.set("user:2", Value::String("robert".to_string())); // Replace bob with robert
-  original_kv.set("config:debug", Value::Bool(false)); // Disable debug
-  original_kv.set("config:port", Value::Signed(9090)); // Change port
-  original_kv.set("stats:requests", Value::Signed(100)); // Update request count
+  original_kv.set("user:2", &Value::String("robert".to_string())); // Replace bob with robert
+  original_kv.set("config:debug", &Value::Bool(false)); // Disable debug
+  original_kv.set("config:port", &Value::Signed(9090)); // Change port
+  original_kv.set("stats:requests", &Value::Signed(100)); // Update request count
   
   // Add more entries after replacements
-  original_kv.set("cache:enabled", Value::Bool(true));
-  original_kv.set("cache:ttl", Value::Signed(3600));
-  original_kv.set("user:4", Value::String("diana".to_string()));
+  original_kv.set("cache:enabled", &Value::Bool(true));
+  original_kv.set("cache:ttl", &Value::Signed(3600));
+  original_kv.set("user:4", &Value::String("diana".to_string()));
   
   // Remove some entries
   original_kv.delete("user:3"); // Remove charlie
@@ -148,8 +148,8 @@ fn test_create_kv_from_existing_store_with_many_entries() {
   original_kv.delete("config:timeout"); // Remove timeout config
   
   // Add final entries after deletions
-  original_kv.set("version", Value::String("1.2.3".to_string()));
-  original_kv.set("maintenance:mode", Value::Bool(false));
+  original_kv.set("version", &Value::String("1.2.3".to_string()));
+  original_kv.set("maintenance:mode", &Value::Bool(false));
 
   // Verify the original store has the expected final state
   let original_map = original_kv.as_hashmap();
@@ -184,7 +184,7 @@ fn test_create_kv_from_existing_store_with_many_entries() {
   }
   
   // Verify the new store is functional by making additional changes
-  new_kv.set("test:new", Value::String("added_to_new".to_string()));
+  new_kv.set("test:new", &Value::String("added_to_new".to_string()));
   new_kv.delete("user:1");
   
   let final_map = new_kv.as_hashmap();
