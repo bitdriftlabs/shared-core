@@ -79,8 +79,9 @@ pub struct ResilientKv {
 }
 
 impl ResilientKv {
-  /// Create a new KV store using the provided buffer as storage space. The buffer will be
-  /// overwritten.
+  /// Create a new KV store using the provided buffer as storage space.
+  ///
+  /// The buffer will be overwritten.
   pub fn new(buffer: Box<dyn ByteBuffer>) -> Result<Self, ResilientKvError> {
     let mut kv = Self {
       version: 0,
@@ -104,13 +105,13 @@ impl ResilientKv {
       ResilientKvError::SerializationError(format!("Failed to serialize array begin: {e:?}"))
     })?;
     kv.set_position(position);
-    // println!("Initial buffer: {:x?}", &kv.buffer.as_slice());
 
     Ok(kv)
   }
 
-  /// Create a new KV store with state loaded from the provided buffer. The buffer is expected to
-  /// already contain a properly formatted KV store file.
+  /// Create a new KV store with state loaded from the provided buffer.
+  ///
+  /// The buffer is expected to already contain a properly formatted KV store file.
   pub fn from_buffer(buffer: Box<dyn ByteBuffer>) -> Result<Self, ResilientKvError> {
     let buffer_slice = buffer.as_slice();
 
@@ -159,8 +160,11 @@ impl ResilientKv {
 
   /// Create a new KV store from an existing one by copying its current state into the provided
   /// buffer.
+  ///
   /// All journal entries from the old store will be replayed, resulting in a single journal entry
-  /// in the new KV store. The buffer will be overwritten.
+  /// in the new KV store.
+  ///
+  /// The buffer will be overwritten.
   pub fn from_kv_store(
     buffer: Box<dyn ByteBuffer>,
     kv_store: &mut Self,
@@ -225,13 +229,16 @@ impl ResilientKv {
   }
 
   /// Set key to value in this kv store.
+  ///
   /// This will create a new journal entry.
+  ///
   /// Note: Setting to `Value::Null` will mark the entry for DELETION!
   pub fn set(&mut self, key: &str, value: &Value) -> Result<(), ResilientKvError> {
     self.write_journal_entry(key, value)
   }
 
   /// Delete a key from this kv store.
+  ///
   /// This will create a new journal entry.
   pub fn delete(&mut self, key: &str) -> Result<(), ResilientKvError> {
     self.set(key, &Value::Null)
@@ -248,9 +255,7 @@ impl ResilientKv {
     serialize_container_end(self.buffer_at_position(self.position)).map_err(|e| {
       ResilientKvError::SerializationError(format!("Failed to serialize container end: {e:?}"))
     })?;
-    // println!("Buffer, full: {:x?}", self.buffer.as_slice());
     let buffer = self.buffer_at_position(16);
-    // println!("Buffer, pos 16: {:x?}", buffer);
     let decoded: Value = decode(buffer)
       .map_err(|e| ResilientKvError::DecodingError(format!("Failed to decode buffer: {e:?}")))?;
     let mut map = HashMap::new();
