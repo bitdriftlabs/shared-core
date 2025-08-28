@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{BasicByteBuffer, ResilientKv, ResilientKvError};
+use crate::{BasicByteBuffer, ByteBuffer, ResilientKv, ResilientKvError};
 use bd_bonjson::Value;
 
 #[test]
@@ -279,4 +279,72 @@ fn test_from_buffer_with_invalid_version() {
   if let Err(e) = result {
     assert!(matches!(e, ResilientKvError::DecodingError(_)));
   }
+}
+
+#[test]
+fn test_from_buffer_success() {
+  // First create a KV store and populate it
+  let buffer1 = BasicByteBuffer::new(vec![0; 128]);
+  let mut kv1 = ResilientKv::new(Box::new(buffer1)).unwrap();
+
+  kv1
+    .set("key1", &Value::String("value1".to_string()))
+    .unwrap();
+  kv1.set("key2", &Value::Signed(42)).unwrap();
+
+  // Get the current state to verify
+  let original_map = kv1.as_hashmap().unwrap();
+  assert_eq!(original_map.len(), 2);
+
+  // Now use from_buffer to load the same data
+  let buffer_slice = kv1.buffer.as_slice().to_vec();
+  let buffer2 = BasicByteBuffer::new(buffer_slice);
+  let mut kv2 = ResilientKv::from_buffer(Box::new(buffer2)).unwrap();
+
+  // Verify the data is loaded correctly
+  let loaded_map = kv2.as_hashmap().unwrap();
+  assert_eq!(loaded_map.len(), 2);
+  assert_eq!(
+    loaded_map.get("key1"),
+    Some(&Value::String("value1".to_string()))
+  );
+  assert_eq!(loaded_map.get("key2"), Some(&Value::Signed(42)));
+}
+
+#[test]
+fn test_from_buffer_with_invalid_position() {
+  // Create a buffer with invalid position (beyond buffer size)
+  let mut buffer_data = vec![0; 32];
+  // Set version to 1 (valid)
+  buffer_data[0] = 1;
+  // Set position to a value larger than buffer size (position at bytes 8-15)
+  let large_position: u64 = 1000;
+  buffer_data[8 .. 16].copy_from_slice(&large_position.to_le_bytes());
+
+  let buffer = BasicByteBuffer::new(buffer_data);
+  let result = ResilientKv::from_buffer(Box::new(buffer));
+  assert!(result.is_err());
+
+  if let Err(e) = result {
+    assert!(matches!(e, ResilientKvError::BufferSizeError(_)));
+  }
+}
+
+#[test]
+fn test_byte_buffer_trait() {
+  let data = vec![1, 2, 3, 4, 5];
+  let mut buffer = BasicByteBuffer::new(data.clone());
+
+  // Test as_slice
+  assert_eq!(buffer.as_slice(), &[1, 2, 3, 4, 5]);
+
+  // Test as_mutable_slice
+  {
+    let mut_slice = buffer.as_mutable_slice();
+    mut_slice[0] = 10;
+    mut_slice[4] = 50;
+  }
+
+  // Verify the changes
+  assert_eq!(buffer.as_slice(), &[10, 2, 3, 4, 50]);
 }
