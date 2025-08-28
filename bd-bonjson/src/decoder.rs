@@ -9,7 +9,6 @@
 #[path = "./decoder_test.rs"]
 mod decoder_test;
 
-use crate::deserialize_primitives;
 use crate::deserialize_primitives::{
   DeserializationError,
   deserialize_f16_after_type_code,
@@ -23,7 +22,18 @@ use crate::deserialize_primitives::{
   peek_type_code,
 };
 use crate::type_codes::TypeCode;
+use crate::{Value, deserialize_primitives};
 use std::collections::HashMap;
+
+/// Decode a buffer and return the resulting value.
+/// On error, it returns the value decoded so far and the error.
+///
+/// # Errors
+/// Returns `DecodeError` if the buffer contains invalid BONJSON data.
+pub fn decode(data: &[u8]) -> Result<Value> {
+  let mut context = DecoderContext::new(data);
+  context.decode_value()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeserializationErrorWithOffset {
@@ -31,51 +41,68 @@ pub enum DeserializationErrorWithOffset {
   // occurred.
   Error(DeserializationError, usize),
 }
-pub type Result<T> = std::result::Result<T, PartialDecodeResult>;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct PartialDecodeResult {
-  pub partial_value: Value, // The value decoded so far, which will be incomplete or possibly None.
-  pub error: DeserializationErrorWithOffset,
+pub enum DecodeError {
+  /// Fatal error - no partial value could be decoded
+  Fatal(DeserializationErrorWithOffset),
+  /// Partial decode - some value was decoded before the error occurred
+  Partial {
+    partial_value: Value,
+    error: DeserializationErrorWithOffset,
+  },
 }
 
-/// BONJSON has the same value types and structure as JSON.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Value {
-  None, // Can only be returned when an error occurs.
-  Null,
-  Bool(bool),
-  Float(f64),
-  Signed(i64),
-  Unsigned(u64),
-  String(String),
-  Array(Vec<Value>),
-  Object(HashMap<String, Value>),
+impl DecodeError {
+  /// Check if this is a fatal error (no partial data available)
+  #[must_use]
+  pub fn is_fatal(&self) -> bool {
+    matches!(self, Self::Fatal(_))
+  }
+
+  /// Get the error information
+  #[must_use]
+  pub fn error(&self) -> &DeserializationErrorWithOffset {
+    match self {
+      Self::Fatal(e) => e,
+      Self::Partial { error, .. } => error,
+    }
+  }
+
+  /// Get the partial value if available
+  #[must_use]
+  pub fn partial_value(&self) -> Option<&Value> {
+    match self {
+      Self::Fatal(_) => None,
+      Self::Partial { partial_value, .. } => Some(partial_value),
+    }
+  }
 }
 
-/// Decoder decodes a buffer containing a BONJSON-encoded data into a `Value`.
-pub struct Decoder<'a> {
+pub type Result<T> = std::result::Result<T, DecodeError>;
+
+/// Internal decoder context to track position and data during decoding
+struct DecoderContext<'a> {
   data: &'a [u8],
   position: usize,
 }
 
-fn propagate_error(error: &PartialDecodeResult, value: Value) -> PartialDecodeResult {
-  PartialDecodeResult {
-    partial_value: value,
-    error: error.error,
+fn propagate_partial_decode(error: &DecodeError, value: Value) -> DecodeError {
+  match error {
+    DecodeError::Fatal(e) => DecodeError::Partial {
+      partial_value: value,
+      error: *e,
+    },
+    DecodeError::Partial { error, .. } => DecodeError::Partial {
+      partial_value: value,
+      error: *error,
+    },
   }
 }
 
-impl<'a> Decoder<'a> {
-  #[must_use]
-  pub fn new(data: &'a [u8]) -> Self {
+impl<'a> DecoderContext<'a> {
+  fn new(data: &'a [u8]) -> Self {
     Self { data, position: 0 }
-  }
-
-  /// Decode the entire buffer and return the resulting value.
-  /// On error, it returns the value decoded so far and the error.
-  pub fn decode(&mut self) -> Result<Value> {
-    self.decode_value()
   }
 
   fn remaining_data(&self) -> &[u8] {
@@ -86,12 +113,16 @@ impl<'a> Decoder<'a> {
     self.position += bytes;
   }
 
-  fn map_err<T>(&self, result: deserialize_primitives::Result<T>, value: Value) -> Result<T> {
-    result.map_err(|e| self.error_here(e, value))
+  fn map_err<T>(&self, result: deserialize_primitives::Result<T>) -> Result<T> {
+    result.map_err(|e| self.fatal_error_here(e))
   }
 
-  fn error_here(&self, error: DeserializationError, value: Value) -> PartialDecodeResult {
-    PartialDecodeResult {
+  fn fatal_error_here(&self, error: DeserializationError) -> DecodeError {
+    DecodeError::Fatal(DeserializationErrorWithOffset::Error(error, self.position))
+  }
+
+  fn partial_error_here(&self, error: DeserializationError, value: Value) -> DecodeError {
+    DecodeError::Partial {
       partial_value: value,
       error: DeserializationErrorWithOffset::Error(error, self.position),
     }
@@ -101,7 +132,7 @@ impl<'a> Decoder<'a> {
   fn decode_value(&mut self) -> Result<Value> {
     let remaining = self.remaining_data();
 
-    let (size, type_code) = self.map_err(deserialize_type_code(remaining), Value::None)?;
+    let (size, type_code) = self.map_err(deserialize_type_code(remaining))?;
     self.advance(size);
 
     match type_code {
@@ -126,51 +157,45 @@ impl<'a> Decoder<'a> {
         self.decode_signed_integer(code)
       },
       code if code == TypeCode::LongNumber as u8 => {
-        Err(self.error_here(DeserializationError::LongNumberNotSupported, Value::None))
+        Err(self.fatal_error_here(DeserializationError::LongNumberNotSupported))
       },
-      _ => Err(self.error_here(DeserializationError::UnexpectedTypeCode, Value::None)),
+      _ => Err(self.fatal_error_here(DeserializationError::UnexpectedTypeCode)),
     }
   }
 
   fn decode_f16(&mut self) -> Result<Value> {
     let remaining = self.remaining_data();
-    let (size, value) = self.map_err(deserialize_f16_after_type_code(remaining), Value::None)?;
+    let (size, value) = self.map_err(deserialize_f16_after_type_code(remaining))?;
     self.advance(size);
     Ok(Value::Float(f64::from(value)))
   }
 
   fn decode_f32(&mut self) -> Result<Value> {
     let remaining = self.remaining_data();
-    let (size, value) = self.map_err(deserialize_f32_after_type_code(remaining), Value::None)?;
+    let (size, value) = self.map_err(deserialize_f32_after_type_code(remaining))?;
     self.advance(size);
     Ok(Value::Float(f64::from(value)))
   }
 
   fn decode_f64(&mut self) -> Result<Value> {
     let remaining = self.remaining_data();
-    let (size, value) = self.map_err(deserialize_f64_after_type_code(remaining), Value::None)?;
+    let (size, value) = self.map_err(deserialize_f64_after_type_code(remaining))?;
     self.advance(size);
     Ok(Value::Float(value))
   }
 
   fn decode_long_string(&mut self) -> Result<Value> {
     let remaining = &self.data[self.position ..];
-    // let remaining = self.remaining_data();
-    let (size, str_slice) = self.map_err(
-      deserialize_long_string_after_type_code(remaining),
-      Value::None,
-    )?;
+    let (size, str_slice) = self.map_err(deserialize_long_string_after_type_code(remaining))?;
     self.advance(size);
     Ok(Value::String(str_slice.to_string()))
   }
 
   fn decode_short_string(&mut self, type_code: u8) -> Result<Value> {
     let remaining = &self.data[self.position ..];
-    // let remaining = self.remaining_data();
-    let (size, str_slice) = self.map_err(
-      deserialize_short_string_after_type_code(remaining, type_code),
-      Value::None,
-    )?;
+    let (size, str_slice) = self.map_err(deserialize_short_string_after_type_code(
+      remaining, type_code,
+    ))?;
     self.advance(size);
     Ok(Value::String(str_slice.to_string()))
   }
@@ -178,10 +203,7 @@ impl<'a> Decoder<'a> {
   #[allow(clippy::cast_possible_wrap)]
   fn decode_unsigned_integer(&mut self, type_code: u8) -> Result<Value> {
     let remaining = self.remaining_data();
-    let (size, value) = self.map_err(
-      deserialize_unsigned_after_type_code(remaining, type_code),
-      Value::None,
-    )?;
+    let (size, value) = self.map_err(deserialize_unsigned_after_type_code(remaining, type_code))?;
     self.advance(size);
     if i64::try_from(value).is_ok() {
       Ok(Value::Signed(value as i64))
@@ -192,10 +214,7 @@ impl<'a> Decoder<'a> {
 
   fn decode_signed_integer(&mut self, type_code: u8) -> Result<Value> {
     let remaining = self.remaining_data();
-    let (size, value) = self.map_err(
-      deserialize_signed_after_type_code(remaining, type_code),
-      Value::None,
-    )?;
+    let (size, value) = self.map_err(deserialize_signed_after_type_code(remaining, type_code))?;
     self.advance(size);
     Ok(Value::Signed(value))
   }
@@ -205,19 +224,34 @@ impl<'a> Decoder<'a> {
 
     loop {
       let remaining = self.remaining_data();
-      let type_code = self.map_err(peek_type_code(remaining), Value::Array(elements.clone()))?;
+      let type_code = match peek_type_code(remaining) {
+        Ok(code) => code,
+        Err(e) => return Err(self.partial_error_here(e, Value::Array(elements))),
+      };
 
       if type_code == TypeCode::ContainerEnd as u8 {
         self.advance(1);
         break;
       }
 
-      let value = self.decode_value().map_err(|e| {
-        if e.partial_value != Value::None {
-          elements.push(e.partial_value.clone());
-        }
-        propagate_error(&e, Value::Array(elements.clone()))
-      })?;
+      let value = match self.decode_value() {
+        Ok(value) => value,
+        Err(e) => match e {
+          DecodeError::Fatal(_) => {
+            return Err(propagate_partial_decode(&e, Value::Array(elements)));
+          },
+          DecodeError::Partial {
+            partial_value,
+            error,
+          } => {
+            elements.push(partial_value);
+            return Err(DecodeError::Partial {
+              partial_value: Value::Array(elements),
+              error,
+            });
+          },
+        },
+      };
 
       elements.push(value);
     }
@@ -230,7 +264,10 @@ impl<'a> Decoder<'a> {
 
     loop {
       let remaining = self.remaining_data();
-      let type_code = self.map_err(peek_type_code(remaining), Value::Object(object.clone()))?;
+      let type_code = match peek_type_code(remaining) {
+        Ok(code) => code,
+        Err(e) => return Err(self.partial_error_here(e, Value::Object(object))),
+      };
 
       if type_code == TypeCode::ContainerEnd as u8 {
         self.advance(1);
@@ -241,147 +278,34 @@ impl<'a> Decoder<'a> {
       let key = match self.decode_value() {
         Ok(Value::String(key)) => key,
         Ok(_) => {
-          return Err(self.error_here(
+          return Err(self.partial_error_here(
             DeserializationError::NonStringKeyInMap,
-            Value::Object(object.clone()),
+            Value::Object(object),
           ));
         },
-        Err(e) => return Err(propagate_error(&e, Value::Object(object.clone()))),
+        Err(e) => return Err(propagate_partial_decode(&e, Value::Object(object))),
       };
 
-      let value = self.decode_value().map_err(|e| {
-        if e.partial_value != Value::None {
-          object.insert(key.clone(), e.partial_value.clone());
-        }
-        propagate_error(&e, Value::Object(object.clone()))
-      })?;
+      let value = match self.decode_value() {
+        Ok(value) => value,
+        Err(e) => match e {
+          DecodeError::Fatal(_) => return Err(propagate_partial_decode(&e, Value::Object(object))),
+          DecodeError::Partial {
+            partial_value,
+            error,
+          } => {
+            object.insert(key, partial_value);
+            return Err(DecodeError::Partial {
+              partial_value: Value::Object(object),
+              error,
+            });
+          },
+        },
+      };
 
       object.insert(key, value);
     }
 
     Ok(Value::Object(object))
-  }
-}
-
-/// Decode a buffer and return the resulting value.
-/// On error, it returns the value decoded so far and the error.
-pub fn decode_value(data: &[u8]) -> Result<Value> {
-  let mut decoder = Decoder::new(data);
-  decoder.decode()
-}
-
-// Helper methods for Value
-impl Value {
-  pub fn as_null(&self) -> deserialize_primitives::Result<()> {
-    match self {
-      Self::Null => Ok(()),
-      _ => Err(DeserializationError::ExpectedNull),
-    }
-  }
-
-  pub fn as_bool(&self) -> deserialize_primitives::Result<bool> {
-    match self {
-      Self::Bool(b) => Ok(*b),
-      _ => Err(DeserializationError::ExpectedBoolean),
-    }
-  }
-
-  pub fn as_integer(&self) -> deserialize_primitives::Result<i64> {
-    match self {
-      Self::Signed(n) => Ok(*n),
-      _ => Err(DeserializationError::ExpectedSignedInteger),
-    }
-  }
-
-  pub fn as_unsigned(&self) -> deserialize_primitives::Result<u64> {
-    match self {
-      Self::Unsigned(n) => Ok(*n),
-      _ => Err(DeserializationError::ExpectedUnsignedInteger),
-    }
-  }
-
-  pub fn as_float(&self) -> deserialize_primitives::Result<f64> {
-    match self {
-      Self::Float(n) => Ok(*n),
-      _ => Err(DeserializationError::ExpectedFloat),
-    }
-  }
-
-  pub fn as_string(&self) -> deserialize_primitives::Result<&str> {
-    match self {
-      Self::String(s) => Ok(s),
-      _ => Err(DeserializationError::ExpectedString),
-    }
-  }
-
-  pub fn as_array(&self) -> deserialize_primitives::Result<&Vec<Self>> {
-    match self {
-      Self::Array(arr) => Ok(arr),
-      _ => Err(DeserializationError::ExpectedArray),
-    }
-  }
-
-  pub fn as_object(&self) -> deserialize_primitives::Result<&HashMap<String, Self>> {
-    match self {
-      Self::Object(obj) => Ok(obj),
-      _ => Err(DeserializationError::ExpectedMap),
-    }
-  }
-
-  // JSON-like accessor methods
-  #[must_use]
-  pub fn get(&self, key: &str) -> Option<&Self> {
-    match self {
-      Self::Object(obj) => obj.get(key),
-      _ => None,
-    }
-  }
-
-  #[must_use]
-  pub fn get_index(&self, index: usize) -> Option<&Self> {
-    match self {
-      Self::Array(arr) => arr.get(index),
-      _ => None,
-    }
-  }
-
-  #[must_use]
-  pub fn is_null(&self) -> bool {
-    matches!(self, Self::Null)
-  }
-
-  #[must_use]
-  pub fn is_bool(&self) -> bool {
-    matches!(self, Self::Bool(_))
-  }
-
-  #[must_use]
-  pub fn is_integer(&self) -> bool {
-    matches!(self, Self::Signed(_))
-  }
-
-  #[must_use]
-  pub fn is_unsigned(&self) -> bool {
-    matches!(self, Self::Unsigned(_))
-  }
-
-  #[must_use]
-  pub fn is_float(&self) -> bool {
-    matches!(self, Self::Float(_))
-  }
-
-  #[must_use]
-  pub fn is_string(&self) -> bool {
-    matches!(self, Self::String(_))
-  }
-
-  #[must_use]
-  pub fn is_array(&self) -> bool {
-    matches!(self, Self::Array(_))
-  }
-
-  #[must_use]
-  pub fn is_object(&self) -> bool {
-    matches!(self, Self::Object(_))
   }
 }

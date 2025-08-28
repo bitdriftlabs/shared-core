@@ -25,8 +25,8 @@ fn test_decode_null() {
   };
   writer.write_null().unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::Null);
 }
 
@@ -40,8 +40,8 @@ fn test_decode_booleans() {
   };
   writer.write_boolean(true).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::Bool(true));
 
   // Test false
@@ -52,8 +52,8 @@ fn test_decode_booleans() {
   };
   writer.write_boolean(false).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::Bool(false));
 }
 
@@ -67,8 +67,8 @@ fn test_decode_integers() {
   };
   writer.write_signed(42).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::Signed(42));
 
   // Small negative integer
@@ -79,8 +79,8 @@ fn test_decode_integers() {
   };
   writer.write_signed(-42).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::Signed(-42));
 
   // Large positive integer
@@ -92,8 +92,8 @@ fn test_decode_integers() {
   let large_val = 1_000_000_000;
   writer.write_signed(large_val).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::Signed(large_val));
 }
 
@@ -108,8 +108,8 @@ fn test_decode_unsigned() {
   };
   writer.write_unsigned(42).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::Signed(42));
 
   // Large unsigned
@@ -121,8 +121,8 @@ fn test_decode_unsigned() {
   let large_val = 4_000_000_000;
   writer.write_unsigned(large_val).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::Signed(large_val as i64));
 
   // Huge unsigned
@@ -134,8 +134,8 @@ fn test_decode_unsigned() {
   let huge_val = i64::MAX as u64 + 1;
   writer.write_unsigned(huge_val).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::Unsigned(huge_val));
 }
 
@@ -149,8 +149,8 @@ fn test_decode_floats() {
   };
   writer.write_float(f64::consts::PI).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::Float(f64::consts::PI));
 
   // Negative float
@@ -161,8 +161,8 @@ fn test_decode_floats() {
   };
   writer.write_float(-f64::consts::E).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::Float(-f64::consts::E));
 
   // Float with conversion from f32
@@ -173,8 +173,8 @@ fn test_decode_floats() {
   };
   writer.write_f32(1.5f32).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::Float(1.5));
 }
 
@@ -188,8 +188,8 @@ fn test_decode_strings() {
   };
   writer.write_str("hello").unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::String("hello".to_string()));
 
   // Empty string
@@ -200,8 +200,8 @@ fn test_decode_strings() {
   };
   writer.write_str("").unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::String(String::new()));
 
   // Long string
@@ -214,8 +214,8 @@ fn test_decode_strings() {
   };
   writer.write_str(long_str).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::String(long_str.to_string()));
 }
 
@@ -236,8 +236,8 @@ fn test_decode_array() {
   writer.write_container_end().unwrap();
 
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
 
   if let Value::Array(items) = value {
     assert_eq!(items.len(), 4);
@@ -260,8 +260,8 @@ fn test_decode_array() {
   writer.write_container_end().unwrap();
 
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
 
   if let Value::Array(items) = value {
     assert_eq!(items.len(), 0);
@@ -289,8 +289,8 @@ fn test_decode_object() {
   writer.write_container_end().unwrap();
 
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
 
   if let Value::Object(map) = value {
     assert_eq!(map.len(), 3);
@@ -312,8 +312,8 @@ fn test_decode_object() {
   writer.write_container_end().unwrap();
 
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
 
   if let Value::Object(map) = value {
     assert_eq!(map.len(), 0);
@@ -356,8 +356,8 @@ fn test_nested_structures() {
   writer.write_container_end().unwrap(); // End object
 
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
 
   // Verify structure
   if let Value::Object(map) = &value {
@@ -403,8 +403,8 @@ fn test_error_handling() {
   // Missing container end
 
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let result = decoder.decode();
+  let data_slice = &buf[.. pos];
+  let result = decode(data_slice);
   assert!(result.is_err());
 
   // Invalid map key (not a string)
@@ -420,8 +420,8 @@ fn test_error_handling() {
   writer.write_container_end().unwrap();
 
   let pos = usize::try_from(cursor.position()).unwrap();
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let result = decoder.decode();
+  let data_slice = &buf[.. pos];
+  let result = decode(data_slice);
   assert!(result.is_err());
 }
 
@@ -455,8 +455,8 @@ fn test_boundary_values() {
     writer.write_signed(value).unwrap();
     let pos = usize::try_from(cursor.position()).unwrap();
 
-    let mut decoder = Decoder::new(&buf[.. pos]);
-    let decoded = decoder.decode().unwrap();
+    let data_slice = &buf[.. pos];
+    let decoded = decode(data_slice).unwrap();
 
     if u64::try_from(value).is_ok() {
       // Unsigned conversion may happen
@@ -494,8 +494,8 @@ fn test_boundary_values() {
     writer.write_unsigned(value).unwrap();
     let pos = usize::try_from(cursor.position()).unwrap();
 
-    let mut decoder = Decoder::new(&buf[.. pos]);
-    let decoded = decoder.decode().unwrap();
+    let data_slice = &buf[.. pos];
+    let decoded = decode(data_slice).unwrap();
 
     if i64::try_from(value).is_ok() {
       // Integer conversion may happen
@@ -577,24 +577,24 @@ fn test_partial_decode_unterminated_array() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   // Try to decode - should fail with partial result
-  let result = decode_value(&buf[.. pos]);
+  let result = decode(&buf[.. pos]);
   assert!(result.is_err());
 
   let err = result.err().unwrap();
   assert_eq!(
-    err.error,
+    *err.error(),
     DeserializationErrorWithOffset::Error(DeserializationError::PrematureEnd, pos)
   );
 
   // Check partial result contains valid elements
-  match err.partial_value {
-    Value::Array(elements) => {
+  match err.partial_value() {
+    Some(Value::Array(elements)) => {
       assert_eq!(elements.len(), 3);
       assert_eq!(elements[0], Value::Null);
       assert_eq!(elements[1], Value::Bool(true));
       assert_eq!(elements[2], Value::Signed(42));
     },
-    _ => panic!("Expected partial array, got {:?}", err.partial_value),
+    _ => panic!("Expected partial array, got {:?}", err.partial_value()),
   }
 }
 
@@ -617,18 +617,18 @@ fn test_partial_decode_unterminated_object() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   // Try to decode - should fail with partial result
-  let result = decode_value(&buf[.. pos]);
+  let result = decode(&buf[.. pos]);
   assert!(result.is_err());
 
   let err = result.err().unwrap();
   assert_eq!(
-    err.error,
+    *err.error(),
     DeserializationErrorWithOffset::Error(DeserializationError::PrematureEnd, pos)
   );
 
   // Check partial result contains valid key-value pairs
-  match err.partial_value {
-    Value::Object(obj) => {
+  match err.partial_value() {
+    Some(Value::Object(obj)) => {
       assert_eq!(obj.len(), 2);
       assert_eq!(
         obj.get("key1").unwrap(),
@@ -636,7 +636,7 @@ fn test_partial_decode_unterminated_object() {
       );
       assert_eq!(obj.get("key2").unwrap(), &Value::Signed(42));
     },
-    _ => panic!("Expected partial object, got {:?}", err.partial_value),
+    _ => panic!("Expected partial object, got {:?}", err.partial_value()),
   }
 }
 
@@ -662,14 +662,14 @@ fn test_partial_decode_nested_containers() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   // Try to decode - should fail with partial result
-  let result = decode_value(&buf[.. pos]);
+  let result = decode(&buf[.. pos]);
   assert!(result.is_err());
 
   let err = result.err().unwrap();
 
   // Check partial result structure
-  match err.partial_value {
-    Value::Object(obj) => {
+  match err.partial_value() {
+    Some(Value::Object(obj)) => {
       assert_eq!(obj.len(), 2);
       assert_eq!(obj.get("name").unwrap(), &Value::String("test".to_string()));
 
@@ -683,7 +683,7 @@ fn test_partial_decode_nested_containers() {
         _ => panic!("Expected array for 'data' field"),
       }
     },
-    _ => panic!("Expected partial object, got {:?}", err.partial_value),
+    _ => panic!("Expected partial object, got {:?}", err.partial_value()),
   }
 }
 
@@ -692,12 +692,13 @@ fn test_partial_decode_truncated_string() {
   let buf = [0x84, b'a', b'b', b'c'];
 
   // Try to decode - should fail with error but no partial result
-  let result = decode_value(&buf);
+  let result = decode(&buf);
   assert!(result.is_err());
 
   let err = result.err().unwrap();
-  // String types don't produce partial results, so we expect just an error
-  assert_eq!(err.partial_value, Value::None);
+  // String types don't produce partial results, so we expect just a fatal error
+  assert!(err.is_fatal());
+  assert_eq!(err.partial_value(), None);
 }
 
 #[test]
@@ -719,24 +720,24 @@ fn test_partial_decode_with_invalid_type_code() {
   buf[pos] = 0x65; // Invalid type code
 
   // Try to decode
-  let result = decode_value(&buf[..= pos]);
+  let result = decode(&buf[..= pos]);
   assert!(result.is_err());
 
   let err = result.err().unwrap();
 
   // Should have a partial array with the valid elements
-  match err.partial_value {
-    Value::Array(elements) => {
+  match err.partial_value() {
+    Some(Value::Array(elements)) => {
       assert_eq!(elements.len(), 2);
       assert_eq!(elements[0], Value::Null);
       assert_eq!(elements[1], Value::Bool(true));
     },
-    _ => panic!("Expected partial array, got {:?}", err.partial_value),
+    _ => panic!("Expected partial array, got {:?}", err.partial_value()),
   }
 
   // And the error should indicate unexpected type code
   assert!(matches!(
-    err.error,
+    *err.error(),
     DeserializationErrorWithOffset::Error(DeserializationError::UnexpectedTypeCode, _)
   ));
 }
@@ -760,26 +761,26 @@ fn test_partial_decode_object_with_invalid_key() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   // Try to decode
-  let result = decode_value(&buf[.. pos]);
+  let result = decode(&buf[.. pos]);
   assert!(result.is_err());
 
   let err = result.err().unwrap();
 
   // Should have a partial object with the valid key-value pair
-  match err.partial_value {
-    Value::Object(obj) => {
+  match err.partial_value() {
+    Some(Value::Object(obj)) => {
       assert_eq!(obj.len(), 1);
       assert_eq!(
         obj.get("key1").unwrap(),
         &Value::String("value1".to_string())
       );
     },
-    _ => panic!("Expected partial object, got {:?}", err.partial_value),
+    _ => panic!("Expected partial object, got {:?}", err.partial_value()),
   }
 
   // And the error should indicate non-string key
   assert!(matches!(
-    err.error,
+    *err.error(),
     DeserializationErrorWithOffset::Error(DeserializationError::NonStringKeyInMap, _)
   ));
 }
@@ -795,8 +796,8 @@ fn test_decode_special_strings() {
   writer.write_str("").unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
 
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::String(String::new()));
 
   // Test emoji and multi-byte characters
@@ -809,8 +810,8 @@ fn test_decode_special_strings() {
   writer.write_str(special_str).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
 
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::String(special_str.to_string()));
 
   // Test string with control characters
@@ -823,8 +824,8 @@ fn test_decode_special_strings() {
   writer.write_str(control_str).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
 
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
   assert_eq!(value, Value::String(control_str.to_string()));
 }
 
@@ -832,8 +833,8 @@ fn test_decode_special_strings() {
 fn test_decode_empty_input() {
   // Test with completely empty input
   let buf = [];
-  let mut decoder = Decoder::new(&buf);
-  let result = decoder.decode();
+  let data_slice = &buf;
+  let result = decode(data_slice);
   assert!(result.is_err());
 }
 
@@ -871,8 +872,8 @@ fn test_deeply_nested_structures() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   // Test decoding the deeply nested structure
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
 
   // Verify the structure at each level
   if let Value::Array(level1) = value {
@@ -944,8 +945,8 @@ fn test_mixed_object_and_array_nesting() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   // Test decoding the mixed nested structure
-  let mut decoder = Decoder::new(&buf[.. pos]);
-  let value = decoder.decode().unwrap();
+  let data_slice = &buf[.. pos];
+  let value = decode(data_slice).unwrap();
 
   // Verify the structure
   if let Value::Object(root) = &value {
@@ -980,40 +981,90 @@ fn test_mixed_object_and_array_nesting() {
 }
 
 #[test]
-fn test_decode_position_tracking() {
-  // Test that the decoder properly advances its position
-  let mut buf = vec![0u8; 128];
-  let mut cursor = Cursor::new(&mut buf);
-  let mut writer = Writer {
-    writer: &mut cursor,
+fn test_value_none_removed_successful_decode() {
+  // Test that valid data decodes successfully without Value::None
+  let valid_data = [0x85, 0x48, 0x65, 0x6c, 0x6c, 0x6f]; // "Hello"
+  match decode(&valid_data) {
+    Ok(Value::String(s)) => assert_eq!(s, "Hello"),
+    Ok(other) => panic!("Expected string, got: {other:?}"),
+    Err(e) => panic!("Unexpected error: {e:?}"),
+  }
+}
+
+#[test]
+fn test_value_none_removed_fatal_errors() {
+  // Test that invalid data returns fatal errors (no partial value)
+  let invalid_data = [0x65]; // Invalid type code
+  match decode(&invalid_data) {
+    Ok(value) => panic!("Expected error, got: {value:?}"),
+    Err(err) => {
+      assert!(err.is_fatal(), "Expected fatal error, got: {err:?}");
+      assert!(err.partial_value().is_none(), "Expected no partial value");
+    },
+  }
+}
+
+#[test]
+fn test_value_none_removed_partial_errors() {
+  // Test that truncated data returns partial results
+  let truncated_array = [0x9a, 0x6d, 0x85, 0x48, 0x65, 0x6c, 0x6c, 0x6f]; // Start of array with null and "Hello", but no end
+  match decode(&truncated_array) {
+    Ok(value) => panic!("Expected error, got: {value:?}"),
+    Err(err) => {
+      assert!(
+        !err.is_fatal(),
+        "Expected partial error, got fatal: {err:?}"
+      );
+      assert!(err.partial_value().is_some(), "Expected partial value");
+    },
+  }
+}
+
+#[test]
+fn test_all_variants() {
+  use std::collections::HashMap;
+
+  let all_value_types = vec![
+    Value::Null,
+    Value::Bool(true),
+    Value::Float(std::f64::consts::PI),
+    Value::Signed(-42),
+    Value::Unsigned(42),
+    Value::String("test".to_string()),
+    Value::Array(vec![]),
+    Value::Object(HashMap::new()),
+  ];
+
+  assert_eq!(all_value_types.len(), 8);
+
+  assert!(matches!(all_value_types[0], Value::Null));
+  assert!(matches!(all_value_types[1], Value::Bool(true)));
+  assert!(matches!(all_value_types[2], Value::Float(_)));
+  assert!(matches!(all_value_types[3], Value::Signed(-42)));
+  assert!(matches!(all_value_types[4], Value::Unsigned(42)));
+  assert!(matches!(all_value_types[5], Value::String(_)));
+  assert!(matches!(all_value_types[6], Value::Array(_)));
+  assert!(matches!(all_value_types[7], Value::Object(_)));
+}
+
+#[test]
+fn test_decode_error_convenience_methods() {
+  use crate::deserialize_primitives::DeserializationError;
+
+  let fatal_error = DecodeError::Fatal(DeserializationErrorWithOffset::Error(
+    DeserializationError::UnexpectedTypeCode,
+    0,
+  ));
+
+  assert!(fatal_error.is_fatal());
+  assert!(fatal_error.partial_value().is_none());
+
+  let partial_error = DecodeError::Partial {
+    partial_value: Value::Null,
+    error: DeserializationErrorWithOffset::Error(DeserializationError::UnexpectedTypeCode, 0),
   };
 
-  writer.write_null().unwrap();
-  writer.write_boolean(true).unwrap();
-  writer.write_signed(42).unwrap();
-  writer.write_str("test").unwrap();
-
-  // Should be: [0x6d, 0x6f, 0x2a, 0x84, b't', b'e', b's', b't'];
-
-  let mut decoder = Decoder::new(&buf);
-
-  // First value (null)
-  let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::Null);
-  assert_eq!(decoder.position, 1);
-
-  // Second value (bool)
-  let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::Bool(true));
-  assert_eq!(decoder.position, 2);
-
-  // Third value (int)
-  let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::Signed(42));
-  assert_eq!(decoder.position, 3);
-
-  // Fourth value (string)
-  let value = decoder.decode().unwrap();
-  assert_eq!(value, Value::String("test".to_string()));
-  assert_eq!(decoder.position, 8);
+  assert!(!partial_error.is_fatal());
+  assert!(partial_error.partial_value().is_some());
+  matches!(partial_error.partial_value(), Some(Value::Null));
 }
