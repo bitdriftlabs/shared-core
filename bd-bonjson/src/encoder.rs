@@ -11,7 +11,16 @@ mod encoder_test;
 
 use crate::Value;
 use crate::serialize_primitives::{
-  serialize_array_begin, serialize_boolean, serialize_container_end, serialize_f64, serialize_i64, serialize_map_begin, serialize_null, serialize_string, serialize_u64, SerializationError
+  SerializationError,
+  serialize_array_begin,
+  serialize_boolean,
+  serialize_container_end,
+  serialize_f64,
+  serialize_i64,
+  serialize_map_begin,
+  serialize_null,
+  serialize_string,
+  serialize_u64,
 };
 use std::collections::HashMap;
 
