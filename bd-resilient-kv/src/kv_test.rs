@@ -333,7 +333,7 @@ fn test_from_buffer_with_invalid_position() {
 #[test]
 fn test_byte_buffer_trait() {
   let data = vec![1, 2, 3, 4, 5];
-  let mut buffer = BasicByteBuffer::new(data.clone());
+  let mut buffer = BasicByteBuffer::new(data);
 
   // Test as_slice
   assert_eq!(buffer.as_slice(), &[1, 2, 3, 4, 5]);
@@ -355,9 +355,9 @@ fn test_float_values() {
   let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
 
   // Test positive float
-  kv.set("pi", &Value::Float(3.14159)).unwrap();
+  kv.set("pi", &Value::Float(std::f64::consts::PI)).unwrap();
   let map = kv.as_hashmap().unwrap();
-  assert_eq!(map.get("pi"), Some(&Value::Float(3.14159)));
+  assert_eq!(map.get("pi"), Some(&Value::Float(std::f64::consts::PI)));
 
   // Test negative float
   kv.set("temp", &Value::Float(-273.15)).unwrap();
@@ -399,10 +399,10 @@ fn test_unsigned_values() {
   assert_eq!(map.get("max"), Some(&Value::Unsigned(large_unsigned))); // This stays unsigned
 
   // Test another truly large unsigned
-  kv.set("big", &Value::Unsigned(18446744073709551615))
+  kv.set("big", &Value::Unsigned(18_446_744_073_709_551_615))
     .unwrap();
   let map = kv.as_hashmap().unwrap();
-  assert_eq!(map.get("big"), Some(&Value::Unsigned(18446744073709551615)));
+  assert_eq!(map.get("big"), Some(&Value::Unsigned(18_446_744_073_709_551_615)));
 }
 
 #[test]
@@ -421,7 +421,7 @@ fn test_array_values() {
     Value::String("hello".to_string()),
     Value::Signed(42),
     Value::Bool(true),
-    Value::Float(3.14),
+    Value::Float(std::f64::consts::PI),
     Value::Unsigned(100),
   ]);
   kv.set("mixed", &mixed_array).unwrap();
@@ -431,7 +431,7 @@ fn test_array_values() {
     Value::String("hello".to_string()),
     Value::Signed(42),
     Value::Bool(true),
-    Value::Float(3.14),
+    Value::Float(std::f64::consts::PI),
     Value::Signed(100), // 100 fits in signed, so BONJSON converts it
   ]);
   assert_eq!(map.get("mixed"), Some(&expected_array));
