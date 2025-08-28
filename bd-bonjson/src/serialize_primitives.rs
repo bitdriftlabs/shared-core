@@ -203,7 +203,7 @@ pub fn serialize_string_header(dst: &mut [u8], str: &str) -> Result<usize> {
 pub fn serialize_string(dst: &mut [u8], s: &str) -> Result<usize> {
   let header_size = serialize_string_header(dst, s)?;
   let total_size = header_size + s.len();
-  require_bytes(&dst, total_size)?;
+  require_bytes(dst, total_size)?;
   dst[header_size .. total_size].copy_from_slice(s.as_bytes());
   Ok(total_size)
 }
