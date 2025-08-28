@@ -79,6 +79,8 @@ pub struct ResilientKv {
 }
 
 impl ResilientKv {
+  /// Create a new KV store using the provided buffer as storage space. The buffer will be
+  /// overwritten.
   #[must_use]
   pub fn new(buffer: Box<dyn ByteBuffer>) -> Result<Self, ResilientKvError> {
     let mut kv = Self {
@@ -108,17 +110,32 @@ impl ResilientKv {
     Ok(kv)
   }
 
-  fn from_buffer_unchecked(buffer: Box<dyn ByteBuffer>) -> Result<Self, ResilientKvError> {
+  /// Create a new KV store with state loaded from the provided buffer. The buffer is expected to
+  /// already contain a properly formatted KV store file.
+  pub fn from_buffer(buffer: Box<dyn ByteBuffer>) -> Result<Self, ResilientKvError> {
+    let buffer_slice = buffer.as_slice();
+
+    if buffer_slice.len() < 16 {
+      return Err(ResilientKvError::BufferSizeError(format!(
+        "Buffer too small: {} bytes, need at least 16 bytes for header",
+        buffer_slice.len()
+      )));
+    }
+
+    let version_bytes: [u8; 8] = buffer_slice[.. 8]
+      .try_into()
+      .map_err(|_| ResilientKvError::BufferSizeError("Failed to read version bytes".to_string()))?;
+
+    let position_bytes: [u8; 8] = buffer_slice[8 .. 16].try_into().map_err(|_| {
+      ResilientKvError::BufferSizeError("Failed to read position bytes".to_string())
+    })?;
+
     let kv = Self {
-      version: u64::from_le_bytes(buffer.as_slice()[..8].try_into().unwrap()),
-      position: u64::from_le_bytes(buffer.as_slice()[8..16].try_into().unwrap()) as usize,
+      version: u64::from_le_bytes(version_bytes),
+      position: u64::from_le_bytes(position_bytes) as usize,
       buffer,
     };
-    Ok(kv)
-  }
 
-  pub fn from_buffer(buffer: Box<dyn ByteBuffer>) -> Result<Self, ResilientKvError> {
-    let kv = Self::from_buffer_unchecked(buffer)?;
     if kv.version != VERSION {
       return Err(ResilientKvError::DecodingError(format!(
         "Unsupported version: {}, expected {}",
@@ -132,9 +149,14 @@ impl ResilientKv {
         kv.buffer.as_slice().len()
       )));
     }
+
     Ok(kv)
   }
 
+  /// Create a new KV store from an existing one by copying its current state into the provided
+  /// buffer.
+  /// All journal entries from the old store will be replayed, resulting in a single journal entry
+  /// in the new KV store. The buffer will be overwritten.
   pub fn from_kv_store(
     buffer: Box<dyn ByteBuffer>,
     kv_store: &mut Self,

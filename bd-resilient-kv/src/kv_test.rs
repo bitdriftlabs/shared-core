@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{BasicByteBuffer, ResilientKv};
+use crate::{BasicByteBuffer, ResilientKv, ResilientKvError};
 use bd_bonjson::Value;
 
 #[test]
@@ -253,4 +253,30 @@ fn test_create_kv_from_existing_store_with_many_entries() {
     final_map.get("user:2"),
     Some(&Value::String("robert".to_string()))
   ); // Should still exist
+}
+
+#[test]
+fn test_from_buffer_with_insufficient_data() {
+  // Test with buffer too small for header
+  let small_buffer = BasicByteBuffer::new(vec![0; 8]); // Only 8 bytes, need 16
+  let result = ResilientKv::from_buffer(Box::new(small_buffer));
+  assert!(result.is_err());
+
+  if let Err(e) = result {
+    assert!(matches!(e, ResilientKvError::BufferSizeError(_)));
+  }
+}
+
+#[test]
+fn test_from_buffer_with_invalid_version() {
+  // Create a buffer with wrong version
+  let mut buffer_data = vec![0; 32];
+  buffer_data[0] = 99; // Invalid version (should be 1)
+  let buffer = BasicByteBuffer::new(buffer_data);
+  let result = ResilientKv::from_buffer(Box::new(buffer));
+  assert!(result.is_err());
+
+  if let Err(e) = result {
+    assert!(matches!(e, ResilientKvError::DecodingError(_)));
+  }
 }
