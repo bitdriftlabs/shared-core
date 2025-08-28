@@ -19,7 +19,6 @@ use bd_bonjson::serialize_primitives::{
   serialize_string,
 };
 use std::collections::HashMap;
-use std::fmt;
 
 /// A `ByteBuffer` provides a way to access a contiguous block of memory as a byte slice.
 pub trait ByteBuffer {
@@ -48,27 +47,6 @@ impl ByteBuffer for BasicByteBuffer {
   }
 }
 
-#[derive(Debug, Clone)]
-pub enum ResilientKvError {
-  SerializationError(String),
-  EncodingError(String),
-  DecodingError(String),
-  BufferSizeError(String),
-}
-
-impl fmt::Display for ResilientKvError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      Self::SerializationError(msg) => write!(f, "Serialization error: {msg}"),
-      Self::EncodingError(msg) => write!(f, "Encoding error: {msg}"),
-      Self::DecodingError(msg) => write!(f, "Decoding error: {msg}"),
-      Self::BufferSizeError(msg) => write!(f, "Buffer size error: {msg}"),
-    }
-  }
-}
-
-impl std::error::Error for ResilientKvError {}
-
 const VERSION: u64 = 1;
 
 /// A crash-resilient key-value store that can be recovered even if writing is interrupted.
@@ -82,7 +60,10 @@ impl ResilientKv {
   /// Create a new KV store using the provided buffer as storage space.
   ///
   /// The buffer will be overwritten.
-  pub fn new(buffer: Box<dyn ByteBuffer>) -> Result<Self, ResilientKvError> {
+  ///
+  /// # Errors
+  /// Returns an error if serialization fails.
+  pub fn new(buffer: Box<dyn ByteBuffer>) -> anyhow::Result<Self> {
     let mut kv = Self {
       version: 0,
       position: 0,
@@ -101,9 +82,8 @@ impl ResilientKv {
 
     kv.set_version(VERSION);
     let mut position = 16;
-    position += serialize_array_begin(kv.buffer_at_position(position)).map_err(|e| {
-      ResilientKvError::SerializationError(format!("Failed to serialize array begin: {e:?}"))
-    })?;
+    position += serialize_array_begin(kv.buffer_at_position(position))
+      .map_err(|e| anyhow::anyhow!("Failed to serialize array begin: {e:?}"))?;
     kv.set_position(position);
 
     Ok(kv)
@@ -112,28 +92,30 @@ impl ResilientKv {
   /// Create a new KV store with state loaded from the provided buffer.
   ///
   /// The buffer is expected to already contain a properly formatted KV store file.
-  pub fn from_buffer(buffer: Box<dyn ByteBuffer>) -> Result<Self, ResilientKvError> {
+  ///
+  /// # Errors
+  /// Returns an error if the buffer is invalid or corrupted.
+  pub fn from_buffer(buffer: Box<dyn ByteBuffer>) -> anyhow::Result<Self> {
     let buffer_slice = buffer.as_slice();
 
     if buffer_slice.len() < 16 {
-      return Err(ResilientKvError::BufferSizeError(format!(
+      anyhow::bail!(
         "Buffer too small: {} bytes, need at least 16 bytes for header",
         buffer_slice.len()
-      )));
+      );
     }
 
     let version_bytes: [u8; 8] = buffer_slice[.. 8]
       .try_into()
-      .map_err(|_| ResilientKvError::BufferSizeError("Failed to read version bytes".to_string()))?;
+      .map_err(|_| anyhow::anyhow!("Failed to read version bytes"))?;
 
-    let position_bytes: [u8; 8] = buffer_slice[8 .. 16].try_into().map_err(|_| {
-      ResilientKvError::BufferSizeError("Failed to read position bytes".to_string())
-    })?;
+    let position_bytes: [u8; 8] = buffer_slice[8 .. 16]
+      .try_into()
+      .map_err(|_| anyhow::anyhow!("Failed to read position bytes"))?;
 
     let position_value = u64::from_le_bytes(position_bytes);
-    let position_usize = usize::try_from(position_value).map_err(|_| {
-      ResilientKvError::BufferSizeError(format!("Position value too large: {position_value}"))
-    })?;
+    let position_usize = usize::try_from(position_value)
+      .map_err(|_| anyhow::anyhow!("Position value too large: {position_value}"))?;
 
     let kv = Self {
       version: u64::from_le_bytes(version_bytes),
@@ -142,17 +124,14 @@ impl ResilientKv {
     };
 
     if kv.version != VERSION {
-      return Err(ResilientKvError::DecodingError(format!(
-        "Unsupported version: {}, expected {}",
-        kv.version, VERSION
-      )));
+      anyhow::bail!("Unsupported version: {}, expected {}", kv.version, VERSION);
     }
     if kv.position >= kv.buffer.as_slice().len() {
-      return Err(ResilientKvError::BufferSizeError(format!(
+      anyhow::bail!(
         "Invalid position: {}, buffer size: {}",
         kv.position,
         kv.buffer.as_slice().len()
-      )));
+      );
     }
 
     Ok(kv)
@@ -165,26 +144,23 @@ impl ResilientKv {
   /// in the new KV store.
   ///
   /// The buffer will be overwritten.
-  pub fn from_kv_store(
-    buffer: Box<dyn ByteBuffer>,
-    kv_store: &mut Self,
-  ) -> Result<Self, ResilientKvError> {
+  ///
+  /// # Errors
+  /// Returns an error if serialization or encoding fails.
+  pub fn from_kv_store(buffer: Box<dyn ByteBuffer>, kv_store: &mut Self) -> anyhow::Result<Self> {
     let mut kv = Self::new(buffer)?;
     let mut position = kv.position;
-    position += serialize_map_begin(kv.buffer_at_position(position)).map_err(|e| {
-      ResilientKvError::SerializationError(format!("Failed to serialize map begin: {e:?}"))
-    })?;
+    position += serialize_map_begin(kv.buffer_at_position(position))
+      .map_err(|e| anyhow::anyhow!("Failed to serialize map begin: {e:?}"))?;
     let hashmap = kv_store.as_hashmap()?;
-    for (k, v) in hashmap {
-      position += serialize_string(kv.buffer_at_position(position), &k).map_err(|e| {
-        ResilientKvError::SerializationError(format!("Failed to serialize string key: {e:?}"))
-      })?;
-      position += encode_into(kv.buffer_at_position(position), &v)
-        .map_err(|e| ResilientKvError::EncodingError(format!("Failed to encode value: {e:?}")))?;
+    for (k, v) in &hashmap {
+      position += serialize_string(kv.buffer_at_position(position), k)
+        .map_err(|e| anyhow::anyhow!("Failed to serialize string key: {e:?}"))?;
+      position += encode_into(kv.buffer_at_position(position), v)
+        .map_err(|e| anyhow::anyhow!("Failed to encode value: {e:?}"))?;
     }
-    position += serialize_container_end(kv.buffer_at_position(position)).map_err(|e| {
-      ResilientKvError::SerializationError(format!("Failed to serialize container end: {e:?}"))
-    })?;
+    position += serialize_container_end(kv.buffer_at_position(position))
+      .map_err(|e| anyhow::anyhow!("Failed to serialize container end: {e:?}"))?;
     kv.set_position(position);
 
     Ok(kv)
@@ -209,20 +185,17 @@ impl ResilientKv {
     buffer[.. bytes.len()].copy_from_slice(bytes);
   }
 
-  fn write_journal_entry(&mut self, key: &str, value: &Value) -> Result<(), ResilientKvError> {
+  fn write_journal_entry(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {
     let mut position = self.position;
     // Fill in the map containing the next journal entry
-    position += serialize_map_begin(self.buffer_at_position(position)).map_err(|e| {
-      ResilientKvError::SerializationError(format!("Failed to serialize map begin: {e:?}"))
-    })?;
-    position += serialize_string(self.buffer_at_position(position), key).map_err(|e| {
-      ResilientKvError::SerializationError(format!("Failed to serialize string key: {e:?}"))
-    })?;
+    position += serialize_map_begin(self.buffer_at_position(position))
+      .map_err(|e| anyhow::anyhow!("Failed to serialize map begin: {e:?}"))?;
+    position += serialize_string(self.buffer_at_position(position), key)
+      .map_err(|e| anyhow::anyhow!("Failed to serialize string key: {e:?}"))?;
     position += encode_into(self.buffer_at_position(position), value)
-      .map_err(|e| ResilientKvError::EncodingError(format!("Failed to encode value: {e:?}")))?;
-    position += serialize_container_end(self.buffer_at_position(position)).map_err(|e| {
-      ResilientKvError::SerializationError(format!("Failed to serialize container end: {e:?}"))
-    })?;
+      .map_err(|e| anyhow::anyhow!("Failed to encode value: {e:?}"))?;
+    position += serialize_container_end(self.buffer_at_position(position))
+      .map_err(|e| anyhow::anyhow!("Failed to serialize container end: {e:?}"))?;
     // Then update position to commit the change
     self.set_position(position);
     Ok(())
@@ -233,31 +206,39 @@ impl ResilientKv {
   /// This will create a new journal entry.
   ///
   /// Note: Setting to `Value::Null` will mark the entry for DELETION!
-  pub fn set(&mut self, key: &str, value: &Value) -> Result<(), ResilientKvError> {
+  ///
+  /// # Errors
+  /// Returns an error if the journal entry cannot be written.
+  pub fn set(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {
     self.write_journal_entry(key, value)
   }
 
   /// Delete a key from this kv store.
   ///
   /// This will create a new journal entry.
-  pub fn delete(&mut self, key: &str) -> Result<(), ResilientKvError> {
+  ///
+  /// # Errors
+  /// Returns an error if the journal entry cannot be written.
+  pub fn delete(&mut self, key: &str) -> anyhow::Result<()> {
     self.set(key, &Value::Null)
   }
 
   /// Get the current state of the kv store as a `HashMap`.
-  pub fn as_hashmap(&mut self) -> Result<HashMap<String, Value>, ResilientKvError> {
+  ///
+  /// # Errors
+  /// Returns an error if the buffer cannot be decoded.
+  pub fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>> {
     // Recall that the beginning of a kv store has an "array open" byte (at position 16). We close
     // it here by inserting a "container end" byte at `self.position` (which points to one past
     // the end of the last committed change). Then the entire journal can be read as a single
     // BONJSON document consisting of an array of journal entries.
     // Inserting this byte won't affect the key-value store's operation, because anything in
     // `self.buffer` from `self.position` onward is considered "garbage".
-    serialize_container_end(self.buffer_at_position(self.position)).map_err(|e| {
-      ResilientKvError::SerializationError(format!("Failed to serialize container end: {e:?}"))
-    })?;
+    serialize_container_end(self.buffer_at_position(self.position))
+      .map_err(|e| anyhow::anyhow!("Failed to serialize container end: {e:?}"))?;
     let buffer = self.buffer_at_position(16);
-    let decoded: Value = decode(buffer)
-      .map_err(|e| ResilientKvError::DecodingError(format!("Failed to decode buffer: {e:?}")))?;
+    let decoded: Value =
+      decode(buffer).map_err(|e| anyhow::anyhow!("Failed to decode buffer: {e:?}"))?;
     let mut map = HashMap::new();
     if let Value::Array(entries) = decoded {
       for entry in entries {

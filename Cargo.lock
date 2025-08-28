@@ -1009,6 +1009,7 @@ dependencies = [
 name = "bd-resilient-kv"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
  "assert_no_alloc",
  "bd-bonjson",
  "bd-test-helpers",

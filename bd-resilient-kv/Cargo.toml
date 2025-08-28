@@ -18,5 +18,6 @@ tempfile.workspace   = true
 cbindgen.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 log.workspace = true
 bd-bonjson = { path = "../bd-bonjson" }

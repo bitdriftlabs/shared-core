@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{BasicByteBuffer, ByteBuffer, ResilientKv, ResilientKvError};
+use crate::{BasicByteBuffer, ByteBuffer, ResilientKv};
 use bd_bonjson::Value;
 
 #[test]
@@ -263,7 +263,7 @@ fn test_from_buffer_with_insufficient_data() {
   assert!(result.is_err());
 
   if let Err(e) = result {
-    assert!(matches!(e, ResilientKvError::BufferSizeError(_)));
+    assert!(e.to_string().contains("Buffer too small"));
   }
 }
 
@@ -277,7 +277,7 @@ fn test_from_buffer_with_invalid_version() {
   assert!(result.is_err());
 
   if let Err(e) = result {
-    assert!(matches!(e, ResilientKvError::DecodingError(_)));
+    assert!(e.to_string().contains("Unsupported version"));
   }
 }
 
@@ -326,7 +326,7 @@ fn test_from_buffer_with_invalid_position() {
   assert!(result.is_err());
 
   if let Err(e) = result {
-    assert!(matches!(e, ResilientKvError::BufferSizeError(_)));
+    assert!(e.to_string().contains("Invalid position"));
   }
 }
 
@@ -402,7 +402,10 @@ fn test_unsigned_values() {
   kv.set("big", &Value::Unsigned(18_446_744_073_709_551_615))
     .unwrap();
   let map = kv.as_hashmap().unwrap();
-  assert_eq!(map.get("big"), Some(&Value::Unsigned(18_446_744_073_709_551_615)));
+  assert_eq!(
+    map.get("big"),
+    Some(&Value::Unsigned(18_446_744_073_709_551_615))
+  );
 }
 
 #[test]
