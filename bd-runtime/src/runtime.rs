@@ -517,31 +517,10 @@ pub mod debugging {
   );
 }
 
-pub mod crash_handling {
-  // Controls the list of directories that the platform layer should monitor for crash reports.
-  // This is a :-separated list of directories of platforms that may be of interest to the platform
-  // layer.
-  string_feature_flag!(
-    CrashDirectories,
-    "crash_handling.directories",
-    String::new()
-  );
-
-  // Controls the list of paths that should be searched in order to attempt to determine the crash
-  // reason.
-  string_feature_flag!(
-    CrashReasonPaths,
-    "crash_handling.crash_reason_paths",
-    String::new()
-  );
-
-  // Controls the list of paths that should be searched in order to attempt to determine the crash
-  // details.
-  string_feature_flag!(
-    CrashDetailsPaths,
-    "crash_handling.crash_details_paths",
-    String::new()
-  );
+pub mod crash_reporting {
+  // Enables or disables the detection and reporting of application crashes and
+  // other fatal events
+  bool_feature_flag!(Enabled, "crash_reporting.enabled", false);
 }
 
 pub mod log_upload {
