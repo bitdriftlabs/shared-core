@@ -1,0 +1,22 @@
+[package]
+edition      = "2024"
+license-file = "../LICENSE"
+name         = "bd-resilient-kv"
+publish      = false
+version      = "1.0.0"
+
+[lib]
+doctest = false
+
+[dev-dependencies]
+assert_no_alloc      = "1.1.2"
+bd-test-helpers.path = "../bd-test-helpers"
+ctor.workspace       = true
+tempfile.workspace   = true
+
+[build-dependencies]
+cbindgen.workspace = true
+
+[dependencies]
+log.workspace = true
+bd-bonjson = { path = "../bd-bonjson" }
