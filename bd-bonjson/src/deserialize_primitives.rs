@@ -83,11 +83,12 @@ pub fn deserialize_unsigned_after_type_code<B: Buf>(src: &mut B, type_code: u8) 
 pub fn deserialize_signed_after_type_code<B: Buf>(src: &mut B, type_code: u8) -> Result<i64> {
   let byte_count = ((type_code & 7) + 1) as usize;
   require_bytes(src, byte_count)?;
-  // If the sign bit is set, we know that it's negative
-  let is_negative = src.chunk()[byte_count - 1] >> 7;
-  // Pre-fill the byte array with the sign bit if necessary
-  let mut bytes: [u8; 8] = [is_negative * 0xff; 8];
+  let mut bytes: [u8; 8] = [0; 8];
   src.copy_to_slice(&mut bytes[.. byte_count]);
+  if bytes[byte_count - 1] >> 7 != 0 {
+    // If the sign bit is set, sign extend the rest of the bytes using 0xff.
+    bytes[byte_count ..].fill(0xff);
+  }
   Ok(i64::from_le_bytes(bytes))
 }
 
@@ -149,8 +150,8 @@ fn deserialize_chunk_header<B: Buf>(src: &mut B) -> Result<(usize, bool)> {
   let (length_skip_size, length_payload_size, length_shift_by) =
     decode_chunk_length_header(length_header);
 
-  // Skip to the payload. `skip_size` is either 0 or 1 (see `decode_chunk_length_header`), and we
-  // already checked for room in the peek_byte() call.
+  // Skip to the payload if necessary. `skip_size` is either 0 or 1 (see `decode_chunk_length_header`).
+  // The `peek_byte()` call already checked for 1 byte, which is the maximum we'd need here.
   src.advance(length_skip_size);
 
   let payload = deserialize_uint_of_length(src, length_payload_size)? >> length_shift_by;

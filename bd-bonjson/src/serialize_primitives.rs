@@ -163,6 +163,8 @@ fn serialize_f16<B: BufMut>(dst: &mut B, v: f32) -> Result<usize> {
   let total_size = 2 + 1;
   require_bytes(dst, total_size)?;
   let mut bytes = v.to_le_bytes();
+  // The first two bytes of `bytes` are garbage because we're chopping off the lower 16 bits of the
+  // float. Use the second garbage byte for the type code.
   bytes[1] = TypeCode::Float16 as u8;
   dst.put_slice(&bytes[1 ..]);
   Ok(total_size)
