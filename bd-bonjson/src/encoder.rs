@@ -11,7 +11,16 @@ mod encoder_test;
 
 use crate::Value;
 use crate::serialize_primitives::{
-  serialize_array_begin, serialize_boolean, serialize_container_end, serialize_f64, serialize_i64, serialize_map_begin, serialize_null, serialize_string, serialize_u64, SerializationError
+  SerializationError,
+  serialize_array_begin,
+  serialize_boolean,
+  serialize_container_end,
+  serialize_f64,
+  serialize_i64,
+  serialize_map_begin,
+  serialize_null,
+  serialize_string,
+  serialize_u64,
 };
 use bytes::BufMut;
 use std::collections::HashMap;
@@ -101,7 +110,10 @@ pub fn encode_into_buf<B: BufMut>(buf: &mut B, value: &Value) -> Result<usize, S
   Ok(start_remaining - buf.remaining_mut())
 }
 
-pub fn encode_into_buf_impl<B: BufMut>(buf: &mut B, value: &Value) -> Result<(), SerializationError> {
+pub fn encode_into_buf_impl<B: BufMut>(
+  buf: &mut B,
+  value: &Value,
+) -> Result<(), SerializationError> {
   match value {
     Value::Null => serialize_null(buf)?,
     Value::Bool(b) => serialize_boolean(buf, *b)?,
@@ -132,7 +144,10 @@ fn encode_array_into_buf<B: BufMut>(buf: &mut B, arr: &[Value]) -> Result<(), Se
 }
 
 /// Encodes an object into a buffer using `BufMut`.
-fn encode_object_into_buf<B: BufMut>(buf: &mut B, obj: &HashMap<String, Value>) -> Result<(), SerializationError> {
+fn encode_object_into_buf<B: BufMut>(
+  buf: &mut B,
+  obj: &HashMap<String, Value>,
+) -> Result<(), SerializationError> {
   serialize_map_begin(buf)?;
   for (key, value) in obj {
     serialize_string(buf, key)?;

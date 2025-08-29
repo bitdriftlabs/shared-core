@@ -876,7 +876,8 @@ fn test_in_place_encode_reuse() {
 
   // Second encoding (functions are stateless, so each call starts from position 0)
   let value2 = Value::String("hello".to_string());
-  let bytes_written2 = encode_into_slice(&mut buffer, &value2).expect("Failed to encode second value");
+  let bytes_written2 =
+    encode_into_slice(&mut buffer, &value2).expect("Failed to encode second value");
 
   // Verify the second value overwrote the first
   let data_slice = &buffer[.. bytes_written2];
@@ -913,7 +914,8 @@ fn test_standalone_encode_function() {
     map
   });
 
-  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode with standalone function");
+  let result =
+    encode_into_vec(&mut buffer, &value).expect("Failed to encode with standalone function");
 
   // Verify we can decode it back
   let data_slice = &result;
@@ -922,7 +924,8 @@ fn test_standalone_encode_function() {
 
   // Verify buffer was reused correctly
   let second_value = Value::String("second test".to_string());
-  let second_result = encode_into_vec(&mut buffer, &second_value).expect("Failed to encode second value");
+  let second_result =
+    encode_into_vec(&mut buffer, &second_value).expect("Failed to encode second value");
 
   let second_decoded = from_slice(second_result).expect("Failed to decode second value");
   assert_eq!(second_decoded, second_value);

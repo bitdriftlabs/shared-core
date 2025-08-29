@@ -46,13 +46,17 @@ fn derive_chunk_length_header_data(payload: u64) -> (u8, u8, u8, u8) {
   }
 }
 
-fn serialize_chunk_header<B: BufMut>(dst: &mut B, length: u64, continuation_bit: bool) -> Result<usize> {
+fn serialize_chunk_header<B: BufMut>(
+  dst: &mut B,
+  length: u64,
+  continuation_bit: bool,
+) -> Result<usize> {
   let payload = (length << 1) | u64::from(continuation_bit);
   let (skip_bytes, copy_bytes, shift_amount, unary_code) = derive_chunk_length_header_data(payload);
   let total_size = (skip_bytes + copy_bytes) as usize;
   let encoded = (payload << shift_amount) | u64::from(unary_code);
   let bytes = encoded.to_le_bytes();
-  
+
   require_bytes(dst, total_size)?;
   if skip_bytes > 0 {
     dst.put_u8(unary_code);
@@ -73,6 +77,17 @@ fn serialize_type_code<B: BufMut>(dst: &mut B, type_code: TypeCode) -> Result<us
 
 fn serialize_small_int<B: BufMut>(dst: &mut B, v: u8) -> Result<usize> {
   serialize_byte(dst, v)
+}
+
+fn serialize_short_string_header<B: BufMut>(dst: &mut B, str: &str) -> Result<usize> {
+  serialize_byte(dst, TypeCode::String as u8 + u8::try_from(str.len())?)
+}
+
+fn serialize_long_string_header<B: BufMut>(dst: &mut B, str: &str) -> Result<usize> {
+  require_bytes(dst, 1)?;
+  dst.put_u8(TypeCode::LongString as u8);
+  let header_size = serialize_chunk_header(dst, str.len() as u64, false)?;
+  Ok(header_size + 1)
 }
 
 pub fn serialize_array_begin<B: BufMut>(dst: &mut B) -> Result<usize> {
@@ -106,9 +121,9 @@ pub fn serialize_u64<B: BufMut>(dst: &mut B, v: u64) -> Result<usize> {
   let is_byte_high_bit_set = bytes[index] >> 7;
   let use_signed_form = (!is_byte_high_bit_set) & 1;
   let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | u8::try_from(index)?;
-  
+
   require_bytes(dst, total_size)?;
-  
+
   dst.put_u8(type_code);
   dst.put_slice(&bytes[.. payload_size]);
   Ok(total_size)
@@ -136,9 +151,9 @@ pub fn serialize_i64<B: BufMut>(dst: &mut B, v: i64) -> Result<usize> {
   let is_byte_high_bit_set = bytes[index] >> 7;
   let use_signed_form = (is_negative | !is_byte_high_bit_set) & 1;
   let type_code = TypeCode::Unsigned as u8 | (use_signed_form << 3) | u8::try_from(index)?;
-  
+
   require_bytes(dst, total_size)?;
-  
+
   dst.put_u8(type_code);
   dst.put_slice(&bytes[.. payload_size]);
   Ok(total_size)
@@ -149,7 +164,7 @@ fn serialize_f16<B: BufMut>(dst: &mut B, v: f32) -> Result<usize> {
   require_bytes(dst, total_size)?;
   let mut bytes = v.to_le_bytes();
   bytes[1] = TypeCode::Float16 as u8;
-  dst.put_slice(&bytes[1..]);
+  dst.put_slice(&bytes[1 ..]);
   Ok(total_size)
 }
 
@@ -181,17 +196,6 @@ pub fn serialize_f64<B: BufMut>(dst: &mut B, v: f64) -> Result<usize> {
   Ok(total_size)
 }
 
-fn serialize_short_string_header<B: BufMut>(dst: &mut B, str: &str) -> Result<usize> {
-  serialize_byte(dst, TypeCode::String as u8 + u8::try_from(str.len())?)
-}
-
-fn serialize_long_string_header<B: BufMut>(dst: &mut B, str: &str) -> Result<usize> {
-  require_bytes(dst, 1)?;
-  dst.put_u8(TypeCode::LongString as u8);
-  let header_size = serialize_chunk_header(dst, str.len() as u64, false)?;
-  Ok(header_size + 1)
-}
-
 pub fn serialize_string_header<B: BufMut>(dst: &mut B, str: &str) -> Result<usize> {
   if str.len() <= 15 {
     serialize_short_string_header(dst, str)
@@ -201,11 +205,10 @@ pub fn serialize_string_header<B: BufMut>(dst: &mut B, str: &str) -> Result<usiz
 }
 
 pub fn serialize_string<B: BufMut>(dst: &mut B, s: &str) -> Result<usize> {
-  let start_remaining = dst.remaining_mut();
-  serialize_string_header(dst, s)?;
+  let header_size = serialize_string_header(dst, s)?;
   require_bytes(dst, s.len())?;
   dst.put_slice(s.as_bytes());
-  Ok(start_remaining - dst.remaining_mut())
+  Ok(header_size + s.len())
 }
 
 pub fn serialize_boolean<B: BufMut>(dst: &mut B, v: bool) -> Result<usize> {
