@@ -71,11 +71,15 @@ pub fn deserialize_type_code<B: Buf>(src: &mut B) -> Result<u8> {
   deserialize_byte(src)
 }
 
-pub fn deserialize_unsigned_after_type_code<B: Buf>(src: &mut B, type_code: u8) -> Result<u64> {
-  let byte_count = ((type_code & 7) + 1) as usize;
+fn deserialize_uint_of_length<B: Buf>(src: &mut B, byte_count: usize) -> Result<u64> {
   let mut bytes: [u8; 8] = [0; 8];
   copy_bytes_to(src, &mut bytes, byte_count)?;
   Ok(u64::from_le_bytes(bytes))
+}
+
+pub fn deserialize_unsigned_after_type_code<B: Buf>(src: &mut B, type_code: u8) -> Result<u64> {
+  let byte_count = ((type_code & 7) + 1) as usize;
+  deserialize_uint_of_length(src, byte_count)
 }
 
 pub fn deserialize_signed_after_type_code<B: Buf>(src: &mut B, type_code: u8) -> Result<i64> {
@@ -147,13 +151,11 @@ fn deserialize_chunk_header<B: Buf>(src: &mut B) -> Result<(usize, bool)> {
   let (length_skip_size, length_payload_size, length_shift_by) =
     decode_chunk_length_header(length_header);
   
-  // Skip to the payload (this includes skipping the header byte we just peeked at)
-  // Skip size is either 0 or 1 (see decode_chunk_length_header)
+  // Skip to the payload. `skip_size` is either 0 or 1 (see `decode_chunk_length_header`), and we already
+  // checked for room in the peek_byte() call.
   src.advance(length_skip_size);
   
-  let mut bytes: [u8; 8] = [0; 8];
-  copy_bytes_to(src, &mut bytes, length_payload_size)?;
-  let payload = u64::from_le_bytes(bytes) >> length_shift_by;
+  let payload = deserialize_uint_of_length(src, length_payload_size)? >> length_shift_by;
   let continuation_bit = (payload & 1) == 1;
   let length = payload >> 1;
   Ok((length as usize, continuation_bit))
