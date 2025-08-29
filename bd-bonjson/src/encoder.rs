@@ -25,7 +25,7 @@ use crate::serialize_primitives::{
 use bytes::BufMut;
 use std::collections::HashMap;
 
-/// Encodes a `Value` into BONJSON format and returns the modified buffer.
+/// Encodes a `Value` into a `&mut Vec<u8>`.
 ///
 /// This function will automatically resize the passed-in buffer
 /// as needed to accommodate the encoded data.
@@ -39,7 +39,7 @@ use std::collections::HashMap;
 /// # Returns
 /// * `Ok(&mut Vec<u8>)` - The encoded buffer on success
 /// * `Err(SerializationError)` - If encoding fails
-pub fn encode<'a>(
+pub fn encode_into_vec<'a>(
   buffer: &'a mut Vec<u8>,
   value: &Value,
 ) -> Result<&'a mut Vec<u8>, SerializationError> {
@@ -56,7 +56,7 @@ pub fn encode<'a>(
     buffer.resize(buffer.capacity(), 0);
 
     // Try to encode in place
-    match encode_into(buffer.as_mut(), value) {
+    match encode_into_slice(buffer.as_mut(), value) {
       Ok(bytes_written) => {
         // Success! Truncate to actual size and return
         buffer.truncate(bytes_written);
@@ -75,7 +75,7 @@ pub fn encode<'a>(
   }
 }
 
-/// Encodes a `Value` into BONJSON format in the provided buffer.
+/// Encodes a `Value` into a `&mut [u8]`.
 ///
 /// This function writes BONJSON data directly to a mutable slice without
 /// allocating additional memory. It's useful for embedded systems or other
@@ -88,11 +88,11 @@ pub fn encode<'a>(
 /// # Returns
 /// * `Ok(usize)` - The number of bytes written on success
 /// * `Err(SerializationError)` - If encoding fails (including buffer full)
-pub fn encode_into(buffer: &mut [u8], value: &Value) -> Result<usize, SerializationError> {
+pub fn encode_into_slice(buffer: &mut [u8], value: &Value) -> Result<usize, SerializationError> {
   encode_value_into_buf(&mut (&mut *buffer), value)
 }
 
-/// Encodes a `Value` into BONJSON format using a `BufMut`.
+/// Encodes a `Value` into a `BufMut`.
 ///
 /// This function writes BONJSON data directly to a `BufMut` implementation,
 /// which can automatically track position and provide better ergonomics.
