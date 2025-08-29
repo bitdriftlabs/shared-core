@@ -57,9 +57,13 @@ fn deserialize_string_contents(src: &mut Bytes, size: usize) -> Result<String> {
   Ok(string.to_string())
 }
 
-pub fn peek_type_code(src: &Bytes) -> Result<u8> {
+fn peek_byte(src: &Bytes) -> Result<u8> {
   require_bytes(src, 1)?;
   Ok(src[0])
+}
+
+pub fn peek_type_code(src: &Bytes) -> Result<u8> {
+  peek_byte(src)
 }
 
 pub fn deserialize_type_code(src: &mut Bytes) -> Result<u8> {
@@ -138,12 +142,12 @@ fn decode_chunk_length_header(length_header: u8) -> (usize, usize, usize) {
 // - Length of the chunk in fixed-size elements (usually bytes)
 // - Continuation bit
 fn deserialize_chunk_header(src: &mut Bytes) -> Result<(usize, bool)> {
-  require_bytes(src, 1)?;
-  let length_header = src[0];
+  let length_header = peek_byte(src)?;
   let (length_skip_size, length_payload_size, length_shift_by) =
     decode_chunk_length_header(length_header);
   
   // Skip to the payload (this includes skipping the header byte we just peeked at)
+  // Skip size is either 0 or 1 (see decode_chunk_length_header)
   let _ = src.split_to(length_skip_size);
   
   let mut bytes: [u8; 8] = [0; 8];
