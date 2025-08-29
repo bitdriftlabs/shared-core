@@ -61,10 +61,18 @@ fn serialize_chunk_header_unchecked<B: BufMut>(dst: &mut B, length: u64, continu
   total_size
 }
 
-fn serialize_type_code<B: BufMut>(dst: &mut B, type_code: TypeCode) -> Result<usize> {
+fn serialize_byte<B: BufMut>(dst: &mut B, v: u8) -> Result<usize> {
   require_bytes(dst, 1)?;
-  dst.put_u8(type_code as u8);
+  dst.put_u8(v);
   Ok(1)
+}
+
+fn serialize_type_code<B: BufMut>(dst: &mut B, type_code: TypeCode) -> Result<usize> {
+  serialize_byte(dst, type_code as u8)
+}
+
+fn serialize_small_int<B: BufMut>(dst: &mut B, v: u8) -> Result<usize> {
+  serialize_byte(dst, v)
 }
 
 pub fn serialize_array_begin<B: BufMut>(dst: &mut B) -> Result<usize> {
@@ -77,12 +85,6 @@ pub fn serialize_map_begin<B: BufMut>(dst: &mut B) -> Result<usize> {
 
 pub fn serialize_container_end<B: BufMut>(dst: &mut B) -> Result<usize> {
   serialize_type_code(dst, TypeCode::ContainerEnd)
-}
-
-fn serialize_small_int<B: BufMut>(dst: &mut B, v: u8) -> Result<usize> {
-  require_bytes(dst, 1)?;
-  dst.put_u8(v);
-  Ok(1)
 }
 
 pub fn serialize_u64<B: BufMut>(dst: &mut B, v: u64) -> Result<usize> {
@@ -143,30 +145,24 @@ pub fn serialize_i64<B: BufMut>(dst: &mut B, v: i64) -> Result<usize> {
 }
 
 fn serialize_f16<B: BufMut>(dst: &mut B, v: f32) -> Result<usize> {
-  let bytes = v.to_le_bytes();
   let total_size = 2 + 1;
-  
   require_bytes(dst, total_size)?;
-  
-  dst.put_u8(TypeCode::Float16 as u8);
-  dst.put_u8(bytes[2]);
-  dst.put_u8(bytes[3]);
+  let mut bytes = v.to_le_bytes();
+  bytes[1] = TypeCode::Float16 as u8;
+  dst.put_slice(&bytes[1..]);
   Ok(total_size)
 }
 
 pub fn serialize_f32<B: BufMut>(dst: &mut B, v: f32) -> Result<usize> {
-  let bytes = v.to_le_bytes();
   let as_bits = v.to_bits();
   if (as_bits & 0xffff_0000) == as_bits {
     return serialize_f16(dst, v);
   }
 
   let total_size = 4 + 1;
-  
   require_bytes(dst, total_size)?;
-  
   dst.put_u8(TypeCode::Float32 as u8);
-  dst.put_slice(&bytes);
+  dst.put_f32_le(v);
   Ok(total_size)
 }
 
@@ -179,12 +175,9 @@ pub fn serialize_f64<B: BufMut>(dst: &mut B, v: f64) -> Result<usize> {
   }
 
   let total_size = 8 + 1;
-  let bytes = v.to_le_bytes();
-  
   require_bytes(dst, total_size)?;
-  
   dst.put_u8(TypeCode::Float64 as u8);
-  dst.put_slice(&bytes);
+  dst.put_f64_le(v);
   Ok(total_size)
 }
 
