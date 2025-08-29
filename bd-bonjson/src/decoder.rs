@@ -23,8 +23,9 @@ use crate::deserialize_primitives::{
 };
 use crate::type_codes::TypeCode;
 use crate::{Value, deserialize_primitives};
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 use std::collections::HashMap;
+use std::io::Cursor;
 
 /// Decode a buffer and return the resulting value.
 /// On error, it returns the value decoded so far and the error.
@@ -32,8 +33,8 @@ use std::collections::HashMap;
 /// # Errors
 /// Returns `DecodeError` if the buffer contains invalid BONJSON data.
 pub fn from_slice(data: &[u8]) -> Result<Value> {
-  let bytes = Bytes::copy_from_slice(data);
-  let mut context = DecoderContext::new(bytes);
+  let cursor = Cursor::new(data);
+  let mut context = DecoderContext::new(cursor);
   context.decode_value()
 }
 
