@@ -150,8 +150,9 @@ fn deserialize_chunk_header<B: Buf>(src: &mut B) -> Result<(usize, bool)> {
   let (length_skip_size, length_payload_size, length_shift_by) =
     decode_chunk_length_header(length_header);
 
-  // Skip to the payload if necessary. `skip_size` is either 0 or 1 (see `decode_chunk_length_header`).
-  // The `peek_byte()` call already checked for 1 byte, which is the maximum we'd need here.
+  // Skip to the payload if necessary. `skip_size` is either 0 or 1 (see
+  // `decode_chunk_length_header`). The `peek_byte()` call already checked for 1 byte, which is
+  // the maximum we'd need here.
   src.advance(length_skip_size);
 
   let payload = deserialize_uint_of_length(src, length_payload_size)? >> length_shift_by;
