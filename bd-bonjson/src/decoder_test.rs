@@ -26,7 +26,8 @@ fn test_decode_null() {
   writer.write_null().unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Null);
 }
 
@@ -41,7 +42,8 @@ fn test_decode_booleans() {
   writer.write_boolean(true).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Bool(true));
 
   // Test false
@@ -53,7 +55,8 @@ fn test_decode_booleans() {
   writer.write_boolean(false).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Bool(false));
 }
 
@@ -68,7 +71,8 @@ fn test_decode_integers() {
   writer.write_signed(42).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Signed(42));
 
   // Small negative integer
@@ -80,7 +84,8 @@ fn test_decode_integers() {
   writer.write_signed(-42).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Signed(-42));
 
   // Large positive integer
@@ -93,7 +98,8 @@ fn test_decode_integers() {
   writer.write_signed(large_val).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Signed(large_val));
 }
 
@@ -109,7 +115,8 @@ fn test_decode_unsigned() {
   writer.write_unsigned(42).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Signed(42));
 
   // Large unsigned
@@ -122,7 +129,8 @@ fn test_decode_unsigned() {
   writer.write_unsigned(large_val).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Signed(large_val as i64));
 
   // Huge unsigned
@@ -135,7 +143,8 @@ fn test_decode_unsigned() {
   writer.write_unsigned(huge_val).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Unsigned(huge_val));
 }
 
@@ -150,7 +159,8 @@ fn test_decode_floats() {
   writer.write_float(f64::consts::PI).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Float(f64::consts::PI));
 
   // Negative float
@@ -162,7 +172,8 @@ fn test_decode_floats() {
   writer.write_float(-f64::consts::E).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Float(-f64::consts::E));
 
   // Float with conversion from f32
@@ -174,7 +185,8 @@ fn test_decode_floats() {
   writer.write_f32(1.5f32).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Float(1.5));
 }
 
@@ -189,7 +201,8 @@ fn test_decode_strings() {
   writer.write_str("hello").unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::String("hello".to_string()));
 
   // Empty string
@@ -201,7 +214,8 @@ fn test_decode_strings() {
   writer.write_str("").unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::String(String::new()));
 
   // Long string
@@ -215,7 +229,8 @@ fn test_decode_strings() {
   writer.write_str(long_str).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::String(long_str.to_string()));
 }
 
@@ -237,7 +252,8 @@ fn test_decode_array() {
 
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
 
   if let Value::Array(items) = value {
     assert_eq!(items.len(), 4);
@@ -261,7 +277,8 @@ fn test_decode_array() {
 
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
 
   if let Value::Array(items) = value {
     assert_eq!(items.len(), 0);
@@ -290,7 +307,8 @@ fn test_decode_object() {
 
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
 
   if let Value::Object(map) = value {
     assert_eq!(map.len(), 3);
@@ -313,7 +331,8 @@ fn test_decode_object() {
 
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
 
   if let Value::Object(map) = value {
     assert_eq!(map.len(), 0);
@@ -357,7 +376,8 @@ fn test_nested_structures() {
 
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
 
   // Verify structure
   if let Value::Object(map) = &value {
@@ -456,7 +476,8 @@ fn test_boundary_values() {
     let pos = usize::try_from(cursor.position()).unwrap();
 
     let data_slice = &buf[.. pos];
-    let (_, decoded) = from_slice(data_slice).unwrap();
+    let (bytes_read, decoded) = from_slice(data_slice).unwrap();
+    assert!(bytes_read > 0, "Should have read at least one byte");
 
     if u64::try_from(value).is_ok() {
       // Unsigned conversion may happen
@@ -495,7 +516,8 @@ fn test_boundary_values() {
     let pos = usize::try_from(cursor.position()).unwrap();
 
     let data_slice = &buf[.. pos];
-    let (_, decoded) = from_slice(data_slice).unwrap();
+    let (bytes_read, decoded) = from_slice(data_slice).unwrap();
+    assert!(bytes_read > 0, "Should have read at least one byte");
 
     if i64::try_from(value).is_ok() {
       // Integer conversion may happen
@@ -797,7 +819,8 @@ fn test_decode_special_strings() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::String(String::new()));
 
   // Test emoji and multi-byte characters
@@ -811,7 +834,8 @@ fn test_decode_special_strings() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::String(special_str.to_string()));
 
   // Test string with control characters
@@ -825,7 +849,8 @@ fn test_decode_special_strings() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::String(control_str.to_string()));
 }
 
@@ -873,7 +898,8 @@ fn test_deeply_nested_structures() {
 
   // Test decoding the deeply nested structure
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
 
   // Verify the structure at each level
   if let Value::Array(level1) = value {
@@ -946,7 +972,8 @@ fn test_mixed_object_and_array_nesting() {
 
   // Test decoding the mixed nested structure
   let data_slice = &buf[.. pos];
-  let (_, value) = from_slice(data_slice).unwrap();
+  let (bytes_read, value) = from_slice(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
 
   // Verify the structure
   if let Value::Object(root) = &value {
@@ -985,7 +1012,10 @@ fn test_value_none_removed_successful_decode() {
   // Test that valid data decodes successfully without Value::None
   let valid_data = [0x85, 0x48, 0x65, 0x6c, 0x6c, 0x6f]; // "Hello"
   match from_slice(&valid_data) {
-    Ok((_, Value::String(s))) => assert_eq!(s, "Hello"),
+    Ok((bytes_read, Value::String(s))) => {
+      assert!(bytes_read > 0, "Should have read at least one byte");
+      assert_eq!(s, "Hello");
+    },
     Ok((_, other)) => panic!("Expected string, got: {other:?}"),
     Err(e) => panic!("Unexpected error: {e:?}"),
   }
@@ -1087,7 +1117,8 @@ fn test_decode_buf() {
 
   // Test with Bytes
   let bytes = Bytes::copy_from_slice(data_slice);
-  let (_, value) = from_buf(bytes).unwrap();
+  let (bytes_read, value) = from_buf(bytes).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Null);
 
   // Test with string value
@@ -1101,7 +1132,8 @@ fn test_decode_buf() {
   let data_slice = &buf[.. pos];
 
   let bytes = Bytes::copy_from_slice(data_slice);
-  let (_, value) = from_buf(bytes).unwrap();
+  let (bytes_read, value) = from_buf(bytes).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::String("hello".to_string()));
 
   // Test with integer value
@@ -1115,7 +1147,8 @@ fn test_decode_buf() {
   let data_slice = &buf[.. pos];
 
   let bytes = Bytes::copy_from_slice(data_slice);
-  let (_, value) = from_buf(bytes).unwrap();
+  let (bytes_read, value) = from_buf(bytes).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Signed(42));
 
   // Test with a slice directly (also implements Buf)
@@ -1129,6 +1162,7 @@ fn test_decode_buf() {
   let data_slice = &buf[.. pos];
 
   // Test with a slice directly (which also implements Buf)
-  let (_, value) = from_buf(data_slice).unwrap();
+  let (bytes_read, value) = from_buf(data_slice).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Bool(true));
 }

@@ -45,10 +45,9 @@ pub fn from_slice(data: &[u8]) -> Result<(usize, Value)> {
 /// # Errors
 /// Returns `DecodeError` if the buffer contains invalid BONJSON data.
 pub fn from_buf<B: Buf>(buf: B) -> Result<(usize, Value)> {
-  let start_remaining = buf.remaining();
   let mut context = DecoderContext::new(buf);
   let value = context.decode_value()?;
-  Ok((start_remaining - context.current_position(), value))
+  Ok((context.current_position(), value))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
