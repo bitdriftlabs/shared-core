@@ -58,8 +58,8 @@ fn deserialize_string_contents(src: &mut Bytes, size: usize) -> Result<String> {
 }
 
 pub fn peek_type_code(src: &Bytes) -> Result<u8> {
-  let type_code = deserialize_byte(&mut src.clone())?;
-  Ok(type_code)
+  require_bytes(src, 1)?;
+  Ok(src[0])
 }
 
 pub fn deserialize_type_code(src: &mut Bytes) -> Result<u8> {
