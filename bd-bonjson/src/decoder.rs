@@ -32,7 +32,8 @@ use std::collections::HashMap;
 /// # Errors
 /// Returns `DecodeError` if the buffer contains invalid BONJSON data.
 pub fn from_slice(data: &[u8]) -> Result<Value> {
-  let mut context = DecoderContext::<Bytes>::new(data);
+  let bytes = Bytes::copy_from_slice(data);
+  let mut context = DecoderContext::new(bytes);
   context.decode_value()
 }
 
@@ -42,7 +43,7 @@ pub fn from_slice(data: &[u8]) -> Result<Value> {
 /// # Errors
 /// Returns `DecodeError` if the buffer contains invalid BONJSON data.
 pub fn from_buf<B: Buf>(buf: B) -> Result<Value> {
-  let mut context = DecoderContext::from_buf(buf);
+  let mut context = DecoderContext::new(buf);
   context.decode_value()
 }
 
@@ -112,13 +113,7 @@ fn propagate_partial_decode(error: &DecodeError, value: Value) -> DecodeError {
 }
 
 impl<B: Buf> DecoderContext<B> {
-  fn new(data: &[u8]) -> DecoderContext<Bytes> {
-    let bytes = Bytes::copy_from_slice(data);
-    let original_len = bytes.len();
-    DecoderContext { data: bytes, original_len }
-  }
-
-  fn from_buf(buf: B) -> Self {
+  fn new(buf: B) -> Self {
     let original_len = buf.remaining();
     Self { data: buf, original_len }
   }
