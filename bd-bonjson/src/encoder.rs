@@ -22,6 +22,7 @@ use crate::serialize_primitives::{
   serialize_string_header,
   serialize_u64,
 };
+use bytes::BufMut;
 use std::collections::HashMap;
 
 /// Encodes a `Value` into BONJSON format and returns the modified buffer.
@@ -88,85 +89,98 @@ pub fn encode<'a>(
 /// * `Ok(usize)` - The number of bytes written on success
 /// * `Err(SerializationError)` - If encoding fails (including buffer full)
 pub fn encode_into(buffer: &mut [u8], value: &Value) -> Result<usize, SerializationError> {
-  encode_value_into(buffer, value)
+  encode_value_into_buf(&mut (&mut *buffer), value)
 }
 
-/// Encodes a value into a buffer.
-fn encode_value_into(buffer: &mut [u8], value: &Value) -> Result<usize, SerializationError> {
+/// Encodes a `Value` into BONJSON format using a `BufMut`.
+///
+/// This function writes BONJSON data directly to a `BufMut` implementation,
+/// which can automatically track position and provide better ergonomics.
+///
+/// # Arguments
+/// * `buf` - The mutable buffer that implements `BufMut`
+/// * `value` - The value to encode
+///
+/// # Returns
+/// * `Ok(usize)` - The number of bytes written on success
+/// * `Err(SerializationError)` - If encoding fails (including buffer full)
+pub fn encode_into_buf<B: BufMut>(buf: &mut B, value: &Value) -> Result<usize, SerializationError> {
+  encode_value_into_buf(buf, value)
+}
+
+/// Encodes a value into a buffer using `BufMut`.
+fn encode_value_into_buf<B: BufMut>(buf: &mut B, value: &Value) -> Result<usize, SerializationError> {
+  let start_remaining = buf.remaining_mut();
   match value {
-    Value::Null => serialize_null(buffer),
-    Value::Bool(b) => serialize_boolean(buffer, *b),
-    Value::Float(f) => serialize_f64(buffer, *f),
-    Value::Signed(i) => serialize_i64(buffer, *i),
-    Value::Unsigned(u) => serialize_u64(buffer, *u),
-    Value::String(s) => encode_string_into(buffer, s),
-    Value::Array(arr) => encode_array_into(buffer, arr),
-    Value::Object(obj) => encode_object_into(buffer, obj),
-  }
+    Value::Null => serialize_null(buf)?,
+    Value::Bool(b) => serialize_boolean(buf, *b)?,
+    Value::Float(f) => serialize_f64(buf, *f)?,
+    Value::Signed(i) => serialize_i64(buf, *i)?,
+    Value::Unsigned(u) => serialize_u64(buf, *u)?,
+    Value::String(s) => encode_string_into_buf(buf, s)?,
+    Value::Array(arr) => encode_array_into_buf(buf, arr)?,
+    Value::Object(obj) => encode_object_into_buf(buf, obj)?,
+  };
+  Ok(start_remaining - buf.remaining_mut())
 }
 
-/// Encodes an array into a buffer.
-fn encode_array_into(buffer: &mut [u8], arr: &[Value]) -> Result<usize, SerializationError> {
-  let mut position = 0;
+/// Encodes an array into a buffer using `BufMut`.
+fn encode_array_into_buf<B: BufMut>(buf: &mut B, arr: &[Value]) -> Result<usize, SerializationError> {
+  let start_remaining = buf.remaining_mut();
 
   // Array start marker
-  let size = serialize_array_begin(&mut buffer[position ..])?;
-  position += size;
+  serialize_array_begin(buf)?;
 
   // Encode each element
   for item in arr {
-    let bytes_written = encode_value_into(&mut buffer[position ..], item)?;
-    position += bytes_written;
+    encode_value_into_buf(buf, item)?;
   }
 
   // Array end marker
-  let size = serialize_container_end(&mut buffer[position ..])?;
-  position += size;
+  serialize_container_end(buf)?;
 
-  Ok(position)
+  Ok(start_remaining - buf.remaining_mut())
 }
 
-/// Encodes an object into a buffer.
-fn encode_object_into(
-  buffer: &mut [u8],
+/// Encodes an object into a buffer using `BufMut`.
+fn encode_object_into_buf<B: BufMut>(
+  buf: &mut B,
   obj: &HashMap<String, Value>,
 ) -> Result<usize, SerializationError> {
-  let mut position = 0;
+  let start_remaining = buf.remaining_mut();
 
   // Object start marker
-  let size = serialize_map_begin(&mut buffer[position ..])?;
-  position += size;
+  serialize_map_begin(buf)?;
 
   // Encode each key-value pair
   for (key, value) in obj {
     // Encode key as string
-    let bytes_written = encode_string_into(&mut buffer[position ..], key)?;
-    position += bytes_written;
+    encode_string_into_buf(buf, key)?;
 
     // Encode value
-    let bytes_written = encode_value_into(&mut buffer[position ..], value)?;
-    position += bytes_written;
+    encode_value_into_buf(buf, value)?;
   }
 
   // Object end marker
-  let size = serialize_container_end(&mut buffer[position ..])?;
-  position += size;
+  serialize_container_end(buf)?;
 
-  Ok(position)
+  Ok(start_remaining - buf.remaining_mut())
 }
 
-/// Encodes a string into a buffer.
-fn encode_string_into(buffer: &mut [u8], s: &str) -> Result<usize, SerializationError> {
-  // Serialize header directly into the output buffer
-  let header_size = serialize_string_header(buffer, s)?;
+/// Encodes a string into a buffer using `BufMut`.
+fn encode_string_into_buf<B: BufMut>(buf: &mut B, s: &str) -> Result<usize, SerializationError> {
+  let start_remaining = buf.remaining_mut();
+
+  // Serialize header
+  serialize_string_header(buf, s)?;
 
   // Check if there's enough space for the string data
-  if header_size + s.len() > buffer.len() {
+  if buf.remaining_mut() < s.len() {
     return Err(SerializationError::BufferFull);
   }
 
-  // Write string data after the header
-  buffer[header_size .. header_size + s.len()].copy_from_slice(s.as_bytes());
+  // Write string data
+  buf.put_slice(s.as_bytes());
 
-  Ok(header_size + s.len())
+  Ok(start_remaining - buf.remaining_mut())
 }
