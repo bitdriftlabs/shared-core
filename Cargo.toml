@@ -33,6 +33,7 @@ members = [
   "bd-report-convert",
   "bd-report-writer",
   "bd-report-writer-tests",
+  "bd-resilient-kv",
   "bd-session",
   "bd-key-value",
   "bd-session-replay",

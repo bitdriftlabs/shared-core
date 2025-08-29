@@ -1006,6 +1006,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-resilient-kv"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "assert_no_alloc",
+ "bd-bonjson",
+ "bd-test-helpers",
+ "cbindgen",
+ "ctor",
+ "log",
+ "tempfile",
+]
+
+[[package]]
 name = "bd-resource-utilization"
 version = "1.0.0"
 dependencies = [
