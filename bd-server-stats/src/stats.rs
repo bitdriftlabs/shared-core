@@ -253,6 +253,12 @@ impl LabelProvider for String {
   }
 }
 
+impl LabelProvider for &str {
+  fn labels(&self) -> Vec<&str> {
+    vec![*self]
+  }
+}
+
 impl LabelProvider for Vec<&str> {
   fn labels(&self) -> Vec<&str> {
     self.clone()
