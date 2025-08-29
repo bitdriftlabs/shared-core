@@ -115,7 +115,10 @@ fn propagate_partial_decode(error: &DecodeError, value: Value) -> DecodeError {
 impl<B: Buf> DecoderContext<B> {
   fn new(buf: B) -> Self {
     let original_len = buf.remaining();
-    Self { data: buf, original_len }
+    Self {
+      data: buf,
+      original_len,
+    }
   }
 
   fn current_position(&self) -> usize {
@@ -126,7 +129,8 @@ impl<B: Buf> DecoderContext<B> {
     result.map_err(|e| self.fatal_error_here(e))
   }
 
-  // Helper method to simplify the common pattern of calling a deserialize function and mapping errors
+  // Helper method to simplify the common pattern of calling a deserialize function and mapping
+  // errors
   fn call_deserialize<T, F>(&mut self, f: F) -> Result<T>
   where
     F: FnOnce(&mut B) -> deserialize_primitives::Result<T>,
@@ -145,7 +149,10 @@ impl<B: Buf> DecoderContext<B> {
   }
 
   fn fatal_error_here(&self, error: DeserializationError) -> DecodeError {
-    DecodeError::Fatal(DeserializationErrorWithOffset::Error(error, self.current_position()))
+    DecodeError::Fatal(DeserializationErrorWithOffset::Error(
+      error,
+      self.current_position(),
+    ))
   }
 
   fn partial_error_here(&self, error: DeserializationError, value: Value) -> DecodeError {
@@ -208,7 +215,8 @@ impl<B: Buf> DecoderContext<B> {
   }
 
   fn decode_short_string(&mut self, type_code: u8) -> Result<Value> {
-    let string = self.call_deserialize_with_code(type_code, deserialize_short_string_after_type_code)?;
+    let string =
+      self.call_deserialize_with_code(type_code, deserialize_short_string_after_type_code)?;
     Ok(Value::String(string))
   }
 

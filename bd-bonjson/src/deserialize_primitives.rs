@@ -39,7 +39,7 @@ fn require_bytes<B: Buf>(src: &B, byte_count: usize) -> Result<()> {
 
 fn copy_bytes_to<B: Buf>(src: &mut B, dst: &mut [u8], byte_count: usize) -> Result<()> {
   require_bytes(src, byte_count)?;
-  src.copy_to_slice(&mut dst[..byte_count]);
+  src.copy_to_slice(&mut dst[.. byte_count]);
   Ok(())
 }
 
@@ -50,7 +50,7 @@ fn deserialize_byte<B: Buf>(src: &mut B) -> Result<u8> {
 
 fn deserialize_string_contents<B: Buf>(src: &mut B, size: usize) -> Result<String> {
   require_bytes(src, size)?;
-  // We need to extract the data and convert to String since we can't return a &str 
+  // We need to extract the data and convert to String since we can't return a &str
   // that references data we're about to consume
   let mut data = vec![0u8; size];
   src.copy_to_slice(&mut data);
@@ -89,7 +89,7 @@ pub fn deserialize_signed_after_type_code<B: Buf>(src: &mut B, type_code: u8) ->
   let is_negative = src.chunk()[byte_count - 1] >> 7;
   // Pre-fill the byte array with the sign bit if necessary
   let mut bytes: [u8; 8] = [is_negative * 0xff; 8];
-  src.copy_to_slice(&mut bytes[..byte_count]);
+  src.copy_to_slice(&mut bytes[.. byte_count]);
   Ok(i64::from_le_bytes(bytes))
 }
 
@@ -150,11 +150,11 @@ fn deserialize_chunk_header<B: Buf>(src: &mut B) -> Result<(usize, bool)> {
   let length_header = peek_byte(src)?;
   let (length_skip_size, length_payload_size, length_shift_by) =
     decode_chunk_length_header(length_header);
-  
-  // Skip to the payload. `skip_size` is either 0 or 1 (see `decode_chunk_length_header`), and we already
-  // checked for room in the peek_byte() call.
+
+  // Skip to the payload. `skip_size` is either 0 or 1 (see `decode_chunk_length_header`), and we
+  // already checked for room in the peek_byte() call.
   src.advance(length_skip_size);
-  
+
   let payload = deserialize_uint_of_length(src, length_payload_size)? >> length_shift_by;
   let continuation_bit = (payload & 1) == 1;
   let length = payload >> 1;
@@ -170,7 +170,6 @@ pub fn deserialize_long_string_after_type_code<B: Buf>(src: &mut B) -> Result<St
   require_bytes(src, chunk_size)?;
   let mut data = vec![0u8; chunk_size];
   src.copy_to_slice(&mut data);
-  let string = std::str::from_utf8(&data)
-    .map_err(|_| DeserializationError::InvalidUTF8)?;
+  let string = std::str::from_utf8(&data).map_err(|_| DeserializationError::InvalidUTF8)?;
   Ok(string.to_string())
 }

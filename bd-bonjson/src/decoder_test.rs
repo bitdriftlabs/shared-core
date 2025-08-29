@@ -1079,17 +1079,17 @@ fn test_decode_buf() {
   let mut writer = Writer {
     writer: &mut cursor,
   };
-  
+
   // Write null value
   writer.write_null().unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  
+
   // Test with Bytes
   let bytes = Bytes::copy_from_slice(data_slice);
   let value = from_buf(bytes).unwrap();
   assert_eq!(value, Value::Null);
-  
+
   // Test with string value
   let mut buf = vec![0u8; 20];
   let mut cursor = Cursor::new(&mut buf);
@@ -1099,11 +1099,11 @@ fn test_decode_buf() {
   writer.write_str("hello").unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  
+
   let bytes = Bytes::copy_from_slice(data_slice);
   let value = from_buf(bytes).unwrap();
   assert_eq!(value, Value::String("hello".to_string()));
-  
+
   // Test with integer value
   let mut buf = vec![0u8; 20];
   let mut cursor = Cursor::new(&mut buf);
@@ -1113,11 +1113,11 @@ fn test_decode_buf() {
   writer.write_signed(42).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  
+
   let bytes = Bytes::copy_from_slice(data_slice);
   let value = from_buf(bytes).unwrap();
   assert_eq!(value, Value::Signed(42));
-  
+
   // Test with a slice directly (also implements Buf)
   let mut buf = vec![0u8; 20];
   let mut cursor = Cursor::new(&mut buf);
@@ -1127,7 +1127,7 @@ fn test_decode_buf() {
   writer.write_boolean(true).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  
+
   // Test with a slice directly (which also implements Buf)
   let value = from_buf(data_slice).unwrap();
   assert_eq!(value, Value::Bool(true));
