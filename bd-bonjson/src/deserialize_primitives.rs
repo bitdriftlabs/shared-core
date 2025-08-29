@@ -92,15 +92,13 @@ pub fn deserialize_f16_after_type_code(src: &mut Bytes) -> Result<f32> {
 }
 
 pub fn deserialize_f32_after_type_code(src: &mut Bytes) -> Result<f32> {
-  let mut bytes: [u8; 4] = [0; 4];
-  copy_bytes_to(src, &mut bytes, 4)?;
-  Ok(f32::from_le_bytes(bytes))
+  require_bytes(src, 4)?;
+  Ok(src.get_f32_le())
 }
 
 pub fn deserialize_f64_after_type_code(src: &mut Bytes) -> Result<f64> {
-  let mut bytes: [u8; 8] = [0; 8];
-  copy_bytes_to(src, &mut bytes, 8)?;
-  Ok(f64::from_le_bytes(bytes))
+  require_bytes(src, 8)?;
+  Ok(src.get_f64_le())
 }
 
 pub fn deserialize_short_string_after_type_code(
