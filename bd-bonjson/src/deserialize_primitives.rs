@@ -76,11 +76,11 @@ pub fn deserialize_unsigned_after_type_code(src: &mut Bytes, type_code: u8) -> R
 pub fn deserialize_signed_after_type_code(src: &mut Bytes, type_code: u8) -> Result<i64> {
   let byte_count = ((type_code & 7) + 1) as usize;
   require_bytes(src, byte_count)?;
-  // Since we've already checked the length, we know the index exists
+  // If the sign bit is set, we know that it's negative
   let is_negative = src[byte_count - 1] >> 7;
+  // Pre-fill the byte array with the sign bit if necessary
   let mut bytes: [u8; 8] = [is_negative * 0xff; 8];
-  let data_slice = src.split_to(byte_count);
-  bytes[.. byte_count].copy_from_slice(&data_slice);
+  src.copy_to_slice(&mut bytes[..byte_count]);
   Ok(i64::from_le_bytes(bytes))
 }
 
