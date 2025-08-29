@@ -46,19 +46,19 @@ fn derive_chunk_length_header_data(payload: u64) -> (u8, u8, u8, u8) {
   }
 }
 
-// Assumption: dst has at least 9 bytes of space
-fn serialize_chunk_header_unchecked<B: BufMut>(dst: &mut B, length: u64, continuation_bit: bool) -> usize {
+fn serialize_chunk_header<B: BufMut>(dst: &mut B, length: u64, continuation_bit: bool) -> Result<usize> {
   let payload = (length << 1) | u64::from(continuation_bit);
   let (skip_bytes, copy_bytes, shift_amount, unary_code) = derive_chunk_length_header_data(payload);
   let total_size = (skip_bytes + copy_bytes) as usize;
   let encoded = (payload << shift_amount) | u64::from(unary_code);
   let bytes = encoded.to_le_bytes();
   
+  require_bytes(dst, total_size)?;
   if skip_bytes > 0 {
     dst.put_u8(unary_code);
   }
   dst.put_slice(&bytes[.. copy_bytes as usize]);
-  total_size
+  Ok(total_size)
 }
 
 fn serialize_byte<B: BufMut>(dst: &mut B, v: u8) -> Result<usize> {
@@ -182,24 +182,14 @@ pub fn serialize_f64<B: BufMut>(dst: &mut B, v: f64) -> Result<usize> {
 }
 
 fn serialize_short_string_header<B: BufMut>(dst: &mut B, str: &str) -> Result<usize> {
-  let total_size = 1;
-  
-  require_bytes(dst, total_size)?;
-  
-  dst.put_u8(TypeCode::String as u8 + u8::try_from(str.len())?);
-  Ok(total_size)
+  serialize_byte(dst, TypeCode::String as u8 + u8::try_from(str.len())?)
 }
 
 fn serialize_long_string_header<B: BufMut>(dst: &mut B, str: &str) -> Result<usize> {
-  let mut header: [u8; 9] = [0; 9];
-  let header_size = serialize_chunk_header_unchecked(&mut header.as_mut_slice(), str.len() as u64, false);
-  let total_size = header_size + 1;
-  
-  require_bytes(dst, total_size)?;
-  
+  require_bytes(dst, 1)?;
   dst.put_u8(TypeCode::LongString as u8);
-  dst.put_slice(&header[.. header_size]);
-  Ok(total_size)
+  let header_size = serialize_chunk_header(dst, str.len() as u64, false)?;
+  Ok(header_size + 1)
 }
 
 pub fn serialize_string_header<B: BufMut>(dst: &mut B, str: &str) -> Result<usize> {
@@ -208,6 +198,14 @@ pub fn serialize_string_header<B: BufMut>(dst: &mut B, str: &str) -> Result<usiz
   } else {
     serialize_long_string_header(dst, str)
   }
+}
+
+pub fn serialize_string<B: BufMut>(dst: &mut B, s: &str) -> Result<usize> {
+  let start_remaining = dst.remaining_mut();
+  serialize_string_header(dst, s)?;
+  require_bytes(dst, s.len())?;
+  dst.put_slice(s.as_bytes());
+  Ok(start_remaining - dst.remaining_mut())
 }
 
 pub fn serialize_boolean<B: BufMut>(dst: &mut B, v: bool) -> Result<usize> {

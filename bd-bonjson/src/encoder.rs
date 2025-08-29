@@ -11,16 +11,7 @@ mod encoder_test;
 
 use crate::Value;
 use crate::serialize_primitives::{
-  SerializationError,
-  serialize_array_begin,
-  serialize_boolean,
-  serialize_container_end,
-  serialize_f64,
-  serialize_i64,
-  serialize_map_begin,
-  serialize_null,
-  serialize_string_header,
-  serialize_u64,
+  serialize_array_begin, serialize_boolean, serialize_container_end, serialize_f64, serialize_i64, serialize_map_begin, serialize_null, serialize_string, serialize_u64, SerializationError
 };
 use bytes::BufMut;
 use std::collections::HashMap;
@@ -117,7 +108,7 @@ fn encode_value_into_buf<B: BufMut>(buf: &mut B, value: &Value) -> Result<usize,
     Value::Float(f) => serialize_f64(buf, *f)?,
     Value::Signed(i) => serialize_i64(buf, *i)?,
     Value::Unsigned(u) => serialize_u64(buf, *u)?,
-    Value::String(s) => encode_string_into_buf(buf, s)?,
+    Value::String(s) => serialize_string(buf, s)?,
     Value::Array(arr) => encode_array_into_buf(buf, arr)?,
     Value::Object(obj) => encode_object_into_buf(buf, obj)?,
   };
@@ -155,7 +146,7 @@ fn encode_object_into_buf<B: BufMut>(
   // Encode each key-value pair
   for (key, value) in obj {
     // Encode key as string
-    encode_string_into_buf(buf, key)?;
+    serialize_string(buf, key)?;
 
     // Encode value
     encode_value_into_buf(buf, value)?;
@@ -163,24 +154,6 @@ fn encode_object_into_buf<B: BufMut>(
 
   // Object end marker
   serialize_container_end(buf)?;
-
-  Ok(start_remaining - buf.remaining_mut())
-}
-
-/// Encodes a string into a buffer using `BufMut`.
-fn encode_string_into_buf<B: BufMut>(buf: &mut B, s: &str) -> Result<usize, SerializationError> {
-  let start_remaining = buf.remaining_mut();
-
-  // Serialize header
-  serialize_string_header(buf, s)?;
-
-  // Check if there's enough space for the string data
-  if buf.remaining_mut() < s.len() {
-    return Err(SerializationError::BufferFull);
-  }
-
-  // Write string data
-  buf.put_slice(s.as_bytes());
 
   Ok(start_remaining - buf.remaining_mut())
 }
