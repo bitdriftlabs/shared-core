@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::type_codes::TypeCode;
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeserializationError {
@@ -39,16 +39,13 @@ const fn require_bytes(src: &Bytes, byte_count: usize) -> Result<()> {
 
 fn copy_bytes_to(src: &mut Bytes, dst: &mut [u8], byte_count: usize) -> Result<()> {
   require_bytes(src, byte_count)?;
-  let data = src.split_to(byte_count);
-  dst[.. byte_count].copy_from_slice(&data);
+  src.copy_to_slice(&mut dst[..byte_count]);
   Ok(())
 }
 
 fn deserialize_byte(src: &mut Bytes) -> Result<u8> {
   require_bytes(src, 1)?;
-  // Since we've already checked the length, we know index 0 exists
-  let byte = src.split_to(1)[0];
-  Ok(byte)
+  Ok(src.get_u8())
 }
 
 fn deserialize_string_contents(src: &mut Bytes, size: usize) -> Result<String> {
