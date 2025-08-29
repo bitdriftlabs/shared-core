@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::type_codes::TypeCode;
+use bytes::Bytes;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeserializationError {
@@ -28,7 +29,7 @@ pub enum DeserializationError {
 
 pub type Result<T> = std::result::Result<T, DeserializationError>;
 
-fn require_bytes(src: &[u8], byte_count: usize) -> Result<()> {
+const fn require_bytes(src: &Bytes, byte_count: usize) -> Result<()> {
   if byte_count > src.len() {
     Err(DeserializationError::PrematureEnd)
   } else {
@@ -36,71 +37,80 @@ fn require_bytes(src: &[u8], byte_count: usize) -> Result<()> {
   }
 }
 
-fn copy_bytes_to(src: &[u8], dst: &mut [u8], byte_count: usize) -> Result<()> {
+fn copy_bytes_to(src: &mut Bytes, dst: &mut [u8], byte_count: usize) -> Result<()> {
   require_bytes(src, byte_count)?;
-  dst[.. byte_count].copy_from_slice(&src[.. byte_count]);
+  let data = src.split_to(byte_count);
+  dst[.. byte_count].copy_from_slice(&data);
   Ok(())
 }
 
-fn deserialize_byte(src: &[u8]) -> Result<(usize, u8)> {
+fn deserialize_byte(src: &mut Bytes) -> Result<u8> {
   require_bytes(src, 1)?;
-  Ok((1, src[0]))
+  // Since we've already checked the length, we know index 0 exists
+  let byte = src.split_to(1)[0];
+  Ok(byte)
 }
 
-fn deserialize_string_contents(src: &[u8], size: usize) -> Result<(usize, &str)> {
+fn deserialize_string_contents(src: &mut Bytes, size: usize) -> Result<String> {
   require_bytes(src, size)?;
-  let string = std::str::from_utf8(&src[.. size]).map_err(|_| DeserializationError::InvalidUTF8)?;
-  Ok((size, string))
+  // We need to extract the data and convert to String since we can't return a &str 
+  // that references data we're about to consume
+  let data = src.split_to(size);
+  let string = std::str::from_utf8(&data).map_err(|_| DeserializationError::InvalidUTF8)?;
+  Ok(string.to_string())
 }
 
-pub fn peek_type_code(src: &[u8]) -> Result<u8> {
-  let (_, type_code) = deserialize_byte(src)?;
+pub fn peek_type_code(src: &Bytes) -> Result<u8> {
+  let type_code = deserialize_byte(&mut src.clone())?;
   Ok(type_code)
 }
 
-pub fn deserialize_type_code(src: &[u8]) -> Result<(usize, u8)> {
+pub fn deserialize_type_code(src: &mut Bytes) -> Result<u8> {
   deserialize_byte(src)
 }
 
-pub fn deserialize_unsigned_after_type_code(src: &[u8], type_code: u8) -> Result<(usize, u64)> {
+pub fn deserialize_unsigned_after_type_code(src: &mut Bytes, type_code: u8) -> Result<u64> {
   let byte_count = ((type_code & 7) + 1) as usize;
   let mut bytes: [u8; 8] = [0; 8];
   copy_bytes_to(src, &mut bytes, byte_count)?;
-  Ok((byte_count, u64::from_le_bytes(bytes)))
+  Ok(u64::from_le_bytes(bytes))
 }
 
-pub fn deserialize_signed_after_type_code(src: &[u8], type_code: u8) -> Result<(usize, i64)> {
+pub fn deserialize_signed_after_type_code(src: &mut Bytes, type_code: u8) -> Result<i64> {
   let byte_count = ((type_code & 7) + 1) as usize;
   require_bytes(src, byte_count)?;
-  let is_negative = src[byte_count - 1] >> 7;
+  // Since we've already checked the length, we know the index exists
+  let last_byte_slice = src.slice((byte_count - 1)..byte_count);
+  let is_negative = last_byte_slice[0] >> 7;
   let mut bytes: [u8; 8] = [is_negative * 0xff; 8];
-  bytes[.. byte_count].copy_from_slice(&src[.. byte_count]);
-  Ok((byte_count, i64::from_le_bytes(bytes)))
+  let data_slice = src.split_to(byte_count);
+  bytes[.. byte_count].copy_from_slice(&data_slice);
+  Ok(i64::from_le_bytes(bytes))
 }
 
-pub fn deserialize_f16_after_type_code(src: &[u8]) -> Result<(usize, f32)> {
+pub fn deserialize_f16_after_type_code(src: &mut Bytes) -> Result<f32> {
   let mut bytes: [u8; 4] = [0; 4];
   // Note: Copying only 2 bytes into a 4 byte buffer because this is a bfloat.
   copy_bytes_to(src, &mut bytes[2 ..], 2)?;
-  Ok((2, f32::from_le_bytes(bytes)))
+  Ok(f32::from_le_bytes(bytes))
 }
 
-pub fn deserialize_f32_after_type_code(src: &[u8]) -> Result<(usize, f32)> {
+pub fn deserialize_f32_after_type_code(src: &mut Bytes) -> Result<f32> {
   let mut bytes: [u8; 4] = [0; 4];
   copy_bytes_to(src, &mut bytes, 4)?;
-  Ok((4, f32::from_le_bytes(bytes)))
+  Ok(f32::from_le_bytes(bytes))
 }
 
-pub fn deserialize_f64_after_type_code(src: &[u8]) -> Result<(usize, f64)> {
+pub fn deserialize_f64_after_type_code(src: &mut Bytes) -> Result<f64> {
   let mut bytes: [u8; 8] = [0; 8];
   copy_bytes_to(src, &mut bytes, 8)?;
-  Ok((8, f64::from_le_bytes(bytes)))
+  Ok(f64::from_le_bytes(bytes))
 }
 
 pub fn deserialize_short_string_after_type_code(
-  src: &[u8],
+  src: &mut Bytes,
   type_code: u8,
-) -> Result<(usize, &str)> {
+) -> Result<String> {
   deserialize_string_contents(src, type_code as usize - TypeCode::String as usize)
 }
 
@@ -131,30 +141,34 @@ fn decode_chunk_length_header(length_header: u8) -> (usize, usize, usize) {
 }
 
 // Returns:
-// - Size of the header in bytes
 // - Length of the chunk in fixed-size elements (usually bytes)
 // - Continuation bit
-fn deserialize_chunk_header(src: &[u8]) -> Result<(usize, usize, bool)> {
-  let (_, length_header) = deserialize_byte(src)?;
+fn deserialize_chunk_header(src: &mut Bytes) -> Result<(usize, bool)> {
+  require_bytes(src, 1)?;
+  let length_header = src[0];
   let (length_skip_size, length_payload_size, length_shift_by) =
     decode_chunk_length_header(length_header);
-  let length_total_size = length_skip_size + length_payload_size;
+  
+  // Skip to the payload (this includes skipping the header byte we just peeked at)
+  let _ = src.split_to(length_skip_size);
+  
   let mut bytes: [u8; 8] = [0; 8];
-  copy_bytes_to(&src[length_skip_size ..], &mut bytes, length_payload_size)?;
+  copy_bytes_to(src, &mut bytes, length_payload_size)?;
   let payload = u64::from_le_bytes(bytes) >> length_shift_by;
   let continuation_bit = (payload & 1) == 1;
   let length = payload >> 1;
-  Ok((length_total_size, length as usize, continuation_bit))
+  Ok((length as usize, continuation_bit))
 }
 
-pub fn deserialize_long_string_after_type_code(src: &[u8]) -> Result<(usize, &str)> {
-  let (header_size, chunk_size, continuation_bit) = deserialize_chunk_header(src)?;
+pub fn deserialize_long_string_after_type_code(src: &mut Bytes) -> Result<String> {
+  let (chunk_size, continuation_bit) = deserialize_chunk_header(src)?;
   if continuation_bit {
     // Note: Deliberately not supporting chunked strings since we don't use them.
     return Err(DeserializationError::ContinuationBitNotSupported);
   }
-  let current = &src[header_size ..];
-  require_bytes(current, chunk_size)?;
-  let (v_size, v) = deserialize_string_contents(current, chunk_size)?;
-  Ok((header_size + v_size, v))
+  require_bytes(src, chunk_size)?;
+  let data = src.split_to(chunk_size);
+  let string = std::str::from_utf8(&data)
+    .map_err(|_| DeserializationError::InvalidUTF8)?;
+  Ok(string.to_string())
 }

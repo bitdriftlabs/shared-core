@@ -23,6 +23,7 @@ use crate::deserialize_primitives::{
 };
 use crate::type_codes::TypeCode;
 use crate::{Value, deserialize_primitives};
+use bytes::Bytes;
 use std::collections::HashMap;
 
 /// Decode a buffer and return the resulting value.
@@ -82,9 +83,9 @@ impl DecodeError {
 pub type Result<T> = std::result::Result<T, DecodeError>;
 
 /// Internal decoder context to track position and data during decoding
-struct DecoderContext<'a> {
-  data: &'a [u8],
-  position: usize,
+struct DecoderContext {
+  data: Bytes,
+  original_len: usize,
 }
 
 fn propagate_partial_decode(error: &DecodeError, value: Value) -> DecodeError {
@@ -100,17 +101,15 @@ fn propagate_partial_decode(error: &DecodeError, value: Value) -> DecodeError {
   }
 }
 
-impl<'a> DecoderContext<'a> {
-  fn new(data: &'a [u8]) -> Self {
-    Self { data, position: 0 }
+impl DecoderContext {
+  fn new(data: &[u8]) -> Self {
+    let bytes = Bytes::copy_from_slice(data);
+    let original_len = bytes.len();
+    Self { data: bytes, original_len }
   }
 
-  fn remaining_data(&self) -> &[u8] {
-    &self.data[self.position ..]
-  }
-
-  fn advance(&mut self, bytes: usize) {
-    self.position += bytes;
+  fn current_position(&self) -> usize {
+    self.original_len - self.data.len()
   }
 
   fn map_err<T>(&self, result: deserialize_primitives::Result<T>) -> Result<T> {
@@ -118,22 +117,22 @@ impl<'a> DecoderContext<'a> {
   }
 
   fn fatal_error_here(&self, error: DeserializationError) -> DecodeError {
-    DecodeError::Fatal(DeserializationErrorWithOffset::Error(error, self.position))
+    DecodeError::Fatal(DeserializationErrorWithOffset::Error(error, self.current_position()))
   }
 
   fn partial_error_here(&self, error: DeserializationError, value: Value) -> DecodeError {
     DecodeError::Partial {
       partial_value: value,
-      error: DeserializationErrorWithOffset::Error(error, self.position),
+      error: DeserializationErrorWithOffset::Error(error, self.current_position()),
     }
   }
 
   #[allow(clippy::cast_possible_wrap)]
   fn decode_value(&mut self) -> Result<Value> {
-    let remaining = self.remaining_data();
-
-    let (size, type_code) = self.map_err(deserialize_type_code(remaining))?;
-    self.advance(size);
+    let type_code = {
+      let result = deserialize_type_code(&mut self.data);
+      self.map_err(result)?
+    };
 
     match type_code {
       code if code == TypeCode::Null as u8 => Ok(Value::Null),
@@ -164,47 +163,51 @@ impl<'a> DecoderContext<'a> {
   }
 
   fn decode_f16(&mut self) -> Result<Value> {
-    let remaining = self.remaining_data();
-    let (size, value) = self.map_err(deserialize_f16_after_type_code(remaining))?;
-    self.advance(size);
+    let value = {
+      let result = deserialize_f16_after_type_code(&mut self.data);
+      self.map_err(result)?
+    };
     Ok(Value::Float(f64::from(value)))
   }
 
   fn decode_f32(&mut self) -> Result<Value> {
-    let remaining = self.remaining_data();
-    let (size, value) = self.map_err(deserialize_f32_after_type_code(remaining))?;
-    self.advance(size);
+    let value = {
+      let result = deserialize_f32_after_type_code(&mut self.data);
+      self.map_err(result)?
+    };
     Ok(Value::Float(f64::from(value)))
   }
 
   fn decode_f64(&mut self) -> Result<Value> {
-    let remaining = self.remaining_data();
-    let (size, value) = self.map_err(deserialize_f64_after_type_code(remaining))?;
-    self.advance(size);
+    let value = {
+      let result = deserialize_f64_after_type_code(&mut self.data);
+      self.map_err(result)?
+    };
     Ok(Value::Float(value))
   }
 
   fn decode_long_string(&mut self) -> Result<Value> {
-    let remaining = &self.data[self.position ..];
-    let (size, str_slice) = self.map_err(deserialize_long_string_after_type_code(remaining))?;
-    self.advance(size);
-    Ok(Value::String(str_slice.to_string()))
+    let string = {
+      let result = deserialize_long_string_after_type_code(&mut self.data);
+      self.map_err(result)?
+    };
+    Ok(Value::String(string))
   }
 
   fn decode_short_string(&mut self, type_code: u8) -> Result<Value> {
-    let remaining = &self.data[self.position ..];
-    let (size, str_slice) = self.map_err(deserialize_short_string_after_type_code(
-      remaining, type_code,
-    ))?;
-    self.advance(size);
-    Ok(Value::String(str_slice.to_string()))
+    let string = {
+      let result = deserialize_short_string_after_type_code(&mut self.data, type_code);
+      self.map_err(result)?
+    };
+    Ok(Value::String(string))
   }
 
   #[allow(clippy::cast_possible_wrap)]
   fn decode_unsigned_integer(&mut self, type_code: u8) -> Result<Value> {
-    let remaining = self.remaining_data();
-    let (size, value) = self.map_err(deserialize_unsigned_after_type_code(remaining, type_code))?;
-    self.advance(size);
+    let value = {
+      let result = deserialize_unsigned_after_type_code(&mut self.data, type_code);
+      self.map_err(result)?
+    };
     if i64::try_from(value).is_ok() {
       Ok(Value::Signed(value as i64))
     } else {
@@ -213,9 +216,10 @@ impl<'a> DecoderContext<'a> {
   }
 
   fn decode_signed_integer(&mut self, type_code: u8) -> Result<Value> {
-    let remaining = self.remaining_data();
-    let (size, value) = self.map_err(deserialize_signed_after_type_code(remaining, type_code))?;
-    self.advance(size);
+    let value = {
+      let result = deserialize_signed_after_type_code(&mut self.data, type_code);
+      self.map_err(result)?
+    };
     Ok(Value::Signed(value))
   }
 
@@ -223,14 +227,17 @@ impl<'a> DecoderContext<'a> {
     let mut elements = Vec::new();
 
     loop {
-      let remaining = self.remaining_data();
-      let type_code = match peek_type_code(remaining) {
+      let type_code = match peek_type_code(&self.data) {
         Ok(code) => code,
         Err(e) => return Err(self.partial_error_here(e, Value::Array(elements))),
       };
 
       if type_code == TypeCode::ContainerEnd as u8 {
-        self.advance(1);
+        // Consume the container end byte
+        let _ = {
+          let result = deserialize_type_code(&mut self.data);
+          self.map_err(result)?
+        };
         break;
       }
 
@@ -263,14 +270,17 @@ impl<'a> DecoderContext<'a> {
     let mut object = HashMap::new();
 
     loop {
-      let remaining = self.remaining_data();
-      let type_code = match peek_type_code(remaining) {
+      let type_code = match peek_type_code(&self.data) {
         Ok(code) => code,
         Err(e) => return Err(self.partial_error_here(e, Value::Object(object))),
       };
 
       if type_code == TypeCode::ContainerEnd as u8 {
-        self.advance(1);
+        // Consume the container end byte
+        let _ = {
+          let result = deserialize_type_code(&mut self.data);
+          self.map_err(result)?
+        };
         break;
       }
 
