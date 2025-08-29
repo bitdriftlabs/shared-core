@@ -576,7 +576,8 @@ fn test_encode_deeply_nested_mixed_structures() {
 
   // Verify we can decode it back
   let data_slice = &result;
-  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode deeply nested structure");
+  let (bytes_read, decoded) =
+    from_slice(data_slice).expect("Failed to decode deeply nested structure");
   assert!(bytes_read > 0, "Should have read at least one byte");
 
   // Since HashMap order is not guaranteed, we'll verify the structure piece by piece
@@ -967,7 +968,8 @@ fn test_standalone_encode_function() {
   let second_result =
     encode_into_vec(&mut buffer, &second_value).expect("Failed to encode second value");
 
-  let (bytes_read, second_decoded) = from_slice(second_result).expect("Failed to decode second value");
+  let (bytes_read, second_decoded) =
+    from_slice(second_result).expect("Failed to decode second value");
   assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(second_decoded, second_value);
 }
