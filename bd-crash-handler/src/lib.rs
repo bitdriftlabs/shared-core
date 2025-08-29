@@ -18,6 +18,7 @@
 #[path = "./monitor_test.rs"]
 mod tests;
 
+pub mod config_writer;
 pub mod global_state;
 
 use bd_log_primitives::{
@@ -48,6 +49,8 @@ fn test_global_init() {
 }
 
 const REPORTS_DIRECTORY: &str = "reports";
+
+pub use config_writer::ConfigWriter;
 
 //
 // CrashLog

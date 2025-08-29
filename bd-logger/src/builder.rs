@@ -290,7 +290,7 @@ impl LoggerBuilder {
       ));
 
       let api = bd_api::api::Api::new(
-        self.params.sdk_directory,
+        self.params.sdk_directory.clone(),
         self.params.api_key,
         self.params.network,
         shutdown_handle.make_shutdown(),
@@ -306,11 +306,18 @@ impl LoggerBuilder {
         sleep_mode_active_rx,
       );
 
+      let mut config_writer = bd_crash_handler::ConfigWriter::new(
+        &runtime_loader,
+        &self.params.sdk_directory,
+        shutdown_handle.make_shutdown(),
+      );
+
       UnexpectedErrorHandler::register_stats(&scope);
 
       try_join!(
         async move { api.start().await },
         async move { buffer_uploader.run().await },
+        async move { config_writer.run().await },
         async move {
           async_log_buffer.run().await;
           Ok(())
