@@ -50,8 +50,6 @@ fn deserialize_byte<B: Buf>(src: &mut B) -> Result<u8> {
 
 fn deserialize_string_contents<B: Buf>(src: &mut B, size: usize) -> Result<String> {
   require_bytes(src, size)?;
-  // We need to extract the data and convert to String since we can't return a &str
-  // that references data we're about to consume
   let mut data = vec![0u8; size];
   src.copy_to_slice(&mut data);
   let string = std::str::from_utf8(&data).map_err(|_| DeserializationError::InvalidUTF8)?;
@@ -167,9 +165,5 @@ pub fn deserialize_long_string_after_type_code<B: Buf>(src: &mut B) -> Result<St
     // Note: Deliberately not supporting chunked strings since we don't use them.
     return Err(DeserializationError::ContinuationBitNotSupported);
   }
-  require_bytes(src, chunk_size)?;
-  let mut data = vec![0u8; chunk_size];
-  src.copy_to_slice(&mut data);
-  let string = std::str::from_utf8(&data).map_err(|_| DeserializationError::InvalidUTF8)?;
-  Ok(string.to_string())
+  deserialize_string_contents(src, chunk_size)
 }
