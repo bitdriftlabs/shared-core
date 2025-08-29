@@ -27,25 +27,28 @@ use bytes::Buf;
 use std::collections::HashMap;
 use std::io::Cursor;
 
-/// Decode a buffer and return the resulting value.
+/// Decode a buffer, returning the resulting value and the number of bytes read.
+/// It will only decode until it has a complete top-level value.
 /// On error, it returns the value decoded so far and the error.
 ///
 /// # Errors
 /// Returns `DecodeError` if the buffer contains invalid BONJSON data.
-pub fn from_slice(data: &[u8]) -> Result<Value> {
+pub fn from_slice(data: &[u8]) -> Result<(usize, Value)> {
   let cursor = Cursor::new(data);
-  let mut context = DecoderContext::new(cursor);
-  context.decode_value()
+  from_buf(cursor)
 }
 
-/// Decode from a `Buf` trait object and return the resulting value.
+/// Decode from a `Buf` trait object, returning the resulting value and the number of bytes read.
+/// It will only decode until it has a complete top-level value.
 /// On error, it returns the value decoded so far and the error.
 ///
 /// # Errors
 /// Returns `DecodeError` if the buffer contains invalid BONJSON data.
-pub fn from_buf<B: Buf>(buf: B) -> Result<Value> {
+pub fn from_buf<B: Buf>(buf: B) -> Result<(usize, Value)> {
+  let start_remaining = buf.remaining();
   let mut context = DecoderContext::new(buf);
-  context.decode_value()
+  let value = context.decode_value()?;
+  Ok((start_remaining - context.current_position(), value))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
