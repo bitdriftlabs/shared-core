@@ -6,8 +6,8 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::Value;
-use crate::decoder::decode;
-use crate::encoder::encode;
+use crate::decoder::from_slice;
+use crate::encoder::encode_into_vec;
 use std::collections::HashMap;
 
 #[test]
@@ -15,11 +15,12 @@ fn test_encode_null() {
   let mut buffer = Vec::new();
   let value = Value::Null;
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode null");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode null");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -28,11 +29,12 @@ fn test_encode_bool_true() {
   let mut buffer = Vec::new();
   let value = Value::Bool(true);
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode bool");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode bool");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -41,11 +43,12 @@ fn test_encode_bool_false() {
   let mut buffer = Vec::new();
   let value = Value::Bool(false);
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode bool");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode bool");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -54,11 +57,12 @@ fn test_encode_float() {
   let mut buffer = Vec::new();
   let value = Value::Float(std::f64::consts::PI);
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode float");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode float");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -67,11 +71,12 @@ fn test_encode_signed_positive() {
   let mut buffer = Vec::new();
   let value = Value::Signed(12345);
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode signed");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode signed");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -80,11 +85,12 @@ fn test_encode_signed_negative() {
   let mut buffer = Vec::new();
   let value = Value::Signed(-6789);
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode signed");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode signed");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -93,12 +99,13 @@ fn test_encode_unsigned() {
   let mut buffer = Vec::new();
   let value = Value::Unsigned(98765);
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode unsigned");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode unsigned");
 
   // Verify we can decode it back
   // Note: The decoder may convert unsigned values that fit in i64 to Signed
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
 
   // Check if the value was converted to signed (this is expected behavior)
   match decoded {
@@ -113,11 +120,12 @@ fn test_encode_string() {
   let mut buffer = Vec::new();
   let value = Value::String("Hello, World!".to_string());
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode string");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode string");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -126,11 +134,12 @@ fn test_encode_empty_string() {
   let mut buffer = Vec::new();
   let value = Value::String(String::new());
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -139,11 +148,12 @@ fn test_encode_string_with_unicode() {
   let mut buffer = Vec::new();
   let value = Value::String("🦀 Rust is awesome! 🚀".to_string());
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -152,11 +162,12 @@ fn test_encode_empty_array() {
   let mut buffer = Vec::new();
   let value = Value::Array(Vec::new());
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -170,11 +181,12 @@ fn test_encode_array_with_values() {
     Value::String("test".to_string()),
   ]);
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode array");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode array");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -189,11 +201,12 @@ fn test_encode_nested_arrays() {
     ]),
   ]);
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -202,11 +215,12 @@ fn test_encode_empty_object() {
   let mut buffer = Vec::new();
   let value = Value::Object(HashMap::new());
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -221,11 +235,12 @@ fn test_encode_object_with_values() {
 
   let value = Value::Object(obj);
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode object");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode object");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -245,11 +260,12 @@ fn test_encode_nested_objects() {
 
   let value = Value::Object(outer_obj);
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -274,11 +290,12 @@ fn test_encode_mixed_nested_structure() {
 
   let value = Value::Object(obj);
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -288,21 +305,23 @@ fn test_encoder_reuse() {
 
   // Encode first value
   let value1 = Value::String("first".to_string());
-  let result1 = encode(&mut buffer, &value1)
+  let result1 = encode_into_vec(&mut buffer, &value1)
     .expect("Failed to encode")
     .clone();
 
   // Encode second value (should reuse the encoder)
   let value2 = Value::Signed(42);
-  let result2 = encode(&mut buffer, &value2)
+  let result2 = encode_into_vec(&mut buffer, &value2)
     .expect("Failed to encode")
     .clone();
 
   // Verify both encodings work
-  let decoded1 = decode(&result1).expect("Failed to decode first");
+  let (bytes_read, decoded1) = from_slice(&result1).expect("Failed to decode first");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded1, value1);
 
-  let decoded2 = decode(&result2).expect("Failed to decode second");
+  let (bytes_read, decoded2) = from_slice(&result2).expect("Failed to decode second");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded2, value2);
 }
 
@@ -311,11 +330,12 @@ fn test_encoder_with_capacity() {
   let mut buffer = Vec::with_capacity(1024);
   let value = Value::String("test".to_string());
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode");
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -325,16 +345,17 @@ fn test_encoder_clear() {
 
   // Encode a value
   let value = Value::String("test".to_string());
-  encode(&mut buffer, &value).expect("Failed to encode");
+  encode_into_vec(&mut buffer, &value).expect("Failed to encode");
 
   // Clear and encode another value
   buffer.clear();
   let value2 = Value::Signed(123);
-  let result = encode(&mut buffer, &value2).expect("Failed to encode after clear");
+  let result = encode_into_vec(&mut buffer, &value2).expect("Failed to encode after clear");
 
   // Verify the second encoding works
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value2);
 }
 
@@ -343,18 +364,19 @@ fn test_encoder_buffer_access() {
   let mut buffer = Vec::new();
   let value = Value::String("test".to_string());
 
-  encode(&mut buffer, &value).expect("Failed to encode");
+  encode_into_vec(&mut buffer, &value).expect("Failed to encode");
 
   // Access buffer
   assert!(!buffer.is_empty());
 
   // Verify we can still use the buffer for more encoding
   let value2 = Value::Signed(456);
-  let second_result = encode(&mut buffer, &value2).expect("Failed to encode again");
+  let second_result = encode_into_vec(&mut buffer, &value2).expect("Failed to encode again");
 
   // The buffer now contains the second encoding result
   let data_slice = &second_result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value2);
 }
 
@@ -364,23 +386,26 @@ fn test_encode_large_numbers() {
 
   // Test large positive signed
   let value1 = Value::Signed(i64::MAX);
-  let result1 = encode(&mut buffer, &value1).expect("Failed to encode");
+  let result1 = encode_into_vec(&mut buffer, &value1).expect("Failed to encode");
   let data_slice1 = &result1;
-  let decoded1 = decode(data_slice1).expect("Failed to decode");
+  let (bytes_read, decoded1) = from_slice(data_slice1).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded1, value1);
 
   // Test large negative signed
   let value2 = Value::Signed(i64::MIN);
-  let result2 = encode(&mut buffer, &value2).expect("Failed to encode");
+  let result2 = encode_into_vec(&mut buffer, &value2).expect("Failed to encode");
   let data_slice2 = &result2;
-  let decoded2 = decode(data_slice2).expect("Failed to decode");
+  let (bytes_read, decoded2) = from_slice(data_slice2).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded2, value2);
 
   // Test large unsigned that requires staying unsigned
   let value3 = Value::Unsigned(u64::MAX);
-  let result3 = encode(&mut buffer, &value3).expect("Failed to encode");
+  let result3 = encode_into_vec(&mut buffer, &value3).expect("Failed to encode");
   let data_slice3 = &result3;
-  let decoded3 = decode(data_slice3).expect("Failed to decode");
+  let (bytes_read, decoded3) = from_slice(data_slice3).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded3, value3); // u64::MAX cannot fit in i64, so should stay unsigned
 }
 
@@ -390,37 +415,42 @@ fn test_encode_special_floats() {
 
   // Test zero
   let value1 = Value::Float(0.0);
-  let result1 = encode(&mut buffer, &value1).expect("Failed to encode zero");
+  let result1 = encode_into_vec(&mut buffer, &value1).expect("Failed to encode zero");
   let data_slice1 = &result1;
-  let decoded1 = decode(data_slice1).expect("Failed to decode");
+  let (bytes_read, decoded1) = from_slice(data_slice1).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded1, value1);
 
   // Test negative zero
   let value2 = Value::Float(-0.0);
-  let result2 = encode(&mut buffer, &value2).expect("Failed to encode");
+  let result2 = encode_into_vec(&mut buffer, &value2).expect("Failed to encode");
   let data_slice2 = &result2;
-  let decoded2 = decode(data_slice2).expect("Failed to decode");
+  let (bytes_read, decoded2) = from_slice(data_slice2).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded2, value2);
 
   // Test infinity
   let value3 = Value::Float(f64::INFINITY);
-  let result3 = encode(&mut buffer, &value3).expect("Failed to encode infinity");
+  let result3 = encode_into_vec(&mut buffer, &value3).expect("Failed to encode infinity");
   let data_slice3 = &result3;
-  let decoded3 = decode(data_slice3).expect("Failed to decode");
+  let (bytes_read, decoded3) = from_slice(data_slice3).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded3, value3);
 
   // Test negative infinity
   let value4 = Value::Float(f64::NEG_INFINITY);
-  let result4 = encode(&mut buffer, &value4).expect("Failed to encode");
+  let result4 = encode_into_vec(&mut buffer, &value4).expect("Failed to encode");
   let data_slice4 = &result4;
-  let decoded4 = decode(data_slice4).expect("Failed to decode");
+  let (bytes_read, decoded4) = from_slice(data_slice4).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded4, value4);
 
   // Test NaN (Note: NaN != NaN, so we need special handling)
   let value5 = Value::Float(f64::NAN);
-  let result5 = encode(&mut buffer, &value5).expect("Failed to encode NaN");
+  let result5 = encode_into_vec(&mut buffer, &value5).expect("Failed to encode NaN");
   let data_slice5 = &result5;
-  let decoded5 = decode(data_slice5).expect("Failed to decode");
+  let (bytes_read, decoded5) = from_slice(data_slice5).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   if let Value::Float(f) = decoded5 {
     assert!(f.is_nan());
   } else {
@@ -542,11 +572,13 @@ fn test_encode_deeply_nested_mixed_structures() {
 
   // Encode the complex structure
   let result =
-    encode(&mut buffer, &complex_value).expect("Failed to encode deeply nested structure");
+    encode_into_vec(&mut buffer, &complex_value).expect("Failed to encode deeply nested structure");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode deeply nested structure");
+  let (bytes_read, decoded) =
+    from_slice(data_slice).expect("Failed to decode deeply nested structure");
+  assert!(bytes_read > 0, "Should have read at least one byte");
 
   // Since HashMap order is not guaranteed, we'll verify the structure piece by piece
   // instead of doing a direct equality check
@@ -736,7 +768,7 @@ fn test_encode_deeply_nested_mixed_structures() {
 
 // Tests for in-place encoding
 
-use crate::encoder::encode_into;
+use crate::encoder::encode_into_slice;
 use crate::serialize_primitives::SerializationError;
 
 #[test]
@@ -744,12 +776,13 @@ fn test_in_place_encode_null() {
   let mut buffer = [0u8; 16];
   let value = Value::Null;
 
-  let bytes_written = encode_into(&mut buffer, &value).expect("Failed to encode null");
+  let bytes_written = encode_into_slice(&mut buffer, &value).expect("Failed to encode null");
   assert_eq!(bytes_written, 1);
 
   // Verify we can decode it back
   let data_slice = &buffer[.. bytes_written];
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -758,12 +791,13 @@ fn test_in_place_encode_bool() {
   let mut buffer = [0u8; 16];
   let value = Value::Bool(true);
 
-  let bytes_written = encode_into(&mut buffer, &value).expect("Failed to encode bool");
+  let bytes_written = encode_into_slice(&mut buffer, &value).expect("Failed to encode bool");
   assert_eq!(bytes_written, 1);
 
   // Verify we can decode it back
   let data_slice = &buffer[.. bytes_written];
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -772,11 +806,12 @@ fn test_in_place_encode_string() {
   let mut buffer = [0u8; 32];
   let value = Value::String("hello".to_string());
 
-  let bytes_written = encode_into(&mut buffer, &value).expect("Failed to encode string");
+  let bytes_written = encode_into_slice(&mut buffer, &value).expect("Failed to encode string");
 
   // Verify we can decode it back
   let data_slice = &buffer[.. bytes_written];
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -789,11 +824,12 @@ fn test_in_place_encode_array() {
     Value::String("test".to_string()),
   ]);
 
-  let bytes_written = encode_into(&mut buffer, &value).expect("Failed to encode array");
+  let bytes_written = encode_into_slice(&mut buffer, &value).expect("Failed to encode array");
 
   // Verify we can decode it back
   let data_slice = &buffer[.. bytes_written];
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -806,11 +842,12 @@ fn test_in_place_encode_object() {
   obj.insert("age".to_string(), Value::Signed(25));
   let value = Value::Object(obj);
 
-  let bytes_written = encode_into(&mut buffer, &value).expect("Failed to encode object");
+  let bytes_written = encode_into_slice(&mut buffer, &value).expect("Failed to encode object");
 
   // Verify we can decode it back
   let data_slice = &buffer[.. bytes_written];
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
 
   // Since HashMap ordering is not guaranteed, we need to check content differently
   if let Value::Object(decoded_obj) = decoded {
@@ -830,7 +867,7 @@ fn test_in_place_encode_buffer_full() {
   let mut buffer = [0u8; 2]; // Very small buffer
   let value = Value::String("this is a long string that won't fit".to_string());
 
-  let result = encode_into(&mut buffer, &value);
+  let result = encode_into_slice(&mut buffer, &value);
   assert!(result.is_err());
   assert_eq!(result.unwrap_err(), SerializationError::BufferFull);
 }
@@ -840,13 +877,13 @@ fn test_in_place_encode_position_tracking() {
   let mut buffer = [0u8; 16];
 
   let value = Value::Null;
-  let bytes_written = encode_into(&mut buffer, &value).expect("Failed to encode null");
+  let bytes_written = encode_into_slice(&mut buffer, &value).expect("Failed to encode null");
 
   assert_eq!(bytes_written, 1);
 
   // Second encode should start fresh (functions are stateless)
   let value2 = Value::Bool(true);
-  let bytes_written2 = encode_into(&mut buffer, &value2).expect("Failed to encode bool");
+  let bytes_written2 = encode_into_slice(&mut buffer, &value2).expect("Failed to encode bool");
 
   assert_eq!(bytes_written2, 1);
 }
@@ -857,12 +894,13 @@ fn test_in_place_encode_exact_fit() {
   let mut buffer = [0u8; 8]; // Exactly the size needed for a small signed integer
   let value = Value::Signed(42);
 
-  let bytes_written = encode_into(&mut buffer, &value).expect("Failed to encode");
+  let bytes_written = encode_into_slice(&mut buffer, &value).expect("Failed to encode");
   assert!(bytes_written <= buffer.len());
 
   // Verify we can decode it back
   let data_slice = &buffer[.. bytes_written];
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 }
 
@@ -872,15 +910,17 @@ fn test_in_place_encode_reuse() {
 
   // First encoding
   let value1 = Value::Signed(123);
-  encode_into(&mut buffer, &value1).expect("Failed to encode first value");
+  encode_into_slice(&mut buffer, &value1).expect("Failed to encode first value");
 
   // Second encoding (functions are stateless, so each call starts from position 0)
   let value2 = Value::String("hello".to_string());
-  let bytes_written2 = encode_into(&mut buffer, &value2).expect("Failed to encode second value");
+  let bytes_written2 =
+    encode_into_slice(&mut buffer, &value2).expect("Failed to encode second value");
 
   // Verify the second value overwrote the first
   let data_slice = &buffer[.. bytes_written2];
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value2);
 }
 
@@ -895,11 +935,12 @@ fn test_in_place_encode_deeply_nested() {
   ])])]);
 
   let bytes_written =
-    encode_into(&mut buffer, &nested_value).expect("Failed to encode nested structure");
+    encode_into_slice(&mut buffer, &nested_value).expect("Failed to encode nested structure");
 
   // Verify we can decode it back
   let data_slice = &buffer[.. bytes_written];
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, nested_value);
 }
 
@@ -913,17 +954,22 @@ fn test_standalone_encode_function() {
     map
   });
 
-  let result = encode(&mut buffer, &value).expect("Failed to encode with standalone function");
+  let result =
+    encode_into_vec(&mut buffer, &value).expect("Failed to encode with standalone function");
 
   // Verify we can decode it back
   let data_slice = &result;
-  let decoded = decode(data_slice).expect("Failed to decode");
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(decoded, value);
 
   // Verify buffer was reused correctly
   let second_value = Value::String("second test".to_string());
-  let second_result = encode(&mut buffer, &second_value).expect("Failed to encode second value");
+  let second_result =
+    encode_into_vec(&mut buffer, &second_value).expect("Failed to encode second value");
 
-  let second_decoded = decode(second_result).expect("Failed to decode second value");
+  let (bytes_read, second_decoded) =
+    from_slice(second_result).expect("Failed to decode second value");
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(second_decoded, second_value);
 }

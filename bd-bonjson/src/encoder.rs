@@ -19,12 +19,13 @@ use crate::serialize_primitives::{
   serialize_i64,
   serialize_map_begin,
   serialize_null,
-  serialize_string_header,
+  serialize_string,
   serialize_u64,
 };
+use bytes::BufMut;
 use std::collections::HashMap;
 
-/// Encodes a `Value` into BONJSON format and returns the modified buffer.
+/// Encodes a `Value` into a `&mut Vec<u8>`.
 ///
 /// This function will automatically resize the passed-in buffer
 /// as needed to accommodate the encoded data.
@@ -38,7 +39,7 @@ use std::collections::HashMap;
 /// # Returns
 /// * `Ok(&mut Vec<u8>)` - The encoded buffer on success
 /// * `Err(SerializationError)` - If encoding fails
-pub fn encode<'a>(
+pub fn encode_into_vec<'a>(
   buffer: &'a mut Vec<u8>,
   value: &Value,
 ) -> Result<&'a mut Vec<u8>, SerializationError> {
@@ -55,7 +56,7 @@ pub fn encode<'a>(
     buffer.resize(buffer.capacity(), 0);
 
     // Try to encode in place
-    match encode_into(buffer.as_mut(), value) {
+    match encode_into_slice(buffer.as_mut(), value) {
       Ok(bytes_written) => {
         // Success! Truncate to actual size and return
         buffer.truncate(bytes_written);
@@ -74,7 +75,7 @@ pub fn encode<'a>(
   }
 }
 
-/// Encodes a `Value` into BONJSON format in the provided buffer.
+/// Encodes a `Value` into a `&mut [u8]`.
 ///
 /// This function writes BONJSON data directly to a mutable slice without
 /// allocating additional memory. It's useful for embedded systems or other
@@ -87,86 +88,71 @@ pub fn encode<'a>(
 /// # Returns
 /// * `Ok(usize)` - The number of bytes written on success
 /// * `Err(SerializationError)` - If encoding fails (including buffer full)
-pub fn encode_into(buffer: &mut [u8], value: &Value) -> Result<usize, SerializationError> {
-  encode_value_into(buffer, value)
+pub fn encode_into_slice(buffer: &mut [u8], value: &Value) -> Result<usize, SerializationError> {
+  encode_into_buf(&mut (&mut *buffer), value)
 }
 
-/// Encodes a value into a buffer.
-fn encode_value_into(buffer: &mut [u8], value: &Value) -> Result<usize, SerializationError> {
+/// Encodes a `Value` into a `BufMut`.
+///
+/// This function writes BONJSON data directly to a `BufMut` implementation,
+/// which can automatically track position and provide better ergonomics.
+///
+/// # Arguments
+/// * `buf` - The mutable buffer that implements `BufMut`
+/// * `value` - The value to encode
+///
+/// # Returns
+/// * `Ok(usize)` - The number of bytes written on success
+/// * `Err(SerializationError)` - If encoding fails (including buffer full)
+pub fn encode_into_buf<B: BufMut>(buf: &mut B, value: &Value) -> Result<usize, SerializationError> {
+  let start_remaining = buf.remaining_mut();
+  encode_into_buf_impl(buf, value)?;
+  Ok(start_remaining - buf.remaining_mut())
+}
+
+pub fn encode_into_buf_impl<B: BufMut>(
+  buf: &mut B,
+  value: &Value,
+) -> Result<(), SerializationError> {
   match value {
-    Value::Null => serialize_null(buffer),
-    Value::Bool(b) => serialize_boolean(buffer, *b),
-    Value::Float(f) => serialize_f64(buffer, *f),
-    Value::Signed(i) => serialize_i64(buffer, *i),
-    Value::Unsigned(u) => serialize_u64(buffer, *u),
-    Value::String(s) => encode_string_into(buffer, s),
-    Value::Array(arr) => encode_array_into(buffer, arr),
-    Value::Object(obj) => encode_object_into(buffer, obj),
-  }
+    Value::Null => serialize_null(buf)?,
+    Value::Bool(b) => serialize_boolean(buf, *b)?,
+    Value::Float(f) => serialize_f64(buf, *f)?,
+    Value::Signed(i) => serialize_i64(buf, *i)?,
+    Value::Unsigned(u) => serialize_u64(buf, *u)?,
+    Value::String(s) => serialize_string(buf, s)?,
+    Value::Array(arr) => {
+      encode_array_into_buf(buf, arr)?;
+      0
+    },
+    Value::Object(obj) => {
+      encode_object_into_buf(buf, obj)?;
+      0
+    },
+  };
+  Ok(())
 }
 
-/// Encodes an array into a buffer.
-fn encode_array_into(buffer: &mut [u8], arr: &[Value]) -> Result<usize, SerializationError> {
-  let mut position = 0;
-
-  // Array start marker
-  let size = serialize_array_begin(&mut buffer[position ..])?;
-  position += size;
-
-  // Encode each element
+/// Encodes an array into a buffer using `BufMut`.
+fn encode_array_into_buf<B: BufMut>(buf: &mut B, arr: &[Value]) -> Result<(), SerializationError> {
+  serialize_array_begin(buf)?;
   for item in arr {
-    let bytes_written = encode_value_into(&mut buffer[position ..], item)?;
-    position += bytes_written;
+    encode_into_buf_impl(buf, item)?;
   }
-
-  // Array end marker
-  let size = serialize_container_end(&mut buffer[position ..])?;
-  position += size;
-
-  Ok(position)
+  serialize_container_end(buf)?;
+  Ok(())
 }
 
-/// Encodes an object into a buffer.
-fn encode_object_into(
-  buffer: &mut [u8],
+/// Encodes an object into a buffer using `BufMut`.
+fn encode_object_into_buf<B: BufMut>(
+  buf: &mut B,
   obj: &HashMap<String, Value>,
-) -> Result<usize, SerializationError> {
-  let mut position = 0;
-
-  // Object start marker
-  let size = serialize_map_begin(&mut buffer[position ..])?;
-  position += size;
-
-  // Encode each key-value pair
+) -> Result<(), SerializationError> {
+  serialize_map_begin(buf)?;
   for (key, value) in obj {
-    // Encode key as string
-    let bytes_written = encode_string_into(&mut buffer[position ..], key)?;
-    position += bytes_written;
-
-    // Encode value
-    let bytes_written = encode_value_into(&mut buffer[position ..], value)?;
-    position += bytes_written;
+    serialize_string(buf, key)?;
+    encode_into_buf_impl(buf, value)?;
   }
-
-  // Object end marker
-  let size = serialize_container_end(&mut buffer[position ..])?;
-  position += size;
-
-  Ok(position)
-}
-
-/// Encodes a string into a buffer.
-fn encode_string_into(buffer: &mut [u8], s: &str) -> Result<usize, SerializationError> {
-  // Serialize header directly into the output buffer
-  let header_size = serialize_string_header(buffer, s)?;
-
-  // Check if there's enough space for the string data
-  if header_size + s.len() > buffer.len() {
-    return Err(SerializationError::BufferFull);
-  }
-
-  // Write string data after the header
-  buffer[header_size .. header_size + s.len()].copy_from_slice(s.as_bytes());
-
-  Ok(header_size + s.len())
+  serialize_container_end(buf)?;
+  Ok(())
 }
