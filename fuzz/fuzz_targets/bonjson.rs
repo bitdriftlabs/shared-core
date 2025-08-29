@@ -7,11 +7,11 @@
 
 #![no_main]
 
-use bd_bonjson::decoder::decode;
+use bd_bonjson::decoder::from_slice;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-  match decode(data) {
+  match from_slice(data) {
     Ok(_) | Err(_) => {},
   }
 });

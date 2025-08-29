@@ -26,7 +26,7 @@ fn test_decode_null() {
   writer.write_null().unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::Null);
 }
 
@@ -41,7 +41,7 @@ fn test_decode_booleans() {
   writer.write_boolean(true).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::Bool(true));
 
   // Test false
@@ -53,7 +53,7 @@ fn test_decode_booleans() {
   writer.write_boolean(false).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::Bool(false));
 }
 
@@ -68,7 +68,7 @@ fn test_decode_integers() {
   writer.write_signed(42).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::Signed(42));
 
   // Small negative integer
@@ -80,7 +80,7 @@ fn test_decode_integers() {
   writer.write_signed(-42).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::Signed(-42));
 
   // Large positive integer
@@ -93,7 +93,7 @@ fn test_decode_integers() {
   writer.write_signed(large_val).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::Signed(large_val));
 }
 
@@ -109,7 +109,7 @@ fn test_decode_unsigned() {
   writer.write_unsigned(42).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::Signed(42));
 
   // Large unsigned
@@ -122,7 +122,7 @@ fn test_decode_unsigned() {
   writer.write_unsigned(large_val).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::Signed(large_val as i64));
 
   // Huge unsigned
@@ -135,7 +135,7 @@ fn test_decode_unsigned() {
   writer.write_unsigned(huge_val).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::Unsigned(huge_val));
 }
 
@@ -150,7 +150,7 @@ fn test_decode_floats() {
   writer.write_float(f64::consts::PI).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::Float(f64::consts::PI));
 
   // Negative float
@@ -162,7 +162,7 @@ fn test_decode_floats() {
   writer.write_float(-f64::consts::E).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::Float(-f64::consts::E));
 
   // Float with conversion from f32
@@ -174,7 +174,7 @@ fn test_decode_floats() {
   writer.write_f32(1.5f32).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::Float(1.5));
 }
 
@@ -189,7 +189,7 @@ fn test_decode_strings() {
   writer.write_str("hello").unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::String("hello".to_string()));
 
   // Empty string
@@ -201,7 +201,7 @@ fn test_decode_strings() {
   writer.write_str("").unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::String(String::new()));
 
   // Long string
@@ -215,7 +215,7 @@ fn test_decode_strings() {
   writer.write_str(long_str).unwrap();
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::String(long_str.to_string()));
 }
 
@@ -237,7 +237,7 @@ fn test_decode_array() {
 
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
 
   if let Value::Array(items) = value {
     assert_eq!(items.len(), 4);
@@ -261,7 +261,7 @@ fn test_decode_array() {
 
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
 
   if let Value::Array(items) = value {
     assert_eq!(items.len(), 0);
@@ -290,7 +290,7 @@ fn test_decode_object() {
 
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
 
   if let Value::Object(map) = value {
     assert_eq!(map.len(), 3);
@@ -313,7 +313,7 @@ fn test_decode_object() {
 
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
 
   if let Value::Object(map) = value {
     assert_eq!(map.len(), 0);
@@ -357,7 +357,7 @@ fn test_nested_structures() {
 
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
 
   // Verify structure
   if let Value::Object(map) = &value {
@@ -404,7 +404,7 @@ fn test_error_handling() {
 
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let result = decode(data_slice);
+  let result = from_slice(data_slice);
   assert!(result.is_err());
 
   // Invalid map key (not a string)
@@ -421,7 +421,7 @@ fn test_error_handling() {
 
   let pos = usize::try_from(cursor.position()).unwrap();
   let data_slice = &buf[.. pos];
-  let result = decode(data_slice);
+  let result = from_slice(data_slice);
   assert!(result.is_err());
 }
 
@@ -456,7 +456,7 @@ fn test_boundary_values() {
     let pos = usize::try_from(cursor.position()).unwrap();
 
     let data_slice = &buf[.. pos];
-    let decoded = decode(data_slice).unwrap();
+    let decoded = from_slice(data_slice).unwrap();
 
     if u64::try_from(value).is_ok() {
       // Unsigned conversion may happen
@@ -495,7 +495,7 @@ fn test_boundary_values() {
     let pos = usize::try_from(cursor.position()).unwrap();
 
     let data_slice = &buf[.. pos];
-    let decoded = decode(data_slice).unwrap();
+    let decoded = from_slice(data_slice).unwrap();
 
     if i64::try_from(value).is_ok() {
       // Integer conversion may happen
@@ -577,7 +577,7 @@ fn test_partial_decode_unterminated_array() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   // Try to decode - should fail with partial result
-  let result = decode(&buf[.. pos]);
+  let result = from_slice(&buf[.. pos]);
   assert!(result.is_err());
 
   let err = result.err().unwrap();
@@ -617,7 +617,7 @@ fn test_partial_decode_unterminated_object() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   // Try to decode - should fail with partial result
-  let result = decode(&buf[.. pos]);
+  let result = from_slice(&buf[.. pos]);
   assert!(result.is_err());
 
   let err = result.err().unwrap();
@@ -662,7 +662,7 @@ fn test_partial_decode_nested_containers() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   // Try to decode - should fail with partial result
-  let result = decode(&buf[.. pos]);
+  let result = from_slice(&buf[.. pos]);
   assert!(result.is_err());
 
   let err = result.err().unwrap();
@@ -692,7 +692,7 @@ fn test_partial_decode_truncated_string() {
   let buf = [0x84, b'a', b'b', b'c'];
 
   // Try to decode - should fail with error but no partial result
-  let result = decode(&buf);
+  let result = from_slice(&buf);
   assert!(result.is_err());
 
   let err = result.err().unwrap();
@@ -720,7 +720,7 @@ fn test_partial_decode_with_invalid_type_code() {
   buf[pos] = 0x65; // Invalid type code
 
   // Try to decode
-  let result = decode(&buf[..= pos]);
+  let result = from_slice(&buf[..= pos]);
   assert!(result.is_err());
 
   let err = result.err().unwrap();
@@ -761,7 +761,7 @@ fn test_partial_decode_object_with_invalid_key() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   // Try to decode
-  let result = decode(&buf[.. pos]);
+  let result = from_slice(&buf[.. pos]);
   assert!(result.is_err());
 
   let err = result.err().unwrap();
@@ -797,7 +797,7 @@ fn test_decode_special_strings() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::String(String::new()));
 
   // Test emoji and multi-byte characters
@@ -811,7 +811,7 @@ fn test_decode_special_strings() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::String(special_str.to_string()));
 
   // Test string with control characters
@@ -825,7 +825,7 @@ fn test_decode_special_strings() {
   let pos = usize::try_from(cursor.position()).unwrap();
 
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
   assert_eq!(value, Value::String(control_str.to_string()));
 }
 
@@ -834,7 +834,7 @@ fn test_decode_empty_input() {
   // Test with completely empty input
   let buf = [];
   let data_slice = &buf;
-  let result = decode(data_slice);
+  let result = from_slice(data_slice);
   assert!(result.is_err());
 }
 
@@ -873,7 +873,7 @@ fn test_deeply_nested_structures() {
 
   // Test decoding the deeply nested structure
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
 
   // Verify the structure at each level
   if let Value::Array(level1) = value {
@@ -946,7 +946,7 @@ fn test_mixed_object_and_array_nesting() {
 
   // Test decoding the mixed nested structure
   let data_slice = &buf[.. pos];
-  let value = decode(data_slice).unwrap();
+  let value = from_slice(data_slice).unwrap();
 
   // Verify the structure
   if let Value::Object(root) = &value {
@@ -984,7 +984,7 @@ fn test_mixed_object_and_array_nesting() {
 fn test_value_none_removed_successful_decode() {
   // Test that valid data decodes successfully without Value::None
   let valid_data = [0x85, 0x48, 0x65, 0x6c, 0x6c, 0x6f]; // "Hello"
-  match decode(&valid_data) {
+  match from_slice(&valid_data) {
     Ok(Value::String(s)) => assert_eq!(s, "Hello"),
     Ok(other) => panic!("Expected string, got: {other:?}"),
     Err(e) => panic!("Unexpected error: {e:?}"),
@@ -995,7 +995,7 @@ fn test_value_none_removed_successful_decode() {
 fn test_value_none_removed_fatal_errors() {
   // Test that invalid data returns fatal errors (no partial value)
   let invalid_data = [0x65]; // Invalid type code
-  match decode(&invalid_data) {
+  match from_slice(&invalid_data) {
     Ok(value) => panic!("Expected error, got: {value:?}"),
     Err(err) => {
       assert!(err.is_fatal(), "Expected fatal error, got: {err:?}");
@@ -1008,7 +1008,7 @@ fn test_value_none_removed_fatal_errors() {
 fn test_value_none_removed_partial_errors() {
   // Test that truncated data returns partial results
   let truncated_array = [0x9a, 0x6d, 0x85, 0x48, 0x65, 0x6c, 0x6c, 0x6f]; // Start of array with null and "Hello", but no end
-  match decode(&truncated_array) {
+  match from_slice(&truncated_array) {
     Ok(value) => panic!("Expected error, got: {value:?}"),
     Err(err) => {
       assert!(
@@ -1067,4 +1067,68 @@ fn test_decode_error_convenience_methods() {
   assert!(!partial_error.is_fatal());
   assert!(partial_error.partial_value().is_some());
   matches!(partial_error.partial_value(), Some(Value::Null));
+}
+
+#[test]
+fn test_decode_buf() {
+  use bytes::Bytes;
+
+  // Test decoding various values using decode_buf with Bytes (which implements Buf)
+  let mut buf = vec![0u8; 10];
+  let mut cursor = Cursor::new(&mut buf);
+  let mut writer = Writer {
+    writer: &mut cursor,
+  };
+  
+  // Write null value
+  writer.write_null().unwrap();
+  let pos = usize::try_from(cursor.position()).unwrap();
+  let data_slice = &buf[.. pos];
+  
+  // Test with Bytes
+  let bytes = Bytes::copy_from_slice(data_slice);
+  let value = from_buf(bytes).unwrap();
+  assert_eq!(value, Value::Null);
+  
+  // Test with string value
+  let mut buf = vec![0u8; 20];
+  let mut cursor = Cursor::new(&mut buf);
+  let mut writer = Writer {
+    writer: &mut cursor,
+  };
+  writer.write_str("hello").unwrap();
+  let pos = usize::try_from(cursor.position()).unwrap();
+  let data_slice = &buf[.. pos];
+  
+  let bytes = Bytes::copy_from_slice(data_slice);
+  let value = from_buf(bytes).unwrap();
+  assert_eq!(value, Value::String("hello".to_string()));
+  
+  // Test with integer value
+  let mut buf = vec![0u8; 20];
+  let mut cursor = Cursor::new(&mut buf);
+  let mut writer = Writer {
+    writer: &mut cursor,
+  };
+  writer.write_signed(42).unwrap();
+  let pos = usize::try_from(cursor.position()).unwrap();
+  let data_slice = &buf[.. pos];
+  
+  let bytes = Bytes::copy_from_slice(data_slice);
+  let value = from_buf(bytes).unwrap();
+  assert_eq!(value, Value::Signed(42));
+  
+  // Test with a slice directly (also implements Buf)
+  let mut buf = vec![0u8; 20];
+  let mut cursor = Cursor::new(&mut buf);
+  let mut writer = Writer {
+    writer: &mut cursor,
+  };
+  writer.write_boolean(true).unwrap();
+  let pos = usize::try_from(cursor.position()).unwrap();
+  let data_slice = &buf[.. pos];
+  
+  // Test with a slice directly (which also implements Buf)
+  let value = from_buf(data_slice).unwrap();
+  assert_eq!(value, Value::Bool(true));
 }

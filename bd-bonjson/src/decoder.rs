@@ -23,7 +23,7 @@ use crate::deserialize_primitives::{
 };
 use crate::type_codes::TypeCode;
 use crate::{Value, deserialize_primitives};
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use std::collections::HashMap;
 
 /// Decode a buffer and return the resulting value.
@@ -31,8 +31,18 @@ use std::collections::HashMap;
 ///
 /// # Errors
 /// Returns `DecodeError` if the buffer contains invalid BONJSON data.
-pub fn decode(data: &[u8]) -> Result<Value> {
-  let mut context = DecoderContext::new(data);
+pub fn from_slice(data: &[u8]) -> Result<Value> {
+  let mut context = DecoderContext::<Bytes>::new(data);
+  context.decode_value()
+}
+
+/// Decode from a `Buf` trait object and return the resulting value.
+/// On error, it returns the value decoded so far and the error.
+///
+/// # Errors
+/// Returns `DecodeError` if the buffer contains invalid BONJSON data.
+pub fn from_buf<B: Buf>(buf: B) -> Result<Value> {
+  let mut context = DecoderContext::from_buf(buf);
   context.decode_value()
 }
 
@@ -83,8 +93,8 @@ impl DecodeError {
 pub type Result<T> = std::result::Result<T, DecodeError>;
 
 /// Internal decoder context to track position and data during decoding
-struct DecoderContext {
-  data: Bytes,
+struct DecoderContext<B> {
+  data: B,
   original_len: usize,
 }
 
@@ -101,15 +111,20 @@ fn propagate_partial_decode(error: &DecodeError, value: Value) -> DecodeError {
   }
 }
 
-impl DecoderContext {
-  fn new(data: &[u8]) -> Self {
+impl<B: Buf> DecoderContext<B> {
+  fn new(data: &[u8]) -> DecoderContext<Bytes> {
     let bytes = Bytes::copy_from_slice(data);
     let original_len = bytes.len();
-    Self { data: bytes, original_len }
+    DecoderContext { data: bytes, original_len }
+  }
+
+  fn from_buf(buf: B) -> Self {
+    let original_len = buf.remaining();
+    Self { data: buf, original_len }
   }
 
   fn current_position(&self) -> usize {
-    self.original_len - self.data.len()
+    self.original_len - self.data.remaining()
   }
 
   fn map_err<T>(&self, result: deserialize_primitives::Result<T>) -> Result<T> {
@@ -119,7 +134,7 @@ impl DecoderContext {
   // Helper method to simplify the common pattern of calling a deserialize function and mapping errors
   fn call_deserialize<T, F>(&mut self, f: F) -> Result<T>
   where
-    F: FnOnce(&mut Bytes) -> deserialize_primitives::Result<T>,
+    F: FnOnce(&mut B) -> deserialize_primitives::Result<T>,
   {
     let result = f(&mut self.data);
     self.map_err(result)
@@ -128,7 +143,7 @@ impl DecoderContext {
   // Helper method for deserialize functions that take a type code
   fn call_deserialize_with_code<T, F>(&mut self, type_code: u8, f: F) -> Result<T>
   where
-    F: FnOnce(&mut Bytes, u8) -> deserialize_primitives::Result<T>,
+    F: FnOnce(&mut B, u8) -> deserialize_primitives::Result<T>,
   {
     let result = f(&mut self.data, type_code);
     self.map_err(result)

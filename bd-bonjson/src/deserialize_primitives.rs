@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::type_codes::TypeCode;
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeserializationError {
@@ -29,84 +29,85 @@ pub enum DeserializationError {
 
 pub type Result<T> = std::result::Result<T, DeserializationError>;
 
-const fn require_bytes(src: &Bytes, byte_count: usize) -> Result<()> {
-  if byte_count > src.len() {
+fn require_bytes<B: Buf>(src: &B, byte_count: usize) -> Result<()> {
+  if byte_count > src.remaining() {
     Err(DeserializationError::PrematureEnd)
   } else {
     Ok(())
   }
 }
 
-fn copy_bytes_to(src: &mut Bytes, dst: &mut [u8], byte_count: usize) -> Result<()> {
+fn copy_bytes_to<B: Buf>(src: &mut B, dst: &mut [u8], byte_count: usize) -> Result<()> {
   require_bytes(src, byte_count)?;
   src.copy_to_slice(&mut dst[..byte_count]);
   Ok(())
 }
 
-fn deserialize_byte(src: &mut Bytes) -> Result<u8> {
+fn deserialize_byte<B: Buf>(src: &mut B) -> Result<u8> {
   require_bytes(src, 1)?;
   Ok(src.get_u8())
 }
 
-fn deserialize_string_contents(src: &mut Bytes, size: usize) -> Result<String> {
+fn deserialize_string_contents<B: Buf>(src: &mut B, size: usize) -> Result<String> {
   require_bytes(src, size)?;
   // We need to extract the data and convert to String since we can't return a &str 
   // that references data we're about to consume
-  let data = src.split_to(size);
+  let mut data = vec![0u8; size];
+  src.copy_to_slice(&mut data);
   let string = std::str::from_utf8(&data).map_err(|_| DeserializationError::InvalidUTF8)?;
   Ok(string.to_string())
 }
 
-fn peek_byte(src: &Bytes) -> Result<u8> {
+fn peek_byte<B: Buf>(src: &B) -> Result<u8> {
   require_bytes(src, 1)?;
-  Ok(src[0])
+  Ok(src.chunk()[0])
 }
 
-pub fn peek_type_code(src: &Bytes) -> Result<u8> {
+pub fn peek_type_code<B: Buf>(src: &B) -> Result<u8> {
   peek_byte(src)
 }
 
-pub fn deserialize_type_code(src: &mut Bytes) -> Result<u8> {
+pub fn deserialize_type_code<B: Buf>(src: &mut B) -> Result<u8> {
   deserialize_byte(src)
 }
 
-pub fn deserialize_unsigned_after_type_code(src: &mut Bytes, type_code: u8) -> Result<u64> {
+pub fn deserialize_unsigned_after_type_code<B: Buf>(src: &mut B, type_code: u8) -> Result<u64> {
   let byte_count = ((type_code & 7) + 1) as usize;
   let mut bytes: [u8; 8] = [0; 8];
   copy_bytes_to(src, &mut bytes, byte_count)?;
   Ok(u64::from_le_bytes(bytes))
 }
 
-pub fn deserialize_signed_after_type_code(src: &mut Bytes, type_code: u8) -> Result<i64> {
+pub fn deserialize_signed_after_type_code<B: Buf>(src: &mut B, type_code: u8) -> Result<i64> {
   let byte_count = ((type_code & 7) + 1) as usize;
   require_bytes(src, byte_count)?;
   // If the sign bit is set, we know that it's negative
-  let is_negative = src[byte_count - 1] >> 7;
+  let is_negative = src.chunk()[byte_count - 1] >> 7;
   // Pre-fill the byte array with the sign bit if necessary
   let mut bytes: [u8; 8] = [is_negative * 0xff; 8];
   src.copy_to_slice(&mut bytes[..byte_count]);
   Ok(i64::from_le_bytes(bytes))
 }
 
-pub fn deserialize_f16_after_type_code(src: &mut Bytes) -> Result<f32> {
+pub fn deserialize_f16_after_type_code<B: Buf>(src: &mut B) -> Result<f32> {
   let mut bytes: [u8; 4] = [0; 4];
   // Note: Copying only 2 bytes into a 4 byte buffer because this is a bfloat.
   copy_bytes_to(src, &mut bytes[2 ..], 2)?;
   Ok(f32::from_le_bytes(bytes))
 }
 
-pub fn deserialize_f32_after_type_code(src: &mut Bytes) -> Result<f32> {
+pub fn deserialize_f32_after_type_code<B: Buf>(src: &mut B) -> Result<f32> {
   require_bytes(src, 4)?;
   Ok(src.get_f32_le())
 }
 
-pub fn deserialize_f64_after_type_code(src: &mut Bytes) -> Result<f64> {
+pub fn deserialize_f64_after_type_code<B: Buf>(src: &mut B) -> Result<f64> {
   require_bytes(src, 8)?;
   Ok(src.get_f64_le())
 }
 
-pub fn deserialize_short_string_after_type_code(
-  src: &mut Bytes,
+pub fn deserialize_short_string_after_type_code<B: Buf>(
+  src: &mut B,
   type_code: u8,
 ) -> Result<String> {
   deserialize_string_contents(src, type_code as usize - TypeCode::String as usize)
@@ -141,14 +142,14 @@ fn decode_chunk_length_header(length_header: u8) -> (usize, usize, usize) {
 // Returns:
 // - Length of the chunk in fixed-size elements (usually bytes)
 // - Continuation bit
-fn deserialize_chunk_header(src: &mut Bytes) -> Result<(usize, bool)> {
+fn deserialize_chunk_header<B: Buf>(src: &mut B) -> Result<(usize, bool)> {
   let length_header = peek_byte(src)?;
   let (length_skip_size, length_payload_size, length_shift_by) =
     decode_chunk_length_header(length_header);
   
   // Skip to the payload (this includes skipping the header byte we just peeked at)
   // Skip size is either 0 or 1 (see decode_chunk_length_header)
-  let _ = src.split_to(length_skip_size);
+  src.advance(length_skip_size);
   
   let mut bytes: [u8; 8] = [0; 8];
   copy_bytes_to(src, &mut bytes, length_payload_size)?;
@@ -158,14 +159,15 @@ fn deserialize_chunk_header(src: &mut Bytes) -> Result<(usize, bool)> {
   Ok((length as usize, continuation_bit))
 }
 
-pub fn deserialize_long_string_after_type_code(src: &mut Bytes) -> Result<String> {
+pub fn deserialize_long_string_after_type_code<B: Buf>(src: &mut B) -> Result<String> {
   let (chunk_size, continuation_bit) = deserialize_chunk_header(src)?;
   if continuation_bit {
     // Note: Deliberately not supporting chunked strings since we don't use them.
     return Err(DeserializationError::ContinuationBitNotSupported);
   }
   require_bytes(src, chunk_size)?;
-  let data = src.split_to(chunk_size);
+  let mut data = vec![0u8; chunk_size];
+  src.copy_to_slice(&mut data);
   let string = std::str::from_utf8(&data)
     .map_err(|_| DeserializationError::InvalidUTF8)?;
   Ok(string.to_string())
