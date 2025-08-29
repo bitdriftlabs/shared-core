@@ -77,8 +77,7 @@ pub fn deserialize_signed_after_type_code(src: &mut Bytes, type_code: u8) -> Res
   let byte_count = ((type_code & 7) + 1) as usize;
   require_bytes(src, byte_count)?;
   // Since we've already checked the length, we know the index exists
-  let last_byte_slice = src.slice((byte_count - 1)..byte_count);
-  let is_negative = last_byte_slice[0] >> 7;
+  let is_negative = src[byte_count - 1] >> 7;
   let mut bytes: [u8; 8] = [is_negative * 0xff; 8];
   let data_slice = src.split_to(byte_count);
   bytes[.. byte_count].copy_from_slice(&data_slice);
