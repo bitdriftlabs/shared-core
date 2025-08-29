@@ -80,7 +80,7 @@ pub fn encode_into_vec<'a>(
 /// * `Ok(usize)` - The number of bytes written on success
 /// * `Err(SerializationError)` - If encoding fails (including buffer full)
 pub fn encode_into_slice(buffer: &mut [u8], value: &Value) -> Result<usize, SerializationError> {
-  encode_value_into_buf(&mut (&mut *buffer), value)
+  encode_into_buf(&mut (&mut *buffer), value)
 }
 
 /// Encodes a `Value` into a `BufMut`.
@@ -96,11 +96,6 @@ pub fn encode_into_slice(buffer: &mut [u8], value: &Value) -> Result<usize, Seri
 /// * `Ok(usize)` - The number of bytes written on success
 /// * `Err(SerializationError)` - If encoding fails (including buffer full)
 pub fn encode_into_buf<B: BufMut>(buf: &mut B, value: &Value) -> Result<usize, SerializationError> {
-  encode_value_into_buf(buf, value)
-}
-
-/// Encodes a value into a buffer using `BufMut`.
-fn encode_value_into_buf<B: BufMut>(buf: &mut B, value: &Value) -> Result<usize, SerializationError> {
   let start_remaining = buf.remaining_mut();
   match value {
     Value::Null => serialize_null(buf)?,
@@ -124,7 +119,7 @@ fn encode_array_into_buf<B: BufMut>(buf: &mut B, arr: &[Value]) -> Result<usize,
 
   // Encode each element
   for item in arr {
-    encode_value_into_buf(buf, item)?;
+    encode_into_buf(buf, item)?;
   }
 
   // Array end marker
@@ -149,7 +144,7 @@ fn encode_object_into_buf<B: BufMut>(
     serialize_string(buf, key)?;
 
     // Encode value
-    encode_value_into_buf(buf, value)?;
+    encode_into_buf(buf, value)?;
   }
 
   // Object end marker
