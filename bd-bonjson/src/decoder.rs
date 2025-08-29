@@ -116,6 +116,24 @@ impl DecoderContext {
     result.map_err(|e| self.fatal_error_here(e))
   }
 
+  // Helper method to simplify the common pattern of calling a deserialize function and mapping errors
+  fn call_deserialize<T, F>(&mut self, f: F) -> Result<T>
+  where
+    F: FnOnce(&mut Bytes) -> deserialize_primitives::Result<T>,
+  {
+    let result = f(&mut self.data);
+    self.map_err(result)
+  }
+
+  // Helper method for deserialize functions that take a type code
+  fn call_deserialize_with_code<T, F>(&mut self, type_code: u8, f: F) -> Result<T>
+  where
+    F: FnOnce(&mut Bytes, u8) -> deserialize_primitives::Result<T>,
+  {
+    let result = f(&mut self.data, type_code);
+    self.map_err(result)
+  }
+
   fn fatal_error_here(&self, error: DeserializationError) -> DecodeError {
     DecodeError::Fatal(DeserializationErrorWithOffset::Error(error, self.current_position()))
   }
@@ -129,10 +147,7 @@ impl DecoderContext {
 
   #[allow(clippy::cast_possible_wrap)]
   fn decode_value(&mut self) -> Result<Value> {
-    let type_code = {
-      let result = deserialize_type_code(&mut self.data);
-      self.map_err(result)?
-    };
+    let type_code = self.call_deserialize(deserialize_type_code)?;
 
     match type_code {
       code if code == TypeCode::Null as u8 => Ok(Value::Null),
@@ -163,51 +178,33 @@ impl DecoderContext {
   }
 
   fn decode_f16(&mut self) -> Result<Value> {
-    let value = {
-      let result = deserialize_f16_after_type_code(&mut self.data);
-      self.map_err(result)?
-    };
+    let value = self.call_deserialize(deserialize_f16_after_type_code)?;
     Ok(Value::Float(f64::from(value)))
   }
 
   fn decode_f32(&mut self) -> Result<Value> {
-    let value = {
-      let result = deserialize_f32_after_type_code(&mut self.data);
-      self.map_err(result)?
-    };
+    let value = self.call_deserialize(deserialize_f32_after_type_code)?;
     Ok(Value::Float(f64::from(value)))
   }
 
   fn decode_f64(&mut self) -> Result<Value> {
-    let value = {
-      let result = deserialize_f64_after_type_code(&mut self.data);
-      self.map_err(result)?
-    };
+    let value = self.call_deserialize(deserialize_f64_after_type_code)?;
     Ok(Value::Float(value))
   }
 
   fn decode_long_string(&mut self) -> Result<Value> {
-    let string = {
-      let result = deserialize_long_string_after_type_code(&mut self.data);
-      self.map_err(result)?
-    };
+    let string = self.call_deserialize(deserialize_long_string_after_type_code)?;
     Ok(Value::String(string))
   }
 
   fn decode_short_string(&mut self, type_code: u8) -> Result<Value> {
-    let string = {
-      let result = deserialize_short_string_after_type_code(&mut self.data, type_code);
-      self.map_err(result)?
-    };
+    let string = self.call_deserialize_with_code(type_code, deserialize_short_string_after_type_code)?;
     Ok(Value::String(string))
   }
 
   #[allow(clippy::cast_possible_wrap)]
   fn decode_unsigned_integer(&mut self, type_code: u8) -> Result<Value> {
-    let value = {
-      let result = deserialize_unsigned_after_type_code(&mut self.data, type_code);
-      self.map_err(result)?
-    };
+    let value = self.call_deserialize_with_code(type_code, deserialize_unsigned_after_type_code)?;
     if i64::try_from(value).is_ok() {
       Ok(Value::Signed(value as i64))
     } else {
@@ -216,10 +213,7 @@ impl DecoderContext {
   }
 
   fn decode_signed_integer(&mut self, type_code: u8) -> Result<Value> {
-    let value = {
-      let result = deserialize_signed_after_type_code(&mut self.data, type_code);
-      self.map_err(result)?
-    };
+    let value = self.call_deserialize_with_code(type_code, deserialize_signed_after_type_code)?;
     Ok(Value::Signed(value))
   }
 
@@ -234,15 +228,12 @@ impl DecoderContext {
 
       if type_code == TypeCode::ContainerEnd as u8 {
         // Consume the container end byte
-        let _ = {
-          let result = deserialize_type_code(&mut self.data);
-          self.map_err(result)?
-        };
+        self.call_deserialize(deserialize_type_code)?;
         break;
       }
 
-      let value = match self.decode_value() {
-        Ok(value) => value,
+      match self.decode_value() {
+        Ok(value) => elements.push(value),
         Err(e) => match e {
           DecodeError::Fatal(_) => {
             return Err(propagate_partial_decode(&e, Value::Array(elements)));
@@ -258,9 +249,7 @@ impl DecoderContext {
             });
           },
         },
-      };
-
-      elements.push(value);
+      }
     }
 
     Ok(Value::Array(elements))
@@ -277,10 +266,7 @@ impl DecoderContext {
 
       if type_code == TypeCode::ContainerEnd as u8 {
         // Consume the container end byte
-        let _ = {
-          let result = deserialize_type_code(&mut self.data);
-          self.map_err(result)?
-        };
+        self.call_deserialize(deserialize_type_code)?;
         break;
       }
 
@@ -296,8 +282,10 @@ impl DecoderContext {
         Err(e) => return Err(propagate_partial_decode(&e, Value::Object(object))),
       };
 
-      let value = match self.decode_value() {
-        Ok(value) => value,
+      match self.decode_value() {
+        Ok(value) => {
+          object.insert(key, value);
+        },
         Err(e) => match e {
           DecodeError::Fatal(_) => return Err(propagate_partial_decode(&e, Value::Object(object))),
           DecodeError::Partial {
@@ -311,9 +299,7 @@ impl DecoderContext {
             });
           },
         },
-      };
-
-      object.insert(key, value);
+      }
     }
 
     Ok(Value::Object(object))
