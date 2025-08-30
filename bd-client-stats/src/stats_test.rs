@@ -140,7 +140,7 @@ impl Setup {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let runtime_loader = ConfigLoader::new(directory.path());
     runtime_loader
-      .update_snapshot(&make_simple_update(vec![(
+      .update_snapshot(make_simple_update(vec![(
         bd_runtime::runtime::stats::MaxAggregatedFilesFlag::path(),
         ValueKind::Int(2),
       )]))

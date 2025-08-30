@@ -597,7 +597,7 @@ async fn logs_resource_utilization_log() {
 
   setup
     .runtime
-    .update_snapshot(&bd_test_helpers::runtime::make_simple_update(vec![
+    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![
       (
         bd_runtime::runtime::debugging::PeriodicInternalLoggingFlag::path(),
         ValueKind::Bool(true),

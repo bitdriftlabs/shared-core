@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::file::{read_compressed_protobuf, write_compressed_protobuf};
+use crate::file::read_compressed_protobuf;
 use anyhow::bail;
 use protobuf::Message;
 use std::marker::PhantomData;
@@ -163,11 +163,9 @@ impl<T: Message> SafeFileCache<T> {
     Ok(data[0])
   }
 
-  pub async fn cache_update(&self, protobuf: &T) {
+  pub async fn cache_update(&self, compressed_protobuf: Vec<u8>) {
     if let Err(e) = async {
-      Ok::<_, anyhow::Error>(
-        tokio::fs::write(&self.protobuf_file(), write_compressed_protobuf(protobuf)?).await?,
-      )
+      Ok::<_, anyhow::Error>(tokio::fs::write(&self.protobuf_file(), compressed_protobuf).await?)
     }
     .await
     {

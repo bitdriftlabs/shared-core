@@ -42,7 +42,7 @@ impl Setup {
   async fn make_runtime_update(&self, events_listener_enabled: bool) {
     self
       .runtime
-      .update_snapshot(&make_simple_update(vec![(
+      .update_snapshot(make_simple_update(vec![(
         bd_runtime::runtime::platform_events::ListenerEnabledFlag::path(),
         ValueKind::Bool(events_listener_enabled),
       )]))

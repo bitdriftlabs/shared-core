@@ -24,9 +24,10 @@ use backoff::exponential::ExponentialBackoff;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::payload_conversion::{IntoRequest, MuxResponse, ResponseKind};
 use bd_client_common::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
-use bd_client_common::{ConfigurationUpdate, maybe_await};
+use bd_client_common::{ClientConfigurationUpdate, ConfigurationUpdate, maybe_await};
 use bd_client_stats_store::{Counter, CounterWrapper, Scope};
 use bd_error_reporter::reporter::UnexpectedErrorHandler;
+use bd_grpc_codec::code::Code;
 use bd_grpc_codec::{
   Compression,
   Encoder,
@@ -62,10 +63,11 @@ use bd_proto::protos::client::api::{
 use bd_proto::protos::logging::payload::Data as ProtoData;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::DurationWatch;
-use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
 use parking_lot::RwLock;
+use std::cmp::max;
 use std::collections::HashMap;
+use std::future::pending;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -110,6 +112,15 @@ impl NetworkQualityProvider for SimpleNetworkQualityProvider {
 }
 
 //
+// StreamClosureInfo
+//
+
+struct StreamClosureInfo {
+  reason: String,
+  retry_after: Option<Duration>,
+}
+
+//
 // HandshakeResult
 //
 
@@ -124,10 +135,7 @@ enum HandshakeResult {
   },
 
   /// The stream closed while waiting for the handshake.
-  StreamClosure(String),
-
-  /// We gave up waiting for the handshake due to shutdown.
-  ShuttingDown,
+  StreamClosure(StreamClosureInfo),
 
   /// Server responded specifically with an unauthenticated error.
   Unauthenticated,
@@ -236,7 +244,10 @@ impl StreamState {
   }
 
   // Processes a single upstream event (data/close) being provided by the platform network.
-  fn handle_upstream_event(&mut self, event: Option<StreamEvent>) -> anyhow::Result<UpstreamEvent> {
+  async fn handle_upstream_event(
+    &mut self,
+    event: Option<StreamEvent>,
+  ) -> anyhow::Result<UpstreamEvent> {
     match event {
       // We received some data on the stream. Attempt to decode this and
       // return up any decoded responses.
@@ -254,8 +265,8 @@ impl StreamState {
         Ok(UpstreamEvent::StreamClosed(reason))
       },
       // The upstream event sender has dropped before we terminated the stream. This can happen
-      // if the logger gets destroyed before the API stream receives the shutdown signal.
-      None => Ok(UpstreamEvent::Shutdown),
+      // if the logger gets destroyed before the API task is dropped.
+      None => pending().await,
     }
   }
 
@@ -305,9 +316,6 @@ enum UpstreamEvent {
 
   // The API stream closed (either locally or remotely).
   StreamClosed(String),
-
-  // The event channel has been shut down, indicating that we are shutting down.
-  Shutdown,
 }
 
 //
@@ -350,7 +358,6 @@ pub struct Api {
   sdk_directory: PathBuf,
   api_key: String,
   manager: Box<dyn PlatformNetworkManager<bd_runtime::runtime::ConfigLoader>>,
-  shutdown: ComponentShutdown,
   data_upload_rx: Receiver<DataUpload>,
   trigger_upload_tx: Sender<TriggerUpload>,
   sleep_mode_active: watch::Receiver<bool>,
@@ -359,7 +366,8 @@ pub struct Api {
 
   max_backoff_interval: DurationWatch<bd_runtime::runtime::api::MaxBackoffInterval>,
   initial_backoff_interval: DurationWatch<bd_runtime::runtime::api::InitialBackoffInterval>,
-  config_updater: Arc<dyn ConfigurationUpdate>,
+  backoff: ExponentialBackoff<SystemClock>,
+  config_updater: Arc<dyn ClientConfigurationUpdate>,
   runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
 
   internal_logger: Arc<dyn bd_internal_logging::Logger>,
@@ -386,28 +394,28 @@ impl Api {
     sdk_directory: PathBuf,
     api_key: String,
     manager: Box<dyn PlatformNetworkManager<bd_runtime::runtime::ConfigLoader>>,
-    shutdown: ComponentShutdown,
     data_upload_rx: Receiver<DataUpload>,
     trigger_upload_tx: Sender<TriggerUpload>,
     static_metadata: Arc<dyn Metadata + Send + Sync>,
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
-    config_updater: Arc<dyn ConfigurationUpdate>,
+    config_updater: Arc<dyn ClientConfigurationUpdate>,
     time_provider: Arc<dyn TimeProvider>,
     network_quality_provider: Arc<SimpleNetworkQualityProvider>,
     self_logger: Arc<dyn bd_internal_logging::Logger>,
     stats: &Scope,
     sleep_mode_active: watch::Receiver<bool>,
   ) -> Self {
-    let max_backoff_interval = runtime_loader.register_duration_watch();
-    let initial_backoff_interval = runtime_loader.register_duration_watch();
+    let mut max_backoff_interval = runtime_loader.register_duration_watch();
+    let mut initial_backoff_interval = runtime_loader.register_duration_watch();
     let generic_kill_duration = runtime_loader.register_duration_watch();
     let unauthenticated_kill_duration = runtime_loader.register_duration_watch();
+
+    let backoff = crate::backoff_policy(&mut initial_backoff_interval, &mut max_backoff_interval);
 
     Self {
       sdk_directory,
       api_key,
       manager,
-      shutdown,
       static_metadata,
       data_upload_rx,
       trigger_upload_tx,
@@ -424,6 +432,7 @@ impl Api {
       unauthenticated_kill_duration,
       config_marked_safe_due_to_offline: false,
       sleep_mode_active,
+      backoff,
     }
   }
 
@@ -532,32 +541,25 @@ impl Api {
     Ok(())
   }
 
-  #[must_use]
-  async fn do_reconnect_backoff(&mut self, backoff: &mut ExponentialBackoff<SystemClock>) -> bool {
+  async fn do_reconnect_backoff(&mut self, min_retry_after: Option<Duration>) {
     // We have no max timeout, hence this should always return a backoff value.
     // Before moving to the next iteration, sleep according to the backoff strategy.
-    let reconnect_delay = backoff.next_backoff().unwrap_or_else(|| 1.std_minutes());
+    let reconnect_delay = self
+      .backoff
+      .next_backoff()
+      .unwrap_or_else(|| 1.std_minutes());
+    let reconnect_delay =
+      min_retry_after.map_or(reconnect_delay, |f| max(f.unsigned_abs(), reconnect_delay));
     log::debug!("reconnecting in {} ms", reconnect_delay.as_millis());
 
-    // Pause execution until we are ready to reconnect, or the task is canceled.
-    tokio::select! {
-      () = tokio::time::sleep(reconnect_delay) => true,
-      () = self.shutdown.cancelled() => {
-        log::debug!("received shutdown while waiting for reconnect, shutting down");
-        false
-      },
-    }
+    // Pause execution until we are ready to reconnect.
+    tokio::time::sleep(reconnect_delay).await;
   }
 
   // Maintains an active stream by re-establishing a stream whenever we disconnect (with backoff),
   // until shutdown has been signaled.
   #[tracing::instrument(skip(self), level = "debug", name = "api")]
   async fn maintain_active_stream(mut self) -> anyhow::Result<()> {
-    let mut backoff = crate::backoff_policy(
-      &mut self.initial_backoff_interval,
-      &mut self.max_backoff_interval,
-    );
-
     // Collect metadata as part of maintaining active stream and not earlier to ensure that the
     // collection happens on SDK run loop.
     let metadata = self.static_metadata.collect();
@@ -597,17 +599,16 @@ impl Api {
       }
 
       // If we have been killed, just put ourselves into a permanent pending state until the
-      // process restarts. We will wait for the shutdown notification.
+      // process restarts.
       if self.client_killed {
         log::debug!("client has been killed, entering pending state");
-        self.shutdown.cancelled().await;
-        return Ok(());
+        return pending().await;
       }
 
       // Construct a new backoff policy if the runtime values have changed since last time.
       if self.max_backoff_interval.has_changed() || self.initial_backoff_interval.has_changed() {
         log::debug!("backoff policy has changed, recreating");
-        backoff = crate::backoff_policy(
+        self.backoff = crate::backoff_policy(
           &mut self.initial_backoff_interval,
           &mut self.max_backoff_interval,
         );
@@ -663,9 +664,17 @@ impl Api {
         } => {
           stream_state.initialize_stream_settings(stream_settings);
 
-          self
+          if let Some(stream_closure_info) = self
             .handle_responses(remaining_responses, &mut stream_state)
-            .await?;
+            .await?
+          {
+            last_disconnect_reason = Some(stream_closure_info.reason);
+            self.stats.remote_connect_failure.inc();
+            self
+              .do_reconnect_backoff(stream_closure_info.retry_after)
+              .await;
+            continue;
+          }
 
           // Let all the configuration pipelines know that we are able to connect to the
           // backend. We supply the configuration update status to the pipelines so they can
@@ -684,18 +693,14 @@ impl Api {
         },
         // The stream closed while waiting for the handshake. Move to the next loop iteration
         // to attempt to re-create a stream.
-        HandshakeResult::StreamClosure(reason) => {
+        HandshakeResult::StreamClosure(info) => {
           // The network manager API doesn't expose the underlying issue in a type-safe manner,
           // so just treat all failures to handshake as a connect failure.
-          last_disconnect_reason = Some(reason);
+          last_disconnect_reason = Some(info.reason);
           self.stats.remote_connect_failure.inc();
-          if self.do_reconnect_backoff(&mut backoff).await {
-            continue;
-          }
-          return Ok(());
+          self.do_reconnect_backoff(info.retry_after).await;
+          continue;
         },
-        // We received the shutdown notification, so exit out.
-        HandshakeResult::ShuttingDown => return Ok(()),
         // Unauthenticated, we need to perform a kill action to stop the API.
         HandshakeResult::Unauthenticated => {
           log::debug!("unauthenticated, killing client");
@@ -716,11 +721,6 @@ impl Api {
       // request/response handling.
       loop {
         let upstream_event = tokio::select! {
-          // If we receive the shutdown signal, shut down the loop.
-          () = self.shutdown.cancelled() => {
-            log::debug!("received shutdown signal, shutting down");
-            return Ok(());
-          },
           // Fire a ping timer if the ping timer elapses.
           () = maybe_await(&mut stream_state.ping_sleep) => {
             stream_state.send_ping().await?;
@@ -735,25 +735,33 @@ impl Api {
           event = stream_state.stream_event_rx.recv() => event,
         };
 
-        match stream_state.handle_upstream_event(upstream_event)? {
+        let stream_closure_info = match stream_state.handle_upstream_event(upstream_event).await? {
           UpstreamEvent::UpstreamMessages(responses) => {
-            self.handle_responses(responses, &mut stream_state).await?;
+            self.handle_responses(responses, &mut stream_state).await?
           },
-          UpstreamEvent::StreamClosed(reason) => {
-            // We want to avoid a case in which we spin on an error shutdown. We do this by just
-            // checking to see if the stream lived for longer than 1 minute, and if so reset the
-            // backoff. If the process restarts everything starts over again anyway.
-            last_disconnect_reason = Some(reason);
-            if Instant::now() - handshake_established > Duration::minutes(1) {
-              log::debug!("stream lived for more than 1 minute, resetting backoff");
-              backoff.reset();
-            } else if !self.do_reconnect_backoff(&mut backoff).await {
-              return Ok(());
-            }
+          UpstreamEvent::StreamClosed(reason) => Some(StreamClosureInfo {
+            reason,
+            retry_after: None,
+          }),
+        };
 
-            break;
-          },
-          UpstreamEvent::Shutdown => return Ok(()),
+        if let Some(stream_closure_info) = stream_closure_info {
+          // We want to avoid a case in which we spin on an error shutdown. We do this by just
+          // checking to see if the stream lived for longer than 1 minute, and if so reset the
+          // backoff. If the process restarts everything starts over again anyway.
+          last_disconnect_reason = Some(stream_closure_info.reason);
+          if stream_closure_info.retry_after.is_none()
+            && Instant::now() - handshake_established > Duration::minutes(1)
+          {
+            log::debug!("stream lived for more than 1 minute, resetting backoff");
+            self.backoff.reset();
+          } else {
+            self
+              .do_reconnect_backoff(stream_closure_info.retry_after)
+              .await;
+          }
+
+          break;
         }
       }
     }
@@ -765,7 +773,7 @@ impl Api {
     &self,
     responses: Vec<ApiResponse>,
     stream_state: &mut StreamState,
-  ) -> anyhow::Result<()> {
+  ) -> anyhow::Result<Option<StreamClosureInfo>> {
     for response in responses {
       match response.demux() {
         Some(ResponseKind::Handshake(_)) => {
@@ -779,6 +787,14 @@ impl Api {
             error.grpc_message
           );
           self.stats.error_shutdown_total.inc();
+          return Ok(Some(StreamClosureInfo {
+            reason: error.grpc_message,
+            retry_after: error
+              .rate_limited
+              .retry_after
+              .as_ref()
+              .map(bd_time::ProtoDurationExt::to_time_duration),
+          }));
         },
         Some(ResponseKind::LogUpload(log_upload)) => {
           log::debug!(
@@ -795,7 +811,7 @@ impl Api {
         Some(ResponseKind::LogUploadIntent(intent)) => {
           stream_state
             .upload_state_tracker
-            .resolve_intent(&intent.intent_uuid, intent.decision.clone())?;
+            .resolve_intent(&intent.intent_uuid, intent.decision)?;
         },
         Some(ResponseKind::StatsUpload(stats_upload)) => {
           log::debug!(
@@ -813,7 +829,7 @@ impl Api {
 
           self
             .trigger_upload_tx
-            .send(TriggerUpload::new(flush_buffers.buffer_id_list.clone(), tx))
+            .send(TriggerUpload::new(flush_buffers.buffer_id_list, tx))
             .await
             .map_err(|_| anyhow!("remote trigger upload tx"))?;
         },
@@ -837,7 +853,7 @@ impl Api {
 
           stream_state.upload_state_tracker.resolve_intent(
             &sankey_path_upload_intent.intent_uuid,
-            sankey_path_upload_intent.decision.clone(),
+            sankey_path_upload_intent.decision,
           )?;
         },
         Some(ResponseKind::ArtifactUpload(artifact_upload)) => {
@@ -860,16 +876,16 @@ impl Api {
 
           stream_state.upload_state_tracker.resolve_intent(
             &artifact_upload_intent.intent_uuid,
-            artifact_upload_intent.decision.clone(),
+            artifact_upload_intent.decision,
           )?;
         },
-        Some(ResponseKind::ConfigurationUpdate(_)) => {
-          if let Some(request) = self.config_updater.try_apply_config(&response).await {
+        Some(ResponseKind::ConfigurationUpdate(update)) => {
+          if let Some(request) = self.config_updater.try_apply_config(update).await {
             stream_state.send_request(request).await?;
           }
         },
-        Some(ResponseKind::RuntimeUpdate(_)) => {
-          if let Some(request) = self.runtime_loader.try_apply_config(&response).await {
+        Some(ResponseKind::RuntimeUpdate(update)) => {
+          if let Some(request) = self.runtime_loader.try_apply_config(update).await {
             stream_state.send_request(request).await?;
           }
         },
@@ -879,7 +895,7 @@ impl Api {
       }
     }
 
-    Ok(())
+    Ok(None)
   }
 
   // Creates a handshake request containing the current version nonces and static metadata.
@@ -904,22 +920,16 @@ impl Api {
   /// Waits for enough data to be collected to parse the initial handshake, handling various error
   /// conditions we might run into at the start of the stream.
   async fn wait_for_handshake(
-    &mut self,
+    &self,
     stream_state: &mut StreamState,
   ) -> anyhow::Result<HandshakeResult> {
     loop {
-      let event = tokio::select! {
-        () = self.shutdown.cancelled() => {
-          log::debug!("received shutdown broadcast");
-          return Ok(HandshakeResult::ShuttingDown)
-        },
-        event = stream_state.stream_event_rx.recv() => event,
-      };
-
-      match stream_state.handle_upstream_event(event)? {
+      let event = stream_state.stream_event_rx.recv().await;
+      match stream_state.handle_upstream_event(event).await? {
         UpstreamEvent::UpstreamMessages(responses) => {
           // This happens if we received data, but not enough to form a full gRPC message.
-          let Some((first, rest)) = responses.split_first() else {
+          let mut responses = responses.into_iter();
+          let Some(first) = responses.next() else {
             continue;
           };
 
@@ -932,21 +942,19 @@ impl Api {
           // processing. The response decoder might still contain data, so we continue to use
           // it for further decoding.
           match first.demux() {
-            Some(ResponseKind::Handshake(h)) => {
+            Some(ResponseKind::Handshake(mut h)) => {
               log::debug!("received handshake");
               return Ok(HandshakeResult::Received {
-                stream_settings: h.stream_settings.clone().take(),
+                stream_settings: h.stream_settings.take(),
                 configuration_update_status: h.configuration_update_status,
-                remaining_responses: Vec::from(rest),
+                remaining_responses: responses.collect(),
               });
             },
             Some(ResponseKind::ErrorShutdown(error)) => {
-              static UNAUTHENTICATED: i32 = 16;
-
               // If we're provided with an invalid API key or otherwise fail to authenticate with
               // the backend, log this as a warning to surface this to developers trying to set up
               // the SDK.
-              if error.grpc_status == UNAUTHENTICATED {
+              if error.grpc_status == Code::Unauthenticated.to_int() {
                 log::warn!(
                   "failed to authenticate with the backend: {}",
                   error.grpc_message
@@ -966,16 +974,24 @@ impl Api {
                 error.grpc_status,
                 error.grpc_message
               );
-              return Ok(HandshakeResult::StreamClosure(format!(
-                "error shutdown: {}",
-                error.grpc_message
-              )));
+              return Ok(HandshakeResult::StreamClosure(StreamClosureInfo {
+                reason: format!("error shutdown: {}", error.grpc_message),
+                retry_after: error
+                  .rate_limited
+                  .retry_after
+                  .as_ref()
+                  .map(bd_time::ProtoDurationExt::to_time_duration),
+              }));
             },
             _ => anyhow::bail!("unexpected api response: spurious response before handshake"),
           }
         },
-        UpstreamEvent::Shutdown => return Ok(HandshakeResult::ShuttingDown),
-        UpstreamEvent::StreamClosed(reason) => return Ok(HandshakeResult::StreamClosure(reason)),
+        UpstreamEvent::StreamClosed(reason) => {
+          return Ok(HandshakeResult::StreamClosure(StreamClosureInfo {
+            reason,
+            retry_after: None,
+          }));
+        },
       }
     }
   }

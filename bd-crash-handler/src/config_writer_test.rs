@@ -28,7 +28,7 @@ impl Setup {
 
     if crash_reporting_enabled {
       runtime
-        .update_snapshot(&make_simple_update(vec![(
+        .update_snapshot(make_simple_update(vec![(
           "crash_reporting.enabled",
           ValueKind::Bool(crash_reporting_enabled),
         )]))
@@ -49,7 +49,7 @@ impl Setup {
   async fn configure_runtime_flag(&self, value: bool) {
     self
       .runtime
-      .update_snapshot(&make_simple_update(vec![(
+      .update_snapshot(make_simple_update(vec![(
         "crash_reporting.enabled",
         ValueKind::Bool(value),
       )]))

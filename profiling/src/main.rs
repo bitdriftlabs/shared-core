@@ -402,7 +402,7 @@ fn run_profiling<T: Fn(&mut AnnotatedWorkflowsEngine) + std::marker::Send + 'sta
       .block_on(async {
         setup
           .runtime_loader
-          .update_snapshot(&RuntimeUpdate {
+          .update_snapshot(RuntimeUpdate {
             version_nonce: "123".to_string(),
             runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
               bd_runtime::runtime::stats::DirectStatFlushIntervalFlag::path(),
