@@ -6514,6 +6514,8 @@ pub struct ErrorShutdown {
     pub grpc_status: i32,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ErrorShutdown.grpc_message)
     pub grpc_message: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ErrorShutdown.retry_after)
+    pub retry_after: ::protobuf::MessageField<::protobuf::well_known_types::duration::Duration>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.ErrorShutdown.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -6531,7 +6533,7 @@ impl ErrorShutdown {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut fields = ::std::vec::Vec::with_capacity(3);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "grpc_status",
@@ -6542,6 +6544,11 @@ impl ErrorShutdown {
             "grpc_message",
             |m: &ErrorShutdown| { &m.grpc_message },
             |m: &mut ErrorShutdown| { &mut m.grpc_message },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::duration::Duration>(
+            "retry_after",
+            |m: &ErrorShutdown| { &m.retry_after },
+            |m: &mut ErrorShutdown| { &mut m.retry_after },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ErrorShutdown>(
             "ErrorShutdown",
@@ -6567,6 +6574,9 @@ impl ::protobuf::Message for ErrorShutdown {
                 18 => {
                     self.grpc_message = is.read_string()?;
                 },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.retry_after)?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -6585,6 +6595,10 @@ impl ::protobuf::Message for ErrorShutdown {
         if !self.grpc_message.is_empty() {
             my_size += ::protobuf::rt::string_size(2, &self.grpc_message);
         }
+        if let Some(v) = self.retry_after.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -6596,6 +6610,9 @@ impl ::protobuf::Message for ErrorShutdown {
         }
         if !self.grpc_message.is_empty() {
             os.write_string(2, &self.grpc_message)?;
+        }
+        if let Some(v) = self.retry_after.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -6616,6 +6633,7 @@ impl ::protobuf::Message for ErrorShutdown {
     fn clear(&mut self) {
         self.grpc_status = 0;
         self.grpc_message.clear();
+        self.retry_after.clear();
         self.special_fields.clear();
     }
 
@@ -6623,6 +6641,7 @@ impl ::protobuf::Message for ErrorShutdown {
         static instance: ErrorShutdown = ErrorShutdown {
             grpc_status: 0,
             grpc_message: ::std::string::String::new(),
+            retry_after: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -8601,45 +8620,46 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x10\x03J\x04\x08\x07\x10\x08R\x08mll_listR\x16insights_configurationB\r\
     \n\x0bupdate_type\"{\n\rRuntimeUpdate\x12#\n\rversion_nonce\x18\x01\x20\
     \x01(\tR\x0cversionNonce\x12E\n\x07runtime\x18\x02\x20\x01(\x0b2+.bitdri\
-    ft_public.protobuf.client.v1.RuntimeR\x07runtime\"S\n\rErrorShutdown\x12\
-    \x1f\n\x0bgrpc_status\x18\x01\x20\x01(\x05R\ngrpcStatus\x12!\n\x0cgrpc_m\
-    essage\x18\x02\x20\x01(\tR\x0bgrpcMessage\"4\n\x0cFlushBuffers\x12$\n\
-    \x0ebuffer_id_list\x18\x01\x20\x03(\tR\x0cbufferIdList\"Z\n\x18SankeyPat\
-    hUploadResponse\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\
-    \x07\xfaB\x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05err\
-    or\"\xcb\x02\n\x14SankeyIntentResponse\x12(\n\x0bintent_uuid\x18\x01\x20\
-    \x01(\tR\nintentUuidB\x07\xfaB\x04r\x02\x10\x01\x12{\n\x12upload_immedia\
-    tely\x18\x03\x20\x01(\x0b2J.bitdrift_public.protobuf.client.v1.SankeyInt\
-    entResponse.UploadImmediatelyH\0R\x11uploadImmediately\x12S\n\x04drop\
-    \x18\x04\x20\x01(\x0b2=.bitdrift_public.protobuf.client.v1.SankeyIntentR\
-    esponse.DropH\0R\x04drop\x1a\x13\n\x11UploadImmediately\x1a\x06\n\x04Dro\
-    pB\n\n\x08decisionJ\x04\x08\x02\x10\x03R\x08decision\"\xa8\n\n\x0bApiRes\
-    ponse\x12U\n\thandshake\x18\x01\x20\x01(\x0b25.bitdrift_public.protobuf.\
-    client.v1.HandshakeResponseH\0R\thandshake\x12V\n\nlog_upload\x18\x02\
-    \x20\x01(\x0b25.bitdrift_public.protobuf.client.v1.LogUploadResponseH\0R\
-    \tlogUpload\x12i\n\x11log_upload_intent\x18\x08\x20\x01(\x0b2;.bitdrift_\
-    public.protobuf.client.v1.LogUploadIntentResponseH\0R\x0flogUploadIntent\
-    \x12\\\n\x0cstats_upload\x18\x07\x20\x01(\x0b27.bitdrift_public.protobuf\
-    .client.v1.StatsUploadResponseH\0R\x0bstatsUpload\x12F\n\x04pong\x18\x03\
-    \x20\x01(\x0b20.bitdrift_public.protobuf.client.v1.PongResponseH\0R\x04p\
-    ong\x12l\n\x14configuration_update\x18\x04\x20\x01(\x0b27.bitdrift_publi\
-    c.protobuf.client.v1.ConfigurationUpdateH\0R\x13configurationUpdate\x12Z\
-    \n\x0eruntime_update\x18\x05\x20\x01(\x0b21.bitdrift_public.protobuf.cli\
-    ent.v1.RuntimeUpdateH\0R\rruntimeUpdate\x12Z\n\x0eerror_shutdown\x18\x06\
-    \x20\x01(\x0b21.bitdrift_public.protobuf.client.v1.ErrorShutdownH\0R\rer\
-    rorShutdown\x12W\n\rflush_buffers\x18\t\x20\x01(\x0b20.bitdrift_public.p\
-    rotobuf.client.v1.FlushBuffersH\0R\x0cflushBuffers\x12r\n\x15sankey_diag\
-    ram_upload\x18\x0c\x20\x01(\x0b2<.bitdrift_public.protobuf.client.v1.San\
-    keyPathUploadResponseH\0R\x13sankeyDiagramUpload\x12p\n\x16sankey_intent\
-    _response\x18\r\x20\x01(\x0b28.bitdrift_public.protobuf.client.v1.Sankey\
-    IntentResponseH\0R\x14sankeyIntentResponse\x12e\n\x0fartifact_upload\x18\
-    \x0e\x20\x01(\x0b2:.bitdrift_public.protobuf.client.v1.UploadArtifactRes\
-    ponseH\0R\x0eartifactUpload\x12k\n\x0fartifact_intent\x18\x0f\x20\x01(\
-    \x0b2@.bitdrift_public.protobuf.client.v1.UploadArtifactIntentResponseH\
-    \0R\x0eartifactIntentB\x14\n\rresponse_type\x12\x03\xf8B\x01J\x04\x08\n\
-    \x10\x0bJ\x04\x08\x0b\x10\x0c2x\n\nApiService\x12j\n\x03Mux\x12..bitdrif\
-    t_public.protobuf.client.v1.ApiRequest\x1a/.bitdrift_public.protobuf.cli\
-    ent.v1.ApiResponse(\x010\x01b\x06proto3\
+    ft_public.protobuf.client.v1.RuntimeR\x07runtime\"\x8f\x01\n\rErrorShutd\
+    own\x12\x1f\n\x0bgrpc_status\x18\x01\x20\x01(\x05R\ngrpcStatus\x12!\n\
+    \x0cgrpc_message\x18\x02\x20\x01(\tR\x0bgrpcMessage\x12:\n\x0bretry_afte\
+    r\x18\x03\x20\x01(\x0b2\x19.google.protobuf.DurationR\nretryAfter\"4\n\
+    \x0cFlushBuffers\x12$\n\x0ebuffer_id_list\x18\x01\x20\x03(\tR\x0cbufferI\
+    dList\"Z\n\x18SankeyPathUploadResponse\x12(\n\x0bupload_uuid\x18\x01\x20\
+    \x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\x05error\x18\
+    \x02\x20\x01(\tR\x05error\"\xcb\x02\n\x14SankeyIntentResponse\x12(\n\x0b\
+    intent_uuid\x18\x01\x20\x01(\tR\nintentUuidB\x07\xfaB\x04r\x02\x10\x01\
+    \x12{\n\x12upload_immediately\x18\x03\x20\x01(\x0b2J.bitdrift_public.pro\
+    tobuf.client.v1.SankeyIntentResponse.UploadImmediatelyH\0R\x11uploadImme\
+    diately\x12S\n\x04drop\x18\x04\x20\x01(\x0b2=.bitdrift_public.protobuf.c\
+    lient.v1.SankeyIntentResponse.DropH\0R\x04drop\x1a\x13\n\x11UploadImmedi\
+    ately\x1a\x06\n\x04DropB\n\n\x08decisionJ\x04\x08\x02\x10\x03R\x08decisi\
+    on\"\xa8\n\n\x0bApiResponse\x12U\n\thandshake\x18\x01\x20\x01(\x0b25.bit\
+    drift_public.protobuf.client.v1.HandshakeResponseH\0R\thandshake\x12V\n\
+    \nlog_upload\x18\x02\x20\x01(\x0b25.bitdrift_public.protobuf.client.v1.L\
+    ogUploadResponseH\0R\tlogUpload\x12i\n\x11log_upload_intent\x18\x08\x20\
+    \x01(\x0b2;.bitdrift_public.protobuf.client.v1.LogUploadIntentResponseH\
+    \0R\x0flogUploadIntent\x12\\\n\x0cstats_upload\x18\x07\x20\x01(\x0b27.bi\
+    tdrift_public.protobuf.client.v1.StatsUploadResponseH\0R\x0bstatsUpload\
+    \x12F\n\x04pong\x18\x03\x20\x01(\x0b20.bitdrift_public.protobuf.client.v\
+    1.PongResponseH\0R\x04pong\x12l\n\x14configuration_update\x18\x04\x20\
+    \x01(\x0b27.bitdrift_public.protobuf.client.v1.ConfigurationUpdateH\0R\
+    \x13configurationUpdate\x12Z\n\x0eruntime_update\x18\x05\x20\x01(\x0b21.\
+    bitdrift_public.protobuf.client.v1.RuntimeUpdateH\0R\rruntimeUpdate\x12Z\
+    \n\x0eerror_shutdown\x18\x06\x20\x01(\x0b21.bitdrift_public.protobuf.cli\
+    ent.v1.ErrorShutdownH\0R\rerrorShutdown\x12W\n\rflush_buffers\x18\t\x20\
+    \x01(\x0b20.bitdrift_public.protobuf.client.v1.FlushBuffersH\0R\x0cflush\
+    Buffers\x12r\n\x15sankey_diagram_upload\x18\x0c\x20\x01(\x0b2<.bitdrift_\
+    public.protobuf.client.v1.SankeyPathUploadResponseH\0R\x13sankeyDiagramU\
+    pload\x12p\n\x16sankey_intent_response\x18\r\x20\x01(\x0b28.bitdrift_pub\
+    lic.protobuf.client.v1.SankeyIntentResponseH\0R\x14sankeyIntentResponse\
+    \x12e\n\x0fartifact_upload\x18\x0e\x20\x01(\x0b2:.bitdrift_public.protob\
+    uf.client.v1.UploadArtifactResponseH\0R\x0eartifactUpload\x12k\n\x0farti\
+    fact_intent\x18\x0f\x20\x01(\x0b2@.bitdrift_public.protobuf.client.v1.Up\
+    loadArtifactIntentResponseH\0R\x0eartifactIntentB\x14\n\rresponse_type\
+    \x12\x03\xf8B\x01J\x04\x08\n\x10\x0bJ\x04\x08\x0b\x10\x0c2x\n\nApiServic\
+    e\x12j\n\x03Mux\x12..bitdrift_public.protobuf.client.v1.ApiRequest\x1a/.\
+    bitdrift_public.protobuf.client.v1.ApiResponse(\x010\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

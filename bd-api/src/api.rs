@@ -27,6 +27,7 @@ use bd_client_common::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use bd_client_common::{ConfigurationUpdate, maybe_await};
 use bd_client_stats_store::{Counter, CounterWrapper, Scope};
 use bd_error_reporter::reporter::UnexpectedErrorHandler;
+use bd_grpc_codec::code::Code;
 use bd_grpc_codec::{
   Compression,
   Encoder,
@@ -773,6 +774,7 @@ impl Api {
         },
         Some(ResponseKind::Pong(_)) => stream_state.maybe_schedule_ping(),
         Some(ResponseKind::ErrorShutdown(error)) => {
+          // fixfix handle rate limit
           log::debug!(
             "close with status {:?}, message {:?}",
             error.grpc_status,
@@ -941,12 +943,10 @@ impl Api {
               });
             },
             Some(ResponseKind::ErrorShutdown(error)) => {
-              static UNAUTHENTICATED: i32 = 16;
-
               // If we're provided with an invalid API key or otherwise fail to authenticate with
               // the backend, log this as a warning to surface this to developers trying to set up
               // the SDK.
-              if error.grpc_status == UNAUTHENTICATED {
+              if error.grpc_status == Code::Unauthenticated.to_int() {
                 log::warn!(
                   "failed to authenticate with the backend: {}",
                   error.grpc_message

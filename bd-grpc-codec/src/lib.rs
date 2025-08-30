@@ -18,6 +18,7 @@
 #[path = "./coding_test.rs"]
 mod coding_test;
 
+pub mod code;
 pub mod stats;
 
 use crate::stats::DeferredCounter;

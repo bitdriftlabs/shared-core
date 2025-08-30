@@ -29,6 +29,7 @@ use axum::response::Response;
 use axum::routing::post;
 use axum::{BoxError, Router};
 use base64ct::Encoding;
+use bd_grpc_codec::code::Code;
 use bd_grpc_codec::stats::DeferredCounter;
 use bd_grpc_codec::{
   Decoder,
@@ -51,7 +52,7 @@ use http_body_util::{BodyExt, StreamBody};
 use protobuf::{Message, MessageFull};
 use service::ServiceMethod;
 use stats::{BandwidthStatsSummary, EndpointStats, StreamStats};
-use status::{Code, Status};
+use status::Status;
 use std::convert::Infallible;
 use std::marker::PhantomData;
 use std::sync::Arc;

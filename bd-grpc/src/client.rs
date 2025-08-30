@@ -9,7 +9,7 @@ use crate::compression::Compression;
 use crate::connect_protocol::{ConnectProtocolType, ToContentType};
 use crate::error::{Error, Result};
 use crate::service::ServiceMethod;
-use crate::status::{Code, Status};
+use crate::status::Status;
 use crate::{
   CONNECT_PROTOCOL_VERSION,
   CONTENT_ENCODING_SNAPPY,
@@ -22,6 +22,7 @@ use crate::{
 use assert_matches::debug_assert_matches;
 use axum::body::Body;
 use axum::response::Response;
+use bd_grpc_codec::code::Code;
 use bd_grpc_codec::{
   Decoder,
   DecodingResult,
