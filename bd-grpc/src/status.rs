@@ -27,6 +27,7 @@ pub enum Code {
   Unauthenticated,
   NotFound,
   PermissionDenied,
+  ResourceExhausted,
 }
 
 impl Code {
@@ -39,6 +40,7 @@ impl Code {
       Self::InvalidArgument => 3,
       Self::NotFound => 5,
       Self::PermissionDenied => 7,
+      Self::ResourceExhausted => 8,
       Self::FailedPrecondition => 9,
       Self::Internal => 13,
       Self::Unavailable => 14,
@@ -54,6 +56,7 @@ impl Code {
       "3" => Self::InvalidArgument,
       "5" => Self::NotFound,
       "7" => Self::PermissionDenied,
+      "8" => Self::ResourceExhausted,
       "9" => Self::FailedPrecondition,
       "13" => Self::Internal,
       "14" => Self::Unavailable,
@@ -73,6 +76,7 @@ impl Code {
       Self::Unauthenticated => StatusCode::UNAUTHORIZED,
       Self::NotFound => StatusCode::NOT_FOUND,
       Self::PermissionDenied => StatusCode::FORBIDDEN,
+      Self::ResourceExhausted => StatusCode::TOO_MANY_REQUESTS,
     }
   }
 
@@ -89,6 +93,7 @@ impl Code {
       Self::Unauthenticated => "unauthenticated",
       Self::NotFound => "not_found",
       Self::PermissionDenied => "permission_denied",
+      Self::ResourceExhausted => "resource_exhausted",
     }
   }
 }
