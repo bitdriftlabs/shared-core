@@ -20,7 +20,7 @@ pub mod ffi;
 pub mod writer;
 
 mod deserialize_primitives;
-mod serialize_primitives;
+pub mod serialize_primitives;
 mod type_codes;
 
 use deserialize_primitives::DeserializationError;
