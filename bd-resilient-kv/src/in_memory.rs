@@ -78,24 +78,17 @@ impl<'a> InMemoryResilientKv<'a> {
     serialize_array_begin(&mut cursor)
       .map_err(|e| anyhow::anyhow!("Failed to serialize array begin: {e:?}"))?;
     
-    // Write metadata object first
-    serialize_map_begin(&mut cursor)
-      .map_err(|e| anyhow::anyhow!("Failed to serialize metadata map begin: {e:?}"))?;
-    
-    serialize_string(&mut cursor, "initialized")
-      .map_err(|e| anyhow::anyhow!("Failed to serialize initialized key: {e:?}"))?;
-    
-    // Get current time in nanoseconds since UNIX epoch
+    // Create metadata object using HashMap
+    let mut metadata = HashMap::new();
     let now = SystemTime::now()
       .duration_since(UNIX_EPOCH)
       .map_err(|e| anyhow::anyhow!("System time error: {e}"))?
       .as_nanos() as u64;
+    metadata.insert("initialized".to_string(), Value::Unsigned(now));
     
-    encode_into_buf(&mut cursor, &Value::Unsigned(now))
-      .map_err(|e| anyhow::anyhow!("Failed to encode initialized timestamp: {e:?}"))?;
-    
-    serialize_container_end(&mut cursor)
-      .map_err(|e| anyhow::anyhow!("Failed to serialize metadata container end: {e:?}"))?;
+    // Write metadata object
+    encode_into_buf(&mut cursor, &Value::Object(metadata))
+      .map_err(|e| anyhow::anyhow!("Failed to encode metadata object: {e:?}"))?;
     
     // Calculate position from remaining capacity
     let position = buffer_len - cursor.remaining_mut();
@@ -256,18 +249,13 @@ impl<'a> InMemoryResilientKv<'a> {
     serialize_array_begin(&mut cursor)
       .map_err(|e| anyhow::anyhow!("Failed to serialize array begin: {e:?}"))?;
     
-    // Write metadata object with provided timestamp
-    serialize_map_begin(&mut cursor)
-      .map_err(|e| anyhow::anyhow!("Failed to serialize metadata map begin: {e:?}"))?;
+    // Create metadata object using HashMap with provided timestamp
+    let mut metadata = HashMap::new();
+    metadata.insert("initialized".to_string(), Value::Unsigned(timestamp));
     
-    serialize_string(&mut cursor, "initialized")
-      .map_err(|e| anyhow::anyhow!("Failed to serialize initialized key: {e:?}"))?;
-    
-    encode_into_buf(&mut cursor, &Value::Unsigned(timestamp))
-      .map_err(|e| anyhow::anyhow!("Failed to encode initialized timestamp: {e:?}"))?;
-    
-    serialize_container_end(&mut cursor)
-      .map_err(|e| anyhow::anyhow!("Failed to serialize metadata container end: {e:?}"))?;
+    // Write metadata object
+    encode_into_buf(&mut cursor, &Value::Object(metadata))
+      .map_err(|e| anyhow::anyhow!("Failed to encode metadata object: {e:?}"))?;
     
     // Calculate position from remaining capacity
     let position = buffer_len - cursor.remaining_mut();
