@@ -9,6 +9,10 @@
 #[path = "./kv_test.rs"]
 mod kv_test;
 
+#[cfg(test)]
+#[path = "./memmapped_test.rs"]
+mod memmapped_test;
+
 pub mod in_memory;
 pub mod memmapped;
 
