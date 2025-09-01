@@ -18,6 +18,7 @@ use bd_bonjson::serialize_primitives::{
   serialize_map_begin,
   serialize_string,
 };
+use bytes::BufMut;
 use std::collections::HashMap;
 
 const VERSION: u64 = 1;
@@ -48,17 +49,18 @@ impl<'a> ResilientKv<'a> {
     // | ...      | ...                      | ...            |
     // The last Container End byte (to terminate the array) is not stored in the file.
 
-    let mut position = 16;
-    
     // Write version
     let version_bytes = VERSION.to_le_bytes();
     buffer[0..8].copy_from_slice(&version_bytes);
     
-    // Write array begin marker
-    let mut writable_buffer = &mut buffer[position..];
-    let bytes_written = serialize_array_begin(&mut writable_buffer)
+    // Write array begin marker at position 16
+    let buffer_len = buffer.len();
+    let mut cursor = &mut buffer[16..];
+    serialize_array_begin(&mut cursor)
       .map_err(|e| anyhow::anyhow!("Failed to serialize array begin: {e:?}"))?;
-    position += bytes_written;
+    
+    // Calculate position from remaining capacity
+    let position = buffer_len - cursor.remaining_mut();
     
     // Write initial position
     let position_bytes = (position as u64).to_le_bytes();
@@ -129,32 +131,29 @@ impl<'a> ResilientKv<'a> {
   /// Returns an error if serialization or encoding fails.
   pub fn from_kv_store(buffer: &'a mut [u8], kv_store: &mut Self) -> anyhow::Result<Self> {
     let mut kv = Self::new(buffer)?;
-    let mut position = kv.position;
+    let initial_position = kv.position;
+    let buffer_len = kv.buffer.len();
+    let mut cursor = &mut kv.buffer[kv.position..];
     
-    let mut writable_buffer = &mut kv.buffer[position..];
-    let bytes_written = serialize_map_begin(&mut writable_buffer)
+    // Write all entries as a single map using BufMut
+    serialize_map_begin(&mut cursor)
       .map_err(|e| anyhow::anyhow!("Failed to serialize map begin: {e:?}"))?;
-    position += bytes_written;
     
     let hashmap = kv_store.as_hashmap()?;
     for (k, v) in &hashmap {
-      let mut writable_buffer = &mut kv.buffer[position..];
-      let bytes_written = serialize_string(&mut writable_buffer, k)
+      serialize_string(&mut cursor, k)
         .map_err(|e| anyhow::anyhow!("Failed to serialize string key: {e:?}"))?;
-      position += bytes_written;
       
-      let mut writable_buffer = &mut kv.buffer[position..];
-      let bytes_written = encode_into_buf(&mut writable_buffer, v)
+      encode_into_buf(&mut cursor, v)
         .map_err(|e| anyhow::anyhow!("Failed to encode value: {e:?}"))?;
-      position += bytes_written;
     }
     
-    let mut writable_buffer = &mut kv.buffer[position..];
-    let bytes_written = serialize_container_end(&mut writable_buffer)
+    serialize_container_end(&mut cursor)
       .map_err(|e| anyhow::anyhow!("Failed to serialize container end: {e:?}"))?;
-    position += bytes_written;
     
-    kv.set_position(position);
+    // Calculate new position from remaining capacity
+    let bytes_written = buffer_len - initial_position - cursor.remaining_mut();
+    kv.set_position(initial_position + bytes_written);
 
     Ok(kv)
   }
@@ -173,31 +172,26 @@ impl<'a> ResilientKv<'a> {
   }
 
   fn write_journal_entry(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {
-    let mut position = self.position;
+    let initial_position = self.position;
+    let buffer_len = self.buffer.len();
+    let mut cursor = &mut self.buffer[self.position..];
     
-    // Fill in the map containing the next journal entry
-    let mut writable_buffer = &mut self.buffer[position..];
-    let bytes_written = serialize_map_begin(&mut writable_buffer)
+    // Write the journal entry using BufMut - position is tracked automatically
+    serialize_map_begin(&mut cursor)
       .map_err(|e| anyhow::anyhow!("Failed to serialize map begin: {e:?}"))?;
-    position += bytes_written;
     
-    let mut writable_buffer = &mut self.buffer[position..];
-    let bytes_written = serialize_string(&mut writable_buffer, key)
+    serialize_string(&mut cursor, key)
       .map_err(|e| anyhow::anyhow!("Failed to serialize string key: {e:?}"))?;
-    position += bytes_written;
     
-    let mut writable_buffer = &mut self.buffer[position..];
-    let bytes_written = encode_into_buf(&mut writable_buffer, value)
+    encode_into_buf(&mut cursor, value)
       .map_err(|e| anyhow::anyhow!("Failed to encode value: {e:?}"))?;
-    position += bytes_written;
     
-    let mut writable_buffer = &mut self.buffer[position..];
-    let bytes_written = serialize_container_end(&mut writable_buffer)
+    serialize_container_end(&mut cursor)
       .map_err(|e| anyhow::anyhow!("Failed to serialize container end: {e:?}"))?;
-    position += bytes_written;
     
-    // Then update position to commit the change
-    self.set_position(position);
+    // Calculate new position from remaining capacity
+    let bytes_written = buffer_len - initial_position - cursor.remaining_mut();
+    self.set_position(initial_position + bytes_written);
     Ok(())
   }
 
@@ -234,8 +228,8 @@ impl<'a> ResilientKv<'a> {
     // BONJSON document consisting of an array of journal entries.
     // Inserting this byte won't affect the key-value store's operation, because anything in
     // `self.buffer` from `self.position` onward is considered "garbage".
-    let mut writable_buffer = &mut self.buffer[self.position..];
-    serialize_container_end(&mut writable_buffer)
+    let mut cursor = &mut self.buffer[self.position..];
+    serialize_container_end(&mut cursor)
       .map_err(|e| anyhow::anyhow!("Failed to serialize container end: {e:?}"))?;
     
     let buffer = &self.buffer[16..];
