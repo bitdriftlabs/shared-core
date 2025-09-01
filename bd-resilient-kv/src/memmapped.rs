@@ -178,4 +178,12 @@ impl ResilientKv for MemMappedResilientKv {
   fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>> {
     self.in_memory_kv.as_hashmap()
   }
+
+  /// Get the time when the KV store was initialized (nanoseconds since UNIX epoch).
+  ///
+  /// # Errors
+  /// Returns an error if the initialization timestamp cannot be retrieved.
+  fn get_init_time(&mut self) -> anyhow::Result<u64> {
+    self.in_memory_kv.get_init_time()
+  }
 }

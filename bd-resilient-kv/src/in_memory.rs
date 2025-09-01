@@ -464,4 +464,12 @@ impl<'a> ResilientKv for InMemoryResilientKv<'a> {
 
     Ok(map)
   }
+
+  /// Get the time when the KV store was initialized (nanoseconds since UNIX epoch).
+  ///
+  /// # Errors
+  /// Returns an error if the initialization timestamp cannot be retrieved.
+  fn get_init_time(&mut self) -> anyhow::Result<u64> {
+    self.extract_metadata()
+  }
 }

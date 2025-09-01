@@ -36,6 +36,12 @@ pub trait ResilientKv {
   /// Get the current buffer usage as a percentage (0.0 to 1.0).
   fn buffer_usage_ratio(&self) -> f32;
 
+  /// Get the time when the KV store was initialized (nanoseconds since UNIX epoch).
+  ///
+  /// # Errors
+  /// Returns an error if the initialization timestamp cannot be retrieved.
+  fn get_init_time(&mut self) -> anyhow::Result<u64>;
+
   /// Set key to value in this kv store.
   ///
   /// This will create a new journal entry.

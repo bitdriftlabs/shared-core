@@ -391,3 +391,42 @@ fn test_memmapped_concurrent_operations() {
     let map = kv.as_hashmap().unwrap();
     assert!(map.len() > 0); // Should have some entries remaining
 }
+
+#[test]
+fn test_memmapped_get_init_time() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let path = temp_file.path().to_str().unwrap();
+    
+    let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+    
+    // Get the initialization time
+    let init_time = kv.get_init_time().unwrap();
+    
+    // The timestamp should be a reasonable nanosecond value since UNIX epoch
+    assert!(init_time > 946_684_800_000_000_000);
+    assert!(init_time < 4_102_444_800_000_000_000);
+    
+    // Should return the same time when called multiple times
+    let init_time2 = kv.get_init_time().unwrap();
+    assert_eq!(init_time, init_time2);
+}
+
+#[test]
+fn test_memmapped_get_init_time_persistence() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let path = temp_file.path().to_str().unwrap();
+    
+    let original_time = {
+        let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+        kv.set("test", &Value::String("value".to_string())).unwrap();
+        kv.sync().unwrap();
+        kv.get_init_time().unwrap()
+    };
+    
+    // Create a new instance from the same file
+    let mut kv = MemMappedResilientKv::from_file(path, None, None).unwrap();
+    let loaded_time = kv.get_init_time().unwrap();
+    
+    // Should have the same initialization time
+    assert_eq!(original_time, loaded_time);
+}

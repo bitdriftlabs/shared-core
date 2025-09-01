@@ -713,3 +713,40 @@ fn test_buffer_usage_ratio() {
   let after_ratio = kv.buffer_usage_ratio();
   assert!(after_ratio > initial_ratio);
 }
+
+#[test]
+fn test_get_init_time() {
+  let mut buffer = vec![0; 128];
+  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  
+  // Get the initialization time
+  let init_time = kv.get_init_time().unwrap();
+  
+  // The timestamp should be a reasonable nanosecond value since UNIX epoch
+  // It should be greater than 2000-01-01 (946684800000000000 nanoseconds)
+  // and less than 2100-01-01 (4102444800000000000 nanoseconds)
+  assert!(init_time > 946_684_800_000_000_000);
+  assert!(init_time < 4_102_444_800_000_000_000);
+  
+  // Should return the same time when called multiple times
+  let init_time2 = kv.get_init_time().unwrap();
+  assert_eq!(init_time, init_time2);
+}
+
+#[test]
+fn test_get_init_time_from_buffer() {
+  // Create a KV store and get its timestamp
+  let mut buffer1 = vec![0; 256];
+  let mut kv1 = InMemoryResilientKv::new(&mut buffer1, None, None).unwrap();
+  let original_time = kv1.get_init_time().unwrap();
+  
+  // Add some data
+  kv1.set("test", &Value::String("value".to_string())).unwrap();
+  
+  // Create a new KV store from the same buffer
+  let mut kv2 = InMemoryResilientKv::from_buffer(&mut buffer1, None, None).unwrap();
+  let loaded_time = kv2.get_init_time().unwrap();
+  
+  // Should have the same initialization time
+  assert_eq!(original_time, loaded_time);
+}
