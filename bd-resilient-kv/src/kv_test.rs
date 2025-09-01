@@ -5,20 +5,20 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{BasicByteBuffer, ByteBuffer, ResilientKv};
+use crate::ResilientKv;
 use bd_bonjson::Value;
 
 #[test]
 fn test_create_resilient_kv() {
-  let buffer = BasicByteBuffer::new(vec![0; 32]);
-  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+  let buffer = vec![0; 32];
+  let mut kv = ResilientKv::new(buffer).unwrap();
   assert_eq!(kv.as_hashmap().unwrap().len(), 0);
 }
 
 #[test]
 fn test_set_and_get_string_value() {
-  let buffer = BasicByteBuffer::new(vec![0; 64]);
-  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+  let buffer = vec![0; 64];
+  let mut kv = ResilientKv::new(buffer).unwrap();
 
   kv.set("test_key", &Value::String("test_value".to_string()))
     .unwrap();
@@ -33,8 +33,8 @@ fn test_set_and_get_string_value() {
 
 #[test]
 fn test_set_and_get_integer_value() {
-  let buffer = BasicByteBuffer::new(vec![0; 64]);
-  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+  let buffer = vec![0; 64];
+  let mut kv = ResilientKv::new(buffer).unwrap();
 
   kv.set("number", &Value::Signed(42)).unwrap();
 
@@ -45,8 +45,8 @@ fn test_set_and_get_integer_value() {
 
 #[test]
 fn test_set_and_get_boolean_value() {
-  let buffer = BasicByteBuffer::new(vec![0; 32]);
-  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+  let buffer = vec![0; 32];
+  let mut kv = ResilientKv::new(buffer).unwrap();
 
   kv.set("flag", &Value::Bool(true)).unwrap();
 
@@ -57,8 +57,8 @@ fn test_set_and_get_boolean_value() {
 
 #[test]
 fn test_set_multiple_values() {
-  let buffer = BasicByteBuffer::new(vec![0; 256]);
-  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+  let buffer = vec![0; 256];
+  let mut kv = ResilientKv::new(buffer).unwrap();
 
   kv.set("key1", &Value::String("value1".to_string()))
     .unwrap();
@@ -74,8 +74,8 @@ fn test_set_multiple_values() {
 
 #[test]
 fn test_overwrite_existing_key() {
-  let buffer = BasicByteBuffer::new(vec![0; 256]);
-  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+  let buffer = vec![0; 256];
+  let mut kv = ResilientKv::new(buffer).unwrap();
 
   kv.set("key", &Value::String("old_value".to_string()))
     .unwrap();
@@ -92,8 +92,8 @@ fn test_overwrite_existing_key() {
 
 #[test]
 fn test_delete_key() {
-  let buffer = BasicByteBuffer::new(vec![0; 64]);
-  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+  let buffer = vec![0; 64];
+  let mut kv = ResilientKv::new(buffer).unwrap();
 
   kv.set("key", &Value::String("value".to_string())).unwrap();
   kv.delete("key").unwrap();
@@ -104,8 +104,8 @@ fn test_delete_key() {
 
 #[test]
 fn test_set_null_value() {
-  let buffer = BasicByteBuffer::new(vec![0; 64]);
-  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+  let buffer = vec![0; 64];
+  let mut kv = ResilientKv::new(buffer).unwrap();
 
   kv.set("null_key", &Value::Null).unwrap();
 
@@ -115,8 +115,8 @@ fn test_set_null_value() {
 
 #[test]
 fn test_empty_kv_returns_empty_map() {
-  let buffer = BasicByteBuffer::new(vec![0; 32]);
-  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+  let buffer = vec![0; 32];
+  let mut kv = ResilientKv::new(buffer).unwrap();
 
   let map = kv.as_hashmap().unwrap();
   assert!(map.is_empty());
@@ -125,8 +125,8 @@ fn test_empty_kv_returns_empty_map() {
 #[test]
 fn test_create_kv_from_existing_store_with_many_entries() {
   // Create an initial KV store with a large buffer to accommodate many entries
-  let buffer1 = BasicByteBuffer::new(vec![0; 1024]);
-  let mut original_kv = ResilientKv::new(Box::new(buffer1)).unwrap();
+  let buffer1 = vec![0; 1024];
+  let mut original_kv = ResilientKv::new(buffer1).unwrap();
 
   // Add initial entries
   original_kv
@@ -224,8 +224,8 @@ fn test_create_kv_from_existing_store_with_many_entries() {
   );
 
   // Create a new KV store from the existing one
-  let buffer2 = BasicByteBuffer::new(vec![0; 1024]);
-  let mut new_kv = ResilientKv::from_kv_store(Box::new(buffer2), &mut original_kv).unwrap();
+  let buffer2 = vec![0; 1024];
+  let mut new_kv = ResilientKv::from_kv_store(buffer2, &mut original_kv).unwrap();
 
   // Verify the new store has the same state as the original
   let new_map = new_kv.as_hashmap().unwrap();
@@ -258,8 +258,8 @@ fn test_create_kv_from_existing_store_with_many_entries() {
 #[test]
 fn test_from_buffer_with_insufficient_data() {
   // Test with buffer too small for header
-  let small_buffer = BasicByteBuffer::new(vec![0; 8]); // Only 8 bytes, need 16
-  let result = ResilientKv::from_buffer(Box::new(small_buffer));
+  let small_buffer = vec![0; 8]; // Only 8 bytes, need 16
+  let result = ResilientKv::from_buffer(small_buffer);
   assert!(result.is_err());
 
   if let Err(e) = result {
@@ -272,8 +272,8 @@ fn test_from_buffer_with_invalid_version() {
   // Create a buffer with wrong version
   let mut buffer_data = vec![0; 32];
   buffer_data[0] = 99; // Invalid version (should be 1)
-  let buffer = BasicByteBuffer::new(buffer_data);
-  let result = ResilientKv::from_buffer(Box::new(buffer));
+  let buffer = buffer_data;
+  let result = ResilientKv::from_buffer(buffer);
   assert!(result.is_err());
 
   if let Err(e) = result {
@@ -284,8 +284,8 @@ fn test_from_buffer_with_invalid_version() {
 #[test]
 fn test_from_buffer_success() {
   // First create a KV store and populate it
-  let buffer1 = BasicByteBuffer::new(vec![0; 128]);
-  let mut kv1 = ResilientKv::new(Box::new(buffer1)).unwrap();
+  let buffer1 = vec![0; 128];
+  let mut kv1 = ResilientKv::new(buffer1).unwrap();
 
   kv1
     .set("key1", &Value::String("value1".to_string()))
@@ -298,8 +298,8 @@ fn test_from_buffer_success() {
 
   // Now use from_buffer to load the same data
   let buffer_slice = kv1.buffer.as_slice().to_vec();
-  let buffer2 = BasicByteBuffer::new(buffer_slice);
-  let mut kv2 = ResilientKv::from_buffer(Box::new(buffer2)).unwrap();
+  let buffer2 = buffer_slice;
+  let mut kv2 = ResilientKv::from_buffer(buffer2).unwrap();
 
   // Verify the data is loaded correctly
   let loaded_map = kv2.as_hashmap().unwrap();
@@ -321,8 +321,8 @@ fn test_from_buffer_with_invalid_position() {
   let large_position: u64 = 1000;
   buffer_data[8 .. 16].copy_from_slice(&large_position.to_le_bytes());
 
-  let buffer = BasicByteBuffer::new(buffer_data);
-  let result = ResilientKv::from_buffer(Box::new(buffer));
+  let buffer = buffer_data;
+  let result = ResilientKv::from_buffer(buffer);
   assert!(result.is_err());
 
   if let Err(e) = result {
@@ -331,28 +331,9 @@ fn test_from_buffer_with_invalid_position() {
 }
 
 #[test]
-fn test_byte_buffer_trait() {
-  let data = vec![1, 2, 3, 4, 5];
-  let mut buffer = BasicByteBuffer::new(data);
-
-  // Test as_slice
-  assert_eq!(buffer.as_slice(), &[1, 2, 3, 4, 5]);
-
-  // Test as_mutable_slice
-  {
-    let mut_slice = buffer.as_mutable_slice();
-    mut_slice[0] = 10;
-    mut_slice[4] = 50;
-  }
-
-  // Verify the changes
-  assert_eq!(buffer.as_slice(), &[10, 2, 3, 4, 50]);
-}
-
-#[test]
 fn test_float_values() {
-  let buffer = BasicByteBuffer::new(vec![0; 256]);
-  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+  let buffer = vec![0; 256];
+  let mut kv = ResilientKv::new(buffer).unwrap();
 
   // Test positive float
   kv.set("pi", &Value::Float(std::f64::consts::PI)).unwrap();
@@ -379,8 +360,8 @@ fn test_float_values() {
 
 #[test]
 fn test_unsigned_values() {
-  let buffer = BasicByteBuffer::new(vec![0; 256]);
-  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+  let buffer = vec![0; 256];
+  let mut kv = ResilientKv::new(buffer).unwrap();
 
   // Test small unsigned values (will be decoded as signed when they fit)
   kv.set("count", &Value::Unsigned(42)).unwrap();
@@ -410,8 +391,8 @@ fn test_unsigned_values() {
 
 #[test]
 fn test_array_values() {
-  let buffer = BasicByteBuffer::new(vec![0; 512]);
-  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+  let buffer = vec![0; 512];
+  let mut kv = ResilientKv::new(buffer).unwrap();
 
   // Test empty array
   let empty_array = Value::Array(vec![]);
@@ -454,8 +435,8 @@ fn test_array_values() {
 
 #[test]
 fn test_object_values() {
-  let buffer = BasicByteBuffer::new(vec![0; 512]);
-  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+  let buffer = vec![0; 512];
+  let mut kv = ResilientKv::new(buffer).unwrap();
 
   // Test empty object
   let empty_object = Value::Object(std::collections::HashMap::new());
@@ -520,8 +501,8 @@ fn test_object_values() {
 
 #[test]
 fn test_complex_nested_structures() {
-  let buffer = BasicByteBuffer::new(vec![0; 1024]);
-  let mut kv = ResilientKv::new(Box::new(buffer)).unwrap();
+  let buffer = vec![0; 1024];
+  let mut kv = ResilientKv::new(buffer).unwrap();
 
   // Test array containing objects
   let mut obj1 = std::collections::HashMap::new();
