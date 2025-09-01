@@ -10,6 +10,7 @@
 mod kv_test;
 
 pub mod in_memory;
+pub mod memmapped;
 
 use bd_bonjson::Value;
 use std::collections::HashMap;
@@ -58,3 +59,4 @@ pub trait ResilientKv {
 
 // Re-export the in-memory implementation for convenience
 pub use in_memory::InMemoryResilientKv;
+pub use memmapped::MemMappedResilientKv;
