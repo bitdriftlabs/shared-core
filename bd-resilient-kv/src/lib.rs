@@ -13,8 +13,13 @@ mod kv_test;
 #[path = "./memmapped_test.rs"]
 mod memmapped_test;
 
+#[cfg(test)]
+#[path = "./double_buffered_test.rs"]
+mod double_buffered_test;
+
 pub mod in_memory;
 pub mod memmapped;
+pub mod double_buffered;
 
 use bd_bonjson::Value;
 use std::collections::HashMap;
@@ -70,3 +75,4 @@ pub trait ResilientKv {
 // Re-export the in-memory implementation for convenience
 pub use in_memory::InMemoryResilientKv;
 pub use memmapped::MemMappedResilientKv;
+pub use double_buffered::DoubleBufferedKv;
