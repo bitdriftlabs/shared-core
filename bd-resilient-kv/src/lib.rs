@@ -43,18 +43,6 @@ pub struct ResilientKv<'a> {
 impl<'a> ResilientKv<'a> {
   /// Create a new KV store using the provided buffer as storage space.
   ///
-  /// Uses default high water mark of 80% of buffer size.
-  ///
-  /// The buffer will be overwritten.
-  ///
-  /// # Errors
-  /// Returns an error if serialization fails.
-  pub fn new(buffer: &'a mut [u8]) -> anyhow::Result<Self> {
-    Self::new_with_high_water_mark(buffer, None, None)
-  }
-
-  /// Create a new KV store with configurable high water mark.
-  ///
   /// The buffer will be overwritten.
   ///
   /// # Arguments
@@ -64,7 +52,7 @@ impl<'a> ResilientKv<'a> {
   ///
   /// # Errors
   /// Returns an error if serialization fails or if high_water_mark_ratio is invalid.
-  pub fn new_with_high_water_mark(
+  pub fn new(
     buffer: &'a mut [u8], 
     high_water_mark_ratio: Option<f32>,
     callback: Option<HighWaterMarkCallback>
@@ -118,18 +106,6 @@ impl<'a> ResilientKv<'a> {
 
   /// Create a new KV store with state loaded from the provided buffer.
   ///
-  /// Uses default high water mark of 80% of buffer size.
-  ///
-  /// The buffer is expected to already contain a properly formatted KV store file.
-  ///
-  /// # Errors
-  /// Returns an error if the buffer is invalid or corrupted.
-  pub fn from_buffer(buffer: &'a mut [u8]) -> anyhow::Result<Self> {
-    Self::from_buffer_with_high_water_mark(buffer, None, None)
-  }
-
-  /// Create a new KV store with state loaded from the provided buffer and configurable high water mark.
-  ///
   /// The buffer is expected to already contain a properly formatted KV store file.
   ///
   /// # Arguments
@@ -139,7 +115,7 @@ impl<'a> ResilientKv<'a> {
   ///
   /// # Errors
   /// Returns an error if the buffer is invalid, corrupted, or if high_water_mark_ratio is invalid.
-  pub fn from_buffer_with_high_water_mark(
+  pub fn from_buffer(
     buffer: &'a mut [u8],
     high_water_mark_ratio: Option<f32>,
     callback: Option<HighWaterMarkCallback>
@@ -206,7 +182,7 @@ impl<'a> ResilientKv<'a> {
   /// # Errors
   /// Returns an error if serialization or encoding fails.
   pub fn from_kv_store(buffer: &'a mut [u8], kv_store: &mut Self) -> anyhow::Result<Self> {
-    let mut kv = Self::new(buffer)?;
+    let mut kv = Self::new(buffer, None, None)?;
     let initial_position = kv.position;
     let buffer_len = kv.buffer.len();
     let mut cursor = &mut kv.buffer[kv.position..];
@@ -232,13 +208,6 @@ impl<'a> ResilientKv<'a> {
     kv.set_position(initial_position + bytes_written);
 
     Ok(kv)
-  }
-
-  #[allow(dead_code)]
-  fn set_version(&mut self, version: u64) {
-    self.version = version;
-    let version_bytes = version.to_le_bytes();
-    self.buffer[0..8].copy_from_slice(&version_bytes);
   }
 
   fn set_position(&mut self, position: usize) {

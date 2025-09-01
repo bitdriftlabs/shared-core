@@ -13,14 +13,14 @@ use tempfile::NamedTempFile;
 #[test]
 fn test_create_resilient_kv() {
   let mut buffer = vec![0; 32];
-  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
   assert_eq!(kv.as_hashmap().unwrap().len(), 0);
 }
 
 #[test]
 fn test_set_and_get_string_value() {
   let mut buffer = vec![0; 64];
-  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
 
   kv.set("test_key", &Value::String("test_value".to_string()))
     .unwrap();
@@ -36,7 +36,7 @@ fn test_set_and_get_string_value() {
 #[test]
 fn test_set_and_get_integer_value() {
   let mut buffer = vec![0; 64];
-  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
 
   kv.set("number", &Value::Signed(42)).unwrap();
 
@@ -48,7 +48,7 @@ fn test_set_and_get_integer_value() {
 #[test]
 fn test_set_and_get_boolean_value() {
   let mut buffer = vec![0; 32];
-  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
 
   kv.set("flag", &Value::Bool(true)).unwrap();
 
@@ -60,7 +60,7 @@ fn test_set_and_get_boolean_value() {
 #[test]
 fn test_set_multiple_values() {
   let mut buffer = vec![0; 256];
-  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
 
   kv.set("key1", &Value::String("value1".to_string()))
     .unwrap();
@@ -77,7 +77,7 @@ fn test_set_multiple_values() {
 #[test]
 fn test_overwrite_existing_key() {
   let mut buffer = vec![0; 256];
-  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
 
   kv.set("key", &Value::String("old_value".to_string()))
     .unwrap();
@@ -95,7 +95,7 @@ fn test_overwrite_existing_key() {
 #[test]
 fn test_delete_key() {
   let mut buffer = vec![0; 64];
-  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
 
   kv.set("key", &Value::String("value".to_string())).unwrap();
   kv.delete("key").unwrap();
@@ -107,7 +107,7 @@ fn test_delete_key() {
 #[test]
 fn test_set_null_value() {
   let mut buffer = vec![0; 64];
-  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
 
   kv.set("null_key", &Value::Null).unwrap();
 
@@ -118,7 +118,7 @@ fn test_set_null_value() {
 #[test]
 fn test_empty_kv_returns_empty_map() {
   let mut buffer = vec![0; 32];
-  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
 
   let map = kv.as_hashmap().unwrap();
   assert!(map.is_empty());
@@ -128,7 +128,7 @@ fn test_empty_kv_returns_empty_map() {
 fn test_create_kv_from_existing_store_with_many_entries() {
   // Create an initial KV store with a large buffer to accommodate many entries
   let mut buffer1 = vec![0; 1024];
-  let mut original_kv = ResilientKv::new(&mut buffer1).unwrap();
+  let mut original_kv = ResilientKv::new(&mut buffer1, None, None).unwrap();
 
   // Add initial entries
   original_kv
@@ -261,7 +261,7 @@ fn test_create_kv_from_existing_store_with_many_entries() {
 fn test_from_buffer_with_insufficient_data() {
   // Test with buffer too small for header
   let mut small_buffer = vec![0; 8]; // Only 8 bytes, need 16
-  let result = ResilientKv::from_buffer(&mut small_buffer);
+  let result = ResilientKv::from_buffer(&mut small_buffer, None, None);
   assert!(result.is_err());
 
   if let Err(e) = result {
@@ -275,7 +275,7 @@ fn test_from_buffer_with_invalid_version() {
   let mut buffer_data = vec![0; 32];
   buffer_data[0] = 99; // Invalid version (should be 1)
   let mut buffer = buffer_data;
-  let result = ResilientKv::from_buffer(&mut buffer);
+  let result = ResilientKv::from_buffer(&mut buffer, None, None);
   assert!(result.is_err());
 
   if let Err(e) = result {
@@ -287,7 +287,7 @@ fn test_from_buffer_with_invalid_version() {
 fn test_from_buffer_success() {
   // First create a KV store and populate it
   let mut buffer1 = vec![0; 128];
-  let mut kv1 = ResilientKv::new(&mut buffer1).unwrap();
+  let mut kv1 = ResilientKv::new(&mut buffer1, None, None).unwrap();
 
   kv1
     .set("key1", &Value::String("value1".to_string()))
@@ -301,7 +301,7 @@ fn test_from_buffer_success() {
   // Now use from_buffer to load the same data
   let buffer_slice = kv1.buffer.to_vec();
   let mut buffer2 = buffer_slice;
-  let mut kv2 = ResilientKv::from_buffer(&mut buffer2).unwrap();
+  let mut kv2 = ResilientKv::from_buffer(&mut buffer2, None, None).unwrap();
 
   // Verify the data is loaded correctly
   let loaded_map = kv2.as_hashmap().unwrap();
@@ -324,7 +324,7 @@ fn test_from_buffer_with_invalid_position() {
   buffer_data[8 .. 16].copy_from_slice(&large_position.to_le_bytes());
 
   let mut buffer = buffer_data;
-  let result = ResilientKv::from_buffer(&mut buffer);
+  let result = ResilientKv::from_buffer(&mut buffer, None, None);
   assert!(result.is_err());
 
   if let Err(e) = result {
@@ -335,7 +335,7 @@ fn test_from_buffer_with_invalid_position() {
 #[test]
 fn test_float_values() {
   let mut buffer = vec![0; 256];
-  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
 
   // Test positive float
   kv.set("pi", &Value::Float(std::f64::consts::PI)).unwrap();
@@ -363,7 +363,7 @@ fn test_float_values() {
 #[test]
 fn test_unsigned_values() {
   let mut buffer = vec![0; 256];
-  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
 
   // Test small unsigned values (will be decoded as signed when they fit)
   kv.set("count", &Value::Unsigned(42)).unwrap();
@@ -394,7 +394,7 @@ fn test_unsigned_values() {
 #[test]
 fn test_array_values() {
   let mut buffer = vec![0; 512];
-  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
 
   // Test empty array
   let empty_array = Value::Array(vec![]);
@@ -438,7 +438,7 @@ fn test_array_values() {
 #[test]
 fn test_object_values() {
   let mut buffer = vec![0; 512];
-  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
 
   // Test empty object
   let empty_object = Value::Object(std::collections::HashMap::new());
@@ -504,7 +504,7 @@ fn test_object_values() {
 #[test]
 fn test_complex_nested_structures() {
   let mut buffer = vec![0; 1024];
-  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
 
   // Test array containing objects
   let mut obj1 = std::collections::HashMap::new();
@@ -581,7 +581,7 @@ fn test_with_memory_mapped_file() {
   let mut mmap = unsafe { MmapMut::map_mut(&file).unwrap() };
   
   // Create a ResilientKv using the memory-mapped buffer
-  let mut kv = ResilientKv::new(&mut mmap[..]).unwrap();
+  let mut kv = ResilientKv::new(&mut mmap[..], None, None).unwrap();
   
   // Use the KV store normally
   kv.set("test_key", &Value::String("memory_mapped_value".to_string())).unwrap();
@@ -601,7 +601,7 @@ fn test_with_memory_mapped_file() {
 #[test]
 fn test_high_water_mark_default() {
   let mut buffer = vec![0; 100];
-  let kv = ResilientKv::new(&mut buffer).unwrap();
+  let kv = ResilientKv::new(&mut buffer, None, None).unwrap();
   
   // Default should be 80% of buffer size
   assert_eq!(kv.high_water_mark(), 80);
@@ -612,7 +612,7 @@ fn test_high_water_mark_default() {
 #[test]
 fn test_high_water_mark_custom_ratio() {
   let mut buffer = vec![0; 100];
-  let kv = ResilientKv::new_with_high_water_mark(&mut buffer, Some(0.6), None).unwrap();
+  let kv = ResilientKv::new(&mut buffer, Some(0.6), None).unwrap();
   
   // Should be 60% of buffer size
   assert_eq!(kv.high_water_mark(), 60);
@@ -624,12 +624,12 @@ fn test_high_water_mark_invalid_ratio() {
   let mut buffer = vec![0; 100];
   
   // Test ratio > 1.0
-  let result = ResilientKv::new_with_high_water_mark(&mut buffer, Some(1.5), None);
+  let result = ResilientKv::new(&mut buffer, Some(1.5), None);
   assert!(result.is_err());
   assert!(result.unwrap_err().to_string().contains("High water mark ratio must be between 0.0 and 1.0"));
   
   // Test negative ratio
-  let result = ResilientKv::new_with_high_water_mark(&mut buffer, Some(-0.1), None);
+  let result = ResilientKv::new(&mut buffer, Some(-0.1), None);
   assert!(result.is_err());
   assert!(result.unwrap_err().to_string().contains("High water mark ratio must be between 0.0 and 1.0"));
 }
@@ -648,7 +648,7 @@ fn test_high_water_mark_trigger() {
   }
   
   let mut buffer = vec![0; 64];
-  let mut kv = ResilientKv::new_with_high_water_mark(&mut buffer, Some(0.5), Some(test_callback)).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, Some(0.5), Some(test_callback)).unwrap();
   
   // Reset the global state
   unsafe {
@@ -687,12 +687,12 @@ fn test_high_water_mark_from_buffer() {
   
   // Create a KV store and add some data
   {
-    let mut kv = ResilientKv::new(&mut buffer).unwrap();
+    let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
     kv.set("test", &Value::String("value".to_string())).unwrap();
   }
   
   // Load from buffer with custom high water mark
-  let kv = ResilientKv::from_buffer_with_high_water_mark(&mut buffer, Some(0.7), None).unwrap();
+  let kv = ResilientKv::from_buffer(&mut buffer, Some(0.7), None).unwrap();
   assert_eq!(kv.high_water_mark(), 70);
   
   // The high water mark should not be triggered yet since we only added one small entry
@@ -702,7 +702,7 @@ fn test_high_water_mark_from_buffer() {
 #[test] 
 fn test_buffer_usage_ratio() {
   let mut buffer = vec![0; 100];
-  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  let mut kv = ResilientKv::new(&mut buffer, None, None).unwrap();
   
   // Initially, usage should be low (just the header and array start)
   let initial_ratio = kv.buffer_usage_ratio();
