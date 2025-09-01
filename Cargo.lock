@@ -1018,6 +1018,7 @@ dependencies = [
  "cbindgen",
  "ctor",
  "log",
+ "memmap2",
  "tempfile",
 ]
 

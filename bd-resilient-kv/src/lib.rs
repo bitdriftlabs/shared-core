@@ -23,20 +23,20 @@ use std::collections::HashMap;
 const VERSION: u64 = 1;
 
 /// A crash-resilient key-value store that can be recovered even if writing is interrupted.
-pub struct ResilientKv {
+pub struct ResilientKv<'a> {
   version: u64,
   position: usize,
-  buffer: Vec<u8>,
+  buffer: &'a mut [u8],
 }
 
-impl ResilientKv {
+impl<'a> ResilientKv<'a> {
   /// Create a new KV store using the provided buffer as storage space.
   ///
   /// The buffer will be overwritten.
   ///
   /// # Errors
   /// Returns an error if serialization fails.
-  pub fn new(mut buffer: Vec<u8>) -> anyhow::Result<Self> {
+  pub fn new(buffer: &'a mut [u8]) -> anyhow::Result<Self> {
     // KV files have the following structure:
     // | Position | Data                     | Type           |
     // |----------|--------------------------|----------------|
@@ -77,7 +77,7 @@ impl ResilientKv {
   ///
   /// # Errors
   /// Returns an error if the buffer is invalid or corrupted.
-  pub fn from_buffer(buffer: Vec<u8>) -> anyhow::Result<Self> {
+  pub fn from_buffer(buffer: &'a mut [u8]) -> anyhow::Result<Self> {
     if buffer.len() < 16 {
       anyhow::bail!(
         "Buffer too small: {} bytes, need at least 16 bytes for header",
@@ -127,7 +127,7 @@ impl ResilientKv {
   ///
   /// # Errors
   /// Returns an error if serialization or encoding fails.
-  pub fn from_kv_store(buffer: Vec<u8>, kv_store: &mut Self) -> anyhow::Result<Self> {
+  pub fn from_kv_store(buffer: &'a mut [u8], kv_store: &mut Self) -> anyhow::Result<Self> {
     let mut kv = Self::new(buffer)?;
     let mut position = kv.position;
     
