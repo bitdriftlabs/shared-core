@@ -17,9 +17,14 @@ mod memmapped_test;
 #[path = "./double_buffered_test.rs"]
 mod double_buffered_test;
 
+#[cfg(test)]
+#[path = "./double_buffered_memmapped_test.rs"]
+mod double_buffered_memmapped_test;
+
 pub mod in_memory;
 pub mod memmapped;
 pub mod double_buffered;
+pub mod double_buffered_memmapped;
 
 use bd_bonjson::Value;
 use std::collections::HashMap;
@@ -76,3 +81,4 @@ pub trait ResilientKv {
 pub use in_memory::InMemoryResilientKv;
 pub use memmapped::MemMappedResilientKv;
 pub use double_buffered::DoubleBufferedKv;
+pub use double_buffered_memmapped::DoubleBufferedMemMappedKv;
