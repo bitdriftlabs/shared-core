@@ -23,21 +23,52 @@ use std::collections::HashMap;
 
 const VERSION: u64 = 1;
 
+/// Callback function type for high water mark notifications.
+/// 
+/// Called when the buffer usage exceeds the high water mark threshold.
+/// Parameters: (current_position, buffer_size, high_water_mark_position)
+pub type HighWaterMarkCallback = fn(usize, usize, usize);
+
 /// A crash-resilient key-value store that can be recovered even if writing is interrupted.
+#[derive(Debug)]
 pub struct ResilientKv<'a> {
   version: u64,
   position: usize,
   buffer: &'a mut [u8],
+  high_water_mark: usize,
+  high_water_mark_callback: Option<HighWaterMarkCallback>,
+  high_water_mark_triggered: bool,
 }
 
 impl<'a> ResilientKv<'a> {
   /// Create a new KV store using the provided buffer as storage space.
+  ///
+  /// Uses default high water mark of 80% of buffer size.
   ///
   /// The buffer will be overwritten.
   ///
   /// # Errors
   /// Returns an error if serialization fails.
   pub fn new(buffer: &'a mut [u8]) -> anyhow::Result<Self> {
+    Self::new_with_high_water_mark(buffer, None, None)
+  }
+
+  /// Create a new KV store with configurable high water mark.
+  ///
+  /// The buffer will be overwritten.
+  ///
+  /// # Arguments
+  /// * `buffer` - The storage buffer
+  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
+  /// * `callback` - Optional callback function called when high water mark is exceeded
+  ///
+  /// # Errors
+  /// Returns an error if serialization fails or if high_water_mark_ratio is invalid.
+  pub fn new_with_high_water_mark(
+    buffer: &'a mut [u8], 
+    high_water_mark_ratio: Option<f32>,
+    callback: Option<HighWaterMarkCallback>
+  ) -> anyhow::Result<Self> {
     // KV files have the following structure:
     // | Position | Data                     | Type           |
     // |----------|--------------------------|----------------|
@@ -48,6 +79,12 @@ impl<'a> ResilientKv<'a> {
     // | ...      | Journal entry            | BONJSON Object |
     // | ...      | ...                      | ...            |
     // The last Container End byte (to terminate the array) is not stored in the file.
+    
+    // Validate high water mark ratio
+    let ratio = high_water_mark_ratio.unwrap_or(0.8);
+    if !(0.0..=1.0).contains(&ratio) {
+      anyhow::bail!("High water mark ratio must be between 0.0 and 1.0, got: {}", ratio);
+    }
 
     // Write version
     let version_bytes = VERSION.to_le_bytes();
@@ -65,26 +102,59 @@ impl<'a> ResilientKv<'a> {
     // Write initial position
     let position_bytes = (position as u64).to_le_bytes();
     buffer[8..16].copy_from_slice(&position_bytes);
+    
+    // Calculate high water mark position
+    let high_water_mark = (buffer_len as f32 * ratio) as usize;
 
     Ok(Self {
       version: VERSION,
       position,
       buffer,
+      high_water_mark,
+      high_water_mark_callback: callback,
+      high_water_mark_triggered: false,
     })
   }
 
   /// Create a new KV store with state loaded from the provided buffer.
+  ///
+  /// Uses default high water mark of 80% of buffer size.
   ///
   /// The buffer is expected to already contain a properly formatted KV store file.
   ///
   /// # Errors
   /// Returns an error if the buffer is invalid or corrupted.
   pub fn from_buffer(buffer: &'a mut [u8]) -> anyhow::Result<Self> {
+    Self::from_buffer_with_high_water_mark(buffer, None, None)
+  }
+
+  /// Create a new KV store with state loaded from the provided buffer and configurable high water mark.
+  ///
+  /// The buffer is expected to already contain a properly formatted KV store file.
+  ///
+  /// # Arguments
+  /// * `buffer` - The storage buffer containing existing KV data
+  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
+  /// * `callback` - Optional callback function called when high water mark is exceeded
+  ///
+  /// # Errors
+  /// Returns an error if the buffer is invalid, corrupted, or if high_water_mark_ratio is invalid.
+  pub fn from_buffer_with_high_water_mark(
+    buffer: &'a mut [u8],
+    high_water_mark_ratio: Option<f32>,
+    callback: Option<HighWaterMarkCallback>
+  ) -> anyhow::Result<Self> {
     if buffer.len() < 16 {
       anyhow::bail!(
         "Buffer too small: {} bytes, need at least 16 bytes for header",
         buffer.len()
       );
+    }
+    
+    // Validate high water mark ratio
+    let ratio = high_water_mark_ratio.unwrap_or(0.8);
+    if !(0.0..=1.0).contains(&ratio) {
+      anyhow::bail!("High water mark ratio must be between 0.0 and 1.0, got: {}", ratio);
     }
 
     let version_bytes: [u8; 8] = buffer[.. 8]
@@ -99,10 +169,16 @@ impl<'a> ResilientKv<'a> {
     let position_usize = usize::try_from(position_value)
       .map_err(|_| anyhow::anyhow!("Position value too large: {position_value}"))?;
 
+    // Calculate high water mark position
+    let high_water_mark = (buffer.len() as f32 * ratio) as usize;
+    
     let kv = Self {
       version: u64::from_le_bytes(version_bytes),
       position: position_usize,
       buffer,
+      high_water_mark,
+      high_water_mark_callback: callback,
+      high_water_mark_triggered: position_usize >= high_water_mark,
     };
 
     if kv.version != VERSION {
@@ -169,6 +245,34 @@ impl<'a> ResilientKv<'a> {
     self.position = position;
     let position_bytes = (position as u64).to_le_bytes();
     self.buffer[8..16].copy_from_slice(&position_bytes);
+    
+    // Check high water mark
+    self.check_high_water_mark();
+  }
+
+  /// Check if the current position has exceeded the high water mark and trigger callback if needed.
+  fn check_high_water_mark(&mut self) {
+    if !self.high_water_mark_triggered && self.position >= self.high_water_mark {
+      self.high_water_mark_triggered = true;
+      if let Some(callback) = self.high_water_mark_callback {
+        callback(self.position, self.buffer.len(), self.high_water_mark);
+      }
+    }
+  }
+
+  /// Get the current high water mark position.
+  pub fn high_water_mark(&self) -> usize {
+    self.high_water_mark
+  }
+
+  /// Check if the high water mark has been triggered.
+  pub fn is_high_water_mark_triggered(&self) -> bool {
+    self.high_water_mark_triggered
+  }
+
+  /// Get the current buffer usage as a percentage (0.0 to 1.0).
+  pub fn buffer_usage_ratio(&self) -> f32 {
+    self.position as f32 / self.buffer.len() as f32
   }
 
   fn write_journal_entry(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {

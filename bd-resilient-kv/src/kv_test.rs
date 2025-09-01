@@ -597,3 +597,119 @@ fn test_with_memory_mapped_file() {
   
   // The data is automatically persisted to the file via the memory mapping
 }
+
+#[test]
+fn test_high_water_mark_default() {
+  let mut buffer = vec![0; 100];
+  let kv = ResilientKv::new(&mut buffer).unwrap();
+  
+  // Default should be 80% of buffer size
+  assert_eq!(kv.high_water_mark(), 80);
+  assert!(!kv.is_high_water_mark_triggered());
+  assert!(kv.buffer_usage_ratio() < 0.8);
+}
+
+#[test]
+fn test_high_water_mark_custom_ratio() {
+  let mut buffer = vec![0; 100];
+  let kv = ResilientKv::new_with_high_water_mark(&mut buffer, Some(0.6), None).unwrap();
+  
+  // Should be 60% of buffer size
+  assert_eq!(kv.high_water_mark(), 60);
+  assert!(!kv.is_high_water_mark_triggered());
+}
+
+#[test]
+fn test_high_water_mark_invalid_ratio() {
+  let mut buffer = vec![0; 100];
+  
+  // Test ratio > 1.0
+  let result = ResilientKv::new_with_high_water_mark(&mut buffer, Some(1.5), None);
+  assert!(result.is_err());
+  assert!(result.unwrap_err().to_string().contains("High water mark ratio must be between 0.0 and 1.0"));
+  
+  // Test negative ratio
+  let result = ResilientKv::new_with_high_water_mark(&mut buffer, Some(-0.1), None);
+  assert!(result.is_err());
+  assert!(result.unwrap_err().to_string().contains("High water mark ratio must be between 0.0 and 1.0"));
+}
+
+#[test]
+fn test_high_water_mark_trigger() {
+  // Use a global state for the callback since we need a function pointer
+  static mut CALLBACK_TRIGGERED: bool = false;
+  static mut CALLBACK_DATA: (usize, usize, usize) = (0, 0, 0);
+  
+  fn test_callback(pos: usize, size: usize, hwm: usize) {
+    unsafe {
+      CALLBACK_TRIGGERED = true;
+      CALLBACK_DATA = (pos, size, hwm);
+    }
+  }
+  
+  let mut buffer = vec![0; 64];
+  let mut kv = ResilientKv::new_with_high_water_mark(&mut buffer, Some(0.5), Some(test_callback)).unwrap();
+  
+  // Reset the global state
+  unsafe {
+    CALLBACK_TRIGGERED = false;
+    CALLBACK_DATA = (0, 0, 0);
+  }
+  
+  // High water mark should be at 32 bytes (50% of 64)
+  assert_eq!(kv.high_water_mark(), 32);
+  assert!(!kv.is_high_water_mark_triggered());
+  assert!(unsafe { !CALLBACK_TRIGGERED });
+  
+  // Add enough data to exceed the high water mark
+  // Each string entry should be approximately: map_begin(1) + key_len + key + value_len + value + map_end(1)
+  // We'll add multiple entries to exceed position 32
+  for i in 0..10 {
+    kv.set(&format!("key_{}", i), &Value::String(format!("value_{}", i))).unwrap();
+    
+    if kv.is_high_water_mark_triggered() {
+      break;
+    }
+  }
+  
+  assert!(kv.is_high_water_mark_triggered());
+  assert!(unsafe { CALLBACK_TRIGGERED });
+  
+  let (pos, size, hwm) = unsafe { CALLBACK_DATA };
+  assert!(pos >= 32);
+  assert_eq!(size, 64);
+  assert_eq!(hwm, 32);
+}
+
+#[test]
+fn test_high_water_mark_from_buffer() {
+  let mut buffer = vec![0; 100];
+  
+  // Create a KV store and add some data
+  {
+    let mut kv = ResilientKv::new(&mut buffer).unwrap();
+    kv.set("test", &Value::String("value".to_string())).unwrap();
+  }
+  
+  // Load from buffer with custom high water mark
+  let kv = ResilientKv::from_buffer_with_high_water_mark(&mut buffer, Some(0.7), None).unwrap();
+  assert_eq!(kv.high_water_mark(), 70);
+  
+  // The high water mark should not be triggered yet since we only added one small entry
+  assert!(!kv.is_high_water_mark_triggered());
+}
+
+#[test] 
+fn test_buffer_usage_ratio() {
+  let mut buffer = vec![0; 100];
+  let mut kv = ResilientKv::new(&mut buffer).unwrap();
+  
+  // Initially, usage should be low (just the header and array start)
+  let initial_ratio = kv.buffer_usage_ratio();
+  assert!(initial_ratio < 0.2);  // Should be well under 20%
+  
+  // Add data and check that usage ratio increases
+  kv.set("test", &Value::String("test_value".to_string())).unwrap();
+  let after_ratio = kv.buffer_usage_ratio();
+  assert!(after_ratio > initial_ratio);
+}
