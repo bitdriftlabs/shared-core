@@ -12,7 +12,7 @@ use tempfile::NamedTempFile;
 
 #[test]
 fn test_create_resilient_kv() {
-  let mut buffer = vec![0; 32];
+  let mut buffer = vec![0; 128];
   let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
   assert_eq!(kv.as_hashmap().unwrap().len(), 0);
 }
@@ -47,7 +47,7 @@ fn test_set_and_get_integer_value() {
 
 #[test]
 fn test_set_and_get_boolean_value() {
-  let mut buffer = vec![0; 32];
+  let mut buffer = vec![0; 128];
   let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
 
   kv.set("flag", &Value::Bool(true)).unwrap();
@@ -117,7 +117,7 @@ fn test_set_null_value() {
 
 #[test]
 fn test_empty_kv_returns_empty_map() {
-  let mut buffer = vec![0; 32];
+  let mut buffer = vec![0; 128];
   let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
 
   let map = kv.as_hashmap().unwrap();
@@ -701,12 +701,12 @@ fn test_high_water_mark_from_buffer() {
 
 #[test] 
 fn test_buffer_usage_ratio() {
-  let mut buffer = vec![0; 100];
+  let mut buffer = vec![0; 200];
   let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
   
-  // Initially, usage should be low (just the header and array start)
+  // Initially, usage includes header and metadata, should be reasonable
   let initial_ratio = kv.buffer_usage_ratio();
-  assert!(initial_ratio < 0.2);  // Should be well under 20%
+  assert!(initial_ratio < 0.3);  // Should be well under 30% (accounts for metadata)
   
   // Add data and check that usage ratio increases
   kv.set("test", &Value::String("test_value".to_string())).unwrap();

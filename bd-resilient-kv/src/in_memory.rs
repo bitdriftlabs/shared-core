@@ -17,6 +17,7 @@ use bd_bonjson::serialize_primitives::{
 };
 use bytes::BufMut;
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const VERSION: u64 = 1;
 
@@ -54,10 +55,12 @@ impl<'a> InMemoryResilientKv<'a> {
     // | 0        | Version                  | u64            |
     // | 8        | Position                 | u64            |
     // | 16       | Type Code: Array Start   | u8             |
-    // | 17       | Initial data             | BONJSON Object |
+    // | 17       | Metadata Object          | BONJSON Object |
+    // | ...      | Initial data             | BONJSON Object |
     // | ...      | Journal entry            | BONJSON Object |
     // | ...      | ...                      | ...            |
     // The last Container End byte (to terminate the array) is not stored in the file.
+    // The metadata object contains an "initialized" key with a u64 timestamp in nanoseconds.
     
     // Validate high water mark ratio
     let ratio = high_water_mark_ratio.unwrap_or(0.8);
@@ -74,6 +77,25 @@ impl<'a> InMemoryResilientKv<'a> {
     let mut cursor = &mut buffer[16..];
     serialize_array_begin(&mut cursor)
       .map_err(|e| anyhow::anyhow!("Failed to serialize array begin: {e:?}"))?;
+    
+    // Write metadata object first
+    serialize_map_begin(&mut cursor)
+      .map_err(|e| anyhow::anyhow!("Failed to serialize metadata map begin: {e:?}"))?;
+    
+    serialize_string(&mut cursor, "initialized")
+      .map_err(|e| anyhow::anyhow!("Failed to serialize initialized key: {e:?}"))?;
+    
+    // Get current time in nanoseconds since UNIX epoch
+    let now = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .map_err(|e| anyhow::anyhow!("System time error: {e}"))?
+      .as_nanos() as u64;
+    
+    encode_into_buf(&mut cursor, &Value::Unsigned(now))
+      .map_err(|e| anyhow::anyhow!("Failed to encode initialized timestamp: {e:?}"))?;
+    
+    serialize_container_end(&mut cursor)
+      .map_err(|e| anyhow::anyhow!("Failed to serialize metadata container end: {e:?}"))?;
     
     // Calculate position from remaining capacity
     let position = buffer_len - cursor.remaining_mut();
@@ -159,6 +181,11 @@ impl<'a> InMemoryResilientKv<'a> {
       );
     }
 
+    // Validate that metadata exists and has the "initialized" key
+    if let Err(e) = Self::validate_metadata(&kv.buffer[16..kv.position]) {
+      anyhow::bail!("Invalid metadata in buffer: {}", e);
+    }
+
     Ok(kv)
   }
 
@@ -166,14 +193,18 @@ impl<'a> InMemoryResilientKv<'a> {
   /// buffer.
   ///
   /// All journal entries from the old store will be replayed, resulting in a single journal entry
-  /// in the new KV store.
+  /// in the new KV store. The metadata from the source store will be copied.
   ///
   /// The buffer will be overwritten.
   ///
   /// # Errors
   /// Returns an error if serialization or encoding fails.
   pub fn from_kv_store(buffer: &'a mut [u8], kv_store: &mut Self) -> anyhow::Result<Self> {
-    let mut kv = Self::new(buffer, None, None)?;
+    // Extract metadata timestamp from source store
+    let metadata_timestamp = kv_store.extract_metadata()?;
+    
+    // Create new store with basic structure
+    let mut kv = Self::new_with_timestamp(buffer, None, None, metadata_timestamp)?;
     let initial_position = kv.position;
     let buffer_len = kv.buffer.len();
     let mut cursor = &mut kv.buffer[kv.position..];
@@ -199,6 +230,63 @@ impl<'a> InMemoryResilientKv<'a> {
     kv.set_position(initial_position + bytes_written);
 
     Ok(kv)
+  }
+
+  /// Create a new KV store using the provided buffer with a specific timestamp for metadata.
+  /// This is used internally when copying from existing stores.
+  fn new_with_timestamp(
+    buffer: &'a mut [u8], 
+    high_water_mark_ratio: Option<f32>,
+    callback: Option<HighWaterMarkCallback>,
+    timestamp: u64
+  ) -> anyhow::Result<Self> {
+    // Validate high water mark ratio
+    let ratio = high_water_mark_ratio.unwrap_or(0.8);
+    if !(0.0..=1.0).contains(&ratio) {
+      anyhow::bail!("High water mark ratio must be between 0.0 and 1.0, got: {}", ratio);
+    }
+
+    // Write version
+    let version_bytes = VERSION.to_le_bytes();
+    buffer[0..8].copy_from_slice(&version_bytes);
+    
+    // Write array begin marker at position 16
+    let buffer_len = buffer.len();
+    let mut cursor = &mut buffer[16..];
+    serialize_array_begin(&mut cursor)
+      .map_err(|e| anyhow::anyhow!("Failed to serialize array begin: {e:?}"))?;
+    
+    // Write metadata object with provided timestamp
+    serialize_map_begin(&mut cursor)
+      .map_err(|e| anyhow::anyhow!("Failed to serialize metadata map begin: {e:?}"))?;
+    
+    serialize_string(&mut cursor, "initialized")
+      .map_err(|e| anyhow::anyhow!("Failed to serialize initialized key: {e:?}"))?;
+    
+    encode_into_buf(&mut cursor, &Value::Unsigned(timestamp))
+      .map_err(|e| anyhow::anyhow!("Failed to encode initialized timestamp: {e:?}"))?;
+    
+    serialize_container_end(&mut cursor)
+      .map_err(|e| anyhow::anyhow!("Failed to serialize metadata container end: {e:?}"))?;
+    
+    // Calculate position from remaining capacity
+    let position = buffer_len - cursor.remaining_mut();
+    
+    // Write initial position
+    let position_bytes = (position as u64).to_le_bytes();
+    buffer[8..16].copy_from_slice(&position_bytes);
+    
+    // Calculate high water mark position
+    let high_water_mark = (buffer_len as f32 * ratio) as usize;
+
+    Ok(Self {
+      version: VERSION,
+      position,
+      buffer,
+      high_water_mark,
+      high_water_mark_callback: callback,
+      high_water_mark_triggered: false,
+    })
   }
 
   /// Get a copy of the buffer for testing purposes
@@ -231,6 +319,58 @@ impl<'a> InMemoryResilientKv<'a> {
         callback(self.position, self.buffer.len(), self.high_water_mark);
       }
     }
+  }
+
+  /// Extract metadata from the current buffer and return the timestamp.
+  fn extract_metadata(&mut self) -> anyhow::Result<u64> {
+    // Create a temporary copy of the buffer to avoid modifying the original
+    let mut temp_buffer = self.buffer.to_vec();
+    
+    // Close the array in the temporary copy
+    let mut cursor = &mut temp_buffer[self.position..];
+    serialize_container_end(&mut cursor)
+      .map_err(|e| anyhow::anyhow!("Failed to serialize container end for metadata extraction: {e:?}"))?;
+    
+    let buffer = &temp_buffer[16..];
+    let (_, decoded) = from_slice(buffer)
+      .map_err(|e| anyhow::anyhow!("Failed to decode buffer for metadata: {e:?}"))?;
+    
+    if let Value::Array(entries) = decoded {
+      for entry in &entries {
+        if let Value::Object(obj) = entry {
+          if obj.contains_key("initialized") {
+            if let Some(Value::Unsigned(timestamp)) = obj.get("initialized") {
+              return Ok(*timestamp);
+            } else if let Some(Value::Signed(timestamp)) = obj.get("initialized") {
+              // Handle the case where timestamp was stored as signed
+              return Ok(*timestamp as u64);
+            }
+          }
+        }
+      }
+    }
+    
+    anyhow::bail!("No valid metadata with initialized timestamp found");
+  }
+
+  /// Validate that the buffer contains proper metadata with an "initialized" key.
+  fn validate_metadata(buffer: &[u8]) -> anyhow::Result<()> {
+    // We need to create a temporary closed array to parse
+    let mut temp_buffer = buffer.to_vec();
+    temp_buffer.push(0x9b); // Add container end byte
+    
+    let (_, decoded) = from_slice(&temp_buffer)
+      .map_err(|e| anyhow::anyhow!("Failed to decode buffer for validation: {e:?}"))?;
+    
+    if let Value::Array(entries) = decoded {
+      if let Some(Value::Object(metadata)) = entries.first() {
+        if metadata.contains_key("initialized") {
+          return Ok(());
+        }
+      }
+    }
+    
+    anyhow::bail!("No valid metadata with 'initialized' key found");
   }
 
   fn write_journal_entry(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {
@@ -316,13 +456,18 @@ impl<'a> ResilientKv for InMemoryResilientKv<'a> {
       .map_err(|e| anyhow::anyhow!("Failed to decode buffer: {e:?}"))?;
     let mut map = HashMap::new();
     if let Value::Array(entries) = decoded {
-      for entry in entries {
+      for (index, entry) in entries.iter().enumerate() {
         if let Value::Object(obj) = entry {
+          // Skip the first entry (metadata) when building the data hashmap
+          if index == 0 && obj.contains_key("initialized") {
+            continue;
+          }
+          
           for (k, v) in obj {
             if v.is_null() {
-              map.remove(&k);
+              map.remove(k);
             } else {
-              map.insert(k, v);
+              map.insert(k.clone(), v.clone());
             }
           }
         }
