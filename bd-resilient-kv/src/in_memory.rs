@@ -32,7 +32,7 @@ pub struct InMemoryKVJournal<'a> {
   high_water_mark: usize,
   high_water_mark_callback: Option<HighWaterMarkCallback>,
   high_water_mark_triggered: bool,
-  init_timestamp: u64, // Cached initialization timestamp
+  initialized_at_unix_time_ns: u64,
 }
 
 impl<'a> InMemoryKVJournal<'a> {
@@ -96,7 +96,7 @@ impl<'a> InMemoryKVJournal<'a> {
       high_water_mark,
       high_water_mark_callback: callback,
       high_water_mark_triggered: false,
-      init_timestamp: timestamp,
+      initialized_at_unix_time_ns: timestamp,
     })
   }
 
@@ -164,7 +164,7 @@ impl<'a> InMemoryKVJournal<'a> {
       high_water_mark,
       high_water_mark_callback: callback,
       high_water_mark_triggered: position_usize >= high_water_mark,
-      init_timestamp,
+      initialized_at_unix_time_ns: init_timestamp,
     })
   }
 
@@ -363,7 +363,7 @@ impl<'a> KVJournal for InMemoryKVJournal<'a> {
   /// # Errors
   /// Returns an error if the initialization timestamp cannot be retrieved.
   fn get_init_time(&mut self) -> anyhow::Result<u64> {
-    Ok(self.init_timestamp)
+    Ok(self.initialized_at_unix_time_ns)
   }
 
   /// Reinitialize this journal using the data from another journal.
@@ -379,7 +379,7 @@ impl<'a> KVJournal for InMemoryKVJournal<'a> {
     let mut position = Self::write_metadata(self.buffer, timestamp)?;
     
     // Update cached timestamp
-    self.init_timestamp = timestamp;
+    self.initialized_at_unix_time_ns = timestamp;
     
     // Write the data from the other journal if it's not empty
     if !data.is_empty() {
