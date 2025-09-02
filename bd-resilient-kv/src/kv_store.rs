@@ -14,6 +14,10 @@ use std::path::Path;
 /// 
 /// KVStore is backed by a DoubleBufferedKVJournal using two MemMappedKVJournal instances
 /// for crash-resilient storage with automatic compression and high water mark management.
+/// 
+/// For performance optimization, KVStore maintains an in-memory cache of the key-value data
+/// to provide O(1) read operations and avoid expensive journal decoding on every access.
+/// The cache is always kept in sync with the underlying journal state.
 ///
 /// The store automatically manages two journal files with extensions ".jrna" and ".jrnb"
 /// based on the provided base path.
@@ -101,8 +105,11 @@ impl KVStore {
 
   /// Get a value by key.
   ///
+  /// This operation is O(1) as it reads from the in-memory cache.
+  ///
   /// # Errors
-  /// Returns an error if the journal cannot be read.
+  /// This method currently does not return errors, but the signature is maintained
+  /// for consistency with the underlying journal interface.
   pub fn get(&mut self, key: &str) -> anyhow::Result<Option<Value>> {
     Ok(self.cached_map.get(key).cloned())
   }
@@ -143,24 +150,33 @@ impl KVStore {
 
   /// Check if the store contains a key.
   ///
+  /// This operation is O(1) as it reads from the in-memory cache.
+  ///
   /// # Errors
-  /// Returns an error if the journal cannot be read.
+  /// This method currently does not return errors, but the signature is maintained
+  /// for consistency with the underlying journal interface.
   pub fn contains_key(&mut self, key: &str) -> anyhow::Result<bool> {
     Ok(self.cached_map.contains_key(key))
   }
 
   /// Get the number of key-value pairs in the store.
   ///
+  /// This operation is O(1) as it reads from the in-memory cache.
+  ///
   /// # Errors
-  /// Returns an error if the journal cannot be read.
+  /// This method currently does not return errors, but the signature is maintained
+  /// for consistency with the underlying journal interface.
   pub fn len(&mut self) -> anyhow::Result<usize> {
     Ok(self.cached_map.len())
   }
 
   /// Check if the store is empty.
   ///
+  /// This operation is O(1) as it reads from the in-memory cache.
+  ///
   /// # Errors
-  /// Returns an error if the journal cannot be read.
+  /// This method currently does not return errors, but the signature is maintained
+  /// for consistency with the underlying journal interface.
   pub fn is_empty(&mut self) -> anyhow::Result<bool> {
     Ok(self.len()? == 0)
   }
@@ -177,24 +193,33 @@ impl KVStore {
 
   /// Get all keys in the store.
   ///
+  /// This operation is O(n) where n is the number of keys, as it clones the keys from the cache.
+  ///
   /// # Errors
-  /// Returns an error if the journal cannot be read.
+  /// This method currently does not return errors, but the signature is maintained
+  /// for consistency with the underlying journal interface.
   pub fn keys(&mut self) -> anyhow::Result<Vec<String>> {
     Ok(self.cached_map.keys().cloned().collect())
   }
 
   /// Get all values in the store.
   ///
+  /// This operation is O(n) where n is the number of values, as it clones the values from the cache.
+  ///
   /// # Errors
-  /// Returns an error if the journal cannot be read.
+  /// This method currently does not return errors, but the signature is maintained
+  /// for consistency with the underlying journal interface.
   pub fn values(&mut self) -> anyhow::Result<Vec<Value>> {
     Ok(self.cached_map.values().cloned().collect())
   }
 
   /// Get all key-value pairs as a HashMap.
   ///
+  /// This operation is O(n) where n is the number of key-value pairs, as it clones the entire cache.
+  ///
   /// # Errors
-  /// Returns an error if the journal cannot be read.
+  /// This method currently does not return errors, but the signature is maintained
+  /// for consistency with the underlying journal interface.
   pub fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>> {
     Ok(self.cached_map.clone())
   }
