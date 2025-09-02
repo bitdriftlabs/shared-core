@@ -48,6 +48,8 @@ fn platform_default() {
       log::error!("panic: message=\"{message}\" location={location}");
     }));
   } else {
+    use std::io::Write;
+
     let trace_printer =
       color_backtrace::BacktracePrinter::default().message("Panic triggered backtrace");
     std::panic::set_hook(Box::new(move |info| {
@@ -57,7 +59,13 @@ fn platform_default() {
       // we log that directly.
       let mut ansi = termcolor::Ansi::new(vec![]);
       trace_printer.print_panic_info(info, &mut ansi).unwrap();
-      log::error!("{}", String::from_utf8(ansi.into_inner()).unwrap());
+
+      // The tracing crate now escapes all ANSI sequences to avoid terminal injection attacks. In
+      // order for this to work and show up during normal tests we have to write directly to
+      // stderr.
+      // https://github.com/tokio-rs/tracing/commit/4c52ca5266a3920fc5dfeebda2accf15ee7fb278
+      let mut stderr = std::io::stderr();
+      stderr.write_all(&ansi.into_inner()).unwrap();
     }));
   }
 }
