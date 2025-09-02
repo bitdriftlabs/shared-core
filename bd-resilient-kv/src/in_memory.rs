@@ -65,10 +65,7 @@ impl<'a> InMemoryKVJournal<'a> {
     // The metadata object contains an "initialized" key with a u64 timestamp in nanoseconds.
     
     // Validate high water mark ratio
-    let ratio = high_water_mark_ratio.unwrap_or(0.8);
-    if !(0.0..=1.0).contains(&ratio) {
-      anyhow::bail!("High water mark ratio must be between 0.0 and 1.0, got: {}", ratio);
-    }
+    let ratio = Self::validate_high_water_mark_ratio(high_water_mark_ratio)?;
 
     // Write version
     let version_bytes = VERSION.to_le_bytes();
@@ -80,20 +77,10 @@ impl<'a> InMemoryKVJournal<'a> {
     serialize_array_begin(&mut cursor)
       .map_err(|e| anyhow::anyhow!("Failed to serialize array begin: {e:?}"))?;
     
-    // Create metadata object using HashMap
-    let mut metadata = HashMap::new();
-    let now = SystemTime::now()
-      .duration_since(UNIX_EPOCH)
-      .map_err(|e| anyhow::anyhow!("System time error: {e}"))?
-      .as_nanos() as u64;
-    metadata.insert("initialized".to_string(), Value::Unsigned(now));
-    
-    // Write metadata object
-    encode_into_buf(&mut cursor, &Value::Object(metadata))
-      .map_err(|e| anyhow::anyhow!("Failed to encode metadata object: {e:?}"))?;
-    
-    // Calculate position from remaining capacity
-    let position = buffer_len - cursor.remaining_mut();
+    // Write metadata with current timestamp
+    let timestamp = Self::current_timestamp()?;
+    let metadata_bytes = Self::write_metadata_at_position(buffer, 17, timestamp)?;
+    let position = 17 + metadata_bytes;
     
     // Write initial position
     let position_bytes = (position as u64).to_le_bytes();
@@ -137,10 +124,7 @@ impl<'a> InMemoryKVJournal<'a> {
     }
     
     // Validate high water mark ratio
-    let ratio = high_water_mark_ratio.unwrap_or(0.8);
-    if !(0.0..=1.0).contains(&ratio) {
-      anyhow::bail!("High water mark ratio must be between 0.0 and 1.0, got: {}", ratio);
-    }
+    let ratio = Self::validate_high_water_mark_ratio(high_water_mark_ratio)?;
 
     let version_bytes: [u8; 8] = buffer[.. 8]
       .try_into()
@@ -193,6 +177,41 @@ impl<'a> InMemoryKVJournal<'a> {
   #[cfg(test)]
   pub fn buffer_copy(&self) -> Vec<u8> {
     self.buffer.to_vec()
+  }
+
+  /// Validate high water mark ratio and return the validated value.
+  fn validate_high_water_mark_ratio(ratio: Option<f32>) -> anyhow::Result<f32> {
+    let ratio = ratio.unwrap_or(0.8);
+    if !(0.0..=1.0).contains(&ratio) {
+      anyhow::bail!("High water mark ratio must be between 0.0 and 1.0, got: {}", ratio);
+    }
+    Ok(ratio)
+  }
+
+  /// Create and write metadata object with given timestamp.
+  /// Returns the number of bytes written.
+  fn write_metadata_at_position(buffer: &mut [u8], start_pos: usize, timestamp: u64) -> anyhow::Result<usize> {
+    let buffer_len = buffer.len();
+    let mut cursor = &mut buffer[start_pos..];
+    
+    // Create metadata object
+    let mut metadata = HashMap::new();
+    metadata.insert("initialized".to_string(), Value::Unsigned(timestamp));
+    
+    // Write metadata object
+    encode_into_buf(&mut cursor, &Value::Object(metadata))
+      .map_err(|e| anyhow::anyhow!("Failed to encode metadata object: {e:?}"))?;
+    
+    // Return bytes written
+    Ok(buffer_len - start_pos - cursor.remaining_mut())
+  }
+
+  /// Get current timestamp in nanoseconds since UNIX epoch.
+  fn current_timestamp() -> anyhow::Result<u64> {
+    SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .map_err(|e| anyhow::anyhow!("System time error: {e}"))
+      .map(|d| d.as_nanos() as u64)
   }
 
   #[allow(dead_code)]
@@ -404,34 +423,24 @@ impl<'a> KVJournal for InMemoryKVJournal<'a> {
     // Get all data from the other journal
     let data = other.as_hashmap()?;
     
-    // Reinitialize the BonJSON portion starting at position 17, preserving the buffer header and array begin marker
-    let buffer_len = self.buffer.len();
-    
-    // Start writing at position 17 (after the existing array begin marker at position 16)
-    let mut cursor = &mut self.buffer[17..];
-    
-    // Create fresh metadata object with current timestamp
-    let mut metadata = HashMap::new();
-    let now = SystemTime::now()
-      .duration_since(UNIX_EPOCH)
-      .map_err(|e| anyhow::anyhow!("System time error: {e}"))?
-      .as_nanos() as u64;
-    metadata.insert("initialized".to_string(), Value::Unsigned(now));
-    
-    // Write metadata object
-    encode_into_buf(&mut cursor, &Value::Object(metadata))
-      .map_err(|e| anyhow::anyhow!("Failed to encode metadata object: {e:?}"))?;
+    // Write metadata with current timestamp
+    let timestamp = Self::current_timestamp()?;
+    let metadata_bytes = Self::write_metadata_at_position(self.buffer, 17, timestamp)?;
+    let mut new_position = 17 + metadata_bytes;
     
     // Write the data from the other journal if it's not empty
     if !data.is_empty() {
+      let buffer_len = self.buffer.len();
+      let mut cursor = &mut self.buffer[new_position..];
+      
       encode_into_buf(&mut cursor, &Value::Object(data))
         .map_err(|e| anyhow::anyhow!("Failed to encode data: {e:?}"))?;
+      
+      // Calculate new position
+      new_position = new_position + (buffer_len - new_position - cursor.remaining_mut());
     }
     
-    // Calculate new position from remaining capacity (offset by 17 for the header + array begin)
-    let new_position = 17 + (buffer_len - 17 - cursor.remaining_mut());
     self.set_position(new_position);
-    
     Ok(())
   }
 }
