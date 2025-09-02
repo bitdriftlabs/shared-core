@@ -24,6 +24,7 @@ const VERSION: u64 = 1;
 /// In-memory implementation of a key-value journaling system whose data can be recovered up to the last successful write checkpoint.
 #[derive(Debug)]
 pub struct InMemoryKVJournal<'a> {
+  #[allow(dead_code)] // Used for validation and debugging but not in runtime operations
   version: u64,
   position: usize,
   buffer: &'a mut [u8],
@@ -139,39 +140,36 @@ impl<'a> InMemoryKVJournal<'a> {
     // Calculate high water mark position
     let high_water_mark = (buffer.len() as f32 * ratio) as usize;
     
-    let kv = Self {
-      version: u64::from_le_bytes(version_bytes),
+    let version = u64::from_le_bytes(version_bytes);
+    if version != VERSION {
+      anyhow::bail!("Unsupported version: {}, expected {}", version, VERSION);
+    }
+    if position_usize >= buffer.len() {
+      anyhow::bail!(
+        "Invalid position: {}, buffer size: {}",
+        position_usize,
+        buffer.len()
+      );
+    }
+
+    // Validate that metadata exists and has the "initialized" key
+    if let Err(e) = Self::validate_metadata(&buffer[16..position_usize]) {
+      anyhow::bail!("Invalid metadata in buffer: {}", e);
+    }
+
+    // Extract timestamp from existing metadata after validation
+    let init_timestamp = Self::extract_timestamp_from_buffer(&buffer[16..position_usize])?;
+    
+    // Create final struct after all validation is complete
+    Ok(Self {
+      version,
       position: position_usize,
       buffer,
       high_water_mark,
       high_water_mark_callback: callback,
       high_water_mark_triggered: position_usize >= high_water_mark,
-      init_timestamp: 0, // Will be set after validation
-    };
-
-    if kv.version != VERSION {
-      anyhow::bail!("Unsupported version: {}, expected {}", kv.version, VERSION);
-    }
-    if kv.position >= kv.buffer.len() {
-      anyhow::bail!(
-        "Invalid position: {}, buffer size: {}",
-        kv.position,
-        kv.buffer.len()
-      );
-    }
-
-    // Validate that metadata exists and has the "initialized" key
-    if let Err(e) = Self::validate_metadata(&kv.buffer[16..kv.position]) {
-      anyhow::bail!("Invalid metadata in buffer: {}", e);
-    }
-
-    // Extract timestamp from existing metadata after validation
-    let init_timestamp = Self::extract_timestamp_from_buffer(&kv.buffer[16..kv.position])?;
-    
-    // Update the struct with the extracted timestamp
-    let mut final_kv = kv;
-    final_kv.init_timestamp = init_timestamp;
-    Ok(final_kv)
+      init_timestamp,
+    })
   }
 
   /// Get a copy of the buffer for testing purposes
