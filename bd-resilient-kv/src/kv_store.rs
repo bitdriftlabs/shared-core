@@ -63,76 +63,35 @@ impl KVStore {
     high_water_mark_ratio: Option<f32>,
     callback: Option<HighWaterMarkCallback>
   ) -> anyhow::Result<MemMappedKVJournal> {
+    use std::fs::OpenOptions;
+    
     let path = file_path.as_ref();
     
-    if path.exists() {
-      // File exists, check its size
-      let current_size = std::fs::metadata(&path)?.len() as usize;
+    // Open/create the file and ensure it's the right size
+    {
+      let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(&path)?;
       
-      if target_size > current_size {
-        // Need to expand the file while preserving data
-        Self::resize_journal_file(&path, target_size, high_water_mark_ratio, callback)
-      } else if target_size < current_size {
-        // Target size is smaller than current file
-        // Try to open the existing file first
-        match MemMappedKVJournal::from_file(&path, high_water_mark_ratio, callback) {
-          Ok(journal) => {
-            // Check if the data fits in the smaller target size using buffer usage
-            let usage_ratio = journal.buffer_usage_ratio();
-            let estimated_used_bytes = (current_size as f32 * usage_ratio) as usize;
-            
-            if estimated_used_bytes <= target_size {
-              // Data should fit, keep the existing journal (can't easily shrink mmap files)
-              Ok(journal)
-            } else {
-              // Data might not fit, create fresh journal
-              MemMappedKVJournal::new(&path, target_size, high_water_mark_ratio, callback)
-            }
-          }
-          Err(_) => {
-            // File exists but is corrupted or invalid, create fresh
-            MemMappedKVJournal::new(&path, target_size, high_water_mark_ratio, callback)
-          }
-        }
-      } else {
-        // Size matches, try to open existing file
-        match MemMappedKVJournal::from_file(&path, high_water_mark_ratio, callback) {
-          Ok(journal) => Ok(journal),
-          Err(_) => {
-            // File exists but is corrupted or invalid, create fresh
-            MemMappedKVJournal::new(&path, target_size, high_water_mark_ratio, callback)
-          }
-        }
+      // Resize if necessary
+      // Note that if the new size is significantly smaller, the data may become unrecoverable.
+      let file_len = file.metadata()?.len();
+      if file_len != target_size as u64 {
+        file.set_len(target_size as u64)?;
       }
-    } else {
-      // File doesn't exist, create new
-      MemMappedKVJournal::new(&path, target_size, high_water_mark_ratio, callback)
-    }
-  }
-
-  /// Resize an existing journal file while preserving data.
-  fn resize_journal_file<P: AsRef<Path>>(
-    file_path: P,
-    new_size: usize,
-    high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>
-  ) -> anyhow::Result<MemMappedKVJournal> {
-    let path = file_path.as_ref();
-    
-    // Load existing data
-    let mut existing_journal = MemMappedKVJournal::from_file(&path, high_water_mark_ratio, callback)?;
-    let existing_data = existing_journal.as_hashmap()?;
-    
-    // Create new journal with larger size
-    let mut new_journal = MemMappedKVJournal::new(&path, new_size, high_water_mark_ratio, callback)?;
-    
-    // Restore the data
-    for (key, value) in existing_data {
-      new_journal.set(&key, &value)?;
+      // File is automatically closed when it goes out of scope
     }
     
-    new_journal.sync()?;
-    Ok(new_journal)
+    // Try to open with existing data first
+    match MemMappedKVJournal::from_file(&path, high_water_mark_ratio, callback) {
+      Ok(journal) => Ok(journal),
+      Err(_) => {
+        // Data is corrupt or unreadable, create fresh
+        MemMappedKVJournal::new(&path, target_size, high_water_mark_ratio, callback)
+      }
+    }
   }
 
   /// Get a value by key.
