@@ -94,7 +94,7 @@ impl Setup {
     let config_loader = TestConfigLoader::new().await;
 
     config_loader
-      .update_snapshot(&bd_test_helpers::runtime::make_update(
+      .update_snapshot(bd_test_helpers::runtime::make_update(
         vec![(
           artifact_upload::MaxPendingEntries::path(),
           ValueKind::Int(max_entries),

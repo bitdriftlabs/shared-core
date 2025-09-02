@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::status::Status;
+use crate::status::{Status, code_to_connect_code_string};
 use crate::{
   CONNECT_PROTOCOL_VERSION,
   CONTENT_TYPE_CONNECT_STREAMING,
@@ -75,7 +75,7 @@ impl ErrorResponse {
   #[must_use]
   pub fn new(status: Status) -> Self {
     Self {
-      code: status.code.to_connect_code_string().to_string(),
+      code: code_to_connect_code_string(status.code).to_string(),
       message: status.message,
     }
   }

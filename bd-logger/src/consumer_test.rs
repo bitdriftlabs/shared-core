@@ -145,7 +145,7 @@ async fn upload_retries() {
   // Set the batch size to 10 before writing 10 logs that should be uploaded.
   setup
     .runtime_loader
-    .update_snapshot(&make_simple_update(vec![(
+    .update_snapshot(make_simple_update(vec![(
       bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
       ValueKind::Int(10),
     )]))
@@ -197,7 +197,7 @@ async fn upload_retries() {
   // Now update the max retries to 1 via runtime. The next upload should only retry once.
   setup
     .runtime_loader
-    .update_snapshot(&make_simple_update(vec![(
+    .update_snapshot(make_simple_update(vec![(
       bd_runtime::runtime::log_upload::RetryCountFlag::path(),
       ValueKind::Int(1),
     )]))
@@ -251,7 +251,7 @@ async fn continuous_buffer_upload_byte_limit() {
   // Set the byte limit per batch to 10. The log limit remains at the default of 1,000.
   setup
     .runtime_loader
-    .update_snapshot(&make_simple_update(vec![(
+    .update_snapshot(make_simple_update(vec![(
       bd_runtime::runtime::log_upload::BatchSizeBytesFlag::path(),
       ValueKind::Int(10),
     )]))
@@ -288,7 +288,7 @@ async fn continuous_buffer_upload_shutdown() {
   // Set the byte limit per batch to 10. The log limit remains at the default of 1,000.
   setup
     .runtime_loader
-    .update_snapshot(&make_simple_update(vec![(
+    .update_snapshot(make_simple_update(vec![(
       bd_runtime::runtime::log_upload::BatchSizeBytesFlag::path(),
       ValueKind::Int(10),
     )]))
@@ -312,7 +312,7 @@ async fn uploading_full_batch_failure() {
   // Set the batch size to 10 before writing 11 logs that should be uploaded.
   setup
     .runtime_loader
-    .update_snapshot(&make_simple_update(vec![(
+    .update_snapshot(make_simple_update(vec![(
       bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
       ValueKind::Int(10),
     )]))
@@ -501,7 +501,7 @@ async fn age_limit_log_uploads() {
 
   setup
     .runtime_loader
-    .update_snapshot(&make_simple_update(vec![
+    .update_snapshot(make_simple_update(vec![
       (
         bd_runtime::runtime::log_upload::FlushBufferLookbackWindow::path(),
         ValueKind::Int(2.minutes().whole_milliseconds().try_into().unwrap()),
@@ -595,7 +595,7 @@ impl SetupMultiConsumer {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let config_loader = ConfigLoader::new(temp_directory.path());
     config_loader
-      .update_snapshot(&make_simple_update(vec![
+      .update_snapshot(make_simple_update(vec![
         (
           bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
           ValueKind::Int(batch_size),
@@ -924,7 +924,7 @@ async fn streaming_batch_size_flag() {
   let (log_upload_tx, mut log_upload_rx) = tokio::sync::mpsc::channel(1);
   // Set streaming batch size to 2
   runtime_loader
-    .update_snapshot(&make_simple_update(vec![(
+    .update_snapshot(make_simple_update(vec![(
       bd_runtime::runtime::log_upload::StreamingBatchSizeFlag::path(),
       ValueKind::Int(2),
     )]))

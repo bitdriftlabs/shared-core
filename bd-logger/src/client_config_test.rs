@@ -49,7 +49,7 @@ async fn process_and_load() {
   let config = Config::new(directory.path(), update);
 
   config
-    .process_configuration_update(&configuration_update())
+    .process_configuration_update(configuration_update())
     .await
     .unwrap();
 
@@ -107,7 +107,7 @@ async fn cache_write_fails() {
   });
 
   let nack = config
-    .process_configuration_update(&configuration_update())
+    .process_configuration_update(configuration_update())
     .await;
 
   // The config was valid, so we don't expect a nack.

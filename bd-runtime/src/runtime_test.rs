@@ -29,7 +29,7 @@ async fn feature_flag_registration() {
 
   // After updating the value it now reflects the updated value.
   loader
-    .update_snapshot(&make_update(
+    .update_snapshot(make_update(
       vec![
         (TestFlag::path(), ValueKind::Int(10)),
         (BoolFlag::path(), ValueKind::Bool(true)),
@@ -42,14 +42,14 @@ async fn feature_flag_registration() {
 
   // When we clear out the runtime, it reverts to the default.
   loader
-    .update_snapshot(&make_update(vec![], String::new()))
+    .update_snapshot(make_update(vec![], String::new()))
     .await;
   assert_eq!(*int_feature_flag.read_mark_update(), 1);
   assert!(!*bool_feature_flag.read_mark_update());
 
   // If the value doesn't change, no events are pushed.
   loader
-    .update_snapshot(&make_update(vec![], String::new()))
+    .update_snapshot(make_update(vec![], String::new()))
     .await;
   assert!(!int_feature_flag.watch.has_changed().unwrap());
   assert!(!bool_feature_flag.watch.has_changed().unwrap());
@@ -63,7 +63,7 @@ async fn registration_after_update() {
   let loader = ConfigLoader::new(sdk_directory.path());
 
   loader
-    .update_snapshot(&make_update(
+    .update_snapshot(make_update(
       vec![(TestFlag::path(), ValueKind::Int(10))],
       "1".to_string(),
     ))
@@ -88,7 +88,7 @@ async fn duration_flag() {
   assert_eq!(*flag.borrow().read(), time::Duration::seconds(5));
 
   loader
-    .update_snapshot(&make_update(
+    .update_snapshot(make_update(
       vec![(DurationFlag::path(), ValueKind::Int(100))],
       "1".to_string(),
     ))
@@ -131,7 +131,7 @@ async fn disk_persistence_happy_path() {
   {
     let loader = setup.new_loader();
     loader
-      .update_snapshot(&bd_test_helpers::runtime::make_update(
+      .update_snapshot(bd_test_helpers::runtime::make_update(
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))
@@ -172,7 +172,7 @@ async fn disk_persistence_config_corruption() {
   {
     setup
       .new_loader()
-      .update_snapshot(&bd_test_helpers::runtime::make_update(
+      .update_snapshot(bd_test_helpers::runtime::make_update(
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))
@@ -199,7 +199,7 @@ async fn disk_persistence_retry_corruption() {
   {
     setup
       .new_loader()
-      .update_snapshot(&bd_test_helpers::runtime::make_update(
+      .update_snapshot(bd_test_helpers::runtime::make_update(
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))
@@ -226,7 +226,7 @@ async fn disk_persistence_retry_limit() {
   {
     setup
       .new_loader()
-      .update_snapshot(&bd_test_helpers::runtime::make_update(
+      .update_snapshot(bd_test_helpers::runtime::make_update(
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))
@@ -258,7 +258,7 @@ async fn disk_persistence_retry_marked_safe() {
   {
     setup
       .new_loader()
-      .update_snapshot(&bd_test_helpers::runtime::make_update(
+      .update_snapshot(bd_test_helpers::runtime::make_update(
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))
@@ -291,7 +291,7 @@ async fn disk_persistence_missing_config_file() {
   {
     setup
       .new_loader()
-      .update_snapshot(&bd_test_helpers::runtime::make_update(
+      .update_snapshot(bd_test_helpers::runtime::make_update(
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))
@@ -321,7 +321,7 @@ async fn disk_persistence_missing_retry_file() {
   {
     setup
       .new_loader()
-      .update_snapshot(&bd_test_helpers::runtime::make_update(
+      .update_snapshot(bd_test_helpers::runtime::make_update(
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))
@@ -351,7 +351,7 @@ async fn disk_persistence_cannot_update_retry() {
   {
     setup
       .new_loader()
-      .update_snapshot(&bd_test_helpers::runtime::make_update(
+      .update_snapshot(bd_test_helpers::runtime::make_update(
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))

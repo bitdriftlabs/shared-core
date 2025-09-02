@@ -52,7 +52,7 @@ async fn ratelimit() {
 
   // Set the ratelimit parameters to 10 characters per minute.
   runtime_loader
-    .update_snapshot(&make_simple_update(vec![
+    .update_snapshot(make_simple_update(vec![
       (
         bd_runtime::runtime::log_upload::RatelimitByteCountPerPeriodFlag::path(),
         ValueKind::Int(10),
@@ -96,7 +96,7 @@ async fn shared_quota() {
 
   // Set the ratelimit parameters to 2 characters per second.
   runtime_loader
-    .update_snapshot(&make_simple_update(vec![
+    .update_snapshot(make_simple_update(vec![
       (
         bd_runtime::runtime::log_upload::RatelimitByteCountPerPeriodFlag::path(),
         ValueKind::Int(2),

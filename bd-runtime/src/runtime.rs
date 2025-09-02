@@ -10,12 +10,12 @@
 mod runtime_test;
 
 use anyhow::anyhow;
-use bd_client_common::payload_conversion::{FromResponse, IntoRequest, RuntimeConfigurationUpdate};
+use bd_client_common::file::write_compressed_protobuf;
+use bd_client_common::payload_conversion::{IntoRequest, RuntimeConfigurationUpdate};
 use bd_client_common::safe_file_cache::SafeFileCache;
 use bd_client_common::{ConfigurationUpdate, HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE};
 use bd_proto::protos::client::api::{
   ApiRequest,
-  ApiResponse,
   ConfigurationUpdateAck,
   HandshakeRequest,
   RuntimeUpdate,
@@ -123,21 +123,6 @@ pub struct ConfigLoader {
 
 #[async_trait::async_trait]
 impl ConfigurationUpdate for ConfigLoader {
-  async fn try_apply_config(&self, response: &ApiResponse) -> Option<ApiRequest> {
-    let update = RuntimeUpdate::from_response(response)?;
-    log::debug!("applying runtime update: {update}");
-    self.update_snapshot(update).await;
-
-    Some(
-      RuntimeConfigurationUpdate(ConfigurationUpdateAck {
-        last_applied_version_nonce: self.snapshot().nonce.clone().unwrap_or_default(),
-        nack: None.into(),
-        ..Default::default()
-      })
-      .into_request(),
-    )
-  }
-
   async fn try_load_persisted_config(&self) {
     self.handle_cached_config().await;
   }
@@ -158,6 +143,20 @@ impl ConfigurationUpdate for ConfigLoader {
 }
 
 impl ConfigLoader {
+  pub async fn try_apply_config(&self, update: RuntimeUpdate) -> Option<ApiRequest> {
+    log::debug!("applying runtime update: {update}");
+    self.update_snapshot(update).await;
+
+    Some(
+      RuntimeConfigurationUpdate(ConfigurationUpdateAck {
+        last_applied_version_nonce: self.snapshot().nonce.clone().unwrap_or_default(),
+        nack: None.into(),
+        ..Default::default()
+      })
+      .into_request(),
+    )
+  }
+
   #[must_use]
   pub fn new(sdk_directory: &Path) -> Arc<Self> {
     Arc::new(Self {
@@ -259,7 +258,7 @@ impl ConfigLoader {
 
   async fn handle_cached_config(&self) {
     if let Some(runtime) = self.file_cache.handle_cached_config().await {
-      self.update_snapshot_inner(&runtime);
+      self.update_snapshot_inner(runtime);
     } else {
       self.state.lock().initialized = true;
     }
@@ -269,19 +268,22 @@ impl ConfigLoader {
     debug_assert!(self.state.lock().initialized);
   }
 
-  pub async fn update_snapshot(&self, runtime_update: &RuntimeUpdate) {
+  pub async fn update_snapshot(&self, runtime_update: RuntimeUpdate) {
+    let compressed_protobuf = write_compressed_protobuf(&runtime_update);
     self.update_snapshot_inner(runtime_update);
-    self.file_cache.cache_update(runtime_update).await;
+    if let Ok(compressed_protobuf) = compressed_protobuf {
+      self.file_cache.cache_update(compressed_protobuf).await;
+    }
   }
 
   /// Updates the current runtime snapshot, updating all registered watchers as appropriate.
-  fn update_snapshot_inner(&self, runtime_update: &RuntimeUpdate) {
+  fn update_snapshot_inner(&self, runtime_update: RuntimeUpdate) {
     let mut l = self.state.lock();
     l.initialized = true;
 
     let snapshot = Arc::new(Snapshot::new(
-      runtime_update.runtime.clone().unwrap_or_default(),
-      runtime_update.version_nonce.clone().into(),
+      runtime_update.runtime.unwrap_or_default(),
+      runtime_update.version_nonce.into(),
     ));
 
     // Update the value for each active watch if the data changed.

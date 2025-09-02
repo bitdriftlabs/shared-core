@@ -15,7 +15,8 @@ use bd_buffer::{AbslCode, RingBuffer as _};
 use bd_client_common::HANDSHAKE_FLAG_CONFIG_UP_TO_DATE;
 use bd_client_common::error::InvariantError;
 use bd_client_common::fb::make_log;
-use bd_client_common::payload_conversion::{ClientConfigurationUpdate, FromResponse, IntoRequest};
+use bd_client_common::file::write_compressed_protobuf;
+use bd_client_common::payload_conversion::{ClientConfigurationUpdate, IntoRequest};
 use bd_client_common::safe_file_cache::SafeFileCache;
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::FilterChain;
@@ -25,7 +26,6 @@ use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Updat
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
 use bd_proto::protos::client::api::{
   ApiRequest,
-  ApiResponse,
   ConfigurationUpdate,
   ConfigurationUpdateAck,
   HandshakeRequest,
@@ -57,12 +57,12 @@ pub struct Configuration {
 }
 
 impl Configuration {
-  fn new(sow: &StateOfTheWorld) -> Self {
+  fn new(sow: StateOfTheWorld) -> Self {
     Self {
-      buffer: sow.buffer_config_list.clone().unwrap_or_default(),
-      workflows: sow.workflows_configuration.clone().unwrap_or_default(),
-      bdtail: sow.bdtail_configuration.clone().unwrap_or_default(),
-      filters: sow.filters_configuration.clone().unwrap_or_default(),
+      buffer: sow.buffer_config_list.unwrap_or_default(),
+      workflows: sow.workflows_configuration.unwrap_or_default(),
+      bdtail: sow.bdtail_configuration.unwrap_or_default(),
+      filters: sow.filters_configuration.unwrap_or_default(),
     }
   }
 }
@@ -92,11 +92,10 @@ impl<A: ApplyConfig> Config<A> {
   // containing the error details.
   async fn process_configuration_update_inner(
     &self,
-    update: &ConfigurationUpdate,
+    update: ConfigurationUpdate,
   ) -> anyhow::Result<()> {
     let config = update
       .update_type
-      .as_ref()
       .ok_or_else(|| anyhow!("An invalid match configuration was received: missing oneof"))?;
 
     let Update_type::StateOfTheWorld(sotw) = config;
@@ -116,8 +115,9 @@ impl<A: ApplyConfig> Config<A> {
 
   pub async fn process_configuration_update(
     &self,
-    update: &ConfigurationUpdate,
+    update: ConfigurationUpdate,
   ) -> anyhow::Result<()> {
+    let compressed_protobuf = write_compressed_protobuf(&update)?;
     self.process_configuration_update_inner(update).await?;
 
     // Upon applying the configuration successfully, write the configuration proto to disk.
@@ -126,7 +126,7 @@ impl<A: ApplyConfig> Config<A> {
     // TODO(snowp): Consider storing an intermediate format to avoid all the error checking
     // above on re-read.
     // If we fail writing to disk, move on. We'll continue to operate without disk caching.
-    self.file_cache.cache_update(update).await;
+    self.file_cache.cache_update(compressed_protobuf).await;
 
     Ok(())
   }
@@ -136,7 +136,7 @@ impl<A: ApplyConfig> Config<A> {
     if let Some(configuration_update) = self.file_cache.handle_cached_config().await {
       // If this function succeeds, it should write back the file to disk.
       let maybe_nack = self
-        .process_configuration_update_inner(&configuration_update)
+        .process_configuration_update_inner(configuration_update)
         .await;
 
       // We should never persist config that results in a Nack, but if we do we effectively drop
@@ -147,9 +147,11 @@ impl<A: ApplyConfig> Config<A> {
 }
 
 #[async_trait::async_trait]
-impl<A: ApplyConfig + Send + Sync> bd_client_common::ConfigurationUpdate for Config<A> {
-  async fn try_apply_config(&self, response: &ApiResponse) -> Option<ApiRequest> {
-    let configuration_update = ConfigurationUpdate::from_response(response)?;
+impl<A: ApplyConfig + Send + Sync> bd_client_common::ClientConfigurationUpdate for Config<A> {
+  async fn try_apply_config(
+    &self,
+    configuration_update: ConfigurationUpdate,
+  ) -> Option<ApiRequest> {
     let version_nonce = configuration_update.version_nonce.clone();
 
     let nack = if let Err(e) = self
@@ -174,7 +176,10 @@ impl<A: ApplyConfig + Send + Sync> bd_client_common::ConfigurationUpdate for Con
       .into_request(),
     )
   }
+}
 
+#[async_trait::async_trait]
+impl<A: ApplyConfig + Send + Sync> bd_client_common::ConfigurationUpdate for Config<A> {
   async fn try_load_persisted_config(&self) {
     self.try_load_persisted_config_helper().await;
   }

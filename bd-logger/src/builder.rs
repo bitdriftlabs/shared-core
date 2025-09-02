@@ -293,7 +293,6 @@ impl LoggerBuilder {
         self.params.sdk_directory.clone(),
         self.params.api_key,
         self.params.network,
-        shutdown_handle.make_shutdown(),
         data_upload_rx,
         trigger_upload_tx,
         self.params.static_metadata,
@@ -314,8 +313,14 @@ impl LoggerBuilder {
 
       UnexpectedErrorHandler::register_stats(&scope);
 
+      let mut api_shutdown = shutdown_handle.make_shutdown();
       try_join!(
-        async move { api.start().await },
+        async move {
+          tokio::select! {
+            res = api.start() => { res },
+            () = api_shutdown.cancelled() => { Ok(()) }
+          }
+        },
         async move { buffer_uploader.run().await },
         async move { config_writer.run().await },
         async move {

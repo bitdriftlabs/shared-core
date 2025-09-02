@@ -58,7 +58,7 @@ impl Setup {
 
     if artifact_upload {
       runtime
-        .update_snapshot(&make_simple_update(vec![(
+        .update_snapshot(make_simple_update(vec![(
           runtime::artifact_upload::Enabled::path(),
           ValueKind::Bool(artifact_upload),
         )]))
