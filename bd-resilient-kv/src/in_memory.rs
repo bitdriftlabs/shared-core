@@ -26,6 +26,7 @@ const VERSION: u64 = 1;
 pub struct InMemoryKVJournal<'a> {
   version: u64,
   position: usize,
+  first_entry_position: usize, // Position where first journal entry starts (after metadata)
   buffer: &'a mut [u8],
   high_water_mark: usize,
   high_water_mark_callback: Option<HighWaterMarkCallback>,
@@ -103,6 +104,7 @@ impl<'a> InMemoryKVJournal<'a> {
     Ok(Self {
       version: VERSION,
       position,
+      first_entry_position: position,
       buffer,
       high_water_mark,
       high_water_mark_callback: callback,
@@ -154,9 +156,13 @@ impl<'a> InMemoryKVJournal<'a> {
     // Calculate high water mark position
     let high_water_mark = (buffer.len() as f32 * ratio) as usize;
     
+    // Calculate first entry position by finding where metadata ends
+    let first_entry_position = Self::calculate_first_entry_position(buffer)?;
+    
     let kv = Self {
       version: u64::from_le_bytes(version_bytes),
       position: position_usize,
+      first_entry_position,
       buffer,
       high_water_mark,
       high_water_mark_callback: callback,
@@ -270,6 +276,7 @@ impl<'a> InMemoryKVJournal<'a> {
     Ok(Self {
       version: VERSION,
       position,
+      first_entry_position: position,
       buffer,
       high_water_mark,
       high_water_mark_callback: callback,
@@ -359,6 +366,19 @@ impl<'a> InMemoryKVJournal<'a> {
     }
     
     anyhow::bail!("No valid metadata with 'initialized' key found");
+  }
+
+  /// Calculate the position where the first journal entry should start (after metadata).
+  fn calculate_first_entry_position(buffer: &[u8]) -> anyhow::Result<usize> {
+    // Start after the array begin marker at position 16
+    let cursor = &buffer[17..]; // Skip header + array begin byte
+    
+    // Parse the metadata object to find where it ends
+    let (bytes_consumed, _) = from_slice(cursor)
+      .map_err(|e| anyhow::anyhow!("Failed to parse metadata object: {e:?}"))?;
+    
+    // First entry position = 16 (header) + 1 (array begin) + bytes_consumed
+    Ok(17 + bytes_consumed)
   }
 
   fn write_journal_entry(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {
@@ -479,53 +499,27 @@ impl<'a> KVJournal for InMemoryKVJournal<'a> {
     // Get all data from the other journal
     let data = other.as_hashmap()?;
     
-    // Reset this journal to initial state but preserve the high water mark
-    let current_high_water_mark = self.high_water_mark;
-    let current_callback = self.high_water_mark_callback;
-    let current_high_water_mark_triggered = self.high_water_mark_triggered;
+    // Reset position to the first entry position (after metadata)
+    self.position = self.first_entry_position;
+    self.high_water_mark_triggered = self.position >= self.high_water_mark;
     
-    // Reinitialize the buffer to empty state
-    // Write version
-    let version_bytes = VERSION.to_le_bytes();
-    self.buffer[0..8].copy_from_slice(&version_bytes);
-    
-    // Write array begin marker at position 16
-    let buffer_len = self.buffer.len();
-    let mut cursor = &mut self.buffer[16..];
-    serialize_array_begin(&mut cursor)
-      .map_err(|e| anyhow::anyhow!("Failed to serialize array begin: {e:?}"))?;
-    
-    // Create metadata object using HashMap
-    let mut metadata = HashMap::new();
-    let now = SystemTime::now()
-      .duration_since(UNIX_EPOCH)
-      .map_err(|e| anyhow::anyhow!("System time error: {e}"))?
-      .as_nanos() as u64;
-    metadata.insert("initialized".to_string(), Value::Unsigned(now));
-    
-    // Write metadata object
-    encode_into_buf(&mut cursor, &Value::Object(metadata))
-      .map_err(|e| anyhow::anyhow!("Failed to encode metadata object: {e:?}"))?;
-    
-    // Calculate position from remaining capacity
-    let position = buffer_len - cursor.remaining_mut();
-    
-    // Write initial position
-    let position_bytes = (position as u64).to_le_bytes();
-    self.buffer[8..16].copy_from_slice(&position_bytes);
-    
-    // Update internal state
-    self.version = VERSION;
-    self.position = position;
-    
-    // Restore high water mark settings
-    self.high_water_mark = current_high_water_mark;
-    self.high_water_mark_callback = current_callback;
-    self.high_water_mark_triggered = current_high_water_mark_triggered;
-    
-    // Add all data from the other journal
-    for (key, value) in data {
-      self.set(&key, &value)?;
+    // Write the entire hashmap as a single journal entry
+    if !data.is_empty() {
+      let initial_position = self.position;
+      let buffer_len = self.buffer.len();
+      let mut cursor = &mut self.buffer[self.position..];
+      
+      // Encode the entire hashmap directly
+      encode_into_buf(&mut cursor, &Value::Object(data))
+        .map_err(|e| anyhow::anyhow!("Failed to encode hashmap: {e:?}"))?;
+      
+      // Calculate new position from remaining capacity
+      let bytes_written = buffer_len - initial_position - cursor.remaining_mut();
+      self.set_position(initial_position + bytes_written);
+    } else {
+      // If no data, just update the position in the buffer header
+      let position_bytes = (self.position as u64).to_le_bytes();
+      self.buffer[8..16].copy_from_slice(&position_bytes);
     }
     
     Ok(())
