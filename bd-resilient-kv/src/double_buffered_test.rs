@@ -5,12 +5,12 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{DoubleBufferedKv, ResilientKv};
+use crate::{DoubleBufferedKVJournal, KVJournal};
 use bd_bonjson::Value;
 
 #[test]
 fn test_double_buffered_basic_operations() -> anyhow::Result<()> {
-  let mut db_kv = DoubleBufferedKv::new(1024, Some(0.8), None)?;
+  let mut db_kv = DoubleBufferedKVJournal::new(1024, Some(0.8), None)?;
   
   // Test basic set and get
   db_kv.set("key1", &Value::String("value1".to_string()))?;
@@ -29,7 +29,7 @@ fn test_double_buffered_basic_operations() -> anyhow::Result<()> {
 
 #[test]
 fn test_double_buffered_deletion() -> anyhow::Result<()> {
-  let mut db_kv = DoubleBufferedKv::new(1024, Some(0.8), None)?;
+  let mut db_kv = DoubleBufferedKVJournal::new(1024, Some(0.8), None)?;
   
   // Add some data
   db_kv.set("key1", &Value::String("value1".to_string()))?;
@@ -49,7 +49,7 @@ fn test_double_buffered_deletion() -> anyhow::Result<()> {
 #[test]
 fn test_double_buffered_buffer_switching() -> anyhow::Result<()> {
   // Use a small buffer to trigger switching, but not too small
-  let mut db_kv = DoubleBufferedKv::new(256, Some(0.5), None)?;
+  let mut db_kv = DoubleBufferedKVJournal::new(256, Some(0.5), None)?;
   
   // Should start with buffer A
   assert!(db_kv.is_active_buffer_a());
@@ -81,7 +81,7 @@ fn test_double_buffered_buffer_switching() -> anyhow::Result<()> {
 
 #[test]
 fn test_double_buffered_get_init_time() -> anyhow::Result<()> {
-  let mut db_kv = DoubleBufferedKv::new(1024, Some(0.8), None)?;
+  let mut db_kv = DoubleBufferedKVJournal::new(1024, Some(0.8), None)?;
   
   let init_time = db_kv.get_init_time()?;
   assert!(init_time > 0);
@@ -98,12 +98,12 @@ fn test_double_buffered_get_init_time() -> anyhow::Result<()> {
 fn test_double_buffered_from_data() -> anyhow::Result<()> {
   // First create a regular KV store with some data
   let mut buffer = vec![0u8; 512];
-  let mut kv = crate::InMemoryResilientKv::new(&mut buffer, Some(0.8), None)?;
+  let mut kv = crate::InMemoryKVJournal::new(&mut buffer, Some(0.8), None)?;
   kv.set("existing_key", &Value::String("existing_value".to_string()))?;
   let buffer_data = kv.buffer_copy();
   
   // Now create a double-buffered KV from this data
-  let mut db_kv = DoubleBufferedKv::from_data(buffer_data, 512, Some(0.8), None)?;
+  let mut db_kv = DoubleBufferedKVJournal::from_data(buffer_data, 512, Some(0.8), None)?;
   
   // Verify the existing data is accessible
   let map = db_kv.as_hashmap()?;
@@ -123,7 +123,7 @@ fn test_double_buffered_from_data() -> anyhow::Result<()> {
 
 #[test]
 fn test_double_buffered_buffer_sizes() -> anyhow::Result<()> {
-  let db_kv = DoubleBufferedKv::new(1024, Some(0.8), None)?;
+  let db_kv = DoubleBufferedKVJournal::new(1024, Some(0.8), None)?;
   
   assert_eq!(db_kv.active_buffer_size(), 1024);
   assert_eq!(db_kv.inactive_buffer_size(), 1024);
@@ -133,7 +133,7 @@ fn test_double_buffered_buffer_sizes() -> anyhow::Result<()> {
 
 #[test]
 fn test_double_buffered_high_water_mark() -> anyhow::Result<()> {
-  let db_kv = DoubleBufferedKv::new(1000, Some(0.6), None)?;
+  let db_kv = DoubleBufferedKVJournal::new(1000, Some(0.6), None)?;
   
   // High water mark should be 60% of 1000 = 600
   assert_eq!(db_kv.high_water_mark(), 600);
@@ -143,7 +143,7 @@ fn test_double_buffered_high_water_mark() -> anyhow::Result<()> {
 
 #[test]
 fn test_double_buffered_overwrite_existing_key() -> anyhow::Result<()> {
-  let mut db_kv = DoubleBufferedKv::new(1024, Some(0.8), None)?;
+  let mut db_kv = DoubleBufferedKVJournal::new(1024, Some(0.8), None)?;
   
   // Set a key
   db_kv.set("key1", &Value::String("value1".to_string()))?;
@@ -161,7 +161,7 @@ fn test_double_buffered_overwrite_existing_key() -> anyhow::Result<()> {
 #[test]
 fn test_double_buffered_forced_switching() -> anyhow::Result<()> {
   // Create a double buffered KV with a reasonable high water mark
-  let mut db_kv = DoubleBufferedKv::new(1024, Some(0.7), None)?; // 70% of 1024 = ~717 bytes
+  let mut db_kv = DoubleBufferedKVJournal::new(1024, Some(0.7), None)?; // 70% of 1024 = ~717 bytes
   
   // Should start with buffer A
   assert!(db_kv.is_active_buffer_a());

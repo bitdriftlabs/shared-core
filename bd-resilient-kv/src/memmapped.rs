@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{ResilientKv, HighWaterMarkCallback, in_memory::InMemoryResilientKv};
+use crate::{KVJournal, HighWaterMarkCallback, in_memory::InMemoryKVJournal};
 use bd_bonjson::Value;
 use memmap2::{MmapMut, MmapOptions};
 use std::collections::HashMap;
@@ -18,12 +18,12 @@ use std::path::Path;
 /// in-memory performance characteristics. Changes are automatically persisted to the
 /// underlying file through the memory mapping.
 #[derive(Debug)]
-pub struct MemMappedResilientKv {
-  in_memory_kv: InMemoryResilientKv<'static>,
+pub struct MemMappedKVJournal {
+  in_memory_kv: InMemoryKVJournal<'static>,
   _mmap: MmapMut, // Keep the mmap alive for the lifetime of the struct
 }
 
-impl MemMappedResilientKv {
+impl MemMappedKVJournal {
   /// Create a new memory-mapped KV store using the provided file path.
   ///
   /// The file will be created if it doesn't exist, or opened if it does.
@@ -63,7 +63,7 @@ impl MemMappedResilientKv {
       std::slice::from_raw_parts_mut(mmap.as_mut_ptr(), mmap.len())
     };
 
-    let in_memory_kv = InMemoryResilientKv::new(buffer, high_water_mark_ratio, callback)?;
+    let in_memory_kv = InMemoryKVJournal::new(buffer, high_water_mark_ratio, callback)?;
 
     Ok(Self {
       in_memory_kv,
@@ -100,7 +100,7 @@ impl MemMappedResilientKv {
       std::slice::from_raw_parts_mut(mmap.as_mut_ptr(), mmap.len())
     };
 
-    let in_memory_kv = InMemoryResilientKv::from_buffer(buffer, high_water_mark_ratio, callback)?;
+    let in_memory_kv = InMemoryKVJournal::from_buffer(buffer, high_water_mark_ratio, callback)?;
 
     Ok(Self {
       in_memory_kv,
@@ -133,7 +133,7 @@ impl MemMappedResilientKv {
   }
 }
 
-impl ResilientKv for MemMappedResilientKv {
+impl KVJournal for MemMappedKVJournal {
   /// Get the current high water mark position.
   fn high_water_mark(&self) -> usize {
     self.in_memory_kv.high_water_mark()
@@ -192,7 +192,7 @@ impl ResilientKv for MemMappedResilientKv {
   ///
   /// # Errors
   /// Returns an error if the other store cannot be read or if writing to this store fails.
-  fn reinit_from(&mut self, other: &mut dyn ResilientKv) -> anyhow::Result<()> {
+  fn reinit_from(&mut self, other: &mut dyn KVJournal) -> anyhow::Result<()> {
     // Delegate to the in-memory KV store
     self.in_memory_kv.reinit_from(other)?;
     

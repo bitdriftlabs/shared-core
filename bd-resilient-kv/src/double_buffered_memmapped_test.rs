@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{DoubleBufferedMemMappedKv, ResilientKv};
+use crate::{DoubleBufferedMemMappedKVJournal, KVJournal};
 use bd_bonjson::Value;
 use tempfile::TempDir;
 
@@ -15,7 +15,7 @@ fn test_double_buffered_memmapped_basic_operations() -> anyhow::Result<()> {
   let file_a = temp_dir.path().join("test_a.kv");
   let file_b = temp_dir.path().join("test_b.kv");
   
-  let mut db_kv = DoubleBufferedMemMappedKv::new(file_a, file_b, 4096, Some(0.8), None)?;
+  let mut db_kv = DoubleBufferedMemMappedKVJournal::new(file_a, file_b, 4096, Some(0.8), None)?;
   
   // Test basic set and get
   db_kv.set("key1", &Value::String("value1".to_string()))?;
@@ -41,7 +41,7 @@ fn test_double_buffered_memmapped_deletion() -> anyhow::Result<()> {
   let file_a = temp_dir.path().join("test_a.kv");
   let file_b = temp_dir.path().join("test_b.kv");
   
-  let mut db_kv = DoubleBufferedMemMappedKv::new(file_a, file_b, 4096, Some(0.8), None)?;
+  let mut db_kv = DoubleBufferedMemMappedKVJournal::new(file_a, file_b, 4096, Some(0.8), None)?;
   
   // Add some data
   db_kv.set("key1", &Value::String("value1".to_string()))?;
@@ -66,7 +66,7 @@ fn test_double_buffered_memmapped_persistence() -> anyhow::Result<()> {
   
   // Create and populate the first instance
   {
-    let mut db_kv = DoubleBufferedMemMappedKv::new(&file_a, &file_b, 4096, Some(0.8), None)?;
+    let mut db_kv = DoubleBufferedMemMappedKVJournal::new(&file_a, &file_b, 4096, Some(0.8), None)?;
     
     db_kv.set("persistent_key", &Value::String("persistent_value".to_string()))?;
     db_kv.set("another_key", &Value::Signed(123))?;
@@ -77,7 +77,7 @@ fn test_double_buffered_memmapped_persistence() -> anyhow::Result<()> {
   
   // Create a new instance from the existing file
   {
-    let mut db_kv = DoubleBufferedMemMappedKv::from_file(&file_a, &file_b, 4096, Some(0.8), None)?;
+    let mut db_kv = DoubleBufferedMemMappedKVJournal::from_file(&file_a, &file_b, 4096, Some(0.8), None)?;
     
     let map = db_kv.as_hashmap()?;
     assert_eq!(map.len(), 2);
@@ -95,7 +95,7 @@ fn test_double_buffered_memmapped_file_switching() -> anyhow::Result<()> {
   let file_b = temp_dir.path().join("test_b.kv");
   
   // Use small files to trigger switching quickly
-  let mut db_kv = DoubleBufferedMemMappedKv::new(&file_a, &file_b, 1024, Some(0.5), None)?;
+  let mut db_kv = DoubleBufferedMemMappedKVJournal::new(&file_a, &file_b, 1024, Some(0.5), None)?;
   
   // Should start with file A
   assert!(db_kv.is_active_file_a());
@@ -144,7 +144,7 @@ fn test_double_buffered_memmapped_get_init_time() -> anyhow::Result<()> {
   let file_a = temp_dir.path().join("test_a.kv");
   let file_b = temp_dir.path().join("test_b.kv");
   
-  let mut db_kv = DoubleBufferedMemMappedKv::new(file_a, file_b, 4096, Some(0.8), None)?;
+  let mut db_kv = DoubleBufferedMemMappedKVJournal::new(file_a, file_b, 4096, Some(0.8), None)?;
   
   let init_time = db_kv.get_init_time()?;
   assert!(init_time > 0);
@@ -163,7 +163,7 @@ fn test_double_buffered_memmapped_file_paths() -> anyhow::Result<()> {
   let file_a = temp_dir.path().join("test_a.kv");
   let file_b = temp_dir.path().join("test_b.kv");
   
-  let db_kv = DoubleBufferedMemMappedKv::new(&file_a, &file_b, 4096, Some(0.8), None)?;
+  let db_kv = DoubleBufferedMemMappedKVJournal::new(&file_a, &file_b, 4096, Some(0.8), None)?;
   
   // Check file paths
   assert_eq!(db_kv.active_file_path(), &file_a);
@@ -179,7 +179,7 @@ fn test_double_buffered_memmapped_high_water_mark() -> anyhow::Result<()> {
   let file_a = temp_dir.path().join("test_a.kv");
   let file_b = temp_dir.path().join("test_b.kv");
   
-  let db_kv = DoubleBufferedMemMappedKv::new(file_a, file_b, 2000, Some(0.6), None)?;
+  let db_kv = DoubleBufferedMemMappedKVJournal::new(file_a, file_b, 2000, Some(0.6), None)?;
   
   // High water mark should be delegated to the active KV instance
   // The actual calculation depends on the MemMappedResilientKv implementation
@@ -196,7 +196,7 @@ fn test_double_buffered_memmapped_cleanup_inactive_file() -> anyhow::Result<()> 
   let file_a = temp_dir.path().join("test_a.kv");
   let file_b = temp_dir.path().join("test_b.kv");
   
-  let mut db_kv = DoubleBufferedMemMappedKv::new(&file_a, &file_b, 4096, Some(0.8), None)?;
+  let mut db_kv = DoubleBufferedMemMappedKVJournal::new(&file_a, &file_b, 4096, Some(0.8), None)?;
   
   // Add some data
   db_kv.set("test_key", &Value::String("test_value".to_string()))?;
@@ -220,7 +220,7 @@ fn test_double_buffered_memmapped_overwrite_existing_key() -> anyhow::Result<()>
   let file_a = temp_dir.path().join("test_a.kv");
   let file_b = temp_dir.path().join("test_b.kv");
   
-  let mut db_kv = DoubleBufferedMemMappedKv::new(file_a, file_b, 4096, Some(0.8), None)?;
+  let mut db_kv = DoubleBufferedMemMappedKVJournal::new(file_a, file_b, 4096, Some(0.8), None)?;
   
   // Set a key
   db_kv.set("key1", &Value::String("value1".to_string()))?;
@@ -243,13 +243,13 @@ fn test_double_buffered_memmapped_from_existing_file() -> anyhow::Result<()> {
   
   // Create an initial file with some data
   {
-    let mut initial_kv = crate::MemMappedResilientKv::new(&file_a, 4096, Some(0.8), None)?;
+    let mut initial_kv = crate::MemMappedKVJournal::new(&file_a, 4096, Some(0.8), None)?;
     initial_kv.set("existing_key", &Value::String("existing_value".to_string()))?;
     initial_kv.sync()?;
   }
   
   // Now create a double-buffered KV from the existing file
-  let mut db_kv = DoubleBufferedMemMappedKv::from_file(file_a, file_b, 4096, Some(0.8), None)?;
+  let mut db_kv = DoubleBufferedMemMappedKVJournal::from_file(file_a, file_b, 4096, Some(0.8), None)?;
   
   // Verify the existing data is accessible
   let map = db_kv.as_hashmap()?;

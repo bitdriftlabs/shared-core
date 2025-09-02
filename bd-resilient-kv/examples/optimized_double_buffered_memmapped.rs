@@ -3,7 +3,7 @@
 // This example demonstrates the optimized DoubleBufferedMemMappedKv which keeps both
 // MemMappedResilientKv instances loaded in memory to avoid repeated disk I/O.
 
-use bd_resilient_kv::{DoubleBufferedMemMappedKv, ResilientKv};
+use bd_resilient_kv::{DoubleBufferedMemMappedKVJournal, KVJournal};
 use bd_bonjson::Value;
 use tempfile::TempDir;
 
@@ -16,7 +16,7 @@ fn main() -> anyhow::Result<()> {
     let file_b = temp_dir.path().join("kv_b.data");
 
     println!("Creating double buffered memory-mapped KV store...");
-    let mut kv = DoubleBufferedMemMappedKv::new(
+    let mut kv = DoubleBufferedMemMappedKVJournal::new(
         &file_a,
         &file_b,
         1024,       // 1KB file size (very small for demo)

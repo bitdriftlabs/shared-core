@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{ResilientKv, HighWaterMarkCallback};
+use crate::{KVJournal, HighWaterMarkCallback};
 use bd_bonjson::Value;
 use bd_bonjson::decoder::from_slice;
 use bd_bonjson::encoder::encode_into_buf;
@@ -21,9 +21,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const VERSION: u64 = 1;
 
-/// In-memory implementation of a crash-resilient key-value store that can be recovered even if writing is interrupted.
+/// In-memory implementation of a key-value journaling system whose data can be recovered up to the last successful write checkpoint.
 #[derive(Debug)]
-pub struct InMemoryResilientKv<'a> {
+pub struct InMemoryKVJournal<'a> {
   version: u64,
   position: usize,
   buffer: &'a mut [u8],
@@ -32,8 +32,8 @@ pub struct InMemoryResilientKv<'a> {
   high_water_mark_triggered: bool,
 }
 
-impl<'a> InMemoryResilientKv<'a> {
-  /// Create a new KV store using the provided buffer as storage space.
+impl<'a> InMemoryKVJournal<'a> {
+  /// Create a new journal using the provided buffer as storage space.
   ///
   /// The buffer will be overwritten.
   ///
@@ -110,9 +110,9 @@ impl<'a> InMemoryResilientKv<'a> {
     })
   }
 
-  /// Create a new KV store with state loaded from the provided buffer.
+  /// Create a new journal with state loaded from the provided buffer.
   ///
-  /// The buffer is expected to already contain a properly formatted KV store file.
+  /// The buffer is expected to already contain a properly formatted journal file.
   ///
   /// # Arguments
   /// * `buffer` - The storage buffer containing existing KV data
@@ -182,21 +182,21 @@ impl<'a> InMemoryResilientKv<'a> {
     Ok(kv)
   }
 
-  /// Create a new KV store from an existing one by copying its current state into the provided
+  /// Create a new journal from an existing one by copying its current state into the provided
   /// buffer.
   ///
-  /// All journal entries from the old store will be replayed, resulting in a single journal entry
-  /// in the new KV store. The metadata from the source store will be copied.
+  /// All journal entries from the old journal will be replayed, resulting in a single journal entry
+  /// in the new journal. The metadata from the source journal will be copied.
   ///
   /// The buffer will be overwritten.
   ///
   /// # Errors
   /// Returns an error if serialization or encoding fails.
-  pub fn from_kv_store(buffer: &'a mut [u8], kv_store: &mut Self) -> anyhow::Result<Self> {
-    // Extract metadata timestamp from source store
-    let metadata_timestamp = kv_store.extract_metadata()?;
-    
-    // Create new store with basic structure
+  pub fn from_journal(buffer: &'a mut [u8], other: &mut Self) -> anyhow::Result<Self> {
+    // Extract metadata timestamp from source journal
+    let metadata_timestamp = other.extract_metadata()?;
+
+    // Create new journal with basic structure
     let mut kv = Self::new_with_timestamp(buffer, None, None, metadata_timestamp)?;
     let initial_position = kv.position;
     let buffer_len = kv.buffer.len();
@@ -206,7 +206,7 @@ impl<'a> InMemoryResilientKv<'a> {
     serialize_map_begin(&mut cursor)
       .map_err(|e| anyhow::anyhow!("Failed to serialize map begin: {e:?}"))?;
     
-    let hashmap = kv_store.as_hashmap()?;
+    let hashmap = other.as_hashmap()?;
     for (k, v) in &hashmap {
       serialize_string(&mut cursor, k)
         .map_err(|e| anyhow::anyhow!("Failed to serialize string key: {e:?}"))?;
@@ -225,8 +225,8 @@ impl<'a> InMemoryResilientKv<'a> {
     Ok(kv)
   }
 
-  /// Create a new KV store using the provided buffer with a specific timestamp for metadata.
-  /// This is used internally when copying from existing stores.
+  /// Create a new journal using the provided buffer with a specific timestamp for metadata.
+  /// This is used internally when copying from existing journals.
   fn new_with_timestamp(
     buffer: &'a mut [u8], 
     high_water_mark_ratio: Option<f32>,
@@ -386,7 +386,7 @@ impl<'a> InMemoryResilientKv<'a> {
   }
 }
 
-impl<'a> ResilientKv for InMemoryResilientKv<'a> {
+impl<'a> KVJournal for InMemoryKVJournal<'a> {
   /// Get the current high water mark position.
   fn high_water_mark(&self) -> usize {
     self.high_water_mark
@@ -402,9 +402,7 @@ impl<'a> ResilientKv for InMemoryResilientKv<'a> {
     self.position as f32 / self.buffer.len() as f32
   }
 
-  /// Set key to value in this kv store.
-  ///
-  /// This will create a new journal entry.
+  /// Generate a new journal entry recording the setting of a key to a value.
   ///
   /// Note: Setting to `Value::Null` will mark the entry for DELETION!
   ///
@@ -414,7 +412,7 @@ impl<'a> ResilientKv for InMemoryResilientKv<'a> {
     self.write_journal_entry(key, value)
   }
 
-  /// Delete a key from this kv store.
+  /// Generate a new journal entry recording the deletion of a key.
   ///
   /// This will create a new journal entry.
   ///
@@ -424,16 +422,16 @@ impl<'a> ResilientKv for InMemoryResilientKv<'a> {
     self.set(key, &Value::Null)
   }
 
-  /// Get the current state of the kv store as a `HashMap`.
+  /// Get the current state of the journal as a `HashMap`.
   ///
   /// # Errors
   /// Returns an error if the buffer cannot be decoded.
   fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>> {
-    // Recall that the beginning of a kv store has an "array open" byte (at position 16). We close
+    // Recall that the beginning of a journal has an "array open" byte (at position 16). We close
     // it here by inserting a "container end" byte at `self.position` (which points to one past
     // the end of the last committed change). Then the entire journal can be read as a single
     // BONJSON document consisting of an array of journal entries.
-    // Inserting this byte won't affect the key-value store's operation, because anything in
+    // Inserting this byte won't affect the journal's operation, because anything in
     // `self.buffer` from `self.position` onward is considered "garbage".
     let mut cursor = &mut self.buffer[self.position..];
     serialize_container_end(&mut cursor)
@@ -465,7 +463,7 @@ impl<'a> ResilientKv for InMemoryResilientKv<'a> {
     Ok(map)
   }
 
-  /// Get the time when the KV store was initialized (nanoseconds since UNIX epoch).
+  /// Get the time when the journal was initialized (nanoseconds since UNIX epoch).
   ///
   /// # Errors
   /// Returns an error if the initialization timestamp cannot be retrieved.
@@ -473,15 +471,15 @@ impl<'a> ResilientKv for InMemoryResilientKv<'a> {
     self.extract_metadata()
   }
 
-  /// Reinitialize this KV store using the data from another KV store.
+  /// Reinitialize this journal using the data from another journal.
   ///
   /// # Errors
-  /// Returns an error if the other store cannot be read or if writing to this store fails.
-  fn reinit_from(&mut self, other: &mut dyn ResilientKv) -> anyhow::Result<()> {
-    // Get all data from the other store
+  /// Returns an error if the other journal cannot be read or if writing to this journal fails.
+  fn reinit_from(&mut self, other: &mut dyn KVJournal) -> anyhow::Result<()> {
+    // Get all data from the other journal
     let data = other.as_hashmap()?;
     
-    // Reset this store to initial state but preserve the high water mark
+    // Reset this journal to initial state but preserve the high water mark
     let current_high_water_mark = self.high_water_mark;
     let current_callback = self.high_water_mark_callback;
     let current_high_water_mark_triggered = self.high_water_mark_triggered;
@@ -525,7 +523,7 @@ impl<'a> ResilientKv for InMemoryResilientKv<'a> {
     self.high_water_mark_callback = current_callback;
     self.high_water_mark_triggered = current_high_water_mark_triggered;
     
-    // Add all data from the other store
+    // Add all data from the other journal
     for (key, value) in data {
       self.set(&key, &value)?;
     }

@@ -31,12 +31,12 @@ use std::collections::HashMap;
 
 /// Callback function type for high water mark notifications.
 /// 
-/// Called when the buffer usage exceeds the high water mark threshold.
+/// Called when a buffer usage exceeds the high water mark threshold.
 /// Parameters: (current_position, buffer_size, high_water_mark_position)
 pub type HighWaterMarkCallback = fn(usize, usize, usize);
 
-/// Trait for crash-resilient key-value stores that can be recovered even if writing is interrupted.
-pub trait ResilientKv {
+/// Trait for a key-value journaling system whose data can be recovered up to the last successful write checkpoint.
+pub trait KVJournal {
   /// Get the current high water mark position.
   fn high_water_mark(&self) -> usize;
 
@@ -46,15 +46,13 @@ pub trait ResilientKv {
   /// Get the current buffer usage as a percentage (0.0 to 1.0).
   fn buffer_usage_ratio(&self) -> f32;
 
-  /// Get the time when the KV store was initialized (nanoseconds since UNIX epoch).
+  /// Get the time when the journal was initialized (nanoseconds since UNIX epoch).
   ///
   /// # Errors
   /// Returns an error if the initialization timestamp cannot be retrieved.
   fn get_init_time(&mut self) -> anyhow::Result<u64>;
 
-  /// Set key to value in this kv store.
-  ///
-  /// This will create a new journal entry.
+  /// Generate a new journal entry recording the setting of a key to a value.
   ///
   /// Note: Setting to `Value::Null` will mark the entry for DELETION!
   ///
@@ -62,32 +60,30 @@ pub trait ResilientKv {
   /// Returns an error if the journal entry cannot be written.
   fn set(&mut self, key: &str, value: &Value) -> anyhow::Result<()>;
 
-  /// Delete a key from this kv store.
-  ///
-  /// This will create a new journal entry.
+  /// Generate a new journal entry recording the deletion of a key.
   ///
   /// # Errors
   /// Returns an error if the journal entry cannot be written.
   fn delete(&mut self, key: &str) -> anyhow::Result<()>;
 
-  /// Get the current state of the kv store as a `HashMap`.
+  /// Get the current state of the journal as a `HashMap`.
   ///
   /// # Errors
   /// Returns an error if the buffer cannot be decoded.
   fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>>;
 
-  /// Reinitialize this KV store using the data from another KV store.
+  /// Reinitialize this journal using the data from another journal.
   ///
-  /// This method clears the current contents and populates this store with all
-  /// key-value pairs from the other store. The high water mark is not affected.
+  /// This method clears the current contents and populates this journal with all
+  /// key-value pairs from the other journal. The high water mark is not affected.
   ///
   /// # Errors
-  /// Returns an error if the other store cannot be read or if writing to this store fails.
-  fn reinit_from(&mut self, other: &mut dyn ResilientKv) -> anyhow::Result<()>;
+  /// Returns an error if the other journal cannot be read or if writing to this journal fails.
+  fn reinit_from(&mut self, other: &mut dyn KVJournal) -> anyhow::Result<()>;
 }
 
 // Re-export the in-memory implementation for convenience
-pub use in_memory::InMemoryResilientKv;
-pub use memmapped::MemMappedResilientKv;
-pub use double_buffered::DoubleBufferedKv;
-pub use double_buffered_memmapped::DoubleBufferedMemMappedKv;
+pub use in_memory::InMemoryKVJournal;
+pub use memmapped::MemMappedKVJournal;
+pub use double_buffered::DoubleBufferedKVJournal;
+pub use double_buffered_memmapped::DoubleBufferedMemMappedKVJournal;

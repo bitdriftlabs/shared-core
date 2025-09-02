@@ -3,13 +3,13 @@
 // This example demonstrates how to use the DoubleBufferedKv type which automatically
 // switches between two buffers when one reaches its high water mark.
 
-use bd_resilient_kv::{DoubleBufferedKv, ResilientKv};
+use bd_resilient_kv::{DoubleBufferedKVJournal, KVJournal};
 use bd_bonjson::Value;
 
 fn main() -> anyhow::Result<()> {
     // Create a double-buffered KV store with 4KB buffers
     // High water mark is set to 80% (default)
-    let mut db_kv = DoubleBufferedKv::new(4096, Some(0.8), None)?;
+    let mut db_kv = DoubleBufferedKVJournal::new(4096, Some(0.8), None)?;
     
     println!("Created DoubleBufferedKv with 4KB buffers");
     println!("Starting with buffer A: {}", db_kv.is_active_buffer_a());

@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{ResilientKv, HighWaterMarkCallback, MemMappedResilientKv};
+use crate::{KVJournal, HighWaterMarkCallback, MemMappedKVJournal};
 use bd_bonjson::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -22,11 +22,11 @@ use std::fs;
 /// - Provides crash resilience through persistent memory-mapped files
 /// - Both KV instances are initialized at construction time - if either fails, the entire
 ///   DoubleBufferedMemMappedKv construction fails
-pub struct DoubleBufferedMemMappedKv {
+pub struct DoubleBufferedMemMappedKVJournal {
   /// Primary memory-mapped KV instance
-  kv_a: MemMappedResilientKv,
+  kv_a: MemMappedKVJournal,
   /// Secondary memory-mapped KV instance
-  kv_b: MemMappedResilientKv,
+  kv_b: MemMappedKVJournal,
   /// Path to the primary file
   file_path_a: PathBuf,
   /// Path to the secondary file
@@ -41,7 +41,7 @@ pub struct DoubleBufferedMemMappedKv {
   callback: Option<HighWaterMarkCallback>,
 }
 
-impl DoubleBufferedMemMappedKv {
+impl DoubleBufferedMemMappedKVJournal {
   /// Create a new double-buffered memory-mapped KV store using the provided file paths.
   /// 
   /// Both files will be created and initialized. Both MemMappedResilientKv instances must
@@ -67,8 +67,8 @@ impl DoubleBufferedMemMappedKv {
     let path_b = file_path_b.as_ref().to_path_buf();
 
     // Create both files and initialize them
-    let primary = MemMappedResilientKv::new(&path_a, file_size, high_water_mark_ratio, callback)?;
-    let secondary = MemMappedResilientKv::new(&path_b, file_size, high_water_mark_ratio, callback)?;
+    let primary = MemMappedKVJournal::new(&path_a, file_size, high_water_mark_ratio, callback)?;
+    let secondary = MemMappedKVJournal::new(&path_b, file_size, high_water_mark_ratio, callback)?;
 
     Ok(Self {
       kv_a: primary,
@@ -105,13 +105,13 @@ impl DoubleBufferedMemMappedKv {
     let path_b = file_path_b.as_ref().to_path_buf();
 
     // Load the primary file from existing data
-    let primary = MemMappedResilientKv::from_file(&path_a, high_water_mark_ratio, callback)?;
+    let primary = MemMappedKVJournal::from_file(&path_a, high_water_mark_ratio, callback)?;
     
     // Create the secondary file (it may not exist yet)
     let secondary = if path_b.exists() {
-      MemMappedResilientKv::from_file(&path_b, high_water_mark_ratio, callback)?
+      MemMappedKVJournal::from_file(&path_b, high_water_mark_ratio, callback)?
     } else {
-      MemMappedResilientKv::new(&path_b, file_size, high_water_mark_ratio, callback)?
+      MemMappedKVJournal::new(&path_b, file_size, high_water_mark_ratio, callback)?
     };
 
     Ok(Self {
@@ -132,7 +132,7 @@ impl DoubleBufferedMemMappedKv {
   /// during the operation, it will switch to the other buffer and copy the data.
   fn with_active_kv<F, R>(&mut self, mut func: F) -> anyhow::Result<R>
   where
-    F: FnMut(&mut MemMappedResilientKv) -> anyhow::Result<R>,
+    F: FnMut(&mut MemMappedKVJournal) -> anyhow::Result<R>,
   {
     // Get the currently active KV
     let active_kv = if self.using_a {
@@ -166,7 +166,7 @@ impl DoubleBufferedMemMappedKv {
     // Recreate the inactive KV with a fresh file
     if self.using_a {
       // Recreate kv_b
-      self.kv_b = MemMappedResilientKv::new(
+      self.kv_b = MemMappedKVJournal::new(
         &self.file_path_b,
         self.file_size,
         self.high_water_mark_ratio,
@@ -179,7 +179,7 @@ impl DoubleBufferedMemMappedKv {
       }
     } else {
       // Recreate kv_a
-      self.kv_a = MemMappedResilientKv::new(
+      self.kv_a = MemMappedKVJournal::new(
         &self.file_path_a,
         self.file_size,
         self.high_water_mark_ratio,
@@ -251,7 +251,7 @@ impl DoubleBufferedMemMappedKv {
   }
 }
 
-impl ResilientKv for DoubleBufferedMemMappedKv {
+impl KVJournal for DoubleBufferedMemMappedKVJournal {
   fn high_water_mark(&self) -> usize {
     if self.using_a {
       self.kv_a.high_water_mark()
@@ -292,7 +292,7 @@ impl ResilientKv for DoubleBufferedMemMappedKv {
     self.with_active_kv(|kv| kv.get_init_time())
   }
 
-  fn reinit_from(&mut self, other: &mut dyn ResilientKv) -> anyhow::Result<()> {
+  fn reinit_from(&mut self, other: &mut dyn KVJournal) -> anyhow::Result<()> {
     self.with_active_kv(|kv| kv.reinit_from(other))
   }
 }

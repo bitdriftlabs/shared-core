@@ -2,12 +2,12 @@
 // This shows how to transfer data from one KV store to another
 
 use bd_bonjson::Value;
-use bd_resilient_kv::{InMemoryResilientKv, ResilientKv};
+use bd_resilient_kv::{InMemoryKVJournal, KVJournal};
 
 fn main() -> anyhow::Result<()> {
     // Create a source KV store with some data
     let mut source_buffer = vec![0; 256];
-    let mut source_kv = InMemoryResilientKv::new(&mut source_buffer, None, None)?;
+    let mut source_kv = InMemoryKVJournal::new(&mut source_buffer, None, None)?;
     
     // Add some data to the source
     source_kv.set("config", &Value::String("production".to_string()))?;
@@ -22,7 +22,7 @@ fn main() -> anyhow::Result<()> {
     
     // Create a target KV store with different data and high water mark settings
     let mut target_buffer = vec![0; 512]; // Larger buffer
-    let mut target_kv = InMemoryResilientKv::new(
+    let mut target_kv = InMemoryKVJournal::new(
         &mut target_buffer, 
         Some(0.9), // Custom high water mark ratio
         None

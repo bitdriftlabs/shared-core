@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{ResilientKv, HighWaterMarkCallback, InMemoryResilientKv};
+use crate::{KVJournal, HighWaterMarkCallback, InMemoryKVJournal};
 use bd_bonjson::Value;
 use std::collections::HashMap;
 
@@ -17,7 +17,7 @@ use std::collections::HashMap;
 /// - When the active buffer passes its high water mark, uses `from_kv_store` to initialize
 ///   the other buffer with the compressed kv state of the full one
 /// - Once the other buffer is initialized, begins forwarding APIs to that buffer
-pub struct DoubleBufferedKv {
+pub struct DoubleBufferedKVJournal {
   /// The primary buffer storage
   buffer_a: Vec<u8>,
   /// The secondary buffer storage  
@@ -32,7 +32,7 @@ pub struct DoubleBufferedKv {
   callback: Option<HighWaterMarkCallback>,
 }
 
-impl DoubleBufferedKv {
+impl DoubleBufferedKVJournal {
   /// Create a new double-buffered KV store using the provided buffer size.
   /// 
   /// Both internal buffers will be created with the specified size.
@@ -53,7 +53,7 @@ impl DoubleBufferedKv {
     let buffer_b = vec![0u8; buffer_size];
 
     // Initialize the first buffer to establish the initial state
-    let _initial_kv = InMemoryResilientKv::new(&mut buffer_a, high_water_mark_ratio, callback)?;
+    let _initial_kv = InMemoryKVJournal::new(&mut buffer_a, high_water_mark_ratio, callback)?;
 
     Ok(Self {
       buffer_a,
@@ -85,7 +85,7 @@ impl DoubleBufferedKv {
 
     // Validate the initial data by trying to load it
     let mut buffer_a_copy = initial_data.clone();
-    let _test_kv = InMemoryResilientKv::from_buffer(&mut buffer_a_copy, high_water_mark_ratio, callback)?;
+    let _test_kv = InMemoryKVJournal::from_buffer(&mut buffer_a_copy, high_water_mark_ratio, callback)?;
 
     Ok(Self {
       buffer_a: initial_data,
@@ -100,7 +100,7 @@ impl DoubleBufferedKv {
   /// Execute an operation with the currently active KV store.
   fn with_active_kv<T, F>(&mut self, f: F) -> anyhow::Result<T>
   where
-    F: FnOnce(&mut InMemoryResilientKv<'_>) -> anyhow::Result<T>,
+    F: FnOnce(&mut InMemoryKVJournal<'_>) -> anyhow::Result<T>,
   {
     // Split the borrow to avoid multiple mutable borrows
     let active_buffer_a = self.active_buffer_a;
@@ -115,7 +115,7 @@ impl DoubleBufferedKv {
     };
 
     // Create KV store from current buffer
-    let mut kv = InMemoryResilientKv::from_buffer(active_buffer, high_water_mark_ratio, callback)?;
+    let mut kv = InMemoryKVJournal::from_buffer(active_buffer, high_water_mark_ratio, callback)?;
     
     // Execute the operation
     let result = f(&mut kv)?;
@@ -127,7 +127,7 @@ impl DoubleBufferedKv {
       self.switching = true;
       
       // Create new KV store in the inactive buffer from the active one
-      let _new_kv = InMemoryResilientKv::from_kv_store(inactive_buffer, &mut kv)?;
+      let _new_kv = InMemoryKVJournal::from_journal(inactive_buffer, &mut kv)?;
       
       // Switch active buffer
       self.active_buffer_a = !active_buffer_a;
@@ -142,7 +142,7 @@ impl DoubleBufferedKv {
   /// Execute a read-only operation with the currently active KV store.
   fn with_active_kv_readonly<T, F>(&self, f: F) -> anyhow::Result<T>
   where
-    F: FnOnce(&InMemoryResilientKv<'_>) -> anyhow::Result<T>,
+    F: FnOnce(&InMemoryKVJournal<'_>) -> anyhow::Result<T>,
   {
     let buffer = if self.active_buffer_a {
       &self.buffer_a
@@ -152,7 +152,7 @@ impl DoubleBufferedKv {
 
     // Create a copy for read-only access
     let mut buffer_copy = buffer.clone();
-    let kv = InMemoryResilientKv::from_buffer(&mut buffer_copy, self.high_water_mark_ratio, None)?;
+    let kv = InMemoryKVJournal::from_buffer(&mut buffer_copy, self.high_water_mark_ratio, None)?;
     
     f(&kv)
   }
@@ -187,7 +187,7 @@ impl DoubleBufferedKv {
   }
 }
 
-impl ResilientKv for DoubleBufferedKv {
+impl KVJournal for DoubleBufferedKVJournal {
   fn high_water_mark(&self) -> usize {
     let ratio = self.high_water_mark_ratio.unwrap_or(0.8);
     let buffer_len = if self.active_buffer_a {
@@ -225,7 +225,7 @@ impl ResilientKv for DoubleBufferedKv {
     self.with_active_kv(|kv| kv.as_hashmap())
   }
 
-  fn reinit_from(&mut self, other: &mut dyn ResilientKv) -> anyhow::Result<()> {
+  fn reinit_from(&mut self, other: &mut dyn KVJournal) -> anyhow::Result<()> {
     self.with_active_kv(|kv| kv.reinit_from(other))
   }
 }

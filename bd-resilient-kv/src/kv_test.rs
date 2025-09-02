@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{InMemoryResilientKv, ResilientKv};
+use crate::{InMemoryKVJournal, KVJournal};
 use bd_bonjson::Value;
 use std::io::Write;
 use tempfile::NamedTempFile;
@@ -13,14 +13,14 @@ use tempfile::NamedTempFile;
 #[test]
 fn test_create_resilient_kv() {
   let mut buffer = vec![0; 128];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
   assert_eq!(kv.as_hashmap().unwrap().len(), 0);
 }
 
 #[test]
 fn test_set_and_get_string_value() {
   let mut buffer = vec![0; 64];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   kv.set("test_key", &Value::String("test_value".to_string()))
     .unwrap();
@@ -36,7 +36,7 @@ fn test_set_and_get_string_value() {
 #[test]
 fn test_set_and_get_integer_value() {
   let mut buffer = vec![0; 64];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   kv.set("number", &Value::Signed(42)).unwrap();
 
@@ -48,7 +48,7 @@ fn test_set_and_get_integer_value() {
 #[test]
 fn test_set_and_get_boolean_value() {
   let mut buffer = vec![0; 128];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   kv.set("flag", &Value::Bool(true)).unwrap();
 
@@ -60,7 +60,7 @@ fn test_set_and_get_boolean_value() {
 #[test]
 fn test_set_multiple_values() {
   let mut buffer = vec![0; 256];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   kv.set("key1", &Value::String("value1".to_string()))
     .unwrap();
@@ -77,7 +77,7 @@ fn test_set_multiple_values() {
 #[test]
 fn test_overwrite_existing_key() {
   let mut buffer = vec![0; 256];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   kv.set("key", &Value::String("old_value".to_string()))
     .unwrap();
@@ -95,7 +95,7 @@ fn test_overwrite_existing_key() {
 #[test]
 fn test_delete_key() {
   let mut buffer = vec![0; 64];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   kv.set("key", &Value::String("value".to_string())).unwrap();
   kv.delete("key").unwrap();
@@ -107,7 +107,7 @@ fn test_delete_key() {
 #[test]
 fn test_set_null_value() {
   let mut buffer = vec![0; 64];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   kv.set("null_key", &Value::Null).unwrap();
 
@@ -118,7 +118,7 @@ fn test_set_null_value() {
 #[test]
 fn test_empty_kv_returns_empty_map() {
   let mut buffer = vec![0; 128];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   let map = kv.as_hashmap().unwrap();
   assert!(map.is_empty());
@@ -128,7 +128,7 @@ fn test_empty_kv_returns_empty_map() {
 fn test_create_kv_from_existing_store_with_many_entries() {
   // Create an initial KV store with a large buffer to accommodate many entries
   let mut buffer1 = vec![0; 1024];
-  let mut original_kv = InMemoryResilientKv::new(&mut buffer1, None, None).unwrap();
+  let mut original_kv = InMemoryKVJournal::new(&mut buffer1, None, None).unwrap();
 
   // Add initial entries
   original_kv
@@ -227,7 +227,7 @@ fn test_create_kv_from_existing_store_with_many_entries() {
 
   // Create a new KV store from the existing one
   let mut buffer2 = vec![0; 1024];
-  let mut new_kv = InMemoryResilientKv::from_kv_store(&mut buffer2, &mut original_kv).unwrap();
+  let mut new_kv = InMemoryKVJournal::from_journal(&mut buffer2, &mut original_kv).unwrap();
 
   // Verify the new store has the same state as the original
   let new_map = new_kv.as_hashmap().unwrap();
@@ -261,7 +261,7 @@ fn test_create_kv_from_existing_store_with_many_entries() {
 fn test_from_buffer_with_insufficient_data() {
   // Test with buffer too small for header
   let mut small_buffer = vec![0; 8]; // Only 8 bytes, need 16
-  let result = InMemoryResilientKv::from_buffer(&mut small_buffer, None, None);
+  let result = InMemoryKVJournal::from_buffer(&mut small_buffer, None, None);
   assert!(result.is_err());
 
   if let Err(e) = result {
@@ -275,7 +275,7 @@ fn test_from_buffer_with_invalid_version() {
   let mut buffer_data = vec![0; 32];
   buffer_data[0] = 99; // Invalid version (should be 1)
   let mut buffer = buffer_data;
-  let result = InMemoryResilientKv::from_buffer(&mut buffer, None, None);
+  let result = InMemoryKVJournal::from_buffer(&mut buffer, None, None);
   assert!(result.is_err());
 
   if let Err(e) = result {
@@ -287,7 +287,7 @@ fn test_from_buffer_with_invalid_version() {
 fn test_from_buffer_success() {
   // First create a KV store and populate it
   let mut buffer1 = vec![0; 128];
-  let mut kv1 = InMemoryResilientKv::new(&mut buffer1, None, None).unwrap();
+  let mut kv1 = InMemoryKVJournal::new(&mut buffer1, None, None).unwrap();
 
   kv1
     .set("key1", &Value::String("value1".to_string()))
@@ -301,7 +301,7 @@ fn test_from_buffer_success() {
   // Now use from_buffer to load the same data
   let buffer_slice = kv1.buffer_copy();
   let mut buffer2 = buffer_slice;
-  let mut kv2 = InMemoryResilientKv::from_buffer(&mut buffer2, None, None).unwrap();
+  let mut kv2 = InMemoryKVJournal::from_buffer(&mut buffer2, None, None).unwrap();
 
   // Verify the data is loaded correctly
   let loaded_map = kv2.as_hashmap().unwrap();
@@ -324,7 +324,7 @@ fn test_from_buffer_with_invalid_position() {
   buffer_data[8 .. 16].copy_from_slice(&large_position.to_le_bytes());
 
   let mut buffer = buffer_data;
-  let result = InMemoryResilientKv::from_buffer(&mut buffer, None, None);
+  let result = InMemoryKVJournal::from_buffer(&mut buffer, None, None);
   assert!(result.is_err());
 
   if let Err(e) = result {
@@ -335,7 +335,7 @@ fn test_from_buffer_with_invalid_position() {
 #[test]
 fn test_float_values() {
   let mut buffer = vec![0; 256];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   // Test positive float
   kv.set("pi", &Value::Float(std::f64::consts::PI)).unwrap();
@@ -363,7 +363,7 @@ fn test_float_values() {
 #[test]
 fn test_unsigned_values() {
   let mut buffer = vec![0; 256];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   // Test small unsigned values (will be decoded as signed when they fit)
   kv.set("count", &Value::Unsigned(42)).unwrap();
@@ -394,7 +394,7 @@ fn test_unsigned_values() {
 #[test]
 fn test_array_values() {
   let mut buffer = vec![0; 512];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   // Test empty array
   let empty_array = Value::Array(vec![]);
@@ -438,7 +438,7 @@ fn test_array_values() {
 #[test]
 fn test_object_values() {
   let mut buffer = vec![0; 512];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   // Test empty object
   let empty_object = Value::Object(std::collections::HashMap::new());
@@ -504,7 +504,7 @@ fn test_object_values() {
 #[test]
 fn test_complex_nested_structures() {
   let mut buffer = vec![0; 1024];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   // Test array containing objects
   let mut obj1 = std::collections::HashMap::new();
@@ -581,7 +581,7 @@ fn test_with_memory_mapped_file() {
   let mut mmap = unsafe { MmapMut::map_mut(&file).unwrap() };
   
   // Create a ResilientKv using the memory-mapped buffer
-  let mut kv = InMemoryResilientKv::new(&mut mmap[..], None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut mmap[..], None, None).unwrap();
   
   // Use the KV store normally
   kv.set("test_key", &Value::String("memory_mapped_value".to_string())).unwrap();
@@ -601,7 +601,7 @@ fn test_with_memory_mapped_file() {
 #[test]
 fn test_high_water_mark_default() {
   let mut buffer = vec![0; 100];
-  let kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
   
   // Default should be 80% of buffer size
   assert_eq!(kv.high_water_mark(), 80);
@@ -612,7 +612,7 @@ fn test_high_water_mark_default() {
 #[test]
 fn test_high_water_mark_custom_ratio() {
   let mut buffer = vec![0; 100];
-  let kv = InMemoryResilientKv::new(&mut buffer, Some(0.6), None).unwrap();
+  let kv = InMemoryKVJournal::new(&mut buffer, Some(0.6), None).unwrap();
   
   // Should be 60% of buffer size
   assert_eq!(kv.high_water_mark(), 60);
@@ -624,12 +624,12 @@ fn test_high_water_mark_invalid_ratio() {
   let mut buffer = vec![0; 100];
   
   // Test ratio > 1.0
-  let result = InMemoryResilientKv::new(&mut buffer, Some(1.5), None);
+  let result = InMemoryKVJournal::new(&mut buffer, Some(1.5), None);
   assert!(result.is_err());
   assert!(result.unwrap_err().to_string().contains("High water mark ratio must be between 0.0 and 1.0"));
   
   // Test negative ratio
-  let result = InMemoryResilientKv::new(&mut buffer, Some(-0.1), None);
+  let result = InMemoryKVJournal::new(&mut buffer, Some(-0.1), None);
   assert!(result.is_err());
   assert!(result.unwrap_err().to_string().contains("High water mark ratio must be between 0.0 and 1.0"));
 }
@@ -648,7 +648,7 @@ fn test_high_water_mark_trigger() {
   }
   
   let mut buffer = vec![0; 64];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, Some(0.5), Some(test_callback)).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, Some(0.5), Some(test_callback)).unwrap();
   
   // Reset the global state
   unsafe {
@@ -687,12 +687,12 @@ fn test_high_water_mark_from_buffer() {
   
   // Create a KV store and add some data
   {
-    let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+    let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
     kv.set("test", &Value::String("value".to_string())).unwrap();
   }
   
   // Load from buffer with custom high water mark
-  let kv = InMemoryResilientKv::from_buffer(&mut buffer, Some(0.7), None).unwrap();
+  let kv = InMemoryKVJournal::from_buffer(&mut buffer, Some(0.7), None).unwrap();
   assert_eq!(kv.high_water_mark(), 70);
   
   // The high water mark should not be triggered yet since we only added one small entry
@@ -702,7 +702,7 @@ fn test_high_water_mark_from_buffer() {
 #[test] 
 fn test_buffer_usage_ratio() {
   let mut buffer = vec![0; 200];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
   
   // Initially, usage includes header and metadata, should be reasonable
   let initial_ratio = kv.buffer_usage_ratio();
@@ -717,7 +717,7 @@ fn test_buffer_usage_ratio() {
 #[test]
 fn test_get_init_time() {
   let mut buffer = vec![0; 128];
-  let mut kv = InMemoryResilientKv::new(&mut buffer, None, None).unwrap();
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
   
   // Get the initialization time
   let init_time = kv.get_init_time().unwrap();
@@ -737,14 +737,14 @@ fn test_get_init_time() {
 fn test_get_init_time_from_buffer() {
   // Create a KV store and get its timestamp
   let mut buffer1 = vec![0; 256];
-  let mut kv1 = InMemoryResilientKv::new(&mut buffer1, None, None).unwrap();
+  let mut kv1 = InMemoryKVJournal::new(&mut buffer1, None, None).unwrap();
   let original_time = kv1.get_init_time().unwrap();
   
   // Add some data
   kv1.set("test", &Value::String("value".to_string())).unwrap();
   
   // Create a new KV store from the same buffer
-  let mut kv2 = InMemoryResilientKv::from_buffer(&mut buffer1, None, None).unwrap();
+  let mut kv2 = InMemoryKVJournal::from_buffer(&mut buffer1, None, None).unwrap();
   let loaded_time = kv2.get_init_time().unwrap();
   
   // Should have the same initialization time
@@ -755,7 +755,7 @@ fn test_get_init_time_from_buffer() {
 fn test_reinit_from() {
   // Create source KV with some data
   let mut source_buffer = vec![0; 256];
-  let mut source_kv = InMemoryResilientKv::new(&mut source_buffer, None, None).unwrap();
+  let mut source_kv = InMemoryKVJournal::new(&mut source_buffer, None, None).unwrap();
   
   source_kv.set("key1", &Value::String("value1".to_string())).unwrap();
   source_kv.set("key2", &Value::Signed(42)).unwrap();
@@ -763,7 +763,7 @@ fn test_reinit_from() {
   
   // Create target KV with different data
   let mut target_buffer = vec![0; 256];
-  let mut target_kv = InMemoryResilientKv::new(&mut target_buffer, Some(0.9), None).unwrap();
+  let mut target_kv = InMemoryKVJournal::new(&mut target_buffer, Some(0.9), None).unwrap();
   
   target_kv.set("old_key", &Value::String("old_value".to_string())).unwrap();
   

@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{MemMappedResilientKv, ResilientKv};
+use crate::{MemMappedKVJournal, KVJournal};
 use bd_bonjson::Value;
 use tempfile::NamedTempFile;
 
@@ -14,7 +14,7 @@ fn test_create_new_memmapped_kv() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
     
-    let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+    let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
     assert_eq!(kv.as_hashmap().unwrap().len(), 0);
     // Note: high_water_mark() returns the position after the initial header, not 0
     assert!(kv.high_water_mark() > 0);
@@ -26,7 +26,7 @@ fn test_memmapped_set_and_get_string_value() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
     
-    let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+    let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
     
     kv.set("test_key", &Value::String("test_value".to_string())).unwrap();
     
@@ -43,7 +43,7 @@ fn test_memmapped_set_and_get_integer_value() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
     
-    let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+    let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
     
     kv.set("number", &Value::Signed(42)).unwrap();
     
@@ -57,7 +57,7 @@ fn test_memmapped_set_and_get_boolean_value() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
     
-    let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+    let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
     
     kv.set("flag", &Value::Bool(true)).unwrap();
     
@@ -71,7 +71,7 @@ fn test_memmapped_set_multiple_values() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
     
-    let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+    let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
     
     kv.set("key1", &Value::String("value1".to_string())).unwrap();
     kv.set("key2", &Value::Signed(123)).unwrap();
@@ -89,7 +89,7 @@ fn test_memmapped_overwrite_existing_key() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
     
-    let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+    let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
     
     kv.set("key", &Value::String("old_value".to_string())).unwrap();
     kv.set("key", &Value::String("new_value".to_string())).unwrap();
@@ -107,7 +107,7 @@ fn test_memmapped_delete_key() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
     
-    let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+    let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
     
     kv.set("key", &Value::String("value".to_string())).unwrap();
     kv.delete("key").unwrap();
@@ -121,7 +121,7 @@ fn test_memmapped_set_null_value() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
     
-    let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+    let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
     
     kv.set("null_key", &Value::Null).unwrap();
     
@@ -134,7 +134,7 @@ fn test_memmapped_empty_kv_returns_empty_map() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
     
-    let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+    let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
     
     let map = kv.as_hashmap().unwrap();
     assert!(map.is_empty());
@@ -147,7 +147,7 @@ fn test_memmapped_persistence_across_instances() {
     
     // Create first instance and add data
     {
-        let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+        let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
         kv.set("persistent_key", &Value::String("persistent_value".to_string())).unwrap();
         kv.set("number", &Value::Signed(42)).unwrap();
         kv.sync().unwrap();
@@ -155,7 +155,7 @@ fn test_memmapped_persistence_across_instances() {
     
     // Create second instance from same file
     {
-        let mut kv = MemMappedResilientKv::from_file(path, None, None).unwrap();
+        let mut kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
         let map = kv.as_hashmap().unwrap();
         
         assert_eq!(map.len(), 2);
@@ -169,7 +169,7 @@ fn test_memmapped_persistence_across_instances() {
 
 #[test]
 fn test_memmapped_from_file_nonexistent() {
-    let result = MemMappedResilientKv::from_file("/nonexistent/path/file.dat", None, None);
+    let result = MemMappedKVJournal::from_file("/nonexistent/path/file.dat", None, None);
     assert!(result.is_err());
 }
 
@@ -179,7 +179,7 @@ fn test_memmapped_file_expansion() {
     let path = temp_file.path().to_str().unwrap();
     
     // Start with a reasonably sized file that can accommodate some data
-    let mut kv = MemMappedResilientKv::new(path, 512, None, None).unwrap();
+    let mut kv = MemMappedKVJournal::new(path, 512, None, None).unwrap();
     
     // Add a smaller amount of data that fits in the buffer
     for i in 0..5 {
@@ -203,7 +203,7 @@ fn test_memmapped_sync_operation() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
     
-    let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+    let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
     kv.set("sync_test", &Value::String("sync_value".to_string())).unwrap();
     
     // Should not error
@@ -229,7 +229,7 @@ fn test_memmapped_high_water_mark() {
     }
     
     // Use a larger buffer to accommodate data and set lower threshold
-    let mut kv = MemMappedResilientKv::new(path, 1024, Some(0.5), Some(hwm_callback)).unwrap();
+    let mut kv = MemMappedKVJournal::new(path, 1024, Some(0.5), Some(hwm_callback)).unwrap();
     
     // Add enough data to trigger high water mark
     for i in 0..10 {
@@ -248,7 +248,7 @@ fn test_memmapped_buffer_usage_ratio() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
     
-    let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+    let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
     
     // Initially should be very low usage
     let initial_ratio = kv.buffer_usage_ratio();
@@ -271,7 +271,7 @@ fn test_memmapped_large_data_persistence() {
     
     // Create first instance with large data set
     {
-        let mut kv = MemMappedResilientKv::new(path, 2048, None, None).unwrap();
+        let mut kv = MemMappedKVJournal::new(path, 2048, None, None).unwrap();
         
         // Add many entries with various operations
         for i in 0..30 {
@@ -293,7 +293,7 @@ fn test_memmapped_large_data_persistence() {
     
     // Verify persistence
     {
-        let mut kv = MemMappedResilientKv::from_file(path, None, None).unwrap();
+        let mut kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
         let map = kv.as_hashmap().unwrap();
         
         // Should have 25 entries (30 - 5 deleted)
@@ -337,7 +337,7 @@ fn test_memmapped_file_recovery_from_corrupted_end() {
     
     // Create initial data
     {
-        let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+        let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
         kv.set("recoverable_key", &Value::String("recoverable_value".to_string())).unwrap();
         kv.sync().unwrap();
     }
@@ -352,7 +352,7 @@ fn test_memmapped_file_recovery_from_corrupted_end() {
     
     // Should still be able to recover valid entries
     {
-        let mut kv = MemMappedResilientKv::from_file(path, None, None).unwrap();
+        let mut kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
         let map = kv.as_hashmap().unwrap();
         
         // Should recover the valid entry
@@ -368,7 +368,7 @@ fn test_memmapped_concurrent_operations() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
     
-    let mut kv = MemMappedResilientKv::new(path, 2048, None, None).unwrap();
+    let mut kv = MemMappedKVJournal::new(path, 2048, None, None).unwrap();
     
     // Simulate rapid operations that might happen in concurrent scenarios
     for i in 0..50 {
@@ -397,7 +397,7 @@ fn test_memmapped_get_init_time() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
     
-    let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+    let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
     
     // Get the initialization time
     let init_time = kv.get_init_time().unwrap();
@@ -417,14 +417,14 @@ fn test_memmapped_get_init_time_persistence() {
     let path = temp_file.path().to_str().unwrap();
     
     let original_time = {
-        let mut kv = MemMappedResilientKv::new(path, 1024, None, None).unwrap();
+        let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
         kv.set("test", &Value::String("value".to_string())).unwrap();
         kv.sync().unwrap();
         kv.get_init_time().unwrap()
     };
     
     // Create a new instance from the same file
-    let mut kv = MemMappedResilientKv::from_file(path, None, None).unwrap();
+    let mut kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
     let loaded_time = kv.get_init_time().unwrap();
     
     // Should have the same initialization time

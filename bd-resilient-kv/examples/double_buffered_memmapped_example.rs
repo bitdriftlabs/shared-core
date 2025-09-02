@@ -3,7 +3,7 @@
 // This example demonstrates how to use the DoubleBufferedMemMappedKv type which provides
 // persistent storage with automatic file switching when one file reaches its high water mark.
 
-use bd_resilient_kv::{DoubleBufferedMemMappedKv, ResilientKv};
+use bd_resilient_kv::{DoubleBufferedMemMappedKVJournal, KVJournal};
 use bd_bonjson::Value;
 use tempfile::TempDir;
 
@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
     
     // Create a double-buffered memory-mapped KV store with 8KB files
     // High water mark is set to 70%
-    let mut db_kv = DoubleBufferedMemMappedKv::new(
+    let mut db_kv = DoubleBufferedMemMappedKVJournal::new(
         &file_a, 
         &file_b, 
         8192,     // 8KB file size
@@ -102,7 +102,7 @@ fn main() -> anyhow::Result<()> {
     drop(db_kv); // Close the current instance
     
     // Recreate from the active file
-    let mut restored_kv = DoubleBufferedMemMappedKv::from_file(
+    let mut restored_kv = DoubleBufferedMemMappedKVJournal::from_file(
         active_file,
         inactive_file,
         8192,
