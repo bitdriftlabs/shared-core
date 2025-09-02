@@ -12,11 +12,10 @@ use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::path::Path;
 
-/// Memory-mapped implementation of a crash-resilient key-value store.
-/// 
-/// This implementation uses a memory-mapped file for persistent storage while providing
-/// in-memory performance characteristics. Changes are automatically persisted to the
-/// underlying file through the memory mapping.
+/// Memory-mapped implementation of a crash-resilient key-value journal.
+///
+/// This implementation uses memory-mapped files to provide persistence while maintaining
+/// the efficiency of in-memory operations. All changes are automatically synced to disk.
 #[derive(Debug)]
 pub struct MemMappedKVJournal {
   in_memory_kv: InMemoryKVJournal<'static>,
@@ -24,7 +23,7 @@ pub struct MemMappedKVJournal {
 }
 
 impl MemMappedKVJournal {
-  /// Create a new memory-mapped KV store using the provided file path.
+  /// Create a new memory-mapped KV journal using the provided file path.
   ///
   /// The file will be created if it doesn't exist, or opened if it does.
   /// The file will be resized to the specified size if it's smaller.
@@ -71,9 +70,9 @@ impl MemMappedKVJournal {
     })
   }
 
-  /// Create a new memory-mapped KV store from an existing file.
+  /// Create a new memory-mapped KV journal from an existing file.
   ///
-  /// The file must already exist and contain a properly formatted KV store.
+  /// The file must already exist and contain a properly formatted KV journal.
   ///
   /// # Arguments
   /// * `file_path` - Path to the existing file
@@ -149,7 +148,7 @@ impl KVJournal for MemMappedKVJournal {
     self.in_memory_kv.buffer_usage_ratio()
   }
 
-  /// Set key to value in this kv store.
+  /// Set key to value in this journal.
   ///
   /// This will create a new journal entry and automatically persist it to the mapped file.
   ///
@@ -161,7 +160,7 @@ impl KVJournal for MemMappedKVJournal {
     self.in_memory_kv.set(key, value)
   }
 
-  /// Delete a key from this kv store.
+  /// Delete a key from this journal.
   ///
   /// This will create a new journal entry and automatically persist it to the mapped file.
   ///
@@ -171,7 +170,7 @@ impl KVJournal for MemMappedKVJournal {
     self.in_memory_kv.delete(key)
   }
 
-  /// Get the current state of the kv store as a `HashMap`.
+  /// Get the current state of the journal as a `HashMap`.
   ///
   /// # Errors
   /// Returns an error if the buffer cannot be decoded.
@@ -179,7 +178,7 @@ impl KVJournal for MemMappedKVJournal {
     self.in_memory_kv.as_hashmap()
   }
 
-  /// Get the time when the KV store was initialized (nanoseconds since UNIX epoch).
+  /// Get the time when the journal was initialized (nanoseconds since UNIX epoch).
   ///
   /// # Errors
   /// Returns an error if the initialization timestamp cannot be retrieved.
@@ -187,13 +186,13 @@ impl KVJournal for MemMappedKVJournal {
     self.in_memory_kv.get_init_time()
   }
 
-  /// Reinitialize this KV store using the data from another KV store.
+  /// Reinitialize this journal using the data from another journal.
   /// The high water mark is not affected.
   ///
   /// # Errors
-  /// Returns an error if the other store cannot be read or if writing to this store fails.
+  /// Returns an error if the other journal cannot be read or if writing to this journal fails.
   fn reinit_from(&mut self, other: &mut dyn KVJournal) -> anyhow::Result<()> {
-    // Delegate to the in-memory KV store
+    // Delegate to the in-memory journal
     self.in_memory_kv.reinit_from(other)?;
     
     // Sync the memory-mapped buffer to disk

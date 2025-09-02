@@ -11,11 +11,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::fs;
 
-/// A double-buffered implementation of ResilientKv that uses memory-mapped files as the backend
-/// and automatically switches between two files when one reaches its high water mark.
-/// 
-/// This type provides persistent storage with automatic buffer management:
-/// - Maintains two MemMappedResilientKv instances that are always available
+/// A double-buffered implementation of KVJournal that uses memory-mapped files as the backend
+/// storage. This provides both performance and crash resilience.
+///
+/// Key architectural features:
+/// - Maintains two MemMappedKVJournal instances that are always available
 /// - When the active file passes its high water mark, copies the compressed kv state to a fresh
 ///   instance of the inactive file, then switches to that file
 /// - Both instances are kept in memory, avoiding disk I/O during switches
@@ -42,9 +42,9 @@ pub struct DoubleBufferedMemMappedKVJournal {
 }
 
 impl DoubleBufferedMemMappedKVJournal {
-  /// Create a new double-buffered memory-mapped KV store using the provided file paths.
-  /// 
-  /// Both files will be created and initialized. Both MemMappedResilientKv instances must
+  /// Create a new double-buffered memory-mapped KV journal using the provided file paths.
+  ///
+  /// Both files will be created and initialized. Both MemMappedKVJournal instances must
   /// be successfully created or this constructor will fail.
   ///
   /// # Arguments
@@ -82,7 +82,7 @@ impl DoubleBufferedMemMappedKVJournal {
     })
   }
 
-  /// Create a new double-buffered memory-mapped KV store with the first file loaded from existing data
+  /// Create a new double-buffered memory-mapped KV journal with the first file loaded from existing data
   /// and the second file initialized.
   ///
   /// # Arguments
@@ -126,7 +126,7 @@ impl DoubleBufferedMemMappedKVJournal {
     })
   }
 
-  /// Execute a function with the currently active KV store.
+  /// Execute a function with the currently active journal.
   /// 
   /// This function handles the switching logic automatically. If the high water mark is triggered
   /// during the operation, it will switch to the other buffer and copy the data.

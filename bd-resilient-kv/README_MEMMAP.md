@@ -1,11 +1,11 @@
-# ResilientKv with Memory-Mapped Files
+# KVJournal with Memory-Mapped Files
 
-The `ResilientKv` now supports memory-mapped files through the use of `&mut [u8]` instead of `Vec<u8>`. This allows for efficient, crash-resilient key-value storage that can work with both in-memory buffers and memory-mapped files.
+The `KVJournal` now supports memory-mapped files through the use of `&mut [u8]` instead of `Vec<u8>`. This allows for efficient, crash-resilient key-value journaling that can work with both in-memory buffers and memory-mapped files.
 
 ## Key Changes
 
 1. **Buffer Type**: Changed from `Vec<u8>` to `&mut [u8]` to support non-growable byte arrays
-2. **Lifetime Parameter**: Added lifetime parameter `'a` to `ResilientKv<'a>`
+2. **Lifetime Parameter**: Added lifetime parameter `'a` to `KVJournal<'a>`
 3. **Memory Mapping Support**: Can now work with `memmap2::MmapMut` for persistent storage
 
 ## Usage with Memory-Mapped Files
@@ -13,15 +13,15 @@ The `ResilientKv` now supports memory-mapped files through the use of `&mut [u8]
 ```rust
 use memmap2::MmapMut;
 use std::fs::OpenOptions;
-use bd_resilient_kv::ResilientKv;
+use bd_resilient_kv::KVJournal;
 use bd_bonjson::Value;
 
-// Open/create a file for the KV store
+// Open/create a file for the journal
 let file = OpenOptions::new()
     .read(true)
     .write(true)
     .create(true)
-    .open("kv_store.dat")?;
+    .open("journal.dat")?;
 
 // Set the file size (e.g., 1MB)
 file.set_len(1024 * 1024)?;
@@ -29,10 +29,10 @@ file.set_len(1024 * 1024)?;
 // Memory-map the file
 let mut mmap = unsafe { MmapMut::map_mut(&file)? };
 
-// Create the KV store using the memory-mapped buffer
-let mut kv = ResilientKv::new(&mut mmap[..])?;
+// Create the journal using the memory-mapped buffer
+let mut kv = KVJournal::new(&mut mmap[..])?;
 
-// Use the KV store normally - all changes are automatically persisted
+// Use the journal normally - all changes are automatically persisted
 kv.set("user_name", &Value::String("Alice".to_string()))?;
 kv.set("user_id", &Value::Signed(12345))?;
 
@@ -53,6 +53,6 @@ println!("User: {:?}", map.get("user_name"));
 
 The API remains largely the same, with the main difference being:
 - Constructor takes `&mut [u8]` instead of `Vec<u8>`
-- Struct has lifetime parameter: `ResilientKv<'a>` instead of `ResilientKv`
+- Struct has lifetime parameter: `KVJournal<'a>` instead of `KVJournal`
 
 All existing functionality (set, get, delete, etc.) works identically.

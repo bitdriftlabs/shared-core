@@ -2,14 +2,14 @@
 
 ## Problem Solved
 The original `DoubleBufferedMemMappedKv` implementation was inefficient because it:
-- Created new `MemMappedResilientKv` instances on every operation
+- Created new `MemMappedKVJournal` instances on every operation
 - Loaded data from disk repeatedly when switching buffers
 - Destroyed and recreated instances frequently
 
 ## Optimization Implementation
 
 ### Key Changes
-1. **Persistent Instances**: Both `MemMappedResilientKv` instances are now kept as struct fields (`kv_a` and `kv_b`)
+1. **Persistent Instances**: Both `MemMappedKVJournal` instances are now kept as struct fields (`kv_a` and `kv_b`)
 2. **In-Memory Switching**: Buffer switches happen without disk I/O by using the `as_hashmap()` method
 3. **Lazy Initialization**: The inactive instance is only created when first needed
 4. **Clean Switching Logic**: Uses `with_active_kv()` pattern for safe operations
@@ -18,9 +18,9 @@ The original `DoubleBufferedMemMappedKv` implementation was inefficient because 
 ```rust
 pub struct DoubleBufferedMemMappedKv {
   /// Primary memory-mapped KV instance (always initialized)
-  kv_a: MemMappedResilientKv,
+  kv_a: MemMappedKVJournal,
   /// Secondary memory-mapped KV instance (always initialized) 
-  kv_b: MemMappedResilientKv,
+  kv_b: MemMappedKVJournal,
   /// Path to the primary file
   file_path_a: PathBuf,
   /// Path to the secondary file

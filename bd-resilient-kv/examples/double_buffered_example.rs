@@ -7,7 +7,7 @@ use bd_resilient_kv::{DoubleBufferedKVJournal, KVJournal};
 use bd_bonjson::Value;
 
 fn main() -> anyhow::Result<()> {
-    // Create a double-buffered KV store with 4KB buffers
+    // Create a double-buffered KV journal with 4KB buffers
     // High water mark is set to 80% (default)
     let mut db_kv = DoubleBufferedKVJournal::new(4096, Some(0.8), None)?;
     

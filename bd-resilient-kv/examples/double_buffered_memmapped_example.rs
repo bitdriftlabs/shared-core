@@ -10,14 +10,14 @@ use tempfile::TempDir;
 fn main() -> anyhow::Result<()> {
     // Create a temporary directory for demonstration
     let temp_dir = TempDir::new()?;
-    let file_a = temp_dir.path().join("kv_store_a.db");
-    let file_b = temp_dir.path().join("kv_store_b.db");
+    let file_a = temp_dir.path().join("journal_a.db");
+    let file_b = temp_dir.path().join("journal_b.db");
     
     println!("Creating DoubleBufferedMemMappedKv with persistent files:");
     println!("  File A: {:?}", file_a);
     println!("  File B: {:?}", file_b);
     
-    // Create a double-buffered memory-mapped KV store with 8KB files
+    // Create a double-buffered memory-mapped KV journal with 8KB files
     // High water mark is set to 70%
     let mut db_kv = DoubleBufferedMemMappedKVJournal::new(
         &file_a, 

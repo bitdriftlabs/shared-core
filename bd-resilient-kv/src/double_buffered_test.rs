@@ -96,7 +96,7 @@ fn test_double_buffered_get_init_time() -> anyhow::Result<()> {
 
 #[test]
 fn test_double_buffered_from_data() -> anyhow::Result<()> {
-  // First create a regular KV store with some data
+  // First create a regular journal with some data
   let mut buffer = vec![0u8; 512];
   let mut kv = crate::InMemoryKVJournal::new(&mut buffer, Some(0.8), None)?;
   kv.set("existing_key", &Value::String("existing_value".to_string()))?;

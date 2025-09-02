@@ -9,13 +9,13 @@ use crate::{KVJournal, HighWaterMarkCallback, InMemoryKVJournal};
 use bd_bonjson::Value;
 use std::collections::HashMap;
 
-/// A double-buffered implementation of ResilientKv that automatically switches between two
+/// A double-buffered implementation of KVJournal that automatically switches between two
 /// buffers when one reaches its high water mark.
 /// 
 /// This type holds two buffers and switches between them when necessary:
-/// - Forwards ResilientKv APIs to the currently active buffer
-/// - When the active buffer passes its high water mark, uses `from_kv_store` to initialize
-///   the other buffer with the compressed kv state of the full one
+/// - Forwards KVJournal APIs to the currently active buffer
+/// - When the active buffer passes its high water mark, uses `from_journal` to initialize
+///   the other buffer with the compressed journal state of the full one
 /// - Once the other buffer is initialized, begins forwarding APIs to that buffer
 pub struct DoubleBufferedKVJournal {
   /// The primary buffer storage
@@ -33,7 +33,7 @@ pub struct DoubleBufferedKVJournal {
 }
 
 impl DoubleBufferedKVJournal {
-  /// Create a new double-buffered KV store using the provided buffer size.
+  /// Create a new double-buffered KV journal using the provided buffer size.
   /// 
   /// Both internal buffers will be created with the specified size.
   ///
@@ -65,7 +65,7 @@ impl DoubleBufferedKVJournal {
     })
   }
 
-  /// Create a new double-buffered KV store with initial data in the first buffer.
+  /// Create a new double-buffered KV journal with initial data in the first buffer.
   ///
   /// # Arguments
   /// * `initial_data` - The initial buffer data to load
@@ -97,7 +97,7 @@ impl DoubleBufferedKVJournal {
     })
   }
 
-  /// Execute an operation with the currently active KV store.
+  /// Execute an operation with the currently active journal.
   fn with_active_kv<T, F>(&mut self, f: F) -> anyhow::Result<T>
   where
     F: FnOnce(&mut InMemoryKVJournal<'_>) -> anyhow::Result<T>,
@@ -114,7 +114,7 @@ impl DoubleBufferedKVJournal {
       (&mut self.buffer_b, &mut self.buffer_a)
     };
 
-    // Create KV store from current buffer
+    // Create journal from current buffer
     let mut kv = InMemoryKVJournal::from_buffer(active_buffer, high_water_mark_ratio, callback)?;
     
     // Execute the operation
@@ -126,7 +126,7 @@ impl DoubleBufferedKVJournal {
       // Set switching flag to prevent recursive switching
       self.switching = true;
       
-      // Create new KV store in the inactive buffer from the active one
+      // Create new journal in the inactive buffer from the active one
       let _new_kv = InMemoryKVJournal::from_journal(inactive_buffer, &mut kv)?;
       
       // Switch active buffer
@@ -139,7 +139,7 @@ impl DoubleBufferedKVJournal {
     Ok(result)
   }
 
-  /// Execute a read-only operation with the currently active KV store.
+  /// Execute a read-only operation with the currently active journal.
   fn with_active_kv_readonly<T, F>(&self, f: F) -> anyhow::Result<T>
   where
     F: FnOnce(&InMemoryKVJournal<'_>) -> anyhow::Result<T>,

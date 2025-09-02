@@ -1,14 +1,14 @@
-use bd_resilient_kv::{InMemoryResilientKv, ResilientKv};
+use bd_resilient_kv::{InMemoryKVJournal, KVJournal};
 use bd_bonjson::Value;
 
 fn main() -> anyhow::Result<()> {
-    // Create a new KV store
+    // Create a new journal
     let mut buffer = vec![0; 1024];
-    let mut kv = InMemoryResilientKv::new(&mut buffer, None, None)?;
+    let mut kv = InMemoryKVJournal::new(&mut buffer, None, None)?;
     
     // Get and display the initialization time
     let init_time = kv.get_init_time()?;
-    println!("KV store initialized at: {} nanoseconds since UNIX epoch", init_time);
+    println!("Journal initialized at: {} nanoseconds since UNIX epoch", init_time);
     
     // Convert to seconds for readability
     let init_time_seconds = init_time / 1_000_000_000;

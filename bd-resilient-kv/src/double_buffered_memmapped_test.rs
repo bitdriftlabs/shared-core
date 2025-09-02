@@ -182,7 +182,7 @@ fn test_double_buffered_memmapped_high_water_mark() -> anyhow::Result<()> {
   let db_kv = DoubleBufferedMemMappedKVJournal::new(file_a, file_b, 2000, Some(0.6), None)?;
   
   // High water mark should be delegated to the active KV instance
-  // The actual calculation depends on the MemMappedResilientKv implementation
+  // The actual calculation depends on the MemMappedKVJournal implementation
   let hwm = db_kv.high_water_mark();
   assert!(hwm > 0);
   assert!(hwm <= 2000); // Should be less than or equal to file size

@@ -1,8 +1,8 @@
-# BufMut Refactoring - ResilientKv Improvements
+# BufMut Refactoring - KVJournal Improvements
 
 ## Overview
 
-Successfully refactored `ResilientKv` to use `BufMut` internally, eliminating manual position tracking boilerplate and simplifying the codebase significantly.
+Successfully refactored `KVJournal` to use `BufMut` internally, eliminating manual position tracking boilerplate and simplifying the codebase significantly.
 
 ## Key Improvements
 
@@ -71,7 +71,7 @@ fn write_journal_entry(&mut self, key: &str, value: &Value) -> anyhow::Result<()
 
 1. **`new()`**: Simplified array begin marker writing
 2. **`write_journal_entry()`**: Eliminated all manual position tracking
-3. **`from_kv_store()`**: Streamlined map serialization loop
+3. **`from_journal()`**: Streamlined map serialization loop
 4. **`as_hashmap()`**: Simplified container end writing
 
 ## Test Results

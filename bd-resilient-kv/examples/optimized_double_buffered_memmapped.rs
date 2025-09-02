@@ -1,21 +1,21 @@
-// Example: Optimized Double Buffered Memory-Mapped KV Store
+// Example: Optimized Double Buffered Memory-Mapped KV Journal
 // 
-// This example demonstrates the optimized DoubleBufferedMemMappedKv which keeps both
-// MemMappedResilientKv instances loaded in memory to avoid repeated disk I/O.
+// This example demonstrates the optimized DoubleBufferedMemMappedKvJournal which keeps both
+// MemMappedKVJournal instances loaded in memory to avoid repeated disk I/O.
 
 use bd_resilient_kv::{DoubleBufferedMemMappedKVJournal, KVJournal};
 use bd_bonjson::Value;
 use tempfile::TempDir;
 
 fn main() -> anyhow::Result<()> {
-    println!("=== Optimized Double Buffered Memory-Mapped KV Store Demo ===\n");
+    println!("=== Optimized Double Buffered Memory-Mapped KV Journal Demo ===\n");
 
     // Create temporary directory for the demo
     let temp_dir = TempDir::new()?;
     let file_a = temp_dir.path().join("kv_a.data");
     let file_b = temp_dir.path().join("kv_b.data");
 
-    println!("Creating double buffered memory-mapped KV store...");
+    println!("Creating double buffered memory-mapped KV journal...");
     let mut kv = DoubleBufferedMemMappedKVJournal::new(
         &file_a,
         &file_b,
@@ -55,7 +55,7 @@ fn main() -> anyhow::Result<()> {
     // Verify all data is preserved
     println!("\nVerifying data integrity after switching:");
     let map = kv.as_hashmap()?;
-    println!("Total entries in store: {}", map.len());
+    println!("Total entries in journal: {}", map.len());
     
     for i in 0..std::cmp::min(25, map.len()) {
         let key = format!("key_{:02}", i);
@@ -84,7 +84,7 @@ fn main() -> anyhow::Result<()> {
 
     // Show the key optimization - both instances can be kept in memory
     println!("\n=== Optimization Details ===");
-    println!("✓ Both MemMappedResilientKv instances can be kept loaded");
+    println!("✓ Both MemMappedKVJournal instances can be kept loaded");
     println!("✓ No disk I/O required during buffer switches");
     println!("✓ Data copying happens in memory using as_hashmap()");
     println!("✓ Only inactive instance is recreated after switching");

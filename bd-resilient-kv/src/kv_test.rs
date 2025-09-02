@@ -125,8 +125,8 @@ fn test_empty_kv_returns_empty_map() {
 }
 
 #[test]
-fn test_create_kv_from_existing_store_with_many_entries() {
-  // Create an initial KV store with a large buffer to accommodate many entries
+fn test_create_kv_from_existing_journal_with_many_entries() {
+  // Create an initial KV journal with a large buffer to accommodate many entries
   let mut buffer1 = vec![0; 1024];
   let mut original_kv = InMemoryKVJournal::new(&mut buffer1, None, None).unwrap();
 
@@ -188,7 +188,7 @@ fn test_create_kv_from_existing_store_with_many_entries() {
     .set("maintenance:mode", &Value::Bool(false))
     .unwrap();
 
-  // Verify the original store has the expected final state
+  // Verify the original journal has the expected final state
   let original_map = original_kv.as_hashmap().unwrap();
   assert_eq!(original_map.len(), 10); // Should have 10 entries after all operations
 
@@ -225,11 +225,11 @@ fn test_create_kv_from_existing_store_with_many_entries() {
     Some(&Value::Bool(false))
   );
 
-  // Create a new KV store from the existing one
+  // Create a new KV journal from the existing one
   let mut buffer2 = vec![0; 1024];
   let mut new_kv = InMemoryKVJournal::from_journal(&mut buffer2, &mut original_kv).unwrap();
 
-  // Verify the new store has the same state as the original
+  // Verify the new journal has the same state as the original
   let new_map = new_kv.as_hashmap().unwrap();
   assert_eq!(new_map.len(), original_map.len());
 
@@ -238,7 +238,7 @@ fn test_create_kv_from_existing_store_with_many_entries() {
     assert_eq!(new_map.get(key), Some(value));
   }
 
-  // Verify the new store is functional by making additional changes
+  // Verify the new journal is functional by making additional changes
   new_kv
     .set("test:new", &Value::String("added_to_new".to_string()))
     .unwrap();
@@ -285,7 +285,7 @@ fn test_from_buffer_with_invalid_version() {
 
 #[test]
 fn test_from_buffer_success() {
-  // First create a KV store and populate it
+  // First create a KV journal and populate it
   let mut buffer1 = vec![0; 128];
   let mut kv1 = InMemoryKVJournal::new(&mut buffer1, None, None).unwrap();
 
@@ -571,7 +571,7 @@ fn test_with_memory_mapped_file() {
   // Create a temporary file and write some initial data
   let mut temp_file = NamedTempFile::new().unwrap();
   
-  // Write 1024 zeros to the file to create space for the KV store
+  // Write 1024 zeros to the file to create space for the KV journal
   let initial_data = vec![0u8; 1024];
   temp_file.write_all(&initial_data).unwrap();
   temp_file.flush().unwrap();
@@ -583,7 +583,7 @@ fn test_with_memory_mapped_file() {
   // Create a ResilientKv using the memory-mapped buffer
   let mut kv = InMemoryKVJournal::new(&mut mmap[..], None, None).unwrap();
   
-  // Use the KV store normally
+  // Use the KV journal normally
   kv.set("test_key", &Value::String("memory_mapped_value".to_string())).unwrap();
   kv.set("number", &Value::Signed(42)).unwrap();
   
@@ -685,7 +685,7 @@ fn test_high_water_mark_trigger() {
 fn test_high_water_mark_from_buffer() {
   let mut buffer = vec![0; 100];
   
-  // Create a KV store and add some data
+  // Create a KV journal and add some data
   {
     let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
     kv.set("test", &Value::String("value".to_string())).unwrap();
@@ -735,7 +735,7 @@ fn test_get_init_time() {
 
 #[test]
 fn test_get_init_time_from_buffer() {
-  // Create a KV store and get its timestamp
+  // Create a KV journal and get its timestamp
   let mut buffer1 = vec![0; 256];
   let mut kv1 = InMemoryKVJournal::new(&mut buffer1, None, None).unwrap();
   let original_time = kv1.get_init_time().unwrap();
@@ -743,7 +743,7 @@ fn test_get_init_time_from_buffer() {
   // Add some data
   kv1.set("test", &Value::String("value".to_string())).unwrap();
   
-  // Create a new KV store from the same buffer
+  // Create a new KV journal from the same buffer
   let mut kv2 = InMemoryKVJournal::from_buffer(&mut buffer1, None, None).unwrap();
   let loaded_time = kv2.get_init_time().unwrap();
   
