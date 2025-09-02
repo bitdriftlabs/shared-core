@@ -26,8 +26,6 @@ const VERSION: u64 = 1;
 pub struct InMemoryKVJournal<'a> {
   version: u64,
   position: usize,
-  #[allow(dead_code)]
-  first_entry_position: usize, // Position where first journal entry starts (after metadata)
   buffer: &'a mut [u8],
   high_water_mark: usize,
   high_water_mark_callback: Option<HighWaterMarkCallback>,
@@ -91,7 +89,6 @@ impl<'a> InMemoryKVJournal<'a> {
     Ok(Self {
       version: VERSION,
       position,
-      first_entry_position: position,
       buffer,
       high_water_mark,
       high_water_mark_callback: callback,
@@ -140,13 +137,9 @@ impl<'a> InMemoryKVJournal<'a> {
     // Calculate high water mark position
     let high_water_mark = (buffer.len() as f32 * ratio) as usize;
     
-    // Calculate first entry position by finding where metadata ends
-    let first_entry_position = Self::calculate_first_entry_position(buffer)?;
-    
     let kv = Self {
       version: u64::from_le_bytes(version_bytes),
       position: position_usize,
-      first_entry_position,
       buffer,
       high_water_mark,
       high_water_mark_callback: callback,
@@ -258,19 +251,6 @@ impl<'a> InMemoryKVJournal<'a> {
     }
     
     anyhow::bail!("No valid metadata with 'initialized' key found");
-  }
-
-  /// Calculate the position where the first journal entry should start (after metadata).
-  fn calculate_first_entry_position(buffer: &[u8]) -> anyhow::Result<usize> {
-    // Start after the array begin marker at position 16
-    let cursor = &buffer[17..]; // Skip header + array begin byte
-    
-    // Parse the metadata object to find where it ends
-    let (bytes_consumed, _) = from_slice(cursor)
-      .map_err(|e| anyhow::anyhow!("Failed to parse metadata object: {e:?}"))?;
-    
-    // First entry position = 16 (header) + 1 (array begin) + bytes_consumed
-    Ok(17 + bytes_consumed)
   }
 
   fn write_journal_entry(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {
