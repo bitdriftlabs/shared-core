@@ -500,8 +500,8 @@ impl<'a> KVJournal for InMemoryKVJournal<'a> {
     let data = other.as_hashmap()?;
     
     // Reset position to the first entry position (after metadata)
-    self.position = self.first_entry_position;
-    self.high_water_mark_triggered = self.position >= self.high_water_mark;
+    // We use `set_position` here so that the buffer is in a consistent state should we get interrupted.
+    self.set_position(self.first_entry_position);
     
     // Write the entire hashmap as a single journal entry
     if !data.is_empty() {
@@ -516,12 +516,8 @@ impl<'a> KVJournal for InMemoryKVJournal<'a> {
       // Calculate new position from remaining capacity
       let bytes_written = buffer_len - initial_position - cursor.remaining_mut();
       self.set_position(initial_position + bytes_written);
-    } else {
-      // If no data, just update the position in the buffer header
-      let position_bytes = (self.position as u64).to_le_bytes();
-      self.buffer[8..16].copy_from_slice(&position_bytes);
     }
-    
+
     Ok(())
   }
 }
