@@ -276,3 +276,66 @@ fn test_insert_null_is_deletion() -> anyhow::Result<()> {
   
   Ok(())
 }
+
+#[test]
+fn test_kv_store_caching_behavior() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let base_path = temp_dir.path().join("test_store");
+  
+  let mut store = KVStore::new(&base_path, 4096, None, None)?;
+  
+  // Add some data
+  store.insert("key1".to_string(), Value::String("value1".to_string()))?;
+  store.insert("key2".to_string(), Value::Signed(42))?;
+  store.insert("key3".to_string(), Value::Bool(true))?;
+  
+  // Multiple reads should work correctly (using cache)
+  assert_eq!(store.get("key1")?, Some(Value::String("value1".to_string())));
+  assert_eq!(store.get("key2")?, Some(Value::Signed(42)));
+  assert_eq!(store.get("key3")?, Some(Value::Bool(true)));
+  
+  // Operations that read the entire map should work
+  assert_eq!(store.len()?, 3);
+  assert!(store.contains_key("key1")?);
+  assert!(!store.contains_key("key4")?);
+  
+  let keys = store.keys()?;
+  assert_eq!(keys.len(), 3);
+  assert!(keys.contains(&"key1".to_string()));
+  assert!(keys.contains(&"key2".to_string()));
+  assert!(keys.contains(&"key3".to_string()));
+  
+  let values = store.values()?;
+  assert_eq!(values.len(), 3);
+  
+  let map = store.as_hashmap()?;
+  assert_eq!(map.len(), 3);
+  assert_eq!(map.get("key1"), Some(&Value::String("value1".to_string())));
+  
+  // Modify data (should invalidate cache)
+  store.insert("key4".to_string(), Value::String("value4".to_string()))?;
+  
+  // Verify cache was properly invalidated and new data is visible
+  assert_eq!(store.len()?, 4);
+  assert!(store.contains_key("key4")?);
+  assert_eq!(store.get("key4")?, Some(Value::String("value4".to_string())));
+  
+  // Remove data (should also invalidate cache)
+  let removed = store.remove("key2")?;
+  assert_eq!(removed, Some(Value::Signed(42)));
+  
+  // Verify cache was invalidated
+  assert_eq!(store.len()?, 3);
+  assert!(!store.contains_key("key2")?);
+  assert_eq!(store.get("key2")?, None);
+  
+  // Clear all data (should invalidate cache)
+  store.clear()?;
+  
+  // Verify cache was invalidated
+  assert_eq!(store.len()?, 0);
+  assert!(store.is_empty()?);
+  assert!(!store.contains_key("key1")?);
+  
+  Ok(())
+}

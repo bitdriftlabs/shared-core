@@ -19,6 +19,7 @@ use std::path::Path;
 /// based on the provided base path.
 pub struct KVStore {
   journal: DoubleBufferedKVJournal<MemMappedKVJournal, MemMappedKVJournal>,
+  cached_map: Option<HashMap<String, Value>>,
 }
 
 impl KVStore {
@@ -53,7 +54,10 @@ impl KVStore {
 
     let journal = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
 
-    Ok(Self { journal })
+    Ok(Self { 
+      journal,
+      cached_map: None,
+    })
   }
 
   /// Create or open a single journal file, handling resizing as needed.
@@ -94,12 +98,25 @@ impl KVStore {
     }
   }
 
+  /// Get the cached HashMap, loading it from the journal if necessary.
+  fn get_cached_map(&mut self) -> anyhow::Result<&HashMap<String, Value>> {
+    if self.cached_map.is_none() {
+      self.cached_map = Some(self.journal.as_hashmap()?);
+    }
+    Ok(self.cached_map.as_ref().unwrap())
+  }
+
+  /// Invalidate the cache after a write operation.
+  fn invalidate_cache(&mut self) {
+    self.cached_map = None;
+  }
+
   /// Get a value by key.
   ///
   /// # Errors
   /// Returns an error if the journal cannot be read.
   pub fn get(&mut self, key: &str) -> anyhow::Result<Option<Value>> {
-    let map = self.journal.as_hashmap()?;
+    let map = self.get_cached_map()?;
     Ok(map.get(key).cloned())
   }
 
@@ -115,9 +132,11 @@ impl KVStore {
       // Inserting null is equivalent to deletion
       if old_value.is_some() {
         self.journal.delete(&key)?;
+        self.invalidate_cache();
       }
     } else {
       self.journal.set(&key, &value)?;
+      self.invalidate_cache();
     }
     Ok(old_value)
   }
@@ -130,6 +149,7 @@ impl KVStore {
     let old_value = self.get(key)?;
     if old_value.is_some() {
       self.journal.delete(key)?;
+      self.invalidate_cache();
     }
     Ok(old_value)
   }
@@ -139,7 +159,7 @@ impl KVStore {
   /// # Errors
   /// Returns an error if the journal cannot be read.
   pub fn contains_key(&mut self, key: &str) -> anyhow::Result<bool> {
-    let map = self.journal.as_hashmap()?;
+    let map = self.get_cached_map()?;
     Ok(map.contains_key(key))
   }
 
@@ -148,7 +168,7 @@ impl KVStore {
   /// # Errors
   /// Returns an error if the journal cannot be read.
   pub fn len(&mut self) -> anyhow::Result<usize> {
-    let map = self.journal.as_hashmap()?;
+    let map = self.get_cached_map()?;
     Ok(map.len())
   }
 
@@ -165,10 +185,11 @@ impl KVStore {
   /// # Errors
   /// Returns an error if the clearing operation fails.
   pub fn clear(&mut self) -> anyhow::Result<()> {
-    let keys: Vec<String> = self.journal.as_hashmap()?.keys().cloned().collect();
+    let keys: Vec<String> = self.get_cached_map()?.keys().cloned().collect();
     for key in keys {
       self.journal.delete(&key)?;
     }
+    self.invalidate_cache();
     Ok(())
   }
 
@@ -177,7 +198,7 @@ impl KVStore {
   /// # Errors
   /// Returns an error if the journal cannot be read.
   pub fn keys(&mut self) -> anyhow::Result<Vec<String>> {
-    let map = self.journal.as_hashmap()?;
+    let map = self.get_cached_map()?;
     Ok(map.keys().cloned().collect())
   }
 
@@ -186,7 +207,7 @@ impl KVStore {
   /// # Errors
   /// Returns an error if the journal cannot be read.
   pub fn values(&mut self) -> anyhow::Result<Vec<Value>> {
-    let map = self.journal.as_hashmap()?;
+    let map = self.get_cached_map()?;
     Ok(map.values().cloned().collect())
   }
 
@@ -195,7 +216,7 @@ impl KVStore {
   /// # Errors
   /// Returns an error if the journal cannot be read.
   pub fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>> {
-    self.journal.as_hashmap()
+    Ok(self.get_cached_map()?.clone())
   }
 
   /// Force compression of the underlying journals.
@@ -206,7 +227,9 @@ impl KVStore {
   /// # Errors
   /// Returns an error if the compression operation fails.
   pub fn compress(&mut self) -> anyhow::Result<()> {
-    self.journal.compress()
+    self.journal.compress()?;
+    self.invalidate_cache();
+    Ok(())
   }
 
   /// Synchronize changes to disk for both journal files.
