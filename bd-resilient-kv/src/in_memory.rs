@@ -26,6 +26,7 @@ const VERSION: u64 = 1;
 pub struct InMemoryKVJournal<'a> {
   version: u64,
   position: usize,
+  #[allow(dead_code)]
   first_entry_position: usize, // Position where first journal entry starts (after metadata)
   buffer: &'a mut [u8],
   high_water_mark: usize,
@@ -499,25 +500,36 @@ impl<'a> KVJournal for InMemoryKVJournal<'a> {
     // Get all data from the other journal
     let data = other.as_hashmap()?;
     
-    // Reset position to the first entry position (after metadata)
-    // We use `set_position` here so that the buffer is in a consistent state should we get interrupted.
-    self.set_position(self.first_entry_position);
+    // Reinitialize the BonJSON portion starting at position 16, preserving the buffer header
+    let buffer_len = self.buffer.len();
+    let mut cursor = &mut self.buffer[16..];
     
-    // Write the entire hashmap as a single journal entry
+    // Write BonJSON array format starting at position 16
+    serialize_array_begin(&mut cursor)
+      .map_err(|e| anyhow::anyhow!("Failed to serialize array begin: {e:?}"))?;
+    
+    // Create fresh metadata object with current timestamp
+    let mut metadata = HashMap::new();
+    let now = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .map_err(|e| anyhow::anyhow!("System time error: {e}"))?
+      .as_nanos() as u64;
+    metadata.insert("initialized".to_string(), Value::Unsigned(now));
+    
+    // Write metadata object
+    encode_into_buf(&mut cursor, &Value::Object(metadata))
+      .map_err(|e| anyhow::anyhow!("Failed to encode metadata object: {e:?}"))?;
+    
+    // Write the data from the other journal if it's not empty
     if !data.is_empty() {
-      let initial_position = self.position;
-      let buffer_len = self.buffer.len();
-      let mut cursor = &mut self.buffer[self.position..];
-      
-      // Encode the entire hashmap directly
       encode_into_buf(&mut cursor, &Value::Object(data))
-        .map_err(|e| anyhow::anyhow!("Failed to encode hashmap: {e:?}"))?;
-      
-      // Calculate new position from remaining capacity
-      let bytes_written = buffer_len - initial_position - cursor.remaining_mut();
-      self.set_position(initial_position + bytes_written);
+        .map_err(|e| anyhow::anyhow!("Failed to encode data: {e:?}"))?;
     }
-
+    
+    // Calculate new position from remaining capacity (offset by 16 for the header)
+    let new_position = 16 + (buffer_len - 16 - cursor.remaining_mut());
+    self.set_position(new_position);
+    
     Ok(())
   }
 }
