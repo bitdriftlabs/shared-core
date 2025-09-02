@@ -99,12 +99,6 @@ impl KVStore {
     }
   }
 
-  /// Invalidate the cache after a write operation.
-  fn invalidate_cache(&mut self) -> anyhow::Result<()> {
-    self.cached_map = self.journal.as_hashmap()?;
-    Ok(())
-  }
-
   /// Get a value by key.
   ///
   /// # Errors
@@ -125,11 +119,11 @@ impl KVStore {
       // Inserting null is equivalent to deletion
       if old_value.is_some() {
         self.journal.delete(&key)?;
-        self.invalidate_cache()?;
+        self.cached_map.remove(&key);
       }
     } else {
       self.journal.set(&key, &value)?;
-      self.invalidate_cache()?;
+      self.cached_map.insert(key, value);
     }
     Ok(old_value)
   }
@@ -142,7 +136,7 @@ impl KVStore {
     let old_value = self.get(key)?;
     if old_value.is_some() {
       self.journal.delete(key)?;
-      self.invalidate_cache()?;
+      self.cached_map.remove(key);
     }
     Ok(old_value)
   }
@@ -180,7 +174,7 @@ impl KVStore {
     for key in keys {
       self.journal.delete(&key)?;
     }
-    self.invalidate_cache()?;
+    self.cached_map.clear();
     Ok(())
   }
 
@@ -217,7 +211,9 @@ impl KVStore {
   /// Returns an error if the compression operation fails.
   pub fn compress(&mut self) -> anyhow::Result<()> {
     self.journal.compress()?;
-    self.invalidate_cache()?;
+    // After compression, we need to refresh the cache from the journal
+    // since the active journal may have switched
+    self.cached_map = self.journal.as_hashmap()?;
     Ok(())
   }
 
