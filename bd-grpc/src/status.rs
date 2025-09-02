@@ -70,7 +70,7 @@ impl Status {
   #[must_use]
   pub fn from_headers(headers: &HeaderMap) -> Self {
     Self {
-      code: Code::from_string(
+      code: Code::from_str(
         headers
           .get(GRPC_STATUS)
           .expect("caller should verify grpc-status exists")

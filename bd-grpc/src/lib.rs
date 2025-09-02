@@ -256,7 +256,7 @@ impl<IncomingType: DecodingResult> StreamingApiReceiver<IncomingType> {
           });
 
           if let Some(grpc_status) = grpc_status {
-            let code = Code::from_string(grpc_status.to_str().unwrap_or_default());
+            let code = Code::from_str(grpc_status.to_str().unwrap_or_default());
             if code == Code::Ok {
               return Ok(None);
             }

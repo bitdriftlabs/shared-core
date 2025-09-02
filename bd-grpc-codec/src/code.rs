@@ -44,7 +44,8 @@ impl Code {
 
   // Convert from a string via https://grpc.github.io/grpc/core/md_doc_statuscodes.html.
   #[must_use]
-  pub fn from_string(status: &str) -> Self {
+  #[allow(clippy::should_implement_trait)] // Infallible
+  pub fn from_str(status: &str) -> Self {
     match status {
       "0" => Self::Ok,
       "3" => Self::InvalidArgument,
