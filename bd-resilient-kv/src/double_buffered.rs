@@ -28,19 +28,37 @@ pub struct DoubleBufferedKVJournal<A: KVJournal, B: KVJournal> {
 
 impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
   /// Create a new double-buffered KV journal using the provided journal instances.
+  /// The journal with the most recent initialization timestamp will be set as the active journal.
+  /// If both journals have the same timestamp (or no timestamp), journal_a will be the active journal.
   /// 
   /// # Arguments
   /// * `journal_a` - The primary journal instance
   /// * `journal_b` - The secondary journal instance
   ///
   /// # Returns
-  /// A new `DoubleBufferedKVJournal` instance with `journal_a` as the initially active journal.
-  pub fn new(journal_a: A, journal_b: B) -> Self {
-    Self {
+  /// A new `DoubleBufferedKVJournal` instance with the most recently initialized journal active.
+  pub fn new(mut journal_a: A, mut journal_b: B) -> anyhow::Result<Self> {
+    // Get initialization timestamps from both journals
+    let init_time_a = journal_a.get_init_time().unwrap_or(0);
+    let init_time_b = journal_b.get_init_time().unwrap_or(0);
+    
+    // Check if either journal has existing data
+    let has_data_a = journal_a.as_hashmap().map(|m| !m.is_empty()).unwrap_or(false);
+    let has_data_b = journal_b.as_hashmap().map(|m| !m.is_empty()).unwrap_or(false);
+    
+    // Choose the active journal based on data presence and timestamps
+    let active_journal_a = match (has_data_a, has_data_b) {
+      (true, false) => true,   // Only A has data
+      (false, true) => false,  // Only B has data  
+      (true, true) => init_time_a >= init_time_b,  // Both have data, use timestamps
+      (false, false) => init_time_a >= init_time_b, // Neither has data, use timestamps
+    };
+    
+    Ok(Self {
       journal_a,
       journal_b,
-      active_journal_a: true,
-    }
+      active_journal_a,
+    })
   }
 
   /// Execute an operation with the currently active journal.

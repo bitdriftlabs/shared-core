@@ -21,7 +21,7 @@ fn create_double_buffered_memmapped_journal(
   let journal_a = MemMappedKVJournal::new(&file_a, file_size, high_water_mark_ratio, None)?;
   let journal_b = MemMappedKVJournal::new(&file_b, file_size, high_water_mark_ratio, None)?;
   
-  let db_journal = DoubleBufferedKVJournal::new(journal_a, journal_b);
+  let db_journal = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
   Ok((db_journal, temp_dir))
 }
 
@@ -38,8 +38,8 @@ fn test_double_buffered_memmapped_basic_operations() -> anyhow::Result<()> {
   assert_eq!(map.get("key1"), Some(&Value::String("value1".to_string())));
   assert_eq!(map.get("key2"), Some(&Value::Signed(42)));
   
-  // Should start with journal A active
-  assert!(db_kv.is_active_journal_a());
+  // The initially active journal is determined by initialization timestamps
+  let _initially_active_is_a = db_kv.is_active_journal_a();
   
   Ok(())
 }
@@ -73,7 +73,7 @@ fn test_double_buffered_memmapped_persistence() -> anyhow::Result<()> {
   {
     let journal_a = MemMappedKVJournal::new(&file_a, 4096, Some(0.8), None)?;
     let journal_b = MemMappedKVJournal::new(&file_b, 4096, Some(0.8), None)?;
-    let mut db_kv = DoubleBufferedKVJournal::new(journal_a, journal_b);
+    let mut db_kv = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
     
     db_kv.set("persistent_key", &Value::String("persistent_value".to_string()))?;
     
@@ -83,7 +83,7 @@ fn test_double_buffered_memmapped_persistence() -> anyhow::Result<()> {
   // Recreate from existing files and verify data persists
   let journal_a = MemMappedKVJournal::from_file(&file_a, Some(0.8), None)?;
   let journal_b = MemMappedKVJournal::from_file(&file_b, Some(0.8), None)?;
-  let mut db_kv = DoubleBufferedKVJournal::new(journal_a, journal_b);
+  let mut db_kv = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
   
   let map = db_kv.as_hashmap()?;
   assert_eq!(map.len(), 1);
@@ -139,9 +139,6 @@ fn test_double_buffered_memmapped_journal_switching() -> anyhow::Result<()> {
   // Use a small file size to trigger switching more easily, but not too small
   let (mut db_kv, _temp_dir) = create_double_buffered_memmapped_journal(1024, Some(0.5))?;
   
-  // Should start with journal A
-  assert!(db_kv.is_active_journal_a());
-  
   // Add data more carefully to avoid buffer overflow
   for i in 0..8 { // Reduced number of entries
     let key = format!("key_{}", i);
@@ -182,7 +179,7 @@ fn test_double_buffered_memmapped_from_existing_file() -> anyhow::Result<()> {
   // Create double buffered journal with one existing file and one new file
   let journal_a = MemMappedKVJournal::from_file(&file_a, Some(0.8), None)?;
   let journal_b = MemMappedKVJournal::new(&file_b, 2048, Some(0.8), None)?;
-  let mut db_kv = DoubleBufferedKVJournal::new(journal_a, journal_b);
+  let mut db_kv = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
   
   // Verify existing data is accessible
   let map = db_kv.as_hashmap()?;

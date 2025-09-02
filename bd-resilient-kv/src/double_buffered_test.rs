@@ -15,7 +15,7 @@ fn create_test_double_buffered_journal() -> anyhow::Result<DoubleBufferedKVJourn
   let buffer_b = Box::leak(vec![0u8; 1024].into_boxed_slice());
   let journal_a = InMemoryKVJournal::new(buffer_a, Some(0.8), None)?;
   let journal_b = InMemoryKVJournal::new(buffer_b, Some(0.8), None)?;
-  Ok(DoubleBufferedKVJournal::new(journal_a, journal_b))
+  DoubleBufferedKVJournal::new(journal_a, journal_b)
 }
 
 /// Helper function to create a double-buffered journal with specific buffer sizes
@@ -28,7 +28,7 @@ fn create_test_double_buffered_journal_with_sizes(
   let buffer_b = Box::leak(vec![0u8; size_b].into_boxed_slice());
   let journal_a = InMemoryKVJournal::new(buffer_a, high_water_mark_ratio, None)?;
   let journal_b = InMemoryKVJournal::new(buffer_b, high_water_mark_ratio, None)?;
-  Ok(DoubleBufferedKVJournal::new(journal_a, journal_b))
+  DoubleBufferedKVJournal::new(journal_a, journal_b)
 }
 
 #[test]
@@ -43,9 +43,6 @@ fn test_double_buffered_basic_operations() -> anyhow::Result<()> {
   assert_eq!(map.len(), 2);
   assert_eq!(map.get("key1"), Some(&Value::String("value1".to_string())));
   assert_eq!(map.get("key2"), Some(&Value::Signed(42)));
-  
-  // Should start with journal A active
-  assert!(db_kv.is_active_journal_a());
   
   Ok(())
 }
@@ -74,8 +71,8 @@ fn test_double_buffered_journal_switching() -> anyhow::Result<()> {
   // Use a small buffer to trigger switching
   let mut db_kv = create_test_double_buffered_journal_with_sizes(256, 256, Some(0.5))?;
   
-  // Should start with journal A
-  assert!(db_kv.is_active_journal_a());
+  // Record which journal starts active (determined by initialization timestamps)
+  let initial_journal_is_a = db_kv.is_active_journal_a();
   
   // Add enough data to trigger high water mark
   for i in 0..10 {
@@ -84,8 +81,8 @@ fn test_double_buffered_journal_switching() -> anyhow::Result<()> {
     db_kv.set(&key, &Value::String(value))?;
   }
   
-  // After enough writes, it should have switched to journal B (or stayed on A if not triggered)
-  let final_journal = db_kv.is_active_journal_a();
+  // After enough writes, it should have switched to the other journal
+  let final_journal_is_a = db_kv.is_active_journal_a();
   
   // Verify all data is still accessible
   let map = db_kv.as_hashmap()?;
@@ -97,7 +94,13 @@ fn test_double_buffered_journal_switching() -> anyhow::Result<()> {
     assert_eq!(map.get(&key), Some(&Value::String(expected_value)));
   }
   
-  println!("Final journal A active: {}", final_journal);
+  // Optional: Log the switching behavior for debugging
+  if initial_journal_is_a != final_journal_is_a {
+    println!("Journal switched from {} to {}", 
+      if initial_journal_is_a { "A" } else { "B" },
+      if final_journal_is_a { "A" } else { "B" });
+  }
+  
   Ok(())
 }
 
@@ -148,12 +151,10 @@ fn test_double_buffered_forced_switching() -> anyhow::Result<()> {
   // Create a double buffered KV with a reasonable high water mark
   let mut db_kv = create_test_double_buffered_journal_with_sizes(1024, 1024, Some(0.7))?; // 70% of 1024 = ~717 bytes
   
-  // Should start with journal A
-  assert!(db_kv.is_active_journal_a());
+  // Record which journal starts active (determined by initialization timestamps)
+  let initial_journal_is_a = db_kv.is_active_journal_a();
   
   // Add data gradually and track when journal switches
-  let initial_journal = db_kv.is_active_journal_a();
-  
   for i in 0..30 {
     let key = format!("test_key_{:03}", i);
     let value = format!("test_value_with_some_longer_content_to_fill_buffer_{:03}", i);
@@ -161,8 +162,8 @@ fn test_double_buffered_forced_switching() -> anyhow::Result<()> {
     db_kv.set(&key, &Value::String(value))?;
     
     // Check if we've switched journals
-    let current_journal = db_kv.is_active_journal_a();
-    if current_journal != initial_journal {
+    let current_journal_is_a = db_kv.is_active_journal_a();
+    if current_journal_is_a != initial_journal_is_a {
       println!("Journal switched after {} entries", i + 1);
       break;
     }
