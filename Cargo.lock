@@ -1956,6 +1956,7 @@ dependencies = [
  "bd-buffer",
  "bd-client-common",
  "bd-client-stats-store",
+ "bd-resilient-kv",
  "bd-test-helpers",
  "ctor",
  "libfuzzer-sys",
