@@ -207,13 +207,6 @@ impl<'a> InMemoryKVJournal<'a> {
       .map(|d| d.as_nanos() as u64)
   }
 
-  #[allow(dead_code)]
-  fn set_version(&mut self, version: u64) {
-    self.version = version;
-    let version_bytes = version.to_le_bytes();
-    self.buffer[0..8].copy_from_slice(&version_bytes);
-  }
-
   fn set_position(&mut self, position: usize) {
     self.position = position;
     let position_bytes = (position as u64).to_le_bytes();
