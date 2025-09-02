@@ -30,6 +30,7 @@ pub struct InMemoryKVJournal<'a> {
   high_water_mark: usize,
   high_water_mark_callback: Option<HighWaterMarkCallback>,
   high_water_mark_triggered: bool,
+  init_timestamp: u64, // Cached initialization timestamp
 }
 
 impl<'a> InMemoryKVJournal<'a> {
@@ -93,6 +94,7 @@ impl<'a> InMemoryKVJournal<'a> {
       high_water_mark,
       high_water_mark_callback: callback,
       high_water_mark_triggered: false,
+      init_timestamp: timestamp,
     })
   }
 
@@ -144,6 +146,7 @@ impl<'a> InMemoryKVJournal<'a> {
       high_water_mark,
       high_water_mark_callback: callback,
       high_water_mark_triggered: position_usize >= high_water_mark,
+      init_timestamp: 0, // Will be set after validation
     };
 
     if kv.version != VERSION {
@@ -162,7 +165,13 @@ impl<'a> InMemoryKVJournal<'a> {
       anyhow::bail!("Invalid metadata in buffer: {}", e);
     }
 
-    Ok(kv)
+    // Extract timestamp from existing metadata after validation
+    let init_timestamp = Self::extract_timestamp_from_buffer(&kv.buffer[16..kv.position])?;
+    
+    // Update the struct with the extracted timestamp
+    let mut final_kv = kv;
+    final_kv.init_timestamp = init_timestamp;
+    Ok(final_kv)
   }
 
   /// Get a copy of the buffer for testing purposes
@@ -224,6 +233,33 @@ impl<'a> InMemoryKVJournal<'a> {
         callback(self.position, self.buffer.len(), self.high_water_mark);
       }
     }
+  }
+
+  /// Extract the initialization timestamp from a buffer containing journal data.
+  fn extract_timestamp_from_buffer(buffer: &[u8]) -> anyhow::Result<u64> {
+    // We need to create a temporary closed array to parse
+    let mut temp_buffer = buffer.to_vec();
+    temp_buffer.push(0x9b); // Add container end byte
+    
+    let (_, decoded) = from_slice(&temp_buffer)
+      .map_err(|e| anyhow::anyhow!("Failed to decode buffer for timestamp extraction: {e:?}"))?;
+    
+    if let Value::Array(entries) = decoded {
+      for entry in &entries {
+        if let Value::Object(obj) = entry {
+          if obj.contains_key("initialized") {
+            if let Some(Value::Unsigned(timestamp)) = obj.get("initialized") {
+              return Ok(*timestamp);
+            } else if let Some(Value::Signed(timestamp)) = obj.get("initialized") {
+              // Handle the case where timestamp was stored as signed
+              return Ok(*timestamp as u64);
+            }
+          }
+        }
+      }
+    }
+    
+    anyhow::bail!("No valid metadata with initialized timestamp found");
   }
 
   /// Validate that the buffer contains proper metadata with an "initialized" key.
@@ -353,34 +389,7 @@ impl<'a> KVJournal for InMemoryKVJournal<'a> {
   /// # Errors
   /// Returns an error if the initialization timestamp cannot be retrieved.
   fn get_init_time(&mut self) -> anyhow::Result<u64> {
-    // Create a temporary copy of the buffer to avoid modifying the original
-    let mut temp_buffer = self.buffer.to_vec();
-    
-    // Close the array in the temporary copy
-    let mut cursor = &mut temp_buffer[self.position..];
-    serialize_container_end(&mut cursor)
-      .map_err(|e| anyhow::anyhow!("Failed to serialize container end for metadata extraction: {e:?}"))?;
-    
-    let buffer = &temp_buffer[16..];
-    let (_, decoded) = from_slice(buffer)
-      .map_err(|e| anyhow::anyhow!("Failed to decode buffer for metadata: {e:?}"))?;
-    
-    if let Value::Array(entries) = decoded {
-      for entry in &entries {
-        if let Value::Object(obj) = entry {
-          if obj.contains_key("initialized") {
-            if let Some(Value::Unsigned(timestamp)) = obj.get("initialized") {
-              return Ok(*timestamp);
-            } else if let Some(Value::Signed(timestamp)) = obj.get("initialized") {
-              // Handle the case where timestamp was stored as signed
-              return Ok(*timestamp as u64);
-            }
-          }
-        }
-      }
-    }
-    
-    anyhow::bail!("No valid metadata with initialized timestamp found");
+    Ok(self.init_timestamp)
   }
 
   /// Reinitialize this journal using the data from another journal.
@@ -392,7 +401,11 @@ impl<'a> KVJournal for InMemoryKVJournal<'a> {
     let data = other.as_hashmap()?;
     
     // Write metadata with current timestamp
-    let mut position = Self::write_metadata(self.buffer, Self::current_timestamp()?)?;
+    let timestamp = Self::current_timestamp()?;
+    let mut position = Self::write_metadata(self.buffer, timestamp)?;
+    
+    // Update cached timestamp
+    self.init_timestamp = timestamp;
     
     // Write the data from the other journal if it's not empty
     if !data.is_empty() {
