@@ -58,7 +58,7 @@ impl<'a> InMemoryKVJournal<'a> {
     // | 8        | Position                 | u64            |
     // | 16       | Type Code: Array Start   | u8             |
     // | 17       | Metadata Object          | BONJSON Object |
-    // | ...      | Initial data             | BONJSON Object |
+    // | ...      | Journal entry            | BONJSON Object |
     // | ...      | Journal entry            | BONJSON Object |
     // | ...      | ...                      | ...            |
     // The last Container End byte (to terminate the array) is not stored in the file.
