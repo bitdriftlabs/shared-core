@@ -211,9 +211,8 @@ impl KVStore {
   /// Returns an error if the compression operation fails.
   pub fn compress(&mut self) -> anyhow::Result<()> {
     self.journal.compress()?;
-    // After compression, we need to refresh the cache from the journal
-    // since the active journal may have switched
-    self.cached_map = self.journal.as_hashmap()?;
+    // No need to refresh cache - compression doesn't change the data,
+    // just reorganizes storage for better performance
     Ok(())
   }
 
