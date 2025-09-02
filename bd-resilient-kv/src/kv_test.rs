@@ -225,9 +225,10 @@ fn test_create_kv_from_existing_journal_with_many_entries() {
     Some(&Value::Bool(false))
   );
 
-  // Create a new KV journal from the existing one
+  // Create a new KV journal and reinitialize it from the existing one
   let mut buffer2 = vec![0; 1024];
-  let mut new_kv = InMemoryKVJournal::from_journal(&mut buffer2, &mut original_kv).unwrap();
+  let mut new_kv = InMemoryKVJournal::new(&mut buffer2, None, None).unwrap();
+  new_kv.reinit_from(&mut original_kv).unwrap();
 
   // Verify the new journal has the same state as the original
   let new_map = new_kv.as_hashmap().unwrap();
