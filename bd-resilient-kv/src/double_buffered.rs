@@ -24,8 +24,6 @@ pub struct DoubleBufferedKVJournal<A: KVJournal, B: KVJournal> {
   journal_b: B,
   /// Which journal is currently active (true = journal_a, false = journal_b)
   active_journal_a: bool,
-  /// Whether we're in the middle of a journal switch operation
-  switching: bool,
 }
 
 impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
@@ -42,7 +40,6 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
       journal_a,
       journal_b,
       active_journal_a: true,
-      switching: false,
     }
   }
 
@@ -51,17 +48,6 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
   where
     F: FnOnce(&mut dyn KVJournal) -> anyhow::Result<T>,
   {
-    // Avoid borrowing issues by checking switching state first
-    if self.switching {
-      // If we're switching, just execute on the active journal without switching logic
-      let result = if self.active_journal_a {
-        f(&mut self.journal_a)
-      } else {
-        f(&mut self.journal_b)
-      };
-      return result;
-    }
-
     // Execute operation and check for high water mark
     let (result, high_water_triggered) = if self.active_journal_a {
       let result = f(&mut self.journal_a)?;
@@ -83,9 +69,6 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
 
   /// Switch to the inactive journal by reinitializing it from the active journal.
   fn switch_journals(&mut self) -> anyhow::Result<()> {
-    // Set switching flag to prevent recursive switching
-    self.switching = true;
-
     // Reinitialize the inactive journal from the active one
     if self.active_journal_a {
       self.journal_b.reinit_from(&mut self.journal_a)?;
@@ -95,9 +78,6 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
 
     // Switch active journal
     self.active_journal_a = !self.active_journal_a;
-
-    // Clear switching flag
-    self.switching = false;
 
     Ok(())
   }
