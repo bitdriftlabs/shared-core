@@ -7,6 +7,7 @@
 
 use crate::{KVJournal, HighWaterMarkCallback};
 use bd_bonjson::Value;
+use bd_bonjson::type_codes::TypeCode::ContainerEnd;
 use bd_bonjson::decoder::from_slice;
 use bd_bonjson::encoder::encode_into_buf;
 use bd_bonjson::serialize_primitives::{
@@ -232,7 +233,7 @@ impl<'a> InMemoryKVJournal<'a> {
   fn extract_timestamp_from_buffer(buffer: &[u8]) -> anyhow::Result<u64> {
     // We need to create a temporary closed array to parse
     let mut temp_buffer = buffer.to_vec();
-    temp_buffer.push(0x9b); // Add container end byte
+    temp_buffer.push(ContainerEnd as u8); // Close off the open array
     
     let (_, decoded) = from_slice(&temp_buffer)
       .map_err(|e| anyhow::anyhow!("Failed to decode buffer for timestamp extraction: {e:?}"))?;
