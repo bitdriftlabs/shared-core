@@ -79,8 +79,7 @@ impl<'a> InMemoryKVJournal<'a> {
     
     // Write metadata with current timestamp
     let timestamp = Self::current_timestamp()?;
-    let metadata_bytes = Self::write_metadata_at_position(buffer, 17, timestamp)?;
-    let position = 17 + metadata_bytes;
+    let position = Self::write_metadata(buffer, timestamp)?;
     
     // Write initial position
     let position_bytes = (position as u64).to_le_bytes();
@@ -189,10 +188,11 @@ impl<'a> InMemoryKVJournal<'a> {
   }
 
   /// Create and write metadata object with given timestamp.
-  /// Returns the number of bytes written.
-  fn write_metadata_at_position(buffer: &mut [u8], start_pos: usize, timestamp: u64) -> anyhow::Result<usize> {
+  /// This data is always written starting at offset 17 in the buffer.
+  /// Returns the new current position (17 + metadata length).
+  fn write_metadata(buffer: &mut [u8], timestamp: u64) -> anyhow::Result<usize> {
     let buffer_len = buffer.len();
-    let mut cursor = &mut buffer[start_pos..];
+    let mut cursor = &mut buffer[17..];
     
     // Create metadata object
     let mut metadata = HashMap::new();
@@ -202,8 +202,8 @@ impl<'a> InMemoryKVJournal<'a> {
     encode_into_buf(&mut cursor, &Value::Object(metadata))
       .map_err(|e| anyhow::anyhow!("Failed to encode metadata object: {e:?}"))?;
     
-    // Return bytes written
-    Ok(buffer_len - start_pos - cursor.remaining_mut())
+    // Return new current position (17 + bytes written)
+    Ok(17 + (buffer_len - 17 - cursor.remaining_mut()))
   }
 
   /// Get current timestamp in nanoseconds since UNIX epoch.
@@ -238,38 +238,6 @@ impl<'a> InMemoryKVJournal<'a> {
         callback(self.position, self.buffer.len(), self.high_water_mark);
       }
     }
-  }
-
-  /// Extract metadata from the current buffer and return the timestamp.
-  fn extract_metadata(&mut self) -> anyhow::Result<u64> {
-    // Create a temporary copy of the buffer to avoid modifying the original
-    let mut temp_buffer = self.buffer.to_vec();
-    
-    // Close the array in the temporary copy
-    let mut cursor = &mut temp_buffer[self.position..];
-    serialize_container_end(&mut cursor)
-      .map_err(|e| anyhow::anyhow!("Failed to serialize container end for metadata extraction: {e:?}"))?;
-    
-    let buffer = &temp_buffer[16..];
-    let (_, decoded) = from_slice(buffer)
-      .map_err(|e| anyhow::anyhow!("Failed to decode buffer for metadata: {e:?}"))?;
-    
-    if let Value::Array(entries) = decoded {
-      for entry in &entries {
-        if let Value::Object(obj) = entry {
-          if obj.contains_key("initialized") {
-            if let Some(Value::Unsigned(timestamp)) = obj.get("initialized") {
-              return Ok(*timestamp);
-            } else if let Some(Value::Signed(timestamp)) = obj.get("initialized") {
-              // Handle the case where timestamp was stored as signed
-              return Ok(*timestamp as u64);
-            }
-          }
-        }
-      }
-    }
-    
-    anyhow::bail!("No valid metadata with initialized timestamp found");
   }
 
   /// Validate that the buffer contains proper metadata with an "initialized" key.
@@ -412,7 +380,34 @@ impl<'a> KVJournal for InMemoryKVJournal<'a> {
   /// # Errors
   /// Returns an error if the initialization timestamp cannot be retrieved.
   fn get_init_time(&mut self) -> anyhow::Result<u64> {
-    self.extract_metadata()
+    // Create a temporary copy of the buffer to avoid modifying the original
+    let mut temp_buffer = self.buffer.to_vec();
+    
+    // Close the array in the temporary copy
+    let mut cursor = &mut temp_buffer[self.position..];
+    serialize_container_end(&mut cursor)
+      .map_err(|e| anyhow::anyhow!("Failed to serialize container end for metadata extraction: {e:?}"))?;
+    
+    let buffer = &temp_buffer[16..];
+    let (_, decoded) = from_slice(buffer)
+      .map_err(|e| anyhow::anyhow!("Failed to decode buffer for metadata: {e:?}"))?;
+    
+    if let Value::Array(entries) = decoded {
+      for entry in &entries {
+        if let Value::Object(obj) = entry {
+          if obj.contains_key("initialized") {
+            if let Some(Value::Unsigned(timestamp)) = obj.get("initialized") {
+              return Ok(*timestamp);
+            } else if let Some(Value::Signed(timestamp)) = obj.get("initialized") {
+              // Handle the case where timestamp was stored as signed
+              return Ok(*timestamp as u64);
+            }
+          }
+        }
+      }
+    }
+    
+    anyhow::bail!("No valid metadata with initialized timestamp found");
   }
 
   /// Reinitialize this journal using the data from another journal.
@@ -424,23 +419,21 @@ impl<'a> KVJournal for InMemoryKVJournal<'a> {
     let data = other.as_hashmap()?;
     
     // Write metadata with current timestamp
-    let timestamp = Self::current_timestamp()?;
-    let metadata_bytes = Self::write_metadata_at_position(self.buffer, 17, timestamp)?;
-    let mut new_position = 17 + metadata_bytes;
+    let mut position = Self::write_metadata(self.buffer, Self::current_timestamp()?)?;
     
     // Write the data from the other journal if it's not empty
     if !data.is_empty() {
       let buffer_len = self.buffer.len();
-      let mut cursor = &mut self.buffer[new_position..];
+      let mut cursor = &mut self.buffer[position..];
       
       encode_into_buf(&mut cursor, &Value::Object(data))
         .map_err(|e| anyhow::anyhow!("Failed to encode data: {e:?}"))?;
       
       // Calculate new position
-      new_position = new_position + (buffer_len - new_position - cursor.remaining_mut());
+      position = position + (buffer_len - position - cursor.remaining_mut());
     }
     
-    self.set_position(new_position);
+    self.set_position(position);
     Ok(())
   }
 }
