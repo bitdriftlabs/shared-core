@@ -324,6 +324,26 @@ impl<'a> KVJournal for InMemoryKVJournal<'a> {
     self.set(key, &Value::Null)
   }
 
+  /// Clear all key-value pairs from the journal.
+  ///
+  /// This is more efficient than calling `delete()` on each key individually
+  /// as it reinitializes the journal with empty state rather than creating
+  /// multiple deletion journal entries.
+  ///
+  /// # Errors
+  /// Returns an error if the clearing operation fails.
+  fn clear(&mut self) -> anyhow::Result<()> {
+    // Reinitialize with empty state by writing just the metadata
+    let timestamp = Self::current_timestamp()?;
+    let position = Self::write_metadata(self.buffer, timestamp)?;
+    
+    // Update cached timestamp and position
+    self.initialized_at_unix_time_ns = timestamp;
+    self.set_position(position);
+    
+    Ok(())
+  }
+
   /// Get the current state of the journal as a `HashMap`.
   ///
   /// # Errors

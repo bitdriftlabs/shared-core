@@ -104,6 +104,45 @@ fn test_kv_store_clear() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_kv_store_clear_efficiency() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let base_path = temp_dir.path().join("test_store");
+  
+  let mut store = KVStore::new(&base_path, 4096, None, None)?;
+  
+  // Insert many key-value pairs
+  for i in 0..100 {
+    store.insert(format!("key{}", i), Value::Signed(i as i64))?;
+  }
+  
+  assert_eq!(store.len()?, 100);
+  
+  // Check buffer usage before clear
+  let buffer_usage_before = store.buffer_usage_ratio();
+  
+  // Clear all - this should be efficient with the new implementation
+  store.clear()?;
+  
+  // Verify everything is cleared
+  assert_eq!(store.len()?, 0);
+  assert!(store.is_empty()?);
+  
+  // Check buffer usage after clear - should be much lower than before
+  let buffer_usage_after = store.buffer_usage_ratio();
+  
+  // The buffer usage should be significantly reduced after clearing
+  // (not just from deletion entries, but from actual reinitialization)
+  assert!(buffer_usage_after < buffer_usage_before);
+  
+  // Verify we can still insert after clearing
+  store.insert("new_key".to_string(), Value::String("new_value".to_string()))?;
+  assert_eq!(store.len()?, 1);
+  assert_eq!(store.get("new_key")?, Some(Value::String("new_value".to_string())));
+  
+  Ok(())
+}
+
+#[test]
 fn test_kv_store_keys_and_values() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let base_path = temp_dir.path().join("test_store");

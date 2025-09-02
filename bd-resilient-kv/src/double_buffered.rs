@@ -180,6 +180,10 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
     self.with_active_journal_mut(|journal| journal.delete(key))
   }
 
+  fn clear(&mut self) -> anyhow::Result<()> {
+    self.with_active_journal_mut(|journal| journal.clear())
+  }
+
   fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>> {
     self.with_active_journal_mut(|journal| journal.as_hashmap())
   }

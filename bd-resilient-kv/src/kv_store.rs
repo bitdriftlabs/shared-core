@@ -170,10 +170,7 @@ impl KVStore {
   /// # Errors
   /// Returns an error if the clearing operation fails.
   pub fn clear(&mut self) -> anyhow::Result<()> {
-    let keys: Vec<String> = self.cached_map.keys().cloned().collect();
-    for key in keys {
-      self.journal.delete(&key)?;
-    }
+    self.journal.clear()?;
     self.cached_map.clear();
     Ok(())
   }

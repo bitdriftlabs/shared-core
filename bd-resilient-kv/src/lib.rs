@@ -86,6 +86,15 @@ pub trait KVJournal {
   /// Returns an error if the journal entry cannot be written.
   fn delete(&mut self, key: &str) -> anyhow::Result<()>;
 
+  /// Clear all key-value pairs from the journal.
+  ///
+  /// This is more efficient than calling `delete()` on each key individually
+  /// as it can be implemented as a single operation rather than multiple journal entries.
+  ///
+  /// # Errors
+  /// Returns an error if the clearing operation fails.
+  fn clear(&mut self) -> anyhow::Result<()>;
+
   /// Get the current state of the journal as a `HashMap`.
   ///
   /// # Errors

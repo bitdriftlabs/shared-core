@@ -785,3 +785,38 @@ fn test_reinit_from() {
   // Check that high water mark is preserved (should still be based on 0.9 ratio)
   assert_eq!(target_kv.high_water_mark(), original_high_water_mark);
 }
+
+#[test]
+fn test_journal_clear() {
+  let mut buffer = vec![0; 512];
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
+
+  // Add some initial data
+  kv.set("key1", &Value::String("value1".to_string())).unwrap();
+  kv.set("key2", &Value::Signed(42)).unwrap();
+  kv.set("key3", &Value::Bool(true)).unwrap();
+  
+  let map_before = kv.as_hashmap().unwrap();
+  assert_eq!(map_before.len(), 3);
+  
+  // Check buffer usage before clear
+  let buffer_usage_before = kv.buffer_usage_ratio();
+  assert!(buffer_usage_before > 0.0);
+  
+  // Clear the journal
+  kv.clear().unwrap();
+  
+  // Verify everything is cleared
+  let map_after = kv.as_hashmap().unwrap();
+  assert_eq!(map_after.len(), 0);
+  
+  // Check buffer usage after clear - should be much lower
+  let buffer_usage_after = kv.buffer_usage_ratio();
+  assert!(buffer_usage_after < buffer_usage_before);
+  
+  // Verify we can still add data after clearing
+  kv.set("new_key", &Value::String("new_value".to_string())).unwrap();
+  let map_final = kv.as_hashmap().unwrap();
+  assert_eq!(map_final.len(), 1);
+  assert_eq!(map_final.get("new_key"), Some(&Value::String("new_value".to_string())));
+}

@@ -170,6 +170,21 @@ impl KVJournal for MemMappedKVJournal {
     self.in_memory_kv.delete(key)
   }
 
+  /// Clear all key-value pairs from the journal.
+  ///
+  /// This will reinitialize the journal and automatically persist the changes to the mapped file.
+  ///
+  /// # Errors
+  /// Returns an error if the clearing operation fails.
+  fn clear(&mut self) -> anyhow::Result<()> {
+    self.in_memory_kv.clear()?;
+    
+    // Sync the memory-mapped buffer to disk
+    self._mmap.flush()?;
+    
+    Ok(())
+  }
+
   /// Get the current state of the journal as a `HashMap`.
   ///
   /// # Errors
