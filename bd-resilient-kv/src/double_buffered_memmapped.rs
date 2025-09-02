@@ -291,4 +291,8 @@ impl ResilientKv for DoubleBufferedMemMappedKv {
   fn get_init_time(&mut self) -> anyhow::Result<u64> {
     self.with_active_kv(|kv| kv.get_init_time())
   }
+
+  fn reinit_from(&mut self, other: &mut dyn ResilientKv) -> anyhow::Result<()> {
+    self.with_active_kv(|kv| kv.reinit_from(other))
+  }
 }

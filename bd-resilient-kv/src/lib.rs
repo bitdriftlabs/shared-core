@@ -75,6 +75,15 @@ pub trait ResilientKv {
   /// # Errors
   /// Returns an error if the buffer cannot be decoded.
   fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>>;
+
+  /// Reinitialize this KV store using the data from another KV store.
+  ///
+  /// This method clears the current contents and populates this store with all
+  /// key-value pairs from the other store. The high water mark is not affected.
+  ///
+  /// # Errors
+  /// Returns an error if the other store cannot be read or if writing to this store fails.
+  fn reinit_from(&mut self, other: &mut dyn ResilientKv) -> anyhow::Result<()>;
 }
 
 // Re-export the in-memory implementation for convenience

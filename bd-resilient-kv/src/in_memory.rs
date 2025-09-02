@@ -472,4 +472,64 @@ impl<'a> ResilientKv for InMemoryResilientKv<'a> {
   fn get_init_time(&mut self) -> anyhow::Result<u64> {
     self.extract_metadata()
   }
+
+  /// Reinitialize this KV store using the data from another KV store.
+  ///
+  /// # Errors
+  /// Returns an error if the other store cannot be read or if writing to this store fails.
+  fn reinit_from(&mut self, other: &mut dyn ResilientKv) -> anyhow::Result<()> {
+    // Get all data from the other store
+    let data = other.as_hashmap()?;
+    
+    // Reset this store to initial state but preserve the high water mark
+    let current_high_water_mark = self.high_water_mark;
+    let current_callback = self.high_water_mark_callback;
+    let current_high_water_mark_triggered = self.high_water_mark_triggered;
+    
+    // Reinitialize the buffer to empty state
+    // Write version
+    let version_bytes = VERSION.to_le_bytes();
+    self.buffer[0..8].copy_from_slice(&version_bytes);
+    
+    // Write array begin marker at position 16
+    let buffer_len = self.buffer.len();
+    let mut cursor = &mut self.buffer[16..];
+    serialize_array_begin(&mut cursor)
+      .map_err(|e| anyhow::anyhow!("Failed to serialize array begin: {e:?}"))?;
+    
+    // Create metadata object using HashMap
+    let mut metadata = HashMap::new();
+    let now = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .map_err(|e| anyhow::anyhow!("System time error: {e}"))?
+      .as_nanos() as u64;
+    metadata.insert("initialized".to_string(), Value::Unsigned(now));
+    
+    // Write metadata object
+    encode_into_buf(&mut cursor, &Value::Object(metadata))
+      .map_err(|e| anyhow::anyhow!("Failed to encode metadata object: {e:?}"))?;
+    
+    // Calculate position from remaining capacity
+    let position = buffer_len - cursor.remaining_mut();
+    
+    // Write initial position
+    let position_bytes = (position as u64).to_le_bytes();
+    self.buffer[8..16].copy_from_slice(&position_bytes);
+    
+    // Update internal state
+    self.version = VERSION;
+    self.position = position;
+    
+    // Restore high water mark settings
+    self.high_water_mark = current_high_water_mark;
+    self.high_water_mark_callback = current_callback;
+    self.high_water_mark_triggered = current_high_water_mark_triggered;
+    
+    // Add all data from the other store
+    for (key, value) in data {
+      self.set(&key, &value)?;
+    }
+    
+    Ok(())
+  }
 }

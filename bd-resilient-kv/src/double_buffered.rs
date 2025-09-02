@@ -224,4 +224,8 @@ impl ResilientKv for DoubleBufferedKv {
   fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>> {
     self.with_active_kv(|kv| kv.as_hashmap())
   }
+
+  fn reinit_from(&mut self, other: &mut dyn ResilientKv) -> anyhow::Result<()> {
+    self.with_active_kv(|kv| kv.reinit_from(other))
+  }
 }

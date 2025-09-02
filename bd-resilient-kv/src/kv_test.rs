@@ -750,3 +750,37 @@ fn test_get_init_time_from_buffer() {
   // Should have the same initialization time
   assert_eq!(original_time, loaded_time);
 }
+
+#[test]
+fn test_reinit_from() {
+  // Create source KV with some data
+  let mut source_buffer = vec![0; 256];
+  let mut source_kv = InMemoryResilientKv::new(&mut source_buffer, None, None).unwrap();
+  
+  source_kv.set("key1", &Value::String("value1".to_string())).unwrap();
+  source_kv.set("key2", &Value::Signed(42)).unwrap();
+  source_kv.set("key3", &Value::Bool(true)).unwrap();
+  
+  // Create target KV with different data
+  let mut target_buffer = vec![0; 256];
+  let mut target_kv = InMemoryResilientKv::new(&mut target_buffer, Some(0.9), None).unwrap();
+  
+  target_kv.set("old_key", &Value::String("old_value".to_string())).unwrap();
+  
+  // Get high water mark before reinit
+  let original_high_water_mark = target_kv.high_water_mark();
+  
+  // Reinitialize target from source
+  target_kv.reinit_from(&mut source_kv).unwrap();
+  
+  // Check that target now has source's data
+  let target_data = target_kv.as_hashmap().unwrap();
+  assert_eq!(target_data.len(), 3);
+  assert_eq!(target_data.get("key1"), Some(&Value::String("value1".to_string())));
+  assert_eq!(target_data.get("key2"), Some(&Value::Signed(42)));
+  assert_eq!(target_data.get("key3"), Some(&Value::Bool(true)));
+  assert_eq!(target_data.get("old_key"), None); // Old data should be gone
+  
+  // Check that high water mark is preserved (should still be based on 0.9 ratio)
+  assert_eq!(target_kv.high_water_mark(), original_high_water_mark);
+}

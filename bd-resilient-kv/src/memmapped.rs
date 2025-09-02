@@ -186,4 +186,19 @@ impl ResilientKv for MemMappedResilientKv {
   fn get_init_time(&mut self) -> anyhow::Result<u64> {
     self.in_memory_kv.get_init_time()
   }
+
+  /// Reinitialize this KV store using the data from another KV store.
+  /// The high water mark is not affected.
+  ///
+  /// # Errors
+  /// Returns an error if the other store cannot be read or if writing to this store fails.
+  fn reinit_from(&mut self, other: &mut dyn ResilientKv) -> anyhow::Result<()> {
+    // Delegate to the in-memory KV store
+    self.in_memory_kv.reinit_from(other)?;
+    
+    // Sync the memory-mapped buffer to disk
+    self._mmap.flush()?;
+    
+    Ok(())
+  }
 }
