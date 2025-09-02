@@ -144,6 +144,15 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
       &self.journal_a
     }
   }
+
+  /// Force compression by reinitializing the inactive journal from the active journal and switching to it.
+  /// This is useful for manually triggering compression to reduce fragmentation and optimize storage.
+  ///
+  /// # Errors
+  /// Returns an error if the compression (reinit) operation fails.
+  pub fn compress(&mut self) -> anyhow::Result<()> {
+    self.switch_journals()
+  }
 }
 
 impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
@@ -177,5 +186,9 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
 
   fn reinit_from(&mut self, other: &mut dyn KVJournal) -> anyhow::Result<()> {
     self.with_active_journal_mut(|journal| journal.reinit_from(other))
+  }
+
+  fn sync(&self) -> anyhow::Result<()> {
+    self.with_active_journal(|journal| journal.sync())
   }
 }

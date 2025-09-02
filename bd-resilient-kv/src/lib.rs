@@ -37,9 +37,14 @@ mod concurrency_test;
 #[path = "./boundary_test.rs"]
 mod boundary_test;
 
+#[cfg(test)]
+#[path = "./kv_store_test.rs"]
+mod kv_store_test;
+
 pub mod in_memory;
 pub mod memmapped;
 pub mod double_buffered;
+pub mod kv_store;
 
 use bd_bonjson::Value;
 use std::collections::HashMap;
@@ -95,9 +100,22 @@ pub trait KVJournal {
   /// # Errors
   /// Returns an error if the other journal cannot be read or if writing to this journal fails.
   fn reinit_from(&mut self, other: &mut dyn KVJournal) -> anyhow::Result<()>;
+
+  /// Synchronize changes to persistent storage.
+  ///
+  /// For memory-mapped implementations, this forces changes to be written to disk.
+  /// For in-memory implementations, this is a no-op.
+  ///
+  /// # Errors
+  /// Returns an error if the sync operation fails.
+  fn sync(&self) -> anyhow::Result<()> {
+    // Default implementation is a no-op for non-persistent journals
+    Ok(())
+  }
 }
 
 // Re-export the in-memory implementation for convenience
 pub use in_memory::InMemoryKVJournal;
 pub use memmapped::MemMappedKVJournal;
 pub use double_buffered::DoubleBufferedKVJournal;
+pub use kv_store::KVStore;

@@ -200,4 +200,12 @@ impl KVJournal for MemMappedKVJournal {
     
     Ok(())
   }
+
+  /// Synchronize changes to disk.
+  ///
+  /// # Errors
+  /// Returns an error if the sync operation fails.
+  fn sync(&self) -> anyhow::Result<()> {
+    self.sync()
+  }
 }
