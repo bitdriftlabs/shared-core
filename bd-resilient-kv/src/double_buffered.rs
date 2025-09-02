@@ -61,8 +61,29 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
     })
   }
 
+  /// Switch to the inactive journal by reinitializing it from the active journal.
+  fn switch_journals(&mut self) -> anyhow::Result<()> {
+    // Reinitialize the inactive journal from the active one
+    if self.active_journal_a {
+      self.journal_b.reinit_from(&mut self.journal_a)?;
+    } else {
+      self.journal_a.reinit_from(&mut self.journal_b)?;
+    }
+
+    // Switch active journal
+    self.active_journal_a = !self.active_journal_a;
+
+    Ok(())
+  }
+
+  /// Get which journal is currently active (true = journal_a, false = journal_b).
+  /// This is useful for testing and debugging.
+  pub fn is_active_journal_a(&self) -> bool {
+    self.active_journal_a
+  }
+
   /// Execute an operation with the currently active journal.
-  fn with_active_journal<T, F>(&mut self, f: F) -> anyhow::Result<T>
+  fn with_active_journal_mut<T, F>(&mut self, f: F) -> anyhow::Result<T>
   where
     F: FnOnce(&mut dyn KVJournal) -> anyhow::Result<T>,
   {
@@ -85,23 +106,8 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
     Ok(result)
   }
 
-  /// Switch to the inactive journal by reinitializing it from the active journal.
-  fn switch_journals(&mut self) -> anyhow::Result<()> {
-    // Reinitialize the inactive journal from the active one
-    if self.active_journal_a {
-      self.journal_b.reinit_from(&mut self.journal_a)?;
-    } else {
-      self.journal_a.reinit_from(&mut self.journal_b)?;
-    }
-
-    // Switch active journal
-    self.active_journal_a = !self.active_journal_a;
-
-    Ok(())
-  }
-
   /// Execute a read-only operation with the currently active journal.
-  fn with_active_journal_readonly<T, F>(&self, f: F) -> T
+  fn with_active_journal<T, F>(&self, f: F) -> T
   where
     F: FnOnce(&dyn KVJournal) -> T,
   {
@@ -112,10 +118,13 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
     }
   }
 
-  /// Get which journal is currently active (true = journal_a, false = journal_b).
-  /// This is useful for testing and debugging.
-  pub fn is_active_journal_a(&self) -> bool {
-    self.active_journal_a
+  /// Get a mutable reference to the currently active journal.
+  pub fn active_journal_mut(&mut self) -> &mut dyn KVJournal {
+    if self.active_journal_a {
+      &mut self.journal_a
+    } else {
+      &mut self.journal_b
+    }
   }
 
   /// Get a reference to the currently active journal.
@@ -124,15 +133,6 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
       &self.journal_a
     } else {
       &self.journal_b
-    }
-  }
-
-  /// Get a mutable reference to the currently active journal.
-  pub fn active_journal_mut(&mut self) -> &mut dyn KVJournal {
-    if self.active_journal_a {
-      &mut self.journal_a
-    } else {
-      &mut self.journal_b
     }
   }
 
@@ -148,34 +148,34 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
 
 impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
   fn high_water_mark(&self) -> usize {
-    self.with_active_journal_readonly(|journal| journal.high_water_mark())
+    self.with_active_journal(|journal| journal.high_water_mark())
   }
 
   fn is_high_water_mark_triggered(&self) -> bool {
-    self.with_active_journal_readonly(|journal| journal.is_high_water_mark_triggered())
+    self.with_active_journal(|journal| journal.is_high_water_mark_triggered())
   }
 
   fn buffer_usage_ratio(&self) -> f32 {
-    self.with_active_journal_readonly(|journal| journal.buffer_usage_ratio())
+    self.with_active_journal(|journal| journal.buffer_usage_ratio())
   }
 
   fn get_init_time(&mut self) -> anyhow::Result<u64> {
-    self.with_active_journal(|journal| journal.get_init_time())
+    self.with_active_journal_mut(|journal| journal.get_init_time())
   }
 
   fn set(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {
-    self.with_active_journal(|journal| journal.set(key, value))
+    self.with_active_journal_mut(|journal| journal.set(key, value))
   }
 
   fn delete(&mut self, key: &str) -> anyhow::Result<()> {
-    self.with_active_journal(|journal| journal.delete(key))
+    self.with_active_journal_mut(|journal| journal.delete(key))
   }
 
   fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>> {
-    self.with_active_journal(|journal| journal.as_hashmap())
+    self.with_active_journal_mut(|journal| journal.as_hashmap())
   }
 
   fn reinit_from(&mut self, other: &mut dyn KVJournal) -> anyhow::Result<()> {
-    self.with_active_journal(|journal| journal.reinit_from(other))
+    self.with_active_journal_mut(|journal| journal.reinit_from(other))
   }
 }
