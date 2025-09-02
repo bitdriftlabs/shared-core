@@ -152,19 +152,14 @@ impl<'a> InMemoryKVJournal<'a> {
       );
     }
 
-    // Validate that metadata exists and has the "initialized" key
-    if let Err(e) = Self::validate_metadata(&buffer[16..position_usize]) {
-      anyhow::bail!("Invalid metadata in buffer: {}", e);
-    }
-
-    // Extract timestamp from existing metadata after validation
+    // Extract timestamp from existing metadata
     let init_timestamp = Self::extract_timestamp_from_buffer(&buffer[16..position_usize])?;
     
     // Create final struct after all validation is complete
     Ok(Self {
       version,
       position: position_usize,
-      buffer,
+      buffer, 
       high_water_mark,
       high_water_mark_callback: callback,
       high_water_mark_triggered: position_usize >= high_water_mark,
@@ -258,26 +253,6 @@ impl<'a> InMemoryKVJournal<'a> {
     }
     
     anyhow::bail!("No valid metadata with initialized timestamp found");
-  }
-
-  /// Validate that the buffer contains proper metadata with an "initialized" key.
-  fn validate_metadata(buffer: &[u8]) -> anyhow::Result<()> {
-    // We need to create a temporary closed array to parse
-    let mut temp_buffer = buffer.to_vec();
-    temp_buffer.push(0x9b); // Add container end byte
-    
-    let (_, decoded) = from_slice(&temp_buffer)
-      .map_err(|e| anyhow::anyhow!("Failed to decode buffer for validation: {e:?}"))?;
-    
-    if let Value::Array(entries) = decoded {
-      if let Some(Value::Object(metadata)) = entries.first() {
-        if metadata.contains_key("initialized") {
-          return Ok(());
-        }
-      }
-    }
-    
-    anyhow::bail!("No valid metadata with 'initialized' key found");
   }
 
   fn write_journal_entry(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {
