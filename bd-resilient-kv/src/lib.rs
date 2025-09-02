@@ -21,6 +21,22 @@ mod double_buffered_test;
 #[path = "./double_buffered_memmapped_new_test.rs"]
 mod double_buffered_memmapped_test;
 
+#[cfg(test)]
+#[path = "./double_buffered_selection_test.rs"]
+mod double_buffered_selection_test;
+
+#[cfg(test)]
+#[path = "./error_handling_test.rs"]
+mod error_handling_test;
+
+#[cfg(test)]
+#[path = "./concurrency_test.rs"]
+mod concurrency_test;
+
+#[cfg(test)]
+#[path = "./boundary_test.rs"]
+mod boundary_test;
+
 pub mod in_memory;
 pub mod memmapped;
 pub mod double_buffered;

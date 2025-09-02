@@ -52,6 +52,13 @@ impl<'a> InMemoryKVJournal<'a> {
     high_water_mark_ratio: Option<f32>,
     callback: Option<HighWaterMarkCallback>
   ) -> anyhow::Result<Self> {
+    if buffer.len() < 16 {
+      anyhow::bail!(
+        "Buffer too small: {} bytes, need at least 16 bytes for header",
+        buffer.len()
+      );
+    }
+    
     // KV files have the following structure:
     // | Position | Data                     | Type           |
     // |----------|--------------------------|----------------|
