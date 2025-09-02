@@ -5,227 +5,179 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{KVJournal, HighWaterMarkCallback, InMemoryKVJournal};
+use crate::KVJournal;
 use bd_bonjson::Value;
 use std::collections::HashMap;
 
 /// A double-buffered implementation of KVJournal that automatically switches between two
-/// buffers when one reaches its high water mark.
+/// journal instances when one reaches its high water mark.
 /// 
-/// This type holds two buffers and switches between them when necessary:
-/// - Forwards KVJournal APIs to the currently active buffer
-/// - When the active buffer passes its high water mark, uses `from_journal` to initialize
-///   the other buffer with the compressed journal state of the full one
-/// - Once the other buffer is initialized, begins forwarding APIs to that buffer
-pub struct DoubleBufferedKVJournal {
-  /// The primary buffer storage
-  buffer_a: Vec<u8>,
-  /// The secondary buffer storage  
-  buffer_b: Vec<u8>,
-  /// Which buffer is currently active (true = buffer_a, false = buffer_b)
-  active_buffer_a: bool,
-  /// Whether we're in the middle of a buffer switch operation
+/// This type holds two journal instances and switches between them when necessary:
+/// - Forwards KVJournal APIs to the currently active journal
+/// - When the active journal passes its high water mark, uses `reinit_from` to initialize
+///   the other journal with the compressed journal state of the full one
+/// - Once the other journal is initialized, begins forwarding APIs to that journal
+pub struct DoubleBufferedKVJournal<A: KVJournal, B: KVJournal> {
+  /// The primary journal instance
+  journal_a: A,
+  /// The secondary journal instance
+  journal_b: B,
+  /// Which journal is currently active (true = journal_a, false = journal_b)
+  active_journal_a: bool,
+  /// Whether we're in the middle of a journal switch operation
   switching: bool,
-  /// High water mark ratio configuration
-  high_water_mark_ratio: Option<f32>,
-  /// Callback for high water mark notifications
-  callback: Option<HighWaterMarkCallback>,
 }
 
-impl DoubleBufferedKVJournal {
-  /// Create a new double-buffered KV journal using the provided buffer size.
+impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
+  /// Create a new double-buffered KV journal using the provided journal instances.
   /// 
-  /// Both internal buffers will be created with the specified size.
-  ///
   /// # Arguments
-  /// * `buffer_size` - The size of each internal buffer
-  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  /// * `callback` - Optional callback function called when high water mark is exceeded
+  /// * `journal_a` - The primary journal instance
+  /// * `journal_b` - The secondary journal instance
   ///
-  /// # Errors
-  /// Returns an error if buffer initialization fails.
-  pub fn new(
-    buffer_size: usize,
-    high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>
-  ) -> anyhow::Result<Self> {
-    let mut buffer_a = vec![0u8; buffer_size];
-    let buffer_b = vec![0u8; buffer_size];
-
-    // Initialize the first buffer to establish the initial state
-    let _initial_kv = InMemoryKVJournal::new(&mut buffer_a, high_water_mark_ratio, callback)?;
-
-    Ok(Self {
-      buffer_a,
-      buffer_b,
-      active_buffer_a: true,
+  /// # Returns
+  /// A new `DoubleBufferedKVJournal` instance with `journal_a` as the initially active journal.
+  pub fn new(journal_a: A, journal_b: B) -> Self {
+    Self {
+      journal_a,
+      journal_b,
+      active_journal_a: true,
       switching: false,
-      high_water_mark_ratio,
-      callback,
-    })
-  }
-
-  /// Create a new double-buffered KV journal with initial data in the first buffer.
-  ///
-  /// # Arguments
-  /// * `initial_data` - The initial buffer data to load
-  /// * `secondary_buffer_size` - The size of the secondary buffer
-  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  /// * `callback` - Optional callback function called when high water mark is exceeded
-  ///
-  /// # Errors
-  /// Returns an error if buffer initialization fails.
-  pub fn from_data(
-    initial_data: Vec<u8>,
-    secondary_buffer_size: usize,
-    high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>
-  ) -> anyhow::Result<Self> {
-    let buffer_b = vec![0u8; secondary_buffer_size];
-
-    // Validate the initial data by trying to load it
-    let mut buffer_a_copy = initial_data.clone();
-    let _test_kv = InMemoryKVJournal::from_buffer(&mut buffer_a_copy, high_water_mark_ratio, callback)?;
-
-    Ok(Self {
-      buffer_a: initial_data,
-      buffer_b,
-      active_buffer_a: true,
-      switching: false,
-      high_water_mark_ratio,
-      callback,
-    })
+    }
   }
 
   /// Execute an operation with the currently active journal.
-  fn with_active_kv<T, F>(&mut self, f: F) -> anyhow::Result<T>
+  fn with_active_journal<T, F>(&mut self, f: F) -> anyhow::Result<T>
   where
-    F: FnOnce(&mut InMemoryKVJournal<'_>) -> anyhow::Result<T>,
+    F: FnOnce(&mut dyn KVJournal) -> anyhow::Result<T>,
   {
-    // Split the borrow to avoid multiple mutable borrows
-    let active_buffer_a = self.active_buffer_a;
-    let switching = self.switching;
-    let high_water_mark_ratio = self.high_water_mark_ratio;
-    let callback = self.callback;
+    // Avoid borrowing issues by checking switching state first
+    if self.switching {
+      // If we're switching, just execute on the active journal without switching logic
+      let result = if self.active_journal_a {
+        f(&mut self.journal_a)
+      } else {
+        f(&mut self.journal_b)
+      };
+      return result;
+    }
 
-    let (active_buffer, inactive_buffer) = if active_buffer_a {
-      (&mut self.buffer_a, &mut self.buffer_b)
+    // Execute operation and check for high water mark
+    let (result, high_water_triggered) = if self.active_journal_a {
+      let result = f(&mut self.journal_a)?;
+      let high_water_triggered = self.journal_a.is_high_water_mark_triggered();
+      (result, high_water_triggered)
     } else {
-      (&mut self.buffer_b, &mut self.buffer_a)
+      let result = f(&mut self.journal_b)?;
+      let high_water_triggered = self.journal_b.is_high_water_mark_triggered();
+      (result, high_water_triggered)
     };
 
-    // Create journal from current buffer
-    let mut kv = InMemoryKVJournal::from_buffer(active_buffer, high_water_mark_ratio, callback)?;
-    
-    // Execute the operation
-    let result = f(&mut kv)?;
-    
-    // Check if we need to switch buffers after the operation
-    // Only switch if we're not already switching and the high water mark is triggered
-    if !switching && kv.is_high_water_mark_triggered() {
-      // Set switching flag to prevent recursive switching
-      self.switching = true;
-      
-      // Create new journal in the inactive buffer from the active one
-      let _new_kv = InMemoryKVJournal::from_journal(inactive_buffer, &mut kv)?;
-      
-      // Switch active buffer
-      self.active_buffer_a = !active_buffer_a;
-      
-      // Clear switching flag
-      self.switching = false;
+    // Check if we need to switch journals after the operation
+    if high_water_triggered {
+      self.switch_journals()?;
     }
 
     Ok(result)
   }
 
+  /// Switch to the inactive journal by reinitializing it from the active journal.
+  fn switch_journals(&mut self) -> anyhow::Result<()> {
+    // Set switching flag to prevent recursive switching
+    self.switching = true;
+
+    // Reinitialize the inactive journal from the active one
+    if self.active_journal_a {
+      self.journal_b.reinit_from(&mut self.journal_a)?;
+    } else {
+      self.journal_a.reinit_from(&mut self.journal_b)?;
+    }
+
+    // Switch active journal
+    self.active_journal_a = !self.active_journal_a;
+
+    // Clear switching flag
+    self.switching = false;
+
+    Ok(())
+  }
+
   /// Execute a read-only operation with the currently active journal.
-  fn with_active_kv_readonly<T, F>(&self, f: F) -> anyhow::Result<T>
+  fn with_active_journal_readonly<T, F>(&self, f: F) -> T
   where
-    F: FnOnce(&InMemoryKVJournal<'_>) -> anyhow::Result<T>,
+    F: FnOnce(&dyn KVJournal) -> T,
   {
-    let buffer = if self.active_buffer_a {
-      &self.buffer_a
+    if self.active_journal_a {
+      f(&self.journal_a)
     } else {
-      &self.buffer_b
-    };
-
-    // Create a copy for read-only access
-    let mut buffer_copy = buffer.clone();
-    let kv = InMemoryKVJournal::from_buffer(&mut buffer_copy, self.high_water_mark_ratio, None)?;
-    
-    f(&kv)
-  }
-
-  /// Get which buffer is currently active (true = buffer_a, false = buffer_b).
-  /// This is useful for testing and debugging.
-  pub fn is_active_buffer_a(&self) -> bool {
-    self.active_buffer_a
-  }
-
-  /// Get the buffer usage ratio of the currently active buffer.
-  pub fn active_buffer_usage_ratio(&self) -> anyhow::Result<f32> {
-    self.with_active_kv_readonly(|kv| Ok(kv.buffer_usage_ratio()))
-  }
-
-  /// Get the size of the currently active buffer.
-  pub fn active_buffer_size(&self) -> usize {
-    if self.active_buffer_a {
-      self.buffer_a.len()
-    } else {
-      self.buffer_b.len()
+      f(&self.journal_b)
     }
   }
 
-  /// Get the size of the currently inactive buffer.
-  pub fn inactive_buffer_size(&self) -> usize {
-    if self.active_buffer_a {
-      self.buffer_b.len()
+  /// Get which journal is currently active (true = journal_a, false = journal_b).
+  /// This is useful for testing and debugging.
+  pub fn is_active_journal_a(&self) -> bool {
+    self.active_journal_a
+  }
+
+  /// Get a reference to the currently active journal.
+  pub fn active_journal(&self) -> &dyn KVJournal {
+    if self.active_journal_a {
+      &self.journal_a
     } else {
-      self.buffer_a.len()
+      &self.journal_b
+    }
+  }
+
+  /// Get a mutable reference to the currently active journal.
+  pub fn active_journal_mut(&mut self) -> &mut dyn KVJournal {
+    if self.active_journal_a {
+      &mut self.journal_a
+    } else {
+      &mut self.journal_b
+    }
+  }
+
+  /// Get a reference to the currently inactive journal.
+  pub fn inactive_journal(&self) -> &dyn KVJournal {
+    if self.active_journal_a {
+      &self.journal_b
+    } else {
+      &self.journal_a
     }
   }
 }
 
-impl KVJournal for DoubleBufferedKVJournal {
+impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
   fn high_water_mark(&self) -> usize {
-    let ratio = self.high_water_mark_ratio.unwrap_or(0.8);
-    let buffer_len = if self.active_buffer_a {
-      self.buffer_a.len()
-    } else {
-      self.buffer_b.len()
-    };
-    (buffer_len as f32 * ratio) as usize
+    self.with_active_journal_readonly(|journal| journal.high_water_mark())
   }
 
   fn is_high_water_mark_triggered(&self) -> bool {
-    // For a read-only check, we need to be conservative
-    // The actual check happens in with_active_kv when modifications occur
-    false
+    self.with_active_journal_readonly(|journal| journal.is_high_water_mark_triggered())
   }
 
   fn buffer_usage_ratio(&self) -> f32 {
-    // For a read-only check, we can try to get the ratio but return 0.0 on error
-    self.with_active_kv_readonly(|kv| Ok(kv.buffer_usage_ratio())).unwrap_or(0.0)
+    self.with_active_journal_readonly(|journal| journal.buffer_usage_ratio())
   }
 
   fn get_init_time(&mut self) -> anyhow::Result<u64> {
-    self.with_active_kv(|kv| kv.get_init_time())
+    self.with_active_journal(|journal| journal.get_init_time())
   }
 
   fn set(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {
-    self.with_active_kv(|kv| kv.set(key, value))
+    self.with_active_journal(|journal| journal.set(key, value))
   }
 
   fn delete(&mut self, key: &str) -> anyhow::Result<()> {
-    self.with_active_kv(|kv| kv.delete(key))
+    self.with_active_journal(|journal| journal.delete(key))
   }
 
   fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>> {
-    self.with_active_kv(|kv| kv.as_hashmap())
+    self.with_active_journal(|journal| journal.as_hashmap())
   }
 
   fn reinit_from(&mut self, other: &mut dyn KVJournal) -> anyhow::Result<()> {
-    self.with_active_kv(|kv| kv.reinit_from(other))
+    self.with_active_journal(|journal| journal.reinit_from(other))
   }
 }
