@@ -9,11 +9,11 @@ use crate::KVJournal;
 use bd_bonjson::Value;
 use std::collections::HashMap;
 
-/// A double-buffered implementation of KVJournal that automatically switches between two
+/// A double-buffered implementation of `KVJournal` that automatically switches between two
 /// journal instances when one reaches its high water mark.
 /// 
 /// This type holds two journal instances and switches between them when necessary:
-/// - Forwards KVJournal APIs to the currently active journal
+/// - Forwards `KVJournal` APIs to the currently active journal
 /// - When the active journal passes its high water mark, uses `reinit_from` to initialize
 ///   the other journal with the compressed journal state of the full one
 /// - Once the other journal is initialized, begins forwarding APIs to that journal
@@ -22,14 +22,14 @@ pub struct DoubleBufferedKVJournal<A: KVJournal, B: KVJournal> {
   journal_a: A,
   /// The secondary journal instance
   journal_b: B,
-  /// Which journal is currently active (true = journal_a, false = journal_b)
+  /// Which journal is currently active (true = `journal_a`, false = `journal_b`)
   active_journal_a: bool,
 }
 
 impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
   /// Create a new double-buffered KV journal using the provided journal instances.
   /// The journal with the most recent initialization timestamp will be set as the active journal.
-  /// If both journals have the same timestamp (or no timestamp), journal_a will be the active journal.
+  /// If both journals have the same timestamp (or no timestamp), `journal_a` will be the active journal.
   /// 
   /// # Arguments
   /// * `journal_a` - The primary journal instance
@@ -50,8 +50,7 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
     let active_journal_a = match (has_data_a, has_data_b) {
       (true, false) => true,   // Only A has data
       (false, true) => false,  // Only B has data  
-      (true, true) => init_time_a >= init_time_b,  // Both have data, use timestamps
-      (false, false) => init_time_a >= init_time_b, // Neither has data, use timestamps
+      (true, true) | (false, false) => init_time_a >= init_time_b,  // Both have data or neither has data, use timestamps
     };
     
     Ok(Self {
@@ -76,7 +75,7 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
     Ok(())
   }
 
-  /// Get which journal is currently active (true = journal_a, false = journal_b).
+  /// Get which journal is currently active (true = `journal_a`, false = `journal_b`).
   /// This is useful for testing and debugging.
   pub fn is_active_journal_a(&self) -> bool {
     self.active_journal_a

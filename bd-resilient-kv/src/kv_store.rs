@@ -12,10 +12,10 @@ use std::path::Path;
 
 /// A persistent key-value store that provides HashMap-like semantics.
 /// 
-/// KVStore is backed by a DoubleBufferedKVJournal using two MemMappedKVJournal instances
+/// `KVStore` is backed by a `DoubleBufferedKVJournal` using two `MemMappedKVJournal` instances
 /// for crash-resilient storage with automatic compression and high water mark management.
 /// 
-/// For performance optimization, KVStore maintains an in-memory cache of the key-value data
+/// For performance optimization, `KVStore` maintains an in-memory cache of the key-value data
 /// to provide O(1) read operations and avoid expensive journal decoding on every access.
 /// The cache is always kept in sync with the underlying journal state.
 ///
@@ -27,7 +27,7 @@ pub struct KVStore {
 }
 
 impl KVStore {
-  /// Create a new KVStore with the specified base path and buffer size.
+  /// Create a new `KVStore` with the specified base path and buffer size.
   ///
   /// The actual journal files will be created/opened with extensions ".jrna" and ".jrnb".
   /// If the files already exist, they will be loaded with their existing contents.
@@ -82,7 +82,8 @@ impl KVStore {
         .read(true)
         .write(true)
         .create(true)
-        .open(&path)?;
+        .truncate(false)
+        .open(path)?;
       
       // Resize if necessary
       // Note that if the new size is significantly smaller, the data may become unrecoverable.
@@ -94,13 +95,10 @@ impl KVStore {
     }
     
     // Try to open with existing data first
-    match MemMappedKVJournal::from_file(&path, high_water_mark_ratio, callback) {
-      Ok(journal) => Ok(journal),
-      Err(_) => {
-        // Data is corrupt or unreadable, create fresh
-        MemMappedKVJournal::new(&path, target_size, high_water_mark_ratio, callback)
-      }
-    }
+    MemMappedKVJournal::from_file(path, high_water_mark_ratio, callback).or_else(|_| {
+      // Data is corrupt or unreadable, create fresh
+      MemMappedKVJournal::new(path, target_size, high_water_mark_ratio, callback)
+    })
   }
 
   /// Get a value by key.
@@ -213,7 +211,7 @@ impl KVStore {
     Ok(self.cached_map.values().cloned().collect())
   }
 
-  /// Get all key-value pairs as a HashMap.
+  /// Get all key-value pairs as a `HashMap`.
   ///
   /// This operation is O(n) where n is the number of key-value pairs, as it clones the entire cache.
   ///
@@ -247,11 +245,13 @@ impl KVStore {
   }
 
   /// Get the current buffer usage ratio (0.0 to 1.0).
+  #[must_use]
   pub fn buffer_usage_ratio(&self) -> f32 {
     self.journal.buffer_usage_ratio()
   }
 
   /// Check if the high water mark has been triggered.
+  #[must_use]
   pub fn is_high_water_mark_triggered(&self) -> bool {
     self.journal.is_high_water_mark_triggered()
   }

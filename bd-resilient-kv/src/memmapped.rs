@@ -19,7 +19,7 @@ use std::path::Path;
 #[derive(Debug)]
 pub struct MemMappedKVJournal {
   in_memory_kv: InMemoryKVJournal<'static>,
-  _mmap: MmapMut, // Keep the mmap alive for the lifetime of the struct
+  mmap: MmapMut, // Keep the mmap alive for the lifetime of the struct
 }
 
 impl MemMappedKVJournal {
@@ -46,6 +46,7 @@ impl MemMappedKVJournal {
       .read(true)
       .write(true)
       .create(true)
+      .truncate(false)
       .open(file_path)?;
     
     // Ensure the file is at least the requested size
@@ -66,7 +67,7 @@ impl MemMappedKVJournal {
 
     Ok(Self {
       in_memory_kv,
-      _mmap: mmap,
+      mmap,
     })
   }
 
@@ -103,7 +104,7 @@ impl MemMappedKVJournal {
 
     Ok(Self {
       in_memory_kv,
-      _mmap: mmap,
+      mmap,
     })
   }
 
@@ -116,13 +117,14 @@ impl MemMappedKVJournal {
   /// # Errors
   /// Returns an error if the sync operation fails.
   pub fn sync(&self) -> anyhow::Result<()> {
-    self._mmap.flush()?;
+    self.mmap.flush()?;
     Ok(())
   }
 
   /// Get the size of the underlying file in bytes.
+  #[must_use]
   pub fn file_size(&self) -> usize {
-    self._mmap.len()
+    self.mmap.len()
   }
 
   /// Get a copy of the buffer for testing purposes
@@ -180,7 +182,7 @@ impl KVJournal for MemMappedKVJournal {
     self.in_memory_kv.clear()?;
     
     // Sync the memory-mapped buffer to disk
-    self._mmap.flush()?;
+    self.mmap.flush()?;
     
     Ok(())
   }
@@ -211,7 +213,7 @@ impl KVJournal for MemMappedKVJournal {
     self.in_memory_kv.reinit_from(other)?;
     
     // Sync the memory-mapped buffer to disk
-    self._mmap.flush()?;
+    self.mmap.flush()?;
     
     Ok(())
   }

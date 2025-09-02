@@ -52,7 +52,7 @@ use std::collections::HashMap;
 /// Callback function type for high water mark notifications.
 /// 
 /// Called when a buffer usage exceeds the high water mark threshold.
-/// Parameters: (current_position, buffer_size, high_water_mark_position)
+/// Parameters: (`current_position`, `buffer_size`, `high_water_mark_position`)
 pub type HighWaterMarkCallback = fn(usize, usize, usize);
 
 /// Trait for a key-value journaling system whose data can be recovered up to the last successful write checkpoint.

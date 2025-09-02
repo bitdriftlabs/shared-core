@@ -46,7 +46,7 @@ impl<'a> InMemoryKVJournal<'a> {
   /// * `callback` - Optional callback function called when high water mark is exceeded
   ///
   /// # Errors
-  /// Returns an error if serialization fails or if high_water_mark_ratio is invalid.
+  /// Returns an error if serialization fails or if `high_water_mark_ratio` is invalid.
   pub fn new(
     buffer: &'a mut [u8], 
     high_water_mark_ratio: Option<f32>,
@@ -94,6 +94,7 @@ impl<'a> InMemoryKVJournal<'a> {
     buffer[8..16].copy_from_slice(&position_bytes);
     
     // Calculate high water mark position
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let high_water_mark = (buffer_len as f32 * ratio) as usize;
 
     Ok(Self {
@@ -117,7 +118,7 @@ impl<'a> InMemoryKVJournal<'a> {
   /// * `callback` - Optional callback function called when high water mark is exceeded
   ///
   /// # Errors
-  /// Returns an error if the buffer is invalid, corrupted, or if high_water_mark_ratio is invalid.
+  /// Returns an error if the buffer is invalid, corrupted, or if `high_water_mark_ratio` is invalid.
   pub fn from_buffer(
     buffer: &'a mut [u8],
     high_water_mark_ratio: Option<f32>,
@@ -146,6 +147,7 @@ impl<'a> InMemoryKVJournal<'a> {
       .map_err(|_| anyhow::anyhow!("Position value too large: {position_value}"))?;
 
     // Calculate high water mark position
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let high_water_mark = (buffer.len() as f32 * ratio) as usize;
     
     let version = u64::from_le_bytes(version_bytes);
@@ -214,7 +216,7 @@ impl<'a> InMemoryKVJournal<'a> {
     SystemTime::now()
       .duration_since(UNIX_EPOCH)
       .map_err(|e| anyhow::anyhow!("System time error: {e}"))
-      .map(|d| d.as_nanos() as u64)
+      .and_then(|d| u64::try_from(d.as_nanos()).map_err(|e| anyhow::anyhow!("Timestamp overflow: {e}")))
   }
 
   fn set_position(&mut self, position: usize) {
@@ -247,16 +249,16 @@ impl<'a> InMemoryKVJournal<'a> {
     
     if let Value::Array(entries) = decoded {
       for entry in &entries {
-        if let Value::Object(obj) = entry {
-          if obj.contains_key("initialized") {
+        if let Value::Object(obj) = entry
+          && obj.contains_key("initialized") {
             if let Some(Value::Unsigned(timestamp)) = obj.get("initialized") {
               return Ok(*timestamp);
             } else if let Some(Value::Signed(timestamp)) = obj.get("initialized") {
               // Handle the case where timestamp was stored as signed
+              #[allow(clippy::cast_sign_loss)]
               return Ok(*timestamp as u64);
             }
           }
-        }
       }
     }
     
@@ -288,7 +290,7 @@ impl<'a> InMemoryKVJournal<'a> {
   }
 }
 
-impl<'a> KVJournal for InMemoryKVJournal<'a> {
+impl KVJournal for InMemoryKVJournal<'_> {
   /// Get the current high water mark position.
   fn high_water_mark(&self) -> usize {
     self.high_water_mark
@@ -301,7 +303,11 @@ impl<'a> KVJournal for InMemoryKVJournal<'a> {
 
   /// Get the current buffer usage as a percentage (0.0 to 1.0).
   fn buffer_usage_ratio(&self) -> f32 {
-    self.position as f32 / self.buffer.len() as f32
+    #[allow(clippy::cast_precision_loss)]
+    let position_f32 = self.position as f32;
+    #[allow(clippy::cast_precision_loss)]
+    let buffer_len_f32 = self.buffer.len() as f32;
+    position_f32 / buffer_len_f32
   }
 
   /// Generate a new journal entry recording the setting of a key to a value.
