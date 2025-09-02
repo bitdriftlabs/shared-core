@@ -500,13 +500,11 @@ impl<'a> KVJournal for InMemoryKVJournal<'a> {
     // Get all data from the other journal
     let data = other.as_hashmap()?;
     
-    // Reinitialize the BonJSON portion starting at position 16, preserving the buffer header
+    // Reinitialize the BonJSON portion starting at position 17, preserving the buffer header and array begin marker
     let buffer_len = self.buffer.len();
-    let mut cursor = &mut self.buffer[16..];
     
-    // Write BonJSON array format starting at position 16
-    serialize_array_begin(&mut cursor)
-      .map_err(|e| anyhow::anyhow!("Failed to serialize array begin: {e:?}"))?;
+    // Start writing at position 17 (after the existing array begin marker at position 16)
+    let mut cursor = &mut self.buffer[17..];
     
     // Create fresh metadata object with current timestamp
     let mut metadata = HashMap::new();
@@ -526,8 +524,8 @@ impl<'a> KVJournal for InMemoryKVJournal<'a> {
         .map_err(|e| anyhow::anyhow!("Failed to encode data: {e:?}"))?;
     }
     
-    // Calculate new position from remaining capacity (offset by 16 for the header)
-    let new_position = 16 + (buffer_len - 16 - cursor.remaining_mut());
+    // Calculate new position from remaining capacity (offset by 17 for the header + array begin)
+    let new_position = 17 + (buffer_len - 17 - cursor.remaining_mut());
     self.set_position(new_position);
     
     Ok(())
