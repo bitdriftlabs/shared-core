@@ -20,7 +20,7 @@ struct ArbitraryValue(Value);
 impl<'a> Arbitrary<'a> for ArbitraryValue {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         let variant: u8 = u.arbitrary()?;
-        Ok(ArbitraryValue(match variant % 8 {
+        Ok(Self(match variant % 8 {
             0 => Value::Null,
             1 => Value::Bool(u.arbitrary()?),
             2 => Value::Float(u.arbitrary()?),
@@ -31,7 +31,7 @@ impl<'a> Arbitrary<'a> for ArbitraryValue {
                 let len = u.int_in_range(0..=3)?; // Keep arrays small
                 let mut arr = Vec::new();
                 for _ in 0..len {
-                    arr.push(ArbitraryValue::arbitrary(u)?.0);
+                    arr.push(Self::arbitrary(u)?.0);
                 }
                 Value::Array(arr)
             }
@@ -40,7 +40,7 @@ impl<'a> Arbitrary<'a> for ArbitraryValue {
                 let mut obj = HashMap::new();
                 for _ in 0..len {
                     let key: String = u.arbitrary()?;
-                    let value = ArbitraryValue::arbitrary(u)?.0;
+                    let value = Self::arbitrary(u)?.0;
                     obj.insert(key, value);
                 }
                 Value::Object(obj)
@@ -76,17 +76,11 @@ enum OperationType {
 
 libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
     // Create a temporary directory for the KVStore files
-    let temp_dir = match TempDir::new() {
-        Ok(dir) => dir,
-        Err(_) => return,
-    };
+    let Ok(temp_dir) = TempDir::new() else { return };
     let base_path = temp_dir.path().join("fuzz_store");
     
     // Try to create a KVStore
-    let mut store = match KVStore::new(&base_path, 8192, Some(0.8), None) {
-        Ok(s) => s,
-        Err(_) => return, // Skip if we can't create the store
-    };
+    let Ok(mut store) = KVStore::new(&base_path, 8192, Some(0.8), None) else { return };
     
     for operation in data {
         match operation.op_type {
@@ -130,7 +124,7 @@ libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
                 // Buffer usage ratio should always be valid
                 let ratio = store.buffer_usage_ratio();
                 // Basic sanity check
-                assert!(ratio >= 0.0 && ratio <= 1.0, "Buffer usage ratio should be between 0 and 1");
+                assert!((0.0..=1.0).contains(&ratio), "Buffer usage ratio should be between 0 and 1");
             }
             OperationType::Sync => {
                 // Sync should not crash

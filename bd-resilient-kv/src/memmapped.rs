@@ -141,6 +141,7 @@ impl MemMappedKVJournal {
 
   /// Get a copy of the buffer for testing purposes
   #[cfg(test)]
+  #[must_use]
   pub fn buffer_copy(&self) -> Vec<u8> {
     self.in_memory_kv.buffer_copy()
   }

@@ -7,6 +7,21 @@
 
 //! Test modules for bd-resilient-kv
 
+#![allow(
+  clippy::unwrap_used,
+  clippy::panic,
+  clippy::manual_assert,
+  clippy::ignored_unit_patterns,
+  clippy::uninlined_format_args,
+  clippy::len_zero,
+  clippy::cast_lossless,
+  clippy::cast_possible_wrap,
+  clippy::stable_sort_primitive,
+  clippy::manual_range_contains,
+  clippy::approx_constant,
+  clippy::items_after_statements
+)]
+
 pub mod kv_test;
 pub mod memmapped_test;
 pub mod double_buffered_test;

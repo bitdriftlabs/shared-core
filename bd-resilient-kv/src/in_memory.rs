@@ -179,6 +179,7 @@ impl<'a> InMemoryKVJournal<'a> {
 
   /// Get a copy of the buffer for testing purposes
   #[cfg(test)]
+  #[must_use]
   pub fn buffer_copy(&self) -> Vec<u8> {
     self.buffer.to_vec()
   }

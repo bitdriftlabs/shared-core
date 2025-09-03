@@ -20,7 +20,7 @@ struct ArbitraryValue(Value);
 impl<'a> Arbitrary<'a> for ArbitraryValue {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         let variant: u8 = u.arbitrary()?;
-        Ok(ArbitraryValue(match variant % 8 {
+        Ok(Self(match variant % 8 {
             0 => Value::Null,
             1 => Value::Bool(u.arbitrary()?),
             2 => Value::Float(u.arbitrary()?),
@@ -31,7 +31,7 @@ impl<'a> Arbitrary<'a> for ArbitraryValue {
                 let len = u.int_in_range(0..=3)?; // Keep arrays small
                 let mut arr = Vec::new();
                 for _ in 0..len {
-                    arr.push(ArbitraryValue::arbitrary(u)?.0);
+                    arr.push(Self::arbitrary(u)?.0);
                 }
                 Value::Array(arr)
             }
@@ -40,7 +40,7 @@ impl<'a> Arbitrary<'a> for ArbitraryValue {
                 let mut obj = HashMap::new();
                 for _ in 0..len {
                     let key: String = u.arbitrary()?;
-                    let value = ArbitraryValue::arbitrary(u)?.0;
+                    let value = Self::arbitrary(u)?.0;
                     obj.insert(key, value);
                 }
                 Value::Object(obj)
@@ -68,29 +68,17 @@ enum OperationType {
 
 libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
     // Create a temporary directory for the journal files
-    let temp_dir = match TempDir::new() {
-        Ok(dir) => dir,
-        Err(_) => return,
-    };
+    let Ok(temp_dir) = TempDir::new() else { return };
     let file_path_a = temp_dir.path().join("fuzz_journal_a.dat");
     let file_path_b = temp_dir.path().join("fuzz_journal_b.dat");
     
     // Try to create two MemMappedKVJournals for the double buffered journal
-    let journal_a = match MemMappedKVJournal::new(&file_path_a, 8192, Some(0.8), None) {
-        Ok(j) => j,
-        Err(_) => return,
-    };
+    let Ok(journal_a) = MemMappedKVJournal::new(&file_path_a, 8192, Some(0.8), None) else { return };
     
-    let journal_b = match MemMappedKVJournal::new(&file_path_b, 8192, Some(0.8), None) {
-        Ok(j) => j,
-        Err(_) => return,
-    };
+    let Ok(journal_b) = MemMappedKVJournal::new(&file_path_b, 8192, Some(0.8), None) else { return };
     
     // Try to create a DoubleBufferedKVJournal
-    let mut journal = match DoubleBufferedKVJournal::new(journal_a, journal_b) {
-        Ok(j) => j,
-        Err(_) => return, // Skip if we can't create the journal
-    };
+    let Ok(mut journal) = DoubleBufferedKVJournal::new(journal_a, journal_b) else { return };
     
     for operation in data {
         match operation.op_type {

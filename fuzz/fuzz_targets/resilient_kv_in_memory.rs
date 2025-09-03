@@ -10,7 +10,6 @@
 use arbitrary::{Arbitrary, Unstructured};
 use bd_bonjson::Value;
 use bd_resilient_kv::{InMemoryKVJournal, KVJournal};
-use libfuzzer_sys;
 use std::collections::HashMap;
 
 // Wrapper for Value to implement Arbitrary
@@ -20,7 +19,7 @@ struct ArbitraryValue(Value);
 impl<'a> Arbitrary<'a> for ArbitraryValue {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         let variant: u8 = u.arbitrary()?;
-        Ok(ArbitraryValue(match variant % 8 {
+        Ok(Self(match variant % 8 {
             0 => Value::Null,
             1 => Value::Bool(u.arbitrary()?),
             2 => Value::Float(u.arbitrary()?),
@@ -31,7 +30,7 @@ impl<'a> Arbitrary<'a> for ArbitraryValue {
                 let len = u.int_in_range(0..=3)?; // Keep arrays small
                 let mut arr = Vec::new();
                 for _ in 0..len {
-                    arr.push(ArbitraryValue::arbitrary(u)?.0);
+                    arr.push(Self::arbitrary(u)?.0);
                 }
                 Value::Array(arr)
             }
@@ -40,7 +39,7 @@ impl<'a> Arbitrary<'a> for ArbitraryValue {
                 let mut obj = HashMap::new();
                 for _ in 0..len {
                     let key: String = u.arbitrary()?;
-                    let value = ArbitraryValue::arbitrary(u)?.0;
+                    let value = Self::arbitrary(u)?.0;
                     obj.insert(key, value);
                 }
                 Value::Object(obj)
@@ -70,10 +69,7 @@ libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
     let mut buffer = vec![0u8; 8192];
     
     // Try to create an InMemoryKVJournal
-    let mut journal = match InMemoryKVJournal::new(&mut buffer, Some(0.8), None) {
-        Ok(j) => j,
-        Err(_) => return, // Skip if we can't create the journal
-    };
+    let Ok(mut journal) = InMemoryKVJournal::new(&mut buffer, Some(0.8), None) else { return };
     
     for operation in data {
         match operation.op_type {
