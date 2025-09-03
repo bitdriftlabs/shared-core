@@ -104,6 +104,7 @@ impl KVStore {
   /// Get a value by key.
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
+  #[must_use]
   pub fn get(&self, key: &str) -> Option<Value> {
     self.cached_map.get(key).cloned()
   }
@@ -145,6 +146,7 @@ impl KVStore {
   /// Check if the store contains a key.
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
+  #[must_use]
   pub fn contains_key(&self, key: &str) -> bool {
     self.cached_map.contains_key(key)
   }
@@ -152,6 +154,7 @@ impl KVStore {
   /// Get the number of key-value pairs in the store.
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
+  #[must_use]
   pub fn len(&self) -> usize {
     self.cached_map.len()
   }
@@ -159,6 +162,7 @@ impl KVStore {
   /// Check if the store is empty.
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
+  #[must_use]
   pub fn is_empty(&self) -> bool {
     self.len() == 0
   }
@@ -176,6 +180,7 @@ impl KVStore {
   /// Get all keys in the store.
   ///
   /// This operation returns an iterator over the keys without allocation.
+  #[must_use]
   pub fn keys(&self) -> std::collections::hash_map::Keys<'_, String, Value> {
     self.cached_map.keys()
   }
@@ -183,6 +188,7 @@ impl KVStore {
   /// Get all values in the store.
   ///
   /// This operation returns an iterator over the values without allocation.
+  #[must_use]
   pub fn values(&self) -> std::collections::hash_map::Values<'_, String, Value> {
     self.cached_map.values()
   }
@@ -190,6 +196,7 @@ impl KVStore {
   /// Get all key-value pairs as a `HashMap`.
   ///
   /// This operation is O(n) where n is the number of key-value pairs, as it clones the entire cache.
+  #[must_use]
   pub fn as_hashmap(&self) -> HashMap<String, Value> {
     self.cached_map.clone()
   }

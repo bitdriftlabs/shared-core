@@ -19,7 +19,7 @@ use std::path::Path;
 /// 
 /// # Safety
 /// During construction, we unsafely declare mmap's internal buffer as having a static
-/// lifetime, but it's actually tied to the lifetime of in_memory_kv. This works because
+/// lifetime, but it's actually tied to the lifetime of `in_memory_kv`. This works because
 /// nothing external holds a reference to the buffer.
 #[derive(Debug)]
 pub struct MemMappedKVJournal {
@@ -32,8 +32,9 @@ impl MemMappedKVJournal {
   /// Create a memory-mapped buffer from a file and convert it to a static lifetime slice.
   /// 
   /// # Safety
-  /// The returned slice has a static lifetime, but it's actually tied to the lifetime of the MmapMut.
-  /// This is safe as long as the MmapMut is kept alive for the entire lifetime of the slice usage.
+  /// The returned slice has a static lifetime, but it's actually tied to the lifetime of the `MmapMut`.
+  /// This is safe as long as the `MmapMut` is kept alive for the entire lifetime of the slice usage.
+  #[allow(clippy::needless_pass_by_value)]
   unsafe fn create_mmap_buffer(file: std::fs::File) -> anyhow::Result<(MmapMut, &'static mut [u8])> {
     let mut mmap = unsafe { MmapOptions::new().map_mut(&file)? };
     
@@ -83,8 +84,8 @@ impl MemMappedKVJournal {
     let in_memory_kv = InMemoryKVJournal::new(buffer, high_water_mark_ratio, callback)?;
 
     Ok(Self {
-      in_memory_kv,
       mmap,
+      in_memory_kv,
     })
   }
 
@@ -114,8 +115,8 @@ impl MemMappedKVJournal {
     let in_memory_kv = InMemoryKVJournal::from_buffer(buffer, high_water_mark_ratio, callback)?;
 
     Ok(Self {
-      in_memory_kv,
       mmap,
+      in_memory_kv,
     })
   }
 
