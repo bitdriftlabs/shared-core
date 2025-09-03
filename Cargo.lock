@@ -1011,13 +1011,8 @@ name = "bd-resilient-kv"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "assert_no_alloc",
  "bd-bonjson",
- "bd-test-helpers",
  "bytes",
- "cbindgen",
- "ctor",
- "log",
  "memmap2",
  "tempfile",
 ]

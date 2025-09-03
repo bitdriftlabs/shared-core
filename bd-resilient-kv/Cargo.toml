@@ -9,18 +9,10 @@ version      = "1.0.0"
 doctest = false
 
 [dev-dependencies]
-assert_no_alloc      = "1.1.2"
-bd-test-helpers.path = "../bd-test-helpers"
-ctor.workspace       = true
 tempfile.workspace   = true
-memmap2              = "0.9"
-
-[build-dependencies]
-cbindgen.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-log.workspace = true
 bd-bonjson = { path = "../bd-bonjson" }
 bytes.workspace = true
 memmap2 = "0.9"
