@@ -42,12 +42,12 @@ fn main() -> anyhow::Result<()> {
     store.insert("active".to_string(), Value::Boolean(true))?;
     
     // Read values
-    if let Some(name) = store.get("name")? {
+    if let Some(name) = store.get("name") {
         println!("Name: {}", name);
     }
     
     // Check existence
-    if store.contains_key("age")? {
+    if store.contains_key("age") {
         println!("Age is stored");
     }
     
@@ -56,7 +56,7 @@ fn main() -> anyhow::Result<()> {
     println!("Removed: {:?}", old_value);
     
     // Get all keys
-    let keys = store.keys()?;
+    let keys: Vec<_> = store.keys().collect();
     println!("Keys: {:?}", keys);
     
     Ok(())
@@ -122,8 +122,8 @@ fn main() -> anyhow::Result<()> {
     
     {
         // Open the same store later - data is recovered
-        let mut store = KVStore::new("persistent_store", 1024 * 1024, None, None)?;
-        let value = store.get("persistent_key")?;
+        let store = KVStore::new("persistent_store", 1024 * 1024, None, None)?;
+        let value = store.get("persistent_key");
         assert_eq!(value, Some(Value::String("This survives restarts".to_string())));
     }
     
@@ -191,11 +191,11 @@ pub fn new<P: AsRef<Path>>(
 
 ```rust
 // Read operations (O(1) from cache)
-pub fn get(&mut self, key: &str) -> anyhow::Result<Option<Value>>
-pub fn contains_key(&mut self, key: &str) -> anyhow::Result<bool>
-pub fn len(&mut self) -> anyhow::Result<usize>
-pub fn is_empty(&mut self) -> anyhow::Result<bool>
-pub fn keys(&mut self) -> anyhow::Result<Vec<String>>
+pub fn get(&self, key: &str) -> Option<Value>
+pub fn contains_key(&self, key: &str) -> bool
+pub fn len(&self) -> usize
+pub fn is_empty(&self) -> bool
+pub fn keys(&self) -> std::collections::hash_map::Keys<'_, String, Value>
 
 // Write operations
 pub fn insert(&mut self, key: String, value: Value) -> anyhow::Result<Option<Value>>
@@ -203,8 +203,8 @@ pub fn remove(&mut self, key: &str) -> anyhow::Result<Option<Value>>
 pub fn clear(&mut self) -> anyhow::Result<()>
 
 // Utility
-pub fn values(&mut self) -> anyhow::Result<Vec<Value>>
-pub fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>>
+pub fn values(&self) -> std::collections::hash_map::Values<'_, String, Value>
+pub fn as_hashmap(&self) -> HashMap<String, Value>
 ```
 
 ## Architecture
@@ -235,19 +235,21 @@ The store uses a double-buffered approach with two journal files:
 
 ## Performance Characteristics
 
-| Operation        | Time Complexity | Notes                        |
-|------------------|-----------------|------------------------------|
-| `get()`          | O(1)            | Reads from in-memory cache   |
-| `insert()`       | O(1) amortized  | Journal write + cache update |
-| `remove()`       | O(1) amortized  | Journal write + cache update |
-| `contains_key()` | O(1)            | Cache lookup                 |
-| `len()`          | O(1)            | Cache size                   |
-| `keys()`         | O(n)            | Clones keys from cache       |
-| `clear()`        | O(1)            | Efficient journal clearing   |
+| Operation        | Time Complexity | Notes                           |
+|------------------|-----------------|---------------------------------|
+| `get()`          | O(1)            | Reads from in-memory cache      |
+| `insert()`       | O(1) amortized  | Journal write + cache update    |
+| `remove()`       | O(1) amortized  | Journal write + cache update    |
+| `contains_key()` | O(1)            | Cache lookup                    |
+| `len()`          | O(1)            | Cache size                      |
+| `keys()`         | O(1)            | Returns iterator, no allocation |
+| `values()`       | O(1)            | Returns iterator, no allocation |
+| `as_hashmap()`   | O(n)            | Clones entire cache             |
+| `clear()`        | O(1)            | Efficient journal clearing      |
 
 ## Error Handling
 
-All operations return `anyhow::Result<T>` for comprehensive error handling:
+All write operations return `anyhow::Result<T>` for comprehensive error handling, while read operations return values directly from the cache:
 
 ```rust
 use bd_resilient_kv::KVStore;
@@ -318,14 +320,14 @@ let store = KVStore::new("large_app", 16 * 1024 * 1024, None, None)?; // 16MB
 ```rust
 use bd_resilient_kv::KVStore;
 
-let mut store = KVStore::new("debug_store", 1024 * 1024, None, None)?;
+let store = KVStore::new("debug_store", 1024 * 1024, None, None)?;
 
 // Check store statistics
-println!("Store size: {} items", store.len()?);
-println!("Is empty: {}", store.is_empty()?);
+println!("Store size: {} items", store.len());
+println!("Is empty: {}", store.is_empty());
 
 // Get all data for debugging
-let all_data = store.as_hashmap()?;
+let all_data = store.as_hashmap();
 println!("All data: {:?}", all_data);
 ```
 
