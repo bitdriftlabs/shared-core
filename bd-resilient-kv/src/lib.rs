@@ -20,13 +20,11 @@ mod tests;
 pub mod double_buffered;
 pub mod in_memory;
 pub mod kv_store;
-pub mod kvjournal;
+pub mod kv_journal;
 pub mod memmapped;
 
-// Re-export the main trait and types for convenience
-// Re-export the in-memory implementation for convenience
 pub use double_buffered::DoubleBufferedKVJournal;
 pub use in_memory::InMemoryKVJournal;
 pub use kv_store::KVStore;
-pub use kvjournal::{HighWaterMarkCallback, KVJournal};
+pub use kv_journal::{HighWaterMarkCallback, KVJournal};
 pub use memmapped::MemMappedKVJournal;

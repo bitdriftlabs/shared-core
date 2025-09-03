@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::MemMappedKVJournal;
-use crate::kvjournal::KVJournal;
+use crate::kv_journal::KVJournal;
 use bd_bonjson::Value;
 use tempfile::NamedTempFile;
 

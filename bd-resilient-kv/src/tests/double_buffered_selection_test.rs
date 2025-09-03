@@ -7,7 +7,7 @@
 
 // Test cases for double-buffered journal selection logic
 
-use crate::kvjournal::KVJournal;
+use crate::kv_journal::KVJournal;
 use crate::{DoubleBufferedKVJournal, InMemoryKVJournal};
 use bd_bonjson::Value;
 
