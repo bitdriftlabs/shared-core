@@ -6,40 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
-#[path = "./kv_test.rs"]
-mod kv_test;
-
-#[cfg(test)]
-#[path = "./memmapped_test.rs"]
-mod memmapped_test;
-
-#[cfg(test)]
-#[path = "./double_buffered_test.rs"]
-mod double_buffered_test;
-
-#[cfg(test)]
-#[path = "./double_buffered_memmapped_new_test.rs"]
-mod double_buffered_memmapped_test;
-
-#[cfg(test)]
-#[path = "./double_buffered_selection_test.rs"]
-mod double_buffered_selection_test;
-
-#[cfg(test)]
-#[path = "./error_handling_test.rs"]
-mod error_handling_test;
-
-#[cfg(test)]
-#[path = "./concurrency_test.rs"]
-mod concurrency_test;
-
-#[cfg(test)]
-#[path = "./boundary_test.rs"]
-mod boundary_test;
-
-#[cfg(test)]
-#[path = "./kv_store_test.rs"]
-mod kv_store_test;
+mod tests;
 
 pub mod in_memory;
 pub mod memmapped;

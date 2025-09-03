@@ -15,4 +15,4 @@ tempfile.workspace   = true
 anyhow.workspace = true
 bd-bonjson = { path = "../bd-bonjson" }
 bytes.workspace = true
-memmap2 = "0.9"
+memmap2.workspace = true

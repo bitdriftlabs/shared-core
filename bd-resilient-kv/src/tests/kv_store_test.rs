@@ -5,8 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(test)]
-use super::*;
+use crate::KVStore;
 use bd_bonjson::Value;
 use tempfile::TempDir;
 
