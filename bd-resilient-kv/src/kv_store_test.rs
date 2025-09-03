@@ -162,9 +162,10 @@ fn test_kv_store_keys_and_values() -> anyhow::Result<()> {
   store.insert("key3".to_string(), Value::Bool(true))?;
   
   // Test keys
-  let mut keys = store.keys();
-  keys.sort();
-  assert_eq!(keys, vec!["key1", "key2", "key3"]);
+  let keys: Vec<&String> = store.keys().collect();
+  let mut key_strs: Vec<&str> = keys.iter().map(|s| s.as_str()).collect();
+  key_strs.sort();
+  assert_eq!(key_strs, vec!["key1", "key2", "key3"]);
   
   // Test values
   let values = store.values();
@@ -345,11 +346,11 @@ fn test_kv_store_caching_behavior() -> anyhow::Result<()> {
   assert!(store.contains_key("key1"));
   assert!(!store.contains_key("key4"));
   
-  let keys = store.keys();
+  let keys: Vec<&String> = store.keys().collect();
   assert_eq!(keys.len(), 3);
-  assert!(keys.contains(&"key1".to_string()));
-  assert!(keys.contains(&"key2".to_string()));
-  assert!(keys.contains(&"key3".to_string()));
+  assert!(keys.iter().any(|k| k.as_str() == "key1"));
+  assert!(keys.iter().any(|k| k.as_str() == "key2"));
+  assert!(keys.iter().any(|k| k.as_str() == "key3"));
   
   let values = store.values();
   assert_eq!(values.len(), 3);
