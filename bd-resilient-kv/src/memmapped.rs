@@ -16,19 +16,36 @@ use std::path::Path;
 ///
 /// This implementation uses memory-mapped files to provide persistence while maintaining
 /// the efficiency of in-memory operations. All changes are automatically synced to disk.
+/// 
+/// # Safety
+/// During construction, we unsafely declare mmap's internal buffer as having a static
+/// lifetime, but it's actually tied to the lifetime of in_memory_kv. This works because
+/// nothing external holds a reference to the buffer.
 #[derive(Debug)]
 pub struct MemMappedKVJournal {
-  // Safety:
-  // During construction, we unsafely declare mmap's internal buffer as having a static
-  // lifetime, but it's actually tied to the lifetime of in_memory_kv. This works because
-  // nothing external holds a reference to the buffer.
-  // Note: mmap MUST de-init AFTER in_memory_kv.
-
+  // Note: mmap MUST de-init AFTER in_memory_kv because mmap uses it.
   mmap: MmapMut,
   in_memory_kv: InMemoryKVJournal<'static>,
 }
 
 impl MemMappedKVJournal {
+  /// Create a memory-mapped buffer from a file and convert it to a static lifetime slice.
+  /// 
+  /// # Safety
+  /// The returned slice has a static lifetime, but it's actually tied to the lifetime of the MmapMut.
+  /// This is safe as long as the MmapMut is kept alive for the entire lifetime of the slice usage.
+  unsafe fn create_mmap_buffer(file: std::fs::File) -> anyhow::Result<(MmapMut, &'static mut [u8])> {
+    let mut mmap = unsafe { MmapOptions::new().map_mut(&file)? };
+    
+    // Convert the mmap slice to a static lifetime slice
+    // This is safe because we keep the mmap alive for the lifetime of the struct
+    let buffer: &'static mut [u8] = unsafe {
+      std::slice::from_raw_parts_mut(mmap.as_mut_ptr(), mmap.len())
+    };
+    
+    Ok((mmap, buffer))
+  }
+
   /// Create a new memory-mapped KV journal using the provided file path.
   ///
   /// The file will be created if it doesn't exist, or opened if it does.
@@ -61,13 +78,7 @@ impl MemMappedKVJournal {
       file.set_len(size as u64)?;
     }
 
-    let mut mmap = unsafe { MmapOptions::new().map_mut(&file)? };
-    
-    // Convert the mmap slice to a static lifetime slice
-    // This is safe because we keep the mmap alive for the lifetime of the struct
-    let buffer: &'static mut [u8] = unsafe {
-      std::slice::from_raw_parts_mut(mmap.as_mut_ptr(), mmap.len())
-    };
+    let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
     let in_memory_kv = InMemoryKVJournal::new(buffer, high_water_mark_ratio, callback)?;
 
@@ -98,13 +109,7 @@ impl MemMappedKVJournal {
       .write(true)
       .open(file_path)?;
 
-    let mut mmap = unsafe { MmapOptions::new().map_mut(&file)? };
-    
-    // Convert the mmap slice to a static lifetime slice
-    // This is safe because we keep the mmap alive for the lifetime of the struct
-    let buffer: &'static mut [u8] = unsafe {
-      std::slice::from_raw_parts_mut(mmap.as_mut_ptr(), mmap.len())
-    };
+    let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
     let in_memory_kv = InMemoryKVJournal::from_buffer(buffer, high_water_mark_ratio, callback)?;
 
