@@ -7,7 +7,7 @@
 
 // Test cases for potential concurrency issues and race conditions
 
-use crate::{InMemoryKVJournal, KVJournal, MemMappedKVJournal};
+use crate::{InMemoryKVJournal, kvjournal::KVJournal, MemMappedKVJournal};
 use bd_bonjson::Value;
 use std::sync::{Arc, Mutex};
 use std::thread;

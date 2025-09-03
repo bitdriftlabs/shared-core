@@ -9,7 +9,7 @@
 
 use arbitrary::{Arbitrary, Unstructured};
 use bd_bonjson::Value;
-use bd_resilient_kv::{KVJournal, MemMappedKVJournal};
+use bd_resilient_kv::{kvjournal::KVJournal, MemMappedKVJournal};
 use std::collections::HashMap;
 use tempfile::TempDir;
 

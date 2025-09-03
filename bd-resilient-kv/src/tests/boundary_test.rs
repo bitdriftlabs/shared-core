@@ -7,7 +7,7 @@
 
 // Test cases for performance boundaries and edge cases
 
-use crate::{DoubleBufferedKVJournal, InMemoryKVJournal, KVJournal, MemMappedKVJournal};
+use crate::{DoubleBufferedKVJournal, InMemoryKVJournal, kvjournal::KVJournal, MemMappedKVJournal};
 use bd_bonjson::Value;
 use tempfile::TempDir;
 

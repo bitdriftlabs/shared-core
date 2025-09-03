@@ -7,7 +7,7 @@
 
 // Test cases for error handling and edge cases
 
-use crate::{InMemoryKVJournal, KVJournal};
+use crate::{InMemoryKVJournal, kvjournal::KVJournal};
 use bd_bonjson::Value;
 
 #[test]

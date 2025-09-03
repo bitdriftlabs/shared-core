@@ -9,7 +9,7 @@
 
 use arbitrary::{Arbitrary, Unstructured};
 use bd_bonjson::Value;
-use bd_resilient_kv::{InMemoryKVJournal, KVJournal};
+use bd_resilient_kv::{InMemoryKVJournal, kvjournal::KVJournal};
 use std::collections::HashMap;
 
 // Wrapper for Value to implement Arbitrary

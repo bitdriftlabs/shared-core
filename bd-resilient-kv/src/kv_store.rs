@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{DoubleBufferedKVJournal, HighWaterMarkCallback, KVJournal, MemMappedKVJournal};
+use crate::{DoubleBufferedKVJournal, MemMappedKVJournal, kvjournal::{HighWaterMarkCallback, KVJournal}};
 use bd_bonjson::Value;
 use std::collections::HashMap;
 use std::path::Path;
