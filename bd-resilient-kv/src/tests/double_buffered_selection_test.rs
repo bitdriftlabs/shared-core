@@ -7,7 +7,8 @@
 
 // Test cases for double-buffered journal selection logic
 
-use crate::{DoubleBufferedKVJournal, InMemoryKVJournal, kvjournal::KVJournal};
+use crate::kvjournal::KVJournal;
+use crate::{DoubleBufferedKVJournal, InMemoryKVJournal};
 use bd_bonjson::Value;
 
 /// Helper to create a journal with specific data and timestamp

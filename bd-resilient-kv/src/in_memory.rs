@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::kvjournal::{KVJournal, HighWaterMarkCallback};
+use crate::kvjournal::{HighWaterMarkCallback, KVJournal};
 use bd_bonjson::Value;
 use bd_bonjson::decoder::from_slice;
 use bd_bonjson::encoder::encode_into_buf;

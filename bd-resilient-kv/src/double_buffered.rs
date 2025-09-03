@@ -55,10 +55,10 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
 
     // Choose the active journal based on data presence and timestamps
     let active_journal_a = match (has_data_a, has_data_b) {
-      (true, false) => true,                                       // Only A has data
-      (false, true) => false,                                      // Only B has data
+      (true, false) => true,  // Only A has data
+      (false, true) => false, // Only B has data
       (true, true) | (false, false) => init_time_a >= init_time_b, /* Both have data or neither
-                                                                    * has data, use timestamps */
+                                * has data, use timestamps */
     };
 
     Ok(Self {

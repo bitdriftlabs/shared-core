@@ -5,7 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{DoubleBufferedKVJournal, InMemoryKVJournal, kvjournal::KVJournal};
+use crate::kvjournal::KVJournal;
+use crate::{DoubleBufferedKVJournal, InMemoryKVJournal};
 use bd_bonjson::Value;
 
 /// Helper function to create a double-buffered journal for testing

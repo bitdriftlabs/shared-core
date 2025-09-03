@@ -24,10 +24,9 @@ pub mod kvjournal;
 pub mod memmapped;
 
 // Re-export the main trait and types for convenience
-pub use kvjournal::{KVJournal, HighWaterMarkCallback};
-
 // Re-export the in-memory implementation for convenience
 pub use double_buffered::DoubleBufferedKVJournal;
 pub use in_memory::InMemoryKVJournal;
 pub use kv_store::KVStore;
+pub use kvjournal::{HighWaterMarkCallback, KVJournal};
 pub use memmapped::MemMappedKVJournal;

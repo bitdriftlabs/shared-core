@@ -5,7 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{InMemoryKVJournal, kvjournal::KVJournal};
+use crate::InMemoryKVJournal;
+use crate::kvjournal::KVJournal;
 use bd_bonjson::Value;
 use std::io::Write;
 use tempfile::NamedTempFile;
