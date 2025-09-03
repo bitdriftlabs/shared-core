@@ -5,16 +5,16 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{DoubleBufferedKVJournal, MemMappedKVJournal, HighWaterMarkCallback, KVJournal};
+use crate::{DoubleBufferedKVJournal, HighWaterMarkCallback, KVJournal, MemMappedKVJournal};
 use bd_bonjson::Value;
 use std::collections::HashMap;
 use std::path::Path;
 
 /// A persistent key-value store that provides HashMap-like semantics.
-/// 
+///
 /// `KVStore` is backed by a `DoubleBufferedKVJournal` using two `MemMappedKVJournal` instances
 /// for crash-resilient storage with automatic compression and high water mark management.
-/// 
+///
 /// For performance optimization, `KVStore` maintains an in-memory cache of the key-value data
 /// to provide O(1) read operations and avoid expensive journal decoding on every access.
 /// The cache is always kept in sync with the underlying journal state.
@@ -31,8 +31,9 @@ impl KVStore {
   ///
   /// The actual journal files will be created/opened with extensions ".jrna" and ".jrnb".
   /// If the files already exist, they will be loaded with their existing contents.
-  /// If the specified size is larger than existing files, they will be resized while preserving data.
-  /// If the specified size is smaller and the existing data doesn't fit, fresh journals will be created.
+  /// If the specified size is larger than existing files, they will be resized while preserving
+  /// data. If the specified size is smaller and the existing data doesn't fit, fresh journals
+  /// will be created.
   ///
   /// # Arguments
   /// * `base_path` - Base path for the journal files (extensions will be added automatically)
@@ -46,20 +47,22 @@ impl KVStore {
     base_path: P,
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>
+    callback: Option<HighWaterMarkCallback>,
   ) -> anyhow::Result<Self> {
     let base = base_path.as_ref();
     let file_a = base.with_extension("jrna");
     let file_b = base.with_extension("jrnb");
 
     // Try to create/open the journal files
-    let journal_a = Self::create_or_open_journal(&file_a, buffer_size, high_water_mark_ratio, callback)?;
-    let journal_b = Self::create_or_open_journal(&file_b, buffer_size, high_water_mark_ratio, callback)?;
+    let journal_a =
+      Self::create_or_open_journal(&file_a, buffer_size, high_water_mark_ratio, callback)?;
+    let journal_b =
+      Self::create_or_open_journal(&file_b, buffer_size, high_water_mark_ratio, callback)?;
 
     let mut journal = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
     let cached_map = journal.as_hashmap()?;
 
-    Ok(Self { 
+    Ok(Self {
       journal,
       cached_map,
     })
@@ -70,12 +73,12 @@ impl KVStore {
     file_path: P,
     target_size: usize,
     high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>
+    callback: Option<HighWaterMarkCallback>,
   ) -> anyhow::Result<MemMappedKVJournal> {
     use std::fs::OpenOptions;
-    
+
     let path = file_path.as_ref();
-    
+
     // Open/create the file and ensure it's the right size
     {
       let file = OpenOptions::new()
@@ -84,7 +87,7 @@ impl KVStore {
         .create(true)
         .truncate(false)
         .open(path)?;
-      
+
       // Resize if necessary
       // Note that if the new size is significantly smaller, the data may become unrecoverable.
       let file_len = file.metadata()?.len();
@@ -93,7 +96,7 @@ impl KVStore {
       }
       // File is automatically closed when it goes out of scope
     }
-    
+
     // Try to open with existing data first
     MemMappedKVJournal::from_file(path, high_water_mark_ratio, callback).or_else(|_| {
       // Data is corrupt or unreadable, create fresh
@@ -110,7 +113,7 @@ impl KVStore {
   }
 
   /// Insert a value for a key, returning the previous value if it existed.
-  /// 
+  ///
   /// Note: Inserting `Value::Null` is equivalent to removing the key.
   ///
   /// # Errors
@@ -195,14 +198,15 @@ impl KVStore {
 
   /// Get all key-value pairs as a `HashMap`.
   ///
-  /// This operation is O(n) where n is the number of key-value pairs, as it clones the entire cache.
+  /// This operation is O(n) where n is the number of key-value pairs, as it clones the entire
+  /// cache.
   #[must_use]
   pub fn as_hashmap(&self) -> HashMap<String, Value> {
     self.cached_map.clone()
   }
 
   /// Force compression of the underlying journals.
-  /// 
+  ///
   /// This operation reinitializes the inactive journal from the active one and switches to it,
   /// which can help reduce fragmentation and optimize storage space.
   ///

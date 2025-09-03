@@ -11,11 +11,11 @@ use std::collections::HashMap;
 
 /// A double-buffered implementation of `KVJournal` that automatically switches between two
 /// journal instances when one reaches its high water mark.
-/// 
+///
 /// This type holds two journal instances and switches between them when necessary:
 /// - Forwards `KVJournal` APIs to the currently active journal
-/// - When the active journal passes its high water mark, uses `reinit_from` to initialize
-///   the other journal with the compressed journal state of the full one
+/// - When the active journal passes its high water mark, uses `reinit_from` to initialize the other
+///   journal with the compressed journal state of the full one
 /// - Once the other journal is initialized, begins forwarding APIs to that journal
 pub struct DoubleBufferedKVJournal<A: KVJournal, B: KVJournal> {
   /// The primary journal instance
@@ -29,8 +29,9 @@ pub struct DoubleBufferedKVJournal<A: KVJournal, B: KVJournal> {
 impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
   /// Create a new double-buffered KV journal using the provided journal instances.
   /// The journal with the most recent initialization timestamp will be set as the active journal.
-  /// If both journals have the same timestamp (or no timestamp), `journal_a` will be the active journal.
-  /// 
+  /// If both journals have the same timestamp (or no timestamp), `journal_a` will be the active
+  /// journal.
+  ///
   /// # Arguments
   /// * `journal_a` - The primary journal instance
   /// * `journal_b` - The secondary journal instance
@@ -41,18 +42,25 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
     // Get initialization timestamps from both journals
     let init_time_a = journal_a.get_init_time();
     let init_time_b = journal_b.get_init_time();
-    
+
     // Check if either journal has existing data
-    let has_data_a = journal_a.as_hashmap().map(|m| !m.is_empty()).unwrap_or(false);
-    let has_data_b = journal_b.as_hashmap().map(|m| !m.is_empty()).unwrap_or(false);
-    
+    let has_data_a = journal_a
+      .as_hashmap()
+      .map(|m| !m.is_empty())
+      .unwrap_or(false);
+    let has_data_b = journal_b
+      .as_hashmap()
+      .map(|m| !m.is_empty())
+      .unwrap_or(false);
+
     // Choose the active journal based on data presence and timestamps
     let active_journal_a = match (has_data_a, has_data_b) {
-      (true, false) => true,   // Only A has data
-      (false, true) => false,  // Only B has data  
-      (true, true) | (false, false) => init_time_a >= init_time_b,  // Both have data or neither has data, use timestamps
+      (true, false) => true,                                       // Only A has data
+      (false, true) => false,                                      // Only B has data
+      (true, true) | (false, false) => init_time_a >= init_time_b, /* Both have data or neither
+                                                                    * has data, use timestamps */
     };
-    
+
     Ok(Self {
       journal_a,
       journal_b,
@@ -144,8 +152,9 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
     }
   }
 
-  /// Force compression by reinitializing the inactive journal from the active journal and switching to it.
-  /// This is useful for manually triggering compression to reduce fragmentation and optimize storage.
+  /// Force compression by reinitializing the inactive journal from the active journal and switching
+  /// to it. This is useful for manually triggering compression to reduce fragmentation and
+  /// optimize storage.
   ///
   /// # Errors
   /// Returns an error if the compression (reinit) operation fails.

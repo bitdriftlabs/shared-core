@@ -22,12 +22,12 @@
   clippy::items_after_statements
 )]
 
-pub mod kv_test;
-pub mod memmapped_test;
-pub mod double_buffered_test;
+pub mod boundary_test;
+pub mod concurrency_test;
 pub mod double_buffered_memmapped_new_test;
 pub mod double_buffered_selection_test;
+pub mod double_buffered_test;
 pub mod error_handling_test;
-pub mod concurrency_test;
-pub mod boundary_test;
 pub mod kv_store_test;
+pub mod kv_test;
+pub mod memmapped_test;

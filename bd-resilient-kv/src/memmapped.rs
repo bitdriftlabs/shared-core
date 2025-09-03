@@ -5,7 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{KVJournal, HighWaterMarkCallback, in_memory::InMemoryKVJournal};
+use crate::in_memory::InMemoryKVJournal;
+use crate::{HighWaterMarkCallback, KVJournal};
 use bd_bonjson::Value;
 use memmap2::{MmapMut, MmapOptions};
 use std::collections::HashMap;
@@ -16,7 +17,7 @@ use std::path::Path;
 ///
 /// This implementation uses memory-mapped files to provide persistence while maintaining
 /// the efficiency of in-memory operations. All changes are automatically synced to disk.
-/// 
+///
 /// # Safety
 /// During construction, we unsafely declare mmap's internal buffer as having a static
 /// lifetime, but it's actually tied to the lifetime of `in_memory_kv`. This works because
@@ -30,20 +31,22 @@ pub struct MemMappedKVJournal {
 
 impl MemMappedKVJournal {
   /// Create a memory-mapped buffer from a file and convert it to a static lifetime slice.
-  /// 
+  ///
   /// # Safety
-  /// The returned slice has a static lifetime, but it's actually tied to the lifetime of the `MmapMut`.
-  /// This is safe as long as the `MmapMut` is kept alive for the entire lifetime of the slice usage.
+  /// The returned slice has a static lifetime, but it's actually tied to the lifetime of the
+  /// `MmapMut`. This is safe as long as the `MmapMut` is kept alive for the entire lifetime of
+  /// the slice usage.
   #[allow(clippy::needless_pass_by_value)]
-  unsafe fn create_mmap_buffer(file: std::fs::File) -> anyhow::Result<(MmapMut, &'static mut [u8])> {
+  unsafe fn create_mmap_buffer(
+    file: std::fs::File,
+  ) -> anyhow::Result<(MmapMut, &'static mut [u8])> {
     let mut mmap = unsafe { MmapOptions::new().map_mut(&file)? };
-    
+
     // Convert the mmap slice to a static lifetime slice
     // This is safe because we keep the mmap alive for the lifetime of the struct
-    let buffer: &'static mut [u8] = unsafe {
-      std::slice::from_raw_parts_mut(mmap.as_mut_ptr(), mmap.len())
-    };
-    
+    let buffer: &'static mut [u8] =
+      unsafe { std::slice::from_raw_parts_mut(mmap.as_mut_ptr(), mmap.len()) };
+
     Ok((mmap, buffer))
   }
 
@@ -64,7 +67,7 @@ impl MemMappedKVJournal {
     file_path: P,
     size: usize,
     high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>
+    callback: Option<HighWaterMarkCallback>,
   ) -> anyhow::Result<Self> {
     let file = OpenOptions::new()
       .read(true)
@@ -72,7 +75,7 @@ impl MemMappedKVJournal {
       .create(true)
       .truncate(false)
       .open(file_path)?;
-    
+
     // Ensure the file is at least the requested size
     let file_len = file.metadata()?.len();
     if file_len < size as u64 {
@@ -83,10 +86,7 @@ impl MemMappedKVJournal {
 
     let in_memory_kv = InMemoryKVJournal::new(buffer, high_water_mark_ratio, callback)?;
 
-    Ok(Self {
-      mmap,
-      in_memory_kv,
-    })
+    Ok(Self { mmap, in_memory_kv })
   }
 
   /// Create a new memory-mapped KV journal from an existing file.
@@ -103,21 +103,15 @@ impl MemMappedKVJournal {
   pub fn from_file<P: AsRef<Path>>(
     file_path: P,
     high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>
+    callback: Option<HighWaterMarkCallback>,
   ) -> anyhow::Result<Self> {
-    let file = OpenOptions::new()
-      .read(true)
-      .write(true)
-      .open(file_path)?;
+    let file = OpenOptions::new().read(true).write(true).open(file_path)?;
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
     let in_memory_kv = InMemoryKVJournal::from_buffer(buffer, high_water_mark_ratio, callback)?;
 
-    Ok(Self {
-      mmap,
-      in_memory_kv,
-    })
+    Ok(Self { mmap, in_memory_kv })
   }
 
   /// Synchronize changes to disk.
@@ -193,10 +187,10 @@ impl KVJournal for MemMappedKVJournal {
   /// Returns an error if the clearing operation fails.
   fn clear(&mut self) -> anyhow::Result<()> {
     self.in_memory_kv.clear()?;
-    
+
     // Sync the memory-mapped buffer to disk
     self.mmap.flush()?;
-    
+
     Ok(())
   }
 
@@ -221,10 +215,10 @@ impl KVJournal for MemMappedKVJournal {
   fn reinit_from(&mut self, other: &mut dyn KVJournal) -> anyhow::Result<()> {
     // Delegate to the in-memory journal
     self.in_memory_kv.reinit_from(other)?;
-    
+
     // Sync the memory-mapped buffer to disk
     self.mmap.flush()?;
-    
+
     Ok(())
   }
 

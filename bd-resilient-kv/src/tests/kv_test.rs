@@ -568,26 +568,30 @@ fn test_complex_nested_structures() {
 #[test]
 fn test_with_memory_mapped_file() {
   use memmap2::MmapMut;
-  
+
   // Create a temporary file and write some initial data
   let mut temp_file = NamedTempFile::new().unwrap();
-  
+
   // Write 1024 zeros to the file to create space for the KV journal
   let initial_data = vec![0u8; 1024];
   temp_file.write_all(&initial_data).unwrap();
   temp_file.flush().unwrap();
-  
+
   // Memory-map the file
   let file = temp_file.reopen().unwrap();
   let mut mmap = unsafe { MmapMut::map_mut(&file).unwrap() };
-  
+
   // Create a ResilientKv using the memory-mapped buffer
   let mut kv = InMemoryKVJournal::new(&mut mmap[..], None, None).unwrap();
-  
+
   // Use the KV journal normally
-  kv.set("test_key", &Value::String("memory_mapped_value".to_string())).unwrap();
+  kv.set(
+    "test_key",
+    &Value::String("memory_mapped_value".to_string()),
+  )
+  .unwrap();
   kv.set("number", &Value::Signed(42)).unwrap();
-  
+
   let map = kv.as_hashmap().unwrap();
   assert_eq!(map.len(), 2);
   assert_eq!(
@@ -595,7 +599,7 @@ fn test_with_memory_mapped_file() {
     Some(&Value::String("memory_mapped_value".to_string()))
   );
   assert_eq!(map.get("number"), Some(&Value::Signed(42)));
-  
+
   // The data is automatically persisted to the file via the memory mapping
 }
 
@@ -603,7 +607,7 @@ fn test_with_memory_mapped_file() {
 fn test_high_water_mark_default() {
   let mut buffer = vec![0; 100];
   let kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
-  
+
   // Default should be 80% of buffer size
   assert_eq!(kv.high_water_mark(), 80);
   assert!(!kv.is_high_water_mark_triggered());
@@ -614,7 +618,7 @@ fn test_high_water_mark_default() {
 fn test_high_water_mark_custom_ratio() {
   let mut buffer = vec![0; 100];
   let kv = InMemoryKVJournal::new(&mut buffer, Some(0.6), None).unwrap();
-  
+
   // Should be 60% of buffer size
   assert_eq!(kv.high_water_mark(), 60);
   assert!(!kv.is_high_water_mark_triggered());
@@ -623,16 +627,26 @@ fn test_high_water_mark_custom_ratio() {
 #[test]
 fn test_high_water_mark_invalid_ratio() {
   let mut buffer = vec![0; 100];
-  
+
   // Test ratio > 1.0
   let result = InMemoryKVJournal::new(&mut buffer, Some(1.5), None);
   assert!(result.is_err());
-  assert!(result.unwrap_err().to_string().contains("High water mark ratio must be between 0.0 and 1.0"));
-  
+  assert!(
+    result
+      .unwrap_err()
+      .to_string()
+      .contains("High water mark ratio must be between 0.0 and 1.0")
+  );
+
   // Test negative ratio
   let result = InMemoryKVJournal::new(&mut buffer, Some(-0.1), None);
   assert!(result.is_err());
-  assert!(result.unwrap_err().to_string().contains("High water mark ratio must be between 0.0 and 1.0"));
+  assert!(
+    result
+      .unwrap_err()
+      .to_string()
+      .contains("High water mark ratio must be between 0.0 and 1.0")
+  );
 }
 
 #[test]
@@ -640,42 +654,46 @@ fn test_high_water_mark_trigger() {
   // Use a global state for the callback since we need a function pointer
   static mut CALLBACK_TRIGGERED: bool = false;
   static mut CALLBACK_DATA: (usize, usize, usize) = (0, 0, 0);
-  
+
   fn test_callback(pos: usize, size: usize, hwm: usize) {
     unsafe {
       CALLBACK_TRIGGERED = true;
       CALLBACK_DATA = (pos, size, hwm);
     }
   }
-  
+
   let mut buffer = vec![0; 64];
   let mut kv = InMemoryKVJournal::new(&mut buffer, Some(0.5), Some(test_callback)).unwrap();
-  
+
   // Reset the global state
   unsafe {
     CALLBACK_TRIGGERED = false;
     CALLBACK_DATA = (0, 0, 0);
   }
-  
+
   // High water mark should be at 32 bytes (50% of 64)
   assert_eq!(kv.high_water_mark(), 32);
   assert!(!kv.is_high_water_mark_triggered());
   assert!(unsafe { !CALLBACK_TRIGGERED });
-  
+
   // Add enough data to exceed the high water mark
-  // Each string entry should be approximately: map_begin(1) + key_len + key + value_len + value + map_end(1)
-  // We'll add multiple entries to exceed position 32
-  for i in 0..10 {
-    kv.set(&format!("key_{}", i), &Value::String(format!("value_{}", i))).unwrap();
-    
+  // Each string entry should be approximately: map_begin(1) + key_len + key + value_len + value +
+  // map_end(1) We'll add multiple entries to exceed position 32
+  for i in 0 .. 10 {
+    kv.set(
+      &format!("key_{}", i),
+      &Value::String(format!("value_{}", i)),
+    )
+    .unwrap();
+
     if kv.is_high_water_mark_triggered() {
       break;
     }
   }
-  
+
   assert!(kv.is_high_water_mark_triggered());
   assert!(unsafe { CALLBACK_TRIGGERED });
-  
+
   let (pos, size, hwm) = unsafe { CALLBACK_DATA };
   assert!(pos >= 32);
   assert_eq!(size, 64);
@@ -685,32 +703,33 @@ fn test_high_water_mark_trigger() {
 #[test]
 fn test_high_water_mark_from_buffer() {
   let mut buffer = vec![0; 100];
-  
+
   // Create a KV journal and add some data
   {
     let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
     kv.set("test", &Value::String("value".to_string())).unwrap();
   }
-  
+
   // Load from buffer with custom high water mark
   let kv = InMemoryKVJournal::from_buffer(&mut buffer, Some(0.7), None).unwrap();
   assert_eq!(kv.high_water_mark(), 70);
-  
+
   // The high water mark should not be triggered yet since we only added one small entry
   assert!(!kv.is_high_water_mark_triggered());
 }
 
-#[test] 
+#[test]
 fn test_buffer_usage_ratio() {
   let mut buffer = vec![0; 200];
   let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
-  
+
   // Initially, usage includes header and metadata, should be reasonable
   let initial_ratio = kv.buffer_usage_ratio();
-  assert!(initial_ratio < 0.3);  // Should be well under 30% (accounts for metadata)
-  
+  assert!(initial_ratio < 0.3); // Should be well under 30% (accounts for metadata)
+
   // Add data and check that usage ratio increases
-  kv.set("test", &Value::String("test_value".to_string())).unwrap();
+  kv.set("test", &Value::String("test_value".to_string()))
+    .unwrap();
   let after_ratio = kv.buffer_usage_ratio();
   assert!(after_ratio > initial_ratio);
 }
@@ -719,16 +738,16 @@ fn test_buffer_usage_ratio() {
 fn test_get_init_time() {
   let mut buffer = vec![0; 128];
   let kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
-  
+
   // Get the initialization time
   let init_time = kv.get_init_time();
-  
+
   // The timestamp should be a reasonable nanosecond value since UNIX epoch
   // It should be greater than 2000-01-01 (946684800000000000 nanoseconds)
   // and less than 2100-01-01 (4102444800000000000 nanoseconds)
   assert!(init_time > 946_684_800_000_000_000);
   assert!(init_time < 4_102_444_800_000_000_000);
-  
+
   // Should return the same time when called multiple times
   let init_time2 = kv.get_init_time();
   assert_eq!(init_time, init_time2);
@@ -740,14 +759,16 @@ fn test_get_init_time_from_buffer() {
   let mut buffer1 = vec![0; 256];
   let mut kv1 = InMemoryKVJournal::new(&mut buffer1, None, None).unwrap();
   let original_time = kv1.get_init_time();
-  
+
   // Add some data
-  kv1.set("test", &Value::String("value".to_string())).unwrap();
-  
+  kv1
+    .set("test", &Value::String("value".to_string()))
+    .unwrap();
+
   // Create a new KV journal from the same buffer
   let kv2 = InMemoryKVJournal::from_buffer(&mut buffer1, None, None).unwrap();
   let loaded_time = kv2.get_init_time();
-  
+
   // Should have the same initialization time
   assert_eq!(original_time, loaded_time);
 }
@@ -757,31 +778,38 @@ fn test_reinit_from() {
   // Create source KV with some data
   let mut source_buffer = vec![0; 256];
   let mut source_kv = InMemoryKVJournal::new(&mut source_buffer, None, None).unwrap();
-  
-  source_kv.set("key1", &Value::String("value1".to_string())).unwrap();
+
+  source_kv
+    .set("key1", &Value::String("value1".to_string()))
+    .unwrap();
   source_kv.set("key2", &Value::Signed(42)).unwrap();
   source_kv.set("key3", &Value::Bool(true)).unwrap();
-  
+
   // Create target KV with different data
   let mut target_buffer = vec![0; 256];
   let mut target_kv = InMemoryKVJournal::new(&mut target_buffer, Some(0.9), None).unwrap();
-  
-  target_kv.set("old_key", &Value::String("old_value".to_string())).unwrap();
-  
+
+  target_kv
+    .set("old_key", &Value::String("old_value".to_string()))
+    .unwrap();
+
   // Get high water mark before reinit
   let original_high_water_mark = target_kv.high_water_mark();
-  
+
   // Reinitialize target from source
   target_kv.reinit_from(&mut source_kv).unwrap();
-  
+
   // Check that target now has source's data
   let target_data = target_kv.as_hashmap().unwrap();
   assert_eq!(target_data.len(), 3);
-  assert_eq!(target_data.get("key1"), Some(&Value::String("value1".to_string())));
+  assert_eq!(
+    target_data.get("key1"),
+    Some(&Value::String("value1".to_string()))
+  );
   assert_eq!(target_data.get("key2"), Some(&Value::Signed(42)));
   assert_eq!(target_data.get("key3"), Some(&Value::Bool(true)));
   assert_eq!(target_data.get("old_key"), None); // Old data should be gone
-  
+
   // Check that high water mark is preserved (should still be based on 0.9 ratio)
   assert_eq!(target_kv.high_water_mark(), original_high_water_mark);
 }
@@ -792,31 +820,36 @@ fn test_journal_clear() {
   let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   // Add some initial data
-  kv.set("key1", &Value::String("value1".to_string())).unwrap();
+  kv.set("key1", &Value::String("value1".to_string()))
+    .unwrap();
   kv.set("key2", &Value::Signed(42)).unwrap();
   kv.set("key3", &Value::Bool(true)).unwrap();
-  
+
   let map_before = kv.as_hashmap().unwrap();
   assert_eq!(map_before.len(), 3);
-  
+
   // Check buffer usage before clear
   let buffer_usage_before = kv.buffer_usage_ratio();
   assert!(buffer_usage_before > 0.0);
-  
+
   // Clear the journal
   kv.clear().unwrap();
-  
+
   // Verify everything is cleared
   let map_after = kv.as_hashmap().unwrap();
   assert_eq!(map_after.len(), 0);
-  
+
   // Check buffer usage after clear - should be much lower
   let buffer_usage_after = kv.buffer_usage_ratio();
   assert!(buffer_usage_after < buffer_usage_before);
-  
+
   // Verify we can still add data after clearing
-  kv.set("new_key", &Value::String("new_value".to_string())).unwrap();
+  kv.set("new_key", &Value::String("new_value".to_string()))
+    .unwrap();
   let map_final = kv.as_hashmap().unwrap();
   assert_eq!(map_final.len(), 1);
-  assert_eq!(map_final.get("new_key"), Some(&Value::String("new_value".to_string())));
+  assert_eq!(
+    map_final.get("new_key"),
+    Some(&Value::String("new_value".to_string()))
+  );
 }

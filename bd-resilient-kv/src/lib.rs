@@ -17,21 +17,22 @@
 #[cfg(test)]
 mod tests;
 
-pub mod in_memory;
-pub mod memmapped;
 pub mod double_buffered;
+pub mod in_memory;
 pub mod kv_store;
+pub mod memmapped;
 
 use bd_bonjson::Value;
 use std::collections::HashMap;
 
 /// Callback function type for high water mark notifications.
-/// 
+///
 /// Called when a buffer usage exceeds the high water mark threshold.
 /// Parameters: (`current_position`, `buffer_size`, `high_water_mark_position`)
 pub type HighWaterMarkCallback = fn(usize, usize, usize);
 
-/// Trait for a key-value journaling system whose data can be recovered up to the last successful write checkpoint.
+/// Trait for a key-value journaling system whose data can be recovered up to the last successful
+/// write checkpoint.
 pub trait KVJournal {
   /// Get the current high water mark position.
   fn high_water_mark(&self) -> usize;
@@ -97,7 +98,7 @@ pub trait KVJournal {
 }
 
 // Re-export the in-memory implementation for convenience
-pub use in_memory::InMemoryKVJournal;
-pub use memmapped::MemMappedKVJournal;
 pub use double_buffered::DoubleBufferedKVJournal;
+pub use in_memory::InMemoryKVJournal;
 pub use kv_store::KVStore;
+pub use memmapped::MemMappedKVJournal;
