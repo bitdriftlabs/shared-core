@@ -168,11 +168,11 @@ fn test_kv_store_keys_and_values() -> anyhow::Result<()> {
   assert_eq!(key_strs, vec!["key1", "key2", "key3"]);
   
   // Test values
-  let values = store.values();
+  let values: Vec<&Value> = store.values().collect();
   assert_eq!(values.len(), 3);
-  assert!(values.contains(&Value::String("value1".to_string())));
-  assert!(values.contains(&Value::Signed(42)));
-  assert!(values.contains(&Value::Bool(true)));
+  assert!(values.iter().any(|v| **v == Value::String("value1".to_string())));
+  assert!(values.iter().any(|v| **v == Value::Signed(42)));
+  assert!(values.iter().any(|v| **v == Value::Bool(true)));
   
   // Test as_hashmap
   let map = store.as_hashmap();

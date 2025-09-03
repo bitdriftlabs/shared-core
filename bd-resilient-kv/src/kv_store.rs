@@ -182,9 +182,9 @@ impl KVStore {
 
   /// Get all values in the store.
   ///
-  /// This operation is O(n) where n is the number of values, as it clones the values from the cache.
-  pub fn values(&self) -> Vec<Value> {
-    self.cached_map.values().cloned().collect()
+  /// This operation returns an iterator over the values without allocation.
+  pub fn values(&self) -> std::collections::hash_map::Values<'_, String, Value> {
+    self.cached_map.values()
   }
 
   /// Get all key-value pairs as a `HashMap`.
