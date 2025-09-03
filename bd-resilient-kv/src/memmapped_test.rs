@@ -400,14 +400,14 @@ fn test_memmapped_get_init_time() {
     let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
     
     // Get the initialization time
-    let init_time = kv.get_init_time().unwrap();
+    let init_time = kv.get_init_time();
     
     // The timestamp should be a reasonable nanosecond value since UNIX epoch
     assert!(init_time > 946_684_800_000_000_000);
     assert!(init_time < 4_102_444_800_000_000_000);
     
     // Should return the same time when called multiple times
-    let init_time2 = kv.get_init_time().unwrap();
+    let init_time2 = kv.get_init_time();
     assert_eq!(init_time, init_time2);
 }
 
@@ -420,12 +420,12 @@ fn test_memmapped_get_init_time_persistence() {
         let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
         kv.set("test", &Value::String("value".to_string())).unwrap();
         kv.sync().unwrap();
-        kv.get_init_time().unwrap()
+        kv.get_init_time()
     };
     
     // Create a new instance from the same file
     let mut kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
-    let loaded_time = kv.get_init_time().unwrap();
+    let loaded_time = kv.get_init_time();
     
     // Should have the same initialization time
     assert_eq!(original_time, loaded_time);

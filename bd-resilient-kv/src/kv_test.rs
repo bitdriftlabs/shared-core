@@ -721,7 +721,7 @@ fn test_get_init_time() {
   let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
   
   // Get the initialization time
-  let init_time = kv.get_init_time().unwrap();
+  let init_time = kv.get_init_time();
   
   // The timestamp should be a reasonable nanosecond value since UNIX epoch
   // It should be greater than 2000-01-01 (946684800000000000 nanoseconds)
@@ -730,7 +730,7 @@ fn test_get_init_time() {
   assert!(init_time < 4_102_444_800_000_000_000);
   
   // Should return the same time when called multiple times
-  let init_time2 = kv.get_init_time().unwrap();
+  let init_time2 = kv.get_init_time();
   assert_eq!(init_time, init_time2);
 }
 
@@ -739,14 +739,14 @@ fn test_get_init_time_from_buffer() {
   // Create a KV journal and get its timestamp
   let mut buffer1 = vec![0; 256];
   let mut kv1 = InMemoryKVJournal::new(&mut buffer1, None, None).unwrap();
-  let original_time = kv1.get_init_time().unwrap();
+  let original_time = kv1.get_init_time();
   
   // Add some data
   kv1.set("test", &Value::String("value".to_string())).unwrap();
   
   // Create a new KV journal from the same buffer
   let mut kv2 = InMemoryKVJournal::from_buffer(&mut buffer1, None, None).unwrap();
-  let loaded_time = kv2.get_init_time().unwrap();
+  let loaded_time = kv2.get_init_time();
   
   // Should have the same initialization time
   assert_eq!(original_time, loaded_time);

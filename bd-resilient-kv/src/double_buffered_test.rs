@@ -108,12 +108,12 @@ fn test_double_buffered_journal_switching() -> anyhow::Result<()> {
 fn test_double_buffered_get_init_time() -> anyhow::Result<()> {
   let mut db_kv = create_test_double_buffered_journal()?;
   
-  let init_time = db_kv.get_init_time()?;
+  let init_time = db_kv.get_init_time();
   assert!(init_time > 0);
   
   // Add some data and verify init time doesn't change
   db_kv.set("key1", &Value::String("value1".to_string()))?;
-  let init_time2 = db_kv.get_init_time()?;
+  let init_time2 = db_kv.get_init_time();
   assert_eq!(init_time, init_time2);
   
   Ok(())

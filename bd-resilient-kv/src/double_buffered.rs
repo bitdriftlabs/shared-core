@@ -39,8 +39,8 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
   /// A new `DoubleBufferedKVJournal` instance with the most recently initialized journal active.
   pub fn new(mut journal_a: A, mut journal_b: B) -> anyhow::Result<Self> {
     // Get initialization timestamps from both journals
-    let init_time_a = journal_a.get_init_time().unwrap_or(0);
-    let init_time_b = journal_b.get_init_time().unwrap_or(0);
+    let init_time_a = journal_a.get_init_time();
+    let init_time_b = journal_b.get_init_time();
     
     // Check if either journal has existing data
     let has_data_a = journal_a.as_hashmap().map(|m| !m.is_empty()).unwrap_or(false);
@@ -167,8 +167,8 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
     self.with_active_journal(|journal| journal.buffer_usage_ratio())
   }
 
-  fn get_init_time(&mut self) -> anyhow::Result<u64> {
-    self.with_active_journal_mut(|journal| journal.get_init_time())
+  fn get_init_time(&mut self) -> u64 {
+    self.active_journal_mut().get_init_time()
   }
 
   fn set(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {

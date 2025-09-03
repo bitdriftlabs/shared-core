@@ -392,11 +392,8 @@ impl KVJournal for InMemoryKVJournal<'_> {
   }
 
   /// Get the time when the journal was initialized (nanoseconds since UNIX epoch).
-  ///
-  /// # Errors
-  /// Returns an error if the initialization timestamp cannot be retrieved.
-  fn get_init_time(&mut self) -> anyhow::Result<u64> {
-    Ok(self.initialized_at_unix_time_ns)
+  fn get_init_time(&mut self) -> u64 {
+    self.initialized_at_unix_time_ns
   }
 
   /// Reinitialize this journal using the data from another journal.

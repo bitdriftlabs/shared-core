@@ -44,8 +44,8 @@ fn test_both_journals_have_same_timestamp_prefers_a() -> anyhow::Result<()> {
   let mut journal_a = create_journal_with_data_and_time(1024, vec![], 0)?;
   let mut journal_b = create_journal_with_data_and_time(1024, vec![], 0)?;
   
-  let init_time_a = journal_a.get_init_time().unwrap_or(0);
-  let init_time_b = journal_b.get_init_time().unwrap_or(0);
+  let init_time_a = journal_a.get_init_time();
+  let init_time_b = journal_b.get_init_time();
   
   let db_journal = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
   

@@ -67,10 +67,7 @@ pub trait KVJournal {
   fn buffer_usage_ratio(&self) -> f32;
 
   /// Get the time when the journal was initialized (nanoseconds since UNIX epoch).
-  ///
-  /// # Errors
-  /// Returns an error if the initialization timestamp cannot be retrieved.
-  fn get_init_time(&mut self) -> anyhow::Result<u64>;
+  fn get_init_time(&mut self) -> u64;
 
   /// Generate a new journal entry recording the setting of a key to a value.
   ///

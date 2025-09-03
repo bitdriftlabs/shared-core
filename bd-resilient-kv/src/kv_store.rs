@@ -104,12 +104,8 @@ impl KVStore {
   /// Get a value by key.
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
-  ///
-  /// # Errors
-  /// This method currently does not return errors, but the signature is maintained
-  /// for consistency with the underlying journal interface.
-  pub fn get(&mut self, key: &str) -> anyhow::Result<Option<Value>> {
-    Ok(self.cached_map.get(key).cloned())
+  pub fn get(&self, key: &str) -> Option<Value> {
+    self.cached_map.get(key).cloned()
   }
 
   /// Insert a value for a key, returning the previous value if it existed.
@@ -119,7 +115,7 @@ impl KVStore {
   /// # Errors
   /// Returns an error if the value cannot be written to the journal.
   pub fn insert(&mut self, key: String, value: Value) -> anyhow::Result<Option<Value>> {
-    let old_value = self.get(&key)?;
+    let old_value = self.get(&key);
     if matches!(value, Value::Null) {
       // Inserting null is equivalent to deletion
       if old_value.is_some() {
@@ -138,7 +134,7 @@ impl KVStore {
   /// # Errors
   /// Returns an error if the deletion cannot be written to the journal.
   pub fn remove(&mut self, key: &str) -> anyhow::Result<Option<Value>> {
-    let old_value = self.get(key)?;
+    let old_value = self.get(key);
     if old_value.is_some() {
       self.journal.delete(key)?;
       self.cached_map.remove(key);
@@ -149,34 +145,22 @@ impl KVStore {
   /// Check if the store contains a key.
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
-  ///
-  /// # Errors
-  /// This method currently does not return errors, but the signature is maintained
-  /// for consistency with the underlying journal interface.
-  pub fn contains_key(&mut self, key: &str) -> anyhow::Result<bool> {
-    Ok(self.cached_map.contains_key(key))
+  pub fn contains_key(&self, key: &str) -> bool {
+    self.cached_map.contains_key(key)
   }
 
   /// Get the number of key-value pairs in the store.
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
-  ///
-  /// # Errors
-  /// This method currently does not return errors, but the signature is maintained
-  /// for consistency with the underlying journal interface.
-  pub fn len(&mut self) -> anyhow::Result<usize> {
-    Ok(self.cached_map.len())
+  pub fn len(&self) -> usize {
+    self.cached_map.len()
   }
 
   /// Check if the store is empty.
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
-  ///
-  /// # Errors
-  /// This method currently does not return errors, but the signature is maintained
-  /// for consistency with the underlying journal interface.
-  pub fn is_empty(&mut self) -> anyhow::Result<bool> {
-    Ok(self.len()? == 0)
+  pub fn is_empty(&self) -> bool {
+    self.len() == 0
   }
 
   /// Clear all key-value pairs from the store.
@@ -192,34 +176,22 @@ impl KVStore {
   /// Get all keys in the store.
   ///
   /// This operation is O(n) where n is the number of keys, as it clones the keys from the cache.
-  ///
-  /// # Errors
-  /// This method currently does not return errors, but the signature is maintained
-  /// for consistency with the underlying journal interface.
-  pub fn keys(&mut self) -> anyhow::Result<Vec<String>> {
-    Ok(self.cached_map.keys().cloned().collect())
+  pub fn keys(&self) -> Vec<String> {
+    self.cached_map.keys().cloned().collect()
   }
 
   /// Get all values in the store.
   ///
   /// This operation is O(n) where n is the number of values, as it clones the values from the cache.
-  ///
-  /// # Errors
-  /// This method currently does not return errors, but the signature is maintained
-  /// for consistency with the underlying journal interface.
-  pub fn values(&mut self) -> anyhow::Result<Vec<Value>> {
-    Ok(self.cached_map.values().cloned().collect())
+  pub fn values(&self) -> Vec<Value> {
+    self.cached_map.values().cloned().collect()
   }
 
   /// Get all key-value pairs as a `HashMap`.
   ///
   /// This operation is O(n) where n is the number of key-value pairs, as it clones the entire cache.
-  ///
-  /// # Errors
-  /// This method currently does not return errors, but the signature is maintained
-  /// for consistency with the underlying journal interface.
-  pub fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>> {
-    Ok(self.cached_map.clone())
+  pub fn as_hashmap(&self) -> HashMap<String, Value> {
+    self.cached_map.clone()
   }
 
   /// Force compression of the underlying journals.
