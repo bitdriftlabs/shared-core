@@ -18,8 +18,14 @@ use std::path::Path;
 /// the efficiency of in-memory operations. All changes are automatically synced to disk.
 #[derive(Debug)]
 pub struct MemMappedKVJournal {
+  // Safety:
+  // During construction, we unsafely declare mmap's internal buffer as having a static
+  // lifetime, but it's actually tied to the lifetime of in_memory_kv. This works because
+  // nothing external holds a reference to the buffer.
+  // Note: mmap MUST de-init AFTER in_memory_kv.
+
+  mmap: MmapMut,
   in_memory_kv: InMemoryKVJournal<'static>,
-  mmap: MmapMut, // Keep the mmap alive for the lifetime of the struct
 }
 
 impl MemMappedKVJournal {
