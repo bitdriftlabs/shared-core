@@ -5,8 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::in_memory::InMemoryKVJournal;
-use crate::kv_journal::{HighWaterMarkCallback, KVJournal};
+use super::in_memory::InMemoryKVJournal;
+use super::{HighWaterMarkCallback, KVJournal};
 use bd_bonjson::Value;
 use memmap2::{MmapMut, MmapOptions};
 use std::collections::HashMap;

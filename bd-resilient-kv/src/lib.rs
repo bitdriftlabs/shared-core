@@ -17,14 +17,15 @@
 #[cfg(test)]
 mod tests;
 
-pub mod double_buffered;
-pub mod in_memory;
-pub mod kv_store;
 pub mod kv_journal;
-pub mod memmapped;
+pub mod kv_store;
 
-pub use double_buffered::DoubleBufferedKVJournal;
-pub use in_memory::InMemoryKVJournal;
+// Re-export the main trait and types for convenience
+pub use kv_journal::{
+  DoubleBufferedKVJournal,
+  HighWaterMarkCallback,
+  InMemoryKVJournal,
+  KVJournal,
+  MemMappedKVJournal,
+};
 pub use kv_store::KVStore;
-pub use kv_journal::{HighWaterMarkCallback, KVJournal};
-pub use memmapped::MemMappedKVJournal;

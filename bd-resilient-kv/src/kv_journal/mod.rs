@@ -79,3 +79,12 @@ pub trait KVJournal {
     Ok(())
   }
 }
+
+// Re-export implementations
+pub mod double_buffered;
+pub mod in_memory;
+pub mod memmapped;
+
+pub use double_buffered::DoubleBufferedKVJournal;
+pub use in_memory::InMemoryKVJournal;
+pub use memmapped::MemMappedKVJournal;
