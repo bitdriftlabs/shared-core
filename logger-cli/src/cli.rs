@@ -8,7 +8,7 @@
 use bd_logger::{AnnotatedLogField, AnnotatedLogFields, LogLevel, LogType, log_level};
 use clap::{ArgAction, Args, Parser, Subcommand};
 
-#[derive(clap::ValueEnum, Debug, Clone)]
+#[derive(clap::ValueEnum, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum CliLogType {
   Normal,
   Replay,
@@ -35,7 +35,7 @@ pub enum CliPlatform {
   Apple,
 }
 
-#[derive(clap::ValueEnum, Debug, Clone)]
+#[derive(clap::ValueEnum, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum RuntimeValueType {
   Bool,
   String,
@@ -46,29 +46,18 @@ pub enum RuntimeValueType {
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
 pub struct Options {
-  /// API key to use with emitted logs
-  #[clap(env, long)]
-  pub api_key: String,
+  /// Server connection host
+  #[clap(
+    env = "LOGGER_HOST",
+    long,
+    required = false,
+    default_value = "127.0.0.1"
+  )]
+  pub host: String,
 
-  /// Bitdrift URL to connect
-  #[clap(env, long, required = false, default_value = "https://api.bitdrift.io")]
-  pub api_url: String,
-
-  /// Uniquely identify the app
-  #[clap(env, long)]
-  pub app_id: String,
-
-  /// App version
-  #[clap(long, required = false, default_value = "1.0.0")]
-  pub app_version: String,
-
-  /// Device platform
-  #[clap(long, required = false, default_value = "apple")]
-  pub platform: CliPlatform,
-
-  /// Device model
-  #[clap(long, required = false, default_value = "iPhone12,1")]
-  pub model: String,
+  /// Server connection port
+  #[clap(env = "LOGGER_PORT", long, required = false, default_value = "5501")]
+  pub port: u16,
 
   /// Command to run
   #[command(subcommand)]
@@ -92,8 +81,44 @@ pub enum Command {
   /// Open the timeline for the current session in the default browser
   Timeline,
 
+  /// Start server
+  Start(StartCommand),
+
+  /// Stop running server
+  Stop,
+
+  /// Break execution
+  Trap,
+
   /// Log a runtime config value
-  LogRuntimeValue(RuntimeValueCommand),
+  PrintRuntimeValue(RuntimeValueCommand),
+}
+
+#[derive(Args, Debug)]
+pub struct StartCommand {
+  /// API key to use with emitted logs
+  #[clap(env, long)]
+  pub api_key: String,
+
+  /// Bitdrift URL to connect
+  #[clap(env, long, required = false, default_value = "https://api.bitdrift.io")]
+  pub api_url: String,
+
+  /// Uniquely identify the app
+  #[clap(env, long)]
+  pub app_id: String,
+
+  /// App version
+  #[clap(long, required = false, default_value = "1.0.0")]
+  pub app_version: String,
+
+  /// Device platform
+  #[clap(long, required = false, default_value = "apple")]
+  pub platform: CliPlatform,
+
+  /// Device model
+  #[clap(long, required = false, default_value = "iPhone12,1")]
+  pub model: String,
 }
 
 #[derive(Args, Debug)]
