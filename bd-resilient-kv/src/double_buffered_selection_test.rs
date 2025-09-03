@@ -41,8 +41,8 @@ fn create_journal_with_data_and_time(
 #[test]
 fn test_both_journals_have_same_timestamp_prefers_a() -> anyhow::Result<()> {
   // Create two fresh journals - we'll check which one gets selected
-  let mut journal_a = create_journal_with_data_and_time(1024, vec![], 0)?;
-  let mut journal_b = create_journal_with_data_and_time(1024, vec![], 0)?;
+  let journal_a = create_journal_with_data_and_time(1024, vec![], 0)?;
+  let journal_b = create_journal_with_data_and_time(1024, vec![], 0)?;
   
   let init_time_a = journal_a.get_init_time();
   let init_time_b = journal_b.get_init_time();

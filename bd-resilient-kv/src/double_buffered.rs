@@ -167,8 +167,8 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
     self.with_active_journal(|journal| journal.buffer_usage_ratio())
   }
 
-  fn get_init_time(&mut self) -> u64 {
-    self.active_journal_mut().get_init_time()
+  fn get_init_time(&self) -> u64 {
+    self.active_journal().get_init_time()
   }
 
   fn set(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {

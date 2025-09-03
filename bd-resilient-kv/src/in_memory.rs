@@ -392,7 +392,7 @@ impl KVJournal for InMemoryKVJournal<'_> {
   }
 
   /// Get the time when the journal was initialized (nanoseconds since UNIX epoch).
-  fn get_init_time(&mut self) -> u64 {
+  fn get_init_time(&self) -> u64 {
     self.initialized_at_unix_time_ns
   }
 

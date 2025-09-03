@@ -718,7 +718,7 @@ fn test_buffer_usage_ratio() {
 #[test]
 fn test_get_init_time() {
   let mut buffer = vec![0; 128];
-  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
+  let kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
   
   // Get the initialization time
   let init_time = kv.get_init_time();
@@ -745,7 +745,7 @@ fn test_get_init_time_from_buffer() {
   kv1.set("test", &Value::String("value".to_string())).unwrap();
   
   // Create a new KV journal from the same buffer
-  let mut kv2 = InMemoryKVJournal::from_buffer(&mut buffer1, None, None).unwrap();
+  let kv2 = InMemoryKVJournal::from_buffer(&mut buffer1, None, None).unwrap();
   let loaded_time = kv2.get_init_time();
   
   // Should have the same initialization time

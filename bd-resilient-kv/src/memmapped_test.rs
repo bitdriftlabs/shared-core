@@ -397,7 +397,7 @@ fn test_memmapped_get_init_time() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
     
-    let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
+    let kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
     
     // Get the initialization time
     let init_time = kv.get_init_time();
@@ -424,7 +424,7 @@ fn test_memmapped_get_init_time_persistence() {
     };
     
     // Create a new instance from the same file
-    let mut kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
+    let kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
     let loaded_time = kv.get_init_time();
     
     // Should have the same initialization time
