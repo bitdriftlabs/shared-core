@@ -64,7 +64,7 @@ impl KVStore {
     let journal_b =
       Self::create_or_open_journal(&file_b, buffer_size, high_water_mark_ratio, callback)?;
 
-    let mut journal = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
+    let journal = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
     let cached_map = journal.as_hashmap()?;
 
     Ok(Self {
@@ -185,29 +185,12 @@ impl KVStore {
     Ok(())
   }
 
-  /// Get all keys in the store.
+  /// Get a reference to the current hash map
   ///
-  /// This operation returns an iterator over the keys without allocation.
+  /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
-  pub fn keys(&self) -> std::collections::hash_map::Keys<'_, String, Value> {
-    self.cached_map.keys()
-  }
-
-  /// Get all values in the store.
-  ///
-  /// This operation returns an iterator over the values without allocation.
-  #[must_use]
-  pub fn values(&self) -> std::collections::hash_map::Values<'_, String, Value> {
-    self.cached_map.values()
-  }
-
-  /// Get all key-value pairs as a `HashMap`.
-  ///
-  /// This operation is O(n) where n is the number of key-value pairs, as it clones the entire
-  /// cache.
-  #[must_use]
-  pub fn as_hashmap(&self) -> HashMap<String, Value> {
-    self.cached_map.clone()
+  pub fn as_hashmap(&self) -> &HashMap<String, Value> {
+    &self.cached_map
   }
 
   /// Force compression of the underlying journals.

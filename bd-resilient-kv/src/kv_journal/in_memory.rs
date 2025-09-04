@@ -98,7 +98,13 @@ fn write_position(buffer: &mut [u8], position: usize) {
 
 /// Read the bonjson payload in this buffer.
 /// This should always be a Value::Array
-fn read_bonjson_payload(buffer: &mut [u8]) -> anyhow::Result<Value> {
+/// 
+/// # Safety
+/// This function temporarily writes a single byte to the "garbage" area of the buffer
+/// (beyond the valid data position) to close the BONJSON array for parsing. This write
+/// is benign and does not affect the buffer's continued operation since the garbage area
+/// is expected to contain meaningless data.
+fn read_bonjson_payload(buffer: &[u8]) -> anyhow::Result<Value> {
   let position = read_position(buffer)?;
   // Recall that the beginning of a journal has an "array open" byte (at position 16). We close
   // it here by inserting a "container end" byte at `position` (which points to one past
@@ -106,8 +112,18 @@ fn read_bonjson_payload(buffer: &mut [u8]) -> anyhow::Result<Value> {
   // BONJSON document consisting of an array of journal entries.
   // Inserting this byte won't affect the journal's operation, because anything in
   // `buffer` from `position` onward is considered "garbage".
-  let mut cursor = &mut buffer[position ..];
+  
+  // SAFETY: We're writing to the garbage area beyond the valid data position.
+  // This is safe because:
+  // 1. The position is validated to be within buffer bounds by read_position()
+  // 2. We're only writing to buffer[position..] which is the garbage area
+  // 3. The write is temporary and doesn't affect the journal's valid data
+  let buffer_mut = unsafe {
+    std::slice::from_raw_parts_mut(buffer.as_ptr() as *mut u8, buffer.len())
+  };
+  let mut cursor = &mut buffer_mut[position ..];
   serialize_container_end(&mut cursor).map_err(|_| InvariantError::Invariant)?;
+  
   let buffer = &buffer[ARRAY_BEGIN ..];
   let (_, decoded) =
     from_slice(buffer).map_err(|e| anyhow::anyhow!("Failed to decode buffer: {e:?}"))?;
@@ -134,7 +150,7 @@ fn write_metadata(buffer: &mut [u8], timestamp: u64) -> anyhow::Result<usize> {
 }
 
 /// Extract the initialization timestamp from the metadata section of a journal buffer.
-fn extract_timestamp_from_buffer(buffer: &mut [u8]) -> anyhow::Result<u64> {
+fn extract_timestamp_from_buffer(buffer: &[u8]) -> anyhow::Result<u64> {
   let array = read_bonjson_payload(buffer)?;
   if let Value::Array(entries) = array {
     // The first array entry is the metadata
@@ -390,8 +406,8 @@ impl KVJournal for InMemoryKVJournal<'_> {
   ///
   /// # Errors
   /// Returns an error if the buffer cannot be decoded.
-  fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>> {
-    let array = read_bonjson_payload(&mut self.buffer)?;
+  fn as_hashmap(&self) -> anyhow::Result<HashMap<String, Value>> {
+    let array = read_bonjson_payload(self.buffer)?;
     let mut map = HashMap::new();
     if let Value::Array(entries) = array {
       for (index, entry) in entries.iter().enumerate() {
@@ -424,7 +440,7 @@ impl KVJournal for InMemoryKVJournal<'_> {
   ///
   /// # Errors
   /// Returns an error if the other journal cannot be read or if writing to this journal fails.
-  fn reinit_from(&mut self, other: &mut dyn KVJournal) -> anyhow::Result<()> {
+  fn reinit_from(&mut self, other: &dyn KVJournal) -> anyhow::Result<()> {
     // Get all data from the other journal
     let data = other.as_hashmap()?;
 

@@ -69,7 +69,7 @@ fn test_memmapped_concurrent_writes_different_files() -> anyhow::Result<()> {
   // Verify all files were created and contain correct data
   for i in 0 .. 4 {
     let file_path = temp_dir.path().join(format!("test_{}.kv", i));
-    let mut journal = MemMappedKVJournal::from_file(&file_path, None, None)?;
+    let journal = MemMappedKVJournal::from_file(&file_path, None, None)?;
     let data = journal.as_hashmap()?;
     assert_eq!(data.len(), 10);
 

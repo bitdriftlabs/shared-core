@@ -198,7 +198,7 @@ impl KVJournal for MemMappedKVJournal {
   ///
   /// # Errors
   /// Returns an error if the buffer cannot be decoded.
-  fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>> {
+  fn as_hashmap(&self) -> anyhow::Result<HashMap<String, Value>> {
     self.in_memory_kv.as_hashmap()
   }
 
@@ -212,7 +212,7 @@ impl KVJournal for MemMappedKVJournal {
   ///
   /// # Errors
   /// Returns an error if the other journal cannot be read or if writing to this journal fails.
-  fn reinit_from(&mut self, other: &mut dyn KVJournal) -> anyhow::Result<()> {
+  fn reinit_from(&mut self, other: &dyn KVJournal) -> anyhow::Result<()> {
     // Delegate to the in-memory journal
     self.in_memory_kv.reinit_from(other)?;
 

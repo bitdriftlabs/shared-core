@@ -115,12 +115,12 @@ libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
         let _ = store.clear();
       },
       OperationType::Keys => {
-        // Keys method should not crash
-        let _ = store.keys();
+        // Keys method should not crash (now via as_hashmap)
+        let _ = store.as_hashmap().keys();
       },
       OperationType::Values => {
-        // Values method should not crash
-        let _ = store.values();
+        // Values method should not crash (now via as_hashmap)
+        let _ = store.as_hashmap().values();
       },
       OperationType::BufferUsageRatio => {
         // Buffer usage ratio should always be valid

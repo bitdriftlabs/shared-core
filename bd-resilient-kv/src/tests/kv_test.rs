@@ -14,7 +14,7 @@ use tempfile::NamedTempFile;
 #[test]
 fn test_create_resilient_kv() {
   let mut buffer = vec![0; 128];
-  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
+  let kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
   assert_eq!(kv.as_hashmap().unwrap().len(), 0);
 }
 
@@ -119,7 +119,7 @@ fn test_set_null_value() {
 #[test]
 fn test_empty_kv_returns_empty_map() {
   let mut buffer = vec![0; 128];
-  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
+  let kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   let map = kv.as_hashmap().unwrap();
   assert!(map.is_empty());
@@ -303,7 +303,7 @@ fn test_from_buffer_success() {
   // Now use from_buffer to load the same data
   let buffer_slice = kv1.buffer_copy();
   let mut buffer2 = buffer_slice;
-  let mut kv2 = InMemoryKVJournal::from_buffer(&mut buffer2, None, None).unwrap();
+  let kv2 = InMemoryKVJournal::from_buffer(&mut buffer2, None, None).unwrap();
 
   // Verify the data is loaded correctly
   let loaded_map = kv2.as_hashmap().unwrap();

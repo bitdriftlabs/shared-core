@@ -38,7 +38,7 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
   ///
   /// # Returns
   /// A new `DoubleBufferedKVJournal` instance with the most recently initialized journal active.
-  pub fn new(mut journal_a: A, mut journal_b: B) -> anyhow::Result<Self> {
+  pub fn new(journal_a: A, journal_b: B) -> anyhow::Result<Self> {
     // Get initialization timestamps from both journals
     let init_time_a = journal_a.get_init_time();
     let init_time_b = journal_b.get_init_time();
@@ -72,9 +72,9 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
   fn switch_journals(&mut self) -> anyhow::Result<()> {
     // Reinitialize the inactive journal from the active one
     if self.active_journal_a {
-      self.journal_b.reinit_from(&mut self.journal_a)?;
+      self.journal_b.reinit_from(&self.journal_a)?;
     } else {
-      self.journal_a.reinit_from(&mut self.journal_b)?;
+      self.journal_a.reinit_from(&self.journal_b)?;
     }
 
     // Switch active journal
@@ -192,11 +192,11 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
     self.with_active_journal_mut(|journal| journal.clear())
   }
 
-  fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>> {
-    self.with_active_journal_mut(|journal| journal.as_hashmap())
+  fn as_hashmap(&self) -> anyhow::Result<HashMap<String, Value>> {
+    self.with_active_journal(|journal| journal.as_hashmap())
   }
 
-  fn reinit_from(&mut self, other: &mut dyn KVJournal) -> anyhow::Result<()> {
+  fn reinit_from(&mut self, other: &dyn KVJournal) -> anyhow::Result<()> {
     self.with_active_journal_mut(|journal| journal.reinit_from(other))
   }
 

@@ -56,7 +56,7 @@ pub trait KVJournal {
   ///
   /// # Errors
   /// Returns an error if the buffer cannot be decoded.
-  fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>>;
+  fn as_hashmap(&self) -> anyhow::Result<HashMap<String, Value>>;
 
   /// Reinitialize this journal using the data from another journal.
   ///
@@ -65,7 +65,7 @@ pub trait KVJournal {
   ///
   /// # Errors
   /// Returns an error if the other journal cannot be read or if writing to this journal fails.
-  fn reinit_from(&mut self, other: &mut dyn KVJournal) -> anyhow::Result<()>;
+  fn reinit_from(&mut self, other: &dyn KVJournal) -> anyhow::Result<()>;
 
   /// Synchronize changes to persistent storage.
   ///

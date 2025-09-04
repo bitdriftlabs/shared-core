@@ -15,7 +15,7 @@ fn test_create_new_memmapped_kv() {
   let temp_file = NamedTempFile::new().unwrap();
   let path = temp_file.path().to_str().unwrap();
 
-  let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
+  let kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
   assert_eq!(kv.as_hashmap().unwrap().len(), 0);
   // Note: high_water_mark() returns the position after the initial header, not 0
   assert!(kv.high_water_mark() > 0);
@@ -139,7 +139,7 @@ fn test_memmapped_empty_kv_returns_empty_map() {
   let temp_file = NamedTempFile::new().unwrap();
   let path = temp_file.path().to_str().unwrap();
 
-  let mut kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
+  let kv = MemMappedKVJournal::new(path, 1024, None, None).unwrap();
 
   let map = kv.as_hashmap().unwrap();
   assert!(map.is_empty());
@@ -164,7 +164,7 @@ fn test_memmapped_persistence_across_instances() {
 
   // Create second instance from same file
   {
-    let mut kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
+    let kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
     let map = kv.as_hashmap().unwrap();
 
     assert_eq!(map.len(), 2);
@@ -322,7 +322,7 @@ fn test_memmapped_large_data_persistence() {
 
   // Verify persistence
   {
-    let mut kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
+    let kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
     let map = kv.as_hashmap().unwrap();
 
     // Should have 25 entries (30 - 5 deleted)
@@ -385,7 +385,7 @@ fn test_memmapped_file_recovery_from_corrupted_end() {
 
   // Should still be able to recover valid entries
   {
-    let mut kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
+    let kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
     let map = kv.as_hashmap().unwrap();
 
     // Should recover the valid entry
