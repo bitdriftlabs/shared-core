@@ -20,7 +20,6 @@ mod tests;
 pub mod kv_journal;
 pub mod kv_store;
 
-// Re-export the main trait and types for convenience
 pub use kv_journal::{
   DoubleBufferedKVJournal,
   HighWaterMarkCallback,

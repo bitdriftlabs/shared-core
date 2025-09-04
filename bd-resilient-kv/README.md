@@ -35,30 +35,39 @@ use bd_bonjson::Value;
 fn main() -> anyhow::Result<()> {
     // Create a new store with 1MB buffer size
     let mut store = KVStore::new("my_store", 1024 * 1024, None, None)?;
-    
+
     // Insert some values
     store.insert("name".to_string(), Value::String("Alice".to_string()))?;
     store.insert("age".to_string(), Value::Integer(30))?;
     store.insert("active".to_string(), Value::Boolean(true))?;
-    
+
     // Read values
     if let Some(name) = store.get("name") {
         println!("Name: {}", name);
     }
-    
+
     // Check existence
     if store.contains_key("age") {
         println!("Age is stored");
     }
-    
+
     // Remove a key
     let old_value = store.remove("active")?;
     println!("Removed: {:?}", old_value);
-    
-    // Get all keys
-    let keys: Vec<_> = store.keys().collect();
+
+    // Get all keys via as_hashmap
+    let keys: Vec<&String> = store.as_hashmap().keys().collect();
     println!("Keys: {:?}", keys);
-    
+
+    // Get all values
+    let values: Vec<&Value> = store.as_hashmap().values().collect();
+    println!("Values: {:?}", values);
+
+    // Iterate over all key-value pairs
+    for (key, value) in store.as_hashmap() {
+        println!("{}: {:?}", key, value);
+    }
+
     Ok(())
 }
 ```
@@ -72,17 +81,17 @@ use std::collections::HashMap;
 
 fn main() -> anyhow::Result<()> {
     let mut store = KVStore::new("typed_store", 1024 * 1024, None, None)?;
-    
+
     // Strings
     store.insert("greeting".to_string(), Value::String("Hello, World!".to_string()))?;
-    
+
     // Numbers
     store.insert("count".to_string(), Value::Integer(42))?;
     store.insert("temperature".to_string(), Value::Float(98.6))?;
-    
+
     // Booleans
     store.insert("enabled".to_string(), Value::Boolean(true))?;
-    
+
     // Arrays
     let array = Value::Array(vec![
         Value::String("item1".to_string()),
@@ -90,16 +99,16 @@ fn main() -> anyhow::Result<()> {
         Value::Integer(123),
     ]);
     store.insert("items".to_string(), array)?;
-    
+
     // Objects
     let mut obj = HashMap::new();
     obj.insert("x".to_string(), Value::Integer(10));
     obj.insert("y".to_string(), Value::Integer(20));
     store.insert("coordinates".to_string(), Value::Object(obj))?;
-    
+
     // Null (equivalent to deletion)
     store.insert("to_delete".to_string(), Value::Null)?; // This removes the key
-    
+
     Ok(())
 }
 ```
@@ -119,14 +128,14 @@ fn main() -> anyhow::Result<()> {
         store.insert("persistent_key".to_string(), Value::String("This survives restarts".to_string()))?;
         // Store automatically syncs to disk
     } // store goes out of scope
-    
+
     {
         // Open the same store later - data is recovered
         let store = KVStore::new("persistent_store", 1024 * 1024, None, None)?;
         let value = store.get("persistent_key");
         assert_eq!(value, Some(Value::String("This survives restarts".to_string())));
     }
-    
+
     Ok(())
 }
 ```
@@ -141,26 +150,26 @@ use bd_bonjson::Value;
 
 fn high_water_mark_callback(current_pos: usize, buffer_size: usize, hwm_pos: usize) {
     println!("High water mark triggered!");
-    println!("Current position: {}, Buffer size: {}, HWM position: {}", 
+    println!("Current position: {}, Buffer size: {}, HWM position: {}",
              current_pos, buffer_size, hwm_pos);
 }
 
 fn main() -> anyhow::Result<()> {
     let mut store = KVStore::new(
-        "monitored_store", 
+        "monitored_store",
         1024 * 1024,                    // 1MB buffer
         Some(0.8),                      // Trigger at 80% full
         Some(high_water_mark_callback)  // Callback function
     )?;
-    
+
     // Add lots of data to trigger the high water mark
     for i in 0..1000 {
         store.insert(
-            format!("key_{}", i), 
+            format!("key_{}", i),
             Value::String(format!("value_{}", i))
         )?;
     }
-    
+
     Ok(())
 }
 ```
@@ -195,16 +204,12 @@ pub fn get(&self, key: &str) -> Option<Value>
 pub fn contains_key(&self, key: &str) -> bool
 pub fn len(&self) -> usize
 pub fn is_empty(&self) -> bool
-pub fn keys(&self) -> std::collections::hash_map::Keys<'_, String, Value>
+pub fn as_hashmap(&self) -> &HashMap<String, Value>
 
 // Write operations
 pub fn insert(&mut self, key: String, value: Value) -> anyhow::Result<Option<Value>>
 pub fn remove(&mut self, key: &str) -> anyhow::Result<Option<Value>>
 pub fn clear(&mut self) -> anyhow::Result<()>
-
-// Utility
-pub fn values(&self) -> std::collections::hash_map::Values<'_, String, Value>
-pub fn as_hashmap(&self) -> HashMap<String, Value>
 ```
 
 ## Architecture
@@ -242,9 +247,7 @@ The store uses a double-buffered approach with two journal files:
 | `remove()`       | O(1) amortized  | Journal write + cache update    |
 | `contains_key()` | O(1)            | Cache lookup                    |
 | `len()`          | O(1)            | Cache size                      |
-| `keys()`         | O(1)            | Returns iterator, no allocation |
-| `values()`       | O(1)            | Returns iterator, no allocation |
-| `as_hashmap()`   | O(n)            | Clones entire cache             |
+| `as_hashmap()`   | O(1)            | Returns reference to cache      |
 | `clear()`        | O(1)            | Efficient journal clearing      |
 
 ## Error Handling
@@ -257,12 +260,12 @@ use bd_bonjson::Value;
 
 fn main() -> anyhow::Result<()> {
     let mut store = KVStore::new("my_store", 1024 * 1024, None, None)?;
-    
+
     match store.insert("key".to_string(), Value::String("value".to_string())) {
         Ok(old_value) => println!("Success: {:?}", old_value),
         Err(e) => eprintln!("Error: {}", e),
     }
-    
+
     Ok(())
 }
 ```
@@ -308,7 +311,7 @@ Choose buffer sizes based on your use case:
 // Small applications
 let store = KVStore::new("small_app", 64 * 1024, None, None)?; // 64KB
 
-// Medium applications  
+// Medium applications
 let store = KVStore::new("medium_app", 1024 * 1024, None, None)?; // 1MB
 
 // Large applications
@@ -329,6 +332,11 @@ println!("Is empty: {}", store.is_empty());
 // Get all data for debugging
 let all_data = store.as_hashmap();
 println!("All data: {:?}", all_data);
+
+// Or iterate over keys and values
+for (key, value) in store.as_hashmap() {
+    println!("{}: {:?}", key, value);
+}
 ```
 
 ## Contributing

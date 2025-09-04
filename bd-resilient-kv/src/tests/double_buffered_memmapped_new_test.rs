@@ -233,7 +233,7 @@ fn test_double_buffered_memmapped_reinit_from() -> anyhow::Result<()> {
   db_kv2.set("key3", &Value::String("value3".to_string()))?;
 
   // Reinitialize second journal from first
-  db_kv2.reinit_from(&mut db_kv1)?;
+  db_kv2.reinit_from(&db_kv1)?;
 
   // Second journal should now have the data from the first
   let map2 = db_kv2.as_hashmap()?;

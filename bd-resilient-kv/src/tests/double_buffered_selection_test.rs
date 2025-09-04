@@ -33,7 +33,7 @@ fn create_journal_with_data_and_time(
     for (key, value) in journal.as_hashmap()? {
       temp_journal.set(&key, &value)?;
     }
-    journal.reinit_from(&mut temp_journal)?;
+    journal.reinit_from(&temp_journal)?;
   }
 
   Ok(journal)

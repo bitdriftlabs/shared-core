@@ -155,7 +155,7 @@ fn test_kv_store_clear_efficiency() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_kv_store_keys_and_values() -> anyhow::Result<()> {
+fn test_kv_store_hashmap_access() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let base_path = temp_dir.path().join("test_store");
 
@@ -166,13 +166,13 @@ fn test_kv_store_keys_and_values() -> anyhow::Result<()> {
   store.insert("key2".to_string(), Value::Signed(42))?;
   store.insert("key3".to_string(), Value::Bool(true))?;
 
-  // Test keys
+  // Test accessing keys via as_hashmap
   let map = store.as_hashmap();
-  let mut key_strs: Vec<&str> = map.keys().map(|s| s.as_str()).collect();
+  let mut key_strs: Vec<&str> = map.keys().map(std::string::String::as_str).collect();
   key_strs.sort();
   assert_eq!(key_strs, vec!["key1", "key2", "key3"]);
 
-  // Test values
+  // Test accessing values via as_hashmap
   let values: Vec<&Value> = map.values().collect();
   assert_eq!(values.len(), 3);
   assert!(
@@ -183,7 +183,7 @@ fn test_kv_store_keys_and_values() -> anyhow::Result<()> {
   assert!(values.iter().any(|v| **v == Value::Signed(42)));
   assert!(values.iter().any(|v| **v == Value::Bool(true)));
 
-  // Test as_hashmap
+  // Test direct access via as_hashmap
   let map = store.as_hashmap();
   assert_eq!(map.len(), 3);
   assert_eq!(map.get("key1"), Some(&Value::String("value1".to_string())));
@@ -441,12 +441,12 @@ fn test_kv_store_constructor_cache_coherency_with_existing_data() -> anyhow::Res
   // Verify cache is coherent with journal data
   assert_eq!(store.len(), 3);
   assert!(!store.is_empty());
-  
+
   // Check each key exists in cache
   assert!(store.contains_key("key1"));
   assert!(store.contains_key("key2"));
   assert!(store.contains_key("key3"));
-  
+
   // Check values are correct in cache
   assert_eq!(store.get("key1"), Some(Value::String("value1".to_string())));
   assert_eq!(store.get("key2"), Some(Value::Signed(42)));
@@ -466,8 +466,7 @@ fn test_kv_store_constructor_cache_coherency_with_existing_data() -> anyhow::Res
   assert!(keys.contains(&&"key2".to_string()));
   assert!(keys.contains(&&"key3".to_string()));
 
-  let values: Vec<&Value> = map.values().collect();
-  assert_eq!(values.len(), 3);
+  assert_eq!(map.values().count(), 3);
 
   Ok(())
 }
@@ -514,7 +513,8 @@ fn test_kv_store_constructor_cache_coherency_with_corrupted_data() -> anyhow::Re
   // Re-open store - should handle corruption and have coherent cache
   let store = KVStore::new(&base_path, 4096, None, None)?;
 
-  // Cache should be coherent (either empty for fresh journal or with data from non-corrupted journal)
+  // Cache should be coherent (either empty for fresh journal or with data from non-corrupted
+  // journal)
   let len = store.len();
   let map = store.as_hashmap();
   assert_eq!(map.len(), len);
@@ -564,9 +564,9 @@ fn test_kv_store_constructor_cache_coherency_after_journal_switch() -> anyhow::R
   // Create store and force journal switching by filling one journal
   {
     let mut store = KVStore::new(&base_path, 512, Some(0.7), None)?;
-    
+
     // Add enough data to trigger high water mark and journal switching
-    for i in 0..20 {
+    for i in 0 .. 20 {
       store.insert(format!("key{}", i), Value::String(format!("value{}", i)))?;
     }
     store.sync()?;
@@ -608,28 +608,50 @@ fn test_kv_store_comprehensive_cache_coherency() -> anyhow::Result<()> {
     let current_hashmap = store.as_hashmap();
 
     // The fresh store should have exactly the same data as the current cache
-    assert_eq!(fresh_store.len(), store.len(), "Fresh store length doesn't match cached length");
-    assert_eq!(fresh_hashmap.len(), current_hashmap.len(), "Fresh store hashmap length doesn't match");
+    assert_eq!(
+      fresh_store.len(),
+      store.len(),
+      "Fresh store length doesn't match cached length"
+    );
+    assert_eq!(
+      fresh_hashmap.len(),
+      current_hashmap.len(),
+      "Fresh store hashmap length doesn't match"
+    );
 
     // Every key-value pair in the cache should exist in the fresh store
     for (key, value) in current_hashmap {
-      assert!(fresh_store.contains_key(key), "Fresh store missing key: {}", key);
+      assert!(
+        fresh_store.contains_key(key),
+        "Fresh store missing key: {}",
+        key
+      );
       let fresh_value = fresh_store.get(key);
-      assert_eq!(fresh_value.as_ref(), Some(value), "Fresh store has different value for key: {}", key);
+      assert_eq!(
+        fresh_value.as_ref(),
+        Some(value),
+        "Fresh store has different value for key: {}",
+        key
+      );
     }
 
     // Every key-value pair in the fresh store should exist in the cache
     for (key, value) in fresh_hashmap {
       assert!(store.contains_key(key), "Cache missing key: {}", key);
       let cached_value = store.get(key);
-      assert_eq!(cached_value.as_ref(), Some(value), "Cache has different value for key: {}", key);
+      assert_eq!(
+        cached_value.as_ref(),
+        Some(value),
+        "Cache has different value for key: {}",
+        key
+      );
     }
 
     Ok(())
   };
 
   let mut store = KVStore::new(&base_path, 4096, None, None)?;
-  
+
   // Verify coherency on empty store
   verify_coherency(&store, &base_path)?;
 
@@ -646,7 +668,10 @@ fn test_kv_store_comprehensive_cache_coherency() -> anyhow::Result<()> {
   // Overwrite existing key
   store.insert("key1".to_string(), Value::String("new_value1".to_string()))?;
   verify_coherency(&store, &base_path)?;
-  assert_eq!(store.get("key1"), Some(Value::String("new_value1".to_string())));
+  assert_eq!(
+    store.get("key1"),
+    Some(Value::String("new_value1".to_string()))
+  );
 
   // Remove a key
   store.remove("key2")?;
@@ -659,7 +684,7 @@ fn test_kv_store_comprehensive_cache_coherency() -> anyhow::Result<()> {
   assert!(!store.contains_key("key3"));
 
   // Add many keys
-  for i in 10..20 {
+  for i in 10 .. 20 {
     store.insert(format!("key{}", i), Value::Signed(i as i64))?;
     verify_coherency(&store, &base_path)?;
   }
@@ -670,8 +695,11 @@ fn test_kv_store_comprehensive_cache_coherency() -> anyhow::Result<()> {
   assert!(store.is_empty());
 
   // Add data again and compress
-  for i in 0..5 {
-    store.insert(format!("compress_key{}", i), Value::String(format!("compress_value{}", i)))?;
+  for i in 0 .. 5 {
+    store.insert(
+      format!("compress_key{}", i),
+      Value::String(format!("compress_value{}", i)),
+    )?;
   }
   verify_coherency(&store, &base_path)?;
 
@@ -679,7 +707,7 @@ fn test_kv_store_comprehensive_cache_coherency() -> anyhow::Result<()> {
   verify_coherency(&store, &base_path)?;
 
   // Verify data is still there after compression
-  for i in 0..5 {
+  for i in 0 .. 5 {
     assert_eq!(
       store.get(&format!("compress_key{}", i)),
       Some(Value::String(format!("compress_value{}", i)))
@@ -700,7 +728,10 @@ fn test_cache_vs_journal_coherency_validation() -> anyhow::Result<()> {
   // Create a store and add some data
   {
     let mut store = KVStore::new(&base_path, 4096, None, None)?;
-    store.insert("test_key1".to_string(), Value::String("test_value1".to_string()))?;
+    store.insert(
+      "test_key1".to_string(),
+      Value::String("test_value1".to_string()),
+    )?;
     store.insert("test_key2".to_string(), Value::Signed(123))?;
     store.insert("test_key3".to_string(), Value::Bool(false))?;
     store.sync()?;
@@ -708,104 +739,62 @@ fn test_cache_vs_journal_coherency_validation() -> anyhow::Result<()> {
 
   // Now open the store and verify its cache matches what's actually persisted
   let store = KVStore::new(&base_path, 4096, None, None)?;
-  
+
   // The cache should reflect the persisted state
   assert_eq!(store.len(), 3);
-  assert_eq!(store.get("test_key1"), Some(Value::String("test_value1".to_string())));
+  assert_eq!(
+    store.get("test_key1"),
+    Some(Value::String("test_value1".to_string()))
+  );
   assert_eq!(store.get("test_key2"), Some(Value::Signed(123)));
   assert_eq!(store.get("test_key3"), Some(Value::Bool(false)));
 
   // Create another store instance to verify the journal data matches the cache
   let verification_store = KVStore::new(&base_path, 4096, None, None)?;
-  
+
   // Both stores should have identical data
   assert_eq!(store.len(), verification_store.len());
   assert_eq!(store.as_hashmap(), verification_store.as_hashmap());
-  
+
   // Every key-value pair should match
   let map = store.as_hashmap();
   for key in map.keys() {
-    assert_eq!(store.get(key), verification_store.get(key), "Mismatch for key: {}", key);
+    assert_eq!(
+      store.get(key),
+      verification_store.get(key),
+      "Mismatch for key: {}",
+      key
+    );
   }
 
   // Test that cache remains coherent after operations
   let mut mutable_store = store;
-  mutable_store.insert("new_key".to_string(), Value::String("new_value".to_string()))?;
+  mutable_store.insert(
+    "new_key".to_string(),
+    Value::String("new_value".to_string()),
+  )?;
   mutable_store.remove("test_key2")?;
   mutable_store.sync()?;
 
   // Create yet another store to verify the changes are persisted correctly
   let final_verification_store = KVStore::new(&base_path, 4096, None, None)?;
-  
+
   // Should have the updated data (3 original - 1 removed + 1 added = 3)
   assert_eq!(final_verification_store.len(), 3);
   assert!(final_verification_store.contains_key("new_key"));
   assert!(!final_verification_store.contains_key("test_key2"));
-  assert_eq!(final_verification_store.get("new_key"), Some(Value::String("new_value".to_string())));
-  assert_eq!(final_verification_store.get("test_key1"), Some(Value::String("test_value1".to_string())));
-  assert_eq!(final_verification_store.get("test_key3"), Some(Value::Bool(false)));
-
-  Ok(())
-}
-
-#[test]
-fn test_demonstrate_true_vs_false_coherency_testing() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-  let base_path = temp_dir.path().join("test_store");
-
-  let mut store = KVStore::new(&base_path, 4096, None, None)?;
-  store.insert("key1".to_string(), Value::String("value1".to_string()))?;
-  store.insert("key2".to_string(), Value::Signed(42))?;
-  store.sync()?;
-
-  // OLD approach (false coherency testing): Only checks internal cache consistency
-  // This would pass even if the cache was completely wrong relative to journal data
-  let old_verify_cache_only = |store: &KVStore| {
-    let cache_len = store.len();
-    let hashmap = store.as_hashmap();
-    let keys: Vec<&String> = hashmap.keys().collect();
-    
-    // These assertions only verify cache is internally consistent,
-    // NOT that cache matches the actual journal data
-    assert_eq!(hashmap.len(), cache_len);
-    assert_eq!(keys.len(), cache_len);
-    
-    for key in &keys {
-      assert!(store.contains_key(key));
-      assert!(store.get(key).is_some());
-    }
-  };
-
-  // NEW approach (true coherency testing): Verifies cache matches journal data
-  let new_verify_true_coherency = |store: &KVStore, base_path: &std::path::Path| -> anyhow::Result<()> {
-    // Sync to ensure data is written
-    store.sync()?;
-    
-    // Create fresh store from same journal files
-    let fresh_store = KVStore::new(base_path, 4096, None, None)?;
-    
-    // Verify cache matches what's actually persisted
-    assert_eq!(store.len(), fresh_store.len());
-    assert_eq!(store.as_hashmap(), fresh_store.as_hashmap());
-    
-    let map = store.as_hashmap();
-    for key in map.keys() {
-      assert_eq!(store.get(key), fresh_store.get(key));
-    }
-    
-    Ok(())
-  };
-
-  // Both approaches should pass for a correctly implemented store
-  old_verify_cache_only(&store);
-  new_verify_true_coherency(&store, &base_path)?;
-
-  // The key difference: if there was a bug where cache was inconsistent with journal,
-  // the old approach would still pass (only checks cache internal consistency)
-  // but the new approach would fail (checks cache vs actual journal data)
-
-  // Example scenario: What if cache was somehow corrupted but internally consistent?
-  // Old approach would pass, new approach would catch the bug.
+  assert_eq!(
+    final_verification_store.get("new_key"),
+    Some(Value::String("new_value".to_string()))
+  );
+  assert_eq!(
+    final_verification_store.get("test_key1"),
+    Some(Value::String("test_value1".to_string()))
+  );
+  assert_eq!(
+    final_verification_store.get("test_key3"),
+    Some(Value::Bool(false))
+  );
 
   Ok(())
 }

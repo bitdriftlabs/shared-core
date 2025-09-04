@@ -18,12 +18,9 @@ use std::collections::HashMap;
 ///   journal with the compressed journal state of the full one
 /// - Once the other journal is initialized, begins forwarding APIs to that journal
 pub struct DoubleBufferedKVJournal<A: KVJournal, B: KVJournal> {
-  /// The primary journal instance
   journal_a: A,
-  /// The secondary journal instance
   journal_b: B,
-  /// Which journal is currently active (true = `journal_a`, false = `journal_b`)
-  active_journal_a: bool,
+  journal_a_is_active: bool,
 }
 
 impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
@@ -33,52 +30,43 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
   /// journal.
   ///
   /// # Arguments
-  /// * `journal_a` - The primary journal instance
-  /// * `journal_b` - The secondary journal instance
+  /// * `journal_a` - A journal instance
+  /// * `journal_b` - Another journal instance
   ///
   /// # Returns
   /// A new `DoubleBufferedKVJournal` instance with the most recently initialized journal active.
   pub fn new(journal_a: A, journal_b: B) -> anyhow::Result<Self> {
-    // Get initialization timestamps from both journals
     let init_time_a = journal_a.get_init_time();
     let init_time_b = journal_b.get_init_time();
-
-    // Check if either journal has existing data
-    let has_data_a = journal_a
-      .as_hashmap()
-      .map(|m| !m.is_empty())
-      .unwrap_or(false);
-    let has_data_b = journal_b
-      .as_hashmap()
-      .map(|m| !m.is_empty())
-      .unwrap_or(false);
+    let has_data_a = !journal_a.as_hashmap()?.is_empty();
+    let has_data_b = !journal_b.as_hashmap()?.is_empty();
 
     // Choose the active journal based on data presence and timestamps
     let active_journal_a = match (has_data_a, has_data_b) {
       (true, false) => true,  // Only A has data
       (false, true) => false, // Only B has data
       (true, true) | (false, false) => init_time_a >= init_time_b, /* Both have data or neither
-                                * has data, use timestamps */
+                                * has data, so use timestamps */
     };
 
     Ok(Self {
       journal_a,
       journal_b,
-      active_journal_a,
+      journal_a_is_active: active_journal_a,
     })
   }
 
   /// Switch to the inactive journal by reinitializing it from the active journal.
   fn switch_journals(&mut self) -> anyhow::Result<()> {
     // Reinitialize the inactive journal from the active one
-    if self.active_journal_a {
+    if self.journal_a_is_active {
       self.journal_b.reinit_from(&self.journal_a)?;
     } else {
       self.journal_a.reinit_from(&self.journal_b)?;
     }
 
     // Switch active journal
-    self.active_journal_a = !self.active_journal_a;
+    self.journal_a_is_active = !self.journal_a_is_active;
 
     Ok(())
   }
@@ -86,7 +74,7 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
   /// Get which journal is currently active (true = `journal_a`, false = `journal_b`).
   /// This is useful for testing and debugging.
   pub fn is_active_journal_a(&self) -> bool {
-    self.active_journal_a
+    self.journal_a_is_active
   }
 
   /// Execute an operation with the currently active journal.
@@ -95,7 +83,7 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
     F: FnOnce(&mut dyn KVJournal) -> anyhow::Result<T>,
   {
     // Execute operation and check for high water mark
-    let (result, high_water_triggered) = if self.active_journal_a {
+    let (result, high_water_triggered) = if self.journal_a_is_active {
       let result = f(&mut self.journal_a)?;
       let high_water_triggered = self.journal_a.is_high_water_mark_triggered();
       (result, high_water_triggered)
@@ -118,7 +106,7 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
   where
     F: FnOnce(&dyn KVJournal) -> T,
   {
-    if self.active_journal_a {
+    if self.journal_a_is_active {
       f(&self.journal_a)
     } else {
       f(&self.journal_b)
@@ -127,7 +115,7 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
 
   /// Get a mutable reference to the currently active journal.
   pub fn active_journal_mut(&mut self) -> &mut dyn KVJournal {
-    if self.active_journal_a {
+    if self.journal_a_is_active {
       &mut self.journal_a
     } else {
       &mut self.journal_b
@@ -136,7 +124,7 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
 
   /// Get a reference to the currently active journal.
   pub fn active_journal(&self) -> &dyn KVJournal {
-    if self.active_journal_a {
+    if self.journal_a_is_active {
       &self.journal_a
     } else {
       &self.journal_b
@@ -145,7 +133,7 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
 
   /// Get a reference to the currently inactive journal.
   pub fn inactive_journal(&self) -> &dyn KVJournal {
-    if self.active_journal_a {
+    if self.journal_a_is_active {
       &self.journal_b
     } else {
       &self.journal_a

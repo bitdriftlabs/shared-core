@@ -229,7 +229,7 @@ fn test_create_kv_from_existing_journal_with_many_entries() {
   // Create a new KV journal and reinitialize it from the existing one
   let mut buffer2 = vec![0; 1024];
   let mut new_kv = InMemoryKVJournal::new(&mut buffer2, None, None).unwrap();
-  new_kv.reinit_from(&mut original_kv).unwrap();
+  new_kv.reinit_from(&original_kv).unwrap();
 
   // Verify the new journal has the same state as the original
   let new_map = new_kv.as_hashmap().unwrap();
@@ -798,7 +798,7 @@ fn test_reinit_from() {
   let original_high_water_mark = target_kv.high_water_mark();
 
   // Reinitialize target from source
-  target_kv.reinit_from(&mut source_kv).unwrap();
+  target_kv.reinit_from(&source_kv).unwrap();
 
   // Check that target now has source's data
   let target_data = target_kv.as_hashmap().unwrap();
