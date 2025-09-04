@@ -1007,6 +1007,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-resilient-kv"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "bd-bonjson",
+ "bd-client-common",
+ "bytes",
+ "memmap2",
+ "tempfile",
+]
+
+[[package]]
 name = "bd-resource-utilization"
 version = "1.0.0"
 dependencies = [
@@ -1963,6 +1975,7 @@ dependencies = [
  "bd-buffer",
  "bd-client-common",
  "bd-client-stats-store",
+ "bd-resilient-kv",
  "bd-test-helpers",
  "ctor",
  "libfuzzer-sys",
