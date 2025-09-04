@@ -92,6 +92,9 @@ pub enum Command {
 
   /// Log a runtime config value
   PrintRuntimeValue(RuntimeValueCommand),
+
+  /// Toggle sleep mode
+  SetSleepMode(SleepModeCommand),
 }
 
 #[derive(Args, Debug)]
@@ -119,6 +122,18 @@ pub struct StartCommand {
   /// Device model
   #[clap(long, required = false, default_value = "iPhone12,1")]
   pub model: String,
+}
+
+#[derive(clap::ValueEnum, PartialEq, Debug, Clone)]
+pub enum EnableFlag {
+  On,
+  Off,
+}
+
+#[derive(Args, Debug)]
+pub struct SleepModeCommand {
+  /// Toggle state
+  pub enabled: EnableFlag,
 }
 
 #[derive(Args, Debug)]

@@ -33,6 +33,7 @@ pub trait Remote {
   async fn get_runtime_value(name: String, value_type: RuntimeValueType) -> String;
   async fn get_api_url() -> String;
   async fn start_new_session();
+  async fn set_sleep_mode(enabled: bool);
 }
 
 #[derive(Clone)]
@@ -92,6 +93,12 @@ impl Remote for Server {
     if let Some(logger) = LOGGER.lock().await.deref() {
       logger.stop();
       exit(0);
+    }
+  }
+
+  async fn set_sleep_mode(self, _: tarpc::context::Context, enabled: bool) {
+    if let Some(logger) = LOGGER.lock().await.deref() {
+      logger.set_sleep_mode(enabled);
     }
   }
 

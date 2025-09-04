@@ -74,6 +74,11 @@ impl LoggerHolder {
     handle.start_new_session();
   }
 
+  pub fn set_sleep_mode(&self, enabled: bool) {
+    let handle = self.logger.new_logger_handle();
+    handle.transition_sleep_mode(enabled);
+  }
+
   pub fn stop(&self) {
     sleep(2.std_seconds());
     self.logger.shutdown(true);

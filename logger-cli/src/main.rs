@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::cli::{Command, Options};
+use crate::cli::{Command, EnableFlag, Options};
 use crate::logger::{MaybeStaticSessionGenerator, SESSION_FILE};
 use crate::service::RemoteClient;
 use bd_session::fixed::Callbacks;
@@ -106,6 +106,13 @@ async fn main() -> anyhow::Result<()> {
     Command::UploadArtifacts => {
       with_logger(&args, async |logger| {
         logger.process_crash_reports(context::current()).await?;
+        Ok(())
+      })
+      .await?
+    },
+    Command::SetSleepMode(ref cmd) => {
+      with_logger(&args, async |logger| {
+        logger.set_sleep_mode(context::current(), cmd.enabled == EnableFlag::On).await?;
         Ok(())
       })
       .await?
