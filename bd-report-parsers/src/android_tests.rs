@@ -21,11 +21,11 @@ use nom_language::error::convert_error;
 /// description of where the parser failed
 ///
 /// ```
-/// let (remainder, output) = run_parser!(parser_func, "some data");
+/// let (remainder, output) = run_parser!(parser_func, id_collector, "some data");
 /// ```
 macro_rules! run_parser {
-  ($parser:ident, $builder:ident, $input:expr) => {
-    match $parser(&mut $builder, $input.clone()) {
+  ($parser:ident, $builder:ident, $ids:expr, $input:expr) => {
+    match $parser(&mut $builder, $ids, $input.clone()) {
       Ok(value) => value,
       Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
         panic!("failed to parse: {:#?}", convert_error($input, e))
@@ -64,7 +64,8 @@ fn native_frame_test() {
   let mut builder = FlatBufferBuilder::new();
   #[rustfmt::skip]
   let input =  " native: #01 pc 000000000004c35c  /apex/com.android.runtime/lib64/bionic/libc.so (syscall+28)\n";
-  let (remainder, table_offset) = run_parser!(build_frame, builder, input);
+  let mut ids = HashMap::new();
+  let (remainder, table_offset) = run_parser!(build_frame, builder, &mut ids, input);
   let frame = get_table!(Frame, builder, table_offset);
   assert_eq!("", remainder);
   assert_eq!(frame.frame_address() - 28, frame.symbol_address());
@@ -90,18 +91,22 @@ fn android_thread_test() {
   | state=S schedstat=( 1062749 127626 10 ) utm=0 stm=0 core=3 HZ=100
   | stack=0x72c9308000-0x72c930a000 stackSize=991KB
   | held mutexes=
-  native: #00 pc 000000000009e698  /apex/com.android.runtime/lib64/bionic/libc.so (__ppoll+8)
-  native: #01 pc 000000000005bb10  /apex/com.android.runtime/lib64/bionic/libc.so (poll+92)
-  native: #02 pc 0000000000009dac  /apex/com.android.art/lib64/libadbconnection.so (adbconnection::AdbConnectionState::RunPollLoop(art::Thread*)+752)
-  native: #03 pc 000000000000840c  /apex/com.android.art/lib64/libadbconnection.so (adbconnection::CallbackFunction(void*)+1484)
-  native: #04 pc 00000000000b1910  /apex/com.android.runtime/lib64/bionic/libc.so (__pthread_start(void*)+264)
-  native: #05 pc 00000000000513f0  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+64)
+  native: #00 pc 000000000009e698  /apex/com.android.runtime/lib64/bionic/libc.so (__ppoll+8) (BuildId: a87908b48b368e6282bcc9f34bcfc28c)
+  native: #01 pc 000000000005bb10  /apex/com.android.runtime/lib64/bionic/libc.so (poll+92) (BuildId: a87908b48b368e6282bcc9f34bcfc28c)
+  native: #02 pc 0000000000009dac  /apex/com.android.art/lib64/libadbconnection.so (adbconnection::AdbConnectionState::RunPollLoop(art::Thread*)+752) (BuildId: 45c8d53209d6d1f93b97abcc2d918d4d)
+  native: #03 pc 000000000000840c  /apex/com.android.art/lib64/libadbconnection.so (adbconnection::CallbackFunction(void*)+1484) (BuildId: 45c8d53209d6d1f93b97abcc2d918d4d)
+  native: #04 pc 00000000000b1910  /apex/com.android.runtime/lib64/bionic/libc.so (__pthread_start(void*)+264) (BuildId: a87908b48b368e6282bcc9f34bcfc28c)
+  native: #05 pc 00000000000513f0  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+64) (BuildId: a87908b48b368e6282bcc9f34bcfc28c)
   (no managed stack frames)
 ";
-  let (remainder, args) = run_parser!(build_thread, builder, input);
+  let mut ids = HashMap::new();
+  let (remainder, args) = run_parser!(build_thread, builder, &mut ids, input);
   let table_offset = Thread::create(&mut builder, &args);
   let thread = get_table!(Thread, builder, table_offset);
   assert_eq!("", remainder);
+  assert_eq!(2, ids.len());
+  assert_eq!(ids.get("a87908b48b368e6282bcc9f34bcfc28c"), Some(&"/apex/com.android.runtime/lib64/bionic/libc.so".to_owned()));
+  assert_eq!(ids.get("45c8d53209d6d1f93b97abcc2d918d4d"), Some(&"/apex/com.android.art/lib64/libadbconnection.so".to_owned()));
   insta::assert_debug_snapshot!(thread);
 }
 

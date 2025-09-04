@@ -18,7 +18,7 @@ use nom::multi::{many0, many1, separated_list0, separated_list1};
 use nom::sequence::{delimited, pair, preceded, separated_pair, terminated};
 use nom::{IResult, Parser};
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use time::OffsetDateTime;
 use time::format_description::well_known::Iso8601;
@@ -44,6 +44,7 @@ pub struct ThreadHeader<'a> {
 
 struct Stacks<'a> {
   args: v_1::ThreadDetailsArgs<'a>,
+  binary_images: Option<WIPOffset<Vector<'a, ForwardsUOffset<v_1::BinaryImage<'a>>>>>,
   main_stack: Option<WIPOffset<Vector<'a, ForwardsUOffset<v_1::Frame<'a>>>>>,
 }
 
@@ -93,10 +94,12 @@ pub fn build_anr<'a, 'fbb>(
   let error = v_1::Error::create(&mut builder, &error_args);
   let thread_details = v_1::ThreadDetails::create(&mut builder, &stacks.args);
   let args = v_1::ReportArgs {
+    type_: v_1::ReportType::AppNotResponding,
     errors: Some(builder.create_vector(&[error])),
     app_metrics: Some(v_1::AppMetrics::create(&mut builder, app_info)),
     device_metrics: Some(v_1::DeviceMetrics::create(&mut builder, device_info)),
     thread_details: Some(thread_details),
+    binary_images: stacks.binary_images,
     ..Default::default()
   };
   Ok((remainder, v_1::Report::create(&mut builder, &args)))
@@ -106,14 +109,23 @@ fn build_threads<'a, 'fbb, E: ParseError<&'a str>>(
   mut builder: &mut FlatBufferBuilder<'fbb>,
   input: &'a str,
 ) -> IResult<&'a str, Stacks<'fbb>, E> {
+  let mut image_ids = HashMap::new();
   let (remainder, thread_infos) =
-    separated_list1(tag("\n"), |text| build_thread(&mut builder, text)).parse(input)?;
+    separated_list1(tag("\n"), |text| build_thread(&mut builder, &mut image_ids, text)).parse(input)?;
   let thread_offsets = thread_infos
     .iter()
     .map(|args| v_1::Thread::create(&mut builder, &args))
     .collect::<Vec<_>>();
   let threads =
     (!thread_offsets.is_empty()).then(|| builder.create_vector(thread_offsets.as_slice()));
+  let binary_images = image_ids.iter().map(|(id, path)| {
+    let args = v_1::BinaryImageArgs {
+      id: Some(builder.create_string(id)),
+      path: Some(builder.create_string(path)),
+      load_address: 0,
+    };
+    v_1::BinaryImage::create(&mut builder, &args)
+  }).collect::<Vec<_>>();
   Ok((
     remainder,
     Stacks {
@@ -121,6 +133,7 @@ fn build_threads<'a, 'fbb, E: ParseError<&'a str>>(
         count: u16::try_from(thread_offsets.len()).unwrap_or_default(),
         threads,
       },
+      binary_images: (!binary_images.is_empty()).then(|| builder.create_vector(binary_images.as_slice())),
       main_stack: thread_infos
         .iter()
         .find(|t| t.active)
@@ -132,6 +145,7 @@ fn build_threads<'a, 'fbb, E: ParseError<&'a str>>(
 
 fn build_thread<'a, 'fbb, E: ParseError<&'a str>>(
   mut builder: &mut FlatBufferBuilder<'fbb>,
+  image_ids: &mut HashMap<String, String>,
   input: &'a str,
 ) -> IResult<&'a str, v_1::ThreadArgs<'fbb>, E> {
   let (remainder, (header, _props, frames)) = terminated(
@@ -139,7 +153,7 @@ fn build_thread<'a, 'fbb, E: ParseError<&'a str>>(
       (
         thread_header,
         many0(thread_props),
-        many1(|text| build_frame(&mut builder, text)),
+        many1(|text| build_frame(&mut builder, image_ids, text)),
       ),
       opt(tag("  (no managed stack frames)\n")),
     ),
@@ -161,6 +175,7 @@ fn build_thread<'a, 'fbb, E: ParseError<&'a str>>(
 
 fn build_frame<'a, 'fbb, E: ParseError<&'a str>>(
   builder: &mut FlatBufferBuilder<'fbb>,
+  image_ids: &mut HashMap<String, String>,
   input: &'a str,
 ) -> IResult<&'a str, WIPOffset<v_1::Frame<'fbb>>, E> {
   let builder_ref0 = Rc::new(RefCell::new(builder));
@@ -174,7 +189,7 @@ fn build_frame<'a, 'fbb, E: ParseError<&'a str>>(
       },
       |text| {
         let mut builder = builder_ref1.borrow_mut();
-        build_native_frame(&mut builder, text)
+        build_native_frame(&mut builder, image_ids, text)
       },
     )),
   )
@@ -183,17 +198,16 @@ fn build_frame<'a, 'fbb, E: ParseError<&'a str>>(
 
 fn build_native_frame<'a, 'fbb, E: ParseError<&'a str>>(
   mut builder: &mut FlatBufferBuilder<'fbb>,
+  image_ids: &mut HashMap<String, String>,
   input: &'a str,
 ) -> IResult<&'a str, WIPOffset<v_1::Frame<'fbb>>, E> {
   map(
     native_frame_parser(),
     |(_, address, path, symbol, build_id)| {
       let (symbol_name, symbol_offset) = symbol.unzip();
-      let source_file_args = v_1::SourceFileArgs {
-        path: Some(builder.create_string(&path)),
-        ..Default::default()
-      };
-      let source_file = Some(v_1::SourceFile::create(&mut builder, &source_file_args));
+      if let Some(build_id) = build_id {
+        image_ids.insert(build_id.to_owned(), path.to_owned());
+      }
       let args = v_1::FrameArgs {
         type_: v_1::FrameType::AndroidNative,
         symbol_name: symbol_name.map(|name| builder.create_string(&name)),
@@ -201,7 +215,6 @@ fn build_native_frame<'a, 'fbb, E: ParseError<&'a str>>(
           .flatten()
           .map(|off| address - off)
           .unwrap_or_default(),
-        source_file,
         frame_address: address,
         image_id: build_id.map(|id| builder.create_string(&id)),
         ..Default::default()
