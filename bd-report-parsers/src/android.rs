@@ -7,6 +7,7 @@
 
 use crate::{decimal, hexadecimal};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1;
+use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, WIPOffset};
 use nom::branch::alt;
 use nom::bytes::complete::{take_till, take_until, take_until1, take_while1};
 use nom::bytes::{tag, take};
@@ -41,19 +42,26 @@ pub struct ThreadHeader<'a> {
   pub state: &'a str,
 }
 
+struct Stacks<'a> {
+  args: v_1::ThreadDetailsArgs<'a>,
+  main_stack: Option<WIPOffset<Vector<'a, ForwardsUOffset<v_1::Frame<'a>>>>>,
+}
+
+const MAIN_THREAD: &str = "main";
+
 pub fn build_anr<'a, 'fbb>(
-  mut builder: &mut flatbuffers::FlatBufferBuilder<'fbb>,
+  mut builder: &mut FlatBufferBuilder<'fbb>,
   app_info: &mut v_1::AppMetricsArgs<'fbb>,
   device_info: &mut v_1::DeviceMetricsArgs<'fbb>,
   event_time: &'fbb mut Option<v_1::Timestamp>,
   input: &'a str,
-) -> IResult<&'a str, flatbuffers::WIPOffset<v_1::Report<'fbb>>, nom::error::Error<&'a str>> {
-  let (remainder, (subject, (pid, timestamp), metrics, _attached_count, thread_offsets)) = (
+) -> IResult<&'a str, WIPOffset<v_1::Report<'fbb>>, nom::error::Error<&'a str>> {
+  let (remainder, (subject, (pid, timestamp), metrics, _attached_count, stacks)) = (
     subject_parser,
     process_start_parser,
     process_properties,
     thread_counter,
-    separated_list1(tag("\n"), |text| build_thread(&mut builder, text)),
+    |text| build_threads(&mut builder, text),
   )
     .parse(input)?;
 
@@ -79,17 +87,11 @@ pub fn build_anr<'a, 'fbb>(
   let error_args = v_1::ErrorArgs {
     name: Some(builder.create_string(anr_name(subject))),
     reason: subject.map(|sub| builder.create_string(sub)),
+    stack_trace: stacks.main_stack,
     ..Default::default()
   };
   let error = v_1::Error::create(&mut builder, &error_args);
-  let threads = Some(builder.create_vector(thread_offsets.as_slice()));
-  let thread_details = v_1::ThreadDetails::create(
-    &mut builder,
-    &v_1::ThreadDetailsArgs {
-      count: u16::try_from(thread_offsets.len()).unwrap_or_default(),
-      threads,
-    },
-  );
+  let thread_details = v_1::ThreadDetails::create(&mut builder, &stacks.args);
   let args = v_1::ReportArgs {
     errors: Some(builder.create_vector(&[error])),
     app_metrics: Some(v_1::AppMetrics::create(&mut builder, app_info)),
@@ -100,10 +102,38 @@ pub fn build_anr<'a, 'fbb>(
   Ok((remainder, v_1::Report::create(&mut builder, &args)))
 }
 
-fn build_thread<'a, 'fbb, E: ParseError<&'a str>>(
-  mut builder: &mut flatbuffers::FlatBufferBuilder<'fbb>,
+fn build_threads<'a, 'fbb, E: ParseError<&'a str>>(
+  mut builder: &mut FlatBufferBuilder<'fbb>,
   input: &'a str,
-) -> IResult<&'a str, flatbuffers::WIPOffset<v_1::Thread<'fbb>>, E> {
+) -> IResult<&'a str, Stacks<'fbb>, E> {
+  let (remainder, thread_infos) =
+    separated_list1(tag("\n"), |text| build_thread(&mut builder, text)).parse(input)?;
+  let thread_offsets = thread_infos
+    .iter()
+    .map(|args| v_1::Thread::create(&mut builder, &args))
+    .collect::<Vec<_>>();
+  let threads =
+    (!thread_offsets.is_empty()).then(|| builder.create_vector(thread_offsets.as_slice()));
+  Ok((
+    remainder,
+    Stacks {
+      args: v_1::ThreadDetailsArgs {
+        count: u16::try_from(thread_offsets.len()).unwrap_or_default(),
+        threads,
+      },
+      main_stack: thread_infos
+        .iter()
+        .find(|t| t.active)
+        .map(|t| t.stack_trace)
+        .flatten(),
+    },
+  ))
+}
+
+fn build_thread<'a, 'fbb, E: ParseError<&'a str>>(
+  mut builder: &mut FlatBufferBuilder<'fbb>,
+  input: &'a str,
+) -> IResult<&'a str, v_1::ThreadArgs<'fbb>, E> {
   let (remainder, (header, _props, frames)) = terminated(
     (
       thread_header,
@@ -115,6 +145,7 @@ fn build_thread<'a, 'fbb, E: ParseError<&'a str>>(
   .parse(input)?;
 
   let args = v_1::ThreadArgs {
+    active: header.name == MAIN_THREAD,
     name: Some(builder.create_string(header.name)),
     index: header.tid.unwrap_or_default(),
     priority: header.priority.unwrap_or_default(),
@@ -122,13 +153,13 @@ fn build_thread<'a, 'fbb, E: ParseError<&'a str>>(
     stack_trace: Some(builder.create_vector(frames.as_slice())),
     ..Default::default()
   };
-  Ok((remainder, v_1::Thread::create(&mut builder, &args)))
+  Ok((remainder, args))
 }
 
 fn build_frame<'a, 'fbb, E: ParseError<&'a str>>(
-  builder: &mut flatbuffers::FlatBufferBuilder<'fbb>,
+  builder: &mut FlatBufferBuilder<'fbb>,
   input: &'a str,
-) -> IResult<&'a str, flatbuffers::WIPOffset<v_1::Frame<'fbb>>, E> {
+) -> IResult<&'a str, WIPOffset<v_1::Frame<'fbb>>, E> {
   let builder_ref0 = Rc::new(RefCell::new(builder));
   let builder_ref1 = Rc::clone(&builder_ref0);
   preceded(
@@ -148,9 +179,9 @@ fn build_frame<'a, 'fbb, E: ParseError<&'a str>>(
 }
 
 fn build_native_frame<'a, 'fbb, E: ParseError<&'a str>>(
-  mut builder: &mut flatbuffers::FlatBufferBuilder<'fbb>,
+  mut builder: &mut FlatBufferBuilder<'fbb>,
   input: &'a str,
-) -> IResult<&'a str, flatbuffers::WIPOffset<v_1::Frame<'fbb>>, E> {
+) -> IResult<&'a str, WIPOffset<v_1::Frame<'fbb>>, E> {
   map(
     native_frame_parser(),
     |(_, address, path, symbol, build_id)| {
@@ -179,9 +210,9 @@ fn build_native_frame<'a, 'fbb, E: ParseError<&'a str>>(
 }
 
 fn build_java_frame<'a, 'fbb, E: ParseError<&'a str>>(
-  mut builder: &mut flatbuffers::FlatBufferBuilder<'fbb>,
+  mut builder: &mut FlatBufferBuilder<'fbb>,
   input: &'a str,
-) -> IResult<&'a str, flatbuffers::WIPOffset<v_1::Frame<'fbb>>, E> {
+) -> IResult<&'a str, WIPOffset<v_1::Frame<'fbb>>, E> {
   map(java_frame_parser(), |(symbol, source, state)| {
     let source_file_args = v_1::SourceFileArgs {
       path: Some(builder.create_string(source.path)),
@@ -193,12 +224,11 @@ fn build_java_frame<'a, 'fbb, E: ParseError<&'a str>>(
       .iter()
       .map(|item| builder.create_string(item))
       .collect::<Vec<_>>();
-    let state = Some(builder.create_vector(state.as_slice()));
     let args = v_1::FrameArgs {
       type_: v_1::FrameType::JVM,
       symbol_name: Some(builder.create_string(&symbol)),
       source_file,
-      state,
+      state: (!state.is_empty()).then(|| builder.create_vector(state.as_slice())),
       ..Default::default()
     };
     v_1::Frame::create(&mut builder, &args)
