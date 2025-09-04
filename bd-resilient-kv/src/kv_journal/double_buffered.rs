@@ -56,6 +56,16 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
     })
   }
 
+  /// Force compression by reinitializing the inactive journal from the active journal and switching
+  /// to it. This is useful for manually triggering compression to reduce fragmentation and
+  /// optimize storage.
+  ///
+  /// # Errors
+  /// Returns an error if the compression (reinit) operation fails.
+  pub fn compress(&mut self) -> anyhow::Result<()> {
+    self.switch_journals()
+  }
+
   /// Switch to the inactive journal by reinitializing it from the active journal.
   fn switch_journals(&mut self) -> anyhow::Result<()> {
     // Reinitialize the inactive journal from the active one
@@ -73,6 +83,7 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
 
   /// Get which journal is currently active (true = `journal_a`, false = `journal_b`).
   /// This is useful for testing and debugging.
+  #[cfg(test)]
   pub fn is_active_journal_a(&self) -> bool {
     self.journal_a_is_active
   }
@@ -101,67 +112,27 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
     Ok(result)
   }
 
-  /// Execute a read-only operation with the currently active journal.
-  fn with_active_journal<T, F>(&self, f: F) -> T
-  where
-    F: FnOnce(&dyn KVJournal) -> T,
-  {
-    if self.journal_a_is_active {
-      f(&self.journal_a)
-    } else {
-      f(&self.journal_b)
-    }
-  }
-
-  /// Get a mutable reference to the currently active journal.
-  pub fn active_journal_mut(&mut self) -> &mut dyn KVJournal {
-    if self.journal_a_is_active {
-      &mut self.journal_a
-    } else {
-      &mut self.journal_b
-    }
-  }
-
   /// Get a reference to the currently active journal.
-  pub fn active_journal(&self) -> &dyn KVJournal {
+  fn active_journal(&self) -> &dyn KVJournal {
     if self.journal_a_is_active {
       &self.journal_a
     } else {
       &self.journal_b
     }
-  }
-
-  /// Get a reference to the currently inactive journal.
-  pub fn inactive_journal(&self) -> &dyn KVJournal {
-    if self.journal_a_is_active {
-      &self.journal_b
-    } else {
-      &self.journal_a
-    }
-  }
-
-  /// Force compression by reinitializing the inactive journal from the active journal and switching
-  /// to it. This is useful for manually triggering compression to reduce fragmentation and
-  /// optimize storage.
-  ///
-  /// # Errors
-  /// Returns an error if the compression (reinit) operation fails.
-  pub fn compress(&mut self) -> anyhow::Result<()> {
-    self.switch_journals()
   }
 }
 
 impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
   fn high_water_mark(&self) -> usize {
-    self.with_active_journal(|journal| journal.high_water_mark())
+    self.active_journal().high_water_mark()
   }
 
   fn is_high_water_mark_triggered(&self) -> bool {
-    self.with_active_journal(|journal| journal.is_high_water_mark_triggered())
+    self.active_journal().is_high_water_mark_triggered()
   }
 
   fn buffer_usage_ratio(&self) -> f32 {
-    self.with_active_journal(|journal| journal.buffer_usage_ratio())
+    self.active_journal().buffer_usage_ratio()
   }
 
   fn get_init_time(&self) -> u64 {
@@ -181,7 +152,7 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
   }
 
   fn as_hashmap(&self) -> anyhow::Result<HashMap<String, Value>> {
-    self.with_active_journal(|journal| journal.as_hashmap())
+    self.active_journal().as_hashmap()
   }
 
   fn reinit_from(&mut self, other: &dyn KVJournal) -> anyhow::Result<()> {
@@ -189,6 +160,6 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
   }
 
   fn sync(&self) -> anyhow::Result<()> {
-    self.with_active_journal(|journal| journal.sync())
+    self.active_journal().sync()
   }
 }
