@@ -1012,6 +1012,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "bd-bonjson",
+ "bd-client-common",
  "bytes",
  "memmap2",
  "tempfile",

@@ -15,12 +15,10 @@ use bd_bonjson::serialize_primitives::{
   serialize_map_begin,
   serialize_string,
 };
-use bd_bonjson::type_codes::TypeCode::ContainerEnd;
 use bytes::BufMut;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-const VERSION: u64 = 1;
+use bd_client_common::error::InvariantError;
 
 /// In-memory implementation of a key-value journaling system whose data can be recovered up to the
 /// last successful write checkpoint.
@@ -34,6 +32,157 @@ pub struct InMemoryKVJournal<'a> {
   high_water_mark_callback: Option<HighWaterMarkCallback>,
   high_water_mark_triggered: bool,
   initialized_at_unix_time_ns: u64,
+}
+
+// KV files have the following structure:
+// | Position | Data                     | Type           |
+// |----------|--------------------------|----------------|
+// | 0        | Version                  | u64            |
+// | 8        | Position                 | u64            |
+// | 16       | Type Code: Array Start   | u8             |
+// | 17       | Metadata Object          | BONJSON Object |
+// | ...      | Journal entry            | BONJSON Object |
+// | ...      | Journal entry            | BONJSON Object |
+// | ...      | ...                      | ...            |
+// The last Container End byte (to terminate the array) is not stored in the file.
+// The metadata object contains an "initialized" key with a u64 timestamp in nanoseconds.
+
+const VERSION: u64 = 1;
+
+const HEADER_SIZE: usize = 16;
+const ARRAY_BEGIN: usize = 16;
+const METADATA_OFFSET: usize = 17;
+
+// 8 bytes: version
+// 8 bytes: position
+// 1 byte: array open
+// 1 byte: metadata hashmap open
+// 1 byte: metadata hashmap close
+// 1 byte: space for array close byte
+const MIN_BUFFER_SIZE: usize = HEADER_SIZE + 4;
+
+fn read_version(buffer: &[u8]) -> anyhow::Result<u64> {
+  let version_bytes: [u8; 8] = buffer[..8].try_into()?;
+  let version = u64::from_le_bytes(version_bytes);
+  if version != VERSION {
+    anyhow::bail!("Unsupported version: {version}, expected {VERSION}");
+  }
+  Ok(version)
+}
+
+/// Write the version to a journal buffer.
+/// Assumption: We've already validated that the length is at least `MIN_BUFFER_SIZE`.
+fn write_version(buffer: &mut [u8]) {
+  let version_bytes = VERSION.to_le_bytes();
+  buffer[0..8].copy_from_slice(&version_bytes);
+}
+
+fn read_position(buffer: &[u8]) -> anyhow::Result<usize> {
+  let position_bytes: [u8; 8] = buffer[8..16].try_into()?;
+  let position = u64::from_le_bytes(position_bytes) as usize;
+  let buffer_len = buffer.len();
+  if position >= buffer_len {
+    anyhow::bail!(
+      "Invalid position: {position}, buffer size: {buffer_len}",
+    );
+  }
+  Ok(position)
+}
+
+/// Write the position to a journal buffer.
+/// Assumption: We've already validated that the length is at least `MIN_BUFFER_SIZE`.
+fn write_position(buffer: &mut [u8], position: usize) {
+  let position_bytes = (position as u64).to_le_bytes();
+  buffer[8..16].copy_from_slice(&position_bytes);
+}
+
+/// Read the bonjson payload in this buffer.
+/// This should always be a Value::Array
+fn read_bonjson_payload(buffer: &mut [u8]) -> anyhow::Result<Value> {
+  let position = read_position(buffer)?;
+  // Recall that the beginning of a journal has an "array open" byte (at position 16). We close
+  // it here by inserting a "container end" byte at `position` (which points to one past
+  // the end of the last committed change). Then the entire journal can be read as a single
+  // BONJSON document consisting of an array of journal entries.
+  // Inserting this byte won't affect the journal's operation, because anything in
+  // `buffer` from `position` onward is considered "garbage".
+  let mut cursor = &mut buffer[position ..];
+  serialize_container_end(&mut cursor).map_err(|_| InvariantError::Invariant)?;
+  let buffer = &buffer[ARRAY_BEGIN ..];
+  let (_, decoded) =
+    from_slice(buffer).map_err(|e| anyhow::anyhow!("Failed to decode buffer: {e:?}"))?;
+  Ok(decoded)
+}
+
+/// Create and write the metadata section of a journal with given timestamp.
+/// The metadata section starts at offset `METADATA_OFFSET` in the buffer.
+/// Returns the new current position (`METADATA_OFFSET` + metadata length).
+/// Assumption: We've already validated that the length is at least `MIN_BUFFER_SIZE`.
+fn write_metadata(buffer: &mut [u8], timestamp: u64) -> anyhow::Result<usize> {
+  let buffer_len = buffer.len();
+  let mut cursor = &mut buffer[METADATA_OFFSET ..];
+
+  // Create metadata object
+  let mut metadata = HashMap::new();
+  metadata.insert("initialized".to_string(), Value::Unsigned(timestamp));
+
+  // Write metadata object
+  encode_into_buf(&mut cursor, &Value::Object(metadata))
+    .map_err(|e| anyhow::anyhow!("Failed to encode metadata object: {e:?}"))?;
+
+  Ok(buffer_len - cursor.remaining_mut())
+}
+
+/// Extract the initialization timestamp from the metadata section of a journal buffer.
+fn extract_timestamp_from_buffer(buffer: &mut [u8]) -> anyhow::Result<u64> {
+  let array = read_bonjson_payload(buffer)?;
+  if let Value::Array(entries) = array {
+    // The first array entry is the metadata
+    if let Some(entry) = entries.first() {
+      if let Value::Object(obj) = entry {
+        if let Some(Value::Unsigned(timestamp)) = obj.get("initialized") {
+          return Ok(*timestamp);
+        } else if let Some(Value::Signed(timestamp)) = obj.get("initialized") {
+          // BONJSON may store it as signed if it can fit without bloat.
+          #[allow(clippy::cast_sign_loss)]
+          return Ok(*timestamp as u64);
+        }
+      }
+    }
+  }
+  anyhow::bail!("No valid metadata with initialized timestamp found");
+}
+
+fn validate_buffer_len(buffer: &[u8]) -> anyhow::Result<usize> {
+  let buffer_len = buffer.len();
+  if buffer_len < MIN_BUFFER_SIZE {
+    anyhow::bail!(
+      "Buffer too small: {buffer_len} bytes, but need at least {MIN_BUFFER_SIZE} bytes"
+    );
+  }
+  Ok(buffer_len)
+}
+
+/// Validate high water mark ratio and return the validated value.
+fn validate_high_water_mark_ratio(ratio: Option<f32>) -> anyhow::Result<f32> {
+  let ratio = ratio.unwrap_or(0.8);
+  if !(0.0 ..= 1.0).contains(&ratio) {
+    anyhow::bail!(
+      "High water mark ratio must be between 0.0 and 1.0, got: {}",
+      ratio
+    );
+  }
+  Ok(ratio)
+}
+
+/// Get current timestamp in nanoseconds since UNIX epoch.
+fn current_timestamp() -> anyhow::Result<u64> {
+  SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .map_err(|_| InvariantError::Invariant.into())
+    .and_then(|d| {
+      u64::try_from(d.as_nanos()).map_err(|_| InvariantError::Invariant.into())
+    })
 }
 
 impl<'a> InMemoryKVJournal<'a> {
@@ -53,46 +202,19 @@ impl<'a> InMemoryKVJournal<'a> {
     high_water_mark_ratio: Option<f32>,
     callback: Option<HighWaterMarkCallback>,
   ) -> anyhow::Result<Self> {
-    if buffer.len() < 16 {
-      anyhow::bail!(
-        "Buffer too small: {} bytes, need at least 16 bytes for header",
-        buffer.len()
-      );
-    }
+    let buffer_len = validate_buffer_len(buffer)?;
+    let ratio = validate_high_water_mark_ratio(high_water_mark_ratio)?;
 
-    // KV files have the following structure:
-    // | Position | Data                     | Type           |
-    // |----------|--------------------------|----------------|
-    // | 0        | Version                  | u64            |
-    // | 8        | Position                 | u64            |
-    // | 16       | Type Code: Array Start   | u8             |
-    // | 17       | Metadata Object          | BONJSON Object |
-    // | ...      | Journal entry            | BONJSON Object |
-    // | ...      | Journal entry            | BONJSON Object |
-    // | ...      | ...                      | ...            |
-    // The last Container End byte (to terminate the array) is not stored in the file.
-    // The metadata object contains an "initialized" key with a u64 timestamp in nanoseconds.
-
-    // Validate high water mark ratio
-    let ratio = Self::validate_high_water_mark_ratio(high_water_mark_ratio)?;
-
-    // Write version
-    let version_bytes = VERSION.to_le_bytes();
-    buffer[0 .. 8].copy_from_slice(&version_bytes);
-
-    // Write array begin marker at position 16
-    let buffer_len = buffer.len();
-    let mut cursor = &mut buffer[16 ..];
-    serialize_array_begin(&mut cursor)
-      .map_err(|e| anyhow::anyhow!("Failed to serialize array begin: {e:?}"))?;
+    // Write array begin marker right after header
+    let mut cursor = &mut buffer[HEADER_SIZE ..];
+    serialize_array_begin(&mut cursor).map_err(|_| InvariantError::Invariant)?;
 
     // Write metadata with current timestamp
-    let timestamp = Self::current_timestamp()?;
-    let position = Self::write_metadata(buffer, timestamp)?;
+    let timestamp = current_timestamp()?;
+    let position = write_metadata(buffer, timestamp)?;
 
-    // Write initial position
-    let position_bytes = (position as u64).to_le_bytes();
-    buffer[8 .. 16].copy_from_slice(&position_bytes);
+    write_version(buffer);
+    write_position(buffer, position);
 
     // Calculate high water mark position
     #[allow(
@@ -130,59 +252,28 @@ impl<'a> InMemoryKVJournal<'a> {
     high_water_mark_ratio: Option<f32>,
     callback: Option<HighWaterMarkCallback>,
   ) -> anyhow::Result<Self> {
-    if buffer.len() < 16 {
-      anyhow::bail!(
-        "Buffer too small: {} bytes, need at least 16 bytes for header",
-        buffer.len()
-      );
-    }
-
-    // Validate high water mark ratio
-    let ratio = Self::validate_high_water_mark_ratio(high_water_mark_ratio)?;
-
-    let version_bytes: [u8; 8] = buffer[.. 8]
-      .try_into()
-      .map_err(|_| anyhow::anyhow!("Failed to read version bytes"))?;
-
-    let position_bytes: [u8; 8] = buffer[8 .. 16]
-      .try_into()
-      .map_err(|_| anyhow::anyhow!("Failed to read position bytes"))?;
-
-    let position_value = u64::from_le_bytes(position_bytes);
-    let position_usize = usize::try_from(position_value)
-      .map_err(|_| anyhow::anyhow!("Position value too large: {position_value}"))?;
+    let buffer_len = validate_buffer_len(buffer)?;
+    let version = read_version(buffer)?;
+    let position = read_position(buffer)?;
+    let init_timestamp = extract_timestamp_from_buffer(buffer)?;
 
     // Calculate high water mark position
+    let ratio = validate_high_water_mark_ratio(high_water_mark_ratio)?;
     #[allow(
       clippy::cast_precision_loss,
       clippy::cast_possible_truncation,
       clippy::cast_sign_loss
     )]
-    let high_water_mark = (buffer.len() as f32 * ratio) as usize;
-
-    let version = u64::from_le_bytes(version_bytes);
-    if version != VERSION {
-      anyhow::bail!("Unsupported version: {}, expected {}", version, VERSION);
-    }
-    if position_usize >= buffer.len() {
-      anyhow::bail!(
-        "Invalid position: {}, buffer size: {}",
-        position_usize,
-        buffer.len()
-      );
-    }
-
-    // Extract timestamp from existing metadata
-    let init_timestamp = Self::extract_timestamp_from_buffer(&buffer[16 .. position_usize])?;
+    let high_water_mark = (buffer_len as f32 * ratio) as usize;
 
     // Create final struct after all validation is complete
     Ok(Self {
       version,
-      position: position_usize,
+      position,
       buffer,
       high_water_mark,
       high_water_mark_callback: callback,
-      high_water_mark_triggered: position_usize >= high_water_mark,
+      high_water_mark_triggered: position >= high_water_mark,
       initialized_at_unix_time_ns: init_timestamp,
     })
   }
@@ -194,53 +285,9 @@ impl<'a> InMemoryKVJournal<'a> {
     self.buffer.to_vec()
   }
 
-  /// Validate high water mark ratio and return the validated value.
-  fn validate_high_water_mark_ratio(ratio: Option<f32>) -> anyhow::Result<f32> {
-    let ratio = ratio.unwrap_or(0.8);
-    if !(0.0 ..= 1.0).contains(&ratio) {
-      anyhow::bail!(
-        "High water mark ratio must be between 0.0 and 1.0, got: {}",
-        ratio
-      );
-    }
-    Ok(ratio)
-  }
-
-  /// Create and write metadata object with given timestamp.
-  /// This data is always written starting at offset 17 in the buffer.
-  /// Returns the new current position (17 + metadata length).
-  fn write_metadata(buffer: &mut [u8], timestamp: u64) -> anyhow::Result<usize> {
-    let buffer_len = buffer.len();
-    let mut cursor = &mut buffer[17 ..];
-
-    // Create metadata object
-    let mut metadata = HashMap::new();
-    metadata.insert("initialized".to_string(), Value::Unsigned(timestamp));
-
-    // Write metadata object
-    encode_into_buf(&mut cursor, &Value::Object(metadata))
-      .map_err(|e| anyhow::anyhow!("Failed to encode metadata object: {e:?}"))?;
-
-    // Return new current position (17 + bytes written)
-    Ok(17 + (buffer_len - 17 - cursor.remaining_mut()))
-  }
-
-  /// Get current timestamp in nanoseconds since UNIX epoch.
-  fn current_timestamp() -> anyhow::Result<u64> {
-    SystemTime::now()
-      .duration_since(UNIX_EPOCH)
-      .map_err(|e| anyhow::anyhow!("System time error: {e}"))
-      .and_then(|d| {
-        u64::try_from(d.as_nanos()).map_err(|e| anyhow::anyhow!("Timestamp overflow: {e}"))
-      })
-  }
-
   fn set_position(&mut self, position: usize) {
     self.position = position;
-    let position_bytes = (position as u64).to_le_bytes();
-    self.buffer[8 .. 16].copy_from_slice(&position_bytes);
-
-    // Check high water mark
+    write_position(&mut self.buffer, position);
     self.check_high_water_mark();
   }
 
@@ -252,34 +299,6 @@ impl<'a> InMemoryKVJournal<'a> {
         callback(self.position, self.buffer.len(), self.high_water_mark);
       }
     }
-  }
-
-  /// Extract the initialization timestamp from a buffer containing journal data.
-  fn extract_timestamp_from_buffer(buffer: &[u8]) -> anyhow::Result<u64> {
-    // We need to create a temporary closed array to parse
-    let mut temp_buffer = buffer.to_vec();
-    temp_buffer.push(ContainerEnd as u8); // Close off the open array
-
-    let (_, decoded) = from_slice(&temp_buffer)
-      .map_err(|e| anyhow::anyhow!("Failed to decode buffer for timestamp extraction: {e:?}"))?;
-
-    if let Value::Array(entries) = decoded {
-      for entry in &entries {
-        if let Value::Object(obj) = entry
-          && obj.contains_key("initialized")
-        {
-          if let Some(Value::Unsigned(timestamp)) = obj.get("initialized") {
-            return Ok(*timestamp);
-          } else if let Some(Value::Signed(timestamp)) = obj.get("initialized") {
-            // Handle the case where timestamp was stored as signed
-            #[allow(clippy::cast_sign_loss)]
-            return Ok(*timestamp as u64);
-          }
-        }
-      }
-    }
-
-    anyhow::bail!("No valid metadata with initialized timestamp found");
   }
 
   fn write_journal_entry(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {
@@ -357,8 +376,8 @@ impl KVJournal for InMemoryKVJournal<'_> {
   /// Returns an error if the clearing operation fails.
   fn clear(&mut self) -> anyhow::Result<()> {
     // Reinitialize with empty state by writing just the metadata
-    let timestamp = Self::current_timestamp()?;
-    let position = Self::write_metadata(self.buffer, timestamp)?;
+    let timestamp = current_timestamp()?;
+    let position = write_metadata(self.buffer, timestamp)?;
 
     // Update cached timestamp and position
     self.initialized_at_unix_time_ns = timestamp;
@@ -372,21 +391,9 @@ impl KVJournal for InMemoryKVJournal<'_> {
   /// # Errors
   /// Returns an error if the buffer cannot be decoded.
   fn as_hashmap(&mut self) -> anyhow::Result<HashMap<String, Value>> {
-    // Recall that the beginning of a journal has an "array open" byte (at position 16). We close
-    // it here by inserting a "container end" byte at `self.position` (which points to one past
-    // the end of the last committed change). Then the entire journal can be read as a single
-    // BONJSON document consisting of an array of journal entries.
-    // Inserting this byte won't affect the journal's operation, because anything in
-    // `self.buffer` from `self.position` onward is considered "garbage".
-    let mut cursor = &mut self.buffer[self.position ..];
-    serialize_container_end(&mut cursor)
-      .map_err(|e| anyhow::anyhow!("Failed to serialize container end: {e:?}"))?;
-
-    let buffer = &self.buffer[16 ..];
-    let (_, decoded) =
-      from_slice(buffer).map_err(|e| anyhow::anyhow!("Failed to decode buffer: {e:?}"))?;
+    let array = read_bonjson_payload(&mut self.buffer)?;
     let mut map = HashMap::new();
-    if let Value::Array(entries) = decoded {
+    if let Value::Array(entries) = array {
       for (index, entry) in entries.iter().enumerate() {
         if let Value::Object(obj) = entry {
           // Skip the first entry (metadata) when building the data hashmap
@@ -422,8 +429,8 @@ impl KVJournal for InMemoryKVJournal<'_> {
     let data = other.as_hashmap()?;
 
     // Write metadata with current timestamp
-    let timestamp = Self::current_timestamp()?;
-    let mut position = Self::write_metadata(self.buffer, timestamp)?;
+    let timestamp = current_timestamp()?;
+    let mut position = write_metadata(self.buffer, timestamp)?;
 
     // Update cached timestamp
     self.initialized_at_unix_time_ns = timestamp;
