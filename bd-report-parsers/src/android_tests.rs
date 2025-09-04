@@ -98,7 +98,8 @@ fn android_thread_test() {
   native: #05 pc 00000000000513f0  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+64)
   (no managed stack frames)
 ";
-  let (remainder, table_offset) = run_parser!(build_thread, builder, input);
+  let (remainder, args) = run_parser!(build_thread, builder, input);
+  let table_offset = Thread::create(&mut builder, &args);
   let thread = get_table!(Thread, builder, table_offset);
   assert_eq!("", remainder);
   insta::assert_debug_snapshot!(thread);
