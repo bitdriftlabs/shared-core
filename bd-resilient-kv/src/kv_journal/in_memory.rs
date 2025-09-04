@@ -112,35 +112,19 @@ fn write_position(buffer: &mut [u8], position: usize) {
 
 /// Read the bonjson payload in this buffer.
 /// This should always be a `Value::Array`
-///
-/// # Safety
-/// This function temporarily writes a single byte to the "garbage" area of the buffer
-/// (beyond the valid data position) to close the BONJSON array for parsing. This write
-/// is benign and does not affect the buffer's continued operation since the garbage area
-/// is expected to contain meaningless data.
 fn read_bonjson_payload(buffer: &[u8]) -> anyhow::Result<Value> {
   let position = read_position(buffer)?;
-  // Recall that the beginning of a journal has an "array open" byte (at position 16). We close
-  // it here by inserting a "container end" byte at `position` (which points to one past
-  // the end of the last committed change). Then the entire journal can be read as a single
-  // BONJSON document consisting of an array of maps (one metadata map, followed by journal
-  // entries). Inserting this byte won't affect the journal's operation, because anything in
-  // `buffer` from `position` onward is considered "garbage".
 
-  // SAFETY: We're writing to the garbage area beyond the valid data position.
-  // This is safe because:
-  // 1. The position is validated to be within buffer bounds by read_position()
-  // 2. We're only writing to buffer[position..] which is the garbage area
-  // 3. The write is temporary and doesn't affect the journal's valid data
-  let buffer_mut =
-    unsafe { std::slice::from_raw_parts_mut(buffer.as_ptr().cast_mut(), buffer.len()) };
-  let mut cursor = &mut buffer_mut[position ..];
-  serialize_container_end(&mut cursor).map_err(|_| InvariantError::Invariant)?;
+  // Extract the slice from the array start to the current position.
+  // This will always result in an incomplete array, which is fine since
+  // we only want to decode what we have so far.
+  let slice_to_decode = &buffer[ARRAY_BEGIN .. position];
 
-  let buffer = &buffer[ARRAY_BEGIN ..];
-  let (_, decoded) =
-    from_slice(buffer).map_err(|e| anyhow::anyhow!("Failed to decode buffer: {e:?}"))?;
-  Ok(decoded)
+  match from_slice(slice_to_decode) {
+    Ok((_, decoded)) => Ok(decoded), // Shouldn't happen, but here for completeness
+    Err(bd_bonjson::decoder::DecodeError::Partial { partial_value, .. }) => Ok(partial_value),
+    Err(e) => anyhow::bail!("Failed to decode buffer: {e:?}"),
+  }
 }
 
 /// Create and write the metadata section of a journal with given timestamp.
