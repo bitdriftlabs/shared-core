@@ -164,7 +164,7 @@ fn test_memmapped_persistence_across_instances() {
 
   // Create second instance from same file
   {
-    let kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
+    let kv = MemMappedKVJournal::from_file(path, 1024, None, None).unwrap();
     let map = kv.as_hashmap().unwrap();
 
     assert_eq!(map.len(), 2);
@@ -178,7 +178,7 @@ fn test_memmapped_persistence_across_instances() {
 
 #[test]
 fn test_memmapped_from_file_nonexistent() {
-  let result = MemMappedKVJournal::from_file("/nonexistent/path/file.dat", None, None);
+  let result = MemMappedKVJournal::from_file("/nonexistent/path/file.dat", 1024, None, None);
   assert!(result.is_err());
 }
 
@@ -322,7 +322,7 @@ fn test_memmapped_large_data_persistence() {
 
   // Verify persistence
   {
-    let kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
+    let kv = MemMappedKVJournal::from_file(path, 2048, None, None).unwrap();
     let map = kv.as_hashmap().unwrap();
 
     // Should have 25 entries (30 - 5 deleted)
@@ -385,7 +385,7 @@ fn test_memmapped_file_recovery_from_corrupted_end() {
 
   // Should still be able to recover valid entries
   {
-    let kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
+    let kv = MemMappedKVJournal::from_file(path, 1024, None, None).unwrap();
     let map = kv.as_hashmap().unwrap();
 
     // Should recover the valid entry
@@ -459,9 +459,170 @@ fn test_memmapped_get_init_time_persistence() {
   };
 
   // Create a new instance from the same file
-  let kv = MemMappedKVJournal::from_file(path, None, None).unwrap();
+  let kv = MemMappedKVJournal::from_file(path, 1024, None, None).unwrap();
   let loaded_time = kv.get_init_time();
 
   // Should have the same initialization time
   assert_eq!(original_time, loaded_time);
+}
+
+#[test]
+fn test_from_file_resize_larger() -> anyhow::Result<()> {
+  let temp_file = NamedTempFile::new()?;
+  let path = temp_file.path().to_str().unwrap();
+
+  // Create initial file with small size
+  {
+    let mut kv = MemMappedKVJournal::new(path, 1024, None, None)?;
+    kv.set("test_key", &Value::String("test_value".to_string()))?;
+    kv.sync()?;
+  }
+
+  // Verify initial file size
+  let initial_size = std::fs::metadata(path)?.len();
+  assert_eq!(initial_size, 1024);
+
+  // Open with larger size
+  {
+    let kv = MemMappedKVJournal::from_file(path, 2048, None, None)?;
+
+    // Verify file was resized
+    let new_size = std::fs::metadata(path)?.len();
+    assert_eq!(new_size, 2048);
+
+    // Verify data is still accessible
+    let map = kv.as_hashmap()?;
+    assert_eq!(
+      map.get("test_key"),
+      Some(&Value::String("test_value".to_string()))
+    );
+
+    // Verify we can still add more data
+    let file_size = kv.file_size();
+    assert_eq!(file_size, 2048);
+  }
+
+  Ok(())
+}
+
+#[test]
+fn test_from_file_resize_smaller() -> anyhow::Result<()> {
+  let temp_file = NamedTempFile::new()?;
+  let path = temp_file.path().to_str().unwrap();
+
+  // Create initial file with large size and some data
+  {
+    let mut kv = MemMappedKVJournal::new(path, 2048, None, None)?;
+    kv.set("key1", &Value::String("value1".to_string()))?;
+    kv.set("key2", &Value::String("value2".to_string()))?;
+    kv.sync()?;
+  }
+
+  // Verify initial file size
+  let initial_size = std::fs::metadata(path)?.len();
+  assert_eq!(initial_size, 2048);
+
+  // Open with smaller size (but still large enough for existing data)
+  {
+    let kv = MemMappedKVJournal::from_file(path, 1024, None, None)?;
+
+    // Verify file was resized
+    let new_size = std::fs::metadata(path)?.len();
+    assert_eq!(new_size, 1024);
+
+    // Verify data is still accessible
+    let map = kv.as_hashmap()?;
+    assert_eq!(map.get("key1"), Some(&Value::String("value1".to_string())));
+    assert_eq!(map.get("key2"), Some(&Value::String("value2".to_string())));
+
+    // Verify file size matches what we requested
+    let file_size = kv.file_size();
+    assert_eq!(file_size, 1024);
+  }
+
+  Ok(())
+}
+
+#[test]
+fn test_from_file_resize_truncates_data() -> anyhow::Result<()> {
+  let temp_file = NamedTempFile::new()?;
+  let path = temp_file.path().to_str().unwrap();
+
+  // Create initial file with data that will be larger than our resize target
+  {
+    let mut kv = MemMappedKVJournal::new(path, 1024, None, None)?;
+    // Add enough data to use most of the space
+    for i in 0 .. 20 {
+      kv.set(
+        &format!("key_{}", i),
+        &Value::String(format!("long_value_string_{}", i)),
+      )?;
+    }
+    kv.sync()?;
+  }
+
+  // Verify initial file size
+  let initial_size = std::fs::metadata(path)?.len();
+  assert_eq!(initial_size, 1024);
+
+  // Open with much smaller size that will truncate data
+  let result = MemMappedKVJournal::from_file(path, 128, None, None);
+
+  // This should either:
+  // 1. Fail to create due to truncated/invalid data, or
+  // 2. Succeed but lose some data
+
+  // In both cases, verify the file was resized
+  let new_size = std::fs::metadata(path)?.len();
+  assert_eq!(new_size, 128);
+
+  if let Ok(kv) = result {
+    // If it succeeds, verify we can access the data (though some may be lost)
+    let _map = kv.as_hashmap();
+    // We don't assert specific data here since truncation behavior is undefined
+    // The test just verifies that the resize operation completes
+  }
+  // If it fails, that's also acceptable - truncation may make the file unreadable
+  // but the file size should still be correct (verified above)
+
+  Ok(())
+}
+
+#[test]
+fn test_from_file_same_size_no_resize() -> anyhow::Result<()> {
+  let temp_file = NamedTempFile::new()?;
+  let path = temp_file.path().to_str().unwrap();
+
+  // Create initial file
+  {
+    let mut kv = MemMappedKVJournal::new(path, 1024, None, None)?;
+    kv.set("test_key", &Value::String("test_value".to_string()))?;
+    kv.sync()?;
+  }
+
+  // Get file metadata before opening
+  let initial_metadata = std::fs::metadata(path)?;
+  let initial_size = initial_metadata.len();
+
+  // Small delay to ensure different timestamps if file is modified
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  // Open with same size
+  {
+    let kv = MemMappedKVJournal::from_file(path, 1024, None, None)?;
+
+    // Verify file size didn't change
+    let new_metadata = std::fs::metadata(path)?;
+    let new_size = new_metadata.len();
+    assert_eq!(new_size, initial_size);
+
+    // Verify data is accessible
+    let map = kv.as_hashmap()?;
+    assert_eq!(
+      map.get("test_key"),
+      Some(&Value::String("test_value".to_string()))
+    );
+  }
+
+  Ok(())
 }

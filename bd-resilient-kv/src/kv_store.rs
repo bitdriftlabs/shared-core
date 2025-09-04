@@ -31,6 +31,22 @@ pub struct KVStore {
   cached_map: HashMap<String, Value>,
 }
 
+/// Create or open a single journal file, handling resizing as needed.
+fn open_or_create_journal<P: AsRef<Path>>(
+  file_path: P,
+  target_size: usize,
+  high_water_mark_ratio: Option<f32>,
+  callback: Option<HighWaterMarkCallback>,
+) -> anyhow::Result<MemMappedKVJournal> {
+  let path = file_path.as_ref();
+
+  // Try to open with existing data first
+  MemMappedKVJournal::from_file(path, target_size, high_water_mark_ratio, callback).or_else(|_| {
+    // Data is corrupt or unreadable, create fresh
+    MemMappedKVJournal::new(path, target_size, high_water_mark_ratio, callback)
+  })
+}
+
 impl KVStore {
   /// Create a new `KVStore` with the specified base path and buffer size.
   ///
@@ -59,10 +75,8 @@ impl KVStore {
     let file_b = base.with_extension("jrnb");
 
     // Try to create/open the journal files
-    let journal_a =
-      Self::create_or_open_journal(&file_a, buffer_size, high_water_mark_ratio, callback)?;
-    let journal_b =
-      Self::create_or_open_journal(&file_b, buffer_size, high_water_mark_ratio, callback)?;
+    let journal_a = open_or_create_journal(&file_a, buffer_size, high_water_mark_ratio, callback)?;
+    let journal_b = open_or_create_journal(&file_b, buffer_size, high_water_mark_ratio, callback)?;
 
     let journal = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
     let cached_map = journal.as_hashmap()?;
@@ -70,42 +84,6 @@ impl KVStore {
     Ok(Self {
       journal,
       cached_map,
-    })
-  }
-
-  /// Create or open a single journal file, handling resizing as needed.
-  fn create_or_open_journal<P: AsRef<Path>>(
-    file_path: P,
-    target_size: usize,
-    high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>,
-  ) -> anyhow::Result<MemMappedKVJournal> {
-    use std::fs::OpenOptions;
-
-    let path = file_path.as_ref();
-
-    // Open/create the file and ensure it's the right size
-    {
-      let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(path)?;
-
-      // Resize if necessary
-      // Note that if the new size is significantly smaller, the data may become unrecoverable.
-      let file_len = file.metadata()?.len();
-      if file_len != target_size as u64 {
-        file.set_len(target_size as u64)?;
-      }
-      // File is automatically closed when it goes out of scope
-    }
-
-    // Try to open with existing data first
-    MemMappedKVJournal::from_file(path, high_water_mark_ratio, callback).or_else(|_| {
-      // Data is corrupt or unreadable, create fresh
-      MemMappedKVJournal::new(path, target_size, high_water_mark_ratio, callback)
     })
   }
 

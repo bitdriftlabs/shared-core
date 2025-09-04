@@ -240,7 +240,7 @@ fn test_memmapped_very_large_file() -> anyhow::Result<()> {
   journal.sync()?;
 
   // Reopen and verify
-  let journal2 = MemMappedKVJournal::from_file(&file_path, None, None)?;
+  let journal2 = MemMappedKVJournal::from_file(&file_path, large_size, None, None)?;
   let data = journal2.as_hashmap()?;
   assert_eq!(data.len(), 1000);
 

@@ -53,7 +53,7 @@ impl MemMappedKVJournal {
   /// Create a new memory-mapped KV journal using the provided file path.
   ///
   /// The file will be created if it doesn't exist, or opened if it does.
-  /// The file will be resized to the specified size if it's smaller.
+  /// The file will be resized to the specified size if it's different.
   ///
   /// # Arguments
   /// * `file_path` - Path to the file to use for storage
@@ -76,9 +76,8 @@ impl MemMappedKVJournal {
       .truncate(false)
       .open(file_path)?;
 
-    // Ensure the file is at least the requested size
     let file_len = file.metadata()?.len();
-    if file_len < size as u64 {
+    if file_len != size as u64 {
       file.set_len(size as u64)?;
     }
 
@@ -92,20 +91,29 @@ impl MemMappedKVJournal {
   /// Create a new memory-mapped KV journal from an existing file.
   ///
   /// The file must already exist and contain a properly formatted KV journal.
+  /// The file will be resized to the specified size if it's different.
   ///
   /// # Arguments
   /// * `file_path` - Path to the existing file
+  /// * `size` - Size to resize the file to in bytes
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
   /// * `callback` - Optional callback function called when high water mark is exceeded
   ///
   /// # Errors
   /// Returns an error if the file cannot be opened, memory-mapped, or contains invalid data.
+  /// Note: If the new size is smaller than the current file size, data may be truncated.
   pub fn from_file<P: AsRef<Path>>(
     file_path: P,
+    size: usize,
     high_water_mark_ratio: Option<f32>,
     callback: Option<HighWaterMarkCallback>,
   ) -> anyhow::Result<Self> {
     let file = OpenOptions::new().read(true).write(true).open(file_path)?;
+
+    let file_len = file.metadata()?.len();
+    if file_len != size as u64 {
+      file.set_len(size as u64)?;
+    }
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 

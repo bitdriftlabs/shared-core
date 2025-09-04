@@ -88,8 +88,8 @@ fn test_double_buffered_memmapped_persistence() -> anyhow::Result<()> {
   }
 
   // Recreate from existing files and verify data persists
-  let journal_a = MemMappedKVJournal::from_file(&file_a, Some(0.8), None)?;
-  let journal_b = MemMappedKVJournal::from_file(&file_b, Some(0.8), None)?;
+  let journal_a = MemMappedKVJournal::from_file(&file_a, 4096, Some(0.8), None)?;
+  let journal_b = MemMappedKVJournal::from_file(&file_b, 4096, Some(0.8), None)?;
   let db_kv = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
 
   let map = db_kv.as_hashmap()?;
@@ -191,7 +191,7 @@ fn test_double_buffered_memmapped_from_existing_file() -> anyhow::Result<()> {
   }
 
   // Create double buffered journal with one existing file and one new file
-  let journal_a = MemMappedKVJournal::from_file(&file_a, Some(0.8), None)?;
+  let journal_a = MemMappedKVJournal::from_file(&file_a, 2048, Some(0.8), None)?;
   let journal_b = MemMappedKVJournal::new(&file_b, 2048, Some(0.8), None)?;
   let mut db_kv = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
 
