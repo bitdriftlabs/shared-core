@@ -205,3 +205,8 @@ fn anr_deadlock_test() {
 fn anr_sleep_main_thread_test() {
   assert_parsed_anr_eq!("anr_sleep_main_thread.txt");
 }
+
+#[test]
+fn anr_latency_test() {
+  assert_parsed_anr_eq!("anr_latency_test.txt");
+}
