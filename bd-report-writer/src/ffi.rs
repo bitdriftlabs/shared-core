@@ -11,6 +11,7 @@
 // to this very special pointer for the remaining operations to append to the
 // report, then dispose of it using `bdrw_dispose_buffer_handle()`.
 
+use crate::processor::ReportProcessor;
 // Wildcard imports seem reasonable once importing 20+ components of a package
 #[allow(clippy::wildcard_imports)]
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::*;
@@ -19,28 +20,10 @@ use std::ffi::{CStr, c_char, c_void};
 use std::ptr::null;
 use std::slice;
 
+
 // Type alias for the gross pointers passed around for FFI to improve
 // general readability
 pub type BDProcessorHandle = *mut *const c_void;
-
-pub struct ReportProcessor<'a> {
-  builder: FlatBufferBuilder<'a>,
-  binary_images: Vec<WIPOffset<BinaryImage<'a>>>,
-  system_thread_count: u16,
-  threads: Vec<WIPOffset<Thread<'a>>>,
-  errors: Vec<WIPOffset<Error<'a>>>,
-  report_type: ReportType,
-  sdk: WIPOffset<SDKInfo<'a>>,
-  app: Option<WIPOffset<AppMetrics<'a>>>,
-  device: Option<WIPOffset<DeviceMetrics<'a>>>,
-}
-
-impl ReportProcessor<'_> {
-  #[must_use]
-  pub fn into_raw(self) -> *const c_void {
-    Box::into_raw(Box::new(self)) as *const _
-  }
-}
 
 impl TryFrom<BDProcessorHandle> for &mut ReportProcessor<'_> {
   type Error = ();
@@ -55,6 +38,12 @@ impl TryFrom<BDProcessorHandle> for &mut ReportProcessor<'_> {
       }
       (*value as *mut ReportProcessor<'_>).as_mut().ok_or(())
     }
+  }
+}
+
+impl From<ReportProcessor<'_>> for *const c_void {
+  fn from(value: ReportProcessor<'_>) -> Self {
+    Box::into_raw(Box::new(value)).cast()
   }
 }
 
@@ -153,23 +142,11 @@ extern "C-unwind" fn bdrw_create_buffer_handle(
   sdk_id: *const c_char,
   sdk_version: *const c_char,
 ) {
-  let mut builder = flatbuffers::FlatBufferBuilder::new();
-  let id = append_string(&mut builder, sdk_id);
-  let version = append_string(&mut builder, sdk_version);
-  let sdk = SDKInfo::create(&mut builder, &SDKInfoArgs { id, version });
-  let processor = ReportProcessor {
-    builder,
-    sdk,
-    report_type: ReportType(report_type),
-    binary_images: vec![],
-    system_thread_count: 0,
-    threads: vec![],
-    errors: vec![],
-    app: None,
-    device: None,
-  };
+  let id = convert_string(sdk_id);
+  let version = convert_string(sdk_version);
+  let processor = ReportProcessor::new(ReportType(report_type), id, version);
   unsafe {
-    *handle = processor.into_raw();
+    *handle = processor.into();
   }
 }
 
@@ -202,40 +179,7 @@ extern "C-unwind" fn bdrw_get_completed_buffer(
   buffer_length: *mut u64,
 ) -> *const u8 {
   let processor = try_into_processor!(handle, null());
-  let binary_images = processor
-    .builder
-    .create_vector(processor.binary_images.as_slice());
-  let threads = processor
-    .builder
-    .create_vector(processor.threads.as_slice());
-  let thread_details = if processor.system_thread_count > 0 || !processor.threads.is_empty() {
-    Some(ThreadDetails::create(
-      &mut processor.builder,
-      &ThreadDetailsArgs {
-        count: processor.system_thread_count,
-        threads: Some(threads),
-      },
-    ))
-  } else {
-    None
-  };
-  let errors = processor.builder.create_vector(processor.errors.as_slice());
-  let report = Report::create(
-    &mut processor.builder,
-    &ReportArgs {
-      binary_images: Some(binary_images),
-      sdk: Some(processor.sdk),
-      type_: processor.report_type,
-      app_metrics: processor.app,
-      device_metrics: processor.device,
-      errors: Some(errors),
-      thread_details,
-      feature_flags: None,
-      state: None,
-    },
-  );
-  processor.builder.finish(report, None);
-  let data = processor.builder.finished_data();
+  let data = processor.finish();
   if !buffer_length.is_null() {
     unsafe {
       *buffer_length = data.len() as u64;
@@ -277,27 +221,13 @@ extern "C-unwind" fn bdrw_add_binary_image(
   image: *const BDBinaryImage,
 ) -> bool {
   let processor = try_into_processor!(handle, false);
-  if let Some(unpacked_image) = unsafe { image.as_ref() }.and_then(|image| {
-    let id = append_string(&mut processor.builder, image.id);
-    let path = append_string(&mut processor.builder, image.path);
-    if id.is_some() && path.is_some() {
-      Some(BinaryImage::create(
-        &mut processor.builder,
-        &BinaryImageArgs {
-          id,
-          path,
-          load_address: image.load_address,
-        },
-      ))
-    } else {
-      None
-    }
-  }) {
-    processor.binary_images.push(unpacked_image);
-    true
-  } else {
-    false
-  }
+  unsafe { image.as_ref() }.is_some_and(|image| {
+    convert_string(image.path).is_some_and(|path| {
+      let id = convert_string(image.id);
+      processor.add_binary_image(id, path, image.load_address);
+      true
+    })
+  })
 }
 
 /// Add a thread to the report, where `system_thread_count` is the (purely
@@ -322,20 +252,16 @@ extern "C-unwind" fn bdrw_add_thread(
     let state = append_string(&mut processor.builder, thread.state);
     let frames = append_frames(&mut processor.builder, stack_count, stack);
     let stack_trace = processor.builder.create_vector(frames.as_slice());
-    let thread = Thread::create(
-      &mut processor.builder,
-      &ThreadArgs {
-        name,
-        active: thread.active,
-        index: thread.index,
-        state,
-        priority: thread.priority,
-        quality_of_service: thread.quality_of_service,
-        stack_trace: Some(stack_trace),
-        summary: None,
-      },
-    );
-    processor.threads.push(thread);
+    processor.add_thread(&ThreadArgs {
+      name,
+      active: thread.active,
+      index: thread.index,
+      state,
+      priority: thread.priority,
+      quality_of_service: thread.quality_of_service,
+      stack_trace: Some(stack_trace),
+      ..Default::default()
+    });
     true
   } else {
     false
@@ -357,16 +283,12 @@ extern "C-unwind" fn bdrw_add_error(
   let reason = append_string(&mut processor.builder, reason);
   let frames = append_frames(&mut processor.builder, stack_count, stack);
   let stack_trace = Some(processor.builder.create_vector(frames.as_slice()));
-  let error = Error::create(
-    &mut processor.builder,
-    &ErrorArgs {
-      name,
-      reason,
-      stack_trace,
-      relation_to_next: ErrorRelation(relation_to_next),
-    },
-  );
-  processor.errors.push(error);
+  processor.add_error(&ErrorArgs {
+    name,
+    reason,
+    stack_trace,
+    relation_to_next: ErrorRelation(relation_to_next),
+  });
   true
 }
 
@@ -430,27 +352,22 @@ extern "C-unwind" fn bdrw_add_device(
     } else {
       None
     };
-    let metrics = DeviceMetrics::create(
-      &mut processor.builder,
-      &DeviceMetricsArgs {
-        time,
-        timezone,
-        power_metrics,
-        network_state: NetworkState(device.network_state),
-        rotation: Rotation(device.rotation),
-        arch: Architecture(device.architecture),
-        display,
-        manufacturer,
-        model,
-        os_build: Some(os_build),
-        platform: Platform(device.platform),
-        cpu_abis,
-        low_power_mode_enabled: false,
-        cpu_usage: None,
-        thermal_state: 0,
-      },
-    );
-    processor.device = Some(metrics);
+
+    processor.set_device(&DeviceMetricsArgs {
+      time,
+      timezone,
+      power_metrics,
+      network_state: NetworkState(device.network_state),
+      rotation: Rotation(device.rotation),
+      arch: Architecture(device.architecture),
+      display,
+      manufacturer,
+      model,
+      os_build: Some(os_build),
+      platform: Platform(device.platform),
+      cpu_abis,
+      ..Default::default()
+    });
   }
 
   true
@@ -479,24 +396,26 @@ extern "C-unwind" fn bdrw_add_app(handle: BDProcessorHandle, app_ptr: *const BDA
     let mem_struct = Memory::new(app.memory_total, app.memory_free, app.memory_used);
     let memory =
       (app.memory_used > 0 || app.memory_free > 0 || app.memory_total > 0).then_some(&mem_struct);
-    let metrics = AppMetrics::create(
-      &mut processor.builder,
-      &AppMetricsArgs {
-        app_id,
-        memory,
-        version,
-        build_number: Some(build_number),
-        running_state,
-        process_id: 0,
-        lifecycle_event: None,
-        region_format: None,
-        cpu_usage: None,
-      },
-    );
-    processor.app = Some(metrics);
+
+    processor.set_app(&AppMetricsArgs {
+      app_id,
+      memory,
+      version,
+      build_number: Some(build_number),
+      running_state,
+      ..Default::default()
+    });
   }
 
   true
+}
+
+/// Convert string and return a ref if non-null
+fn convert_string<'a>(str_ptr: *const c_char) -> Option<&'a str> {
+  if str_ptr.is_null() {
+    return None;
+  }
+  unsafe { CStr::from_ptr(str_ptr) }.to_str().ok()
 }
 
 /// Validate whether the pointer is non-null, copying the string into the
@@ -505,13 +424,7 @@ fn append_string<'a>(
   builder: &mut FlatBufferBuilder<'a>,
   str_ptr: *const c_char,
 ) -> Option<WIPOffset<&'a str>> {
-  if str_ptr.is_null() {
-    return None;
-  }
-  unsafe { CStr::from_ptr(str_ptr) }
-    .to_str()
-    .map(|contents| builder.create_string(contents))
-    .ok()
+  convert_string(str_ptr).map(|contents| builder.create_string(contents))
 }
 
 fn append_string_slice<'a>(
