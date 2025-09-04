@@ -66,6 +66,13 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
     self.switch_journals()
   }
 
+  /// Get which journal is currently active (true = `journal_a`, false = `journal_b`).
+  /// This is useful for testing and debugging.
+  #[cfg(test)]
+  pub fn is_active_journal_a(&self) -> bool {
+    self.journal_a_is_active
+  }
+
   /// Switch to the inactive journal by reinitializing it from the active journal.
   fn switch_journals(&mut self) -> anyhow::Result<()> {
     // Reinitialize the inactive journal from the active one
@@ -79,13 +86,6 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
     self.journal_a_is_active = !self.journal_a_is_active;
 
     Ok(())
-  }
-
-  /// Get which journal is currently active (true = `journal_a`, false = `journal_b`).
-  /// This is useful for testing and debugging.
-  #[cfg(test)]
-  pub fn is_active_journal_a(&self) -> bool {
-    self.journal_a_is_active
   }
 
   /// Execute an operation with the currently active journal.
