@@ -135,12 +135,15 @@ fn build_thread<'a, 'fbb, E: ParseError<&'a str>>(
   input: &'a str,
 ) -> IResult<&'a str, v_1::ThreadArgs<'fbb>, E> {
   let (remainder, (header, _props, frames)) = terminated(
-    (
-      thread_header,
-      many0(thread_props),
-      many1(|text| build_frame(&mut builder, text)),
+    terminated(
+      (
+        thread_header,
+        many0(thread_props),
+        many1(|text| build_frame(&mut builder, text)),
+      ),
+      opt(tag("  (no managed stack frames)\n")),
     ),
-    opt(tag("  (no managed stack frames)\n")),
+    opt(process_properties),
   )
   .parse(input)?;
 
@@ -269,8 +272,14 @@ fn process_property<'a, E: ParseError<&'a str>>(
   input: &'a str,
 ) -> IResult<&'a str, (&'a str, &'a str), E> {
   let line_end = input.find('\n').unwrap_or(input.len());
+  if line_end == 0 {
+    return Err(nom::Err::Error(E::from_error_kind(
+      input,
+      ErrorKind::TakeUntil,
+    )));
+  }
   let line = &input[..= line_end];
-  if line_end == 0 || line.contains("DALVIK THREADS") {
+  if line.contains("DALVIK THREADS") {
     return Err(nom::Err::Error(E::from_error_kind(
       input,
       ErrorKind::TakeUntil,
