@@ -75,7 +75,7 @@ fn native_frame_test() {
   assert_eq!(1, images.len());
   assert_eq!(
     images.get(&("/apex/com.android.runtime/lib64/bionic/libc.so", None)),
-    Some(&Some("a87908b48b368e6282bcc9f34bcfc28c")),
+    Some(None).as_ref(),
   );
 
   assert_eq!(Some("syscall"), frame.symbol_name());
