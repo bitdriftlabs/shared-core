@@ -35,7 +35,7 @@ macro_rules! run_parser {
   };
 }
 
-/// Coerce data from a builder into a FlatBuffers table representation
+/// Coerce data from a builder into a `FlatBuffers` table representation
 macro_rules! get_table {
   ($type:ident, $builder:ident, $offset:expr) => {{
     $builder.finish($offset, None);
@@ -118,7 +118,7 @@ fn android_thread_test() {
   assert_eq!(
     images.get(&(
       "/data/app/~~en3p1SUq==/com.example-bhTJ==/base.apk",
-      Some(2408000)
+      Some(2_408_000)
     )),
     Some(&Some("a79f72711db804c5")),
   );

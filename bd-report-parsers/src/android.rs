@@ -54,7 +54,7 @@ type BinaryImageKey<'a> = (BinaryImagePath<'a>, Option<u64>);
 const MAIN_THREAD: &str = "main";
 
 pub fn build_anr<'a, 'fbb>(
-  mut builder: &mut FlatBufferBuilder<'fbb>,
+  builder: &mut FlatBufferBuilder<'fbb>,
   app_info: &mut v_1::AppMetricsArgs<'fbb>,
   device_info: &mut v_1::DeviceMetricsArgs<'fbb>,
   event_time: &'fbb mut Option<v_1::Timestamp>,
@@ -65,11 +65,11 @@ pub fn build_anr<'a, 'fbb>(
     process_start_parser,
     process_properties,
     thread_counter,
-    |text| build_threads(&mut builder, text),
+    |text| build_threads(builder, text),
   )
     .parse(input)?;
 
-  *event_time = OffsetDateTime::parse(&timestamp.replace(" ", "T"), &Iso8601::DEFAULT)
+  *event_time = OffsetDateTime::parse(&timestamp.replace(' ', "T"), &Iso8601::DEFAULT)
     .map(|stamp| {
       v_1::Timestamp::new(
         u64::try_from(stamp.unix_timestamp()).unwrap_or_default(),
@@ -86,7 +86,7 @@ pub fn build_anr<'a, 'fbb>(
     builder.create_vector(&[abi])
   });
   if let Some(time) = event_time.as_ref() {
-    device_info.time = Some(&time);
+    device_info.time = Some(time);
   }
   let error_args = v_1::ErrorArgs {
     name: Some(builder.create_string(anr_name(subject))),
@@ -94,32 +94,30 @@ pub fn build_anr<'a, 'fbb>(
     stack_trace: stacks.main_stack,
     ..Default::default()
   };
-  let error = v_1::Error::create(&mut builder, &error_args);
-  let thread_details = v_1::ThreadDetails::create(&mut builder, &stacks.args);
+  let error = v_1::Error::create(builder, &error_args);
+  let thread_details = v_1::ThreadDetails::create(builder, &stacks.args);
   let args = v_1::ReportArgs {
     type_: v_1::ReportType::AppNotResponding,
     errors: Some(builder.create_vector(&[error])),
-    app_metrics: Some(v_1::AppMetrics::create(&mut builder, app_info)),
-    device_metrics: Some(v_1::DeviceMetrics::create(&mut builder, device_info)),
+    app_metrics: Some(v_1::AppMetrics::create(builder, app_info)),
+    device_metrics: Some(v_1::DeviceMetrics::create(builder, device_info)),
     thread_details: Some(thread_details),
     binary_images: stacks.binary_images,
     ..Default::default()
   };
-  Ok((remainder, v_1::Report::create(&mut builder, &args)))
+  Ok((remainder, v_1::Report::create(builder, &args)))
 }
 
 fn build_threads<'a, 'fbb, E: ParseError<&'a str>>(
-  mut builder: &mut FlatBufferBuilder<'fbb>,
+  builder: &mut FlatBufferBuilder<'fbb>,
   input: &'a str,
 ) -> IResult<&'a str, Stacks<'fbb>, E> {
   let mut images = BTreeMap::new();
-  let (remainder, thread_infos) = separated_list1(tag("\n"), |text| {
-    build_thread(&mut builder, &mut images, text)
-  })
-  .parse(input)?;
+  let (remainder, thread_infos) =
+    separated_list1(tag("\n"), |text| build_thread(builder, &mut images, text)).parse(input)?;
   let thread_offsets = thread_infos
     .iter()
-    .map(|args| v_1::Thread::create(&mut builder, &args))
+    .map(|args| v_1::Thread::create(builder, args))
     .collect::<Vec<_>>();
   let threads =
     (!thread_offsets.is_empty()).then(|| builder.create_vector(thread_offsets.as_slice()));
@@ -132,7 +130,7 @@ fn build_threads<'a, 'fbb, E: ParseError<&'a str>>(
         path: Some(builder.create_string(path)),
         load_address: offset.unwrap_or_default(),
       };
-      v_1::BinaryImage::create(&mut builder, &args)
+      v_1::BinaryImage::create(builder, &args)
     })
     .collect::<Vec<_>>();
   Ok((
@@ -147,14 +145,13 @@ fn build_threads<'a, 'fbb, E: ParseError<&'a str>>(
       main_stack: thread_infos
         .iter()
         .find(|t| t.active)
-        .map(|t| t.stack_trace)
-        .flatten(),
+        .and_then(|t| t.stack_trace),
     },
   ))
 }
 
 fn build_thread<'a, 'fbb, E: ParseError<&'a str>>(
-  mut builder: &mut FlatBufferBuilder<'fbb>,
+  builder: &mut FlatBufferBuilder<'fbb>,
   images: &mut BTreeMap<BinaryImageKey<'a>, Option<&'a str>>,
   input: &'a str,
 ) -> IResult<&'a str, v_1::ThreadArgs<'fbb>, E> {
@@ -163,7 +160,7 @@ fn build_thread<'a, 'fbb, E: ParseError<&'a str>>(
       (
         thread_header,
         many0(thread_props),
-        many1(|text| build_frame(&mut builder, images, text)),
+        many1(|text| build_frame(builder, images, text)),
       ),
       opt(tag("  (no managed stack frames)\n")),
     ),
@@ -207,34 +204,49 @@ fn build_frame<'a, 'fbb, E: ParseError<&'a str>>(
 }
 
 fn build_native_frame<'a, 'fbb, E: ParseError<&'a str>>(
-  mut builder: &mut FlatBufferBuilder<'fbb>,
+  builder: &mut FlatBufferBuilder<'fbb>,
   images: &mut BTreeMap<BinaryImageKey<'a>, Option<&'a str>>,
   input: &'a str,
 ) -> IResult<&'a str, WIPOffset<v_1::Frame<'fbb>>, E> {
+  let build_id_parser = delimited(
+    tag(" (BuildId: "),
+    take_till(|c| c == ')' || c == '\n'),
+    tag(")"),
+  );
   map(
-    native_frame_parser(),
+    terminated(
+      (
+        delimited(tag("native: #"), decimal::<u64, E>, tag(" pc ")),
+        terminated(hexadecimal, multispace1),
+        native_path_parser,
+        opt(delimited(tag(" (offset "), decimal, tag(")"))),
+        opt(native_symbol_parser),
+        opt(build_id_parser),
+      ),
+      tag("\n"),
+    ),
     |(_, address, path, offset, symbol, build_id)| {
       let (symbol_name, symbol_offset) = symbol.unzip();
       images.insert((path, offset), build_id);
       let args = v_1::FrameArgs {
         type_: v_1::FrameType::AndroidNative,
-        symbol_name: symbol_name.map(|name| builder.create_string(&name)),
+        symbol_name: symbol_name.map(|name| builder.create_string(name)),
         symbol_address: symbol_offset
           .flatten()
           .map(|off| address - off)
           .unwrap_or_default(),
         frame_address: address,
-        image_id: build_id.map(|id| builder.create_string(&id)),
+        image_id: build_id.map(|id| builder.create_string(id)),
         ..Default::default()
       };
-      v_1::Frame::create(&mut builder, &args)
+      v_1::Frame::create(builder, &args)
     },
   )
   .parse(input)
 }
 
 fn build_java_frame<'a, 'fbb, E: ParseError<&'a str>>(
-  mut builder: &mut FlatBufferBuilder<'fbb>,
+  builder: &mut FlatBufferBuilder<'fbb>,
   input: &'a str,
 ) -> IResult<&'a str, WIPOffset<v_1::Frame<'fbb>>, E> {
   map(java_frame_parser(), |(symbol, source, state)| {
@@ -243,19 +255,19 @@ fn build_java_frame<'a, 'fbb, E: ParseError<&'a str>>(
       line: source.lineno.unwrap_or_default(),
       column: 0,
     };
-    let source_file = Some(v_1::SourceFile::create(&mut builder, &source_file_args));
+    let source_file = Some(v_1::SourceFile::create(builder, &source_file_args));
     let state = state
       .iter()
       .map(|item| builder.create_string(item))
       .collect::<Vec<_>>();
     let args = v_1::FrameArgs {
       type_: v_1::FrameType::JVM,
-      symbol_name: Some(builder.create_string(&symbol)),
+      symbol_name: Some(builder.create_string(symbol)),
       source_file,
       state: (!state.is_empty()).then(|| builder.create_vector(state.as_slice())),
       ..Default::default()
     };
-    v_1::Frame::create(&mut builder, &args)
+    v_1::Frame::create(builder, &args)
   })
   .parse(input)
 }
@@ -409,39 +421,6 @@ where
       (multispace1, tag("- ")),
       terminated(take_until("\n"), tag("\n")),
     )),
-  )
-}
-
-fn native_frame_parser<'a, E>() -> impl Parser<
-  &'a str,
-  Output = (
-    u64,
-    u64,
-    &'a str,
-    Option<u64>,
-    Option<(&'a str, Option<u64>)>,
-    Option<&'a str>,
-  ),
-  Error = E,
->
-where
-  E: ParseError<&'a str>,
-{
-  let build_id_parser = delimited(
-    tag(" (BuildId: "),
-    take_till(|c| c == ')' || c == '\n'),
-    tag(")"),
-  );
-  terminated(
-    (
-      delimited(tag("native: #"), decimal, tag(" pc ")),
-      terminated(hexadecimal, multispace1),
-      native_path_parser,
-      opt(delimited(tag(" (offset "), decimal, tag(")"))),
-      opt(native_symbol_parser),
-      opt(build_id_parser),
-    ),
-    tag("\n"),
   )
 }
 
