@@ -1,6 +1,6 @@
 ---
 source: bd-report-parsers/src/./android_tests.rs
-assertion_line: 191
+assertion_line: 203
 expression: report
 ---
 Report {
@@ -16990,47 +16990,16 @@ Report {
     binary_images: Some(
         [
             BinaryImage {
-                id: Some(
-                    "fd2607d6a0e1d0b1752b69bb390a9d99",
-                ),
+                id: None,
                 path: Some(
-                    "/apex/com.android.art/lib64/libperfetto_hprof.so",
+                    "/apex/com.android.art/javalib/core-libart.jar",
                 ),
                 load_address: 0,
             },
             BinaryImage {
-                id: Some(
-                    "c068783b01fe1a00c5cccce211aa8737",
-                ),
+                id: None,
                 path: Some(
-                    "/system/lib64/libbinder.so",
-                ),
-                load_address: 0,
-            },
-            BinaryImage {
-                id: Some(
-                    "973bfc8c3d66e4c06605d68fd3e11617",
-                ),
-                path: Some(
-                    "/system/lib64/libandroid_runtime.so",
-                ),
-                load_address: 0,
-            },
-            BinaryImage {
-                id: Some(
-                    "a87908b48b368e6282bcc9f34bcfc28c",
-                ),
-                path: Some(
-                    "/apex/com.android.runtime/lib64/bionic/libc.so",
-                ),
-                load_address: 0,
-            },
-            BinaryImage {
-                id: Some(
-                    "d6e7a1f6c9c23d69b237db4ae0b219b0",
-                ),
-                path: Some(
-                    "/system/lib64/libandroid.so",
+                    "/apex/com.android.art/javalib/core-oj.jar",
                 ),
                 load_address: 0,
             },
@@ -17045,10 +17014,10 @@ Report {
             },
             BinaryImage {
                 id: Some(
-                    "6bd1b9b08d6388b09e9b42a7d0d3f776",
+                    "d22b3b69a6db691fdd84720465c7a214",
                 ),
                 path: Some(
-                    "/system/lib64/libhwui.so",
+                    "/apex/com.android.art/lib64/libart.so",
                 ),
                 load_address: 0,
             },
@@ -17063,19 +17032,67 @@ Report {
             },
             BinaryImage {
                 id: Some(
-                    "0c57a897fb47e626239140ab5a423a74",
+                    "fd2607d6a0e1d0b1752b69bb390a9d99",
                 ),
                 path: Some(
-                    "/system/lib64/libgui.so",
+                    "/apex/com.android.art/lib64/libperfetto_hprof.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/apex/com.android.conscrypt/javalib/conscrypt.jar",
                 ),
                 load_address: 0,
             },
             BinaryImage {
                 id: Some(
-                    "d22b3b69a6db691fdd84720465c7a214",
+                    "a87908b48b368e6282bcc9f34bcfc28c",
                 ),
                 path: Some(
-                    "/apex/com.android.art/lib64/libart.so",
+                    "/apex/com.android.runtime/lib64/bionic/libc.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/data/app/~~c_753KAr5Y2vSHk1dEoDzw==/io.bitdrift.gradletestapp-T-1sUGMjBkLrQJon0hy4Wg==/base.apk",
+                ),
+                load_address: 264000,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/system/framework/framework.jar",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: Some(
+                    "d6e7a1f6c9c23d69b237db4ae0b219b0",
+                ),
+                path: Some(
+                    "/system/lib64/libandroid.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: Some(
+                    "973bfc8c3d66e4c06605d68fd3e11617",
+                ),
+                path: Some(
+                    "/system/lib64/libandroid_runtime.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: Some(
+                    "c068783b01fe1a00c5cccce211aa8737",
+                ),
+                path: Some(
+                    "/system/lib64/libbinder.so",
                 ),
                 load_address: 0,
             },
@@ -17090,10 +17107,42 @@ Report {
             },
             BinaryImage {
                 id: Some(
+                    "0c57a897fb47e626239140ab5a423a74",
+                ),
+                path: Some(
+                    "/system/lib64/libgui.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: Some(
+                    "6bd1b9b08d6388b09e9b42a7d0d3f776",
+                ),
+                path: Some(
+                    "/system/lib64/libhwui.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: Some(
                     "4ad4af87e8ab16b872cdbdaf84188131",
                 ),
                 path: Some(
                     "/system/lib64/libutils.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "<anonymous:707a794000>",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "[anon:dalvik-/apex/com.android.art/javalib/core-oj.jar-transformed]",
                 ),
                 load_address: 0,
             },

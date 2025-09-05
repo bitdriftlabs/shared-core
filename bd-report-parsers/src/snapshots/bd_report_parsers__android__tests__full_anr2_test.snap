@@ -1,6 +1,6 @@
 ---
 source: bd-report-parsers/src/./android_tests.rs
-assertion_line: 186
+assertion_line: 198
 expression: report
 ---
 Report {
@@ -15506,11 +15506,43 @@ Report {
     binary_images: Some(
         [
             BinaryImage {
+                id: None,
+                path: Some(
+                    "/apex/com.android.art/javalib/core-libart.jar",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/apex/com.android.art/javalib/core-oj.jar",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
                 id: Some(
-                    "c068783b01fe1a00c5cccce211aa8737",
+                    "1d4ee5571395a54ae82e70b6d4d7c561",
                 ),
                 path: Some(
-                    "/system/lib64/libbinder.so",
+                    "/apex/com.android.art/lib64/libadbconnection.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: Some(
+                    "d22b3b69a6db691fdd84720465c7a214",
+                ),
+                path: Some(
+                    "/apex/com.android.art/lib64/libart.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: Some(
+                    "fd2607d6a0e1d0b1752b69bb390a9d99",
+                ),
+                path: Some(
+                    "/apex/com.android.art/lib64/libperfetto_hprof.so",
                 ),
                 load_address: 0,
             },
@@ -15525,28 +15557,24 @@ Report {
             },
             BinaryImage {
                 id: Some(
-                    "4ad4af87e8ab16b872cdbdaf84188131",
+                    "a197d6316d22762904cef0c6cb53113da5e6ff0c",
                 ),
                 path: Some(
-                    "/system/lib64/libutils.so",
+                    "/data/app/~~4MfcA_a2Cu2GFu6-cqewmw==/io.bitdrift.capture-naOLfV17CJ7k1lXo5DXD_w==/lib/arm64/libbugsnag-plugin-android-anr.so",
                 ),
                 load_address: 0,
             },
             BinaryImage {
-                id: Some(
-                    "6bd1b9b08d6388b09e9b42a7d0d3f776",
-                ),
+                id: None,
                 path: Some(
-                    "/system/lib64/libhwui.so",
+                    "/data/app/~~4MfcA_a2Cu2GFu6-cqewmw==/io.bitdrift.capture-naOLfV17CJ7k1lXo5DXD_w==/lib/arm64/libcapture.so",
                 ),
                 load_address: 0,
             },
             BinaryImage {
-                id: Some(
-                    "12d4c26c3edc0fb330898d775b3910f5",
-                ),
+                id: None,
                 path: Some(
-                    "/system/lib64/libc++.so",
+                    "/system/framework/framework.jar",
                 ),
                 load_address: 0,
             },
@@ -15570,19 +15598,19 @@ Report {
             },
             BinaryImage {
                 id: Some(
-                    "fd2607d6a0e1d0b1752b69bb390a9d99",
+                    "c068783b01fe1a00c5cccce211aa8737",
                 ),
                 path: Some(
-                    "/apex/com.android.art/lib64/libperfetto_hprof.so",
+                    "/system/lib64/libbinder.so",
                 ),
                 load_address: 0,
             },
             BinaryImage {
                 id: Some(
-                    "1d4ee5571395a54ae82e70b6d4d7c561",
+                    "12d4c26c3edc0fb330898d775b3910f5",
                 ),
                 path: Some(
-                    "/apex/com.android.art/lib64/libadbconnection.so",
+                    "/system/lib64/libc++.so",
                 ),
                 load_address: 0,
             },
@@ -15597,19 +15625,19 @@ Report {
             },
             BinaryImage {
                 id: Some(
-                    "a197d6316d22762904cef0c6cb53113da5e6ff0c",
+                    "6bd1b9b08d6388b09e9b42a7d0d3f776",
                 ),
                 path: Some(
-                    "/data/app/~~4MfcA_a2Cu2GFu6-cqewmw==/io.bitdrift.capture-naOLfV17CJ7k1lXo5DXD_w==/lib/arm64/libbugsnag-plugin-android-anr.so",
+                    "/system/lib64/libhwui.so",
                 ),
                 load_address: 0,
             },
             BinaryImage {
                 id: Some(
-                    "d22b3b69a6db691fdd84720465c7a214",
+                    "4ad4af87e8ab16b872cdbdaf84188131",
                 ),
                 path: Some(
-                    "/apex/com.android.art/lib64/libart.so",
+                    "/system/lib64/libutils.so",
                 ),
                 load_address: 0,
             },

@@ -1,6 +1,6 @@
 ---
 source: bd-report-parsers/src/./android_tests.rs
-assertion_line: 110
+assertion_line: 121
 expression: thread
 ---
 Thread {
@@ -123,6 +123,25 @@ Thread {
                 ),
                 frame_address: 332784,
                 symbol_address: 332720,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: AndroidNative,
+                class_name: None,
+                symbol_name: Some(
+                    "???",
+                ),
+                source_file: None,
+                image_id: Some(
+                    "a79f72711db804c5",
+                ),
+                frame_address: 13640172,
+                symbol_address: 0,
                 registers: None,
                 state: None,
                 frame_status: Missing,

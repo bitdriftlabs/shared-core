@@ -64,17 +64,18 @@ fn native_frame_test() {
   let mut builder = FlatBufferBuilder::new();
   #[rustfmt::skip]
   let input =  " native: #01 pc 000000000004c35c  /apex/com.android.runtime/lib64/bionic/libc.so (syscall+28)\n";
-  let mut ids = HashMap::new();
-  let (remainder, table_offset) = run_parser!(build_frame, builder, &mut ids, input);
+  let mut images = BTreeMap::new();
+  let (remainder, table_offset) = run_parser!(build_frame, builder, &mut images, input);
   let frame = get_table!(Frame, builder, table_offset);
   assert_eq!("", remainder);
   assert_eq!(frame.frame_address() - 28, frame.symbol_address());
 
   assert_eq!(FrameType::AndroidNative, frame.type_());
   assert_eq!(0x4c35c, frame.frame_address());
+  assert_eq!(1, images.len());
   assert_eq!(
-    Some("/apex/com.android.runtime/lib64/bionic/libc.so"),
-    frame.source_file().unwrap().path()
+    images.get(&("/apex/com.android.runtime/lib64/bionic/libc.so", None)),
+    Some(&Some("a87908b48b368e6282bcc9f34bcfc28c")),
   );
 
   assert_eq!(Some("syscall"), frame.symbol_name());
@@ -97,16 +98,30 @@ fn android_thread_test() {
   native: #03 pc 000000000000840c  /apex/com.android.art/lib64/libadbconnection.so (adbconnection::CallbackFunction(void*)+1484) (BuildId: 45c8d53209d6d1f93b97abcc2d918d4d)
   native: #04 pc 00000000000b1910  /apex/com.android.runtime/lib64/bionic/libc.so (__pthread_start(void*)+264) (BuildId: a87908b48b368e6282bcc9f34bcfc28c)
   native: #05 pc 00000000000513f0  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+64) (BuildId: a87908b48b368e6282bcc9f34bcfc28c)
+  native: #06 pc 0000000000d021ec  /data/app/~~en3p1SUq==/com.example-bhTJ==/base.apk (offset 2408000) (???) (BuildId: a79f72711db804c5)
   (no managed stack frames)
 ";
-  let mut ids = HashMap::new();
-  let (remainder, args) = run_parser!(build_thread, builder, &mut ids, input);
+  let mut images = BTreeMap::new();
+  let (remainder, args) = run_parser!(build_thread, builder, &mut images, input);
   let table_offset = Thread::create(&mut builder, &args);
   let thread = get_table!(Thread, builder, table_offset);
   assert_eq!("", remainder);
-  assert_eq!(2, ids.len());
-  assert_eq!(ids.get("a87908b48b368e6282bcc9f34bcfc28c"), Some(&"/apex/com.android.runtime/lib64/bionic/libc.so".to_owned()));
-  assert_eq!(ids.get("45c8d53209d6d1f93b97abcc2d918d4d"), Some(&"/apex/com.android.art/lib64/libadbconnection.so".to_owned()));
+  assert_eq!(3, images.len());
+  assert_eq!(
+    images.get(&("/apex/com.android.runtime/lib64/bionic/libc.so", None)),
+    Some(&Some("a87908b48b368e6282bcc9f34bcfc28c")),
+  );
+  assert_eq!(
+    images.get(&("/apex/com.android.art/lib64/libadbconnection.so", None)),
+    Some(&Some("45c8d53209d6d1f93b97abcc2d918d4d")),
+  );
+  assert_eq!(
+    images.get(&(
+      "/data/app/~~en3p1SUq==/com.example-bhTJ==/base.apk",
+      Some(2408000)
+    )),
+    Some(&Some("a79f72711db804c5")),
+  );
   insta::assert_debug_snapshot!(thread);
 }
 
