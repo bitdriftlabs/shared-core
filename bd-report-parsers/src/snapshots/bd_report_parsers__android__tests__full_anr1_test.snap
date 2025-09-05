@@ -1,6 +1,6 @@
 ---
 source: bd-report-parsers/src/./android_tests.rs
-assertion_line: 181
+assertion_line: 193
 expression: report
 ---
 Report {
@@ -10874,7 +10874,150 @@ Report {
             ),
         },
     ),
-    binary_images: None,
+    binary_images: Some(
+        [
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/apex/com.android.art/javalib/core-oj.jar",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/apex/com.android.art/lib64/libadbconnection.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/apex/com.android.art/lib64/libart.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/apex/com.android.art/lib64/libart.so (art::(anonymous namespace)::CheckJII::DetachCurrentThread(_JavaVM*)",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/apex/com.android.art/lib64/libart.so (art::(anonymous namespace)::CheckJNI::CallVoidMethodV(_JNIEnv*, _jobject*, _jmethodID*, std::__va_list)",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/apex/com.android.art/lib64/libperfetto_hprof.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/apex/com.android.runtime/lib64/bionic/libc.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/data/app/~~7kAFqsYARfL7cQJqAhmJrg==/io.bitdrift.gradletestapp-y3GGIAoi5dbQay1-wr2YQQ==/lib/arm64/libcapture.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/data/data/io.bitdrift.gradletestapp/code_cache/.overlay/base.apk/classes13.dex",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/memfd:jit-cache (deleted)",
+                ),
+                load_address: 2000000,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/system/bin/app_process64",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/system/lib64/libandroid_runtime.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/system/lib64/libbinder.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/system/lib64/libc++.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/system/lib64/libgui.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/system/lib64/libgui.so (void* std::__1::__thread_proxy<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct> >, void",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/system/lib64/libhwui.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "/system/lib64/libutils.so",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "[anon:dalvik-/apex/com.android.art/javalib/core-oj.jar-transformed]",
+                ),
+                load_address: 0,
+            },
+            BinaryImage {
+                id: None,
+                path: Some(
+                    "[anon:dalvik-classes5.dex extracted in memory from /data/app/~~7kAFqsYARfL7cQJqAhmJrg==/io.bitdrift.gradletestapp-y3GGIAoi5dbQay1-wr2YQQ==/base.apk!classes5.dex]",
+                ),
+                load_address: 0,
+            },
+        ],
+    ),
     state: None,
     feature_flags: None,
 }
