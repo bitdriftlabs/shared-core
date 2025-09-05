@@ -24,7 +24,7 @@ use backoff::exponential::ExponentialBackoff;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::payload_conversion::{IntoRequest, MuxResponse, ResponseKind};
 use bd_client_common::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
-use bd_client_common::{ClientConfigurationUpdate, ConfigurationUpdate, maybe_await};
+use bd_client_common::{ClientConfigurationUpdate, maybe_await};
 use bd_client_stats_store::{Counter, CounterWrapper, Scope};
 use bd_error_reporter::reporter::UnexpectedErrorHandler;
 use bd_grpc_codec::code::Code;
@@ -464,9 +464,13 @@ impl Api {
     hasher.finish().to_be_bytes().to_vec()
   }
 
-  fn set_client_killed(&mut self) {
+  async fn set_client_killed(&mut self) {
     self.client_killed = true;
     UnexpectedErrorHandler::disable();
+    // Make sure that we clear out cached config so that when we eventually come back online we
+    // can accept new config if the server sends it.
+    self.runtime_loader.clear_cached_config().await;
+    self.config_updater.clear_cached_config().await;
   }
 
   async fn maybe_kill_client(&mut self) {
@@ -494,7 +498,7 @@ impl Api {
            authentication failure or a remote server configuration. Double check your API key or \
            contact support."
         );
-        self.set_client_killed();
+        self.set_client_killed().await;
       } else {
         // Delete the kill file if the kill duration has passed or the API key has changed. This
         // will allow the client to come up and contact the server again to see if anything
@@ -525,7 +529,7 @@ impl Api {
   }
 
   async fn write_kill_file(&mut self, duration: Duration) -> anyhow::Result<()> {
-    self.set_client_killed();
+    self.set_client_killed().await;
 
     // In order to have basic protection around IO errors we will zlib "compress" the kill file
     // primarily as a free way to get the CRC.

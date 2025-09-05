@@ -322,7 +322,7 @@ impl Uploader {
         log::debug!("starting file upload for {:?}", next.name);
         self.upload_task_handle = Some(tokio::spawn(Self::upload_artifact(
           self.data_upload_tx.clone(),
-          contents.to_vec(),
+          contents.clone(),
           next.name.clone(),
           next.time.to_offset_date_time(),
           next.session_id.clone(),

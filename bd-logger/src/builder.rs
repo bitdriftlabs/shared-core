@@ -15,7 +15,6 @@ use crate::logger::Logger;
 use crate::logging_state::UninitializedLoggingContext;
 use bd_api::DataUpload;
 use bd_api::api::SimpleNetworkQualityProvider;
-use bd_client_common::ConfigurationUpdate;
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats::FlushTrigger;
 use bd_client_stats::stats::{

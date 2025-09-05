@@ -144,7 +144,8 @@ impl Setup {
         bd_runtime::runtime::stats::MaxAggregatedFilesFlag::path(),
         ValueKind::Int(2),
       )]))
-      .await;
+      .await
+      .unwrap();
 
     let stats = Stats::new(Collector::new(Some(watch::channel(limit).1)));
     let (data_tx, data_rx) = mpsc::channel(1);

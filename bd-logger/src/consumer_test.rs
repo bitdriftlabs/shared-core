@@ -149,7 +149,8 @@ async fn upload_retries() {
       bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
       ValueKind::Int(10),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   // Write logs for one batch upload.
   for _ in 0 .. 10 {
@@ -201,7 +202,8 @@ async fn upload_retries() {
       bd_runtime::runtime::log_upload::RetryCountFlag::path(),
       ValueKind::Int(1),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   for _ in 0 .. 10 {
     setup.producer.write(b"c").unwrap();
@@ -255,7 +257,8 @@ async fn continuous_buffer_upload_byte_limit() {
       bd_runtime::runtime::log_upload::BatchSizeBytesFlag::path(),
       ValueKind::Int(10),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   for _ in 0 .. 2 {
     setup.producer.write(&[0; 150]).unwrap();
@@ -292,7 +295,8 @@ async fn continuous_buffer_upload_shutdown() {
       bd_runtime::runtime::log_upload::BatchSizeBytesFlag::path(),
       ValueKind::Int(10),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   setup.producer.write(&[0; 150]).unwrap();
 
@@ -316,7 +320,8 @@ async fn uploading_full_batch_failure() {
       bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
       ValueKind::Int(10),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   for i in 0 .. 11 {
     setup.producer.write(&[i]).unwrap();
@@ -511,7 +516,8 @@ async fn age_limit_log_uploads() {
         ValueKind::Int(10),
       ),
     ]))
-    .await;
+    .await
+    .unwrap();
 
   let now = time::OffsetDateTime::now_utc().floor(1.minutes());
   for i in (0 .. 5).rev() {
@@ -605,7 +611,8 @@ impl SetupMultiConsumer {
           ValueKind::Int(byte_limit),
         ),
       ]))
-      .await;
+      .await
+      .unwrap();
     let shutdown = shutdown_trigger.make_shutdown();
     let config_loader_clone = config_loader.clone();
     let collector_clone = stats.clone();
@@ -928,7 +935,8 @@ async fn streaming_batch_size_flag() {
       bd_runtime::runtime::log_upload::StreamingBatchSizeFlag::path(),
       ValueKind::Int(2),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   let upload_service = service::new(
     log_upload_tx,

@@ -67,7 +67,7 @@ base64ct        = { version = "1.8.0", features = ["alloc", "std"] }
 bincode         = { version = "2.0.1", features = ["serde"] }
 bytes           = "1.10.1"
 cbindgen        = "0.29.0"
-cc              = "1.2.35"
+cc              = "1.2.36"
 clap            = { version = "4.5.47", features = ["derive", "env"] }
 cmake           = "0.1.54"
 color-backtrace = "0.7.1"
@@ -100,7 +100,7 @@ intrusive-collections = "0.9.7"
 itertools             = "0.14.0"
 jni                   = "0.21.1"
 libfuzzer-sys         = "0.4.10"
-log                   = "0.4.27"
+log                   = "0.4.28"
 matches               = "0.1.10"
 memmap2               = "0.9.8"
 mockall               = "0.13.1"

@@ -13,7 +13,9 @@ fn write_checksummed_data() {
 
   assert_eq!(
     data,
-    super::read_checksummed_data(&checksummed_data).unwrap()
+    super::read_checksummed_data(&checksummed_data)
+      .unwrap()
+      .as_slice()
   );
 }
 

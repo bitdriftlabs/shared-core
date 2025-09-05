@@ -9,7 +9,6 @@
 #![allow(clippy::expect_used)]
 
 use crate::runtime::ConfigLoader;
-use bd_client_common::ConfigurationUpdate;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;

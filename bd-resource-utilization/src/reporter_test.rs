@@ -54,7 +54,8 @@ impl Setup {
           ValueKind::Int(interval.whole_milliseconds().try_into().unwrap()),
         ),
       ]))
-      .await;
+      .await
+      .unwrap();
   }
 }
 
@@ -88,7 +89,8 @@ async fn does_not_report_if_disabled() {
         ValueKind::Int(10),
       ),
     ]))
-    .await;
+    .await
+    .unwrap();
 
   let target = Box::<MockTarget>::default();
   let ticks_count = target.ticks_count.clone();

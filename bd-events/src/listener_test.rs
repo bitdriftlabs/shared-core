@@ -46,7 +46,8 @@ impl Setup {
         bd_runtime::runtime::platform_events::ListenerEnabledFlag::path(),
         ValueKind::Bool(events_listener_enabled),
       )]))
-      .await;
+      .await
+      .unwrap();
   }
 }
 
