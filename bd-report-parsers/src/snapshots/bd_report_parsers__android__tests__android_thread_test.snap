@@ -1,0 +1,155 @@
+---
+source: bd-report-parsers/src/./android_tests.rs
+assertion_line: 121
+expression: thread
+---
+Thread {
+    name: Some(
+        "ADB-JDWP Connection Control Thread",
+    ),
+    active: false,
+    index: 7,
+    state: Some(
+        "WaitingInMainDebuggerLoop",
+    ),
+    priority: 0.0,
+    quality_of_service: -1,
+    stack_trace: Some(
+        [
+            Frame {
+                type_: AndroidNative,
+                class_name: None,
+                symbol_name: Some(
+                    "__ppoll",
+                ),
+                source_file: None,
+                image_id: Some(
+                    "a87908b48b368e6282bcc9f34bcfc28c",
+                ),
+                frame_address: 648856,
+                symbol_address: 648848,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: AndroidNative,
+                class_name: None,
+                symbol_name: Some(
+                    "poll",
+                ),
+                source_file: None,
+                image_id: Some(
+                    "a87908b48b368e6282bcc9f34bcfc28c",
+                ),
+                frame_address: 375568,
+                symbol_address: 375476,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: AndroidNative,
+                class_name: None,
+                symbol_name: Some(
+                    "adbconnection::AdbConnectionState::RunPollLoop(art::Thread*)",
+                ),
+                source_file: None,
+                image_id: Some(
+                    "45c8d53209d6d1f93b97abcc2d918d4d",
+                ),
+                frame_address: 40364,
+                symbol_address: 39612,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: AndroidNative,
+                class_name: None,
+                symbol_name: Some(
+                    "adbconnection::CallbackFunction(void*)",
+                ),
+                source_file: None,
+                image_id: Some(
+                    "45c8d53209d6d1f93b97abcc2d918d4d",
+                ),
+                frame_address: 33804,
+                symbol_address: 32320,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: AndroidNative,
+                class_name: None,
+                symbol_name: Some(
+                    "__pthread_start(void*)",
+                ),
+                source_file: None,
+                image_id: Some(
+                    "a87908b48b368e6282bcc9f34bcfc28c",
+                ),
+                frame_address: 727312,
+                symbol_address: 727048,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: AndroidNative,
+                class_name: None,
+                symbol_name: Some(
+                    "__start_thread",
+                ),
+                source_file: None,
+                image_id: Some(
+                    "a87908b48b368e6282bcc9f34bcfc28c",
+                ),
+                frame_address: 332784,
+                symbol_address: 332720,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: AndroidNative,
+                class_name: None,
+                symbol_name: Some(
+                    "???",
+                ),
+                source_file: None,
+                image_id: Some(
+                    "a79f72711db804c5",
+                ),
+                frame_address: 13640172,
+                symbol_address: 0,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+        ],
+    ),
+    summary: None,
+}
