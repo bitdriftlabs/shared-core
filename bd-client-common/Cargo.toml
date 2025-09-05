@@ -21,7 +21,6 @@ log.workspace          = true
 mockall.workspace      = true
 parking_lot.workspace  = true
 protobuf.workspace     = true
-tempfile.workspace     = true
 thiserror.workspace    = true
 time.workspace         = true
 tokio.workspace        = true
@@ -29,4 +28,5 @@ tokio.workspace        = true
 [dev-dependencies]
 bd-test-helpers.path = "../bd-test-helpers"
 ctor.workspace       = true
+tempfile.workspace   = true
 uuid.workspace       = true
