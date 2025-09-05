@@ -615,7 +615,8 @@ async fn logs_resource_utilization_log() {
         ValueKind::Int(250),
       ),
     ]))
-    .await;
+    .await
+    .unwrap();
 
   let config_update = setup.make_config_update(WorkflowsConfiguration::default());
   let task = std::thread::spawn(move || {

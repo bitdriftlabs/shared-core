@@ -32,7 +32,8 @@ impl Setup {
           "crash_reporting.enabled",
           ValueKind::Bool(crash_reporting_enabled),
         )]))
-        .await;
+        .await
+        .unwrap();
     }
 
     let shutdown = ComponentShutdownTrigger::default();
@@ -53,7 +54,8 @@ impl Setup {
         "crash_reporting.enabled",
         ValueKind::Bool(value),
       )]))
-      .await;
+      .await
+      .unwrap();
   }
 
   fn read_config_file(&self) -> String {

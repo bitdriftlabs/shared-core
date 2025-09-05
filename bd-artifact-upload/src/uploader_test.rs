@@ -101,7 +101,8 @@ impl Setup {
         )],
         "1".to_string(),
       ))
-      .await;
+      .await
+      .unwrap();
 
     let (mut uploader, client) = super::Uploader::new(
       filesystem.clone(),

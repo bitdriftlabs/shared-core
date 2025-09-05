@@ -62,7 +62,8 @@ impl Setup {
           runtime::artifact_upload::Enabled::path(),
           ValueKind::Bool(artifact_upload),
         )]))
-        .await;
+        .await
+        .unwrap();
     }
 
     let shutdown = ComponentShutdownTrigger::default();

@@ -118,7 +118,7 @@ impl<A: ApplyConfig> Config<A> {
     update: ConfigurationUpdate,
   ) -> anyhow::Result<()> {
     let compressed_protobuf = write_compressed_protobuf(&update)?;
-    self.process_configuration_update_inner(update).await?;
+    let version_nonce = update.version_nonce.clone();
 
     // Upon applying the configuration successfully, write the configuration proto to disk.
     // This ensures that when we come up we can immediately start processing logs without
@@ -126,9 +126,12 @@ impl<A: ApplyConfig> Config<A> {
     // TODO(snowp): Consider storing an intermediate format to avoid all the error checking
     // above on re-read.
     // If we fail writing to disk, move on. We'll continue to operate without disk caching.
-    self.file_cache.cache_update(compressed_protobuf).await;
-
-    Ok(())
+    self
+      .file_cache
+      .cache_update(compressed_protobuf, &version_nonce, async move {
+        self.process_configuration_update_inner(update).await
+      })
+      .await
   }
 
   // Attempts to load persisted config and apply as if it was a newly received configuration.
@@ -148,6 +151,10 @@ impl<A: ApplyConfig> Config<A> {
 
 #[async_trait::async_trait]
 impl<A: ApplyConfig + Send + Sync> bd_client_common::ClientConfigurationUpdate for Config<A> {
+  async fn clear_cached_config(&self) {
+    self.file_cache.reset().await;
+  }
+
   async fn try_apply_config(
     &self,
     configuration_update: ConfigurationUpdate,
@@ -176,10 +183,7 @@ impl<A: ApplyConfig + Send + Sync> bd_client_common::ClientConfigurationUpdate f
       .into_request(),
     )
   }
-}
 
-#[async_trait::async_trait]
-impl<A: ApplyConfig + Send + Sync> bd_client_common::ConfigurationUpdate for Config<A> {
   async fn try_load_persisted_config(&self) {
     self.try_load_persisted_config_helper().await;
   }

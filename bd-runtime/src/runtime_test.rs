@@ -7,7 +7,7 @@
 
 use crate::runtime::{ConfigLoader, FeatureFlag};
 use crate::{bool_feature_flag, duration_feature_flag, int_feature_flag};
-use bd_client_common::{ConfigurationUpdate, HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE};
+use bd_client_common::HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE;
 use bd_test_helpers::runtime::{ValueKind, make_update};
 use std::borrow::Borrow;
 use std::sync::Arc;
@@ -36,21 +36,24 @@ async fn feature_flag_registration() {
       ],
       "1".to_string(),
     ))
-    .await;
+    .await
+    .unwrap();
   assert_eq!(*int_feature_flag.read_mark_update(), 10);
   assert!(*bool_feature_flag.read_mark_update());
 
   // When we clear out the runtime, it reverts to the default.
   loader
     .update_snapshot(make_update(vec![], String::new()))
-    .await;
+    .await
+    .unwrap();
   assert_eq!(*int_feature_flag.read_mark_update(), 1);
   assert!(!*bool_feature_flag.read_mark_update());
 
   // If the value doesn't change, no events are pushed.
   loader
     .update_snapshot(make_update(vec![], String::new()))
-    .await;
+    .await
+    .unwrap();
   assert!(!int_feature_flag.watch.has_changed().unwrap());
   assert!(!bool_feature_flag.watch.has_changed().unwrap());
 }
@@ -67,7 +70,8 @@ async fn registration_after_update() {
       vec![(TestFlag::path(), ValueKind::Int(10))],
       "1".to_string(),
     ))
-    .await;
+    .await
+    .unwrap();
 
   let feature_flag = TestFlag::register(&loader);
 
@@ -92,7 +96,8 @@ async fn duration_flag() {
       vec![(DurationFlag::path(), ValueKind::Int(100))],
       "1".to_string(),
     ))
-    .await;
+    .await
+    .unwrap();
 
   assert_eq!(*flag.borrow().read(), time::Duration::milliseconds(100));
 }
@@ -135,7 +140,8 @@ async fn disk_persistence_happy_path() {
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))
-      .await;
+      .await
+      .unwrap();
   }
 
   // At this point the value should be cached and we should see the previously set value on read.
@@ -176,7 +182,8 @@ async fn disk_persistence_config_corruption() {
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))
-      .await;
+      .await
+      .unwrap();
   }
 
   // Corrupt the file, verifying that we don't blow up when we read a bad file and fall back to
@@ -203,7 +210,8 @@ async fn disk_persistence_retry_corruption() {
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))
-      .await;
+      .await
+      .unwrap();
   }
 
   // Corrupt the retry file, verifying that we don't blow up when we read a bad file and fall back
@@ -230,24 +238,26 @@ async fn disk_persistence_retry_limit() {
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))
-      .await;
+      .await
+      .unwrap();
   }
 
   // Load the configuration 5 times without marking it as safe.
-  for _ in 0 .. 6 {
+  for _ in 0 .. 5 {
     let loader = setup.new_loader();
     loader.handle_cached_config().await;
     let flag = TestFlag::register(&loader);
     assert_eq!(*flag.read(), 10);
   }
 
-  // On the 6th go we hit the limit and will treat it as an error, wiping all state.
+  // On the 6th go we hit the limit and will treat it as an error. The state will be kept around
+  // so that can do nonce change detection.
   let loader = setup.new_loader();
   loader.handle_cached_config().await;
   let flag = TestFlag::register(&loader);
   assert_eq!(*flag.read(), 1);
-  assert!(!setup.protobuf_file().exists());
-  assert!(!setup.retry_file().exists());
+  assert!(setup.protobuf_file().exists());
+  assert!(setup.retry_file().exists());
 }
 
 #[tokio::test]
@@ -262,7 +272,8 @@ async fn disk_persistence_retry_marked_safe() {
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))
-      .await;
+      .await
+      .unwrap();
   }
 
   // Load the configuration 5 times marking it safe each time.
@@ -295,7 +306,8 @@ async fn disk_persistence_missing_config_file() {
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))
-      .await;
+      .await
+      .unwrap();
   }
 
   assert!(setup.protobuf_file().exists());
@@ -325,7 +337,8 @@ async fn disk_persistence_missing_retry_file() {
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))
-      .await;
+      .await
+      .unwrap();
   }
 
   assert!(setup.protobuf_file().exists());
@@ -355,7 +368,8 @@ async fn disk_persistence_cannot_update_retry() {
         vec![(TestFlag::path(), ValueKind::Int(10))],
         "1".to_string(),
       ))
-      .await;
+      .await
+      .unwrap();
   }
 
   assert!(setup.protobuf_file().exists());

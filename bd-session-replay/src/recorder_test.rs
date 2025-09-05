@@ -69,7 +69,8 @@ impl Setup {
           ValueKind::Int(interval.whole_milliseconds().try_into().unwrap()),
         ),
       ]))
-      .await;
+      .await
+      .unwrap();
   }
 }
 
@@ -112,7 +113,8 @@ async fn does_not_report_if_disabled() {
         ValueKind::Int(10),
       ),
     ]))
-    .await;
+    .await
+    .unwrap();
 
   let target = Box::<MockTarget>::default();
   let capture_screen_count = target.capture_screen_count.clone();
@@ -191,7 +193,8 @@ async fn taking_screenshots_is_wired_up() {
       bd_runtime::runtime::session_replay::ScreenshotsEnabledFlag::path(),
       ValueKind::Bool(true),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   100.milliseconds().sleep().await;
 
@@ -219,7 +222,8 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
       bd_runtime::runtime::session_replay::ScreenshotsEnabledFlag::path(),
       ValueKind::Bool(true),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   let target = Box::<MockTarget>::default();
   let capture_screenshot_count = target.capture_screenshot_count.clone();

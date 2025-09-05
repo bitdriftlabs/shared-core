@@ -12,8 +12,6 @@ use crate::upload::Tracked;
 use anyhow::anyhow;
 use assert_matches::assert_matches;
 use bd_client_common::{
-  ClientConfigurationUpdate,
-  ConfigurationUpdate,
   HANDSHAKE_FLAG_CONFIG_UP_TO_DATE,
   HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
   MockClientConfigurationUpdate,
@@ -178,6 +176,7 @@ struct Setup {
   api_key: String,
   network_quality_provider: Arc<SimpleNetworkQualityProvider>,
   sleep_mode_active: watch::Sender<bool>,
+  config_updater: Arc<MockClientConfigurationUpdate>,
 }
 
 impl Setup {
@@ -185,7 +184,7 @@ impl Setup {
     Self::new_with_config_updater(Self::make_nice_mock_updater())
   }
 
-  fn new_with_config_updater(updater: Arc<dyn ClientConfigurationUpdate>) -> Self {
+  fn new_with_config_updater(config_updater: Arc<MockClientConfigurationUpdate>) -> Self {
     let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
 
     let (start_stream_tx, start_stream_rx) = channel(1);
@@ -215,7 +214,7 @@ impl Setup {
       trigger_upload_tx,
       Arc::new(EmptyMetadata),
       runtime_loader.clone(),
-      updater,
+      config_updater.clone(),
       time_provider.clone(),
       network_quality_provider.clone(),
       Arc::new(TestLog {}),
@@ -244,10 +243,12 @@ impl Setup {
       api_key,
       network_quality_provider,
       sleep_mode_active: sleep_mode_active_tx,
+      config_updater,
     }
   }
 
   async fn restart(&mut self) {
+    log::info!("restarting api");
     let (start_stream_tx, start_stream_rx) = channel(1);
     let (send_data_tx, send_data_rx) = channel(1);
     let current_stream_tx = Arc::new(Mutex::new(None));
@@ -259,7 +260,6 @@ impl Setup {
     let (data_tx, data_rx) = channel(1);
     let (trigger_upload_tx, _trigger_upload_rx) = channel(1);
 
-    let mock_updater = Self::make_nice_mock_updater();
     let runtime_loader = ConfigLoader::new(self.sdk_directory.path());
     runtime_loader.try_load_persisted_config().await;
     let api = Api::new(
@@ -270,7 +270,7 @@ impl Setup {
       trigger_upload_tx,
       Arc::new(EmptyMetadata),
       runtime_loader.clone(),
-      mock_updater,
+      self.config_updater.clone(),
       self.time_provider.clone(),
       self.network_quality_provider.clone(),
       Arc::new(TestLog {}),
@@ -576,32 +576,37 @@ async fn client_kill() {
     .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None)
     .await;
 
-  setup
-    .send_response(ApiResponse {
-      response_type: Some(Response_type::RuntimeUpdate(RuntimeUpdate {
-        version_nonce: "test".to_string(),
-        runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
-          bd_runtime::runtime::client_kill::GenericKillDuration::path(),
-          bd_test_helpers::runtime::ValueKind::Int(
-            1.days().whole_milliseconds().try_into().unwrap(),
-          ),
-        )]))
-        .into(),
-        ..Default::default()
-      })),
+  let runtime_response = ApiResponse {
+    response_type: Some(Response_type::RuntimeUpdate(RuntimeUpdate {
+      version_nonce: "test".to_string(),
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
+        bd_runtime::runtime::client_kill::GenericKillDuration::path(),
+        bd_test_helpers::runtime::ValueKind::Int(1.days().whole_milliseconds().try_into().unwrap()),
+      )]))
+      .into(),
       ..Default::default()
-    })
-    .await;
+    })),
+    ..Default::default()
+  };
+  setup.send_response(runtime_response.clone()).await;
 
   // Wait for the ACK to make sure the runtime update is processed.
   setup.next_request(1.seconds()).await.unwrap();
 
   // Restart to make sure we are killed.
+  make_mut(&mut setup.config_updater)
+    .expect_clear_cached_config()
+    .times(1)
+    .return_once(|| ());
   setup.restart().await;
   assert!(setup.next_stream(1.seconds()).await.is_none());
 
   // Advance 12 hours, we should still be killed.
   setup.time_provider.advance(12.hours());
+  make_mut(&mut setup.config_updater)
+    .expect_clear_cached_config()
+    .times(1)
+    .return_once(|| ());
   setup.restart().await;
   assert!(setup.next_stream(1.seconds()).await.is_none());
 
@@ -610,7 +615,16 @@ async fn client_kill() {
   setup.restart().await;
   assert!(setup.next_stream(1.seconds()).await.is_some());
 
-  // The client should be killed again.
+  // The client should be killed again after sending down the same config.
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None)
+    .await;
+  setup.send_response(runtime_response).await;
+  setup.next_request(1.seconds()).await.unwrap();
+  make_mut(&mut setup.config_updater)
+    .expect_clear_cached_config()
+    .times(1)
+    .return_once(|| ());
   setup.restart().await;
   assert!(setup.next_stream(1.seconds()).await.is_none());
 
@@ -753,6 +767,10 @@ async fn unauthenticated_response_before_handshake() {
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
 
+  make_mut(&mut setup.config_updater)
+    .expect_clear_cached_config()
+    .times(1)
+    .return_once(|| ());
   setup
     .error_shutdown(Code::Unauthenticated, "some message", None)
     .await;
@@ -767,6 +785,10 @@ async fn unauthenticated_response_before_handshake() {
     .assert_counter_eq(0, "api:error_shutdown_total", labels! {});
 
   // Restart to make sure the client is still killed. We should not see any stream requests.
+  make_mut(&mut setup.config_updater)
+    .expect_clear_cached_config()
+    .times(1)
+    .return_once(|| ());
   setup.restart().await;
   assert!(setup.next_stream(1.seconds()).await.is_none());
 
