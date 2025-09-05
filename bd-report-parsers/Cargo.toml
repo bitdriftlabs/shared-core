@@ -1,5 +1,6 @@
 [package]
 name = "bd-report-parsers"
+license-file = "../LICENSE"
 version = "1.0.0"
 edition = "2024"
 
