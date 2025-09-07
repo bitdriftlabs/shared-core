@@ -16,7 +16,7 @@ use bd_client_common::HANDSHAKE_FLAG_CONFIG_UP_TO_DATE;
 use bd_client_common::error::InvariantError;
 use bd_client_common::fb::make_log;
 use bd_client_common::file::write_compressed_protobuf;
-use bd_client_common::payload_conversion::{ClientConfigurationUpdate, IntoRequest};
+use bd_client_common::payload_conversion::{ClientConfigurationUpdateAck, IntoRequest};
 use bd_client_common::safe_file_cache::SafeFileCache;
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::FilterChain;
@@ -52,6 +52,7 @@ pub trait ApplyConfig {
 pub struct Configuration {
   buffer: BufferConfigList,
   workflows: WorkflowsConfigurationProto,
+  debug_workflows: WorkflowsConfigurationProto,
   bdtail: BdTailConfigurations,
   filters: FiltersConfiguration,
 }
@@ -61,6 +62,7 @@ impl Configuration {
     Self {
       buffer: sow.buffer_config_list.unwrap_or_default(),
       workflows: sow.workflows_configuration.unwrap_or_default(),
+      debug_workflows: sow.debug_workflows.unwrap_or_default(),
       bdtail: sow.bdtail_configuration.unwrap_or_default(),
       filters: sow.filters_configuration.unwrap_or_default(),
     }
@@ -175,7 +177,7 @@ impl<A: ApplyConfig + Send + Sync> bd_client_common::ClientConfigurationUpdate f
     };
 
     Some(
-      ClientConfigurationUpdate(ConfigurationUpdateAck {
+      ClientConfigurationUpdateAck(ConfigurationUpdateAck {
         nack: nack.into(),
         last_applied_version_nonce: version_nonce,
         ..Default::default()
@@ -236,6 +238,7 @@ impl ApplyConfig for LoggerUpdate {
     let Configuration {
       buffer,
       workflows,
+      debug_workflows,
       bdtail,
       filters,
     } = configuration;
@@ -250,8 +253,8 @@ impl ApplyConfig for LoggerUpdate {
       !bdtail.active_streams.is_empty()
     );
 
-    let workflows_configuration = WorkflowsConfiguration::new(workflows.workflows);
-
+    let workflows_configuration =
+      WorkflowsConfiguration::new(workflows.workflows, debug_workflows.workflows);
     let (filter_chain, filter_config_parse_failure_count) = FilterChain::new(filters);
     self
       .filter_config_parse_failure
