@@ -38,6 +38,8 @@ use bd_test_helpers::resource_utilization::EmptyTarget;
 use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::session::{DiskStorage, InMemoryStorage};
 use bd_test_helpers::test_api_server::{ExpectedStreamEvent, StreamAction, StreamHandle};
+use bd_time::TimeProvider;
+use bd_workflows::engine::WORKFLOWS_STATE_FILE_NAME;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use tempfile::TempDir;
@@ -87,6 +89,7 @@ pub struct SetupOptions {
   pub metadata_provider: Arc<LogMetadata>,
   pub disk_storage: bool,
   pub start_in_sleep_mode: bool,
+  pub time_provider: Option<Arc<dyn TimeProvider>>,
 }
 
 impl Default for SetupOptions {
@@ -96,6 +99,7 @@ impl Default for SetupOptions {
       metadata_provider: Arc::default(),
       disk_storage: false,
       start_in_sleep_mode: false,
+      time_provider: None,
     }
   }
 }
@@ -175,6 +179,7 @@ impl Setup {
     })
     .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
     .with_internal_logger(true)
+    .with_time_provider(options.time_provider)
     .build_dedicated_thread()
     .unwrap();
 
@@ -404,10 +409,7 @@ impl Setup {
   }
 
   pub fn workflows_state_file_path(&self) -> std::path::PathBuf {
-    self
-      .sdk_directory
-      .path()
-      .join("workflows_state_snapshot.9.bin")
+    self.sdk_directory.path().join(WORKFLOWS_STATE_FILE_NAME)
   }
 }
 

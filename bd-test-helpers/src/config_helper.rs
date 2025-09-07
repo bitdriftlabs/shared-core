@@ -137,6 +137,7 @@ pub fn configuration_update(version: &str, sow: StateOfTheWorld) -> Configuratio
 pub struct ConfigurationUpdateParts {
   pub buffer_config: Vec<BufferConfig>,
   pub workflows: Vec<Workflow>,
+  pub debug_workflows: Vec<Workflow>,
   pub bdtail_streams: Vec<BdTailStream>,
   pub filters_configuration: Vec<Filter>,
 }
@@ -158,6 +159,12 @@ pub fn configuration_update_from_parts(
       workflows_configuration: (!parts.workflows.is_empty())
         .then(|| WorkflowsConfiguration {
           workflows: parts.workflows,
+          ..Default::default()
+        })
+        .into(),
+      debug_workflows: (!parts.debug_workflows.is_empty())
+        .then(|| WorkflowsConfiguration {
+          workflows: parts.debug_workflows,
           ..Default::default()
         })
         .into(),
