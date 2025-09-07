@@ -17,6 +17,7 @@ use crate::config::{
   ActionTakeScreenshot,
   Config,
   Predicate,
+  WorkflowDebugMode,
 };
 use crate::generate_log::generate_log_action;
 use bd_log_primitives::{FieldsRef, Log, LogRef};
@@ -24,7 +25,7 @@ use bd_time::OffsetDateTimeExt;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::SystemTime;
 use time::OffsetDateTime;
 
@@ -43,26 +44,28 @@ use time::OffsetDateTime;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Workflow {
   id: String,
-  // The list of runs. Runs are organized in the following way:
-  //  * For exclusive workflows, new runs are added to the beginning of the list and the maximum
-  //    number of runs is equal to two. If runs list is non-empty then the first run in the list is
-  //    guaranteed to be in an initial state. If there are two runs then the second run is
-  //    guaranteed not to be in an initial state.
+  // The list of runs. Runs are organized in the following way: New runs are added to the beginning
+  // of the list and the maximum number of runs is equal to two. If runs list is non-empty then the
+  // first run in the list is guaranteed to be in an initial state. If there are two runs then the
+  // second run is guaranteed not to be in an initial state.
   runs: Vec<Run>,
+  workflow_debug_state: OptWorkflowDebugStateMap,
 }
 
 impl Workflow {
   pub(crate) const fn new(config_id: String) -> Self {
-    Self {
-      id: config_id,
-      runs: vec![],
-    }
+    Self::new_from_parts(config_id, vec![], None)
   }
 
-  pub(crate) const fn new_with_runs(config_id: String, runs: Vec<Run>) -> Self {
+  pub(crate) const fn new_from_parts(
+    config_id: String,
+    runs: Vec<Run>,
+    workflow_debug_state: OptWorkflowDebugStateMap,
+  ) -> Self {
     Self {
       id: config_id,
       runs,
+      workflow_debug_state,
     }
   }
 
@@ -73,6 +76,14 @@ impl Workflow {
 
   pub(crate) fn id(&self) -> &str {
     &self.id
+  }
+
+  pub(crate) fn workflow_debug_state(&self) -> &OptWorkflowDebugStateMap {
+    &self.workflow_debug_state
+  }
+
+  pub(crate) fn clear_workflow_debug_state(&mut self) {
+    self.workflow_debug_state = None;
   }
 
   pub(crate) fn process_log<'a>(
@@ -110,7 +121,7 @@ impl Workflow {
       };
       let mut run_result = run.process_log(config, log, now);
 
-      result.incorporate_run_result(&mut run_result);
+      result.incorporate_run_result(&mut run_result, &mut self.workflow_debug_state);
 
       let run_result_did_make_progress = run_result.did_make_progress();
 
@@ -221,7 +232,11 @@ impl Workflow {
       .cloned()
       .collect_vec();
 
-    Self::new_with_runs(self.id().to_string(), runs)
+    Self::new_from_parts(
+      self.id().to_string(),
+      runs,
+      self.workflow_debug_state.clone(),
+    )
   }
 
   /// Whether a given workflow has no runs or all of its runs are in an initial state.
@@ -259,10 +274,11 @@ impl Workflow {
   pub(crate) fn runs_states(&self, config: &Config) -> Vec<String> {
     (0 .. self.runs.len())
       .flat_map(|run_index| {
-        self.runs[run_index]
-          .traversals
-          .iter()
-          .map(|traversal| config.states()[traversal.state_index].id().to_string())
+        self.runs[run_index].traversals.iter().map(|traversal| {
+          config.inner().states()[traversal.state_index]
+            .id()
+            .to_string()
+        })
       })
       .collect()
   }
@@ -273,7 +289,11 @@ impl Workflow {
     self.runs[run_index]
       .traversals
       .iter()
-      .map(|traversal| config.states()[traversal.state_index].id().to_string())
+      .map(|traversal| {
+        config.inner().states()[traversal.state_index]
+          .id()
+          .to_string()
+      })
       .collect()
   }
 }
@@ -292,24 +312,51 @@ pub(crate) struct WorkflowResult<'a> {
   triggered_actions: Vec<TriggeredAction<'a>>,
   logs_to_inject: BTreeMap<&'a str, Log>,
   stats: WorkflowResultStats,
+  workflow_debug_state: OptWorkflowDebugStateMap,
 }
 
 impl<'a> WorkflowResult<'a> {
-  pub fn into_parts(self) -> (Vec<TriggeredAction<'a>>, BTreeMap<&'a str, Log>) {
-    (self.triggered_actions, self.logs_to_inject)
+  pub fn into_parts(
+    self,
+  ) -> (
+    Vec<TriggeredAction<'a>>,
+    BTreeMap<&'a str, Log>,
+    OptWorkflowDebugStateMap,
+  ) {
+    (
+      self.triggered_actions,
+      self.logs_to_inject,
+      self.workflow_debug_state,
+    )
   }
 
   pub const fn stats(&self) -> &WorkflowResultStats {
     &self.stats
   }
 
-  fn incorporate_run_result(&mut self, run_result: &mut RunResult<'a>) {
+  fn incorporate_run_result(
+    &mut self,
+    run_result: &mut RunResult<'a>,
+    workflow_debug_state: &mut OptWorkflowDebugStateMap,
+  ) {
     self
       .triggered_actions
       .append(&mut run_result.triggered_actions);
     self.logs_to_inject.append(&mut run_result.logs_to_inject);
     self.stats.matched_logs_count += run_result.matched_logs_count;
     self.stats.processed_timeout |= run_result.processed_timeout;
+
+    // First we move any results into the persisted map so it survives across restarts.
+    if let Some(run_workflow_debug_state) = run_result.workflow_debug_state.take() {
+      workflow_debug_state
+        .get_or_insert_default()
+        .merge(run_workflow_debug_state);
+    }
+    // If there is any debug state (whether from this run or previous runs) return it in the
+    // result so that it can be bundled up and send to the server.
+    if let Some(workflow_debug_state) = workflow_debug_state {
+      self.workflow_debug_state = Some(workflow_debug_state.clone());
+    }
   }
 }
 
@@ -464,13 +511,14 @@ impl Run {
     let mut run_logs_to_inject = BTreeMap::<&'a str, Log>::new();
     let mut run_matched_logs_count = 0;
     let mut run_processed_timeout = false;
+    let mut workflow_debug_state: OptWorkflowDebugStateMap = None;
 
     // Process traversals in reversed order as we may end up modifying the array
     // starting at `index` in any given iteration of the loop.
     log::trace!(
       "processing {} traversal(s) for workflow {}",
       self.traversals.len(),
-      config.id()
+      config.inner().id()
     );
     for index in (0 .. self.traversals.len()).rev() {
       let Some(traversal) = self.traversals.get_mut(index) else {
@@ -480,6 +528,11 @@ impl Run {
 
       run_triggered_actions.append(&mut traversal_result.triggered_actions);
       run_logs_to_inject.append(&mut traversal_result.log_to_inject);
+      if let Some(traversal_workflow_debug_state) = traversal_result.workflow_debug_state.take() {
+        workflow_debug_state
+          .get_or_insert_default()
+          .merge(traversal_workflow_debug_state);
+      }
 
       // Increase the counter of logs matched by a given workflow run.
       self.matched_logs_count += traversal_result.matched_logs_count;
@@ -488,7 +541,7 @@ impl Run {
       run_processed_timeout |= traversal_result.processed_timeout;
 
       // Check if we are over the limit of the logs that the workflow run is allowed to match.
-      if let Some(matched_logs_count_limit) = config.matched_logs_count_limit() {
+      if let Some(matched_logs_count_limit) = config.inner().matched_logs_count_limit() {
         // A given workflow run has already matched more logs than its log counts limit allows for.
         // Mark it as stopped which will effectively get it removed.
         if self.matched_logs_count > matched_logs_count_limit {
@@ -498,11 +551,12 @@ impl Run {
             matched_logs_count: run_matched_logs_count,
             processed_timeout: run_processed_timeout,
             logs_to_inject: BTreeMap::new(),
+            workflow_debug_state,
           };
         }
       }
 
-      if let Some(duration_limit) = config.duration_limit()
+      if let Some(duration_limit) = config.inner().duration_limit()
         && let Some(first_progress_occurred_at) = self.first_progress_occurred_at
       {
         let current_time: SystemTime = log.occurred_at.into();
@@ -520,6 +574,7 @@ impl Run {
                 matched_logs_count: run_matched_logs_count,
                 processed_timeout: run_processed_timeout,
                 logs_to_inject: BTreeMap::new(),
+                workflow_debug_state,
               };
             }
           },
@@ -572,6 +627,7 @@ impl Run {
       matched_logs_count: run_matched_logs_count,
       processed_timeout: run_processed_timeout,
       logs_to_inject: run_logs_to_inject,
+      workflow_debug_state,
     }
   }
 
@@ -637,6 +693,9 @@ pub(crate) struct RunResult<'a> {
   /// Logs to be injected back into the workflow engine after field attachment and other
   /// processing.
   logs_to_inject: BTreeMap<&'a str, Log>,
+  /// If debugging is enabled, this is the cumulative debug state for the workflow since
+  /// debugging started.
+  workflow_debug_state: OptWorkflowDebugStateMap,
 }
 
 impl RunResult<'_> {
@@ -694,7 +753,7 @@ impl Traversal {
     now: OffsetDateTime,
     initialize_timeout: bool,
   ) -> Option<Self> {
-    let state = &config.states().get(state_index)?;
+    let state = &config.inner().states().get(state_index)?;
     if state.transitions().is_empty() && state.timeout().is_none() {
       None
     } else {
@@ -716,7 +775,7 @@ impl Traversal {
   }
 
   fn initialize_timeout(&mut self, config: &Config, now: OffsetDateTime) {
-    let Some(state) = &config.states().get(self.state_index) else {
+    let Some(state) = &config.inner().states().get(self.state_index) else {
       return;
     };
     self.timeout_unix_ms = state.timeout().map(|timeout| {
@@ -741,7 +800,9 @@ impl Traversal {
       mut extractions: TraversalExtractions,
       actions: &'a [Action],
       log: &LogRef<'_>,
+      current_state_index: usize,
       next_state_index: usize,
+      transition_type: WorkflowDebugTransitionType,
       config: &Config,
       now: OffsetDateTime,
     ) {
@@ -762,9 +823,39 @@ impl Traversal {
         }
         result.output_traversals.push(traversal);
       }
+
+      if !matches!(config.mode(), WorkflowDebugMode::None)
+        && let Some(state) = config.inner().states().get(current_state_index)
+      {
+        // At the traversal level we should only advance at most one state. We still use the
+        // map for simplicity in merging elsewhere.
+        log::debug!(
+          "adding debug state for workflow {}/{} at {}",
+          config.inner().id(),
+          state.id(),
+          now
+        );
+        result
+          .workflow_debug_state
+          .get_or_insert_default()
+          .0
+          .insert(
+            WorkflowDebugStateKey {
+              state_id: state.id().to_string(),
+              transition_type,
+            },
+            WorkflowTransitionDebugState {
+              count: 1,
+              last_transition_time: now.into(),
+            },
+          );
+      }
     }
 
-    let transitions = config.transitions_for_traversal(self).unwrap_or_default();
+    let transitions = config
+      .inner()
+      .transitions_for_traversal(self)
+      .unwrap_or_default();
 
     let mut result = TraversalResult::default();
     // In majority of cases each traversal has 0 or 1 successor. A case when
@@ -774,8 +865,9 @@ impl Traversal {
     log::trace!(
       "processing {} transition(s) for workflow {}/{}",
       transitions.len(),
-      config.id(),
+      config.inner().id(),
       config
+        .inner()
         .states()
         .get(self.state_index)
         .map(super::config::State::id)
@@ -803,15 +895,18 @@ impl Traversal {
             result.matched_logs_count += 1;
 
             if matched_logs_counts == *count
-              && let Some(actions) = config.actions_for_traversal(self, index)
-              && let Some(next_state_index) = config.next_state_index_for_traversal(self, index)
+              && let Some(actions) = config.inner().actions_for_traversal(self, index)
+              && let Some(next_state_index) =
+                config.inner().next_state_index_for_traversal(self, index)
             {
               process_transition(
                 &mut result,
                 self.do_extractions(config, index, log),
                 actions,
                 log,
+                self.state_index,
                 next_state_index,
+                WorkflowDebugTransitionType::Normal(index),
                 config,
                 now,
               );
@@ -821,7 +916,7 @@ impl Traversal {
                  workflow id={:?}",
                 index,
                 matched_logs_counts,
-                config.id(),
+                config.inner().id(),
               );
             } else {
               log::trace!(
@@ -830,7 +925,7 @@ impl Traversal {
                 index,
                 matched_logs_counts,
                 *count,
-                config.id(),
+                config.inner().id(),
               );
             }
           }
@@ -841,15 +936,19 @@ impl Traversal {
     if result.output_traversals.is_empty()
       && let Some(timeout_unix_ms) = self.timeout_unix_ms
       && now.unix_timestamp_ms() >= timeout_unix_ms
-      && let Some(actions) = config.actions_for_timeout(self.state_index)
-      && let Some(next_state_index) = config.next_state_index_for_timeout(self.state_index)
+      && let Some(actions) = config.inner().actions_for_timeout(self.state_index)
+      && let Some(next_state_index) = config
+        .inner()
+        .next_state_index_for_timeout(self.state_index)
     {
       process_transition(
         &mut result,
         TraversalExtractions::default(),
         actions,
         log,
+        self.state_index,
         next_state_index,
+        WorkflowDebugTransitionType::Timeout,
         config,
         now,
       );
@@ -857,7 +956,7 @@ impl Traversal {
 
       log::trace!(
         "traversal timed out and is advancing, workflow id={:?}",
-        config.id(),
+        config.inner().id(),
       );
     }
 
@@ -875,7 +974,7 @@ impl Traversal {
     // Maybe some CoW thing.
     let mut new_extractions = self.extractions.clone();
 
-    let Some(extractions) = config.extractions(self, index) else {
+    let Some(extractions) = config.inner().extractions(self, index) else {
       return new_extractions;
     };
     for extraction in &extractions.sankey_extractions {
@@ -1022,6 +1121,9 @@ struct TraversalResult<'a> {
   /// Logs to be injected back into the workflow engine after field attachment and other
   /// processing.
   log_to_inject: BTreeMap<&'a str, Log>,
+  /// If debugging is enabled, any debug state changes that occurred as a result of processing
+  /// the traversal.
+  workflow_debug_state: OptWorkflowDebugStateMap,
 }
 
 impl TraversalResult<'_> {
@@ -1030,6 +1132,29 @@ impl TraversalResult<'_> {
     self.followed_transitions_count > 0
   }
 }
+
+//
+// WorkflowTransitionDebugState
+//
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+pub struct WorkflowTransitionDebugState {
+  pub count: u64,
+  pub last_transition_time: SystemTime,
+}
+
+//
+// WorkflowDebugStateMap
+//
+
+// There is a non-zero size cost to using an empty HashMap over a not initialize Option so given
+// this will almost never be used minimize the cost as much as possible.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[allow(clippy::box_collection)]
+pub struct WorkflowDebugStateMap(
+  pub(crate) Box<HashMap<WorkflowDebugStateKey, WorkflowTransitionDebugState>>,
+);
+pub type OptWorkflowDebugStateMap = Option<WorkflowDebugStateMap>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct WorkflowDebugStateKey {
@@ -1043,4 +1168,28 @@ pub enum WorkflowDebugTransitionType {
   Normal(usize),
   // Timeout transition.
   Timeout,
+}
+
+impl WorkflowDebugStateMap {
+  #[must_use]
+  pub fn into_inner(self) -> HashMap<WorkflowDebugStateKey, WorkflowTransitionDebugState> {
+    *self.0
+  }
+}
+
+impl WorkflowDebugStateMap {
+  fn merge(&mut self, other: Self) {
+    for (state_id, other_state) in other.0.into_iter() {
+      self
+        .0
+        .entry(state_id)
+        .and_modify(|state| {
+          state.count += other_state.count;
+          if other_state.last_transition_time > state.last_transition_time {
+            state.last_transition_time = other_state.last_transition_time;
+          }
+        })
+        .or_insert(other_state);
+    }
+  }
 }

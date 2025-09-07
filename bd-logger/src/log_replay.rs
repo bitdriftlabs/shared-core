@@ -19,11 +19,19 @@ use bd_session_replay::CaptureScreenshotHandler;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::config::FlushBufferId;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
+use bd_workflows::workflow::WorkflowDebugStateMap;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::path::Path;
 use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
+
+#[derive(Default)]
+pub struct LogReplayResult {
+  pub logs_to_inject: Vec<Log>,
+  pub workflow_debug_state: Vec<(String, WorkflowDebugStateMap)>,
+  pub engine_has_debug_workflows: bool,
+}
 
 //
 // LogReplay
@@ -44,7 +52,7 @@ pub trait LogReplay {
     block: bool,
     pipeline: &mut ProcessingPipeline,
     now: OffsetDateTime,
-  ) -> anyhow::Result<Vec<Log>>;
+  ) -> anyhow::Result<LogReplayResult>;
 }
 
 //
@@ -61,7 +69,7 @@ impl LogReplay for LoggerReplay {
     block: bool,
     pipeline: &mut ProcessingPipeline,
     now: OffsetDateTime,
-  ) -> anyhow::Result<Vec<Log>> {
+  ) -> anyhow::Result<LogReplayResult> {
     pipeline.process_log(log, block, now).await
   }
 }
@@ -169,7 +177,7 @@ impl ProcessingPipeline {
     mut log: Log,
     block: bool,
     now: OffsetDateTime,
-  ) -> anyhow::Result<Vec<Log>> {
+  ) -> anyhow::Result<LogReplayResult> {
     self.stats.logs_received.inc();
 
     // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
@@ -210,9 +218,13 @@ impl ProcessingPipeline {
     let mut result = self
       .workflows_engine
       .process_log(log, &matching_buffers, now);
-    let logs_to_inject = std::mem::take(&mut result.logs_to_inject)
-      .into_values()
-      .collect();
+    let log_replay_result = LogReplayResult {
+      logs_to_inject: std::mem::take(&mut result.logs_to_inject)
+        .into_values()
+        .collect(),
+      workflow_debug_state: result.workflow_debug_state,
+      engine_has_debug_workflows: result.has_debug_workflows,
+    };
 
     log::debug!(
       "processed {:?} log, destination buffer(s): {:?}, capture session {:?}",
@@ -266,7 +278,7 @@ impl ProcessingPipeline {
         .await?;
     }
 
-    Ok(logs_to_inject)
+    Ok(log_replay_result)
   }
 
   async fn finish_blocking_log_processing(

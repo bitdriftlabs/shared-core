@@ -53,7 +53,7 @@ impl Setup {
 
     engine
       .start(WorkflowsEngineConfig::new(
-        WorkflowsConfiguration::new(workflows),
+        WorkflowsConfiguration::new(workflows, vec![]),
         BTreeSet::default(),
         BTreeSet::default(),
       ))

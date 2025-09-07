@@ -22,7 +22,7 @@ use backoff::SystemClock;
 use backoff::backoff::Backoff;
 use backoff::exponential::ExponentialBackoff;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
-use bd_client_common::payload_conversion::{IntoRequest, MuxResponse, ResponseKind};
+use bd_client_common::payload_conversion::IntoRequest;
 use bd_client_common::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use bd_client_common::{ClientConfigurationUpdate, maybe_await};
 use bd_client_stats_store::{Counter, CounterWrapper, Scope};
@@ -38,6 +38,7 @@ use bd_grpc_codec::{
 };
 use bd_metadata::Metadata;
 use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
+use bd_proto::protos::client::api::api_response::Response_type;
 pub use bd_proto::protos::client::api::log_upload_intent_response::{
   Decision as LogsUploadDecision,
   Drop as LogsUploadDecisionDrop,
@@ -302,6 +303,7 @@ impl StreamState {
         let req = self.upload_state_tracker.track_upload(tracked);
         self.send_request(req).await
       },
+      DataUpload::DebugData(request) => self.send_request(request).await,
     }
   }
 }
@@ -780,12 +782,12 @@ impl Api {
     stream_state: &mut StreamState,
   ) -> anyhow::Result<Option<StreamClosureInfo>> {
     for response in responses {
-      match response.demux() {
-        Some(ResponseKind::Handshake(_)) => {
+      match response.response_type {
+        Some(Response_type::Handshake(_)) => {
           anyhow::bail!("unexpected api response: spurious handshake")
         },
-        Some(ResponseKind::Pong(_)) => stream_state.maybe_schedule_ping(),
-        Some(ResponseKind::ErrorShutdown(error)) => {
+        Some(Response_type::Pong(_)) => stream_state.maybe_schedule_ping(),
+        Some(Response_type::ErrorShutdown(error)) => {
           log::debug!(
             "close with status {:?}, message {:?}",
             error.grpc_status,
@@ -801,7 +803,7 @@ impl Api {
               .map(bd_time::ProtoDurationExt::to_time_duration),
           }));
         },
-        Some(ResponseKind::LogUpload(log_upload)) => {
+        Some(Response_type::LogUpload(log_upload)) => {
           log::debug!(
             "received ack for log upload {:?} ({} dropped), error: {:?}",
             log_upload.upload_uuid,
@@ -813,12 +815,12 @@ impl Api {
             .upload_state_tracker
             .resolve_pending_upload(&log_upload.upload_uuid, &log_upload.error)?;
         },
-        Some(ResponseKind::LogUploadIntent(intent)) => {
+        Some(Response_type::LogUploadIntent(intent)) => {
           stream_state
             .upload_state_tracker
             .resolve_intent(&intent.intent_uuid, intent.decision)?;
         },
-        Some(ResponseKind::StatsUpload(stats_upload)) => {
+        Some(Response_type::StatsUpload(stats_upload)) => {
           log::debug!(
             "received ack for stats upload {:?}, error: {:?}",
             stats_upload.upload_uuid,
@@ -829,7 +831,7 @@ impl Api {
             .upload_state_tracker
             .resolve_pending_upload(&stats_upload.upload_uuid, &stats_upload.error)?;
         },
-        Some(ResponseKind::FlushBuffers(flush_buffers)) => {
+        Some(Response_type::FlushBuffers(flush_buffers)) => {
           let (tx, _rx) = tokio::sync::oneshot::channel();
 
           self
@@ -838,7 +840,7 @@ impl Api {
             .await
             .map_err(|_| anyhow!("remote trigger upload tx"))?;
         },
-        Some(ResponseKind::SankeyPathUpload(sankey_path_upload)) => {
+        Some(Response_type::SankeyDiagramUpload(sankey_path_upload)) => {
           log::debug!(
             "received ack for sankey path upload {:?}, error: {:?}",
             sankey_path_upload.upload_uuid,
@@ -849,7 +851,7 @@ impl Api {
             .upload_state_tracker
             .resolve_pending_upload(&sankey_path_upload.upload_uuid, &sankey_path_upload.error)?;
         },
-        Some(ResponseKind::SankeyPathUploadIntent(sankey_path_upload_intent)) => {
+        Some(Response_type::SankeyIntentResponse(sankey_path_upload_intent)) => {
           log::debug!(
             "received ack for sankey path upload intent {:?}, decision: {:?}",
             sankey_path_upload_intent.intent_uuid,
@@ -861,7 +863,7 @@ impl Api {
             sankey_path_upload_intent.decision,
           )?;
         },
-        Some(ResponseKind::ArtifactUpload(artifact_upload)) => {
+        Some(Response_type::ArtifactUpload(artifact_upload)) => {
           log::debug!(
             "received ack for artifact upload {:?}, error: {:?}",
             artifact_upload.upload_uuid,
@@ -872,7 +874,7 @@ impl Api {
             .upload_state_tracker
             .resolve_pending_upload(&artifact_upload.upload_uuid, &artifact_upload.error)?;
         },
-        Some(ResponseKind::ArtifactUploadIntent(artifact_upload_intent)) => {
+        Some(Response_type::ArtifactIntent(artifact_upload_intent)) => {
           log::debug!(
             "received ack for artifact upload intent {:?}, decision: {:?}",
             artifact_upload_intent.intent_uuid,
@@ -884,12 +886,12 @@ impl Api {
             artifact_upload_intent.decision,
           )?;
         },
-        Some(ResponseKind::ConfigurationUpdate(update)) => {
+        Some(Response_type::ConfigurationUpdate(update)) => {
           if let Some(request) = self.config_updater.try_apply_config(update).await {
             stream_state.send_request(request).await?;
           }
         },
-        Some(ResponseKind::RuntimeUpdate(update)) => {
+        Some(Response_type::RuntimeUpdate(update)) => {
           if let Some(request) = self.runtime_loader.try_apply_config(update).await {
             stream_state.send_request(request).await?;
           }
@@ -946,8 +948,8 @@ impl Api {
           // it and pass it back up as well as any other frames we decoded for immediate
           // processing. The response decoder might still contain data, so we continue to use
           // it for further decoding.
-          match first.demux() {
-            Some(ResponseKind::Handshake(mut h)) => {
+          match first.response_type {
+            Some(Response_type::Handshake(mut h)) => {
               log::debug!("received handshake");
               return Ok(HandshakeResult::Received {
                 stream_settings: h.stream_settings.take(),
@@ -955,7 +957,7 @@ impl Api {
                 remaining_responses: responses.collect(),
               });
             },
-            Some(ResponseKind::ErrorShutdown(error)) => {
+            Some(Response_type::ErrorShutdown(error)) => {
               // If we're provided with an invalid API key or otherwise fail to authenticate with
               // the backend, log this as a warning to surface this to developers trying to set up
               // the SDK.

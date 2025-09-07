@@ -25,11 +25,18 @@ use crate::config::{
   Config,
   FlushBufferId,
   Streaming,
+  WorkflowDebugMode,
   WorkflowsConfiguration,
 };
 use crate::metrics::MetricsCollector;
 use crate::sankey_diagram::{self, PendingSankeyPathUpload};
-use crate::workflow::{SankeyPath, TriggeredAction, TriggeredActionEmitSankey, Workflow};
+use crate::workflow::{
+  SankeyPath,
+  TriggeredAction,
+  TriggeredActionEmitSankey,
+  Workflow,
+  WorkflowDebugStateMap,
+};
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_common::file::{read_compressed, write_compressed};
@@ -50,6 +57,10 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
+
+// This is currently serialized using bincode so we need to change the file name any time the
+// format changes. Ultimately we should consider whether moving this to protobuf makes more sense.
+pub const WORKFLOWS_STATE_FILE_NAME: &str = "workflows_state_snapshot.10.bin";
 
 //
 // WorkflowsEngine
@@ -210,9 +221,7 @@ impl WorkflowsEngine {
   ///  * new workflows are created for workflows that are a part of the provided workflow config
   ///    update but do not exists in client's memory yet.
   pub fn update(&mut self, config: WorkflowsEngineConfig) {
-    // To limit the memory usage remove the outdated workflows before
-    // creating new ones.
-
+    // To limit the memory usage remove the outdated workflows before creating new ones.
     log::debug!(
       "received workflows config update containing {} workflow(s)",
       config.workflows_configuration.workflows.len()
@@ -224,11 +233,10 @@ impl WorkflowsEngine {
       .workflows
       .iter()
       .enumerate()
-      .map(|(index, config)| (config.id(), index))
+      .map(|(index, config)| (config.inner().id(), index))
       .collect();
 
-    // Process workflows in reversed order as we may end up removing workflows
-    // while iterating.
+    // Process workflows in reversed order as we may end up removing workflows while iterating.
     for index in (0 .. self.state.workflows.len()).rev() {
       let should_remove_existing_workflow = match self
         .state
@@ -238,19 +246,25 @@ impl WorkflowsEngine {
         .and_then(|id| latest_workflow_ids_to_index.get(id))
       {
         Some(latest_workflows_index) => {
-          // Handle an edge case where a client receives a config update containing a workflow
-          // with a config field unknown to the client, which is later updated to
-          // understand this field. In such cases, the server's config is converted to
-          // the client's representation and cached for future use.
-          // If the client is later updated to understand the previously unsupported field,
-          // we check for a config mismatch between the cached client representation and
-          // the fresh client representation from the server. If there's a mismatch, we discard
-          // the cached version and replace it with the fresh one later on.
+          // Handle an edge case where a client receives a config update containing a workflow with
+          // a config field unknown to the client, which is later updated to understand this field.
+          // In such cases, the server's config is converted to the client's representation and
+          // cached for future use (with the unknown field removed when written back to disk for
+          // caching). If the client is later updated to understand the previously unsupported
+          // field, we check for a config mismatch between the cached client representation and the
+          // fresh client representation from the server. If there's a mismatch, we discard the
+          // cached version and replace it with the fresh one later on. This will only happen when
+          // workflows are updated obviously.
+          // TODO(mattklein123): We already silently drop workflows with unknown fields in many
+          // cases, so ultimately we should just implement partial NACKs and never accept configs
+          // with fields that we don't understand and push the server to correctly gate workflows
+          // being sent to appropriate client versions.
           config
             .workflows_configuration
             .workflows
             .get(*latest_workflows_index)
-            != self.configs.get(index)
+            .map(Config::inner)
+            != self.configs.get(index).map(Config::inner)
         },
         // The latest config update doesn't contain a workflow with an ID of the existing
         // workflow. Remove existing workflow.
@@ -271,13 +285,31 @@ impl WorkflowsEngine {
       .map(|(index, workflow)| (workflow.id().to_string(), index))
       .collect();
 
-    // Iterate over the list of configs from the latest update and
-    // create workflows for the ones that do not have their representation
-    // on the client yet.
+    // Iterate over the list of configs from the latest update and create workflows for the ones
+    // that do not have their representation on the client yet.
     for workflow_config in config.workflows_configuration.workflows {
-      if !existing_workflow_ids_to_index.contains_key(workflow_config.id()) {
+      if let Some(index) = existing_workflow_ids_to_index.get(workflow_config.inner().id())
+        && let Some(existing_workflow_config) = self.configs.get_mut(*index)
+        && let Some(existing_workflow) = self.state.workflows.get_mut(*index)
+      {
+        if workflow_config.mode() != existing_workflow_config.mode() {
+          log::debug!(
+            "workflow={}: updating workflow debug mode from {:?} to {:?}",
+            workflow_config.inner().id(),
+            existing_workflow_config.mode(),
+            workflow_config.mode()
+          );
+          existing_workflow_config.set_mode(workflow_config.mode());
+
+          // If disabling debug mode we should clear any debug state from the workflow state.
+          if workflow_config.mode() == WorkflowDebugMode::None {
+            existing_workflow.clear_workflow_debug_state();
+            self.needs_state_persistence = true;
+          }
+        }
+      } else {
         self.add_workflow(
-          Workflow::new(workflow_config.id().to_string()),
+          Workflow::new(workflow_config.inner().id().to_string()),
           workflow_config,
         );
       }
@@ -319,12 +351,18 @@ impl WorkflowsEngine {
 
     let workflows_and_configs = workflows.into_iter().map(|config| {
       let workflow = existing_workflow_ids_to_workflows
-        .remove(config.id())
+        .remove(config.inner().id())
         .map_or_else(
-          // We have cache state for a given workflow ID.
-          || Workflow::new(config.id().to_string()),
-          //   No cached state for a given workflow ID, start from scratch.
-          |workflow| workflow,
+          // No cached state for a given workflow ID, start from scratch.
+          || Workflow::new(config.inner().id().to_string()),
+          // We have cache state for a given workflow ID. It's possible that when coming back
+          // online the debug state has changed so clean it if it's now disabled.
+          |mut workflow| {
+            if config.mode() == WorkflowDebugMode::None {
+              workflow.clear_workflow_debug_state();
+            }
+            workflow
+          },
         );
       (workflow, config)
     });
@@ -548,11 +586,15 @@ impl WorkflowsEngine {
         triggered_flush_buffers_action_ids: BTreeSet::new(),
         capture_screenshot: false,
         logs_to_inject: BTreeMap::new(),
+        workflow_debug_state: vec![],
+        has_debug_workflows: false,
       };
     }
 
     let mut actions: Vec<TriggeredAction<'_>> = vec![];
     let mut logs_to_inject: BTreeMap<&'a str, Log> = BTreeMap::new();
+    let mut all_workflow_debug_state = vec![];
+    let mut has_debug_workflows = false;
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let Some(config) = self.configs.get(index) else {
         continue;
@@ -586,9 +628,17 @@ impl WorkflowsEngine {
         self.needs_state_persistence = true;
       }
 
-      let (triggered_actions, workflow_logs_to_inject) = result.into_parts();
-      actions.extend(triggered_actions);
+      // In debug only mode we do not trigger any actions, but we still inject logs so that
+      // workflows continue to advance if they depend on the injected logs.
+      has_debug_workflows |= config.mode() != WorkflowDebugMode::None;
+      let (triggered_actions, workflow_logs_to_inject, workflow_debug_state) = result.into_parts();
+      if !matches!(config.mode(), WorkflowDebugMode::DebugOnly) {
+        actions.extend(triggered_actions);
+      }
       logs_to_inject.extend(workflow_logs_to_inject);
+      if let Some(workflow_debug_state) = workflow_debug_state {
+        all_workflow_debug_state.push((workflow.id().to_string(), workflow_debug_state));
+      }
     }
 
     let PreparedActions {
@@ -700,6 +750,8 @@ impl WorkflowsEngine {
         .triggered_flushes_buffer_ids,
       capture_screenshot: !capture_screenshot_actions.is_empty(),
       logs_to_inject,
+      workflow_debug_state: all_workflow_debug_state,
+      has_debug_workflows,
     }
   }
 
@@ -809,7 +861,16 @@ pub struct WorkflowsEngineResult<'a> {
 
   // Logs to be injected back into the workflow engine after field attachment and other processing.
   pub logs_to_inject: BTreeMap<&'a str, Log>,
+
+  // If any workflows have debugging enabled, this will contain the *cumulative* debug state since
+  // debugging started for each workflow. The state is persisted in the workflow state file to
+  // handle workflows that act across process restart.
+  pub workflow_debug_state: AllWorkflowsDebugState,
+  // Indicate that debug workflows were processed, even if there is no cumulative state to return.
+  pub has_debug_workflows: bool,
 }
+
+pub type AllWorkflowsDebugState = Vec<(String, WorkflowDebugStateMap)>;
 
 //
 // WorkflowsEngineConfig
@@ -880,7 +941,7 @@ impl StateStore {
     );
 
     Self {
-      state_path: sdk_directory.join("workflows_state_snapshot.9.bin"),
+      state_path: sdk_directory.join(WORKFLOWS_STATE_FILE_NAME),
       last_persisted: None,
       stats,
       persistence_write_interval_flag: runtime.register_duration_watch(),
@@ -951,7 +1012,7 @@ impl StateStore {
       }
     }
 
-    log::debug!("persisting workflows state to disk");
+    log::debug!("persisting workflows state to disk: {workflows_state:?}");
 
     let _timer = self.stats.state_persistence_duration.start_timer();
 
@@ -1022,8 +1083,8 @@ impl WorkflowsState {
           // as these can be always recreated when needed.
           let workflow = workflow.optimized();
 
-          // Omit workflows that have no run in non initial state.
-          if workflow.runs().is_empty() {
+          // Omit workflows that have no run in non initial state, and are not debugging.
+          if workflow.runs().is_empty() && workflow.workflow_debug_state().is_none() {
             None
           } else {
             Some(workflow)
