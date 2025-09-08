@@ -166,7 +166,7 @@ impl FileSystem for TestFileSystem {
       .write_all(data)
       .await
       .map_err(|e| anyhow::anyhow!("failed to write file {}: {}", file_path.display(), e))?;
-    file.sync_all().await.unwrap();
+    file.sync_all().await?;
 
     Ok(())
   }
@@ -221,39 +221,36 @@ impl FileSystem for TestFileSystem {
   }
 }
 
-impl Default for TestFileSystem {
-  fn default() -> Self {
-    Self::new()
-  }
-}
-
 impl TestFileSystem {
   #[must_use]
-  pub fn new() -> Self {
-    Self {
-      directory: tempfile::tempdir().expect("failed to create temp dir"),
+  pub fn new() -> anyhow::Result<Self> {
+    Ok(Self {
+      directory: tempfile::tempdir()?,
       disk_full: AtomicBool::new(false),
-    }
+    })
   }
 
-  pub fn files(&self) -> HashMap<String, Vec<u8>> {
+  pub fn files(&self) -> anyhow::Result<HashMap<String, Vec<u8>>> {
     walkdir::WalkDir::new(self.directory.path())
       .into_iter()
       .filter_map(std::result::Result::ok)
       .filter(|e| e.file_type().is_file())
       .map(|e| {
-        let data = std::fs::read(e.path()).expect("failed to read file");
+        let data = std::fs::read(e.path())?;
 
-        let path = e
-          .path()
-          .strip_prefix(self.directory.path())
-          .expect("failed to strip prefix");
-        (Self::path_as_str(path), data)
+        let path = e.path().strip_prefix(self.directory.path())?;
+
+        Ok((Self::path_as_str(path), data))
       })
       .collect()
   }
 
   fn path_as_str(path: impl AsRef<Path>) -> String {
-    path.as_ref().as_os_str().to_str().unwrap().to_string()
+    path
+      .as_ref()
+      .as_os_str()
+      .to_str()
+      .unwrap_or_default()
+      .to_string()
   }
 }

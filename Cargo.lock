@@ -500,6 +500,7 @@ dependencies = [
  "ctor",
  "flatbuffers",
  "flate2",
+ "itertools 0.14.0",
  "log",
  "mockall",
  "parking_lot",

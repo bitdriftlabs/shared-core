@@ -18,6 +18,7 @@ bd-proto.path          = "../bd-proto"
 crc32fast.workspace    = true
 flatbuffers.workspace  = true
 flate2                 = { workspace = true, default-features = false, features = ["zlib"] }
+itertools.workspace    = true
 log.workspace          = true
 mockall.workspace      = true
 parking_lot.workspace  = true
