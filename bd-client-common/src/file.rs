@@ -30,18 +30,6 @@ pub fn write_compressed(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
   Ok(compressed_bytes)
 }
 
-/// Writes the data from the reader to the writer using zlib compression.
-pub async fn async_write_compressed(
-  mut reader: impl AsyncReadExt + Unpin,
-  writer: impl AsyncWrite + Unpin,
-) -> anyhow::Result<()> {
-  let mut encoder = async_compression::tokio::write::ZlibEncoder::new(writer);
-
-  tokio::io::copy(&mut reader, &mut encoder).await?;
-
-  Ok(())
-}
-
 pub fn read_compressed(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
   // We should never write empty files. If there is no data this was a partial write, full disk
   // issue, or some other problem. We use zlib for compression which includes a CRC at the end

@@ -10,7 +10,6 @@ doctest = false
 
 [dependencies]
 anyhow.workspace       = true
-async-compression      = { version = "0.4.30", features = ["zlib"], default-features = false }
 async-trait.workspace  = true
 bd-log-primitives.path = "../bd-log-primitives"
 bd-metadata.path       = "../bd-metadata"

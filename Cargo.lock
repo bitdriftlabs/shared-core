@@ -490,7 +490,6 @@ name = "bd-client-common"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "async-compression",
  "async-trait",
  "bd-log-primitives",
  "bd-metadata",
