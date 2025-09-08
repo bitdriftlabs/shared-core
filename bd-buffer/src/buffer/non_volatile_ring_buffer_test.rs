@@ -8,7 +8,7 @@
 use super::{FileHeader, RingBufferImpl};
 use crate::buffer::common_ring_buffer::{AllowOverwrite, Cursor};
 use crate::buffer::test::{Helper as CommonHelper, reserve_and_commit};
-use crate::buffer::{OptionalStatGetter, StatsHelper, to_u32};
+use crate::buffer::{OptionalStatGetter, StatsTestHelper, to_u32};
 use crate::{AbslCode, Error, Result};
 use assert_matches::assert_matches;
 use bd_client_stats_store::Collector;
@@ -24,13 +24,13 @@ struct Helper {
   temp_dir: TempDir,
   #[allow(clippy::struct_field_names)]
   helper: Option<CommonHelper>,
-  stats: StatsHelper,
+  stats: StatsTestHelper,
 }
 
 impl Helper {
   fn new(size: u32, allow_overwrite: AllowOverwrite, cursor: Cursor) -> Self {
     let temp_dir = TempDir::with_prefix("buffer_test").unwrap();
-    let stats = StatsHelper::new(&Collector::default().scope(""));
+    let stats = StatsTestHelper::new(&Collector::default().scope(""));
     let buffer = RingBufferImpl::new(
       "test".to_string(),
       temp_dir.path().join("buffer"),

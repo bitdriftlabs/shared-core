@@ -13,7 +13,8 @@ use assert_matches::assert_matches;
 use bd_api::DataUpload;
 use bd_api::upload::{Tracked, UploadResponse};
 use bd_client_common::file::write_compressed_protobuf;
-use bd_client_common::file_system::{FileSystem, RealFileSystem, TestFileSystem};
+use bd_client_common::file_system::{FileSystem, RealFileSystem};
+use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
 use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapshot;
@@ -55,7 +56,7 @@ async fn write_test_index(fs: &dyn FileSystem, ready_to_upload: bool) {
     ..Default::default()
   };
   fs.create_dir(&STATS_DIRECTORY).await.unwrap();
-  let compressed = write_compressed_protobuf(&index);
+  let compressed = write_compressed_protobuf(&index).unwrap();
   fs.write_file(
     &STATS_DIRECTORY.join(&*PENDING_AGGREGATION_INDEX_FILE),
     &compressed,
@@ -139,11 +140,12 @@ impl Setup {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let runtime_loader = ConfigLoader::new(directory.path());
     runtime_loader
-      .update_snapshot(&make_simple_update(vec![(
+      .update_snapshot(make_simple_update(vec![(
         bd_runtime::runtime::stats::MaxAggregatedFilesFlag::path(),
         ValueKind::Int(2),
       )]))
-      .await;
+      .await
+      .unwrap();
 
     let stats = Stats::new(Collector::new(Some(watch::channel(limit).1)));
     let (data_tx, data_rx) = mpsc::channel(1);
@@ -154,7 +156,7 @@ impl Setup {
       Box::new(upload_ticker),
       shutdown_trigger.make_shutdown(),
       data_tx,
-      Arc::new(FileManager::new(fs, test_time.clone(), &runtime_loader).unwrap()),
+      Arc::new(FileManager::new(fs, test_time.clone(), &runtime_loader)),
     );
 
     let test_hooks = flush_handles.flusher.test_hooks();
@@ -544,7 +546,7 @@ async fn existing_pending_upload() {
     snapshot: vec![StatsSnapshot::default()],
     ..Default::default()
   };
-  let compressed = write_compressed_protobuf(&req);
+  let compressed = write_compressed_protobuf(&req).unwrap();
   fs.write_file(&STATS_DIRECTORY.join("test"), &compressed)
     .await
     .unwrap();
@@ -637,7 +639,7 @@ async fn existing_aggregated_file() {
     snapshot: vec![snapshot],
     ..Default::default()
   };
-  let compressed = write_compressed_protobuf(&req);
+  let compressed = write_compressed_protobuf(&req).unwrap();
   fs.write_file(&STATS_DIRECTORY.join("test"), &compressed)
     .await
     .unwrap();

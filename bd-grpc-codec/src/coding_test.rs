@@ -6,7 +6,6 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::{Compression, Decoder, Decompression, Encoder, OptimizeFor};
-use bd_client_common::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use protobuf::well_known_types::any::Any;
 use protobuf::well_known_types::struct_::{Struct, Value};
 use rstest::rstest;
@@ -18,10 +17,10 @@ fn test_global_init() {
 
 #[rstest]
 #[case((Compression::StatefulZlib {
-  level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
+  level: 3,
 }, Decompression::StatefulZlib))]
 #[case((Compression::StatelessZlib {
-  level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
+  level: 3,
 }, Decompression::StatelessZlib))]
 fn decoder_does_not_panic_on_invalid_input_data(
   #[case] (compression, decompression): (Compression, Decompression),
@@ -30,8 +29,8 @@ fn decoder_does_not_panic_on_invalid_input_data(
   let mut compressing_encoder = Encoder::<Struct>::new(Some(compression));
 
   let message = &create_compressable_message();
-  let bytes = &encoder.encode(message);
-  let compressed_bytes = &compressing_encoder.encode(message);
+  let bytes = &encoder.encode(message).unwrap();
+  let compressed_bytes = &compressing_encoder.encode(message).unwrap();
 
   let mut decoder = Decoder::<Any>::new(Some(decompression), OptimizeFor::Cpu);
 
@@ -41,10 +40,10 @@ fn decoder_does_not_panic_on_invalid_input_data(
 
 #[rstest]
 #[case((Compression::StatefulZlib {
-  level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
+  level: 3,
 }, Decompression::StatefulZlib, OptimizeFor::Cpu))]
 #[case((Compression::StatelessZlib {
-  level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
+  level: 3,
 }, Decompression::StatelessZlib, OptimizeFor::Memory))]
 fn encoding_decoding_flow(
   #[case] (compression, decompression, optimize_for): (Compression, Decompression, OptimizeFor),
@@ -67,7 +66,7 @@ fn encoding_decoding_flow(
       },
     );
 
-    let bytes = encoder.encode(&message);
+    let bytes = encoder.encode(&message).unwrap();
     let result = decoder.decode_data(&bytes);
 
     assert!(result.is_ok());
@@ -78,16 +77,14 @@ fn encoding_decoding_flow(
 // Only applies to Stateful.
 #[test]
 fn compression_decompression_is_stateful() {
-  let mut encoder = Encoder::<Struct>::new(Some(Compression::StatefulZlib {
-    level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
-  }));
+  let mut encoder = Encoder::<Struct>::new(Some(Compression::StatefulZlib { level: 3 }));
   let mut decoder = Decoder::<Struct>::new(Some(Decompression::StatefulZlib), OptimizeFor::Cpu);
 
   let message1 = create_compressable_message();
   let message2 = create_compressable_message();
 
   let _bytes1 = encoder.encode(&message1);
-  let bytes2 = encoder.encode(&message2);
+  let bytes2 = encoder.encode(&message2).unwrap();
 
   // `message2` cannot be decoded as decoder did not see encoded `message1`.
   // Inability to decode may surface in one of the two following ways:
@@ -97,20 +94,16 @@ fn compression_decompression_is_stateful() {
 // Only applies to Stateful.
 #[test]
 fn compression_gets_more_effective_as_streaming_progresses() {
-  let mut encoder1 = Encoder::<Struct>::new(Some(Compression::StatefulZlib {
-    level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
-  }));
-  let mut encoder2 = Encoder::<Struct>::new(Some(Compression::StatefulZlib {
-    level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
-  }));
+  let mut encoder1 = Encoder::<Struct>::new(Some(Compression::StatefulZlib { level: 3 }));
+  let mut encoder2 = Encoder::<Struct>::new(Some(Compression::StatefulZlib { level: 3 }));
 
   let message1 = create_compressable_message();
   let message2 = create_compressable_message();
 
-  let encoder1_bytes2 = encoder1.encode(&message2);
+  let encoder1_bytes2 = encoder1.encode(&message2).unwrap();
 
   _ = encoder2.encode(&message1);
-  let encoder2_bytes2 = encoder2.encode(&message2);
+  let encoder2_bytes2 = encoder2.encode(&message2).unwrap();
 
   assert!(encoder2_bytes2.len() < encoder1_bytes2.len());
 }

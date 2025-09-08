@@ -73,14 +73,13 @@ impl SetupSingleConsumer {
         global_shutdown_trigger.make_shutdown(),
         &runtime_loader,
         &collector.scope(""),
-      )
-      .unwrap(),
+      ),
       Flags {
-        max_batch_size_logs: runtime_loader_clone.register_watch().unwrap(),
-        max_match_size_bytes: runtime_loader_clone.register_watch().unwrap(),
-        batch_deadline_watch: runtime_loader_clone.register_watch().unwrap(),
-        upload_lookback_window_feature_flag: runtime_loader_clone.register_watch().unwrap(),
-        streaming_batch_size: runtime_loader_clone.register_watch().unwrap(),
+        max_batch_size_logs: runtime_loader_clone.register_int_watch(),
+        max_match_size_bytes: runtime_loader_clone.register_int_watch(),
+        batch_deadline_watch: runtime_loader_clone.register_int_watch(),
+        upload_lookback_window_feature_flag: runtime_loader_clone.register_duration_watch(),
+        streaming_batch_size: runtime_loader_clone.register_int_watch(),
       },
       shutdown_trigger.make_shutdown(),
       "buffer".to_string(),
@@ -146,11 +145,12 @@ async fn upload_retries() {
   // Set the batch size to 10 before writing 10 logs that should be uploaded.
   setup
     .runtime_loader
-    .update_snapshot(&make_simple_update(vec![(
+    .update_snapshot(make_simple_update(vec![(
       bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
       ValueKind::Int(10),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   // Write logs for one batch upload.
   for _ in 0 .. 10 {
@@ -198,11 +198,12 @@ async fn upload_retries() {
   // Now update the max retries to 1 via runtime. The next upload should only retry once.
   setup
     .runtime_loader
-    .update_snapshot(&make_simple_update(vec![(
+    .update_snapshot(make_simple_update(vec![(
       bd_runtime::runtime::log_upload::RetryCountFlag::path(),
       ValueKind::Int(1),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   for _ in 0 .. 10 {
     setup.producer.write(b"c").unwrap();
@@ -252,11 +253,12 @@ async fn continuous_buffer_upload_byte_limit() {
   // Set the byte limit per batch to 10. The log limit remains at the default of 1,000.
   setup
     .runtime_loader
-    .update_snapshot(&make_simple_update(vec![(
+    .update_snapshot(make_simple_update(vec![(
       bd_runtime::runtime::log_upload::BatchSizeBytesFlag::path(),
       ValueKind::Int(10),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   for _ in 0 .. 2 {
     setup.producer.write(&[0; 150]).unwrap();
@@ -289,11 +291,12 @@ async fn continuous_buffer_upload_shutdown() {
   // Set the byte limit per batch to 10. The log limit remains at the default of 1,000.
   setup
     .runtime_loader
-    .update_snapshot(&make_simple_update(vec![(
+    .update_snapshot(make_simple_update(vec![(
       bd_runtime::runtime::log_upload::BatchSizeBytesFlag::path(),
       ValueKind::Int(10),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   setup.producer.write(&[0; 150]).unwrap();
 
@@ -313,11 +316,12 @@ async fn uploading_full_batch_failure() {
   // Set the batch size to 10 before writing 11 logs that should be uploaded.
   setup
     .runtime_loader
-    .update_snapshot(&make_simple_update(vec![(
+    .update_snapshot(make_simple_update(vec![(
       bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
       ValueKind::Int(10),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   for i in 0 .. 11 {
     setup.producer.write(&[i]).unwrap();
@@ -502,7 +506,7 @@ async fn age_limit_log_uploads() {
 
   setup
     .runtime_loader
-    .update_snapshot(&make_simple_update(vec![
+    .update_snapshot(make_simple_update(vec![
       (
         bd_runtime::runtime::log_upload::FlushBufferLookbackWindow::path(),
         ValueKind::Int(2.minutes().whole_milliseconds().try_into().unwrap()),
@@ -512,7 +516,8 @@ async fn age_limit_log_uploads() {
         ValueKind::Int(10),
       ),
     ]))
-    .await;
+    .await
+    .unwrap();
 
   let now = time::OffsetDateTime::now_utc().floor(1.minutes());
   for i in (0 .. 5).rev() {
@@ -596,7 +601,7 @@ impl SetupMultiConsumer {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let config_loader = ConfigLoader::new(temp_directory.path());
     config_loader
-      .update_snapshot(&make_simple_update(vec![
+      .update_snapshot(make_simple_update(vec![
         (
           bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
           ValueKind::Int(batch_size),
@@ -606,7 +611,8 @@ impl SetupMultiConsumer {
           ValueKind::Int(byte_limit),
         ),
       ]))
-      .await;
+      .await
+      .unwrap();
     let shutdown = shutdown_trigger.make_shutdown();
     let config_loader_clone = config_loader.clone();
     let collector_clone = stats.clone();
@@ -620,7 +626,6 @@ impl SetupMultiConsumer {
         &collector_clone.scope("consumer"),
         bd_internal_logging::NoopLogger::new(),
       )
-      .unwrap()
       .run()
       .await
       .unwrap();
@@ -879,17 +884,14 @@ async fn log_streaming() {
     shutdown_trigger.make_shutdown(),
     &runtime_loader,
     &Collector::default().scope(""),
-  )
-  .unwrap();
+  );
 
   tokio::task::spawn(async move {
     StreamedBufferUpload {
       consumer,
       log_upload_service: upload_service,
       shutdown: shutdown_trigger.make_shutdown(),
-      batch_size: runtime_loader
-        .register_watch()
-        .unwrap_or_else(|_| panic!("Failed to register batch size watch")),
+      batch_size: runtime_loader.register_int_watch(),
     }
     .start()
     .await
@@ -929,25 +931,25 @@ async fn streaming_batch_size_flag() {
   let (log_upload_tx, mut log_upload_rx) = tokio::sync::mpsc::channel(1);
   // Set streaming batch size to 2
   runtime_loader
-    .update_snapshot(&make_simple_update(vec![(
+    .update_snapshot(make_simple_update(vec![(
       bd_runtime::runtime::log_upload::StreamingBatchSizeFlag::path(),
       ValueKind::Int(2),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   let upload_service = service::new(
     log_upload_tx,
     shutdown_trigger.make_shutdown(),
     &runtime_loader,
     &Collector::default().scope(""),
-  )
-  .unwrap();
+  );
 
   tokio::task::spawn(async move {
     StreamedBufferUpload {
       consumer,
       log_upload_service: upload_service,
-      batch_size: runtime_loader.register_watch().unwrap(),
+      batch_size: runtime_loader.register_int_watch(),
       shutdown: shutdown_trigger.make_shutdown(),
     }
     .start()
@@ -1003,8 +1005,7 @@ async fn log_streaming_shutdown() {
     global_shutdown_trigger.make_shutdown(),
     &runtime_loader,
     &Collector::default().scope(""),
-  )
-  .unwrap();
+  );
 
   let shutdown = shutdown_trigger.make_shutdown();
 
@@ -1013,9 +1014,7 @@ async fn log_streaming_shutdown() {
       consumer,
       log_upload_service: upload_service,
       shutdown,
-      batch_size: runtime_loader
-        .register_watch()
-        .unwrap_or_else(|_| panic!("Failed to register batch size watch")),
+      batch_size: runtime_loader.register_int_watch(),
     }
     .start()
     .await

@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use assert_no_alloc::*;
-use bd_bonjson::decoder::{Decoder, Value};
+use bd_bonjson::Value;
 use bd_bonjson::ffi::BDCrashWriterHandle;
 use std::ptr::null;
 use tempfile::NamedTempFile;
@@ -98,8 +98,8 @@ fn test_write_boolean() {
   }
 
   let bytes = std::fs::read(temp_file_path).unwrap();
-  let mut decoder = Decoder::new(&bytes);
-  let value = decoder.decode().unwrap();
+  let (bytes_read, value) = bd_bonjson::decoder::from_slice(&bytes).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Bool(expected));
 }
 
@@ -121,8 +121,8 @@ fn test_write_null() {
     assert!(handle.is_null());
   }
   let bytes = std::fs::read(temp_file_path).unwrap();
-  let mut decoder = Decoder::new(&bytes);
-  let value = decoder.decode().unwrap();
+  let (bytes_read, value) = bd_bonjson::decoder::from_slice(&bytes).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Null);
 }
 
@@ -145,8 +145,8 @@ fn test_write_signed() {
     assert!(handle.is_null());
   }
   let bytes = std::fs::read(temp_file_path).unwrap();
-  let mut decoder = Decoder::new(&bytes);
-  let value = decoder.decode().unwrap();
+  let (bytes_read, value) = bd_bonjson::decoder::from_slice(&bytes).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Signed(expected));
 }
 
@@ -169,8 +169,8 @@ fn test_write_unsigned() {
     assert!(handle.is_null());
   }
   let bytes = std::fs::read(temp_file_path).unwrap();
-  let mut decoder = Decoder::new(&bytes);
-  let value = decoder.decode().unwrap();
+  let (bytes_read, value) = bd_bonjson::decoder::from_slice(&bytes).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Unsigned(expected));
 }
 
@@ -193,8 +193,8 @@ fn test_write_float() {
     assert!(handle.is_null());
   }
   let bytes = std::fs::read(temp_file_path).unwrap();
-  let mut decoder = Decoder::new(&bytes);
-  let value = decoder.decode().unwrap();
+  let (bytes_read, value) = bd_bonjson::decoder::from_slice(&bytes).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::Float(expected));
 }
 
@@ -218,8 +218,8 @@ fn test_write_str() {
     assert!(handle.is_null());
   }
   let bytes = std::fs::read(temp_file_path).unwrap();
-  let mut decoder = Decoder::new(&bytes);
-  let value = decoder.decode().unwrap();
+  let (bytes_read, value) = bd_bonjson::decoder::from_slice(&bytes).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(value, Value::String(expected.to_string()));
 }
 
@@ -245,8 +245,8 @@ fn test_write_array() {
     assert!(handle.is_null());
   }
   let bytes = std::fs::read(temp_file_path).unwrap();
-  let mut decoder = Decoder::new(&bytes);
-  let value = decoder.decode().unwrap();
+  let (bytes_read, value) = bd_bonjson::decoder::from_slice(&bytes).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(
     value,
     Value::Array(vec![Value::Signed(1), Value::Signed(2), Value::Signed(3),])
@@ -278,8 +278,8 @@ fn test_write_map() {
     assert!(handle.is_null());
   }
   let bytes = std::fs::read(temp_file_path).unwrap();
-  let mut decoder = Decoder::new(&bytes);
-  let value = decoder.decode().unwrap();
+  let (bytes_read, value) = bd_bonjson::decoder::from_slice(&bytes).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
   let mut expected = std::collections::HashMap::new();
   expected.insert("foo".to_string(), Value::Signed(42));
   expected.insert("bar".to_string(), Value::Bool(false));
@@ -322,8 +322,8 @@ fn test_write_deeply_nested_structure() {
     assert!(handle.is_null());
   }
   let bytes = std::fs::read(temp_file_path).unwrap();
-  let mut decoder = Decoder::new(&bytes);
-  let value = decoder.decode().unwrap();
+  let (bytes_read, value) = bd_bonjson::decoder::from_slice(&bytes).unwrap();
+  assert!(bytes_read > 0, "Should have read at least one byte");
 
   // Build expected value
   let mut inner_map = std::collections::HashMap::new();

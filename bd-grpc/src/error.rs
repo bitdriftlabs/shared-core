@@ -7,9 +7,10 @@
 
 use crate::CONTENT_TYPE_JSON;
 use crate::connect_protocol::{ConnectProtocolType, ErrorResponse};
-use crate::status::{Code, Status};
+use crate::status::{Status, code_to_connect_http_status};
 use axum::BoxError;
 use axum::response::Response;
+use bd_grpc_codec::code::Code;
 use http::header::CONTENT_TYPE;
 
 //
@@ -78,7 +79,7 @@ impl Error {
   pub fn to_connect_error_response(self) -> Response {
     let status = self.into_status();
     Response::builder()
-      .status(status.code.to_connect_http_status())
+      .status(code_to_connect_http_status(status.code))
       .header(CONTENT_TYPE, CONTENT_TYPE_JSON)
       .body(
         serde_json::to_vec(&ErrorResponse::new(status))

@@ -5,7 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use anyhow::anyhow;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -151,7 +150,7 @@ impl FileSystem for TestFileSystem {
 
     tokio::fs::read(&file_path)
       .await
-      .map_err(|e| anyhow!("failed to read file {}: {}", file_path.display(), e))
+      .map_err(|e| anyhow::anyhow!("failed to read file {}: {}", file_path.display(), e))
   }
 
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
@@ -162,11 +161,11 @@ impl FileSystem for TestFileSystem {
     let file_path = self.directory.path().join(path);
     let mut file = tokio::fs::File::create(&file_path)
       .await
-      .map_err(|e| anyhow!("failed to create file {}: {}", file_path.display(), e))?;
+      .map_err(|e| anyhow::anyhow!("failed to create file {}: {}", file_path.display(), e))?;
     file
       .write_all(data)
       .await
-      .map_err(|e| anyhow!("failed to write file {}: {}", file_path.display(), e))?;
+      .map_err(|e| anyhow::anyhow!("failed to write file {}: {}", file_path.display(), e))?;
     file.sync_all().await.unwrap();
 
     Ok(())
@@ -180,7 +179,7 @@ impl FileSystem for TestFileSystem {
 
     tokio::fs::remove_file(&file_path)
       .await
-      .map_err(|e| anyhow!("failed to delete file {}: {}", file_path.display(), e))?;
+      .map_err(|e| anyhow::anyhow!("failed to delete file {}: {}", file_path.display(), e))?;
 
     Ok(())
   }
@@ -193,7 +192,7 @@ impl FileSystem for TestFileSystem {
 
     tokio::fs::remove_dir_all(&dir_path)
       .await
-      .map_err(|e| anyhow!("failed to remove directory {}: {}", dir_path.display(), e))?;
+      .map_err(|e| anyhow::anyhow!("failed to remove directory {}: {}", dir_path.display(), e))?;
 
     Ok(())
   }
@@ -205,7 +204,7 @@ impl FileSystem for TestFileSystem {
     }
     tokio::fs::create_dir_all(&dir_path)
       .await
-      .map_err(|e| anyhow!("failed to create directory {}: {}", dir_path.display(), e))?;
+      .map_err(|e| anyhow::anyhow!("failed to create directory {}: {}", dir_path.display(), e))?;
 
     Ok(())
   }
@@ -218,7 +217,7 @@ impl FileSystem for TestFileSystem {
     let file_path = self.directory.path().join(path);
     tokio::fs::File::create(&file_path)
       .await
-      .map_err(|e| anyhow!("failed to create file {}: {}", file_path.display(), e))
+      .map_err(|e| anyhow::anyhow!("failed to create file {}: {}", file_path.display(), e))
   }
 }
 

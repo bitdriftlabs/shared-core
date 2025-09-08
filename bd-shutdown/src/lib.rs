@@ -5,6 +5,15 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![deny(
+  clippy::expect_used,
+  clippy::panic,
+  clippy::todo,
+  clippy::unimplemented,
+  clippy::unreachable,
+  clippy::unwrap_used
+)]
+
 use std::sync::Arc;
 #[cfg(unix)]
 use tokio::signal::unix::{SignalKind, signal};
@@ -12,6 +21,7 @@ use tokio::sync::watch;
 
 // The real graceful shutdown function that listens for SIGTERM or SIGINT.
 #[cfg(unix)]
+#[allow(clippy::unwrap_used)] // Server only
 pub async fn real_graceful_shutdown() {
   let mut sigterm_stream = signal(SignalKind::terminate()).unwrap();
   let mut sigint_stream = signal(SignalKind::interrupt()).unwrap();

@@ -24,11 +24,11 @@ pub struct InternalLogger {
 }
 
 impl InternalLogger {
-  pub fn new(logger_handle: LoggerHandle, runtime: &ConfigLoader) -> anyhow::Result<Self> {
-    Ok(Self {
+  pub fn new(logger_handle: LoggerHandle, runtime: &ConfigLoader) -> Self {
+    Self {
       logger_handle,
-      logging_enabled: runtime.register_watch()?,
-    })
+      logging_enabled: runtime.register_bool_watch(),
+    }
   }
 }
 

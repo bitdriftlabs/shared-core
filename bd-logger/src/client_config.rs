@@ -13,8 +13,10 @@ use crate::logging_state::{BufferProducers, ConfigUpdate};
 use anyhow::anyhow;
 use bd_buffer::{AbslCode, RingBuffer as _};
 use bd_client_common::HANDSHAKE_FLAG_CONFIG_UP_TO_DATE;
+use bd_client_common::error::InvariantError;
 use bd_client_common::fb::make_log;
-use bd_client_common::payload_conversion::{ClientConfigurationUpdate, FromResponse, IntoRequest};
+use bd_client_common::file::write_compressed_protobuf;
+use bd_client_common::payload_conversion::{ClientConfigurationUpdate, IntoRequest};
 use bd_client_common::safe_file_cache::SafeFileCache;
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::FilterChain;
@@ -24,7 +26,6 @@ use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Updat
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
 use bd_proto::protos::client::api::{
   ApiRequest,
-  ApiResponse,
   ConfigurationUpdate,
   ConfigurationUpdateAck,
   HandshakeRequest,
@@ -56,12 +57,12 @@ pub struct Configuration {
 }
 
 impl Configuration {
-  fn new(sow: &StateOfTheWorld) -> Self {
+  fn new(sow: StateOfTheWorld) -> Self {
     Self {
-      buffer: sow.buffer_config_list.clone().unwrap_or_default(),
-      workflows: sow.workflows_configuration.clone().unwrap_or_default(),
-      bdtail: sow.bdtail_configuration.clone().unwrap_or_default(),
-      filters: sow.filters_configuration.clone().unwrap_or_default(),
+      buffer: sow.buffer_config_list.unwrap_or_default(),
+      workflows: sow.workflows_configuration.unwrap_or_default(),
+      bdtail: sow.bdtail_configuration.unwrap_or_default(),
+      filters: sow.filters_configuration.unwrap_or_default(),
     }
   }
 }
@@ -91,11 +92,10 @@ impl<A: ApplyConfig> Config<A> {
   // containing the error details.
   async fn process_configuration_update_inner(
     &self,
-    update: &ConfigurationUpdate,
+    update: ConfigurationUpdate,
   ) -> anyhow::Result<()> {
     let config = update
       .update_type
-      .as_ref()
       .ok_or_else(|| anyhow!("An invalid match configuration was received: missing oneof"))?;
 
     let Update_type::StateOfTheWorld(sotw) = config;
@@ -115,9 +115,10 @@ impl<A: ApplyConfig> Config<A> {
 
   pub async fn process_configuration_update(
     &self,
-    update: &ConfigurationUpdate,
+    update: ConfigurationUpdate,
   ) -> anyhow::Result<()> {
-    self.process_configuration_update_inner(update).await?;
+    let compressed_protobuf = write_compressed_protobuf(&update)?;
+    let version_nonce = update.version_nonce.clone();
 
     // Upon applying the configuration successfully, write the configuration proto to disk.
     // This ensures that when we come up we can immediately start processing logs without
@@ -125,9 +126,12 @@ impl<A: ApplyConfig> Config<A> {
     // TODO(snowp): Consider storing an intermediate format to avoid all the error checking
     // above on re-read.
     // If we fail writing to disk, move on. We'll continue to operate without disk caching.
-    self.file_cache.cache_update(update).await;
-
-    Ok(())
+    self
+      .file_cache
+      .cache_update(compressed_protobuf, &version_nonce, async move {
+        self.process_configuration_update_inner(update).await
+      })
+      .await
   }
 
   // Attempts to load persisted config and apply as if it was a newly received configuration.
@@ -135,7 +139,7 @@ impl<A: ApplyConfig> Config<A> {
     if let Some(configuration_update) = self.file_cache.handle_cached_config().await {
       // If this function succeeds, it should write back the file to disk.
       let maybe_nack = self
-        .process_configuration_update_inner(&configuration_update)
+        .process_configuration_update_inner(configuration_update)
         .await;
 
       // We should never persist config that results in a Nack, but if we do we effectively drop
@@ -146,9 +150,15 @@ impl<A: ApplyConfig> Config<A> {
 }
 
 #[async_trait::async_trait]
-impl<A: ApplyConfig + Send + Sync> bd_client_common::ConfigurationUpdate for Config<A> {
-  async fn try_apply_config(&self, response: &ApiResponse) -> Option<ApiRequest> {
-    let configuration_update = ConfigurationUpdate::from_response(response)?;
+impl<A: ApplyConfig + Send + Sync> bd_client_common::ClientConfigurationUpdate for Config<A> {
+  async fn clear_cached_config(&self) {
+    self.file_cache.reset().await;
+  }
+
+  async fn try_apply_config(
+    &self,
+    configuration_update: ConfigurationUpdate,
+  ) -> Option<ApiRequest> {
     let version_nonce = configuration_update.version_nonce.clone();
 
     let nack = if let Err(e) = self
@@ -259,11 +269,14 @@ impl ApplyConfig for LoggerUpdate {
           || {
             // This is only called if we have active streams, which means we should have an active
             // stream buffer.
-            // register_producer never fails for the volatile buffer.
-            maybe_stream_buffer.unwrap().register_producer().unwrap()
+            Ok(
+              maybe_stream_buffer
+                .ok_or(InvariantError::Invariant)?
+                .register_producer()?,
+            )
           },
           || self.stream_config_parse_failure.inc(),
-        ),
+        )?,
         filter_chain,
       })
       .await
@@ -336,12 +349,12 @@ pub struct TailConfigurations {
 impl TailConfigurations {
   fn new(
     config: BdTailConfigurations,
-    producer: impl FnOnce() -> bd_buffer::Producer,
+    producer: impl FnOnce() -> anyhow::Result<bd_buffer::Producer>,
     on_parse_failure: impl Fn(),
-  ) -> Self {
+  ) -> anyhow::Result<Self> {
     if config.active_streams.is_empty() {
       log::debug!("zero active bdtail streams");
-      return Self::default();
+      return Ok(Self::default());
     }
 
     let mut active_streams = Vec::new();
@@ -366,12 +379,12 @@ impl TailConfigurations {
 
     log::debug!("{} active bdtail streams", active_streams.len());
 
-    Self {
+    Ok(Self {
       inner: Some(Inner {
         active_streams,
-        stream_producer: producer(),
+        stream_producer: producer()?,
       }),
-    }
+    })
   }
 
   pub(crate) fn maybe_stream_log(

@@ -13,73 +13,18 @@ static_assert(FLATBUFFERS_VERSION_MAJOR == 25 &&
               FLATBUFFERS_VERSION_REVISION == 10,
              "Non-compatible flatbuffers version included");
 
+#include "common_generated.h"
+
 namespace bitdrift_public {
 namespace fbs {
 namespace logging {
 namespace v1 {
 
-struct StringData;
-struct StringDataBuilder;
-
-struct BinaryData;
-struct BinaryDataBuilder;
-
 struct Timestamp;
 struct TimestampBuilder;
 
-struct Field;
-struct FieldBuilder;
-
 struct Log;
 struct LogBuilder;
-
-enum Data : uint8_t {
-  Data_NONE = 0,
-  Data_string_data = 1,
-  Data_binary_data = 2,
-  Data_MIN = Data_NONE,
-  Data_MAX = Data_binary_data
-};
-
-inline const Data (&EnumValuesData())[3] {
-  static const Data values[] = {
-    Data_NONE,
-    Data_string_data,
-    Data_binary_data
-  };
-  return values;
-}
-
-inline const char * const *EnumNamesData() {
-  static const char * const names[4] = {
-    "NONE",
-    "string_data",
-    "binary_data",
-    nullptr
-  };
-  return names;
-}
-
-inline const char *EnumNameData(Data e) {
-  if (::flatbuffers::IsOutRange(e, Data_NONE, Data_binary_data)) return "";
-  const size_t index = static_cast<size_t>(e);
-  return EnumNamesData()[index];
-}
-
-template<typename T> struct DataTraits {
-  static const Data enum_value = Data_NONE;
-};
-
-template<> struct DataTraits<bitdrift_public::fbs::logging::v1::StringData> {
-  static const Data enum_value = Data_string_data;
-};
-
-template<> struct DataTraits<bitdrift_public::fbs::logging::v1::BinaryData> {
-  static const Data enum_value = Data_binary_data;
-};
-
-bool VerifyData(::flatbuffers::Verifier &verifier, const void *obj, Data type);
-bool VerifyDataVector(::flatbuffers::Verifier &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<uint8_t> *types);
 
 enum LogType : uint32_t {
   LogType_Normal = 0,
@@ -130,124 +75,6 @@ inline const char *EnumNameLogType(LogType e) {
   if (::flatbuffers::IsOutRange(e, LogType_Normal, LogType_Span)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesLogType()[index];
-}
-
-struct StringData FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
-  typedef StringDataBuilder Builder;
-  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_DATA = 4
-  };
-  const ::flatbuffers::String *data() const {
-    return GetPointer<const ::flatbuffers::String *>(VT_DATA);
-  }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) &&
-           VerifyOffsetRequired(verifier, VT_DATA) &&
-           verifier.VerifyString(data()) &&
-           verifier.EndTable();
-  }
-};
-
-struct StringDataBuilder {
-  typedef StringData Table;
-  ::flatbuffers::FlatBufferBuilder &fbb_;
-  ::flatbuffers::uoffset_t start_;
-  void add_data(::flatbuffers::Offset<::flatbuffers::String> data) {
-    fbb_.AddOffset(StringData::VT_DATA, data);
-  }
-  explicit StringDataBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
-        : fbb_(_fbb) {
-    start_ = fbb_.StartTable();
-  }
-  ::flatbuffers::Offset<StringData> Finish() {
-    const auto end = fbb_.EndTable(start_);
-    auto o = ::flatbuffers::Offset<StringData>(end);
-    fbb_.Required(o, StringData::VT_DATA);
-    return o;
-  }
-};
-
-inline ::flatbuffers::Offset<StringData> CreateStringData(
-    ::flatbuffers::FlatBufferBuilder &_fbb,
-    ::flatbuffers::Offset<::flatbuffers::String> data = 0) {
-  StringDataBuilder builder_(_fbb);
-  builder_.add_data(data);
-  return builder_.Finish();
-}
-
-inline ::flatbuffers::Offset<StringData> CreateStringDataDirect(
-    ::flatbuffers::FlatBufferBuilder &_fbb,
-    const char *data = nullptr) {
-  auto data__ = data ? _fbb.CreateString(data) : 0;
-  return bitdrift_public::fbs::logging::v1::CreateStringData(
-      _fbb,
-      data__);
-}
-
-struct BinaryData FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
-  typedef BinaryDataBuilder Builder;
-  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_DATA_TYPE = 4,
-    VT_DATA = 6
-  };
-  const ::flatbuffers::String *data_type() const {
-    return GetPointer<const ::flatbuffers::String *>(VT_DATA_TYPE);
-  }
-  const ::flatbuffers::Vector<uint8_t> *data() const {
-    return GetPointer<const ::flatbuffers::Vector<uint8_t> *>(VT_DATA);
-  }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) &&
-           VerifyOffset(verifier, VT_DATA_TYPE) &&
-           verifier.VerifyString(data_type()) &&
-           VerifyOffsetRequired(verifier, VT_DATA) &&
-           verifier.VerifyVector(data()) &&
-           verifier.EndTable();
-  }
-};
-
-struct BinaryDataBuilder {
-  typedef BinaryData Table;
-  ::flatbuffers::FlatBufferBuilder &fbb_;
-  ::flatbuffers::uoffset_t start_;
-  void add_data_type(::flatbuffers::Offset<::flatbuffers::String> data_type) {
-    fbb_.AddOffset(BinaryData::VT_DATA_TYPE, data_type);
-  }
-  void add_data(::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> data) {
-    fbb_.AddOffset(BinaryData::VT_DATA, data);
-  }
-  explicit BinaryDataBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
-        : fbb_(_fbb) {
-    start_ = fbb_.StartTable();
-  }
-  ::flatbuffers::Offset<BinaryData> Finish() {
-    const auto end = fbb_.EndTable(start_);
-    auto o = ::flatbuffers::Offset<BinaryData>(end);
-    fbb_.Required(o, BinaryData::VT_DATA);
-    return o;
-  }
-};
-
-inline ::flatbuffers::Offset<BinaryData> CreateBinaryData(
-    ::flatbuffers::FlatBufferBuilder &_fbb,
-    ::flatbuffers::Offset<::flatbuffers::String> data_type = 0,
-    ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> data = 0) {
-  BinaryDataBuilder builder_(_fbb);
-  builder_.add_data(data);
-  builder_.add_data_type(data_type);
-  return builder_.Finish();
-}
-
-inline ::flatbuffers::Offset<BinaryData> CreateBinaryDataDirect(
-    ::flatbuffers::FlatBufferBuilder &_fbb,
-    const char *data_type = nullptr,
-    const std::vector<uint8_t> *data = nullptr) {
-  auto data_type__ = data_type ? _fbb.CreateString(data_type) : 0;
-  auto data__ = data ? _fbb.CreateVector<uint8_t>(*data) : 0;
-  return bitdrift_public::fbs::logging::v1::CreateBinaryData(
-      _fbb,
-      data_type__,
-      data__);
 }
 
 struct Timestamp FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -301,99 +128,6 @@ inline ::flatbuffers::Offset<Timestamp> CreateTimestamp(
   return builder_.Finish();
 }
 
-struct Field FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
-  typedef FieldBuilder Builder;
-  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_KEY = 4,
-    VT_VALUE_TYPE = 6,
-    VT_VALUE = 8
-  };
-  const ::flatbuffers::String *key() const {
-    return GetPointer<const ::flatbuffers::String *>(VT_KEY);
-  }
-  bitdrift_public::fbs::logging::v1::Data value_type() const {
-    return static_cast<bitdrift_public::fbs::logging::v1::Data>(GetField<uint8_t>(VT_VALUE_TYPE, 0));
-  }
-  const void *value() const {
-    return GetPointer<const void *>(VT_VALUE);
-  }
-  template<typename T> const T *value_as() const;
-  const bitdrift_public::fbs::logging::v1::StringData *value_as_string_data() const {
-    return value_type() == bitdrift_public::fbs::logging::v1::Data_string_data ? static_cast<const bitdrift_public::fbs::logging::v1::StringData *>(value()) : nullptr;
-  }
-  const bitdrift_public::fbs::logging::v1::BinaryData *value_as_binary_data() const {
-    return value_type() == bitdrift_public::fbs::logging::v1::Data_binary_data ? static_cast<const bitdrift_public::fbs::logging::v1::BinaryData *>(value()) : nullptr;
-  }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) &&
-           VerifyOffsetRequired(verifier, VT_KEY) &&
-           verifier.VerifyString(key()) &&
-           VerifyField<uint8_t>(verifier, VT_VALUE_TYPE, 1) &&
-           VerifyOffsetRequired(verifier, VT_VALUE) &&
-           VerifyData(verifier, value(), value_type()) &&
-           verifier.EndTable();
-  }
-};
-
-template<> inline const bitdrift_public::fbs::logging::v1::StringData *Field::value_as<bitdrift_public::fbs::logging::v1::StringData>() const {
-  return value_as_string_data();
-}
-
-template<> inline const bitdrift_public::fbs::logging::v1::BinaryData *Field::value_as<bitdrift_public::fbs::logging::v1::BinaryData>() const {
-  return value_as_binary_data();
-}
-
-struct FieldBuilder {
-  typedef Field Table;
-  ::flatbuffers::FlatBufferBuilder &fbb_;
-  ::flatbuffers::uoffset_t start_;
-  void add_key(::flatbuffers::Offset<::flatbuffers::String> key) {
-    fbb_.AddOffset(Field::VT_KEY, key);
-  }
-  void add_value_type(bitdrift_public::fbs::logging::v1::Data value_type) {
-    fbb_.AddElement<uint8_t>(Field::VT_VALUE_TYPE, static_cast<uint8_t>(value_type), 0);
-  }
-  void add_value(::flatbuffers::Offset<void> value) {
-    fbb_.AddOffset(Field::VT_VALUE, value);
-  }
-  explicit FieldBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
-        : fbb_(_fbb) {
-    start_ = fbb_.StartTable();
-  }
-  ::flatbuffers::Offset<Field> Finish() {
-    const auto end = fbb_.EndTable(start_);
-    auto o = ::flatbuffers::Offset<Field>(end);
-    fbb_.Required(o, Field::VT_KEY);
-    fbb_.Required(o, Field::VT_VALUE);
-    return o;
-  }
-};
-
-inline ::flatbuffers::Offset<Field> CreateField(
-    ::flatbuffers::FlatBufferBuilder &_fbb,
-    ::flatbuffers::Offset<::flatbuffers::String> key = 0,
-    bitdrift_public::fbs::logging::v1::Data value_type = bitdrift_public::fbs::logging::v1::Data_NONE,
-    ::flatbuffers::Offset<void> value = 0) {
-  FieldBuilder builder_(_fbb);
-  builder_.add_value(value);
-  builder_.add_key(key);
-  builder_.add_value_type(value_type);
-  return builder_.Finish();
-}
-
-inline ::flatbuffers::Offset<Field> CreateFieldDirect(
-    ::flatbuffers::FlatBufferBuilder &_fbb,
-    const char *key = nullptr,
-    bitdrift_public::fbs::logging::v1::Data value_type = bitdrift_public::fbs::logging::v1::Data_NONE,
-    ::flatbuffers::Offset<void> value = 0) {
-  auto key__ = key ? _fbb.CreateString(key) : 0;
-  return bitdrift_public::fbs::logging::v1::CreateField(
-      _fbb,
-      key__,
-      value_type,
-      value);
-}
-
 struct Log FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef LogBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
@@ -410,21 +144,21 @@ struct Log FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   uint32_t log_level() const {
     return GetField<uint32_t>(VT_LOG_LEVEL, 0);
   }
-  bitdrift_public::fbs::logging::v1::Data message_type() const {
-    return static_cast<bitdrift_public::fbs::logging::v1::Data>(GetField<uint8_t>(VT_MESSAGE_TYPE, 0));
+  bitdrift_public::fbs::common::v1::Data message_type() const {
+    return static_cast<bitdrift_public::fbs::common::v1::Data>(GetField<uint8_t>(VT_MESSAGE_TYPE, 0));
   }
   const void *message() const {
     return GetPointer<const void *>(VT_MESSAGE);
   }
   template<typename T> const T *message_as() const;
-  const bitdrift_public::fbs::logging::v1::StringData *message_as_string_data() const {
-    return message_type() == bitdrift_public::fbs::logging::v1::Data_string_data ? static_cast<const bitdrift_public::fbs::logging::v1::StringData *>(message()) : nullptr;
+  const bitdrift_public::fbs::common::v1::StringData *message_as_string_data() const {
+    return message_type() == bitdrift_public::fbs::common::v1::Data_string_data ? static_cast<const bitdrift_public::fbs::common::v1::StringData *>(message()) : nullptr;
   }
-  const bitdrift_public::fbs::logging::v1::BinaryData *message_as_binary_data() const {
-    return message_type() == bitdrift_public::fbs::logging::v1::Data_binary_data ? static_cast<const bitdrift_public::fbs::logging::v1::BinaryData *>(message()) : nullptr;
+  const bitdrift_public::fbs::common::v1::BinaryData *message_as_binary_data() const {
+    return message_type() == bitdrift_public::fbs::common::v1::Data_binary_data ? static_cast<const bitdrift_public::fbs::common::v1::BinaryData *>(message()) : nullptr;
   }
-  const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::logging::v1::Field>> *fields() const {
-    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::logging::v1::Field>> *>(VT_FIELDS);
+  const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *fields() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *>(VT_FIELDS);
   }
   const ::flatbuffers::String *session_id() const {
     return GetPointer<const ::flatbuffers::String *>(VT_SESSION_ID);
@@ -465,11 +199,11 @@ struct Log FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   }
 };
 
-template<> inline const bitdrift_public::fbs::logging::v1::StringData *Log::message_as<bitdrift_public::fbs::logging::v1::StringData>() const {
+template<> inline const bitdrift_public::fbs::common::v1::StringData *Log::message_as<bitdrift_public::fbs::common::v1::StringData>() const {
   return message_as_string_data();
 }
 
-template<> inline const bitdrift_public::fbs::logging::v1::BinaryData *Log::message_as<bitdrift_public::fbs::logging::v1::BinaryData>() const {
+template<> inline const bitdrift_public::fbs::common::v1::BinaryData *Log::message_as<bitdrift_public::fbs::common::v1::BinaryData>() const {
   return message_as_binary_data();
 }
 
@@ -480,13 +214,13 @@ struct LogBuilder {
   void add_log_level(uint32_t log_level) {
     fbb_.AddElement<uint32_t>(Log::VT_LOG_LEVEL, log_level, 0);
   }
-  void add_message_type(bitdrift_public::fbs::logging::v1::Data message_type) {
+  void add_message_type(bitdrift_public::fbs::common::v1::Data message_type) {
     fbb_.AddElement<uint8_t>(Log::VT_MESSAGE_TYPE, static_cast<uint8_t>(message_type), 0);
   }
   void add_message(::flatbuffers::Offset<void> message) {
     fbb_.AddOffset(Log::VT_MESSAGE, message);
   }
-  void add_fields(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::logging::v1::Field>>> fields) {
+  void add_fields(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>> fields) {
     fbb_.AddOffset(Log::VT_FIELDS, fields);
   }
   void add_session_id(::flatbuffers::Offset<::flatbuffers::String> session_id) {
@@ -519,9 +253,9 @@ struct LogBuilder {
 inline ::flatbuffers::Offset<Log> CreateLog(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint32_t log_level = 0,
-    bitdrift_public::fbs::logging::v1::Data message_type = bitdrift_public::fbs::logging::v1::Data_NONE,
+    bitdrift_public::fbs::common::v1::Data message_type = bitdrift_public::fbs::common::v1::Data_NONE,
     ::flatbuffers::Offset<void> message = 0,
-    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::logging::v1::Field>>> fields = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>> fields = 0,
     ::flatbuffers::Offset<::flatbuffers::String> session_id = 0,
     ::flatbuffers::Offset<bitdrift_public::fbs::logging::v1::Timestamp> timestamp = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> workflow_action_ids = 0,
@@ -543,15 +277,15 @@ inline ::flatbuffers::Offset<Log> CreateLog(
 inline ::flatbuffers::Offset<Log> CreateLogDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint32_t log_level = 0,
-    bitdrift_public::fbs::logging::v1::Data message_type = bitdrift_public::fbs::logging::v1::Data_NONE,
+    bitdrift_public::fbs::common::v1::Data message_type = bitdrift_public::fbs::common::v1::Data_NONE,
     ::flatbuffers::Offset<void> message = 0,
-    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::logging::v1::Field>> *fields = nullptr,
+    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *fields = nullptr,
     const char *session_id = nullptr,
     ::flatbuffers::Offset<bitdrift_public::fbs::logging::v1::Timestamp> timestamp = 0,
     const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *workflow_action_ids = nullptr,
     bitdrift_public::fbs::logging::v1::LogType log_type = bitdrift_public::fbs::logging::v1::LogType_Normal,
     const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *stream_ids = nullptr) {
-  auto fields__ = fields ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::logging::v1::Field>>(*fields) : 0;
+  auto fields__ = fields ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>(*fields) : 0;
   auto session_id__ = session_id ? _fbb.CreateString(session_id) : 0;
   auto workflow_action_ids__ = workflow_action_ids ? _fbb.CreateVector<::flatbuffers::Offset<::flatbuffers::String>>(*workflow_action_ids) : 0;
   auto stream_ids__ = stream_ids ? _fbb.CreateVector<::flatbuffers::Offset<::flatbuffers::String>>(*stream_ids) : 0;
@@ -566,35 +300,6 @@ inline ::flatbuffers::Offset<Log> CreateLogDirect(
       workflow_action_ids__,
       log_type,
       stream_ids__);
-}
-
-inline bool VerifyData(::flatbuffers::Verifier &verifier, const void *obj, Data type) {
-  switch (type) {
-    case Data_NONE: {
-      return true;
-    }
-    case Data_string_data: {
-      auto ptr = reinterpret_cast<const bitdrift_public::fbs::logging::v1::StringData *>(obj);
-      return verifier.VerifyTable(ptr);
-    }
-    case Data_binary_data: {
-      auto ptr = reinterpret_cast<const bitdrift_public::fbs::logging::v1::BinaryData *>(obj);
-      return verifier.VerifyTable(ptr);
-    }
-    default: return true;
-  }
-}
-
-inline bool VerifyDataVector(::flatbuffers::Verifier &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<uint8_t> *types) {
-  if (!values || !types) return !values && !types;
-  if (values->size() != types->size()) return false;
-  for (::flatbuffers::uoffset_t i = 0; i < values->size(); ++i) {
-    if (!VerifyData(
-        verifier,  values->Get(i), types->GetEnum<Data>(i))) {
-      return false;
-    }
-  }
-  return true;
 }
 
 inline const bitdrift_public::fbs::logging::v1::Log *GetLog(const void *buf) {

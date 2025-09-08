@@ -49,20 +49,20 @@ use bd_proto::protos::client::api::{
 //
 
 /// A transport independent representation of the possible multiplexed response types.
-pub enum ResponseKind<'a> {
-  Handshake(&'a HandshakeResponse),
-  ErrorShutdown(&'a ErrorShutdown),
-  Pong(&'a PongResponse),
-  LogUpload(&'a LogUploadResponse),
-  LogUploadIntent(&'a LogUploadIntentResponse),
-  StatsUpload(&'a StatsUploadResponse),
-  FlushBuffers(&'a FlushBuffers),
-  SankeyPathUpload(&'a SankeyPathUploadResponse),
-  SankeyPathUploadIntent(&'a SankeyIntentResponse),
-  ArtifactUploadIntent(&'a UploadArtifactIntentResponse),
-  ArtifactUpload(&'a UploadArtifactResponse),
-  ConfigurationUpdate(&'a ConfigurationUpdate),
-  RuntimeUpdate(&'a RuntimeUpdate),
+pub enum ResponseKind {
+  Handshake(HandshakeResponse),
+  ErrorShutdown(ErrorShutdown),
+  Pong(PongResponse),
+  LogUpload(LogUploadResponse),
+  LogUploadIntent(LogUploadIntentResponse),
+  StatsUpload(StatsUploadResponse),
+  FlushBuffers(FlushBuffers),
+  SankeyPathUpload(SankeyPathUploadResponse),
+  SankeyPathUploadIntent(SankeyIntentResponse),
+  ArtifactUploadIntent(UploadArtifactIntentResponse),
+  ArtifactUpload(UploadArtifactResponse),
+  ConfigurationUpdate(ConfigurationUpdate),
+  RuntimeUpdate(RuntimeUpdate),
 }
 
 //
@@ -71,7 +71,7 @@ pub enum ResponseKind<'a> {
 
 /// Used to convert a response type into the transport independent `ResponseKind`.
 pub trait MuxResponse {
-  fn demux(&self) -> Option<ResponseKind<'_>>;
+  fn demux(self) -> Option<ResponseKind>;
 }
 
 /// Used to allow the API mux operate against multiple different transport APIs. The code is able
@@ -163,8 +163,8 @@ impl IntoRequest for ClientConfigurationUpdate {
 }
 
 impl MuxResponse for ApiResponse {
-  fn demux(&self) -> Option<ResponseKind<'_>> {
-    match self.response_type.as_ref()? {
+  fn demux(self) -> Option<ResponseKind> {
+    match self.response_type? {
       Response_type::Handshake(handshake) => Some(ResponseKind::Handshake(handshake)),
       Response_type::LogUpload(log_upload) => Some(ResponseKind::LogUpload(log_upload)),
       Response_type::LogUploadIntent(intent) => Some(ResponseKind::LogUploadIntent(intent)),

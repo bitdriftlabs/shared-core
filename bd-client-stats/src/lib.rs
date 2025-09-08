@@ -5,6 +5,15 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![deny(
+  clippy::expect_used,
+  clippy::panic,
+  clippy::todo,
+  clippy::unimplemented,
+  clippy::unreachable,
+  clippy::unwrap_used
+)]
+
 mod file_manager;
 pub mod stats;
 pub mod test;
@@ -75,8 +84,12 @@ impl FlushTrigger {
       .map_err(|e| anyhow::anyhow!("failed to send flush stats trigger: {e}"))
   }
 
-  pub fn blocking_flush_for_test(&self, completion_tx: FlushTriggerCompletionSender) {
-    self.flush_tx.blocking_send(completion_tx).unwrap();
+  pub fn blocking_flush_for_test(
+    &self,
+    completion_tx: FlushTriggerCompletionSender,
+  ) -> anyhow::Result<()> {
+    self.flush_tx.blocking_send(completion_tx)?;
+    Ok(())
   }
 }
 
@@ -107,8 +120,8 @@ impl Stats {
     data_flush_tx: tokio::sync::mpsc::Sender<DataUpload>,
     flush_ticker: Box<dyn Ticker>,
     upload_ticker: Box<dyn Ticker>,
-  ) -> anyhow::Result<FlushHandles> {
-    Ok(self.flush_handle_helper(
+  ) -> FlushHandles {
+    self.flush_handle_helper(
       flush_ticker,
       upload_ticker,
       shutdown,
@@ -117,8 +130,8 @@ impl Stats {
         Box::new(RealFileSystem::new(sdk_directory.to_path_buf())),
         Arc::new(SystemTimeProvider),
         runtime_loader,
-      )?),
-    ))
+      )),
+    )
   }
 
   fn flush_handle_helper(

@@ -362,17 +362,14 @@ impl Setup {
 
     let (flush_ticker, upload_ticker) =
       default_stats_flush_triggers(watch::channel(false).1, &self.runtime_loader).unwrap();
-    let flush_handles = self
-      .stats
-      .flush_handle(
-        &self.runtime_loader,
-        shutdown_trigger.make_shutdown(),
-        self.directory.path(),
-        data_tx,
-        flush_ticker,
-        upload_ticker,
-      )
-      .unwrap();
+    let flush_handles = self.stats.flush_handle(
+      &self.runtime_loader,
+      shutdown_trigger.make_shutdown(),
+      self.directory.path(),
+      data_tx,
+      flush_ticker,
+      upload_ticker,
+    );
 
     let flush_handle = tokio::spawn(async move {
       flush_handles.flusher.periodic_flush().await;
@@ -405,7 +402,7 @@ fn run_profiling<T: Fn(&mut AnnotatedWorkflowsEngine) + std::marker::Send + 'sta
       .block_on(async {
         setup
           .runtime_loader
-          .update_snapshot(&RuntimeUpdate {
+          .update_snapshot(RuntimeUpdate {
             version_nonce: "123".to_string(),
             runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
               bd_runtime::runtime::stats::DirectStatFlushIntervalFlag::path(),
@@ -414,7 +411,8 @@ fn run_profiling<T: Fn(&mut AnnotatedWorkflowsEngine) + std::marker::Send + 'sta
             .into(),
             ..Default::default()
           })
-          .await;
+          .await
+          .unwrap();
 
         // Given the runtime configuration update time to propagate.
         1.seconds().sleep().await;

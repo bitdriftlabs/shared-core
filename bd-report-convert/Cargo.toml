@@ -5,8 +5,11 @@ name         = "bd-report-convert"
 publish      = false
 version      = "1.0.0"
 
+[lib]
+doctest = false
+
 [dependencies]
-anyhow.workspace     = true
+anyhow.workspace = true
 
 [build-dependencies]
 cc.workspace         = true

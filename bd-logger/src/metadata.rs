@@ -80,7 +80,6 @@ impl MetadataCollector {
     let timestamp = self.metadata_provider.timestamp()?;
 
     let (custom_fields, ootb_fields) = self.metadata_provider.fields()?;
-    global_state_tracker.maybe_update_global_state(&ootb_fields);
 
     let provider_fields = PartitionedFields {
       ootb: ootb_fields,
@@ -95,6 +94,21 @@ impl MetadataCollector {
         })
         .collect(),
     };
+
+    // For the purpose of tracking global fields we only consider fields from field providers as
+    // well as ones set via setField. Use the same precedence rules as when constructing the final
+    // fields for consistency and
+    let global_state_fields = [
+      provider_fields.ootb.clone(),
+      self.fields(),
+      provider_fields.custom.clone(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    global_state_tracker.maybe_update_global_state(&global_state_fields);
+
     // Attach field provider's fields to session replay, resource logs, and internal SDK logs
     // as matching fields as opposed to 'normal' fields to save on bandwidth usage while still
     // allowing matching on them.
@@ -113,7 +127,7 @@ impl MetadataCollector {
     // the list take precedence over fields farther away in the list and cannot be overridden by
     // them.
     let fields = [
-      provider_fields.ootb,
+      provider_fields.ootb.clone(),
       log_fields.ootb,
       log_fields.custom,
       self.fields(),
@@ -123,6 +137,7 @@ impl MetadataCollector {
     .flatten()
     .unique_by(|(key, _)| key.clone())
     .collect();
+
 
     let matching_fields = partition_fields(matching_fields);
 

@@ -13,6 +13,8 @@ static_assert(FLATBUFFERS_VERSION_MAJOR == 25 &&
               FLATBUFFERS_VERSION_REVISION == 10,
              "Non-compatible flatbuffers version included");
 
+#include "common_generated.h"
+
 namespace bitdrift_public {
 namespace fbs {
 namespace issue_reporting {
@@ -24,6 +26,9 @@ struct Memory;
 
 struct AppBuildNumber;
 struct AppBuildNumberBuilder;
+
+struct ProcessorUsage;
+struct ProcessorUsageBuilder;
 
 struct AppMetrics;
 struct AppMetricsBuilder;
@@ -64,6 +69,9 @@ struct BinaryImageBuilder;
 struct SDKInfo;
 struct SDKInfoBuilder;
 
+struct FeatureFlag;
+struct FeatureFlagBuilder;
+
 struct Report;
 struct ReportBuilder;
 
@@ -72,6 +80,8 @@ inline const ::flatbuffers::TypeTable *TimestampTypeTable();
 inline const ::flatbuffers::TypeTable *MemoryTypeTable();
 
 inline const ::flatbuffers::TypeTable *AppBuildNumberTypeTable();
+
+inline const ::flatbuffers::TypeTable *ProcessorUsageTypeTable();
 
 inline const ::flatbuffers::TypeTable *AppMetricsTypeTable();
 
@@ -98,6 +108,8 @@ inline const ::flatbuffers::TypeTable *ErrorTypeTable();
 inline const ::flatbuffers::TypeTable *BinaryImageTypeTable();
 
 inline const ::flatbuffers::TypeTable *SDKInfoTypeTable();
+
+inline const ::flatbuffers::TypeTable *FeatureFlagTypeTable();
 
 inline const ::flatbuffers::TypeTable *ReportTypeTable();
 
@@ -566,6 +578,60 @@ inline ::flatbuffers::Offset<AppBuildNumber> CreateAppBuildNumberDirect(
       cf_bundle_version__);
 }
 
+struct ProcessorUsage FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef ProcessorUsageBuilder Builder;
+  static const ::flatbuffers::TypeTable *MiniReflectTypeTable() {
+    return ProcessorUsageTypeTable();
+  }
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_DURATION_SECONDS = 4,
+    VT_USED_PERCENT = 6
+  };
+  uint64_t duration_seconds() const {
+    return GetField<uint64_t>(VT_DURATION_SECONDS, 0);
+  }
+  uint8_t used_percent() const {
+    return GetField<uint8_t>(VT_USED_PERCENT, 0);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<uint64_t>(verifier, VT_DURATION_SECONDS, 8) &&
+           VerifyField<uint8_t>(verifier, VT_USED_PERCENT, 1) &&
+           verifier.EndTable();
+  }
+};
+
+struct ProcessorUsageBuilder {
+  typedef ProcessorUsage Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_duration_seconds(uint64_t duration_seconds) {
+    fbb_.AddElement<uint64_t>(ProcessorUsage::VT_DURATION_SECONDS, duration_seconds, 0);
+  }
+  void add_used_percent(uint8_t used_percent) {
+    fbb_.AddElement<uint8_t>(ProcessorUsage::VT_USED_PERCENT, used_percent, 0);
+  }
+  explicit ProcessorUsageBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<ProcessorUsage> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<ProcessorUsage>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<ProcessorUsage> CreateProcessorUsage(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    uint64_t duration_seconds = 0,
+    uint8_t used_percent = 0) {
+  ProcessorUsageBuilder builder_(_fbb);
+  builder_.add_duration_seconds(duration_seconds);
+  builder_.add_used_percent(used_percent);
+  return builder_.Finish();
+}
+
 struct AppMetrics FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef AppMetricsBuilder Builder;
   static const ::flatbuffers::TypeTable *MiniReflectTypeTable() {
@@ -576,7 +642,11 @@ struct AppMetrics FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_MEMORY = 6,
     VT_VERSION = 8,
     VT_BUILD_NUMBER = 10,
-    VT_RUNNING_STATE = 12
+    VT_RUNNING_STATE = 12,
+    VT_PROCESS_ID = 14,
+    VT_REGION_FORMAT = 16,
+    VT_CPU_USAGE = 18,
+    VT_LIFECYCLE_EVENT = 20
   };
   const ::flatbuffers::String *app_id() const {
     return GetPointer<const ::flatbuffers::String *>(VT_APP_ID);
@@ -593,6 +663,18 @@ struct AppMetrics FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::String *running_state() const {
     return GetPointer<const ::flatbuffers::String *>(VT_RUNNING_STATE);
   }
+  uint32_t process_id() const {
+    return GetField<uint32_t>(VT_PROCESS_ID, 0);
+  }
+  const ::flatbuffers::String *region_format() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_REGION_FORMAT);
+  }
+  const bitdrift_public::fbs::issue_reporting::v1::ProcessorUsage *cpu_usage() const {
+    return GetPointer<const bitdrift_public::fbs::issue_reporting::v1::ProcessorUsage *>(VT_CPU_USAGE);
+  }
+  const ::flatbuffers::String *lifecycle_event() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_LIFECYCLE_EVENT);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_APP_ID) &&
@@ -604,6 +686,13 @@ struct AppMetrics FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            verifier.VerifyTable(build_number()) &&
            VerifyOffset(verifier, VT_RUNNING_STATE) &&
            verifier.VerifyString(running_state()) &&
+           VerifyField<uint32_t>(verifier, VT_PROCESS_ID, 4) &&
+           VerifyOffset(verifier, VT_REGION_FORMAT) &&
+           verifier.VerifyString(region_format()) &&
+           VerifyOffset(verifier, VT_CPU_USAGE) &&
+           verifier.VerifyTable(cpu_usage()) &&
+           VerifyOffset(verifier, VT_LIFECYCLE_EVENT) &&
+           verifier.VerifyString(lifecycle_event()) &&
            verifier.EndTable();
   }
 };
@@ -627,6 +716,18 @@ struct AppMetricsBuilder {
   void add_running_state(::flatbuffers::Offset<::flatbuffers::String> running_state) {
     fbb_.AddOffset(AppMetrics::VT_RUNNING_STATE, running_state);
   }
+  void add_process_id(uint32_t process_id) {
+    fbb_.AddElement<uint32_t>(AppMetrics::VT_PROCESS_ID, process_id, 0);
+  }
+  void add_region_format(::flatbuffers::Offset<::flatbuffers::String> region_format) {
+    fbb_.AddOffset(AppMetrics::VT_REGION_FORMAT, region_format);
+  }
+  void add_cpu_usage(::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessorUsage> cpu_usage) {
+    fbb_.AddOffset(AppMetrics::VT_CPU_USAGE, cpu_usage);
+  }
+  void add_lifecycle_event(::flatbuffers::Offset<::flatbuffers::String> lifecycle_event) {
+    fbb_.AddOffset(AppMetrics::VT_LIFECYCLE_EVENT, lifecycle_event);
+  }
   explicit AppMetricsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -644,8 +745,16 @@ inline ::flatbuffers::Offset<AppMetrics> CreateAppMetrics(
     const bitdrift_public::fbs::issue_reporting::v1::Memory *memory = nullptr,
     ::flatbuffers::Offset<::flatbuffers::String> version = 0,
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::AppBuildNumber> build_number = 0,
-    ::flatbuffers::Offset<::flatbuffers::String> running_state = 0) {
+    ::flatbuffers::Offset<::flatbuffers::String> running_state = 0,
+    uint32_t process_id = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> region_format = 0,
+    ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessorUsage> cpu_usage = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> lifecycle_event = 0) {
   AppMetricsBuilder builder_(_fbb);
+  builder_.add_lifecycle_event(lifecycle_event);
+  builder_.add_cpu_usage(cpu_usage);
+  builder_.add_region_format(region_format);
+  builder_.add_process_id(process_id);
   builder_.add_running_state(running_state);
   builder_.add_build_number(build_number);
   builder_.add_version(version);
@@ -660,17 +769,27 @@ inline ::flatbuffers::Offset<AppMetrics> CreateAppMetricsDirect(
     const bitdrift_public::fbs::issue_reporting::v1::Memory *memory = nullptr,
     const char *version = nullptr,
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::AppBuildNumber> build_number = 0,
-    const char *running_state = nullptr) {
+    const char *running_state = nullptr,
+    uint32_t process_id = 0,
+    const char *region_format = nullptr,
+    ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessorUsage> cpu_usage = 0,
+    const char *lifecycle_event = nullptr) {
   auto app_id__ = app_id ? _fbb.CreateString(app_id) : 0;
   auto version__ = version ? _fbb.CreateString(version) : 0;
   auto running_state__ = running_state ? _fbb.CreateString(running_state) : 0;
+  auto region_format__ = region_format ? _fbb.CreateString(region_format) : 0;
+  auto lifecycle_event__ = lifecycle_event ? _fbb.CreateString(lifecycle_event) : 0;
   return bitdrift_public::fbs::issue_reporting::v1::CreateAppMetrics(
       _fbb,
       app_id__,
       memory,
       version__,
       build_number,
-      running_state__);
+      running_state__,
+      process_id,
+      region_format__,
+      cpu_usage,
+      lifecycle_event__);
 }
 
 struct OSBuild FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -904,7 +1023,10 @@ struct DeviceMetrics FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_MODEL = 20,
     VT_OS_BUILD = 22,
     VT_PLATFORM = 24,
-    VT_CPU_ABIS = 26
+    VT_CPU_ABIS = 26,
+    VT_LOW_POWER_MODE_ENABLED = 28,
+    VT_CPU_USAGE = 30,
+    VT_THERMAL_STATE = 32
   };
   const bitdrift_public::fbs::issue_reporting::v1::Timestamp *time() const {
     return GetStruct<const bitdrift_public::fbs::issue_reporting::v1::Timestamp *>(VT_TIME);
@@ -942,6 +1064,15 @@ struct DeviceMetrics FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>> *cpu_abis() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>> *>(VT_CPU_ABIS);
   }
+  bool low_power_mode_enabled() const {
+    return GetField<uint8_t>(VT_LOW_POWER_MODE_ENABLED, 0) != 0;
+  }
+  const bitdrift_public::fbs::issue_reporting::v1::ProcessorUsage *cpu_usage() const {
+    return GetPointer<const bitdrift_public::fbs::issue_reporting::v1::ProcessorUsage *>(VT_CPU_USAGE);
+  }
+  uint8_t thermal_state() const {
+    return GetField<uint8_t>(VT_THERMAL_STATE, 0);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<bitdrift_public::fbs::issue_reporting::v1::Timestamp>(verifier, VT_TIME, 8) &&
@@ -964,6 +1095,10 @@ struct DeviceMetrics FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyOffset(verifier, VT_CPU_ABIS) &&
            verifier.VerifyVector(cpu_abis()) &&
            verifier.VerifyVectorOfStrings(cpu_abis()) &&
+           VerifyField<uint8_t>(verifier, VT_LOW_POWER_MODE_ENABLED, 1) &&
+           VerifyOffset(verifier, VT_CPU_USAGE) &&
+           verifier.VerifyTable(cpu_usage()) &&
+           VerifyField<uint8_t>(verifier, VT_THERMAL_STATE, 1) &&
            verifier.EndTable();
   }
 };
@@ -1008,6 +1143,15 @@ struct DeviceMetricsBuilder {
   void add_cpu_abis(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> cpu_abis) {
     fbb_.AddOffset(DeviceMetrics::VT_CPU_ABIS, cpu_abis);
   }
+  void add_low_power_mode_enabled(bool low_power_mode_enabled) {
+    fbb_.AddElement<uint8_t>(DeviceMetrics::VT_LOW_POWER_MODE_ENABLED, static_cast<uint8_t>(low_power_mode_enabled), 0);
+  }
+  void add_cpu_usage(::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessorUsage> cpu_usage) {
+    fbb_.AddOffset(DeviceMetrics::VT_CPU_USAGE, cpu_usage);
+  }
+  void add_thermal_state(uint8_t thermal_state) {
+    fbb_.AddElement<uint8_t>(DeviceMetrics::VT_THERMAL_STATE, thermal_state, 0);
+  }
   explicit DeviceMetricsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1032,8 +1176,12 @@ inline ::flatbuffers::Offset<DeviceMetrics> CreateDeviceMetrics(
     ::flatbuffers::Offset<::flatbuffers::String> model = 0,
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::OSBuild> os_build = 0,
     bitdrift_public::fbs::issue_reporting::v1::Platform platform = bitdrift_public::fbs::issue_reporting::v1::Platform_Unknown,
-    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> cpu_abis = 0) {
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> cpu_abis = 0,
+    bool low_power_mode_enabled = false,
+    ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessorUsage> cpu_usage = 0,
+    uint8_t thermal_state = 0) {
   DeviceMetricsBuilder builder_(_fbb);
+  builder_.add_cpu_usage(cpu_usage);
   builder_.add_cpu_abis(cpu_abis);
   builder_.add_os_build(os_build);
   builder_.add_model(model);
@@ -1042,6 +1190,8 @@ inline ::flatbuffers::Offset<DeviceMetrics> CreateDeviceMetrics(
   builder_.add_power_metrics(power_metrics);
   builder_.add_timezone(timezone);
   builder_.add_time(time);
+  builder_.add_thermal_state(thermal_state);
+  builder_.add_low_power_mode_enabled(low_power_mode_enabled);
   builder_.add_platform(platform);
   builder_.add_arch(arch);
   builder_.add_rotation(rotation);
@@ -1062,7 +1212,10 @@ inline ::flatbuffers::Offset<DeviceMetrics> CreateDeviceMetricsDirect(
     const char *model = nullptr,
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::OSBuild> os_build = 0,
     bitdrift_public::fbs::issue_reporting::v1::Platform platform = bitdrift_public::fbs::issue_reporting::v1::Platform_Unknown,
-    const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *cpu_abis = nullptr) {
+    const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *cpu_abis = nullptr,
+    bool low_power_mode_enabled = false,
+    ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessorUsage> cpu_usage = 0,
+    uint8_t thermal_state = 0) {
   auto timezone__ = timezone ? _fbb.CreateString(timezone) : 0;
   auto manufacturer__ = manufacturer ? _fbb.CreateString(manufacturer) : 0;
   auto model__ = model ? _fbb.CreateString(model) : 0;
@@ -1080,7 +1233,10 @@ inline ::flatbuffers::Offset<DeviceMetrics> CreateDeviceMetricsDirect(
       model__,
       os_build,
       platform,
-      cpu_abis__);
+      cpu_abis__,
+      low_power_mode_enabled,
+      cpu_usage,
+      thermal_state);
 }
 
 struct SourceFile FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -1450,7 +1606,8 @@ struct Thread FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_STATE = 10,
     VT_PRIORITY = 12,
     VT_QUALITY_OF_SERVICE = 14,
-    VT_STACK_TRACE = 16
+    VT_STACK_TRACE = 16,
+    VT_SUMMARY = 18
   };
   const ::flatbuffers::String *name() const {
     return GetPointer<const ::flatbuffers::String *>(VT_NAME);
@@ -1473,6 +1630,9 @@ struct Thread FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Frame>> *stack_trace() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Frame>> *>(VT_STACK_TRACE);
   }
+  const ::flatbuffers::String *summary() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_SUMMARY);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_NAME) &&
@@ -1486,6 +1646,8 @@ struct Thread FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyOffset(verifier, VT_STACK_TRACE) &&
            verifier.VerifyVector(stack_trace()) &&
            verifier.VerifyVectorOfTables(stack_trace()) &&
+           VerifyOffset(verifier, VT_SUMMARY) &&
+           verifier.VerifyString(summary()) &&
            verifier.EndTable();
   }
 };
@@ -1515,6 +1677,9 @@ struct ThreadBuilder {
   void add_stack_trace(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Frame>>> stack_trace) {
     fbb_.AddOffset(Thread::VT_STACK_TRACE, stack_trace);
   }
+  void add_summary(::flatbuffers::Offset<::flatbuffers::String> summary) {
+    fbb_.AddOffset(Thread::VT_SUMMARY, summary);
+  }
   explicit ThreadBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1534,8 +1699,10 @@ inline ::flatbuffers::Offset<Thread> CreateThread(
     ::flatbuffers::Offset<::flatbuffers::String> state = 0,
     float priority = 0.0f,
     int8_t quality_of_service = -1,
-    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Frame>>> stack_trace = 0) {
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Frame>>> stack_trace = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> summary = 0) {
   ThreadBuilder builder_(_fbb);
+  builder_.add_summary(summary);
   builder_.add_stack_trace(stack_trace);
   builder_.add_priority(priority);
   builder_.add_state(state);
@@ -1554,10 +1721,12 @@ inline ::flatbuffers::Offset<Thread> CreateThreadDirect(
     const char *state = nullptr,
     float priority = 0.0f,
     int8_t quality_of_service = -1,
-    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Frame>> *stack_trace = nullptr) {
+    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Frame>> *stack_trace = nullptr,
+    const char *summary = nullptr) {
   auto name__ = name ? _fbb.CreateString(name) : 0;
   auto state__ = state ? _fbb.CreateString(state) : 0;
   auto stack_trace__ = stack_trace ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Frame>>(*stack_trace) : 0;
+  auto summary__ = summary ? _fbb.CreateString(summary) : 0;
   return bitdrift_public::fbs::issue_reporting::v1::CreateThread(
       _fbb,
       name__,
@@ -1566,7 +1735,8 @@ inline ::flatbuffers::Offset<Thread> CreateThreadDirect(
       state__,
       priority,
       quality_of_service,
-      stack_trace__);
+      stack_trace__,
+      summary__);
 }
 
 struct ThreadDetails FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -1879,6 +2049,74 @@ inline ::flatbuffers::Offset<SDKInfo> CreateSDKInfoDirect(
       version__);
 }
 
+struct FeatureFlag FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef FeatureFlagBuilder Builder;
+  static const ::flatbuffers::TypeTable *MiniReflectTypeTable() {
+    return FeatureFlagTypeTable();
+  }
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_NAME = 4,
+    VT_VALUE = 6
+  };
+  const ::flatbuffers::String *name() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_NAME);
+  }
+  const ::flatbuffers::String *value() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_VALUE);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_NAME) &&
+           verifier.VerifyString(name()) &&
+           VerifyOffset(verifier, VT_VALUE) &&
+           verifier.VerifyString(value()) &&
+           verifier.EndTable();
+  }
+};
+
+struct FeatureFlagBuilder {
+  typedef FeatureFlag Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_name(::flatbuffers::Offset<::flatbuffers::String> name) {
+    fbb_.AddOffset(FeatureFlag::VT_NAME, name);
+  }
+  void add_value(::flatbuffers::Offset<::flatbuffers::String> value) {
+    fbb_.AddOffset(FeatureFlag::VT_VALUE, value);
+  }
+  explicit FeatureFlagBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<FeatureFlag> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<FeatureFlag>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<FeatureFlag> CreateFeatureFlag(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> name = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> value = 0) {
+  FeatureFlagBuilder builder_(_fbb);
+  builder_.add_value(value);
+  builder_.add_name(name);
+  return builder_.Finish();
+}
+
+inline ::flatbuffers::Offset<FeatureFlag> CreateFeatureFlagDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    const char *name = nullptr,
+    const char *value = nullptr) {
+  auto name__ = name ? _fbb.CreateString(name) : 0;
+  auto value__ = value ? _fbb.CreateString(value) : 0;
+  return bitdrift_public::fbs::issue_reporting::v1::CreateFeatureFlag(
+      _fbb,
+      name__,
+      value__);
+}
+
 struct Report FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef ReportBuilder Builder;
   static const ::flatbuffers::TypeTable *MiniReflectTypeTable() {
@@ -1891,7 +2129,9 @@ struct Report FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_DEVICE_METRICS = 10,
     VT_ERRORS = 12,
     VT_THREAD_DETAILS = 14,
-    VT_BINARY_IMAGES = 16
+    VT_BINARY_IMAGES = 16,
+    VT_STATE = 18,
+    VT_FEATURE_FLAGS = 20
   };
   const bitdrift_public::fbs::issue_reporting::v1::SDKInfo *sdk() const {
     return GetPointer<const bitdrift_public::fbs::issue_reporting::v1::SDKInfo *>(VT_SDK);
@@ -1914,6 +2154,12 @@ struct Report FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>> *binary_images() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>> *>(VT_BINARY_IMAGES);
   }
+  const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *state() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *>(VT_STATE);
+  }
+  const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>> *feature_flags() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>> *>(VT_FEATURE_FLAGS);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_SDK) &&
@@ -1931,6 +2177,12 @@ struct Report FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyOffset(verifier, VT_BINARY_IMAGES) &&
            verifier.VerifyVector(binary_images()) &&
            verifier.VerifyVectorOfTables(binary_images()) &&
+           VerifyOffset(verifier, VT_STATE) &&
+           verifier.VerifyVector(state()) &&
+           verifier.VerifyVectorOfTables(state()) &&
+           VerifyOffset(verifier, VT_FEATURE_FLAGS) &&
+           verifier.VerifyVector(feature_flags()) &&
+           verifier.VerifyVectorOfTables(feature_flags()) &&
            verifier.EndTable();
   }
 };
@@ -1960,6 +2212,12 @@ struct ReportBuilder {
   void add_binary_images(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>>> binary_images) {
     fbb_.AddOffset(Report::VT_BINARY_IMAGES, binary_images);
   }
+  void add_state(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>> state) {
+    fbb_.AddOffset(Report::VT_STATE, state);
+  }
+  void add_feature_flags(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>>> feature_flags) {
+    fbb_.AddOffset(Report::VT_FEATURE_FLAGS, feature_flags);
+  }
   explicit ReportBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1979,8 +2237,12 @@ inline ::flatbuffers::Offset<Report> CreateReport(
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::DeviceMetrics> device_metrics = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Error>>> errors = 0,
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ThreadDetails> thread_details = 0,
-    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>>> binary_images = 0) {
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>>> binary_images = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>> state = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>>> feature_flags = 0) {
   ReportBuilder builder_(_fbb);
+  builder_.add_feature_flags(feature_flags);
+  builder_.add_state(state);
   builder_.add_binary_images(binary_images);
   builder_.add_thread_details(thread_details);
   builder_.add_errors(errors);
@@ -1999,9 +2261,13 @@ inline ::flatbuffers::Offset<Report> CreateReportDirect(
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::DeviceMetrics> device_metrics = 0,
     const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Error>> *errors = nullptr,
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ThreadDetails> thread_details = 0,
-    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>> *binary_images = nullptr) {
+    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>> *binary_images = nullptr,
+    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *state = nullptr,
+    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>> *feature_flags = nullptr) {
   auto errors__ = errors ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Error>>(*errors) : 0;
   auto binary_images__ = binary_images ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>>(*binary_images) : 0;
+  auto state__ = state ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>(*state) : 0;
+  auto feature_flags__ = feature_flags ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>>(*feature_flags) : 0;
   return bitdrift_public::fbs::issue_reporting::v1::CreateReport(
       _fbb,
       sdk,
@@ -2010,7 +2276,9 @@ inline ::flatbuffers::Offset<Report> CreateReportDirect(
       device_metrics,
       errors__,
       thread_details,
-      binary_images__);
+      binary_images__,
+      state__,
+      feature_flags__);
 }
 
 inline const ::flatbuffers::TypeTable *ReportTypeTypeTable() {
@@ -2269,27 +2537,51 @@ inline const ::flatbuffers::TypeTable *AppBuildNumberTypeTable() {
   return &tt;
 }
 
+inline const ::flatbuffers::TypeTable *ProcessorUsageTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_ULONG, 0, -1 },
+    { ::flatbuffers::ET_UCHAR, 0, -1 }
+  };
+  static const char * const names[] = {
+    "duration_seconds",
+    "used_percent"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_TABLE, 2, type_codes, nullptr, nullptr, nullptr, names
+  };
+  return &tt;
+}
+
 inline const ::flatbuffers::TypeTable *AppMetricsTypeTable() {
   static const ::flatbuffers::TypeCode type_codes[] = {
     { ::flatbuffers::ET_STRING, 0, -1 },
     { ::flatbuffers::ET_SEQUENCE, 0, 0 },
     { ::flatbuffers::ET_STRING, 0, -1 },
     { ::flatbuffers::ET_SEQUENCE, 0, 1 },
+    { ::flatbuffers::ET_STRING, 0, -1 },
+    { ::flatbuffers::ET_UINT, 0, -1 },
+    { ::flatbuffers::ET_STRING, 0, -1 },
+    { ::flatbuffers::ET_SEQUENCE, 0, 2 },
     { ::flatbuffers::ET_STRING, 0, -1 }
   };
   static const ::flatbuffers::TypeFunction type_refs[] = {
     bitdrift_public::fbs::issue_reporting::v1::MemoryTypeTable,
-    bitdrift_public::fbs::issue_reporting::v1::AppBuildNumberTypeTable
+    bitdrift_public::fbs::issue_reporting::v1::AppBuildNumberTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::ProcessorUsageTypeTable
   };
   static const char * const names[] = {
     "app_id",
     "memory",
     "version",
     "build_number",
-    "running_state"
+    "running_state",
+    "process_id",
+    "region_format",
+    "cpu_usage",
+    "lifecycle_event"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_TABLE, 5, type_codes, type_refs, nullptr, nullptr, names
+    ::flatbuffers::ST_TABLE, 9, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
@@ -2361,7 +2653,10 @@ inline const ::flatbuffers::TypeTable *DeviceMetricsTypeTable() {
     { ::flatbuffers::ET_STRING, 0, -1 },
     { ::flatbuffers::ET_SEQUENCE, 0, 6 },
     { ::flatbuffers::ET_CHAR, 0, 7 },
-    { ::flatbuffers::ET_STRING, 1, -1 }
+    { ::flatbuffers::ET_STRING, 1, -1 },
+    { ::flatbuffers::ET_BOOL, 0, -1 },
+    { ::flatbuffers::ET_SEQUENCE, 0, 8 },
+    { ::flatbuffers::ET_UCHAR, 0, -1 }
   };
   static const ::flatbuffers::TypeFunction type_refs[] = {
     bitdrift_public::fbs::issue_reporting::v1::TimestampTypeTable,
@@ -2371,7 +2666,8 @@ inline const ::flatbuffers::TypeTable *DeviceMetricsTypeTable() {
     bitdrift_public::fbs::issue_reporting::v1::ArchitectureTypeTable,
     bitdrift_public::fbs::issue_reporting::v1::DisplayTypeTable,
     bitdrift_public::fbs::issue_reporting::v1::OSBuildTypeTable,
-    bitdrift_public::fbs::issue_reporting::v1::PlatformTypeTable
+    bitdrift_public::fbs::issue_reporting::v1::PlatformTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::ProcessorUsageTypeTable
   };
   static const char * const names[] = {
     "time",
@@ -2385,10 +2681,13 @@ inline const ::flatbuffers::TypeTable *DeviceMetricsTypeTable() {
     "model",
     "os_build",
     "platform",
-    "cpu_abis"
+    "cpu_abis",
+    "low_power_mode_enabled",
+    "cpu_usage",
+    "thermal_state"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_TABLE, 12, type_codes, type_refs, nullptr, nullptr, names
+    ::flatbuffers::ST_TABLE, 15, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
@@ -2476,7 +2775,8 @@ inline const ::flatbuffers::TypeTable *ThreadTypeTable() {
     { ::flatbuffers::ET_STRING, 0, -1 },
     { ::flatbuffers::ET_FLOAT, 0, -1 },
     { ::flatbuffers::ET_CHAR, 0, -1 },
-    { ::flatbuffers::ET_SEQUENCE, 1, 0 }
+    { ::flatbuffers::ET_SEQUENCE, 1, 0 },
+    { ::flatbuffers::ET_STRING, 0, -1 }
   };
   static const ::flatbuffers::TypeFunction type_refs[] = {
     bitdrift_public::fbs::issue_reporting::v1::FrameTypeTable
@@ -2488,10 +2788,11 @@ inline const ::flatbuffers::TypeTable *ThreadTypeTable() {
     "state",
     "priority",
     "quality_of_service",
-    "stack_trace"
+    "stack_trace",
+    "summary"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_TABLE, 7, type_codes, type_refs, nullptr, nullptr, names
+    ::flatbuffers::ST_TABLE, 8, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
@@ -2569,6 +2870,21 @@ inline const ::flatbuffers::TypeTable *SDKInfoTypeTable() {
   return &tt;
 }
 
+inline const ::flatbuffers::TypeTable *FeatureFlagTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_STRING, 0, -1 },
+    { ::flatbuffers::ET_STRING, 0, -1 }
+  };
+  static const char * const names[] = {
+    "name",
+    "value"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_TABLE, 2, type_codes, nullptr, nullptr, nullptr, names
+  };
+  return &tt;
+}
+
 inline const ::flatbuffers::TypeTable *ReportTypeTable() {
   static const ::flatbuffers::TypeCode type_codes[] = {
     { ::flatbuffers::ET_SEQUENCE, 0, 0 },
@@ -2577,7 +2893,9 @@ inline const ::flatbuffers::TypeTable *ReportTypeTable() {
     { ::flatbuffers::ET_SEQUENCE, 0, 3 },
     { ::flatbuffers::ET_SEQUENCE, 1, 4 },
     { ::flatbuffers::ET_SEQUENCE, 0, 5 },
-    { ::flatbuffers::ET_SEQUENCE, 1, 6 }
+    { ::flatbuffers::ET_SEQUENCE, 1, 6 },
+    { ::flatbuffers::ET_SEQUENCE, 1, 7 },
+    { ::flatbuffers::ET_SEQUENCE, 1, 8 }
   };
   static const ::flatbuffers::TypeFunction type_refs[] = {
     bitdrift_public::fbs::issue_reporting::v1::SDKInfoTypeTable,
@@ -2586,7 +2904,9 @@ inline const ::flatbuffers::TypeTable *ReportTypeTable() {
     bitdrift_public::fbs::issue_reporting::v1::DeviceMetricsTypeTable,
     bitdrift_public::fbs::issue_reporting::v1::ErrorTypeTable,
     bitdrift_public::fbs::issue_reporting::v1::ThreadDetailsTypeTable,
-    bitdrift_public::fbs::issue_reporting::v1::BinaryImageTypeTable
+    bitdrift_public::fbs::issue_reporting::v1::BinaryImageTypeTable,
+    bitdrift_public::fbs::common::v1::FieldTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::FeatureFlagTypeTable
   };
   static const char * const names[] = {
     "sdk",
@@ -2595,10 +2915,12 @@ inline const ::flatbuffers::TypeTable *ReportTypeTable() {
     "device_metrics",
     "errors",
     "thread_details",
-    "binary_images"
+    "binary_images",
+    "state",
+    "feature_flags"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_TABLE, 7, type_codes, type_refs, nullptr, nullptr, names
+    ::flatbuffers::ST_TABLE, 9, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }

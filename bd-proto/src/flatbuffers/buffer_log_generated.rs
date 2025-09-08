@@ -3,6 +3,7 @@
 
 // @generated
 
+use crate::common_generated::*;
 use core::mem;
 use core::cmp::Ordering;
 
@@ -12,6 +13,7 @@ use self::flatbuffers::{EndianScalar, Follow};
 #[allow(unused_imports, dead_code)]
 pub mod bitdrift_public {
 
+  use crate::common_generated::*;
   use core::mem;
   use core::cmp::Ordering;
 
@@ -20,6 +22,7 @@ pub mod bitdrift_public {
 #[allow(unused_imports, dead_code)]
 pub mod fbs {
 
+  use crate::common_generated::*;
   use core::mem;
   use core::cmp::Ordering;
 
@@ -28,6 +31,7 @@ pub mod fbs {
 #[allow(unused_imports, dead_code)]
 pub mod logging {
 
+  use crate::common_generated::*;
   use core::mem;
   use core::cmp::Ordering;
 
@@ -36,102 +40,12 @@ pub mod logging {
 #[allow(unused_imports, dead_code)]
 pub mod v_1 {
 
+  use crate::common_generated::*;
   use core::mem;
   use core::cmp::Ordering;
 
   extern crate flatbuffers;
   use self::flatbuffers::{EndianScalar, Follow};
-
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MIN_DATA: u8 = 0;
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MAX_DATA: u8 = 2;
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-#[allow(non_camel_case_types)]
-pub const ENUM_VALUES_DATA: [Data; 3] = [
-  Data::NONE,
-  Data::string_data,
-  Data::binary_data,
-];
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-#[repr(transparent)]
-pub struct Data(pub u8);
-#[allow(non_upper_case_globals)]
-impl Data {
-  pub const NONE: Self = Self(0);
-  pub const string_data: Self = Self(1);
-  pub const binary_data: Self = Self(2);
-
-  pub const ENUM_MIN: u8 = 0;
-  pub const ENUM_MAX: u8 = 2;
-  pub const ENUM_VALUES: &'static [Self] = &[
-    Self::NONE,
-    Self::string_data,
-    Self::binary_data,
-  ];
-  /// Returns the variant's name or "" if unknown.
-  pub fn variant_name(self) -> Option<&'static str> {
-    match self {
-      Self::NONE => Some("NONE"),
-      Self::string_data => Some("string_data"),
-      Self::binary_data => Some("binary_data"),
-      _ => None,
-    }
-  }
-}
-impl core::fmt::Debug for Data {
-  fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-    if let Some(name) = self.variant_name() {
-      f.write_str(name)
-    } else {
-      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
-    }
-  }
-}
-impl<'a> flatbuffers::Follow<'a> for Data {
-  type Inner = Self;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    let b = flatbuffers::read_scalar_at::<u8>(buf, loc);
-    Self(b)
-  }
-}
-
-impl flatbuffers::Push for Data {
-    type Output = Data;
-    #[inline]
-    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
-        flatbuffers::emplace_scalar::<u8>(dst, self.0);
-    }
-}
-
-impl flatbuffers::EndianScalar for Data {
-  type Scalar = u8;
-  #[inline]
-  fn to_little_endian(self) -> u8 {
-    self.0.to_le()
-  }
-  #[inline]
-  #[allow(clippy::wrong_self_convention)]
-  fn from_little_endian(v: u8) -> Self {
-    let b = u8::from_le(v);
-    Self(b)
-  }
-}
-
-impl<'a> flatbuffers::Verifiable for Data {
-  #[inline]
-  fn run_verifier(
-    v: &mut flatbuffers::Verifier, pos: usize
-  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
-    use self::flatbuffers::Verifiable;
-    u8::run_verifier(v, pos)
-  }
-}
-
-impl flatbuffers::SimpleToVerifyInSlice for Data {}
-pub struct DataUnionTableOffset {}
 
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 pub const ENUM_MIN_LOG_TYPE: u32 = 0;
@@ -246,219 +160,6 @@ impl<'a> flatbuffers::Verifiable for LogType {
 }
 
 impl flatbuffers::SimpleToVerifyInSlice for LogType {}
-pub enum StringDataOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct StringData<'a> {
-  pub _tab: flatbuffers::Table<'a>,
-}
-
-impl<'a> flatbuffers::Follow<'a> for StringData<'a> {
-  type Inner = StringData<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: flatbuffers::Table::new(buf, loc) }
-  }
-}
-
-impl<'a> StringData<'a> {
-  pub const VT_DATA: flatbuffers::VOffsetT = 4;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
-    StringData { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args StringDataArgs<'args>
-  ) -> flatbuffers::WIPOffset<StringData<'bldr>> {
-    let mut builder = StringDataBuilder::new(_fbb);
-    if let Some(x) = args.data { builder.add_data(x); }
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn data(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(StringData::VT_DATA, None).unwrap()}
-  }
-}
-
-impl flatbuffers::Verifiable for StringData<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut flatbuffers::Verifier, pos: usize
-  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
-    use self::flatbuffers::Verifiable;
-    v.visit_table(pos)?
-     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("data", Self::VT_DATA, true)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct StringDataArgs<'a> {
-    pub data: Option<flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for StringDataArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    StringDataArgs {
-      data: None, // required field
-    }
-  }
-}
-
-pub struct StringDataBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> StringDataBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_data(&mut self, data: flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(StringData::VT_DATA, data);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> StringDataBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    StringDataBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> flatbuffers::WIPOffset<StringData<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    self.fbb_.required(o, StringData::VT_DATA,"data");
-    flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl core::fmt::Debug for StringData<'_> {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-    let mut ds = f.debug_struct("StringData");
-      ds.field("data", &self.data());
-      ds.finish()
-  }
-}
-pub enum BinaryDataOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct BinaryData<'a> {
-  pub _tab: flatbuffers::Table<'a>,
-}
-
-impl<'a> flatbuffers::Follow<'a> for BinaryData<'a> {
-  type Inner = BinaryData<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: flatbuffers::Table::new(buf, loc) }
-  }
-}
-
-impl<'a> BinaryData<'a> {
-  pub const VT_DATA_TYPE: flatbuffers::VOffsetT = 4;
-  pub const VT_DATA: flatbuffers::VOffsetT = 6;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
-    BinaryData { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args BinaryDataArgs<'args>
-  ) -> flatbuffers::WIPOffset<BinaryData<'bldr>> {
-    let mut builder = BinaryDataBuilder::new(_fbb);
-    if let Some(x) = args.data { builder.add_data(x); }
-    if let Some(x) = args.data_type { builder.add_data_type(x); }
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn data_type(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(BinaryData::VT_DATA_TYPE, None)}
-  }
-  #[inline]
-  pub fn data(&self) -> flatbuffers::Vector<'a, u8> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, u8>>>(BinaryData::VT_DATA, None).unwrap()}
-  }
-}
-
-impl flatbuffers::Verifiable for BinaryData<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut flatbuffers::Verifier, pos: usize
-  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
-    use self::flatbuffers::Verifiable;
-    v.visit_table(pos)?
-     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("data_type", Self::VT_DATA_TYPE, false)?
-     .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, u8>>>("data", Self::VT_DATA, true)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct BinaryDataArgs<'a> {
-    pub data_type: Option<flatbuffers::WIPOffset<&'a str>>,
-    pub data: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, u8>>>,
-}
-impl<'a> Default for BinaryDataArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    BinaryDataArgs {
-      data_type: None,
-      data: None, // required field
-    }
-  }
-}
-
-pub struct BinaryDataBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> BinaryDataBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_data_type(&mut self, data_type: flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(BinaryData::VT_DATA_TYPE, data_type);
-  }
-  #[inline]
-  pub fn add_data(&mut self, data: flatbuffers::WIPOffset<flatbuffers::Vector<'b , u8>>) {
-    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(BinaryData::VT_DATA, data);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> BinaryDataBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    BinaryDataBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> flatbuffers::WIPOffset<BinaryData<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    self.fbb_.required(o, BinaryData::VT_DATA,"data");
-    flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl core::fmt::Debug for BinaryData<'_> {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-    let mut ds = f.debug_struct("BinaryData");
-      ds.field("data_type", &self.data_type());
-      ds.field("data", &self.data());
-      ds.finish()
-  }
-}
 pub enum TimestampOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -573,191 +274,6 @@ impl core::fmt::Debug for Timestamp<'_> {
       ds.finish()
   }
 }
-pub enum FieldOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct Field<'a> {
-  pub _tab: flatbuffers::Table<'a>,
-}
-
-impl<'a> flatbuffers::Follow<'a> for Field<'a> {
-  type Inner = Field<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: flatbuffers::Table::new(buf, loc) }
-  }
-}
-
-impl<'a> Field<'a> {
-  pub const VT_KEY: flatbuffers::VOffsetT = 4;
-  pub const VT_VALUE_TYPE: flatbuffers::VOffsetT = 6;
-  pub const VT_VALUE: flatbuffers::VOffsetT = 8;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
-    Field { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args FieldArgs<'args>
-  ) -> flatbuffers::WIPOffset<Field<'bldr>> {
-    let mut builder = FieldBuilder::new(_fbb);
-    if let Some(x) = args.value { builder.add_value(x); }
-    if let Some(x) = args.key { builder.add_key(x); }
-    builder.add_value_type(args.value_type);
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn key(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(Field::VT_KEY, None).unwrap()}
-  }
-  #[inline]
-  pub fn value_type(&self) -> Data {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<Data>(Field::VT_VALUE_TYPE, Some(Data::NONE)).unwrap()}
-  }
-  #[inline]
-  pub fn value(&self) -> flatbuffers::Table<'a> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Table<'a>>>(Field::VT_VALUE, None).unwrap()}
-  }
-  #[inline]
-  #[allow(non_snake_case)]
-  pub fn value_as_string_data(&self) -> Option<StringData<'a>> {
-    if self.value_type() == Data::string_data {
-      let u = self.value();
-      // Safety:
-      // Created from a valid Table for this object
-      // Which contains a valid union in this slot
-      Some(unsafe { StringData::init_from_table(u) })
-    } else {
-      None
-    }
-  }
-
-  #[inline]
-  #[allow(non_snake_case)]
-  pub fn value_as_binary_data(&self) -> Option<BinaryData<'a>> {
-    if self.value_type() == Data::binary_data {
-      let u = self.value();
-      // Safety:
-      // Created from a valid Table for this object
-      // Which contains a valid union in this slot
-      Some(unsafe { BinaryData::init_from_table(u) })
-    } else {
-      None
-    }
-  }
-
-}
-
-impl flatbuffers::Verifiable for Field<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut flatbuffers::Verifier, pos: usize
-  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
-    use self::flatbuffers::Verifiable;
-    v.visit_table(pos)?
-     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("key", Self::VT_KEY, true)?
-     .visit_union::<Data, _>("value_type", Self::VT_VALUE_TYPE, "value", Self::VT_VALUE, true, |key, v, pos| {
-        match key {
-          Data::string_data => v.verify_union_variant::<flatbuffers::ForwardsUOffset<StringData>>("Data::string_data", pos),
-          Data::binary_data => v.verify_union_variant::<flatbuffers::ForwardsUOffset<BinaryData>>("Data::binary_data", pos),
-          _ => Ok(()),
-        }
-     })?
-     .finish();
-    Ok(())
-  }
-}
-pub struct FieldArgs<'a> {
-    pub key: Option<flatbuffers::WIPOffset<&'a str>>,
-    pub value_type: Data,
-    pub value: Option<flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>>,
-}
-impl<'a> Default for FieldArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    FieldArgs {
-      key: None, // required field
-      value_type: Data::NONE,
-      value: None, // required field
-    }
-  }
-}
-
-pub struct FieldBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> FieldBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_key(&mut self, key: flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Field::VT_KEY, key);
-  }
-  #[inline]
-  pub fn add_value_type(&mut self, value_type: Data) {
-    self.fbb_.push_slot::<Data>(Field::VT_VALUE_TYPE, value_type, Data::NONE);
-  }
-  #[inline]
-  pub fn add_value(&mut self, value: flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>) {
-    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Field::VT_VALUE, value);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> FieldBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    FieldBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> flatbuffers::WIPOffset<Field<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    self.fbb_.required(o, Field::VT_KEY,"key");
-    self.fbb_.required(o, Field::VT_VALUE,"value");
-    flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl core::fmt::Debug for Field<'_> {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-    let mut ds = f.debug_struct("Field");
-      ds.field("key", &self.key());
-      ds.field("value_type", &self.value_type());
-      match self.value_type() {
-        Data::string_data => {
-          if let Some(x) = self.value_as_string_data() {
-            ds.field("value", &x)
-          } else {
-            ds.field("value", &"InvalidFlatbuffer: Union discriminant does not match value.")
-          }
-        },
-        Data::binary_data => {
-          if let Some(x) = self.value_as_binary_data() {
-            ds.field("value", &x)
-          } else {
-            ds.field("value", &"InvalidFlatbuffer: Union discriminant does not match value.")
-          }
-        },
-        _ => {
-          let x: Option<()> = None;
-          ds.field("value", &x)
-        },
-      };
-      ds.finish()
-  }
-}
 pub enum LogOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -815,11 +331,11 @@ impl<'a> Log<'a> {
     unsafe { self._tab.get::<u32>(Log::VT_LOG_LEVEL, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn message_type(&self) -> Data {
+  pub fn message_type(&self) -> super::super::common::v_1::Data {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<Data>(Log::VT_MESSAGE_TYPE, Some(Data::NONE)).unwrap()}
+    unsafe { self._tab.get::<super::super::common::v_1::Data>(Log::VT_MESSAGE_TYPE, Some(super::super::common::v_1::Data::NONE)).unwrap()}
   }
   #[inline]
   pub fn message(&self) -> flatbuffers::Table<'a> {
@@ -829,11 +345,11 @@ impl<'a> Log<'a> {
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Table<'a>>>(Log::VT_MESSAGE, None).unwrap()}
   }
   #[inline]
-  pub fn fields(&self) -> Option<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<Field<'a>>>> {
+  pub fn fields(&self) -> Option<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'a>>>> {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<Field>>>>(Log::VT_FIELDS, None)}
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field>>>>(Log::VT_FIELDS, None)}
   }
   #[inline]
   pub fn session_id(&self) -> Option<&'a str> {
@@ -872,13 +388,13 @@ impl<'a> Log<'a> {
   }
   #[inline]
   #[allow(non_snake_case)]
-  pub fn message_as_string_data(&self) -> Option<StringData<'a>> {
-    if self.message_type() == Data::string_data {
+  pub fn message_as_string_data(&self) -> Option<super::super::common::v_1::StringData<'a>> {
+    if self.message_type() == super::super::common::v_1::Data::string_data {
       let u = self.message();
       // Safety:
       // Created from a valid Table for this object
       // Which contains a valid union in this slot
-      Some(unsafe { StringData::init_from_table(u) })
+      Some(unsafe { super::super::common::v_1::StringData::init_from_table(u) })
     } else {
       None
     }
@@ -886,13 +402,13 @@ impl<'a> Log<'a> {
 
   #[inline]
   #[allow(non_snake_case)]
-  pub fn message_as_binary_data(&self) -> Option<BinaryData<'a>> {
-    if self.message_type() == Data::binary_data {
+  pub fn message_as_binary_data(&self) -> Option<super::super::common::v_1::BinaryData<'a>> {
+    if self.message_type() == super::super::common::v_1::Data::binary_data {
       let u = self.message();
       // Safety:
       // Created from a valid Table for this object
       // Which contains a valid union in this slot
-      Some(unsafe { BinaryData::init_from_table(u) })
+      Some(unsafe { super::super::common::v_1::BinaryData::init_from_table(u) })
     } else {
       None
     }
@@ -908,14 +424,14 @@ impl flatbuffers::Verifiable for Log<'_> {
     use self::flatbuffers::Verifiable;
     v.visit_table(pos)?
      .visit_field::<u32>("log_level", Self::VT_LOG_LEVEL, false)?
-     .visit_union::<Data, _>("message_type", Self::VT_MESSAGE_TYPE, "message", Self::VT_MESSAGE, true, |key, v, pos| {
+     .visit_union::<super::super::common::v_1::Data, _>("message_type", Self::VT_MESSAGE_TYPE, "message", Self::VT_MESSAGE, true, |key, v, pos| {
         match key {
-          Data::string_data => v.verify_union_variant::<flatbuffers::ForwardsUOffset<StringData>>("Data::string_data", pos),
-          Data::binary_data => v.verify_union_variant::<flatbuffers::ForwardsUOffset<BinaryData>>("Data::binary_data", pos),
+          super::super::common::v_1::Data::string_data => v.verify_union_variant::<flatbuffers::ForwardsUOffset<super::super::common::v_1::StringData>>("super::super::common::v_1::Data::string_data", pos),
+          super::super::common::v_1::Data::binary_data => v.verify_union_variant::<flatbuffers::ForwardsUOffset<super::super::common::v_1::BinaryData>>("super::super::common::v_1::Data::binary_data", pos),
           _ => Ok(()),
         }
      })?
-     .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<Field>>>>("fields", Self::VT_FIELDS, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field>>>>("fields", Self::VT_FIELDS, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("session_id", Self::VT_SESSION_ID, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<Timestamp>>("timestamp", Self::VT_TIMESTAMP, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&'_ str>>>>("workflow_action_ids", Self::VT_WORKFLOW_ACTION_IDS, false)?
@@ -927,9 +443,9 @@ impl flatbuffers::Verifiable for Log<'_> {
 }
 pub struct LogArgs<'a> {
     pub log_level: u32,
-    pub message_type: Data,
+    pub message_type: super::super::common::v_1::Data,
     pub message: Option<flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>>,
-    pub fields: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<Field<'a>>>>>,
+    pub fields: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'a>>>>>,
     pub session_id: Option<flatbuffers::WIPOffset<&'a str>>,
     pub timestamp: Option<flatbuffers::WIPOffset<Timestamp<'a>>>,
     pub workflow_action_ids: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<&'a str>>>>,
@@ -941,7 +457,7 @@ impl<'a> Default for LogArgs<'a> {
   fn default() -> Self {
     LogArgs {
       log_level: 0,
-      message_type: Data::NONE,
+      message_type: super::super::common::v_1::Data::NONE,
       message: None, // required field
       fields: None,
       session_id: None,
@@ -963,15 +479,15 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> LogBuilder<'a, 'b, A> {
     self.fbb_.push_slot::<u32>(Log::VT_LOG_LEVEL, log_level, 0);
   }
   #[inline]
-  pub fn add_message_type(&mut self, message_type: Data) {
-    self.fbb_.push_slot::<Data>(Log::VT_MESSAGE_TYPE, message_type, Data::NONE);
+  pub fn add_message_type(&mut self, message_type: super::super::common::v_1::Data) {
+    self.fbb_.push_slot::<super::super::common::v_1::Data>(Log::VT_MESSAGE_TYPE, message_type, super::super::common::v_1::Data::NONE);
   }
   #[inline]
   pub fn add_message(&mut self, message: flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>) {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Log::VT_MESSAGE, message);
   }
   #[inline]
-  pub fn add_fields(&mut self, fields: flatbuffers::WIPOffset<flatbuffers::Vector<'b , flatbuffers::ForwardsUOffset<Field<'b >>>>) {
+  pub fn add_fields(&mut self, fields: flatbuffers::WIPOffset<flatbuffers::Vector<'b , flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'b >>>>) {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Log::VT_FIELDS, fields);
   }
   #[inline]
@@ -1016,14 +532,14 @@ impl core::fmt::Debug for Log<'_> {
       ds.field("log_level", &self.log_level());
       ds.field("message_type", &self.message_type());
       match self.message_type() {
-        Data::string_data => {
+        super::super::common::v_1::Data::string_data => {
           if let Some(x) = self.message_as_string_data() {
             ds.field("message", &x)
           } else {
             ds.field("message", &"InvalidFlatbuffer: Union discriminant does not match value.")
           }
         },
-        Data::binary_data => {
+        super::super::common::v_1::Data::binary_data => {
           if let Some(x) = self.message_as_binary_data() {
             ds.field("message", &x)
           } else {

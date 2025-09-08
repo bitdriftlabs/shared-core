@@ -10,12 +10,13 @@
 mod runtime_test;
 
 use anyhow::anyhow;
-use bd_client_common::payload_conversion::{FromResponse, IntoRequest, RuntimeConfigurationUpdate};
+use bd_client_common::HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE;
+use bd_client_common::file::write_compressed_protobuf;
+use bd_client_common::payload_conversion::{IntoRequest, RuntimeConfigurationUpdate};
 use bd_client_common::safe_file_cache::SafeFileCache;
-use bd_client_common::{ConfigurationUpdate, HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE};
+use bd_proto::protos::client::api::configuration_update_ack::Nack;
 use bd_proto::protos::client::api::{
   ApiRequest,
-  ApiResponse,
   ConfigurationUpdateAck,
   HandshakeRequest,
   RuntimeUpdate,
@@ -93,7 +94,10 @@ struct LoaderState {
   snapshot: Arc<Snapshot>,
 
   /// Tracks watches for each runtime key.
-  watches: HashMap<&'static str, InternalWatchKind>,
+  int_watches: HashMap<&'static str, InternalWatch<u32>>,
+  bool_watches: HashMap<&'static str, InternalWatch<bool>>,
+  duration_watches: HashMap<&'static str, InternalWatch<time::Duration>>,
+  string_watches: HashMap<&'static str, InternalWatch<String>>,
 
   initialized: bool,
 }
@@ -102,7 +106,10 @@ impl LoaderState {
   fn new(runtime: Runtime, version_nonce: Option<String>) -> Self {
     Self {
       snapshot: Arc::new(Snapshot::new(runtime, version_nonce)),
-      watches: HashMap::new(),
+      int_watches: HashMap::new(),
+      bool_watches: HashMap::new(),
+      duration_watches: HashMap::new(),
+      string_watches: HashMap::new(),
       initialized: false,
     }
   }
@@ -115,43 +122,53 @@ pub struct ConfigLoader {
   file_cache: SafeFileCache<RuntimeUpdate>,
 }
 
-#[async_trait::async_trait]
-impl ConfigurationUpdate for ConfigLoader {
-  async fn try_apply_config(&self, response: &ApiResponse) -> Option<ApiRequest> {
-    let update = RuntimeUpdate::from_response(response)?;
-    log::debug!("applying runtime update: {}", update);
-    self.update_snapshot(update).await;
+impl ConfigLoader {
+  pub async fn clear_cached_config(&self) {
+    self.file_cache.reset().await;
+  }
+
+  pub async fn try_load_persisted_config(&self) {
+    self.handle_cached_config().await;
+  }
+
+  pub fn fill_handshake(&self, handshake: &mut HandshakeRequest) {
+    handshake.runtime_version_nonce = self.snapshot().nonce.clone().unwrap_or_default();
+  }
+
+  pub async fn on_handshake_complete(&self, configuration_update_status: u32) {
+    if configuration_update_status & HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE != 0 {
+      self.file_cache.mark_safe().await;
+    }
+  }
+
+  pub async fn mark_safe(&self) {
+    self.file_cache.mark_safe().await;
+  }
+
+  pub async fn try_apply_config(&self, update: RuntimeUpdate) -> Option<ApiRequest> {
+    log::debug!("applying runtime update: {update}");
+    let version_nonce = update.version_nonce.clone();
+    let result = self.update_snapshot(update).await;
 
     Some(
       RuntimeConfigurationUpdate(ConfigurationUpdateAck {
         last_applied_version_nonce: self.snapshot().nonce.clone().unwrap_or_default(),
-        nack: None.into(),
+        nack: if let Err(e) = result {
+          Some(Nack {
+            version_nonce,
+            error_details: e.to_string(),
+            ..Default::default()
+          })
+        } else {
+          None
+        }
+        .into(),
         ..Default::default()
       })
       .into_request(),
     )
   }
 
-  async fn try_load_persisted_config(&self) {
-    self.handle_cached_config().await;
-  }
-
-  fn fill_handshake(&self, handshake: &mut HandshakeRequest) {
-    handshake.runtime_version_nonce = self.snapshot().nonce.clone().unwrap_or_default();
-  }
-
-  async fn on_handshake_complete(&self, configuration_update_status: u32) {
-    if configuration_update_status & HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE != 0 {
-      self.file_cache.mark_safe().await;
-    }
-  }
-
-  async fn mark_safe(&self) {
-    self.file_cache.mark_safe().await;
-  }
-}
-
-impl ConfigLoader {
   #[must_use]
   pub fn new(sdk_directory: &Path) -> Arc<Self> {
     Arc::new(Self {
@@ -164,35 +181,66 @@ impl ConfigLoader {
     self.state.lock().snapshot.clone()
   }
 
+  pub fn register_int_watch<C: FeatureFlag<u32>>(&self) -> Watch<u32, C> {
+    let mut l = self.state.lock();
+    let l = &mut *l;
+    Self::register_watch(&mut l.int_watches, &l.snapshot)
+  }
+
+  pub fn register_bool_watch<C: FeatureFlag<bool>>(&self) -> Watch<bool, C> {
+    let mut l = self.state.lock();
+    let l = &mut *l;
+    Self::register_watch(&mut l.bool_watches, &l.snapshot)
+  }
+
+  pub fn register_duration_watch<C: FeatureFlag<time::Duration>>(
+    &self,
+  ) -> Watch<time::Duration, C> {
+    let mut l = self.state.lock();
+    let l = &mut *l;
+    Self::register_watch(&mut l.duration_watches, &l.snapshot)
+  }
+
+  pub fn register_string_watch<C: FeatureFlag<String>>(&self) -> Watch<String, C> {
+    let mut l = self.state.lock();
+    let l = &mut *l;
+    Self::register_watch(&mut l.string_watches, &l.snapshot)
+  }
+
   /// Registers a watch for the runtime flag given by the provided type.
-  pub fn register_watch<T, C: FeatureFlag<T>>(&self) -> anyhow::Result<Watch<T, C>>
+  fn register_watch<T, C: FeatureFlag<T>>(
+    watches: &mut HashMap<&'static str, InternalWatch<T>>,
+    snapshot: &Snapshot,
+  ) -> Watch<T, C>
   where
     Snapshot: ReadValue<T>,
-    InternalWatchKind: TypedWatch<T> + From<(T, tokio::sync::watch::Sender<T>)>,
   {
-    let mut l = self.state.lock();
-
     // If there is already a watch for this path, just return it directly.
     // TODO(snowp): If there are two flags that specify the same path we might be in trouble
     // since we just key off the path. Fix this.
-    if let Some(existing_watch) = l.watches.get(C::path()) {
-      return Ok(Watch {
-        watch: existing_watch.typed_watch()?,
+    if let Some(existing_watch) = watches.get(C::path()) {
+      return Watch {
+        watch: existing_watch.watch.subscribe(),
         _type: PhantomData,
-      });
+      };
     }
 
     // Initialize the watch with the current (or default if absent) value.
     let (watch_tx, watch_rx) =
-      tokio::sync::watch::channel(l.snapshot.read_value(C::path(), C::default()));
+      tokio::sync::watch::channel(snapshot.read_value(C::path(), C::default()));
 
-    l.watches.insert(C::path(), (C::default(), watch_tx).into());
-    drop(l);
+    watches.insert(
+      C::path(),
+      InternalWatch {
+        default: C::default(),
+        watch: watch_tx,
+      },
+    );
 
-    Ok(Watch {
+    Watch {
       watch: watch_rx,
       _type: PhantomData,
-    })
+    }
   }
 
   fn send_if_modified<T: PartialEq + Display + Clone>(
@@ -222,7 +270,7 @@ impl ConfigLoader {
 
   async fn handle_cached_config(&self) {
     if let Some(runtime) = self.file_cache.handle_cached_config().await {
-      self.update_snapshot_inner(&runtime);
+      self.update_snapshot_inner(runtime);
     } else {
       self.state.lock().initialized = true;
     }
@@ -232,33 +280,40 @@ impl ConfigLoader {
     debug_assert!(self.state.lock().initialized);
   }
 
-  pub async fn update_snapshot(&self, runtime_update: &RuntimeUpdate) {
-    self.update_snapshot_inner(runtime_update);
-    self.file_cache.cache_update(runtime_update).await;
+  pub async fn update_snapshot(&self, runtime_update: RuntimeUpdate) -> anyhow::Result<()> {
+    let compressed_protobuf = write_compressed_protobuf(&runtime_update)?;
+    let version_nonce = runtime_update.version_nonce.clone();
+    self
+      .file_cache
+      .cache_update(compressed_protobuf, &version_nonce, async move {
+        self.update_snapshot_inner(runtime_update);
+        Ok(())
+      })
+      .await
   }
 
   /// Updates the current runtime snapshot, updating all registered watchers as appropriate.
-  fn update_snapshot_inner(&self, runtime_update: &RuntimeUpdate) {
+  fn update_snapshot_inner(&self, runtime_update: RuntimeUpdate) {
     let mut l = self.state.lock();
     l.initialized = true;
 
     let snapshot = Arc::new(Snapshot::new(
-      runtime_update.runtime.clone().unwrap_or_default(),
-      runtime_update.version_nonce.clone().into(),
+      runtime_update.runtime.unwrap_or_default(),
+      runtime_update.version_nonce.into(),
     ));
 
     // Update the value for each active watch if the data changed.
-    for (k, mut watch) in &mut l.watches {
-      match &mut watch {
-        InternalWatchKind::Int(watch) => Self::send_if_modified(k, &snapshot, watch),
-        InternalWatchKind::Bool(watch) => Self::send_if_modified(k, &snapshot, watch),
-        InternalWatchKind::Duration(watch) => {
-          Self::send_if_modified(k, &snapshot, watch);
-        },
-        InternalWatchKind::String(watch) => {
-          Self::send_if_modified(k, &snapshot, watch);
-        },
-      }
+    for (k, watch) in &mut l.int_watches {
+      Self::send_if_modified(k, &snapshot, watch);
+    }
+    for (k, watch) in &mut l.bool_watches {
+      Self::send_if_modified(k, &snapshot, watch);
+    }
+    for (k, watch) in &mut l.duration_watches {
+      Self::send_if_modified(k, &snapshot, watch);
+    }
+    for (k, watch) in &mut l.string_watches {
+      Self::send_if_modified(k, &snapshot, watch);
     }
 
     l.snapshot = snapshot;
@@ -323,6 +378,17 @@ impl<T, P: FeatureFlag<T>> Watch<T, P> {
   pub fn into_inner(self) -> tokio::sync::watch::Receiver<T> {
     self.watch
   }
+
+  pub fn new_for_testing(default: T) -> Self
+  where
+    T: Clone,
+  {
+    let (_, rx) = tokio::sync::watch::channel(default);
+    Self {
+      watch: rx,
+      _type: PhantomData,
+    }
+  }
 }
 
 pub type BoolWatch<P> = Watch<bool, P>;
@@ -355,17 +421,6 @@ pub struct InternalWatch<T> {
 }
 
 //
-// InternalWatchKind
-//
-
-pub enum InternalWatchKind {
-  Int(InternalWatch<u32>),
-  Bool(InternalWatch<bool>),
-  Duration(InternalWatch<time::Duration>),
-  String(InternalWatch<String>),
-}
-
-//
 // ReadValue
 //
 
@@ -375,50 +430,23 @@ pub trait ReadValue<T> {
   fn read_value(&self, path: &str, default: T) -> T;
 }
 
-//
-// TypedWatch
-//
-
-/// Constructs a typed watch subscriber. This is used to provide a type-generic function that be
-/// used to extract the correct watch type from a `InternalWatchKind`.
-pub trait TypedWatch<T> {
-  /// Returns an appropriately typed watch if the underlying object matches the requested type,
-  /// otherwise an error is returned.
-  fn typed_watch(&self) -> anyhow::Result<tokio::sync::watch::Receiver<T>>;
-}
-
 // Defines the necessary traits allowing for the feature_flag! macro to work for the different
 // primitive types. Since the generic code assumes Copy this cannot currently be used for String
 // flags.
 macro_rules! define_primitive_flag_type {
-  ($primitive:ty, $kind_type:tt, $getter:tt) => {
-    impl From<($primitive, tokio::sync::watch::Sender<$primitive>)> for InternalWatchKind {
-      fn from((default, watch): ($primitive, tokio::sync::watch::Sender<$primitive>)) -> Self {
-        Self::$kind_type(InternalWatch { default, watch })
-      }
-    }
-
+  ($primitive:ty, $getter:tt) => {
     impl ReadValue<$primitive> for Snapshot {
       fn read_value(&self, path: &str, default: $primitive) -> $primitive {
         self.$getter(path, default)
       }
     }
-
-    impl TypedWatch<$primitive> for InternalWatchKind {
-      fn typed_watch(&self) -> anyhow::Result<tokio::sync::watch::Receiver<$primitive>> {
-        match self {
-          Self::$kind_type(w) => Ok(w.watch.subscribe()),
-          _ => Err(anyhow::anyhow!("Incompatible runtime subscription")),
-        }
-      }
-    }
   };
 }
 
-define_primitive_flag_type!(u32, Int, get_integer);
-define_primitive_flag_type!(bool, Bool, get_bool);
-define_primitive_flag_type!(time::Duration, Duration, get_duration);
-define_primitive_flag_type!(String, String, get_string);
+define_primitive_flag_type!(u32, get_integer);
+define_primitive_flag_type!(bool, get_bool);
+define_primitive_flag_type!(time::Duration, get_duration);
+define_primitive_flag_type!(String, get_string);
 
 /// Defines a statically typed feature flag that reads runtime from a specific path, returning a
 /// default value if the path is not set.
@@ -429,7 +457,7 @@ define_primitive_flag_type!(String, String, get_string);
 // TODO(snowp): Support the different integral types.
 #[macro_export]
 macro_rules! feature_flag {
-  ($name:tt, $flag_type:ty, $path:literal, $default:expr) => {
+  ($name:tt, $flag_type:ty, $register_fn:ident, $path:literal, $default:expr) => {
     #[derive(Clone, Debug)]
     pub struct $name;
 
@@ -437,8 +465,8 @@ macro_rules! feature_flag {
       #[allow(unused)]
       pub fn register(
         loader: &$crate::runtime::ConfigLoader,
-      ) -> anyhow::Result<$crate::runtime::Watch<$flag_type, Self>> {
-        loader.register_watch()
+      ) -> $crate::runtime::Watch<$flag_type, Self> {
+        loader.$register_fn()
       }
     }
 
@@ -461,7 +489,7 @@ macro_rules! feature_flag {
 #[macro_export]
 macro_rules! int_feature_flag {
   ($name:tt, $path:literal, $default:expr) => {
-    $crate::feature_flag!($name, u32, $path, $default);
+    $crate::feature_flag!($name, u32, register_int_watch, $path, $default);
   };
 }
 
@@ -470,7 +498,7 @@ macro_rules! int_feature_flag {
 #[macro_export]
 macro_rules! bool_feature_flag {
   ($name:tt, $path:literal, $default:expr) => {
-    $crate::feature_flag!($name, bool, $path, $default);
+    $crate::feature_flag!($name, bool, register_bool_watch, $path, $default);
   };
 }
 
@@ -479,14 +507,20 @@ macro_rules! bool_feature_flag {
 #[macro_export]
 macro_rules! string_feature_flag {
   ($name:tt, $path:literal, $default:expr) => {
-    $crate::feature_flag!($name, String, $path, $default);
+    $crate::feature_flag!($name, String, register_string_watch, $path, $default);
   };
 }
 
 #[macro_export]
 macro_rules! duration_feature_flag {
   ($name:tt, $path:literal, $default:expr) => {
-    $crate::feature_flag!($name, time::Duration, $path, $default);
+    $crate::feature_flag!(
+      $name,
+      time::Duration,
+      register_duration_watch,
+      $path,
+      $default
+    );
   };
 }
 
@@ -512,31 +546,10 @@ pub mod debugging {
   );
 }
 
-pub mod crash_handling {
-  // Controls the list of directories that the platform layer should monitor for crash reports.
-  // This is a :-separated list of directories of platforms that may be of interest to the platform
-  // layer.
-  string_feature_flag!(
-    CrashDirectories,
-    "crash_handling.directories",
-    String::new()
-  );
-
-  // Controls the list of paths that should be searched in order to attempt to determine the crash
-  // reason.
-  string_feature_flag!(
-    CrashReasonPaths,
-    "crash_handling.crash_reason_paths",
-    String::new()
-  );
-
-  // Controls the list of paths that should be searched in order to attempt to determine the crash
-  // details.
-  string_feature_flag!(
-    CrashDetailsPaths,
-    "crash_handling.crash_details_paths",
-    String::new()
-  );
+pub mod crash_reporting {
+  // Enables or disables the detection and reporting of application crashes and
+  // other fatal events
+  bool_feature_flag!(Enabled, "crash_reporting.enabled", false);
 }
 
 pub mod log_upload {
@@ -833,5 +846,18 @@ pub mod session_capture {
     StreamingLogCount,
     "session_capture.streaming_log_count",
     100_000
+  );
+}
+
+pub mod global_state {
+  use time::ext::NumericalDuration as _;
+
+  // Controls the time window within which multiple updates to the global state are coalesced into a
+  // single write. The first write happens immediately, and subsequent writes within the coalesce
+  // window are delayed until the window has passed.
+  duration_feature_flag!(
+    CoalesceWindow,
+    "global_state.coalesce_window_ms",
+    1.seconds()
   );
 }

@@ -58,7 +58,7 @@ impl Setup {
   async fn update_reporting_interval(&self, interval: Duration) {
     self
       .runtime
-      .update_snapshot(&make_simple_update(vec![
+      .update_snapshot(make_simple_update(vec![
         (
           bd_runtime::runtime::session_replay::PeriodicScreensEnabledFlag::path(),
           ValueKind::Bool(true),
@@ -69,7 +69,8 @@ impl Setup {
           ValueKind::Int(interval.whole_milliseconds().try_into().unwrap()),
         ),
       ]))
-      .await;
+      .await
+      .unwrap();
   }
 }
 
@@ -102,7 +103,7 @@ async fn does_not_report_if_disabled() {
   let setup = Setup::new();
   setup
     .runtime
-    .update_snapshot(&make_simple_update(vec![
+    .update_snapshot(make_simple_update(vec![
       (
         bd_runtime::runtime::session_replay::PeriodicScreensEnabledFlag::path(),
         ValueKind::Bool(false),
@@ -112,7 +113,8 @@ async fn does_not_report_if_disabled() {
         ValueKind::Int(10),
       ),
     ]))
-    .await;
+    .await
+    .unwrap();
 
   let target = Box::<MockTarget>::default();
   let capture_screen_count = target.capture_screen_count.clone();
@@ -187,11 +189,12 @@ async fn taking_screenshots_is_wired_up() {
 
   setup
     .runtime
-    .update_snapshot(&make_simple_update(vec![(
+    .update_snapshot(make_simple_update(vec![(
       bd_runtime::runtime::session_replay::ScreenshotsEnabledFlag::path(),
       ValueKind::Bool(true),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   100.milliseconds().sleep().await;
 
@@ -215,11 +218,12 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
 
   setup
     .runtime
-    .update_snapshot(&make_simple_update(vec![(
+    .update_snapshot(make_simple_update(vec![(
       bd_runtime::runtime::session_replay::ScreenshotsEnabledFlag::path(),
       ValueKind::Bool(true),
     )]))
-    .await;
+    .await
+    .unwrap();
 
   let target = Box::<MockTarget>::default();
   let capture_screenshot_count = target.capture_screenshot_count.clone();

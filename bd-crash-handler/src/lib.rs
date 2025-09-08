@@ -5,10 +5,20 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![deny(
+  clippy::expect_used,
+  clippy::panic,
+  clippy::todo,
+  clippy::unimplemented,
+  clippy::unreachable,
+  clippy::unwrap_used
+)]
+
 #[cfg(test)]
 #[path = "./monitor_test.rs"]
 mod tests;
 
+pub mod config_writer;
 pub mod global_state;
 
 use bd_log_primitives::{
@@ -41,6 +51,8 @@ fn test_global_init() {
 }
 
 const REPORTS_DIRECTORY: &str = "reports";
+
+pub use config_writer::ConfigWriter;
 
 //
 // CrashLog

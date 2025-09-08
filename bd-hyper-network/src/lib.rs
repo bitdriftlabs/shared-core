@@ -10,6 +10,7 @@
 mod hyper_test;
 
 use bd_api::{PlatformNetworkManager, PlatformNetworkStream};
+use bd_error_reporter::reporter::{Reporter, handle_unexpected};
 use bd_shutdown::ComponentShutdown;
 use bytes::Bytes;
 use http::{Method, Request};
@@ -55,7 +56,7 @@ impl HyperNetwork {
     let (network, handle) = Self::new(address, shutdown);
 
     std::thread::spawn(|| {
-      bd_client_common::error::handle_unexpected(
+      handle_unexpected(
         tokio::runtime::Builder::new_current_thread()
           .enable_all()
           .build()
@@ -397,7 +398,7 @@ impl ErrorReporter {
 
 pub struct ErrorReporterHandle(tokio::sync::mpsc::Sender<(ErrorPayload, HashMap<String, String>)>);
 
-impl bd_client_common::error::Reporter for ErrorReporterHandle {
+impl Reporter for ErrorReporterHandle {
   fn report(
     &self,
     message: &str,

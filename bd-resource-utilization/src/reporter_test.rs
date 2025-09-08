@@ -42,7 +42,7 @@ impl Setup {
   async fn update_reporting_interval(&self, interval: Duration) {
     self
       .runtime
-      .update_snapshot(&make_simple_update(vec![
+      .update_snapshot(make_simple_update(vec![
         (
           bd_runtime::runtime::resource_utilization::ResourceUtilizationEnabledFlag::path(),
           ValueKind::Bool(true),
@@ -54,7 +54,8 @@ impl Setup {
           ValueKind::Int(interval.whole_milliseconds().try_into().unwrap()),
         ),
       ]))
-      .await;
+      .await
+      .unwrap();
   }
 }
 
@@ -78,7 +79,7 @@ async fn does_not_report_if_disabled() {
   let setup = Setup::new();
   setup
     .runtime
-    .update_snapshot(&make_simple_update(vec![
+    .update_snapshot(make_simple_update(vec![
       (
         bd_runtime::runtime::resource_utilization::ResourceUtilizationEnabledFlag::path(),
         ValueKind::Bool(false),
@@ -88,7 +89,8 @@ async fn does_not_report_if_disabled() {
         ValueKind::Int(10),
       ),
     ]))
-    .await;
+    .await
+    .unwrap();
 
   let target = Box::<MockTarget>::default();
   let ticks_count = target.ticks_count.clone();

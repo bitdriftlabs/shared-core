@@ -17,6 +17,7 @@ use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
+use bd_error_reporter::reporter::{Reporter, UnexpectedErrorHandler};
 use bd_log_primitives::{FieldsRef, Log, LogFields, LogMessage, LogRef, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::client::api::log_upload_intent_request::Intent_type::WorkflowActionUpload;
@@ -1098,7 +1099,7 @@ async fn ignore_persisted_state_if_corrupted() {
 
 struct TestReporter {}
 
-impl bd_client_common::error::Reporter for TestReporter {
+impl Reporter for TestReporter {
   fn report(
     &self,
     _message: &str,
@@ -1120,7 +1121,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
   // Default reporter panics in tests if unexpected error is found.
   // Register a custom one.
   let reporter = TestReporter {};
-  bd_client_common::error::UnexpectedErrorHandler::set_reporter(std::sync::Arc::new(reporter));
+  UnexpectedErrorHandler::set_reporter(std::sync::Arc::new(reporter));
 
   a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
   b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));

@@ -22,13 +22,13 @@ use tower::retry::Policy;
 async fn test_retry_backoff() {
   let directory = tempfile::TempDir::with_prefix("backoff_test").unwrap();
   let runtime = bd_runtime::runtime::ConfigLoader::new(directory.path());
-  let max_retries = runtime.register_watch().unwrap();
+  let max_retries = runtime.register_int_watch();
   let retry_limit_exceeded_dropped_logs = Counter::default();
   let retry_limit_exceeded = Counter::default();
 
   let provider = BackoffProvider {
-    initial_backoff: runtime.register_watch().unwrap(),
-    max_backoff: runtime.register_watch().unwrap(),
+    initial_backoff: runtime.register_duration_watch(),
+    max_backoff: runtime.register_duration_watch(),
   };
 
   let mut retry = RetryPolicy {

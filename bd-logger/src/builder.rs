@@ -15,8 +15,6 @@ use crate::logger::Logger;
 use crate::logging_state::UninitializedLoggingContext;
 use bd_api::DataUpload;
 use bd_api::api::SimpleNetworkQualityProvider;
-use bd_client_common::ConfigurationUpdate;
-use bd_client_common::error::handle_unexpected;
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats::FlushTrigger;
 use bd_client_stats::stats::{
@@ -27,6 +25,7 @@ use bd_client_stats::stats::{
 };
 use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
+use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
 use bd_internal_logging::NoopLogger;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
 use bd_runtime::runtime::{self, ConfigLoader, Watch, artifact_upload, sleep_mode};
@@ -43,13 +42,13 @@ pub fn default_stats_flush_triggers(
   runtime_loader: &ConfigLoader,
 ) -> anyhow::Result<(Box<dyn Ticker>, Box<dyn Ticker>)> {
   let flush_interval_flag: Watch<Duration, DirectStatFlushIntervalFlag> =
-    runtime_loader.register_watch()?;
+    runtime_loader.register_duration_watch();
   let flush_ticker = RuntimeWatchTicker::new(flush_interval_flag.into_inner());
 
   let live_mode_upload_interval_flag: Watch<Duration, UploadStatFlushIntervalFlag> =
-    runtime_loader.register_watch()?;
+    runtime_loader.register_duration_watch();
   let sleep_mode_upload_interval_flag: Watch<Duration, sleep_mode::UploadStatFlushIntervalFlag> =
-    runtime_loader.register_watch()?;
+    runtime_loader.register_duration_watch();
   let upload_ticker = SleepModeAwareRuntimeWatchTicker::<JitteredIntervalCreator>::new(
     live_mode_upload_interval_flag.into_inner(),
     sleep_mode_upload_interval_flag.into_inner(),
@@ -144,9 +143,7 @@ impl LoggerBuilder {
     let runtime_loader = runtime::ConfigLoader::new(&self.params.sdk_directory);
 
     let max_dynamic_stats =
-      bd_runtime::runtime::stats::MaxDynamicCountersFlag::register(&runtime_loader)
-        .unwrap()
-        .into_inner();
+      bd_runtime::runtime::stats::MaxDynamicCountersFlag::register(&runtime_loader).into_inner();
     let collector = Collector::new(Some(max_dynamic_stats));
 
     let scope = collector.scope("");
@@ -168,7 +165,7 @@ impl LoggerBuilder {
         data_upload_tx.clone(),
         flush_ticker,
         upload_ticker,
-      )?;
+      );
 
       (flush_handles.flusher, flush_handles.flush_trigger)
     };
@@ -228,12 +225,12 @@ impl LoggerBuilder {
       Arc::new(InternalLogger::new(
         logger.new_logger_handle(),
         &runtime_loader,
-      )?) as Arc<dyn bd_internal_logging::Logger>
+      )) as Arc<dyn bd_internal_logging::Logger>
     } else {
       Arc::new(NoopLogger) as Arc<dyn bd_internal_logging::Logger>
     };
 
-    bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
+    UnexpectedErrorHandler::register_stats(&scope);
 
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
@@ -247,9 +244,8 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
       );
 
-      let out_of_band_enabled_flag = runtime_loader
-        .register_watch::<bool, artifact_upload::Enabled>()
-        .unwrap();
+      let out_of_band_enabled_flag =
+        runtime_loader.register_bool_watch::<artifact_upload::Enabled>();
 
       let crash_monitor = Monitor::new(
         *out_of_band_enabled_flag.read(),
@@ -281,7 +277,7 @@ impl LoggerBuilder {
         trigger_upload_rx,
         &scope,
         log.clone(),
-      )?;
+      );
 
       let updater = Arc::new(client_config::Config::new(
         &self.params.sdk_directory,
@@ -293,10 +289,9 @@ impl LoggerBuilder {
       ));
 
       let api = bd_api::api::Api::new(
-        self.params.sdk_directory,
+        self.params.sdk_directory.clone(),
         self.params.api_key,
         self.params.network,
-        shutdown_handle.make_shutdown(),
         data_upload_rx,
         trigger_upload_tx,
         self.params.static_metadata,
@@ -307,13 +302,26 @@ impl LoggerBuilder {
         log.clone(),
         &scope.scope("api"),
         sleep_mode_active_rx,
-      )?;
+      );
 
-      bd_client_common::error::UnexpectedErrorHandler::register_stats(&scope);
+      let mut config_writer = bd_crash_handler::ConfigWriter::new(
+        &runtime_loader,
+        &self.params.sdk_directory,
+        shutdown_handle.make_shutdown(),
+      );
 
+      UnexpectedErrorHandler::register_stats(&scope);
+
+      let mut api_shutdown = shutdown_handle.make_shutdown();
       try_join!(
-        async move { api.start().await },
+        async move {
+          tokio::select! {
+            res = api.start() => { res },
+            () = api_shutdown.cancelled() => { Ok(()) }
+          }
+        },
         async move { buffer_uploader.run().await },
+        async move { config_writer.run().await },
         async move {
           async_log_buffer.run().await;
           Ok(())
@@ -370,11 +378,11 @@ impl LoggerBuilder {
         tokio::runtime::Builder::new_current_thread()
           .thread_name("bitdrift-tokio-worker")
           .enable_all()
-          .build()
-          .unwrap()
+          .build()?
           .block_on(async {
             handle_unexpected(f.await, "logger top level run loop");
           });
+        Ok::<_, anyhow::Error>(())
       })?;
 
     Ok(())

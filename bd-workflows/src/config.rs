@@ -117,7 +117,7 @@ impl Config {
       .collect::<anyhow::Result<Vec<_>>>()?;
 
     // State 0 must have transitions to be a valid workflow.
-    if states[0].transitions.is_empty() {
+    if states.first().is_none_or(|s| s.transitions.is_empty()) {
       bail!("invalid workflow configuration: initial state must have at least one transition");
     }
 
@@ -179,44 +179,68 @@ impl Config {
       })
   }
 
-  pub(crate) fn transitions_for_traversal(&self, traversal: &Traversal) -> &[Transition] {
-    &self.states[traversal.state_index].transitions
+  pub(crate) fn transitions_for_traversal(&self, traversal: &Traversal) -> Option<&[Transition]> {
+    self
+      .states
+      .get(traversal.state_index)
+      .map(|state| state.transitions.as_slice())
   }
 
   pub(crate) fn actions_for_traversal(
     &self,
     traversal: &Traversal,
     transition_index: usize,
-  ) -> &[Action] {
-    &self.states[traversal.state_index].transitions[transition_index].actions
+  ) -> Option<&[Action]> {
+    self.states.get(traversal.state_index).and_then(|state| {
+      state
+        .transitions
+        .get(transition_index)
+        .map(|transition| transition.actions.as_slice())
+    })
   }
 
-  pub(crate) fn actions_for_timeout(&self, state_index: usize) -> &[Action] {
-    &self.states[state_index].timeout.as_ref().unwrap().actions
+  pub(crate) fn actions_for_timeout(&self, state_index: usize) -> Option<&[Action]> {
+    self.states.get(state_index).and_then(|state| {
+      state
+        .timeout
+        .as_ref()
+        .map(|timeout| timeout.actions.as_slice())
+    })
   }
 
   pub(crate) fn extractions(
     &self,
     traversal: &Traversal,
     transition_index: usize,
-  ) -> &TransitionExtractions {
-    &self.states[traversal.state_index].transitions[transition_index].extractions
+  ) -> Option<&TransitionExtractions> {
+    self.states.get(traversal.state_index).and_then(|state| {
+      state
+        .transitions
+        .get(transition_index)
+        .map(|transition| &transition.extractions)
+    })
   }
 
   pub(crate) fn next_state_index_for_traversal(
     &self,
     traversal: &Traversal,
     transition_index: usize,
-  ) -> usize {
-    self.states[traversal.state_index].transitions[transition_index].target_state_index
+  ) -> Option<usize> {
+    self.states.get(traversal.state_index).and_then(|state| {
+      state
+        .transitions
+        .get(transition_index)
+        .map(|transition| transition.target_state_index)
+    })
   }
 
-  pub(crate) fn next_state_index_for_timeout(&self, state_index: usize) -> usize {
-    self.states[state_index]
-      .timeout
-      .as_ref()
-      .unwrap()
-      .target_state_index
+  pub(crate) fn next_state_index_for_timeout(&self, state_index: usize) -> Option<usize> {
+    self.states.get(state_index).and_then(|state| {
+      state
+        .timeout
+        .as_ref()
+        .map(|timeout| timeout.target_state_index)
+    })
   }
 }
 

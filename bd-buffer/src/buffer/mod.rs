@@ -9,7 +9,7 @@ mod aggregate_ring_buffer;
 mod common_ring_buffer;
 mod intrusive_queue_with_free_list;
 mod non_volatile_ring_buffer;
-mod stats_helper;
+mod stats_test_helper;
 mod volatile_ring_buffer;
 
 #[cfg(test)]
@@ -271,6 +271,6 @@ pub use non_volatile_ring_buffer::{
   RingBufferImpl as NonVolatileRingBuffer,
 };
 // The following test helpers are used by the fuzz tests.
-pub use stats_helper::{OptionalStatGetter, StatsHelper};
+pub use stats_test_helper::{OptionalStatGetter, StatsTestHelper};
 #[allow(clippy::module_name_repetitions)]
 pub use volatile_ring_buffer::RingBufferImpl as VolatileRingBuffer;

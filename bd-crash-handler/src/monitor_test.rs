@@ -39,6 +39,7 @@ use std::io::Read;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::OffsetDateTime;
+use time::ext::NumericalDuration;
 use uuid::Uuid;
 
 struct Setup {
@@ -57,11 +58,12 @@ impl Setup {
 
     if artifact_upload {
       runtime
-        .update_snapshot(&make_simple_update(vec![(
+        .update_snapshot(make_simple_update(vec![(
           runtime::artifact_upload::Enabled::path(),
           ValueKind::Bool(artifact_upload),
         )]))
-        .await;
+        .await
+        .unwrap();
     }
 
     let shutdown = ComponentShutdownTrigger::default();
@@ -204,7 +206,10 @@ async fn test_log_report_fields() {
   let data = builder.finished_data();
 
   let mut setup = Setup::new(true).await;
-  let mut tracker = global_state::Tracker::new(setup.store.clone());
+  let mut tracker = global_state::Tracker::new(
+    setup.store.clone(),
+    runtime::Watch::new_for_testing(10.seconds()),
+  );
   tracker.maybe_update_global_state(
     &[
       ("os_version".into(), "6".into()),

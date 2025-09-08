@@ -8,83 +8,39 @@
 use crate::{CONTENT_TYPE_GRPC, GRPC_MESSAGE, GRPC_STATUS};
 use axum::body::Body;
 use axum::response::Response;
+use bd_grpc_codec::code::Code;
 use http::header::CONTENT_TYPE;
 use http::{HeaderMap, HeaderValue, StatusCode};
 
-//
-// Code
-//
-
-// Wrapper for supported gRPC status codes. Unknown is a synthetic code if mapping is not possible.
-#[derive(PartialEq, Eq, Debug)]
-pub enum Code {
-  Ok,
-  Unknown,
-  InvalidArgument,
-  FailedPrecondition,
-  Internal,
-  Unavailable,
-  Unauthenticated,
-  NotFound,
+// https://connectrpc.com/docs/protocol#error-codes
+#[must_use]
+pub const fn code_to_connect_http_status(code: Code) -> StatusCode {
+  match code {
+    Code::Ok => StatusCode::OK,
+    Code::Unknown | Code::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+    Code::InvalidArgument | Code::FailedPrecondition => StatusCode::BAD_REQUEST,
+    Code::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
+    Code::Unauthenticated => StatusCode::UNAUTHORIZED,
+    Code::NotFound => StatusCode::NOT_FOUND,
+    Code::PermissionDenied => StatusCode::FORBIDDEN,
+    Code::ResourceExhausted => StatusCode::TOO_MANY_REQUESTS,
+  }
 }
 
-impl Code {
-  // Convert to an int via https://grpc.github.io/grpc/core/md_doc_statuscodes.html.
-  #[must_use]
-  pub const fn to_int(&self) -> i32 {
-    match self {
-      Self::Ok => 0,
-      Self::Unknown => 2,
-      Self::InvalidArgument => 3,
-      Self::FailedPrecondition => 9,
-      Self::NotFound => 5,
-      Self::Internal => 13,
-      Self::Unavailable => 14,
-      Self::Unauthenticated => 16,
-    }
-  }
-
-  // Convert from a string via https://grpc.github.io/grpc/core/md_doc_statuscodes.html.
-  #[must_use]
-  pub fn from_string(status: &str) -> Self {
-    match status {
-      "0" => Self::Ok,
-      "3" => Self::InvalidArgument,
-      "5" => Self::NotFound,
-      "9" => Self::FailedPrecondition,
-      "13" => Self::Internal,
-      "14" => Self::Unavailable,
-      "16" => Self::Unauthenticated,
-      _ => Self::Unknown,
-    }
-  }
-
-  // https://connectrpc.com/docs/protocol#error-codes
-  #[must_use]
-  pub const fn to_connect_http_status(&self) -> StatusCode {
-    match self {
-      Self::Ok => StatusCode::OK,
-      Self::Unknown | Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
-      Self::InvalidArgument | Self::FailedPrecondition => StatusCode::BAD_REQUEST,
-      Self::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
-      Self::Unauthenticated => StatusCode::UNAUTHORIZED,
-      Self::NotFound => StatusCode::NOT_FOUND,
-    }
-  }
-
-  // https://connectrpc.com/docs/protocol#error-codes
-  #[must_use]
-  pub const fn to_connect_code_string(&self) -> &'static str {
-    match self {
-      Self::Ok => "ok",
-      Self::Unknown => "unknown",
-      Self::InvalidArgument => "invalid_argument",
-      Self::FailedPrecondition => "failed_precondition",
-      Self::Internal => "internal",
-      Self::Unavailable => "unavailable",
-      Self::Unauthenticated => "unauthenticated",
-      Self::NotFound => "not_found",
-    }
+// https://connectrpc.com/docs/protocol#error-codes
+#[must_use]
+pub const fn code_to_connect_code_string(code: Code) -> &'static str {
+  match code {
+    Code::Ok => "ok",
+    Code::Unknown => "unknown",
+    Code::InvalidArgument => "invalid_argument",
+    Code::FailedPrecondition => "failed_precondition",
+    Code::Internal => "internal",
+    Code::Unavailable => "unavailable",
+    Code::Unauthenticated => "unauthenticated",
+    Code::NotFound => "not_found",
+    Code::PermissionDenied => "permission_denied",
+    Code::ResourceExhausted => "resource_exhausted",
   }
 }
 
@@ -114,7 +70,7 @@ impl Status {
   #[must_use]
   pub fn from_headers(headers: &HeaderMap) -> Self {
     Self {
-      code: Code::from_string(
+      code: Code::from_str(
         headers
           .get(GRPC_STATUS)
           .expect("caller should verify grpc-status exists")

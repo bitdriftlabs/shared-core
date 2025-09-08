@@ -29,6 +29,7 @@ use axum::response::Response;
 use axum::routing::post;
 use axum::{BoxError, Router};
 use base64ct::Encoding;
+use bd_grpc_codec::code::Code;
 use bd_grpc_codec::stats::DeferredCounter;
 use bd_grpc_codec::{
   Decoder,
@@ -51,7 +52,7 @@ use http_body_util::{BodyExt, StreamBody};
 use protobuf::{Message, MessageFull};
 use service::ServiceMethod;
 use stats::{BandwidthStatsSummary, EndpointStats, StreamStats};
-use status::{Code, Status};
+use status::Status;
 use std::convert::Infallible;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -255,7 +256,7 @@ impl<IncomingType: DecodingResult> StreamingApiReceiver<IncomingType> {
           });
 
           if let Some(grpc_status) = grpc_status {
-            let code = Code::from_string(grpc_status.to_str().unwrap_or_default());
+            let code = Code::from_str(grpc_status.to_str().unwrap_or_default());
             if code == Code::Ok {
               return Ok(None);
             }
@@ -314,7 +315,7 @@ impl<ResponseType: Message> StreamingApiSender<ResponseType> {
 
   // Send a message on the stream.
   pub async fn send(&mut self, message: ResponseType) -> Result<()> {
-    let encoded = self.encoder.encode(&message);
+    let encoded = self.encoder.encode(&message)?;
     self.send_raw_inner(encoded).await
   }
 
@@ -544,7 +545,7 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   let (tx, rx) = mpsc::channel::<std::result::Result<_, Infallible>>(2);
 
   let mut encoder = Encoder::new(compression);
-  let encoded_data = encoder.encode(&response);
+  let encoded_data = encoder.encode(&response)?;
 
   tx.send(Ok(Frame::data(encoded_data))).await.unwrap();
 

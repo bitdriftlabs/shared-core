@@ -17,6 +17,7 @@ bd-bonjson.path            = "../bd-bonjson"
 bd-buffer.path             = "../bd-buffer"
 bd-client-common.path      = "../bd-client-common"
 bd-client-stats-store.path = "../bd-client-stats-store"
+bd-resilient-kv.path       = "../bd-resilient-kv"
 libfuzzer-sys.workspace    = true
 log.workspace              = true
 tempfile.workspace         = true
@@ -44,8 +45,31 @@ path = "fuzz_targets/buffer_corruption_fuzz_test.rs"
 test = false
 
 [[bin]]
+doc  = false
 name = "bonjson"
 path = "fuzz_targets/bonjson.rs"
 test = false
-doc = false
-bench = false
+
+[[bin]]
+doc  = false
+name = "resilient_kv_in_memory"
+path = "fuzz_targets/resilient_kv_in_memory.rs"
+test = false
+
+[[bin]]
+doc  = false
+name = "resilient_kv_memmapped"
+path = "fuzz_targets/resilient_kv_memmapped.rs"
+test = false
+
+[[bin]]
+doc  = false
+name = "resilient_kv_double_buffered"
+path = "fuzz_targets/resilient_kv_double_buffered.rs"
+test = false
+
+[[bin]]
+doc  = false
+name = "resilient_kv_store"
+path = "fuzz_targets/resilient_kv_store.rs"
+test = false

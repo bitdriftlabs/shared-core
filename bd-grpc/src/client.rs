@@ -9,7 +9,7 @@ use crate::compression::Compression;
 use crate::connect_protocol::{ConnectProtocolType, ToContentType};
 use crate::error::{Error, Result};
 use crate::service::ServiceMethod;
-use crate::status::{Code, Status};
+use crate::status::Status;
 use crate::{
   CONNECT_PROTOCOL_VERSION,
   CONTENT_ENCODING_SNAPPY,
@@ -22,6 +22,7 @@ use crate::{
 use assert_matches::debug_assert_matches;
 use axum::body::Body;
 use axum::response::Response;
+use bd_grpc_codec::code::Code;
 use bd_grpc_codec::{
   Decoder,
   DecodingResult,
@@ -219,7 +220,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
     let (extra_headers, body) = match compression {
       Compression::None => {
         let mut encoder = Encoder::new(None);
-        (extra_headers, encoder.encode(&request).into())
+        (extra_headers, encoder.encode(&request)?.into())
       },
       Compression::GRpc(compression) => {
         debug_assert_matches!(
@@ -236,14 +237,14 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
           GRPC_ACCEPT_ENCODING_HEADER,
           GRPC_ENCODING_DEFLATE.try_into().unwrap(),
         );
-        (Some(extra_headers), encoder.encode(&request).into())
+        (Some(extra_headers), encoder.encode(&request)?.into())
       },
       Compression::Snappy => {
         // Note: This is not compliant to the gRPC spec. It just compresses the entire payload
         // including the message length. We can consider making this better later but this is simple
         // and works for the basic unary use case where we control both sides.
         let mut encoder = Encoder::new(None);
-        let proto_encoded = encoder.encode(&request);
+        let proto_encoded = encoder.encode(&request)?;
         let body = snap::raw::Encoder::new()
           .compress_vec(&proto_encoded)
           .unwrap();
@@ -354,7 +355,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       .common_request(
         service_method,
         extra_headers,
-        encoder.encode(&request).into(),
+        encoder.encode(&request)?.into(),
         connect_protocol,
       )
       .await?;

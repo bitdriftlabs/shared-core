@@ -5,20 +5,30 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::file::{read_compressed_protobuf, write_compressed_protobuf};
+#[cfg(test)]
+#[path = "./safe_file_cache_test.rs"]
+mod safe_file_cache_test;
+
+use crate::file::{read_checksummed_data, read_compressed_protobuf, write_checksummed_data};
 use anyhow::bail;
+use parking_lot::Mutex;
 use protobuf::Message;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 
 const MAX_RETRY_COUNT: u8 = 5;
 
 pub struct SafeFileCache<T> {
   directory: PathBuf,
-  cached_config_validated: AtomicBool,
+  locked_state: Mutex<LockedState>,
   name: &'static str,
   phantom: PhantomData<T>,
+}
+#[derive(Default)]
+struct LockedState {
+  cached_config_validated: bool,
+  cached_nonce: Vec<u8>,
+  current_retry_count: u8,
 }
 
 impl<T: Message> SafeFileCache<T> {
@@ -35,7 +45,7 @@ impl<T: Message> SafeFileCache<T> {
     Self {
       name,
       directory,
-      cached_config_validated: AtomicBool::new(false),
+      locked_state: Mutex::default(),
       phantom: PhantomData,
     }
   }
@@ -44,9 +54,13 @@ impl<T: Message> SafeFileCache<T> {
   /// the app continue to read this from disk.
   pub async fn mark_safe(&self) {
     // We load the config from cache only at startup, so we only need to update the file once.
-    if !self.cached_config_validated.swap(true, Ordering::SeqCst) {
+    if !{
+      let mut state = self.locked_state.lock();
+      std::mem::replace(&mut state.cached_config_validated, true)
+    } {
       // If this fails worst case we'll use a stale retry count and eventually disable caching.
       let _ignored = self.persist_cache_load_retry_count(0).await;
+      log::debug!("marked cached config for {} as safe", self.name);
     }
   }
 
@@ -58,10 +72,23 @@ impl<T: Message> SafeFileCache<T> {
     self.directory.join("protobuf.pb")
   }
 
+  fn last_nonce_file(&self) -> PathBuf {
+    self.directory.join("last_nonce")
+  }
+
   async fn persist_cache_load_retry_count(&self, retry_count: u8) -> anyhow::Result<()> {
     // This could fail, but by being defensive when we read this we should ideally worst case just
     // fall back to not reading from cache.
-    Ok(tokio::fs::write(&self.retry_count_file(), &[retry_count]).await?)
+    tokio::fs::write(&self.retry_count_file(), &[retry_count]).await?;
+    log::debug!("wrote retry count {retry_count} for {}", self.name);
+    Ok(())
+  }
+
+  pub async fn reset(&self) {
+    // Recreate the directory instead of deleting individual files, making sure we really clean
+    // up any bad state.
+    let _ignored = tokio::fs::remove_dir_all(&self.directory).await;
+    let _ignored = tokio::fs::create_dir(&self.directory).await;
   }
 
   pub async fn handle_cached_config(&self) -> Option<T> {
@@ -80,10 +107,7 @@ impl<T: Message> SafeFileCache<T> {
     };
 
     if reset {
-      // Recreate the directory instead of deleting individual files, making sure we really clean
-      // up any bad state.
-      let _ignored = tokio::fs::remove_dir_all(&self.directory).await;
-      let _ignored = tokio::fs::create_dir(&self.directory).await;
+      self.reset().await;
     }
 
     cached
@@ -109,9 +133,12 @@ impl<T: Message> SafeFileCache<T> {
       || !tokio::fs::try_exists(self.protobuf_file())
         .await
         .is_ok_and(|e| e)
+      || !tokio::fs::try_exists(self.last_nonce_file())
+        .await
+        .is_ok_and(|e| e)
     {
       log::debug!(
-        "cached retry count or config not found for {:?}, resetting cache",
+        "cached retry count, config, or last nonce not found for {:?}, resetting cache",
         self.name
       );
       return Ok((true, None));
@@ -125,27 +152,48 @@ impl<T: Message> SafeFileCache<T> {
     else {
       return Ok((true, None));
     };
+    log::debug!("loaded retry count {retry_count} for {}", self.name);
 
+    // Same for the cached nonce file.
+    let Ok(nonce) =
+      async { read_checksummed_data(&tokio::fs::read(&self.last_nonce_file()).await?) }.await
+    else {
+      return Ok((true, None));
+    };
     log::debug!(
-      "loaded file at retry count {retry_count} for {:?}",
+      "loaded nonce {} for {}",
+      std::str::from_utf8(&nonce).unwrap_or_default(),
       self.name
     );
+
+    {
+      let mut locked = self.locked_state.lock();
+      locked.current_retry_count = retry_count;
+      locked.cached_nonce = nonce;
+    }
+
+    // TODO(snowp): Should we read this from runtime as well? It would make it possible for a bad
+    // runtime config to accidentally set this really high, but right now this is not
+    // configurable at all.
+    if retry_count >= MAX_RETRY_COUNT {
+      // Note that eventually if the client is killed this is going to kick in since we attempt to
+      // load cached runtime very early on. Since we don't clean state so that we can do changed
+      // nonce detection in the cache_update() function, this could cause killed clients to not get
+      // new config when they come back online since there is no crash loop and the nonce hasn't
+      // changed. We handle this directly in the API code by having the state reset when it enters
+      // killed mode.
+      log::debug!(
+        "cached config for {} has retry count {retry_count} >= {MAX_RETRY_COUNT}, refusing to read",
+        self.name
+      );
+      return Ok((false, None));
+    }
 
     // Update the retry count before we apply the config. If this fails, we bail out (which will
     // attempt to clear the cache directory) and disable caching. We do this because being unable
     // to update the retry count may result in us getting stuck processing what we think is retry
     // 0 over and over again.
     self.persist_cache_load_retry_count(retry_count + 1).await?;
-
-    // TODO(snowp): Should we read this from runtime as well? It would make it possible for a bad
-    // runtime config to accidentally set this really high, but right now this is not
-    // configurable at all.
-    if retry_count > MAX_RETRY_COUNT {
-      // Note that eventually if the client is killed this is going to kick in and delete cached
-      // config. This is OK since we are still covered by the kill file, and ultimately we would
-      // like the client to come up and get fresh config anyway.
-      return Ok((true, None));
-    }
 
     let bytes = tokio::fs::read(&self.protobuf_file()).await?;
     let protobuf: T = read_compressed_protobuf(&bytes)?;
@@ -163,18 +211,51 @@ impl<T: Message> SafeFileCache<T> {
     Ok(data[0])
   }
 
-  pub async fn cache_update(&self, protobuf: &T) {
-    if let Err(e) =
-      tokio::fs::write(&self.protobuf_file(), write_compressed_protobuf(protobuf)).await
+  pub async fn cache_update(
+    &self,
+    compressed_protobuf: Vec<u8>,
+    version_nonce: &str,
+    apply_fn: impl Future<Output = anyhow::Result<()>>,
+  ) -> anyhow::Result<()> {
+    let res = {
+      let state = self.locked_state.lock();
+      state.current_retry_count >= MAX_RETRY_COUNT && state.cached_nonce == version_nonce.as_bytes()
+    };
+    if res {
+      log::debug!(
+        "refusing to cache config for {} at nonce {version_nonce} since retry count is already at \
+         max and nonce has not changed",
+        self.name
+      );
+      bail!("refusing to cache config during suspected crash loop with no nonce change");
+    }
+
+    apply_fn.await?;
+
+    if let Err(e) = async {
+      tokio::fs::write(
+        &self.last_nonce_file(),
+        write_checksummed_data(version_nonce.as_bytes()),
+      )
+      .await?;
+      Ok::<_, anyhow::Error>(tokio::fs::write(&self.protobuf_file(), compressed_protobuf).await?)
+    }
+    .await
     {
       log::debug!("failed to write cached config for {}: {e}", self.name,);
     }
 
     // Failing here is fine, worst case we'll use an old retry count or leave it missing, which
     // will eventually disable caching.
-    self.cached_config_validated.store(true, Ordering::SeqCst);
+    self.locked_state.lock().cached_config_validated = true;
     if let Err(e) = self.persist_cache_load_retry_count(0).await {
       log::debug!("failed to write retry count for {}: {e}", self.name);
     }
+
+    log::debug!(
+      "cached config for {} successfully at nonce {version_nonce}",
+      self.name
+    );
+    Ok(())
   }
 }

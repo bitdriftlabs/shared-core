@@ -11,7 +11,8 @@ use assert_matches::assert_matches;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentResponse, UploadResponse};
 use bd_client_common::file::read_compressed_protobuf;
-use bd_client_common::file_system::{FileSystem, TestFileSystem};
+use bd_client_common::file_system::FileSystem;
+use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::logging::payload::Data;
@@ -97,14 +98,15 @@ impl Setup {
     let config_loader = TestConfigLoader::new().await;
 
     config_loader
-      .update_snapshot(&bd_test_helpers::runtime::make_update(
+      .update_snapshot(bd_test_helpers::runtime::make_update(
         vec![(
           artifact_upload::MaxPendingEntries::path(),
           ValueKind::Int(max_entries),
         )],
         "1".to_string(),
       ))
-      .await;
+      .await
+      .unwrap();
 
     let (mut uploader, client) = super::Uploader::new(
       filesystem.clone(),

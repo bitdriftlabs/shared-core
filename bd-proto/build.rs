@@ -226,17 +226,21 @@ fn main() {
   // Perform flatbuffer compile for Rust.
   std::fs::create_dir_all("src/flatbuffers").unwrap();
   flatc_rust::run(flatc_rust::Args {
-    inputs: &[Path::new(
-      "../api/src/bitdrift_public/fbs/logging/v1/buffer_log.fbs",
-    )],
+    inputs: &[
+      Path::new("../api/src/bitdrift_public/fbs/common/v1/common.fbs"),
+      Path::new("../api/src/bitdrift_public/fbs/logging/v1/buffer_log.fbs"),
+    ],
+    includes: &[Path::new("../api/src")],
     out_dir: Path::new("src/flatbuffers"),
     ..flatc_rust::Args::default()
   })
   .unwrap();
   flatc_rust::run(flatc_rust::Args {
-    inputs: &[Path::new(
-      "../api/src/bitdrift_public/fbs/issue-reporting/v1/report.fbs",
-    )],
+    inputs: &[
+      Path::new("../api/src/bitdrift_public/fbs/common/v1/common.fbs"),
+      Path::new("../api/src/bitdrift_public/fbs/issue-reporting/v1/report.fbs"),
+    ],
+    includes: &[Path::new("../api/src")],
     out_dir: Path::new("src/flatbuffers"),
     ..flatc_rust::Args::default()
   })
@@ -245,9 +249,11 @@ fn main() {
   // Perform flatbuffer compile for C++.
   flatc_rust::run(flatc_rust::Args {
     lang: "cpp",
-    inputs: &[Path::new(
-      "../api/src/bitdrift_public/fbs/logging/v1/buffer_log.fbs",
-    )],
+    inputs: &[
+      Path::new("../api/src/bitdrift_public/fbs/common/v1/common.fbs"),
+      Path::new("../api/src/bitdrift_public/fbs/logging/v1/buffer_log.fbs"),
+    ],
+    includes: &[Path::new("../api/src")],
     out_dir: Path::new("src/flatbuffers"),
     ..flatc_rust::Args::default()
   })

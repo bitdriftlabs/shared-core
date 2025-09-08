@@ -28,65 +28,105 @@ impl<W: std::io::Write + Send + Sync> Writer<W> {
     self.writer.write(bytes).map_err(|_| SerializationError::Io)
   }
 
+  /// Write a null value to the output.
+  ///
+  /// # Errors
+  /// Returns `SerializationError::Io` if writing to the underlying writer fails.
   pub fn write_null(&mut self) -> Result<usize> {
     let mut buffer: [u8; 1] = [0; 1];
-    let size = serialize_primitives::serialize_null(&mut buffer)?;
+    let size = serialize_primitives::serialize_null(&mut (&mut buffer[..]))?;
     self.write_bytes(&buffer[.. size])
   }
 
+  /// Write a boolean value to the output.
+  ///
+  /// # Errors
+  /// Returns `SerializationError::Io` if writing to the underlying writer fails.
   pub fn write_boolean(&mut self, v: bool) -> Result<usize> {
     let mut buffer: [u8; 1] = [0; 1];
-    let size = serialize_primitives::serialize_boolean(&mut buffer, v)?;
+    let size = serialize_primitives::serialize_boolean(&mut (&mut buffer[..]), v)?;
     self.write_bytes(&buffer[.. size])
   }
 
+  /// Write a signed integer value to the output.
+  ///
+  /// # Errors
+  /// Returns `SerializationError::Io` if writing to the underlying writer fails.
   pub fn write_signed(&mut self, v: i64) -> Result<usize> {
     let mut buffer: [u8; 16] = [0; 16];
-    let size = serialize_primitives::serialize_i64(&mut buffer, v)?;
+    let size = serialize_primitives::serialize_i64(&mut (&mut buffer[..]), v)?;
     self.write_bytes(&buffer[.. size])
   }
 
+  /// Write an unsigned integer value to the output.
+  ///
+  /// # Errors
+  /// Returns `SerializationError::Io` if writing to the underlying writer fails.
   pub fn write_unsigned(&mut self, v: u64) -> Result<usize> {
     let mut buffer: [u8; 16] = [0; 16];
-    let size = serialize_primitives::serialize_u64(&mut buffer, v)?;
+    let size = serialize_primitives::serialize_u64(&mut (&mut buffer[..]), v)?;
     self.write_bytes(&buffer[.. size])
   }
 
+  /// Write a 64-bit floating point value to the output.
+  ///
+  /// # Errors
+  /// Returns `SerializationError::Io` if writing to the underlying writer fails.
   pub fn write_float(&mut self, v: f64) -> Result<usize> {
     let mut buffer: [u8; 16] = [0; 16];
-    let size = serialize_primitives::serialize_f64(&mut buffer, v)?;
+    let size = serialize_primitives::serialize_f64(&mut (&mut buffer[..]), v)?;
     self.write_bytes(&buffer[.. size])
   }
 
+  /// Write a 32-bit floating point value to the output.
+  ///
+  /// # Errors
+  /// Returns `SerializationError::Io` if writing to the underlying writer fails.
   pub fn write_f32(&mut self, v: f32) -> Result<usize> {
     let mut buffer: [u8; 16] = [0; 16];
-    let size = serialize_primitives::serialize_f32(&mut buffer, v)?;
+    let size = serialize_primitives::serialize_f32(&mut (&mut buffer[..]), v)?;
     self.write_bytes(&buffer[.. size])
   }
 
+  /// Write a string value to the output.
+  ///
+  /// # Errors
+  /// Returns `SerializationError::Io` if writing to the underlying writer fails.
   pub fn write_str(&mut self, v: &str) -> Result<usize> {
     let mut buffer: [u8; 16] = [0; 16];
-    let header_size = serialize_primitives::serialize_string_header(&mut buffer, v)?;
+    let header_size = serialize_primitives::serialize_string_header(&mut (&mut buffer[..]), v)?;
     self.write_bytes(&buffer[.. header_size])?;
     self.write_bytes(v.as_bytes())?;
     Ok(header_size + v.len())
   }
 
+  /// Write the beginning of an array to the output.
+  ///
+  /// # Errors
+  /// Returns `SerializationError::Io` if writing to the underlying writer fails.
   pub fn write_array_begin(&mut self) -> Result<usize> {
     let mut buffer: [u8; 1] = [0; 1];
-    let size = serialize_primitives::serialize_array_begin(&mut buffer)?;
+    let size = serialize_primitives::serialize_array_begin(&mut (&mut buffer[..]))?;
     self.write_bytes(&buffer[.. size])
   }
 
+  /// Write the beginning of a map/object to the output.
+  ///
+  /// # Errors
+  /// Returns `SerializationError::Io` if writing to the underlying writer fails.
   pub fn write_map_begin(&mut self) -> Result<usize> {
     let mut buffer: [u8; 1] = [0; 1];
-    let size = serialize_primitives::serialize_map_begin(&mut buffer)?;
+    let size = serialize_primitives::serialize_map_begin(&mut (&mut buffer[..]))?;
     self.write_bytes(&buffer[.. size])
   }
 
+  /// Write the end of a container (array or map) to the output.
+  ///
+  /// # Errors
+  /// Returns `SerializationError::Io` if writing to the underlying writer fails.
   pub fn write_container_end(&mut self) -> Result<usize> {
     let mut buffer: [u8; 1] = [0; 1];
-    let size = serialize_primitives::serialize_container_end(&mut buffer)?;
+    let size = serialize_primitives::serialize_container_end(&mut (&mut buffer[..]))?;
     self.write_bytes(&buffer[.. size])
   }
 }

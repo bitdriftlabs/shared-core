@@ -18,12 +18,14 @@ use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::PreConfigBuffer;
 use crate::{internal_report, network};
 use anyhow::anyhow;
-use bd_bounded_buffer::{MemorySized, Receiver, Sender, TrySendError, channel};
+use bd_bounded_buffer::{Receiver, Sender, TrySendError, channel};
 use bd_buffer::BuffersWithAck;
-use bd_client_common::error::{handle_unexpected, handle_unexpected_error_with_details};
+use bd_client_common::maybe_await_map;
 use bd_crash_handler::global_state;
 use bd_device::Store;
+use bd_error_reporter::reporter::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_log_metadata::MetadataProvider;
+use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
@@ -251,7 +253,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         // The size of the pre-config buffer matches the size of the enclosing
         // async log buffer.
         logging_state: LoggingState::Uninitialized(uninitialized_logging_context),
-        global_state_tracker: global_state::Tracker::new(store),
+        global_state_tracker: global_state::Tracker::new(
+          store,
+          runtime_loader.register_duration_watch(),
+        ),
         time_provider,
       },
       async_log_buffer_communication_tx,
@@ -780,8 +785,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             }
           }
         },
-        () = async { initialized_logging_context.unwrap().processing_pipeline.run().await },
-          if initialized_logging_context.is_some() => {},
+        () = maybe_await_map(
+          initialized_logging_context,
+          |initialized_logging_context| async {
+            initialized_logging_context.processing_pipeline.run().await;
+        })
+          => {},
         () = self.resource_utilization_reporter.run() => {},
         () = self.session_replay_recorder.run() => {},
         () = self.events_listener.run() => {},

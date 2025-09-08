@@ -12,13 +12,13 @@ use crate::upload::Tracked;
 use anyhow::anyhow;
 use assert_matches::assert_matches;
 use bd_client_common::{
-  ConfigurationUpdate,
   HANDSHAKE_FLAG_CONFIG_UP_TO_DATE,
   HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
-  MockConfigurationUpdate,
+  MockClientConfigurationUpdate,
 };
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
+use bd_grpc_codec::code::Code;
 use bd_grpc_codec::{Decompression, Encoder, OptimizeFor};
 use bd_internal_logging::{LogFields, LogLevel, LogType};
 use bd_metadata::{Metadata, Platform};
@@ -32,11 +32,11 @@ use bd_proto::protos::client::api::{
   ErrorShutdown,
   HandshakeRequest,
   HandshakeResponse,
+  RateLimited,
   RuntimeUpdate,
   StatsUploadRequest,
 };
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
-use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::make_mut;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, ToProtoDuration};
@@ -168,7 +168,6 @@ struct Setup {
   data_tx: Sender<DataUpload>,
   send_data_rx: Receiver<Vec<u8>>,
   start_stream_rx: Receiver<()>,
-  shutdown_trigger: ComponentShutdownTrigger,
   collector: Collector,
   requests_decoder: bd_grpc_codec::Decoder<ApiRequest>,
   time_provider: Arc<bd_time::TestTimeProvider>,
@@ -177,6 +176,7 @@ struct Setup {
   api_key: String,
   network_quality_provider: Arc<SimpleNetworkQualityProvider>,
   sleep_mode_active: watch::Sender<bool>,
+  config_updater: Arc<MockClientConfigurationUpdate>,
 }
 
 impl Setup {
@@ -184,7 +184,7 @@ impl Setup {
     Self::new_with_config_updater(Self::make_nice_mock_updater())
   }
 
-  fn new_with_config_updater(updater: Arc<dyn ConfigurationUpdate>) -> Self {
+  fn new_with_config_updater(config_updater: Arc<MockClientConfigurationUpdate>) -> Self {
     let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
 
     let (start_stream_tx, start_stream_rx) = channel(1);
@@ -195,7 +195,6 @@ impl Setup {
       send_data_tx,
       current_stream_tx.clone(),
     ));
-    let shutdown_trigger = ComponentShutdownTrigger::default();
     let (data_tx, data_rx) = channel(1);
     let (trigger_upload_tx, _trigger_upload_rx) = channel(1);
     let (sleep_mode_active_tx, sleep_mode_active_rx) = watch::channel(false);
@@ -211,19 +210,17 @@ impl Setup {
       sdk_directory.path().to_path_buf(),
       api_key.clone(),
       manager,
-      shutdown_trigger.make_shutdown(),
       data_rx,
       trigger_upload_tx,
       Arc::new(EmptyMetadata),
       runtime_loader.clone(),
-      updater,
+      config_updater.clone(),
       time_provider.clone(),
       network_quality_provider.clone(),
       Arc::new(TestLog {}),
       &collector.scope("api"),
       sleep_mode_active_rx,
-    )
-    .unwrap();
+    );
 
     let api_task = tokio::task::spawn(async move {
       runtime_loader.try_load_persisted_config().await;
@@ -236,7 +233,6 @@ impl Setup {
       start_stream_rx,
       data_tx,
       send_data_rx,
-      shutdown_trigger,
       collector,
       time_provider,
       requests_decoder: bd_grpc_codec::Decoder::new(
@@ -247,14 +243,12 @@ impl Setup {
       api_key,
       network_quality_provider,
       sleep_mode_active: sleep_mode_active_tx,
+      config_updater,
     }
   }
 
   async fn restart(&mut self) {
-    let old_shutdown = std::mem::take(&mut self.shutdown_trigger);
-    old_shutdown.shutdown().await;
-    self.api_task.take().unwrap().await.unwrap().unwrap();
-
+    log::info!("restarting api");
     let (start_stream_tx, start_stream_rx) = channel(1);
     let (send_data_tx, send_data_rx) = channel(1);
     let current_stream_tx = Arc::new(Mutex::new(None));
@@ -266,26 +260,23 @@ impl Setup {
     let (data_tx, data_rx) = channel(1);
     let (trigger_upload_tx, _trigger_upload_rx) = channel(1);
 
-    let mock_updater = Self::make_nice_mock_updater();
     let runtime_loader = ConfigLoader::new(self.sdk_directory.path());
     runtime_loader.try_load_persisted_config().await;
     let api = Api::new(
       self.sdk_directory.path().to_path_buf(),
       self.api_key.clone(),
       manager,
-      self.shutdown_trigger.make_shutdown(),
       data_rx,
       trigger_upload_tx,
       Arc::new(EmptyMetadata),
       runtime_loader.clone(),
-      mock_updater,
+      self.config_updater.clone(),
       self.time_provider.clone(),
       self.network_quality_provider.clone(),
       Arc::new(TestLog {}),
       &self.collector.scope("api"),
       self.sleep_mode_active.subscribe(),
-    )
-    .unwrap();
+    );
 
     self.api_task = Some(tokio::task::spawn(api.start()));
     self.start_stream_rx = start_stream_rx;
@@ -294,21 +285,54 @@ impl Setup {
     self.current_stream_tx = current_stream_tx;
   }
 
-  async fn handshake_response(
-    &self,
+  fn make_handshake(
     configuration_update_status: u32,
     stream_settings: Option<StreamSettings>,
-  ) {
-    let response = ApiResponse {
+  ) -> ApiResponse {
+    ApiResponse {
       response_type: Some(Response_type::Handshake(HandshakeResponse {
         stream_settings: stream_settings.into(),
         configuration_update_status,
         ..Default::default()
       })),
       ..Default::default()
-    };
+    }
+  }
 
-    self.send_response(response).await;
+  async fn handshake_response(
+    &self,
+    configuration_update_status: u32,
+    stream_settings: Option<StreamSettings>,
+  ) {
+    self
+      .send_response(Self::make_handshake(
+        configuration_update_status,
+        stream_settings,
+      ))
+      .await;
+  }
+
+  fn make_error_shutdown(code: Code, message: &str, retry_after: Option<Duration>) -> ApiResponse {
+    ApiResponse {
+      response_type: Some(Response_type::ErrorShutdown(ErrorShutdown {
+        grpc_status: code.to_int(),
+        grpc_message: message.to_string(),
+        rate_limited: retry_after
+          .map(|d| RateLimited {
+            retry_after: d.into_proto(),
+            ..Default::default()
+          })
+          .into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    }
+  }
+
+  async fn error_shutdown(&self, code: Code, message: &str, retry_after: Option<Duration>) {
+    self
+      .send_response(Self::make_error_shutdown(code, message, retry_after))
+      .await;
   }
 
   async fn send_request(&self, data: DataUpload) {
@@ -325,8 +349,27 @@ impl Setup {
       .clone();
 
     let mut encoder = Encoder::new(None);
-    let encoded = encoder.encode(&response);
+    let encoded = encoder.encode(&response).unwrap();
     tx.send(StreamEvent::Data(encoded.to_vec())).await.unwrap();
+  }
+
+  async fn send_multiple_messages(&self, responses: Vec<ApiResponse>) {
+    let tx = self
+      .current_stream_tx
+      .lock()
+      .unwrap()
+      .as_ref()
+      .unwrap()
+      .clone();
+
+    let mut encoder = Encoder::new(None);
+    let mut encoded = Vec::new();
+    for response in responses {
+      let data = encoder.encode(&response).unwrap();
+      encoded.extend(data);
+    }
+
+    tx.send(StreamEvent::Data(encoded)).await.unwrap();
   }
 
   async fn close_stream(&self) {
@@ -384,8 +427,8 @@ impl Setup {
     self.decode(&data)
   }
 
-  fn make_nice_mock_updater() -> Arc<MockConfigurationUpdate> {
-    let mut mock_updater = Arc::new(MockConfigurationUpdate::new());
+  fn make_nice_mock_updater() -> Arc<MockClientConfigurationUpdate> {
+    let mut mock_updater = Arc::new(MockClientConfigurationUpdate::new());
     make_mut(&mut mock_updater)
       .expect_fill_handshake()
       .times(..)
@@ -409,7 +452,7 @@ impl Setup {
 
 #[tokio::test(start_paused = true)]
 async fn api_retry_stream() {
-  let mut mock_updater = Arc::new(MockConfigurationUpdate::new());
+  let mut mock_updater = Arc::new(MockClientConfigurationUpdate::new());
   make_mut(&mut mock_updater)
     .expect_fill_handshake()
     .times(..)
@@ -522,8 +565,6 @@ async fn api_retry_stream() {
     NetworkQuality::Online,
     setup.network_quality_provider.get_network_quality()
   );
-
-  setup.shutdown_trigger.shutdown().await;
 }
 
 #[tokio::test(start_paused = true)]
@@ -535,32 +576,37 @@ async fn client_kill() {
     .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None)
     .await;
 
-  setup
-    .send_response(ApiResponse {
-      response_type: Some(Response_type::RuntimeUpdate(RuntimeUpdate {
-        version_nonce: "test".to_string(),
-        runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
-          bd_runtime::runtime::client_kill::GenericKillDuration::path(),
-          bd_test_helpers::runtime::ValueKind::Int(
-            1.days().whole_milliseconds().try_into().unwrap(),
-          ),
-        )]))
-        .into(),
-        ..Default::default()
-      })),
+  let runtime_response = ApiResponse {
+    response_type: Some(Response_type::RuntimeUpdate(RuntimeUpdate {
+      version_nonce: "test".to_string(),
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
+        bd_runtime::runtime::client_kill::GenericKillDuration::path(),
+        bd_test_helpers::runtime::ValueKind::Int(1.days().whole_milliseconds().try_into().unwrap()),
+      )]))
+      .into(),
       ..Default::default()
-    })
-    .await;
+    })),
+    ..Default::default()
+  };
+  setup.send_response(runtime_response.clone()).await;
 
   // Wait for the ACK to make sure the runtime update is processed.
   setup.next_request(1.seconds()).await.unwrap();
 
   // Restart to make sure we are killed.
+  make_mut(&mut setup.config_updater)
+    .expect_clear_cached_config()
+    .times(1)
+    .return_once(|| ());
   setup.restart().await;
   assert!(setup.next_stream(1.seconds()).await.is_none());
 
   // Advance 12 hours, we should still be killed.
   setup.time_provider.advance(12.hours());
+  make_mut(&mut setup.config_updater)
+    .expect_clear_cached_config()
+    .times(1)
+    .return_once(|| ());
   setup.restart().await;
   assert!(setup.next_stream(1.seconds()).await.is_none());
 
@@ -569,7 +615,16 @@ async fn client_kill() {
   setup.restart().await;
   assert!(setup.next_stream(1.seconds()).await.is_some());
 
-  // The client should be killed again.
+  // The client should be killed again after sending down the same config.
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None)
+    .await;
+  setup.send_response(runtime_response).await;
+  setup.next_request(1.seconds()).await.unwrap();
+  make_mut(&mut setup.config_updater)
+    .expect_clear_cached_config()
+    .times(1)
+    .return_once(|| ());
   setup.restart().await;
   assert!(setup.next_stream(1.seconds()).await.is_none());
 
@@ -624,12 +679,30 @@ async fn api_retry_stream_runtime_override() {
     setup.close_stream().await;
     assert!(setup.next_stream(1500.milliseconds()).await.is_some());
   }
-
-  setup.shutdown_trigger.shutdown().await;
 }
 
 #[tokio::test(start_paused = true)]
-async fn error_response() {
+async fn multiple_handshake_messages_with_error() {
+  let mut setup = Setup::new();
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  let now = Instant::now();
+  setup
+    .send_multiple_messages(vec![
+      Setup::make_handshake(
+        HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+        None,
+      ),
+      Setup::make_error_shutdown(Code::Internal, "some message", Some(5.minutes())),
+    ])
+    .await;
+
+  assert!(setup.next_stream(6.minutes()).await.is_some());
+  assert!(now.elapsed() >= 5.minutes());
+}
+
+#[tokio::test(start_paused = true)]
+async fn error_response_with_retry_after() {
   let mut setup = Setup::new();
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
@@ -640,23 +713,13 @@ async fn error_response() {
     )
     .await;
 
+  let now = Instant::now();
   setup
-    .send_response(ApiResponse {
-      response_type: Some(Response_type::ErrorShutdown(ErrorShutdown {
-        grpc_status: 1,
-        grpc_message: "some message".to_string(),
-        ..Default::default()
-      })),
-      ..Default::default()
-    })
+    .error_shutdown(Code::Internal, "some message", Some(1.minutes()))
     .await;
 
-  // Processing the error message has no side effects, so we just make sure that we process is to
-  // provide code coverage. To do so, we close the stream and wait for the next one. Since the close
-  // event is processed via the same channel as the response, we know that the response must have
-  // been processed.
-  setup.close_stream().await;
-  assert!(setup.next_stream(1.seconds()).await.is_some());
+  assert!(setup.next_stream(2.minutes()).await.is_some());
+  assert!(now.elapsed() >= 1.minutes());
 
   setup
     .collector
@@ -670,21 +733,9 @@ async fn error_response_before_handshake() {
   assert!(setup.next_stream(1.seconds()).await.is_some());
 
   setup
-    .send_response(ApiResponse {
-      response_type: Some(Response_type::ErrorShutdown(ErrorShutdown {
-        grpc_status: 1,
-        grpc_message: "some message".to_string(),
-        ..Default::default()
-      })),
-      ..Default::default()
-    })
+    .error_shutdown(Code::Internal, "some message", None)
     .await;
 
-  // Processing the error message has no side effects, so we just make sure that we process is to
-  // provide code coverage. To do so, we close the stream and wait for the next one. Since the close
-  // event is processed via the same channel as the response, we know that the response must have
-  // been processed.
-  setup.close_stream().await;
   assert!(setup.next_stream(1.seconds()).await.is_some());
 
   setup
@@ -696,20 +747,32 @@ async fn error_response_before_handshake() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn rate_limited_response_before_handshake() {
+  let mut setup = Setup::new();
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+
+  let now = Instant::now();
+  setup
+    .error_shutdown(Code::ResourceExhausted, "rate limited", Some(1.minutes()))
+    .await;
+
+  assert!(setup.next_stream(2.minutes()).await.is_some());
+  assert!(now.elapsed() >= 1.minutes());
+}
+
+#[tokio::test(start_paused = true)]
 async fn unauthenticated_response_before_handshake() {
   let mut setup = Setup::new();
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
 
+  make_mut(&mut setup.config_updater)
+    .expect_clear_cached_config()
+    .times(1)
+    .return_once(|| ());
   setup
-    .send_response(ApiResponse {
-      response_type: Some(Response_type::ErrorShutdown(ErrorShutdown {
-        grpc_status: 16,
-        grpc_message: "some message".to_string(),
-        ..Default::default()
-      })),
-      ..Default::default()
-    })
+    .error_shutdown(Code::Unauthenticated, "some message", None)
     .await;
 
   // The unauthenticated response will kill the client for the default 1 day period. Make sure that
@@ -722,6 +785,10 @@ async fn unauthenticated_response_before_handshake() {
     .assert_counter_eq(0, "api:error_shutdown_total", labels! {});
 
   // Restart to make sure the client is still killed. We should not see any stream requests.
+  make_mut(&mut setup.config_updater)
+    .expect_clear_cached_config()
+    .times(1)
+    .return_once(|| ());
   setup.restart().await;
   assert!(setup.next_stream(1.seconds()).await.is_none());
 

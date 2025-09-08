@@ -1,0 +1,19 @@
+[package]
+edition      = "2024"
+license-file = "../LICENSE"
+name         = "bd-error-reporter"
+publish      = false
+version      = "1.0.0"
+
+[lib]
+doctest = false
+
+[dependencies]
+anyhow.workspace      = true
+bd-client-common      = { path = "../bd-client-common" }
+bd-client-stats-store = { path = "../bd-client-stats-store" }
+bd-metadata           = { path = "../bd-metadata" }
+log.workspace         = true
+parking_lot.workspace = true
+tokio.workspace       = true
+uuid.workspace        = true

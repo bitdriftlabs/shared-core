@@ -35,6 +35,7 @@ use bd_api::DataUpload;
 use bd_client_common::file::{read_compressed, write_compressed};
 use bd_client_stats::Stats;
 use bd_client_stats_store::{Counter, Histogram, Scope};
+use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::{Log, LogRef};
 use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
@@ -137,7 +138,7 @@ impl WorkflowsEngine {
       buffers_to_flush_tx,
       pending_buffer_flushes: HashMap::new(),
 
-      explicit_session_capture_streaming_log_count: runtime.register_watch().unwrap(),
+      explicit_session_capture_streaming_log_count: runtime.register_int_watch(),
     };
 
     (workflows_engine, buffers_to_flush_rx)
@@ -229,23 +230,32 @@ impl WorkflowsEngine {
     // Process workflows in reversed order as we may end up removing workflows
     // while iterating.
     for index in (0 .. self.state.workflows.len()).rev() {
-      let should_remove_existing_workflow =
-        match latest_workflow_ids_to_index.get(self.state.workflows[index].id()) {
-          Some(latest_workflows_index) => {
-            // Handle an edge case where a client receives a config update containing a workflow
-            // with a config field unknown to the client, which is later updated to
-            // understand this field. In such cases, the server's config is converted to
-            // the client's representation and cached for future use.
-            // If the client is later updated to understand the previously unsupported field,
-            // we check for a config mismatch between the cached client representation and
-            // the fresh client representation from the server. If there's a mismatch, we discard
-            // the cached version and replace it with the fresh one later on.
-            config.workflows_configuration.workflows[*latest_workflows_index] != self.configs[index]
-          },
-          // The latest config update doesn't contain a workflow with an ID of the existing
-          // workflow. Remove existing workflow.
-          None => true,
-        };
+      let should_remove_existing_workflow = match self
+        .state
+        .workflows
+        .get(index)
+        .map(super::workflow::Workflow::id)
+        .and_then(|id| latest_workflow_ids_to_index.get(id))
+      {
+        Some(latest_workflows_index) => {
+          // Handle an edge case where a client receives a config update containing a workflow
+          // with a config field unknown to the client, which is later updated to
+          // understand this field. In such cases, the server's config is converted to
+          // the client's representation and cached for future use.
+          // If the client is later updated to understand the previously unsupported field,
+          // we check for a config mismatch between the cached client representation and
+          // the fresh client representation from the server. If there's a mismatch, we discard
+          // the cached version and replace it with the fresh one later on.
+          config
+            .workflows_configuration
+            .workflows
+            .get(*latest_workflows_index)
+            != self.configs.get(index)
+        },
+        // The latest config update doesn't contain a workflow with an ID of the existing
+        // workflow. Remove existing workflow.
+        None => true,
+      };
 
       if should_remove_existing_workflow {
         self.remove_workflow(index);
@@ -544,8 +554,12 @@ impl WorkflowsEngine {
     let mut actions: Vec<TriggeredAction<'_>> = vec![];
     let mut logs_to_inject: BTreeMap<&'a str, Log> = BTreeMap::new();
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
+      let Some(config) = self.configs.get(index) else {
+        continue;
+      };
+
       let was_in_initial_state = workflow.is_in_initial_state();
-      let result = workflow.process_log(&self.configs[index], log, now);
+      let result = workflow.process_log(config, log, now);
 
       macro_rules! inc_by {
         ($field:ident, $value:ident) => {
@@ -855,7 +869,7 @@ impl StateStore {
       "failed to deserialize workflows: invalid sdk dir: {}",
       sdk_directory.display()
     );
-    bd_client_common::error::handle_unexpected::<(), anyhow::Error>(
+    handle_unexpected::<(), anyhow::Error>(
       if sdk_directory.is_dir() {
         Ok(())
       } else {
@@ -869,7 +883,7 @@ impl StateStore {
       state_path: sdk_directory.join("workflows_state_snapshot.9.bin"),
       last_persisted: None,
       stats,
-      persistence_write_interval_flag: runtime.register_watch().unwrap(),
+      persistence_write_interval_flag: runtime.register_duration_watch(),
     }
   }
 
@@ -962,7 +976,7 @@ impl StateStore {
 
   async fn store(state_path: &Path, state: &WorkflowsState) -> anyhow::Result<()> {
     let bytes = bincode::serde::encode_to_vec(state, bincode::config::standard())?;
-    tokio::fs::write(state_path, write_compressed(&bytes)).await?;
+    tokio::fs::write(state_path, write_compressed(&bytes)?).await?;
 
     Ok(())
   }

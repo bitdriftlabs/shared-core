@@ -11,7 +11,7 @@ use axum::extract::State;
 use axum::routing::post;
 use axum::{Json, Router};
 use bd_api::PlatformNetworkManager;
-use bd_client_common::error::Reporter as _;
+use bd_error_reporter::reporter::Reporter;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use http::HeaderMap;
 use std::collections::HashMap;
