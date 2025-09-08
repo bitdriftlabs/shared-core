@@ -15,7 +15,6 @@
 )]
 
 use bd_proto::protos::client::api::{self, ApiRequest, HandshakeRequest};
-use mockall::mock;
 use std::future::{Future, pending};
 use tokio::time::Interval;
 
@@ -27,6 +26,12 @@ pub mod payload_conversion;
 pub mod safe_file_cache;
 pub mod test;
 pub mod zlib;
+
+#[cfg(test)]
+#[ctor::ctor]
+fn test_global_init() {
+  bd_test_helpers::test_global_init();
+}
 
 // This is a helper for use in tokio::select to avoid unwrap() in the typical pattern:
 // async { foo.unwrap().await }, if foo.is_some().
@@ -67,11 +72,11 @@ pub async fn maybe_await_interval(interval: Option<&mut Interval>) {
 pub const HANDSHAKE_FLAG_CONFIG_UP_TO_DATE: u32 = 0x1;
 pub const HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE: u32 = 0x2;
 
-/// Used to define a configuration pipeline that receives configuration updates through the
-/// multiplexing API. The configuration pipeline may optionally support disk persistence.
+// TODO(mattklein123): Move this trait and the client config code into its own crate to break a
+// a circular dependency.
 #[mockall::automock]
 #[async_trait::async_trait]
-pub trait ConfigurationUpdate: Send + Sync {
+pub trait ClientConfigurationUpdate: Send + Sync {
   /// Attempts to load persisted config from disk if supported by the configuration type.
   async fn try_load_persisted_config(&self);
 
@@ -83,35 +88,11 @@ pub trait ConfigurationUpdate: Send + Sync {
 
   /// Unconditionally mark any cached config as "safe" to use.
   async fn mark_safe(&self);
-}
 
-// TODO(mattklein123): Move this trait and the client config code into its own crate to break a
-// a circular dependency. At the same time potentially just get rid of the ConfigurationUpdate
-// trait altogether as it's not clear we need it.
-#[async_trait::async_trait]
-pub trait ClientConfigurationUpdate: ConfigurationUpdate {
   async fn try_apply_config(
     &self,
     configuration_update: api::ConfigurationUpdate,
   ) -> Option<ApiRequest>;
-}
 
-mock! {
-  pub ClientConfigurationUpdate {}
-
-  #[async_trait::async_trait]
-  impl ConfigurationUpdate for ClientConfigurationUpdate {
-    async fn try_load_persisted_config(&self);
-    fn fill_handshake(&self, handshake: &mut HandshakeRequest);
-    async fn on_handshake_complete(&self, configuration_update_status: u32);
-    async fn mark_safe(&self);
-  }
-
-  #[async_trait::async_trait]
-  impl ClientConfigurationUpdate for ClientConfigurationUpdate {
-    async fn try_apply_config(
-      &self,
-      configuration_update: api::ConfigurationUpdate,
-    ) -> Option<ApiRequest>;
-  }
+  async fn clear_cached_config(&self);
 }

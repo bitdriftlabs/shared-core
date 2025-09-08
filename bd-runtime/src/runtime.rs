@@ -10,10 +10,11 @@
 mod runtime_test;
 
 use anyhow::anyhow;
+use bd_client_common::HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE;
 use bd_client_common::file::write_compressed_protobuf;
 use bd_client_common::payload_conversion::{IntoRequest, RuntimeConfigurationUpdate};
 use bd_client_common::safe_file_cache::SafeFileCache;
-use bd_client_common::{ConfigurationUpdate, HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE};
+use bd_proto::protos::client::api::configuration_update_ack::Nack;
 use bd_proto::protos::client::api::{
   ApiRequest,
   ConfigurationUpdateAck,
@@ -121,36 +122,47 @@ pub struct ConfigLoader {
   file_cache: SafeFileCache<RuntimeUpdate>,
 }
 
-#[async_trait::async_trait]
-impl ConfigurationUpdate for ConfigLoader {
-  async fn try_load_persisted_config(&self) {
+impl ConfigLoader {
+  pub async fn clear_cached_config(&self) {
+    self.file_cache.reset().await;
+  }
+
+  pub async fn try_load_persisted_config(&self) {
     self.handle_cached_config().await;
   }
 
-  fn fill_handshake(&self, handshake: &mut HandshakeRequest) {
+  pub fn fill_handshake(&self, handshake: &mut HandshakeRequest) {
     handshake.runtime_version_nonce = self.snapshot().nonce.clone().unwrap_or_default();
   }
 
-  async fn on_handshake_complete(&self, configuration_update_status: u32) {
+  pub async fn on_handshake_complete(&self, configuration_update_status: u32) {
     if configuration_update_status & HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE != 0 {
       self.file_cache.mark_safe().await;
     }
   }
 
-  async fn mark_safe(&self) {
+  pub async fn mark_safe(&self) {
     self.file_cache.mark_safe().await;
   }
-}
 
-impl ConfigLoader {
   pub async fn try_apply_config(&self, update: RuntimeUpdate) -> Option<ApiRequest> {
     log::debug!("applying runtime update: {update}");
-    self.update_snapshot(update).await;
+    let version_nonce = update.version_nonce.clone();
+    let result = self.update_snapshot(update).await;
 
     Some(
       RuntimeConfigurationUpdate(ConfigurationUpdateAck {
         last_applied_version_nonce: self.snapshot().nonce.clone().unwrap_or_default(),
-        nack: None.into(),
+        nack: if let Err(e) = result {
+          Some(Nack {
+            version_nonce,
+            error_details: e.to_string(),
+            ..Default::default()
+          })
+        } else {
+          None
+        }
+        .into(),
         ..Default::default()
       })
       .into_request(),
@@ -268,12 +280,16 @@ impl ConfigLoader {
     debug_assert!(self.state.lock().initialized);
   }
 
-  pub async fn update_snapshot(&self, runtime_update: RuntimeUpdate) {
-    let compressed_protobuf = write_compressed_protobuf(&runtime_update);
-    self.update_snapshot_inner(runtime_update);
-    if let Ok(compressed_protobuf) = compressed_protobuf {
-      self.file_cache.cache_update(compressed_protobuf).await;
-    }
+  pub async fn update_snapshot(&self, runtime_update: RuntimeUpdate) -> anyhow::Result<()> {
+    let compressed_protobuf = write_compressed_protobuf(&runtime_update)?;
+    let version_nonce = runtime_update.version_nonce.clone();
+    self
+      .file_cache
+      .cache_update(compressed_protobuf, &version_nonce, async move {
+        self.update_snapshot_inner(runtime_update);
+        Ok(())
+      })
+      .await
   }
 
   /// Updates the current runtime snapshot, updating all registered watchers as appropriate.

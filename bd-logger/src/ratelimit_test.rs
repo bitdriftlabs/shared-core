@@ -62,7 +62,8 @@ async fn ratelimit() {
         ValueKind::Int(1000),
       ),
     ]))
-    .await;
+    .await
+    .unwrap();
 
   let rate_limit = RateLimitLayer::new(super::Rate::new(&runtime_loader));
   let mut service = tower::ServiceBuilder::new()
@@ -106,7 +107,8 @@ async fn shared_quota() {
         ValueKind::Int(1000),
       ),
     ]))
-    .await;
+    .await
+    .unwrap();
 
   let rate_limit = RateLimitLayer::new(super::Rate::new(&runtime_loader));
   let mut service1 = tower::ServiceBuilder::new()

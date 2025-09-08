@@ -411,7 +411,8 @@ fn run_profiling<T: Fn(&mut AnnotatedWorkflowsEngine) + std::marker::Send + 'sta
             .into(),
             ..Default::default()
           })
-          .await;
+          .await
+          .unwrap();
 
         // Given the runtime configuration update time to propagate.
         1.seconds().sleep().await;

@@ -69,7 +69,7 @@ pub fn write_checksummed_data(bytes: &[u8]) -> Vec<u8> {
 
 /// Reads the data and checks the CRC checksum at the end of the slice. If the checksum is valid, it
 /// returns the data.
-pub fn read_checksummed_data(bytes: &[u8]) -> anyhow::Result<&[u8]> {
+pub fn read_checksummed_data(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
   if bytes.len() < 4 {
     anyhow::bail!("data too small to contain CRC checksum");
   }
@@ -82,5 +82,5 @@ pub fn read_checksummed_data(bytes: &[u8]) -> anyhow::Result<&[u8]> {
     anyhow::bail!("crc mismatch");
   }
 
-  Ok(data)
+  Ok(data.to_vec())
 }
