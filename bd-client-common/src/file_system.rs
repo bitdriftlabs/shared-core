@@ -222,7 +222,6 @@ impl FileSystem for TestFileSystem {
 }
 
 impl TestFileSystem {
-  #[must_use]
   pub fn new() -> anyhow::Result<Self> {
     Ok(Self {
       directory: tempfile::tempdir()?,
