@@ -176,11 +176,12 @@ impl<T: Message> SafeFileCache<T> {
     // runtime config to accidentally set this really high, but right now this is not
     // configurable at all.
     if retry_count >= MAX_RETRY_COUNT {
-      // Note that eventually if the client is killed this is going to kick in since we attempt
-      // to load cached runtime very early on. Since we don't clean state so that we can do changed
-      // nonce detection below, this could pause killed clients to not get new config when they
-      // come back online since there is no crash loop and the nonce hasn't changed. We handle
-      // this directly in the API code by having the state reset when it enters killed mode.
+      // Note that eventually if the client is killed this is going to kick in since we attempt to
+      // load cached runtime very early on. Since we don't clean state so that we can do changed
+      // nonce detection in the cache_update() function, this could cause killed clients to not get
+      // new config when they come back online since there is no crash loop and the nonce hasn't
+      // changed. We handle this directly in the API code by having the state reset when it enters
+      // killed mode.
       log::debug!(
         "cached config for {} has retry count {retry_count} >= {MAX_RETRY_COUNT}, refusing to read",
         self.name

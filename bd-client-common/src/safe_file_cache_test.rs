@@ -46,7 +46,7 @@ async fn basic_flow() {
   let cache = SafeFileCache::<ClientKillFile>::new("test", tempdir.path());
   assert!(cache.handle_cached_config().await.is_none());
 
-  // We should need delete any state so make sure we come up again but get no config.
+  // We should delete any state so make sure we come up again but get no config.
   let cache = SafeFileCache::<ClientKillFile>::new("test", tempdir.path());
   assert!(cache.handle_cached_config().await.is_none());
 
