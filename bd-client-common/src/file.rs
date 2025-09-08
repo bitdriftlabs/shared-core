@@ -13,7 +13,7 @@ use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use flate2::Compression;
 use flate2::read::{ZlibDecoder, ZlibEncoder};
 use std::io::Read;
-use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub fn write_compressed_protobuf<T: protobuf::Message>(message: &T) -> anyhow::Result<Vec<u8>> {
   let bytes = message.write_to_bytes()?;
