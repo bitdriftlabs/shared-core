@@ -31,12 +31,9 @@ fn test_blocking_recv_with_timeout_timeout() {
   // Don't send anything to trigger timeout
 
   let result = rx.blocking_recv_with_timeout(Duration::from_millis(50));
-  if let Err(e) = result {
-    assert!(matches!(e, RecvWithTimeoutError::Timeout));
-    assert_eq!(e.to_string(), "timeout duration reached");
-  } else {
-    panic!("Expected Err result but got Ok");
-  }
+  let error = result.unwrap_err();
+  assert!(matches!(error, RecvWithTimeoutError::Timeout));
+  assert_eq!(error.to_string(), "timeout duration reached");
 }
 
 #[test]
@@ -46,12 +43,9 @@ fn test_blocking_recv_with_drop_channel_closed() {
   drop(tx);
 
   let result = rx.blocking_recv_with_timeout(Duration::from_millis(100));
-  if let Err(e) = result {
-    assert!(matches!(e, RecvWithTimeoutError::ChannelClosed));
-    assert_eq!(e.to_string(), "the oneshot channel was closed");
-  } else {
-    panic!("Expected Err result but got Ok");
-  }
+  let error = result.unwrap_err();
+  assert!(matches!(error, RecvWithTimeoutError::ChannelClosed));
+  assert_eq!(error.to_string(), "the oneshot channel was closed");
 }
 
 #[test]
