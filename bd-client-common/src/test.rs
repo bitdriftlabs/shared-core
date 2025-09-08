@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 // Test code only.
-#![allow(clippy::panic, clippy::unwrap_used)]
+#![allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
 
 use crate::file_system::FileSystem;
 use async_trait::async_trait;
@@ -122,7 +122,14 @@ impl FileSystem for TestFileSystem {
   }
 }
 
+impl Default for TestFileSystem {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl TestFileSystem {
+  #[must_use]
   pub fn new() -> Self {
     Self {
       directory: tempfile::tempdir().expect("failed to create temp dir"),
