@@ -28,7 +28,7 @@ use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
 use bd_internal_logging::NoopLogger;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
-use bd_runtime::runtime::{self, ConfigLoader, Watch, artifact_upload, sleep_mode};
+use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_time::SystemTimeProvider;
 use futures_util::{Future, try_join};
@@ -244,11 +244,7 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
       );
 
-      let out_of_band_enabled_flag =
-        runtime_loader.register_bool_watch::<artifact_upload::Enabled>();
-
       let crash_monitor = Monitor::new(
-        *out_of_band_enabled_flag.read(),
         &self.params.sdk_directory,
         self.params.store.clone(),
         Arc::new(artifact_client),

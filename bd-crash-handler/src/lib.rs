@@ -90,7 +90,6 @@ pub trait CrashLogger: Send + Sync {
 /// - `reports/new/` - A directory where new crash reports are placed. The platform layer is
 ///   responsible for copying the raw files into this directory.
 pub struct Monitor {
-  out_of_band_enabled: bool,
   pub previous_session_id: Option<String>,
 
   report_directory: PathBuf,
@@ -100,14 +99,12 @@ pub struct Monitor {
 
 impl Monitor {
   pub fn new(
-    out_of_band_enabled: bool,
     sdk_directory: &Path,
     store: Arc<bd_device::Store>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
     previous_session_id: Option<String>,
   ) -> Self {
     Self {
-      out_of_band_enabled,
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
       global_state_reader: global_state::Reader::new(store),
       artifact_client,
@@ -267,31 +264,24 @@ impl Monitor {
           _ => "Unknown",
         };
 
-        let (crash_field_key, crash_field_value) = if self.out_of_band_enabled {
-          log::debug!("uploading report out of band");
+        log::debug!("uploading report out of band");
 
-          let Ok(artifact_id) = self.artifact_client.enqueue_upload(
-            file,
-            state_fields.clone(),
-            timestamp,
-            self.previous_session_id.clone().unwrap_or_default(),
-          ) else {
-            // TODO(snowp): Should we fall back to passing it via a field at this point?
-            log::warn!(
-              "Failed to enqueue crash report for upload: {}",
-              path.display()
-            );
-            continue;
-          };
-
-          ("_crash_artifact_id".into(), artifact_id.to_string().into())
-        } else {
-          log::debug!("uploading report in band with log line");
-          ("_crash_artifact".into(), mapped_file.to_vec().into())
+        let Ok(artifact_id) = self.artifact_client.enqueue_upload(
+          file,
+          state_fields.clone(),
+          timestamp,
+          self.previous_session_id.clone().unwrap_or_default(),
+        ) else {
+          // TODO(snowp): Should we fall back to passing it via a field at this point?
+          log::warn!(
+            "Failed to enqueue crash report for upload: {}",
+            path.display()
+          );
+          continue;
         };
 
         let mut fields = state_fields.clone();
-        fields.insert(crash_field_key, crash_field_value);
+        fields.insert("_crash_artifact_id".into(), artifact_id.to_string().into());
         fields.extend(
           [
             ("_app_exit_reason".into(), report_type.into()),

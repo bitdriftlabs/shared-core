@@ -27,11 +27,9 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Timestamp,
 };
 use bd_proto_util::ToFlatBufferString;
-use bd_runtime::runtime::{self, FeatureFlag as _};
-use bd_runtime::test::TestConfigLoader;
+use bd_runtime::runtime::{self};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::make_mut;
-use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_test_helpers::session::InMemoryStorage;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, WIPOffset};
 use itertools::Itertools;
@@ -51,27 +49,15 @@ struct Setup {
 }
 
 impl Setup {
-  async fn new(artifact_upload: bool) -> Self {
+  async fn new() -> Self {
     let directory = TempDir::new().unwrap();
     std::fs::create_dir_all(directory.path().join("runtime")).unwrap();
-    let runtime = TestConfigLoader::new_in_directory(&directory.path().join("runtime")).await;
-
-    if artifact_upload {
-      runtime
-        .update_snapshot(make_simple_update(vec![(
-          runtime::artifact_upload::Enabled::path(),
-          ValueKind::Bool(artifact_upload),
-        )]))
-        .await
-        .unwrap();
-    }
 
     let shutdown = ComponentShutdownTrigger::default();
     let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
     let upload_client = Arc::new(bd_artifact_upload::MockClient::default());
 
     let monitor = Monitor::new(
-      true,
       directory.path(),
       store.clone(),
       upload_client.clone(),
@@ -205,7 +191,7 @@ async fn test_log_report_fields() {
   builder.finish(report, None);
   let data = builder.finished_data();
 
-  let mut setup = Setup::new(true).await;
+  let mut setup = Setup::new().await;
   let mut tracker = global_state::Tracker::new(
     setup.store.clone(),
     runtime::Watch::new_for_testing(10.seconds()),

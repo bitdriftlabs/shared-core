@@ -821,8 +821,6 @@ pub mod platform_events {
 }
 
 pub mod artifact_upload {
-  bool_feature_flag!(Enabled, "artifact_upload.enabled", false);
-
   int_feature_flag!(MaxPendingEntries, "artifact_upload.max_pending_entries", 10);
 
   int_feature_flag!(BufferCountLimit, "artifact_upload.buffer_count_limit", 100);

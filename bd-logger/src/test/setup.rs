@@ -30,9 +30,7 @@ use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_test_helpers::config_helper::{
   configuration_update,
   default_buffer_config,
-  make_buffer_config_matching_everything,
   make_buffer_matcher_matching_everything,
-  make_buffer_matcher_matching_nothing,
 };
 use bd_test_helpers::metadata::EmptyMetadata;
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -340,29 +338,6 @@ impl Setup {
             buffer_config::Type::CONTINUOUS,
             make_buffer_matcher_matching_everything().into(),
           )],
-          ..Default::default()
-        })
-        .into(),
-        ..Default::default()
-      },
-    ));
-  }
-
-  pub fn configure_default_buffers(&mut self) {
-    self.send_configuration_update(configuration_update(
-      "",
-      StateOfTheWorld {
-        buffer_config_list: Some(BufferConfigList {
-          buffer_config: make_buffer_config_matching_everything(
-            "trigger",
-            buffer_config::Type::TRIGGER,
-          )
-          .into_iter()
-          .chain(std::iter::once(default_buffer_config(
-            buffer_config::Type::CONTINUOUS,
-            make_buffer_matcher_matching_nothing().into(),
-          )))
-          .collect(),
           ..Default::default()
         })
         .into(),
