@@ -223,7 +223,7 @@ impl Monitor {
       let ext = path.extension().and_then(OsStr::to_str);
       if path.is_file() && ext == Some("cap") {
         let Ok(file) = File::open(&path) else {
-          log::warn!("Failed to open reports report: {} ()", path.display());
+          log::warn!("Failed to open reports report: {}", path.display());
           continue;
         };
 
