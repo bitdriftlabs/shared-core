@@ -228,7 +228,7 @@ impl Monitor {
         };
 
         log::info!("Processing new reports report: {}", path.display());
-        // Saftey: We expect this to be safe as we own the file once it has been written to the
+        // Safety: We expect this to be safe as we own the file once it has been written to the
         // inbox directory. Any modifications to this file during the mmap can cause UB, but we
         // assume that once a file exists in this directory it is no longer modified.
         let Ok(mapped_file) = unsafe { Mmap::map(&file) }.map_err(|e| {
