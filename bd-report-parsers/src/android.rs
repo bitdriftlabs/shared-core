@@ -249,26 +249,37 @@ fn build_java_frame<'a, 'fbb, E: ParseError<&'a str>>(
   builder: &mut FlatBufferBuilder<'fbb>,
   input: &'a str,
 ) -> IResult<&'a str, WIPOffset<v_1::Frame<'fbb>>, E> {
-  map(java_frame_parser(), |(symbol, source, state)| {
-    let source_file_args = v_1::SourceFileArgs {
-      path: Some(builder.create_string(source.path)),
-      line: source.lineno.unwrap_or_default(),
-      column: 0,
-    };
-    let source_file = Some(v_1::SourceFile::create(builder, &source_file_args));
-    let state = state
-      .iter()
-      .map(|item| builder.create_string(item))
-      .collect::<Vec<_>>();
-    let args = v_1::FrameArgs {
-      type_: v_1::FrameType::JVM,
-      symbol_name: Some(builder.create_string(symbol)),
-      source_file,
-      state: (!state.is_empty()).then(|| builder.create_vector(state.as_slice())),
-      ..Default::default()
-    };
-    v_1::Frame::create(builder, &args)
-  })
+  let symbol_parser = take_till(|c| c == '(' || c == '\n');
+  map(
+    (
+      delimited(tag("at "), symbol_parser, tag("(")),
+      terminated(source_location, tag(")\n")),
+      many0(preceded(
+        (multispace1, tag("- ")),
+        terminated(take_until("\n"), tag("\n")),
+      )),
+    ),
+    |(symbol, source, state)| {
+      let source_file_args = v_1::SourceFileArgs {
+        path: Some(builder.create_string(source.path)),
+        line: source.lineno.unwrap_or_default(),
+        column: 0,
+      };
+      let source_file = Some(v_1::SourceFile::create(builder, &source_file_args));
+      let state = state
+        .iter()
+        .map(|item| builder.create_string(item))
+        .collect::<Vec<_>>();
+      let args = v_1::FrameArgs {
+        type_: v_1::FrameType::JVM,
+        symbol_name: Some(builder.create_string(symbol)),
+        source_file,
+        state: (!state.is_empty()).then(|| builder.create_vector(state.as_slice())),
+        ..Default::default()
+      };
+      v_1::Frame::create(builder, &args)
+    },
+  )
   .parse(input)
 }
 
@@ -406,22 +417,6 @@ fn thread_prop_value<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a 
     .and_then(|index| input[.. index].rfind(' '))
     .unwrap_or(line_end);
   take(value_end).parse(input)
-}
-
-fn java_frame_parser<'a, E>()
--> impl Parser<&'a str, Output = (&'a str, Source<'a>, Vec<&'a str>), Error = E>
-where
-  E: ParseError<&'a str>,
-{
-  let symbol_parser = take_till(|c| c == '(' || c == '\n');
-  (
-    delimited(tag("at "), symbol_parser, tag("(")),
-    terminated(source_location, tag(")\n")),
-    many0(preceded(
-      (multispace1, tag("- ")),
-      terminated(take_until("\n"), tag("\n")),
-    )),
-  )
 }
 
 fn native_symbol_parser<'a, E: ParseError<&'a str>>(
