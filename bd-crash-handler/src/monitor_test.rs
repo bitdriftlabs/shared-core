@@ -49,7 +49,7 @@ struct Setup {
 }
 
 impl Setup {
-  async fn new() -> Self {
+  fn new() -> Self {
     let directory = TempDir::new().unwrap();
     std::fs::create_dir_all(directory.path().join("runtime")).unwrap();
 
@@ -191,7 +191,7 @@ async fn test_log_report_fields() {
   builder.finish(report, None);
   let data = builder.finished_data();
 
-  let mut setup = Setup::new().await;
+  let mut setup = Setup::new();
   let mut tracker = global_state::Tracker::new(
     setup.store.clone(),
     runtime::Watch::new_for_testing(10.seconds()),
