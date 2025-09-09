@@ -469,7 +469,12 @@ fn source_location<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a st
   }
 }
 
+const DEFAULT_ANR_NAME: &str = "Undetermined ANR";
+
 fn anr_name(description: Option<&str>) -> &'static str {
+  let Some(description) = description else {
+    return DEFAULT_ANR_NAME;
+  };
   let anr_types = vec![
     ("Background ANR", vec!["bg anr"]),
     (
@@ -494,16 +499,14 @@ fn anr_name(description: Option<&str>) -> &'static str {
     ),
   ];
 
-  if let Some(description) = description {
-    let normalized = description.to_lowercase();
-    for (name, snippets) in anr_types {
-      for snippet in snippets {
-        if normalized.contains(snippet) {
-          return name;
-        }
+  let normalized = description.to_lowercase();
+  for (name, snippets) in anr_types {
+    for snippet in snippets {
+      if normalized.contains(snippet) {
+        return name;
       }
     }
   }
 
-  "Undetermined ANR"
+  DEFAULT_ANR_NAME
 }
