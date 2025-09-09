@@ -56,12 +56,14 @@ use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::session::InMemoryStorage;
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_test_helpers::test_api_server::StreamAction;
-use bd_test_helpers::workflow::macros::{action, log_matches, rule, state, workflow_proto};
+use bd_test_helpers::workflow::macros::{action, log_matches, rule};
 use bd_test_helpers::workflow::{
   TestFieldRef,
   TestFieldType,
+  WorkflowBuilder,
   make_generate_log_action_proto,
   make_save_timestamp_extraction,
+  state,
 };
 use bd_test_helpers::{RecordingErrorReporter, field_value, metric_tag, metric_value, set_field};
 use parking_lot::Mutex;
@@ -639,7 +641,7 @@ fn session_replay_actions() {
         Type::TRIGGER,
         make_buffer_matcher_matching_everything().into(),
       )],
-      workflows: vec![workflow_proto!("workflow"; a, b)],
+      workflows: vec![WorkflowBuilder::new("workflow", &[&a, &b]).build()],
       ..Default::default()
     },
   ));
@@ -997,7 +999,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
         }
         .build(),
       ],
-      workflows: vec![workflow_proto!("workflow"; a, b, c)],
+      workflows: vec![WorkflowBuilder::new("workflow", &[&a, &b, &c]).build()],
       ..Default::default()
     },
   ));
@@ -1160,7 +1162,7 @@ fn workflow_generate_log_to_histogram() {
         Type::TRIGGER,
         make_buffer_matcher_matching_everything().into(),
       )],
-      workflows: vec![workflow_proto!("workflow_1"; a, b, c, d)],
+      workflows: vec![WorkflowBuilder::new("workflow_1", &[&a, &b, &c, &d]).build()],
       ..Default::default()
     },
   ));
@@ -1237,8 +1239,8 @@ fn workflow_emit_metric_action_emits_metric() {
         make_buffer_matcher_matching_everything().into(),
       )],
       workflows: vec![
-        workflow_proto!("workflow_1"; a, b),
-        workflow_proto!("workflow_2"; a, b),
+        WorkflowBuilder::new("workflow_1", &[&a, &b]).build(),
+        WorkflowBuilder::new("workflow_2", &[&a, &b]).build(),
       ],
       ..Default::default()
     },
@@ -1309,7 +1311,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
       &[action!(emit_counter "bar"; value metric_value!(1))],
     );
 
-  let workflow = workflow_proto!("1"; a, b, c);
+  let workflow = WorkflowBuilder::new("1", &[&a, &b, &c]).build();
 
   let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
     "",
