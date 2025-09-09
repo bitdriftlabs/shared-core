@@ -21,6 +21,10 @@ use bd_proto::protos::workflow::workflow::workflow::action::{
   Tag,
   action_generate_log,
 };
+use bd_proto::protos::workflow::workflow::workflow::execution::{
+  Execution_type,
+  ExecutionExclusive,
+};
 use bd_proto::protos::workflow::workflow::workflow::field_extracted::{Exact, Extraction_type};
 use bd_proto::protos::workflow::workflow::workflow::transition_extension::{
   Extension_type,
@@ -29,7 +33,13 @@ use bd_proto::protos::workflow::workflow::workflow::transition_extension::{
   SaveTimestamp,
   sankey_diagram_value_extraction,
 };
-use bd_proto::protos::workflow::workflow::workflow::{FieldExtracted, TransitionExtension};
+use bd_proto::protos::workflow::workflow::workflow::{
+  FieldExtracted,
+  LimitDuration,
+  LimitMatchedLogsCount,
+  TransitionExtension,
+  TransitionTimeout,
+};
 use log_matcher::base_log_matcher::string_value_match::String_value_match_type;
 use protobuf::MessageField;
 use protos::log_matcher::log_matcher::LogMatcher;
@@ -61,175 +71,165 @@ use protos::workflow::workflow::workflow::{
   State,
 };
 use std::collections::BTreeMap;
+use time::Duration;
 
-#[allow(clippy::module_inception)]
-pub mod macros {
-  /// A macro that creates a workflow config proto using provided states.
-  #[macro_export]
-  #[allow(clippy::module_name_repetitions)]
-  macro_rules! workflow_proto {
-    ($($state:expr),+) => {
-      $crate::workflow::make_workflow_config_proto(
-        "workflow_id",
-        bd_proto::protos::workflow::workflow::workflow::execution::Execution_type
-        ::ExecutionExclusive(
-          Default::default()
-        ),
-        Default::default(),
-        Default::default(),
-        vec![$($state.clone().into_inner()),+],
-      )
-    };
-    (
-      $($state:expr),+;
-      matches $matches_limit:expr;
-      duration $duration_limit:expr) => {
-      $crate::workflow::make_workflow_config_proto(
-        "workflow_id",
-        bd_proto::protos::workflow::workflow::workflow::execution::Execution_type
-        ::ExecutionExclusive(
-          Default::default()
-        ),
-        $matches_limit,
-        $duration_limit,
-        vec![$($state.clone().into_inner()),+],
-      )
-    };
-    ($id:expr; $($state:expr),+) => {
-      $crate::workflow::make_workflow_config_proto(
-        $id,
-        bd_proto::protos::workflow::workflow::workflow::execution::Execution_type
-        ::ExecutionExclusive(
-          Default::default()
-        ),
-        Default::default(),
-        Default::default(),
-        vec![$($state.clone().into_inner()),+],
-      )
-    };
-  }
+pub struct WorkflowBuilder {
+  id: String,
+  states: Vec<StateBuilder>,
+  log_limit: Option<u32>,
+  duration_limit: Option<Duration>,
+}
 
-  #[derive(Clone)]
-  pub struct StateBuilder {
-    state: bd_proto::protos::workflow::workflow::workflow::State,
-  }
-
-  impl StateBuilder {
-    #[must_use]
-    pub fn declare_transition(
-      mut self,
-      to: &Self,
-      rule: bd_proto::protos::workflow::workflow::workflow::Rule,
-    ) -> Self {
-      crate::workflow::add_transition(&mut self.state, &to.state, rule, &[], vec![]);
-
-      self
-    }
-
-    #[must_use]
-    pub fn declare_transition_with_actions(
-      mut self,
-      to: &Self,
-      rule: bd_proto::protos::workflow::workflow::workflow::Rule,
-      actions: &[bd_proto::protos::workflow::workflow::workflow::action::Action_type],
-    ) -> Self {
-      crate::workflow::add_transition(&mut self.state, &to.state, rule, actions, vec![]);
-
-      self
-    }
-
-    #[must_use]
-    pub fn declare_transition_with_extractions(
-      mut self,
-      to: &Self,
-      rule: bd_proto::protos::workflow::workflow::workflow::Rule,
-      extractions: &[bd_proto::protos::workflow::workflow::workflow::TransitionExtension],
-    ) -> Self {
-      crate::workflow::add_transition(&mut self.state, &to.state, rule, &[], extractions.to_vec());
-
-      self
-    }
-
-    #[must_use]
-    pub fn declare_transition_with_all(
-      mut self,
-      to: &Self,
-      rule: bd_proto::protos::workflow::workflow::workflow::Rule,
-      actions: &[bd_proto::protos::workflow::workflow::workflow::action::Action_type],
-      extractions: &[bd_proto::protos::workflow::workflow::workflow::TransitionExtension],
-    ) -> Self {
-      crate::workflow::add_transition(
-        &mut self.state,
-        &to.state,
-        rule,
-        actions,
-        extractions.to_vec(),
-      );
-
-      self
-    }
-
-    pub fn into_inner(self) -> bd_proto::protos::workflow::workflow::workflow::State {
-      self.state
-    }
-
-    #[must_use]
-    pub fn with_timeout(
-      mut self,
-      to: &Self,
-      duration: Duration,
-      actions: &[bd_proto::protos::workflow::workflow::workflow::action::Action_type],
-    ) -> Self {
-      self.state.timeout = Some(TransitionTimeout {
-        target_state_id: to.state.id.clone(),
-        timeout_ms: duration.whole_milliseconds().try_into().unwrap(),
-        actions: actions
-          .iter()
-          .map(|a| ActionProto {
-            action_type: Some(a.clone()),
-            ..Default::default()
-          })
-          .collect(),
-        ..Default::default()
-      })
-      .into();
-      self
+impl WorkflowBuilder {
+  #[must_use]
+  pub fn new(id: &str, states: &[&StateBuilder]) -> Self {
+    Self {
+      id: id.to_string(),
+      states: states.iter().map(|s| (*s).clone()).collect(),
+      log_limit: None,
+      duration_limit: None,
     }
   }
 
   #[must_use]
-  pub fn state(id: &str) -> StateBuilder {
-    StateBuilder {
-      state: bd_proto::protos::workflow::workflow::workflow::State {
-        id: id.to_string(),
-        ..Default::default()
-      },
-    }
+  pub fn with_log_limit(mut self, count: u32) -> Self {
+    self.log_limit = Some(count);
+    self
   }
 
-  /// A macro that creates a matched logs count or duration limit.
-  #[macro_export]
-  macro_rules! limit {
-    (count $matched_logs_count_limit:expr) => {
-      Some(
-        bd_proto::protos::workflow::workflow::workflow::LimitMatchedLogsCount {
-          count: $matched_logs_count_limit,
-          ..Default::default()
-        },
-      )
-      .into()
-    };
-    (seconds $seconds:expr) => {
-      Some(
-        bd_proto::protos::workflow::workflow::workflow::LimitDuration {
-          duration_ms: $seconds * 1_000,
-          ..Default::default()
-        },
-      )
-      .into()
-    };
+  #[must_use]
+  pub fn with_duration_limit(mut self, duration: Duration) -> Self {
+    self.duration_limit = Some(duration);
+    self
   }
 
+  #[must_use]
+  pub fn build(self) -> protos::workflow::workflow::Workflow {
+    make_workflow_config_proto(
+      &self.id,
+      self
+        .log_limit
+        .map(|count| LimitMatchedLogsCount {
+          count,
+          ..Default::default()
+        })
+        .into(),
+      self
+        .duration_limit
+        .map(|d| LimitDuration {
+          duration_ms: d.whole_milliseconds().try_into().unwrap(),
+          ..Default::default()
+        })
+        .into(),
+      self
+        .states
+        .into_iter()
+        .map(StateBuilder::into_inner)
+        .collect(),
+    )
+  }
+}
+
+#[derive(Clone)]
+pub struct StateBuilder {
+  state: bd_proto::protos::workflow::workflow::workflow::State,
+}
+
+impl StateBuilder {
+  #[must_use]
+  pub fn declare_transition(
+    mut self,
+    to: &Self,
+    rule: bd_proto::protos::workflow::workflow::workflow::Rule,
+  ) -> Self {
+    crate::workflow::add_transition(&mut self.state, &to.state, rule, &[], vec![]);
+
+    self
+  }
+
+  #[must_use]
+  pub fn declare_transition_with_actions(
+    mut self,
+    to: &Self,
+    rule: bd_proto::protos::workflow::workflow::workflow::Rule,
+    actions: &[bd_proto::protos::workflow::workflow::workflow::action::Action_type],
+  ) -> Self {
+    crate::workflow::add_transition(&mut self.state, &to.state, rule, actions, vec![]);
+
+    self
+  }
+
+  #[must_use]
+  pub fn declare_transition_with_extractions(
+    mut self,
+    to: &Self,
+    rule: bd_proto::protos::workflow::workflow::workflow::Rule,
+    extractions: &[bd_proto::protos::workflow::workflow::workflow::TransitionExtension],
+  ) -> Self {
+    crate::workflow::add_transition(&mut self.state, &to.state, rule, &[], extractions.to_vec());
+
+    self
+  }
+
+  #[must_use]
+  pub fn declare_transition_with_all(
+    mut self,
+    to: &Self,
+    rule: bd_proto::protos::workflow::workflow::workflow::Rule,
+    actions: &[bd_proto::protos::workflow::workflow::workflow::action::Action_type],
+    extractions: &[bd_proto::protos::workflow::workflow::workflow::TransitionExtension],
+  ) -> Self {
+    crate::workflow::add_transition(
+      &mut self.state,
+      &to.state,
+      rule,
+      actions,
+      extractions.to_vec(),
+    );
+
+    self
+  }
+
+  pub fn into_inner(self) -> bd_proto::protos::workflow::workflow::workflow::State {
+    self.state
+  }
+
+  #[must_use]
+  pub fn with_timeout(
+    mut self,
+    to: &Self,
+    duration: Duration,
+    actions: &[bd_proto::protos::workflow::workflow::workflow::action::Action_type],
+  ) -> Self {
+    self.state.timeout = Some(TransitionTimeout {
+      target_state_id: to.state.id.clone(),
+      timeout_ms: duration.whole_milliseconds().try_into().unwrap(),
+      actions: actions
+        .iter()
+        .map(|a| ActionProto {
+          action_type: Some(a.clone()),
+          ..Default::default()
+        })
+        .collect(),
+      ..Default::default()
+    })
+    .into();
+    self
+  }
+}
+
+#[must_use]
+pub fn state(id: &str) -> StateBuilder {
+  StateBuilder {
+    state: bd_proto::protos::workflow::workflow::workflow::State {
+      id: id.to_string(),
+      ..Default::default()
+    },
+  }
+}
+
+#[allow(clippy::module_inception)]
+pub mod macros {
   /// A macro that takes a matcher and creates a rule to use when
   /// to create a transition for moving to another state.
   #[macro_export]
@@ -438,27 +438,13 @@ pub mod macros {
     };
   }
 
-  use bd_proto::protos::workflow::workflow::workflow::{Action as ActionProto, TransitionTimeout};
-  use time::Duration;
   #[allow(clippy::module_name_repetitions)]
-  pub use {
-    action,
-    all,
-    any,
-    limit,
-    log_matches,
-    metric_tag,
-    metric_value,
-    not,
-    rule,
-    sankey_value,
-    workflow_proto,
-  };
+  pub use {action, all, any, log_matches, metric_tag, metric_value, not, rule, sankey_value};
 }
 
+#[must_use]
 pub fn make_workflow_config_proto(
   id: &str,
-  execution: bd_proto::protos::workflow::workflow::workflow::execution::Execution_type,
   matched_logs_count_limit: protobuf::MessageField<
     protos::workflow::workflow::workflow::LimitMatchedLogsCount,
   >,
@@ -469,7 +455,9 @@ pub fn make_workflow_config_proto(
     id: id.to_string(),
     states,
     execution: protobuf::MessageField::from_option(Some(ExecutionProto {
-      execution_type: Some(execution),
+      execution_type: Some(Execution_type::ExecutionExclusive(
+        ExecutionExclusive::default(),
+      )),
       ..Default::default()
     })),
     limit_matched_logs_count: matched_logs_count_limit,

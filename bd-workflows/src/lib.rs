@@ -22,7 +22,5 @@ pub mod engine;
 mod generate_log;
 pub mod metrics;
 mod sankey_diagram;
+pub mod test;
 pub mod workflow;
-
-#[cfg(test)]
-mod test;

@@ -29,9 +29,8 @@ use crate::workflow::macros::{
   metric_value,
   not,
   rule,
-  state,
-  workflow_proto,
 };
+use crate::workflow::{WorkflowBuilder, state};
 use bd_proto::protos::config::v1::config::{
   BufferConfig,
   BufferConfigList,
@@ -212,7 +211,7 @@ pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationU
     &[action!(emit_counter "app_open"; value metric_value!(1))],
   );
 
-  let workflow1 = workflow_proto!("1"; a, b);
+  let workflow1 = WorkflowBuilder::new("1", &[&a, &b]).build();
 
   let d = state("d");
   let c = state("c").declare_transition_with_actions(
@@ -230,7 +229,7 @@ pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationU
     &[action!(emit_counter "app_close"; value metric_value!(1))],
   );
 
-  let workflow2 = workflow_proto!("2"; c, d);
+  let workflow2 = WorkflowBuilder::new("2", &[&c, &d]).build();
 
   configuration_update_from_parts(
     "1",
@@ -333,7 +332,7 @@ pub fn make_configuration_update_with_workflow_flushing_buffer_on_anything(
     &[action!(flush_buffers &[buffer_id]; id "flush_action_id")],
   );
 
-  let workflow = workflow_proto!("1"; a, b);
+  let workflow = WorkflowBuilder::new("1", &[&a, &b]).build();
 
   configuration_update_from_parts(
     "1",
@@ -359,7 +358,7 @@ pub fn make_configuration_update_with_workflow_flushing_buffer(
     &[action!(flush_buffers &[buffer_id]; id "flush_action_id")],
   );
 
-  let workflow = workflow_proto!("1"; a, b);
+  let workflow = WorkflowBuilder::new("1", &[&a, &b]).build();
 
   configuration_update_from_parts(
     "1",
@@ -383,7 +382,7 @@ pub fn make_workflow_config_flushing_buffer(
     &[action!(flush_buffers &[buffer_id]; id "flush_action_id")],
   );
 
-  vec![workflow_proto!("1"; a, b)]
+  vec![WorkflowBuilder::new("1", &[&a, &b]).build()]
 }
 
 #[must_use]

@@ -27,14 +27,8 @@ use bd_proto::protos::workflow::workflow::workflow::{Execution, State};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
-use bd_test_helpers::workflow::macros::{
-  action,
-  log_matches,
-  metric_tag,
-  metric_value,
-  rule,
-  state,
-};
+use bd_test_helpers::workflow::macros::{action, log_matches, metric_tag, metric_value, rule};
+use bd_test_helpers::workflow::state;
 use bd_time::TimeDurationExt;
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};

@@ -11,8 +11,8 @@ use bd_client_stats_store::Collector;
 use bd_log_primitives::{FieldsRef, LogFields, LogRef, LogType, log_level};
 use bd_proto::protos::workflow::workflow::Workflow;
 use bd_runtime::runtime::ConfigLoader;
-use bd_test_helpers::workflow::macros::state;
-use bd_test_helpers::{action, log_matches, rule, workflow_proto};
+use bd_test_helpers::workflow::{WorkflowBuilder, state};
+use bd_test_helpers::{action, log_matches, rule};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use criterion::{Bencher, Criterion, criterion_group, criterion_main};
@@ -70,7 +70,7 @@ impl Setup {
       &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
     );
 
-    let config = workflow_proto!(a, b);
+    let config = WorkflowBuilder::new("1", &[&a, &b]).build();
     self.new_engine(vec![config]).await
   }
 
@@ -84,7 +84,7 @@ impl Setup {
         &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
       );
 
-      let mut config = workflow_proto!(a, b);
+      let mut config = WorkflowBuilder::new("1", &[&a, &b]).build();
       config.id = format!("foo_{i}");
 
       workflows.push(config);
@@ -97,7 +97,7 @@ impl Setup {
         rule!(log_matches!(message == "baz")),
         &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
       );
-      let mut config = workflow_proto!(a, b);
+      let mut config = WorkflowBuilder::new("1", &[&a, &b]).build();
       config.id = format!("baz_{i}");
     }
 

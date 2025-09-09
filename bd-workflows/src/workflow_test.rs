@@ -6,22 +6,14 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::config::{ActionEmitMetric, ActionFlushBuffers, Config, FlushBufferId, ValueIncrement};
-use crate::test::TestLog;
+use crate::test::{MakeConfig, TestLog};
 use crate::workflow::{Run, TriggeredAction, Workflow, WorkflowResult, WorkflowResultStats};
 use bd_log_primitives::{FieldsRef, LogFields, LogMessage, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_stats_common::{MetricType, labels};
 use bd_test_helpers::metric_value;
-use bd_test_helpers::workflow::macros::{
-  action,
-  all,
-  any,
-  limit,
-  log_matches,
-  rule,
-  state,
-  workflow_proto,
-};
+use bd_test_helpers::workflow::macros::{action, all, any, log_matches, rule};
+use bd_test_helpers::workflow::{WorkflowBuilder, state};
 use pretty_assertions::assert_eq;
 use std::collections::{BTreeMap, BTreeSet};
 use std::vec;
@@ -31,20 +23,6 @@ use time::macros::datetime;
 #[ctor::ctor]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
-}
-
-/// A macro that creates a workflow config using provided states.
-/// See `workflow_proto` macro for more details.
-/// A similar workflow! macro is available in `test_helpers::workflows`
-/// but due to issues with referencing types defined in `workflows` crate
-/// its usage from within `workflows` (current) crate results in a compilation error.
-/// For this reason, we define a workflow! macro below.
-macro_rules! workflow {
-  ($($x:tt)*) => {
-    $crate::config::Config::new(
-      bd_test_helpers::workflow::macros::workflow_proto!($($x)*)
-    ).unwrap()
-  }
 }
 
 //
@@ -196,7 +174,7 @@ macro_rules! assert_active_run_traversals {
 fn one_state_workflow() {
   let a = state("A");
 
-  let config = workflow_proto!(a);
+  let config = WorkflowBuilder::new("1", &[&a]).build();
   assert_eq!(
     Config::new(config).err().unwrap().to_string(),
     "invalid workflow configuration: initial state must have at least one transition"
@@ -214,7 +192,7 @@ fn unknown_state_reference_workflow() {
     &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
   );
 
-  let config = workflow_proto!(a);
+  let config = WorkflowBuilder::new("1", &[&a]).build();
   assert_eq!(
     Config::new(config).err().unwrap().to_string(),
     "invalid workflow state configuration: reference to an unexisting state"
@@ -238,7 +216,7 @@ fn timeout_no_parallel_match() {
     &[action!(emit_counter "timeout_metric"; value metric_value!(1))],
   );
 
-  let config = workflow!(a, b, c);
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
 
   // Advance to the timeout.
@@ -345,7 +323,7 @@ fn timeout_not_start() {
       &[action!(emit_counter "bar_metric"; value metric_value!(1))],
     );
 
-  let config = workflow!(a, b, c, d);
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d]).make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
 
   // Does not match, no transition and no timeout.
@@ -425,7 +403,7 @@ fn initial_state_run_does_not_have_timeout() {
     &[action!(emit_counter "bar_metric"; value metric_value!(1))],
   );
 
-  let config = workflow!(a, b, c, d);
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d]).make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
 
   // Progress which will move past the initial state timeout.
@@ -464,7 +442,7 @@ fn timeout_from_start() {
       &[action!(emit_counter "foo_metric"; value metric_value!(1))],
     );
 
-  let config = workflow!(a, b, c);
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
 
   // The first log will create the run and set the timeout.
@@ -523,7 +501,7 @@ fn multiple_start_nodes_initial_fork() {
     &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
   );
 
-  let config = workflow!(a, b, c, d, e);
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
@@ -595,7 +573,7 @@ fn multiple_start_nodes_initial_branching() {
     &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
   );
 
-  let config = workflow!(a, b, c, d, e);
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
@@ -671,7 +649,7 @@ fn basic_exclusive_workflow() {
     &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
   );
 
-  let config = workflow!(a, b, c);
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
@@ -748,8 +726,10 @@ fn exclusive_workflow_matched_logs_count_limit() {
   a = a.declare_transition(&d, rule!(log_matches!(message == "foo")));
   d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
 
-  let config: Config =
-    workflow!(a, b, c, d, e; matches limit!(count 3); duration limit!(seconds 10));
+  let config: Config = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e])
+    .with_log_limit(3)
+    .with_duration_limit(10.seconds())
+    .make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
@@ -830,7 +810,7 @@ fn exclusive_workflow_log_rule_count() {
     &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
   );
 
-  let config = workflow!(a, b, c);
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 
@@ -936,7 +916,7 @@ fn branching_exclusive_workflow() {
     &[action!(flush_buffers &["bar_buffer_id"]; id "barbar")],
   );
 
-  let config = workflow!(a, b, c, d, e);
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
   assert!(workflow.runs().is_empty());
 

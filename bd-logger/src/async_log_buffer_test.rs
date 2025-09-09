@@ -40,10 +40,11 @@ use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
 use bd_test_helpers::runtime::ValueKind;
 use bd_test_helpers::session::InMemoryStorage;
-use bd_test_helpers::workflow::macros::state;
-use bd_test_helpers::{log_matches, rule, workflow_proto};
+use bd_test_helpers::workflow::{WorkflowBuilder, state};
+use bd_test_helpers::{log_matches, rule};
 use bd_time::{SystemTimeProvider, TimeDurationExt};
-use bd_workflows::config::{Config, WorkflowsConfiguration};
+use bd_workflows::config::WorkflowsConfiguration;
+use bd_workflows::test::MakeConfig;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
@@ -538,7 +539,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
 
   let config_update2 = setup.make_config_update(
     WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
-      Config::new(workflow_proto!(a, b)).unwrap(),
+      WorkflowBuilder::new("1", &[&a, &b]).make_config(),
     ]),
   );
   let task = std::thread::spawn(move || {

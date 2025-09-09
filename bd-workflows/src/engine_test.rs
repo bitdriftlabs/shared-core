@@ -10,7 +10,7 @@ use crate::actions_flush_buffers::BuffersToFlush;
 use crate::config::{Action, FlushBufferId, WorkflowsConfiguration};
 use crate::engine::{WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::engine_assert_active_runs;
-use crate::test::TestLog;
+use crate::test::{MakeConfig, TestLog};
 use crate::workflow::Workflow;
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
@@ -29,13 +29,15 @@ use bd_proto::protos::client::api::{
 };
 use bd_runtime::runtime::ConfigLoader;
 use bd_stats_common::labels;
-use bd_test_helpers::workflow::macros::{action, any, limit, log_matches, rule, state};
+use bd_test_helpers::workflow::macros::{action, any, log_matches, rule};
 use bd_test_helpers::workflow::{
   TestFieldRef,
   TestFieldType,
+  WorkflowBuilder,
   make_generate_log_action_proto,
   make_save_field_extraction,
   make_save_timestamp_extraction,
+  state,
 };
 use bd_test_helpers::{metric_tag, metric_value, sankey_value};
 use bd_time::TimeDurationExt;
@@ -52,20 +54,6 @@ use time::ext::NumericalDuration;
 use time::macros::datetime;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
-
-/// A macro that creates a workflow config using provided states.
-/// See `workflow_proto` macro for more details.
-/// A similar workflow! macro is available in `test_helpers::workflows`
-/// but due to issues with referencing types defined in `workflows` crate
-/// its usage from within `workflows` (current) crate results in a compilation error.
-/// For this reason, we define a workflow! macro below.
-macro_rules! workflow {
-  ($($x:tt)*) => {
-    $crate::config::Config::new(
-      bd_test_helpers::workflow::macros::workflow_proto!($($x)*)
-    ).unwrap()
-  }
-}
 
 /// Asserts that the states of runs of specified workflow of a given workflow engine
 /// are equal to expected list of states.
@@ -452,7 +440,10 @@ async fn engine_initialization_and_update() {
   let b = state("B");
   let a = state("A").declare_transition(&b, rule!(log_matches!(message == "foo")));
 
-  let workflows = vec![workflow!("1"; a, b), workflow!("2"; a, b)];
+  let workflows = vec![
+    WorkflowBuilder::new("1", &[&a, &b]).make_config(),
+    WorkflowBuilder::new("2", &[&a, &b]).make_config(),
+  ];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -469,9 +460,9 @@ async fn engine_initialization_and_update() {
   );
 
   let workflows = vec![
-    workflow!("3"; a, b),
-    workflow!("4"; a, b),
-    workflow!("5"; a, b),
+    WorkflowBuilder::new("3", &[&a, &b]).make_config(),
+    WorkflowBuilder::new("4", &[&a, &b]).make_config(),
+    WorkflowBuilder::new("5", &[&a, &b]).make_config(),
   ];
 
   workflows_engine.update(WorkflowsEngineConfig::new_with_workflow_configurations(
@@ -507,8 +498,8 @@ async fn engine_update_after_sdk_update() {
 
   let cached_config_update = WorkflowsEngineConfig::new(
     WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
-      workflow!("2"; c, d),
-      workflow!("1"; a, b),
+      WorkflowBuilder::new("2", &[&c, &d]).make_config(),
+      WorkflowBuilder::new("1", &[&a, &b]).make_config(),
     ]),
     BTreeSet::from(["trigger_buffer_id".into()]),
     BTreeSet::from(["continuous_buffer_id".into()]),
@@ -540,7 +531,9 @@ async fn engine_update_after_sdk_update() {
   // streaming configuration portion of the 'flush buffers' action. The engine should replace the
   // old workflow config with its new updated version.
   workflows_engine.update(WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![workflow!("1"; a, b)]),
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+      WorkflowBuilder::new("1", &[&a, &b]).make_config(),
+    ]),
     BTreeSet::from(["trigger_buffer_id".into()]),
     BTreeSet::from(["continuous_buffer_id".into()]),
   ));
@@ -578,7 +571,7 @@ async fn persist_initial_state_timeout() {
       &[action!(emit_counter "foo_metric"; value metric_value!(1))],
     );
 
-  let workflows = vec![workflow!(a, b, c)];
+  let workflows = vec![WorkflowBuilder::new("1", &[&a, &b, &c]).make_config()];
   let setup = Setup::new();
   let mut workflows_engine = setup
     .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
@@ -627,7 +620,10 @@ async fn persistence_succeeds() {
 
   d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
 
-  let workflows = vec![workflow!(a, b, c, d, e), workflow!(a, b, c, d, e)];
+  let workflows = vec![
+    WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config(),
+    WorkflowBuilder::new("2", &[&a, &b, &c, &d, &e]).make_config(),
+  ];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -689,7 +685,7 @@ async fn persistence_skipped_if_no_workflow_progress_is_made() {
   a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
   b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
 
-  let workflows = vec![workflow!(a, b, c)];
+  let workflows = vec![WorkflowBuilder::new("1", &[&a, &b, &c]).make_config()];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -731,7 +727,7 @@ async fn persistence_skipped_if_workflow_stays_in_an_initial_state() {
   let b = state("B");
   let a = state("A").declare_transition(&b, rule!(log_matches!(message == "foo")));
 
-  let workflows = vec![workflow!(a, b)];
+  let workflows = vec![WorkflowBuilder::new("1", &[&a, &b]).make_config()];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -760,7 +756,10 @@ async fn persist_workflows_with_at_least_one_non_initial_state_run_only() {
   a = a.declare_transition(&b, rule!(log_matches!(message == "foo"); times 10));
   c = c.declare_transition(&d, rule!(log_matches!(message == "bar")));
 
-  let workflows = vec![workflow!("1"; a, b), workflow!("2"; c, d)];
+  let workflows = vec![
+    WorkflowBuilder::new("1", &[&a, &b]).make_config(),
+    WorkflowBuilder::new("2", &[&c, &d]).make_config(),
+  ];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -797,7 +796,7 @@ async fn needs_persistence_if_workflow_moves_to_an_initial_state() {
   a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
   b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
 
-  let workflows = vec![workflow!(a, b, c)];
+  let workflows = vec![WorkflowBuilder::new("1", &[&a, &b, &c]).make_config()];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -843,7 +842,10 @@ async fn persistence_is_respected_through_consecutive_workflows() {
 
   x = x.declare_transition(&y, rule!(log_matches!(message == "zoo")));
 
-  let workflows = vec![workflow!(a, b, c), workflow!(x, y)];
+  let workflows = vec![
+    WorkflowBuilder::new("1", &[&a, &b, &c]).make_config(),
+    WorkflowBuilder::new("2", &[&x, &y]).make_config(),
+  ];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -879,7 +881,7 @@ async fn persistence_performed_if_match_is_found_without_advancing() {
   a = a.declare_transition(&b, rule!(log_matches!(message == "foo"); times 2));
   b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
 
-  let workflows = vec![workflow!(a, b, c)];
+  let workflows = vec![WorkflowBuilder::new("1", &[&a, &b, &c]).make_config()];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -921,7 +923,7 @@ async fn persistence_to_disk_is_rate_limited() {
   a = a.declare_transition(&d, rule!(log_matches!(message == "foo")));
   d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
 
-  let workflows = vec![workflow!(a, b, c, d, e)];
+  let workflows = vec![WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config()];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -982,7 +984,10 @@ async fn runs_in_initial_state_are_not_persisted() {
   a = a.declare_transition(&c, rule!(log_matches!(message == "foo"); times 10));
   b = b.declare_transition(&c, rule!(log_matches!(message == "zar")));
 
-  let workflows = vec![workflow!("1"; a, c), workflow!("2"; b, c)];
+  let workflows = vec![
+    WorkflowBuilder::new("1", &[&a, &c]).make_config(),
+    WorkflowBuilder::new("2", &[&b, &c]).make_config(),
+  ];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -1047,7 +1052,7 @@ async fn ignore_persisted_state_if_corrupted() {
   a = a.declare_transition(&d, rule!(log_matches!(message == "foo")));
   d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
 
-  let workflows = vec![workflow!(a, b, c, d, e)];
+  let workflows = vec![WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config()];
 
   let setup = Setup::new();
 
@@ -1128,7 +1133,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
   a = a.declare_transition(&d, rule!(log_matches!(message == "foo")));
   d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
 
-  let workflows = vec![workflow!(a, b, c, d, e)];
+  let workflows = vec![WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config()];
 
   let collector = Collector::default();
   let sdk_directory = PathBuf::from("/invalid/path");
@@ -1230,7 +1235,10 @@ async fn engine_processing_log() {
     &[action!(emit_counter "foo_metric"; value metric_value!(123))],
   );
 
-  let workflows = vec![workflow!("1"; a, b), workflow!("2"; c, d)];
+  let workflows = vec![
+    WorkflowBuilder::new("1", &[&a, &b]).make_config(),
+    WorkflowBuilder::new("2", &[&c, &d]).make_config(),
+  ];
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -1294,11 +1302,10 @@ async fn exclusive_workflow_duration_limit() {
   a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
   b = b.declare_transition(&c, rule!(log_matches!(message == "zar")));
 
-  let config = workflow!(
-    a, b, c;
-    matches limit!(count 100);
-    duration limit!(seconds 1)
-  );
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c])
+    .with_log_limit(100)
+    .with_duration_limit(1.seconds())
+    .make_config();
 
   let setup = Setup::new();
   let mut workflows_engine = setup
@@ -1349,7 +1356,9 @@ async fn log_without_destination() {
   );
 
   let workflows_engine_config = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![workflow!(a, b)]),
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+      WorkflowBuilder::new("1", &[&a, &b]).make_config(),
+    ]),
     BTreeSet::from(["trigger_buffer_id".into()]),
     BTreeSet::from(["continuous_buffer_id".into()]),
   );
@@ -1439,9 +1448,9 @@ async fn logs_streaming() {
   );
 
   let workflows_engine_config = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![workflow!(
-      a, b, c, d, e, f, g, h
-    )]),
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+      WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e, &f, &g, &h]).make_config(),
+    ]),
     BTreeSet::from(["trigger_buffer_id".into()]),
     BTreeSet::from([
       "continuous_buffer_id_1".into(),
@@ -1812,7 +1821,9 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   let setup = Setup::new();
 
   let workflows_engine_config = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![workflow!(a, b, c)]),
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+      WorkflowBuilder::new("1", &[&a, &b, &c]).make_config(),
+    ]),
     BTreeSet::from(["trigger_buffer_id".into()]),
     BTreeSet::from(["continuous_buffer_id".into()]),
   );
@@ -1915,7 +1926,9 @@ async fn engine_continues_to_stream_upload_not_complete() {
   let setup = Setup::new();
 
   let workflows_engine_config = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![workflow!(a, b, c)]),
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+      WorkflowBuilder::new("1", &[&a, &b, &c]).make_config(),
+    ]),
     BTreeSet::from(["trigger_buffer_id".into()]),
     BTreeSet::from(["continuous_buffer_id".into()]),
   );
@@ -2023,7 +2036,10 @@ async fn creating_new_runs_after_first_log_processing() {
   // over the list of its workflows in order.
   let mut workflows_engine = setup
     .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
-      vec![workflow!(c, d, e), workflow!(a, b)],
+      vec![
+        WorkflowBuilder::new("1", &[&c, &d, &e]).make_config(),
+        WorkflowBuilder::new("2", &[&a, &b]).make_config(),
+      ],
     ))
     .await;
   assert!(workflows_engine.state.workflows[0].runs().is_empty());
@@ -2067,8 +2083,9 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   a = a.declare_transition(&b, rule!(log_matches!(message == "foo"); times 10));
   b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
 
-  let engine_config =
-    WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow!(a, b, c)]);
+  let engine_config = WorkflowsEngineConfig::new_with_workflow_configurations(vec![
+    WorkflowBuilder::new("1", &[&a, &b, &c]).make_config(),
+  ]);
 
   let setup = Setup::new();
   let mut workflows_engine = setup.make_workflows_engine(engine_config.clone()).await;
@@ -2146,7 +2163,7 @@ async fn test_traversals_count_tracking() {
   b = b.declare_transition(&e, rule!(log_matches!(message == "dar")));
   e = e.declare_transition(&f, rule!(log_matches!(message == "far")));
 
-  let workflow = workflow!(a, b, c, d, e, f);
+  let workflow = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e, &f]).make_config();
   let setup = Setup::new();
 
   let engine_config = WorkflowsEngineConfig::new_with_workflow_configurations(vec![workflow]);
@@ -2243,7 +2260,7 @@ async fn test_exclusive_workflow_state_reset() {
   b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
   c = c.declare_transition(&d, rule!(log_matches!(message == "dar")));
 
-  let workflow = workflow!(a, b, c, d);
+  let workflow = WorkflowBuilder::new("1", &[&a, &b, &c, &d]).make_config();
   let setup = Setup::new();
 
   let mut engine = setup
@@ -2290,7 +2307,7 @@ async fn test_exclusive_workflow_potential_fork() {
   c = c.declare_transition(&d, rule!(log_matches!(message == "foo")));
   d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
 
-  let workflow = workflow!(a, b, c, d, e);
+  let workflow = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config();
   let setup = Setup::new();
 
   let mut engine = setup
@@ -2351,7 +2368,7 @@ fn sankey_workflow() -> crate::config::Config {
     )],
   );
 
-  workflow!(a, b, c, d)
+  WorkflowBuilder::new("1", &[&a, &b, &c, &d]).make_config()
 }
 
 #[allow(clippy::many_single_char_names)]
@@ -2421,7 +2438,7 @@ async fn generate_log_multiple() {
     &[action!(emit_counter "bar_metric"; value metric_value!(extract "duration"))],
   );
 
-  let workflow = workflow!(a, b, c, d, e, f, g);
+  let workflow = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e, &f, &g]).make_config();
   let mut engine = setup
     .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
       vec![workflow],
@@ -2513,7 +2530,7 @@ async fn generate_log_action() {
     &[make_save_timestamp_extraction("timestamp2")],
   );
 
-  let workflow = workflow!(a, b, c);
+  let workflow = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
   let mut engine = setup
     .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
       vec![workflow],
@@ -2794,7 +2811,7 @@ async fn take_screenshot_action() {
     &[action!(screenshot "screenshot_action_id")],
   );
 
-  let workflow = workflow!(a, b);
+  let workflow = WorkflowBuilder::new("1", &[&a, &b]).make_config();
   let setup = Setup::new();
 
   let mut engine = setup

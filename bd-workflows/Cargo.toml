@@ -23,6 +23,7 @@ bd-proto.path              = "../bd-proto"
 bd-runtime.path            = "../bd-runtime"
 bd-shutdown.path           = "../bd-shutdown"
 bd-stats-common.path       = "../bd-stats-common"
+bd-test-helpers            = { path = "../bd-test-helpers", default-features = false }
 bd-time.path               = "../bd-time"
 bincode.workspace          = true
 itertools.workspace        = true
@@ -39,7 +40,6 @@ uuid.workspace             = true
 [dev-dependencies]
 assert_matches.workspace    = true
 bd-log                      = { path = "../bd-log" }
-bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
 bd-time                     = { path = "../bd-time" }
 criterion.workspace         = true
 ctor.workspace              = true
