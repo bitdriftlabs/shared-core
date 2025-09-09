@@ -24,9 +24,12 @@ pub trait FileSystem: Send + Sync {
 
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()>;
 
+  async fn create_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File>;
+
   /// Deletes the file if it exists.
   async fn delete_file(&self, path: &Path) -> anyhow::Result<()>;
-  /// Deletes the file if it exists.
+
+  /// Deletes the directory if it exists.
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()>;
 
   async fn create_dir(&self, path: &Path) -> anyhow::Result<()>;
@@ -81,6 +84,10 @@ impl FileSystem for RealFileSystem {
 
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
     Ok(tokio::fs::write(self.directory.join(path), data).await?)
+  }
+
+  async fn create_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File> {
+    Ok(tokio::fs::File::create(self.directory.join(path)).await?)
   }
 
   async fn delete_file(&self, path: &Path) -> anyhow::Result<()> {

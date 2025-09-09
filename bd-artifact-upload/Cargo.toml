@@ -35,3 +35,4 @@ assert_matches.workspace = true
 bd-test-helpers          = { path = "../bd-test-helpers", default-features = false }
 ctor.workspace           = true
 futures-util.workspace   = true
+tempfile.workspace       = true

@@ -17,13 +17,16 @@ bd-proto.path          = "../bd-proto"
 crc32fast.workspace    = true
 flatbuffers.workspace  = true
 flate2                 = { workspace = true, default-features = false, features = ["zlib"] }
+itertools.workspace    = true
 log.workspace          = true
 mockall.workspace      = true
 parking_lot.workspace  = true
 protobuf.workspace     = true
+tempfile.workspace     = true
 thiserror.workspace    = true
 time.workspace         = true
 tokio.workspace        = true
+walkdir.workspace      = true
 
 [dev-dependencies]
 bd-test-helpers.path = "../bd-test-helpers"

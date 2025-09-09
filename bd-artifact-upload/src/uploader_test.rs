@@ -21,6 +21,7 @@ use bd_runtime::runtime::{FeatureFlag, artifact_upload};
 use bd_runtime::test::TestConfigLoader;
 use bd_test_helpers::runtime::ValueKind;
 use bd_time::{OffsetDateTimeExt as _, TestTimeProvider};
+use std::io::{Seek, Write};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use time::OffsetDateTime;
@@ -44,6 +45,8 @@ struct Setup {
   shutdown: bd_shutdown::ComponentShutdownTrigger,
   task_handle: JoinHandle<()>,
   runtime: TestConfigLoader,
+
+  tmpdir: tempfile::TempDir,
 }
 
 impl Setup {
@@ -83,6 +86,7 @@ impl Setup {
       shutdown,
       task_handle,
       runtime,
+      tmpdir: self.tmpdir,
     }
   }
 
@@ -133,7 +137,17 @@ impl Setup {
       shutdown,
       task_handle,
       runtime: config_loader,
+      tmpdir: tempfile::tempdir().unwrap(),
     }
+  }
+
+  fn make_file(&self, contents: &[u8]) -> std::fs::File {
+    let mut file = tempfile::tempfile_in(self.tmpdir.path()).unwrap();
+    file.write_all(contents).unwrap();
+
+    file.seek(std::io::SeekFrom::Start(0)).unwrap();
+
+    file
   }
 }
 
@@ -145,7 +159,7 @@ async fn basic_flow() {
   let id = setup
     .client
     .enqueue_upload(
-      b"abc".to_vec(),
+      setup.make_file(b"abc"),
       [("foo".into(), "bar".into())].into(),
       Some(timestamp),
       "session_id".to_string(),
@@ -196,7 +210,12 @@ async fn pending_upload_limit() {
 
   let id1 = setup
     .client
-    .enqueue_upload(b"1".to_vec(), [].into(), None, "session_id".to_string())
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      [].into(),
+      None,
+      "session_id".to_string(),
+    )
     .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -205,7 +224,12 @@ async fn pending_upload_limit() {
 
   let id2 = setup
     .client
-    .enqueue_upload(b"2".to_vec(), [].into(), None, "session_id".to_string())
+    .enqueue_upload(
+      setup.make_file(b"2"),
+      [].into(),
+      None,
+      "session_id".to_string(),
+    )
     .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -213,7 +237,12 @@ async fn pending_upload_limit() {
   );
   let id3 = setup
     .client
-    .enqueue_upload(b"3".to_vec(), [].into(), None, "session_id".to_string())
+    .enqueue_upload(
+      setup.make_file(b"3"),
+      [].into(),
+      None,
+      "session_id".to_string(),
+    )
     .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -274,7 +303,12 @@ async fn inconsistent_state_missing_file() {
   let mut setup = Setup::new(2).await;
   let id1 = setup
     .client
-    .enqueue_upload(b"1".to_vec(), [].into(), None, "session_id".to_string())
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      [].into(),
+      None,
+      "session_id".to_string(),
+    )
     .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -282,7 +316,12 @@ async fn inconsistent_state_missing_file() {
   );
   let id2 = setup
     .client
-    .enqueue_upload(b"2".to_vec(), [].into(), None, "session_id".to_string())
+    .enqueue_upload(
+      setup.make_file(b"2"),
+      [].into(),
+      None,
+      "session_id".to_string(),
+    )
     .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -318,7 +357,12 @@ async fn inconsistent_state_extra_file() {
   let mut setup = Setup::new(2).await;
   let id1 = setup
     .client
-    .enqueue_upload(b"1".to_vec(), [].into(), None, "session_id".to_string())
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      [].into(),
+      None,
+      "session_id".to_string(),
+    )
     .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -382,7 +426,12 @@ async fn disk_persistence() {
   let mut setup = Setup::new(2).await;
   let id1 = setup
     .client
-    .enqueue_upload(b"1".to_vec(), [].into(), None, "session_id".to_string())
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      [].into(),
+      None,
+      "session_id".to_string(),
+    )
     .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -422,7 +471,12 @@ async fn inconsistent_state_missing_index() {
   let mut setup = Setup::new(2).await;
   let id1 = setup
     .client
-    .enqueue_upload(b"1".to_vec(), [].into(), None, "session_id".to_string())
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      [].into(),
+      None,
+      "session_id".to_string(),
+    )
     .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -439,7 +493,12 @@ async fn inconsistent_state_missing_index() {
 
   let id2 = setup
     .client
-    .enqueue_upload(b"2".to_vec(), [].into(), None, "session_id".to_string())
+    .enqueue_upload(
+      setup.make_file(b"2"),
+      [].into(),
+      None,
+      "session_id".to_string(),
+    )
     .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -478,7 +537,12 @@ async fn new_entry_disk_full() {
 
   let id1 = setup
     .client
-    .enqueue_upload(b"1".to_vec(), [].into(), None, "session_id".to_string())
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      [].into(),
+      None,
+      "session_id".to_string(),
+    )
     .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -500,7 +564,12 @@ async fn new_entry_disk_full_after_received() {
 
   let id1 = setup
     .client
-    .enqueue_upload(b"1".to_vec(), [].into(), None, "session_id".to_string())
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      [].into(),
+      None,
+      "session_id".to_string(),
+    )
     .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -534,7 +603,12 @@ async fn intent_retries() {
 
   let id1 = setup
     .client
-    .enqueue_upload(b"1".to_vec(), [].into(), None, "session_id".to_string())
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      [].into(),
+      None,
+      "session_id".to_string(),
+    )
     .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -562,7 +636,12 @@ async fn intent_drop() {
 
   let id1 = setup
     .client
-    .enqueue_upload(b"1".to_vec(), [].into(), None, "session_id".to_string())
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      [].into(),
+      None,
+      "session_id".to_string(),
+    )
     .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
@@ -592,7 +671,12 @@ async fn upload_retries() {
 
   let id1 = setup
     .client
-    .enqueue_upload(b"1".to_vec(), [].into(), None, "session_id".to_string())
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      [].into(),
+      None,
+      "session_id".to_string(),
+    )
     .unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),

@@ -6,15 +6,14 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 // Test code only.
-#![allow(clippy::panic, clippy::unwrap_used)]
+#![allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
 
 use crate::file_system::FileSystem;
-use anyhow::anyhow;
 use async_trait::async_trait;
-use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::io::AsyncWriteExt as _;
 
 //
 // TestFileSystem
@@ -23,38 +22,36 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// An in-memory test implementation of a file system, meant to somewhat mimic the behavior of a
 /// real filesystem.
 pub struct TestFileSystem {
-  files: Mutex<HashMap<String, Vec<u8>>>,
+  directory: tempfile::TempDir,
   pub disk_full: AtomicBool,
 }
 
 #[async_trait]
 impl FileSystem for TestFileSystem {
   async fn list_files(&self, directory: &Path) -> anyhow::Result<Vec<String>> {
-    let l = self.files.lock();
-
     let mut files = Vec::new();
 
-    for (k, _) in l.iter() {
-      if k.starts_with(directory.to_str().unwrap()) {
-        files.push(k.clone());
-      }
-    }
+    walkdir::WalkDir::new(self.directory.path().join(directory))
+      .into_iter()
+      .filter_map(std::result::Result::ok)
+      .filter(|e| e.file_type().is_file())
+      .for_each(|e| {
+        files.push(e.path().to_string_lossy().to_string());
+      });
 
     Ok(files)
   }
 
   async fn exists(&self, path: &Path) -> anyhow::Result<bool> {
-    let l = self.files.lock();
-
-    Ok(l.contains_key(&Self::path_as_str(path)))
+    Ok(self.directory.path().join(path).exists())
   }
 
   async fn read_file(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
-    let l = self.files.lock();
+    let file_path = self.directory.path().join(path);
 
-    l.get(&Self::path_as_str(path))
-      .cloned()
-      .ok_or_else(|| anyhow!("not found"))
+    tokio::fs::read(&file_path)
+      .await
+      .map_err(|e| anyhow::anyhow!("failed to read file {}: {}", file_path.display(), e))
   }
 
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
@@ -62,33 +59,66 @@ impl FileSystem for TestFileSystem {
       anyhow::bail!("disk full");
     }
 
-    self
-      .files
-      .lock()
-      .insert(Self::path_as_str(path), data.as_ref().to_vec());
+    let file_path = self.directory.path().join(path);
+    let mut file = tokio::fs::File::create(&file_path)
+      .await
+      .map_err(|e| anyhow::anyhow!("failed to create file {}: {}", file_path.display(), e))?;
+    file
+      .write_all(data)
+      .await
+      .map_err(|e| anyhow::anyhow!("failed to write file {}: {}", file_path.display(), e))?;
+    file.sync_all().await?;
 
     Ok(())
   }
 
   async fn delete_file(&self, path: &Path) -> anyhow::Result<()> {
-    self.files.lock().remove(&Self::path_as_str(path));
+    let file_path = self.directory.path().join(path);
+    if !file_path.exists() {
+      return Ok(());
+    }
+
+    tokio::fs::remove_file(&file_path)
+      .await
+      .map_err(|e| anyhow::anyhow!("failed to delete file {}: {}", file_path.display(), e))?;
 
     Ok(())
   }
 
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {
-    self
-      .files
-      .lock()
-      .retain(|k, _| !k.starts_with(path.to_str().unwrap()));
+    let dir_path = self.directory.path().join(path);
+    if !dir_path.exists() {
+      return Ok(());
+    }
+
+    tokio::fs::remove_dir_all(&dir_path)
+      .await
+      .map_err(|e| anyhow::anyhow!("failed to remove directory {}: {}", dir_path.display(), e))?;
 
     Ok(())
   }
 
-  async fn create_dir(&self, _path: &Path) -> anyhow::Result<()> {
-    // Technically we should only allow creating files if the directory already exists, but we
-    // ignore that for now.
+  async fn create_dir(&self, path: &Path) -> anyhow::Result<()> {
+    let dir_path = self.directory.path().join(path);
+    if dir_path.exists() {
+      return Ok(());
+    }
+    tokio::fs::create_dir_all(&dir_path)
+      .await
+      .map_err(|e| anyhow::anyhow!("failed to create directory {}: {}", dir_path.display(), e))?;
+
     Ok(())
+  }
+
+  async fn create_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File> {
+    if self.disk_full.load(Ordering::Relaxed) {
+      anyhow::bail!("disk full");
+    }
+
+    let file_path = self.directory.path().join(path);
+    tokio::fs::File::create(&file_path)
+      .await
+      .map_err(|e| anyhow::anyhow!("failed to create file {}: {}", file_path.display(), e))
   }
 }
 
@@ -102,16 +132,35 @@ impl TestFileSystem {
   #[must_use]
   pub fn new() -> Self {
     Self {
-      files: Mutex::new(HashMap::new()),
+      directory: tempfile::tempdir().expect("failed to create temp dir"),
       disk_full: AtomicBool::new(false),
     }
   }
 
   pub fn files(&self) -> HashMap<String, Vec<u8>> {
-    self.files.lock().clone()
+    walkdir::WalkDir::new(self.directory.path())
+      .into_iter()
+      .filter_map(std::result::Result::ok)
+      .filter(|e| e.file_type().is_file())
+      .map(|e| {
+        let data = std::fs::read(e.path()).expect("failed to read file");
+
+        let path = e
+          .path()
+          .strip_prefix(self.directory.path())
+          .expect("failed to strip prefix");
+
+        (Self::path_as_str(path), data)
+      })
+      .collect()
   }
 
   fn path_as_str(path: impl AsRef<Path>) -> String {
-    path.as_ref().as_os_str().to_str().unwrap().to_string()
+    path
+      .as_ref()
+      .as_os_str()
+      .to_str()
+      .unwrap_or_default()
+      .to_string()
   }
 }

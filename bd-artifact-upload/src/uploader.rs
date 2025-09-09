@@ -16,9 +16,9 @@ use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUploa
 use bd_bounded_buffer::SendCounters;
 use bd_client_common::error::InvariantError;
 use bd_client_common::file::{
+  async_write_checksummed_data,
   read_checksummed_data,
   read_compressed_protobuf,
-  write_checksummed_data,
   write_compressed_protobuf,
 };
 use bd_client_common::file_system::FileSystem;
@@ -60,7 +60,7 @@ pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index
 #[derive(Debug)]
 struct NewUpload {
   uuid: Uuid,
-  contents: Vec<u8>,
+  file: std::fs::File,
   state: LogFields,
   timestamp: Option<OffsetDateTime>,
   session_id: String,
@@ -71,16 +71,18 @@ impl std::fmt::Display for NewUpload {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(
       f,
-      "NewUpload {{ uuid: {}, contents: {} }}",
-      self.uuid,
-      self.contents.len()
+      "NewUpload {{ uuid: {}, file: {:?} }}",
+      self.uuid, self.file
     )
   }
 }
 
 impl MemorySized for NewUpload {
   fn size(&self) -> usize {
-    size_of::<Uuid>() + size_of::<Vec<u8>>() + self.contents.capacity() * size_of::<u8>()
+    std::mem::size_of::<Uuid>()
+      + self.state.size()
+      + std::mem::size_of::<Option<OffsetDateTime>>()
+      + self.session_id.len()
   }
 }
 
@@ -114,7 +116,7 @@ impl Stats {
 pub trait Client: Send + Sync {
   fn enqueue_upload(
     &self,
-    contents: Vec<u8>,
+    file: std::fs::File,
     state: LogFields,
     timestamp: Option<OffsetDateTime>,
     session_id: String,
@@ -130,7 +132,7 @@ impl Client for UploadClient {
   /// Dispatches a payload to be uploaded, returning the associated artifact UUID.
   fn enqueue_upload(
     &self,
-    contents: Vec<u8>,
+    file: std::fs::File,
     state: LogFields,
     timestamp: Option<OffsetDateTime>,
     session_id: String,
@@ -141,7 +143,7 @@ impl Client for UploadClient {
       .upload_tx
       .try_send(NewUpload {
         uuid,
-        contents,
+        file,
         state,
         timestamp,
         session_id,
@@ -348,13 +350,13 @@ impl Uploader {
         }
         Some(NewUpload {
             uuid,
-            contents,
+            file,
             state,
             timestamp,
             session_id
         }) = self.upload_queued_rx.recv() => {
           log::debug!("tracking artifact: {uuid} for upload");
-          self.track_new_upload(uuid, contents, state, session_id, timestamp).await;
+          self.track_new_upload(uuid, file, state, session_id, timestamp).await;
         }
         intent_decision = maybe_await(&mut self.intent_task_handle) => {
             self.handle_intent_negotiation_decision(intent_decision??).await?;
@@ -519,7 +521,7 @@ impl Uploader {
   async fn track_new_upload(
     &mut self,
     uuid: Uuid,
-    contents: Vec<u8>,
+    file: std::fs::File,
     state: LogFields,
     session_id: String,
     timestamp: Option<OffsetDateTime>,
@@ -537,12 +539,28 @@ impl Uploader {
 
     let uuid = uuid.to_string();
 
-    // Add a CRC trailer to ensure we don't try to upload a malformed report.
-    let contents = write_checksummed_data(&contents);
-    if let Err(e) = self
+    let target_file = match self
       .file_system
-      .write_file(&REPORT_DIRECTORY.join(&uuid), &contents)
+      .create_file(&REPORT_DIRECTORY.join(&uuid))
       .await
+    {
+      Ok(file) => file,
+      Err(e) => {
+        log::warn!("failed to create file for artifact: {uuid} on disk: {e}");
+
+        #[cfg(test)]
+        if let Some(hooks) = &self.test_hooks {
+          hooks
+            .entry_received_tx
+            .send(uuid.to_string())
+            .await
+            .unwrap();
+        }
+        return;
+      },
+    };
+
+    if let Err(e) = async_write_checksummed_data(tokio::fs::File::from_std(file), target_file).await
     {
       log::warn!("failed to write artifact to disk: {uuid} to disk: {e}");
 

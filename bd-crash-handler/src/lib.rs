@@ -37,7 +37,9 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   ReportType,
 };
 use fbs::issue_reporting::v_1::root_as_report;
+use memmap2::Mmap;
 use std::ffi::OsStr;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -88,7 +90,6 @@ pub trait CrashLogger: Send + Sync {
 /// - `reports/new/` - A directory where new crash reports are placed. The platform layer is
 ///   responsible for copying the raw files into this directory.
 pub struct Monitor {
-  out_of_band_enabled: bool,
   pub previous_session_id: Option<String>,
 
   report_directory: PathBuf,
@@ -98,14 +99,12 @@ pub struct Monitor {
 
 impl Monitor {
   pub fn new(
-    out_of_band_enabled: bool,
     sdk_directory: &Path,
     store: Arc<bd_device::Store>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
     previous_session_id: Option<String>,
   ) -> Self {
     Self {
-      out_of_band_enabled,
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
       global_state_reader: global_state::Reader::new(store),
       artifact_client,
@@ -220,16 +219,26 @@ impl Monitor {
       let path = entry.path();
       let ext = path.extension().and_then(OsStr::to_str);
       if path.is_file() && ext == Some("cap") {
-        log::info!("Processing new reports report: {}", path.display());
-        let contents = match tokio::fs::read(&path).await {
-          Ok(contents) => contents,
-          Err(e) => {
-            log::warn!("Failed to read reports report: {} ({e})", path.display());
-            continue;
-          },
+        let Ok(file) = File::open(&path) else {
+          log::warn!("Failed to open reports report: {}", path.display());
+          continue;
         };
 
-        let (crash_reason, crash_details, bin_report) = Self::read_report_contents(&contents);
+        log::info!("Processing new reports report: {}", path.display());
+        // Safety: We expect this to be safe as we own the file once it has been written to the
+        // inbox directory. Any modifications to this file during the mmap can cause UB, but we
+        // assume that once a file exists in this directory it is no longer modified.
+        let Ok(mapped_file) = unsafe { Mmap::map(&file) }.map_err(|e| {
+          log::warn!(
+            "Failed to memory-map reports report: {} ({e})",
+            path.display()
+          );
+          e
+        }) else {
+          continue;
+        };
+
+        let (crash_reason, crash_details, bin_report) = Self::read_report_contents(&mapped_file);
 
         if crash_reason.is_none() {
           log::warn!(
@@ -255,31 +264,24 @@ impl Monitor {
           _ => "Unknown",
         };
 
-        let (crash_field_key, crash_field_value) = if self.out_of_band_enabled {
-          log::debug!("uploading report out of band");
+        log::debug!("uploading report out of band");
 
-          let Ok(artifact_id) = self.artifact_client.enqueue_upload(
-            contents,
-            state_fields.clone(),
-            timestamp,
-            self.previous_session_id.clone().unwrap_or_default(),
-          ) else {
-            // TODO(snowp): Should we fall back to passing it via a field at this point?
-            log::warn!(
-              "Failed to enqueue crash report for upload: {}",
-              path.display()
-            );
-            continue;
-          };
-
-          ("_crash_artifact_id".into(), artifact_id.to_string().into())
-        } else {
-          log::debug!("uploading report in band with log line");
-          ("_crash_artifact".into(), contents.into())
+        let Ok(artifact_id) = self.artifact_client.enqueue_upload(
+          file,
+          state_fields.clone(),
+          timestamp,
+          self.previous_session_id.clone().unwrap_or_default(),
+        ) else {
+          // TODO(snowp): Should we fall back to passing it via a field at this point?
+          log::warn!(
+            "Failed to enqueue crash report for upload: {}",
+            path.display()
+          );
+          continue;
         };
 
         let mut fields = state_fields.clone();
-        fields.insert(crash_field_key, crash_field_value);
+        fields.insert("_crash_artifact_id".into(), artifact_id.to_string().into());
         fields.extend(
           [
             ("_app_exit_reason".into(), report_type.into()),

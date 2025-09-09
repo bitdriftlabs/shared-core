@@ -27,15 +27,13 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Timestamp,
 };
 use bd_proto_util::ToFlatBufferString;
-use bd_runtime::runtime::{self, FeatureFlag as _};
-use bd_runtime::test::TestConfigLoader;
+use bd_runtime::runtime::{self};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::make_mut;
-use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_test_helpers::session::InMemoryStorage;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, WIPOffset};
 use itertools::Itertools;
-use mockall::predicate::eq;
+use std::io::Read;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::OffsetDateTime;
@@ -51,27 +49,15 @@ struct Setup {
 }
 
 impl Setup {
-  async fn new(artifact_upload: bool) -> Self {
+  fn new() -> Self {
     let directory = TempDir::new().unwrap();
     std::fs::create_dir_all(directory.path().join("runtime")).unwrap();
-    let runtime = TestConfigLoader::new_in_directory(&directory.path().join("runtime")).await;
-
-    if artifact_upload {
-      runtime
-        .update_snapshot(make_simple_update(vec![(
-          runtime::artifact_upload::Enabled::path(),
-          ValueKind::Bool(artifact_upload),
-        )]))
-        .await
-        .unwrap();
-    }
 
     let shutdown = ComponentShutdownTrigger::default();
     let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
     let upload_client = Arc::new(bd_artifact_upload::MockClient::default());
 
     let monitor = Monitor::new(
-      true,
       directory.path(),
       store.clone(),
       upload_client.clone(),
@@ -124,14 +110,17 @@ impl Setup {
     state: LogFields,
     timestamp: Option<OffsetDateTime>,
   ) {
+    let content = content.to_vec();
     make_mut(&mut self.upload_client)
       .expect_enqueue_upload()
-      .with(
-        eq(content.to_vec()),
-        eq(state),
-        eq(timestamp),
-        eq("previous_session_id".to_string()),
-      )
+      .withf(move |mut file, fstate, ftimestamp, session_id| {
+        let mut output = vec![];
+        file.read_to_end(&mut output).unwrap();
+        output == content
+          && &state == fstate
+          && &timestamp == ftimestamp
+          && session_id == "previous_session_id"
+      })
       .returning(move |_, _, _, _| Ok(uuid));
   }
 }
@@ -202,7 +191,7 @@ async fn test_log_report_fields() {
   builder.finish(report, None);
   let data = builder.finished_data();
 
-  let mut setup = Setup::new(true).await;
+  let mut setup = Setup::new();
   let mut tracker = global_state::Tracker::new(
     setup.store.clone(),
     runtime::Watch::new_for_testing(10.seconds()),
