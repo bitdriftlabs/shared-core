@@ -12,6 +12,7 @@ use nom::multi::many1;
 use nom::{IResult, Parser};
 
 pub mod android;
+mod input;
 
 fn decimal<'a, T: std::str::FromStr + std::default::Default, E: ParseError<&'a str>>(
   input: &'a str,
