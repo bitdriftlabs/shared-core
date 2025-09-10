@@ -248,6 +248,21 @@ pub struct LogRef<'a> {
   pub capture_session: Option<&'a str>,
 }
 
+impl<'a> LogRef<'a> {
+  pub fn into_owned(self) -> Log {
+    Log {
+      log_level: self.log_level,
+      log_type: self.log_type,
+      message: self.message.clone(),
+      fields: self.fields.captured_fields.clone(),
+      matching_fields: self.fields.matching_fields.clone(),
+      session_id: self.session_id.to_string(),
+      occurred_at: self.occurred_at,
+      capture_session: self.capture_session.map(|s| s.to_string()),
+    }
+  }
+}
+
 //
 // FieldsRef
 //
