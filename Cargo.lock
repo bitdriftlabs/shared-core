@@ -994,8 +994,10 @@ dependencies = [
  "bd-proto",
  "flatbuffers",
  "insta",
+ "memmap2",
  "nom 8.0.0",
  "nom-language",
+ "tempfile",
  "time",
 ]
 
