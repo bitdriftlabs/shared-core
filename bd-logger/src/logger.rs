@@ -310,6 +310,27 @@ impl LoggerHandle {
     );
   }
 
+  pub fn log_session_start(&self) {
+    let fields = [
+      (
+        "_sdk_version".into(),
+        AnnotatedLogField::new_ootb(self.sdk_version.to_string()),
+      ),
+    ]
+    .into();
+
+    self.log(
+      log_level::INFO,
+      LogType::Lifecycle,
+      "SessionStarted".into(),
+      fields,
+      [].into(),
+      None,
+      Block::No,
+      CaptureSession::default(),
+    );
+  }
+
   #[must_use]
   pub fn should_log_app_update(
     &self,
@@ -430,6 +451,7 @@ impl LoggerHandle {
     LOGGER_GUARD.with(|cell| {
       if cell.try_borrow().is_ok() {
         self.session_strategy.start_new_session();
+        self.log_session_start();
       } else {
         log::warn!(
           "failed to start a new session, the operation is not allowed from within a field \
