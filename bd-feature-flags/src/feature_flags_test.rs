@@ -25,8 +25,8 @@ fn test_cache_populated_from_store() -> anyhow::Result<()> {
   // Create initial flags and set some values
   {
     let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
-    flags.set("flag1".to_string(), Some("variant1".to_string()))?;
-    flags.set("flag2".to_string(), None)?; // Test None variant
+    flags.set("flag1", Some("variant1"))?;
+    flags.set("flag2", None)?; // Test None variant
     flags.sync()?; // Ensure data is written to disk
   } // Drop the instance
 
@@ -58,7 +58,7 @@ fn test_invalid_entries_discarded_on_load() -> anyhow::Result<()> {
     let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
     // Add a valid flag through normal API
-    flags.set("valid_flag".to_string(), Some("variant1".to_string()))?;
+    flags.set("valid_flag", Some("variant1"))?;
 
     // Manually insert invalid entries directly into the store
     let store = &mut flags.flags_store;
@@ -119,7 +119,7 @@ fn test_set_and_get_string_variant() -> anyhow::Result<()> {
 
   let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
-  flags.set("test_flag".to_string(), Some("test_variant".to_string()))?;
+  flags.set("test_flag", Some("test_variant"))?;
 
   let flag = flags.get("test_flag").expect("flag should exist");
   assert_eq!(flag.variant, Some("test_variant".to_string()));
@@ -135,7 +135,7 @@ fn test_set_and_get_none_variant() -> anyhow::Result<()> {
 
   let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
-  flags.set("test_flag".to_string(), None)?;
+  flags.set("test_flag", None)?;
 
   let flag = flags.get("test_flag").expect("flag should exist");
   assert_eq!(flag.variant, None);
@@ -151,7 +151,7 @@ fn test_set_empty_string_variant() -> anyhow::Result<()> {
 
   let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
-  flags.set("test_flag".to_string(), Some(String::new()))?;
+  flags.set("test_flag", Some(""))?;
 
   let flag = flags.get("test_flag").expect("flag should exist");
   assert_eq!(flag.variant, Some(String::new()));
@@ -168,14 +168,14 @@ fn test_overwrite_existing_flag() -> anyhow::Result<()> {
   let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
   // Set initial value
-  flags.set("test_flag".to_string(), Some("initial_variant".to_string()))?;
+  flags.set("test_flag", Some("initial_variant"))?;
   let initial_flag = flags.get("test_flag").expect("flag should exist");
   let initial_timestamp = initial_flag.timestamp;
   assert_eq!(initial_flag.variant, Some("initial_variant".to_string()));
 
   // Wait a bit and overwrite with new value
   std::thread::sleep(std::time::Duration::from_millis(1));
-  flags.set("test_flag".to_string(), Some("updated_variant".to_string()))?;
+  flags.set("test_flag", Some("updated_variant"))?;
 
   let updated_flag = flags.get("test_flag").expect("flag should exist");
   assert_eq!(updated_flag.variant, Some("updated_variant".to_string()));
@@ -191,9 +191,9 @@ fn test_set_multiple_flags() -> anyhow::Result<()> {
 
   let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
-  flags.set("flag1".to_string(), Some("variant1".to_string()))?;
-  flags.set("flag2".to_string(), None)?;
-  flags.set("flag3".to_string(), Some("variant3".to_string()))?;
+  flags.set("flag1", Some("variant1"))?;
+  flags.set("flag2", None)?;
+  flags.set("flag3", Some("variant3"))?;
 
   assert_eq!(flags.as_hashmap().len(), 3);
 
@@ -217,8 +217,8 @@ fn test_clear() -> anyhow::Result<()> {
   let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
   // Add some flags
-  flags.set("flag1".to_string(), Some("variant1".to_string()))?;
-  flags.set("flag2".to_string(), None)?;
+  flags.set("flag1", Some("variant1"))?;
+  flags.set("flag2", None)?;
   assert_eq!(flags.as_hashmap().len(), 2);
 
   // Clear all flags
@@ -238,8 +238,8 @@ fn test_persistence_across_instances() -> anyhow::Result<()> {
   // Create first instance and set some flags
   {
     let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
-    flags.set("persistent_flag1".to_string(), Some("variant1".to_string()))?;
-    flags.set("persistent_flag2".to_string(), None)?;
+    flags.set("persistent_flag1", Some("variant1"))?;
+    flags.set("persistent_flag2", None)?;
     flags.sync()?; // Ensure data is written
   } // Drop the instance
 
@@ -264,7 +264,7 @@ fn test_clear_persistence() -> anyhow::Result<()> {
   // Create first instance, add flags, then clear
   {
     let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
-    flags.set("temp_flag".to_string(), Some("temp_variant".to_string()))?;
+    flags.set("temp_flag", Some("temp_variant"))?;
     flags.clear()?;
     flags.sync()?; // Ensure clear is written
   } // Drop the instance
@@ -296,9 +296,9 @@ fn test_timestamps_are_different() -> anyhow::Result<()> {
 
   let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
-  flags.set("flag1".to_string(), Some("variant1".to_string()))?;
+  flags.set("flag1", Some("variant1"))?;
   std::thread::sleep(std::time::Duration::from_millis(1));
-  flags.set("flag2".to_string(), Some("variant2".to_string()))?;
+  flags.set("flag2", Some("variant2"))?;
 
   let flag1 = flags.get("flag1").expect("flag1 should exist");
   let flag2 = flags.get("flag2").expect("flag2 should exist");
@@ -315,8 +315,8 @@ fn test_unicode_flag_names_and_variants() -> anyhow::Result<()> {
 
   let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
-  flags.set("日本語フラグ".to_string(), Some("バリアント１".to_string()))?;
-  flags.set("🚀flag".to_string(), Some("🎯variant".to_string()))?;
+  flags.set("日本語フラグ", Some("バリアント１"))?;
+  flags.set("🚀flag", Some("🎯variant"))?;
 
   let jp_flag = flags
     .get("日本語フラグ")
@@ -339,7 +339,7 @@ fn test_very_long_flag_names_and_variants() -> anyhow::Result<()> {
   let long_name = "a".repeat(100); // Reduced to reasonable size
   let long_variant = "b".repeat(100); // Reduced to reasonable size
 
-  flags.set(long_name.clone(), Some(long_variant.clone()))?;
+  flags.set(&long_name, Some(&long_variant))?;
 
   let flag = flags.get(&long_name).expect("long flag should exist");
   assert_eq!(flag.variant, Some(long_variant));
@@ -357,7 +357,7 @@ fn test_special_characters_in_names_and_variants() -> anyhow::Result<()> {
   let special_name = "flag-with.special_chars@domain.com";
   let special_variant = "variant with spaces\nand\tnewlines";
 
-  flags.set(special_name.to_string(), Some(special_variant.to_string()))?;
+  flags.set(special_name, Some(special_variant))?;
 
   let flag = flags.get(special_name).expect("special flag should exist");
   assert_eq!(flag.variant, Some(special_variant.to_string()));
@@ -378,7 +378,7 @@ fn test_negative_timestamp_entries_discarded() -> anyhow::Result<()> {
     let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
     // Add a valid flag first
-    flags.set("valid_flag".to_string(), Some("variant1".to_string()))?;
+    flags.set("valid_flag", Some("variant1"))?;
 
     // Manually insert invalid entry with negative timestamp
     let store = &mut flags.flags_store;
@@ -417,7 +417,7 @@ fn test_malformed_objects_discarded() -> anyhow::Result<()> {
     let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
     // Add a valid flag first
-    flags.set("valid_flag".to_string(), Some("variant1".to_string()))?;
+    flags.set("valid_flag", Some("variant1"))?;
 
     // Manually insert malformed entries directly into the store
     let store = &mut flags.flags_store;
@@ -500,7 +500,7 @@ fn test_empty_string_variant_loaded_correctly() -> anyhow::Result<()> {
   // Test that empty string variant is stored as empty string but loaded as None
   {
     let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
-    flags.set("empty_variant_flag".to_string(), Some(String::new()))?;
+    flags.set("empty_variant_flag", Some(""))?;
 
     // Check that in the current instance, empty string is preserved
     let flag = flags
@@ -530,8 +530,8 @@ fn test_variant_with_variant_key_conflicts() -> anyhow::Result<()> {
   let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
   // Set flags that might conflict with internal keys
-  flags.set("v".to_string(), Some("variant_v".to_string()))?;
-  flags.set("t".to_string(), Some("variant_t".to_string()))?;
+  flags.set("v", Some("variant_v"))?;
+  flags.set("t", Some("variant_t"))?;
 
   let flag_v = flags.get("v").expect("flag 'v' should exist");
   assert_eq!(flag_v.variant, Some("variant_v".to_string()));
@@ -590,7 +590,7 @@ fn test_large_buffer_size() -> anyhow::Result<()> {
 
   // Set multiple flags
   for i in 0 .. 100 {
-    flags.set(format!("flag_{i}"), Some(format!("variant_{i}")))?;
+    flags.set(&format!("flag_{i}"), Some(&format!("variant_{i}")))?;
   }
 
   assert_eq!(flags.as_hashmap().len(), 100);
@@ -610,7 +610,7 @@ fn test_high_water_mark_ratio() -> anyhow::Result<()> {
   // Test with custom high water mark ratio
   let mut flags = FeatureFlags::new(temp_path, 1024, Some(0.8))?;
 
-  flags.set("test_flag".to_string(), Some("test_variant".to_string()))?;
+  flags.set("test_flag", Some("test_variant"))?;
 
   let flag = flags.get("test_flag").expect("flag should exist");
   assert_eq!(flag.variant, Some("test_variant".to_string()));

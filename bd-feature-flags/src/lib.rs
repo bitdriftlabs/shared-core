@@ -82,10 +82,10 @@ pub struct FeatureFlag {
 /// let mut flags = FeatureFlags::new(temp_dir.path(), 1024, None)?;
 ///
 /// // Set a feature flag with a variant
-/// flags.set("feature_a".to_string(), Some("blue".to_string()))?;
+/// flags.set("feature_a", Some("blue"))?;
 ///
 /// // Set a simple boolean-style flag
-/// flags.set("feature_b".to_string(), None)?;
+/// flags.set("feature_b", None)?;
 ///
 /// // Check if a flag exists and get its value
 /// if let Some(flag) = flags.get("feature_a") {
@@ -113,7 +113,7 @@ pub struct FeatureFlag {
 /// // Create flags in one instance
 /// {
 ///   let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
-///   flags.set("persistent_flag".to_string(), Some("value".to_string()))?;
+///   flags.set("persistent_flag", Some("value"))?;
 ///   flags.sync()?; // Ensure data is written to disk
 /// }
 ///
@@ -242,7 +242,7 @@ impl FeatureFlags {
   /// # fn main() -> anyhow::Result<()> {
   /// let temp_dir = TempDir::new()?;
   /// let mut flags = FeatureFlags::new(temp_dir.path(), 1024, None)?;
-  /// flags.set("my_feature".to_string(), Some("variant_a".to_string()))?;
+  /// flags.set("my_feature", Some("variant_a"))?;
   ///
   /// if let Some(flag) = flags.get("my_feature") {
   ///   println!("Found flag with variant: {:?}", flag.variant);
@@ -280,10 +280,7 @@ impl FeatureFlags {
   /// let temp_dir = TempDir::new()?;
   /// let mut flags = FeatureFlags::new(temp_dir.path(), 1024, None)?;
   ///
-  /// flags.set(
-  ///   "critical_flag".to_string(),
-  ///   Some("important_value".to_string()),
-  /// )?;
+  /// flags.set("critical_flag", Some("important_value"))?;
   ///
   /// // Ensure the flag is persisted immediately
   /// flags.sync()?;
@@ -328,16 +325,16 @@ impl FeatureFlags {
   /// let mut flags = FeatureFlags::new(temp_dir.path(), 1024, None)?;
   ///
   /// // Set a flag with a variant
-  /// flags.set("color_scheme".to_string(), Some("dark".to_string()))?;
+  /// flags.set("color_scheme", Some("dark"))?;
   ///
   /// // Set a simple boolean-style flag
-  /// flags.set("debug_mode".to_string(), None)?;
+  /// flags.set("debug_mode", None)?;
   ///
   /// // Update an existing flag
-  /// flags.set("color_scheme".to_string(), Some("light".to_string()))?;
+  /// flags.set("color_scheme", Some("light"))?;
   ///
   /// // Empty string variant
-  /// flags.set("empty_variant".to_string(), Some(String::new()))?;
+  /// flags.set("empty_variant", Some(""))?;
   /// # Ok(())
   /// # }
   /// ```
@@ -346,12 +343,12 @@ impl FeatureFlags {
   ///
   /// This function will return an error if the flag cannot be written to persistent
   /// storage due to I/O errors, insufficient disk space, or permission issues.
-  pub fn set(&mut self, key: String, variant: Option<String>) -> anyhow::Result<()> {
+  pub fn set(&mut self, key: &str, variant: Option<&str>) -> anyhow::Result<()> {
     let timestamp = get_current_timestamp();
     self.flags_cache.insert(
-      key.clone(),
+      key.to_string(),
       FeatureFlag {
-        variant: variant.clone(),
+        variant: variant.map(String::from),
         timestamp,
       },
     );
@@ -359,11 +356,13 @@ impl FeatureFlags {
     let value = HashMap::from([
       (
         VARIANT_KEY.to_string(),
-        Value::String(variant.unwrap_or_default()),
+        Value::String(variant.unwrap_or_default().to_string()),
       ),
       (TIMESTAMP_KEY.to_string(), Value::Unsigned(timestamp)),
     ]);
-    self.flags_store.insert(key, Value::Object(value))?;
+    self
+      .flags_store
+      .insert(key.to_string(), Value::Object(value))?;
 
     Ok(())
   }
@@ -388,8 +387,8 @@ impl FeatureFlags {
   /// let mut flags = FeatureFlags::new(temp_dir.path(), 1024, None)?;
   ///
   /// // Add some flags
-  /// flags.set("flag1".to_string(), Some("value1".to_string()))?;
-  /// flags.set("flag2".to_string(), None)?;
+  /// flags.set("flag1", Some("value1"))?;
+  /// flags.set("flag2", None)?;
   /// assert_eq!(flags.as_hashmap().len(), 2);
   ///
   /// // Clear all flags
@@ -429,8 +428,8 @@ impl FeatureFlags {
   /// let temp_dir = TempDir::new()?;
   /// let mut flags = FeatureFlags::new(temp_dir.path(), 1024, None)?;
   ///
-  /// flags.set("flag1".to_string(), Some("variant1".to_string()))?;
-  /// flags.set("flag2".to_string(), None)?;
+  /// flags.set("flag1", Some("variant1"))?;
+  /// flags.set("flag2", None)?;
   ///
   /// // Iterate over all flags
   /// for (name, flag) in flags.as_hashmap() {
