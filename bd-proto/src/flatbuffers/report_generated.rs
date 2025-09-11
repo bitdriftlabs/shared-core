@@ -3664,6 +3664,7 @@ impl<'a> flatbuffers::Follow<'a> for FeatureFlag<'a> {
 impl<'a> FeatureFlag<'a> {
   pub const VT_NAME: flatbuffers::VOffsetT = 4;
   pub const VT_VALUE: flatbuffers::VOffsetT = 6;
+  pub const VT_TIMESTAMP: flatbuffers::VOffsetT = 8;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -3675,6 +3676,7 @@ impl<'a> FeatureFlag<'a> {
     args: &'args FeatureFlagArgs<'args>
   ) -> flatbuffers::WIPOffset<FeatureFlag<'bldr>> {
     let mut builder = FeatureFlagBuilder::new(_fbb);
+    if let Some(x) = args.timestamp { builder.add_timestamp(x); }
     if let Some(x) = args.value { builder.add_value(x); }
     if let Some(x) = args.name { builder.add_name(x); }
     builder.finish()
@@ -3695,6 +3697,13 @@ impl<'a> FeatureFlag<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(FeatureFlag::VT_VALUE, None)}
   }
+  #[inline]
+  pub fn timestamp(&self) -> Option<&'a Timestamp> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<Timestamp>(FeatureFlag::VT_TIMESTAMP, None)}
+  }
 }
 
 impl flatbuffers::Verifiable for FeatureFlag<'_> {
@@ -3706,6 +3715,7 @@ impl flatbuffers::Verifiable for FeatureFlag<'_> {
     v.visit_table(pos)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("value", Self::VT_VALUE, false)?
+     .visit_field::<Timestamp>("timestamp", Self::VT_TIMESTAMP, false)?
      .finish();
     Ok(())
   }
@@ -3713,6 +3723,7 @@ impl flatbuffers::Verifiable for FeatureFlag<'_> {
 pub struct FeatureFlagArgs<'a> {
     pub name: Option<flatbuffers::WIPOffset<&'a str>>,
     pub value: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub timestamp: Option<&'a Timestamp>,
 }
 impl<'a> Default for FeatureFlagArgs<'a> {
   #[inline]
@@ -3720,6 +3731,7 @@ impl<'a> Default for FeatureFlagArgs<'a> {
     FeatureFlagArgs {
       name: None,
       value: None,
+      timestamp: None,
     }
   }
 }
@@ -3736,6 +3748,10 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> FeatureFlagBuilder<'a, 'b, A> {
   #[inline]
   pub fn add_value(&mut self, value: flatbuffers::WIPOffset<&'b  str>) {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(FeatureFlag::VT_VALUE, value);
+  }
+  #[inline]
+  pub fn add_timestamp(&mut self, timestamp: &Timestamp) {
+    self.fbb_.push_slot_always::<&Timestamp>(FeatureFlag::VT_TIMESTAMP, timestamp);
   }
   #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> FeatureFlagBuilder<'a, 'b, A> {
@@ -3757,6 +3773,7 @@ impl core::fmt::Debug for FeatureFlag<'_> {
     let mut ds = f.debug_struct("FeatureFlag");
       ds.field("name", &self.name());
       ds.field("value", &self.value());
+      ds.field("timestamp", &self.timestamp());
       ds.finish()
   }
 }

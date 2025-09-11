@@ -2056,7 +2056,8 @@ struct FeatureFlag FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   }
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NAME = 4,
-    VT_VALUE = 6
+    VT_VALUE = 6,
+    VT_TIMESTAMP = 8
   };
   const ::flatbuffers::String *name() const {
     return GetPointer<const ::flatbuffers::String *>(VT_NAME);
@@ -2064,12 +2065,16 @@ struct FeatureFlag FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::String *value() const {
     return GetPointer<const ::flatbuffers::String *>(VT_VALUE);
   }
+  const bitdrift_public::fbs::issue_reporting::v1::Timestamp *timestamp() const {
+    return GetStruct<const bitdrift_public::fbs::issue_reporting::v1::Timestamp *>(VT_TIMESTAMP);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_NAME) &&
            verifier.VerifyString(name()) &&
            VerifyOffset(verifier, VT_VALUE) &&
            verifier.VerifyString(value()) &&
+           VerifyField<bitdrift_public::fbs::issue_reporting::v1::Timestamp>(verifier, VT_TIMESTAMP, 8) &&
            verifier.EndTable();
   }
 };
@@ -2083,6 +2088,9 @@ struct FeatureFlagBuilder {
   }
   void add_value(::flatbuffers::Offset<::flatbuffers::String> value) {
     fbb_.AddOffset(FeatureFlag::VT_VALUE, value);
+  }
+  void add_timestamp(const bitdrift_public::fbs::issue_reporting::v1::Timestamp *timestamp) {
+    fbb_.AddStruct(FeatureFlag::VT_TIMESTAMP, timestamp);
   }
   explicit FeatureFlagBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -2098,8 +2106,10 @@ struct FeatureFlagBuilder {
 inline ::flatbuffers::Offset<FeatureFlag> CreateFeatureFlag(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     ::flatbuffers::Offset<::flatbuffers::String> name = 0,
-    ::flatbuffers::Offset<::flatbuffers::String> value = 0) {
+    ::flatbuffers::Offset<::flatbuffers::String> value = 0,
+    const bitdrift_public::fbs::issue_reporting::v1::Timestamp *timestamp = nullptr) {
   FeatureFlagBuilder builder_(_fbb);
+  builder_.add_timestamp(timestamp);
   builder_.add_value(value);
   builder_.add_name(name);
   return builder_.Finish();
@@ -2108,13 +2118,15 @@ inline ::flatbuffers::Offset<FeatureFlag> CreateFeatureFlag(
 inline ::flatbuffers::Offset<FeatureFlag> CreateFeatureFlagDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     const char *name = nullptr,
-    const char *value = nullptr) {
+    const char *value = nullptr,
+    const bitdrift_public::fbs::issue_reporting::v1::Timestamp *timestamp = nullptr) {
   auto name__ = name ? _fbb.CreateString(name) : 0;
   auto value__ = value ? _fbb.CreateString(value) : 0;
   return bitdrift_public::fbs::issue_reporting::v1::CreateFeatureFlag(
       _fbb,
       name__,
-      value__);
+      value__,
+      timestamp);
 }
 
 struct Report FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -2873,14 +2885,19 @@ inline const ::flatbuffers::TypeTable *SDKInfoTypeTable() {
 inline const ::flatbuffers::TypeTable *FeatureFlagTypeTable() {
   static const ::flatbuffers::TypeCode type_codes[] = {
     { ::flatbuffers::ET_STRING, 0, -1 },
-    { ::flatbuffers::ET_STRING, 0, -1 }
+    { ::flatbuffers::ET_STRING, 0, -1 },
+    { ::flatbuffers::ET_SEQUENCE, 0, 0 }
+  };
+  static const ::flatbuffers::TypeFunction type_refs[] = {
+    bitdrift_public::fbs::issue_reporting::v1::TimestampTypeTable
   };
   static const char * const names[] = {
     "name",
-    "value"
+    "value",
+    "timestamp"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_TABLE, 2, type_codes, nullptr, nullptr, nullptr, names
+    ::flatbuffers::ST_TABLE, 3, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
