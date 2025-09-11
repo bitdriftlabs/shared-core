@@ -1,0 +1,402 @@
+---
+source: bd-report-parsers/src/./android_tests.rs
+assertion_line: 142
+expression: thread
+---
+Thread {
+    name: Some(
+        "main",
+    ),
+    active: true,
+    index: 1,
+    state: Some(
+        "Blocked",
+    ),
+    priority: 5.0,
+    quality_of_service: -1,
+    stack_trace: Some(
+        [
+            Frame {
+                type_: JVM,
+                class_name: None,
+                symbol_name: Some(
+                    "io.bitdrift.capture.FatalIssueGenerator.startProcessing",
+                ),
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "FatalIssueGenerator.kt",
+                        ),
+                        line: 106,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 0,
+                symbol_address: 0,
+                registers: None,
+                state: Some(
+                    [
+                        "waiting to lock <0x0481d03d> (a java.lang.String) held by thread 4",
+                        "locked <0x04e67032> (a java.lang.String)",
+                    ],
+                ),
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: JVM,
+                class_name: None,
+                symbol_name: Some(
+                    "io.bitdrift.capture.FatalIssueGenerator.forceDeadlockAnr$lambda$0",
+                ),
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "FatalIssueGenerator.kt",
+                        ),
+                        line: 35,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 0,
+                symbol_address: 0,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: JVM,
+                class_name: None,
+                symbol_name: Some(
+                    "io.bitdrift.capture.FatalIssueGenerator.$r8$lambda$YjCjxyD03AOHm33DeFU6AZAXKt4",
+                ),
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "unavailable",
+                        ),
+                        line: 0,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 0,
+                symbol_address: 0,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: JVM,
+                class_name: None,
+                symbol_name: Some(
+                    "io.bitdrift.capture.FatalIssueGenerator$$ExternalSyntheticLambda5.invoke",
+                ),
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "D8$$SyntheticClass",
+                        ),
+                        line: 0,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 0,
+                symbol_address: 0,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: JVM,
+                class_name: None,
+                symbol_name: Some(
+                    "io.bitdrift.capture.FatalIssueGenerator.callOnMainThread$lambda$7",
+                ),
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "FatalIssueGenerator.kt",
+                        ),
+                        line: 111,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 0,
+                symbol_address: 0,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: JVM,
+                class_name: None,
+                symbol_name: Some(
+                    "io.bitdrift.capture.FatalIssueGenerator.$r8$lambda$uoHBg73FD2NFaiD9hrM7qddDzCk",
+                ),
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "unavailable",
+                        ),
+                        line: 0,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 0,
+                symbol_address: 0,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: JVM,
+                class_name: None,
+                symbol_name: Some(
+                    "io.bitdrift.capture.FatalIssueGenerator$$ExternalSyntheticLambda4.run",
+                ),
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "D8$$SyntheticClass",
+                        ),
+                        line: 0,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 0,
+                symbol_address: 0,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: JVM,
+                class_name: None,
+                symbol_name: Some(
+                    "android.os.Handler.handleCallback",
+                ),
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "Handler.java",
+                        ),
+                        line: 958,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 0,
+                symbol_address: 0,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: JVM,
+                class_name: None,
+                symbol_name: Some(
+                    "android.os.Handler.dispatchMessage",
+                ),
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "Handler.java",
+                        ),
+                        line: 99,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 0,
+                symbol_address: 0,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: JVM,
+                class_name: None,
+                symbol_name: Some(
+                    "android.os.Looper.loopOnce",
+                ),
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "Looper.java",
+                        ),
+                        line: 205,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 0,
+                symbol_address: 0,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: JVM,
+                class_name: None,
+                symbol_name: Some(
+                    "android.os.Looper.loop",
+                ),
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "Looper.java",
+                        ),
+                        line: 294,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 0,
+                symbol_address: 0,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: JVM,
+                class_name: None,
+                symbol_name: Some(
+                    "android.app.ActivityThread.main",
+                ),
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "ActivityThread.java",
+                        ),
+                        line: 8177,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 0,
+                symbol_address: 0,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: JVM,
+                class_name: None,
+                symbol_name: Some(
+                    "java.lang.reflect.Method.invoke",
+                ),
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "Native method",
+                        ),
+                        line: 0,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 0,
+                symbol_address: 0,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: JVM,
+                class_name: None,
+                symbol_name: Some(
+                    "com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run",
+                ),
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "RuntimeInit.java",
+                        ),
+                        line: 552,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 0,
+                symbol_address: 0,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+            Frame {
+                type_: JVM,
+                class_name: None,
+                symbol_name: Some(
+                    "com.android.internal.os.ZygoteInit.main",
+                ),
+                source_file: Some(
+                    SourceFile {
+                        path: Some(
+                            "ZygoteInit.java",
+                        ),
+                        line: 971,
+                        column: 0,
+                    },
+                ),
+                image_id: None,
+                frame_address: 0,
+                symbol_address: 0,
+                registers: None,
+                state: None,
+                frame_status: Missing,
+                original_index: 0,
+                in_app: false,
+                symbolicated_name: None,
+            },
+        ],
+    ),
+    summary: None,
+}

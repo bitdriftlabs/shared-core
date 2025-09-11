@@ -5,18 +5,18 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::input::MemmapView;
 use crate::{decimal, hexadecimal};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, WIPOffset};
 use nom::branch::alt;
 use nom::bytes::complete::{take_till, take_until, take_until1, take_while1};
 use nom::bytes::{tag, take};
-use nom::character::complete::multispace1;
 use nom::combinator::{map, opt};
 use nom::error::{ErrorKind, ParseError};
 use nom::multi::{many0, many1, separated_list0, separated_list1};
 use nom::sequence::{delimited, pair, preceded, separated_pair, terminated};
-use nom::{IResult, Parser};
+use nom::{AsChar, FindSubstring, IResult, Input, Parser};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -28,18 +28,18 @@ use time::format_description::well_known::Iso8601;
 mod tests;
 
 #[derive(Debug)]
-pub struct Source<'a> {
-  pub path: &'a str,
+pub struct Source {
+  pub path: String,
   pub lineno: Option<i64>,
 }
 
 #[derive(Debug)]
-pub struct ThreadHeader<'a> {
-  pub name: &'a str,
+pub struct ThreadHeader {
+  pub name: String,
   pub is_daemon: bool,
   pub tid: Option<u32>,
   pub priority: Option<f32>,
-  pub state: &'a str,
+  pub state: String,
 }
 
 struct Stacks<'a> {
@@ -48,8 +48,8 @@ struct Stacks<'a> {
   main_stack: Option<WIPOffset<Vector<'a, ForwardsUOffset<v_1::Frame<'a>>>>>,
 }
 
-type BinaryImagePath<'a> = &'a str;
-type BinaryImageKey<'a> = (BinaryImagePath<'a>, Option<u64>);
+type BinaryImagePath = String;
+type BinaryImageKey = (BinaryImagePath, Option<u64>);
 
 const MAIN_THREAD: &str = "main";
 
@@ -58,8 +58,8 @@ pub fn build_anr<'a, 'fbb>(
   app_info: &mut v_1::AppMetricsArgs<'fbb>,
   device_info: &mut v_1::DeviceMetricsArgs<'fbb>,
   event_time: &'fbb mut Option<v_1::Timestamp>,
-  input: &'a str,
-) -> IResult<&'a str, WIPOffset<v_1::Report<'fbb>>, nom::error::Error<&'a str>> {
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, WIPOffset<v_1::Report<'fbb>>, nom::error::Error<MemmapView<'a>>> {
   let (remainder, (subject, (pid, timestamp), metrics, _attached_count, stacks)) = (
     subject_parser,
     process_start_parser,
@@ -89,8 +89,8 @@ pub fn build_anr<'a, 'fbb>(
     device_info.time = Some(time);
   }
   let error_args = v_1::ErrorArgs {
-    name: Some(builder.create_string(anr_name(subject))),
-    reason: subject.map(|sub| builder.create_string(sub)),
+    name: Some(builder.create_string(anr_name(subject.as_deref()))),
+    reason: subject.map(|sub| builder.create_string(&sub)),
     stack_trace: stacks.main_stack,
     ..Default::default()
   };
@@ -108,10 +108,10 @@ pub fn build_anr<'a, 'fbb>(
   Ok((remainder, v_1::Report::create(builder, &args)))
 }
 
-fn build_threads<'a, 'fbb, E: ParseError<&'a str>>(
+fn build_threads<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
   builder: &mut FlatBufferBuilder<'fbb>,
-  input: &'a str,
-) -> IResult<&'a str, Stacks<'fbb>, E> {
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, Stacks<'fbb>, E> {
   let mut images = BTreeMap::new();
   let (remainder, thread_infos) =
     separated_list1(tag("\n"), |text| build_thread(builder, &mut images, text)).parse(input)?;
@@ -126,7 +126,7 @@ fn build_threads<'a, 'fbb, E: ParseError<&'a str>>(
     .iter()
     .map(|((path, offset), id)| {
       let args = v_1::BinaryImageArgs {
-        id: id.map(|id| builder.create_string(id)),
+        id: id.clone().map(|id| builder.create_string(&id)),
         path: Some(builder.create_string(path)),
         load_address: offset.unwrap_or_default(),
       };
@@ -150,11 +150,11 @@ fn build_threads<'a, 'fbb, E: ParseError<&'a str>>(
   ))
 }
 
-fn build_thread<'a, 'fbb, E: ParseError<&'a str>>(
+fn build_thread<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
   builder: &mut FlatBufferBuilder<'fbb>,
-  images: &mut BTreeMap<BinaryImageKey<'a>, Option<&'a str>>,
-  input: &'a str,
-) -> IResult<&'a str, v_1::ThreadArgs<'fbb>, E> {
+  images: &mut BTreeMap<BinaryImageKey, Option<String>>,
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, v_1::ThreadArgs<'fbb>, E> {
   let (remainder, (header, _props, frames)) = terminated(
     terminated(
       (
@@ -170,25 +170,25 @@ fn build_thread<'a, 'fbb, E: ParseError<&'a str>>(
 
   let args = v_1::ThreadArgs {
     active: header.name == MAIN_THREAD,
-    name: Some(builder.create_string(header.name)),
+    name: Some(builder.create_string(&header.name)),
     index: header.tid.unwrap_or_default(),
     priority: header.priority.unwrap_or_default(),
-    state: Some(builder.create_string(header.state)),
+    state: Some(builder.create_string(&header.state)),
     stack_trace: Some(builder.create_vector(frames.as_slice())),
     ..Default::default()
   };
   Ok((remainder, args))
 }
 
-fn build_frame<'a, 'fbb, E: ParseError<&'a str>>(
+fn build_frame<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
   builder: &mut FlatBufferBuilder<'fbb>,
-  images: &mut BTreeMap<BinaryImageKey<'a>, Option<&'a str>>,
-  input: &'a str,
-) -> IResult<&'a str, WIPOffset<v_1::Frame<'fbb>>, E> {
+  images: &mut BTreeMap<BinaryImageKey, Option<String>>,
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, WIPOffset<v_1::Frame<'fbb>>, E> {
   let builder_ref0 = Rc::new(RefCell::new(builder));
   let builder_ref1 = Rc::clone(&builder_ref0);
   preceded(
-    multispace1,
+    take_while1(AsChar::is_space),
     alt((
       |text| {
         let mut builder = builder_ref0.borrow_mut();
@@ -203,40 +203,42 @@ fn build_frame<'a, 'fbb, E: ParseError<&'a str>>(
   .parse(input)
 }
 
-fn build_native_frame<'a, 'fbb, E: ParseError<&'a str>>(
+fn build_native_frame<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
   builder: &mut FlatBufferBuilder<'fbb>,
-  images: &mut BTreeMap<BinaryImageKey<'a>, Option<&'a str>>,
-  input: &'a str,
-) -> IResult<&'a str, WIPOffset<v_1::Frame<'fbb>>, E> {
+  images: &mut BTreeMap<BinaryImageKey, Option<String>>,
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, WIPOffset<v_1::Frame<'fbb>>, E> {
   let build_id_parser = delimited(
     tag(" (BuildId: "),
-    take_till(|c| c == ')' || c == '\n'),
+    take_till(|c| c == &b')' || c == &b'\n'),
     tag(")"),
   );
   map(
     terminated(
       (
-        delimited(tag("native: #"), decimal::<u64, E>, tag(" pc ")),
-        terminated(hexadecimal, multispace1),
+        delimited(tag("native: #"), decimal::<_, u64, E>, tag(" pc ")),
+        terminated(hexadecimal, take_while1(AsChar::is_space)),
         native_path_parser,
         opt(delimited(tag(" (offset "), decimal, tag(")"))),
         opt(native_symbol_parser),
-        opt(build_id_parser),
+        opt(map(build_id_parser, |build_id: MemmapView<'a>| {
+          build_id.to_string()
+        })),
       ),
       tag("\n"),
     ),
     |(_, address, path, offset, symbol, build_id)| {
       let (symbol_name, symbol_offset) = symbol.unzip();
-      images.insert((path, offset), build_id);
+      images.insert((path, offset), build_id.clone());
       let args = v_1::FrameArgs {
         type_: v_1::FrameType::AndroidNative,
-        symbol_name: symbol_name.map(|name| builder.create_string(name)),
+        symbol_name: symbol_name.map(|name| builder.create_string(&name)),
         symbol_address: symbol_offset
           .flatten()
           .map(|off| address - off)
           .unwrap_or_default(),
         frame_address: address,
-        image_id: build_id.map(|id| builder.create_string(id)),
+        image_id: build_id.map(|id| builder.create_string(&id)),
         ..Default::default()
       };
       v_1::Frame::create(builder, &args)
@@ -245,34 +247,34 @@ fn build_native_frame<'a, 'fbb, E: ParseError<&'a str>>(
   .parse(input)
 }
 
-fn build_java_frame<'a, 'fbb, E: ParseError<&'a str>>(
+fn build_java_frame<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
   builder: &mut FlatBufferBuilder<'fbb>,
-  input: &'a str,
-) -> IResult<&'a str, WIPOffset<v_1::Frame<'fbb>>, E> {
-  let symbol_parser = take_till(|c| c == '(' || c == '\n');
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, WIPOffset<v_1::Frame<'fbb>>, E> {
+  let symbol_parser = take_till(|c| c == &b'(' || c == &b'\n');
   map(
     (
       delimited(tag("at "), symbol_parser, tag("(")),
       terminated(source_location, tag(")\n")),
       many0(preceded(
-        (multispace1, tag("- ")),
+        (take_while1(AsChar::is_space), tag("- ")),
         terminated(take_until("\n"), tag("\n")),
       )),
     ),
     |(symbol, source, state)| {
       let source_file_args = v_1::SourceFileArgs {
-        path: Some(builder.create_string(source.path)),
+        path: Some(builder.create_string(&source.path)),
         line: source.lineno.unwrap_or_default(),
         column: 0,
       };
       let source_file = Some(v_1::SourceFile::create(builder, &source_file_args));
       let state = state
         .iter()
-        .map(|item| builder.create_string(item))
+        .map(|item| builder.create_string(&item.to_string()))
         .collect::<Vec<_>>();
       let args = v_1::FrameArgs {
         type_: v_1::FrameType::JVM,
-        symbol_name: Some(builder.create_string(symbol)),
+        symbol_name: Some(builder.create_string(&symbol.to_string())),
         source_file,
         state: (!state.is_empty()).then(|| builder.create_vector(state.as_slice())),
         ..Default::default()
@@ -283,47 +285,53 @@ fn build_java_frame<'a, 'fbb, E: ParseError<&'a str>>(
   .parse(input)
 }
 
-fn subject_parser<'a, E: ParseError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, Option<&'a str>, E> {
-  opt(preceded(tag("Subject: "), take_until("\n"))).parse(input)
+fn subject_parser<'a, E: ParseError<MemmapView<'a>>>(
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, Option<String>, E> {
+  let (remainder, subject) = opt(preceded(tag("Subject: "), take_until("\n"))).parse(input)?;
+
+  Ok((remainder, subject.map(|s| s.to_string())))
 }
 
-fn process_start_parser<'a, E: ParseError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, (u64, &'a str), E> {
+fn process_start_parser<'a, E: ParseError<MemmapView<'a>>>(
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, (u64, String), E> {
   (
     delimited(
       (take_until("----- pid "), tag("----- pid ")),
-      decimal::<u64, _>,
+      decimal::<_, u64, _>,
       tag(" at "),
     ),
-    terminated(take_until(" -----"), tag(" -----\n")),
+    map(
+      terminated(take_until(" -----"), tag(" -----\n")),
+      |start: MemmapView<'a>| start.to_string(),
+    ),
   )
     .parse(input)
 }
 
-fn process_properties<'a, E: ParseError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, BTreeMap<&'a str, &'a str>, E> {
+fn process_properties<'a, E: ParseError<MemmapView<'a>>>(
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, BTreeMap<String, String>, E> {
   map(many1(process_property), |pairs| {
-    pairs.iter().map(|pair| (pair.0, pair.1)).collect()
+    pairs.into_iter().map(|pair| (pair.0, pair.1)).collect()
   })
   .parse(input)
 }
 
-fn process_property<'a, E: ParseError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, (&'a str, &'a str), E> {
-  let line_end = input.find('\n').unwrap_or(input.len());
+fn process_property<'a, E: ParseError<MemmapView<'a>>>(
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, (String, String), E> {
+  let line_end = input.find('\n').map_or(input.len(), |n| n + 1);
   if line_end == 0 {
     return Err(nom::Err::Error(E::from_error_kind(
       input,
       ErrorKind::TakeUntil,
     )));
   }
-  let line = &input[..= line_end];
-  if line.contains("DALVIK THREADS") {
+  let line = input.take(line_end);
+  let line_len = line.len();
+  if line.find_substring("DALVIK THREADS").is_some() {
     return Err(nom::Err::Error(E::from_error_kind(
       input,
       ErrorKind::TakeUntil,
@@ -340,67 +348,81 @@ fn process_property<'a, E: ParseError<&'a str>>(
         ),
         separated_pair(take_until(": "), tag(": "), take_until("\n")),
         separated_pair(take_until("="), tag("="), take_until("\n")),
-        pair(take_till(|c: char| c.is_ascii_digit()), take_until("\n")),
-        map(take_until1("\n"), |s: &str| (s, "")),
+        pair(take_till(|c: &u8| c.is_ascii_digit()), take_until("\n")),
+        map(take_until1("\n"), |s: MemmapView<'a>| {
+          (s.clone(), s.take(0))
+        }),
       )),
       tag("\n"),
     ),
-    |(key, value)| (key.trim(), value),
+    |(key, value)| (key.to_string().trim().to_owned(), value.to_string()),
   )
   .parse(line)
-  .map(|(_, values)| (&input[line.len() ..], values))
+  .map(|(_, values)| (input.take_from(line_len), values))
 }
 
-fn thread_header<'a, E: ParseError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, ThreadHeader<'a>, E> {
-  let name_parser = delimited(tag("\""), take_till(|c| c == '"'), tag("\""));
-  let int_transform = |num: &str| num.parse().unwrap_or_default();
-  let float_transform = |num: &str| num.parse().unwrap_or_default();
-  map(
-    (
-      terminated(name_parser, tag(" ")),
-      opt(map(terminated(tag("daemon"), tag(" ")), |_| true)),
-      opt(map(
-        delimited(tag("prio="), take_till(|c| c == ' '), tag(" ")),
-        float_transform,
-      )),
-      opt(map(
-        delimited(tag("tid="), take_till(|c| c == ' '), tag(" ")),
-        int_transform,
-      )),
-      terminated(take_till(|c| c == '\n'), tag("\n")),
+fn thread_header<'a, E: ParseError<MemmapView<'a>>>(
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, ThreadHeader, E> {
+  let name_parser = delimited(tag("\""), take_till(|c| c == &b'"'), tag("\""));
+  let int_transform = |num: MemmapView<'a>| num.to_string().parse().unwrap_or_default();
+  let float_transform = |num: MemmapView<'a>| num.to_string().parse().unwrap_or_default();
+  let (remainder, (name, is_daemon, priority, tid, state)) = (
+    map(terminated(name_parser, tag(" ")), |name: MemmapView<'a>| {
+      name.to_string()
+    }),
+    opt(map(terminated(tag("daemon"), tag(" ")), |_| true)),
+    opt(map(
+      delimited(tag("prio="), take_till(|c| c == &b' '), tag(" ")),
+      float_transform,
+    )),
+    opt(map(
+      delimited(tag("tid="), take_till(|c| c == &b' '), tag(" ")),
+      int_transform,
+    )),
+    map(
+      terminated(take_till(|c| c == &b'\n'), tag("\n")),
+      |name: MemmapView<'a>| name.to_string(),
     ),
-    |(name, is_daemon, priority, tid, state)| ThreadHeader {
+  )
+    .parse(input)?;
+
+  Ok((
+    remainder,
+    ThreadHeader {
       name,
       is_daemon: is_daemon.unwrap_or_default(),
       tid,
       priority,
       state,
     },
-  )
-  .parse(input)
+  ))
 }
 
-fn thread_counter<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, usize, E> {
+fn thread_counter<'a, E: ParseError<MemmapView<'a>>>(
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, usize, E> {
   delimited(
     (take_until("DALVIK THREADS ("), tag("DALVIK THREADS (")),
-    decimal::<usize, _>,
+    decimal::<_, usize, _>,
     tag("):\n"),
   )
   .parse(input)
 }
 
-fn thread_props<'a, E: ParseError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, Vec<(&'a str, &'a str)>, E> {
+fn thread_props<'a, E: ParseError<MemmapView<'a>>>(
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, Vec<(String, String)>, E> {
   terminated(
     preceded(
-      (multispace1, tag("| ")),
+      (take_while1(AsChar::is_space), tag("| ")),
       separated_list0(
         tag(" "),
         (
-          terminated(take_till(|c| c == '='), tag("=")),
+          map(
+            terminated(take_till(|c| c == &b'='), tag("=")),
+            |key: MemmapView<'a>| key.to_string(),
+          ),
           thread_prop_value,
         ),
       ),
@@ -410,40 +432,47 @@ fn thread_props<'a, E: ParseError<&'a str>>(
   .parse(input)
 }
 
-fn thread_prop_value<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
+fn thread_prop_value<'a, E: ParseError<MemmapView<'a>>>(
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, String, E> {
   let line_end = input.find('\n').unwrap_or(input.len());
-  let value_end = input[.. line_end]
+  let line = input.take(line_end).to_string();
+  let value_end = line
     .find('=')
-    .and_then(|index| input[.. index].rfind(' '))
+    .and_then(|index| line[.. index].rfind(' '))
     .unwrap_or(line_end);
-  take(value_end).parse(input)
+  let (remainder, value) = take(value_end).parse(input)?;
+  Ok((remainder, value.to_string()))
 }
 
-fn native_symbol_parser<'a, E: ParseError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, (&'a str, Option<u64>), E> {
+fn native_symbol_parser<'a, E: ParseError<MemmapView<'a>>>(
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, (String, Option<u64>), E> {
   delimited(
     tag(" ("),
     alt((
       map(
         (
-          take_till(|c| c == '+' || c == '\n'),
+          take_till(|c: &u8| c == &b'+' || c == &b'\n'),
           preceded(tag("+"), decimal),
         ),
-        |(symbol, offset)| (symbol, Some(offset)),
+        |(symbol, offset): (MemmapView<'a>, u64)| (symbol.to_string(), Some(offset)),
       ),
-      map(take_till(|c| c == ')' || c == '\n'), |symbol: &str| {
-        (symbol, None)
-      }),
+      map(
+        take_till(|c: &u8| c == &b')' || c == &b'\n'),
+        |symbol: MemmapView<'a>| (symbol.to_string(), None),
+      ),
     )),
     tag(")"),
   )
   .parse(input)
 }
 
-fn native_path_parser<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
+fn native_path_parser<'a, E: ParseError<MemmapView<'a>>>(
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, String, E> {
   let line_end = input.find('\n').unwrap_or(input.len());
-  let line = &input[.. line_end];
+  let line = input.take(line_end).to_string();
   let path_end = line
     .find(" (offset")
     .or_else(|| {
@@ -453,16 +482,25 @@ fn native_path_parser<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a
     })
     .or_else(|| line.rfind(" ("))
     .unwrap_or(line_end);
-  take(path_end).parse(input)
+  let (remainder, path) = take(path_end).parse(input)?;
+  Ok((remainder, path.to_string()))
 }
 
-fn source_location<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Source<'a>, E> {
-  let (remainder, path) = take_while1(|c| c != ')' && c != ':').parse(input)?;
-  if remainder.is_empty() || remainder.starts_with(')') {
-    Ok((remainder, Source { path, lineno: None }))
+fn source_location<'a, E: ParseError<MemmapView<'a>>>(
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, Source, E> {
+  let (remainder, path) = take_while1(|c| c != &b')' && c != &b':').parse(input)?;
+  if remainder.is_empty() || remainder.peek() == Some(b')') {
+    Ok((
+      remainder,
+      Source {
+        path: path.to_string(),
+        lineno: None,
+      },
+    ))
   } else {
-    map(preceded(tag(":"), decimal::<i64, _>), |lineno| Source {
-      path,
+    map(preceded(tag(":"), decimal::<_, i64, _>), |lineno| Source {
+      path: path.to_string(),
       lineno: Some(lineno),
     })
     .parse(remainder)
