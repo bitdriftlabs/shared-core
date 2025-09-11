@@ -22,7 +22,7 @@ fn test_cache_populated_from_store() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let temp_path = temp_dir.path();
 
-    // Create initial flags and set some values
+  // Create initial flags and set some values
   {
     let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
     flags.set("flag1".to_string(), Some("variant1".to_string()))?;
@@ -64,21 +64,23 @@ fn test_invalid_entries_discarded_on_load() -> anyhow::Result<()> {
     let store = &mut flags.flags_store;
 
     // Entry missing VARIANT_KEY
-    let missing_variant = HashMap::from([
-      ("t".to_string(), Value::Unsigned(12345)),
-    ]);
-    store.insert("missing_variant".to_string(), Value::Object(missing_variant))?;
+    let missing_variant = HashMap::from([("t".to_string(), Value::Unsigned(12345))]);
+    store.insert(
+      "missing_variant".to_string(),
+      Value::Object(missing_variant),
+    )?;
 
     // Entry missing TIMESTAMP_KEY
-    let missing_timestamp = HashMap::from([
-      ("v".to_string(), Value::String("some_variant".to_string())),
-    ]);
-    store.insert("missing_timestamp".to_string(), Value::Object(missing_timestamp))?;
+    let missing_timestamp =
+      HashMap::from([("v".to_string(), Value::String("some_variant".to_string()))]);
+    store.insert(
+      "missing_timestamp".to_string(),
+      Value::Object(missing_timestamp),
+    )?;
 
     // Entry missing both keys
-    let missing_both = HashMap::from([
-      ("other_key".to_string(), Value::String("value".to_string())),
-    ]);
+    let missing_both =
+      HashMap::from([("other_key".to_string(), Value::String("value".to_string()))]);
     store.insert("missing_both".to_string(), Value::Object(missing_both))?;
 
     flags.sync()?; // Ensure data is written to disk
@@ -316,7 +318,9 @@ fn test_unicode_flag_names_and_variants() -> anyhow::Result<()> {
   flags.set("日本語フラグ".to_string(), Some("バリアント１".to_string()))?;
   flags.set("🚀flag".to_string(), Some("🎯variant".to_string()))?;
 
-  let jp_flag = flags.get("日本語フラグ").expect("Japanese flag should exist");
+  let jp_flag = flags
+    .get("日本語フラグ")
+    .expect("Japanese flag should exist");
   assert_eq!(jp_flag.variant, Some("バリアント１".to_string()));
 
   let emoji_flag = flags.get("🚀flag").expect("Emoji flag should exist");
@@ -332,8 +336,8 @@ fn test_very_long_flag_names_and_variants() -> anyhow::Result<()> {
 
   let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
-  let long_name = "a".repeat(100);  // Reduced to reasonable size
-  let long_variant = "b".repeat(100);  // Reduced to reasonable size
+  let long_name = "a".repeat(100); // Reduced to reasonable size
+  let long_variant = "b".repeat(100); // Reduced to reasonable size
 
   flags.set(long_name.clone(), Some(long_variant.clone()))?;
 
@@ -382,7 +386,10 @@ fn test_negative_timestamp_entries_discarded() -> anyhow::Result<()> {
       ("v".to_string(), Value::String("variant".to_string())),
       ("t".to_string(), Value::Signed(-12345)),
     ]);
-    store.insert("negative_timestamp".to_string(), Value::Object(negative_timestamp_entry))?;
+    store.insert(
+      "negative_timestamp".to_string(),
+      Value::Object(negative_timestamp_entry),
+    )?;
 
     flags.sync()?;
   }
@@ -416,10 +423,16 @@ fn test_malformed_objects_discarded() -> anyhow::Result<()> {
     let store = &mut flags.flags_store;
 
     // Non-object value
-    store.insert("string_entry".to_string(), Value::String("not_an_object".to_string()))?;
+    store.insert(
+      "string_entry".to_string(),
+      Value::String("not_an_object".to_string()),
+    )?;
 
     // Array value
-    store.insert("array_entry".to_string(), Value::Array(vec![Value::String("item".to_string())]))?;
+    store.insert(
+      "array_entry".to_string(),
+      Value::Array(vec![Value::String("item".to_string())]),
+    )?;
 
     // Integer value
     store.insert("int_entry".to_string(), Value::Unsigned(42))?;
@@ -456,9 +469,12 @@ fn test_signed_timestamp_conversion() -> anyhow::Result<()> {
     let store = &mut flags.flags_store;
     let signed_timestamp_entry = HashMap::from([
       ("v".to_string(), Value::String("variant".to_string())),
-      ("t".to_string(), Value::Signed(12345)),  // Positive signed value
+      ("t".to_string(), Value::Signed(12345)), // Positive signed value
     ]);
-    store.insert("signed_timestamp".to_string(), Value::Object(signed_timestamp_entry))?;
+    store.insert(
+      "signed_timestamp".to_string(),
+      Value::Object(signed_timestamp_entry),
+    )?;
 
     flags.sync()?;
   }
@@ -467,7 +483,9 @@ fn test_signed_timestamp_conversion() -> anyhow::Result<()> {
   let flags = FeatureFlags::new(temp_path, 1024, None)?;
 
   assert_eq!(flags.as_hashmap().len(), 1);
-  let flag = flags.get("signed_timestamp").expect("signed timestamp flag should exist");
+  let flag = flags
+    .get("signed_timestamp")
+    .expect("signed timestamp flag should exist");
   assert_eq!(flag.variant, Some("variant".to_string()));
   assert_eq!(flag.timestamp, 12345);
 
@@ -485,14 +503,19 @@ fn test_empty_string_variant_loaded_correctly() -> anyhow::Result<()> {
     flags.set("empty_variant_flag".to_string(), Some(String::new()))?;
 
     // Check that in the current instance, empty string is preserved
-    let flag = flags.get("empty_variant_flag").expect("empty variant flag should exist");
-    assert_eq!(flag.variant, Some(String::new()));    flags.sync()?;
+    let flag = flags
+      .get("empty_variant_flag")
+      .expect("empty variant flag should exist");
+    assert_eq!(flag.variant, Some(String::new()));
+    flags.sync()?;
   }
 
   // Create new instance and check that empty string variant is loaded as None
   let flags = FeatureFlags::new(temp_path, 1024, None)?;
 
-  let flag = flags.get("empty_variant_flag").expect("empty variant flag should exist");
+  let flag = flags
+    .get("empty_variant_flag")
+    .expect("empty variant flag should exist");
   // Empty string should be converted to None when loading from storage
   assert_eq!(flag.variant, None);
 
@@ -536,7 +559,10 @@ fn test_zero_timestamp_valid() -> anyhow::Result<()> {
       ("v".to_string(), Value::String("variant".to_string())),
       ("t".to_string(), Value::Unsigned(0)),
     ]);
-    store.insert("zero_timestamp".to_string(), Value::Object(zero_timestamp_entry))?;
+    store.insert(
+      "zero_timestamp".to_string(),
+      Value::Object(zero_timestamp_entry),
+    )?;
 
     flags.sync()?;
   }
@@ -545,7 +571,9 @@ fn test_zero_timestamp_valid() -> anyhow::Result<()> {
   let flags = FeatureFlags::new(temp_path, 1024, None)?;
 
   assert_eq!(flags.as_hashmap().len(), 1);
-  let flag = flags.get("zero_timestamp").expect("zero timestamp flag should exist");
+  let flag = flags
+    .get("zero_timestamp")
+    .expect("zero timestamp flag should exist");
   assert_eq!(flag.variant, Some("variant".to_string()));
   assert_eq!(flag.timestamp, 0);
 
@@ -561,7 +589,7 @@ fn test_large_buffer_size() -> anyhow::Result<()> {
   let mut flags = FeatureFlags::new(temp_path, 10240, None)?;
 
   // Set multiple flags
-  for i in 0..100 {
+  for i in 0 .. 100 {
     flags.set(format!("flag_{i}"), Some(format!("variant_{i}")))?;
   }
 
