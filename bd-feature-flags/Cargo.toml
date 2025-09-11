@@ -1,0 +1,20 @@
+[package]
+edition      = "2024"
+license-file = "../LICENSE"
+name         = "bd-feature-flags"
+publish      = false
+version      = "1.0.0"
+
+[lib]
+doctest = false
+
+[dev-dependencies]
+tempfile.workspace   = true
+
+[dependencies]
+anyhow.workspace = true
+bd-resilient-kv = { path = "../bd-resilient-kv" }
+bd-client-common = { path = "../bd-client-common" }
+bd-bonjson = { path = "../bd-bonjson" }
+bytes.workspace = true
+memmap2.workspace = true

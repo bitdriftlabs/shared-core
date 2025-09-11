@@ -655,6 +655,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-feature-flags"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "bd-bonjson",
+ "bd-client-common",
+ "bd-resilient-kv",
+ "bytes",
+ "memmap2",
+ "tempfile",
+]
+
+[[package]]
 name = "bd-grpc"
 version = "1.0.0"
 dependencies = [
