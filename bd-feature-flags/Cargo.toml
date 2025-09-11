@@ -14,7 +14,4 @@ tempfile.workspace   = true
 [dependencies]
 anyhow.workspace = true
 bd-resilient-kv = { path = "../bd-resilient-kv" }
-bd-client-common = { path = "../bd-client-common" }
 bd-bonjson = { path = "../bd-bonjson" }
-bytes.workspace = true
-memmap2.workspace = true
