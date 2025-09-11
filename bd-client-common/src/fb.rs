@@ -11,8 +11,6 @@ use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::{
   Log,
   LogArgs,
   LogType,
-  Timestamp as FbTimestamp,
-  TimestampArgs,
   root_as_log as fb_root_as_log,
 };
 use bd_proto::flatbuffers::common::bitdrift_public::fbs::common::v_1::{
@@ -24,6 +22,7 @@ use bd_proto::flatbuffers::common::bitdrift_public::fbs::common::v_1::{
   StringData,
   StringDataArgs,
 };
+use bd_proto_util::fbs::{ToFlatBufferString as _, ToFlatBufferTimestamp as _};
 use flatbuffers::{FlatBufferBuilder, UnionWIPOffset, WIPOffset};
 
 pub fn root_as_log(bytes: &[u8]) -> anyhow::Result<Log<'_>> {
@@ -83,18 +82,8 @@ pub fn make_log<'a: 'b, 'b>(
 
   let all_fields = builder.create_vector_from_iter(all_fields.into_iter());
 
-  let session_id = builder.create_string(session_id);
-  let timestamp = FbTimestamp::create(
-    builder,
-    &TimestampArgs {
-      seconds: timestamp.unix_timestamp(),
-      // This should never overflow because the nanos field is always less than 1_000_000_000 aka 1
-      // second.
-      #[allow(clippy::cast_possible_truncation)]
-      nanos: (timestamp.unix_timestamp_nanos()
-        - (i128::from(timestamp.unix_timestamp()) * 1_000_000_000)) as i32,
-    },
-  );
+  let session_id = session_id.to_fb(builder);
+  let timestamp = timestamp.to_fb(builder);
 
   let workflow_flush_buffer_action_ids =
     create_string_vector(builder, workflow_flush_buffer_action_ids);
@@ -107,8 +96,8 @@ pub fn make_log<'a: 'b, 'b>(
       message_type,
       message: Some(message),
       fields: Some(all_fields),
-      session_id: Some(session_id),
-      timestamp: Some(timestamp),
+      session_id,
+      timestamp,
       workflow_action_ids: workflow_flush_buffer_action_ids,
       stream_ids,
     },

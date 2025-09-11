@@ -494,6 +494,7 @@ dependencies = [
  "bd-log-primitives",
  "bd-metadata",
  "bd-proto",
+ "bd-proto-util",
  "bd-test-helpers",
  "crc32fast",
  "ctor",
@@ -981,6 +982,7 @@ dependencies = [
  "itertools 0.14.0",
  "protobuf 4.0.0-alpha.0",
  "sha2",
+ "time",
 ]
 
 [[package]]
