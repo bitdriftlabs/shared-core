@@ -14,19 +14,41 @@ use nom::{IResult, Parser};
 pub mod android;
 mod input;
 
-fn decimal<'a, T: std::str::FromStr + std::default::Default, E: ParseError<&'a str>>(
-  input: &'a str,
-) -> IResult<&'a str, T, E> {
-  map(recognize(many1(one_of("0123456789"))), |out: &str| {
-    out.parse::<T>().unwrap_or_default()
+#[cfg(test)]
+fn make_tempfile(contents: &[u8]) -> anyhow::Result<std::fs::File> {
+  use std::io::Write;
+
+  let mut file = tempfile::tempfile()?;
+  let written = file.write(contents)?;
+  assert_eq!(contents.len(), written);
+  Ok(file)
+}
+
+fn decimal<
+  I: ToString + nom::Input + nom::Offset,
+  T: std::str::FromStr + std::default::Default,
+  E: ParseError<I>,
+>(
+  input: I,
+) -> IResult<I, T, E>
+where
+  <I as nom::Input>::Item: nom::AsChar,
+{
+  map(recognize(many1(one_of("0123456789"))), |out: I| {
+    out.to_string().parse::<T>().unwrap_or_default()
   })
   .parse(input)
 }
 
-fn hexadecimal<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, u64, E> {
+fn hexadecimal<I: ToString + nom::Input + nom::Offset, E: ParseError<I>>(
+  input: I,
+) -> IResult<I, u64, E>
+where
+  <I as nom::Input>::Item: nom::AsChar,
+{
   map(
     recognize(many1(one_of("0123456789abcdefABCDEF"))),
-    |out: &str| u64::from_str_radix(out, 16).unwrap_or_default(),
+    |out: I| u64::from_str_radix(&out.to_string(), 16).unwrap_or_default(),
   )
   .parse(input)
 }
