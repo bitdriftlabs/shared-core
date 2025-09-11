@@ -11,7 +11,6 @@ use futures::future;
 use futures::lock::Mutex;
 use futures::prelude::*;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
-use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::process::exit;
 use std::sync::LazyLock;
@@ -73,7 +72,7 @@ pub async fn start(
       })
       // Max 10 channels.
       .buffer_unordered(10)
-      .for_each(|_| async {})
+      .for_each(|()| async {})
       .await;
 
   Ok(())
@@ -82,7 +81,7 @@ pub async fn start(
 impl Remote for Server {
   async fn breakpoint(self, _: tarpc::context::Context) {
     #[allow(unused)]
-    if let Some(holder) = LOGGER.lock().await.deref() {
+    if let Some(holder) = &*LOGGER.lock().await {
       unsafe {
         libc::raise(libc::SIGTRAP);
       }
@@ -90,14 +89,14 @@ impl Remote for Server {
   }
 
   async fn stop(self, _: tarpc::context::Context) {
-    if let Some(logger) = LOGGER.lock().await.deref() {
+    if let Some(logger) = &*LOGGER.lock().await {
       logger.stop();
       exit(0);
     }
   }
 
   async fn set_sleep_mode(self, _: tarpc::context::Context, enabled: bool) {
-    if let Some(logger) = LOGGER.lock().await.deref() {
+    if let Some(logger) = &*LOGGER.lock().await {
       logger.set_sleep_mode(enabled);
     }
   }
@@ -111,16 +110,16 @@ impl Remote for Server {
     fields: Vec<String>,
     capture_session: bool,
   ) {
-    if let Some(logger) = LOGGER.lock().await.deref() {
+    if let Some(logger) = &*LOGGER.lock().await {
       logger.log(log_level, log_type.into(), message, fields, capture_session);
     }
   }
 
   async fn process_crash_reports(self, _: ::tarpc::context::Context) {
-    if let Some(logger) = LOGGER.lock().await.deref_mut() {
-      if let Err(e) = logger.process_crash_reports() {
-        log::error!("failed to process reports: {e}");
-      }
+    if let Some(logger) = &mut *LOGGER.lock().await
+      && let Err(e) = logger.process_crash_reports()
+    {
+      log::error!("failed to process reports: {e}");
     }
   }
 
@@ -130,11 +129,10 @@ impl Remote for Server {
     name: String,
     value_type: RuntimeValueType,
   ) -> String {
-    if let Some(logger) = LOGGER.lock().await.deref() {
-      logger.get_runtime_value(name, value_type)
-    } else {
-      "<unset>".to_owned()
-    }
+    (*LOGGER.lock().await).as_ref().map_or_else(
+      || "<unset>".to_owned(),
+      |logger| logger.get_runtime_value(&name, value_type),
+    )
   }
 
   async fn get_api_url(self, _: ::tarpc::context::Context) -> String {
@@ -142,7 +140,7 @@ impl Remote for Server {
   }
 
   async fn start_new_session(self, _: ::tarpc::context::Context) {
-    if let Some(logger) = LOGGER.lock().await.deref() {
+    if let Some(logger) = &*LOGGER.lock().await {
       logger.start_new_session();
     }
   }

@@ -35,7 +35,7 @@ pub enum CliPlatform {
   Apple,
 }
 
-#[derive(clap::ValueEnum, Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(clap::ValueEnum, Copy, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum RuntimeValueType {
   Bool,
   String,
@@ -124,7 +124,7 @@ pub struct StartCommand {
   pub model: String,
 }
 
-#[derive(clap::ValueEnum, PartialEq, Debug, Clone)]
+#[derive(clap::ValueEnum, PartialEq, Eq, Debug, Clone)]
 pub enum EnableFlag {
   On,
   Off,

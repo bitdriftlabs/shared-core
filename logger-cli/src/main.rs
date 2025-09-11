@@ -49,7 +49,7 @@ async fn main() -> anyhow::Result<()> {
     Command::Start(ref cmd) => {
       let port = args.port;
       eprintln!("starting server on :{port}");
-      crate::service::start(&sdk_directory, &cmd, port).await?;
+      crate::service::start(&sdk_directory, cmd, port).await?;
     },
     Command::Log(ref cmd) => {
       with_logger(&args, async |logger| {
@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
           .log(
             context::current(),
             cmd.log_level.clone().into(),
-            cmd.log_type.clone().into(),
+            cmd.log_type.clone(),
             cmd.message.clone(),
             cmd.field.clone(),
             true,
@@ -65,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
           .await?;
         Ok(())
       })
-      .await?
+      .await?;
     },
     Command::NewSession => {
       let config_path = sdk_directory.join(SESSION_FILE);
@@ -78,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("new session: {session_url}");
         Ok(())
       })
-      .await?
+      .await?;
     },
     Command::Timeline => {
       let config_path = sdk_directory.join(SESSION_FILE);
@@ -91,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
             .output()?;
           Ok(())
         })
-        .await?
+        .await?;
       } else {
         eprintln!("No session ID set");
       }
@@ -101,21 +101,23 @@ async fn main() -> anyhow::Result<()> {
         logger.breakpoint(context::current()).await?;
         Ok(())
       })
-      .await?
+      .await?;
     },
     Command::UploadArtifacts => {
       with_logger(&args, async |logger| {
         logger.process_crash_reports(context::current()).await?;
         Ok(())
       })
-      .await?
+      .await?;
     },
     Command::SetSleepMode(ref cmd) => {
       with_logger(&args, async |logger| {
-        logger.set_sleep_mode(context::current(), cmd.enabled == EnableFlag::On).await?;
+        logger
+          .set_sleep_mode(context::current(), cmd.enabled == EnableFlag::On)
+          .await?;
         Ok(())
       })
-      .await?
+      .await?;
     },
     Command::PrintRuntimeValue(ref cmd) => {
       with_logger(&args, async |logger| {
@@ -123,12 +125,12 @@ async fn main() -> anyhow::Result<()> {
         eprintln!(
           "{name}: {}",
           logger
-            .get_runtime_value(context::current(), name.clone(), cmd.type_.clone())
+            .get_runtime_value(context::current(), name.clone(), cmd.type_)
             .await?,
         );
         Ok(())
       })
-      .await?
+      .await?;
     },
     Command::Stop => {
       let addr = format!("{}:{}", args.host, args.port);

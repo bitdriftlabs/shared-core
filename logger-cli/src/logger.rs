@@ -84,16 +84,16 @@ impl LoggerHolder {
     self.logger.shutdown(true);
   }
 
-  pub fn get_runtime_value(&self, name: String, value_type: RuntimeValueType) -> String {
+  pub fn get_runtime_value(&self, name: &str, value_type: RuntimeValueType) -> String {
     let snapshot = self.logger.runtime_snapshot();
     match value_type {
-      RuntimeValueType::Bool => format!("{}", snapshot.get_bool(&name, false)),
-      RuntimeValueType::String => format!("'{}'", snapshot.get_string(&name, "".to_string())),
-      RuntimeValueType::Int => format!("{}", snapshot.get_integer(&name, 0)),
+      RuntimeValueType::Bool => format!("{}", snapshot.get_bool(name, false)),
+      RuntimeValueType::String => format!("'{}'", snapshot.get_string(name, String::new())),
+      RuntimeValueType::Int => format!("{}", snapshot.get_integer(name, 0)),
       RuntimeValueType::Duration => {
         format!(
           "{}",
-          snapshot.get_duration(&name, time::Duration::seconds(0))
+          snapshot.get_duration(name, time::Duration::seconds(0))
         )
       },
     }
