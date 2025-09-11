@@ -3698,11 +3698,11 @@ impl<'a> FeatureFlag<'a> {
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(FeatureFlag::VT_VALUE, None)}
   }
   #[inline]
-  pub fn timestamp(&self) -> Option<&'a Timestamp> {
+  pub fn timestamp(&self) -> Option<super::super::common::v_1::Timestamp<'a>> {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<Timestamp>(FeatureFlag::VT_TIMESTAMP, None)}
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<super::super::common::v_1::Timestamp>>(FeatureFlag::VT_TIMESTAMP, None)}
   }
 }
 
@@ -3715,7 +3715,7 @@ impl flatbuffers::Verifiable for FeatureFlag<'_> {
     v.visit_table(pos)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("value", Self::VT_VALUE, false)?
-     .visit_field::<Timestamp>("timestamp", Self::VT_TIMESTAMP, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<super::super::common::v_1::Timestamp>>("timestamp", Self::VT_TIMESTAMP, false)?
      .finish();
     Ok(())
   }
@@ -3723,7 +3723,7 @@ impl flatbuffers::Verifiable for FeatureFlag<'_> {
 pub struct FeatureFlagArgs<'a> {
     pub name: Option<flatbuffers::WIPOffset<&'a str>>,
     pub value: Option<flatbuffers::WIPOffset<&'a str>>,
-    pub timestamp: Option<&'a Timestamp>,
+    pub timestamp: Option<flatbuffers::WIPOffset<super::super::common::v_1::Timestamp<'a>>>,
 }
 impl<'a> Default for FeatureFlagArgs<'a> {
   #[inline]
@@ -3750,8 +3750,8 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> FeatureFlagBuilder<'a, 'b, A> {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(FeatureFlag::VT_VALUE, value);
   }
   #[inline]
-  pub fn add_timestamp(&mut self, timestamp: &Timestamp) {
-    self.fbb_.push_slot_always::<&Timestamp>(FeatureFlag::VT_TIMESTAMP, timestamp);
+  pub fn add_timestamp(&mut self, timestamp: flatbuffers::WIPOffset<super::super::common::v_1::Timestamp<'b >>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<super::super::common::v_1::Timestamp>>(FeatureFlag::VT_TIMESTAMP, timestamp);
   }
   #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> FeatureFlagBuilder<'a, 'b, A> {

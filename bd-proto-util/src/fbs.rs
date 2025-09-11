@@ -5,10 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::{
-  Timestamp,
-  TimestampArgs,
-};
+use bd_proto::flatbuffers::common::bitdrift_public::fbs::common::v_1::{Timestamp, TimestampArgs};
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use std::borrow::Cow;
 

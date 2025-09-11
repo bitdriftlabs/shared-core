@@ -27,11 +27,16 @@ struct BinaryDataBuilder;
 struct Field;
 struct FieldBuilder;
 
+struct Timestamp;
+struct TimestampBuilder;
+
 inline const ::flatbuffers::TypeTable *StringDataTypeTable();
 
 inline const ::flatbuffers::TypeTable *BinaryDataTypeTable();
 
 inline const ::flatbuffers::TypeTable *FieldTypeTable();
+
+inline const ::flatbuffers::TypeTable *TimestampTypeTable();
 
 enum Data : uint8_t {
   Data_NONE = 0,
@@ -301,6 +306,60 @@ inline ::flatbuffers::Offset<Field> CreateFieldDirect(
       value);
 }
 
+struct Timestamp FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef TimestampBuilder Builder;
+  static const ::flatbuffers::TypeTable *MiniReflectTypeTable() {
+    return TimestampTypeTable();
+  }
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_SECONDS = 4,
+    VT_NANOS = 6
+  };
+  int64_t seconds() const {
+    return GetField<int64_t>(VT_SECONDS, 0);
+  }
+  int32_t nanos() const {
+    return GetField<int32_t>(VT_NANOS, 0);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int64_t>(verifier, VT_SECONDS, 8) &&
+           VerifyField<int32_t>(verifier, VT_NANOS, 4) &&
+           verifier.EndTable();
+  }
+};
+
+struct TimestampBuilder {
+  typedef Timestamp Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_seconds(int64_t seconds) {
+    fbb_.AddElement<int64_t>(Timestamp::VT_SECONDS, seconds, 0);
+  }
+  void add_nanos(int32_t nanos) {
+    fbb_.AddElement<int32_t>(Timestamp::VT_NANOS, nanos, 0);
+  }
+  explicit TimestampBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<Timestamp> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<Timestamp>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<Timestamp> CreateTimestamp(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    int64_t seconds = 0,
+    int32_t nanos = 0) {
+  TimestampBuilder builder_(_fbb);
+  builder_.add_seconds(seconds);
+  builder_.add_nanos(nanos);
+  return builder_.Finish();
+}
+
 inline bool VerifyData(::flatbuffers::Verifier &verifier, const void *obj, Data type) {
   switch (type) {
     case Data_NONE: {
@@ -395,6 +454,21 @@ inline const ::flatbuffers::TypeTable *FieldTypeTable() {
   };
   static const ::flatbuffers::TypeTable tt = {
     ::flatbuffers::ST_TABLE, 3, type_codes, type_refs, nullptr, nullptr, names
+  };
+  return &tt;
+}
+
+inline const ::flatbuffers::TypeTable *TimestampTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_LONG, 0, -1 },
+    { ::flatbuffers::ET_INT, 0, -1 }
+  };
+  static const char * const names[] = {
+    "seconds",
+    "nanos"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_TABLE, 2, type_codes, nullptr, nullptr, nullptr, names
   };
   return &tt;
 }

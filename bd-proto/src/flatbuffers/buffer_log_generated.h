@@ -20,9 +20,6 @@ namespace fbs {
 namespace logging {
 namespace v1 {
 
-struct Timestamp;
-struct TimestampBuilder;
-
 struct Log;
 struct LogBuilder;
 
@@ -77,57 +74,6 @@ inline const char *EnumNameLogType(LogType e) {
   return EnumNamesLogType()[index];
 }
 
-struct Timestamp FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
-  typedef TimestampBuilder Builder;
-  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_SECONDS = 4,
-    VT_NANOS = 6
-  };
-  int64_t seconds() const {
-    return GetField<int64_t>(VT_SECONDS, 0);
-  }
-  int32_t nanos() const {
-    return GetField<int32_t>(VT_NANOS, 0);
-  }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) &&
-           VerifyField<int64_t>(verifier, VT_SECONDS, 8) &&
-           VerifyField<int32_t>(verifier, VT_NANOS, 4) &&
-           verifier.EndTable();
-  }
-};
-
-struct TimestampBuilder {
-  typedef Timestamp Table;
-  ::flatbuffers::FlatBufferBuilder &fbb_;
-  ::flatbuffers::uoffset_t start_;
-  void add_seconds(int64_t seconds) {
-    fbb_.AddElement<int64_t>(Timestamp::VT_SECONDS, seconds, 0);
-  }
-  void add_nanos(int32_t nanos) {
-    fbb_.AddElement<int32_t>(Timestamp::VT_NANOS, nanos, 0);
-  }
-  explicit TimestampBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
-        : fbb_(_fbb) {
-    start_ = fbb_.StartTable();
-  }
-  ::flatbuffers::Offset<Timestamp> Finish() {
-    const auto end = fbb_.EndTable(start_);
-    auto o = ::flatbuffers::Offset<Timestamp>(end);
-    return o;
-  }
-};
-
-inline ::flatbuffers::Offset<Timestamp> CreateTimestamp(
-    ::flatbuffers::FlatBufferBuilder &_fbb,
-    int64_t seconds = 0,
-    int32_t nanos = 0) {
-  TimestampBuilder builder_(_fbb);
-  builder_.add_seconds(seconds);
-  builder_.add_nanos(nanos);
-  return builder_.Finish();
-}
-
 struct Log FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef LogBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
@@ -163,8 +109,8 @@ struct Log FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::String *session_id() const {
     return GetPointer<const ::flatbuffers::String *>(VT_SESSION_ID);
   }
-  const bitdrift_public::fbs::logging::v1::Timestamp *timestamp() const {
-    return GetPointer<const bitdrift_public::fbs::logging::v1::Timestamp *>(VT_TIMESTAMP);
+  const bitdrift_public::fbs::common::v1::Timestamp *timestamp() const {
+    return GetPointer<const bitdrift_public::fbs::common::v1::Timestamp *>(VT_TIMESTAMP);
   }
   const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>> *workflow_action_ids() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>> *>(VT_WORKFLOW_ACTION_IDS);
@@ -226,7 +172,7 @@ struct LogBuilder {
   void add_session_id(::flatbuffers::Offset<::flatbuffers::String> session_id) {
     fbb_.AddOffset(Log::VT_SESSION_ID, session_id);
   }
-  void add_timestamp(::flatbuffers::Offset<bitdrift_public::fbs::logging::v1::Timestamp> timestamp) {
+  void add_timestamp(::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Timestamp> timestamp) {
     fbb_.AddOffset(Log::VT_TIMESTAMP, timestamp);
   }
   void add_workflow_action_ids(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> workflow_action_ids) {
@@ -257,7 +203,7 @@ inline ::flatbuffers::Offset<Log> CreateLog(
     ::flatbuffers::Offset<void> message = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>> fields = 0,
     ::flatbuffers::Offset<::flatbuffers::String> session_id = 0,
-    ::flatbuffers::Offset<bitdrift_public::fbs::logging::v1::Timestamp> timestamp = 0,
+    ::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Timestamp> timestamp = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> workflow_action_ids = 0,
     bitdrift_public::fbs::logging::v1::LogType log_type = bitdrift_public::fbs::logging::v1::LogType_Normal,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> stream_ids = 0) {
@@ -281,7 +227,7 @@ inline ::flatbuffers::Offset<Log> CreateLogDirect(
     ::flatbuffers::Offset<void> message = 0,
     const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *fields = nullptr,
     const char *session_id = nullptr,
-    ::flatbuffers::Offset<bitdrift_public::fbs::logging::v1::Timestamp> timestamp = 0,
+    ::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Timestamp> timestamp = 0,
     const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *workflow_action_ids = nullptr,
     bitdrift_public::fbs::logging::v1::LogType log_type = bitdrift_public::fbs::logging::v1::LogType_Normal,
     const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *stream_ids = nullptr) {

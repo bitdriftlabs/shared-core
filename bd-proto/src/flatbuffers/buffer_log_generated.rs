@@ -160,120 +160,6 @@ impl<'a> flatbuffers::Verifiable for LogType {
 }
 
 impl flatbuffers::SimpleToVerifyInSlice for LogType {}
-pub enum TimestampOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct Timestamp<'a> {
-  pub _tab: flatbuffers::Table<'a>,
-}
-
-impl<'a> flatbuffers::Follow<'a> for Timestamp<'a> {
-  type Inner = Timestamp<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: flatbuffers::Table::new(buf, loc) }
-  }
-}
-
-impl<'a> Timestamp<'a> {
-  pub const VT_SECONDS: flatbuffers::VOffsetT = 4;
-  pub const VT_NANOS: flatbuffers::VOffsetT = 6;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
-    Timestamp { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args TimestampArgs
-  ) -> flatbuffers::WIPOffset<Timestamp<'bldr>> {
-    let mut builder = TimestampBuilder::new(_fbb);
-    builder.add_seconds(args.seconds);
-    builder.add_nanos(args.nanos);
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn seconds(&self) -> i64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<i64>(Timestamp::VT_SECONDS, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn nanos(&self) -> i32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<i32>(Timestamp::VT_NANOS, Some(0)).unwrap()}
-  }
-}
-
-impl flatbuffers::Verifiable for Timestamp<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut flatbuffers::Verifier, pos: usize
-  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
-    use self::flatbuffers::Verifiable;
-    v.visit_table(pos)?
-     .visit_field::<i64>("seconds", Self::VT_SECONDS, false)?
-     .visit_field::<i32>("nanos", Self::VT_NANOS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct TimestampArgs {
-    pub seconds: i64,
-    pub nanos: i32,
-}
-impl<'a> Default for TimestampArgs {
-  #[inline]
-  fn default() -> Self {
-    TimestampArgs {
-      seconds: 0,
-      nanos: 0,
-    }
-  }
-}
-
-pub struct TimestampBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> TimestampBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_seconds(&mut self, seconds: i64) {
-    self.fbb_.push_slot::<i64>(Timestamp::VT_SECONDS, seconds, 0);
-  }
-  #[inline]
-  pub fn add_nanos(&mut self, nanos: i32) {
-    self.fbb_.push_slot::<i32>(Timestamp::VT_NANOS, nanos, 0);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> TimestampBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    TimestampBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> flatbuffers::WIPOffset<Timestamp<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl core::fmt::Debug for Timestamp<'_> {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-    let mut ds = f.debug_struct("Timestamp");
-      ds.field("seconds", &self.seconds());
-      ds.field("nanos", &self.nanos());
-      ds.finish()
-  }
-}
 pub enum LogOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -359,11 +245,11 @@ impl<'a> Log<'a> {
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(Log::VT_SESSION_ID, None)}
   }
   #[inline]
-  pub fn timestamp(&self) -> Option<Timestamp<'a>> {
+  pub fn timestamp(&self) -> Option<super::super::common::v_1::Timestamp<'a>> {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<Timestamp>>(Log::VT_TIMESTAMP, None)}
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<super::super::common::v_1::Timestamp>>(Log::VT_TIMESTAMP, None)}
   }
   #[inline]
   pub fn workflow_action_ids(&self) -> Option<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<&'a str>>> {
@@ -433,7 +319,7 @@ impl flatbuffers::Verifiable for Log<'_> {
      })?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field>>>>("fields", Self::VT_FIELDS, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("session_id", Self::VT_SESSION_ID, false)?
-     .visit_field::<flatbuffers::ForwardsUOffset<Timestamp>>("timestamp", Self::VT_TIMESTAMP, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<super::super::common::v_1::Timestamp>>("timestamp", Self::VT_TIMESTAMP, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&'_ str>>>>("workflow_action_ids", Self::VT_WORKFLOW_ACTION_IDS, false)?
      .visit_field::<LogType>("log_type", Self::VT_LOG_TYPE, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&'_ str>>>>("stream_ids", Self::VT_STREAM_IDS, false)?
@@ -447,7 +333,7 @@ pub struct LogArgs<'a> {
     pub message: Option<flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>>,
     pub fields: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'a>>>>>,
     pub session_id: Option<flatbuffers::WIPOffset<&'a str>>,
-    pub timestamp: Option<flatbuffers::WIPOffset<Timestamp<'a>>>,
+    pub timestamp: Option<flatbuffers::WIPOffset<super::super::common::v_1::Timestamp<'a>>>,
     pub workflow_action_ids: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<&'a str>>>>,
     pub log_type: LogType,
     pub stream_ids: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<&'a str>>>>,
@@ -495,8 +381,8 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> LogBuilder<'a, 'b, A> {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Log::VT_SESSION_ID, session_id);
   }
   #[inline]
-  pub fn add_timestamp(&mut self, timestamp: flatbuffers::WIPOffset<Timestamp<'b >>) {
-    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<Timestamp>>(Log::VT_TIMESTAMP, timestamp);
+  pub fn add_timestamp(&mut self, timestamp: flatbuffers::WIPOffset<super::super::common::v_1::Timestamp<'b >>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<super::super::common::v_1::Timestamp>>(Log::VT_TIMESTAMP, timestamp);
   }
   #[inline]
   pub fn add_workflow_action_ids(&mut self, workflow_action_ids: flatbuffers::WIPOffset<flatbuffers::Vector<'b , flatbuffers::ForwardsUOffset<&'b  str>>>) {

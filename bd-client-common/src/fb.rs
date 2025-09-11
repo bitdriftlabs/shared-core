@@ -29,12 +29,6 @@ pub fn root_as_log(bytes: &[u8]) -> anyhow::Result<Log<'_>> {
   fb_root_as_log(bytes).map_err(|e| anyhow!("An unexpected flatbuffer error ocurred: {e}"))
 }
 
-#[derive(Copy, Clone)]
-pub struct Timestamp {
-  pub secs: i64,
-  pub nanos: i32,
-}
-
 fn create_string_vector<'a: 'b, 'b>(
   builder: &mut FlatBufferBuilder<'a>,
   strings: impl Iterator<Item = &'b str>,
