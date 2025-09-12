@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::cli::{FieldPairs, LogCommand, Options};
+use crate::cli::{FieldPairs, RuntimeValueType, StartCommand};
 use crate::metadata::Metadata;
 use crate::storage::SQLiteStorage;
 use bd_logger::{CaptureSession, InitParams, Logger};
@@ -24,7 +24,7 @@ pub type LoggerFuture =
 pub const SESSION_FILE: &str = "session_id";
 
 pub struct LoggerHolder {
-  logger: Logger,
+  pub logger: Logger,
   future: Mutex<Option<LoggerFuture>>,
   #[allow(dead_code)] // holding it to avoid drop before the logger itself
   shutdown_trigger: bd_shutdown::ComponentShutdownTrigger,
@@ -69,22 +69,54 @@ impl LoggerHolder {
       .process_crash_reports(bd_logger::ReportProcessingSession::PreviousRun)
   }
 
+  pub fn start_new_session(&self) {
+    let handle = self.logger.new_logger_handle();
+    handle.start_new_session();
+  }
+
+  pub fn set_sleep_mode(&self, enabled: bool) {
+    let handle = self.logger.new_logger_handle();
+    handle.transition_sleep_mode(enabled);
+  }
+
   pub fn stop(&self) {
     sleep(2.std_seconds());
     self.logger.shutdown(true);
   }
 
-  pub fn log(&self, cmd: &LogCommand, capture_session: bool) {
+  pub fn get_runtime_value(&self, name: &str, value_type: RuntimeValueType) -> String {
+    let snapshot = self.logger.runtime_snapshot();
+    match value_type {
+      RuntimeValueType::Bool => format!("{}", snapshot.get_bool(name, false)),
+      RuntimeValueType::String => format!("'{}'", snapshot.get_string(name, String::new())),
+      RuntimeValueType::Int => format!("{}", snapshot.get_integer(name, 0)),
+      RuntimeValueType::Duration => {
+        format!(
+          "{}",
+          snapshot.get_duration(name, time::Duration::seconds(0))
+        )
+      },
+    }
+  }
+
+  pub fn log(
+    &self,
+    log_level: bd_logger::LogLevel,
+    log_type: bd_logger::LogType,
+    message: String,
+    fields: Vec<String>,
+    capture_session: bool,
+  ) {
     let session_capture = if capture_session {
       CaptureSession::capture_with_id("cli command")
     } else {
       CaptureSession::default()
     };
     self.logger.new_logger_handle().log(
-      cmd.log_level.clone().into(),
-      cmd.log_type.clone().into(),
-      cmd.message.clone().into(),
-      FieldPairs(cmd.field.clone()).into(),
+      log_level,
+      log_type,
+      message.into(),
+      FieldPairs(fields).into(),
       [].into(),
       None,
       bd_logger::Block::Yes,
@@ -118,7 +150,7 @@ impl fixed::Callbacks for MaybeStaticSessionGenerator {
   }
 }
 
-pub fn make_logger(sdk_directory: &Path, config: &Options) -> anyhow::Result<LoggerHolder> {
+pub fn make_logger(sdk_directory: &Path, config: &StartCommand) -> anyhow::Result<LoggerHolder> {
   let session_callbacks = Arc::new(MaybeStaticSessionGenerator {
     config_path: sdk_directory.join(SESSION_FILE),
   });

@@ -8,7 +8,7 @@
 use bd_logger::{AnnotatedLogField, AnnotatedLogFields, LogLevel, LogType, log_level};
 use clap::{ArgAction, Args, Parser, Subcommand};
 
-#[derive(clap::ValueEnum, Debug, Clone)]
+#[derive(clap::ValueEnum, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum CliLogType {
   Normal,
   Replay,
@@ -35,9 +35,70 @@ pub enum CliPlatform {
   Apple,
 }
 
+#[derive(clap::ValueEnum, Copy, Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum RuntimeValueType {
+  Bool,
+  String,
+  Int,
+  Duration,
+}
+
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
 pub struct Options {
+  /// Server connection host
+  #[clap(
+    env = "LOGGER_HOST",
+    long,
+    required = false,
+    default_value = "127.0.0.1"
+  )]
+  pub host: String,
+
+  /// Server connection port
+  #[clap(env = "LOGGER_PORT", long, required = false, default_value = "5501")]
+  pub port: u16,
+
+  /// Command to run
+  #[command(subcommand)]
+  pub command: Command,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Command {
+  /// Emit a log
+  Log(LogCommand),
+
+  /// Copy a file to the artifact upload directory
+  EnqueueArtifacts(EnqueueCommand),
+
+  /// Send any pending artifacts to the server
+  UploadArtifacts,
+
+  /// Generate a new session
+  NewSession,
+
+  /// Open the timeline for the current session in the default browser
+  Timeline,
+
+  /// Start server
+  Start(StartCommand),
+
+  /// Stop running server
+  Stop,
+
+  /// Break execution
+  Trap,
+
+  /// Log a runtime config value
+  PrintRuntimeValue(RuntimeValueCommand),
+
+  /// Toggle sleep mode
+  SetSleepMode(SleepModeCommand),
+}
+
+#[derive(Args, Debug)]
+pub struct StartCommand {
   /// API key to use with emitted logs
   #[clap(env, long)]
   pub api_key: String,
@@ -61,28 +122,18 @@ pub struct Options {
   /// Device model
   #[clap(long, required = false, default_value = "iPhone12,1")]
   pub model: String,
-
-  /// Command to run
-  #[command(subcommand)]
-  pub command: Command,
 }
 
-#[derive(Subcommand, Debug)]
-pub enum Command {
-  /// Emit a log
-  Log(LogCommand),
+#[derive(clap::ValueEnum, PartialEq, Eq, Debug, Clone)]
+pub enum EnableFlag {
+  On,
+  Off,
+}
 
-  /// Copy a file to the artifact upload directory
-  EnqueueArtifacts(EnqueueCommand),
-
-  /// Send any pending artifacts to the server
-  UploadArtifacts,
-
-  /// Generate a new session
-  NewSession,
-
-  /// Open the timeline for the current session in the default browser
-  Timeline,
+#[derive(Args, Debug)]
+pub struct SleepModeCommand {
+  /// Toggle state
+  pub enabled: EnableFlag,
 }
 
 #[derive(Args, Debug)]
@@ -108,6 +159,16 @@ pub struct EnqueueCommand {
   /// Path(s) to the file(s) to upload
   #[clap(action=ArgAction::Append)]
   pub path: Vec<String>,
+}
+
+
+#[derive(Args, Debug)]
+pub struct RuntimeValueCommand {
+  /// Expected value type
+  #[clap(long, required = false, value_enum, default_value = "bool")]
+  pub type_: RuntimeValueType,
+
+  pub name: String,
 }
 
 impl From<CliLogLevel> for LogLevel {
