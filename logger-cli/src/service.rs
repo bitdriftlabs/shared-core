@@ -8,12 +8,10 @@
 use crate::cli::{CliLogType, RuntimeValueType};
 use crate::logger::LoggerHolder;
 use futures::future;
-use futures::lock::Mutex;
 use futures::prelude::*;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::path::Path;
 use std::process::exit;
-use std::sync::LazyLock;
 use tarpc::server::Channel;
 use tarpc::tokio_serde::formats::Json;
 
@@ -46,7 +44,7 @@ async fn spawn(fut: impl Future<Output = ()> + Send + 'static) {
   tokio::spawn(fut);
 }
 
-static LOGGER: LazyLock<Mutex<Option<LoggerHolder>>> = LazyLock::new(|| Mutex::new(None));
+static LOGGER: parking_lot::Mutex<Option<LoggerHolder>> = parking_lot::Mutex::new(None);
 
 pub async fn start(
   sdk_directory: &Path,
@@ -55,7 +53,7 @@ pub async fn start(
 ) -> anyhow::Result<()> {
   let logger = crate::logger::make_logger(sdk_directory, config)?;
   logger.start();
-  LOGGER.lock().await.replace(logger);
+  LOGGER.lock().replace(logger);
 
   let server_addr = (IpAddr::V6(Ipv6Addr::LOCALHOST), port);
   let mut listener = tarpc::serde_transport::tcp::listen(&server_addr, Json::default).await?;
@@ -81,7 +79,7 @@ pub async fn start(
 impl Remote for Server {
   async fn breakpoint(self, _: tarpc::context::Context) {
     #[allow(unused)]
-    if let Some(holder) = &*LOGGER.lock().await {
+    if let Some(holder) = &*LOGGER.lock() {
       unsafe {
         libc::raise(libc::SIGTRAP);
       }
@@ -89,14 +87,14 @@ impl Remote for Server {
   }
 
   async fn stop(self, _: tarpc::context::Context) {
-    if let Some(logger) = &*LOGGER.lock().await {
+    if let Some(logger) = &*LOGGER.lock() {
       logger.stop();
       exit(0);
     }
   }
 
   async fn set_sleep_mode(self, _: tarpc::context::Context, enabled: bool) {
-    if let Some(logger) = &*LOGGER.lock().await {
+    if let Some(logger) = &*LOGGER.lock() {
       logger.set_sleep_mode(enabled);
     }
   }
@@ -110,13 +108,13 @@ impl Remote for Server {
     fields: Vec<String>,
     capture_session: bool,
   ) {
-    if let Some(logger) = &*LOGGER.lock().await {
+    if let Some(logger) = &*LOGGER.lock() {
       logger.log(log_level, log_type.into(), message, fields, capture_session);
     }
   }
 
   async fn process_crash_reports(self, _: ::tarpc::context::Context) {
-    if let Some(logger) = &mut *LOGGER.lock().await
+    if let Some(logger) = &mut *LOGGER.lock()
       && let Err(e) = logger.process_crash_reports()
     {
       log::error!("failed to process reports: {e}");
@@ -129,7 +127,7 @@ impl Remote for Server {
     name: String,
     value_type: RuntimeValueType,
   ) -> String {
-    (*LOGGER.lock().await).as_ref().map_or_else(
+    (*LOGGER.lock()).as_ref().map_or_else(
       || "<unset>".to_owned(),
       |logger| logger.get_runtime_value(&name, value_type),
     )
@@ -140,7 +138,7 @@ impl Remote for Server {
   }
 
   async fn start_new_session(self, _: ::tarpc::context::Context) {
-    if let Some(logger) = &*LOGGER.lock().await {
+    if let Some(logger) = &*LOGGER.lock() {
       logger.start_new_session();
     }
   }
