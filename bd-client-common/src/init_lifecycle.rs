@@ -58,3 +58,16 @@ impl InitLifecycleState {
     }
   }
 }
+
+/// Verifies that the current lifecycle state is less than the expected state.
+/// This macro only has an effect in debug builds; in release builds it does nothing.
+#[macro_export]
+macro_rules! debug_check_lifecycle_less_than {
+  ($lifecycle:expr, $expected_state:expr, $text:expr) => {
+    #[cfg(debug_assertions)]
+    {
+      let current_state = $lifecycle.get();
+      debug_assert!(current_state < $expected_state, $text);
+    }
+  };
+}
