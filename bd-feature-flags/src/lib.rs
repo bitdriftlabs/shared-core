@@ -205,25 +205,6 @@ impl FeatureFlags {
     FeatureFlag::from_value(value)
   }
 
-  /// Synchronizes in-memory changes to persistent storage.
-  ///
-  /// This method ensures that all feature flag changes made since the last sync
-  /// are written to disk. While changes are typically persisted automatically,
-  /// calling this method guarantees that data is flushed to storage immediately.
-  ///
-  /// # Returns
-  ///
-  /// Returns `Ok(())` on successful synchronization, or an error if the write operation fails.
-  ///
-  /// # Errors
-  ///
-  /// This function will return an error if the underlying storage system
-  /// cannot write data to disk due to I/O errors, insufficient disk space,
-  /// or permission issues.
-  pub fn sync(&self) -> anyhow::Result<()> {
-    self.flags_store.sync()
-  }
-
   /// Sets or updates a feature flag.
   ///
   /// Creates a new feature flag with the given name and variant, or updates an existing flag.
@@ -270,6 +251,25 @@ impl FeatureFlags {
   pub fn clear(&mut self) -> anyhow::Result<()> {
     self.flags_store.clear()?;
     Ok(())
+  }
+
+  /// Synchronizes in-memory changes to persistent storage.
+  ///
+  /// This method ensures that all feature flag changes made since the last sync
+  /// are written to disk. While changes are typically persisted automatically,
+  /// calling this method guarantees that data is flushed to storage immediately.
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(())` on successful synchronization, or an error if the write operation fails.
+  ///
+  /// # Errors
+  ///
+  /// This function will return an error if the underlying storage system
+  /// cannot write data to disk due to I/O errors, insufficient disk space,
+  /// or permission issues.
+  pub fn sync(&self) -> anyhow::Result<()> {
+    self.flags_store.sync()
   }
 
   /// Returns a `HashMap` containing all feature flags.
