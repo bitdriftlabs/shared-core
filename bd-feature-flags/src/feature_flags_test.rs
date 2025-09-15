@@ -479,7 +479,10 @@ fn test_signed_timestamp_conversion() -> anyhow::Result<()> {
     .get("signed_timestamp")
     .expect("signed timestamp flag should exist");
   assert_eq!(flag.variant, Some("variant".to_string()));
-  assert_eq!(flag.timestamp, time::OffsetDateTime::from_unix_timestamp_nanos(12345).unwrap());
+  assert_eq!(
+    flag.timestamp,
+    time::OffsetDateTime::from_unix_timestamp_nanos(12345).unwrap()
+  );
 
   Ok(())
 }

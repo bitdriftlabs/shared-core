@@ -82,7 +82,8 @@ fn get_current_timestamp() -> u64 {
 
 
 
-/// Converts internal storage format (empty string for no variant) to external API variant (None for no variant)
+/// Converts internal storage format (empty string for no variant) to external API variant (None for
+/// no variant)
 fn variant_from_storage(storage_value: &str) -> Option<String> {
   if storage_value.is_empty() {
     None
@@ -107,7 +108,7 @@ impl FeatureFlags {
   ///
   /// This constructor creates a new feature flags manager backed by a resilient key-value store
   /// at the specified path. Any existing flags stored at this location will be automatically
-  /// loaded into the in-memory cache.
+  /// loaded and made available for retrieval.
   ///
   /// # Arguments
   ///
@@ -164,7 +165,8 @@ impl FeatureFlags {
         _ => return None,
       };
 
-      let timestamp = time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos)).ok()?;
+      let timestamp =
+        time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos)).ok()?;
 
       Some(FeatureFlag { variant, timestamp })
     } else {
@@ -194,7 +196,7 @@ impl FeatureFlags {
   /// Sets or updates a feature flag.
   ///
   /// Creates a new feature flag with the given name and variant, or updates an existing flag.
-  /// The flag is immediately stored both in memory and in persistent storage, and receives
+  /// The flag is immediately stored in persistent storage and receives
   /// a timestamp indicating when it was last modified.
   ///
   /// # Arguments
@@ -223,10 +225,7 @@ impl FeatureFlags {
     let timestamp = get_current_timestamp();
 
     let value = HashMap::from([
-      (
-        VARIANT_KEY.to_string(),
-        Value::String(storage_variant),
-      ),
+      (VARIANT_KEY.to_string(), Value::String(storage_variant)),
       (TIMESTAMP_KEY.to_string(), Value::Unsigned(timestamp)),
     ]);
     self
@@ -236,10 +235,10 @@ impl FeatureFlags {
     Ok(())
   }
 
-  /// Removes all feature flags from both memory and persistent storage.
+  /// Removes all feature flags from persistent storage.
   ///
-  /// This method deletes all feature flags, clearing both the in-memory cache
-  /// and the persistent storage. This operation cannot be undone.
+  /// This method deletes all feature flags, clearing the persistent storage.
+  /// This operation cannot be undone.
   ///
   /// # Returns
   ///
@@ -281,7 +280,11 @@ impl FeatureFlags {
           _ => continue,
         };
 
-        let Ok(timestamp) = time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos)) else { continue };
+        let Ok(timestamp) =
+          time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos))
+        else {
+          continue;
+        };
 
         flags.insert(key.clone(), FeatureFlag { variant, timestamp });
       }
