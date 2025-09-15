@@ -15,3 +15,4 @@ tempfile.workspace   = true
 anyhow.workspace = true
 bd-resilient-kv = { path = "../bd-resilient-kv" }
 bd-bonjson = { path = "../bd-bonjson" }
+time = { workspace = true, features = ["macros", "formatting"] }

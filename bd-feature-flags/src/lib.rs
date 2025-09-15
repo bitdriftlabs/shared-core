@@ -36,7 +36,7 @@ use bd_bonjson::Value;
 use bd_resilient_kv::KVStore;
 use std::collections::HashMap;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use time::OffsetDateTime;
 
 #[cfg(test)]
 #[path = "./feature_flags_test.rs"]
@@ -68,74 +68,20 @@ pub struct FeatureFlag {
 /// `FeatureFlags` provides a way to manage feature flags that are persisted to disk
 /// using a resilient key-value store. All flags are cached in memory for fast access
 /// and automatically loaded from storage when the instance is created.
-///
-/// # Examples
-///
-/// ## Basic usage
-///
-/// ```no_run
-/// use bd_feature_flags::FeatureFlags;
-/// use tempfile::TempDir;
-///
-/// # fn main() -> anyhow::Result<()> {
-/// let temp_dir = TempDir::new()?;
-/// let mut flags = FeatureFlags::new(temp_dir.path(), 1024, None)?;
-///
-/// // Set a feature flag with a variant
-/// flags.set("feature_a", Some("blue"))?;
-///
-/// // Set a simple boolean-style flag
-/// flags.set("feature_b", None)?;
-///
-/// // Check if a flag exists and get its value
-/// if let Some(flag) = flags.get("feature_a") {
-///   println!("Feature A variant: {:?}", flag.variant);
-/// }
-///
-/// // Get all flags as a HashMap for iteration
-/// for (name, flag) in flags.as_hashmap() {
-///   println!("Flag '{}' has variant: {:?}", name, flag.variant);
-/// }
-/// # Ok(())
-/// # }
-/// ```
-///
-/// ## Persistence across instances
-///
-/// ```no_run
-/// use bd_feature_flags::FeatureFlags;
-/// use tempfile::TempDir;
-///
-/// # fn main() -> anyhow::Result<()> {
-/// let temp_dir = TempDir::new()?;
-/// let temp_path = temp_dir.path();
-///
-/// // Create flags in one instance
-/// {
-///   let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
-///   flags.set("persistent_flag", Some("value"))?;
-///   flags.sync()?; // Ensure data is written to disk
-/// }
-///
-/// // Load flags in a new instance
-/// let flags = FeatureFlags::new(temp_path, 1024, None)?;
-/// assert!(flags.get("persistent_flag").is_some());
-/// # Ok(())
-/// # }
-/// ```
 pub struct FeatureFlags {
   flags_store: KVStore,
   flags_cache: HashMap<String, FeatureFlag>,
 }
 
 fn get_current_timestamp() -> u64 {
-  u64::try_from(
-    SystemTime::now()
-      .duration_since(UNIX_EPOCH)
-      .unwrap_or_default()
-      .as_nanos(),
-  )
-  .unwrap_or(0)
+  // OffsetDateTime::now_utc() returns the current UTC time
+  // unix_timestamp_nanos() returns i128, so we clamp to u64 (0 if negative)
+  let nanos = OffsetDateTime::now_utc().unix_timestamp_nanos();
+  if nanos < 0 {
+    0
+  } else {
+    nanos as u64
+  }
 }
 
 fn generate_initial_cache(store: &KVStore) -> HashMap<String, FeatureFlag> {
@@ -182,24 +128,6 @@ impl FeatureFlags {
   ///
   /// Returns `Ok(FeatureFlags)` on success, or an error if the storage cannot be initialized.
   ///
-  /// # Examples
-  ///
-  /// ```no_run
-  /// use bd_feature_flags::FeatureFlags;
-  /// use tempfile::TempDir;
-  ///
-  /// # fn main() -> anyhow::Result<()> {
-  /// let temp_dir = TempDir::new()?;
-  ///
-  /// // Create with default high water mark
-  /// let flags1 = FeatureFlags::new(temp_dir.path(), 1024, None)?;
-  ///
-  /// // Create with custom high water mark
-  /// let flags2 = FeatureFlags::new(temp_dir.path().join("flags2"), 2048, Some(0.8))?;
-  /// # Ok(())
-  /// # }
-  /// ```
-  ///
   /// # Errors
   ///
   /// This function will return an error if:
@@ -232,29 +160,6 @@ impl FeatureFlags {
   /// # Arguments
   ///
   /// * `key` - The name of the feature flag to retrieve
-  ///
-  /// # Examples
-  ///
-  /// ```no_run
-  /// use bd_feature_flags::FeatureFlags;
-  /// use tempfile::TempDir;
-  ///
-  /// # fn main() -> anyhow::Result<()> {
-  /// let temp_dir = TempDir::new()?;
-  /// let mut flags = FeatureFlags::new(temp_dir.path(), 1024, None)?;
-  /// flags.set("my_feature", Some("variant_a"))?;
-  ///
-  /// if let Some(flag) = flags.get("my_feature") {
-  ///   println!("Found flag with variant: {:?}", flag.variant);
-  /// } else {
-  ///   println!("Flag not found");
-  /// }
-  ///
-  /// // Non-existent flags return None
-  /// assert!(flags.get("nonexistent_flag").is_none());
-  /// # Ok(())
-  /// # }
-  /// ```
   #[must_use]
   pub fn get(&self, key: &str) -> Option<&FeatureFlag> {
     self.flags_cache.get(key)
@@ -269,24 +174,6 @@ impl FeatureFlags {
   /// # Returns
   ///
   /// Returns `Ok(())` on successful synchronization, or an error if the write operation fails.
-  ///
-  /// # Examples
-  ///
-  /// ```no_run
-  /// use bd_feature_flags::FeatureFlags;
-  /// use tempfile::TempDir;
-  ///
-  /// # fn main() -> anyhow::Result<()> {
-  /// let temp_dir = TempDir::new()?;
-  /// let mut flags = FeatureFlags::new(temp_dir.path(), 1024, None)?;
-  ///
-  /// flags.set("critical_flag", Some("important_value"))?;
-  ///
-  /// // Ensure the flag is persisted immediately
-  /// flags.sync()?;
-  /// # Ok(())
-  /// # }
-  /// ```
   ///
   /// # Errors
   ///
@@ -313,31 +200,6 @@ impl FeatureFlags {
   /// # Returns
   ///
   /// Returns `Ok(())` on success, or an error if the flag cannot be stored.
-  ///
-  /// # Examples
-  ///
-  /// ```no_run
-  /// use bd_feature_flags::FeatureFlags;
-  /// use tempfile::TempDir;
-  ///
-  /// # fn main() -> anyhow::Result<()> {
-  /// let temp_dir = TempDir::new()?;
-  /// let mut flags = FeatureFlags::new(temp_dir.path(), 1024, None)?;
-  ///
-  /// // Set a flag with a variant
-  /// flags.set("color_scheme", Some("dark"))?;
-  ///
-  /// // Set a simple boolean-style flag
-  /// flags.set("debug_mode", None)?;
-  ///
-  /// // Update an existing flag
-  /// flags.set("color_scheme", Some("light"))?;
-  ///
-  /// // Empty string variant
-  /// flags.set("empty_variant", Some(""))?;
-  /// # Ok(())
-  /// # }
-  /// ```
   ///
   /// # Errors
   ///
@@ -376,28 +238,6 @@ impl FeatureFlags {
   ///
   /// Returns `Ok(())` on success, or an error if the storage cannot be cleared.
   ///
-  /// # Examples
-  ///
-  /// ```no_run
-  /// use bd_feature_flags::FeatureFlags;
-  /// use tempfile::TempDir;
-  ///
-  /// # fn main() -> anyhow::Result<()> {
-  /// let temp_dir = TempDir::new()?;
-  /// let mut flags = FeatureFlags::new(temp_dir.path(), 1024, None)?;
-  ///
-  /// // Add some flags
-  /// flags.set("flag1", Some("value1"))?;
-  /// flags.set("flag2", None)?;
-  /// assert_eq!(flags.as_hashmap().len(), 2);
-  ///
-  /// // Clear all flags
-  /// flags.clear()?;
-  /// assert_eq!(flags.as_hashmap().len(), 0);
-  /// # Ok(())
-  /// # }
-  /// ```
-  ///
   /// # Errors
   ///
   /// This function will return an error if the underlying storage cannot be
@@ -417,38 +257,6 @@ impl FeatureFlags {
   /// # Returns
   ///
   /// A reference to the internal `HashMap<String, FeatureFlag>` containing all flags.
-  ///
-  /// # Examples
-  ///
-  /// ```no_run
-  /// use bd_feature_flags::FeatureFlags;
-  /// use tempfile::TempDir;
-  ///
-  /// # fn main() -> anyhow::Result<()> {
-  /// let temp_dir = TempDir::new()?;
-  /// let mut flags = FeatureFlags::new(temp_dir.path(), 1024, None)?;
-  ///
-  /// flags.set("flag1", Some("variant1"))?;
-  /// flags.set("flag2", None)?;
-  ///
-  /// // Iterate over all flags
-  /// for (name, flag) in flags.as_hashmap() {
-  ///   println!(
-  ///     "Flag '{}' has variant: {:?} (updated at {})",
-  ///     name, flag.variant, flag.timestamp
-  ///   );
-  /// }
-  ///
-  /// // Check total number of flags
-  /// println!("Total flags: {}", flags.as_hashmap().len());
-  ///
-  /// // Check if specific flag exists without borrowing
-  /// if flags.as_hashmap().contains_key("flag1") {
-  ///   println!("flag1 exists");
-  /// }
-  /// # Ok(())
-  /// # }
-  /// ```
   #[must_use]
   pub fn as_hashmap(&self) -> &HashMap<String, FeatureFlag> {
     &self.flags_cache

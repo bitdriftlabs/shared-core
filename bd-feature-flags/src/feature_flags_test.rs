@@ -5,15 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#![allow(
-  clippy::expect_used,
-  clippy::panic,
-  clippy::todo,
-  clippy::unimplemented,
-  clippy::unreachable,
-  clippy::unwrap_used
-)]
-
 use super::*;
 use tempfile::TempDir;
 
