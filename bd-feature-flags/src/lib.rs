@@ -66,20 +66,10 @@ pub struct FeatureFlag {
 impl FeatureFlag {
   /// Creates a new `FeatureFlag` with the given variant and optional timestamp.
   ///
-  /// # Arguments
+  /// Validates the variant (rejecting empty strings) and uses the current time
+  /// if no timestamp is provided.
   ///
-  /// * `variant` - The variant value for the flag:
-  ///   - `Some(string)` sets the flag with the specified variant
-  ///   - `None` sets the flag without a variant (simple boolean-style flag)
-  /// * `timestamp` - Optional timestamp. If `None`, uses the current time.
-  ///
-  /// # Returns
-  ///
-  /// Returns `Ok(FeatureFlag)` on success, or an error if the variant is invalid.
-  ///
-  /// # Errors
-  ///
-  /// This function will return an error if an empty string is provided as the variant.
+  /// Returns an error if an empty string is provided as the variant.
   fn new(variant: Option<&str>, timestamp: Option<time::OffsetDateTime>) -> anyhow::Result<Self> {
     // Validate the variant - reject empty strings
     let validated_variant = match variant {
@@ -113,7 +103,7 @@ impl FeatureFlag {
           } else {
             Some(s.to_string())
           }
-        }
+        },
         _ => return None,
       };
 
@@ -125,7 +115,7 @@ impl FeatureFlag {
             _ => return None,
           };
           time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos)).ok()?
-        }
+        },
         _ => return None,
       };
 
@@ -137,7 +127,10 @@ impl FeatureFlag {
 
   /// Converts a `FeatureFlag` to a BONJSON Value.
   fn to_value(&self) -> Value {
-    let storage_variant = self.variant.as_ref().map_or_else(String::new, std::clone::Clone::clone);
+    let storage_variant = self
+      .variant
+      .as_ref()
+      .map_or_else(String::new, std::clone::Clone::clone);
 
     let timestamp_nanos = u64::try_from(self.timestamp.unix_timestamp_nanos()).unwrap_or(0);
 
@@ -250,8 +243,10 @@ impl FeatureFlags {
   ///
   /// # Errors
   ///
-  /// This function will return an error if the flag cannot be written to persistent
-  /// storage due to I/O errors, insufficient disk space, or permission issues.
+  /// This function will return an error if:
+  /// - An empty string is provided as the variant (validation error)
+  /// - The flag cannot be written to persistent storage due to I/O errors, insufficient disk space,
+  ///   or permission issues
   pub fn set(&mut self, key: &str, variant: Option<&str>) -> anyhow::Result<()> {
     let feature_flag = FeatureFlag::new(variant, None)?;
     let value = feature_flag.to_value();

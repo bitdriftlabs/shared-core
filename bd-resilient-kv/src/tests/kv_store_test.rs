@@ -245,7 +245,10 @@ fn test_kv_store_file_resizing() -> anyhow::Result<()> {
     let mut store = KVStore::new(&base_path, 4096, None, None)?;
 
     // Data should still be there
-    assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
+    assert_eq!(
+      store.get("key1"),
+      Some(&Value::String("value1".to_string()))
+    );
 
     // Should be able to add more data with the larger size
     store.insert("key2".to_string(), Value::String("value2".to_string()))?;
@@ -274,9 +277,18 @@ fn test_kv_store_compress() -> anyhow::Result<()> {
 
   // Data should still be there
   assert_eq!(store.len(), 3);
-  assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
-  assert_eq!(store.get("key2"), Some(&Value::String("value2".to_string())));
-  assert_eq!(store.get("key3"), Some(&Value::String("value3".to_string())));
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("value1".to_string()))
+  );
+  assert_eq!(
+    store.get("key2"),
+    Some(&Value::String("value2".to_string()))
+  );
+  assert_eq!(
+    store.get("key3"),
+    Some(&Value::String("value3".to_string()))
+  );
 
   // Usage ratio might be different after compression
   let after_usage = store.buffer_usage_ratio();
@@ -325,7 +337,10 @@ fn test_insert_null_is_deletion() -> anyhow::Result<()> {
 
   // Insert a value
   store.insert("key1".to_string(), Value::String("value1".to_string()))?;
-  assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("value1".to_string()))
+  );
   assert_eq!(store.len(), 1);
 
   // Insert null should delete the key
@@ -355,7 +370,10 @@ fn test_kv_store_caching_behavior() -> anyhow::Result<()> {
   store.insert("key3".to_string(), Value::Bool(true))?;
 
   // Multiple reads should work correctly (using cache)
-  assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("value1".to_string()))
+  );
   assert_eq!(store.get("key2"), Some(&Value::Signed(42)));
   assert_eq!(store.get("key3"), Some(&Value::Bool(true)));
 
@@ -380,7 +398,10 @@ fn test_kv_store_caching_behavior() -> anyhow::Result<()> {
   // Verify cache was properly invalidated and new data is visible
   assert_eq!(store.len(), 4);
   assert!(store.contains_key("key4"));
-  assert_eq!(store.get("key4"), Some(&Value::String("value4".to_string())));
+  assert_eq!(
+    store.get("key4"),
+    Some(&Value::String("value4".to_string()))
+  );
 
   // Remove data (should also invalidate cache)
   let removed = store.remove("key2")?;
@@ -448,7 +469,10 @@ fn test_kv_store_constructor_cache_coherency_with_existing_data() -> anyhow::Res
   assert!(store.contains_key("key3"));
 
   // Check values are correct in cache
-  assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("value1".to_string()))
+  );
   assert_eq!(store.get("key2"), Some(&Value::Signed(42)));
   assert_eq!(store.get("key3"), Some(&Value::Bool(true)));
 
@@ -489,7 +513,10 @@ fn test_kv_store_constructor_cache_coherency_with_file_resize() -> anyhow::Resul
   // Verify cache is coherent after file resize
   assert_eq!(store.len(), 1);
   assert!(store.contains_key("key1"));
-  assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("value1".to_string()))
+  );
 
   Ok(())
 }
@@ -550,8 +577,14 @@ fn test_kv_store_constructor_cache_coherency_different_high_water_marks() -> any
   assert_eq!(store.len(), 2);
   assert!(store.contains_key("key1"));
   assert!(store.contains_key("key2"));
-  assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
-  assert_eq!(store.get("key2"), Some(&Value::String("value2".to_string())));
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("value1".to_string()))
+  );
+  assert_eq!(
+    store.get("key2"),
+    Some(&Value::String("value2".to_string()))
+  );
 
   Ok(())
 }
