@@ -48,6 +48,8 @@ impl<K: MemorySized, V: MemorySized> MemorySized for AHashMap<K, V> {
 impl<T: MemorySized> MemorySized for Vec<T> {
   fn size(&self) -> usize {
     let empty_reserved_mem = (self.capacity() - self.len()) * size_of::<T>();
-    self.iter().map(|v| v.size()).sum::<usize>() + std::mem::size_of::<Self>() + empty_reserved_mem
+    self.iter().map(MemorySized::size).sum::<usize>()
+      + std::mem::size_of::<Self>()
+      + empty_reserved_mem
   }
 }
