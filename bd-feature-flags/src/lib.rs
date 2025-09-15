@@ -83,13 +83,14 @@ impl FeatureFlag {
 
     Ok(Self {
       variant: validated_variant,
-      timestamp: timestamp.unwrap_or(time::OffsetDateTime::now_utc()),
+      timestamp: timestamp.unwrap_or_else(time::OffsetDateTime::now_utc),
     })
   }
 
   /// Creates a new `FeatureFlag` from a BONJSON Value.
   ///
   /// Returns `None` if the value is not a valid feature flag object.
+  #[must_use]
   pub fn from_value(value: &Value) -> Option<Self> {
     if let Value::Object(obj) = value {
       let variant = match obj.get(VARIANT_KEY) {
@@ -288,9 +289,10 @@ impl FeatureFlags {
     flags
   }
 
-  /// Returns a reference to the underlying key-value store's HashMap,
+  /// Returns a reference to the underlying key-value store's `HashMap`,
   /// allowing direct access to the raw stored values.
   /// This should only be used internally to avoid unnecessary cloning.
+  #[must_use]
   pub fn underlying_hashmap(&self) -> &HashMap<String, Value> {
     self.flags_store.as_hashmap()
   }
