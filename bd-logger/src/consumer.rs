@@ -18,16 +18,15 @@ use bd_client_common::fb::root_as_log;
 use bd_client_common::maybe_await;
 use bd_client_stats_store::{Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected_error_with_details;
-use bd_runtime::runtime::{ConfigLoader, IntWatch, Watch};
+use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use futures_util::future::try_join_all;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
-use tokio::time::{Sleep, sleep};
+use tokio::time::{Instant, Sleep, sleep};
 use tower::{Service, ServiceExt};
 use tracing::Instrument as _;
 use unwrap_infallible::UnwrapInfallible;
@@ -43,10 +42,11 @@ struct Flags {
 
   // The duration to wait before uploading an incomplete batch. The batch will be uploaded
   // at this point regardless of log activity.
-  batch_deadline_watch: IntWatch<bd_runtime::runtime::log_upload::BatchDeadlineFlag>,
+  batch_deadline: DurationWatch<bd_runtime::runtime::log_upload::BatchDeadlineFlag>,
 
-  // The maximum number of logs to upload in a single streaming batch.
-  streaming_batch_size: IntWatch<bd_runtime::runtime::log_upload::StreamingBatchSizeFlag>,
+  // The duration to wait before uploading an incomplete batch for streaming logs.
+  streaming_batch_deadline:
+    DurationWatch<bd_runtime::runtime::log_upload::StreamingBatchDeadlineFlag>,
 
   // The lookback window for the flush buffer uploads.
   upload_lookback_window_feature_flag:
@@ -109,9 +109,9 @@ impl BufferUploadManager {
       feature_flags: Flags {
         max_batch_size_logs: runtime_loader.register_int_watch(),
         max_match_size_bytes: runtime_loader.register_int_watch(),
-        batch_deadline_watch: runtime_loader.register_int_watch(),
+        batch_deadline: runtime_loader.register_duration_watch(),
         upload_lookback_window_feature_flag: runtime_loader.register_duration_watch(),
-        streaming_batch_size: runtime_loader.register_int_watch(),
+        streaming_batch_deadline: runtime_loader.register_duration_watch(),
       },
       shutdown,
       buffer_event_rx,
@@ -307,12 +307,12 @@ impl BufferUploadManager {
         let log_upload_service = self.log_upload_service.clone();
         let consumer = buffer.clone().register_consumer()?;
 
-        let batch_size = self.feature_flags.streaming_batch_size.clone();
+        let batch_builder = BatchBuilder::new(self.feature_flags.clone());
         tokio::task::spawn(async move {
           StreamedBufferUpload {
             consumer,
             log_upload_service,
-            batch_size,
+            batch_builder,
             shutdown,
           }
           .start()
@@ -497,9 +497,9 @@ impl ContinuousBufferUploader {
       // ensures that logs won't sit in the current batch for more than the specified
       // deadline.
       if !self.batch_builder.logs.is_empty() && self.flush_batch_sleep.is_none() {
-        self.flush_batch_sleep = Some(Box::pin(sleep(Duration::from_millis(
-          (*self.feature_flags.batch_deadline_watch.read()).into(),
-        ))));
+        self.flush_batch_sleep = Some(Box::pin(sleep(
+          self.feature_flags.batch_deadline.read().unsigned_abs(),
+        )));
       }
     }
   }
@@ -522,10 +522,13 @@ impl ContinuousBufferUploader {
         .ready()
         .await
         .unwrap_infallible()
-        .call(UploadRequest::new(LogBatch {
-          logs,
-          buffer_id: self.buffer_id.clone(),
-        }))
+        .call(UploadRequest::new(
+          LogBatch {
+            logs,
+            buffer_id: self.buffer_id.clone(),
+          },
+          false,
+        ))
         .await
         .unwrap_infallible()
     };
@@ -554,12 +557,14 @@ impl ContinuousBufferUploader {
 struct StreamedBufferUpload {
   // The ring buffer consumer to use to consume logs. We use the cursor consumer to get us async
   // reads, we could technically use the non-cursor version.
+  // TODO(mattklein123): I don't think this provides enough value in the streaming case. We should
+  // probably just use a memory bound channel for this?
   consumer: Box<dyn bd_buffer::RingBufferConsumer>,
 
   // Service used to send logs to upload to the uploader.
   log_upload_service: service::Upload,
 
-  batch_size: IntWatch<bd_runtime::runtime::log_upload::StreamingBatchSizeFlag>,
+  batch_builder: BatchBuilder,
 
   shutdown: ComponentShutdown,
 }
@@ -576,23 +581,42 @@ impl StreamedBufferUpload {
 
       log::debug!("received first log, starting stream upload");
 
-      let mut logs = vec![first_log.to_vec()];
+      debug_assert!(self.batch_builder.logs.is_empty());
+      self.batch_builder.add_log(first_log.to_vec());
 
       self.consumer.finish_read()?;
+      let deadline = tokio::time::sleep_until(
+        Instant::now()
+          + self
+            .batch_builder
+            .flags
+            .streaming_batch_deadline
+            .read()
+            .unsigned_abs(),
+      );
+      tokio::pin!(deadline);
 
       loop {
-        if logs.len() >= *self.batch_size.read() as usize {
+        if self.batch_builder.limit_reached() {
           log::debug!("batch size reached, uploading batch");
           break;
         }
 
-        match self.consumer.start_read(false) {
-          Ok(log) => {
-            logs.push(log.to_vec());
-            self.consumer.finish_read()?;
-          },
-          Err(bd_buffer::Error::AbslStatus(AbslCode::Unavailable, _)) => {
+        let result = tokio::select! {
+          () = &mut deadline => {
+            log::debug!("streaming batch deadline hit, uploading batch");
             break;
+          },
+          () = self.shutdown.cancelled() => return Ok(()),
+          result = self.consumer.read() => {
+            result
+          },
+        };
+
+        match result {
+          Ok(log) => {
+            self.batch_builder.add_log(log.to_vec());
+            self.consumer.finish_read()?;
           },
           Err(e) => {
             anyhow::bail!("failed to read from stream buffer: {e:?}")
@@ -606,10 +630,13 @@ impl StreamedBufferUpload {
           .ready()
           .await
           .unwrap_infallible()
-          .call(UploadRequest::new(LogBatch {
-            logs,
-            buffer_id: "streamed".to_string(),
-          }))
+          .call(UploadRequest::new(
+            LogBatch {
+              logs: self.batch_builder.take(),
+              buffer_id: "streamed".to_string(),
+            },
+            true,
+          ))
           .await
           .unwrap_infallible()
       };
@@ -737,10 +764,13 @@ impl CompleteBufferUpload {
       .ready()
       .await
       .unwrap_infallible()
-      .call(UploadRequest::new(LogBatch {
-        logs,
-        buffer_id: self.buffer_id.clone(),
-      }))
+      .call(UploadRequest::new(
+        LogBatch {
+          logs,
+          buffer_id: self.buffer_id.clone(),
+        },
+        false,
+      ))
       .await
       .unwrap_infallible();
 

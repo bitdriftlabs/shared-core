@@ -40,10 +40,13 @@ async fn test_retry_backoff() {
     retry_limit_exceeded_dropped_logs,
   };
 
-  let mut req = UploadRequest::new(LogBatch {
-    logs: vec![],
-    buffer_id: "buffer".to_string(),
-  });
+  let mut req = UploadRequest::new(
+    LogBatch {
+      logs: vec![],
+      buffer_id: "buffer".to_string(),
+    },
+    false,
+  );
   let mut retry_task = tokio_test::task::spawn(
     retry
       .retry(&mut req, &mut Ok(UploadResult::Failure))

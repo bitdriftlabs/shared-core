@@ -577,19 +577,19 @@ pub mod log_upload {
   // Continuous logs are uploaded in batches either when the batch size is hit or when the deadline
   // has been hit. This controls how long the client will wait before triggering a flush for a
   // batch that has not yet reached the batch limit.
-  int_feature_flag!(
+  duration_feature_flag!(
     BatchDeadlineFlag,
     "log_uploader.batch_deadline_ms",
-    30 * 1000
-  ); // 30s
+    30.seconds()
+  );
 
   // This controls the maximum number of logs that will be uploaded in a single streaming upload
   // request. This is used to batch the uploads to improve the throughput of log streaming in the
   // case where a lot of logs are being emitted.
-  int_feature_flag!(
-    StreamingBatchSizeFlag,
-    "log_uploader.streaming_batch_size",
-    100
+  duration_feature_flag!(
+    StreamingBatchDeadlineFlag,
+    "log_uploader.streaming_batch_deadline_ms",
+    500.milliseconds()
   );
 
   // This controls how many times we'll retry an upload before giving up. Note that this tracks the

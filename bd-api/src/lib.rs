@@ -51,6 +51,9 @@ pub enum DataUpload {
   /// A logs upload request with an associated tracking id that is used to ensure delivery.
   LogsUpload(TrackedUpload<LogUploadRequest>),
 
+  /// An ackless logs upload request.
+  AcklessLogsUpload(LogUploadRequest),
+
   /// A stats upload request with an associated tracking id that is used to ensure delivery.
   StatsUpload(TrackedUpload<StatsUploadRequest>),
 

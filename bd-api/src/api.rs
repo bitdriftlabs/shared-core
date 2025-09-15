@@ -280,6 +280,7 @@ impl StreamState {
         let req = self.upload_state_tracker.track_upload(request);
         self.send_request(req).await
       },
+      DataUpload::AcklessLogsUpload(request) => self.send_request(request).await,
       DataUpload::StatsUpload(mut request) => {
         request.payload.sent_at = self.time_provider.now().into_proto();
         let req = self.upload_state_tracker.track_upload(request);

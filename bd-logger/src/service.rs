@@ -72,13 +72,15 @@ pub fn new(
 pub struct UploadRequest {
   uuid: String,
   log_upload: Arc<LogBatch>,
+  ackless: bool,
 }
 
 impl UploadRequest {
-  pub(crate) fn new(log_upload: LogBatch) -> Self {
+  pub(crate) fn new(log_upload: LogBatch, ackless: bool) -> Self {
     Self {
       uuid: TrackedLogBatch::upload_uuid(),
       log_upload: Arc::new(log_upload),
+      ackless,
     }
   }
 }
@@ -139,15 +141,19 @@ impl tower::Service<UploadRequest> for Uploader {
   fn call(&mut self, request: UploadRequest) -> Self::Future {
     let buffer_id = request.log_upload.buffer_id.clone();
 
-    let (upload, response_rx) = TrackedLogBatch::new(
-      request.uuid.clone(),
-      LogUploadRequest {
-        upload_uuid: request.uuid.clone(),
-        logs: request.log_upload.logs.clone(),
-        buffer_uuid: request.log_upload.buffer_id.clone(),
-        ..Default::default()
-      },
-    );
+    let log_upload_request = LogUploadRequest {
+      upload_uuid: request.uuid.clone(),
+      logs: request.log_upload.logs.clone(),
+      buffer_uuid: request.log_upload.buffer_id.clone(),
+      ackless: request.ackless,
+      ..Default::default()
+    };
+    let (upload, response_rx) = if request.ackless {
+      (DataUpload::AcklessLogsUpload(log_upload_request), None)
+    } else {
+      let (tracked, rx) = TrackedLogBatch::new(request.uuid, log_upload_request);
+      (DataUpload::LogsUpload(tracked), Some(rx))
+    };
 
     let log_upload_attempt = self
       .scope
@@ -165,12 +171,17 @@ impl tower::Service<UploadRequest> for Uploader {
       // canceled. Errors are not retried.
       tokio::select! {
         () = shutdown.cancelled() => return Ok(UploadResult::Canceled),
-        r = data_upload_tx.send(DataUpload::LogsUpload(upload)) => {
+        r = data_upload_tx.send(upload) => {
             if r.is_err() {
               return Ok(UploadResult::Canceled);
             }
           }
       }
+
+      // If this was an ackless upload we're done here.
+      let Some(response_rx) = response_rx else {
+        return Ok(UploadResult::Success);
+      };
 
       // If the response sender is dropped it means that the api received
       // the event but the stream closed before we got a response, so treat
