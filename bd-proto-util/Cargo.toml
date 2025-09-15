@@ -20,3 +20,6 @@ time.workspace        = true
 
 [build-dependencies]
 cc.workspace = true
+
+[features]
+buffer-log-validate = []
