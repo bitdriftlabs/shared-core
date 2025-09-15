@@ -290,6 +290,9 @@ impl RequestProcessor {
           .log_upload_tx
           .send(log_upload.clone())
           .await;
+        if log_upload.ackless {
+          return None;
+        }
         Some(ApiResponse {
           response_type: Some(Response_type::LogUpload(LogUploadResponse {
             upload_uuid,

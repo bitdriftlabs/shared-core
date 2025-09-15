@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{BufferUploadManager, ContinuousBufferUploader, Flags, service};
-use crate::consumer::StreamedBufferUpload;
+use crate::consumer::{BatchBuilder, StreamedBufferUpload};
 use assert_matches::assert_matches;
 use bd_api::upload::{Tracked, UploadResponse};
 use bd_api::{DataUpload, TriggerUpload};
@@ -31,6 +31,16 @@ use std::time::Duration;
 use tempfile::TempDir;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
+
+fn make_flags(runtime_loader: &ConfigLoader) -> Flags {
+  Flags {
+    max_batch_size_logs: runtime_loader.register_int_watch(),
+    max_match_size_bytes: runtime_loader.register_int_watch(),
+    batch_deadline: runtime_loader.register_duration_watch(),
+    upload_lookback_window_feature_flag: runtime_loader.register_duration_watch(),
+    streaming_batch_deadline: runtime_loader.register_duration_watch(),
+  }
+}
 
 struct SetupSingleConsumer {
   _global_shutdown_trigger: ComponentShutdownTrigger,
@@ -63,7 +73,6 @@ impl SetupSingleConsumer {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let global_shutdown_trigger = ComponentShutdownTrigger::default();
     let runtime_loader = ConfigLoader::new(sdk_directory.path());
-    let runtime_loader_clone = runtime_loader.clone();
     let collector = Collector::default();
 
     let uploader = ContinuousBufferUploader::new(
@@ -74,13 +83,7 @@ impl SetupSingleConsumer {
         &runtime_loader,
         &collector.scope(""),
       ),
-      Flags {
-        max_batch_size_logs: runtime_loader_clone.register_int_watch(),
-        max_match_size_bytes: runtime_loader_clone.register_int_watch(),
-        batch_deadline_watch: runtime_loader_clone.register_int_watch(),
-        upload_lookback_window_feature_flag: runtime_loader_clone.register_duration_watch(),
-        streaming_batch_size: runtime_loader_clone.register_int_watch(),
-      },
+      make_flags(&runtime_loader),
       shutdown_trigger.make_shutdown(),
       "buffer".to_string(),
     );
@@ -126,6 +129,7 @@ impl SetupSingleConsumer {
       DataUpload::SankeyPathUpload(_) => panic!("unexpected sankey upload"),
       DataUpload::ArtifactUploadIntent(_) => panic!("unexpected artifact upload intent"),
       DataUpload::ArtifactUpload(_) => panic!("unexpected artifact upload"),
+      DataUpload::AcklessLogsUpload(_) => panic!("unexpected ackless upload"),
     }
   }
 
@@ -891,7 +895,7 @@ async fn log_streaming() {
       consumer,
       log_upload_service: upload_service,
       shutdown: shutdown_trigger.make_shutdown(),
-      batch_size: runtime_loader.register_int_watch(),
+      batch_builder: BatchBuilder::new(make_flags(&runtime_loader)),
     }
     .start()
     .await
@@ -901,14 +905,10 @@ async fn log_streaming() {
   producer.write(b"data").unwrap();
   producer.write(b"more data").unwrap();
 
-  assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::LogsUpload(upload) => {
-      assert_eq!(upload.payload.logs.len(), 2);
-    assert_eq!(upload.payload.logs[0], b"data");
-    assert_eq!(upload.payload.logs[1], b"more data");
-    upload.response_tx.send(UploadResponse {
-      success: true,
-      uuid: upload.uuid,
-    }).unwrap();
+  assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::AcklessLogsUpload(upload) => {
+      assert_eq!(upload.logs.len(), 2);
+    assert_eq!(upload.logs[0], b"data");
+    assert_eq!(upload.logs[1], b"more data");
   });
 }
 
@@ -932,7 +932,7 @@ async fn streaming_batch_size_flag() {
   // Set streaming batch size to 2
   runtime_loader
     .update_snapshot(make_simple_update(vec![(
-      bd_runtime::runtime::log_upload::StreamingBatchSizeFlag::path(),
+      bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
       ValueKind::Int(2),
     )]))
     .await
@@ -949,7 +949,7 @@ async fn streaming_batch_size_flag() {
     StreamedBufferUpload {
       consumer,
       log_upload_service: upload_service,
-      batch_size: runtime_loader.register_int_watch(),
+      batch_builder: BatchBuilder::new(make_flags(&runtime_loader)),
       shutdown: shutdown_trigger.make_shutdown(),
     }
     .start()
@@ -963,20 +963,13 @@ async fn streaming_batch_size_flag() {
   producer.write(b"baz").unwrap();
 
   // Should batch foo+bar (due to batch size = 2)
-  assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::LogsUpload(upload) => {
-    assert_eq!(upload.payload.logs, vec![b"foo".to_vec(), b"bar".to_vec()]);
-    upload.response_tx.send(UploadResponse {
-      success: true,
-      uuid: upload.uuid,
-    }).unwrap();
+  assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::AcklessLogsUpload(upload) => {
+    assert_eq!(upload.logs, vec![b"foo".to_vec(), b"bar".to_vec()]);
   });
+
   // Next upload should contain "baz"
-  assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::LogsUpload(upload) => {
-    assert_eq!(upload.payload.logs, vec![b"baz".to_vec()]);
-    upload.response_tx.send(UploadResponse {
-      success: true,
-      uuid: upload.uuid,
-    }).unwrap();
+  assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::AcklessLogsUpload(upload) => {
+    assert_eq!(upload.logs, vec![b"baz".to_vec()]);
   });
 }
 
@@ -1014,7 +1007,7 @@ async fn log_streaming_shutdown() {
       consumer,
       log_upload_service: upload_service,
       shutdown,
-      batch_size: runtime_loader.register_int_watch(),
+      batch_builder: BatchBuilder::new(make_flags(&runtime_loader)),
     }
     .start()
     .await
@@ -1024,8 +1017,8 @@ async fn log_streaming_shutdown() {
   producer.write(b"data").unwrap();
 
   // Receive the upload request but do not complete it.
-  assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::LogsUpload(upload) => {
-    assert_eq!(upload.payload.logs[0], b"data");
+  assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::AcklessLogsUpload(upload) => {
+    assert_eq!(upload.logs[0], b"data");
   });
 
   // Perform a shutdown, making sure that we complete the shutdown even if there is a pending
