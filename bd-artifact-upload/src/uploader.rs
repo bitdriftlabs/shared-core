@@ -105,7 +105,7 @@ impl MemorySized for SnappedFeatureFlag {
     std::mem::size_of::<OffsetDateTime>()
       + std::mem::size_of::<Option<String>>()
       + self.name.len()
-      + self.variant.as_ref().map_or(0, |s| s.len())
+      + self.variant.as_ref().map_or(0, std::string::String::len)
   }
 }
 
