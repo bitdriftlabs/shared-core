@@ -170,6 +170,8 @@ pub mod artifact_upload_index {
         pub state_metadata: ::std::collections::HashMap<::std::string::String, super::super::payload::Data>,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.session_id)
         pub session_id: ::std::string::String,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.feature_flags)
+        pub feature_flags: ::std::vec::Vec<super::super::feature_flag::FeatureFlag>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -187,7 +189,7 @@ pub mod artifact_upload_index {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(5);
+            let mut fields = ::std::vec::Vec::with_capacity(6);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "name",
@@ -213,6 +215,11 @@ pub mod artifact_upload_index {
                 "session_id",
                 |m: &Artifact| { &m.session_id },
                 |m: &mut Artifact| { &mut m.session_id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "feature_flags",
+                |m: &Artifact| { &m.feature_flags },
+                |m: &mut Artifact| { &mut m.feature_flags },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Artifact>(
                 "ArtifactUploadIndex.Artifact",
@@ -259,6 +266,9 @@ pub mod artifact_upload_index {
                     50 => {
                         self.session_id = is.read_string()?;
                     },
+                    58 => {
+                        self.feature_flags.push(is.read_message()?);
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -291,6 +301,10 @@ pub mod artifact_upload_index {
             if !self.session_id.is_empty() {
                 my_size += ::protobuf::rt::string_size(6, &self.session_id);
             }
+            for value in &self.feature_flags {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -319,6 +333,9 @@ pub mod artifact_upload_index {
             if !self.session_id.is_empty() {
                 os.write_string(6, &self.session_id)?;
             }
+            for v in &self.feature_flags {
+                ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
+            };
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
         }
@@ -341,6 +358,7 @@ pub mod artifact_upload_index {
             self.pending_intent_negotiation = false;
             self.state_metadata.clear();
             self.session_id.clear();
+            self.feature_flags.clear();
             self.special_fields.clear();
         }
 
@@ -371,18 +389,20 @@ pub mod artifact_upload_index {
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n1bitdrift_public/protobuf/client/v1/artifact.proto\x12\"bitdrift_publi\
     c.protobuf.client.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a1bitdrift\
-    _public/protobuf/logging/v1/payload.proto\"\x8a\x04\n\x13ArtifactUploadI\
-    ndex\x12\\\n\x08artifact\x18\x01\x20\x03(\x0b2@.bitdrift_public.protobuf\
-    .client.v1.ArtifactUploadIndex.ArtifactR\x08artifact\x1a\x94\x03\n\x08Ar\
-    tifact\x12\x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12.\n\x04time\x18\
-    \x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x04time\x12<\n\x1apend\
-    ing_intent_negotiation\x18\x03\x20\x01(\x08R\x18pendingIntentNegotiation\
-    \x12z\n\x0estate_metadata\x18\x05\x20\x03(\x0b2S.bitdrift_public.protobu\
-    f.client.v1.ArtifactUploadIndex.Artifact.StateMetadataEntryR\rstateMetad\
-    ata\x12\x1d\n\nsession_id\x18\x06\x20\x01(\tR\tsessionId\x1ak\n\x12State\
-    MetadataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05valu\
-    e\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05va\
-    lue:\x028\x01b\x06proto3\
+    _public/protobuf/logging/v1/payload.proto\x1a5bitdrift_public/protobuf/c\
+    lient/v1/feature_flag.proto\"\xe0\x04\n\x13ArtifactUploadIndex\x12\\\n\
+    \x08artifact\x18\x01\x20\x03(\x0b2@.bitdrift_public.protobuf.client.v1.A\
+    rtifactUploadIndex.ArtifactR\x08artifact\x1a\xea\x03\n\x08Artifact\x12\
+    \x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12.\n\x04time\x18\x02\x20\
+    \x01(\x0b2\x1a.google.protobuf.TimestampR\x04time\x12<\n\x1apending_inte\
+    nt_negotiation\x18\x03\x20\x01(\x08R\x18pendingIntentNegotiation\x12z\n\
+    \x0estate_metadata\x18\x05\x20\x03(\x0b2S.bitdrift_public.protobuf.clien\
+    t.v1.ArtifactUploadIndex.Artifact.StateMetadataEntryR\rstateMetadata\x12\
+    \x1d\n\nsession_id\x18\x06\x20\x01(\tR\tsessionId\x12T\n\rfeature_flags\
+    \x18\x07\x20\x03(\x0b2/.bitdrift_public.protobuf.client.v1.FeatureFlagR\
+    \x0cfeatureFlags\x1ak\n\x12StateMetadataEntry\x12\x10\n\x03key\x18\x01\
+    \x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_publ\
+    ic.protobuf.logging.v1.DataR\x05value:\x028\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -399,9 +419,10 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(2);
+            let mut deps = ::std::vec::Vec::with_capacity(3);
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::payload::file_descriptor().clone());
+            deps.push(super::feature_flag::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(2);
             messages.push(ArtifactUploadIndex::generated_message_descriptor_data());
             messages.push(artifact_upload_index::Artifact::generated_message_descriptor_data());

@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::UploadClient;
-use crate::uploader::{Client, REPORT_DIRECTORY, REPORT_INDEX_FILE};
+use crate::uploader::{Client, REPORT_DIRECTORY, REPORT_INDEX_FILE, SnappedFeatureFlag};
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentResponse, UploadResponse};
@@ -15,9 +15,10 @@ use bd_client_common::file_system::FileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
+use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::Data;
 use bd_proto::protos::logging::payload::data::Data_type;
-use bd_runtime::runtime::{FeatureFlag, artifact_upload};
+use bd_runtime::runtime::{FeatureFlag as _, artifact_upload};
 use bd_runtime::test::TestConfigLoader;
 use bd_test_helpers::runtime::ValueKind;
 use bd_time::{OffsetDateTimeExt as _, TestTimeProvider};
@@ -163,6 +164,7 @@ async fn basic_flow() {
       [("foo".into(), "bar".into())].into(),
       Some(timestamp),
       "session_id".to_string(),
+      vec![],
     )
     .unwrap();
 
@@ -205,6 +207,82 @@ async fn basic_flow() {
 }
 
 #[tokio::test]
+async fn feature_flags() {
+  let mut setup = Setup::new(10).await;
+
+  let timestamp = datetime!(2023-10-01 12:00:00 UTC);
+  let id = setup
+    .client
+    .enqueue_upload(
+      setup.make_file(b"abc"),
+      [("foo".into(), "bar".into())].into(),
+      Some(timestamp),
+      "session_id".to_string(),
+      vec![
+        SnappedFeatureFlag::new(
+          "key".to_string(),
+          Some("value".to_string()),
+          timestamp - 1.std_seconds(),
+        ),
+        SnappedFeatureFlag::new("key2".to_string(), None, timestamp - 2.std_seconds()),
+      ],
+    )
+    .unwrap();
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+      assert_eq!(intent.payload.artifact_id, id.to_string());
+      assert_eq!(intent.payload.type_id, "client_report");
+      assert_eq!(intent.payload.time, timestamp.into_proto());
+
+      intent.response_tx.send(IntentResponse {
+          uuid: intent.uuid,
+          decision: bd_api::upload::IntentDecision::UploadImmediately }).unwrap();
+  });
+
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+      assert_eq!(upload.payload.artifact_id, id.to_string());
+      assert_eq!(upload.payload.contents, b"abc");
+      assert_eq!(upload.payload.type_id, "client_report");
+      assert_eq!(upload.payload.time, timestamp.into_proto());
+      assert_eq!(upload.payload.session_id, "session_id");
+      assert_eq!(upload.payload.state_metadata, [("foo".into(), Data {
+          data_type: Some(Data_type::StringData("bar".to_string())),
+          ..Default::default()
+      })].into());
+      assert_eq!(upload.payload.feature_flags, vec![
+          FeatureFlag {
+              name: "key".to_string(),
+              variant: Some("value".to_string()),
+              last_updated: (timestamp - 1.std_seconds()).into_proto(),
+              ..Default::default()
+          },
+          FeatureFlag {
+              name: "key2".to_string(),
+              variant: None,
+              last_updated: (timestamp - 2.std_seconds()).into_proto(),
+              ..Default::default()
+          },
+      ]);
+
+      upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true}).unwrap();
+  });
+
+  setup.upload_complete_rx.recv().await.unwrap();
+
+  let files = setup.filesystem.files();
+  let index_file = &files[&super::REPORT_DIRECTORY
+    .join(&*super::REPORT_INDEX_FILE)
+    .to_str()
+    .unwrap()
+    .to_string()];
+  let index_file: ArtifactUploadIndex = read_compressed_protobuf(index_file).unwrap();
+  assert_eq!(index_file, ArtifactUploadIndex::default());
+}
+
+#[tokio::test]
 async fn pending_upload_limit() {
   let mut setup = Setup::new(2).await;
 
@@ -215,6 +293,7 @@ async fn pending_upload_limit() {
       [].into(),
       None,
       "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -229,6 +308,7 @@ async fn pending_upload_limit() {
       [].into(),
       None,
       "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -242,6 +322,7 @@ async fn pending_upload_limit() {
       [].into(),
       None,
       "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -308,6 +389,7 @@ async fn inconsistent_state_missing_file() {
       [].into(),
       None,
       "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -321,6 +403,7 @@ async fn inconsistent_state_missing_file() {
       [].into(),
       None,
       "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -362,6 +445,7 @@ async fn inconsistent_state_extra_file() {
       [].into(),
       None,
       "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -431,6 +515,7 @@ async fn disk_persistence() {
       [].into(),
       None,
       "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -476,6 +561,7 @@ async fn inconsistent_state_missing_index() {
       [].into(),
       None,
       "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -498,6 +584,7 @@ async fn inconsistent_state_missing_index() {
       [].into(),
       None,
       "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -542,6 +629,7 @@ async fn new_entry_disk_full() {
       [].into(),
       None,
       "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -569,6 +657,7 @@ async fn new_entry_disk_full_after_received() {
       [].into(),
       None,
       "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -608,6 +697,7 @@ async fn intent_retries() {
       [].into(),
       None,
       "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -641,6 +731,7 @@ async fn intent_drop() {
       [].into(),
       None,
       "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -676,6 +767,7 @@ async fn upload_retries() {
       [].into(),
       None,
       "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(

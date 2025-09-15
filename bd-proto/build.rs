@@ -82,6 +82,7 @@ fn main() {
       "../api/src/bitdrift_public/protobuf/client/v1/api.proto",
       "../api/src/bitdrift_public/protobuf/client/v1/metric.proto",
       "../api/src/bitdrift_public/protobuf/client/v1/artifact.proto",
+      "../api/src/bitdrift_public/protobuf/client/v1/feature_flag.proto",
       "../api/src/bitdrift_public/protobuf/client/v1/runtime.proto",
       "../api/src/bitdrift_public/protobuf/client/v1/matcher.proto",
     ])
