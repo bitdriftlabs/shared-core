@@ -70,7 +70,10 @@ impl FeatureFlag {
   /// if no timestamp is provided.
   ///
   /// Returns an error if an empty string is provided as the variant.
-  fn new(variant: Option<&str>, timestamp: Option<time::OffsetDateTime>) -> anyhow::Result<Self> {
+  pub fn new(
+    variant: Option<&str>,
+    timestamp: Option<time::OffsetDateTime>,
+  ) -> anyhow::Result<Self> {
     // Validate the variant - reject empty strings
     let validated_variant = match variant {
       Some("") => return Err(InvariantError::Invariant.into()),
@@ -94,7 +97,7 @@ impl FeatureFlag {
   /// Creates a new `FeatureFlag` from a BONJSON Value.
   ///
   /// Returns `None` if the value is not a valid feature flag object.
-  fn from_value(value: &Value) -> Option<Self> {
+  pub fn from_value(value: &Value) -> Option<Self> {
     if let Value::Object(obj) = value {
       let variant = match obj.get(VARIANT_KEY) {
         Some(Value::String(s)) => {
@@ -126,7 +129,7 @@ impl FeatureFlag {
   }
 
   /// Converts a `FeatureFlag` to a BONJSON Value.
-  fn to_value(&self) -> Value {
+  pub fn to_value(&self) -> Value {
     let storage_variant = self
       .variant
       .as_ref()
@@ -290,5 +293,12 @@ impl FeatureFlags {
       }
     }
     flags
+  }
+
+  /// Returns a reference to the underlying key-value store's HashMap,
+  /// allowing direct access to the raw stored values.
+  /// This should only be used internally to avoid unnecessary cloning.
+  pub fn underlying_hashmap(&self) -> &HashMap<String, Value> {
+    self.flags_store.as_hashmap()
   }
 }
