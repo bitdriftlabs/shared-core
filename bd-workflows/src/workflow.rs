@@ -1030,3 +1030,17 @@ impl TraversalResult<'_> {
     self.followed_transitions_count > 0
   }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
+pub struct WorkflowDebugStateKey {
+  pub state_id: String,
+  pub transition_type: WorkflowDebugTransitionType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+pub enum WorkflowDebugTransitionType {
+  // Normal transition including the index.
+  Normal(usize),
+  // Timeout transition.
+  Timeout,
+}
