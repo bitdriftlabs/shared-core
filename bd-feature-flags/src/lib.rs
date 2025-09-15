@@ -33,6 +33,7 @@
 )]
 
 use bd_bonjson::Value;
+use bd_client_common::error::InvariantError;
 use bd_resilient_kv::KVStore;
 use std::collections::HashMap;
 use std::path::Path;
@@ -50,7 +51,7 @@ const DEFAULT_HIGH_WATER_MARK_RATIO: f32 = 0.8;
 ///
 /// Each feature flag consists of:
 /// - An optional variant string that can be used to configure behavior
-/// - A timestamp indicating when the flag was last updated (in nanoseconds since Unix epoch)
+/// - A timestamp indicating when the flag was last updated
 #[derive(Debug)]
 pub struct FeatureFlag {
   /// The variant string for this feature flag.
@@ -59,54 +60,47 @@ pub struct FeatureFlag {
   /// - `None` indicates the flag is enabled without a specific variant
   pub variant: Option<String>,
 
-  /// Unix timestamp in nanoseconds when this flag was last updated.
-  pub timestamp: u64,
+  /// Timestamp when this flag was last updated.
+  pub timestamp: time::OffsetDateTime,
 }
 
 /// A feature flags manager with persistent storage.
 ///
 /// `FeatureFlags` provides a way to manage feature flags that are persisted to disk
-/// using a resilient key-value store. All flags are cached in memory for fast access
-/// and automatically loaded from storage when the instance is created.
+/// using a resilient key-value store. All flags are stored directly in the persistent
+/// storage and converted on demand.
 pub struct FeatureFlags {
   flags_store: KVStore,
-  flags_cache: HashMap<String, FeatureFlag>,
 }
 
 fn get_current_timestamp() -> u64 {
   // OffsetDateTime::now_utc() returns the current UTC time
-  // unix_timestamp_nanos() returns i128, so we clamp to u64 (0 if negative)
+  // unix_timestamp_nanos() returns i128, so we clamp to u64 (0 if negative or overflow)
   let nanos = OffsetDateTime::now_utc().unix_timestamp_nanos();
-  if nanos < 0 {
-    0
+  u64::try_from(nanos).unwrap_or(0)
+}
+
+
+
+/// Converts internal storage format (empty string for no variant) to external API variant (None for no variant)
+fn variant_from_storage(storage_value: &str) -> Option<String> {
+  if storage_value.is_empty() {
+    None
   } else {
-    nanos as u64
+    Some(storage_value.to_string())
   }
 }
 
-fn generate_initial_cache(store: &KVStore) -> HashMap<String, FeatureFlag> {
-  let mut flags_cache = HashMap::new();
-  for (key, value) in store.as_hashmap() {
-    // Note: We discard any malformed entries
-    if let Value::Object(obj) = value {
-      let variant = match obj.get(VARIANT_KEY) {
-        Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
-        Some(Value::String(_)) => None,
-        _ => continue,
-      };
-
-      let timestamp = match obj.get(TIMESTAMP_KEY) {
-        Some(Value::Unsigned(t)) => *t,
-        #[allow(clippy::cast_sign_loss)]
-        Some(Value::Signed(t)) if *t >= 0 => *t as u64,
-        _ => continue,
-      };
-
-      flags_cache.insert(key.clone(), FeatureFlag { variant, timestamp });
-    }
+/// Parses a timestamp from a BONJSON Value, handling both Unsigned and Signed types
+fn parse_timestamp(value: &Value) -> Option<u64> {
+  match value {
+    Value::Unsigned(t) => Some(*t),
+    Value::Signed(t) if *t >= 0 => u64::try_from(*t).ok(),
+    _ => None,
   }
-  flags_cache
 }
+
+
 
 impl FeatureFlags {
   /// Creates a new `FeatureFlags` instance with persistent storage.
@@ -145,24 +139,37 @@ impl FeatureFlags {
       high_water_mark_ratio.or(Some(DEFAULT_HIGH_WATER_MARK_RATIO)),
       None,
     )?;
-    let flags_cache = generate_initial_cache(&flags_store);
-    Ok(Self {
-      flags_store,
-      flags_cache,
-    })
+    Ok(Self { flags_store })
   }
 
   /// Retrieves a feature flag by name.
   ///
-  /// Returns a reference to the feature flag if it exists, or `None` if no flag
+  /// Returns the feature flag if it exists, or `None` if no flag
   /// with the given name is found.
   ///
   /// # Arguments
   ///
   /// * `key` - The name of the feature flag to retrieve
   #[must_use]
-  pub fn get(&self, key: &str) -> Option<&FeatureFlag> {
-    self.flags_cache.get(key)
+  pub fn get(&self, key: &str) -> Option<FeatureFlag> {
+    let value = self.flags_store.as_hashmap().get(key)?;
+    if let Value::Object(obj) = value {
+      let variant = match obj.get(VARIANT_KEY) {
+        Some(Value::String(s)) => variant_from_storage(s),
+        _ => return None,
+      };
+
+      let timestamp_nanos = match obj.get(TIMESTAMP_KEY) {
+        Some(value) => parse_timestamp(value)?,
+        _ => return None,
+      };
+
+      let timestamp = time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos)).ok()?;
+
+      Some(FeatureFlag { variant, timestamp })
+    } else {
+      None
+    }
   }
 
   /// Synchronizes in-memory changes to persistent storage.
@@ -206,19 +213,19 @@ impl FeatureFlags {
   /// This function will return an error if the flag cannot be written to persistent
   /// storage due to I/O errors, insufficient disk space, or permission issues.
   pub fn set(&mut self, key: &str, variant: Option<&str>) -> anyhow::Result<()> {
+    // Validate the variant and convert to storage format
+    let storage_variant = match variant {
+      Some("") => return Err(InvariantError::Invariant.into()),
+      Some(s) => s.to_string(),
+      None => String::new(), // Store None as empty string
+    };
+
     let timestamp = get_current_timestamp();
-    self.flags_cache.insert(
-      key.to_string(),
-      FeatureFlag {
-        variant: variant.map(String::from),
-        timestamp,
-      },
-    );
 
     let value = HashMap::from([
       (
         VARIANT_KEY.to_string(),
-        Value::String(variant.unwrap_or_default().to_string()),
+        Value::String(storage_variant),
       ),
       (TIMESTAMP_KEY.to_string(), Value::Unsigned(timestamp)),
     ]);
@@ -243,22 +250,42 @@ impl FeatureFlags {
   /// This function will return an error if the underlying storage cannot be
   /// cleared due to I/O errors or permission issues.
   pub fn clear(&mut self) -> anyhow::Result<()> {
-    self.flags_cache.clear();
     self.flags_store.clear()?;
     Ok(())
   }
 
-  /// Returns a reference to the internal `HashMap` containing all feature flags.
+  /// Returns a `HashMap` containing all feature flags.
   ///
-  /// This method provides read-only access to all feature flags as a standard
+  /// This method provides access to all feature flags as a standard
   /// Rust `HashMap`. This is useful for iterating over all flags or performing
-  /// bulk operations.
+  /// bulk operations. The `HashMap` is generated on-demand from the persistent storage.
   ///
   /// # Returns
   ///
-  /// A reference to the internal `HashMap<String, FeatureFlag>` containing all flags.
+  /// A `HashMap<String, FeatureFlag>` containing all flags.
   #[must_use]
-  pub fn as_hashmap(&self) -> &HashMap<String, FeatureFlag> {
-    &self.flags_cache
+  pub fn as_hashmap(&self) -> HashMap<String, FeatureFlag> {
+    let mut flags = HashMap::new();
+    for (key, value) in self.flags_store.as_hashmap() {
+      if let Value::Object(obj) = value {
+        let variant = match obj.get(VARIANT_KEY) {
+          Some(Value::String(s)) => variant_from_storage(s),
+          _ => continue,
+        };
+
+        let timestamp_nanos = match obj.get(TIMESTAMP_KEY) {
+          Some(value) => match parse_timestamp(value) {
+            Some(ts) => ts,
+            None => continue,
+          },
+          _ => continue,
+        };
+
+        let Ok(timestamp) = time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos)) else { continue };
+
+        flags.insert(key.clone(), FeatureFlag { variant, timestamp });
+      }
+    }
+    flags
   }
 }

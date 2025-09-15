@@ -114,7 +114,7 @@ fn test_set_and_get_string_variant() -> anyhow::Result<()> {
 
   let flag = flags.get("test_flag").expect("flag should exist");
   assert_eq!(flag.variant, Some("test_variant".to_string()));
-  assert!(flag.timestamp > 0);
+  assert!(flag.timestamp > time::OffsetDateTime::UNIX_EPOCH);
 
   Ok(())
 }
@@ -130,23 +130,24 @@ fn test_set_and_get_none_variant() -> anyhow::Result<()> {
 
   let flag = flags.get("test_flag").expect("flag should exist");
   assert_eq!(flag.variant, None);
-  assert!(flag.timestamp > 0);
+  assert!(flag.timestamp > time::OffsetDateTime::UNIX_EPOCH);
 
   Ok(())
 }
 
 #[test]
-fn test_set_empty_string_variant() -> anyhow::Result<()> {
+fn test_set_empty_string_variant_rejected() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let temp_path = temp_dir.path();
 
   let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
-  flags.set("test_flag", Some(""))?;
+  // Setting an empty string variant should return an error
+  let result = flags.set("test_flag", Some(""));
+  assert!(result.is_err());
 
-  let flag = flags.get("test_flag").expect("flag should exist");
-  assert_eq!(flag.variant, Some(String::new()));
-  assert!(flag.timestamp > 0);
+  // The flag should not exist
+  assert!(flags.get("test_flag").is_none());
 
   Ok(())
 }
@@ -478,36 +479,36 @@ fn test_signed_timestamp_conversion() -> anyhow::Result<()> {
     .get("signed_timestamp")
     .expect("signed timestamp flag should exist");
   assert_eq!(flag.variant, Some("variant".to_string()));
-  assert_eq!(flag.timestamp, 12345);
+  assert_eq!(flag.timestamp, time::OffsetDateTime::from_unix_timestamp_nanos(12345).unwrap());
 
   Ok(())
 }
 
 #[test]
-fn test_empty_string_variant_loaded_correctly() -> anyhow::Result<()> {
+fn test_none_variant_storage_and_retrieval() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let temp_path = temp_dir.path();
 
-  // Test that empty string variant is stored as empty string but loaded as None
+  // Test that None variant is stored and loaded correctly
   {
     let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
-    flags.set("empty_variant_flag", Some(""))?;
+    flags.set("none_variant_flag", None)?;
 
-    // Check that in the current instance, empty string is preserved
+    // Check that None variant is preserved
     let flag = flags
-      .get("empty_variant_flag")
-      .expect("empty variant flag should exist");
-    assert_eq!(flag.variant, Some(String::new()));
+      .get("none_variant_flag")
+      .expect("none variant flag should exist");
+    assert_eq!(flag.variant, None);
     flags.sync()?;
   }
 
-  // Create new instance and check that empty string variant is loaded as None
+  // Create new instance and check that None variant is loaded correctly
   let flags = FeatureFlags::new(temp_path, 1024, None)?;
 
   let flag = flags
-    .get("empty_variant_flag")
-    .expect("empty variant flag should exist");
-  // Empty string should be converted to None when loading from storage
+    .get("none_variant_flag")
+    .expect("none variant flag should exist");
+  // None should stay as None when loading from storage
   assert_eq!(flag.variant, None);
 
   Ok(())
@@ -566,7 +567,7 @@ fn test_zero_timestamp_valid() -> anyhow::Result<()> {
     .get("zero_timestamp")
     .expect("zero timestamp flag should exist");
   assert_eq!(flag.variant, Some("variant".to_string()));
-  assert_eq!(flag.timestamp, 0);
+  assert_eq!(flag.timestamp, time::OffsetDateTime::UNIX_EPOCH);
 
   Ok(())
 }
