@@ -107,8 +107,8 @@ impl Monitor {
     init_lifecycle: &InitLifecycleState,
   ) -> Self {
     debug_assert!(
-      init_lifecycle.is_not_at_or_later(InitLifecycle::LogProcessingStarted),
-      "Monitor must be created before the client is fully initialized."
+      init_lifecycle.get() < InitLifecycle::LogProcessingStarted,
+      "Monitor must be created before log processing starts"
     );
 
     let previous_run_global_state = global_state::Reader::new(store).global_state_fields();

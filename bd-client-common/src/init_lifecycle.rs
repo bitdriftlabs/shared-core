@@ -11,6 +11,7 @@ pub enum InitLifecycle {
 
 #[derive(Clone)]
 pub struct InitLifecycleState {
+  #[cfg(debug_assertions)]
   state: Arc<RwLock<InitLifecycle>>,
 }
 
@@ -24,30 +25,28 @@ impl InitLifecycleState {
   #[must_use]
   pub fn new() -> Self {
     Self {
+      #[cfg(debug_assertions)]
       state: Arc::new(RwLock::new(InitLifecycle::NotStarted)),
     }
   }
 
-  #[must_use]
-  pub fn is_not_at_or_later(&self, other: InitLifecycle) -> bool {
-    let current = *self.state.read();
-    current < other
-  }
-
-  #[must_use]
+  #[cfg(debug_assertions)]
   pub fn get(&self) -> InitLifecycle {
     *self.state.read()
   }
 
   pub fn set(&self, new_state: InitLifecycle) {
-    let mut state = self.state.write();
-    debug_assert!(
-      new_state >= *state,
-      "Cannot move lifecycle state backwards from {:?} to {:?}",
-      *state,
-      new_state
-    );
+    #[cfg(debug_assertions)]
+    {
+      let mut state = self.state.write();
+      debug_assert!(
+        new_state >= *state,
+        "Cannot move lifecycle state backwards from {:?} to {:?}",
+        *state,
+        new_state
+      );
 
-    *state = new_state;
+      *state = new_state;
+    }
   }
 }
