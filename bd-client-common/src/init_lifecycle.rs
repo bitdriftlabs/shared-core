@@ -31,6 +31,7 @@ impl InitLifecycleState {
   }
 
   #[cfg(debug_assertions)]
+  #[must_use]
   pub fn get(&self) -> InitLifecycle {
     *self.state.read()
   }
