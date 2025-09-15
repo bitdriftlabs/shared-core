@@ -64,6 +64,90 @@ pub struct FeatureFlag {
   pub timestamp: time::OffsetDateTime,
 }
 
+impl FeatureFlag {
+  /// Creates a new `FeatureFlag` with the given variant and optional timestamp.
+  ///
+  /// # Arguments
+  ///
+  /// * `variant` - The variant value for the flag:
+  ///   - `Some(string)` sets the flag with the specified variant
+  ///   - `None` sets the flag without a variant (simple boolean-style flag)
+  /// * `timestamp` - Optional timestamp. If `None`, uses the current time.
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(FeatureFlag)` on success, or an error if the variant is invalid.
+  ///
+  /// # Errors
+  ///
+  /// This function will return an error if an empty string is provided as the variant.
+  fn new(variant: Option<&str>, timestamp: Option<time::OffsetDateTime>) -> anyhow::Result<Self> {
+    // Validate the variant - reject empty strings
+    let validated_variant = match variant {
+      Some("") => return Err(InvariantError::Invariant.into()),
+      Some(s) => Some(s.to_string()),
+      None => None,
+    };
+
+    let timestamp = timestamp.unwrap_or_else(|| {
+      time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(get_current_timestamp()))
+        .unwrap_or(time::OffsetDateTime::UNIX_EPOCH)
+    });
+
+    Ok(Self {
+      variant: validated_variant,
+      timestamp,
+    })
+  }
+
+  /// Creates a new `FeatureFlag` from a BONJSON Value.
+  ///
+  /// Returns `None` if the value is not a valid feature flag object.
+  fn from_value(value: &Value) -> Option<Self> {
+    if let Value::Object(obj) = value {
+      let variant = match obj.get(VARIANT_KEY) {
+        Some(Value::String(s)) => {
+          if s.is_empty() {
+            None
+          } else {
+            Some(s.to_string())
+          }
+        }
+        _ => return None,
+      };
+
+      let timestamp = match obj.get(TIMESTAMP_KEY) {
+        Some(value) => {
+          let timestamp_nanos = match value {
+            Value::Unsigned(t) => *t,
+            Value::Signed(t) if *t >= 0 => u64::try_from(*t).ok()?,
+            _ => return None,
+          };
+          time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos)).ok()?
+        }
+        _ => return None,
+      };
+
+      Some(Self { variant, timestamp })
+    } else {
+      None
+    }
+  }
+
+  /// Converts a `FeatureFlag` to a BONJSON Value.
+  fn to_value(&self) -> Value {
+    let storage_variant = self.variant.as_ref().map_or_else(String::new, std::clone::Clone::clone);
+
+    let timestamp_nanos = u64::try_from(self.timestamp.unix_timestamp_nanos()).unwrap_or(0);
+
+    let obj = HashMap::from([
+      (VARIANT_KEY.to_string(), Value::String(storage_variant)),
+      (TIMESTAMP_KEY.to_string(), Value::Unsigned(timestamp_nanos)),
+    ]);
+    Value::Object(obj)
+  }
+}
+
 /// A feature flags manager with persistent storage.
 ///
 /// `FeatureFlags` provides a way to manage feature flags that are persisted to disk
@@ -80,24 +164,7 @@ fn get_current_timestamp() -> u64 {
   u64::try_from(nanos).unwrap_or(0)
 }
 
-/// Converts internal storage format (empty string for no variant) to external API variant (None for
-/// no variant)
-fn variant_from_storage(storage_value: &str) -> Option<String> {
-  if storage_value.is_empty() {
-    None
-  } else {
-    Some(storage_value.to_string())
-  }
-}
 
-/// Parses a timestamp from a BONJSON Value, handling both Unsigned and Signed types
-fn parse_timestamp(value: &Value) -> Option<u64> {
-  match value {
-    Value::Unsigned(t) => Some(*t),
-    Value::Signed(t) if *t >= 0 => u64::try_from(*t).ok(),
-    _ => None,
-  }
-}
 
 impl FeatureFlags {
   /// Creates a new `FeatureFlags` instance with persistent storage.
@@ -150,24 +217,7 @@ impl FeatureFlags {
   #[must_use]
   pub fn get(&self, key: &str) -> Option<FeatureFlag> {
     let value = self.flags_store.get(key)?;
-    if let Value::Object(obj) = value {
-      let variant = match obj.get(VARIANT_KEY) {
-        Some(Value::String(s)) => variant_from_storage(s),
-        _ => return None,
-      };
-
-      let timestamp_nanos = match obj.get(TIMESTAMP_KEY) {
-        Some(value) => parse_timestamp(value)?,
-        _ => return None,
-      };
-
-      let timestamp =
-        time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos)).ok()?;
-
-      Some(FeatureFlag { variant, timestamp })
-    } else {
-      None
-    }
+    FeatureFlag::from_value(value)
   }
 
   /// Synchronizes in-memory changes to persistent storage.
@@ -211,23 +261,9 @@ impl FeatureFlags {
   /// This function will return an error if the flag cannot be written to persistent
   /// storage due to I/O errors, insufficient disk space, or permission issues.
   pub fn set(&mut self, key: &str, variant: Option<&str>) -> anyhow::Result<()> {
-    // Validate the variant and convert to storage format
-    let storage_variant = match variant {
-      Some("") => return Err(InvariantError::Invariant.into()),
-      Some(s) => s.to_string(),
-      None => String::new(), // Store None as empty string
-    };
-
-    let timestamp = get_current_timestamp();
-
-    let value = HashMap::from([
-      (VARIANT_KEY.to_string(), Value::String(storage_variant)),
-      (TIMESTAMP_KEY.to_string(), Value::Unsigned(timestamp)),
-    ]);
-    self
-      .flags_store
-      .insert(key.to_string(), Value::Object(value))?;
-
+    let feature_flag = FeatureFlag::new(variant, None)?;
+    let value = feature_flag.to_value();
+    self.flags_store.insert(key.to_string(), value)?;
     Ok(())
   }
 
@@ -262,27 +298,8 @@ impl FeatureFlags {
   pub fn as_hashmap(&self) -> HashMap<String, FeatureFlag> {
     let mut flags = HashMap::new();
     for (key, value) in self.flags_store.as_hashmap() {
-      if let Value::Object(obj) = value {
-        let variant = match obj.get(VARIANT_KEY) {
-          Some(Value::String(s)) => variant_from_storage(s),
-          _ => continue,
-        };
-
-        let timestamp_nanos = match obj.get(TIMESTAMP_KEY) {
-          Some(value) => match parse_timestamp(value) {
-            Some(ts) => ts,
-            None => continue,
-          },
-          _ => continue,
-        };
-
-        let Ok(timestamp) =
-          time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos))
-        else {
-          continue;
-        };
-
-        flags.insert(key.clone(), FeatureFlag { variant, timestamp });
+      if let Some(feature_flag) = FeatureFlag::from_value(value) {
+        flags.insert(key.clone(), feature_flag);
       }
     }
     flags
