@@ -21,6 +21,7 @@ mod tests;
 pub mod config_writer;
 pub mod global_state;
 
+use bd_client_common::debug_check_lifecycle;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_log_primitives::{
   AnnotatedLogField,
@@ -106,9 +107,9 @@ impl Monitor {
     previous_session_id: Option<String>,
     init_lifecycle: &InitLifecycleState,
   ) -> Self {
-    #[cfg(debug_assertions)]
-    debug_assert!(
-      init_lifecycle.get() < InitLifecycle::LogProcessingStarted,
+    debug_check_lifecycle!(
+      init_lifecycle,
+      InitLifecycle::LogProcessingStarted,
       "Monitor must be created before log processing starts"
     );
 
