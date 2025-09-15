@@ -80,8 +80,6 @@ fn get_current_timestamp() -> u64 {
   u64::try_from(nanos).unwrap_or(0)
 }
 
-
-
 /// Converts internal storage format (empty string for no variant) to external API variant (None for
 /// no variant)
 fn variant_from_storage(storage_value: &str) -> Option<String> {
@@ -100,8 +98,6 @@ fn parse_timestamp(value: &Value) -> Option<u64> {
     _ => None,
   }
 }
-
-
 
 impl FeatureFlags {
   /// Creates a new `FeatureFlags` instance with persistent storage.
@@ -153,7 +149,7 @@ impl FeatureFlags {
   /// * `key` - The name of the feature flag to retrieve
   #[must_use]
   pub fn get(&self, key: &str) -> Option<FeatureFlag> {
-    let value = self.flags_store.as_hashmap().get(key)?;
+    let value = self.flags_store.get(key)?;
     if let Value::Object(obj) = value {
       let variant = match obj.get(VARIANT_KEY) {
         Some(Value::String(s)) => variant_from_storage(s),

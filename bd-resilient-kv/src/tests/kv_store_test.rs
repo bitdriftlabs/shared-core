@@ -35,14 +35,14 @@ fn test_kv_store_basic_operations() -> anyhow::Result<()> {
   assert!(old_value.is_none());
 
   let retrieved = store.get("key1");
-  assert_eq!(retrieved, Some(Value::String("value1".to_string())));
+  assert_eq!(retrieved, Some(&Value::String("value1".to_string())));
 
   // Test overwrite
   let old_value = store.insert("key1".to_string(), Value::String("value2".to_string()))?;
   assert_eq!(old_value, Some(Value::String("value1".to_string())));
 
   let retrieved = store.get("key1");
-  assert_eq!(retrieved, Some(Value::String("value2".to_string())));
+  assert_eq!(retrieved, Some(&Value::String("value2".to_string())));
 
   // Test contains_key
   assert!(store.contains_key("key1"));
@@ -148,7 +148,7 @@ fn test_kv_store_clear_efficiency() -> anyhow::Result<()> {
   assert_eq!(store.len(), 1);
   assert_eq!(
     store.get("new_key"),
-    Some(Value::String("new_value".to_string()))
+    Some(&Value::String("new_value".to_string()))
   );
 
   Ok(())
@@ -220,9 +220,9 @@ fn test_kv_store_persistence() -> anyhow::Result<()> {
     assert_eq!(store.len(), 2);
     assert_eq!(
       store.get("persistent_key"),
-      Some(Value::String("persistent_value".to_string()))
+      Some(&Value::String("persistent_value".to_string()))
     );
-    assert_eq!(store.get("number"), Some(Value::Signed(123)));
+    assert_eq!(store.get("number"), Some(&Value::Signed(123)));
   }
 
   Ok(())
@@ -245,7 +245,7 @@ fn test_kv_store_file_resizing() -> anyhow::Result<()> {
     let mut store = KVStore::new(&base_path, 4096, None, None)?;
 
     // Data should still be there
-    assert_eq!(store.get("key1"), Some(Value::String("value1".to_string())));
+    assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
 
     // Should be able to add more data with the larger size
     store.insert("key2".to_string(), Value::String("value2".to_string()))?;
@@ -274,9 +274,9 @@ fn test_kv_store_compress() -> anyhow::Result<()> {
 
   // Data should still be there
   assert_eq!(store.len(), 3);
-  assert_eq!(store.get("key1"), Some(Value::String("value1".to_string())));
-  assert_eq!(store.get("key2"), Some(Value::String("value2".to_string())));
-  assert_eq!(store.get("key3"), Some(Value::String("value3".to_string())));
+  assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
+  assert_eq!(store.get("key2"), Some(&Value::String("value2".to_string())));
+  assert_eq!(store.get("key3"), Some(&Value::String("value3".to_string())));
 
   // Usage ratio might be different after compression
   let after_usage = store.buffer_usage_ratio();
@@ -304,12 +304,12 @@ fn test_kv_store_mixed_value_types() -> anyhow::Result<()> {
   // Verify all types
   assert_eq!(
     store.get("string"),
-    Some(Value::String("hello".to_string()))
+    Some(&Value::String("hello".to_string()))
   );
-  assert_eq!(store.get("signed"), Some(Value::Signed(-42)));
-  assert_eq!(store.get("unsigned"), Some(Value::Signed(42)));
-  assert_eq!(store.get("float"), Some(Value::Float(3.14)));
-  assert_eq!(store.get("boolean"), Some(Value::Bool(true)));
+  assert_eq!(store.get("signed"), Some(&Value::Signed(-42)));
+  assert_eq!(store.get("unsigned"), Some(&Value::Signed(42)));
+  assert_eq!(store.get("float"), Some(&Value::Float(3.14)));
+  assert_eq!(store.get("boolean"), Some(&Value::Bool(true)));
 
   assert_eq!(store.len(), 5);
 
@@ -325,7 +325,7 @@ fn test_insert_null_is_deletion() -> anyhow::Result<()> {
 
   // Insert a value
   store.insert("key1".to_string(), Value::String("value1".to_string()))?;
-  assert_eq!(store.get("key1"), Some(Value::String("value1".to_string())));
+  assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
   assert_eq!(store.len(), 1);
 
   // Insert null should delete the key
@@ -355,9 +355,9 @@ fn test_kv_store_caching_behavior() -> anyhow::Result<()> {
   store.insert("key3".to_string(), Value::Bool(true))?;
 
   // Multiple reads should work correctly (using cache)
-  assert_eq!(store.get("key1"), Some(Value::String("value1".to_string())));
-  assert_eq!(store.get("key2"), Some(Value::Signed(42)));
-  assert_eq!(store.get("key3"), Some(Value::Bool(true)));
+  assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
+  assert_eq!(store.get("key2"), Some(&Value::Signed(42)));
+  assert_eq!(store.get("key3"), Some(&Value::Bool(true)));
 
   // Operations that read the entire map should work
   assert_eq!(store.len(), 3);
@@ -380,7 +380,7 @@ fn test_kv_store_caching_behavior() -> anyhow::Result<()> {
   // Verify cache was properly invalidated and new data is visible
   assert_eq!(store.len(), 4);
   assert!(store.contains_key("key4"));
-  assert_eq!(store.get("key4"), Some(Value::String("value4".to_string())));
+  assert_eq!(store.get("key4"), Some(&Value::String("value4".to_string())));
 
   // Remove data (should also invalidate cache)
   let removed = store.remove("key2")?;
@@ -448,9 +448,9 @@ fn test_kv_store_constructor_cache_coherency_with_existing_data() -> anyhow::Res
   assert!(store.contains_key("key3"));
 
   // Check values are correct in cache
-  assert_eq!(store.get("key1"), Some(Value::String("value1".to_string())));
-  assert_eq!(store.get("key2"), Some(Value::Signed(42)));
-  assert_eq!(store.get("key3"), Some(Value::Bool(true)));
+  assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
+  assert_eq!(store.get("key2"), Some(&Value::Signed(42)));
+  assert_eq!(store.get("key3"), Some(&Value::Bool(true)));
 
   // Check as_hashmap returns coherent data
   let map = store.as_hashmap();
@@ -489,7 +489,7 @@ fn test_kv_store_constructor_cache_coherency_with_file_resize() -> anyhow::Resul
   // Verify cache is coherent after file resize
   assert_eq!(store.len(), 1);
   assert!(store.contains_key("key1"));
-  assert_eq!(store.get("key1"), Some(Value::String("value1".to_string())));
+  assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
 
   Ok(())
 }
@@ -550,8 +550,8 @@ fn test_kv_store_constructor_cache_coherency_different_high_water_marks() -> any
   assert_eq!(store.len(), 2);
   assert!(store.contains_key("key1"));
   assert!(store.contains_key("key2"));
-  assert_eq!(store.get("key1"), Some(Value::String("value1".to_string())));
-  assert_eq!(store.get("key2"), Some(Value::String("value2".to_string())));
+  assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
+  assert_eq!(store.get("key2"), Some(&Value::String("value2".to_string())));
 
   Ok(())
 }
@@ -628,7 +628,7 @@ fn test_kv_store_comprehensive_cache_coherency() -> anyhow::Result<()> {
       );
       let fresh_value = fresh_store.get(key);
       assert_eq!(
-        fresh_value.as_ref(),
+        fresh_value,
         Some(value),
         "Fresh store has different value for key: {}",
         key
@@ -640,7 +640,7 @@ fn test_kv_store_comprehensive_cache_coherency() -> anyhow::Result<()> {
       assert!(store.contains_key(key), "Cache missing key: {}", key);
       let cached_value = store.get(key);
       assert_eq!(
-        cached_value.as_ref(),
+        cached_value,
         Some(value),
         "Cache has different value for key: {}",
         key
@@ -670,7 +670,7 @@ fn test_kv_store_comprehensive_cache_coherency() -> anyhow::Result<()> {
   verify_coherency(&store, &base_path)?;
   assert_eq!(
     store.get("key1"),
-    Some(Value::String("new_value1".to_string()))
+    Some(&Value::String("new_value1".to_string()))
   );
 
   // Remove a key
@@ -710,7 +710,7 @@ fn test_kv_store_comprehensive_cache_coherency() -> anyhow::Result<()> {
   for i in 0 .. 5 {
     assert_eq!(
       store.get(&format!("compress_key{}", i)),
-      Some(Value::String(format!("compress_value{}", i)))
+      Some(&Value::String(format!("compress_value{}", i)))
     );
   }
 
@@ -744,10 +744,10 @@ fn test_cache_vs_journal_coherency_validation() -> anyhow::Result<()> {
   assert_eq!(store.len(), 3);
   assert_eq!(
     store.get("test_key1"),
-    Some(Value::String("test_value1".to_string()))
+    Some(&Value::String("test_value1".to_string()))
   );
-  assert_eq!(store.get("test_key2"), Some(Value::Signed(123)));
-  assert_eq!(store.get("test_key3"), Some(Value::Bool(false)));
+  assert_eq!(store.get("test_key2"), Some(&Value::Signed(123)));
+  assert_eq!(store.get("test_key3"), Some(&Value::Bool(false)));
 
   // Create another store instance to verify the journal data matches the cache
   let verification_store = KVStore::new(&base_path, 4096, None, None)?;
@@ -785,15 +785,15 @@ fn test_cache_vs_journal_coherency_validation() -> anyhow::Result<()> {
   assert!(!final_verification_store.contains_key("test_key2"));
   assert_eq!(
     final_verification_store.get("new_key"),
-    Some(Value::String("new_value".to_string()))
+    Some(&Value::String("new_value".to_string()))
   );
   assert_eq!(
     final_verification_store.get("test_key1"),
-    Some(Value::String("test_value1".to_string()))
+    Some(&Value::String("test_value1".to_string()))
   );
   assert_eq!(
     final_verification_store.get("test_key3"),
-    Some(Value::Bool(false))
+    Some(&Value::Bool(false))
   );
 
   Ok(())
