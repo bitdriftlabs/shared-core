@@ -278,6 +278,8 @@ impl FeatureFlags {
   /// # Returns
   ///
   /// A `HashMap<String, FeatureFlag>` containing all flags.
+  ///
+  /// TODO: Make an iterator instead
   #[must_use]
   pub fn as_hashmap(&self) -> HashMap<String, FeatureFlag> {
     let mut flags = HashMap::new();
@@ -287,13 +289,5 @@ impl FeatureFlags {
       }
     }
     flags
-  }
-
-  /// Returns a reference to the underlying key-value store's `HashMap`,
-  /// allowing direct access to the raw stored values.
-  /// This should only be used internally to avoid unnecessary cloning.
-  #[must_use]
-  pub fn underlying_hashmap(&self) -> &HashMap<String, Value> {
-    self.flags_store.as_hashmap()
   }
 }
