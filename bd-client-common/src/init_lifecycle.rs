@@ -14,18 +14,27 @@ pub struct InitLifecycleState {
   state: Arc<RwLock<InitLifecycle>>,
 }
 
+impl Default for InitLifecycleState {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl InitLifecycleState {
+  #[must_use]
   pub fn new() -> Self {
     Self {
       state: Arc::new(RwLock::new(InitLifecycle::NotStarted)),
     }
   }
 
+  #[must_use]
   pub fn is_not_at_or_later(&self, other: InitLifecycle) -> bool {
     let current = *self.state.read();
     current < other
   }
 
+  #[must_use]
   pub fn get(&self) -> InitLifecycle {
     *self.state.read()
   }

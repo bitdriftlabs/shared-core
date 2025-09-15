@@ -104,7 +104,7 @@ impl Monitor {
     store: Arc<bd_device::Store>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
     previous_session_id: Option<String>,
-    init_lifecycle: InitLifecycleState,
+    init_lifecycle: &InitLifecycleState,
   ) -> Self {
     debug_assert!(
       init_lifecycle.is_not_at_or_later(InitLifecycle::LogProcessingStarted),

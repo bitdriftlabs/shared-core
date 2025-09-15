@@ -65,10 +65,10 @@ impl Setup {
 
     let monitor = Monitor::new(
       directory.path(),
-      store.clone(),
+      store,
       upload_client.clone(),
       Some("previous_session_id".to_string()),
-      InitLifecycleState::new(),
+      &InitLifecycleState::new(),
     );
 
     Self {

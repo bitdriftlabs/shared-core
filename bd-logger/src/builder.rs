@@ -254,7 +254,7 @@ impl LoggerBuilder {
         self.params.store.clone(),
         Arc::new(artifact_client),
         self.params.session_strategy.previous_process_session_id(),
-        init_lifecycle.clone(),
+        &init_lifecycle,
       );
 
       // Building the crash monitor requires artifact uploader and knowing
