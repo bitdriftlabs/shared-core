@@ -15,6 +15,7 @@ members = [
   "bd-device",
   "bd-error-reporter",
   "bd-events",
+  "bd-feature-flags",
   "bd-grpc",
   "bd-grpc-codec",
   "bd-hyper-network",

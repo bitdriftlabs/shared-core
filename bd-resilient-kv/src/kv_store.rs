@@ -91,8 +91,8 @@ impl KVStore {
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
-  pub fn get(&self, key: &str) -> Option<Value> {
-    self.cached_map.get(key).cloned()
+  pub fn get(&self, key: &str) -> Option<&Value> {
+    self.cached_map.get(key)
   }
 
   /// Insert a value for a key, returning the previous value if it existed.
@@ -102,7 +102,7 @@ impl KVStore {
   /// # Errors
   /// Returns an error if the value cannot be written to the journal.
   pub fn insert(&mut self, key: String, value: Value) -> anyhow::Result<Option<Value>> {
-    let old_value = self.get(&key);
+    let old_value = self.get(&key).cloned();
     if matches!(value, Value::Null) {
       // Inserting null is equivalent to deletion
       if old_value.is_some() {
@@ -121,7 +121,7 @@ impl KVStore {
   /// # Errors
   /// Returns an error if the deletion cannot be written to the journal.
   pub fn remove(&mut self, key: &str) -> anyhow::Result<Option<Value>> {
-    let old_value = self.get(key);
+    let old_value = self.get(key).cloned();
     if old_value.is_some() {
       self.journal.delete(key)?;
       self.cached_map.remove(key);
