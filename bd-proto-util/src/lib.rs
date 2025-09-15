@@ -8,7 +8,9 @@
 pub mod fbs;
 pub mod proto;
 
+#[cfg(feature = "buffer-log-validate")]
 use anyhow::bail;
+#[cfg(feature = "buffer-log-validate")]
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::{
   Log,
   root_as_log_unchecked,
@@ -18,10 +20,12 @@ use protobuf::MessageFull;
 use std::borrow::Cow;
 use std::fmt::Debug;
 
+#[cfg(feature = "buffer-log-validate")]
 unsafe extern "C" {
   fn verify_log_buffer(buf: *const u8, buf_len: usize) -> bool;
 }
 
+#[cfg(feature = "buffer-log-validate")]
 pub fn call_verify_log_buffer(buf: &[u8]) -> anyhow::Result<Log<'_>> {
   // The Rust verification code is noted as experimental, which was quickly proven via a failing
   // fuzz test. The following code calls out to the C++ verifier code (see src/cpp/verify.cc) to

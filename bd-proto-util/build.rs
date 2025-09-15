@@ -6,6 +6,11 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 fn main() {
+  println!("cargo:rerun-if-changed=src/cpp/verify.cc");
+  println!("cargo:rerun-if-changed=../bd-proto/src/flatbuffers");
+  println!("cargo:rerun-if-changed=../thirdparty/flatbuffers/include");
+
+  #[cfg(feature = "buffer-log-validate")]
   // Compile verifier library for use in verifying incoming flatbuffers. Currently the Rust
   // verifier is not production ready.
   cc::Build::new()
