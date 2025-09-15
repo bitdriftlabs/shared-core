@@ -119,7 +119,7 @@ impl Setup {
     let content = content.to_vec();
     make_mut(&mut self.upload_client)
       .expect_enqueue_upload()
-      .withf(move |mut file, fstate, ftimestamp, session_id| {
+      .withf(move |mut file, fstate, ftimestamp, session_id, _| {
         let mut output = vec![];
         file.read_to_end(&mut output).unwrap();
         output == content
@@ -127,7 +127,7 @@ impl Setup {
           && &timestamp == ftimestamp
           && session_id == "previous_session_id"
       })
-      .returning(move |_, _, _, _| Ok(uuid));
+      .returning(move |_, _, _, _, _| Ok(uuid));
   }
 }
 

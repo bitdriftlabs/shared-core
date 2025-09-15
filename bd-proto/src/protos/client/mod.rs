@@ -7,6 +7,7 @@
 
 pub mod api;
 pub mod artifact;
+pub mod feature_flag;
 pub mod matcher;
 pub mod metric;
 pub mod runtime;

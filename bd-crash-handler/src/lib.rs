@@ -279,6 +279,7 @@ impl Monitor {
           state_fields.clone(),
           timestamp,
           self.previous_session_id.clone().unwrap_or_default(),
+          vec![], // TODO add in feature flags here
         ) else {
           // TODO(snowp): Should we fall back to passing it via a field at this point?
           log::warn!(

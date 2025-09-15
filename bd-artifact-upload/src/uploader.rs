@@ -30,6 +30,7 @@ use bd_log_primitives::size::MemorySized;
 use bd_proto::protos::client::api::{UploadArtifactIntentRequest, UploadArtifactRequest};
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
+use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::{BinaryData, Data};
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, artifact_upload};
@@ -52,6 +53,27 @@ pub static REPORT_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| "report_upload
 pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index.pb".into());
 
 //
+// FeatureFlag
+//
+
+#[derive(Debug)]
+pub struct SnappedFeatureFlag {
+  name: String,
+  variant: Option<String>,
+  last_updated: OffsetDateTime,
+}
+
+impl SnappedFeatureFlag {
+  pub fn new(name: String, variant: Option<String>, last_updated: OffsetDateTime) -> Self {
+    Self {
+      name,
+      variant,
+      last_updated,
+    }
+  }
+}
+
+//
 // NewUpload
 //
 
@@ -64,6 +86,7 @@ struct NewUpload {
   state: LogFields,
   timestamp: Option<OffsetDateTime>,
   session_id: String,
+  feature_flags: Vec<SnappedFeatureFlag>,
 }
 
 // Used for bounded_buffer logs
@@ -77,12 +100,22 @@ impl std::fmt::Display for NewUpload {
   }
 }
 
+impl MemorySized for SnappedFeatureFlag {
+  fn size(&self) -> usize {
+    std::mem::size_of::<OffsetDateTime>()
+      + std::mem::size_of::<Option<String>>()
+      + self.name.len()
+      + self.variant.as_ref().map_or(0, std::string::String::len)
+  }
+}
+
 impl MemorySized for NewUpload {
   fn size(&self) -> usize {
     std::mem::size_of::<Uuid>()
       + self.state.size()
       + std::mem::size_of::<Option<OffsetDateTime>>()
       + self.session_id.len()
+      + self.feature_flags.size()
   }
 }
 
@@ -120,6 +153,7 @@ pub trait Client: Send + Sync {
     state: LogFields,
     timestamp: Option<OffsetDateTime>,
     session_id: String,
+    feature_flags: Vec<SnappedFeatureFlag>,
   ) -> anyhow::Result<Uuid>;
 }
 
@@ -136,6 +170,7 @@ impl Client for UploadClient {
     state: LogFields,
     timestamp: Option<OffsetDateTime>,
     session_id: String,
+    feature_flags: Vec<SnappedFeatureFlag>,
   ) -> anyhow::Result<Uuid> {
     let uuid = uuid::Uuid::new_v4();
 
@@ -147,6 +182,7 @@ impl Client for UploadClient {
         state,
         timestamp,
         session_id,
+        feature_flags,
       })
       .inspect_err(|e| log::warn!("failed to enqueue artifact upload: {e:?}"));
 
@@ -333,6 +369,7 @@ impl Uploader {
             &mut self.max_backoff_interval,
           ),
           next.state_metadata.clone(),
+          next.feature_flags.clone(),
         )));
       }
 
@@ -353,10 +390,11 @@ impl Uploader {
             file,
             state,
             timestamp,
-            session_id
+            session_id,
+            feature_flags,
         }) = self.upload_queued_rx.recv() => {
           log::debug!("tracking artifact: {uuid} for upload");
-          self.track_new_upload(uuid, file, state, session_id, timestamp).await;
+          self.track_new_upload(uuid, file, state, session_id, timestamp, feature_flags).await;
         }
         intent_decision = maybe_await(&mut self.intent_task_handle) => {
             self.handle_intent_negotiation_decision(intent_decision??).await?;
@@ -525,6 +563,7 @@ impl Uploader {
     state: LogFields,
     session_id: String,
     timestamp: Option<OffsetDateTime>,
+    feature_flags: Vec<SnappedFeatureFlag>,
   ) {
     // If we've reached our limit of entries, stop the entry currently being uploaded (the oldest
     // one) to make space for the newer one.
@@ -605,6 +644,21 @@ impl Uploader {
           )
         })
         .collect(),
+      feature_flags: feature_flags
+        .into_iter()
+        .map(
+          |SnappedFeatureFlag {
+             name,
+             variant,
+             last_updated,
+           }| FeatureFlag {
+            name,
+            variant,
+            last_updated: last_updated.into_proto(),
+            ..Default::default()
+          },
+        )
+        .collect(),
       ..Default::default()
     });
 
@@ -652,6 +706,7 @@ impl Uploader {
     session_id: String,
     mut retry_policy: ExponentialBackoff,
     state_metadata: HashMap<String, Data>,
+    feature_flags: Vec<FeatureFlag>,
   ) -> Result<()> {
     let path = REPORT_DIRECTORY.join(&name);
     log::debug!("uploading artifact: {}", path.display());
@@ -672,6 +727,7 @@ impl Uploader {
           time: timestamp.into_proto(),
           session_id: session_id.clone(),
           state_metadata: state_metadata.clone(),
+          feature_flags: feature_flags.clone(),
           ..Default::default()
         },
       );
