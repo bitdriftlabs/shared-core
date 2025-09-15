@@ -22,6 +22,7 @@ pub mod error;
 pub mod fb;
 pub mod file;
 pub mod file_system;
+pub mod init_lifecycle;
 pub mod payload_conversion;
 pub mod safe_file_cache;
 pub mod test;

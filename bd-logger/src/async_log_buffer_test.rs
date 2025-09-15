@@ -13,6 +13,7 @@ use crate::log_replay::{LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_bounded_buffer::{self};
+use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
@@ -132,6 +133,7 @@ impl Setup {
       String::new(),
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
       Arc::new(SystemTimeProvider),
+      InitLifecycleState::new(),
     )
   }
 
@@ -162,6 +164,7 @@ impl Setup {
       String::new(),
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
       Arc::new(SystemTimeProvider),
+      InitLifecycleState::new(),
     )
   }
 
