@@ -81,16 +81,9 @@ impl FeatureFlag {
       None => None,
     };
 
-    let timestamp = timestamp.unwrap_or_else(|| {
-      let nanos = time::OffsetDateTime::now_utc().unix_timestamp_nanos();
-      let timestamp_u64 = u64::try_from(nanos).unwrap_or(0);
-      time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_u64))
-        .unwrap_or(time::OffsetDateTime::UNIX_EPOCH)
-    });
-
     Ok(Self {
       variant: validated_variant,
-      timestamp,
+      timestamp: timestamp.unwrap_or(time::OffsetDateTime::now_utc()),
     })
   }
 
@@ -188,7 +181,7 @@ impl FeatureFlags {
     let flags_store = KVStore::new(
       base_path,
       buffer_size,
-      high_water_mark_ratio.or(Some(DEFAULT_HIGH_WATER_MARK_RATIO)),
+      Some(high_water_mark_ratio.unwrap_or(DEFAULT_HIGH_WATER_MARK_RATIO)),
       None,
     )?;
     Ok(Self { flags_store })
