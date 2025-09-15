@@ -37,7 +37,6 @@ use bd_client_common::error::InvariantError;
 use bd_resilient_kv::KVStore;
 use std::collections::HashMap;
 use std::path::Path;
-use time::OffsetDateTime;
 
 #[cfg(test)]
 #[path = "./feature_flags_test.rs"]
@@ -90,7 +89,9 @@ impl FeatureFlag {
     };
 
     let timestamp = timestamp.unwrap_or_else(|| {
-      time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(get_current_timestamp()))
+      let nanos = time::OffsetDateTime::now_utc().unix_timestamp_nanos();
+      let timestamp_u64 = u64::try_from(nanos).unwrap_or(0);
+      time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_u64))
         .unwrap_or(time::OffsetDateTime::UNIX_EPOCH)
     });
 
@@ -156,15 +157,6 @@ impl FeatureFlag {
 pub struct FeatureFlags {
   flags_store: KVStore,
 }
-
-fn get_current_timestamp() -> u64 {
-  // OffsetDateTime::now_utc() returns the current UTC time
-  // unix_timestamp_nanos() returns i128, so we clamp to u64 (0 if negative or overflow)
-  let nanos = OffsetDateTime::now_utc().unix_timestamp_nanos();
-  u64::try_from(nanos).unwrap_or(0)
-}
-
-
 
 impl FeatureFlags {
   /// Creates a new `FeatureFlags` instance with persistent storage.
