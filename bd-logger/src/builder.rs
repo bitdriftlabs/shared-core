@@ -16,6 +16,7 @@ use crate::logging_state::UninitializedLoggingContext;
 use bd_api::DataUpload;
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_client_common::file_system::RealFileSystem;
+use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_client_stats::FlushTrigger;
 use bd_client_stats::stats::{
   JitteredIntervalCreator,
@@ -131,6 +132,8 @@ impl LoggerBuilder {
       self.params.static_metadata.sdk_version()
     );
 
+    let init_lifecycle = InitLifecycleState::new();
+
     let (shutdown_handle, maybe_shutdown_trigger) = self.component_shutdown_handle.map_or_else(
       || {
         let shutdown_trigger = ComponentShutdownTrigger::default();
@@ -203,6 +206,7 @@ impl LoggerBuilder {
       self.params.device.id(),
       self.params.store.clone(),
       Arc::new(SystemTimeProvider),
+      init_lifecycle.clone(),
     );
 
     let data_upload_tx_clone = data_upload_tx.clone();
@@ -234,6 +238,7 @@ impl LoggerBuilder {
 
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
+      init_lifecycle.set(bd_client_common::init_lifecycle::InitLifecycle::RuntimeLoaded);
 
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
@@ -249,6 +254,7 @@ impl LoggerBuilder {
         self.params.store.clone(),
         Arc::new(artifact_client),
         self.params.session_strategy.previous_process_session_id(),
+        init_lifecycle.clone(),
       );
 
       // Building the crash monitor requires artifact uploader and knowing

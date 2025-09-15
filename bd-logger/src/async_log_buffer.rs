@@ -20,6 +20,7 @@ use crate::{internal_report, network};
 use anyhow::anyhow;
 use bd_bounded_buffer::{Receiver, Sender, TrySendError, channel};
 use bd_buffer::BuffersWithAck;
+use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::maybe_await_map;
 use bd_crash_handler::global_state;
 use bd_device::Store;
@@ -172,6 +173,8 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   global_state_tracker: global_state::Tracker,
 
   time_provider: Arc<dyn TimeProvider>,
+
+  lifecycle_state: InitLifecycleState,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -191,6 +194,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     device_id: String,
     store: Arc<Store>,
     time_provider: Arc<dyn TimeProvider>,
+    lifecycle_state: InitLifecycleState,
   ) -> (Self, Sender<AsyncLogBufferMessage>) {
     let (async_log_buffer_communication_tx, async_log_buffer_communication_rx) = channel(
       uninitialized_logging_context
@@ -258,6 +262,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           runtime_loader.register_duration_watch(),
         ),
         time_provider,
+        lifecycle_state,
       },
       async_log_buffer_communication_tx,
     )
@@ -692,6 +697,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
           self = updated_self;
           if let Some(pre_config_log_buffer) = maybe_pre_config_buffer {
+            self.lifecycle_state.set(InitLifecycle::LogProcessingStarted);
             self.maybe_replay_pre_config_buffer_logs(
                 pre_config_log_buffer,
                 &mut vec![]

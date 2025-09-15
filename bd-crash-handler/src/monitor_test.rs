@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::{Monitor, global_state};
+use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_device::Store;
 use bd_log_primitives::{AnnotatedLogFields, LogFields};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
@@ -43,13 +44,12 @@ use uuid::Uuid;
 struct Setup {
   directory: TempDir,
   monitor: Monitor,
-  store: Arc<Store>,
   upload_client: Arc<bd_artifact_upload::MockClient>,
   _shutdown: ComponentShutdownTrigger,
 }
 
 impl Setup {
-  fn new() -> Self {
+  fn new(maybe_global_state: Option<LogFields>) -> Self {
     let directory = TempDir::new().unwrap();
     std::fs::create_dir_all(directory.path().join("runtime")).unwrap();
 
@@ -57,17 +57,23 @@ impl Setup {
     let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
     let upload_client = Arc::new(bd_artifact_upload::MockClient::default());
 
+    if let Some(global_state) = maybe_global_state {
+      let mut tracker =
+        global_state::Tracker::new(store.clone(), runtime::Watch::new_for_testing(10.seconds()));
+      tracker.maybe_update_global_state(&global_state);
+    }
+
     let monitor = Monitor::new(
       directory.path(),
       store.clone(),
       upload_client.clone(),
       Some("previous_session_id".to_string()),
+      InitLifecycleState::new(),
     );
 
     Self {
       directory,
       monitor,
-      store,
       upload_client,
       _shutdown: shutdown,
     }
@@ -191,20 +197,15 @@ async fn test_log_report_fields() {
   builder.finish(report, None);
   let data = builder.finished_data();
 
-  let mut setup = Setup::new();
-  let mut tracker = global_state::Tracker::new(
-    setup.store.clone(),
-    runtime::Watch::new_for_testing(10.seconds()),
-  );
-  tracker.maybe_update_global_state(
-    &[
+  let mut setup = Setup::new(Some(
+    [
       ("os_version".into(), "6".into()),
       ("app_version".into(), "4.16".into()),
       ("app_id".into(), "com.example.foo".into()),
       ("other_stuff".into(), "foo".into()),
     ]
     .into(),
-  );
+  ));
   setup.make_crash("report.cap", data);
 
   let uuid = "12345678-1234-5678-1234-5678123456aa".parse().unwrap();

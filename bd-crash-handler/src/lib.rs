@@ -21,6 +21,7 @@ mod tests;
 pub mod config_writer;
 pub mod global_state;
 
+use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
@@ -93,7 +94,7 @@ pub struct Monitor {
   pub previous_session_id: Option<String>,
 
   report_directory: PathBuf,
-  global_state_reader: global_state::Reader,
+  previous_run_global_state: LogFields,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
 }
 
@@ -103,12 +104,20 @@ impl Monitor {
     store: Arc<bd_device::Store>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
     previous_session_id: Option<String>,
+    init_lifecycle: InitLifecycleState,
   ) -> Self {
+    debug_assert!(
+      init_lifecycle.is_not_at_or_later(InitLifecycle::LogProcessingStarted),
+      "Monitor must be created before the client is fully initialized."
+    );
+
+    let previous_run_global_state = global_state::Reader::new(store).global_state_fields();
+
     Self {
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
-      global_state_reader: global_state::Reader::new(store),
       artifact_client,
       previous_session_id,
+      previous_run_global_state,
     }
   }
 
@@ -209,10 +218,6 @@ impl Monitor {
     // TODO(snowp): Add smarter handling to avoid duplicate reporting.
     // TODO(snowp): Consider only reporting one of the pending reports if there are multiple.
 
-    // Read out the global fields from the previous application run. This is used to populate the
-    // fields in the crash report to attempt to match the fields state at the time of the crash.
-    let global_state_fields = self.global_state_reader.global_state_fields();
-
     let mut logs = vec![];
 
     while let Ok(Some(entry)) = dir.next_entry().await {
@@ -253,7 +258,8 @@ impl Monitor {
           continue;
         };
 
-        let (timestamp, state_fields) = Self::read_log_fields(bin_report, &global_state_fields);
+        let (timestamp, state_fields) =
+          Self::read_log_fields(bin_report, &self.previous_run_global_state);
 
         let report_type = match bin_report.type_() {
           ReportType::AppNotResponding => "ANR",
