@@ -1,6 +1,6 @@
 ---
 source: bd-report-parsers/src/./android_tests.rs
-assertion_line: 365
+assertion_line: 417
 expression: report
 ---
 Report {
@@ -10944,7 +10944,7 @@ Report {
                 path: Some(
                     "/memfd:jit-cache (deleted)",
                 ),
-                load_address: 2000000,
+                load_address: 33554432,
             },
             BinaryImage {
                 id: None,

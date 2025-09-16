@@ -77,7 +77,7 @@ fn open_fixture(path: &str) -> std::fs::File {
 fn native_frame_test() -> anyhow::Result<()> {
   let mut builder = FlatBufferBuilder::new();
   #[rustfmt::skip]
-  let contents =  " native: #01 pc 000000000004c35c  /apex/com.android.runtime/lib64/bionic/libc.so (syscall+28)\n";
+  let contents =  " native: #01 pc 000000000004c35c  /apex/com.android.runtime/lib64/bionic/libc.so (offset 254c000) (syscall+28)\n";
   let file = make_tempfile(contents.as_bytes())?;
   let mmap = unsafe { memmap2::Mmap::map(&file)? };
   let input = MemmapView::new(&mmap);
@@ -94,7 +94,7 @@ fn native_frame_test() -> anyhow::Result<()> {
   assert_eq!(
     images.get(&(
       "/apex/com.android.runtime/lib64/bionic/libc.so".to_owned(),
-      None
+      Some(0x254_c000)
     )),
     Some(None).as_ref(),
   );
@@ -192,7 +192,7 @@ fn android_thread_test() -> anyhow::Result<()> {
   assert_eq!(
     images.get(&(
       "/data/app/~~en3p1SUq==/com.example-bhTJ==/base.apk".to_owned(),
-      Some(2_408_000)
+      Some(0x2_408_000)
     )),
     Some(&Some("a79f72711db804c5".to_owned())),
   );

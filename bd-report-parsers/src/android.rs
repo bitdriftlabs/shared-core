@@ -205,7 +205,7 @@ fn build_native_frame<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
         delimited(tag("native: #"), decimal::<_, u64, E>, tag(" pc ")),
         terminated(hexadecimal, take_while1(AsChar::is_space)),
         native_path_parser,
-        opt(delimited(tag(" (offset "), decimal, tag(")"))),
+        opt(delimited(tag(" (offset "), hexadecimal, tag(")"))),
         opt(native_symbol_parser),
         opt(map(build_id_parser, |build_id: MemmapView<'a>| {
           build_id.to_string()

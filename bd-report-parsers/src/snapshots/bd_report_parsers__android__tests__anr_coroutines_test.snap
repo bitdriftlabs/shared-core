@@ -1,6 +1,6 @@
 ---
 source: bd-report-parsers/src/./android_tests.rs
-assertion_line: 385
+assertion_line: 437
 expression: report
 ---
 Report {
@@ -17827,7 +17827,7 @@ Report {
                 path: Some(
                     "/data/app/~~c_753KAr5Y2vSHk1dEoDzw==/io.bitdrift.gradletestapp-T-1sUGMjBkLrQJon0hy4Wg==/base.apk",
                 ),
-                load_address: 264000,
+                load_address: 2506752,
             },
             BinaryImage {
                 id: None,

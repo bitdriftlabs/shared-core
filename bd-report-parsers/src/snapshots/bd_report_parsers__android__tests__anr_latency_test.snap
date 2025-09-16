@@ -1,6 +1,6 @@
 ---
 source: bd-report-parsers/src/./android_tests.rs
-assertion_line: 228
+assertion_line: 452
 expression: report
 ---
 Report {
@@ -18487,7 +18487,7 @@ Report {
                 path: Some(
                     "/data/app/~~en3p1SUq1nOALLnSaeYgdQ==/io.bitdrift.gradletestapp-bhTJ_gid-LKKquqrds3hJg==/base.apk",
                 ),
-                load_address: 2408000,
+                load_address: 37781504,
             },
             BinaryImage {
                 id: None,
@@ -18578,7 +18578,7 @@ Report {
                 path: Some(
                     "[anon_shmem:dalvik-jit-code-cache]",
                 ),
-                load_address: 2000000,
+                load_address: 33554432,
             },
         ],
     ),
