@@ -322,8 +322,8 @@ impl FeatureFlagsManager {
   }
 
   pub fn backup_previous(&self) -> anyhow::Result<()> {
-    self.replace_file(&self.previous_path.with_extension("jrna"), &self.current_path.with_extension("jrna"))?;
-    self.replace_file(&self.previous_path.with_extension("jrnb"), &self.current_path.with_extension("jrnb"))?;
+    self.replace_file(&self.current_path.with_extension("jrna"), &self.previous_path.with_extension("jrna"))?;
+    self.replace_file(&self.current_path.with_extension("jrnb"), &self.previous_path.with_extension("jrnb"))?;
     Ok(())
   }
 
