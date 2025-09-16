@@ -24,6 +24,7 @@ pub struct MemmapView<'a> {
 }
 
 impl<'a> MemmapView<'a> {
+  #[must_use]
   pub fn new(source: &'a memmap2::Mmap) -> Self {
     Self {
       source,
@@ -33,19 +34,23 @@ impl<'a> MemmapView<'a> {
   }
 
   #[inline]
+  #[must_use]
   pub fn is_empty(&self) -> bool {
     self.len() == 0
   }
 
   #[inline]
+  #[must_use]
   pub fn len(&self) -> usize {
     self.end_index - self.start_index
   }
 
+  #[must_use]
   pub fn peek(&self) -> Option<u8> {
     (!self.is_empty()).then(|| self.source[self.start_index])
   }
 
+  #[must_use]
   pub fn find(&self, character: char) -> Option<usize> {
     self.position(|c| c.as_char() == character)
   }

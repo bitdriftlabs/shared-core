@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+pub use crate::input::MemmapView;
 use nom::character::complete::one_of;
 use nom::combinator::{map, recognize};
 use nom::error::ParseError;
