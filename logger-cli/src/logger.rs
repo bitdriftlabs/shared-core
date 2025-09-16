@@ -119,7 +119,7 @@ impl LoggerHolder {
       FieldPairs(fields).into(),
       [].into(),
       None,
-      bd_logger::Block::Yes,
+      bd_logger::Block::Yes(1.std_seconds()),
       session_capture,
     );
   }

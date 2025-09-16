@@ -48,11 +48,8 @@ use bd_time::TimeProvider;
 use std::collections::VecDeque;
 use std::mem::size_of_val;
 use std::sync::Arc;
-use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, oneshot};
-
-const BLOCKING_FLUSH_TIMEOUT_SECONDS: Duration = Duration::from_secs(1);
 
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {
@@ -272,18 +269,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
     attributes_overrides: Option<LogAttributesOverrides>,
-    blocking: bool,
+    block: Block,
     capture_session: Option<String>,
   ) -> Result<(), TrySendError> {
-    let (log_processing_completed_tx_option, log_processing_completed_rx_option) = if blocking {
-      // Create a (sender, receiver) pair only if the caller wants to wait on
-      // on the log being pushed through the whole log processing pipeline.
-      let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-      let bd_rx = bd_completion::Receiver::to_bd_completion_rx(rx);
-      (Some(tx), Some(bd_rx))
-    } else {
-      (None, None)
-    };
+    let (log_processing_completed_tx_option, log_processing_completed_rx_option) =
+      if matches!(block, Block::Yes(_)) {
+        // Create a (sender, receiver) pair only if the caller wants to wait on
+        // on the log being pushed through the whole log processing pipeline.
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        let bd_rx = bd_completion::Receiver::to_bd_completion_rx(rx);
+        (Some(tx), Some(bd_rx))
+      } else {
+        (None, None)
+      };
 
     let log = LogLine {
       log_level,
@@ -317,8 +315,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     // Wait for log processing to be completed only if passed `blocking`
     // argument is equal to `true` and we created a relevant one shot Tokio channel.
-    if let Some(rx) = log_processing_completed_rx_option {
-      match &rx.blocking_recv_with_timeout(BLOCKING_FLUSH_TIMEOUT_SECONDS) {
+    if let Some(rx) = log_processing_completed_rx_option
+      && let Block::Yes(block_timeout) = block
+    {
+      match &rx.blocking_recv_with_timeout(block_timeout) {
         Ok(()) => {
           log::debug!("enqueue_log: log processing completion received");
         },
@@ -351,11 +351,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     ))
   }
 
-  pub fn flush_state(
-    tx: &Sender<AsyncLogBufferMessage>,
-    blocking: bool,
-  ) -> Result<(), TrySendError> {
-    let (completion_tx, completion_rx) = if blocking {
+  pub fn flush_state(tx: &Sender<AsyncLogBufferMessage>, block: Block) -> Result<(), TrySendError> {
+    let (completion_tx, completion_rx) = if matches!(block, Block::Yes(_)) {
       let (tx, rx) = bd_completion::Sender::new();
       (Some(tx), Some(rx))
     } else {
@@ -366,8 +363,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     // Wait for the processing to be completed only if passed `blocking` argument is equal to
     // `true`.
-    if let Some(completion_rx) = completion_rx {
-      match &completion_rx.blocking_recv_with_timeout(BLOCKING_FLUSH_TIMEOUT_SECONDS) {
+    if let Some(completion_rx) = completion_rx
+      && let Block::Yes(block_timeout) = block
+    {
+      match &completion_rx.blocking_recv_with_timeout(block_timeout) {
         Ok(()) => {
           log::debug!("flush state: completion received");
         },
@@ -379,7 +378,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     Ok(())
   }
 
-  async fn process_all_logs(&mut self, log: LogLine, block: Block) -> anyhow::Result<()> {
+  async fn process_all_logs(&mut self, log: LogLine, block: bool) -> anyhow::Result<()> {
     let mut logs = VecDeque::new();
     logs.push_back(log);
     while let Some(log) = logs.pop_front() {
@@ -421,7 +420,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     Ok(())
   }
 
-  async fn process_log(&mut self, log: LogLine, block: Block) -> anyhow::Result<Vec<Log>> {
+  async fn process_log(&mut self, log: LogLine, block: bool) -> anyhow::Result<Vec<Log>> {
     // Prevent re-entrancy when we are evaluating the log metadata.
     let result = with_thread_local_logger_guard(|| {
       self
@@ -549,7 +548,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  async fn write_log(&mut self, log: Log, block: Block) -> anyhow::Result<Vec<Log>> {
+  async fn write_log(&mut self, log: Log, block: bool) -> anyhow::Result<Vec<Log>> {
     let logs_to_inject = match &mut self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
         let result = uninitialized_logging_context
@@ -618,7 +617,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         .replayer
         .replay_log(
           log_line,
-          Block::No,
+          false,
           &mut initialized_logging_context.processing_pipeline,
           now,
         )
@@ -633,7 +632,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         .replayer
         .replay_log(
           log_line,
-          Block::No,
+          false,
           &mut initialized_logging_context.processing_pipeline,
           now,
         )
@@ -711,7 +710,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               // grouping here to help make smarter decisions during intent negotiation.
               capture_session: Some("crash_handler".to_string()),
             };
-            if let Err(e) = self.process_all_logs(log, Block::No).await {
+            if let Err(e) = self.process_all_logs(log, false).await {
               log::debug!("failed to process crash log: {e}");
             }
           }
@@ -731,12 +730,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
               if let Err(e) = self.process_all_logs(
                 log,
-                if log_processing_completed_tx.is_some() { Block::Yes } else { Block::No }
+                log_processing_completed_tx.is_some()
               ).await {
                 log::debug!("failed to process all logs: {e}");
               }
 
               if let Some(tx) = log_processing_completed_tx && Err(()) == tx.send(()) {
+                debug_assert!(false, "failed to send log processing completion");
                 log::debug!("failed to send log processing completion");
               }
             },
@@ -822,7 +822,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           occurred_at,
           capture_session: None,
         },
-        Block::No,
+        false,
       )
       .await?;
 

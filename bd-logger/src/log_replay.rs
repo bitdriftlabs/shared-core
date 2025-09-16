@@ -5,7 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::Block;
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::logging_state::{BufferProducers, ConfigUpdate, InitializedLoggingContextStats};
@@ -42,7 +41,7 @@ pub trait LogReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    block: Block,
+    block: bool,
     pipeline: &mut ProcessingPipeline,
     now: OffsetDateTime,
   ) -> anyhow::Result<Vec<Log>>;
@@ -59,7 +58,7 @@ impl LogReplay for LoggerReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    block: Block,
+    block: bool,
     pipeline: &mut ProcessingPipeline,
     now: OffsetDateTime,
   ) -> anyhow::Result<Vec<Log>> {
@@ -168,7 +167,7 @@ impl ProcessingPipeline {
   async fn process_log(
     &mut self,
     mut log: Log,
-    block: Block,
+    block: bool,
     now: OffsetDateTime,
   ) -> anyhow::Result<Vec<Log>> {
     self.stats.logs_received.inc();
@@ -260,9 +259,9 @@ impl ProcessingPipeline {
     }
 
     // Force the persistence of workflows state to disk if log is blocking.
-    self.workflows_engine.maybe_persist(block.into()).await;
+    self.workflows_engine.maybe_persist(block).await;
 
-    if block.into() {
+    if block {
       Self::finish_blocking_log_processing(flush_buffers_tx, flush_stats_trigger, matching_buffers)
         .await?;
     }

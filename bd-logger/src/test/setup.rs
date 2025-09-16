@@ -41,7 +41,7 @@ use bd_test_helpers::test_api_server::{ExpectedStreamEvent, StreamAction, Stream
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use tempfile::TempDir;
-use time::ext::NumericalDuration;
+use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::sync::mpsc;
 
 /// Wait for a condition to be true, or panic after 5 seconds.
@@ -304,7 +304,7 @@ impl Setup {
       fields,
       matching_fields,
       None,
-      Block::Yes,
+      Block::Yes(15.std_seconds()),
       CaptureSession::default(),
     );
   }
