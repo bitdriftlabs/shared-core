@@ -76,7 +76,7 @@ impl Setup {
       upload_client.clone(),
       Some("previous_session_id".to_string()),
       &InitLifecycleState::new(),
-      feature_flags,
+      Some(feature_flags),
     );
 
     Self {

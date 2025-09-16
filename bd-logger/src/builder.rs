@@ -34,7 +34,6 @@ use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_time::SystemTimeProvider;
 use futures_util::{Future, try_join};
-use protobuf::plugin::code_generator_response::Feature;
 use std::pin::Pin;
 use std::sync::Arc;
 use time::Duration;
@@ -181,6 +180,26 @@ impl LoggerBuilder {
     let (crash_monitor_tx, crash_monitor_rx) = tokio::sync::oneshot::channel();
 
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
+
+    let feature_flags_manager = FeatureFlagsManager::new(
+      &self.params.sdk_directory,
+      self.params.feature_flags_file_size_bytes,
+      self.params.feature_flags_high_watermark,
+    );
+    // This will only fail if there are serious issues with the filesystem.
+    feature_flags_manager.backup_previous().unwrap_or_else(|e| {
+                  log::warn!("failed to backup previous feature flags store: {e}");
+                });
+    // This creates the file if needed, so it will only fail if there are serious issues with the filesystem.
+    let current_feature_flags = feature_flags_manager.current_feature_flags()
+      .map_err(|e| {
+        log::warn!("failed to load current feature flags: {e}");
+        e
+      })
+      .ok();
+    // We don't care if this fails.
+    let previous_feature_flags = feature_flags_manager.previous_feature_flags().ok();
+
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
         &self.params.sdk_directory,
@@ -209,15 +228,11 @@ impl LoggerBuilder {
       self.params.store.clone(),
       Arc::new(SystemTimeProvider),
       init_lifecycle.clone(),
+      current_feature_flags,
     );
 
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
-    let feature_flags_manager = FeatureFlagsManager::new(
-      self.params.sdk_directory.clone(),
-      1024 * 1024,
-      0.8,
-    );
 
     let logger = Logger::new(
       maybe_shutdown_trigger,
@@ -262,6 +277,7 @@ impl LoggerBuilder {
         Arc::new(artifact_client),
         self.params.session_strategy.previous_process_session_id(),
         &init_lifecycle,
+        previous_feature_flags,
       );
 
       // Building the crash monitor requires artifact uploader and knowing

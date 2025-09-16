@@ -99,7 +99,7 @@ pub struct Monitor {
   report_directory: PathBuf,
   previous_run_global_state: LogFields,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
-  feature_flags: FeatureFlags,
+  feature_flags: Option<FeatureFlags>,
 }
 
 impl Monitor {
@@ -109,7 +109,7 @@ impl Monitor {
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
     previous_session_id: Option<String>,
     init_lifecycle: &InitLifecycleState,
-    feature_flags: FeatureFlags,
+    feature_flags: Option<FeatureFlags>,
   ) -> Self {
     debug_check_lifecycle_less_than!(
       init_lifecycle,
@@ -227,10 +227,14 @@ impl Monitor {
 
     let feature_flags: Vec<SnappedFeatureFlag> = self
       .feature_flags
-      .as_hashmap()
-      .into_iter()
-      .map(|(name, flag)| SnappedFeatureFlag::new(name, flag.variant, flag.timestamp))
-      .collect();
+      .as_ref()
+      .map(|ff| {
+        ff.as_hashmap()
+          .into_iter()
+          .map(|(name, flag)| SnappedFeatureFlag::new(name, flag.variant, flag.timestamp))
+          .collect()
+      })
+      .unwrap_or_default();
 
     let mut logs = vec![];
 

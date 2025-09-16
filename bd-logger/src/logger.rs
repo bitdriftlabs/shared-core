@@ -490,6 +490,9 @@ pub struct InitParams {
   // Whether the logger should start in sleep mode. It can then be transitioned using the provided
   // transition APIs.
   pub start_in_sleep_mode: bool,
+
+  pub feature_flags_file_size_bytes: usize,
+  pub feature_flags_high_watermark: f32,
 }
 
 pub struct ReportProcessingRequest {
