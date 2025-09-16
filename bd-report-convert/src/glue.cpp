@@ -1,8 +1,8 @@
 // shared-core - bitdrift's common client/server libraries
 // Copyright Bitdrift, Inc. All rights reserved.
 //
-// Use of this source code is governed by a source available license that can be found in the
-// LICENSE file or at:
+// Use of this source code is governed by a source available license that can be
+// found in the LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #include <cstdint>
@@ -11,44 +11,37 @@
 #include <string>
 
 #include <flatbuffers/idl.h>
-#include <flatbuffers/util.h>
 #include <flatbuffers/minireflect.h>
+#include <flatbuffers/util.h>
 
 #include "flatbuffers/report_generated.h"
 
-enum BDReaderErr {
-  BDReaderErrCouldNotReadInputFile = -1,
-  BDReaderErrCouldNotParseSpec = -2,
-  BDReaderErrCouldNotParseInputData = -3,
-  BDReaderErrCouldNotValidateOutput = -4,
-};
+#include "glue.h"
 
 using namespace bitdrift_public::fbs::issue_reporting::v1;
+
 extern "C" {
-char *bdrc_alloc_json(char *bin_data_path) {
+char *bdrc_alloc_json(const char *bin_data_path) {
   std::ifstream data_file(bin_data_path);
-  std::string contents(
-    (std::istreambuf_iterator<char>(data_file)),
-    (std::istreambuf_iterator<char>())
-  );
+  std::string contents((std::istreambuf_iterator<char>(data_file)),
+                       (std::istreambuf_iterator<char>()));
   char *bin_data = (char *)contents.c_str();
 
-  auto output = flatbuffers::FlatBufferToString(
-      reinterpret_cast<uint8_t *>(bin_data),
-      ReportTypeTable(),
-      false, true, "", true);
+  auto output =
+      flatbuffers::FlatBufferToString(reinterpret_cast<uint8_t *>(bin_data),
+                                      ReportTypeTable(), false, true, "", true);
 
   return strdup(output.c_str());
 }
 
-void bdrc_json_free(char *json) {
-  free(json);
-}
+void bdrc_json_free(char *json) { free(json); }
 
 /**
  * Create a buffer containing the binary representation of a flatbuffer file
  *
- * @param schema_data     contents of the API spec as a nul-terminated byte array
+ * @param schemas     an array of schema definitions. Includes must be listed
+ * before the schema that uses them.
+ * @param schema_count  the number of schemas in the schemas array
  * @param json_data_path  the path to the data to convert in JSON format
  * @param length_or_err   destination for the length of the buffer or an error
  *
@@ -56,11 +49,9 @@ void bdrc_json_free(char *json) {
  *         failed and the value of length_or_err should be checked for the
  *         problem
  */
-uint8_t *bdrc_make_bin_from_json(
-    uint8_t *schema_data,
-    char *json_data_path,
-    int32_t */* out */length_or_err
-) {
+uint8_t *bdrc_make_bin_from_json(const Schema schemas[], size_t schema_count,
+                                 const char *json_data_path,
+                                 int32_t * /* out */ length_or_err) {
   std::string json_data;
 
   if (!flatbuffers::LoadFile(json_data_path, false, &json_data)) {
@@ -69,9 +60,11 @@ uint8_t *bdrc_make_bin_from_json(
   }
 
   flatbuffers::Parser parser;
-  if (!parser.Parse(reinterpret_cast<const char *>(schema_data), nullptr, "report.fbs")) {
-    *length_or_err = BDReaderErrCouldNotParseSpec;
-    return nullptr;
+  for (size_t i = 0; i < schema_count; i++) {
+    if (!parser.Parse(schemas[i].data, nullptr, schemas[i].path)) {
+      *length_or_err = BDReaderErrCouldNotParseSpec;
+      return nullptr;
+    }
   }
 
   if (!parser.Parse(json_data.c_str())) {
@@ -90,4 +83,4 @@ uint8_t *bdrc_make_bin_from_json(
   *length_or_err = parser.builder_.GetSize();
   return ptr;
 }
-}
+}; // extern "C"

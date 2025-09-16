@@ -1,0 +1,3 @@
+[  { "directory": "/home/user/llvm/build",
+    "arguments": ["/usr/bin/clang++", "-I../../thirdparty/flatbuffers/include", "-c", "-o", "bdrc.o", "glue.cc"],
+    "file": "glue.cpp" }]
