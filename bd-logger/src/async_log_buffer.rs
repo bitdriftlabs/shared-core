@@ -763,9 +763,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               self.metadata_collector.remove_field(&field_name);
             },
             AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
-              log::warn!("### setting feature flag {flag:?} to {variant:?}");
               if let Some(feature_flags) = &mut self.feature_flags {
-                log::warn!("### FeatureFlags exists, so setting feature flag {flag:?} to {variant:?}");
                 feature_flags.set(&flag, variant.as_deref()).unwrap_or_else(|e| {
                   log::warn!("failed to set feature flag ({flag:?}): {e}");
                 });

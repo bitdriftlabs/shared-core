@@ -200,7 +200,6 @@ impl Monitor {
   }
 
   pub async fn process_new_reports(&self) -> Vec<CrashLog> {
-    log::warn!("### Processing new crash reports");
     let mut dir = match tokio::fs::read_dir(&self.report_directory.join("new")).await {
       Ok(dir) => dir,
       Err(e) => {
@@ -236,11 +235,6 @@ impl Monitor {
           .collect()
       })
       .unwrap_or_default();
-
-    log::warn!("### Current feature flags size: {}", feature_flags.len());
-    if !feature_flags.is_empty() {
-      log::warn!("### First flag = {:?}", feature_flags[0]);
-    }
 
     let mut logs = vec![];
 

@@ -181,7 +181,6 @@ impl LoggerBuilder {
 
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
 
-    log::warn!("### Setting up feature flags");
     let feature_flags_manager = FeatureFlagsManager::new(
       &self.params.sdk_directory,
       self.params.feature_flags_file_size_bytes,
@@ -194,20 +193,17 @@ impl LoggerBuilder {
     // This creates the file if needed, so it will only fail if there are serious issues with the filesystem.
     let current_feature_flags = feature_flags_manager.current_feature_flags()
       .map_err(|e| {
-        log::warn!("failed to load current feature flags: {e}");
+        log::warn!("failed to load or create current feature flags: {e}");
         e
       })
       .ok();
 
     let previous_feature_flags = feature_flags_manager.previous_feature_flags()
       .map_err(|e| {
-        log::warn!("failed to load previous feature flags: {e}");
+        log::warn!("failed to load or create previous feature flags: {e}");
         e
       })
       .ok();
-
-    log::warn!("### Current feature flags size: {:?}", current_feature_flags.as_ref().map(|f| f.as_hashmap().len()));
-    log::warn!("### Previous feature flags size: {:?}", previous_feature_flags.as_ref().map(|f| f.as_hashmap().len()));
 
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
