@@ -257,11 +257,11 @@ fn build_java_frame<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
       let source_file = Some(v_1::SourceFile::create(builder, &source_file_args));
       let state = state
         .iter()
-        .map(|item| builder.create_string(&item.to_string()))
-        .collect::<Vec<_>>();
+        .map(|item| builder.create_string(item.as_str()))
+        .collect_vec();
       let args = v_1::FrameArgs {
         type_: v_1::FrameType::JVM,
-        symbol_name: Some(builder.create_string(&symbol.to_string())),
+        symbol_name: Some(builder.create_string(symbol.as_str())),
         source_file,
         state: (!state.is_empty()).then(|| builder.create_vector(state.as_slice())),
         ..Default::default()
@@ -352,8 +352,8 @@ fn thread_header<'a, E: ParseError<MemmapView<'a>>>(
   input: MemmapView<'a>,
 ) -> IResult<MemmapView<'a>, ThreadHeader, E> {
   let name_parser = delimited(tag("\""), take_till(|c| c == &b'"'), tag("\""));
-  let int_transform = |num: MemmapView<'a>| num.to_string().parse().unwrap_or_default();
-  let float_transform = |num: MemmapView<'a>| num.to_string().parse().unwrap_or_default();
+  let int_transform = |num: MemmapView<'a>| num.as_str().parse().unwrap_or_default();
+  let float_transform = |num: MemmapView<'a>| num.as_str().parse().unwrap_or_default();
   let (remainder, (name, is_daemon, priority, tid, state)) = (
     map(terminated(name_parser, tag(" ")), |name: MemmapView<'a>| {
       name.to_string()
@@ -423,7 +423,8 @@ fn thread_prop_value<'a, E: ParseError<MemmapView<'a>>>(
   input: MemmapView<'a>,
 ) -> IResult<MemmapView<'a>, String, E> {
   let line_end = input.find('\n').unwrap_or(input.len());
-  let line = input.take(line_end).to_string();
+  let segment = input.take(line_end);
+  let line = segment.as_str();
   let value_end = line
     .find('=')
     .and_then(|index| line[.. index].rfind(' '))
@@ -459,7 +460,8 @@ fn native_path_parser<'a, E: ParseError<MemmapView<'a>>>(
   input: MemmapView<'a>,
 ) -> IResult<MemmapView<'a>, String, E> {
   let line_end = input.find('\n').unwrap_or(input.len());
-  let line = input.take(line_end).to_string();
+  let segment = input.take(line_end);
+  let line = segment.as_str();
   let path_end = line
     .find(" (offset")
     .or_else(|| {

@@ -6,7 +6,6 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use nom::{AsChar, Input};
-use std::collections::VecDeque;
 use std::iter::{Skip, Take};
 
 #[cfg(test)]
@@ -54,12 +53,17 @@ impl<'a> MemmapView<'a> {
   pub fn find(&self, character: char) -> Option<usize> {
     self.position(|c| c.as_char() == character)
   }
+
+  #[must_use]
+  pub fn as_str(&self) -> &str {
+    let contents = &self.source[self.start_index .. self.end_index];
+    str::from_utf8(contents).unwrap_or_default()
+  }
 }
 
 impl std::fmt::Display for MemmapView<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    let contents = &self.source[self.start_index .. self.end_index];
-    write!(f, "{}", str::from_utf8(contents).unwrap_or_default())
+    write!(f, "{}", self.as_str())
   }
 }
 
@@ -75,16 +79,14 @@ impl nom::Compare<&str> for MemmapView<'_> {
     if self.len() < t.len() {
       return nom::CompareResult::Error;
     }
-    let content = self.take(t.len()).to_string();
-    content.as_str().compare(t)
+    self.take(t.len()).as_str().compare(t)
   }
 
   fn compare_no_case(&self, t: &str) -> nom::CompareResult {
     if self.len() < t.len() {
       return nom::CompareResult::Error;
     }
-    let content = self.take(t.len()).to_string();
-    content.as_str().compare_no_case(t)
+    self.take(t.len()).as_str().compare_no_case(t)
   }
 }
 
@@ -95,21 +97,8 @@ impl nom::FindSubstring<&str> for MemmapView<'_> {
     if self.end_index < start_offset {
       return None;
     }
-    let initial = Vec::from(&self.source[self.start_index .. start_offset]);
-    let mut buffer = VecDeque::from(initial);
-    for index in start_offset ..= self.end_index {
-      if let Ok(contents) = str::from_utf8(buffer.make_contiguous())
-        && contents == substr
-      {
-        return Some(index - start_offset);
-      }
-      if index == self.end_index {
-        break;
-      }
-      buffer.pop_front();
-      buffer.push_back(self.source[index]);
-    }
-    None
+    let contents = self.as_str();
+    contents.find(substr)
   }
 }
 
