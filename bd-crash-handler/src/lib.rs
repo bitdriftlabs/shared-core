@@ -237,7 +237,7 @@ impl Monitor {
       .unwrap_or_default();
 
     if !feature_flags.is_empty() {
-      log::warn!("First flag = {:?}", feature_flags[0]);
+      log::warn!("### First flag = {:?}", feature_flags[0]);
     }
 
     let mut logs = vec![];
