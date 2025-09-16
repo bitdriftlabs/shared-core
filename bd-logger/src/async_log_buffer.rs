@@ -56,6 +56,7 @@ pub enum AsyncLogBufferMessage {
   EmitLog((LogLine, Option<oneshot::Sender<()>>)),
   AddLogField(String, StringOrBytes<String, Vec<u8>>),
   RemoveLogField(String),
+  SetFeatureFlag(String, Option<String>),
   FlushState(Option<bd_completion::Sender<()>>),
 }
 
@@ -66,6 +67,7 @@ impl MemorySized for AsyncLogBufferMessage {
         Self::EmitLog((log, _)) => log.size(),
         Self::AddLogField(key, value) => key.size() + value.size(),
         Self::RemoveLogField(field_name) => field_name.len(),
+        Self::SetFeatureFlag(flag, variant) => flag.len() + variant.as_ref().map_or(0, String::len),
         Self::FlushState(sender) => size_of_val(sender),
       }
   }
@@ -349,6 +351,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     tx.try_send(AsyncLogBufferMessage::RemoveLogField(
       field_name.to_string(),
     ))
+  }
+
+  pub fn set_feature_flag(
+    tx: &Sender<AsyncLogBufferMessage>,
+    flag: &str,
+    variant: Option<String>,
+  ) -> Result<(), TrySendError> {
+    tx.try_send(AsyncLogBufferMessage::SetFeatureFlag(flag.to_string(), variant))
   }
 
   pub fn flush_state(tx: &Sender<AsyncLogBufferMessage>, block: Block) -> Result<(), TrySendError> {
@@ -747,6 +757,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             },
             AsyncLogBufferMessage::RemoveLogField(field_name) => {
               self.metadata_collector.remove_field(&field_name);
+            },
+            AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
+              // TODO: kstenerud
+              log::warn!("TODO: Implement SetFeatureFlag ({flag:?} {variant:?}) ");
+              // self.metadata_collector.set_feature_flag(flag, variant);
             },
             AsyncLogBufferMessage::FlushState(completion_tx) => {
               let (sender, receiver) = bd_completion::Sender::new();

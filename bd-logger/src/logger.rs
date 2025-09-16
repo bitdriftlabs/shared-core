@@ -417,6 +417,24 @@ impl LoggerHandle {
     });
   }
 
+  pub fn set_feature_flag(&self, flag: &str, variant: Option<String>) {
+    LOGGER_GUARD.with(|cell| {
+      if cell.try_borrow().is_ok() {
+        let result = AsyncLogBuffer::<LoggerReplay>::set_feature_flag(&self.tx, flag, variant);
+        if let Err(e) = result {
+          log::warn!("failed to set {flag:?} feature flag: {e:?}");
+        }
+      } else {
+        warn_every!(
+          15.seconds(),
+          "failed to set {:?} feature flag, adding log fields from within a field provider is not \
+           allowed",
+          flag
+        );
+      }
+    });
+  }
+
   pub fn flush_state(&self, block: Block) {
     log::debug!("state flushing initiated");
     let result = AsyncLogBuffer::<LoggerReplay>::flush_state(&self.tx, block);
