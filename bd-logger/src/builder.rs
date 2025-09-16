@@ -181,6 +181,7 @@ impl LoggerBuilder {
 
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
 
+    log::warn!("### Setting up feature flags");
     let feature_flags_manager = FeatureFlagsManager::new(
       &self.params.sdk_directory,
       self.params.feature_flags_file_size_bytes,
