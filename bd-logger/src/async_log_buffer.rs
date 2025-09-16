@@ -736,13 +736,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 log::debug!("failed to process all logs: {e}");
               }
 
-              if let Some(tx) = log_processing_completed_tx {
-                handle_unexpected(
-                  tx.send(()).map_err(
-                    |()| anyhow!("failed to notify about log processing completion")
-                  ),
-                  ""
-                );
+              if let Some(tx) = log_processing_completed_tx && Err(()) == tx.send(()) {
+                log::debug!("failed to send log processing completion");
               }
             },
             AsyncLogBufferMessage::AddLogField(key, value) => {
