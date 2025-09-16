@@ -311,13 +311,19 @@ impl FeatureFlagsManager {
     }
   }
 
+  fn replace_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
+    if to.exists() {
+      std::fs::remove_file(to)?;
+    }
+    if from.exists() {
+      std::fs::rename(from, to)?;
+    }
+    Ok(())
+  }
+
   pub fn backup_previous(&self) -> anyhow::Result<()> {
-    if self.previous_path.exists() {
-      std::fs::remove_file(&self.previous_path)?;
-    }
-    if self.current_path.exists() {
-      std::fs::rename(&self.current_path, &self.previous_path)?;
-    }
+    self.replace_file(&self.previous_path.with_extension("jrna"), &self.current_path.with_extension("jrna"))?;
+    self.replace_file(&self.previous_path.with_extension("jrnb"), &self.current_path.with_extension("jrnb"))?;
     Ok(())
   }
 
