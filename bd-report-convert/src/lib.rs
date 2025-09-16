@@ -12,8 +12,8 @@ use std::slice;
 #[allow(
   non_camel_case_types,
   non_snake_case,
-  dead_code,
-  non_upper_case_globals
+  non_upper_case_globals,
+  clippy::unreadable_literal
 )]
 mod generated;
 use generated::{Schema, bdrc_alloc_json, bdrc_json_free, bdrc_make_bin_from_json};
