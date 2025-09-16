@@ -36,7 +36,7 @@ use bd_client_common::file::{read_compressed, write_compressed};
 use bd_client_stats::Stats;
 use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
-use bd_log_primitives::{Log, LogRef};
+use bd_log_primitives::{Log, LogRef, LogType, log_level};
 use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
 use bd_stats_common::labels;
@@ -501,6 +501,8 @@ impl WorkflowsEngine {
     // Measure duration in here even if the list of workflows is empty.
     let _timer = self.stats.process_log_duration.start_timer();
 
+    let mut logs_to_inject = BTreeMap::new();
+
     if self.state.session_id.is_empty() {
       log::debug!(
         "workflows engine: moving from no session to session \"{}\"",
@@ -515,6 +517,8 @@ impl WorkflowsEngine {
       // all workflows in their initial states.
       self.state.session_id = log.session_id.to_string();
       self.stats.sessions_total.inc();
+
+      logs_to_inject.insert("new_session", Self::make_new_session_log(log));
     } else if self.state.session_id != log.session_id {
       log::debug!(
         "workflows engine: moving from \"{}\" to new session \"{}\", cleaning workflows state",
@@ -532,6 +536,7 @@ impl WorkflowsEngine {
       self.clean_state();
       self.state.session_id = log.session_id.to_string();
       self.stats.sessions_total.inc();
+      logs_to_inject.insert("new_session", Self::make_new_session_log(log));
     }
 
     // Return early if there's no work to avoid unnecessary copies.
@@ -547,12 +552,11 @@ impl WorkflowsEngine {
         triggered_flushes_buffer_ids: BTreeSet::new(),
         triggered_flush_buffers_action_ids: BTreeSet::new(),
         capture_screenshot: false,
-        logs_to_inject: BTreeMap::new(),
+        logs_to_inject,
       };
     }
 
     let mut actions: Vec<TriggeredAction<'_>> = vec![];
-    let mut logs_to_inject: BTreeMap<&'a str, Log> = BTreeMap::new();
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let Some(config) = self.configs.get(index) else {
         continue;
@@ -701,6 +705,16 @@ impl WorkflowsEngine {
       capture_screenshot: !capture_screenshot_actions.is_empty(),
       logs_to_inject,
     }
+  }
+
+  fn make_new_session_log(log: &LogRef<'_>) -> Log {
+    let mut new_session_log = log.into_owned();
+    new_session_log.log_level = log_level::INFO;
+    new_session_log.log_type = LogType::Lifecycle;
+    new_session_log.message = "New bitdrift session".into();
+    new_session_log.capture_session = None;
+
+    new_session_log
   }
 
   fn clean_state(&mut self) {
