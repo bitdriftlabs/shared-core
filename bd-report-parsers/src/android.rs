@@ -493,25 +493,21 @@ fn source_location<'a, E: ParseError<MemmapView<'a>>>(
   }
 }
 
-const DEFAULT_ANR_NAME: &str = "Undetermined ANR";
-
 fn anr_name(description: Option<&str>) -> &'static str {
-  let Some(description) = description else {
-    return DEFAULT_ANR_NAME;
-  };
-  let anr_types = vec![
-    ("Background ANR", vec!["bg anr"]),
+  const DEFAULT_ANR_NAME: &str = "Undetermined ANR";
+  const ANR_TYPES: &[(&str, &[&str])] = &[
+    ("Background ANR", &["bg anr"]),
     (
       "User Perceived ANR",
-      vec!["input dispatching timed out", "user request after error"],
+      &["input dispatching timed out", "user request after error"],
     ),
-    ("Broadcast Receiver ANR", vec!["broadcast of intent"]),
-    ("Content Provider ANR", vec!["content provider timeout"]),
-    ("App Registered ANR", vec!["app registered timeout"]),
-    ("App Start ANR", vec!["app start timeout"]),
+    ("Broadcast Receiver ANR", &["broadcast of intent"]),
+    ("Content Provider ANR", &["content provider timeout"]),
+    ("App Registered ANR", &["app registered timeout"]),
+    ("App Start ANR", &["app start timeout"]),
     (
       "Service ANR",
-      vec![
+      &[
         "executing service",
         "service.startforeground() not called",
         "short fgs timeout",
@@ -523,9 +519,13 @@ fn anr_name(description: Option<&str>) -> &'static str {
     ),
   ];
 
+  let Some(description) = description else {
+    return DEFAULT_ANR_NAME;
+  };
+
   let normalized = description.to_lowercase();
-  for (name, snippets) in anr_types {
-    for snippet in snippets {
+  for (name, snippets) in ANR_TYPES {
+    for snippet in *snippets {
       if normalized.contains(snippet) {
         return name;
       }
