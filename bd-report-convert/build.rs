@@ -52,7 +52,7 @@ pub fn main() {
         .expect("Unable to generate bindings");
 
     let out_path = PathBuf::from("src/generated");
-    let _ = std::fs::create_dir_all(&out_path).unwrap();
+    let _ = std::fs::create_dir_all(&out_path);
     bindings
       .write_to_file(out_path.join("mod.rs"))
       .expect("Couldn't write bindings!");

@@ -18,7 +18,7 @@ exclude_dirs = (
     './.git',
     './bd-grpc/src/generated',
     './bd-pgv/src/generated',
-    './bd-report-writer/src/generated',
+    './bd-report-convert/src/generated',
     './bd-proto/',
     './fuzz/corpus/',
     './proto/',
