@@ -134,6 +134,7 @@ impl Setup {
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
+      None,
     )
   }
 
@@ -165,6 +166,7 @@ impl Setup {
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
+      None,
     )
   }
 

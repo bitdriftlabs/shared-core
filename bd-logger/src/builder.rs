@@ -188,17 +188,20 @@ impl LoggerBuilder {
     );
     // This will only fail if there are serious issues with the filesystem.
     feature_flags_manager.backup_previous().unwrap_or_else(|e| {
-                  log::warn!("failed to backup previous feature flags store: {e}");
-                });
-    // This creates the file if needed, so it will only fail if there are serious issues with the filesystem.
-    let current_feature_flags = feature_flags_manager.current_feature_flags()
+      log::warn!("failed to backup previous feature flags store: {e}");
+    });
+    // This creates the file if needed, so it will only fail if there are serious issues with the
+    // filesystem.
+    let current_feature_flags = feature_flags_manager
+      .current_feature_flags()
       .map_err(|e| {
         log::warn!("failed to load or create current feature flags: {e}");
         e
       })
       .ok();
 
-    let previous_feature_flags = feature_flags_manager.previous_feature_flags()
+    let previous_feature_flags = feature_flags_manager
+      .previous_feature_flags()
       .map_err(|e| {
         log::warn!("failed to load or create previous feature flags: {e}");
         e

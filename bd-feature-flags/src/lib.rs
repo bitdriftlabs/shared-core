@@ -36,8 +36,7 @@ use bd_bonjson::Value;
 use bd_client_common::error::InvariantError;
 use bd_resilient_kv::KVStore;
 use std::collections::HashMap;
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[cfg(test)]
 #[path = "./feature_flags_test.rs"]
@@ -311,7 +310,7 @@ impl FeatureFlagsManager {
     }
   }
 
-  fn replace_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
+  fn replace_file(from: &Path, to: &Path) -> anyhow::Result<()> {
     if to.exists() {
       std::fs::remove_file(to)?;
     }
@@ -322,16 +321,30 @@ impl FeatureFlagsManager {
   }
 
   pub fn backup_previous(&self) -> anyhow::Result<()> {
-    self.replace_file(&self.current_path.with_extension("jrna"), &self.previous_path.with_extension("jrna"))?;
-    self.replace_file(&self.current_path.with_extension("jrnb"), &self.previous_path.with_extension("jrnb"))?;
+    Self::replace_file(
+      &self.current_path.with_extension("jrna"),
+      &self.previous_path.with_extension("jrna"),
+    )?;
+    Self::replace_file(
+      &self.current_path.with_extension("jrnb"),
+      &self.previous_path.with_extension("jrnb"),
+    )?;
     Ok(())
   }
 
   pub fn current_feature_flags(&self) -> anyhow::Result<FeatureFlags> {
-    FeatureFlags::new(&self.current_path, self.file_size, Some(self.high_water_mark_ratio))
+    FeatureFlags::new(
+      &self.current_path,
+      self.file_size,
+      Some(self.high_water_mark_ratio),
+    )
   }
 
   pub fn previous_feature_flags(&self) -> anyhow::Result<FeatureFlags> {
-    FeatureFlags::new(&self.previous_path, self.file_size, Some(self.high_water_mark_ratio))
+    FeatureFlags::new(
+      &self.previous_path,
+      self.file_size,
+      Some(self.high_water_mark_ratio),
+    )
   }
 }

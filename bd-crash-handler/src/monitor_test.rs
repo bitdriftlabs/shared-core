@@ -64,11 +64,8 @@ impl Setup {
       tracker.maybe_update_global_state(&global_state);
     }
 
-    let feature_flags = FeatureFlags::new(
-      directory.path().join("feature_flags"),
-      1024,
-      None,
-    ).unwrap();
+    let feature_flags =
+      FeatureFlags::new(directory.path().join("feature_flags"), 1024, None).unwrap();
 
     let monitor = Monitor::new(
       directory.path(),

@@ -362,7 +362,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     flag: &str,
     variant: Option<String>,
   ) -> Result<(), TrySendError> {
-    tx.try_send(AsyncLogBufferMessage::SetFeatureFlag(flag.to_string(), variant))
+    tx.try_send(AsyncLogBufferMessage::SetFeatureFlag(
+      flag.to_string(),
+      variant,
+    ))
   }
 
   pub fn flush_state(tx: &Sender<AsyncLogBufferMessage>, block: Block) -> Result<(), TrySendError> {
