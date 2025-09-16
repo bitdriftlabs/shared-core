@@ -117,6 +117,7 @@ pub fn with_thread_local_logger_guard<R>(f: impl FnOnce() -> R) -> R {
   })
 }
 
+#[derive(Clone, Copy)]
 pub enum Block {
   Yes,
   No,

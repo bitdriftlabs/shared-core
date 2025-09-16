@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::AsyncLogBufferMessage;
+use crate::Block;
 use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay};
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
@@ -50,7 +51,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
-use tokio::sync::oneshot::Sender;
 use tokio_test::assert_ok;
 
 struct Setup {
@@ -224,7 +224,7 @@ impl LogReplay for TestReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    _log_processing_completed_tx: Option<Sender<()>>,
+    _block: Block,
     _processing_pipeline: &mut ProcessingPipeline,
     _now: OffsetDateTime,
   ) -> anyhow::Result<Vec<Log>> {
@@ -249,7 +249,6 @@ fn log_line_size_is_computed_correctly() {
       fields: [("foo".into(), AnnotatedLogField::new_ootb("bar"))].into(),
       matching_fields: [].into(),
       attributes_overrides: None,
-      log_processing_completed_tx: None,
       capture_session: None,
     }
   }
@@ -628,16 +627,18 @@ async fn logs_resource_utilization_log() {
     assert_ok!(config_update_tx.blocking_send(config_update));
   });
 
-  let message = AsyncLogBufferMessage::EmitLog(LogLine {
-    log_level: log_level::DEBUG,
-    log_type: LogType::Resource,
-    message: StringOrBytes::String(String::new()),
-    fields: AnnotatedLogFields::new(),
-    matching_fields: AnnotatedLogFields::new(),
-    attributes_overrides: None,
-    log_processing_completed_tx: None,
-    capture_session: None,
-  });
+  let message = AsyncLogBufferMessage::EmitLog((
+    LogLine {
+      log_level: log_level::DEBUG,
+      log_type: LogType::Resource,
+      message: StringOrBytes::String(String::new()),
+      fields: AnnotatedLogFields::new(),
+      matching_fields: AnnotatedLogFields::new(),
+      attributes_overrides: None,
+      capture_session: None,
+    },
+    None,
+  ));
 
   sender.try_send(message).unwrap();
 
