@@ -200,7 +200,7 @@ impl LoggerBuilder {
       .ok();
     // We don't care if this fails.
     let previous_feature_flags = feature_flags_manager.previous_feature_flags().ok();
-    log::warn!("### Current feature flags size: {:?}", current_feature_flags.unwrap().as_hashmap().len());
+    log::warn!("### Current feature flags size: {:?}", feature_flags_manager.current_feature_flags().unwrap().as_hashmap().len());
 
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
