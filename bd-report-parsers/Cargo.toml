@@ -12,6 +12,7 @@ nom.workspace = true
 # defined separately to the workspace to allow compilation with
 # bazel/crate_universe within the sdk project
 flatbuffers   = "25.2.10"
+itertools.workspace = true
 memmap2.workspace = true
 
 [dev-dependencies]

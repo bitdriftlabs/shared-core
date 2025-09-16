@@ -1015,6 +1015,7 @@ dependencies = [
  "bd-proto",
  "flatbuffers",
  "insta",
+ "itertools 0.14.0",
  "memmap2",
  "nom 8.0.0",
  "nom-language",

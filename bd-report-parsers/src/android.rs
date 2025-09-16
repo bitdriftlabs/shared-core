@@ -9,6 +9,7 @@ use crate::input::MemmapView;
 use crate::{decimal, hexadecimal};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, WIPOffset};
+use itertools::Itertools;
 use nom::branch::alt;
 use nom::bytes::complete::{take_till, take_until, take_until1, take_while1};
 use nom::bytes::{tag, take};
@@ -104,7 +105,7 @@ fn build_threads<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
   let thread_offsets = thread_infos
     .iter()
     .map(|args| v_1::Thread::create(builder, args))
-    .collect::<Vec<_>>();
+    .collect_vec();
   let threads =
     (!thread_offsets.is_empty()).then(|| builder.create_vector(thread_offsets.as_slice()));
   // use offset in key to support multiple mappings of the same file
@@ -118,7 +119,7 @@ fn build_threads<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
       };
       v_1::BinaryImage::create(builder, &args)
     })
-    .collect::<Vec<_>>();
+    .collect_vec();
   Ok((
     remainder,
     Stacks {
