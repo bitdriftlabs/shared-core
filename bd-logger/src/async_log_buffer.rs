@@ -16,7 +16,7 @@ use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingConte
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::PreConfigBuffer;
-use crate::{internal_report, network};
+use crate::{Block, internal_report, network};
 use anyhow::anyhow;
 use bd_bounded_buffer::{Receiver, Sender, TrySendError, channel};
 use bd_buffer::BuffersWithAck;
@@ -56,7 +56,7 @@ const BLOCKING_FLUSH_TIMEOUT_SECONDS: Duration = Duration::from_secs(1);
 
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {
-  EmitLog(LogLine),
+  EmitLog((LogLine, Option<oneshot::Sender<()>>)),
   AddLogField(String, StringOrBytes<String, Vec<u8>>),
   RemoveLogField(String),
   FlushState(Option<bd_completion::Sender<()>>),
@@ -66,7 +66,7 @@ impl MemorySized for AsyncLogBufferMessage {
   fn size(&self) -> usize {
     size_of_val(self)
       + match self {
-        Self::EmitLog(log) => log.size(),
+        Self::EmitLog((log, _)) => log.size(),
         Self::AddLogField(key, value) => key.size() + value.size(),
         Self::RemoveLogField(field_name) => field_name.len(),
         Self::FlushState(sender) => size_of_val(sender),
@@ -97,10 +97,6 @@ pub struct LogLine {
   pub fields: AnnotatedLogFields,
   pub matching_fields: AnnotatedLogFields,
   pub attributes_overrides: Option<LogAttributesOverrides>,
-  /// Used to send a message when the log is processed. In this context, 'processed' means that the
-  /// log was written to either a pre-config buffer or one of the final ring buffers used by the
-  /// SDK. Neither one of those guarantees that the log is written to a disk.
-  pub log_processing_completed_tx: Option<oneshot::Sender<()>>,
 
   /// If set, indicates that the log should trigger a session capture. The provided value is an ID
   /// that helps identify why the session should be captured.
@@ -296,11 +292,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       fields,
       matching_fields,
       attributes_overrides,
-      log_processing_completed_tx: log_processing_completed_tx_option,
       capture_session,
     };
 
-    if let Err(e) = tx.try_send(AsyncLogBufferMessage::EmitLog(log)) {
+    if let Err(e) = tx.try_send(AsyncLogBufferMessage::EmitLog((
+      log,
+      log_processing_completed_tx_option,
+    ))) {
       log::debug!("enqueue_log: sending to channel failed: {e:?}");
 
       if matches!(&e, TrySendError::Closed) {
@@ -381,11 +379,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     Ok(())
   }
 
-  async fn process_all_logs(&mut self, log: LogLine) -> anyhow::Result<()> {
+  async fn process_all_logs(&mut self, log: LogLine, block: Block) -> anyhow::Result<()> {
     let mut logs = VecDeque::new();
     logs.push_back(log);
     while let Some(log) = logs.pop_front() {
-      let new_logs = self.process_log(log).await?;
+      let new_logs = self.process_log(log, block).await?;
       logs.extend(new_logs.into_iter().map(|log| {
         LogLine {
           log_level: log.log_level,
@@ -416,7 +414,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           // logs as well as cover completion under any generated logs, but this gets complicated
           // and is an extreme edge case so we ignore for now until proven it's an issue.
           attributes_overrides: None,
-          log_processing_completed_tx: None,
           capture_session: log.capture_session,
         }
       }));
@@ -424,7 +421,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     Ok(())
   }
 
-  async fn process_log(&mut self, log: LogLine) -> anyhow::Result<Vec<Log>> {
+  async fn process_log(&mut self, log: LogLine, block: Block) -> anyhow::Result<Vec<Log>> {
     // Prevent re-entrancy when we are evaluating the log metadata.
     let result = with_thread_local_logger_guard(|| {
       self
@@ -541,9 +538,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: log.capture_session,
         };
 
-        self
-          .write_log(processed_log, log.log_processing_completed_tx)
-          .await
+        self.write_log(processed_log, block).await
       },
       Err(e) => {
         // TODO(Augustyniak): Consider logging as error so that SDK customers can see these
@@ -554,11 +549,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  async fn write_log(
-    &mut self,
-    log: Log,
-    log_processing_completed_tx: Option<oneshot::Sender<()>>,
-  ) -> anyhow::Result<Vec<Log>> {
+  async fn write_log(&mut self, log: Log, block: Block) -> anyhow::Result<Vec<Log>> {
     let logs_to_inject = match &mut self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
         let result = uninitialized_logging_context
@@ -573,19 +564,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           anyhow::bail!("failed to push log to a pre-config buffer: {e}");
         }
 
-        if let Some(tx) = log_processing_completed_tx
-          && let Err(e) = tx.send(())
-        {
-          anyhow::bail!("failed to send log processing completion message: {e:?}");
-        }
-
         vec![]
       },
       LoggingState::Initialized(initialized_logging_context) => self
         .replayer
         .replay_log(
           log,
-          log_processing_completed_tx,
+          block,
           &mut initialized_logging_context.processing_pipeline,
           self.time_provider.now(),
         )
@@ -633,7 +618,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         .replayer
         .replay_log(
           log_line,
-          None,
+          Block::No,
           &mut initialized_logging_context.processing_pipeline,
           now,
         )
@@ -648,7 +633,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         .replayer
         .replay_log(
           log_line,
-          None,
+          Block::No,
           &mut initialized_logging_context.processing_pipeline,
           now,
         )
@@ -721,20 +706,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               fields: crash_log.fields,
               matching_fields: [].into(),
               attributes_overrides,
-              log_processing_completed_tx: None,
               // Always capture the session when we process a crash log.
               // TODO(snowp): Ideally we should include information like the report and client side
               // grouping here to help make smarter decisions during intent negotiation.
               capture_session: Some("crash_handler".to_string()),
             };
-            if let Err(e) = self.process_all_logs(log).await {
+            if let Err(e) = self.process_all_logs(log, Block::No).await {
               log::debug!("failed to process crash log: {e}");
             }
           }
         },
         Some(async_log_buffer_message) = self.communication_rx.recv() => {
           match async_log_buffer_message {
-            AsyncLogBufferMessage::EmitLog(mut log) => {
+            AsyncLogBufferMessage::EmitLog((mut log, log_processing_completed_tx)) => {
               for interceptor in &mut self.interceptors {
                 interceptor.process(
                   log.log_level,
@@ -745,8 +729,20 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 );
               }
 
-              if let Err(e) = self.process_all_logs(log).await {
+              if let Err(e) = self.process_all_logs(
+                log,
+                if log_processing_completed_tx.is_some() { Block::Yes } else { Block::No }
+              ).await {
                 log::debug!("failed to process all logs: {e}");
+              }
+
+              if let Some(tx) = log_processing_completed_tx {
+                handle_unexpected(
+                  tx.send(()).map_err(
+                    |()| anyhow!("failed to notify about log processing completion")
+                  ),
+                  ""
+                );
               }
             },
             AsyncLogBufferMessage::AddLogField(key, value) => {
@@ -831,7 +827,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           occurred_at,
           capture_session: None,
         },
-        None,
+        Block::No,
       )
       .await?;
 

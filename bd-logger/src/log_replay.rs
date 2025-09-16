@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::Block;
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::logging_state::{BufferProducers, ConfigUpdate, InitializedLoggingContextStats};
@@ -24,7 +25,6 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::oneshot;
 
 //
 // LogReplay
@@ -42,7 +42,7 @@ pub trait LogReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    log_processing_completed_tx: Option<oneshot::Sender<()>>,
+    block: Block,
     pipeline: &mut ProcessingPipeline,
     now: OffsetDateTime,
   ) -> anyhow::Result<Vec<Log>>;
@@ -59,13 +59,11 @@ impl LogReplay for LoggerReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    log_processing_completed_tx: Option<oneshot::Sender<()>>,
+    block: Block,
     pipeline: &mut ProcessingPipeline,
     now: OffsetDateTime,
   ) -> anyhow::Result<Vec<Log>> {
-    pipeline
-      .process_log(log, log_processing_completed_tx, now)
-      .await
+    pipeline.process_log(log, block, now).await
   }
 }
 
@@ -170,7 +168,7 @@ impl ProcessingPipeline {
   async fn process_log(
     &mut self,
     mut log: Log,
-    log_processing_completed_tx: Option<oneshot::Sender<()>>,
+    block: Block,
     now: OffsetDateTime,
   ) -> anyhow::Result<Vec<Log>> {
     self.stats.logs_received.inc();
@@ -261,20 +259,12 @@ impl ProcessingPipeline {
       matching_buffers.insert(extra_matching_buffer.into());
     }
 
-    // Check whether the caller is waiting for the log processing to complete. We call such logs
-    // "blocking".
-    let is_blocking = log_processing_completed_tx.is_some();
-
     // Force the persistence of workflows state to disk if log is blocking.
-    self.workflows_engine.maybe_persist(is_blocking).await;
+    self.workflows_engine.maybe_persist(block.into()).await;
 
-    if let Some(log_processing_completed_tx) = log_processing_completed_tx {
+    if block.into() {
       Self::finish_blocking_log_processing(flush_buffers_tx, flush_stats_trigger, matching_buffers)
         .await?;
-
-      log_processing_completed_tx
-        .send(())
-        .map_err(|e| anyhow::anyhow!("failed to send log processing completion signal: {e:?}"))?;
     }
 
     Ok(logs_to_inject)
