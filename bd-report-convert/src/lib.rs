@@ -15,8 +15,8 @@ use std::slice;
   dead_code,
   non_upper_case_globals
 )]
-mod bindings;
-use bindings::{Schema, bdrc_alloc_json, bdrc_json_free, bdrc_make_bin_from_json};
+mod generated;
+use generated::{Schema, bdrc_alloc_json, bdrc_json_free, bdrc_make_bin_from_json};
 
 pub fn bin_to_json(input_path: &str) -> anyhow::Result<String> {
   let data_path = CString::new(input_path)?;
