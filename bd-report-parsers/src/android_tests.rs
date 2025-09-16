@@ -100,7 +100,10 @@ fn native_frame_test() -> anyhow::Result<()> {
   );
 
   assert_eq!(Some("syscall"), frame.symbol_name());
-  assert_eq!(None, frame.image_id());
+  assert_eq!(
+    Some("/apex/com.android.runtime/lib64/bionic/libc.so"),
+    frame.image_id()
+  );
   Ok(())
 }
 

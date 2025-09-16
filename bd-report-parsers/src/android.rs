@@ -215,7 +215,7 @@ fn build_native_frame<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
     ),
     |(_, address, path, offset, symbol, build_id)| {
       let (symbol_name, symbol_offset) = symbol.unzip();
-      images.insert((path, offset), build_id.clone());
+      images.insert((path.clone(), offset), build_id.clone());
       let args = v_1::FrameArgs {
         type_: v_1::FrameType::AndroidNative,
         symbol_name: symbol_name.map(|name| builder.create_string(&name)),
@@ -224,7 +224,7 @@ fn build_native_frame<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
           .map(|off| address - off)
           .unwrap_or_default(),
         frame_address: address,
-        image_id: build_id.map(|id| builder.create_string(&id)),
+        image_id: Some(builder.create_string(&build_id.unwrap_or(path))),
         ..Default::default()
       };
       v_1::Frame::create(builder, &args)
