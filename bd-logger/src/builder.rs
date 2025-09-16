@@ -198,8 +198,14 @@ impl LoggerBuilder {
         e
       })
       .ok();
-    // We don't care if this fails.
-    let previous_feature_flags = feature_flags_manager.previous_feature_flags().ok();
+
+    let previous_feature_flags = feature_flags_manager.previous_feature_flags()
+      .map_err(|e| {
+        log::warn!("failed to load previous feature flags: {e}");
+        e
+      })
+      .ok();
+
     log::warn!("### Current feature flags size: {:?}", current_feature_flags.as_ref().map(|f| f.as_hashmap().len()));
     log::warn!("### Previous feature flags size: {:?}", previous_feature_flags.as_ref().map(|f| f.as_hashmap().len()));
 
