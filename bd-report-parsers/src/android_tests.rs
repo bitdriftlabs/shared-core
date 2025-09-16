@@ -14,6 +14,7 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   FrameType,
   Report,
   Thread,
+  Timestamp,
 };
 use flatbuffers::FlatBufferBuilder;
 use nom_language::error::VerboseError;
@@ -302,16 +303,10 @@ macro_rules! assert_parsed_anr_eq {
     };
     let mut device_info = DeviceMetricsArgs {
       model: Some(builder.create_string("Monaco")),
+      time: Some(&Timestamp::new(1756987272, 357156958)),
       ..Default::default()
     };
-    let mut timestamp = None;
-    match build_anr(
-      &mut builder,
-      &mut app_info,
-      &mut device_info,
-      &mut timestamp,
-      input,
-    ) {
+    match build_anr(&mut builder, &mut app_info, &mut device_info, input) {
       Ok((_, offset)) => {
         let report = get_table!(Report, builder, offset);
         insta::assert_debug_snapshot!(report);

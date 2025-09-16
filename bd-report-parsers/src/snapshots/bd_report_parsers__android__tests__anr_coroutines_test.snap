@@ -1,6 +1,6 @@
 ---
 source: bd-report-parsers/src/./android_tests.rs
-assertion_line: 213
+assertion_line: 385
 expression: report
 ---
 Report {
@@ -25,8 +25,8 @@ Report {
         DeviceMetrics {
             time: Some(
                 Timestamp {
-                    seconds: 1752740994,
-                    nanos: 997790143,
+                    seconds: 1756987272,
+                    nanos: 357156958,
                 },
             ),
             timezone: None,

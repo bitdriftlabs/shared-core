@@ -13,7 +13,6 @@ nom.workspace = true
 # bazel/crate_universe within the sdk project
 flatbuffers   = "25.2.10"
 memmap2.workspace = true
-time.workspace = true
 
 [dev-dependencies]
 insta.workspace = true

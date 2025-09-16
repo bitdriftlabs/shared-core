@@ -20,8 +20,6 @@ use nom::{AsChar, FindSubstring, IResult, Input, Parser};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
-use time::OffsetDateTime;
-use time::format_description::well_known::Iso8601;
 
 #[cfg(test)]
 #[path = "./android_tests.rs"]
@@ -57,10 +55,9 @@ pub fn build_anr<'a, 'fbb>(
   builder: &mut FlatBufferBuilder<'fbb>,
   app_info: &mut v_1::AppMetricsArgs<'fbb>,
   device_info: &mut v_1::DeviceMetricsArgs<'fbb>,
-  event_time: &'fbb mut Option<v_1::Timestamp>,
   input: MemmapView<'a>,
 ) -> IResult<MemmapView<'a>, WIPOffset<v_1::Report<'fbb>>, nom::error::Error<MemmapView<'a>>> {
-  let (remainder, (subject, (pid, timestamp), metrics, _attached_count, stacks)) = (
+  let (remainder, (subject, (pid, _timestamp), metrics, _attached_count, stacks)) = (
     subject_parser,
     process_start_parser,
     process_properties,
@@ -69,14 +66,6 @@ pub fn build_anr<'a, 'fbb>(
   )
     .parse(input)?;
 
-  *event_time = OffsetDateTime::parse(&timestamp.replace(' ', "T"), &Iso8601::DEFAULT)
-    .map(|stamp| {
-      v_1::Timestamp::new(
-        u64::try_from(stamp.unix_timestamp()).unwrap_or_default(),
-        stamp.nanosecond(),
-      )
-    })
-    .ok();
   if let Ok(pid) = u32::try_from(pid) {
     app_info.process_id = pid;
   }
@@ -85,9 +74,6 @@ pub fn build_anr<'a, 'fbb>(
     let abi = builder.create_string(abi);
     builder.create_vector(&[abi])
   });
-  if let Some(time) = event_time.as_ref() {
-    device_info.time = Some(time);
-  }
   let error_args = v_1::ErrorArgs {
     name: Some(builder.create_string(anr_name(subject.as_deref()))),
     reason: subject.map(|sub| builder.create_string(&sub)),
