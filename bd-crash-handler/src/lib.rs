@@ -21,8 +21,10 @@ mod tests;
 pub mod config_writer;
 pub mod global_state;
 
+use bd_artifact_upload::SnappedFeatureFlag;
 use bd_client_common::debug_check_lifecycle_less_than;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
+use bd_feature_flags::FeatureFlags;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
@@ -97,6 +99,7 @@ pub struct Monitor {
   report_directory: PathBuf,
   previous_run_global_state: LogFields,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
+  feature_flags: FeatureFlags,
 }
 
 impl Monitor {
@@ -106,6 +109,7 @@ impl Monitor {
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
     previous_session_id: Option<String>,
     init_lifecycle: &InitLifecycleState,
+    feature_flags: FeatureFlags,
   ) -> Self {
     debug_check_lifecycle_less_than!(
       init_lifecycle,
@@ -120,6 +124,7 @@ impl Monitor {
       artifact_client,
       previous_session_id,
       previous_run_global_state,
+      feature_flags,
     }
   }
 
@@ -220,6 +225,13 @@ impl Monitor {
     // TODO(snowp): Add smarter handling to avoid duplicate reporting.
     // TODO(snowp): Consider only reporting one of the pending reports if there are multiple.
 
+    let feature_flags: Vec<SnappedFeatureFlag> = self
+      .feature_flags
+      .as_hashmap()
+      .into_iter()
+      .map(|(name, flag)| SnappedFeatureFlag::new(name, flag.variant, flag.timestamp))
+      .collect();
+
     let mut logs = vec![];
 
     while let Ok(Some(entry)) = dir.next_entry().await {
@@ -279,7 +291,7 @@ impl Monitor {
           state_fields.clone(),
           timestamp,
           self.previous_session_id.clone().unwrap_or_default(),
-          vec![], // TODO add in feature flags here
+          feature_flags.clone(),
         ) else {
           // TODO(snowp): Should we fall back to passing it via a field at this point?
           log::warn!(

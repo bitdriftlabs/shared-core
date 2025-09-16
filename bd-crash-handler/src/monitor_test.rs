@@ -8,6 +8,7 @@
 use crate::{Monitor, global_state};
 use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_device::Store;
+use bd_feature_flags::FeatureFlags;
 use bd_log_primitives::{AnnotatedLogFields, LogFields};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   AppBuildNumber,
@@ -63,12 +64,19 @@ impl Setup {
       tracker.maybe_update_global_state(&global_state);
     }
 
+    let feature_flags = FeatureFlags::new(
+      directory.path().join("feature_flags"),
+      1024,
+      None,
+    ).unwrap();
+
     let monitor = Monitor::new(
       directory.path(),
       store,
       upload_client.clone(),
       Some("previous_session_id".to_string()),
       &InitLifecycleState::new(),
+      feature_flags,
     );
 
     Self {

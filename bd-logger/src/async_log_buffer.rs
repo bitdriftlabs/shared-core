@@ -25,6 +25,7 @@ use bd_client_common::maybe_await_map;
 use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_error_reporter::reporter::{handle_unexpected, handle_unexpected_error_with_details};
+use bd_feature_flags::FeatureFlags;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
@@ -41,6 +42,7 @@ use bd_log_primitives::{
 };
 use bd_network_quality::NetworkQualityProvider;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use bd_proto::protos::client::feature_flag;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
@@ -153,6 +155,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   session_strategy: Arc<bd_session::Strategy>,
   metadata_collector: MetadataCollector,
   resource_utilization_reporter: bd_resource_utilization::Reporter,
+  feature_flags: FeatureFlags,
 
   session_replay_recorder: bd_session_replay::Recorder,
   session_replay_capture_screenshot_handler: CaptureScreenshotHandler,
@@ -190,6 +193,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     store: Arc<Store>,
     time_provider: Arc<dyn TimeProvider>,
     lifecycle_state: InitLifecycleState,
+    feature_flags: FeatureFlags,
   ) -> (Self, Sender<AsyncLogBufferMessage>) {
     let (async_log_buffer_communication_tx, async_log_buffer_communication_rx) = channel(
       uninitialized_logging_context
@@ -258,6 +262,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         ),
         time_provider,
         lifecycle_state,
+        feature_flags,
       },
       async_log_buffer_communication_tx,
     )
@@ -759,9 +764,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               self.metadata_collector.remove_field(&field_name);
             },
             AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
-              // TODO: kstenerud
-              log::warn!("TODO: Implement SetFeatureFlag ({flag:?} {variant:?}) ");
-              // self.metadata_collector.set_feature_flag(flag, variant);
+              self.feature_flags.set_flag(&flag, variant.as_deref());
             },
             AsyncLogBufferMessage::FlushState(completion_tx) => {
               let (sender, receiver) = bd_completion::Sender::new();

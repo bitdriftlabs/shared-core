@@ -27,12 +27,14 @@ use bd_client_stats::stats::{
 use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
+use bd_feature_flags::FeatureFlagsManager;
 use bd_internal_logging::NoopLogger;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
 use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_time::SystemTimeProvider;
 use futures_util::{Future, try_join};
+use protobuf::plugin::code_generator_response::Feature;
 use std::pin::Pin;
 use std::sync::Arc;
 use time::Duration;
@@ -211,6 +213,11 @@ impl LoggerBuilder {
 
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
+    let feature_flags_manager = FeatureFlagsManager::new(
+      self.params.sdk_directory.clone(),
+      1024 * 1024,
+      0.8,
+    );
 
     let logger = Logger::new(
       maybe_shutdown_trigger,

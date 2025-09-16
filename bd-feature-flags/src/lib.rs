@@ -37,6 +37,7 @@ use bd_client_common::error::InvariantError;
 use bd_resilient_kv::KVStore;
 use std::collections::HashMap;
 use std::path::Path;
+use std::path::PathBuf;
 
 #[cfg(test)]
 #[path = "./feature_flags_test.rs"]
@@ -289,5 +290,42 @@ impl FeatureFlags {
       }
     }
     flags
+  }
+}
+
+pub struct FeatureFlagsManager {
+  current_path: PathBuf,
+  previous_path: PathBuf,
+  file_size: usize,
+  high_water_mark_ratio: f32,
+}
+
+impl FeatureFlagsManager {
+  #[must_use]
+  pub fn new(sdk_path: &Path, file_size: usize, high_water_mark_ratio: f32) -> Self {
+    Self {
+      current_path: sdk_path.join("feature_flags_current"),
+      previous_path: sdk_path.join("feature_flags_previous"),
+      file_size,
+      high_water_mark_ratio,
+    }
+  }
+
+  pub fn backup_previous(&self) -> anyhow::Result<()> {
+    if self.previous_path.exists() {
+      std::fs::remove_file(&self.previous_path)?;
+    }
+    if self.current_path.exists() {
+      std::fs::rename(&self.current_path, &self.previous_path)?;
+    }
+    Ok(())
+  }
+
+  pub fn current_feature_flags(&self) -> anyhow::Result<FeatureFlags> {
+    FeatureFlags::new(&self.current_path, self.file_size, Some(self.high_water_mark_ratio))
+  }
+
+  pub fn previous_feature_flags(&self) -> anyhow::Result<FeatureFlags> {
+    FeatureFlags::new(&self.previous_path, self.file_size, Some(self.high_water_mark_ratio))
   }
 }
