@@ -50,7 +50,7 @@ use bd_workflows::test::MakeConfig;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
-use time::ext::NumericalDuration;
+use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio_test::assert_ok;
 
 struct Setup {
@@ -224,7 +224,7 @@ impl LogReplay for TestReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    _block: Block,
+    _block: bool,
     _processing_pipeline: &mut ProcessingPipeline,
     _now: OffsetDateTime,
   ) -> anyhow::Result<Vec<Log>> {
@@ -380,7 +380,7 @@ async fn logs_are_replayed_in_order() {
         [].into(),
         [].into(),
         None,
-        false,
+        Block::No,
         None,
       );
 
@@ -451,7 +451,7 @@ fn enqueuing_log_does_not_block() {
     [].into(),
     [].into(),
     None,
-    false,
+    Block::No,
     None,
   );
 
@@ -495,7 +495,7 @@ fn enqueuing_log_blocks() {
     [].into(),
     [].into(),
     None,
-    true,
+    Block::Yes(15.std_seconds()),
     None,
   );
 

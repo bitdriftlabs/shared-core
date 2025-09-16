@@ -35,6 +35,7 @@ use parking_lot::Mutex;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{oneshot, watch};
@@ -119,14 +120,14 @@ pub fn with_thread_local_logger_guard<R>(f: impl FnOnce() -> R) -> R {
 
 #[derive(Clone, Copy)]
 pub enum Block {
-  Yes,
+  Yes(Duration),
   No,
 }
 
 impl From<Block> for bool {
   fn from(block: Block) -> Self {
     match block {
-      Block::Yes => true,
+      Block::Yes(_) => true,
       Block::No => false,
     }
   }
@@ -173,7 +174,7 @@ impl LoggerHandle {
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
     attributes_overrides: Option<LogAttributesOverrides>,
-    blocking: Block,
+    block: Block,
     capture_session: CaptureSession,
   ) {
     LOGGER_GUARD.with(|cell| {
@@ -189,7 +190,7 @@ impl LoggerHandle {
           fields,
           matching_fields,
           attributes_overrides,
-          blocking.into(),
+          block,
           capture_session.0,
         );
 
@@ -416,9 +417,9 @@ impl LoggerHandle {
     });
   }
 
-  pub fn flush_state(&self, blocking: bool) {
+  pub fn flush_state(&self, block: Block) {
     log::debug!("state flushing initiated");
-    let result = AsyncLogBuffer::<LoggerReplay>::flush_state(&self.tx, blocking);
+    let result = AsyncLogBuffer::<LoggerReplay>::flush_state(&self.tx, block);
     self.stats.state_flushing_counters.record(&result);
   }
 

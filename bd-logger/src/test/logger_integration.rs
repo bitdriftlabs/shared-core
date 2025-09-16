@@ -740,7 +740,7 @@ fn flush_state() {
   ));
   assert!(maybe_nack.is_none());
 
-  setup.logger_handle.flush_state(false);
+  setup.logger_handle.flush_state(Block::No);
 
   // File should not exist immediately after flush_state call.
   assert!(!setup.pending_aggregation_index_file_path().exists());
@@ -776,7 +776,9 @@ fn blocking_flush_state() {
     None,
   );
 
-  setup.logger_handle.flush_state(true);
+  setup
+    .logger_handle
+    .flush_state(Block::Yes(15.std_seconds()));
 
   assert!(setup.workflows_state_file_path().exists());
   assert!(setup.pending_aggregation_index_file_path().exists());
@@ -786,7 +788,7 @@ fn blocking_flush_state() {
 fn flush_state_uninitialized() {
   let setup = Setup::new();
 
-  setup.logger_handle.flush_state(false);
+  setup.logger_handle.flush_state(Block::No);
 
   // File should not exist immediately after flush_state call.
   assert!(!setup.pending_aggregation_index_file_path().exists());
@@ -799,7 +801,9 @@ fn flush_state_uninitialized() {
 fn blocking_flush_state_uninitialized() {
   let setup = Setup::new();
 
-  setup.logger_handle.flush_state(true);
+  setup
+    .logger_handle
+    .flush_state(Block::Yes(15.std_seconds()));
 
   assert!(!setup.workflows_state_file_path().exists());
   assert!(setup.pending_aggregation_index_file_path().exists());
