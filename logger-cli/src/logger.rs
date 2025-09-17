@@ -62,7 +62,7 @@ impl LoggerHolder {
     });
   }
 
-  pub fn process_crash_reports(&mut self) {
+  pub fn process_crash_reports(&self) {
     let logger = self.logger.clone();
     tokio::task::spawn_blocking(move || {
       logger
