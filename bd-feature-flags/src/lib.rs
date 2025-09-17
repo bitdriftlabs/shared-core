@@ -232,6 +232,25 @@ impl FeatureFlags {
     Ok(())
   }
 
+  /// Removes a feature flag.
+  ///
+  /// # Arguments
+  ///
+  /// * `key` - The name of the feature flag to remove
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(())` on success, or an error if the flag cannot be removed.
+  ///
+  /// # Errors
+  ///
+  /// This function will return an error if:
+  /// - The flag cannot be removed due to I/O errors, insufficient disk space, or permission issues
+  pub fn remove(&mut self, key: &str) -> anyhow::Result<()> {
+    self.flags_store.remove(key)?;
+    Ok(())
+  }
+
   /// Removes all feature flags from persistent storage.
   ///
   /// This method deletes all feature flags, clearing the persistent storage.

@@ -58,6 +58,7 @@ pub enum AsyncLogBufferMessage {
   AddLogField(String, StringOrBytes<String, Vec<u8>>),
   RemoveLogField(String),
   SetFeatureFlag(String, Option<String>),
+  RemoveFeatureFlag(String),
   FlushState(Option<bd_completion::Sender<()>>),
 }
 
@@ -69,6 +70,7 @@ impl MemorySized for AsyncLogBufferMessage {
         Self::AddLogField(key, value) => key.size() + value.size(),
         Self::RemoveLogField(field_name) => field_name.len(),
         Self::SetFeatureFlag(flag, variant) => flag.len() + variant.as_ref().map_or(0, String::len),
+        Self::RemoveFeatureFlag(flag) => flag.len(),
         Self::FlushState(sender) => size_of_val(sender),
       }
   }
@@ -363,6 +365,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     variant: Option<String>,
   ) -> Result<(), TrySendError> {
     tx.try_send(AsyncLogBufferMessage::SetFeatureFlag(flag, variant))
+  }
+
+  pub fn remove_feature_flag(
+    tx: &Sender<AsyncLogBufferMessage>,
+    flag: String,
+  ) -> Result<(), TrySendError> {
+    tx.try_send(AsyncLogBufferMessage::RemoveFeatureFlag(flag))
   }
 
   pub fn flush_state(tx: &Sender<AsyncLogBufferMessage>, block: Block) -> Result<(), TrySendError> {
@@ -775,6 +784,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               if let Some(feature_flags) = &mut current_feature_flags {
                 feature_flags.set(&flag, variant.as_deref()).unwrap_or_else(|e| {
                   log::warn!("failed to set feature flag ({flag:?}): {e}");
+                });
+              }
+            },
+            AsyncLogBufferMessage::RemoveFeatureFlag(flag) => {
+              if let Some(feature_flags) = &mut current_feature_flags {
+                feature_flags.remove(&flag).unwrap_or_else(|e| {
+                  log::warn!("failed to remove feature flag ({flag:?}): {e}");
                 });
               }
             },

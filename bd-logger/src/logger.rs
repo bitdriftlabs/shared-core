@@ -427,7 +427,25 @@ impl LoggerHandle {
       } else {
         warn_every!(
           15.seconds(),
-          "failed to set {:?} feature flag, adding log fields from within a field provider is not \
+          "failed to set {:?} feature flag, setting flags from within a field provider is not \
+           allowed",
+          flag
+        );
+      }
+    });
+  }
+
+  pub fn remove_feature_flag(&self, flag: String) {
+    LOGGER_GUARD.with(|cell| {
+      if cell.try_borrow().is_ok() {
+        let result = AsyncLogBuffer::<LoggerReplay>::remove_feature_flag(&self.tx, flag);
+        if let Err(e) = result {
+          log::warn!("failed to remove feature flag: {e:?}");
+        }
+      } else {
+        warn_every!(
+          15.seconds(),
+          "failed to remove {:?} feature flag, removing flags from within a field provider is not \
            allowed",
           flag
         );
