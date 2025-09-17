@@ -25,7 +25,7 @@ use bd_client_common::maybe_await_map;
 use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_error_reporter::reporter::{handle_unexpected, handle_unexpected_error_with_details};
-use bd_feature_flags::FeatureFlags;
+use bd_feature_flags::FeatureFlagsBuilder;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
@@ -154,7 +154,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   session_strategy: Arc<bd_session::Strategy>,
   metadata_collector: MetadataCollector,
   resource_utilization_reporter: bd_resource_utilization::Reporter,
-  feature_flags: Option<FeatureFlags>,
+  feature_flags_builder: FeatureFlagsBuilder,
 
   session_replay_recorder: bd_session_replay::Recorder,
   session_replay_capture_screenshot_handler: CaptureScreenshotHandler,
@@ -192,7 +192,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     store: Arc<Store>,
     time_provider: Arc<dyn TimeProvider>,
     lifecycle_state: InitLifecycleState,
-    feature_flags: Option<FeatureFlags>,
+    feature_flags_builder: FeatureFlagsBuilder,
   ) -> (Self, Sender<AsyncLogBufferMessage>) {
     let (async_log_buffer_communication_tx, async_log_buffer_communication_rx) = channel(
       uninitialized_logging_context
@@ -261,7 +261,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         ),
         time_provider,
         lifecycle_state,
-        feature_flags,
+        feature_flags_builder,
       },
       async_log_buffer_communication_tx,
     )
@@ -359,13 +359,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
   pub fn set_feature_flag(
     tx: &Sender<AsyncLogBufferMessage>,
-    flag: &str,
+    flag: String,
     variant: Option<String>,
   ) -> Result<(), TrySendError> {
-    tx.try_send(AsyncLogBufferMessage::SetFeatureFlag(
-      flag.to_string(),
-      variant,
-    ))
+    tx.try_send(AsyncLogBufferMessage::SetFeatureFlag(flag, variant))
   }
 
   pub fn flush_state(tx: &Sender<AsyncLogBufferMessage>, block: Block) -> Result<(), TrySendError> {
@@ -678,6 +675,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // stored in pre-config log buffer are guaranteed to be replayed before
     // the async log buffer goes back to processing incoming logs.
 
+    let mut current_feature_flags = self
+      .feature_flags_builder
+      .current_feature_flags()
+      .inspect_err(|e| {
+        // This should never fail unless there's a serious filesystem issue.
+        log::warn!("failed to load or create current feature flags: {e}");
+      })
+      .ok();
+
     let local_shutdown = shutdown.cancelled();
     tokio::pin!(local_shutdown);
     let mut self_shutdown = self.shutdown_trigger_handle.make_shutdown();
@@ -766,7 +772,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               self.metadata_collector.remove_field(&field_name);
             },
             AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
-              if let Some(feature_flags) = &mut self.feature_flags {
+              if let Some(feature_flags) = &mut current_feature_flags {
                 feature_flags.set(&flag, variant.as_deref()).unwrap_or_else(|e| {
                   log::warn!("failed to set feature flag ({flag:?}): {e}");
                 });

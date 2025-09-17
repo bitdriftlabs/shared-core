@@ -13,6 +13,7 @@ tempfile.workspace   = true
 
 [dependencies]
 anyhow.workspace = true
+log.workspace    = true
 bd-bonjson = { path = "../bd-bonjson" }
 bd-client-common = { path = "../bd-client-common" }
 bd-resilient-kv = { path = "../bd-resilient-kv" }

@@ -292,14 +292,16 @@ impl FeatureFlags {
   }
 }
 
-pub struct FeatureFlagsManager {
+/// Builds FeatureFlags objects, and manages on-disk data for current and previous runs.
+#[derive(Clone)]
+pub struct FeatureFlagsBuilder {
   current_path: PathBuf,
   previous_path: PathBuf,
   file_size: usize,
   high_water_mark_ratio: f32,
 }
 
-impl FeatureFlagsManager {
+impl FeatureFlagsBuilder {
   #[must_use]
   pub fn new(sdk_path: &Path, file_size: usize, high_water_mark_ratio: f32) -> Self {
     Self {
@@ -310,26 +312,41 @@ impl FeatureFlagsManager {
     }
   }
 
-  fn replace_file(from: &Path, to: &Path) -> anyhow::Result<()> {
-    if to.exists() {
-      std::fs::remove_file(to)?;
+  fn replace_file(from: &Path, to: &Path) {
+    // These should never fail unless there's a serious filesystem issue.
+    match std::fs::remove_file(to) {
+      Ok(()) => {},
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+      Err(e) => {
+        log::warn!("failed to remove existing file {}: {e}", to.display());
+      },
     }
-    if from.exists() {
-      std::fs::rename(from, to)?;
+
+    match std::fs::rename(from, to) {
+      Ok(()) => {},
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+      Err(e) => {
+        log::warn!(
+          "failed to rename file {} to {}: {e}",
+          from.display(),
+          to.display()
+        );
+      },
     }
-    Ok(())
   }
 
-  pub fn backup_previous(&self) -> anyhow::Result<()> {
+  /// Backup the current feature flags.
+  /// This should be called only once, on relaunch, before getting current or previous feature
+  /// flags.
+  pub fn backup_previous(&self) {
     Self::replace_file(
       &self.current_path.with_extension("jrna"),
       &self.previous_path.with_extension("jrna"),
-    )?;
+    );
     Self::replace_file(
       &self.current_path.with_extension("jrnb"),
       &self.previous_path.with_extension("jrnb"),
-    )?;
-    Ok(())
+    );
   }
 
   pub fn current_feature_flags(&self) -> anyhow::Result<FeatureFlags> {

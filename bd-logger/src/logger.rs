@@ -417,12 +417,12 @@ impl LoggerHandle {
     });
   }
 
-  pub fn set_feature_flag(&self, flag: &str, variant: Option<String>) {
+  pub fn set_feature_flag(&self, flag: String, variant: Option<String>) {
     LOGGER_GUARD.with(|cell| {
       if cell.try_borrow().is_ok() {
         let result = AsyncLogBuffer::<LoggerReplay>::set_feature_flag(&self.tx, flag, variant);
         if let Err(e) = result {
-          log::warn!("failed to set {flag:?} feature flag: {e:?}");
+          log::warn!("failed to set feature flag: {e:?}");
         }
       } else {
         warn_every!(

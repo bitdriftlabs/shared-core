@@ -27,7 +27,7 @@ use bd_client_stats::stats::{
 use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
-use bd_feature_flags::FeatureFlagsManager;
+use bd_feature_flags::FeatureFlagsBuilder;
 use bd_internal_logging::NoopLogger;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
 use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
@@ -181,32 +181,13 @@ impl LoggerBuilder {
 
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
 
-    let feature_flags_manager = FeatureFlagsManager::new(
+    let feature_flags_builder = FeatureFlagsBuilder::new(
       &self.params.sdk_directory,
       self.params.feature_flags_file_size_bytes,
       self.params.feature_flags_high_watermark,
     );
-    // This will only fail if there are serious issues with the filesystem.
-    feature_flags_manager.backup_previous().unwrap_or_else(|e| {
-      log::warn!("failed to backup previous feature flags store: {e}");
-    });
-    // This creates the file if needed, so it will only fail if there are serious issues with the
-    // filesystem.
-    let current_feature_flags = feature_flags_manager
-      .current_feature_flags()
-      .map_err(|e| {
-        log::warn!("failed to load or create current feature flags: {e}");
-        e
-      })
-      .ok();
-
-    let previous_feature_flags = feature_flags_manager
-      .previous_feature_flags()
-      .map_err(|e| {
-        log::warn!("failed to load or create previous feature flags: {e}");
-        e
-      })
-      .ok();
+    // This is only a delete and rename, so it's fast
+    feature_flags_builder.backup_previous();
 
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
@@ -236,7 +217,7 @@ impl LoggerBuilder {
       self.params.store.clone(),
       Arc::new(SystemTimeProvider),
       init_lifecycle.clone(),
-      current_feature_flags,
+      feature_flags_builder.clone(),
     );
 
     let data_upload_tx_clone = data_upload_tx.clone();
@@ -285,7 +266,7 @@ impl LoggerBuilder {
         Arc::new(artifact_client),
         self.params.session_strategy.previous_process_session_id(),
         &init_lifecycle,
-        previous_feature_flags,
+        feature_flags_builder,
       );
 
       // Building the crash monitor requires artifact uploader and knowing
