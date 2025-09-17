@@ -58,7 +58,6 @@ pub async fn start(
   let server_addr = (IpAddr::V6(Ipv6Addr::LOCALHOST), port);
   let mut listener = tarpc::serde_transport::tcp::listen(&server_addr, Json::default).await?;
 
-  log::info!("listening on {server_addr:?}");
   listener.config_mut().max_frame_length(usize::MAX);
   listener
       .filter_map(|r| future::ready(r.ok())) // Ignore accept errors.
