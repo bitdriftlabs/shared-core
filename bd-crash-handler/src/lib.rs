@@ -223,6 +223,7 @@ impl Monitor {
     let mut logs = vec![];
 
     while let Ok(Some(entry)) = dir.next_entry().await {
+      log::debug!("Considering report file: {}", entry.path().display());
       let path = entry.path();
       let ext = path.extension().and_then(OsStr::to_str);
       if path.is_file() && ext == Some("cap") {
