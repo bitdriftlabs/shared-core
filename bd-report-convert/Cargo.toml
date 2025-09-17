@@ -12,6 +12,7 @@ doctest = false
 anyhow.workspace = true
 
 [build-dependencies]
+bindgen.version      = "0.71.0"
 cc.workspace         = true
 cmake.workspace      = true
 flatc-rust.workspace = true

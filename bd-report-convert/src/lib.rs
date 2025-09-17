@@ -6,23 +6,22 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use anyhow::anyhow;
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{CStr, CString};
 use std::slice;
 
-unsafe extern "C" {
-  fn bdrc_make_bin_from_json(
-    schema_data: *const u8,
-    json_data_path: *const c_char,
-    length_or_err: *mut i32,
-  ) -> *const u8;
-
-  fn bdrc_alloc_json(bin_data_path: *const c_char) -> *const c_char;
-  fn bdrc_json_free(json: *const c_char);
-}
+#[allow(
+  non_camel_case_types,
+  non_snake_case,
+  non_upper_case_globals,
+  clippy::unreadable_literal,
+  dead_code
+)]
+mod generated;
+use generated::{Schema, bdrc_alloc_json, bdrc_json_free, bdrc_make_bin_from_json};
 
 pub fn bin_to_json(input_path: &str) -> anyhow::Result<String> {
   let data_path = CString::new(input_path)?;
-  let text = unsafe { bdrc_alloc_json(data_path.as_ptr()) };
+  let text = unsafe { bdrc_alloc_json(data_path.as_c_str().as_ptr()) };
   let text_ptr = unsafe { CStr::from_ptr(text) };
 
   let output = text_ptr.to_str().map(ToOwned::to_owned);
@@ -33,15 +32,36 @@ pub fn bin_to_json(input_path: &str) -> anyhow::Result<String> {
 }
 
 pub fn json_to_bin<'a>(input_path: &str) -> anyhow::Result<&'a [u8]> {
-  let schema_data = concat!(
-    include_str!("../../api/src/bitdrift_public/fbs/issue-reporting/v1/report.fbs"),
-    "\0"
-  );
+  let owned_schemas = &[
+    (
+      CString::new(include_str!(
+        "../../api/src/bitdrift_public/fbs/common/v1/common.fbs"
+      ))
+      .unwrap(),
+      CString::new("common.fbs").unwrap(),
+    ),
+    (
+      CString::new(include_str!(
+        "../../api/src/bitdrift_public/fbs/issue-reporting/v1/report.fbs"
+      ))
+      .unwrap(),
+      CString::new("report.fbs").unwrap(),
+    ),
+  ];
+  let schemas = owned_schemas
+    .iter()
+    .map(|(s, n)| Schema {
+      data: s.as_c_str().as_ptr(),
+      path: n.as_c_str().as_ptr(),
+    })
+    .collect::<Vec<_>>();
+
   let data_path = CString::new(input_path)?;
   let mut length_or_err: i32 = 0;
   let buf = unsafe {
     bdrc_make_bin_from_json(
-      schema_data.as_bytes().as_ptr(),
+      schemas.as_ptr(),
+      schemas.len(),
       data_path.as_ptr(),
       &raw mut length_or_err,
     )

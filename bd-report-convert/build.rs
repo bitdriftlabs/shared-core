@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const FBS: &[&str] = &[
   "../api/src/bitdrift_public/fbs/common/v1/common.fbs",
@@ -39,9 +39,29 @@ pub fn main() {
   println!("cargo:rustc-link-lib=static=flatbuffers");
 
   println!("cargo:rerun-if-changed=src/glue.cpp");
+  println!("cargo:rerun-if-changed=src/glue.h");
+
+
+  if std::env::var("SKIP_PROTO_GEN").is_err() {
+    let bindings = bindgen::Builder::default()
+        .header("src/glue.h")
+        // Tell cargo to invalidate the built crate whenever any of the
+        // included header files changed.
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+        .generate()
+        .expect("Unable to generate bindings");
+
+    let out_path = PathBuf::from("src/generated");
+    let _ = std::fs::create_dir_all(&out_path);
+    bindings
+      .write_to_file(out_path.join("mod.rs"))
+      .expect("Couldn't write bindings!");
+  }
+
   cc::Build::new()
     .cpp(true)
     .file("src/glue.cpp")
+    .include("src/glue.h")
     .include("../thirdparty/flatbuffers/include")
     .std("c++17")
     .compile("bdrc");
