@@ -150,7 +150,6 @@ where
   F: AsyncFnOnce(RemoteClient) -> anyhow::Result<()>,
 {
   let addr = format!("{}:{}", args.host, args.port);
-  log::info!("connecting to server at {addr:?}");
   let mut transport = tarpc::serde_transport::tcp::connect(addr, Json::default);
   transport.config_mut().max_frame_length(usize::MAX);
   let logger = RemoteClient::new(client::Config::default(), transport.await?).spawn();
