@@ -32,6 +32,7 @@ members = [
   "bd-proto",
   "bd-proto-util",
   "bd-report-convert",
+  "bd-report-parsers",
   "bd-report-writer",
   "bd-report-writer-tests",
   "bd-resilient-kv",
@@ -95,6 +96,7 @@ hyper-rustls = { version = "0.27.7", default-features = false, features = ["http
 ahash                 = { version = "0.8.12", features = ["serde"] }
 hyper-util            = { version = "0.1.16", features = ["client", "client-legacy"] }
 intrusive-collections = "0.9.7"
+insta                 = "1.43.1"
 itertools             = "0.14.0"
 jni                   = "0.21.1"
 libfuzzer-sys         = "0.4.10"
@@ -102,6 +104,8 @@ log                   = "0.4.28"
 matches               = "0.1.10"
 memmap2               = "0.9.8"
 mockall               = "0.13.1"
+nom                   = "8.0.0"
+nom-language          = "0.1.0"
 notify                = "8.2.0"
 parameterized         = "2.0.0"
 parking_lot           = "0.12.4"
@@ -137,7 +141,7 @@ tempfile          = "3.21.0"
 termcolor         = "1.4.1"
 thiserror         = "2.0.16"
 tikv-jemalloc-ctl = "0.6.0"
-time              = { version = "0.3.43", features = ["serde-well-known", "macros"] }
+time              = { version = "0.3.43", features = ["serde-well-known", "macros", "parsing"] }
 tokio             = { version = "1.47.1", features = ["full", "test-util"] }
 tokio-stream      = "0.1.17"
 tokio-test        = "0.4.4"
