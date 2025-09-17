@@ -292,7 +292,7 @@ impl FeatureFlags {
   }
 }
 
-/// Builds FeatureFlags objects, and manages on-disk data for current and previous runs.
+/// Builds `FeatureFlags` objects, and manages on-disk data for current and previous runs.
 #[derive(Clone)]
 pub struct FeatureFlagsBuilder {
   current_path: PathBuf,
