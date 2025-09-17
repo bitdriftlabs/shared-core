@@ -67,13 +67,12 @@ impl Setup {
     let feature_flags_builder =
       FeatureFlagsBuilder::new(&directory.path().join("feature_flags"), 1024, 0.8);
 
-    let init_lifecycle = InitLifecycleState::default();
     let monitor = Monitor::new(
       directory.path(),
       store,
       upload_client.clone(),
-      None,
-      &init_lifecycle,
+      Some("previous_session_id".to_string()),
+      &InitLifecycleState::new(),
       feature_flags_builder,
     );
 
