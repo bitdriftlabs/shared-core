@@ -57,6 +57,8 @@ pub async fn start(
 
   let server_addr = (IpAddr::V6(Ipv6Addr::LOCALHOST), port);
   let mut listener = tarpc::serde_transport::tcp::listen(&server_addr, Json::default).await?;
+
+  log::info!("listening on {server_addr:?}");
   listener.config_mut().max_frame_length(usize::MAX);
   listener
       .filter_map(|r| future::ready(r.ok())) // Ignore accept errors.
@@ -114,10 +116,8 @@ impl Remote for Server {
   }
 
   async fn process_crash_reports(self, _: ::tarpc::context::Context) {
-    if let Some(logger) = &mut *LOGGER.lock()
-      && let Err(e) = logger.process_crash_reports()
-    {
-      log::error!("failed to process reports: {e}");
+    if let Some(logger) = &mut *LOGGER.lock() {
+      logger.process_crash_reports();
     }
   }
 
