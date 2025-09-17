@@ -64,6 +64,9 @@ impl LoggerHolder {
 
   pub fn process_crash_reports(&self) {
     let logger = self.logger.clone();
+
+    // To work around the fact that process_crash_reports calls blocking_recv() we dispatch to the
+    // blocking thread pool.
     tokio::task::spawn_blocking(move || {
       logger
         .lock()
