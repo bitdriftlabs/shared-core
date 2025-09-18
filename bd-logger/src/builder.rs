@@ -186,8 +186,6 @@ impl LoggerBuilder {
       self.params.feature_flags_file_size_bytes,
       self.params.feature_flags_high_watermark,
     );
-    // This is only a delete and rename, so it's fast
-    feature_flags_builder.backup_previous();
 
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
@@ -250,6 +248,7 @@ impl LoggerBuilder {
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
       init_lifecycle.set(bd_client_common::init_lifecycle::InitLifecycle::RuntimeLoaded);
+      feature_flags_builder.backup_previous();
 
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),

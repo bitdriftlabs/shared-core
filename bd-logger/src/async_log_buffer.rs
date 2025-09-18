@@ -50,7 +50,8 @@ use std::collections::VecDeque;
 use std::mem::size_of_val;
 use std::sync::Arc;
 use time::OffsetDateTime;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::task;
 
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {
@@ -684,14 +685,26 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // stored in pre-config log buffer are guaranteed to be replayed before
     // the async log buffer goes back to processing incoming logs.
 
-    let mut current_feature_flags = self
-      .feature_flags_builder
-      .current_feature_flags()
-      .inspect_err(|e| {
-        // This should never fail unless there's a serious filesystem issue.
-        log::warn!("failed to load or create current feature flags: {e}");
-      })
-      .ok();
+    let feature_flags_cache = Arc::new(Mutex::new(None::<bd_feature_flags::FeatureFlags>));
+    let feature_flags_builder = self.feature_flags_builder.clone();
+
+    let get_feature_flags = || async {
+      let mut cache_guard = feature_flags_cache.lock().await;
+      if cache_guard.is_none() {
+        let feature_flags_builder = feature_flags_builder.clone();
+        let feature_flags_result = task::spawn_blocking(move || {
+          feature_flags_builder
+            .current_feature_flags()
+            .inspect_err(|e| {
+              // This should never fail unless there's a serious filesystem issue.
+              log::warn!("failed to load or create current feature flags: {e}");
+            })
+            .ok()
+        }).await.unwrap_or(None);
+        *cache_guard = feature_flags_result;
+      }
+      cache_guard
+    };
 
     let local_shutdown = shutdown.cancelled();
     tokio::pin!(local_shutdown);
@@ -781,14 +794,16 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               self.metadata_collector.remove_field(&field_name);
             },
             AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
-              if let Some(feature_flags) = &mut current_feature_flags {
+              let mut cache_guard = get_feature_flags().await;
+              if let Some(feature_flags) = cache_guard.as_mut() {
                 feature_flags.set(&flag, variant.as_deref()).unwrap_or_else(|e| {
                   log::warn!("failed to set feature flag ({flag:?}): {e}");
                 });
               }
             },
             AsyncLogBufferMessage::RemoveFeatureFlag(flag) => {
-              if let Some(feature_flags) = &mut current_feature_flags {
+              let mut cache_guard = get_feature_flags().await;
+              if let Some(feature_flags) = cache_guard.as_mut() {
                 feature_flags.remove(&flag).unwrap_or_else(|e| {
                   log::warn!("failed to remove feature flag ({flag:?}): {e}");
                 });
