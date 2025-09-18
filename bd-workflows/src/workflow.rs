@@ -21,6 +21,7 @@ use crate::config::{
 };
 use crate::generate_log::generate_log_action;
 use bd_log_primitives::{FieldsRef, Log, LogRef};
+use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::OffsetDateTimeExt;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -49,6 +50,8 @@ pub struct Workflow {
   // first run in the list is guaranteed to be in an initial state. If there are two runs then the
   // second run is guaranteed not to be in an initial state.
   runs: Vec<Run>,
+  // Persisted workflow debug state. This is only used for live debugging. Global debugging is
+  // persisted as part of stats snapshots.
   workflow_debug_state: OptWorkflowDebugStateMap,
 }
 
@@ -121,7 +124,7 @@ impl Workflow {
       };
       let mut run_result = run.process_log(config, log, now);
 
-      result.incorporate_run_result(&mut run_result, &mut self.workflow_debug_state);
+      result.incorporate_run_result(config, &mut run_result, &mut self.workflow_debug_state, now);
 
       let run_result_did_make_progress = run_result.did_make_progress();
 
@@ -312,7 +315,11 @@ pub(crate) struct WorkflowResult<'a> {
   triggered_actions: Vec<TriggeredAction<'a>>,
   logs_to_inject: BTreeMap<&'a str, Log>,
   stats: WorkflowResultStats,
-  workflow_debug_state: OptWorkflowDebugStateMap,
+  // Persisted workflow debug state. This is only used for live debugging. Global debugging is
+  // persisted as part of stats snapshots.
+  cumulative_workflow_debug_state: OptWorkflowDebugStateMap,
+  // Incremental debug data is always returned and is ultimately stored with stats snapshots.
+  incremental_workflow_debug_state: Vec<WorkflowDebugStateKey>,
 }
 
 impl<'a> WorkflowResult<'a> {
@@ -322,11 +329,13 @@ impl<'a> WorkflowResult<'a> {
     Vec<TriggeredAction<'a>>,
     BTreeMap<&'a str, Log>,
     OptWorkflowDebugStateMap,
+    Vec<WorkflowDebugStateKey>,
   ) {
     (
       self.triggered_actions,
       self.logs_to_inject,
-      self.workflow_debug_state,
+      self.cumulative_workflow_debug_state,
+      self.incremental_workflow_debug_state,
     )
   }
 
@@ -336,8 +345,10 @@ impl<'a> WorkflowResult<'a> {
 
   fn incorporate_run_result(
     &mut self,
+    config: &'a Config,
     run_result: &mut RunResult<'a>,
     workflow_debug_state: &mut OptWorkflowDebugStateMap,
+    now: OffsetDateTime,
   ) {
     self
       .triggered_actions
@@ -346,17 +357,23 @@ impl<'a> WorkflowResult<'a> {
     self.stats.matched_logs_count += run_result.matched_logs_count;
     self.stats.processed_timeout |= run_result.processed_timeout;
 
-    // First we move any results into the persisted map so it survives across restarts.
-    if let Some(run_workflow_debug_state) = run_result.workflow_debug_state.take() {
+    // First we move any results into the persisted map so it survives across restarts if we are
+    // doing active live debugging.
+    if config.mode() != WorkflowDebugMode::None && !run_result.workflow_debug_state.is_empty() {
       workflow_debug_state
         .get_or_insert_default()
-        .merge(run_workflow_debug_state);
+        .merge(&run_result.workflow_debug_state, now);
     }
+
     // If there is any debug state (whether from this run or previous runs) return it in the
     // result so that it can be bundled up and send to the server.
     if let Some(workflow_debug_state) = workflow_debug_state {
-      self.workflow_debug_state = Some(workflow_debug_state.clone());
+      self.cumulative_workflow_debug_state = Some(workflow_debug_state.clone());
     }
+
+    self
+      .incremental_workflow_debug_state
+      .append(&mut run_result.workflow_debug_state);
   }
 }
 
@@ -511,7 +528,7 @@ impl Run {
     let mut run_logs_to_inject = BTreeMap::<&'a str, Log>::new();
     let mut run_matched_logs_count = 0;
     let mut run_processed_timeout = false;
-    let mut workflow_debug_state: OptWorkflowDebugStateMap = None;
+    let mut workflow_debug_state = Vec::new();
 
     // Process traversals in reversed order as we may end up modifying the array
     // starting at `index` in any given iteration of the loop.
@@ -528,11 +545,7 @@ impl Run {
 
       run_triggered_actions.append(&mut traversal_result.triggered_actions);
       run_logs_to_inject.append(&mut traversal_result.log_to_inject);
-      if let Some(traversal_workflow_debug_state) = traversal_result.workflow_debug_state.take() {
-        workflow_debug_state
-          .get_or_insert_default()
-          .merge(traversal_workflow_debug_state);
-      }
+      workflow_debug_state.append(&mut traversal_result.workflow_debug_state);
 
       // Increase the counter of logs matched by a given workflow run.
       self.matched_logs_count += traversal_result.matched_logs_count;
@@ -693,9 +706,8 @@ pub(crate) struct RunResult<'a> {
   /// Logs to be injected back into the workflow engine after field attachment and other
   /// processing.
   logs_to_inject: BTreeMap<&'a str, Log>,
-  /// If debugging is enabled, this is the cumulative debug state for the workflow since
-  /// debugging started.
-  workflow_debug_state: OptWorkflowDebugStateMap,
+  /// Any debug state changes that occurred as a result of processing the traversal.
+  workflow_debug_state: Vec<WorkflowDebugStateKey>,
 }
 
 impl RunResult<'_> {
@@ -824,31 +836,17 @@ impl Traversal {
         result.output_traversals.push(traversal);
       }
 
-      if !matches!(config.mode(), WorkflowDebugMode::None)
-        && let Some(state) = config.inner().states().get(current_state_index)
-      {
-        // At the traversal level we should only advance at most one state. We still use the
-        // map for simplicity in merging elsewhere.
-        log::debug!(
+      if let Some(state) = config.inner().states().get(current_state_index) {
+        /*log::debug!(
           "adding debug state for workflow {}/{} at {}",
           config.inner().id(),
           state.id(),
           now
-        );
-        result
-          .workflow_debug_state
-          .get_or_insert_default()
-          .0
-          .insert(
-            WorkflowDebugStateKey {
-              state_id: state.id().to_string(),
-              transition_type,
-            },
-            WorkflowTransitionDebugState {
-              count: 1,
-              last_transition_time: now.into(),
-            },
-          );
+        );*/
+        result.workflow_debug_state.push(WorkflowDebugStateKey {
+          state_id: state.id().to_string(),
+          transition_type,
+        });
       }
     }
 
@@ -1121,9 +1119,8 @@ struct TraversalResult<'a> {
   /// Logs to be injected back into the workflow engine after field attachment and other
   /// processing.
   log_to_inject: BTreeMap<&'a str, Log>,
-  /// If debugging is enabled, any debug state changes that occurred as a result of processing
-  /// the traversal.
-  workflow_debug_state: OptWorkflowDebugStateMap,
+  /// Any debug state changes that occurred as a result of processing the traversal.
+  workflow_debug_state: Vec<WorkflowDebugStateKey>,
 }
 
 impl TraversalResult<'_> {
@@ -1156,20 +1153,6 @@ pub struct WorkflowDebugStateMap(
 );
 pub type OptWorkflowDebugStateMap = Option<WorkflowDebugStateMap>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
-pub struct WorkflowDebugStateKey {
-  pub state_id: String,
-  pub transition_type: WorkflowDebugTransitionType,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
-pub enum WorkflowDebugTransitionType {
-  // Normal transition including the index.
-  Normal(usize),
-  // Timeout transition.
-  Timeout,
-}
-
 impl WorkflowDebugStateMap {
   #[must_use]
   pub fn into_inner(self) -> HashMap<WorkflowDebugStateKey, WorkflowTransitionDebugState> {
@@ -1178,18 +1161,19 @@ impl WorkflowDebugStateMap {
 }
 
 impl WorkflowDebugStateMap {
-  fn merge(&mut self, other: Self) {
-    for (state_id, other_state) in other.0.into_iter() {
+  fn merge(&mut self, other: &[WorkflowDebugStateKey], now: OffsetDateTime) {
+    for key in other {
       self
         .0
-        .entry(state_id)
+        .entry(key.clone())
         .and_modify(|state| {
-          state.count += other_state.count;
-          if other_state.last_transition_time > state.last_transition_time {
-            state.last_transition_time = other_state.last_transition_time;
-          }
+          state.count += 1;
+          state.last_transition_time = now.into();
         })
-        .or_insert(other_state);
+        .or_insert_with(|| WorkflowTransitionDebugState {
+          count: 1,
+          last_transition_time: now.into(),
+        });
     }
   }
 }

@@ -1248,6 +1248,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "bd-workspace-hack",
+ "serde",
  "sketches-rust",
 ]
 

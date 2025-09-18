@@ -1426,6 +1426,48 @@ fn workflow_emit_metric_action_emits_metric() {
     // but since both of them have the same action ID we dedup them and perform action only once.
     Some(123),
   );
+  assert_eq!(
+    stat_upload.request.snapshot[0].workflow_debug_data,
+    [
+      (
+        "workflow_1".into(),
+        WorkflowDebugData {
+          states: [(
+            "A".into(),
+            WorkflowStateDebugData {
+              transitions: vec![WorkflowTransitionDebugData {
+                transition_type: Some(Transition_type::TransitionIndex(0)),
+                transition_count: 1,
+                ..Default::default()
+              }],
+              ..Default::default()
+            }
+          )]
+          .into(),
+          ..Default::default()
+        }
+      ),
+      (
+        "workflow_2".into(),
+        WorkflowDebugData {
+          states: [(
+            "A".into(),
+            WorkflowStateDebugData {
+              transitions: vec![WorkflowTransitionDebugData {
+                transition_type: Some(Transition_type::TransitionIndex(0)),
+                transition_count: 1,
+                ..Default::default()
+              }],
+              ..Default::default()
+            }
+          )]
+          .into(),
+          ..Default::default()
+        }
+      ),
+    ]
+    .into()
+  );
 }
 
 #[test]
