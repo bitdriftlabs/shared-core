@@ -593,7 +593,8 @@ impl WorkflowsEngine {
 
     let mut actions: Vec<TriggeredAction<'_>> = vec![];
     let mut logs_to_inject: BTreeMap<&'a str, Log> = BTreeMap::new();
-    let mut all_workflow_debug_state = vec![];
+    let mut all_cumulative_workflow_debug_state = vec![];
+    let mut all_incremental_workflow_debug_state = vec![];
     let mut has_debug_workflows = false;
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let Some(config) = self.configs.get(index) else {
@@ -631,14 +632,21 @@ impl WorkflowsEngine {
       // In debug only mode we do not trigger any actions, but we still inject logs so that
       // workflows continue to advance if they depend on the injected logs.
       has_debug_workflows |= config.mode() != WorkflowDebugMode::None;
-      let (triggered_actions, workflow_logs_to_inject, workflow_debug_state) = result.into_parts();
+      let (
+        triggered_actions,
+        workflow_logs_to_inject,
+        cumulative_workflow_debug_state,
+        incremental_workflow_debug_state,
+      ) = result.into_parts();
       if !matches!(config.mode(), WorkflowDebugMode::DebugOnly) {
         actions.extend(triggered_actions);
       }
       logs_to_inject.extend(workflow_logs_to_inject);
-      if let Some(workflow_debug_state) = workflow_debug_state {
-        all_workflow_debug_state.push((workflow.id().to_string(), workflow_debug_state));
+      if let Some(cumulative_workflow_debug_state) = cumulative_workflow_debug_state {
+        all_cumulative_workflow_debug_state
+          .push((workflow.id().to_string(), cumulative_workflow_debug_state));
       }
+      all_incremental_workflow_debug_state.extend(incremental_workflow_debug_state);
     }
 
     let PreparedActions {
@@ -703,8 +711,11 @@ impl WorkflowsEngine {
 
     self
       .metrics_collector
+      .stats
+      .record_workflow_debug_state(all_incremental_workflow_debug_state);
+    self
+      .metrics_collector
       .emit_metrics(&emit_metric_actions, log);
-
     self
       .metrics_collector
       .emit_sankeys(&emit_sankey_diagrams_actions, log);
@@ -750,7 +761,7 @@ impl WorkflowsEngine {
         .triggered_flushes_buffer_ids,
       capture_screenshot: !capture_screenshot_actions.is_empty(),
       logs_to_inject,
-      workflow_debug_state: all_workflow_debug_state,
+      workflow_debug_state: all_cumulative_workflow_debug_state,
       has_debug_workflows,
     }
   }

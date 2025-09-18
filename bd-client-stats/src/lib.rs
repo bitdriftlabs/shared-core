@@ -24,6 +24,7 @@ use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats_store::{Collector, Error as StatsError};
 use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;
+use bd_stats_common::workflow::WorkflowDebugStateKey;
 use bd_time::SystemTimeProvider;
 use file_manager::FileManager;
 use parking_lot::Mutex;
@@ -168,6 +169,10 @@ impl Stats {
       .entry(id.to_string())
       .and_modify(|e| *e += 1)
       .or_insert(1);
+  }
+
+  pub fn record_workflow_debug_state(&self, _state: Vec<WorkflowDebugStateKey>) {
+    // fixfix
   }
 
   pub fn record_dynamic_counter(&self, tags: BTreeMap<String, String>, id: &str, value: u64) {

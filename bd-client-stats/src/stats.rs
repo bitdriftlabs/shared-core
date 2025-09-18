@@ -18,6 +18,7 @@ use bd_client_common::{maybe_await, maybe_await_interval};
 use bd_client_stats_store::{Collector, Histogram, MetricData, MetricsByNameCore};
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::client::api::StatsUploadRequest;
+use bd_proto::protos::client::api::debug_data_request::WorkflowStateDebugData;
 use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapshot;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::Snapshot_type;
 use bd_proto::protos::client::metric::metric::Metric_name_type;
@@ -482,12 +483,14 @@ struct SnapshotHelper {
   metrics: MetricsByNameCore<(MetricType, NameType), MetricData>,
   overflows: HashMap<String, u64>,
   limit: Option<u32>,
+  workflow_debug_data: HashMap<String, WorkflowStateDebugData>,
 }
 
 #[derive(Default)]
 struct MetricsFromSnapshotResult {
   metrics: MetricsByNameCore<(MetricType, NameType), MetricData>,
   overflows: HashMap<String, u64>,
+  workflow_debug_data: HashMap<String, WorkflowStateDebugData>,
 }
 
 impl SnapshotHelper {
@@ -497,6 +500,7 @@ impl SnapshotHelper {
       metrics: result.metrics,
       overflows: result.overflows,
       limit,
+      workflow_debug_data: result.workflow_debug_state,
     }
   }
 
@@ -534,6 +538,7 @@ impl SnapshotHelper {
     Some(MetricsFromSnapshotResult {
       metrics: new_metrics,
       overflows: snapshot.metric_id_overflows,
+      workflow_debug_data: snapshot.workflow_debug_data,
     })
   }
 

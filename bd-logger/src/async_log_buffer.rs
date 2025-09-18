@@ -52,8 +52,9 @@ use bd_proto::protos::client::api::debug_data_request::{
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
+use bd_stats_common::workflow::WorkflowDebugTransitionType;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
-use bd_workflows::workflow::{WorkflowDebugStateMap, WorkflowDebugTransitionType};
+use bd_workflows::workflow::WorkflowDebugStateMap;
 use std::collections::{HashMap, VecDeque};
 use std::mem::size_of_val;
 use std::pin::Pin;
