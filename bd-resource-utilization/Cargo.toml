@@ -9,15 +9,16 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace       = true
-bd-client-common.path  = "../bd-client-common"
-bd-log-primitives.path = "../bd-log-primitives"
-bd-runtime.path        = "../bd-runtime"
-bd-shutdown.path       = "../bd-shutdown"
-bd-time.path           = "../bd-time"
-log.workspace          = true
-time.workspace         = true
-tokio.workspace        = true
+anyhow.workspace            = true
+bd-client-common.path       = "../bd-client-common"
+bd-log-primitives.path      = "../bd-log-primitives"
+bd-runtime.path             = "../bd-runtime"
+bd-shutdown.path            = "../bd-shutdown"
+bd-time.path                = "../bd-time"
+bd-workspace-hack.workspace = true
+log.workspace               = true
+time.workspace              = true
+tokio.workspace             = true
 
 [dev-dependencies]
 bd-test-helpers.path  = "../bd-test-helpers"

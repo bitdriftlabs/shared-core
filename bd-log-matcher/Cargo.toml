@@ -9,12 +9,13 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace       = true
-bd-log-primitives.path = "../bd-log-primitives"
-bd-proto.path          = "../bd-proto"
-itertools.workspace    = true
-protobuf.workspace     = true
-regex.workspace        = true
+anyhow.workspace            = true
+bd-log-primitives.path      = "../bd-log-primitives"
+bd-proto.path               = "../bd-proto"
+bd-workspace-hack.workspace = true
+itertools.workspace         = true
+protobuf.workspace          = true
+regex.workspace             = true
 
 
 [dev-dependencies]

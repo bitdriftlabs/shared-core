@@ -9,5 +9,6 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-log.workspace   = true
-tokio.workspace = true
+bd-workspace-hack.workspace = true
+log.workspace               = true
+tokio.workspace             = true

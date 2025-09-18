@@ -9,18 +9,19 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace        = true
-bd-stats-common.path    = "../bd-stats-common"
-bd-time.path            = "../bd-time"
-concat-string.workspace = true
-dashmap.workspace       = true
-itertools.workspace     = true
-parking_lot.workspace   = true
-prometheus.workspace    = true
-regex.workspace         = true
-thiserror.workspace     = true
-time.workspace          = true
-tokio.workspace         = true
+anyhow.workspace            = true
+bd-stats-common.path        = "../bd-stats-common"
+bd-time.path                = "../bd-time"
+bd-workspace-hack.workspace = true
+concat-string.workspace     = true
+dashmap.workspace           = true
+itertools.workspace         = true
+parking_lot.workspace       = true
+prometheus.workspace        = true
+regex.workspace             = true
+thiserror.workspace         = true
+time.workspace              = true
+tokio.workspace             = true
 
 [dev-dependencies]
 bd-log.path       = "../bd-log"

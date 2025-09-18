@@ -9,17 +9,18 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace       = true
-bd-key-value.path      = "../bd-key-value"
-bd-log.path            = "../bd-log"
-bd-time.path           = "../bd-time"
-log.workspace          = true
-parking_lot.workspace  = true
-serde.workspace        = true
-thread_local.workspace = true
-time.workspace         = true
-tokio.workspace        = true
-uuid.workspace         = true
+anyhow.workspace            = true
+bd-key-value.path           = "../bd-key-value"
+bd-log.path                 = "../bd-log"
+bd-time.path                = "../bd-time"
+bd-workspace-hack.workspace = true
+log.workspace               = true
+parking_lot.workspace       = true
+serde.workspace             = true
+thread_local.workspace      = true
+time.workspace              = true
+tokio.workspace             = true
+uuid.workspace              = true
 
 [dev-dependencies]
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }

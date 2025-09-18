@@ -6,7 +6,6 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::writer::Writer;
-use libc;
 use std::ffi::c_void;
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufWriter, Write};

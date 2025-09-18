@@ -42,6 +42,7 @@ bd-shutdown.path             = "../bd-shutdown"
 bd-stats-common.path         = "../bd-stats-common"
 bd-time.path                 = "../bd-time"
 bd-workflows.path            = "../bd-workflows"
+bd-workspace-hack.workspace  = true
 flatbuffers.workspace        = true
 futures-util.workspace       = true
 itertools.workspace          = true

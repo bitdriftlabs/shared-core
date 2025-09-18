@@ -9,11 +9,12 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace = true
-bd-runtime.path  = "../bd-runtime"
-bd-shutdown.path = "../bd-shutdown"
-log.workspace    = true
-tokio.workspace  = true
+anyhow.workspace            = true
+bd-runtime.path             = "../bd-runtime"
+bd-shutdown.path            = "../bd-shutdown"
+bd-workspace-hack.workspace = true
+log.workspace               = true
+tokio.workspace             = true
 
 [dev-dependencies]
 bd-test-helpers.path  = "../bd-test-helpers"

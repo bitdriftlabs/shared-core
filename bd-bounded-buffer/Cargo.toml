@@ -9,13 +9,14 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-ahash.workspace            = true
-bd-client-stats-store.path = "../bd-client-stats-store"
-bd-log-primitives.path     = "../bd-log-primitives"
-bd-stats-common.path       = "../bd-stats-common"
-log.workspace              = true
-thiserror.workspace        = true
-tokio.workspace            = true
+ahash.workspace             = true
+bd-client-stats-store.path  = "../bd-client-stats-store"
+bd-log-primitives.path      = "../bd-log-primitives"
+bd-stats-common.path        = "../bd-stats-common"
+bd-workspace-hack.workspace = true
+log.workspace               = true
+thiserror.workspace         = true
+tokio.workspace             = true
 
 [dev-dependencies]
 ctor.workspace       = true

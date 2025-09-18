@@ -1,0 +1,25 @@
+name: cargo-hakari
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+env:
+  CARGO_NET_GIT_FETCH_WITH_CLI: true
+jobs:
+  cargo-hakari:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Install cargo-hakari
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hakari
+      - name: Check hakari diff
+        run: cargo hakari generate --diff
+      - name: Check hakari deps
+        run: cargo hakari manage-deps --dry-run

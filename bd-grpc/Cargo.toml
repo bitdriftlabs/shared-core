@@ -21,6 +21,7 @@ bd-server-stats.path        = "../bd-server-stats"
 bd-shutdown.path            = "../bd-shutdown"
 bd-stats-common.path        = "../bd-stats-common"
 bd-time.path                = "../bd-time"
+bd-workspace-hack.workspace = true
 bytes.workspace             = true
 futures.workspace           = true
 http.workspace              = true

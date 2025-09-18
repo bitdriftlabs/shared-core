@@ -8,30 +8,26 @@ version      = "1.0.0"
 [lib]
 doctest = false
 
-[features]
-aws-lc-rs = ["hyper-rustls/aws-lc-rs"]
-default   = ["ring"]
-ring      = ["hyper-rustls/ring"]
-
 [dependencies]
-anyhow.workspace         = true
-async-trait.workspace    = true
-bd-api                   = { path = "../bd-api" }
-bd-client-common         = { path = "../bd-client-common" }
-bd-error-reporter        = { path = "../bd-error-reporter" }
-bd-shutdown              = { path = "../bd-shutdown" }
-bytes.workspace          = true
-http.workspace           = true
-http-body.workspace      = true
-http-body-util.workspace = true
-hyper.workspace          = true
-hyper-rustls.workspace   = true
-hyper-util.workspace     = true
-log.workspace            = true
-serde.workspace          = true
-serde_json.workspace     = true
-tokio.workspace          = true
-tokio-stream.workspace   = true
+anyhow.workspace            = true
+async-trait.workspace       = true
+bd-api                      = { path = "../bd-api" }
+bd-client-common            = { path = "../bd-client-common" }
+bd-error-reporter           = { path = "../bd-error-reporter" }
+bd-shutdown                 = { path = "../bd-shutdown" }
+bd-workspace-hack.workspace = true
+bytes.workspace             = true
+http.workspace              = true
+http-body.workspace         = true
+http-body-util.workspace    = true
+hyper.workspace             = true
+hyper-rustls.workspace      = true
+hyper-util.workspace        = true
+log.workspace               = true
+serde.workspace             = true
+serde_json.workspace        = true
+tokio.workspace             = true
+tokio-stream.workspace      = true
 
 [dev-dependencies]
 assert_matches.workspace = true

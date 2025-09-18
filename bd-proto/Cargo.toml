@@ -9,10 +9,11 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-bd-pgv.path           = "../bd-pgv"
-bytes.workspace       = true
-flatbuffers.workspace = true
-protobuf.workspace    = true
+bd-pgv.path                 = "../bd-pgv"
+bd-workspace-hack.workspace = true
+bytes.workspace             = true
+flatbuffers.workspace       = true
+protobuf.workspace          = true
 
 [dev-dependencies]
 matches.workspace = true

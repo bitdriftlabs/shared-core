@@ -9,10 +9,9 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-# defined separately to the workspace to allow compilation with
-# bazel/crate_universe within the sdk project
-bd-proto.path = "../bd-proto"
-flatbuffers   = "25.2.10"
+bd-proto.path               = "../bd-proto"
+bd-workspace-hack.workspace = true
+flatbuffers.workspace       = true
 
 [build-dependencies]
-cbindgen.workspace   = true
+cbindgen.workspace = true
