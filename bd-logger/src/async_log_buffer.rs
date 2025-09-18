@@ -50,7 +50,7 @@ use std::collections::VecDeque;
 use std::mem::size_of_val;
 use std::sync::Arc;
 use time::OffsetDateTime;
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio::task;
 
 #[derive(Debug)]
@@ -700,7 +700,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               log::warn!("failed to load or create current feature flags: {e}");
             })
             .ok()
-        }).await.unwrap_or(None);
+        })
+        .await
+        .unwrap_or(None);
         *cache_guard = feature_flags_result;
       }
       cache_guard
