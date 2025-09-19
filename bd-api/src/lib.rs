@@ -17,6 +17,7 @@
 use backoff::SystemClock;
 use backoff::exponential::{ExponentialBackoff, ExponentialBackoffBuilder};
 use bd_proto::protos::client::api::{
+  DebugDataRequest,
   LogUploadIntentRequest,
   LogUploadRequest,
   SankeyIntentRequest,
@@ -68,6 +69,9 @@ pub enum DataUpload {
 
   /// An generic artifact upload request.
   ArtifactUpload(TrackedUpload<UploadArtifactRequest>),
+
+  /// A request to upload debug data.
+  DebugData(DebugDataRequest),
 }
 
 //

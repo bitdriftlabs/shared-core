@@ -103,7 +103,7 @@ impl AnnotatedWorkflowsEngine {
 
     engine
       .start(WorkflowsEngineConfig::new(
-        WorkflowsConfiguration::new(workflow_configurations.configs()),
+        WorkflowsConfiguration::new(workflow_configurations.configs(), vec![]),
         BTreeSet::default(),
         BTreeSet::default(),
       ))

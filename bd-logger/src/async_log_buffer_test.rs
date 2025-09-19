@@ -10,8 +10,9 @@ use crate::Block;
 use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay};
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
-use crate::log_replay::{LoggerReplay, ProcessingPipeline};
+use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
+use bd_api::DataUpload;
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_bounded_buffer::{self};
 use bd_client_common::init_lifecycle::InitLifecycleState;
@@ -52,6 +53,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
+use tokio::sync::mpsc;
 use tokio_test::assert_ok;
 
 struct Setup {
@@ -60,6 +62,8 @@ struct Setup {
   collector: Collector,
   stats: Arc<Stats>,
   tmp_dir: Arc<tempfile::TempDir>,
+  _data_upload_rx: mpsc::Receiver<DataUpload>,
+  data_upload_tx: mpsc::Sender<DataUpload>,
 
   replayer_log_count: Arc<AtomicUsize>,
   replayer_logs: Arc<parking_lot::Mutex<Vec<String>>>,
@@ -73,6 +77,7 @@ impl Setup {
     let runtime = &Self::make_runtime(&tmp_dir);
     let collector = Collector::default();
     let stats = Stats::new(collector.clone());
+    let (data_upload_tx, data_upload_rx) = mpsc::channel(1);
 
     Self {
       buffer_manager: bd_buffer::Manager::new(
@@ -89,6 +94,8 @@ impl Setup {
       replayer_logs: Arc::default(),
       replayer_fields: Arc::default(),
       shutdown: Some(ComponentShutdownTrigger::default()),
+      _data_upload_rx: data_upload_rx,
+      data_upload_tx,
     }
   }
 
@@ -136,6 +143,7 @@ impl Setup {
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
       FeatureFlagsBuilder::new(&self.tmp_dir.path().join("feature_flags"), 1024, 0.8),
+      self.data_upload_tx.clone(),
     )
   }
 
@@ -168,6 +176,7 @@ impl Setup {
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
       FeatureFlagsBuilder::new(&self.tmp_dir.path().join("feature_flags"), 1024, 0.8),
+      self.data_upload_tx.clone(),
     )
   }
 
@@ -230,7 +239,7 @@ impl LogReplay for TestReplay {
     _block: bool,
     _processing_pipeline: &mut ProcessingPipeline,
     _now: OffsetDateTime,
-  ) -> anyhow::Result<Vec<Log>> {
+  ) -> anyhow::Result<LogReplayResult> {
     self.logs_count.fetch_add(1, Ordering::SeqCst);
     if let StringOrBytes::String(message) = &log.message {
       self.logs.lock().push(message.clone());
@@ -238,7 +247,7 @@ impl LogReplay for TestReplay {
 
     self.fields.lock().push(log.fields);
 
-    Ok(vec![])
+    Ok(LogReplayResult::default())
   }
 }
 
