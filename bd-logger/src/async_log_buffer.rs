@@ -25,6 +25,7 @@ use bd_client_common::maybe_await_map;
 use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_error_reporter::reporter::{handle_unexpected, handle_unexpected_error_with_details};
+use bd_feature_flags::FeatureFlagsBuilder;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
@@ -49,13 +50,16 @@ use std::collections::VecDeque;
 use std::mem::size_of_val;
 use std::sync::Arc;
 use time::OffsetDateTime;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::task;
 
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {
   EmitLog((LogLine, Option<oneshot::Sender<()>>)),
   AddLogField(String, StringOrBytes<String, Vec<u8>>),
   RemoveLogField(String),
+  SetFeatureFlag(String, Option<String>),
+  RemoveFeatureFlag(String),
   FlushState(Option<bd_completion::Sender<()>>),
 }
 
@@ -66,6 +70,8 @@ impl MemorySized for AsyncLogBufferMessage {
         Self::EmitLog((log, _)) => log.size(),
         Self::AddLogField(key, value) => key.size() + value.size(),
         Self::RemoveLogField(field_name) => field_name.len(),
+        Self::SetFeatureFlag(flag, variant) => flag.len() + variant.as_ref().map_or(0, String::len),
+        Self::RemoveFeatureFlag(flag) => flag.len(),
         Self::FlushState(sender) => size_of_val(sender),
       }
   }
@@ -151,6 +157,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   session_strategy: Arc<bd_session::Strategy>,
   metadata_collector: MetadataCollector,
   resource_utilization_reporter: bd_resource_utilization::Reporter,
+  feature_flags_builder: FeatureFlagsBuilder,
 
   session_replay_recorder: bd_session_replay::Recorder,
   session_replay_capture_screenshot_handler: CaptureScreenshotHandler,
@@ -188,6 +195,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     store: Arc<Store>,
     time_provider: Arc<dyn TimeProvider>,
     lifecycle_state: InitLifecycleState,
+    feature_flags_builder: FeatureFlagsBuilder,
   ) -> (Self, Sender<AsyncLogBufferMessage>) {
     let (async_log_buffer_communication_tx, async_log_buffer_communication_rx) = channel(
       uninitialized_logging_context
@@ -256,6 +264,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         ),
         time_provider,
         lifecycle_state,
+        feature_flags_builder,
       },
       async_log_buffer_communication_tx,
     )
@@ -349,6 +358,21 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     tx.try_send(AsyncLogBufferMessage::RemoveLogField(
       field_name.to_string(),
     ))
+  }
+
+  pub fn set_feature_flag(
+    tx: &Sender<AsyncLogBufferMessage>,
+    flag: String,
+    variant: Option<String>,
+  ) -> Result<(), TrySendError> {
+    tx.try_send(AsyncLogBufferMessage::SetFeatureFlag(flag, variant))
+  }
+
+  pub fn remove_feature_flag(
+    tx: &Sender<AsyncLogBufferMessage>,
+    flag: String,
+  ) -> Result<(), TrySendError> {
+    tx.try_send(AsyncLogBufferMessage::RemoveFeatureFlag(flag))
   }
 
   pub fn flush_state(tx: &Sender<AsyncLogBufferMessage>, block: Block) -> Result<(), TrySendError> {
@@ -661,6 +685,29 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // stored in pre-config log buffer are guaranteed to be replayed before
     // the async log buffer goes back to processing incoming logs.
 
+    let feature_flags_cache = Arc::new(Mutex::new(None::<bd_feature_flags::FeatureFlags>));
+    let feature_flags_builder = self.feature_flags_builder.clone();
+
+    let get_feature_flags = || async {
+      let mut cache_guard = feature_flags_cache.lock().await;
+      if cache_guard.is_none() {
+        let feature_flags_builder = feature_flags_builder.clone();
+        let feature_flags_result = task::spawn_blocking(move || {
+          feature_flags_builder
+            .current_feature_flags()
+            .inspect_err(|e| {
+              // This should never fail unless there's a serious filesystem issue.
+              log::warn!("failed to load or create current feature flags: {e}");
+            })
+            .ok()
+        })
+        .await
+        .unwrap_or(None);
+        *cache_guard = feature_flags_result;
+      }
+      cache_guard
+    };
+
     let local_shutdown = shutdown.cancelled();
     tokio::pin!(local_shutdown);
     let mut self_shutdown = self.shutdown_trigger_handle.make_shutdown();
@@ -747,6 +794,22 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             },
             AsyncLogBufferMessage::RemoveLogField(field_name) => {
               self.metadata_collector.remove_field(&field_name);
+            },
+            AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
+              let mut cache_guard = get_feature_flags().await;
+              if let Some(feature_flags) = cache_guard.as_mut() {
+                feature_flags.set(&flag, variant.as_deref()).unwrap_or_else(|e| {
+                  log::warn!("failed to set feature flag ({flag:?}): {e}");
+                });
+              }
+            },
+            AsyncLogBufferMessage::RemoveFeatureFlag(flag) => {
+              let mut cache_guard = get_feature_flags().await;
+              if let Some(feature_flags) = cache_guard.as_mut() {
+                feature_flags.remove(&flag).unwrap_or_else(|e| {
+                  log::warn!("failed to remove feature flag ({flag:?}): {e}");
+                });
+              }
             },
             AsyncLogBufferMessage::FlushState(completion_tx) => {
               let (sender, receiver) = bd_completion::Sender::new();

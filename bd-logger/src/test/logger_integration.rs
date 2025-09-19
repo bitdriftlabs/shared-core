@@ -2140,6 +2140,8 @@ fn runtime_caching() {
       metadata_provider: Arc::new(LogMetadata::default()),
       device,
       start_in_sleep_mode: false,
+      feature_flags_file_size_bytes: 1024 * 1024,
+      feature_flags_high_watermark: 0.8,
     })
     .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
     .build_dedicated_thread()

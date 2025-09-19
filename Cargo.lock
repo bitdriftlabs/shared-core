@@ -583,6 +583,7 @@ dependencies = [
  "bd-artifact-upload",
  "bd-client-common",
  "bd-device",
+ "bd-feature-flags",
  "bd-key-value",
  "bd-log-primitives",
  "bd-proto",
@@ -663,6 +664,7 @@ dependencies = [
  "bd-bonjson",
  "bd-client-common",
  "bd-resilient-kv",
+ "log",
  "tempfile",
  "time",
 ]
@@ -875,6 +877,7 @@ dependencies = [
  "bd-device",
  "bd-error-reporter",
  "bd-events",
+ "bd-feature-flags",
  "bd-hyper-network",
  "bd-internal-logging",
  "bd-key-value",

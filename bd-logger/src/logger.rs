@@ -417,6 +417,42 @@ impl LoggerHandle {
     });
   }
 
+  pub fn set_feature_flag(&self, flag: String, variant: Option<String>) {
+    LOGGER_GUARD.with(|cell| {
+      if cell.try_borrow().is_ok() {
+        let result = AsyncLogBuffer::<LoggerReplay>::set_feature_flag(&self.tx, flag, variant);
+        if let Err(e) = result {
+          log::warn!("failed to set feature flag: {e:?}");
+        }
+      } else {
+        warn_every!(
+          15.seconds(),
+          "failed to set {:?} feature flag, setting flags from within a field provider is not \
+           allowed",
+          flag
+        );
+      }
+    });
+  }
+
+  pub fn remove_feature_flag(&self, flag: String) {
+    LOGGER_GUARD.with(|cell| {
+      if cell.try_borrow().is_ok() {
+        let result = AsyncLogBuffer::<LoggerReplay>::remove_feature_flag(&self.tx, flag);
+        if let Err(e) = result {
+          log::warn!("failed to remove feature flag: {e:?}");
+        }
+      } else {
+        warn_every!(
+          15.seconds(),
+          "failed to remove {:?} feature flag, removing flags from within a field provider is not \
+           allowed",
+          flag
+        );
+      }
+    });
+  }
+
   pub fn flush_state(&self, block: Block) {
     log::debug!("state flushing initiated");
     let result = AsyncLogBuffer::<LoggerReplay>::flush_state(&self.tx, block);
@@ -472,6 +508,9 @@ pub struct InitParams {
   // Whether the logger should start in sleep mode. It can then be transitioned using the provided
   // transition APIs.
   pub start_in_sleep_mode: bool,
+
+  pub feature_flags_file_size_bytes: usize,
+  pub feature_flags_high_watermark: f32,
 }
 
 pub struct ReportProcessingRequest {

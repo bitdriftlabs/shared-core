@@ -170,6 +170,8 @@ impl Setup {
       network: Box::new(Self::run_network(server.port, shutdown.make_shutdown())),
       static_metadata: Arc::new(EmptyMetadata),
       start_in_sleep_mode: options.start_in_sleep_mode,
+      feature_flags_file_size_bytes: 1024 * 1024,
+      feature_flags_high_watermark: 0.8,
     })
     .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
     .with_internal_logger(true)

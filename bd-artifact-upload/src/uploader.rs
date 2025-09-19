@@ -56,7 +56,7 @@ pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index
 // FeatureFlag
 //
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SnappedFeatureFlag {
   name: String,
   variant: Option<String>,
@@ -64,6 +64,7 @@ pub struct SnappedFeatureFlag {
 }
 
 impl SnappedFeatureFlag {
+  #[must_use]
   pub fn new(name: String, variant: Option<String>, last_updated: OffsetDateTime) -> Self {
     Self {
       name,

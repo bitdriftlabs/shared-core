@@ -27,6 +27,7 @@ use bd_client_stats::stats::{
 use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
+use bd_feature_flags::FeatureFlagsBuilder;
 use bd_internal_logging::NoopLogger;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
 use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
@@ -179,6 +180,13 @@ impl LoggerBuilder {
     let (crash_monitor_tx, crash_monitor_rx) = tokio::sync::oneshot::channel();
 
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
+
+    let feature_flags_builder = FeatureFlagsBuilder::new(
+      &self.params.sdk_directory,
+      self.params.feature_flags_file_size_bytes,
+      self.params.feature_flags_high_watermark,
+    );
+
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
         &self.params.sdk_directory,
@@ -207,6 +215,7 @@ impl LoggerBuilder {
       self.params.store.clone(),
       Arc::new(SystemTimeProvider),
       init_lifecycle.clone(),
+      feature_flags_builder.clone(),
     );
 
     let data_upload_tx_clone = data_upload_tx.clone();
@@ -239,6 +248,7 @@ impl LoggerBuilder {
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
       init_lifecycle.set(bd_client_common::init_lifecycle::InitLifecycle::RuntimeLoaded);
+      feature_flags_builder.backup_previous();
 
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
@@ -255,6 +265,7 @@ impl LoggerBuilder {
         Arc::new(artifact_client),
         self.params.session_strategy.previous_process_session_id(),
         &init_lifecycle,
+        feature_flags_builder,
       );
 
       // Building the crash monitor requires artifact uploader and knowing

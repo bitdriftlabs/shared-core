@@ -18,6 +18,7 @@ use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
+use bd_feature_flags::FeatureFlagsBuilder;
 use bd_key_value::Store;
 use bd_log_filter::FilterChain;
 use bd_log_primitives::size::MemorySized;
@@ -134,6 +135,7 @@ impl Setup {
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
+      FeatureFlagsBuilder::new(&self.tmp_dir.path().join("feature_flags"), 1024, 0.8),
     )
   }
 
@@ -165,6 +167,7 @@ impl Setup {
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
+      FeatureFlagsBuilder::new(&self.tmp_dir.path().join("feature_flags"), 1024, 0.8),
     )
   }
 

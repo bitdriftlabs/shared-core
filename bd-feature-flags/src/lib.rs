@@ -36,7 +36,7 @@ use bd_bonjson::Value;
 use bd_client_common::error::InvariantError;
 use bd_resilient_kv::KVStore;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[cfg(test)]
 #[path = "./feature_flags_test.rs"]
@@ -232,6 +232,25 @@ impl FeatureFlags {
     Ok(())
   }
 
+  /// Removes a feature flag.
+  ///
+  /// # Arguments
+  ///
+  /// * `key` - The name of the feature flag to remove
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(())` on success, or an error if the flag cannot be removed.
+  ///
+  /// # Errors
+  ///
+  /// This function will return an error if:
+  /// - The flag cannot be removed due to I/O errors, insufficient disk space, or permission issues
+  pub fn remove(&mut self, key: &str) -> anyhow::Result<()> {
+    self.flags_store.remove(key)?;
+    Ok(())
+  }
+
   /// Removes all feature flags from persistent storage.
   ///
   /// This method deletes all feature flags, clearing the persistent storage.
@@ -289,5 +308,79 @@ impl FeatureFlags {
       }
     }
     flags
+  }
+}
+
+/// Builds `FeatureFlags` objects, and manages on-disk data for current and previous runs.
+#[derive(Clone)]
+pub struct FeatureFlagsBuilder {
+  current_path: PathBuf,
+  previous_path: PathBuf,
+  file_size: usize,
+  high_water_mark_ratio: f32,
+}
+
+impl FeatureFlagsBuilder {
+  #[must_use]
+  pub fn new(sdk_path: &Path, file_size: usize, high_water_mark_ratio: f32) -> Self {
+    Self {
+      current_path: sdk_path.join("feature_flags_current"),
+      previous_path: sdk_path.join("feature_flags_previous"),
+      file_size,
+      high_water_mark_ratio,
+    }
+  }
+
+  fn replace_file(from: &Path, to: &Path) {
+    // These should never fail unless there's a serious filesystem issue.
+    match std::fs::remove_file(to) {
+      Ok(()) => {},
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+      Err(e) => {
+        log::warn!("failed to remove existing file {}: {e}", to.display());
+      },
+    }
+
+    match std::fs::rename(from, to) {
+      Ok(()) => {},
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+      Err(e) => {
+        log::warn!(
+          "failed to rename file {} to {}: {e}",
+          from.display(),
+          to.display()
+        );
+      },
+    }
+  }
+
+  /// Backup the current feature flags.
+  /// This should be called only once, on relaunch, before getting current or previous feature
+  /// flags.
+  pub fn backup_previous(&self) {
+    Self::replace_file(
+      &self.current_path.with_extension("jrna"),
+      &self.previous_path.with_extension("jrna"),
+    );
+    Self::replace_file(
+      &self.current_path.with_extension("jrnb"),
+      &self.previous_path.with_extension("jrnb"),
+    );
+  }
+
+  pub fn current_feature_flags(&self) -> anyhow::Result<FeatureFlags> {
+    FeatureFlags::new(
+      &self.current_path,
+      self.file_size,
+      Some(self.high_water_mark_ratio),
+    )
+  }
+
+  pub fn previous_feature_flags(&self) -> anyhow::Result<FeatureFlags> {
+    FeatureFlags::new(
+      &self.previous_path,
+      self.file_size,
+      Some(self.high_water_mark_ratio),
+    )
   }
 }
