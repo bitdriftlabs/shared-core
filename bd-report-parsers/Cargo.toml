@@ -1,21 +1,23 @@
 [package]
-name = "bd-report-parsers"
+edition      = "2024"
 license-file = "../LICENSE"
+name         = "bd-report-parsers"
 publish      = false
-version = "1.0.0"
-edition = "2024"
+version      = "1.0.0"
+
+[lib]
+doctest = false
 
 [dependencies]
-bd-proto.path = "../bd-proto"
-anyhow.workspace = true
-nom.workspace = true
-# defined separately to the workspace to allow compilation with
-# bazel/crate_universe within the sdk project
-flatbuffers   = "25.2.10"
-itertools.workspace = true
-memmap2.workspace = true
+anyhow.workspace            = true
+bd-proto.path               = "../bd-proto"
+bd-workspace-hack.workspace = true
+flatbuffers.workspace       = true
+itertools.workspace         = true
+memmap2.workspace           = true
+nom.workspace               = true
 
 [dev-dependencies]
-insta.workspace = true
+insta.workspace        = true
 nom-language.workspace = true
-tempfile.workspace = true
+tempfile.workspace     = true

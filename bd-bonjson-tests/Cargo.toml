@@ -9,13 +9,14 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-bd-bonjson.path = "../bd-bonjson"
+bd-bonjson.path             = "../bd-bonjson"
+bd-workspace-hack.workspace = true
+libc.workspace              = true
 
 [dev-dependencies]
-assert_no_alloc      = "1.1.2"
-bd-test-helpers.path = "../bd-test-helpers"
-libc                 = "0.2.175"
-tempfile.workspace   = true
+assert_no_alloc.workspace = true
+bd-test-helpers.path      = "../bd-test-helpers"
+tempfile.workspace        = true
 
 [build-dependencies]
 bd-bonjson.path = "../bd-bonjson"

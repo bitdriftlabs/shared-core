@@ -10,6 +10,7 @@ doctest = false
 
 [dependencies]
 anyhow.workspace             = true
+bd-workspace-hack.workspace  = true
 log.workspace                = true
 parking_lot.workspace        = true
 time.workspace               = true

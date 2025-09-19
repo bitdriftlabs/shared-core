@@ -9,9 +9,10 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-async-trait.workspace = true
-parking_lot.workspace = true
-protobuf.workspace    = true
-rand.workspace        = true
-time.workspace        = true
-tokio.workspace       = true
+async-trait.workspace       = true
+bd-workspace-hack.workspace = true
+parking_lot.workspace       = true
+protobuf.workspace          = true
+rand.workspace              = true
+time.workspace              = true
+tokio.workspace             = true

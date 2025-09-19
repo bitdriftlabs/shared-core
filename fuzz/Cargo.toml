@@ -12,15 +12,16 @@ doctest = false
 cargo-fuzz = true
 
 [dependencies]
-arbitrary.workspace        = true
-bd-bonjson.path            = "../bd-bonjson"
-bd-buffer.path             = "../bd-buffer"
-bd-client-common.path      = "../bd-client-common"
-bd-client-stats-store.path = "../bd-client-stats-store"
-bd-resilient-kv.path       = "../bd-resilient-kv"
-libfuzzer-sys.workspace    = true
-log.workspace              = true
-tempfile.workspace         = true
+arbitrary.workspace         = true
+bd-bonjson.path             = "../bd-bonjson"
+bd-buffer.path              = "../bd-buffer"
+bd-client-common.path       = "../bd-client-common"
+bd-client-stats-store.path  = "../bd-client-stats-store"
+bd-resilient-kv.path        = "../bd-resilient-kv"
+bd-workspace-hack.workspace = true
+libfuzzer-sys.workspace     = true
+log.workspace               = true
+tempfile.workspace          = true
 
 [dev-dependencies]
 bd-test-helpers.path = "../bd-test-helpers"

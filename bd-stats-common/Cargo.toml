@@ -9,5 +9,6 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace        = true
-sketches-rust.workspace = true
+anyhow.workspace            = true
+bd-workspace-hack.workspace = true
+sketches-rust.workspace     = true

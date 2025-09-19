@@ -9,17 +9,18 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-async-trait.workspace = true
-bd-server-stats.path  = "../bd-server-stats"
-log.workspace         = true
-notify.workspace      = true
-parking_lot.workspace = true
-prometheus.workspace  = true
-rand.workspace        = true
-serde.workspace       = true
-serde_yaml.workspace  = true
-thiserror.workspace   = true
-tokio.workspace       = true
+async-trait.workspace       = true
+bd-server-stats.path        = "../bd-server-stats"
+bd-workspace-hack.workspace = true
+log.workspace               = true
+notify.workspace            = true
+parking_lot.workspace       = true
+prometheus.workspace        = true
+rand.workspace              = true
+serde.workspace             = true
+serde_yaml.workspace        = true
+thiserror.workspace         = true
+tokio.workspace             = true
 
 [dev-dependencies]
 bd-test-helpers    = { path = "../bd-test-helpers", default-features = false }

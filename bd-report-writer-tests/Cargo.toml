@@ -9,8 +9,9 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-bd-report-writer.path = "../bd-report-writer"
-flatbuffers.workspace = true
+bd-report-writer.path       = "../bd-report-writer"
+bd-workspace-hack.workspace = true
+flatbuffers.workspace       = true
 
 [dev-dependencies]
 bd-proto.path        = "../bd-proto"

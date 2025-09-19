@@ -188,29 +188,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
-name = "aws-lc-rs"
-version = "1.13.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c953fe1ba023e6b7730c0d4b031d06f267f23a46167dcbd40316644b10a17ba"
-dependencies = [
- "aws-lc-sys",
- "zeroize",
-]
-
-[[package]]
-name = "aws-lc-sys"
-version = "0.30.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbfd150b5dbdb988bcc8fb1fe787eb6b7ee6180ca24da683b61ea5405f3d43ff"
-dependencies = [
- "bindgen 0.69.5",
- "cc",
- "cmake",
- "dunce",
- "fs_extra",
-]
-
-[[package]]
 name = "axum"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -367,6 +344,7 @@ dependencies = [
  "bd-stats-common",
  "bd-test-helpers",
  "bd-time",
+ "bd-workspace-hack",
  "ctor",
  "log",
  "mockall",
@@ -398,6 +376,7 @@ dependencies = [
  "bd-shutdown",
  "bd-test-helpers",
  "bd-time",
+ "bd-workspace-hack",
  "ctor",
  "flatbuffers",
  "futures-util",
@@ -416,6 +395,7 @@ version = "1.0.0"
 dependencies = [
  "assert_no_alloc",
  "bd-test-helpers",
+ "bd-workspace-hack",
  "bytes",
  "cbindgen",
  "ctor",
@@ -431,6 +411,7 @@ dependencies = [
  "assert_no_alloc",
  "bd-bonjson",
  "bd-test-helpers",
+ "bd-workspace-hack",
  "cc",
  "libc",
  "tempfile",
@@ -444,6 +425,7 @@ dependencies = [
  "bd-client-stats-store",
  "bd-log-primitives",
  "bd-stats-common",
+ "bd-workspace-hack",
  "ctor",
  "log",
  "thiserror 2.0.16",
@@ -466,6 +448,7 @@ dependencies = [
  "bd-runtime",
  "bd-stats-common",
  "bd-test-helpers",
+ "bd-workspace-hack",
  "crc32fast",
  "ctor",
  "fs2",
@@ -496,6 +479,7 @@ dependencies = [
  "bd-proto",
  "bd-proto-util",
  "bd-test-helpers",
+ "bd-workspace-hack",
  "crc32fast",
  "ctor",
  "flatbuffers",
@@ -533,6 +517,7 @@ dependencies = [
  "bd-stats-common",
  "bd-test-helpers",
  "bd-time",
+ "bd-workspace-hack",
  "ctor",
  "flate2",
  "futures-util",
@@ -554,6 +539,7 @@ dependencies = [
  "bd-proto",
  "bd-stats-common",
  "bd-test-helpers",
+ "bd-workspace-hack",
  "ctor",
  "log",
  "parking_lot",
@@ -567,6 +553,7 @@ name = "bd-completion"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "bd-workspace-hack",
  "log",
  "thiserror 2.0.16",
  "tokio",
@@ -592,6 +579,7 @@ dependencies = [
  "bd-shutdown",
  "bd-test-helpers",
  "bd-time",
+ "bd-workspace-hack",
  "ctor",
  "flatbuffers",
  "futures-util",
@@ -615,6 +603,7 @@ dependencies = [
  "anyhow",
  "bd-key-value",
  "bd-test-helpers",
+ "bd-workspace-hack",
  "ctor",
  "log",
  "parking_lot",
@@ -632,6 +621,7 @@ dependencies = [
  "bd-client-common",
  "bd-client-stats-store",
  "bd-metadata",
+ "bd-workspace-hack",
  "log",
  "parking_lot",
  "tokio",
@@ -647,6 +637,7 @@ dependencies = [
  "bd-shutdown",
  "bd-test-helpers",
  "bd-time",
+ "bd-workspace-hack",
  "ctor",
  "log",
  "parking_lot",
@@ -664,6 +655,7 @@ dependencies = [
  "bd-bonjson",
  "bd-client-common",
  "bd-resilient-kv",
+ "bd-workspace-hack",
  "log",
  "tempfile",
  "time",
@@ -686,6 +678,7 @@ dependencies = [
  "bd-stats-common",
  "bd-test-helpers",
  "bd-time",
+ "bd-workspace-hack",
  "bytes",
  "ctor",
  "futures",
@@ -720,6 +713,7 @@ version = "1.0.0"
 dependencies = [
  "bd-stats-common",
  "bd-test-helpers",
+ "bd-workspace-hack",
  "bytes",
  "ctor",
  "flate2",
@@ -743,6 +737,7 @@ dependencies = [
  "bd-error-reporter",
  "bd-shutdown",
  "bd-test-helpers",
+ "bd-workspace-hack",
  "bytes",
  "ctor",
  "http",
@@ -764,6 +759,7 @@ version = "1.0.0"
 dependencies = [
  "bd-log-primitives",
  "bd-proto",
+ "bd-workspace-hack",
  "tokio",
 ]
 
@@ -775,6 +771,7 @@ dependencies = [
  "base64",
  "bd-log",
  "bd-test-helpers",
+ "bd-workspace-hack",
  "bincode 2.0.1",
  "ctor",
  "log",
@@ -791,6 +788,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "bd-time",
+ "bd-workspace-hack",
  "log",
  "parking_lot",
  "time",
@@ -813,6 +811,7 @@ dependencies = [
  "bd-proto",
  "bd-test-helpers",
  "bd-time",
+ "bd-workspace-hack",
  "ctor",
  "itertools 0.14.0",
  "log",
@@ -830,6 +829,7 @@ dependencies = [
  "bd-log-primitives",
  "bd-proto",
  "bd-test-helpers",
+ "bd-workspace-hack",
  "itertools 0.14.0",
  "matches",
  "pretty_assertions",
@@ -844,6 +844,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "bd-log-primitives",
+ "bd-workspace-hack",
  "time",
 ]
 
@@ -853,6 +854,7 @@ version = "1.0.0"
 dependencies = [
  "ahash",
  "bd-proto",
+ "bd-workspace-hack",
  "serde",
  "time",
 ]
@@ -898,6 +900,7 @@ dependencies = [
  "bd-test-helpers",
  "bd-time",
  "bd-workflows",
+ "bd-workspace-hack",
  "ctor",
  "flatbuffers",
  "futures-util",
@@ -923,6 +926,7 @@ name = "bd-metadata"
 version = "1.0.0"
 dependencies = [
  "bd-test-helpers",
+ "bd-workspace-hack",
  "ctor",
  "parking_lot",
  "pretty_assertions",
@@ -931,6 +935,9 @@ dependencies = [
 [[package]]
 name = "bd-network-quality"
 version = "1.0.0"
+dependencies = [
+ "bd-workspace-hack",
+]
 
 [[package]]
 name = "bd-noop-network"
@@ -940,12 +947,14 @@ dependencies = [
  "async-trait",
  "bd-api",
  "bd-client-common",
+ "bd-workspace-hack",
 ]
 
 [[package]]
 name = "bd-panic"
 version = "1.0.0"
 dependencies = [
+ "bd-workspace-hack",
  "color-backtrace",
  "log",
  "termcolor",
@@ -956,6 +965,7 @@ name = "bd-pgv"
 version = "1.0.0"
 dependencies = [
  "bd-time",
+ "bd-workspace-hack",
  "log",
  "matches",
  "protobuf 4.0.0-alpha.0",
@@ -969,6 +979,7 @@ name = "bd-profile"
 version = "1.0.0"
 dependencies = [
  "axum",
+ "bd-workspace-hack",
  "tikv-jemalloc-ctl",
 ]
 
@@ -977,6 +988,7 @@ name = "bd-proto"
 version = "1.0.0"
 dependencies = [
  "bd-pgv",
+ "bd-workspace-hack",
  "bytes",
  "flatbuffers",
  "flatc-rust",
@@ -992,6 +1004,7 @@ dependencies = [
  "anyhow",
  "base64ct",
  "bd-proto",
+ "bd-workspace-hack",
  "cc",
  "flatbuffers",
  "itertools 0.14.0",
@@ -1005,7 +1018,8 @@ name = "bd-report-convert"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "bindgen 0.71.1",
+ "bd-workspace-hack",
+ "bindgen",
  "cc",
  "cmake",
  "flatc-rust",
@@ -1017,6 +1031,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "bd-proto",
+ "bd-workspace-hack",
  "flatbuffers",
  "insta",
  "itertools 0.14.0",
@@ -1031,6 +1046,7 @@ name = "bd-report-writer"
 version = "1.0.0"
 dependencies = [
  "bd-proto",
+ "bd-workspace-hack",
  "cbindgen",
  "flatbuffers",
 ]
@@ -1042,6 +1058,7 @@ dependencies = [
  "bd-proto",
  "bd-report-writer",
  "bd-test-helpers",
+ "bd-workspace-hack",
  "cc",
  "flatbuffers",
 ]
@@ -1053,6 +1070,7 @@ dependencies = [
  "anyhow",
  "bd-bonjson",
  "bd-client-common",
+ "bd-workspace-hack",
  "bytes",
  "memmap2",
  "tempfile",
@@ -1069,6 +1087,7 @@ dependencies = [
  "bd-shutdown",
  "bd-test-helpers",
  "bd-time",
+ "bd-workspace-hack",
  "ctor",
  "log",
  "parking_lot",
@@ -1082,6 +1101,7 @@ dependencies = [
 name = "bd-rt"
 version = "1.0.0"
 dependencies = [
+ "bd-workspace-hack",
  "log",
  "tokio",
 ]
@@ -1096,6 +1116,7 @@ dependencies = [
  "bd-client-common",
  "bd-proto",
  "bd-test-helpers",
+ "bd-workspace-hack",
  "ctor",
  "log",
  "parking_lot",
@@ -1112,6 +1133,7 @@ dependencies = [
  "async-trait",
  "bd-server-stats",
  "bd-test-helpers",
+ "bd-workspace-hack",
  "ctor",
  "log",
  "notify",
@@ -1133,6 +1155,7 @@ dependencies = [
  "bd-log",
  "bd-stats-common",
  "bd-time",
+ "bd-workspace-hack",
  "concat-string",
  "ctor",
  "dashmap",
@@ -1155,6 +1178,7 @@ dependencies = [
  "bd-log",
  "bd-test-helpers",
  "bd-time",
+ "bd-workspace-hack",
  "ctor",
  "log",
  "parking_lot",
@@ -1180,6 +1204,7 @@ dependencies = [
  "bd-stats-common",
  "bd-test-helpers",
  "bd-time",
+ "bd-workspace-hack",
  "ctor",
  "log",
  "parking_lot",
@@ -1193,6 +1218,7 @@ dependencies = [
 name = "bd-shutdown"
 version = "1.0.0"
 dependencies = [
+ "bd-workspace-hack",
  "log",
  "tokio",
 ]
@@ -1202,6 +1228,7 @@ name = "bd-stats-common"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "bd-workspace-hack",
  "sketches-rust",
 ]
 
@@ -1231,6 +1258,7 @@ dependencies = [
  "bd-session-replay",
  "bd-stats-common",
  "bd-time",
+ "bd-workspace-hack",
  "futures-core",
  "http-body-util",
  "log",
@@ -1251,6 +1279,7 @@ name = "bd-time"
 version = "1.0.0"
 dependencies = [
  "async-trait",
+ "bd-workspace-hack",
  "parking_lot",
  "protobuf 4.0.0-alpha.0",
  "rand 0.9.2",
@@ -1280,6 +1309,7 @@ dependencies = [
  "bd-stats-common",
  "bd-test-helpers",
  "bd-time",
+ "bd-workspace-hack",
  "bincode 2.0.1",
  "criterion",
  "ctor",
@@ -1298,6 +1328,55 @@ dependencies = [
  "tokio",
  "tokio-test",
  "uuid",
+]
+
+[[package]]
+name = "bd-workspace-hack"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.9.4",
+ "cc",
+ "clap",
+ "clap_builder",
+ "either",
+ "flate2",
+ "futures-channel",
+ "futures-core",
+ "futures-executor",
+ "futures-sink",
+ "futures-task",
+ "futures-util",
+ "getrandom 0.2.16",
+ "getrandom 0.3.3",
+ "hyper",
+ "hyper-util",
+ "itertools 0.13.0",
+ "libc",
+ "log",
+ "memchr",
+ "miniz_oxide",
+ "once_cell",
+ "protobuf 4.0.0-alpha.0",
+ "quote",
+ "regex",
+ "regex-automata",
+ "regex-syntax",
+ "rustls",
+ "rustls-webpki",
+ "serde",
+ "serde_core",
+ "serde_json",
+ "smallvec",
+ "syn",
+ "sync_wrapper",
+ "tokio",
+ "tokio-util",
+ "toml_datetime",
+ "toml_edit",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-core",
 ]
 
 [[package]]
@@ -1331,32 +1410,9 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.69.5"
+version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "271383c67ccabffb7381723dea0672a673f292304fcb45c01cc648c7a8d58088"
-dependencies = [
- "bitflags 2.9.4",
- "cexpr",
- "clang-sys",
- "itertools 0.12.1",
- "lazy_static",
- "lazycell",
- "log",
- "prettyplease",
- "proc-macro2",
- "quote",
- "regex",
- "rustc-hash 1.1.0",
- "shlex",
- "syn",
- "which",
-]
-
-[[package]]
-name = "bindgen"
-version = "0.71.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f58bf3d7db68cfbac37cfc485a8d711e87e064c3d0fe0435b92f7a407f9d6b3"
+checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
 dependencies = [
  "bitflags 2.9.4",
  "cexpr",
@@ -1367,7 +1423,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "regex",
- "rustc-hash 2.1.1",
+ "rustc-hash",
  "shlex",
  "syn",
 ]
@@ -1432,9 +1488,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.36"
+version = "1.2.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5252b3d2648e5eedbc1a6f501e3c795e07025c1e93bbf8bbdd6eef7f447a6d54"
+checksum = "80f41ae168f955c12fb8960b057d70d0ca153fb83182b57d86380443527be7e9"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -1802,12 +1858,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f678cf4a922c215c63e0de95eb1ff08a958a81d47e485cf9da1e27bf6305cfa5"
 
 [[package]]
-name = "dunce"
-version = "1.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
-
-[[package]]
 name = "educe"
 version = "0.5.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1884,9 +1934,9 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fd99930f64d146689264c637b5af2f0233a933bef0d8570e2526bf9e083192d"
+checksum = "1ced73b1dacfc750a6db6c0a0c3a3853c8b41997e2e2c563dc90804ae6867959"
 
 [[package]]
 name = "flatbuffers"
@@ -1974,12 +2024,6 @@ dependencies = [
  "libc",
  "winapi",
 ]
-
-[[package]]
-name = "fs_extra"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 
 [[package]]
 name = "fsevent-sys"
@@ -2096,6 +2140,7 @@ dependencies = [
  "bd-client-stats-store",
  "bd-resilient-kv",
  "bd-test-helpers",
+ "bd-workspace-hack",
  "ctor",
  "libfuzzer-sys",
  "log",
@@ -2319,9 +2364,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-util"
-version = "0.1.16"
+version = "0.1.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d9b05277c7e8da2c93a568989bb6207bef0112e8d17df7a6eda4a3cf143bc5e"
+checksum = "3c6995591a8f1380fcb4ba966a252a4b29188d51d2b89e3a252f5305be65aea8"
 dependencies = [
  "base64",
  "bytes",
@@ -2492,9 +2537,9 @@ dependencies = [
 
 [[package]]
 name = "insta"
-version = "1.43.1"
+version = "1.43.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "154934ea70c58054b556dd430b99a98c2a7ff5309ac9891597e339b5c28f4371"
+checksum = "46fdb647ebde000f43b5b53f773c30cf9b0cb4300453208713fa38b2c70935a0"
 dependencies = [
  "console",
  "once_cell",
@@ -2551,15 +2596,6 @@ name = "is_terminal_polyfill"
 version = "1.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7943c866cc5cd64cbc25b2e01621d07fa8eb2a1a23160ee81ce38704e97b8ecf"
-
-[[package]]
-name = "itertools"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
-dependencies = [
- "either",
-]
 
 [[package]]
 name = "itertools"
@@ -2630,12 +2666,6 @@ name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
-
-[[package]]
-name = "lazycell"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
@@ -2732,6 +2762,7 @@ dependencies = [
  "bd-session",
  "bd-shutdown",
  "bd-test-helpers",
+ "bd-workspace-hack",
  "clap",
  "futures",
  "libc",
@@ -3574,12 +3605,6 @@ checksum = "56f7d92ca342cea22a06f2121d944b4fd82af56988c270852495420f961d4ace"
 
 [[package]]
 name = "rustc-hash"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
-
-[[package]]
-name = "rustc-hash"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
@@ -3625,7 +3650,6 @@ version = "0.23.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c0ebcbd2f03de0fc1122ad9bb24b127a5a6cd51d72604a3f3c50ac459762b6cc"
 dependencies = [
- "aws-lc-rs",
  "once_cell",
  "ring",
  "rustls-pki-types",
@@ -3658,7 +3682,6 @@ version = "0.103.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0a17884ae0c1b773f1ccd2bd4a8c72f16da897310a98b0e84bf349ad5ead92fc"
 dependencies = [
- "aws-lc-rs",
  "ring",
  "rustls-pki-types",
  "untrusted",
@@ -3731,18 +3754,28 @@ checksum = "56e6fa9c48d24d85fb3de5ad847117517440f6beceb7798af16b4a87d616b8d0"
 
 [[package]]
 name = "serde"
-version = "1.0.219"
+version = "1.0.225"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f0e2c6ed6606019b4e29e69dbaba95b11854410e5347d525002456dbbb786b6"
+checksum = "fd6c24dee235d0da097043389623fb913daddf92c76e9f5a1db88607a0bcbd1d"
+dependencies = [
+ "serde_core",
+ "serde_derive",
+]
+
+[[package]]
+name = "serde_core"
+version = "1.0.225"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "659356f9a0cb1e529b24c01e43ad2bdf520ec4ceaf83047b83ddcc2251f96383"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.219"
+version = "1.0.225"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b0276cf7f2c73365f7157c8123c21cd9a50fbbd844757af28ca1f5925fc2a00"
+checksum = "0ea936adf78b1f766949a4977b91d2f5595825bd6ec079aa9543ad2685fc4516"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3751,14 +3784,15 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.143"
+version = "1.0.145"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d401abef1d108fbd9cbaebc3e46611f4b1021f714a0597a71f41ee463f5f4a5a"
+checksum = "402a6f66d8c709116cf22f558eab210f5a50187f702eb4d7e5ef38d9a7f1c79c"
 dependencies = [
  "itoa",
  "memchr",
  "ryu",
  "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -3941,6 +3975,7 @@ dependencies = [
  "bd-test-helpers",
  "bd-time",
  "bd-workflows",
+ "bd-workspace-hack",
  "log",
  "protobuf 4.0.0-alpha.0",
  "rand 0.9.2",
@@ -4053,15 +4088,15 @@ dependencies = [
 
 [[package]]
 name = "tempfile"
-version = "3.21.0"
+version = "3.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15b61f8f20e3a6f7e0649d825294eaf317edce30f82cf6026e7e4cb9222a7d1e"
+checksum = "84fa4d11fadde498443cca10fd3ac23c951f0dc59e080e9f4b93d4df4e4eea53"
 dependencies = [
  "fastrand",
  "getrandom 0.3.3",
  "once_cell",
  "rustix 1.0.8",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.0",
 ]
 
 [[package]]

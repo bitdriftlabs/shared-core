@@ -18,6 +18,7 @@ bd-error-reporter.path          = "../bd-error-reporter"
 bd-proto.path                   = "../bd-proto"
 bd-runtime.path                 = "../bd-runtime"
 bd-stats-common.path            = "../bd-stats-common"
+bd-workspace-hack.workspace     = true
 crc32fast.workspace             = true
 fs2.workspace                   = true
 futures.workspace               = true

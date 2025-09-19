@@ -9,6 +9,7 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace       = true
-bd-log-primitives.path = "../bd-log-primitives"
-time.workspace         = true
+anyhow.workspace            = true
+bd-log-primitives.path      = "../bd-log-primitives"
+bd-workspace-hack.workspace = true
+time.workspace              = true

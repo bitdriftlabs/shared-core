@@ -9,9 +9,10 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-log.workspace       = true
-protobuf.workspace  = true
-thiserror.workspace = true
+bd-workspace-hack.workspace = true
+log.workspace               = true
+protobuf.workspace          = true
+thiserror.workspace         = true
 
 [dev-dependencies]
 bd-time           = { path = "../bd-time" }

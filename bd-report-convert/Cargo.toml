@@ -9,10 +9,11 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace = true
+anyhow.workspace            = true
+bd-workspace-hack.workspace = true
 
 [build-dependencies]
-bindgen.version      = "0.71.0"
+bindgen.workspace    = true
 cc.workspace         = true
 cmake.workspace      = true
 flatc-rust.workspace = true

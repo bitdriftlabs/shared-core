@@ -13,3 +13,6 @@ bd-test-helpers             = { path = "../bd-test-helpers", default-features = 
 ctor.workspace              = true
 parking_lot.workspace       = true
 pretty_assertions.workspace = true
+
+[dependencies]
+bd-workspace-hack.workspace = true

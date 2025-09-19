@@ -10,4 +10,5 @@ doctest = false
 
 [dependencies]
 axum.workspace              = true
+bd-workspace-hack.workspace = true
 tikv-jemalloc-ctl.workspace = true
