@@ -217,7 +217,7 @@ impl Workflow {
     let runs = self
       .runs()
       .iter()
-      .filter(|&run| (!run.is_in_initial_state()))
+      .filter(|&run| !run.is_in_initial_state())
       .cloned()
       .collect_vec();
 
