@@ -175,6 +175,7 @@ impl Client for UploadClient {
   ) -> anyhow::Result<Uuid> {
     let uuid = uuid::Uuid::new_v4();
 
+    log::warn!("### Uploading feature flags: {feature_flags:?}");
     let result = self
       .upload_tx
       .try_send(NewUpload {
