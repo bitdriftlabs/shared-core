@@ -66,7 +66,7 @@ fn writer_does_not_allocate_writing_to_file() {
 
   // Use BufWriter to avoid frequent system calls
   let buf_writer = Box::new(BufWriter::new(file));
-  let mut writer = Writer { writer: buf_writer };
+  let mut writer = Writer::new(buf_writer);
 
   assert_no_alloc(|| {
     for _ in 0 .. 100_000 {

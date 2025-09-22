@@ -1,0 +1,25 @@
+[package]
+edition      = "2024"
+license-file = "../LICENSE"
+name         = "bd-bonjson-ffi"
+publish      = false
+version      = "1.0.0"
+
+[lib]
+doctest = false
+
+[dev-dependencies]
+assert_no_alloc.workspace = true
+bd-test-helpers.path      = "../bd-test-helpers"
+ctor.workspace            = true
+tempfile.workspace        = true
+
+[build-dependencies]
+cbindgen.workspace = true
+
+[dependencies]
+bd-bonjson.path             = "../bd-bonjson"
+bd-workspace-hack.workspace = true
+bytes.workspace             = true
+libc.workspace              = true
+log.workspace               = true

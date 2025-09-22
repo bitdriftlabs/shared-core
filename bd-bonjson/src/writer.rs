@@ -19,6 +19,11 @@ pub struct Writer<W: std::io::Write + Send + Sync> {
 }
 
 impl<W: std::io::Write + Send + Sync> Writer<W> {
+  /// Create a new Writer with the given underlying writer
+  pub fn new(writer: W) -> Self {
+    Self { writer }
+  }
+
   #[must_use]
   pub fn into_raw(self) -> *const c_void {
     Box::into_raw(Box::new(self)) as *const _

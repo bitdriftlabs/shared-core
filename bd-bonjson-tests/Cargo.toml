@@ -10,6 +10,7 @@ doctest = false
 
 [dependencies]
 bd-bonjson.path             = "../bd-bonjson"
+bd-bonjson-ffi.path         = "../bd-bonjson-ffi"
 bd-workspace-hack.workspace = true
 libc.workspace              = true
 
@@ -19,5 +20,5 @@ bd-test-helpers.path      = "../bd-test-helpers"
 tempfile.workspace        = true
 
 [build-dependencies]
-bd-bonjson.path = "../bd-bonjson"
+bd-bonjson-ffi.path = "../bd-bonjson-ffi"
 cc.workspace    = true
