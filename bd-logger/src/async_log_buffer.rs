@@ -447,14 +447,24 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn process_log(&mut self, log: LogLine, block: bool) -> anyhow::Result<Vec<Log>> {
     // Prevent re-entrancy when we are evaluating the log metadata.
     let result = with_thread_local_logger_guard(|| {
-      self
-        .metadata_collector
-        .normalized_metadata_with_extra_fields(
-          log.fields,
-          log.matching_fields,
-          log.log_type,
-          &mut self.global_state_tracker,
-        )
+      if let Some(LogAttributesOverrides::PreviousRunSessionID(_id, _timestamp)) =
+        &log.attributes_overrides
+      {
+        // avoid normalizing metadata for logs from previous sessions, which may
+        // have had different global state
+        self
+          .metadata_collector
+          .metadata_from_fields(log.fields, log.matching_fields)
+      } else {
+        self
+          .metadata_collector
+          .normalized_metadata_with_extra_fields(
+            log.fields,
+            log.matching_fields,
+            log.log_type,
+            &mut self.global_state_tracker,
+          )
+      }
     });
 
     match result {

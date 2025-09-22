@@ -23,6 +23,8 @@ use assert_matches::assert_matches;
 use bd_client_stats::test::TestTicker;
 use bd_error_reporter::reporter::UnexpectedErrorHandler;
 use bd_key_value::Store;
+use bd_log_metadata::LogFields;
+use bd_log_primitives::AnnotatedLogFields;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
@@ -313,6 +315,7 @@ fn log_upload_attributes_override() {
   let time_first = time::OffsetDateTime::now_utc();
   let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
     timestamp: Mutex::new(time_first),
+    ootb_fields: LogFields::from([("_some_version".into(), "400".into())]),
     ..Default::default()
   }));
 
@@ -337,12 +340,27 @@ fn log_upload_attributes_override() {
 
   let current_session_id = setup.logger.new_logger_handle().session_id();
 
-  // This log should end up being emitted with an overridden session ID and timestamp.
+  // This log should end up being emitted with an overridden session ID and timestamp,
+  // and no fields associated with the current session
   setup.log(
     log_level::DEBUG,
     LogType::Normal,
     "log with overridden attributes".into(),
     [].into(),
+    [].into(),
+    Some(LogAttributesOverrides::PreviousRunSessionID(
+      "foo_overridden".to_string(),
+      time_second,
+    )),
+  );
+
+  // This log should end up being emitted with an overridden session ID, timestamp,
+  // and fields
+  setup.log(
+    log_level::DEBUG,
+    LogType::Normal,
+    "log with overridden attributes and fields".into(),
+    AnnotatedLogFields::from([("_some_version".into(), AnnotatedLogField::new_ootb("350"))]),
     [].into(),
     Some(LogAttributesOverrides::PreviousRunSessionID(
       "foo_overridden".to_string(),
@@ -363,7 +381,7 @@ fn log_upload_attributes_override() {
     )),
   );
 
-  for _ in 0 .. 7 {
+  for _ in 0 .. 6 {
     setup.log(
       log_level::DEBUG,
       LogType::Normal,
@@ -395,15 +413,27 @@ fn log_upload_attributes_override() {
     assert_eq!(first_uploaded_log.timestamp(), time_second);
     assert_eq!(first_uploaded_log.field("_logged_at"), time_first.to_string());
     assert_eq!(first_uploaded_log.message(), "log with overridden attributes");
+    // Confirm provider fields are not added to previous session logs
+    assert!(!first_uploaded_log.has_field("_some_version"));
+
+    // Confirm that session ID, timestamp, and fields are overridden
+    let second_uploaded_log = &log_upload.logs()[1];
+    assert_eq!(second_uploaded_log.session_id(), "foo_overridden");
+    assert_eq!(second_uploaded_log.timestamp(), time_second);
+    assert_eq!(second_uploaded_log.field("_logged_at"), time_first.to_string());
+    assert_eq!(second_uploaded_log.message(), "log with overridden attributes and fields");
+    // Confirm can override provider fields
+    assert_eq!(second_uploaded_log.field("_some_version"), "350".to_string());
 
     // Confirm that second log was dropped and error was emitted.
-    let second_uploaded_log = &log_upload.logs()[1];
-    assert_eq!(second_uploaded_log.session_id(), current_session_id);
-    assert_eq!(second_uploaded_log.field("_override_session_id"), "bar_overridden");
+    let third_uploaded_log = &log_upload.logs()[2];
+    assert_eq!(third_uploaded_log.session_id(), current_session_id);
+    assert_eq!(third_uploaded_log.field("_override_session_id"), "bar_overridden");
 
     // Confirm the log overriding the time worked.
     let occurred_at_overriden_log = &log_upload.logs()[9];
     assert_eq!(occurred_at_overriden_log.timestamp(), time_first);
+    assert_eq!(occurred_at_overriden_log.field("_some_version"), "400".to_string());
 
     assert!(error_reporter.error().is_some());
   });
