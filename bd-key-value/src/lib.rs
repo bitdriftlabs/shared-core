@@ -162,3 +162,6 @@ where
     self.key
   }
 }
+
+pub mod resilient_kv;
+pub use resilient_kv::ResilientKvStorage;
