@@ -594,7 +594,7 @@ impl Logger {
     let buffer_directory = directory.join("buffers");
 
     if let Err(e) = std::fs::create_dir_all(&buffer_directory) {
-      anyhow::bail!("failed to create sdk buffer(s) directory: {:?}", e);
+      anyhow::bail!("failed to create sdk buffer(s) directory: {e:?}");
     }
 
     Ok(buffer_directory)

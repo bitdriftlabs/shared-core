@@ -202,17 +202,15 @@ fn partition_fields(field: AnnotatedLogFields) -> PartitionedFields {
 fn verify_custom_field_name(key: &str) -> anyhow::Result<()> {
   if RESERVED_FIELD_NAMES.contains(key) {
     anyhow::bail!(
-      "Custom global field with {:?} name is not allowed as the name is reserved for SDK internal \
-       use",
-      key
+      "Custom global field with {key:?} name is not allowed as the name is reserved for SDK \
+       internal use"
     );
   }
 
   if key.starts_with('_') {
     anyhow::bail!(
-      "Custom global field with {:?} key is not allowed, fields whose key starts with \"_\" are \
-       reserved for SDK internal use",
-      key
+      "Custom global field with {key:?} key is not allowed, fields whose key starts with \"_\" \
+       are reserved for SDK internal use"
     );
   }
 
