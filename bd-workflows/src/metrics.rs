@@ -47,7 +47,7 @@ impl MetricsCollector {
       let maybe_value: anyhow::Result<f64> = match &action.increment {
         crate::config::ValueIncrement::Fixed(value) => Ok(*value as f64),
         crate::config::ValueIncrement::Extract(extract) => Self::resolve_field_name(extract, log)
-          .ok_or_else(|| anyhow::anyhow!("field {:?} not found", extract))
+          .ok_or_else(|| anyhow::anyhow!("field {extract:?} not found"))
           .and_then(|value| value.parse::<f64>().map_err(Into::into)),
       };
 

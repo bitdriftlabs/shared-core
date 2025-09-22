@@ -180,10 +180,7 @@ fn calculate_high_water_mark(
 ) -> anyhow::Result<usize> {
   let ratio = high_water_mark_ratio.unwrap_or(0.8);
   if !(0.0 ..= 1.0).contains(&ratio) {
-    anyhow::bail!(
-      "High water mark ratio must be between 0.0 and 1.0, got: {}",
-      ratio
-    );
+    anyhow::bail!("High water mark ratio must be between 0.0 and 1.0, got: {ratio}");
   }
 
   #[allow(

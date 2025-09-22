@@ -56,7 +56,7 @@ resolver = "2"
 
 [workspace.dependencies]
 android_logger    = "0.15.1"
-anyhow            = "1.0.99"
+anyhow            = "1.0.100"
 arbitrary         = { version = "1.4.2", features = ["derive"] }
 arc-swap          = "1.7.1"
 assert_matches    = "1.5.0"
@@ -73,8 +73,8 @@ bincode           = { version = "2.0.1", features = ["serde"] }
 bindgen           = "0.72.1"
 bytes             = "1.10.1"
 cbindgen          = "0.29.0"
-cc                = "1.2.37"
-clap              = { version = "4.5.47", features = ["derive", "env"] }
+cc                = "1.2.38"
+clap              = { version = "4.5.48", features = ["derive", "env"] }
 cmake             = "0.1.54"
 color-backtrace   = "0.7.1"
 concat-string     = "1.0.1"
@@ -152,7 +152,7 @@ tempfile          = "3.22.0"
 termcolor         = "1.4.1"
 thiserror         = "2.0.16"
 tikv-jemalloc-ctl = "0.6.0"
-time              = { version = "0.3.43", features = ["serde-well-known", "macros", "parsing"] }
+time              = { version = "0.3.44", features = ["serde-well-known", "macros", "parsing"] }
 tokio             = { version = "1.47.1", features = ["full", "test-util"] }
 tokio-stream      = "0.1.17"
 tokio-test        = "0.4.4"
