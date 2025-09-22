@@ -51,7 +51,7 @@ pub struct Options {
     env = "LOGGER_HOST",
     long,
     required = false,
-    default_value = "127.0.0.1"
+    default_value = "localhost"
   )]
   pub host: String,
 
