@@ -786,7 +786,9 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "base64",
+ "bd-bonjson",
  "bd-log",
+ "bd-resilient-kv",
  "bd-test-helpers",
  "bd-workspace-hack",
  "bincode 2.0.1",
