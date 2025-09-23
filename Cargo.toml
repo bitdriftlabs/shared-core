@@ -4,6 +4,7 @@ members = [
   "bd-api",
   "bd-artifact-upload",
   "bd-bonjson",
+  "bd-bonjson-ffi",
   "bd-bonjson-tests",
   "bd-bounded-buffer",
   "bd-buffer",

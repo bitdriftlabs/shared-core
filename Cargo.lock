@@ -405,11 +405,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-bonjson-ffi"
+version = "1.0.0"
+dependencies = [
+ "assert_no_alloc",
+ "bd-bonjson",
+ "bd-test-helpers",
+ "bd-workspace-hack",
+ "bytes",
+ "cbindgen",
+ "ctor",
+ "libc",
+ "log",
+ "tempfile",
+]
+
+[[package]]
 name = "bd-bonjson-tests"
 version = "1.0.0"
 dependencies = [
  "assert_no_alloc",
  "bd-bonjson",
+ "bd-bonjson-ffi",
  "bd-test-helpers",
  "bd-workspace-hack",
  "cc",

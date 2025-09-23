@@ -7,7 +7,7 @@
 
 use assert_no_alloc::*;
 use bd_bonjson::Value;
-use bd_bonjson::ffi::BDCrashWriterHandle;
+use bd_bonjson_ffi::BDCrashWriterHandle;
 use std::ptr::null;
 use tempfile::NamedTempFile;
 

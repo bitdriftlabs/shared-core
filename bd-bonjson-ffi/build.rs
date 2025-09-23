@@ -13,7 +13,7 @@ pub fn main() {
     return;
   }
 
-  println!("cargo:rerun-if-changed=src/ffi.rs");
+  println!("cargo:rerun-if-changed=src/lib.rs");
   cbindgen::Builder::new()
     .with_crate(Path::new("."))
     .with_config(Config::from_file(Path::new("cbindgen.toml")).unwrap())
