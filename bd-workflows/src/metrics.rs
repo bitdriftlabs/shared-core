@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 // Responsible for emitting statistics related to workflow action metrics.
 pub(crate) struct MetricsCollector {
-  stats: Arc<Stats>,
+  pub(crate) stats: Arc<Stats>,
 }
 
 impl MetricsCollector {
@@ -33,10 +33,6 @@ impl MetricsCollector {
   }
 
   pub(crate) fn emit_metrics(&self, actions: &BTreeSet<&ActionEmitMetric>, log: &LogRef<'_>) {
-    if actions.is_empty() {
-      return;
-    }
-
     // TODO(Augustyniak): We dedupe stats in here too only when both their tags and the value of
     // If `counter_increment` values are identical, consider deduping metrics even if their
     // `counter_increment` fields have different values.

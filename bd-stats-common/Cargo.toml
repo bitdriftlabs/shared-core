@@ -11,4 +11,5 @@ doctest = false
 [dependencies]
 anyhow.workspace            = true
 bd-workspace-hack.workspace = true
+serde.workspace             = true
 sketches-rust.workspace     = true

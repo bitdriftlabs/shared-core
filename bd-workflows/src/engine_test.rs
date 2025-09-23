@@ -11,13 +11,7 @@ use crate::config::{Action, FlushBufferId, WorkflowDebugMode, WorkflowsConfigura
 use crate::engine::{WORKFLOWS_STATE_FILE_NAME, WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::engine_assert_active_runs;
 use crate::test::{MakeConfig, TestLog};
-use crate::workflow::{
-  Workflow,
-  WorkflowDebugStateKey,
-  WorkflowDebugStateMap,
-  WorkflowDebugTransitionType,
-  WorkflowTransitionDebugState,
-};
+use crate::workflow::{Workflow, WorkflowDebugStateMap, WorkflowTransitionDebugState};
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
@@ -34,6 +28,7 @@ use bd_proto::protos::client::api::{
   log_upload_intent_request,
 };
 use bd_runtime::runtime::ConfigLoader;
+use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{NameType, labels};
 use bd_test_helpers::workflow::macros::{action, any, log_matches, rule};
 use bd_test_helpers::workflow::{

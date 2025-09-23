@@ -14,6 +14,8 @@
   clippy::unwrap_used
 )]
 
+pub mod workflow;
+
 use sketches_rust::DDSketch;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
