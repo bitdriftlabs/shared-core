@@ -51,7 +51,7 @@ use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use bd_stats_common::workflow::WorkflowDebugTransitionType;
+use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::WorkflowDebugStateMap;
 use debug_data_request::workflow_transition_debug_data::Transition_type;
@@ -909,22 +909,34 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       let workflow_entry = workflow_debug_data.entry(workflow_id).or_default();
       for (state_key, data) in state.into_inner() {
         let last_transition_time: OffsetDateTime = data.last_transition_time.into();
-        workflow_entry
-          .states
-          .entry(state_key.state_id)
-          .or_default()
-          .transitions
-          .push(WorkflowTransitionDebugData {
-            transition_type: Some(match state_key.transition_type {
-              WorkflowDebugTransitionType::Normal(index) => {
-                Transition_type::TransitionIndex(index.try_into().unwrap_or(0))
-              },
-              WorkflowDebugTransitionType::Timeout => Transition_type::TimeoutTransition(true),
-            }),
-            transition_count: data.count,
-            last_transition_time: last_transition_time.into_proto(),
-            ..Default::default()
-          });
+        match state_key {
+          WorkflowDebugStateKey::StartOrReset => {
+            let start_reset = workflow_entry.start_reset.mut_or_insert_default();
+            start_reset.transition_count += data.count;
+            start_reset.last_transition_time = last_transition_time.into_proto();
+          },
+          WorkflowDebugStateKey::StateTransition {
+            state_id,
+            transition_type,
+          } => {
+            workflow_entry
+              .states
+              .entry(state_id)
+              .or_default()
+              .transitions
+              .push(WorkflowTransitionDebugData {
+                transition_type: Some(match transition_type {
+                  WorkflowDebugTransitionType::Normal(index) => {
+                    Transition_type::TransitionIndex(index.try_into().unwrap_or(0))
+                  },
+                  WorkflowDebugTransitionType::Timeout => Transition_type::TimeoutTransition(true),
+                }),
+                transition_count: data.count,
+                last_transition_time: last_transition_time.into_proto(),
+                ..Default::default()
+              });
+          },
+        }
       }
     }
 

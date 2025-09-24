@@ -97,6 +97,7 @@ impl Workflow {
   ) -> WorkflowResult<'a> {
     let mut result = WorkflowResult::default();
 
+    let mut start_or_reset = false;
     if self.needs_new_run() {
       log::trace!("workflow={}: creating a new run", self.id);
       // The timeout is only initialized here (if applicable) if this is the primary run. If this
@@ -109,6 +110,12 @@ impl Workflow {
         .is_some_and(|t| t.timeout_unix_ms.is_some())
       {
         result.stats.processed_timeout = true;
+      }
+      // We only consider this a "start or reset" if there are no runs at all. This will trigger
+      // when a workflow is new or if all existing runs were completed in the previous invocation.
+      // The reset case is handled below.
+      if self.runs.is_empty() {
+        start_or_reset = true;
       }
       self.runs.insert(0, run);
     }
@@ -124,13 +131,18 @@ impl Workflow {
       };
       let mut run_result = run.process_log(config, log, now);
 
-      result.incorporate_run_result(config, &mut run_result, &mut self.workflow_debug_state, now);
+      result.incorporate_run_result(&mut run_result);
 
       let run_result_did_make_progress = run_result.did_make_progress();
 
       match run_result.state {
         RunState::Stopped => {
           self.runs.remove(index);
+          // If there is an initial state run we consider this a start/reset event and track it as
+          // such.
+          if !self.runs.is_empty() {
+            start_or_reset = true;
+          }
         },
         RunState::Completed => {
           debug_assert!(
@@ -141,6 +153,11 @@ impl Workflow {
           did_make_progress = true;
           log::trace!("completed run, workflow id={}", self.id);
           self.runs.remove(index);
+          // If there is an initial state run we consider this a start/reset event and track it as
+          // such.
+          if !self.runs.is_empty() {
+            start_or_reset = true;
+          }
 
           // In the case where we completed the active run *and* there is a pending initial state
           // run, we need to see if there is a timeout to initialize on the initial state run. In
@@ -160,7 +177,7 @@ impl Workflow {
         },
       }
 
-      // Processing exclusive workflows runs looks as follows:
+      // Processing exclusive workflow runs looks as follows:
       // There are either one or two active runs for the workflow, the first one in the list is
       // always the initial state run. We begin by attempting to process the log with the run
       // at the end of the list.
@@ -198,6 +215,7 @@ impl Workflow {
         // This is safe as `has_active_run == true means that there are at least two runs and
         // `is_initial_run == true`` means that we are processing run with index == 0.
         log::trace!("resetting workflow due to initial state transition");
+        start_or_reset = true;
         self.runs.remove(index + 1);
       } else {
         // The active state run made progress and the next run to be processed (if there is any)
@@ -207,7 +225,14 @@ impl Workflow {
       }
     }
 
-    result
+    if start_or_reset {
+      log::trace!("workflow {} started or reset", self.id);
+      result
+        .incremental_workflow_debug_state
+        .push(WorkflowDebugStateKey::StartOrReset);
+    }
+
+    result.finalize(config, &mut self.workflow_debug_state, now)
   }
 
   pub(crate) fn needs_new_run(&self) -> bool {
@@ -343,13 +368,7 @@ impl<'a> WorkflowResult<'a> {
     &self.stats
   }
 
-  fn incorporate_run_result(
-    &mut self,
-    config: &'a Config,
-    run_result: &mut RunResult<'a>,
-    workflow_debug_state: &mut OptWorkflowDebugStateMap,
-    now: OffsetDateTime,
-  ) {
+  fn incorporate_run_result(&mut self, run_result: &mut RunResult<'a>) {
     self
       .triggered_actions
       .append(&mut run_result.triggered_actions);
@@ -357,12 +376,24 @@ impl<'a> WorkflowResult<'a> {
     self.stats.matched_logs_count += run_result.matched_logs_count;
     self.stats.processed_timeout |= run_result.processed_timeout;
 
+    self
+      .incremental_workflow_debug_state
+      .append(&mut run_result.workflow_debug_state);
+  }
+
+  fn finalize(
+    mut self,
+    config: &'a Config,
+    workflow_debug_state: &mut OptWorkflowDebugStateMap,
+    now: OffsetDateTime,
+  ) -> Self {
     // First we move any results into the persisted map so it survives across restarts if we are
     // doing active live debugging.
-    if config.mode() != WorkflowDebugMode::None && !run_result.workflow_debug_state.is_empty() {
+    if config.mode() != WorkflowDebugMode::None && !self.incremental_workflow_debug_state.is_empty()
+    {
       workflow_debug_state
         .get_or_insert_default()
-        .merge(&run_result.workflow_debug_state, now);
+        .merge(&self.incremental_workflow_debug_state, now);
     }
 
     // If there is any debug state (whether from this run or previous runs) return it in the
@@ -372,8 +403,6 @@ impl<'a> WorkflowResult<'a> {
     }
 
     self
-      .incremental_workflow_debug_state
-      .append(&mut run_result.workflow_debug_state);
   }
 }
 
@@ -650,8 +679,8 @@ impl Run {
   // in practice it's able to tell whether a workflow is an initial state
   // after checking at most two of its workflow traversals.
   // That's because:
-  // * if there is no traversals then run is in an initial state.
-  // * if there is one traversals the implementation needs to call `Traversal::is_in_initial_state`
+  // * if there are no traversals then the run is in an initial state.
+  // * if there is one traversal the implementation needs to call `Traversal::is_in_initial_state`
   //   to learn whether the run is in an initial state or not.
   // * if there is more than one traversal the first traversal in the list cannot be in an initial
   //   state hence the whole run cannot be in an initial state. Each run can have at most one
@@ -837,16 +866,12 @@ impl Traversal {
       }
 
       if let Some(state) = config.inner().states().get(current_state_index) {
-        /*log::debug!(
-          "adding debug state for workflow {}/{} at {}",
-          config.inner().id(),
-          state.id(),
-          now
-        );*/
-        result.workflow_debug_state.push(WorkflowDebugStateKey {
-          state_id: state.id().to_string(),
-          transition_type,
-        });
+        result
+          .workflow_debug_state
+          .push(WorkflowDebugStateKey::new_state_transition(
+            state.id().to_string(),
+            transition_type,
+          ));
       }
     }
 
