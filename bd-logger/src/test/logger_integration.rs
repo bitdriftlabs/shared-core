@@ -1256,9 +1256,28 @@ fn workflow_debugging() {
     [].into(),
   );
   let debug_data = setup.server.next_debug_data_request().unwrap();
-  assert_eq!(debug_data, DebugDataRequest::default());
+  assert_eq!(
+    debug_data,
+    DebugDataRequest {
+      workflow_debug_data: [(
+        "workflow_1".into(),
+        WorkflowDebugData {
+          start_reset: Some(WorkflowTransitionDebugData {
+            transition_count: 1,
+            last_transition_time: datetime!(2023-10-01 00:00:00 UTC).into_proto(),
+            ..Default::default()
+          })
+          .into(),
+          ..Default::default()
+        }
+      )]
+      .into(),
+      ..Default::default()
+    }
+  );
 
   // Now send a log that will match.
+  time_provider.advance(1.minutes());
   setup.blocking_log(
     log_level::DEBUG,
     LogType::Normal,
@@ -1283,13 +1302,19 @@ fn workflow_debugging() {
       workflow_debug_data: [(
         "workflow_1".into(),
         WorkflowDebugData {
+          start_reset: Some(WorkflowTransitionDebugData {
+            transition_count: 1,
+            last_transition_time: datetime!(2023-10-01 00:00:00 UTC).into_proto(),
+            ..Default::default()
+          })
+          .into(),
           states: [(
             "A".into(),
             WorkflowStateDebugData {
               transitions: vec![WorkflowTransitionDebugData {
                 transition_type: Some(Transition_type::TransitionIndex(0)),
                 transition_count: 1,
-                last_transition_time: datetime!(2023-10-01 00:00:00 UTC).into_proto(),
+                last_transition_time: datetime!(2023-10-01 00:01:00 UTC).into_proto(),
                 ..Default::default()
               }],
               ..Default::default()
@@ -1339,13 +1364,19 @@ fn workflow_debugging() {
       workflow_debug_data: [(
         "workflow_1".into(),
         WorkflowDebugData {
+          start_reset: Some(WorkflowTransitionDebugData {
+            transition_count: 2,
+            last_transition_time: datetime!(2023-10-01 00:02:00 UTC).into_proto(),
+            ..Default::default()
+          })
+          .into(),
           states: [(
             "A".into(),
             WorkflowStateDebugData {
               transitions: vec![WorkflowTransitionDebugData {
                 transition_type: Some(Transition_type::TransitionIndex(0)),
                 transition_count: 2,
-                last_transition_time: datetime!(2023-10-01 00:01:00 UTC).into_proto(),
+                last_transition_time: datetime!(2023-10-01 00:02:00 UTC).into_proto(),
                 ..Default::default()
               }],
               ..Default::default()
@@ -1444,6 +1475,11 @@ fn workflow_emit_metric_action_emits_metric() {
             }
           )]
           .into(),
+          start_reset: Some(WorkflowTransitionDebugData {
+            transition_count: 1,
+            ..Default::default()
+          })
+          .into(),
           ..Default::default()
         }
       ),
@@ -1461,6 +1497,11 @@ fn workflow_emit_metric_action_emits_metric() {
               ..Default::default()
             }
           )]
+          .into(),
+          start_reset: Some(WorkflowTransitionDebugData {
+            transition_count: 1,
+            ..Default::default()
+          })
           .into(),
           ..Default::default()
         }

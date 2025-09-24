@@ -250,10 +250,13 @@ fn timeout_no_parallel_match() {
         processed_timeout: true,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
-        "A".to_string(),
-        WorkflowDebugTransitionType::Normal(0)
-      )],
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "B");
@@ -276,10 +279,13 @@ fn timeout_no_parallel_match() {
         processed_timeout: true,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
-        "B".to_string(),
-        WorkflowDebugTransitionType::Timeout
-      )],
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "B".to_string(),
+          WorkflowDebugTransitionType::Timeout
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -302,7 +308,7 @@ fn timeout_no_parallel_match() {
         processed_timeout: true,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "A".to_string(),
         WorkflowDebugTransitionType::Normal(0)
       )],
@@ -328,10 +334,13 @@ fn timeout_no_parallel_match() {
         processed_timeout: true,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
-        "A".to_string(),
-        WorkflowDebugTransitionType::Normal(0)
-      )],
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "B");
@@ -391,10 +400,13 @@ fn timeout_not_start() {
         processed_timeout: true,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
-        "B".to_string(),
-        WorkflowDebugTransitionType::Timeout
-      )],
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "B".to_string(),
+          WorkflowDebugTransitionType::Timeout
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -418,10 +430,13 @@ fn timeout_not_start() {
         processed_timeout: false,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
-        "B".to_string(),
-        WorkflowDebugTransitionType::Normal(0)
-      )],
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "B".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -519,10 +534,13 @@ fn timeout_from_start() {
         processed_timeout: true,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
-        "A".to_string(),
-        WorkflowDebugTransitionType::Timeout
-      )],
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Timeout
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -567,8 +585,15 @@ fn multiple_start_nodes_initial_fork() {
       },
       cumulative_workflow_debug_state: None,
       incremental_workflow_debug_state: vec![
-        WorkflowDebugStateKey::new("A".to_string(), WorkflowDebugTransitionType::Normal(0)),
-        WorkflowDebugStateKey::new("A".to_string(), WorkflowDebugTransitionType::Normal(1))
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        ),
+        WorkflowDebugStateKey::StartOrReset
       ],
     }
   );
@@ -586,8 +611,15 @@ fn multiple_start_nodes_initial_fork() {
       },
       cumulative_workflow_debug_state: None,
       incremental_workflow_debug_state: vec![
-        WorkflowDebugStateKey::new("A".to_string(), WorkflowDebugTransitionType::Normal(0)),
-        WorkflowDebugStateKey::new("A".to_string(), WorkflowDebugTransitionType::Normal(1))
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        ),
+        WorkflowDebugStateKey::StartOrReset
       ],
     }
   );
@@ -608,7 +640,7 @@ fn multiple_start_nodes_initial_fork() {
         processed_timeout: false,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "C".to_string(),
         WorkflowDebugTransitionType::Normal(0)
       )],
@@ -653,10 +685,13 @@ fn multiple_start_nodes_initial_branching() {
         processed_timeout: false,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
-        "A".to_string(),
-        WorkflowDebugTransitionType::Normal(0)
-      )],
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
 
@@ -673,10 +708,13 @@ fn multiple_start_nodes_initial_branching() {
         processed_timeout: false,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
-        "A".to_string(),
-        WorkflowDebugTransitionType::Normal(1)
-      )],
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
 
@@ -696,10 +734,13 @@ fn multiple_start_nodes_initial_branching() {
         processed_timeout: false,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
-        "C".to_string(),
-        WorkflowDebugTransitionType::Normal(0)
-      )],
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "C".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
 }
@@ -757,10 +798,13 @@ fn basic_exclusive_workflow() {
         processed_timeout: false,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
-        "A".to_string(),
-        WorkflowDebugTransitionType::Normal(0)
-      )],
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "B");
@@ -783,10 +827,13 @@ fn basic_exclusive_workflow() {
         processed_timeout: false,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
-        "B".to_string(),
-        WorkflowDebugTransitionType::Normal(0)
-      )],
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "B".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -838,8 +885,15 @@ fn exclusive_workflow_matched_logs_count_limit() {
       },
       cumulative_workflow_debug_state: None,
       incremental_workflow_debug_state: vec![
-        WorkflowDebugStateKey::new("A".to_string(), WorkflowDebugTransitionType::Normal(0)),
-        WorkflowDebugStateKey::new("A".to_string(), WorkflowDebugTransitionType::Normal(1))
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        ),
+        WorkflowDebugStateKey::StartOrReset
       ],
     }
   );
@@ -883,7 +937,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
         processed_timeout: false,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![],
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::StartOrReset],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -927,7 +981,7 @@ fn exclusive_workflow_log_rule_count() {
         processed_timeout: false,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![],
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::StartOrReset],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -950,7 +1004,7 @@ fn exclusive_workflow_log_rule_count() {
         processed_timeout: false,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "A".to_string(),
         WorkflowDebugTransitionType::Normal(0)
       )],
@@ -982,10 +1036,13 @@ fn exclusive_workflow_log_rule_count() {
         processed_timeout: false,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
-        "B".to_string(),
-        WorkflowDebugTransitionType::Normal(0)
-      )],
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "B".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -1046,10 +1103,13 @@ fn branching_exclusive_workflow() {
         processed_timeout: false,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
-        "A".to_string(),
-        WorkflowDebugTransitionType::Normal(0)
-      )],
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "B");
@@ -1087,10 +1147,13 @@ fn branching_exclusive_workflow() {
         processed_timeout: false,
       },
       cumulative_workflow_debug_state: None,
-      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new(
-        "B".to_string(),
-        WorkflowDebugTransitionType::Normal(0)
-      )],
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "B".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -1121,8 +1184,14 @@ fn branching_exclusive_workflow() {
       },
       cumulative_workflow_debug_state: None,
       incremental_workflow_debug_state: vec![
-        WorkflowDebugStateKey::new("A".to_string(), WorkflowDebugTransitionType::Normal(0)),
-        WorkflowDebugStateKey::new("A".to_string(), WorkflowDebugTransitionType::Normal(1))
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        )
       ],
     }
   );

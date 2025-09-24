@@ -8150,6 +8150,8 @@ pub mod debug_data_request {
         // message fields
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DebugDataRequest.WorkflowDebugData.states)
         pub states: ::std::collections::HashMap<::std::string::String, WorkflowStateDebugData>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DebugDataRequest.WorkflowDebugData.start_reset)
+        pub start_reset: ::protobuf::MessageField<WorkflowTransitionDebugData>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DebugDataRequest.WorkflowDebugData.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -8167,12 +8169,17 @@ pub mod debug_data_request {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut fields = ::std::vec::Vec::with_capacity(2);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_map_simpler_accessor_new::<_, _>(
                 "states",
                 |m: &WorkflowDebugData| { &m.states },
                 |m: &mut WorkflowDebugData| { &mut m.states },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, WorkflowTransitionDebugData>(
+                "start_reset",
+                |m: &WorkflowDebugData| { &m.start_reset },
+                |m: &mut WorkflowDebugData| { &mut m.start_reset },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<WorkflowDebugData>(
                 "DebugDataRequest.WorkflowDebugData",
@@ -8207,6 +8214,9 @@ pub mod debug_data_request {
                         is.pop_limit(old_limit);
                         self.states.insert(key, value);
                     },
+                    18 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.start_reset)?;
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -8226,6 +8236,10 @@ pub mod debug_data_request {
                 entry_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(entry_size) + entry_size
             };
+            if let Some(v) = self.start_reset.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -8242,6 +8256,9 @@ pub mod debug_data_request {
                 os.write_string(1, &k)?;
                 ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
             };
+            if let Some(v) = self.start_reset.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+            }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
         }
@@ -8260,6 +8277,7 @@ pub mod debug_data_request {
 
         fn clear(&mut self) {
             self.states.clear();
+            self.start_reset.clear();
             self.special_fields.clear();
         }
 
@@ -9505,7 +9523,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x12S\n\x04drop\x18\x04\x20\x01(\x0b2=.bitdrift_public.protobuf.client.v\
     1.SankeyIntentResponse.DropH\0R\x04drop\x1a\x13\n\x11UploadImmediately\
     \x1a\x06\n\x04DropB\n\n\x08decisionJ\x04\x08\x02\x10\x03R\x08decision\"\
-    \xc2\x07\n\x10DebugDataRequest\x12{\n\x13workflow_debug_data\x18\x01\x20\
+    \xb5\x08\n\x10DebugDataRequest\x12{\n\x13workflow_debug_data\x18\x01\x20\
     \x03(\x0b2K.bitdrift_public.protobuf.client.v1.DebugDataRequest.Workflow\
     DebugDataEntryR\x11workflowDebugData\x1a\x87\x02\n\x1bWorkflowTransition\
     DebugData\x12+\n\x10transition_index\x18\x01\x20\x01(\rH\0R\x0ftransitio\
@@ -9515,41 +9533,43 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     otobuf.TimestampR\x12lastTransitionTimeB\x11\n\x0ftransition_type\x1a\
     \x8c\x01\n\x16WorkflowStateDebugData\x12r\n\x0btransitions\x18\x01\x20\
     \x03(\x0b2P.bitdrift_public.protobuf.client.v1.DebugDataRequest.Workflow\
-    TransitionDebugDataR\x0btransitions\x1a\x88\x02\n\x11WorkflowDebugData\
+    TransitionDebugDataR\x0btransitions\x1a\xfb\x02\n\x11WorkflowDebugData\
     \x12j\n\x06states\x18\x01\x20\x03(\x0b2R.bitdrift_public.protobuf.client\
-    .v1.DebugDataRequest.WorkflowDebugData.StatesEntryR\x06states\x1a\x86\
-    \x01\n\x0bStatesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12a\n\
-    \x05value\x18\x02\x20\x01(\x0b2K.bitdrift_public.protobuf.client.v1.Debu\
-    gDataRequest.WorkflowStateDebugDataR\x05value:\x028\x01\x1a\x8c\x01\n\
-    \x16WorkflowDebugDataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\
-    \x12\\\n\x05value\x18\x02\x20\x01(\x0b2F.bitdrift_public.protobuf.client\
-    .v1.DebugDataRequest.WorkflowDebugDataR\x05value:\x028\x01\"\xa8\n\n\x0b\
-    ApiResponse\x12U\n\thandshake\x18\x01\x20\x01(\x0b25.bitdrift_public.pro\
-    tobuf.client.v1.HandshakeResponseH\0R\thandshake\x12V\n\nlog_upload\x18\
-    \x02\x20\x01(\x0b25.bitdrift_public.protobuf.client.v1.LogUploadResponse\
-    H\0R\tlogUpload\x12i\n\x11log_upload_intent\x18\x08\x20\x01(\x0b2;.bitdr\
-    ift_public.protobuf.client.v1.LogUploadIntentResponseH\0R\x0flogUploadIn\
-    tent\x12\\\n\x0cstats_upload\x18\x07\x20\x01(\x0b27.bitdrift_public.prot\
-    obuf.client.v1.StatsUploadResponseH\0R\x0bstatsUpload\x12F\n\x04pong\x18\
-    \x03\x20\x01(\x0b20.bitdrift_public.protobuf.client.v1.PongResponseH\0R\
-    \x04pong\x12l\n\x14configuration_update\x18\x04\x20\x01(\x0b27.bitdrift_\
-    public.protobuf.client.v1.ConfigurationUpdateH\0R\x13configurationUpdate\
-    \x12Z\n\x0eruntime_update\x18\x05\x20\x01(\x0b21.bitdrift_public.protobu\
-    f.client.v1.RuntimeUpdateH\0R\rruntimeUpdate\x12Z\n\x0eerror_shutdown\
-    \x18\x06\x20\x01(\x0b21.bitdrift_public.protobuf.client.v1.ErrorShutdown\
-    H\0R\rerrorShutdown\x12W\n\rflush_buffers\x18\t\x20\x01(\x0b20.bitdrift_\
-    public.protobuf.client.v1.FlushBuffersH\0R\x0cflushBuffers\x12r\n\x15san\
-    key_diagram_upload\x18\x0c\x20\x01(\x0b2<.bitdrift_public.protobuf.clien\
-    t.v1.SankeyPathUploadResponseH\0R\x13sankeyDiagramUpload\x12p\n\x16sanke\
-    y_intent_response\x18\r\x20\x01(\x0b28.bitdrift_public.protobuf.client.v\
-    1.SankeyIntentResponseH\0R\x14sankeyIntentResponse\x12e\n\x0fartifact_up\
-    load\x18\x0e\x20\x01(\x0b2:.bitdrift_public.protobuf.client.v1.UploadArt\
-    ifactResponseH\0R\x0eartifactUpload\x12k\n\x0fartifact_intent\x18\x0f\
-    \x20\x01(\x0b2@.bitdrift_public.protobuf.client.v1.UploadArtifactIntentR\
-    esponseH\0R\x0eartifactIntentB\x14\n\rresponse_type\x12\x03\xf8B\x01J\
-    \x04\x08\n\x10\x0bJ\x04\x08\x0b\x10\x0c2x\n\nApiService\x12j\n\x03Mux\
-    \x12..bitdrift_public.protobuf.client.v1.ApiRequest\x1a/.bitdrift_public\
-    .protobuf.client.v1.ApiResponse(\x010\x01b\x06proto3\
+    .v1.DebugDataRequest.WorkflowDebugData.StatesEntryR\x06states\x12q\n\x0b\
+    start_reset\x18\x02\x20\x01(\x0b2P.bitdrift_public.protobuf.client.v1.De\
+    bugDataRequest.WorkflowTransitionDebugDataR\nstartReset\x1a\x86\x01\n\
+    \x0bStatesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12a\n\x05va\
+    lue\x18\x02\x20\x01(\x0b2K.bitdrift_public.protobuf.client.v1.DebugDataR\
+    equest.WorkflowStateDebugDataR\x05value:\x028\x01\x1a\x8c\x01\n\x16Workf\
+    lowDebugDataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\\\n\
+    \x05value\x18\x02\x20\x01(\x0b2F.bitdrift_public.protobuf.client.v1.Debu\
+    gDataRequest.WorkflowDebugDataR\x05value:\x028\x01\"\xa8\n\n\x0bApiRespo\
+    nse\x12U\n\thandshake\x18\x01\x20\x01(\x0b25.bitdrift_public.protobuf.cl\
+    ient.v1.HandshakeResponseH\0R\thandshake\x12V\n\nlog_upload\x18\x02\x20\
+    \x01(\x0b25.bitdrift_public.protobuf.client.v1.LogUploadResponseH\0R\tlo\
+    gUpload\x12i\n\x11log_upload_intent\x18\x08\x20\x01(\x0b2;.bitdrift_publ\
+    ic.protobuf.client.v1.LogUploadIntentResponseH\0R\x0flogUploadIntent\x12\
+    \\\n\x0cstats_upload\x18\x07\x20\x01(\x0b27.bitdrift_public.protobuf.cli\
+    ent.v1.StatsUploadResponseH\0R\x0bstatsUpload\x12F\n\x04pong\x18\x03\x20\
+    \x01(\x0b20.bitdrift_public.protobuf.client.v1.PongResponseH\0R\x04pong\
+    \x12l\n\x14configuration_update\x18\x04\x20\x01(\x0b27.bitdrift_public.p\
+    rotobuf.client.v1.ConfigurationUpdateH\0R\x13configurationUpdate\x12Z\n\
+    \x0eruntime_update\x18\x05\x20\x01(\x0b21.bitdrift_public.protobuf.clien\
+    t.v1.RuntimeUpdateH\0R\rruntimeUpdate\x12Z\n\x0eerror_shutdown\x18\x06\
+    \x20\x01(\x0b21.bitdrift_public.protobuf.client.v1.ErrorShutdownH\0R\rer\
+    rorShutdown\x12W\n\rflush_buffers\x18\t\x20\x01(\x0b20.bitdrift_public.p\
+    rotobuf.client.v1.FlushBuffersH\0R\x0cflushBuffers\x12r\n\x15sankey_diag\
+    ram_upload\x18\x0c\x20\x01(\x0b2<.bitdrift_public.protobuf.client.v1.San\
+    keyPathUploadResponseH\0R\x13sankeyDiagramUpload\x12p\n\x16sankey_intent\
+    _response\x18\r\x20\x01(\x0b28.bitdrift_public.protobuf.client.v1.Sankey\
+    IntentResponseH\0R\x14sankeyIntentResponse\x12e\n\x0fartifact_upload\x18\
+    \x0e\x20\x01(\x0b2:.bitdrift_public.protobuf.client.v1.UploadArtifactRes\
+    ponseH\0R\x0eartifactUpload\x12k\n\x0fartifact_intent\x18\x0f\x20\x01(\
+    \x0b2@.bitdrift_public.protobuf.client.v1.UploadArtifactIntentResponseH\
+    \0R\x0eartifactIntentB\x14\n\rresponse_type\x12\x03\xf8B\x01J\x04\x08\n\
+    \x10\x0bJ\x04\x08\x0b\x10\x0c2x\n\nApiService\x12j\n\x03Mux\x12..bitdrif\
+    t_public.protobuf.client.v1.ApiRequest\x1a/.bitdrift_public.protobuf.cli\
+    ent.v1.ApiResponse(\x010\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

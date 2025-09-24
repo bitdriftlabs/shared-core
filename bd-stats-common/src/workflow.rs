@@ -24,15 +24,21 @@ impl WorkflowDebugKey {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
-pub struct WorkflowDebugStateKey {
-  pub state_id: String,
-  pub transition_type: WorkflowDebugTransitionType,
+pub enum WorkflowDebugStateKey {
+  StateTransition {
+    state_id: String,
+    transition_type: WorkflowDebugTransitionType,
+  },
+  StartOrReset,
 }
 
 impl WorkflowDebugStateKey {
   #[must_use]
-  pub fn new(state_id: String, transition_type: WorkflowDebugTransitionType) -> Self {
-    Self {
+  pub fn new_state_transition(
+    state_id: String,
+    transition_type: WorkflowDebugTransitionType,
+  ) -> Self {
+    Self::StateTransition {
       state_id,
       transition_type,
     }

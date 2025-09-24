@@ -56,16 +56,15 @@ use time::macros::datetime;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 
+enum DebugStateType {
+  StartOrReset,
+  StateId(&'static str, WorkflowDebugTransitionType),
+}
+
 #[allow(clippy::type_complexity)]
 fn assert_workflow_debug_state(
   result: &WorkflowsEngineResult<'_>,
-  expected: &[(
-    &str,
-    &[(
-      (&str, WorkflowDebugTransitionType),
-      WorkflowTransitionDebugState,
-    )],
-  )],
+  expected: &[(&str, &[(DebugStateType, WorkflowTransitionDebugState)])],
 ) {
   let expected: Vec<(String, WorkflowDebugStateMap)> = expected
     .iter()
@@ -75,11 +74,16 @@ fn assert_workflow_debug_state(
         WorkflowDebugStateMap(Box::new(
           states
             .iter()
-            .map(|((state_id, transition_type), state)| {
+            .map(|(state_type, state)| {
               (
-                WorkflowDebugStateKey {
-                  state_id: (*state_id).to_string(),
-                  transition_type: *transition_type,
+                match state_type {
+                  DebugStateType::StartOrReset => WorkflowDebugStateKey::StartOrReset,
+                  DebugStateType::StateId(state_id, transition_type) => {
+                    WorkflowDebugStateKey::new_state_transition(
+                      (*state_id).to_string(),
+                      *transition_type,
+                    )
+                  },
                 },
                 state.clone(),
               )
@@ -516,16 +520,28 @@ async fn debug_mode() {
     &result,
     &[(
       "1",
-      &[(
-        ("A", WorkflowDebugTransitionType::Normal(0)),
-        WorkflowTransitionDebugState {
-          count: 1,
-          last_transition_time: datetime!(
-            2023-01-01 00:00:00 UTC
-          )
-          .into(),
-        },
-      )],
+      &[
+        (
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Normal(0)),
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:00 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StartOrReset,
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:00 UTC
+            )
+            .into(),
+          },
+        ),
+      ],
     )],
   );
 
@@ -538,7 +554,7 @@ async fn debug_mode() {
       "1",
       &[
         (
-          ("A", WorkflowDebugTransitionType::Normal(0)),
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Normal(0)),
           WorkflowTransitionDebugState {
             count: 1,
             last_transition_time: datetime!(
@@ -548,9 +564,19 @@ async fn debug_mode() {
           },
         ),
         (
-          ("B", WorkflowDebugTransitionType::Normal(0)),
+          DebugStateType::StateId("B", WorkflowDebugTransitionType::Normal(0)),
           WorkflowTransitionDebugState {
             count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:01 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StartOrReset,
+          WorkflowTransitionDebugState {
+            count: 2,
             last_transition_time: datetime!(
               2023-01-01 00:00:01 UTC
             )
@@ -594,7 +620,7 @@ async fn debug_mode() {
       "1",
       &[
         (
-          ("A", WorkflowDebugTransitionType::Normal(0)),
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Normal(0)),
           WorkflowTransitionDebugState {
             count: 1,
             last_transition_time: datetime!(
@@ -604,9 +630,19 @@ async fn debug_mode() {
           },
         ),
         (
-          ("B", WorkflowDebugTransitionType::Normal(0)),
+          DebugStateType::StateId("B", WorkflowDebugTransitionType::Normal(0)),
           WorkflowTransitionDebugState {
             count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:01 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StartOrReset,
+          WorkflowTransitionDebugState {
+            count: 2,
             last_transition_time: datetime!(
               2023-01-01 00:00:01 UTC
             )
@@ -626,7 +662,7 @@ async fn debug_mode() {
       "1",
       &[
         (
-          ("A", WorkflowDebugTransitionType::Normal(0)),
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Normal(0)),
           WorkflowTransitionDebugState {
             count: 1,
             last_transition_time: datetime!(
@@ -636,7 +672,7 @@ async fn debug_mode() {
           },
         ),
         (
-          ("A", WorkflowDebugTransitionType::Timeout),
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Timeout),
           WorkflowTransitionDebugState {
             count: 1,
             last_transition_time: datetime!(
@@ -646,11 +682,21 @@ async fn debug_mode() {
           },
         ),
         (
-          ("B", WorkflowDebugTransitionType::Normal(0)),
+          DebugStateType::StateId("B", WorkflowDebugTransitionType::Normal(0)),
           WorkflowTransitionDebugState {
             count: 1,
             last_transition_time: datetime!(
               2023-01-01 00:00:01 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StartOrReset,
+          WorkflowTransitionDebugState {
+            count: 3,
+            last_transition_time: datetime!(
+              2023-01-01 00:01:02 UTC
             )
             .into(),
           },
@@ -677,7 +723,7 @@ async fn debug_mode() {
       "1",
       &[
         (
-          ("A", WorkflowDebugTransitionType::Normal(0)),
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Normal(0)),
           WorkflowTransitionDebugState {
             count: 2,
             last_transition_time: datetime!(
@@ -687,7 +733,7 @@ async fn debug_mode() {
           },
         ),
         (
-          ("A", WorkflowDebugTransitionType::Timeout),
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Timeout),
           WorkflowTransitionDebugState {
             count: 1,
             last_transition_time: datetime!(
@@ -697,11 +743,21 @@ async fn debug_mode() {
           },
         ),
         (
-          ("B", WorkflowDebugTransitionType::Normal(0)),
+          DebugStateType::StateId("B", WorkflowDebugTransitionType::Normal(0)),
           WorkflowTransitionDebugState {
             count: 1,
             last_transition_time: datetime!(
               2023-01-01 00:00:01 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StartOrReset,
+          WorkflowTransitionDebugState {
+            count: 3,
+            last_transition_time: datetime!(
+              2023-01-01 00:01:02 UTC
             )
             .into(),
           },
@@ -718,7 +774,7 @@ async fn debug_mode() {
       "1",
       &[
         (
-          ("A", WorkflowDebugTransitionType::Normal(0)),
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Normal(0)),
           WorkflowTransitionDebugState {
             count: 2,
             last_transition_time: datetime!(
@@ -728,7 +784,7 @@ async fn debug_mode() {
           },
         ),
         (
-          ("A", WorkflowDebugTransitionType::Timeout),
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Timeout),
           WorkflowTransitionDebugState {
             count: 1,
             last_transition_time: datetime!(
@@ -738,7 +794,7 @@ async fn debug_mode() {
           },
         ),
         (
-          ("B", WorkflowDebugTransitionType::Normal(0)),
+          DebugStateType::StateId("B", WorkflowDebugTransitionType::Normal(0)),
           WorkflowTransitionDebugState {
             count: 1,
             last_transition_time: datetime!(
@@ -748,9 +804,19 @@ async fn debug_mode() {
           },
         ),
         (
-          ("B", WorkflowDebugTransitionType::Normal(1)),
+          DebugStateType::StateId("B", WorkflowDebugTransitionType::Normal(1)),
           WorkflowTransitionDebugState {
             count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:01:04 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StartOrReset,
+          WorkflowTransitionDebugState {
+            count: 4,
             last_transition_time: datetime!(
               2023-01-01 00:01:04 UTC
             )
