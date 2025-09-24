@@ -115,6 +115,9 @@ pub enum LogAttributesOverrides {
   /// The hint that tells the SDK what the expected previous session ID was. The SDK uses it to
   /// verify whether the passed information matches its internal session ID tracking and drops
   /// logs whose hints are invalid.
+  ///
+  /// Use of this override assumes that all relevant metadata has been attached to the log as no
+  /// current session metadata will be added.
   PreviousRunSessionID(String, OffsetDateTime),
 
   /// Overrides the time when the log occurred at, useful for cases like spans with a provided
