@@ -24,7 +24,8 @@ use std::collections::HashMap;
 // Version 28: Added support for generate log action and client report uploads.
 // Version 29: Added support for out of the band artifact uploads.
 // Version 30: Added support for workflow timeout transitions.
-const CONFIGURATION_VERSION: &str = "30";
+// Version 31: Added support for the debug mux API.
+const CONFIGURATION_VERSION: &str = "31";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

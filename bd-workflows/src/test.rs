@@ -8,18 +8,23 @@
 // Test code only.
 #![allow(clippy::unwrap_used)]
 
-use crate::config::Config;
+use crate::config::{Config, WorkflowDebugMode};
 use bd_test_helpers::workflow::WorkflowBuilder;
 use std::collections::BTreeMap;
 use time::OffsetDateTime;
 
 pub trait MakeConfig {
   fn make_config(self) -> Config;
+  fn make_config_with_debug_mode(self, debug_mode: WorkflowDebugMode) -> Config;
 }
 
 impl MakeConfig for WorkflowBuilder {
   fn make_config(self) -> Config {
-    Config::new(self.build()).unwrap()
+    self.make_config_with_debug_mode(WorkflowDebugMode::None)
+  }
+
+  fn make_config_with_debug_mode(self, debug_mode: WorkflowDebugMode) -> Config {
+    Config::new(self.build(), debug_mode).unwrap()
   }
 }
 
