@@ -122,7 +122,7 @@ impl<'a> flatbuffers::Follow<'a> for LogType {
   type Inner = Self;
   #[inline]
   unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    let b = flatbuffers::read_scalar_at::<u32>(buf, loc);
+    let b = unsafe { flatbuffers::read_scalar_at::<u32>(buf, loc) };
     Self(b)
   }
 }
@@ -131,7 +131,7 @@ impl flatbuffers::Push for LogType {
     type Output = LogType;
     #[inline]
     unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
-        flatbuffers::emplace_scalar::<u32>(dst, self.0);
+        unsafe { flatbuffers::emplace_scalar::<u32>(dst, self.0); }
     }
 }
 
@@ -171,7 +171,7 @@ impl<'a> flatbuffers::Follow<'a> for Log<'a> {
   type Inner = Log<'a>;
   #[inline]
   unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: flatbuffers::Table::new(buf, loc) }
+    Self { _tab: unsafe { flatbuffers::Table::new(buf, loc) } }
   }
 }
 
@@ -497,14 +497,14 @@ pub fn size_prefixed_root_as_log_with_opts<'b, 'o>(
 /// # Safety
 /// Callers must trust the given bytes do indeed contain a valid `Log`.
 pub unsafe fn root_as_log_unchecked(buf: &[u8]) -> Log {
-  flatbuffers::root_unchecked::<Log>(buf)
+  unsafe { flatbuffers::root_unchecked::<Log>(buf) }
 }
 #[inline]
 /// Assumes, without verification, that a buffer of bytes contains a size prefixed Log and returns it.
 /// # Safety
 /// Callers must trust the given bytes do indeed contain a valid size prefixed `Log`.
 pub unsafe fn size_prefixed_root_as_log_unchecked(buf: &[u8]) -> Log {
-  flatbuffers::size_prefixed_root_unchecked::<Log>(buf)
+  unsafe { flatbuffers::size_prefixed_root_unchecked::<Log>(buf) }
 }
 #[inline]
 pub fn finish_log_buffer<'a, 'b, A: flatbuffers::Allocator + 'a>(
