@@ -110,7 +110,18 @@ impl Log<'_> {
             .data()
         })
       })
-      .unwrap_or_else(|| panic!("field {key:?} should exist"))
+      .unwrap_or_else(|| {
+        panic!(
+          "field {key:?} should exist, keys: {:?}",
+          self
+            .0
+            .fields()
+            .unwrap_or_default()
+            .iter()
+            .map(|f| f.key())
+            .collect::<Vec<_>>()
+        )
+      })
   }
 
   #[must_use]

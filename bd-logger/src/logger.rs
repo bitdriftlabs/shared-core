@@ -128,7 +128,7 @@ macro_rules! with_reentrancy_guard {
       if cell.try_borrow().is_ok() {
         $f
       } else {
-        warn_every!(30.seconds(), "{}", format!($msg, $($args),*));
+        warn_every!(30.seconds(), $msg, $($args),*);
       }
     });
   };
