@@ -26,6 +26,7 @@ use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_error_reporter::reporter::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_feature_flags::{FeatureFlags, FeatureFlagsBuilder};
+use bd_log::warn_every;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
@@ -50,6 +51,7 @@ use std::collections::VecDeque;
 use std::mem::size_of_val;
 use std::sync::Arc;
 use time::OffsetDateTime;
+use time::ext::NumericalDuration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task;
 
@@ -776,16 +778,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               self.metadata_collector.remove_field(&field_name);
             },
             AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
-              let feature_flags = self.maybe_initialize_feature_flags().await;
-              if let Some(feature_flags) = feature_flags {
+              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
                 feature_flags.set(&flag, variant.as_deref()).unwrap_or_else(|e| {
                   log::warn!("failed to set feature flag ({flag:?}): {e}");
                 });
               }
             },
             AsyncLogBufferMessage::RemoveFeatureFlag(flag) => {
-              let feature_flags = self.maybe_initialize_feature_flags().await;
-              if let Some(feature_flags) = feature_flags {
+              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
                 feature_flags.remove(&flag).unwrap_or_else(|e| {
                   log::warn!("failed to remove feature flag ({flag:?}): {e}");
                 });
@@ -849,22 +849,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     if let FeatureFlagInitialization::Pending(builder) = &self.feature_flags {
       let builder = builder.clone();
       let feature_flags = task::spawn_blocking(move || {
-        match builder.current_feature_flags() {
-          Ok(feature_flags) => Some(feature_flags),
-          Err(e) => {
-            // This should never fail unless there's a serious filesystem issue.
-            log::warn!("failed to load or create current feature flags: {e}");
-
-            // Treat this as an unexpected error so we get visibility into it.
-            // If this keeps happening for normal reasons we can remove this later.
-            handle_unexpected_error_with_details(
-              e.context("feature flags"),
-              "feature flag init",
-              || None,
-            );
-            None
-          },
-        }
+        // This should never fail unless there's a serious filesystem issue.
+        // Treat this as an unexpected error so we get visibility into it.
+        // If this keeps happening for normal reasons we can remove this later.
+        builder
+          .current_feature_flags()
+          .map_err(|e| {
+            handle_unexpected_error_with_details(e, "feature flag initialization", || None)
+          })
+          .ok()
       })
       .await
       .ok()
@@ -876,10 +869,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     if let FeatureFlagInitialization::Initialized(ref mut feature_flags) = self.feature_flags {
       feature_flags.as_mut()
     } else {
+      warn_every!(
+        30.seconds(),
+        "feature flags failed to initialize, will not be available"
+      );
       None
     }
   }
-
 
   async fn write_log_internal(
     &mut self,
