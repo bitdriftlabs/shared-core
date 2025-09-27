@@ -416,11 +416,11 @@ impl LoggerHandle {
     );
   }
 
-  pub fn set_feature_flag(&self, flag: String, variant: Option<String>) {
+  pub fn set_feature_flag(&self, flag: &str, variant: Option<String>) {
     with_reentrancy_guard!(
       {
         let result =
-          AsyncLogBuffer::<LoggerReplay>::set_feature_flag(&self.tx, flag.clone(), variant);
+          AsyncLogBuffer::<LoggerReplay>::set_feature_flag(&self.tx, flag.to_string(), variant);
         if let Err(e) = result {
           log::warn!("failed to set feature flag {flag:?}: {e:?}");
         }
