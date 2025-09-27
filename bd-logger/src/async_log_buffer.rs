@@ -855,7 +855,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         builder
           .current_feature_flags()
           .map_err(|e| {
-            handle_unexpected_error_with_details(e, "feature flag initialization", || None)
+            handle_unexpected_error_with_details(e, "feature flag initialization", || None);
           })
           .ok()
       })

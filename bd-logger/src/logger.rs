@@ -191,7 +191,7 @@ impl LoggerHandle {
     matching_fields: AnnotatedLogFields,
     attributes_overrides: Option<LogAttributesOverrides>,
     block: Block,
-    capture_session: CaptureSession,
+    capture_session: &CaptureSession,
   ) {
     with_reentrancy_guard!(
       {
@@ -232,7 +232,7 @@ impl LoggerHandle {
       [].into(),
       None,
       Block::No,
-      CaptureSession::default(),
+      &CaptureSession::default(),
     );
   }
 
@@ -284,7 +284,7 @@ impl LoggerHandle {
       [].into(),
       None,
       Block::No,
-      CaptureSession::default(),
+      &CaptureSession::default(),
     );
 
     self
@@ -317,7 +317,7 @@ impl LoggerHandle {
       [].into(),
       None,
       Block::No,
-      CaptureSession::default(),
+      &CaptureSession::default(),
     );
   }
 
@@ -385,7 +385,7 @@ impl LoggerHandle {
       [].into(),
       None,
       Block::No,
-      CaptureSession::default(),
+      &CaptureSession::default(),
     );
   }
 

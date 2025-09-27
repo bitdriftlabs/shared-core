@@ -182,7 +182,7 @@ impl ProcessingPipeline {
       fields: FieldsRef::new(&log.fields, &log.matching_fields),
       session_id: &log.session_id,
       occurred_at: log.occurred_at,
-      capture_session: log.capture_session.as_deref(),
+      capture_session: log.capture_session,
     };
 
     let flush_stats_trigger = self.flush_stats_trigger.clone();

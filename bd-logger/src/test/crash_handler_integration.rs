@@ -44,7 +44,7 @@ fn crash_reports_artifact_upload() {
       [].into(),
       None,
       Block::No,
-      CaptureSession::default(),
+      &CaptureSession::default(),
     );
 
     std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();
