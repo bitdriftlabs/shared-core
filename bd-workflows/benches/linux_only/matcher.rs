@@ -8,6 +8,7 @@
 use bd_api::DataUpload;
 use bd_client_stats::Stats;
 use bd_client_stats_store::Collector;
+use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{FieldsRef, LogFields, LogRef, LogType, log_level};
 use bd_proto::protos::workflow::workflow::Workflow;
 use bd_runtime::runtime::ConfigLoader;
@@ -22,7 +23,6 @@ use gungraun::{
   library_benchmark,
   library_benchmark_group,
 };
-use std::collections::BTreeSet;
 use std::future::Future;
 use std::hint::black_box;
 use time::OffsetDateTime;
@@ -61,8 +61,8 @@ impl Setup {
     engine
       .start(WorkflowsEngineConfig::new(
         WorkflowsConfiguration::new(workflows, vec![]),
-        BTreeSet::default(),
-        BTreeSet::default(),
+        TinySet::default(),
+        TinySet::default(),
       ))
       .await;
 
@@ -133,10 +133,10 @@ fn run_runtime_bench<T: Future<Output = WorkflowsEngine>>(engine: impl FnOnce() 
         occurred_at: OffsetDateTime::now_utc(),
         capture_session: None,
       };
-      engine.process_log(&log, &BTreeSet::default(), now);
+      engine.process_log(&log, &TinySet::default(), now);
 
       gungraun::client_requests::callgrind::start_instrumentation();
-      engine.process_log(&log, &BTreeSet::default(), now);
+      engine.process_log(&log, &TinySet::default(), now);
       gungraun::client_requests::callgrind::stop_instrumentation();
     });
 }

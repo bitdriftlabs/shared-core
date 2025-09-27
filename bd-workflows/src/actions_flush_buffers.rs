@@ -14,6 +14,7 @@ use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_api::upload::{Intent_type, IntentDecision, TrackedLogUploadIntent, WorkflowActionUpload};
 use bd_client_stats_store::{Counter, Scope};
+use bd_log_primitives::tiny_set::TinySet;
 use bd_proto::protos::client::api::LogUploadIntentRequest;
 use bd_proto::protos::client::api::log_upload_intent_request::ExplicitSessionCapture;
 use bd_stats_common::labels;
@@ -349,8 +350,8 @@ impl Negotiator {
 #[derive(Debug)]
 /// Responsible for orchestrating and managing flush buffer actions.
 pub(crate) struct Resolver {
-  trigger_buffer_ids: BTreeSet<Cow<'static, str>>,
-  continuous_buffer_ids: BTreeSet<Cow<'static, str>>,
+  trigger_buffer_ids: TinySet<Cow<'static, str>>,
+  continuous_buffer_ids: TinySet<Cow<'static, str>>,
 
   stats: ResolverStats,
 }
@@ -359,8 +360,8 @@ impl Resolver {
   pub(crate) fn new(stats_scope: &Scope) -> Self {
     Self {
       stats: ResolverStats::new(stats_scope),
-      trigger_buffer_ids: BTreeSet::new(),
-      continuous_buffer_ids: BTreeSet::new(),
+      trigger_buffer_ids: TinySet::default(),
+      continuous_buffer_ids: TinySet::default(),
     }
   }
 
@@ -375,14 +376,14 @@ impl Resolver {
   /// buffer actions that require further processing.
   pub(crate) fn process_flush_buffer_actions<'a>(
     &self,
-    actions: BTreeSet<Cow<'a, ActionFlushBuffers>>,
+    actions: TinySet<Cow<'a, ActionFlushBuffers>>,
     session_id: &str,
-    pending_actions: &BTreeSet<PendingFlushBuffersAction>,
+    pending_actions: &TinySet<PendingFlushBuffersAction>,
     streaming_actions: &[StreamingBuffersAction],
   ) -> FlushBuffersActionsProcessingResult<'a> {
-    let mut created_actions = BTreeSet::new();
-    let mut triggered_flush_buffers_action_ids = BTreeSet::new();
-    let mut triggered_flushes_buffer_ids = BTreeSet::new();
+    let mut created_actions = TinySet::default();
+    let mut triggered_flush_buffers_action_ids = TinySet::default();
+    let mut triggered_flushes_buffer_ids = TinySet::default();
 
     for action in actions {
       triggered_flush_buffers_action_ids.insert(match action {
@@ -440,7 +441,7 @@ impl Resolver {
   pub(crate) fn process_streaming_actions<'a>(
     &self,
     mut streaming_actions: Vec<(StreamingBuffersAction, bool)>,
-    log_destination_buffer_ids: &BTreeSet<Cow<'a, str>>,
+    log_destination_buffer_ids: &TinySet<Cow<'a, str>>,
     session_id: &str,
   ) -> StreamingBuffersActionsProcessingResult<'a> {
     let mut has_changed_streaming_actions = false;
@@ -488,9 +489,9 @@ impl Resolver {
     // of this process, the state of all active streaming actions is updated, with a counter of logs
     // streamed for each active streaming rule being incremented accordingly.
 
-    let mut final_log_destination_buffer_ids: BTreeSet<_> = BTreeSet::new();
+    let mut final_log_destination_buffer_ids: TinySet<_> = TinySet::default();
 
-    let mut not_rerouted_buffer_ids: BTreeSet<_> = log_destination_buffer_ids
+    let mut not_rerouted_buffer_ids: TinySet<_> = log_destination_buffer_ids
       .clone()
       .into_iter()
       .filter(|id|
@@ -502,7 +503,7 @@ impl Resolver {
     let mut has_been_rerouted = false;
 
     for (action, _) in &mut streaming_actions {
-      let intersection: BTreeSet<_> = action
+      let intersection: TinySet<_> = action
         .source_trigger_buffer_ids
         .intersection(log_destination_buffer_ids)
         .collect();
@@ -532,7 +533,7 @@ impl Resolver {
       self.stats.streaming_action_applications.inc();
     }
 
-    final_log_destination_buffer_ids.append(&mut not_rerouted_buffer_ids);
+    final_log_destination_buffer_ids.extend(not_rerouted_buffer_ids);
 
     has_changed_streaming_actions |= has_been_rerouted;
 
@@ -561,8 +562,8 @@ impl Resolver {
   /// after this process, an action is left with no trigger buffer IDs, it is dropped.
   pub(crate) fn standardize_pending_actions(
     &self,
-    pending_actions: BTreeSet<PendingFlushBuffersAction>,
-  ) -> BTreeSet<PendingFlushBuffersAction> {
+    pending_actions: TinySet<PendingFlushBuffersAction>,
+  ) -> TinySet<PendingFlushBuffersAction> {
     pending_actions
       .into_iter()
       .filter_map(|action| {
@@ -594,12 +595,12 @@ impl Resolver {
     streaming_buffers
       .into_iter()
       .filter_map(|action| {
-        let source_trigger_buffer_ids: BTreeSet<_> = action
+        let source_trigger_buffer_ids: TinySet<_> = action
           .source_trigger_buffer_ids
           .intersection(&self.trigger_buffer_ids)
           .cloned()
           .collect();
-        let destination_continuous_buffer_ids: BTreeSet<_> = action
+        let destination_continuous_buffer_ids: TinySet<_> = action
           .destination_continuous_buffer_ids
           .intersection(&self.continuous_buffer_ids)
           .cloned()
@@ -695,14 +696,14 @@ impl ResolverStats {
 
 #[derive(Debug)]
 pub(crate) struct ResolverConfig {
-  trigger_buffer_ids: BTreeSet<Cow<'static, str>>,
-  continuous_buffer_ids: BTreeSet<Cow<'static, str>>,
+  trigger_buffer_ids: TinySet<Cow<'static, str>>,
+  continuous_buffer_ids: TinySet<Cow<'static, str>>,
 }
 
 impl ResolverConfig {
   pub(crate) const fn new(
-    trigger_buffer_ids: BTreeSet<Cow<'static, str>>,
-    continuous_buffer_ids: BTreeSet<Cow<'static, str>>,
+    trigger_buffer_ids: TinySet<Cow<'static, str>>,
+    continuous_buffer_ids: TinySet<Cow<'static, str>>,
   ) -> Self {
     Self {
       trigger_buffer_ids,
@@ -714,12 +715,11 @@ impl ResolverConfig {
 //
 // FlushBuffersActionsProcessingResult
 //
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct FlushBuffersActionsProcessingResult<'a> {
-  pub(crate) new_pending_actions_to_add: BTreeSet<PendingFlushBuffersAction>,
-
-  pub(crate) triggered_flush_buffers_action_ids: BTreeSet<Cow<'a, FlushBufferId>>,
-  pub(crate) triggered_flushes_buffer_ids: BTreeSet<Cow<'static, str>>,
+  pub(crate) new_pending_actions_to_add: TinySet<PendingFlushBuffersAction>,
+  pub(crate) triggered_flush_buffers_action_ids: TinySet<Cow<'a, FlushBufferId>>,
+  pub(crate) triggered_flushes_buffer_ids: TinySet<Cow<'static, str>>,
 }
 
 //
@@ -728,7 +728,7 @@ pub(crate) struct FlushBuffersActionsProcessingResult<'a> {
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct StreamingBuffersActionsProcessingResult<'a> {
-  pub(crate) log_destination_buffer_ids: BTreeSet<Cow<'a, str>>,
+  pub(crate) log_destination_buffer_ids: TinySet<Cow<'a, str>>,
   pub(crate) has_changed_streaming_actions: bool,
   pub(crate) updated_streaming_actions: Vec<StreamingBuffersAction>,
 }
@@ -740,12 +740,12 @@ pub(crate) struct StreamingBuffersActionsProcessingResult<'a> {
 // The action created by a flush buffer workflow action. This tracks the action while upload intent
 // negotiation is performed. At that point, it either transitions into a `StreamingBuffersAction` if
 // streaming was configured for the action.
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct PendingFlushBuffersAction {
   pub(crate) id: FlushBufferId,
   session_id: String,
 
-  trigger_buffer_ids: BTreeSet<Cow<'static, str>>,
+  trigger_buffer_ids: TinySet<Cow<'static, str>>,
 
   streaming: Option<Streaming>,
 }
@@ -769,8 +769,8 @@ impl PendingFlushBuffersAction {
   fn new(
     action: ActionFlushBuffers,
     session_id: String,
-    trigger_buffer_ids: &BTreeSet<Cow<'static, str>>,
-    continuous_buffer_ids: &BTreeSet<Cow<'static, str>>,
+    trigger_buffer_ids: &TinySet<Cow<'static, str>>,
+    continuous_buffer_ids: &TinySet<Cow<'static, str>>,
   ) -> Option<Self> {
     log::debug!("evaluating flush buffers action: {action:?}");
 
@@ -786,7 +786,7 @@ impl PendingFlushBuffersAction {
         if streaming_proto.destination_continuous_buffer_ids.is_empty() {
           continuous_buffer_ids
             .first()
-            .map_or(BTreeSet::new(), |id| BTreeSet::from([id.clone()]))
+            .map_or_else(TinySet::default, |id| TinySet::from([id.clone()]))
         } else {
           // Make sure that we dismiss invalid (not existing) continuous buffer IDs.
           continuous_buffer_ids
@@ -811,7 +811,7 @@ impl PendingFlushBuffersAction {
       })
     });
 
-    let trigger_buffer_ids: BTreeSet<_> = if action.buffer_ids.is_empty() {
+    let trigger_buffer_ids: TinySet<_> = if action.buffer_ids.is_empty() {
       // Empty buffer IDs means that the action should be applied to all buffers.
       trigger_buffer_ids.clone()
     } else {
@@ -841,9 +841,9 @@ impl PendingFlushBuffersAction {
 // Streaming
 //
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(crate) struct Streaming {
-  destination_continuous_buffer_ids: BTreeSet<Cow<'static, str>>,
+  destination_continuous_buffer_ids: TinySet<Cow<'static, str>>,
 
   max_logs_count: Option<u64>,
 }
@@ -852,15 +852,15 @@ pub(crate) struct Streaming {
 // StreamingBuffersAction
 //
 
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 // The action created in response to flush buffer actions that were accepted for upload and had a
 // streaming configuration attached to them.
 pub(crate) struct StreamingBuffersAction {
   pub(crate) id: FlushBufferId,
   session_id: String,
 
-  source_trigger_buffer_ids: BTreeSet<Cow<'static, str>>,
-  destination_continuous_buffer_ids: BTreeSet<Cow<'static, str>>,
+  source_trigger_buffer_ids: TinySet<Cow<'static, str>>,
+  destination_continuous_buffer_ids: TinySet<Cow<'static, str>>,
 
   max_logs_count: Option<u64>,
 
@@ -885,7 +885,7 @@ impl std::fmt::Debug for StreamingBuffersAction {
 impl StreamingBuffersAction {
   pub(crate) fn new(
     action: PendingFlushBuffersAction,
-    continuous_buffer_ids: &BTreeSet<Cow<'static, str>>,
+    continuous_buffer_ids: &TinySet<Cow<'static, str>>,
   ) -> Option<Self> {
     let Some(streaming) = action.streaming else {
       log::trace!("buffers streaming not activated: no streaming configuration");
@@ -931,7 +931,7 @@ impl StreamingBuffersAction {
 #[derive(Debug)]
 pub struct BuffersToFlush {
   // Unique IDs of buffers to flush.
-  pub buffer_ids: BTreeSet<Cow<'static, str>>,
+  pub buffer_ids: TinySet<Cow<'static, str>>,
   // Channel to notify the caller that the flush has been completed.
   pub response_tx: tokio::sync::oneshot::Sender<()>,
 }

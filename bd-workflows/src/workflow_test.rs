@@ -15,6 +15,7 @@ use crate::config::{
 };
 use crate::test::{MakeConfig, TestLog};
 use crate::workflow::{Run, TriggeredAction, Workflow, WorkflowResult, WorkflowResultStats};
+use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{FieldsRef, LogFields, LogMessage, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
@@ -257,7 +258,7 @@ fn timeout_no_parallel_match() {
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: true,
@@ -286,7 +287,7 @@ fn timeout_no_parallel_match() {
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 0,
         processed_timeout: true,
@@ -315,7 +316,7 @@ fn timeout_no_parallel_match() {
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: true,
@@ -341,7 +342,7 @@ fn timeout_no_parallel_match() {
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: true,
@@ -411,7 +412,7 @@ fn timeout_not_start() {
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 0,
         processed_timeout: true,
@@ -441,7 +442,7 @@ fn timeout_not_start() {
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
@@ -557,7 +558,7 @@ fn timeout_from_start() {
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 0,
         processed_timeout: true,
@@ -607,7 +608,7 @@ fn multiple_start_nodes_initial_fork() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
@@ -633,7 +634,7 @@ fn multiple_start_nodes_initial_fork() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
@@ -663,7 +664,7 @@ fn multiple_start_nodes_initial_fork() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
@@ -708,7 +709,7 @@ fn multiple_start_nodes_initial_branching() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
@@ -731,7 +732,7 @@ fn multiple_start_nodes_initial_branching() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
@@ -757,7 +758,7 @@ fn multiple_start_nodes_initial_branching() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
@@ -821,7 +822,7 @@ fn basic_exclusive_workflow() {
           metric_type: MetricType::Counter,
         })
       ],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
@@ -850,7 +851,7 @@ fn basic_exclusive_workflow() {
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
@@ -907,7 +908,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
@@ -938,7 +939,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
@@ -960,7 +961,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
@@ -1004,7 +1005,7 @@ fn exclusive_workflow_log_rule_count() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
@@ -1027,7 +1028,7 @@ fn exclusive_workflow_log_rule_count() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
@@ -1059,7 +1060,7 @@ fn exclusive_workflow_log_rule_count() {
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
@@ -1130,7 +1131,7 @@ fn branching_exclusive_workflow() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
@@ -1174,7 +1175,7 @@ fn branching_exclusive_workflow() {
         buffer_ids: BTreeSet::from(["zoo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
@@ -1210,7 +1211,7 @@ fn branching_exclusive_workflow() {
           streaming: None,
         }),
       ],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
