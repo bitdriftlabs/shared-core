@@ -287,7 +287,7 @@ impl Setup {
       matching_fields,
       attributes_overrides,
       Block::No,
-      CaptureSession::default(),
+      &CaptureSession::default(),
     );
   }
 
@@ -307,7 +307,7 @@ impl Setup {
       matching_fields,
       None,
       Block::Yes(15.std_seconds()),
-      CaptureSession::default(),
+      &CaptureSession::default(),
     );
   }
 
@@ -327,7 +327,7 @@ impl Setup {
       matching_fields,
       None,
       Block::No,
-      CaptureSession::capture_with_id("test"),
+      &CaptureSession::capture_with_id("test"),
     );
   }
 

@@ -51,7 +51,7 @@ impl bd_internal_logging::Logger for InternalLogger {
       [].into(),
       None,
       Block::No,
-      CaptureSession::default(),
+      &CaptureSession::default(),
     );
   }
 }

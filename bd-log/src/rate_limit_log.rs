@@ -55,9 +55,12 @@ macro_rules! warn_every_debug_panic {
 
 #[macro_export]
 macro_rules! warn_every {
+  ($duration:expr, $first:tt) => {
+    $crate::log_every!(log::Level::Warn, $duration, "{}", $first);
+  };
   ($duration:expr, $first:tt, $($arg:tt)+) => {
     $crate::log_every!(log::Level::Warn, $duration, $first, $($arg)+);
-  }
+  };
 }
 
 #[macro_export]

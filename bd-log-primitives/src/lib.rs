@@ -228,7 +228,7 @@ pub struct Log {
   pub session_id: String,
   pub occurred_at: time::OffsetDateTime,
 
-  pub capture_session: Option<String>,
+  pub capture_session: Option<&'static str>,
 }
 
 //
