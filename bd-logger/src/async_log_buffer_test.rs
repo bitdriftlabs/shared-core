@@ -298,7 +298,7 @@ fn annotated_log_line_size_is_computed_correctly() {
       log_level: 0,
       log_type: LogType::Normal,
       message: "foo".into(),
-      fields: [("foo".into(), StringOrBytes::String("bar".to_string()))].into(),
+      fields: [("foo".into(), "bar".into())].into(),
       matching_fields: [].into(),
       session_id: "foo".into(),
       occurred_at: time::OffsetDateTime::now_utc(),
@@ -306,7 +306,7 @@ fn annotated_log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 569;
+  let baseline_log_expected_size = 561;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 

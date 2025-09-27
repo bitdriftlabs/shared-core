@@ -25,7 +25,7 @@ use bd_client_common::maybe_await_map;
 use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_error_reporter::reporter::{handle_unexpected, handle_unexpected_error_with_details};
-use bd_feature_flags::FeatureFlagsBuilder;
+use bd_feature_flags::{FeatureFlags, FeatureFlagsBuilder};
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
@@ -50,7 +50,7 @@ use std::collections::VecDeque;
 use std::mem::size_of_val;
 use std::sync::Arc;
 use time::OffsetDateTime;
-use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot};
 use tokio::task;
 
 #[derive(Debug)]
@@ -103,7 +103,7 @@ pub struct LogLine {
 
   /// If set, indicates that the log should trigger a session capture. The provided value is an ID
   /// that helps identify why the session should be captured.
-  pub capture_session: Option<String>,
+  pub capture_session: Option<&'static str>,
 }
 
 //
@@ -145,6 +145,14 @@ impl MemorySized for LogLine {
   }
 }
 
+/// Tracks the initialization state of the feature flags. By tracking the initialization state like
+/// this we can avoid attempting to initialize the feature flags multiple times in the case of
+/// failures.
+enum FeatureFlagInitialization {
+  Pending(FeatureFlagsBuilder),
+  Initialized(Option<FeatureFlags>),
+}
+
 //
 // AsyncLogBuffer
 //
@@ -160,7 +168,6 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   session_strategy: Arc<bd_session::Strategy>,
   metadata_collector: MetadataCollector,
   resource_utilization_reporter: bd_resource_utilization::Reporter,
-  feature_flags_builder: FeatureFlagsBuilder,
 
   session_replay_recorder: bd_session_replay::Recorder,
   session_replay_capture_screenshot_handler: CaptureScreenshotHandler,
@@ -168,16 +175,14 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   events_listener: bd_events::Listener,
 
   replayer: R,
-
   interceptors: Vec<Arc<dyn LogInterceptor>>,
 
   logging_state: LoggingState<bd_log_primitives::Log>,
-
   global_state_tracker: global_state::Tracker,
-
   time_provider: Arc<dyn TimeProvider>,
-
   lifecycle_state: InitLifecycleState,
+
+  feature_flags: FeatureFlagInitialization,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -267,7 +272,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         ),
         time_provider,
         lifecycle_state,
-        feature_flags_builder,
+
+        feature_flags: FeatureFlagInitialization::Pending(feature_flags_builder),
       },
       async_log_buffer_communication_tx,
     )
@@ -282,7 +288,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     matching_fields: AnnotatedLogFields,
     attributes_overrides: Option<LogAttributesOverrides>,
     block: Block,
-    capture_session: Option<String>,
+    capture_session: Option<&'static str>,
   ) -> Result<(), TrySendError> {
     let (log_processing_completed_tx_option, log_processing_completed_rx_option) =
       if matches!(block, Block::Yes(_)) {
@@ -642,28 +648,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn maybe_replay_pre_config_buffer_logs(
     &mut self,
     pre_config_log_buffer: PreConfigBuffer<bd_log_primitives::Log>,
-    initial_logs: &mut Vec<Log>,
   ) {
     let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state else {
       return;
     };
 
     let now = self.time_provider.now();
-    for log_line in initial_logs.drain(..) {
-      if let Err(e) = self
-        .replayer
-        .replay_log(
-          log_line,
-          false,
-          &mut initialized_logging_context.processing_pipeline,
-          now,
-        )
-        .await
-      {
-        log::debug!("failed to reply initial logs: {e}");
-      }
-    }
-
     for log_line in pre_config_log_buffer.pop_all() {
       if let Err(e) = self
         .replayer
@@ -698,29 +688,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // stored in pre-config log buffer are guaranteed to be replayed before
     // the async log buffer goes back to processing incoming logs.
 
-    let feature_flags_cache = Arc::new(Mutex::new(None::<bd_feature_flags::FeatureFlags>));
-    let feature_flags_builder = self.feature_flags_builder.clone();
-
-    let get_feature_flags = || async {
-      let mut cache_guard = feature_flags_cache.lock().await;
-      if cache_guard.is_none() {
-        let feature_flags_builder = feature_flags_builder.clone();
-        let feature_flags_result = task::spawn_blocking(move || {
-          feature_flags_builder
-            .current_feature_flags()
-            .inspect_err(|e| {
-              // This should never fail unless there's a serious filesystem issue.
-              log::warn!("failed to load or create current feature flags: {e}");
-            })
-            .ok()
-        })
-        .await
-        .unwrap_or(None);
-        *cache_guard = feature_flags_result;
-      }
-      cache_guard
-    };
-
     let local_shutdown = shutdown.cancelled();
     tokio::pin!(local_shutdown);
     let mut self_shutdown = self.shutdown_trigger_handle.make_shutdown();
@@ -744,7 +711,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             self.lifecycle_state.set(InitLifecycle::LogProcessingStarted);
             self.maybe_replay_pre_config_buffer_logs(
                 pre_config_log_buffer,
-                &mut vec![]
+
             ).await;
           }
         },
@@ -768,7 +735,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               // Always capture the session when we process a crash log.
               // TODO(snowp): Ideally we should include information like the report and client side
               // grouping here to help make smarter decisions during intent negotiation.
-              capture_session: Some("crash_handler".to_string()),
+              capture_session: Some("crash_handler"),
             };
             if let Err(e) = self.process_all_logs(log, false).await {
               log::debug!("failed to process crash log: {e}");
@@ -809,16 +776,16 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               self.metadata_collector.remove_field(&field_name);
             },
             AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
-              let mut cache_guard = get_feature_flags().await;
-              if let Some(feature_flags) = cache_guard.as_mut() {
+              let feature_flags = self.maybe_initialize_feature_flags().await;
+              if let Some(feature_flags) = feature_flags {
                 feature_flags.set(&flag, variant.as_deref()).unwrap_or_else(|e| {
                   log::warn!("failed to set feature flag ({flag:?}): {e}");
                 });
               }
             },
             AsyncLogBufferMessage::RemoveFeatureFlag(flag) => {
-              let mut cache_guard = get_feature_flags().await;
-              if let Some(feature_flags) = cache_guard.as_mut() {
+              let feature_flags = self.maybe_initialize_feature_flags().await;
+              if let Some(feature_flags) = feature_flags {
                 feature_flags.remove(&flag).unwrap_or_else(|e| {
                   log::warn!("failed to remove feature flag ({flag:?}): {e}");
                 });
@@ -876,6 +843,43 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       }
     }
   }
+
+  /// Lazily initializes the feature flags if they have not been initialized yet.
+  async fn maybe_initialize_feature_flags(&mut self) -> Option<&mut FeatureFlags> {
+    if let FeatureFlagInitialization::Pending(builder) = &self.feature_flags {
+      let builder = builder.clone();
+      let feature_flags = task::spawn_blocking(move || {
+        match builder.current_feature_flags() {
+          Ok(feature_flags) => Some(feature_flags),
+          Err(e) => {
+            // This should never fail unless there's a serious filesystem issue.
+            log::warn!("failed to load or create current feature flags: {e}");
+
+            // Treat this as an unexpected error so we get visibility into it.
+            // If this keeps happening for normal reasons we can remove this later.
+            handle_unexpected_error_with_details(
+              e.context("feature flags"),
+              "feature flag init",
+              || None,
+            );
+            None
+          },
+        }
+      })
+      .await
+      .ok()
+      .flatten();
+
+      self.feature_flags = FeatureFlagInitialization::Initialized(feature_flags);
+    }
+
+    if let FeatureFlagInitialization::Initialized(ref mut feature_flags) = self.feature_flags {
+      feature_flags.as_mut()
+    } else {
+      None
+    }
+  }
+
 
   async fn write_log_internal(
     &mut self,
