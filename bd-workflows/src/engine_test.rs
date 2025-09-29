@@ -7,11 +7,11 @@
 
 use super::{StateStore, WorkflowsEngine};
 use crate::actions_flush_buffers::BuffersToFlush;
-use crate::config::{Action, FlushBufferId, WorkflowsConfiguration};
-use crate::engine::{WorkflowsEngineConfig, WorkflowsEngineResult};
+use crate::config::{Action, FlushBufferId, WorkflowDebugMode, WorkflowsConfiguration};
+use crate::engine::{WORKFLOWS_STATE_FILE_NAME, WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::engine_assert_active_runs;
 use crate::test::{MakeConfig, TestLog};
-use crate::workflow::Workflow;
+use crate::workflow::{Workflow, WorkflowDebugStateMap, WorkflowTransitionDebugState};
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
@@ -28,7 +28,8 @@ use bd_proto::protos::client::api::{
   log_upload_intent_request,
 };
 use bd_runtime::runtime::ConfigLoader;
-use bd_stats_common::labels;
+use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
+use bd_stats_common::{NameType, labels};
 use bd_test_helpers::workflow::macros::{action, any, log_matches, rule};
 use bd_test_helpers::workflow::{
   TestFieldRef,
@@ -55,6 +56,47 @@ use time::macros::datetime;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 
+enum DebugStateType {
+  StartOrReset,
+  StateId(&'static str, WorkflowDebugTransitionType),
+}
+
+#[allow(clippy::type_complexity)]
+fn assert_workflow_debug_state(
+  result: &WorkflowsEngineResult<'_>,
+  expected: &[(&str, &[(DebugStateType, WorkflowTransitionDebugState)])],
+) {
+  let expected: Vec<(String, WorkflowDebugStateMap)> = expected
+    .iter()
+    .map(|(workflow_id, states)| {
+      (
+        (*workflow_id).to_string(),
+        WorkflowDebugStateMap(Box::new(
+          states
+            .iter()
+            .map(|(state_type, state)| {
+              (
+                match state_type {
+                  DebugStateType::StartOrReset => WorkflowDebugStateKey::StartOrReset,
+                  DebugStateType::StateId(state_id, transition_type) => {
+                    WorkflowDebugStateKey::new_state_transition(
+                      (*state_id).to_string(),
+                      *transition_type,
+                    )
+                  },
+                },
+                state.clone(),
+              )
+            })
+            .collect(),
+        )),
+      )
+    })
+    .collect();
+
+  assert_eq!(expected, result.workflow_debug_state);
+}
+
 /// Asserts that the states of runs of specified workflow of a given workflow engine
 /// are equal to expected list of states.
 /// The macro assumes that each run has only one traversals.
@@ -77,7 +119,7 @@ macro_rules! engine_assert_active_runs {
     );
 
     for (index, id) in expected_states.iter().enumerate() {
-      let expected_state_index = config.states().iter()
+      let expected_state_index = config.inner().states().iter()
         .position(|state| state.id() == *id);
       assert!(
         expected_state_index.is_some(),
@@ -132,7 +174,7 @@ macro_rules! engine_assert_active_run_traversals {
     );
 
     for (index, id) in expected_states.iter().enumerate() {
-      let expected_state_index = config.states().iter()
+      let expected_state_index = config.inner().states().iter()
         .position(|state| state.id() == *id);
       assert!(
         expected_state_index.is_some(),
@@ -428,11 +470,369 @@ impl Setup {
   }
 
   fn workflows_state_path(&self) -> PathBuf {
-    self
-      .sdk_directory
-      .path()
-      .join("workflows_state_snapshot.9.bin")
+    self.sdk_directory.path().join(WORKFLOWS_STATE_FILE_NAME)
   }
+}
+
+#[tokio::test]
+async fn debug_mode() {
+  let c = state("C");
+  let d = state("D");
+  let b = state("B")
+    .declare_transition_with_actions(
+      &c,
+      rule!(log_matches!(message == "bar")),
+      &[action!(emit_counter "bar_metric"; value metric_value!(123))],
+    )
+    .declare_transition_with_actions(
+      &d,
+      rule!(log_matches!(message == "baz")),
+      &[action!(emit_counter "baz_metric"; value metric_value!(123))],
+    );
+  let a = state("A")
+    .declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(message == "foo")),
+      &[action!(emit_counter "foo_metric"; value metric_value!(123))],
+    )
+    .with_timeout(
+      &c,
+      1.minutes(),
+      &[action!(emit_counter "timeout_metric"; value metric_value!(1))],
+    );
+
+  let workflows = vec![
+    WorkflowBuilder::new("1", &[&a, &b, &c, &d])
+      .make_config_with_debug_mode(WorkflowDebugMode::DebugOnly),
+  ];
+
+  let setup = Setup::new();
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows.clone(),
+    ))
+    .await;
+
+  let result = workflows_engine.process_log(TestLog::new("foo").with_now(datetime!(
+    2023-01-01 00:00:00 UTC
+  )));
+  assert_workflow_debug_state(
+    &result,
+    &[(
+      "1",
+      &[
+        (
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Normal(0)),
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:00 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StartOrReset,
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:00 UTC
+            )
+            .into(),
+          },
+        ),
+      ],
+    )],
+  );
+
+  let result = workflows_engine.process_log(TestLog::new("bar").with_now(datetime!(
+    2023-01-01 00:00:01 UTC
+  )));
+  assert_workflow_debug_state(
+    &result,
+    &[(
+      "1",
+      &[
+        (
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Normal(0)),
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:00 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StateId("B", WorkflowDebugTransitionType::Normal(0)),
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:01 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StartOrReset,
+          WorkflowTransitionDebugState {
+            count: 2,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:01 UTC
+            )
+            .into(),
+          },
+        ),
+      ],
+    )],
+  );
+
+  // We should not have collected any metrics as we are in debug mode only.
+  engine_assert_active_runs!(workflows_engine; 0; "A");
+  assert!(
+    workflows_engine
+      .collector
+      .find_counter(&NameType::Global("foo_metric".to_string()), &labels! {})
+      .is_none()
+  );
+  assert!(
+    workflows_engine
+      .collector
+      .find_counter(&NameType::Global("bar_metric".to_string()), &labels! {})
+      .is_none()
+  );
+
+  // Make sure our counts have been persisted correctly if we come up again and still have
+  // workflows in debug mode.
+  workflows_engine.maybe_persist(false).await;
+  let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
+  let result = workflows_engine.process_log(TestLog::new("other").with_now(datetime!(
+    2023-01-01 00:00:02 UTC
+  )));
+  assert_workflow_debug_state(
+    &result,
+    &[(
+      "1",
+      &[
+        (
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Normal(0)),
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:00 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StateId("B", WorkflowDebugTransitionType::Normal(0)),
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:01 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StartOrReset,
+          WorkflowTransitionDebugState {
+            count: 2,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:01 UTC
+            )
+            .into(),
+          },
+        ),
+      ],
+    )],
+  );
+  // Now timeout
+  let result = workflows_engine.process_log(TestLog::new("timeout").with_now(datetime!(
+    2023-01-01 00:01:02 UTC
+  )));
+  assert_workflow_debug_state(
+    &result,
+    &[(
+      "1",
+      &[
+        (
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Normal(0)),
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:00 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Timeout),
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:01:02 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StateId("B", WorkflowDebugTransitionType::Normal(0)),
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:01 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StartOrReset,
+          WorkflowTransitionDebugState {
+            count: 3,
+            last_transition_time: datetime!(
+              2023-01-01 00:01:02 UTC
+            )
+            .into(),
+          },
+        ),
+      ],
+    )],
+  );
+
+  // Now update the workflow to mimic being both debugging an deployed. Make sure we both get
+  // metrics but also don't lose previous debug counter state.
+  workflows_engine.update(WorkflowsEngineConfig::new_with_workflow_configurations(
+    vec![
+      WorkflowBuilder::new("1", &[&a, &b, &c, &d])
+        .make_config_with_debug_mode(WorkflowDebugMode::DebugAndDeployed),
+    ],
+  ));
+
+  let result = workflows_engine.process_log(TestLog::new("foo").with_now(datetime!(
+    2023-01-01 00:01:03 UTC
+  )));
+  assert_workflow_debug_state(
+    &result,
+    &[(
+      "1",
+      &[
+        (
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Normal(0)),
+          WorkflowTransitionDebugState {
+            count: 2,
+            last_transition_time: datetime!(
+              2023-01-01 00:01:03 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Timeout),
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:01:02 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StateId("B", WorkflowDebugTransitionType::Normal(0)),
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:01 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StartOrReset,
+          WorkflowTransitionDebugState {
+            count: 3,
+            last_transition_time: datetime!(
+              2023-01-01 00:01:02 UTC
+            )
+            .into(),
+          },
+        ),
+      ],
+    )],
+  );
+  let result = workflows_engine.process_log(TestLog::new("baz").with_now(datetime!(
+    2023-01-01 00:01:04 UTC
+  )));
+  assert_workflow_debug_state(
+    &result,
+    &[(
+      "1",
+      &[
+        (
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Normal(0)),
+          WorkflowTransitionDebugState {
+            count: 2,
+            last_transition_time: datetime!(
+              2023-01-01 00:01:03 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StateId("A", WorkflowDebugTransitionType::Timeout),
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:01:02 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StateId("B", WorkflowDebugTransitionType::Normal(0)),
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:00:01 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StateId("B", WorkflowDebugTransitionType::Normal(1)),
+          WorkflowTransitionDebugState {
+            count: 1,
+            last_transition_time: datetime!(
+              2023-01-01 00:01:04 UTC
+            )
+            .into(),
+          },
+        ),
+        (
+          DebugStateType::StartOrReset,
+          WorkflowTransitionDebugState {
+            count: 4,
+            last_transition_time: datetime!(
+              2023-01-01 00:01:04 UTC
+            )
+            .into(),
+          },
+        ),
+      ],
+    )],
+  );
+
+  workflows_engine
+    .collector
+    .assert_workflow_counter_eq(123, "foo_metric", labels! {});
+  workflows_engine
+    .collector
+    .assert_workflow_counter_eq(123, "baz_metric", labels! {});
 }
 
 #[tokio::test]
@@ -540,7 +940,7 @@ async fn engine_update_after_sdk_update() {
 
   assert_eq!(workflows_engine.state.workflows.len(), 1);
   assert_matches!(
-    &workflows_engine.configs[0].states()[0].transitions()[0].actions()[0],
+    &workflows_engine.configs[0].inner().states()[0].transitions()[0].actions()[0],
     Action::FlushBuffers(flush_buffers)
       if flush_buffers.streaming.is_some()
   );
@@ -1263,6 +1663,8 @@ async fn engine_processing_log() {
       triggered_flushes_buffer_ids: BTreeSet::from(["foo_buffer_id".into()]),
       capture_screenshot: false,
       logs_to_inject: BTreeMap::new(),
+      workflow_debug_state: vec![],
+      has_debug_workflows: false,
     },
     result
   );
@@ -1379,6 +1781,8 @@ async fn log_without_destination() {
       triggered_flushes_buffer_ids: BTreeSet::from(["trigger_buffer_id".into()]),
       capture_screenshot: false,
       logs_to_inject: BTreeMap::new(),
+      workflow_debug_state: vec![],
+      has_debug_workflows: false,
     },
     result
   );

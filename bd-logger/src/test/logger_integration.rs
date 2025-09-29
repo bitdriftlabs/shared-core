@@ -28,6 +28,8 @@ use bd_log_primitives::AnnotatedLogFields;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
+use bd_proto::protos::client::api::debug_data_request::WorkflowTransitionDebugData;
+use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
@@ -68,7 +70,11 @@ use bd_test_helpers::workflow::{
   state,
 };
 use bd_test_helpers::{RecordingErrorReporter, field_value, metric_tag, metric_value, set_field};
+use bd_time::{OffsetDateTimeExt, TestTimeProvider};
+use debug_data_request::workflow_transition_debug_data::Transition_type;
+use debug_data_request::{WorkflowDebugData, WorkflowStateDebugData};
 use parking_lot::Mutex;
+use pretty_assertions::assert_eq;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Instant;
@@ -1244,6 +1250,179 @@ fn workflow_generate_log_to_histogram() {
 }
 
 #[test]
+fn workflow_debugging() {
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2023-10-01 00:00:00 UTC)));
+  let mut setup = Setup::new_with_options(SetupOptions {
+    time_provider: Some(time_provider.clone()),
+    ..Default::default()
+  });
+  setup.send_runtime_update();
+
+  setup.send_runtime_update();
+
+  let b = state("B");
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    rule!(log_matches!(message == "fire workflow action!")),
+    &[action!(emit_counter "foo_id"; value metric_value!(123))],
+  );
+
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "1",
+    ConfigurationUpdateParts {
+      debug_workflows: vec![WorkflowBuilder::new("workflow_1", &[&a, &b]).build()],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  // We should send a debug data upload even when there is no state change every 1s driven by
+  // when logs are processed.
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::Normal,
+    "something else".into(),
+    [].into(),
+    [].into(),
+  );
+  let debug_data = setup.server.next_debug_data_request().unwrap();
+  assert_eq!(
+    debug_data,
+    DebugDataRequest {
+      workflow_debug_data: [(
+        "workflow_1".into(),
+        WorkflowDebugData {
+          start_reset: Some(WorkflowTransitionDebugData {
+            transition_count: 1,
+            last_transition_time: datetime!(2023-10-01 00:00:00 UTC).into_proto(),
+            ..Default::default()
+          })
+          .into(),
+          ..Default::default()
+        }
+      )]
+      .into(),
+      ..Default::default()
+    }
+  );
+
+  // Now send a log that will match.
+  time_provider.advance(1.minutes());
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::Normal,
+    "fire workflow action!".into(),
+    [].into(),
+    [].into(),
+  );
+
+  // Make sure there is no metric as we are only in debug mode.
+  setup.flush_and_upload_stats();
+  let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
+  assert!(
+    stat_upload
+      .get_workflow_counter("foo_id", labels! {})
+      .is_none()
+  );
+
+  let debug_data = setup.server.next_debug_data_request().unwrap();
+  assert_eq!(
+    debug_data,
+    DebugDataRequest {
+      workflow_debug_data: [(
+        "workflow_1".into(),
+        WorkflowDebugData {
+          start_reset: Some(WorkflowTransitionDebugData {
+            transition_count: 1,
+            last_transition_time: datetime!(2023-10-01 00:00:00 UTC).into_proto(),
+            ..Default::default()
+          })
+          .into(),
+          states: [(
+            "A".into(),
+            WorkflowStateDebugData {
+              transitions: vec![WorkflowTransitionDebugData {
+                transition_type: Some(Transition_type::TransitionIndex(0)),
+                transition_count: 1,
+                last_transition_time: datetime!(2023-10-01 00:01:00 UTC).into_proto(),
+                ..Default::default()
+              }],
+              ..Default::default()
+            }
+          )]
+          .into(),
+          ..Default::default()
+        }
+      )]
+      .into(),
+      ..Default::default()
+    }
+  );
+
+  // Deploy the workflow and also send it in debug mode, so it should send debug data and also
+  // emit metrics.
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "2",
+    ConfigurationUpdateParts {
+      workflows: vec![WorkflowBuilder::new("workflow_1", &[&a, &b]).build()],
+      debug_workflows: vec![WorkflowBuilder::new("workflow_1", &[&a, &b]).build()],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  time_provider.advance(1.minutes());
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::Normal,
+    "fire workflow action!".into(),
+    [].into(),
+    [].into(),
+  );
+
+  setup.flush_and_upload_stats();
+  let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
+  assert_eq!(
+    stat_upload.get_workflow_counter("foo_id", labels! {}),
+    Some(123),
+  );
+
+  let debug_data = setup.server.next_debug_data_request().unwrap();
+  assert_eq!(
+    debug_data,
+    DebugDataRequest {
+      workflow_debug_data: [(
+        "workflow_1".into(),
+        WorkflowDebugData {
+          start_reset: Some(WorkflowTransitionDebugData {
+            transition_count: 2,
+            last_transition_time: datetime!(2023-10-01 00:02:00 UTC).into_proto(),
+            ..Default::default()
+          })
+          .into(),
+          states: [(
+            "A".into(),
+            WorkflowStateDebugData {
+              transitions: vec![WorkflowTransitionDebugData {
+                transition_type: Some(Transition_type::TransitionIndex(0)),
+                transition_count: 2,
+                last_transition_time: datetime!(2023-10-01 00:02:00 UTC).into_proto(),
+                ..Default::default()
+              }],
+              ..Default::default()
+            }
+          )]
+          .into(),
+          ..Default::default()
+        }
+      )]
+      .into(),
+      ..Default::default()
+    }
+  );
+}
+
+#[test]
 fn workflow_emit_metric_action_emits_metric() {
   let mut setup = Setup::new();
 
@@ -1307,6 +1486,58 @@ fn workflow_emit_metric_action_emits_metric() {
     // There are 2 emit metric actions that increment a counter with `_id=foo_id` by 123
     // but since both of them have the same action ID we dedup them and perform action only once.
     Some(123),
+  );
+  assert_eq!(
+    stat_upload.request.snapshot[0].workflow_debug_data,
+    [
+      (
+        "workflow_1".into(),
+        WorkflowDebugData {
+          states: [(
+            "A".into(),
+            WorkflowStateDebugData {
+              transitions: vec![WorkflowTransitionDebugData {
+                transition_type: Some(Transition_type::TransitionIndex(0)),
+                transition_count: 1,
+                ..Default::default()
+              }],
+              ..Default::default()
+            }
+          )]
+          .into(),
+          start_reset: Some(WorkflowTransitionDebugData {
+            transition_count: 1,
+            ..Default::default()
+          })
+          .into(),
+          ..Default::default()
+        }
+      ),
+      (
+        "workflow_2".into(),
+        WorkflowDebugData {
+          states: [(
+            "A".into(),
+            WorkflowStateDebugData {
+              transitions: vec![WorkflowTransitionDebugData {
+                transition_type: Some(Transition_type::TransitionIndex(0)),
+                transition_count: 1,
+                ..Default::default()
+              }],
+              ..Default::default()
+            }
+          )]
+          .into(),
+          start_reset: Some(WorkflowTransitionDebugData {
+            transition_count: 1,
+            ..Default::default()
+          })
+          .into(),
+          ..Default::default()
+        }
+      ),
+    ]
+    .into()
   );
 }
 

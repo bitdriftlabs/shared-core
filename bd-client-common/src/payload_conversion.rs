@@ -15,64 +15,20 @@
 // them.
 
 use bd_proto::protos::client::api::api_request::Request_type;
-use bd_proto::protos::client::api::api_response::Response_type;
 use bd_proto::protos::client::api::{
   ApiRequest,
-  ApiResponse,
-  ConfigurationUpdate,
   ConfigurationUpdateAck,
-  ErrorShutdown,
-  FlushBuffers,
+  DebugDataRequest,
   HandshakeRequest,
-  HandshakeResponse,
   LogUploadIntentRequest,
-  LogUploadIntentResponse,
   LogUploadRequest,
-  LogUploadResponse,
   PingRequest,
-  PongResponse,
-  RuntimeUpdate,
   SankeyIntentRequest,
-  SankeyIntentResponse,
   SankeyPathUploadRequest,
-  SankeyPathUploadResponse,
   StatsUploadRequest,
-  StatsUploadResponse,
   UploadArtifactIntentRequest,
-  UploadArtifactIntentResponse,
   UploadArtifactRequest,
-  UploadArtifactResponse,
 };
-
-//
-// ResponseKind
-//
-
-/// A transport independent representation of the possible multiplexed response types.
-pub enum ResponseKind {
-  Handshake(HandshakeResponse),
-  ErrorShutdown(ErrorShutdown),
-  Pong(PongResponse),
-  LogUpload(LogUploadResponse),
-  LogUploadIntent(LogUploadIntentResponse),
-  StatsUpload(StatsUploadResponse),
-  FlushBuffers(FlushBuffers),
-  SankeyPathUpload(SankeyPathUploadResponse),
-  SankeyPathUploadIntent(SankeyIntentResponse),
-  ArtifactUploadIntent(UploadArtifactIntentResponse),
-  ArtifactUpload(UploadArtifactResponse),
-  ConfigurationUpdate(ConfigurationUpdate),
-  RuntimeUpdate(RuntimeUpdate),
-}
-
-//
-// MuxResponse
-//
-
-/// Used to convert a response type into the transport independent `ResponseKind`.
-pub trait MuxResponse {
-  fn demux(self) -> Option<ResponseKind>;
-}
 
 /// Used to allow the API mux operate against multiple different transport APIs. The code is able
 /// to operate against the inner types that can be wrapped up into the appropriate mux type
@@ -81,30 +37,8 @@ pub trait IntoRequest {
   fn into_request(self) -> ApiRequest;
 }
 
-//
-// FromResponse
-//
-
-/// Used to unwrap a multiplexing `ResponseType` into an inner type.
-pub trait FromResponse<ResponseType> {
-  fn from_response(response: &ResponseType) -> Option<&Self>;
-}
-
-pub struct RuntimeConfigurationUpdate(pub ConfigurationUpdateAck);
-pub struct ClientConfigurationUpdate(pub ConfigurationUpdateAck);
-
-macro_rules! unwrap_response {
-  ($wrapper:ty, $inner:ty, $field:path) => {
-    impl crate::payload_conversion::FromResponse<$wrapper> for $inner {
-      fn from_response(response: &$wrapper) -> Option<&Self> {
-        match &response.response_type {
-          Some($field(inner)) => Some(inner),
-          _ => None,
-        }
-      }
-    }
-  };
-}
+pub struct RuntimeConfigurationUpdateAck(pub ConfigurationUpdateAck);
+pub struct ClientConfigurationUpdateAck(pub ConfigurationUpdateAck);
 
 // Helper macro for defining IntoRequest for a wrapper type where an inner request type is wrapped
 // using the provided oneof branch.
@@ -121,13 +55,6 @@ macro_rules! into_api_request {
   };
 }
 
-unwrap_response!(
-  ApiResponse,
-  ConfigurationUpdate,
-  Response_type::ConfigurationUpdate
-);
-unwrap_response!(ApiResponse, RuntimeUpdate, Response_type::RuntimeUpdate);
-
 impl crate::payload_conversion::IntoRequest for ApiRequest {
   fn into_request(self) -> Self {
     self
@@ -143,8 +70,9 @@ into_api_request!(SankeyIntentRequest, Request_type::SankeyIntent);
 into_api_request!(SankeyPathUploadRequest, Request_type::SankeyPathUpload);
 into_api_request!(UploadArtifactRequest, Request_type::ArtifactUpload);
 into_api_request!(UploadArtifactIntentRequest, Request_type::ArtifactIntent);
+into_api_request!(DebugDataRequest, Request_type::DebugData);
 
-impl IntoRequest for RuntimeConfigurationUpdate {
+impl IntoRequest for RuntimeConfigurationUpdateAck {
   fn into_request(self) -> ApiRequest {
     ApiRequest {
       request_type: Some(Request_type::RuntimeUpdateAck(self.0)),
@@ -153,31 +81,11 @@ impl IntoRequest for RuntimeConfigurationUpdate {
   }
 }
 
-impl IntoRequest for ClientConfigurationUpdate {
+impl IntoRequest for ClientConfigurationUpdateAck {
   fn into_request(self) -> ApiRequest {
     ApiRequest {
       request_type: Some(Request_type::ConfigurationUpdateAck(self.0)),
       ..Default::default()
-    }
-  }
-}
-
-impl MuxResponse for ApiResponse {
-  fn demux(self) -> Option<ResponseKind> {
-    match self.response_type? {
-      Response_type::Handshake(handshake) => Some(ResponseKind::Handshake(handshake)),
-      Response_type::LogUpload(log_upload) => Some(ResponseKind::LogUpload(log_upload)),
-      Response_type::LogUploadIntent(intent) => Some(ResponseKind::LogUploadIntent(intent)),
-      Response_type::StatsUpload(stats_upload) => Some(ResponseKind::StatsUpload(stats_upload)),
-      Response_type::Pong(pong) => Some(ResponseKind::Pong(pong)),
-      Response_type::ErrorShutdown(e) => Some(ResponseKind::ErrorShutdown(e)),
-      Response_type::FlushBuffers(f) => Some(ResponseKind::FlushBuffers(f)),
-      Response_type::SankeyDiagramUpload(s) => Some(ResponseKind::SankeyPathUpload(s)),
-      Response_type::SankeyIntentResponse(s) => Some(ResponseKind::SankeyPathUploadIntent(s)),
-      Response_type::ConfigurationUpdate(u) => Some(ResponseKind::ConfigurationUpdate(u)),
-      Response_type::RuntimeUpdate(r) => Some(ResponseKind::RuntimeUpdate(r)),
-      Response_type::ArtifactUpload(u) => Some(ResponseKind::ArtifactUpload(u)),
-      Response_type::ArtifactIntent(u) => Some(ResponseKind::ArtifactUploadIntent(u)),
     }
   }
 }

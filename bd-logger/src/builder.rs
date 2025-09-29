@@ -32,7 +32,7 @@ use bd_internal_logging::NoopLogger;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
 use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use bd_time::SystemTimeProvider;
+use bd_time::{SystemTimeProvider, TimeProvider};
 use futures_util::{Future, try_join};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -71,6 +71,7 @@ pub struct LoggerBuilder {
   component_shutdown_handle: Option<ComponentShutdownTriggerHandle>,
   client_stats_tickers: Option<(Box<dyn Ticker>, Box<dyn Ticker>)>,
   internal_logger: bool,
+  time_provider: Option<Arc<dyn TimeProvider>>,
 }
 
 impl LoggerBuilder {
@@ -82,6 +83,7 @@ impl LoggerBuilder {
       component_shutdown_handle: None,
       client_stats_tickers: None,
       internal_logger: false,
+      time_provider: None,
     }
   }
 
@@ -112,6 +114,14 @@ impl LoggerBuilder {
   #[must_use]
   pub const fn with_internal_logger(mut self, internal_logger: bool) -> Self {
     self.internal_logger = internal_logger;
+    self
+  }
+
+  /// Sets the time provider to be used by the logger. If not set, the system time provider will
+  /// be used.
+  #[must_use]
+  pub fn with_time_provider(mut self, time_provider: Option<Arc<dyn TimeProvider>>) -> Self {
+    self.time_provider = time_provider;
     self
   }
 
@@ -154,6 +164,9 @@ impl LoggerBuilder {
     let stats = bd_client_stats::Stats::new(collector.clone());
     let (sleep_mode_active_tx, sleep_mode_active_rx) =
       watch::channel(self.params.start_in_sleep_mode);
+    let time_provider = self
+      .time_provider
+      .unwrap_or_else(|| Arc::new(SystemTimeProvider));
 
     let (stats_flusher, flusher_trigger) = {
       let (flush_ticker, upload_ticker) =
@@ -213,9 +226,10 @@ impl LoggerBuilder {
       network_quality_provider.clone(),
       self.params.device.id(),
       self.params.store.clone(),
-      Arc::new(SystemTimeProvider),
+      time_provider.clone(),
       init_lifecycle.clone(),
       feature_flags_builder.clone(),
+      data_upload_tx.clone(),
     );
 
     let data_upload_tx_clone = data_upload_tx.clone();
@@ -253,7 +267,7 @@ impl LoggerBuilder {
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
         data_upload_tx_clone.clone(),
-        Arc::new(SystemTimeProvider),
+        time_provider.clone(),
         &runtime_loader,
         &collector_clone,
         shutdown_handle.make_shutdown(),
@@ -310,7 +324,7 @@ impl LoggerBuilder {
         self.params.static_metadata,
         runtime_loader.clone(),
         updater,
-        Arc::new(SystemTimeProvider),
+        time_provider,
         network_quality_provider,
         log.clone(),
         &scope.scope("api"),

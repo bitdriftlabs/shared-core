@@ -10,7 +10,7 @@
 mod async_log_buffer_test;
 
 use crate::device_id::DeviceIdInterceptor;
-use crate::log_replay::LogReplay;
+use crate::log_replay::{LogReplay, LogReplayResult};
 use crate::logger::{ReportProcessingRequest, with_thread_local_logger_guard};
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
@@ -18,10 +18,11 @@ use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::PreConfigBuffer;
 use crate::{Block, internal_report, network};
 use anyhow::anyhow;
+use bd_api::DataUpload;
 use bd_bounded_buffer::{Receiver, Sender, TrySendError, channel};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
-use bd_client_common::maybe_await_map;
+use bd_client_common::{maybe_await, maybe_await_map};
 use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_error_reporter::reporter::{handle_unexpected, handle_unexpected_error_with_details};
@@ -43,17 +44,27 @@ use bd_log_primitives::{
 };
 use bd_network_quality::NetworkQualityProvider;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use bd_proto::protos::client::api::debug_data_request::{
+  WorkflowDebugData,
+  WorkflowTransitionDebugData,
+};
+use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use bd_time::TimeProvider;
-use std::collections::VecDeque;
+use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
+use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
+use bd_workflows::workflow::WorkflowDebugStateMap;
+use debug_data_request::workflow_transition_debug_data::Transition_type;
+use std::collections::{HashMap, VecDeque};
 use std::mem::size_of_val;
+use std::pin::Pin;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task;
+use tokio::time::Sleep;
 
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {
@@ -165,6 +176,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   communication_rx: Receiver<AsyncLogBufferMessage>,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
   report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
+  data_upload_tx: mpsc::Sender<DataUpload>,
   shutdown_trigger_handle: ComponentShutdownTriggerHandle,
 
   session_strategy: Arc<bd_session::Strategy>,
@@ -185,6 +197,8 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   lifecycle_state: InitLifecycleState,
 
   feature_flags: FeatureFlagInitialization,
+  pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
+  send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -206,6 +220,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     time_provider: Arc<dyn TimeProvider>,
     lifecycle_state: InitLifecycleState,
     feature_flags_builder: FeatureFlagsBuilder,
+    data_upload_tx: mpsc::Sender<DataUpload>,
   ) -> (Self, Sender<AsyncLogBufferMessage>) {
     let (async_log_buffer_communication_tx, async_log_buffer_communication_rx) = channel(
       uninitialized_logging_context
@@ -241,6 +256,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         communication_rx: async_log_buffer_communication_rx,
         config_update_rx,
         report_processor_rx,
+        data_upload_tx,
         shutdown_trigger_handle,
 
         replayer,
@@ -276,6 +292,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         lifecycle_state,
 
         feature_flags: FeatureFlagInitialization::Pending(feature_flags_builder),
+
+        pending_workflow_debug_state: HashMap::new(),
+        send_workflow_debug_state_delay: None,
       },
       async_log_buffer_communication_tx,
     )
@@ -417,8 +436,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     let mut logs = VecDeque::new();
     logs.push_back(log);
     while let Some(log) = logs.pop_front() {
-      let new_logs = self.process_log(log, block).await?;
-      logs.extend(new_logs.into_iter().map(|log| {
+      let log_replay_result = self.process_log(log, block).await?;
+      logs.extend(log_replay_result.logs_to_inject.into_iter().map(|log| {
         LogLine {
           log_level: log.log_level,
           log_type: log.log_type,
@@ -451,11 +470,26 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: log.capture_session,
         }
       }));
+
+      self
+        .pending_workflow_debug_state
+        .extend(log_replay_result.workflow_debug_state);
+      // We send a periodic workflow debug state update even if there have been no transitions.
+      // For an active debugging session this allows us to allow the UI to know we are actually
+      // attached and debugging.
+      if log_replay_result.engine_has_debug_workflows
+        && self.send_workflow_debug_state_delay.is_none()
+      {
+        // TODO(mattklein123): In a perfect world every time we transition from not debugging to
+        // debugging we should immediately send a debug update so that the server can get the
+        // baseline state and begin debugging properly. We can do this in a follow up.
+        self.send_workflow_debug_state_delay = Some(Box::pin(1.seconds().sleep()));
+      }
     }
     Ok(())
   }
 
-  async fn process_log(&mut self, log: LogLine, block: bool) -> anyhow::Result<Vec<Log>> {
+  async fn process_log(&mut self, log: LogLine, block: bool) -> anyhow::Result<LogReplayResult> {
     // Prevent re-entrancy when we are evaluating the log metadata.
     let result = with_thread_local_logger_guard(|| {
       if let Some(LogAttributesOverrides::PreviousRunSessionID(_id, _timestamp)) =
@@ -542,7 +576,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 .await;
 
               // We drop the log as the provided override attributes do not match our expectations.
-              return Ok(vec![]);
+              return Ok(LogReplayResult::default());
             }
           },
           Some(LogAttributesOverrides::OccurredAt(overridden_timestamp)) => {
@@ -593,8 +627,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  async fn write_log(&mut self, log: Log, block: bool) -> anyhow::Result<Vec<Log>> {
-    let logs_to_inject = match &mut self.logging_state {
+  async fn write_log(&mut self, log: Log, block: bool) -> anyhow::Result<LogReplayResult> {
+    let log_replay_result = match &mut self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
         let result = uninitialized_logging_context
           .pre_config_log_buffer
@@ -608,7 +642,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           anyhow::bail!("failed to push log to a pre-config buffer: {e}");
         }
 
-        vec![]
+        LogReplayResult::default()
       },
       LoggingState::Initialized(initialized_logging_context) => self
         .replayer
@@ -622,7 +656,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         .map_err(|e| anyhow!("failed to replay async log buffer log: {e}"))?,
     };
 
-    Ok(logs_to_inject)
+    Ok(log_replay_result)
   }
 
   async fn update(mut self, config: ConfigUpdate) -> (Self, Option<PreConfigBuffer<Log>>) {
@@ -831,6 +865,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             initialized_logging_context.processing_pipeline.run().await;
         })
           => {},
+        () = maybe_await(&mut self.send_workflow_debug_state_delay) => {
+          self.send_debug_data().await;
+        },
         () = self.resource_utilization_reporter.run() => {},
         () = self.session_replay_recorder.run() => {},
         () = self.events_listener.run() => {},
@@ -875,6 +912,53 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       );
       None
     }
+  }
+
+  async fn send_debug_data(&mut self) {
+    log::debug!("sending workflow debug data");
+    let mut workflow_debug_data: HashMap<String, WorkflowDebugData> = HashMap::new();
+    for (workflow_id, state) in std::mem::take(&mut self.pending_workflow_debug_state) {
+      let workflow_entry = workflow_debug_data.entry(workflow_id).or_default();
+      for (state_key, data) in state.into_inner() {
+        let last_transition_time: OffsetDateTime = data.last_transition_time.into();
+        match state_key {
+          WorkflowDebugStateKey::StartOrReset => {
+            let start_reset = workflow_entry.start_reset.mut_or_insert_default();
+            start_reset.transition_count += data.count;
+            start_reset.last_transition_time = last_transition_time.into_proto();
+          },
+          WorkflowDebugStateKey::StateTransition {
+            state_id,
+            transition_type,
+          } => {
+            workflow_entry
+              .states
+              .entry(state_id)
+              .or_default()
+              .transitions
+              .push(WorkflowTransitionDebugData {
+                transition_type: Some(match transition_type {
+                  WorkflowDebugTransitionType::Normal(index) => {
+                    Transition_type::TransitionIndex(index.try_into().unwrap_or(0))
+                  },
+                  WorkflowDebugTransitionType::Timeout => Transition_type::TimeoutTransition(true),
+                }),
+                transition_count: data.count,
+                last_transition_time: last_transition_time.into_proto(),
+                ..Default::default()
+              });
+          },
+        }
+      }
+    }
+
+    let _ = self
+      .data_upload_tx
+      .send(DataUpload::DebugData(DebugDataRequest {
+        workflow_debug_data,
+        ..Default::default()
+      }))
+      .await;
   }
 
   async fn write_log_internal(
