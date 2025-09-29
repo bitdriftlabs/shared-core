@@ -78,3 +78,7 @@ cargo install cargo-tarpaulin
 ```
 
 Alternatively you can invoke `tarpaulin` via Docker as explained in the [tarpaulin documentation](https://github.com/xd009642/tarpaulin?tab=readme-ov-file#docker)
+
+### Benchmarks
+
+See [BENCHMARKS.md](BENCHMARKS.md) for more information

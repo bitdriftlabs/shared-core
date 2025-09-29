@@ -42,7 +42,6 @@ uuid.workspace              = true
 assert_matches.workspace    = true
 bd-log                      = { path = "../bd-log" }
 bd-time                     = { path = "../bd-time" }
-criterion.workspace         = true
 ctor.workspace              = true
 futures-util.workspace      = true
 parking_lot.workspace       = true
@@ -50,6 +49,10 @@ pretty_assertions.workspace = true
 tempfile.workspace          = true
 tokio-test.workspace        = true
 
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+gungraun  = { version = "0.17.0", features = ["client_requests"] }
+simplelog = "0.12.2"
+
 [[bench]]
 harness = false
-name    = "matcher"
+name    = "main"
