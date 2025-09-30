@@ -120,7 +120,7 @@ impl LoggerHolder {
       [].into(),
       None,
       bd_logger::Block::Yes(1.std_seconds()),
-      session_capture,
+      &session_capture,
     );
   }
 }

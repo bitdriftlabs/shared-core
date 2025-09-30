@@ -179,7 +179,7 @@ async fn configuration_update_with_log_uploads() {
     [].into(),
     None,
     Block::No,
-    CaptureSession::default(),
+    &CaptureSession::default(),
   );
 
   assert_matches!(setup.server.next_log_upload().await, Some(log_upload) => {
