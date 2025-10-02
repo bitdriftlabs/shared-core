@@ -24,6 +24,7 @@ use bd_proto::protos::client::api::{
   ApiResponse,
   ConfigurationUpdate,
   ConfigurationUpdateAck,
+  DebugDataRequest,
   FlushBuffers,
   HandshakeResponse,
   LogUploadIntentRequest,
@@ -108,6 +109,7 @@ struct ServiceState {
   stats_upload_tx: Sender<StatsUploadRequest>,
   configuration_ack_tx: Sender<(i32, ConfigurationUpdateAck)>,
   runtime_ack_tx: Sender<(i32, ConfigurationUpdateAck)>,
+  debug_data_tx: Sender<DebugDataRequest>,
 
   shutdown_tx: broadcast::Sender<()>,
 }
@@ -320,6 +322,14 @@ impl RequestProcessor {
           })),
           ..Default::default()
         })
+      },
+      Some(Request_type::DebugData(debug_data)) => {
+        let _ignored = self
+          .stream_state
+          .debug_data_tx
+          .send(debug_data.clone())
+          .await;
+        None
       },
       r => panic!("received unknown reqest type: {r:?}"),
     }
@@ -581,6 +591,7 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
   let (stats_upload_tx, stats_upload_rx) = channel(256);
   let (configuration_ack_tx, configuration_ack_rx) = channel(1);
   let (runtime_ack_tx, runtime_ack_rx) = channel(256);
+  let (debug_data_tx, debug_data_rx) = channel(256);
 
   let (stream_action_tx, stream_action_rx) = channel(1);
 
@@ -610,6 +621,7 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
           stats_upload_tx,
           configuration_ack_tx,
           runtime_ack_tx,
+          debug_data_tx,
         });
 
         // Forward actions sent over the per stream action channel to the channel associated with
@@ -642,6 +654,7 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
     configuration_ack_rx,
     runtime_ack_rx,
     port: local_addr.port(),
+    debug_data_rx,
   })
 }
 
@@ -740,6 +753,7 @@ pub struct ServerHandle {
   artifact_intent_rx: Receiver<UploadArtifactIntentRequest>,
   log_intent_rx: Receiver<LogUploadIntentRequest>,
   stats_upload_rx: Receiver<StatsUploadRequest>,
+  debug_data_rx: Receiver<DebugDataRequest>,
 
   configuration_ack_rx: Receiver<(i32, ConfigurationUpdateAck)>,
   runtime_ack_rx: Receiver<(i32, ConfigurationUpdateAck)>,
@@ -893,6 +907,10 @@ impl ServerHandle {
 
   pub fn next_stat_upload(&mut self) -> Option<StatsUploadRequest> {
     Self::blocking_next_request_with_timeout(&mut self.stats_upload_rx)
+  }
+
+  pub fn next_debug_data_request(&mut self) -> Option<DebugDataRequest> {
+    Self::blocking_next_request_with_timeout(&mut self.debug_data_rx)
   }
 
   /// Blocks for the next configuration update ack to be received by the server.

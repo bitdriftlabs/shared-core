@@ -130,6 +130,7 @@ impl SetupSingleConsumer {
       DataUpload::ArtifactUploadIntent(_) => panic!("unexpected artifact upload intent"),
       DataUpload::ArtifactUpload(_) => panic!("unexpected artifact upload"),
       DataUpload::AcklessLogsUpload(_) => panic!("unexpected ackless upload"),
+      DataUpload::DebugData(_) => panic!("unexpected debug data upload"),
     }
   }
 

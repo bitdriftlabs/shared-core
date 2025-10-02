@@ -5,11 +5,19 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::config::{ActionEmitMetric, ActionFlushBuffers, Config, FlushBufferId, ValueIncrement};
+use crate::config::{
+  ActionEmitMetric,
+  ActionFlushBuffers,
+  Config,
+  FlushBufferId,
+  ValueIncrement,
+  WorkflowDebugMode,
+};
 use crate::test::{MakeConfig, TestLog};
 use crate::workflow::{Run, TriggeredAction, Workflow, WorkflowResult, WorkflowResultStats};
 use bd_log_primitives::{FieldsRef, LogFields, LogMessage, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, labels};
 use bd_test_helpers::metric_value;
 use bd_test_helpers::workflow::macros::{action, all, any, log_matches, rule};
@@ -41,7 +49,7 @@ pub struct AnnotatedWorkflow {
 impl AnnotatedWorkflow {
   pub fn new(config: Config) -> Self {
     Self {
-      workflow: Workflow::new(config.id().to_string()),
+      workflow: Workflow::new(config.inner().id().to_string()),
       config,
     }
   }
@@ -101,7 +109,7 @@ macro_rules! assert_active_runs {
       );
 
       for (index, id) in expected_states.iter().enumerate() {
-        let expected_state_index = $workflow_annotated.config.states().iter()
+        let expected_state_index = $workflow_annotated.config.inner().states().iter()
           .position(|state| state.id() == *id);
         assert!(
           expected_state_index.is_some(),
@@ -153,7 +161,7 @@ macro_rules! assert_active_run_traversals {
       );
 
       for (index, id) in expected_states.iter().enumerate() {
-        let expected_state_index = $annotated_workflow.config.states().iter()
+        let expected_state_index = $annotated_workflow.config.inner().states().iter()
         .position(|state| state.id() == *id);
         assert!(
           expected_state_index.is_some(),
@@ -176,7 +184,10 @@ fn one_state_workflow() {
 
   let config = WorkflowBuilder::new("1", &[&a]).build();
   assert_eq!(
-    Config::new(config).err().unwrap().to_string(),
+    Config::new(config, WorkflowDebugMode::None)
+      .err()
+      .unwrap()
+      .to_string(),
     "invalid workflow configuration: initial state must have at least one transition"
   );
 }
@@ -194,7 +205,10 @@ fn unknown_state_reference_workflow() {
 
   let config = WorkflowBuilder::new("1", &[&a]).build();
   assert_eq!(
-    Config::new(config).err().unwrap().to_string(),
+    Config::new(config, WorkflowDebugMode::None)
+      .err()
+      .unwrap()
+      .to_string(),
     "invalid workflow state configuration: reference to an unexisting state"
   );
 }
@@ -235,6 +249,14 @@ fn timeout_no_parallel_match() {
         matched_logs_count: 1,
         processed_timeout: true,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "B");
@@ -256,6 +278,14 @@ fn timeout_no_parallel_match() {
         matched_logs_count: 0,
         processed_timeout: true,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "B".to_string(),
+          WorkflowDebugTransitionType::Timeout
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -277,6 +307,11 @@ fn timeout_no_parallel_match() {
         matched_logs_count: 1,
         processed_timeout: true,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "A".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      )],
     }
   );
   assert_active_runs!(workflow; "B");
@@ -298,6 +333,14 @@ fn timeout_no_parallel_match() {
         matched_logs_count: 1,
         processed_timeout: true,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "B");
@@ -356,6 +399,14 @@ fn timeout_not_start() {
         matched_logs_count: 0,
         processed_timeout: true,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "B".to_string(),
+          WorkflowDebugTransitionType::Timeout
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -378,6 +429,14 @@ fn timeout_not_start() {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "B".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -474,6 +533,14 @@ fn timeout_from_start() {
         matched_logs_count: 0,
         processed_timeout: true,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Timeout
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -516,6 +583,18 @@ fn multiple_start_nodes_initial_fork() {
         matched_logs_count: 2,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
 
@@ -530,6 +609,18 @@ fn multiple_start_nodes_initial_fork() {
         matched_logs_count: 2,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
 
@@ -548,6 +639,11 @@ fn multiple_start_nodes_initial_fork() {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "C".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      )],
     }
   );
 }
@@ -588,6 +684,14 @@ fn multiple_start_nodes_initial_branching() {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
 
@@ -603,6 +707,14 @@ fn multiple_start_nodes_initial_branching() {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
 
@@ -621,6 +733,14 @@ fn multiple_start_nodes_initial_branching() {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "C".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
 }
@@ -677,6 +797,14 @@ fn basic_exclusive_workflow() {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "B");
@@ -698,6 +826,14 @@ fn basic_exclusive_workflow() {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "B".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -747,6 +883,18 @@ fn exclusive_workflow_matched_logs_count_limit() {
         matched_logs_count: 2,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_run_traversals!(workflow; 0; "B", "D");
@@ -766,6 +914,8 @@ fn exclusive_workflow_matched_logs_count_limit() {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![],
     }
   );
   assert_active_run_traversals!(workflow; 0; "A");
@@ -786,6 +936,8 @@ fn exclusive_workflow_matched_logs_count_limit() {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::StartOrReset],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -828,6 +980,8 @@ fn exclusive_workflow_log_rule_count() {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::StartOrReset],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -849,6 +1003,11 @@ fn exclusive_workflow_log_rule_count() {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "A".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      )],
     }
   );
   assert_active_runs!(workflow; "A", "B");
@@ -876,6 +1035,14 @@ fn exclusive_workflow_log_rule_count() {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "B".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -935,6 +1102,14 @@ fn branching_exclusive_workflow() {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "B");
@@ -971,6 +1146,14 @@ fn branching_exclusive_workflow() {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "B".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -999,6 +1182,17 @@ fn branching_exclusive_workflow() {
         matched_logs_count: 2,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        )
+      ],
     }
   );
   assert_eq!(2, workflow.runs()[0].traversals.len());
