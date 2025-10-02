@@ -772,7 +772,7 @@ impl ActionEmitSankey {
           let value = match tag.tag_type {
             Some(Tag_type::FixedValue(value)) => TagValue::Fixed(value),
             Some(Tag_type::FieldExtracted(extracted)) => TagValue::Extract(extracted.field_name),
-            None => {
+            None | Some(Tag_type::LogBodyExtracted(_)) => {
               anyhow::bail!("invalid action emit sankey diagram configuration: unknown tag_type")
             },
           };
