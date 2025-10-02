@@ -60,16 +60,25 @@ use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::session::InMemoryStorage;
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_test_helpers::test_api_server::StreamAction;
-use bd_test_helpers::workflow::macros::{action, log_matches, rule};
+use bd_test_helpers::workflow::macros::{log_matches, rule};
 use bd_test_helpers::workflow::{
   TestFieldRef,
   TestFieldType,
   WorkflowBuilder,
+  extract_log_body_tag,
+  extract_metric_tag,
+  extract_metric_value,
+  make_emit_counter_action,
+  make_emit_histogram_action,
+  make_flush_buffers_action,
   make_generate_log_action_proto,
   make_save_timestamp_extraction,
+  make_take_screenshot_action,
+  metric_tag,
+  metric_value,
   state,
 };
-use bd_test_helpers::{RecordingErrorReporter, field_value, metric_tag, metric_value, set_field};
+use bd_test_helpers::{RecordingErrorReporter, field_value, set_field};
 use bd_time::{OffsetDateTimeExt, TestTimeProvider};
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use debug_data_request::{WorkflowDebugData, WorkflowStateDebugData};
@@ -666,7 +675,7 @@ fn session_replay_actions() {
   let a = state("A").declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "take a screenshot")),
-    &[action!(screenshot "screenshot_id")],
+    &[make_take_screenshot_action("screenshot_id")],
   );
 
   // Send a configuration that takes a screenshot on "foo" message.
@@ -991,24 +1000,21 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
         message == "fire flush trigger buffer and start streaming action!"
       )),
       &[
-        action!(
-          flush_buffers &["trigger_buffer_id"];
-          continue_streaming_to vec!["default"];
-          logs_count 10;
-          id "flush_with_streaming_action_id"
+        make_flush_buffers_action(
+          &["trigger_buffer_id"],
+          Some((vec!["default"], 10)),
+          "flush_with_streaming_action_id",
         ),
-        action!(
-          emit_counter "insight_action_id";
-          value metric_value!(1)
-        ),
+        make_emit_counter_action("insight_action_id", metric_value(1), vec![]),
       ],
     )
     .declare_transition_with_actions(
       &c,
       rule!(log_matches!(message == "fire flush trigger buffer action!")),
-      &[action!(
-        flush_buffers &["trigger_buffer_id"];
-        id "flush_with_streaming_action_id"
+      &[make_flush_buffers_action(
+        &["trigger_buffer_id"],
+        None,
+        "flush_with_streaming_action_id",
       )],
     );
 
@@ -1170,15 +1176,25 @@ fn workflow_generate_log_to_histogram() {
     &c,
     rule!(log_matches!(message == "bar")),
     &[
-      action!(flush_buffers &["default"]; id "flush_action_id"),
-      action!(generate_log make_generate_log_action_proto("message", &[
-      ("_duration_ms",
-       TestFieldType::Subtract(
-        TestFieldRef::SavedTimestampId("timestamp2"),
-        TestFieldRef::SavedTimestampId("timestamp1")
-       )),
-       ("other", TestFieldType::Single(TestFieldRef::SavedFieldId("id1"))),
-    ], "id", LogType::Span)),
+      make_flush_buffers_action(&["default"], None, "flush_action_id"),
+      make_generate_log_action_proto(
+        "message",
+        &[
+          (
+            "_duration_ms",
+            TestFieldType::Subtract(
+              TestFieldRef::SavedTimestampId("timestamp2"),
+              TestFieldRef::SavedTimestampId("timestamp1"),
+            ),
+          ),
+          (
+            "other",
+            TestFieldType::Single(TestFieldRef::SavedFieldId("id1")),
+          ),
+        ],
+        "id",
+        LogType::Span,
+      ),
     ],
     &[make_save_timestamp_extraction("timestamp2")],
   );
@@ -1186,12 +1202,10 @@ fn workflow_generate_log_to_histogram() {
   c = c.declare_transition_with_actions(
     &d,
     rule!(log_matches!(tag("_generate_log_id") == "id")),
-    &[action!(
-      emit_histogram "foo_id";
-      value metric_value!(extract "_duration_ms");
-      tags {
-        metric_tag!(fix "fixed_key" => "fixed_value")
-      }
+    &[make_emit_histogram_action(
+      "foo_id",
+      extract_metric_value("_duration_ms"),
+      vec![metric_tag("fixed_key", "fixed_value")],
     )],
   );
 
@@ -1264,7 +1278,11 @@ fn workflow_debugging() {
   let a = state("A").declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "fire workflow action!")),
-    &[action!(emit_counter "foo_id"; value metric_value!(123))],
+    &[make_emit_counter_action(
+      "foo_id",
+      metric_value(123),
+      vec![],
+    )],
   );
 
   let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
@@ -1432,13 +1450,14 @@ fn workflow_emit_metric_action_emits_metric() {
   let a = state("A").declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "fire workflow action!")),
-    &[action!(
-      emit_counter "foo_id";
-      value metric_value!(123);
-      tags {
-        metric_tag!(fix "fixed_key" => "fixed_value"),
-        metric_tag!(extract "extraction_key_from" => "extraction_key_to")
-      }
+    &[make_emit_counter_action(
+      "foo_id",
+      metric_value(123),
+      vec![
+        metric_tag("fixed_key", "fixed_value"),
+        extract_metric_tag("extraction_key_from", "extraction_key_to"),
+        extract_log_body_tag(),
+      ],
     )],
   );
 
@@ -1481,6 +1500,7 @@ fn workflow_emit_metric_action_emits_metric() {
       labels! {
         "fixed_key" => "fixed_value",
         "extraction_key_to" => "extracted_value",
+        "__log_body__" => "fire workflow action!",
       }
     ),
     // There are 2 emit metric actions that increment a counter with `_id=foo_id` by 123
@@ -1562,18 +1582,16 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
     .declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "first log")),
-      &[action!(
-        emit_counter "foo";
-        value metric_value!(1);
-        tags {
-          metric_tag!(extract "extracted" => "extracted")
-        }
+      &[make_emit_counter_action(
+        "foo",
+        metric_value(1),
+        vec![extract_metric_tag("extracted", "extracted")],
       )],
     )
     .declare_transition_with_actions(
       &c,
       rule!(log_matches!(message == "second log")),
-      &[action!(emit_counter "bar"; value metric_value!(1))],
+      &[make_emit_counter_action("bar", metric_value(1), vec![])],
     );
 
   let workflow = WorkflowBuilder::new("1", &[&a, &b, &c]).build();

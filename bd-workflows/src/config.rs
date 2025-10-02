@@ -8,7 +8,7 @@
 use crate::workflow::Traversal;
 use anyhow::{anyhow, bail};
 use bd_log_matcher::matcher::Tree;
-use bd_log_primitives::FieldsRef;
+use bd_log_primitives::{FieldsRef, LogMessage};
 use bd_proto::protos::workflow::workflow;
 use bd_proto::protos::workflow::workflow::workflow::action::ActionGenerateLog;
 use bd_proto::protos::workflow::workflow::workflow::transition_extension::Extension_type;
@@ -420,7 +420,7 @@ impl SankeyExtraction {
       value: match value {
         sankey_diagram_value_extraction::Value_type::Fixed(value) => TagValue::Fixed(value.clone()),
         sankey_diagram_value_extraction::Value_type::FieldExtracted(extracted) => {
-          TagValue::Extract(extracted.field_name.clone())
+          TagValue::FieldExtract(extracted.field_name.clone())
         },
       },
       counts_toward_sankey_values_extraction_limit: proto.counts_toward_sankey_extraction_limit,
@@ -705,8 +705,9 @@ impl ActionEmitMetric {
       .map(|t| {
         let value = match t.tag_type {
           Some(Tag_type::FixedValue(value)) => TagValue::Fixed(value),
-          Some(Tag_type::FieldExtracted(extracted)) => TagValue::Extract(extracted.field_name),
-          _ => {
+          Some(Tag_type::FieldExtracted(extracted)) => TagValue::FieldExtract(extracted.field_name),
+          Some(Tag_type::LogBodyExtracted(_)) => TagValue::LogBodyExtract,
+          None => {
             anyhow::bail!("invalid action emit metric configuration: unknown tag_type")
           },
         };
@@ -771,8 +772,11 @@ impl ActionEmitSankey {
         .map(|tag| {
           let value = match tag.tag_type {
             Some(Tag_type::FixedValue(value)) => TagValue::Fixed(value),
-            Some(Tag_type::FieldExtracted(extracted)) => TagValue::Extract(extracted.field_name),
-            None | Some(Tag_type::LogBodyExtracted(_)) => {
+            Some(Tag_type::FieldExtracted(extracted)) => {
+              TagValue::FieldExtract(extracted.field_name)
+            },
+            Some(Tag_type::LogBodyExtracted(_)) => TagValue::LogBodyExtract,
+            None => {
               anyhow::bail!("invalid action emit sankey diagram configuration: unknown tag_type")
             },
           };
@@ -837,16 +841,23 @@ pub enum ValueIncrement {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TagValue {
   // Use the value of the specified tag without further modification.
-  Extract(String),
+  FieldExtract(String),
   // Use a fixed value.
   Fixed(FieldKey),
+  // Use the value of the entire log line.
+  LogBodyExtract,
 }
 
 impl TagValue {
-  pub(crate) fn extract_value<'a>(&self, fields: FieldsRef<'a>) -> Option<Cow<'a, str>> {
+  pub(crate) fn extract_value<'a>(
+    &self,
+    fields: FieldsRef<'a>,
+    message: &'a LogMessage,
+  ) -> Option<Cow<'a, str>> {
     match self {
-      Self::Extract(field_key) => fields.field_value(field_key),
+      Self::FieldExtract(field_key) => fields.field_value(field_key),
       Self::Fixed(value) => Some(Cow::Owned(value.to_string())),
+      Self::LogBodyExtract => message.as_str().map(Cow::Borrowed),
     }
   }
 }

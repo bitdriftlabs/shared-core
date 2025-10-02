@@ -1001,7 +1001,7 @@ impl Traversal {
       return new_extractions;
     };
     for extraction in &extractions.sankey_extractions {
-      let Some(extracted_value) = extraction.value.extract_value(log.fields) else {
+      let Some(extracted_value) = extraction.value.extract_value(log.fields, log.message) else {
         continue;
       };
 

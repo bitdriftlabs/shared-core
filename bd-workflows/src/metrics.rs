@@ -102,8 +102,9 @@ impl MetricsCollector {
 
     for (key, value) in tags {
       if let Some(extracted_value) = match value {
-        crate::config::TagValue::Extract(extract) => Self::resolve_field_name(extract, log),
+        crate::config::TagValue::FieldExtract(extract) => Self::resolve_field_name(extract, log),
         crate::config::TagValue::Fixed(value) => Some(value.as_str().into()),
+        crate::config::TagValue::LogBodyExtract => log.message.as_str().map(Cow::Borrowed),
       } {
         extracted_tags.insert(key.to_string(), extracted_value.into_owned());
       }

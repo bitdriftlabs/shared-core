@@ -25,7 +25,8 @@ use std::collections::HashMap;
 // Version 29: Added support for out of the band artifact uploads.
 // Version 30: Added support for workflow timeout transitions.
 // Version 31: Added support for the debug mux API.
-const CONFIGURATION_VERSION: &str = "31";
+// Version 32: Added support for use the log body for tag extraction.
+const CONFIGURATION_VERSION: &str = "32";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

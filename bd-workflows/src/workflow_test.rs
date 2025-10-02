@@ -19,9 +19,14 @@ use bd_log_primitives::{FieldsRef, LogFields, LogMessage, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, labels};
-use bd_test_helpers::metric_value;
-use bd_test_helpers::workflow::macros::{action, all, any, log_matches, rule};
-use bd_test_helpers::workflow::{WorkflowBuilder, state};
+use bd_test_helpers::workflow::macros::{all, any, log_matches, rule};
+use bd_test_helpers::workflow::{
+  WorkflowBuilder,
+  make_emit_counter_action,
+  make_flush_buffers_action,
+  metric_value,
+  state,
+};
 use pretty_assertions::assert_eq;
 use std::collections::{BTreeMap, BTreeSet};
 use std::vec;
@@ -200,7 +205,7 @@ fn unknown_state_reference_workflow() {
   a = a.declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "foo")),
-    &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+    &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
   );
 
   let config = WorkflowBuilder::new("1", &[&a]).build();
@@ -222,12 +227,20 @@ fn timeout_no_parallel_match() {
   a = a.declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "foo")),
-    &[action!(emit_counter "foo_metric"; value metric_value!(1))],
+    &[make_emit_counter_action(
+      "foo_metric",
+      metric_value(1),
+      vec![],
+    )],
   );
   b = b.with_timeout(
     &c,
     1.seconds(),
-    &[action!(emit_counter "timeout_metric"; value metric_value!(1))],
+    &[make_emit_counter_action(
+      "timeout_metric",
+      metric_value(1),
+      vec![],
+    )],
   );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
@@ -358,12 +371,16 @@ fn timeout_not_start() {
     .declare_transition_with_actions(
       &c,
       rule!(log_matches!(message == "bar")),
-      &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
+      &[make_flush_buffers_action(&["bar_buffer_id"], None, "bar")],
     )
     .with_timeout(
       &d,
       1.seconds(),
-      &[action!(emit_counter "bar_metric"; value metric_value!(1))],
+      &[make_emit_counter_action(
+        "bar_metric",
+        metric_value(1),
+        vec![],
+      )],
     );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d]).make_config();
@@ -454,12 +471,20 @@ fn initial_state_run_does_not_have_timeout() {
     .with_timeout(
       &c,
       1.seconds(),
-      &[action!(emit_counter "foo_metric"; value metric_value!(1))],
+      &[make_emit_counter_action(
+        "foo_metric",
+        metric_value(1),
+        vec![],
+      )],
     );
   b = b.declare_transition_with_actions(
     &d,
     rule!(log_matches!(message == "bar")),
-    &[action!(emit_counter "bar_metric"; value metric_value!(1))],
+    &[make_emit_counter_action(
+      "bar_metric",
+      metric_value(1),
+      vec![],
+    )],
   );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d]).make_config();
@@ -493,12 +518,16 @@ fn timeout_from_start() {
     .declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "foo")),
-      &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+      &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
     )
     .with_timeout(
       &c,
       1.seconds(),
-      &[action!(emit_counter "foo_metric"; value metric_value!(1))],
+      &[make_emit_counter_action(
+        "foo_metric",
+        metric_value(1),
+        vec![],
+      )],
     );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
@@ -565,7 +594,7 @@ fn multiple_start_nodes_initial_fork() {
   c = c.declare_transition_with_actions(
     &e,
     rule!(log_matches!(message == "E")),
-    &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+    &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
   );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config();
@@ -666,7 +695,7 @@ fn multiple_start_nodes_initial_branching() {
   c = c.declare_transition_with_actions(
     &e,
     rule!(log_matches!(message == "E")),
-    &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+    &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
   );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config();
@@ -759,14 +788,14 @@ fn basic_exclusive_workflow() {
       log_matches!(tag("key") == "value"),
     )),
     &[
-      action!(flush_buffers &["foo_buffer_id"]; id "foo"),
-      action!(emit_counter "foo_metric"; value metric_value!(123)),
+      make_flush_buffers_action(&["foo_buffer_id"], None, "foo"),
+      make_emit_counter_action("foo_metric", metric_value(123), vec![]),
     ],
   );
   b = b.declare_transition_with_actions(
     &c,
     rule!(log_matches!(message == "bar")),
-    &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
+    &[make_flush_buffers_action(&["bar_buffer_id"], None, "bar")],
   );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
@@ -954,12 +983,12 @@ fn exclusive_workflow_log_rule_count() {
   a = a.declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "foo"); times 2),
-    &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+    &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
   );
   b = b.declare_transition_with_actions(
     &c,
     rule!(log_matches!(message == "bar")),
-    &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
+    &[make_flush_buffers_action(&["bar_buffer_id"], None, "bar")],
   );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
@@ -1065,22 +1094,26 @@ fn branching_exclusive_workflow() {
       log_matches!(message == "foo"),
       log_matches!(tag("key") == "value"),
     )),
-    &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+    &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
   );
   b = b.declare_transition_with_actions(
     &d,
     rule!(log_matches!(message == "zoo")),
-    &[action!(flush_buffers &["zoo_buffer_id"]; id "zoo")],
+    &[make_flush_buffers_action(&["zoo_buffer_id"], None, "zoo")],
   );
   a = a.declare_transition_with_actions(
     &c,
     rule!(log_matches!(message == "bar")),
-    &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
+    &[make_flush_buffers_action(&["bar_buffer_id"], None, "bar")],
   );
   c = c.declare_transition_with_actions(
     &e,
     rule!(log_matches!(message == "barbar")),
-    &[action!(flush_buffers &["bar_buffer_id"]; id "barbar")],
+    &[make_flush_buffers_action(
+      &["bar_buffer_id"],
+      None,
+      "barbar",
+    )],
   );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config();
