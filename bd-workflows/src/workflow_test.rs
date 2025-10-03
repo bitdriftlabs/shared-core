@@ -15,7 +15,7 @@ use crate::config::{
 };
 use crate::test::{MakeConfig, TestLog};
 use crate::workflow::{Run, TriggeredAction, Workflow, WorkflowResult, WorkflowResultStats};
-use bd_log_primitives::tiny_set::TinyMap;
+use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{FieldsRef, LogFields, LogMessage, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
@@ -29,7 +29,7 @@ use bd_test_helpers::workflow::{
   state,
 };
 use pretty_assertions::assert_eq;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::vec;
 use time::ext::NumericalDuration;
 use time::macros::datetime;
@@ -437,11 +437,14 @@ fn timeout_not_start() {
   assert_eq!(
     result,
     WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: FlushBufferId::WorkflowActionId("bar".to_string()),
-        buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
-        streaming: None,
-      })],
+      triggered_actions: vec![TriggeredAction::FlushBuffers(
+        ActionFlushBuffers {
+          id: FlushBufferId::WorkflowActionId("bar".to_string()).into(),
+          buffer_ids: TinySet::from(["bar_buffer_id".into()]),
+          streaming: None,
+        }
+        .into()
+      )],
       logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
@@ -659,11 +662,14 @@ fn multiple_start_nodes_initial_fork() {
   assert_eq!(
     result,
     WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: FlushBufferId::WorkflowActionId("foo".to_string()),
-        buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
-        streaming: None,
-      })],
+      triggered_actions: vec![TriggeredAction::FlushBuffers(
+        ActionFlushBuffers {
+          id: FlushBufferId::WorkflowActionId("foo".to_string()).into(),
+          buffer_ids: TinySet::from(["foo_buffer_id".into()]),
+          streaming: None,
+        }
+        .into()
+      )],
       logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
@@ -753,11 +759,14 @@ fn multiple_start_nodes_initial_branching() {
   assert_eq!(
     result,
     WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: FlushBufferId::WorkflowActionId("foo".to_string()),
-        buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
-        streaming: None,
-      })],
+      triggered_actions: vec![TriggeredAction::FlushBuffers(
+        ActionFlushBuffers {
+          id: FlushBufferId::WorkflowActionId("foo".to_string()).into(),
+          buffer_ids: TinySet::from(["foo_buffer_id".into()]),
+          streaming: None,
+        }
+        .into()
+      )],
       logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
@@ -810,11 +819,14 @@ fn basic_exclusive_workflow() {
     result,
     WorkflowResult {
       triggered_actions: vec![
-        TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-          id: FlushBufferId::WorkflowActionId("foo".to_string()),
-          buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
-          streaming: None,
-        }),
+        TriggeredAction::FlushBuffers(
+          ActionFlushBuffers {
+            id: FlushBufferId::WorkflowActionId("foo".to_string()).into(),
+            buffer_ids: TinySet::from(["foo_buffer_id".into()]),
+            streaming: None,
+          }
+          .into()
+        ),
         TriggeredAction::EmitMetric(&ActionEmitMetric {
           id: "foo_metric".to_string(),
           tags: BTreeMap::new(),
@@ -846,11 +858,14 @@ fn basic_exclusive_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: FlushBufferId::WorkflowActionId("bar".to_string()),
-        buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
-        streaming: None,
-      })],
+      triggered_actions: vec![TriggeredAction::FlushBuffers(
+        ActionFlushBuffers {
+          id: FlushBufferId::WorkflowActionId("bar".to_string()).into(),
+          buffer_ids: TinySet::from(["bar_buffer_id".into()]),
+          streaming: None,
+        }
+        .into()
+      )],
       logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
@@ -1023,11 +1038,14 @@ fn exclusive_workflow_log_rule_count() {
   assert_eq!(
     result,
     WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: FlushBufferId::WorkflowActionId("foo".to_string()),
-        buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
-        streaming: None,
-      })],
+      triggered_actions: vec![TriggeredAction::FlushBuffers(
+        ActionFlushBuffers {
+          id: FlushBufferId::WorkflowActionId("foo".to_string()).into(),
+          buffer_ids: TinySet::from(["foo_buffer_id".into()]),
+          streaming: None,
+        }
+        .into()
+      )],
       logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
@@ -1055,11 +1073,14 @@ fn exclusive_workflow_log_rule_count() {
   assert_eq!(
     result,
     WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: FlushBufferId::WorkflowActionId("bar".to_string()),
-        buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
-        streaming: None,
-      })],
+      triggered_actions: vec![TriggeredAction::FlushBuffers(
+        ActionFlushBuffers {
+          id: FlushBufferId::WorkflowActionId("bar".to_string()).into(),
+          buffer_ids: TinySet::from(["bar_buffer_id".into()]),
+          streaming: None,
+        }
+        .into()
+      )],
       logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
@@ -1126,11 +1147,14 @@ fn branching_exclusive_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: FlushBufferId::WorkflowActionId("foo".to_string()),
-        buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
-        streaming: None,
-      })],
+      triggered_actions: vec![TriggeredAction::FlushBuffers(
+        ActionFlushBuffers {
+          id: FlushBufferId::WorkflowActionId("foo".to_string()).into(),
+          buffer_ids: TinySet::from(["foo_buffer_id".into()]),
+          streaming: None,
+        }
+        .into()
+      )],
       logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
@@ -1170,11 +1194,14 @@ fn branching_exclusive_workflow() {
   assert_eq!(
     result,
     WorkflowResult {
-      triggered_actions: vec![TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-        id: FlushBufferId::WorkflowActionId("zoo".to_string()),
-        buffer_ids: BTreeSet::from(["zoo_buffer_id".to_string()]),
-        streaming: None,
-      })],
+      triggered_actions: vec![TriggeredAction::FlushBuffers(
+        ActionFlushBuffers {
+          id: FlushBufferId::WorkflowActionId("zoo".to_string()).into(),
+          buffer_ids: TinySet::from(["zoo_buffer_id".into()]),
+          streaming: None,
+        }
+        .into()
+      )],
       logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
@@ -1200,16 +1227,22 @@ fn branching_exclusive_workflow() {
     result,
     WorkflowResult {
       triggered_actions: vec![
-        TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-          id: FlushBufferId::WorkflowActionId("foo".to_string()),
-          buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
-          streaming: None,
-        }),
-        TriggeredAction::FlushBuffers(&ActionFlushBuffers {
-          id: FlushBufferId::WorkflowActionId("bar".to_string()),
-          buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
-          streaming: None,
-        }),
+        TriggeredAction::FlushBuffers(
+          ActionFlushBuffers {
+            id: FlushBufferId::WorkflowActionId("foo".to_string()).into(),
+            buffer_ids: TinySet::from(["foo_buffer_id".into()]),
+            streaming: None,
+          }
+          .into()
+        ),
+        TriggeredAction::FlushBuffers(
+          ActionFlushBuffers {
+            id: FlushBufferId::WorkflowActionId("bar".to_string()).into(),
+            buffer_ids: TinySet::from(["bar_buffer_id".into()]),
+            streaming: None,
+          }
+          .into()
+        ),
       ],
       logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {

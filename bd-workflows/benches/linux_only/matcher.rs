@@ -25,7 +25,10 @@ use gungraun::{
 };
 use std::future::Future;
 use std::hint::black_box;
+use std::sync::Arc;
 use time::OffsetDateTime;
+
+// fixfix add streaming config
 
 struct Setup {
   tmp_dir: tempfile::TempDir,
@@ -61,8 +64,8 @@ impl Setup {
     engine
       .start(WorkflowsEngineConfig::new(
         WorkflowsConfiguration::new(workflows, vec![]),
-        TinySet::default(),
-        TinySet::default(),
+        TinySet::from([Arc::new("default_buffer_id".into())]).into(),
+        TinySet::from([Arc::new("continuous_buffer_id".into())]).into(),
       ))
       .await;
 
@@ -74,7 +77,7 @@ impl Setup {
     let a = state("A").declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "foo")),
-      &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
+      &[make_flush_buffers_action(&[], None, "foo")],
     );
 
     let config = WorkflowBuilder::new("1", &[&a, &b]).build();
@@ -88,7 +91,7 @@ impl Setup {
       let a = state("A").declare_transition_with_actions(
         &b,
         rule!(log_matches!(message == "foo")),
-        &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
+        &[make_flush_buffers_action(&[], None, "foo")],
       );
 
       let mut config = WorkflowBuilder::new("1", &[&a, &b]).build();
@@ -102,7 +105,7 @@ impl Setup {
       let a = state("A").declare_transition_with_actions(
         &b,
         rule!(log_matches!(message == "baz")),
-        &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
+        &[make_flush_buffers_action(&[], None, "foo")],
       );
       let mut config = WorkflowBuilder::new("1", &[&a, &b]).build();
       config.id = format!("baz_{i}");

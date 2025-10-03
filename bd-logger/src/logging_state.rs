@@ -20,10 +20,9 @@ use bd_log_primitives::tiny_set::TinySet;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_stats_common::labels;
-use bd_workflows::config::WorkflowsConfiguration;
+use bd_workflows::config::{BufferId, WorkflowsConfiguration};
 use bd_workflows::engine::WorkflowsEngine;
 use flatbuffers::FlatBufferBuilder;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
@@ -284,8 +283,8 @@ pub struct ConfigUpdate {
 pub struct BufferProducers {
   pub(crate) buffers: HashMap<String, bd_buffer::Producer>,
   pub(crate) builder: FlatBufferBuilder<'static>,
-  pub(crate) continuous_buffer_ids: TinySet<Cow<'static, str>>,
-  pub(crate) trigger_buffer_ids: TinySet<Cow<'static, str>>,
+  pub(crate) continuous_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
+  pub(crate) trigger_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
 }
 
 impl BufferProducers {
@@ -304,10 +303,10 @@ impl BufferProducers {
     for (buffer_id, (buffer_type, _)) in buffer_manager.buffers() {
       match buffer_type {
         bd_proto::protos::config::v1::config::buffer_config::Type::CONTINUOUS => {
-          continuous_buffer_ids.insert(buffer_id.clone().into());
+          continuous_buffer_ids.insert(buffer_id.into());
         },
         bd_proto::protos::config::v1::config::buffer_config::Type::TRIGGER => {
-          trigger_buffer_ids.insert(buffer_id.clone().into());
+          trigger_buffer_ids.insert(buffer_id.into());
         },
       }
     }

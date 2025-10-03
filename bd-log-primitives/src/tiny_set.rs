@@ -36,7 +36,11 @@ impl<T: PartialEq> TinySet<T> {
     self.inner.items.is_empty()
   }
 
-  pub fn remove(&mut self, value: &T) {
+  pub fn remove<Q>(&mut self, value: &Q)
+  where
+    T: Borrow<Q>,
+    Q: PartialEq + ?Sized,
+  {
     self.inner.remove(value);
   }
 

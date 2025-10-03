@@ -8,6 +8,7 @@
 use crate::workflow::Traversal;
 use anyhow::{anyhow, bail};
 use bd_log_matcher::matcher::Tree;
+use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{FieldsRef, LogMessage};
 use bd_proto::protos::workflow::workflow;
 use bd_proto::protos::workflow::workflow::workflow::action::ActionGenerateLog;
@@ -18,8 +19,11 @@ use bd_proto::protos::workflow::workflow::workflow::{
 };
 use bd_stats_common::MetricType;
 use protobuf::MessageField;
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
+use std::ops::Deref;
+use std::sync::Arc;
 use time::Duration;
 use workflow::Workflow as WorkflowConfigProto;
 use workflow::workflow::action::action_emit_metric::Value_extractor_type;
@@ -321,14 +325,16 @@ impl InnerConfig {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(test, derive(Clone))]
+#[derive(Debug, PartialEq)]
 pub(crate) struct StateTimeout {
   target_state_index: usize,
   pub(crate) duration: Duration,
   actions: Vec<Action>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(test, derive(Clone))]
+#[derive(Debug, PartialEq)]
 pub(crate) struct State {
   id: StateID,
   transitions: Vec<Transition>,
@@ -454,7 +460,8 @@ pub(crate) struct TransitionExtractions {
 // Transition
 //
 
-#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(test, derive(Clone))]
+#[derive(Debug, PartialEq)]
 pub(crate) struct Transition {
   target_state_index: usize,
   rule: Predicate,
@@ -562,10 +569,11 @@ pub(crate) enum Predicate {
 // Action
 //
 
-#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(test, derive(Clone))]
+#[derive(Debug, PartialEq)]
 /// The action to perform.
 pub enum Action {
-  FlushBuffers(ActionFlushBuffers),
+  FlushBuffers(Arc<ActionFlushBuffers>),
   EmitMetric(ActionEmitMetric),
   EmitSankey(ActionEmitSankey),
   TakeScreenshot(ActionTakeScreenshot),
@@ -584,11 +592,14 @@ impl Action {
           None => None,
         };
 
-        Ok(Self::FlushBuffers(ActionFlushBuffers {
-          id: FlushBufferId::WorkflowActionId(action.id.clone()),
-          buffer_ids: action.buffer_ids.into_iter().collect::<BTreeSet<_>>(),
-          streaming,
-        }))
+        Ok(Self::FlushBuffers(
+          ActionFlushBuffers {
+            id: Arc::new(FlushBufferId::WorkflowActionId(action.id)),
+            buffer_ids: action.buffer_ids.into_iter().map(BufferId).collect(),
+            streaming,
+          }
+          .into(),
+        ))
       },
       Action_type::ActionEmitMetric(metric) => Ok(Self::EmitMetric(ActionEmitMetric::new(metric)?)),
       Action_type::ActionEmitSankeyDiagram(diagram) => {
@@ -602,9 +613,7 @@ impl Action {
   }
 }
 
-#[derive(
-  serde::Serialize, serde::Deserialize, Hash, Clone, Debug, PartialEq, Eq, PartialOrd, Ord,
-)]
+#[derive(serde::Serialize, serde::Deserialize, Hash, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FlushBufferId {
   /// Flush the buffer due to a workflow action triggering.
   WorkflowActionId(String),
@@ -613,18 +622,35 @@ pub enum FlushBufferId {
   ExplicitSessionCapture(String),
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+pub struct BufferId(String);
+
+impl Deref for BufferId {
+  type Target = str;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl From<&str> for BufferId {
+  fn from(value: &str) -> Self {
+    Self(value.to_string())
+  }
+}
+
 //
 // ActionFlushBuffers
 //
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq)]
 /// The flush buffer action to perform.
 pub struct ActionFlushBuffers {
   /// The identifier of an action. It should be attached as
   /// part of the logs upload payload.
-  pub id: FlushBufferId,
+  pub id: Arc<FlushBufferId>,
   /// The list of buffer IDs to flush.
-  pub buffer_ids: BTreeSet<String>,
+  pub buffer_ids: TinySet<BufferId>,
   /// The streaming configuration.
   pub(crate) streaming: Option<Streaming>,
 }
@@ -634,10 +660,10 @@ pub struct ActionFlushBuffers {
 //
 
 /// The buffer streaming configuration to apply when flush buffer(s) action is performed.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Streaming {
   /// The list of destination streaming buffer IDs.
-  pub(crate) destination_continuous_buffer_ids: BTreeSet<String>,
+  pub(crate) destination_continuous_buffer_ids: TinySet<Arc<BufferId>>,
 
   /// The maximum number of logs to stream. No maximum number of logs is configured if this field
   /// is not set.
@@ -651,7 +677,8 @@ impl Streaming {
     let destination_continuous_buffer_ids = streaming_proto
       .destination_streaming_buffer_ids
       .into_iter()
-      .collect::<BTreeSet<_>>();
+      .map(|id| Arc::new(BufferId(id)))
+      .collect::<TinySet<_>>();
 
     let termination_criteria_types = streaming_proto
       .termination_criteria
