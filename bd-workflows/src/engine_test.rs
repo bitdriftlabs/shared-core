@@ -15,6 +15,7 @@ use crate::workflow::{Workflow, WorkflowDebugStateMap, WorkflowTransitionDebugSt
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
+use bd_client_stats::Stats;
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
 use bd_error_reporter::reporter::{Reporter, UnexpectedErrorHandler};
@@ -214,7 +215,7 @@ struct AnnotatedWorkflowsEngine {
 
   hooks: Arc<parking_lot::Mutex<Hooks>>,
 
-  collector: Collector,
+  client_stats: Arc<Stats>,
 
   task_handle: JoinHandle<()>,
 }
@@ -223,7 +224,7 @@ impl AnnotatedWorkflowsEngine {
   fn new(
     engine: WorkflowsEngine,
     hooks: Arc<parking_lot::Mutex<Hooks>>,
-    collector: Collector,
+    client_stats: Arc<Stats>,
     task_handle: JoinHandle<()>,
   ) -> Self {
     Self {
@@ -234,7 +235,7 @@ impl AnnotatedWorkflowsEngine {
 
       hooks,
 
-      collector,
+      client_stats,
 
       task_handle,
     }
@@ -450,7 +451,7 @@ impl Setup {
       self.sdk_directory.path(),
       &self.runtime,
       data_upload_tx,
-      stats,
+      stats.clone(),
     );
 
     let task_handle =
@@ -458,7 +459,7 @@ impl Setup {
 
     workflows_engine.start(workflows_engine_config).await;
 
-    AnnotatedWorkflowsEngine::new(workflows_engine, hooks, self.collector.clone(), task_handle)
+    AnnotatedWorkflowsEngine::new(workflows_engine, hooks, stats, task_handle)
   }
 
   fn make_state_store(&self) -> StateStore {
@@ -591,12 +592,18 @@ async fn debug_mode() {
   engine_assert_active_runs!(workflows_engine; 0; "A");
   assert!(
     workflows_engine
+      .client_stats
+      .take_workflow_debug_data()
+      .is_empty()
+  );
+  assert!(
+    setup
       .collector
       .find_counter(&NameType::Global("foo_metric".to_string()), &labels! {})
       .is_none()
   );
   assert!(
-    workflows_engine
+    setup
       .collector
       .find_counter(&NameType::Global("bar_metric".to_string()), &labels! {})
       .is_none()
@@ -827,10 +834,16 @@ async fn debug_mode() {
     )],
   );
 
-  workflows_engine
+  assert!(
+    !workflows_engine
+      .client_stats
+      .take_workflow_debug_data()
+      .is_empty()
+  );
+  setup
     .collector
     .assert_workflow_counter_eq(123, "foo_metric", labels! {});
-  workflows_engine
+  setup
     .collector
     .assert_workflow_counter_eq(123, "baz_metric", labels! {});
 }
@@ -1000,7 +1013,7 @@ async fn persist_initial_state_timeout() {
   workflows_engine
     .process_log(TestLog::new("something else").with_now(datetime!(2023-01-01 00:00:01 UTC)));
   engine_assert_active_runs!(workflows_engine; 0; "A");
-  workflows_engine
+  setup
     .collector
     .assert_workflow_counter_eq(1, "foo_metric", labels! {});
 }
@@ -1671,7 +1684,7 @@ async fn engine_processing_log() {
   assert!(workflows_engine.state.workflows[0].runs().is_empty());
   assert!(workflows_engine.state.workflows[1].runs().is_empty());
 
-  workflows_engine
+  setup
     .collector
     .assert_workflow_counter_eq(123, "foo_metric", labels! {});
 
@@ -2888,7 +2901,7 @@ async fn generate_log_multiple() {
       .with_tags(labels! {"duration" => "1", "_generate_log_id" => "id1"})
       .with_occurred_at(datetime!(2023-01-01 00:00:03 UTC)),
   );
-  engine
+  setup
     .collector
     .assert_workflow_counter_eq(1, "foo_metric", labels! {});
   engine.process_log(
@@ -2896,7 +2909,7 @@ async fn generate_log_multiple() {
       .with_tags(labels! {"duration" => "2", "_generate_log_id" => "id2"})
       .with_occurred_at(datetime!(2023-01-01 00:00:03 UTC)),
   );
-  engine
+  setup
     .collector
     .assert_workflow_counter_eq(2, "bar_metric", labels! {});
 }
@@ -2995,7 +3008,7 @@ async fn sankey_action() {
   assert!(engine.hooks.lock().sankey_uploads.is_empty());
   assert_eq!(1, engine.hooks.lock().received_sankey_upload_intents.len());
 
-  engine.collector.assert_workflow_counter_eq(
+  setup.collector.assert_workflow_counter_eq(
     1,
     "sankey",
     labels! {
@@ -3061,7 +3074,7 @@ async fn sankey_action() {
     first_upload
   );
 
-  engine.collector.assert_workflow_counter_eq(
+  setup.collector.assert_workflow_counter_eq(
     1,
     "sankey",
     labels! {
@@ -3090,7 +3103,7 @@ async fn sankey_action() {
   assert_eq!(1, engine.hooks.lock().sankey_uploads.len());
   assert_eq!(2, engine.hooks.lock().received_sankey_upload_intents.len());
 
-  engine.collector.assert_workflow_counter_eq(
+  setup.collector.assert_workflow_counter_eq(
     2,
     "sankey",
     labels! {

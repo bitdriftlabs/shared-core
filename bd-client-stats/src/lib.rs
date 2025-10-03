@@ -205,7 +205,11 @@ impl Stats {
     }
   }
 
-  pub fn limit(&self) -> Option<u32> {
-    self.collector.limit()
+  pub fn collector(&self) -> &Collector {
+    &self.collector
+  }
+
+  pub fn take_workflow_debug_data(&self) -> HashMap<WorkflowDebugKey, u64> {
+    std::mem::take(&mut *self.workflow_debug_data.lock())
   }
 }

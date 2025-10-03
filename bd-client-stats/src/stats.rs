@@ -269,7 +269,8 @@ impl Flusher {
     // aggregation window.
     log::debug!("starting merge of delta snapshot to disk");
     let mut handle = self.file_manager.get_or_create_snapshot().await?;
-    let mut new_or_existing_snapshot = SnapshotHelper::new(handle.snapshot(), self.stats.limit());
+    let mut new_or_existing_snapshot =
+      SnapshotHelper::new(handle.snapshot(), self.stats.collector.limit());
 
     for ((metric_type, name), metrics) in delta_snapshot.metrics {
       for (labels, metric) in metrics {
@@ -404,11 +405,11 @@ impl Flusher {
   }
 
   fn create_delta_snapshot(&self) -> SnapshotHelper {
-    let mut snapshot = SnapshotHelper::new(None, self.stats.limit());
+    let mut snapshot = SnapshotHelper::new(None, self.stats.collector.limit());
     Self::snap_collector_to_snapshot(&self.stats.collector, &mut snapshot);
     snapshot.overflows = std::mem::take(&mut self.stats.overflows.lock());
 
-    let workflow_debug_data = std::mem::take(&mut *self.stats.workflow_debug_data.lock());
+    let workflow_debug_data = self.stats.take_workflow_debug_data();
     let mut snapshot_workflow_debug_data: HashMap<String, WorkflowDebugData> = HashMap::new();
     for (key, count) in workflow_debug_data {
       let workflow_entry = snapshot_workflow_debug_data
