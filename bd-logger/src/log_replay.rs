@@ -13,6 +13,7 @@ use bd_buffer::{AbslCode, BuffersWithAck, Error};
 use bd_client_common::fb::make_log;
 use bd_client_stats::FlushTrigger;
 use bd_log_filter::FilterChain;
+use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{FieldsRef, Log, LogRef, LogType, log_level};
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
@@ -21,7 +22,6 @@ use bd_workflows::config::FlushBufferId;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use bd_workflows::workflow::WorkflowDebugStateMap;
 use std::borrow::Cow;
-use std::collections::BTreeSet;
 use std::path::Path;
 use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -284,7 +284,7 @@ impl ProcessingPipeline {
   async fn finish_blocking_log_processing(
     flush_buffers_tx: tokio::sync::mpsc::Sender<BuffersWithAck>,
     flush_stats_trigger: FlushTrigger,
-    matching_buffers: BTreeSet<Cow<'_, str>>,
+    matching_buffers: TinySet<Cow<'_, str>>,
   ) -> anyhow::Result<()> {
     // The processing of a blocking log is about to complete.
     // We make an arbitrary decision to start with the flushing of log buffers to disk first and
@@ -332,7 +332,7 @@ impl ProcessingPipeline {
 
   fn write_to_buffers<'a>(
     buffers: &mut BufferProducers,
-    matching_buffers: &BTreeSet<Cow<'_, str>>,
+    matching_buffers: &TinySet<Cow<'_, str>>,
     log: &LogRef<'_>,
     workflow_flush_buffer_action_ids: impl Iterator<Item = &'a str>,
   ) -> anyhow::Result<()> {
@@ -351,7 +351,7 @@ impl ProcessingPipeline {
       workflow_flush_buffer_action_ids,
       std::iter::empty(),
       |data| {
-        for buffer in matching_buffers {
+        for buffer in matching_buffers.iter() {
           // TODO(snowp): For both logger and buffer lookup we end up doing a map lookup, which
           // seems less than ideal in the logging path. Look into ways to optimize this,
           // possibly via vector indices instead of string keys.
@@ -379,10 +379,10 @@ impl ProcessingPipeline {
   }
 
   fn process_flush_buffers_actions(
-    triggered_flush_buffers_action_ids: &BTreeSet<Cow<'_, FlushBufferId>>,
+    triggered_flush_buffers_action_ids: &TinySet<Cow<'_, FlushBufferId>>,
     buffers: &mut BufferProducers,
-    triggered_flushes_buffer_ids: &BTreeSet<Cow<'_, str>>,
-    written_to_buffers: &BTreeSet<Cow<'_, str>>,
+    triggered_flushes_buffer_ids: &TinySet<Cow<'_, str>>,
+    written_to_buffers: &TinySet<Cow<'_, str>>,
     log: &LogRef<'_>,
   ) -> Option<String> {
     if triggered_flush_buffers_action_ids.is_empty() {

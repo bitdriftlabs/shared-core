@@ -21,6 +21,7 @@ use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse};
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
+use bd_log_primitives::tiny_set::TinySet;
 use bd_stats_common::labels;
 use pretty_assertions::assert_eq;
 use std::borrow::Cow;
@@ -82,18 +83,18 @@ impl std::ops::Drop for NegotiatorWrapper {
 async fn pending_buffers_standardization_removes_references_to_non_existing_trigger_buffers() {
   let mut resolver = Resolver::new(&Collector::default().scope("test"));
   resolver.update(ResolverConfig::new(
-    BTreeSet::from([
+    TinySet::from([
       "existing_trigger_buffer_id_1".into(),
       "existing_trigger_buffer_id_2".into(),
     ]),
-    BTreeSet::new(),
+    TinySet::default(),
   ));
 
-  let result = resolver.standardize_pending_actions(BTreeSet::from([
+  let result = resolver.standardize_pending_actions(TinySet::from([
     PendingFlushBuffersAction {
       id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
       session_id: "foo_session_id".to_string(),
-      trigger_buffer_ids: BTreeSet::from([
+      trigger_buffer_ids: TinySet::from([
         "existing_trigger_buffer_id_1".into(),
         "unknown_trigger_buffer_id".into(),
       ]),
@@ -102,26 +103,26 @@ async fn pending_buffers_standardization_removes_references_to_non_existing_trig
     PendingFlushBuffersAction {
       id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
       session_id: "foo_session_id".to_string(),
-      trigger_buffer_ids: BTreeSet::from(["unknown_trigger_buffer_id".into()]),
+      trigger_buffer_ids: TinySet::from(["unknown_trigger_buffer_id".into()]),
       streaming: None,
     },
     PendingFlushBuffersAction {
       id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
       session_id: "bar_session_id".to_string(),
-      trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id_2".into()]),
+      trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id_2".into()]),
       streaming: Some(Streaming {
-        destination_continuous_buffer_ids: BTreeSet::from(["unknown_continuous_buffer_id".into()]),
+        destination_continuous_buffer_ids: TinySet::from(["unknown_continuous_buffer_id".into()]),
         max_logs_count: Some(10),
       }),
     },
   ]));
 
   assert_eq!(
-    BTreeSet::from([
+    TinySet::from([
       PendingFlushBuffersAction {
         id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
         session_id: "foo_session_id".to_string(),
-        trigger_buffer_ids: BTreeSet::from([
+        trigger_buffer_ids: TinySet::from([
           // The unknown trigger buffer ID present in the original flush buffers action is no
           // longer present.
           "existing_trigger_buffer_id_1".into(),
@@ -133,15 +134,13 @@ async fn pending_buffers_standardization_removes_references_to_non_existing_trig
       PendingFlushBuffersAction {
         id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
         session_id: "bar_session_id".to_string(),
-        trigger_buffer_ids: BTreeSet::from([
+        trigger_buffer_ids: TinySet::from([
           // The unknown continuous buffer ID present in the original flush buffers action is
           // no longer present.
           "existing_trigger_buffer_id_2".into(),
         ]),
         streaming: Some(Streaming {
-          destination_continuous_buffer_ids: BTreeSet::from(
-            ["unknown_continuous_buffer_id".into()]
-          ),
+          destination_continuous_buffer_ids: TinySet::from(["unknown_continuous_buffer_id".into()]),
           max_logs_count: Some(10),
         }),
       },
@@ -154,11 +153,11 @@ async fn pending_buffers_standardization_removes_references_to_non_existing_trig
 async fn streaming_buffers_standardization_removes_references_to_non_existing_buffers() {
   let mut resolver = Resolver::new(&Collector::default().scope("test"));
   resolver.update(ResolverConfig::new(
-    BTreeSet::from([
+    TinySet::from([
       "existing_trigger_buffer_id_1".into(),
       "existing_trigger_buffer_id_2".into(),
     ]),
-    BTreeSet::from([
+    TinySet::from([
       "existing_continuous_buffer_id_1".into(),
       "existing_continuous_buffer_id_2".into(),
     ]),
@@ -168,8 +167,8 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
     StreamingBuffersAction {
       id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
       session_id: "foo_session_id".to_string(),
-      source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id_1".into()]),
-      destination_continuous_buffer_ids: BTreeSet::from([
+      source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id_1".into()]),
+      destination_continuous_buffer_ids: TinySet::from([
         "existing_continuous_buffer_id_1".into(),
         "unknown_continuous_buffer_id".into(),
       ]),
@@ -179,8 +178,8 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
     StreamingBuffersAction {
       id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
       session_id: "foo_session_id".to_string(),
-      source_trigger_buffer_ids: BTreeSet::from(["unknown_trigger_buffer_id".into()]),
-      destination_continuous_buffer_ids: BTreeSet::from([
+      source_trigger_buffer_ids: TinySet::from(["unknown_trigger_buffer_id".into()]),
+      destination_continuous_buffer_ids: TinySet::from([
         "existing_continuous_buffer_id_1".into(),
         "unknown_continuous_buffer_id".into(),
       ]),
@@ -190,11 +189,11 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
     StreamingBuffersAction {
       id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
       session_id: "foo_session_id".to_string(),
-      source_trigger_buffer_ids: BTreeSet::from([
+      source_trigger_buffer_ids: TinySet::from([
         "existing_trigger_buffer_id_1".into(),
         "unknown_trigger_buffer_id".into(),
       ]),
-      destination_continuous_buffer_ids: BTreeSet::from([
+      destination_continuous_buffer_ids: TinySet::from([
         "existing_continuous_buffer_id_1".into(),
         "unknown_continuous_buffer_id".into(),
       ]),
@@ -204,22 +203,22 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
     StreamingBuffersAction {
       id: FlushBufferId::WorkflowActionId("action_id_4".to_string()),
       session_id: "foo_session_id".to_string(),
-      source_trigger_buffer_ids: BTreeSet::from([
+      source_trigger_buffer_ids: TinySet::from([
         "existing_trigger_buffer_id_1".into(),
         "unknown_trigger_buffer_id".into(),
       ]),
-      destination_continuous_buffer_ids: BTreeSet::from(["unknown_continuous_buffer_id".into()]),
+      destination_continuous_buffer_ids: TinySet::from(["unknown_continuous_buffer_id".into()]),
       max_logs_count: Some(10),
       logs_count: 0,
     },
     StreamingBuffersAction {
       id: FlushBufferId::WorkflowActionId("action_id_5".to_string()),
       session_id: "bar_session_id".to_string(),
-      source_trigger_buffer_ids: BTreeSet::from([
+      source_trigger_buffer_ids: TinySet::from([
         "existing_trigger_buffer_id_1".into(),
         "unknown_trigger_buffer_id".into(),
       ]),
-      destination_continuous_buffer_ids: BTreeSet::from([
+      destination_continuous_buffer_ids: TinySet::from([
         "existing_continuous_buffer_id_1".into(),
         "unknown_continuous_buffer_id".into(),
       ]),
@@ -233,8 +232,8 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
       StreamingBuffersAction {
         id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
         session_id: "foo_session_id".to_string(),
-        source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id_1".into()]),
-        destination_continuous_buffer_ids: BTreeSet::from([
+        source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id_1".into()]),
+        destination_continuous_buffer_ids: TinySet::from([
           "existing_continuous_buffer_id_1".into(),
         ]),
         max_logs_count: Some(10),
@@ -243,8 +242,8 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
       StreamingBuffersAction {
         id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
         session_id: "foo_session_id".to_string(),
-        source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id_1".into(),]),
-        destination_continuous_buffer_ids: BTreeSet::from([
+        source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id_1".into(),]),
+        destination_continuous_buffer_ids: TinySet::from([
           "existing_continuous_buffer_id_1".into(),
         ]),
         max_logs_count: Some(10),
@@ -253,8 +252,8 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
       StreamingBuffersAction {
         id: FlushBufferId::WorkflowActionId("action_id_5".to_string()),
         session_id: "bar_session_id".to_string(),
-        source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id_1".into(),]),
-        destination_continuous_buffer_ids: BTreeSet::from([
+        source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id_1".into(),]),
+        destination_continuous_buffer_ids: TinySet::from([
           "existing_continuous_buffer_id_1".into(),
         ]),
         max_logs_count: Some(10),
@@ -271,11 +270,11 @@ fn process_flush_buffers_actions() {
 
   let mut resolver = Resolver::new(&collector.scope("test"));
   resolver.update(ResolverConfig::new(
-    BTreeSet::from(["existing_trigger_buffer_id".into()]),
-    BTreeSet::new(),
+    TinySet::from(["existing_trigger_buffer_id".into()]),
+    TinySet::default(),
   ));
 
-  let actions = BTreeSet::from([
+  let actions = TinySet::from([
     ActionFlushBuffers {
       id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
       buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".to_string()]),
@@ -301,17 +300,17 @@ fn process_flush_buffers_actions() {
   let result = resolver.process_flush_buffer_actions(
     actions.iter().map(Cow::Borrowed).collect(),
     "foo_session_id",
-    &BTreeSet::from([PendingFlushBuffersAction {
+    &TinySet::from([PendingFlushBuffersAction {
       id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
       session_id: "foo_session_id".to_string(),
-      trigger_buffer_ids: BTreeSet::new(),
+      trigger_buffer_ids: TinySet::default(),
       streaming: None,
     }]),
     &[StreamingBuffersAction {
       id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
       session_id: "foo_session_id".to_string(),
-      source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into()]),
-      destination_continuous_buffer_ids: BTreeSet::new(),
+      source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into()]),
+      destination_continuous_buffer_ids: TinySet::default(),
       max_logs_count: Some(10),
       logs_count: 0,
     }],
@@ -319,19 +318,19 @@ fn process_flush_buffers_actions() {
 
   assert_eq!(
     FlushBuffersActionsProcessingResult {
-      new_pending_actions_to_add: BTreeSet::from([PendingFlushBuffersAction {
+      new_pending_actions_to_add: TinySet::from([PendingFlushBuffersAction {
         id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
         session_id: "foo_session_id".to_string(),
-        trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into(),]),
+        trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into(),]),
         streaming: None,
       }]),
-      triggered_flush_buffers_action_ids: BTreeSet::from([
+      triggered_flush_buffers_action_ids: TinySet::from([
         Cow::Owned(FlushBufferId::WorkflowActionId("action_id_1".into())),
         Cow::Owned(FlushBufferId::WorkflowActionId("action_id_2".into())),
         Cow::Owned(FlushBufferId::WorkflowActionId("action_id_3".into())),
         Cow::Owned(FlushBufferId::WorkflowActionId("action_id_4".into())),
       ]),
-      triggered_flushes_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into(),])
+      triggered_flushes_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into()])
     },
     result
   );
@@ -364,11 +363,11 @@ fn process_flush_buffer_action_with_no_buffers() {
 
   let mut resolver = Resolver::new(&collector.scope("test"));
   resolver.update(ResolverConfig::new(
-    BTreeSet::from(["existing_trigger_buffer_id".into()]),
-    BTreeSet::from(["existing_continuous_buffer_id".into()]),
+    TinySet::from(["existing_trigger_buffer_id".into()]),
+    TinySet::from(["existing_continuous_buffer_id".into()]),
   ));
 
-  let actions = BTreeSet::from([ActionFlushBuffers {
+  let actions = TinySet::from([ActionFlushBuffers {
     id: FlushBufferId::WorkflowActionId("action_id".to_string()),
     buffer_ids: BTreeSet::new(),
     streaming: Some(crate::config::Streaming {
@@ -380,27 +379,27 @@ fn process_flush_buffer_action_with_no_buffers() {
   let result = resolver.process_flush_buffer_actions(
     actions.iter().map(Cow::Borrowed).collect(),
     "foo_session_id",
-    &BTreeSet::new(),
+    &TinySet::default(),
     &[],
   );
 
   assert_eq!(
     FlushBuffersActionsProcessingResult {
-      new_pending_actions_to_add: BTreeSet::from([PendingFlushBuffersAction {
+      new_pending_actions_to_add: TinySet::from([PendingFlushBuffersAction {
         id: FlushBufferId::WorkflowActionId("action_id".to_string()),
         session_id: "foo_session_id".to_string(),
-        trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into(),]),
+        trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into(),]),
         streaming: Some(Streaming {
-          destination_continuous_buffer_ids: BTreeSet::from([
-            "existing_continuous_buffer_id".into()
-          ]),
+          destination_continuous_buffer_ids: TinySet::from(
+            ["existing_continuous_buffer_id".into()]
+          ),
           max_logs_count: Some(10),
         }),
       }]),
-      triggered_flush_buffers_action_ids: BTreeSet::from([Cow::Owned(
+      triggered_flush_buffers_action_ids: TinySet::from([Cow::Owned(
         FlushBufferId::WorkflowActionId("action_id".into())
       )]),
-      triggered_flushes_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into(),])
+      triggered_flushes_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into(),])
     },
     result
   );
@@ -412,8 +411,8 @@ fn process_streaming_buffers_actions() {
 
   let mut resolver = Resolver::new(&collector.scope("test"));
   resolver.update(ResolverConfig::new(
-    BTreeSet::from(["existing_trigger_buffer_id".into()]),
-    BTreeSet::from(["existing_continuous_buffer_id".into()]),
+    TinySet::from(["existing_trigger_buffer_id".into()]),
+    TinySet::from(["existing_continuous_buffer_id".into()]),
   ));
 
   let result = resolver.process_streaming_actions(
@@ -422,8 +421,8 @@ fn process_streaming_buffers_actions() {
         StreamingBuffersAction {
           id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
           session_id: "foo_session_id".to_string(),
-          source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into()]),
-          destination_continuous_buffer_ids: BTreeSet::from(["continuous_buffer_id".into()]),
+          source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into()]),
+          destination_continuous_buffer_ids: TinySet::from(["continuous_buffer_id".into()]),
           max_logs_count: Some(10),
           logs_count: 0,
         },
@@ -433,27 +432,27 @@ fn process_streaming_buffers_actions() {
         StreamingBuffersAction {
           id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
           session_id: "foo_session_id".to_string(),
-          source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into()]),
-          destination_continuous_buffer_ids: BTreeSet::from(["continuous_buffer_id".into()]),
+          source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into()]),
+          destination_continuous_buffer_ids: TinySet::from(["continuous_buffer_id".into()]),
           max_logs_count: Some(10),
           logs_count: 10,
         },
         true,
       ),
     ],
-    &BTreeSet::from(["existing_trigger_buffer_id".into()]),
+    &TinySet::from(["existing_trigger_buffer_id".into()]),
     "foo_session_id",
   );
 
   assert_eq!(
     StreamingBuffersActionsProcessingResult {
-      log_destination_buffer_ids: BTreeSet::from(["continuous_buffer_id".into()]),
+      log_destination_buffer_ids: TinySet::from(["continuous_buffer_id".into()]),
       has_changed_streaming_actions: true,
       updated_streaming_actions: vec![StreamingBuffersAction {
         id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
         session_id: "foo_session_id".to_string(),
-        source_trigger_buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".into()]),
-        destination_continuous_buffer_ids: BTreeSet::from(["continuous_buffer_id".into()]),
+        source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into()]),
+        destination_continuous_buffer_ids: TinySet::from(["continuous_buffer_id".into()]),
         max_logs_count: Some(10),
         logs_count: 1,
       },],
@@ -484,7 +483,7 @@ async fn negotiator_upload_flow() {
   let pending_action = PendingFlushBuffersAction {
     id: FlushBufferId::WorkflowActionId("action_id".to_string()),
     session_id: "session_id".to_string(),
-    trigger_buffer_ids: BTreeSet::new(),
+    trigger_buffer_ids: TinySet::default(),
     streaming: None,
   };
 
@@ -544,7 +543,7 @@ async fn negotiator_drop_flow() {
   let pending_action = PendingFlushBuffersAction {
     id: FlushBufferId::WorkflowActionId("action_id".to_string()),
     session_id: "session_id".to_string(),
-    trigger_buffer_ids: BTreeSet::new(),
+    trigger_buffer_ids: TinySet::default(),
     streaming: None,
   };
 
