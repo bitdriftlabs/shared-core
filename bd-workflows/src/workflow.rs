@@ -396,6 +396,11 @@ impl<'a> WorkflowResult<'a> {
         .merge(&self.incremental_workflow_debug_state, now);
     }
 
+    // If this is debug only, clear the incremental state so it doesn't get persisted with stats.
+    if config.mode() == WorkflowDebugMode::DebugOnly {
+      self.incremental_workflow_debug_state.clear();
+    }
+
     // If there is any debug state (whether from this run or previous runs) return it in the
     // result so that it can be bundled up and send to the server.
     if let Some(workflow_debug_state) = workflow_debug_state {
