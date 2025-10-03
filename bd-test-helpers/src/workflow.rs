@@ -292,128 +292,6 @@ pub mod macros {
     };
   }
 
-  /// Creates an action to be used with state
-  /// transitions.
-  #[macro_export]
-  macro_rules! action {
-    (flush_buffers $e:expr; id $id:expr) => {
-      $crate::workflow::make_flush_buffers_action($e, None, $id)
-    };
-    (flush_buffers $trigger_buffer_ids:expr;
-      continue_streaming_to $continuous_buffer_ids:expr;
-      logs_count $max_logs_count:expr; id $id:expr) => {
-      $crate::workflow::make_flush_buffers_action(
-        $trigger_buffer_ids,
-        Some(($continuous_buffer_ids, $max_logs_count)),
-        $id
-      )
-    };
-    (emit_counter $id:expr; value $value:expr) => {
-      $crate::workflow::make_emit_metric_action(
-        $id,
-        bd_proto::protos::workflow::workflow::workflow::action
-          ::action_emit_metric::Metric_type::Counter(
-            bd_proto::protos::workflow::workflow::workflow::action::action_emit_metric
-              ::Counter::default()
-          ),
-        $value,
-        vec![]
-      )
-    };
-    (emit_counter $id:expr; value $value:expr; tags { $($tag:expr),+ }) => {
-      $crate::workflow::make_emit_metric_action(
-        $id,
-        bd_proto::protos::workflow::workflow::workflow::action
-          ::action_emit_metric::Metric_type::Counter(
-            bd_proto::protos::workflow::workflow::workflow::action::action_emit_metric
-              ::Counter::default()
-          ),
-        $value,
-        vec![$($tag,)+]
-      )
-    };
-    (emit_histogram $id:expr; value $value:expr; tags { $($tag:expr),+ }) => {
-      $crate::workflow::make_emit_metric_action(
-        $id,
-        bd_proto::protos::workflow::workflow::workflow::action
-          ::action_emit_metric::Metric_type::Histogram(
-            bd_proto::protos::workflow::workflow::workflow::action::action_emit_metric
-              ::Histogram::default()
-          ),
-        $value,
-        vec![$($tag,)+]
-      )
-    };
-    (emit_sankey $id:expr; limit $limit:expr; tags { $($tag:expr),+ }) => {
-      $crate::workflow::make_emit_sankey_action(
-        $id,
-        $limit,
-        vec![$($tag,)+]
-      )
-    };
-    (screenshot $id:expr) => {
-      $crate::workflow::make_take_screenshot_action($id)
-    };
-    (generate_log $action:expr) => {
-      $action
-    };
-  }
-
-  /// Creates metric value.
-  #[macro_export]
-  macro_rules! metric_value {
-    ($value:expr) => {
-      bd_proto::protos::workflow::workflow::workflow::action::action_emit_metric
-                                                        ::Value_extractor_type::Fixed(
-                                                          $value
-                                                      )
-    };
-    (extract $from:expr) => {
-      bd_proto::protos::workflow::workflow::workflow::action::action_emit_metric
-                                                          ::Value_extractor_type::FieldExtracted(
-                                                            bd_proto::protos::workflow::workflow
-                                                              ::workflow::FieldExtracted {
-                                                                field_name: $from.to_string(),
-                                                                ..Default::default()
-                                                              }
-                                                        )
-    };
-  }
-
-  /// Creates metric tag.
-  #[macro_export]
-  macro_rules! metric_tag {
-    (extract $from:expr => $to:expr) => {
-      bd_proto::protos::workflow::workflow::workflow::action::Tag {
-                          name: $to.into(),
-                          tag_type: Some(bd_proto::protos::workflow::workflow::workflow
-                            ::action::tag::Tag_type::FieldExtracted(
-                              bd_proto::protos::workflow::workflow
-                              ::workflow::FieldExtracted {
-                                field_name: $from.into(),
-                                extraction_type: Some(bd_proto::protos::workflow::workflow
-                                  ::workflow::field_extracted::Extraction_type::Exact(
-                                    bd_proto::protos::workflow::workflow::workflow::field_extracted
-                                    ::Exact::default(),
-                                  )
-                                ),
-                                ..Default::default()
-                              },
-                            )
-                          ),
-                          ..Default::default()
-                        }
-    };
-    (fix $key:expr => $value:expr) => {
-      bd_proto::protos::workflow::workflow::workflow::action::Tag {
-                          name: $key.into(),
-                          tag_type: Some(bd_proto::protos::workflow::workflow::workflow
-                            ::action::tag::Tag_type::FixedValue($value.into())),
-                          ..Default::default()
-                        }
-    };
-  }
-
   /// Creates a Sankey value extraction extension.
   #[macro_export]
   macro_rules! sankey_value {
@@ -439,7 +317,58 @@ pub mod macros {
   }
 
   #[allow(clippy::module_name_repetitions)]
-  pub use {action, all, any, log_matches, metric_tag, metric_value, not, rule, sankey_value};
+  pub use {all, any, log_matches, not, rule, sankey_value};
+}
+
+#[must_use]
+pub fn metric_tag(name: &str, value: &str) -> Tag {
+  Tag {
+    name: name.to_string(),
+    tag_type: Some(
+      protos::workflow::workflow::workflow::action::tag::Tag_type::FixedValue(value.to_string()),
+    ),
+    ..Default::default()
+  }
+}
+
+#[must_use]
+pub fn extract_metric_tag(from: &str, to: &str) -> Tag {
+  Tag {
+    name: to.to_string(),
+    tag_type: Some(
+      protos::workflow::workflow::workflow::action::tag::Tag_type::FieldExtracted(FieldExtracted {
+        field_name: from.to_string(),
+        extraction_type: Some(Extraction_type::Exact(Exact::default())),
+        ..Default::default()
+      }),
+    ),
+    ..Default::default()
+  }
+}
+
+#[must_use]
+pub fn extract_log_body_tag() -> Tag {
+  Tag {
+    name: "__log_body__".to_string(),
+    tag_type: Some(
+      protos::workflow::workflow::workflow::action::tag::Tag_type::LogBodyExtracted(true),
+    ),
+    ..Default::default()
+  }
+}
+
+#[must_use]
+pub fn metric_value(value: u32) -> Value_extractor_type {
+  Value_extractor_type::Fixed(value)
+}
+
+#[must_use]
+pub fn extract_metric_value(from: &str) -> Value_extractor_type {
+  Value_extractor_type::FieldExtracted(FieldExtracted {
+    field_name: from.to_string(),
+    extraction_type: Some(Extraction_type::Exact(Exact::default())),
+    ..Default::default()
+  })
 }
 
 #[must_use]
@@ -592,8 +521,33 @@ pub fn make_sankey_value_field_extracted(
   })
 }
 
-#[must_use]
-pub fn make_emit_metric_action(
+pub fn make_emit_counter_action(
+  id: &str,
+  value: Value_extractor_type,
+  tags: Vec<Tag>,
+) -> Action_type {
+  make_emit_metric_action(
+    id,
+    action_emit_metric::Metric_type::Counter(action_emit_metric::Counter::default()),
+    value,
+    tags,
+  )
+}
+
+pub fn make_emit_histogram_action(
+  id: &str,
+  value: Value_extractor_type,
+  tags: Vec<Tag>,
+) -> Action_type {
+  make_emit_metric_action(
+    id,
+    action_emit_metric::Metric_type::Histogram(action_emit_metric::Histogram::default()),
+    value,
+    tags,
+  )
+}
+
+fn make_emit_metric_action(
   id: &str,
   metric_type: action_emit_metric::Metric_type,
   value: Value_extractor_type,

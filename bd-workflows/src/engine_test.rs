@@ -31,17 +31,25 @@ use bd_proto::protos::client::api::{
 use bd_runtime::runtime::ConfigLoader;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{NameType, labels};
-use bd_test_helpers::workflow::macros::{action, any, log_matches, rule};
+use bd_test_helpers::sankey_value;
+use bd_test_helpers::workflow::macros::{any, log_matches, rule};
 use bd_test_helpers::workflow::{
   TestFieldRef,
   TestFieldType,
   WorkflowBuilder,
+  extract_metric_tag,
+  extract_metric_value,
+  make_emit_counter_action,
+  make_emit_sankey_action,
+  make_flush_buffers_action,
   make_generate_log_action_proto,
   make_save_field_extraction,
   make_save_timestamp_extraction,
+  make_take_screenshot_action,
+  metric_tag,
+  metric_value,
   state,
 };
-use bd_test_helpers::{metric_tag, metric_value, sankey_value};
 use bd_time::TimeDurationExt;
 use itertools::Itertools;
 use pretty_assertions::assert_eq;
@@ -483,23 +491,39 @@ async fn debug_mode() {
     .declare_transition_with_actions(
       &c,
       rule!(log_matches!(message == "bar")),
-      &[action!(emit_counter "bar_metric"; value metric_value!(123))],
+      &[make_emit_counter_action(
+        "bar_metric",
+        metric_value(123),
+        vec![],
+      )],
     )
     .declare_transition_with_actions(
       &d,
       rule!(log_matches!(message == "baz")),
-      &[action!(emit_counter "baz_metric"; value metric_value!(123))],
+      &[make_emit_counter_action(
+        "baz_metric",
+        metric_value(123),
+        vec![],
+      )],
     );
   let a = state("A")
     .declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "foo")),
-      &[action!(emit_counter "foo_metric"; value metric_value!(123))],
+      &[make_emit_counter_action(
+        "foo_metric",
+        metric_value(123),
+        vec![],
+      )],
     )
     .with_timeout(
       &c,
       1.minutes(),
-      &[action!(emit_counter "timeout_metric"; value metric_value!(1))],
+      &[make_emit_counter_action(
+        "timeout_metric",
+        metric_value(1),
+        vec![],
+      )],
     );
 
   let workflows = vec![
@@ -903,7 +927,11 @@ async fn engine_update_after_sdk_update() {
   let a = state("A").declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "foo")),
-    &[action!(flush_buffers &["trigger_buffer_id"]; id "action_id")],
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      None,
+      "action_id",
+    )],
   );
 
   let d = state("D");
@@ -931,13 +959,14 @@ async fn engine_update_after_sdk_update() {
   let mut workflows_engine = setup.make_workflows_engine(cached_config_update).await;
 
   let b = state("B");
-  let a = state("A").
-  declare_transition_with_actions(
+  let a = state("A").declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "foo")),
-    &[action!(
-      flush_buffers &["trigger_buffer_id"]; continue_streaming_to vec!["continuous_buffer_id"]; logs_count 10; id "action_id"
-    )]
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      Some((vec!["continuous_buffer_id"], 10)),
+      "action_id",
+    )],
   );
 
   // The client receives the same config as last time, but this time it's capable of consuming the
@@ -981,7 +1010,11 @@ async fn persist_initial_state_timeout() {
     .with_timeout(
       &c,
       1.seconds(),
-      &[action!(emit_counter "foo_metric"; value metric_value!(1))],
+      &[make_emit_counter_action(
+        "foo_metric",
+        metric_value(1),
+        vec![],
+      )],
     );
 
   let workflows = vec![WorkflowBuilder::new("1", &[&a, &b, &c]).make_config()];
@@ -1640,12 +1673,20 @@ async fn engine_processing_log() {
   a = a.declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "foo")),
-    &[action!(flush_buffers &["foo_buffer_id"]; id "foo_action_id")],
+    &[make_flush_buffers_action(
+      &["foo_buffer_id"],
+      None,
+      "foo_action_id",
+    )],
   );
   c = c.declare_transition_with_actions(
     &d,
     rule!(log_matches!(message == "foo")),
-    &[action!(emit_counter "foo_metric"; value metric_value!(123))],
+    &[make_emit_counter_action(
+      "foo_metric",
+      metric_value(123),
+      vec![],
+    )],
   );
 
   let workflows = vec![
@@ -1762,11 +1803,10 @@ async fn log_without_destination() {
   a = a.declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "foo")),
-    &[action!(
-      flush_buffers &["trigger_buffer_id"];
-      continue_streaming_to vec!["continuous_buffer_id"];
-      logs_count 100_000;
-      id "action"
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      Some((vec!["continuous_buffer_id"], 100_000)),
+      "action",
     )],
   );
 
@@ -1816,51 +1856,64 @@ async fn logs_streaming() {
   a = a.declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "immediate_drop")),
-    &[action!(flush_buffers &["trigger_buffer_id"]; id "immediate_drop")],
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      None,
+      "immediate_drop",
+    )],
   );
   b = b.declare_transition_with_actions(
     &c,
     rule!(log_matches!(message == "immediate_upload_no_streaming")),
-    &[action!(flush_buffers &["trigger_buffer_id"]; id "immediate_upload_no_streaming")],
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      None,
+      "immediate_upload_no_streaming",
+    )],
   );
   c = c.declare_transition_with_actions(
     &d,
     rule!(log_matches!(message == "immediate_upload_streaming")),
-    &[action!(
-      flush_buffers &["trigger_buffer_id"];
-      continue_streaming_to vec!["continuous_buffer_id_2"];
-      logs_count 10;
-      id "immediate_upload_streaming"
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      Some((vec!["continuous_buffer_id_2"], 10)),
+      "immediate_upload_streaming",
     )],
   );
   d = d.declare_transition_with_actions(
     &e,
     rule!(log_matches!(message == "relaunch_upload_no_streaming")),
-    &[action!(flush_buffers &["trigger_buffer_id"]; id "relaunch_upload_no_streaming")],
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      None,
+      "relaunch_upload_no_streaming",
+    )],
   );
   e = e.declare_transition_with_actions(
     &f,
     rule!(log_matches!(message == "relaunch_upload_no_streaming")),
-    &[action!(flush_buffers &["trigger_buffer_id"]; id "relaunch_upload_no_streaming")],
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      None,
+      "relaunch_upload_no_streaming",
+    )],
   );
   f = f.declare_transition_with_actions(
     &g,
     rule!(log_matches!(message == "relaunch_upload_streaming")),
-    &[action!(
-      flush_buffers &["trigger_buffer_id"];
-      continue_streaming_to vec![];
-      logs_count 10;
-      id "relaunch_upload_streaming"
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      Some((vec![], 10)),
+      "relaunch_upload_streaming",
     )],
   );
   g = g.declare_transition_with_actions(
     &h,
     rule!(log_matches!(message == "relaunch_upload_streaming_2")),
-    &[action!(
-      flush_buffers &["trigger_buffer_id"];
-      continue_streaming_to vec![];
-      logs_count 10;
-      id "relaunch_upload_streaming_2"
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      Some((vec![], 10)),
+      "relaunch_upload_streaming_2",
     )],
   );
 
@@ -2226,11 +2279,10 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   a = a.declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "foo")),
-    &[action!(
-        flush_buffers &["trigger_buffer_id"];
-        continue_streaming_to vec!["continuous_buffer_id"];
-        logs_count 10;
-        id "eventually_upload"
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      Some((vec!["continuous_buffer_id"], 10)),
+      "eventually_upload",
     )],
   );
   b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
@@ -2331,11 +2383,10 @@ async fn engine_continues_to_stream_upload_not_complete() {
   a = a.declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "foo")),
-    &[action!(
-        flush_buffers &["trigger_buffer_id"];
-        continue_streaming_to vec!["continuous_buffer_id"];
-        logs_count 10;
-        id "eventually_upload"
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      Some((vec!["continuous_buffer_id"], 10)),
+      "eventually_upload",
     )],
   );
   b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
@@ -2775,13 +2826,13 @@ fn sankey_workflow() -> crate::config::Config {
   c = c.declare_transition_with_actions(
     &d,
     rule!(log_matches!(message == "dar")),
-    &[action!(
-      emit_sankey "sankey";
-      limit 2;
-      tags {
-        metric_tag!(extract "field_to_extract_from" => "extracted_field"),
-        metric_tag!(fix "fixed_field" => "fixed_value")
-      }
+    &[make_emit_sankey_action(
+      "sankey",
+      2,
+      vec![
+        extract_metric_tag("field_to_extract_from", "extracted_field"),
+        metric_tag("fixed_field", "fixed_value"),
+      ],
     )],
   );
 
@@ -2816,43 +2867,57 @@ async fn generate_log_multiple() {
   c = c.declare_transition_with_all(
     &d,
     rule!(log_matches!(message == "baz")),
-    &[
-      action!(generate_log make_generate_log_action_proto("message1", &[
-      ("duration",
-       TestFieldType::Subtract(
-        TestFieldRef::SavedTimestampId("timestamp2"),
-        TestFieldRef::SavedTimestampId("timestamp1")
-       ))
-    ], "id1", LogType::Normal)),
-    ],
+    &[make_generate_log_action_proto(
+      "message1",
+      &[(
+        "duration",
+        TestFieldType::Subtract(
+          TestFieldRef::SavedTimestampId("timestamp2"),
+          TestFieldRef::SavedTimestampId("timestamp1"),
+        ),
+      )],
+      "id1",
+      LogType::Normal,
+    )],
     &[make_save_timestamp_extraction("timestamp3")],
   );
 
   c = c.declare_transition_with_all(
     &e,
     rule!(log_matches!(message == "baz")),
-    &[
-      action!(generate_log make_generate_log_action_proto("message2", &[
-      ("duration",
-       TestFieldType::Subtract(
-        TestFieldRef::SavedTimestampId("timestamp3"),
-        TestFieldRef::SavedTimestampId("timestamp1")
-       ))
-    ], "id2", LogType::Normal)),
-    ],
+    &[make_generate_log_action_proto(
+      "message2",
+      &[(
+        "duration",
+        TestFieldType::Subtract(
+          TestFieldRef::SavedTimestampId("timestamp3"),
+          TestFieldRef::SavedTimestampId("timestamp1"),
+        ),
+      )],
+      "id2",
+      LogType::Normal,
+    )],
     &[make_save_timestamp_extraction("timestamp3")],
   );
 
   d = d.declare_transition_with_actions(
     &f,
     rule!(log_matches!(tag("_generate_log_id") == "id1")),
-    &[action!(emit_counter "foo_metric"; value metric_value!(extract "duration"))],
+    &[make_emit_counter_action(
+      "foo_metric",
+      extract_metric_value("duration"),
+      vec![],
+    )],
   );
 
   e = e.declare_transition_with_actions(
     &g,
     rule!(log_matches!(tag("_generate_log_id") == "id2")),
-    &[action!(emit_counter "bar_metric"; value metric_value!(extract "duration"))],
+    &[make_emit_counter_action(
+      "bar_metric",
+      extract_metric_value("duration"),
+      vec![],
+    )],
   );
 
   let workflow = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e, &f, &g]).make_config();
@@ -2934,16 +2999,24 @@ async fn generate_log_action() {
   b = b.declare_transition_with_all(
     &c,
     rule!(log_matches!(message == "bar")),
-    &[
-      action!(generate_log make_generate_log_action_proto("message", &[
-      ("duration",
-       TestFieldType::Subtract(
-        TestFieldRef::SavedTimestampId("timestamp2"),
-        TestFieldRef::SavedTimestampId("timestamp1")
-       )),
-       ("other", TestFieldType::Single(TestFieldRef::SavedFieldId("id1")))
-    ], "id", LogType::Normal)),
-    ],
+    &[make_generate_log_action_proto(
+      "message",
+      &[
+        (
+          "duration",
+          TestFieldType::Subtract(
+            TestFieldRef::SavedTimestampId("timestamp2"),
+            TestFieldRef::SavedTimestampId("timestamp1"),
+          ),
+        ),
+        (
+          "other",
+          TestFieldType::Single(TestFieldRef::SavedFieldId("id1")),
+        ),
+      ],
+      "id",
+      LogType::Normal,
+    )],
     &[make_save_timestamp_extraction("timestamp2")],
   );
 
@@ -3225,7 +3298,7 @@ async fn take_screenshot_action() {
   let a = state("A").declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "foo")),
-    &[action!(screenshot "screenshot_action_id")],
+    &[make_take_screenshot_action("screenshot_action_id")],
   );
 
   let workflow = WorkflowBuilder::new("1", &[&a, &b]).make_config();

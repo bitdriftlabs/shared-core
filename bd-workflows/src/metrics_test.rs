@@ -109,18 +109,28 @@ fn counter_label_extraction() {
     &[&ActionEmitMetric {
       id: "action_id_1".to_string(),
       tags: [
-        ("tag_1".to_string(), TagValue::Extract("f1".to_string())),
-        ("tag_2".to_string(), TagValue::Extract("f2".to_string())),
+        (
+          "tag_1".to_string(),
+          TagValue::FieldExtract("f1".to_string()),
+        ),
+        (
+          "tag_2".to_string(),
+          TagValue::FieldExtract("f2".to_string()),
+        ),
         ("tag_3".to_string(), TagValue::Fixed("fixed".to_string())),
-        ("tag_4".to_string(), TagValue::Extract("m1".to_string())),
+        (
+          "tag_4".to_string(),
+          TagValue::FieldExtract("m1".to_string()),
+        ),
         (
           "tag_5".to_string(),
-          TagValue::Extract("log_level".to_string()),
+          TagValue::FieldExtract("log_level".to_string()),
         ),
         (
           "tag_6".to_string(),
-          TagValue::Extract("log_type".to_string()),
+          TagValue::FieldExtract("log_type".to_string()),
         ),
+        ("tag_7".to_string(), TagValue::LogBodyExtract),
       ]
       .into(),
       increment: crate::config::ValueIncrement::Fixed(1),
@@ -148,6 +158,7 @@ fn counter_label_extraction() {
         "tag_4" => "5",
         "tag_5" => "1",
         "tag_6" => "0",
+        "tag_7" => "message",
     },
   );
 }
