@@ -33,7 +33,6 @@
 )]
 
 use bd_bonjson::Value;
-use bd_client_common::error::InvariantError;
 use bd_resilient_kv::KVStore;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -69,16 +68,15 @@ impl FeatureFlag {
   /// Validates the variant (rejecting empty strings) and uses the current time
   /// if no timestamp is provided.
   ///
-  /// Returns an error if an empty string is provided as the variant.
+  /// If variant is `Some("")`, it is treated as `None`.
   pub fn new(
     variant: Option<&str>,
     timestamp: Option<time::OffsetDateTime>,
   ) -> anyhow::Result<Self> {
     // Validate the variant - reject empty strings
     let validated_variant = match variant {
-      Some("") => return Err(InvariantError::Invariant.into()),
+      Some("") | None => None,
       Some(s) => Some(s.to_string()),
-      None => None,
     };
 
     Ok(Self {
@@ -213,6 +211,7 @@ impl FeatureFlags {
   /// * `key` - The name of the feature flag to set or update
   /// * `variant` - The variant value for the flag:
   ///   - `Some(string)` sets the flag with the specified variant
+  ///   - `Some("")` treats the variant as `None`
   ///   - `None` sets the flag without a variant (simple boolean-style flag)
   ///
   /// # Returns
@@ -222,7 +221,6 @@ impl FeatureFlags {
   /// # Errors
   ///
   /// This function will return an error if:
-  /// - An empty string is provided as the variant (validation error)
   /// - The flag cannot be written to persistent storage due to I/O errors, insufficient disk space,
   ///   or permission issues
   pub fn set(&mut self, key: &str, variant: Option<&str>) -> anyhow::Result<()> {

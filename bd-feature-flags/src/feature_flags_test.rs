@@ -136,18 +136,47 @@ fn test_set_and_get_none_variant() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_set_empty_string_variant_rejected() -> anyhow::Result<()> {
+fn test_set_empty_string_variant_treated_as_none() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let temp_path = temp_dir.path();
 
   let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
-  // Setting an empty string variant should return an error
+  // Setting an empty string variant should succeed and be treated as None
   let result = flags.set("test_flag", Some(""));
-  assert!(result.is_err());
+  assert!(result.is_ok());
 
-  // The flag should not exist
-  assert!(flags.get("test_flag").is_none());
+  // The flag should exist with None variant
+  let flag = flags.get("test_flag").expect("Flag should exist");
+  assert_eq!(flag.variant, None);
+
+  Ok(())
+}
+
+#[test]
+fn test_empty_string_variant_persistence() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let temp_path = temp_dir.path();
+
+  // Create flags and set empty string variant
+  {
+    let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
+    flags.set("empty_string_flag", Some(""))?;
+    flags.sync()?; // Ensure data is written to disk
+
+    // Verify it's treated as None
+    let flag = flags.get("empty_string_flag").expect("Flag should exist");
+    assert_eq!(flag.variant, None);
+  } // Drop the instance
+
+  // Create new instance - should load from persistent storage
+  let flags = FeatureFlags::new(temp_path, 1024, None)?;
+
+  // Verify the flag still exists and has None variant after reload
+  let flag = flags
+    .get("empty_string_flag")
+    .expect("Flag should exist after reload");
+  assert_eq!(flag.variant, None);
 
   Ok(())
 }
