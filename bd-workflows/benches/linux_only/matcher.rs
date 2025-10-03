@@ -9,7 +9,7 @@ use bd_api::DataUpload;
 use bd_client_stats::Stats;
 use bd_client_stats_store::Collector;
 use bd_log_primitives::tiny_set::TinySet;
-use bd_log_primitives::{FieldsRef, LogFields, LogRef, LogType, log_level};
+use bd_log_primitives::{FieldsRef, Log, LogFields, LogRef, LogType, log_level};
 use bd_proto::protos::workflow::workflow::Workflow;
 use bd_runtime::runtime::ConfigLoader;
 use bd_test_helpers::workflow::{WorkflowBuilder, make_flush_buffers_action, state};
@@ -23,9 +23,12 @@ use gungraun::{
   library_benchmark,
   library_benchmark_group,
 };
+use std::borrow::Cow;
 use std::future::Future;
 use std::hint::black_box;
 use time::OffsetDateTime;
+
+// fixfix add streaming config
 
 struct Setup {
   tmp_dir: tempfile::TempDir,
@@ -62,8 +65,8 @@ impl Setup {
       .start(
         WorkflowsEngineConfig::new(
           WorkflowsConfiguration::new(workflows, vec![]),
-          TinySet::default(),
-          TinySet::default(),
+          TinySet::from([Cow::Owned("default_buffer_id".into())]).into(),
+          TinySet::from([Cow::Owned("continuous_buffer_id".into())]).into(),
         ),
         false,
       )
@@ -77,7 +80,7 @@ impl Setup {
     let a = state("A").declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "foo")),
-      &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
+      &[make_flush_buffers_action(&[], None, "foo")],
     );
 
     let config = WorkflowBuilder::new("1", &[&a, &b]).build();
@@ -91,7 +94,7 @@ impl Setup {
       let a = state("A").declare_transition_with_actions(
         &b,
         rule!(log_matches!(message == "foo")),
-        &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
+        &[make_flush_buffers_action(&[], None, "foo")],
       );
 
       let mut config = WorkflowBuilder::new("1", &[&a, &b]).build();
@@ -105,7 +108,7 @@ impl Setup {
       let a = state("A").declare_transition_with_actions(
         &b,
         rule!(log_matches!(message == "baz")),
-        &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
+        &[make_flush_buffers_action(&[], None, "foo")],
       );
       let mut config = WorkflowBuilder::new("1", &[&a, &b]).build();
       config.id = format!("baz_{i}");
@@ -117,7 +120,7 @@ impl Setup {
   }
 }
 
-fn run_runtime_bench<T: Future<Output = WorkflowsEngine>>(engine: impl FnOnce() -> T) {
+fn run_runtime_bench<T: Future<Output = WorkflowsEngine>>(engine: impl FnOnce() -> T, log: Log) {
   tokio::runtime::Builder::new_current_thread()
     .enable_all()
     .build()
@@ -126,15 +129,14 @@ fn run_runtime_bench<T: Future<Output = WorkflowsEngine>>(engine: impl FnOnce() 
       let mut engine = engine().await;
       let now = OffsetDateTime::now_utc();
       // Warm up to initialize any one lock type things.
-      let fields = LogFields::new();
       let log = LogRef {
-        log_type: LogType::Normal,
-        log_level: log_level::DEBUG,
-        message: &"no match".into(),
-        fields: FieldsRef::new(&fields, &fields),
-        session_id: "session_id",
-        occurred_at: OffsetDateTime::now_utc(),
-        capture_session: None,
+        log_type: log.log_type,
+        log_level: log.log_level,
+        message: &log.message,
+        fields: FieldsRef::new(&log.fields, &log.matching_fields),
+        session_id: &log.session_id,
+        occurred_at: log.occurred_at,
+        capture_session: log.capture_session,
       };
       engine.process_log(&log, &TinySet::default(), now);
 
@@ -144,14 +146,42 @@ fn run_runtime_bench<T: Future<Output = WorkflowsEngine>>(engine: impl FnOnce() 
     });
 }
 
+fn not_matching_log() -> Log {
+  Log {
+    log_level: log_level::INFO,
+    log_type: LogType::Normal,
+    message: "not matching".into(),
+    fields: LogFields::new(),
+    matching_fields: LogFields::new(),
+    session_id: "session".to_string(),
+    occurred_at: OffsetDateTime::now_utc(),
+    capture_session: None,
+  }
+}
+
+fn matching_log() -> Log {
+  Log {
+    log_level: log_level::INFO,
+    log_type: LogType::Normal,
+    message: "foo".into(),
+    fields: LogFields::new(),
+    matching_fields: LogFields::new(),
+    session_id: "session".to_string(),
+    occurred_at: OffsetDateTime::now_utc(),
+    capture_session: None,
+  }
+}
+
 #[library_benchmark(
   config = LibraryBenchmarkConfig::default()
         .tool(Callgrind::with_args(["--instr-atstart=no", "--dump-instr=yes"])
             .entry_point(EntryPoint::None)
         ))]
-#[bench::simple(|setup: Setup| setup.simple_workflow())]
-#[bench::many_simple(|setup: Setup| setup.many_simple_workflows())]
-fn bench_workflow<T: Future<Output = WorkflowsEngine>>(engine: impl FnOnce(Setup) -> T) {
+#[bench::simple_no_match(|setup: Setup| setup.simple_workflow(), not_matching_log())]
+#[bench::many_simple_no_match(|setup: Setup| setup.many_simple_workflows(), not_matching_log())]
+#[bench::simple_match(|setup: Setup| setup.simple_workflow(), matching_log())]
+#[bench::many_simple_match(|setup: Setup| setup.many_simple_workflows(), matching_log())]
+fn bench_workflow<T: Future<Output = WorkflowsEngine>>(engine: impl FnOnce(Setup) -> T, log: Log) {
   let setup = Setup::new();
 
   // TODO(mattklein123): For reasons I have not figured out, using the normal logger with RUST_LOG
@@ -160,7 +190,7 @@ fn bench_workflow<T: Future<Output = WorkflowsEngine>>(engine: impl FnOnce(Setup
   //let _ = simplelog::SimpleLogger::init(simplelog::LevelFilter::Trace,
   // simplelog::Config::default());
 
-  black_box(run_runtime_bench(|| engine(setup)));
+  black_box(run_runtime_bench(|| engine(setup), log));
 }
 
 library_benchmark_group!(
