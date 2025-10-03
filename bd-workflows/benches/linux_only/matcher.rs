@@ -11,8 +11,8 @@ use bd_client_stats_store::Collector;
 use bd_log_primitives::{FieldsRef, LogFields, LogRef, LogType, log_level};
 use bd_proto::protos::workflow::workflow::Workflow;
 use bd_runtime::runtime::ConfigLoader;
-use bd_test_helpers::workflow::{WorkflowBuilder, state};
-use bd_test_helpers::{action, log_matches, rule};
+use bd_test_helpers::workflow::{WorkflowBuilder, make_flush_buffers_action, state};
+use bd_test_helpers::{log_matches, rule};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use gungraun::{
@@ -74,7 +74,7 @@ impl Setup {
     let a = state("A").declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "foo")),
-      &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+      &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
     );
 
     let config = WorkflowBuilder::new("1", &[&a, &b]).build();
@@ -88,7 +88,7 @@ impl Setup {
       let a = state("A").declare_transition_with_actions(
         &b,
         rule!(log_matches!(message == "foo")),
-        &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+        &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
       );
 
       let mut config = WorkflowBuilder::new("1", &[&a, &b]).build();
@@ -102,7 +102,7 @@ impl Setup {
       let a = state("A").declare_transition_with_actions(
         &b,
         rule!(log_matches!(message == "baz")),
-        &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+        &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
       );
       let mut config = WorkflowBuilder::new("1", &[&a, &b]).build();
       config.id = format!("baz_{i}");
