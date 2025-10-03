@@ -23,9 +23,9 @@ use gungraun::{
   library_benchmark,
   library_benchmark_group,
 };
-use std::borrow::Cow;
 use std::future::Future;
 use std::hint::black_box;
+use std::sync::Arc;
 use time::OffsetDateTime;
 
 // fixfix add streaming config
@@ -65,8 +65,8 @@ impl Setup {
       .start(
         WorkflowsEngineConfig::new(
           WorkflowsConfiguration::new(workflows, vec![]),
-          TinySet::from([Cow::Owned("default_buffer_id".into())]).into(),
-          TinySet::from([Cow::Owned("continuous_buffer_id".into())]).into(),
+          TinySet::from([Arc::new("default_buffer_id".into())]).into(),
+          TinySet::from([Arc::new("continuous_buffer_id".into())]).into(),
         ),
         false,
       )

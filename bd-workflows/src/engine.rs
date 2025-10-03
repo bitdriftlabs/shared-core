@@ -22,6 +22,7 @@ use crate::config::{
   ActionEmitMetric,
   ActionFlushBuffers,
   ActionTakeScreenshot,
+  BufferId,
   Config,
   FlushBufferId,
   Streaming,
@@ -78,14 +79,14 @@ pub struct WorkflowsEngine {
   configs: Vec<Config>,
   state: WorkflowsState,
   state_store: StateStore,
-  pending_buffer_flushes: HashMap<FlushBufferId, tokio::sync::oneshot::Receiver<()>>,
+  pending_buffer_flushes: HashMap<Arc<FlushBufferId>, tokio::sync::oneshot::Receiver<()>>,
 
   needs_state_persistence: bool,
 
   stats: WorkflowsEngineStats,
 
   flush_buffers_actions_resolver: Resolver,
-  flush_buffers_negotiator_input_tx: Sender<PendingFlushBuffersAction>,
+  flush_buffers_negotiator_input_tx: Sender<Arc<PendingFlushBuffersAction>>,
   flush_buffers_negotiator_output_rx: Receiver<NegotiatorOutput>,
   flush_buffers_negotiator_join_handle: JoinHandle<()>,
 
@@ -526,7 +527,7 @@ impl WorkflowsEngine {
 
     match self
       .flush_buffers_actions_resolver
-      .make_streaming_action(action.clone())
+      .make_streaming_action(action)
     {
       Some(streaming_action) => {
         log::debug!("streaming started: \"{streaming_action:?}\"");
@@ -545,7 +546,7 @@ impl WorkflowsEngine {
   pub fn process_log<'a>(
     &'a mut self,
     log: &LogRef<'_>,
-    log_destination_buffer_ids: &'a TinySet<Cow<'a, str>>,
+    log_destination_buffer_ids: &'a TinySet<Arc<BufferId>>,
     now: OffsetDateTime,
   ) -> WorkflowsEngineResult<'a> {
     // Measure duration in here even if the list of workflows is empty.
@@ -681,15 +682,15 @@ impl WorkflowsEngine {
       let streaming_log_count = self.explicit_session_capture_streaming_log_count.read();
 
       let action = ActionFlushBuffers {
-        id: FlushBufferId::ExplicitSessionCapture(capture_session.to_string()),
-        buffer_ids: BTreeSet::new(),
+        id: FlushBufferId::ExplicitSessionCapture(capture_session.to_string()).into(),
+        buffer_ids: TinySet::default(),
         streaming: (*streaming_log_count > 0).then_some(Streaming {
           max_logs_count: Some((*streaming_log_count).into()),
           destination_continuous_buffer_ids: [].into(),
         }),
       };
 
-      flush_buffers_actions.insert(Cow::Owned(action));
+      flush_buffers_actions.insert(Arc::new(action));
     }
 
     let result = self
@@ -803,11 +804,11 @@ impl WorkflowsEngine {
       return PreparedActions::default();
     }
 
-    let flush_buffers_actions: BTreeSet<Cow<'_, ActionFlushBuffers>> = actions
+    let flush_buffers_actions: BTreeSet<Arc<ActionFlushBuffers>> = actions
       .iter()
       .filter_map(|action| {
         if let TriggeredAction::FlushBuffers(flush_buffers_action) = action {
-          Some(Cow::Borrowed(*flush_buffers_action))
+          Some(flush_buffers_action.clone())
         } else {
           None
         }
@@ -867,7 +868,7 @@ impl Drop for WorkflowsEngine {
 
 #[derive(Default)]
 struct PreparedActions<'a> {
-  flush_buffers_actions: BTreeSet<Cow<'a, ActionFlushBuffers>>,
+  flush_buffers_actions: BTreeSet<Arc<ActionFlushBuffers>>,
   emit_metric_actions: BTreeSet<&'a ActionEmitMetric>,
   emit_sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>>,
   capture_screenshot_actions: BTreeSet<&'a ActionTakeScreenshot>,
@@ -879,12 +880,12 @@ struct PreparedActions<'a> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct WorkflowsEngineResult<'a> {
-  pub log_destination_buffer_ids: Cow<'a, TinySet<Cow<'a, str>>>,
+  pub log_destination_buffer_ids: Cow<'a, TinySet<Arc<BufferId>>>,
 
   // The identifier of workflow actions that triggered buffers flush(es).
-  pub triggered_flush_buffers_action_ids: BTreeSet<Cow<'a, FlushBufferId>>,
+  pub triggered_flush_buffers_action_ids: BTreeSet<Arc<FlushBufferId>>,
   // The identifier of trigger buffers that should be flushed.
-  pub triggered_flushes_buffer_ids: TinySet<Cow<'static, str>>,
+  pub triggered_flushes_buffer_ids: TinySet<Arc<BufferId>>,
 
   // Whether a screenshot should be taken in response to processing the log.
   pub capture_screenshot: bool,
@@ -906,21 +907,21 @@ pub type AllWorkflowsDebugState = Vec<(String, WorkflowDebugStateMap)>;
 // WorkflowsEngineConfig
 //
 
-#[cfg_attr(test, derive(Clone))]
 #[derive(Debug)]
+#[cfg_attr(test, derive(Clone))]
 pub struct WorkflowsEngineConfig {
   pub(crate) workflows_configuration: WorkflowsConfiguration,
 
-  pub(crate) trigger_buffer_ids: TinySet<Cow<'static, str>>,
-  pub(crate) continuous_buffer_ids: TinySet<Cow<'static, str>>,
+  pub(crate) trigger_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
+  pub(crate) continuous_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
 }
 
 impl WorkflowsEngineConfig {
   #[must_use]
   pub const fn new(
     workflows_configuration: WorkflowsConfiguration,
-    trigger_buffer_ids: TinySet<Cow<'static, str>>,
-    continuous_buffer_ids: TinySet<Cow<'static, str>>,
+    trigger_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
+    continuous_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
   ) -> Self {
     Self {
       workflows_configuration,
@@ -934,8 +935,8 @@ impl WorkflowsEngineConfig {
   pub fn new_with_workflow_configurations(workflow_configs: Vec<Config>) -> Self {
     Self::new(
       WorkflowsConfiguration::new_with_workflow_configurations_for_test(workflow_configs),
-      TinySet::default(),
-      TinySet::default(),
+      Arc::default(),
+      Arc::default(),
     )
   }
 }
@@ -1093,9 +1094,10 @@ pub(crate) struct WorkflowsState {
   session_id: String,
   workflows: Vec<Workflow>,
 
-  pending_flush_actions: BTreeSet<PendingFlushBuffersAction>,
+  // fixfix don't clone this.
+  pending_flush_actions: BTreeSet<Arc<PendingFlushBuffersAction>>,
   pending_sankey_actions: BTreeSet<PendingSankeyPathUpload>,
-  streaming_actions: Vec<StreamingBuffersAction>,
+  streaming_actions: Vec<Arc<StreamingBuffersAction>>,
 }
 
 impl WorkflowsState {

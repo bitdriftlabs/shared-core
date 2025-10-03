@@ -9,6 +9,7 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
+ahash.workspace             = true
 anyhow.workspace            = true
 async-trait.workspace       = true
 bd-api.path                 = "../bd-api"

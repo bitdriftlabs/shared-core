@@ -9,14 +9,15 @@ use bd_log_matcher::matcher::Tree;
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogType};
 use bd_proto::protos::config::v1::config::BufferConfigList;
-use std::borrow::Cow;
+use bd_workflows::config::BufferId;
+use std::sync::Arc;
 
 // A single buffer filter, containing the matchers used to determine if logs should be written to
 // the specific buffer.
 #[derive(Debug)]
 struct BufferFilter {
   // The name of the buffer to write to.
-  buffer_id: String,
+  buffer_id: Arc<BufferId>,
 
   // Each buffer can have a number of match criteria, each with their own ID. While we don't use
   // it right now the proto calls out a future use case. Only one of the matchers needs to match in
@@ -43,7 +44,7 @@ impl BufferSelector {
       }
 
       buffer_filters.push(BufferFilter {
-        buffer_id: buffer_config.id.clone(),
+        buffer_id: Arc::new(buffer_config.id.as_str().into()),
         matchers,
       });
     }
@@ -60,12 +61,12 @@ impl BufferSelector {
     log_level: LogLevel,
     message: &LogMessage,
     fields: FieldsRef<'_>,
-  ) -> TinySet<Cow<'_, str>> {
+  ) -> TinySet<Arc<BufferId>> {
     let mut buffers = TinySet::default();
     for buffer in &self.buffer_filters {
       for (_id, matcher) in &buffer.matchers {
         if matcher.do_match(log_level, log_type, message, fields, &TinyMap::default()) {
-          buffers.insert(Cow::Borrowed(buffer.buffer_id.as_str()));
+          buffers.insert(buffer.buffer_id.clone());
 
           // No reason to match further.
           // TODO(snowp): If we ever want to report on how often the different filters match we'll

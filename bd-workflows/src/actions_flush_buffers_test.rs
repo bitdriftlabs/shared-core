@@ -24,8 +24,9 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_log_primitives::tiny_set::TinySet;
 use bd_stats_common::labels;
 use pretty_assertions::assert_eq;
-use std::borrow::Cow;
 use std::collections::BTreeSet;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
 
@@ -65,7 +66,7 @@ impl Setup {
 }
 
 struct NegotiatorWrapper {
-  input_tx: Sender<PendingFlushBuffersAction>,
+  input_tx: Sender<Arc<PendingFlushBuffersAction>>,
   output_rx: Receiver<NegotiatorOutput>,
 
   negotiator_task_handle: JoinHandle<()>,
@@ -84,66 +85,76 @@ async fn pending_buffers_standardization_removes_references_to_non_existing_trig
   let mut resolver = Resolver::new(&Collector::default().scope("test"));
   resolver.update(ResolverConfig::new(
     TinySet::from([
-      "existing_trigger_buffer_id_1".into(),
-      "existing_trigger_buffer_id_2".into(),
-    ]),
-    TinySet::default(),
+      Arc::new("existing_trigger_buffer_id_1".into()),
+      Arc::new("existing_trigger_buffer_id_2".into()),
+    ])
+    .into(),
+    TinySet::default().into(),
   ));
 
   let result = resolver.standardize_pending_actions(BTreeSet::from([
-    PendingFlushBuffersAction {
-      id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
+    Arc::new(PendingFlushBuffersAction {
+      id: FlushBufferId::WorkflowActionId("action_id_1".to_string()).into(),
       session_id: "foo_session_id".to_string(),
       trigger_buffer_ids: TinySet::from([
-        "existing_trigger_buffer_id_1".into(),
-        "unknown_trigger_buffer_id".into(),
-      ]),
+        Arc::new("existing_trigger_buffer_id_1".into()),
+        Arc::new("unknown_trigger_buffer_id".into()),
+      ])
+      .into(),
       streaming: None,
-    },
-    PendingFlushBuffersAction {
-      id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
+    }),
+    Arc::new(PendingFlushBuffersAction {
+      id: FlushBufferId::WorkflowActionId("action_id_2".to_string()).into(),
       session_id: "foo_session_id".to_string(),
-      trigger_buffer_ids: TinySet::from(["unknown_trigger_buffer_id".into()]),
+      trigger_buffer_ids: TinySet::from([Arc::new("unknown_trigger_buffer_id".into())]).into(),
       streaming: None,
-    },
-    PendingFlushBuffersAction {
-      id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
+    }),
+    Arc::new(PendingFlushBuffersAction {
+      id: FlushBufferId::WorkflowActionId("action_id_3".to_string()).into(),
       session_id: "bar_session_id".to_string(),
-      trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id_2".into()]),
+      trigger_buffer_ids: TinySet::from([Arc::new("existing_trigger_buffer_id_2".into())]).into(),
       streaming: Some(Streaming {
-        destination_continuous_buffer_ids: TinySet::from(["unknown_continuous_buffer_id".into()]),
+        destination_continuous_buffer_ids: TinySet::from([Arc::new(
+          "unknown_continuous_buffer_id".into(),
+        )])
+        .into(),
         max_logs_count: Some(10),
       }),
-    },
+    }),
   ]));
 
   assert_eq!(
     BTreeSet::from([
-      PendingFlushBuffersAction {
-        id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
+      Arc::new(PendingFlushBuffersAction {
+        id: FlushBufferId::WorkflowActionId("action_id_1".to_string()).into(),
         session_id: "foo_session_id".to_string(),
         trigger_buffer_ids: TinySet::from([
           // The unknown trigger buffer ID present in the original flush buffers action is no
           // longer present.
-          "existing_trigger_buffer_id_1".into(),
-        ]),
+          Arc::new("existing_trigger_buffer_id_1".into()),
+        ])
+        .into(),
         streaming: None,
-      },
+      }),
       // "action_id_2" is not present anymore as it didn't define any valid (known) source
       // trigger buffer ID.
-      PendingFlushBuffersAction {
-        id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
+      Arc::new(PendingFlushBuffersAction {
+        id: FlushBufferId::WorkflowActionId("action_id_3".to_string()).into(),
         session_id: "bar_session_id".to_string(),
         trigger_buffer_ids: TinySet::from([
           // The unknown continuous buffer ID present in the original flush buffers action is
           // no longer present.
-          "existing_trigger_buffer_id_2".into(),
-        ]),
+          Arc::new("existing_trigger_buffer_id_2".into()),
+        ])
+        .into(),
         streaming: Some(Streaming {
-          destination_continuous_buffer_ids: TinySet::from(["unknown_continuous_buffer_id".into()]),
+          destination_continuous_buffer_ids: TinySet::from([Arc::new(
+            "unknown_continuous_buffer_id".into()
+          )])
+          .into(),
           max_logs_count: Some(10),
         }),
-      },
+      }),
     ]),
     result
   );
@@ -154,111 +165,131 @@ async fn streaming_buffers_standardization_removes_references_to_non_existing_bu
   let mut resolver = Resolver::new(&Collector::default().scope("test"));
   resolver.update(ResolverConfig::new(
     TinySet::from([
-      "existing_trigger_buffer_id_1".into(),
-      "existing_trigger_buffer_id_2".into(),
-    ]),
+      Arc::new("existing_trigger_buffer_id_1".into()),
+      Arc::new("existing_trigger_buffer_id_2".into()),
+    ])
+    .into(),
     TinySet::from([
-      "existing_continuous_buffer_id_1".into(),
-      "existing_continuous_buffer_id_2".into(),
-    ]),
+      Arc::new("existing_continuous_buffer_id_1".into()),
+      Arc::new("existing_continuous_buffer_id_2".into()),
+    ])
+    .into(),
   ));
 
   let result = resolver.standardize_streaming_buffers(vec![
-    StreamingBuffersAction {
-      id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
+    Arc::new(StreamingBuffersAction {
+      id: FlushBufferId::WorkflowActionId("action_id_1".to_string()).into(),
       session_id: "foo_session_id".to_string(),
-      source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id_1".into()]),
+      source_trigger_buffer_ids: TinySet::from([Arc::new("existing_trigger_buffer_id_1".into())])
+        .into(),
       destination_continuous_buffer_ids: TinySet::from([
-        "existing_continuous_buffer_id_1".into(),
-        "unknown_continuous_buffer_id".into(),
-      ]),
+        Arc::new("existing_continuous_buffer_id_1".into()),
+        Arc::new("unknown_continuous_buffer_id".into()),
+      ])
+      .into(),
       max_logs_count: Some(10),
-      logs_count: 0,
-    },
-    StreamingBuffersAction {
-      id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
+      logs_count: AtomicU64::new(0),
+    }),
+    Arc::new(StreamingBuffersAction {
+      id: FlushBufferId::WorkflowActionId("action_id_2".to_string()).into(),
       session_id: "foo_session_id".to_string(),
-      source_trigger_buffer_ids: TinySet::from(["unknown_trigger_buffer_id".into()]),
+      source_trigger_buffer_ids: TinySet::from([Arc::new("unknown_trigger_buffer_id".into())])
+        .into(),
       destination_continuous_buffer_ids: TinySet::from([
-        "existing_continuous_buffer_id_1".into(),
-        "unknown_continuous_buffer_id".into(),
-      ]),
+        Arc::new("existing_continuous_buffer_id_1".into()),
+        Arc::new("unknown_continuous_buffer_id".into()),
+      ])
+      .into(),
       max_logs_count: Some(10),
-      logs_count: 0,
-    },
-    StreamingBuffersAction {
-      id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
+      logs_count: AtomicU64::new(0),
+    }),
+    Arc::new(StreamingBuffersAction {
+      id: FlushBufferId::WorkflowActionId("action_id_3".to_string()).into(),
       session_id: "foo_session_id".to_string(),
       source_trigger_buffer_ids: TinySet::from([
-        "existing_trigger_buffer_id_1".into(),
-        "unknown_trigger_buffer_id".into(),
-      ]),
+        Arc::new("existing_trigger_buffer_id_1".into()),
+        Arc::new("unknown_trigger_buffer_id".into()),
+      ])
+      .into(),
       destination_continuous_buffer_ids: TinySet::from([
-        "existing_continuous_buffer_id_1".into(),
-        "unknown_continuous_buffer_id".into(),
-      ]),
+        Arc::new("existing_continuous_buffer_id_1".into()),
+        Arc::new("unknown_continuous_buffer_id".into()),
+      ])
+      .into(),
       max_logs_count: Some(10),
-      logs_count: 0,
-    },
-    StreamingBuffersAction {
-      id: FlushBufferId::WorkflowActionId("action_id_4".to_string()),
+      logs_count: AtomicU64::new(0),
+    }),
+    Arc::new(StreamingBuffersAction {
+      id: FlushBufferId::WorkflowActionId("action_id_4".to_string()).into(),
       session_id: "foo_session_id".to_string(),
       source_trigger_buffer_ids: TinySet::from([
-        "existing_trigger_buffer_id_1".into(),
-        "unknown_trigger_buffer_id".into(),
-      ]),
-      destination_continuous_buffer_ids: TinySet::from(["unknown_continuous_buffer_id".into()]),
+        Arc::new("existing_trigger_buffer_id_1".into()),
+        Arc::new("unknown_trigger_buffer_id".into()),
+      ])
+      .into(),
+      destination_continuous_buffer_ids: TinySet::from([Arc::new(
+        "unknown_continuous_buffer_id".into(),
+      )])
+      .into(),
       max_logs_count: Some(10),
-      logs_count: 0,
-    },
-    StreamingBuffersAction {
-      id: FlushBufferId::WorkflowActionId("action_id_5".to_string()),
+      logs_count: AtomicU64::new(0),
+    }),
+    Arc::new(StreamingBuffersAction {
+      id: FlushBufferId::WorkflowActionId("action_id_5".to_string()).into(),
       session_id: "bar_session_id".to_string(),
       source_trigger_buffer_ids: TinySet::from([
-        "existing_trigger_buffer_id_1".into(),
-        "unknown_trigger_buffer_id".into(),
-      ]),
+        Arc::new("existing_trigger_buffer_id_1".into()),
+        Arc::new("unknown_trigger_buffer_id".into()),
+      ])
+      .into(),
       destination_continuous_buffer_ids: TinySet::from([
-        "existing_continuous_buffer_id_1".into(),
-        "unknown_continuous_buffer_id".into(),
-      ]),
+        Arc::new("existing_continuous_buffer_id_1".into()),
+        Arc::new("unknown_continuous_buffer_id".into()),
+      ])
+      .into(),
       max_logs_count: Some(10),
-      logs_count: 0,
-    },
+      logs_count: AtomicU64::new(0),
+    }),
   ]);
 
   assert_eq!(
     vec![
-      StreamingBuffersAction {
-        id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
+      Arc::new(StreamingBuffersAction {
+        id: FlushBufferId::WorkflowActionId("action_id_1".to_string()).into(),
         session_id: "foo_session_id".to_string(),
-        source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id_1".into()]),
-        destination_continuous_buffer_ids: TinySet::from([
-          "existing_continuous_buffer_id_1".into(),
-        ]),
+        source_trigger_buffer_ids: TinySet::from([Arc::new("existing_trigger_buffer_id_1".into())])
+          .into(),
+        destination_continuous_buffer_ids: TinySet::from([Arc::new(
+          "existing_continuous_buffer_id_1".into()
+        ),])
+        .into(),
         max_logs_count: Some(10),
-        logs_count: 0,
-      },
-      StreamingBuffersAction {
-        id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
+        logs_count: AtomicU64::new(0),
+      }),
+      Arc::new(StreamingBuffersAction {
+        id: FlushBufferId::WorkflowActionId("action_id_3".to_string()).into(),
         session_id: "foo_session_id".to_string(),
-        source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id_1".into(),]),
-        destination_continuous_buffer_ids: TinySet::from([
-          "existing_continuous_buffer_id_1".into(),
-        ]),
+        source_trigger_buffer_ids: TinySet::from([Arc::new("existing_trigger_buffer_id_1".into())])
+          .into(),
+        destination_continuous_buffer_ids: TinySet::from([Arc::new(
+          "existing_continuous_buffer_id_1".into()
+        ),])
+        .into(),
         max_logs_count: Some(10),
-        logs_count: 0,
-      },
-      StreamingBuffersAction {
-        id: FlushBufferId::WorkflowActionId("action_id_5".to_string()),
+        logs_count: AtomicU64::new(0),
+      }),
+      Arc::new(StreamingBuffersAction {
+        id: FlushBufferId::WorkflowActionId("action_id_5".to_string()).into(),
         session_id: "bar_session_id".to_string(),
-        source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id_1".into(),]),
-        destination_continuous_buffer_ids: TinySet::from([
-          "existing_continuous_buffer_id_1".into(),
-        ]),
+        source_trigger_buffer_ids: TinySet::from([Arc::new("existing_trigger_buffer_id_1".into())])
+          .into(),
+        destination_continuous_buffer_ids: TinySet::from([Arc::new(
+          "existing_continuous_buffer_id_1".into()
+        ),])
+        .into(),
         max_logs_count: Some(10),
-        logs_count: 0,
-      },
+        logs_count: AtomicU64::new(0),
+      }),
     ],
     result
   );
@@ -270,67 +301,71 @@ fn process_flush_buffers_actions() {
 
   let mut resolver = Resolver::new(&collector.scope("test"));
   resolver.update(ResolverConfig::new(
-    TinySet::from(["existing_trigger_buffer_id".into()]),
-    TinySet::default(),
+    TinySet::from([Arc::new("existing_trigger_buffer_id".into())]).into(),
+    TinySet::default().into(),
   ));
 
-  let actions = TinySet::from([
-    ActionFlushBuffers {
-      id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
-      buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".to_string()]),
+  let actions = BTreeSet::from([
+    Arc::new(ActionFlushBuffers {
+      id: FlushBufferId::WorkflowActionId("action_id_1".to_string()).into(),
+      buffer_ids: TinySet::from(["existing_trigger_buffer_id".into()]),
       streaming: None,
-    },
-    ActionFlushBuffers {
-      id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
-      buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".to_string()]),
+    }),
+    Arc::new(ActionFlushBuffers {
+      id: FlushBufferId::WorkflowActionId("action_id_2".to_string()).into(),
+      buffer_ids: TinySet::from(["existing_trigger_buffer_id".into()]),
       streaming: None,
-    },
-    ActionFlushBuffers {
-      id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
-      buffer_ids: BTreeSet::from(["existing_trigger_buffer_id".to_string()]),
+    }),
+    Arc::new(ActionFlushBuffers {
+      id: FlushBufferId::WorkflowActionId("action_id_3".to_string()).into(),
+      buffer_ids: TinySet::from(["existing_trigger_buffer_id".into()]),
       streaming: None,
-    },
-    ActionFlushBuffers {
-      id: FlushBufferId::WorkflowActionId("action_id_4".to_string()),
-      buffer_ids: BTreeSet::from(["non_existing_trigger_buffer_id".to_string()]),
+    }),
+    Arc::new(ActionFlushBuffers {
+      id: FlushBufferId::WorkflowActionId("action_id_4".to_string()).into(),
+      buffer_ids: TinySet::from(["non_existing_trigger_buffer_id".into()]),
       streaming: None,
-    },
+    }),
   ]);
 
   let result = resolver.process_flush_buffer_actions(
-    actions.iter().map(Cow::Borrowed).collect(),
+    actions,
     "foo_session_id",
     &BTreeSet::from([PendingFlushBuffersAction {
-      id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
+      id: FlushBufferId::WorkflowActionId("action_id_2".to_string()).into(),
       session_id: "foo_session_id".to_string(),
-      trigger_buffer_ids: TinySet::default(),
+      trigger_buffer_ids: TinySet::default().into(),
       streaming: None,
-    }]),
+    }
+    .into()]),
     &[StreamingBuffersAction {
-      id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
+      id: FlushBufferId::WorkflowActionId("action_id_3".to_string()).into(),
       session_id: "foo_session_id".to_string(),
-      source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into()]),
-      destination_continuous_buffer_ids: TinySet::default(),
+      source_trigger_buffer_ids: TinySet::from([Arc::new("existing_trigger_buffer_id".into())])
+        .into(),
+      destination_continuous_buffer_ids: TinySet::default().into(),
       max_logs_count: Some(10),
-      logs_count: 0,
-    }],
+      logs_count: AtomicU64::new(0),
+    }
+    .into()],
   );
 
   assert_eq!(
     FlushBuffersActionsProcessingResult {
       new_pending_actions_to_add: BTreeSet::from([PendingFlushBuffersAction {
-        id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
+        id: FlushBufferId::WorkflowActionId("action_id_1".to_string()).into(),
         session_id: "foo_session_id".to_string(),
-        trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into(),]),
+        trigger_buffer_ids: TinySet::from([Arc::new("existing_trigger_buffer_id".into())]).into(),
         streaming: None,
-      }]),
+      }
+      .into()]),
       triggered_flush_buffers_action_ids: BTreeSet::from([
-        Cow::Owned(FlushBufferId::WorkflowActionId("action_id_1".into())),
-        Cow::Owned(FlushBufferId::WorkflowActionId("action_id_2".into())),
-        Cow::Owned(FlushBufferId::WorkflowActionId("action_id_3".into())),
-        Cow::Owned(FlushBufferId::WorkflowActionId("action_id_4".into())),
+        Arc::new(FlushBufferId::WorkflowActionId("action_id_1".into())),
+        Arc::new(FlushBufferId::WorkflowActionId("action_id_2".into())),
+        Arc::new(FlushBufferId::WorkflowActionId("action_id_3".into())),
+        Arc::new(FlushBufferId::WorkflowActionId("action_id_4".into())),
       ]),
-      triggered_flushes_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into()])
+      triggered_flushes_buffer_ids: TinySet::from([Arc::new("existing_trigger_buffer_id".into())])
     },
     result
   );
@@ -363,21 +398,22 @@ fn process_flush_buffer_action_with_no_buffers() {
 
   let mut resolver = Resolver::new(&collector.scope("test"));
   resolver.update(ResolverConfig::new(
-    TinySet::from(["existing_trigger_buffer_id".into()]),
-    TinySet::from(["existing_continuous_buffer_id".into()]),
+    TinySet::from([Arc::new("existing_trigger_buffer_id".into())]).into(),
+    TinySet::from([Arc::new("existing_continuous_buffer_id".into())]).into(),
   ));
 
-  let actions = TinySet::from([ActionFlushBuffers {
-    id: FlushBufferId::WorkflowActionId("action_id".to_string()),
-    buffer_ids: BTreeSet::new(),
+  let actions = BTreeSet::from([ActionFlushBuffers {
+    id: FlushBufferId::WorkflowActionId("action_id".to_string()).into(),
+    buffer_ids: TinySet::default(),
     streaming: Some(crate::config::Streaming {
-      destination_continuous_buffer_ids: BTreeSet::new(),
+      destination_continuous_buffer_ids: TinySet::default(),
       max_logs_count: Some(10),
     }),
-  }]);
+  }
+  .into()]);
 
   let result = resolver.process_flush_buffer_actions(
-    actions.iter().map(Cow::Borrowed).collect(),
+    actions,
     "foo_session_id",
     &BTreeSet::default(),
     &[],
@@ -386,20 +422,22 @@ fn process_flush_buffer_action_with_no_buffers() {
   assert_eq!(
     FlushBuffersActionsProcessingResult {
       new_pending_actions_to_add: BTreeSet::from([PendingFlushBuffersAction {
-        id: FlushBufferId::WorkflowActionId("action_id".to_string()),
+        id: FlushBufferId::WorkflowActionId("action_id".to_string()).into(),
         session_id: "foo_session_id".to_string(),
-        trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into(),]),
+        trigger_buffer_ids: TinySet::from([Arc::new("existing_trigger_buffer_id".into())]).into(),
         streaming: Some(Streaming {
-          destination_continuous_buffer_ids: TinySet::from(
-            ["existing_continuous_buffer_id".into()]
-          ),
+          destination_continuous_buffer_ids: TinySet::from([Arc::new(
+            "existing_continuous_buffer_id".into()
+          )])
+          .into(),
           max_logs_count: Some(10),
         }),
-      }]),
-      triggered_flush_buffers_action_ids: BTreeSet::from([Cow::Owned(
+      }
+      .into()]),
+      triggered_flush_buffers_action_ids: BTreeSet::from([Arc::new(
         FlushBufferId::WorkflowActionId("action_id".into())
       )]),
-      triggered_flushes_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into(),])
+      triggered_flushes_buffer_ids: TinySet::from([Arc::new("existing_trigger_buffer_id".into())])
     },
     result
   );
@@ -411,51 +449,68 @@ fn process_streaming_buffers_actions() {
 
   let mut resolver = Resolver::new(&collector.scope("test"));
   resolver.update(ResolverConfig::new(
-    TinySet::from(["existing_trigger_buffer_id".into()]),
-    TinySet::from(["existing_continuous_buffer_id".into()]),
+    TinySet::from([Arc::new("existing_trigger_buffer_id".into())]).into(),
+    TinySet::from([Arc::new("existing_continuous_buffer_id".into())]).into(),
   ));
 
   let result = resolver.process_streaming_actions(
     vec![
       (
         StreamingBuffersAction {
-          id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
+          id: FlushBufferId::WorkflowActionId("action_id_1".to_string()).into(),
           session_id: "foo_session_id".to_string(),
-          source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into()]),
-          destination_continuous_buffer_ids: TinySet::from(["continuous_buffer_id".into()]),
+          source_trigger_buffer_ids: TinySet::from([Arc::new("existing_trigger_buffer_id".into())])
+            .into(),
+          destination_continuous_buffer_ids: TinySet::from([Arc::new(
+            "continuous_buffer_id".into(),
+          )])
+          .into(),
           max_logs_count: Some(10),
-          logs_count: 0,
-        },
+          logs_count: AtomicU64::new(0),
+        }
+        .into(),
         true,
       ),
       (
         StreamingBuffersAction {
-          id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
+          id: FlushBufferId::WorkflowActionId("action_id_2".to_string()).into(),
           session_id: "foo_session_id".to_string(),
-          source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into()]),
-          destination_continuous_buffer_ids: TinySet::from(["continuous_buffer_id".into()]),
+          source_trigger_buffer_ids: TinySet::from([Arc::new("existing_trigger_buffer_id".into())])
+            .into(),
+          destination_continuous_buffer_ids: TinySet::from([Arc::new(
+            "continuous_buffer_id".into(),
+          )])
+          .into(),
           max_logs_count: Some(10),
-          logs_count: 10,
-        },
+          logs_count: AtomicU64::new(10),
+        }
+        .into(),
         true,
       ),
     ],
-    &TinySet::from(["existing_trigger_buffer_id".into()]),
+    &TinySet::from([Arc::new("existing_trigger_buffer_id".into())]),
     "foo_session_id",
   );
 
   assert_eq!(
     StreamingBuffersActionsProcessingResult {
-      log_destination_buffer_ids: TinySet::from(["continuous_buffer_id".into()]),
+      log_destination_buffer_ids: TinySet::from([Arc::new("continuous_buffer_id".into())]),
       has_changed_streaming_actions: true,
-      updated_streaming_actions: vec![StreamingBuffersAction {
-        id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
-        session_id: "foo_session_id".to_string(),
-        source_trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into()]),
-        destination_continuous_buffer_ids: TinySet::from(["continuous_buffer_id".into()]),
-        max_logs_count: Some(10),
-        logs_count: 1,
-      },],
+      updated_streaming_actions: vec![
+        StreamingBuffersAction {
+          id: FlushBufferId::WorkflowActionId("action_id_1".to_string()).into(),
+          session_id: "foo_session_id".to_string(),
+          source_trigger_buffer_ids: TinySet::from([Arc::new("existing_trigger_buffer_id".into())])
+            .into(),
+          destination_continuous_buffer_ids: TinySet::from([Arc::new(
+            "continuous_buffer_id".into()
+          )])
+          .into(),
+          max_logs_count: Some(10),
+          logs_count: AtomicU64::new(1),
+        }
+        .into()
+      ],
     },
     result
   );
@@ -480,12 +535,12 @@ async fn negotiator_upload_flow() {
     decision: IntentDecision::UploadImmediately,
   });
 
-  let pending_action = PendingFlushBuffersAction {
-    id: FlushBufferId::WorkflowActionId("action_id".to_string()),
+  let pending_action = Arc::new(PendingFlushBuffersAction {
+    id: FlushBufferId::WorkflowActionId("action_id".to_string()).into(),
     session_id: "session_id".to_string(),
-    trigger_buffer_ids: TinySet::default(),
+    trigger_buffer_ids: TinySet::default().into(),
     streaming: None,
-  };
+  });
 
   negotiator
     .input_tx
@@ -540,12 +595,12 @@ async fn negotiator_drop_flow() {
     decision: IntentDecision::Drop,
   });
 
-  let pending_action = PendingFlushBuffersAction {
-    id: FlushBufferId::WorkflowActionId("action_id".to_string()),
+  let pending_action = Arc::new(PendingFlushBuffersAction {
+    id: FlushBufferId::WorkflowActionId("action_id".to_string()).into(),
     session_id: "session_id".to_string(),
-    trigger_buffer_ids: TinySet::default(),
+    trigger_buffer_ids: TinySet::default().into(),
     streaming: None,
-  };
+  });
 
   negotiator
     .input_tx

@@ -19,6 +19,7 @@ pub mod stats;
 pub mod test;
 
 use crate::stats::Flusher;
+use ahash::AHashMap;
 use bd_api::DataUpload;
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats_store::{Collector, Error as StatsError};
@@ -101,7 +102,7 @@ impl FlushTrigger {
 pub struct Stats {
   collector: Collector,
   overflows: Mutex<HashMap<String, u64>>,
-  workflow_debug_data: Mutex<HashMap<WorkflowDebugKey, u64>>,
+  workflow_debug_data: Mutex<AHashMap<WorkflowDebugKey, u64>>,
 }
 
 impl Stats {
@@ -206,7 +207,7 @@ impl Stats {
     &self.collector
   }
 
-  pub fn take_workflow_debug_data(&self) -> HashMap<WorkflowDebugKey, u64> {
+  pub fn take_workflow_debug_data(&self) -> AHashMap<WorkflowDebugKey, u64> {
     std::mem::take(&mut *self.workflow_debug_data.lock())
   }
 }
