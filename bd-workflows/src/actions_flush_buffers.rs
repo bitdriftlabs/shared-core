@@ -21,7 +21,7 @@ use bd_stats_common::labels;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 
@@ -31,8 +31,8 @@ use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 #[derive(Debug)]
 pub(crate) enum NegotiatorOutput {
-  UploadApproved(Arc<PendingFlushBuffersAction>),
-  UploadRejected(Arc<PendingFlushBuffersAction>),
+  UploadApproved(Rc<PendingFlushBuffersAction>),
+  UploadRejected(Rc<PendingFlushBuffersAction>),
 }
 
 //
@@ -81,7 +81,7 @@ impl NegotiatorStats {
 //
 
 pub(crate) struct Negotiator {
-  input_rx: Receiver<Arc<PendingFlushBuffersAction>>,
+  input_rx: Receiver<Rc<PendingFlushBuffersAction>>,
   output_tx: Sender<NegotiatorOutput>,
   data_upload_tx: Sender<DataUpload>,
 
@@ -92,14 +92,14 @@ pub(crate) struct Negotiator {
   /// impact on customers, it's worth noting that in the case of long-lived sessions spanning
   /// multiple days (measured in UTC timezone), some upload actions may be rejected prematurely
   /// compared to if the requests to the server were made.
-  rejected_intent_action_ids: BTreeSet<Arc<FlushBufferId>>,
+  rejected_intent_action_ids: BTreeSet<Rc<FlushBufferId>>,
 
   stats: NegotiatorStats,
 }
 
 impl Negotiator {
   pub(crate) fn new(
-    input_rx: Receiver<Arc<PendingFlushBuffersAction>>,
+    input_rx: Receiver<Rc<PendingFlushBuffersAction>>,
     data_upload_tx: Sender<DataUpload>,
     scope: &Scope,
   ) -> (Self, Receiver<NegotiatorOutput>) {
@@ -118,7 +118,7 @@ impl Negotiator {
   }
 
   pub(crate) fn run(mut self) -> tokio::task::JoinHandle<()> {
-    tokio::task::spawn(async move {
+    tokio::task::spawn_local(async move {
       loop {
         if let Some(pending_action) = self.input_rx.recv().await {
           self.process_pending_action(pending_action).await;
@@ -127,7 +127,7 @@ impl Negotiator {
     })
   }
 
-  async fn process_pending_action(&mut self, pending_action: Arc<PendingFlushBuffersAction>) {
+  async fn process_pending_action(&mut self, pending_action: Rc<PendingFlushBuffersAction>) {
     log::debug!("processing pending action: {:?}", pending_action.id);
 
     self.stats.intent_initiations_total.inc();
@@ -254,13 +254,13 @@ impl Negotiator {
       intent_type: Some(match action.id.as_ref() {
         FlushBufferId::WorkflowActionId(action_id) => {
           Intent_type::WorkflowActionUpload(WorkflowActionUpload {
-            workflow_action_ids: vec![action_id.clone()], // fixfix
+            workflow_action_ids: vec![action_id.clone()],
             ..Default::default()
           })
         },
         FlushBufferId::ExplicitSessionCapture(id) => {
           Intent_type::ExplicitSessionCapture(ExplicitSessionCapture {
-            id: id.clone(), // fixfix
+            id: id.clone(),
             ..Default::default()
           })
         },
@@ -351,8 +351,8 @@ impl Negotiator {
 #[derive(Debug)]
 /// Responsible for orchestrating and managing flush buffer actions.
 pub(crate) struct Resolver {
-  trigger_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
-  continuous_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
+  trigger_buffer_ids: Rc<TinySet<Rc<BufferId>>>,
+  continuous_buffer_ids: Rc<TinySet<Rc<BufferId>>>,
 
   stats: ResolverStats,
 }
@@ -361,8 +361,8 @@ impl Resolver {
   pub(crate) fn new(stats_scope: &Scope) -> Self {
     Self {
       stats: ResolverStats::new(stats_scope),
-      trigger_buffer_ids: Arc::default(),
-      continuous_buffer_ids: Arc::default(),
+      trigger_buffer_ids: Rc::default(),
+      continuous_buffer_ids: Rc::default(),
     }
   }
 
@@ -377,10 +377,10 @@ impl Resolver {
   /// buffer actions that require further processing.
   pub(crate) fn process_flush_buffer_actions<'a>(
     &self,
-    actions: TinySet<Arc<ActionFlushBuffers>>,
+    actions: TinySet<&Rc<ActionFlushBuffers>>,
     session_id: &str,
-    pending_actions: &TinySet<Arc<PendingFlushBuffersAction>>,
-    streaming_actions: &[Arc<StreamingBuffersAction>],
+    pending_actions: &TinySet<Rc<PendingFlushBuffersAction>>,
+    streaming_actions: &[Rc<StreamingBuffersAction>],
   ) -> FlushBuffersActionsProcessingResult {
     let mut created_actions = TinySet::default();
     let mut triggered_flush_buffers_action_ids = TinySet::default();
@@ -439,8 +439,8 @@ impl Resolver {
   /// the final destination buffer IDs for the currently processed log.
   pub(crate) fn process_streaming_actions<'a>(
     &self,
-    mut streaming_actions: Vec<(Arc<StreamingBuffersAction>, bool)>,
-    log_destination_buffer_ids: &TinySet<Arc<BufferId>>,
+    mut streaming_actions: Vec<(Rc<StreamingBuffersAction>, bool)>,
+    log_destination_buffer_ids: &TinySet<Rc<BufferId>>,
     session_id: &str,
   ) -> StreamingBuffersActionsProcessingResult {
     let mut has_changed_streaming_actions = false;
@@ -546,7 +546,7 @@ impl Resolver {
   pub(crate) fn make_streaming_action(
     &self,
     pending_action: &PendingFlushBuffersAction,
-  ) -> Option<Arc<StreamingBuffersAction>> {
+  ) -> Option<Rc<StreamingBuffersAction>> {
     let streaming_action = StreamingBuffersAction::new(pending_action, &self.continuous_buffer_ids);
     if streaming_action.is_some() {
       self.stats.streaming_action_initiation_successes.inc();
@@ -561,8 +561,8 @@ impl Resolver {
   /// after this process, an action is left with no trigger buffer IDs, it is dropped.
   pub(crate) fn standardize_pending_actions(
     &self,
-    pending_actions: TinySet<Arc<PendingFlushBuffersAction>>,
-  ) -> TinySet<Arc<PendingFlushBuffersAction>> {
+    pending_actions: TinySet<Rc<PendingFlushBuffersAction>>,
+  ) -> TinySet<Rc<PendingFlushBuffersAction>> {
     pending_actions
       .into_iter()
       .filter_map(|action| {
@@ -588,14 +588,14 @@ impl Resolver {
   /// buffer IDs, it is dropped.
   pub(crate) fn standardize_streaming_buffers(
     &self,
-    streaming_buffers: Vec<Arc<StreamingBuffersAction>>,
-  ) -> Vec<Arc<StreamingBuffersAction>> {
+    streaming_buffers: Vec<Rc<StreamingBuffersAction>>,
+  ) -> Vec<Rc<StreamingBuffersAction>> {
     streaming_buffers
       .into_iter()
       .filter_map(|action| {
         #[allow(unused_assignments)] // fixfix
         let mut source_unchanged = false;
-        let source_trigger_buffer_ids: Arc<TinySet<_>> =
+        let source_trigger_buffer_ids: Rc<TinySet<_>> =
           if action.source_trigger_buffer_ids == self.trigger_buffer_ids {
             source_unchanged = true;
             self.trigger_buffer_ids.clone()
@@ -609,7 +609,7 @@ impl Resolver {
           };
         #[allow(unused_assignments)] // fixfix
         let mut destination_unchanged = false;
-        let destination_continuous_buffer_ids: Arc<TinySet<_>> =
+        let destination_continuous_buffer_ids: Rc<TinySet<_>> =
           if action.destination_continuous_buffer_ids == self.continuous_buffer_ids {
             destination_unchanged = true;
             self.continuous_buffer_ids.clone()
@@ -717,14 +717,14 @@ impl ResolverStats {
 
 #[derive(Debug)]
 pub(crate) struct ResolverConfig {
-  trigger_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
-  continuous_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
+  trigger_buffer_ids: Rc<TinySet<Rc<BufferId>>>,
+  continuous_buffer_ids: Rc<TinySet<Rc<BufferId>>>,
 }
 
 impl ResolverConfig {
   pub(crate) const fn new(
-    trigger_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
-    continuous_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
+    trigger_buffer_ids: Rc<TinySet<Rc<BufferId>>>,
+    continuous_buffer_ids: Rc<TinySet<Rc<BufferId>>>,
   ) -> Self {
     Self {
       trigger_buffer_ids,
@@ -739,9 +739,9 @@ impl ResolverConfig {
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct FlushBuffersActionsProcessingResult {
-  pub(crate) new_pending_actions_to_add: TinySet<Arc<PendingFlushBuffersAction>>,
-  pub(crate) triggered_flush_buffers_action_ids: TinySet<Arc<FlushBufferId>>,
-  pub(crate) triggered_flushes_buffer_ids: TinySet<Arc<BufferId>>,
+  pub(crate) new_pending_actions_to_add: TinySet<Rc<PendingFlushBuffersAction>>,
+  pub(crate) triggered_flush_buffers_action_ids: TinySet<Rc<FlushBufferId>>,
+  pub(crate) triggered_flushes_buffer_ids: TinySet<Rc<BufferId>>,
 }
 
 //
@@ -751,9 +751,9 @@ pub(crate) struct FlushBuffersActionsProcessingResult {
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub(crate) struct StreamingBuffersActionsProcessingResult {
-  pub(crate) log_destination_buffer_ids: TinySet<Arc<BufferId>>,
+  pub(crate) log_destination_buffer_ids: TinySet<Rc<BufferId>>,
   pub(crate) has_changed_streaming_actions: bool,
-  pub(crate) updated_streaming_actions: Vec<Arc<StreamingBuffersAction>>,
+  pub(crate) updated_streaming_actions: Vec<Rc<StreamingBuffersAction>>,
 }
 
 //
@@ -765,10 +765,10 @@ pub(crate) struct StreamingBuffersActionsProcessingResult {
 // streaming was configured for the action.
 #[derive(Serialize, Deserialize, PartialEq)]
 pub(crate) struct PendingFlushBuffersAction {
-  pub(crate) id: Arc<FlushBufferId>,
+  pub(crate) id: Rc<FlushBufferId>,
   session_id: String,
 
-  trigger_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
+  trigger_buffer_ids: Rc<TinySet<Rc<BufferId>>>,
 
   streaming: Option<Streaming>,
 }
@@ -792,8 +792,8 @@ impl PendingFlushBuffersAction {
   fn new(
     action: &ActionFlushBuffers,
     session_id: String,
-    trigger_buffer_ids: &Arc<TinySet<Arc<BufferId>>>,
-    continuous_buffer_ids: &Arc<TinySet<Arc<BufferId>>>,
+    trigger_buffer_ids: &Rc<TinySet<Rc<BufferId>>>,
+    continuous_buffer_ids: &Rc<TinySet<Rc<BufferId>>>,
   ) -> Option<Self> {
     log::debug!("evaluating flush buffers action: {action:?}");
 
@@ -835,7 +835,7 @@ impl PendingFlushBuffersAction {
       })
     });
 
-    let trigger_buffer_ids: Arc<TinySet<_>> = if action.buffer_ids.is_empty() {
+    let trigger_buffer_ids: Rc<TinySet<_>> = if action.buffer_ids.is_empty() {
       // Empty buffer IDs means that the action should be applied to all buffers.
       trigger_buffer_ids.clone()
     } else {
@@ -872,7 +872,7 @@ impl PendingFlushBuffersAction {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(crate) struct Streaming {
-  destination_continuous_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
+  destination_continuous_buffer_ids: Rc<TinySet<Rc<BufferId>>>,
   max_logs_count: Option<u64>,
 }
 
@@ -884,15 +884,15 @@ pub(crate) struct Streaming {
 // The action created in response to flush buffer actions that were accepted for upload and had a
 // streaming configuration attached to them.
 pub(crate) struct StreamingBuffersAction {
-  pub(crate) id: Arc<FlushBufferId>,
+  pub(crate) id: Rc<FlushBufferId>,
   session_id: String,
 
-  source_trigger_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
-  destination_continuous_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
+  source_trigger_buffer_ids: Rc<TinySet<Rc<BufferId>>>,
+  destination_continuous_buffer_ids: Rc<TinySet<Rc<BufferId>>>,
 
   max_logs_count: Option<u64>,
 
-  logs_count: AtomicU64,
+  logs_count: AtomicU64, // fixfix?
 }
 
 #[cfg(test)]
@@ -925,8 +925,8 @@ impl std::fmt::Debug for StreamingBuffersAction {
 impl StreamingBuffersAction {
   pub(crate) fn new(
     action: &PendingFlushBuffersAction,
-    continuous_buffer_ids: &Arc<TinySet<Arc<BufferId>>>,
-  ) -> Option<Arc<Self>> {
+    continuous_buffer_ids: &Rc<TinySet<Rc<BufferId>>>,
+  ) -> Option<Rc<Self>> {
     let Some(streaming) = &action.streaming else {
       log::trace!("buffers streaming not activated: no streaming configuration");
       return None;
@@ -943,7 +943,7 @@ impl StreamingBuffersAction {
       return None;
     }
 
-    Some(Arc::new(Self {
+    Some(Rc::new(Self {
       id: action.id.clone(),
       session_id: action.session_id.clone(), // fixfix
       source_trigger_buffer_ids: action.trigger_buffer_ids.clone(),
@@ -971,7 +971,7 @@ impl StreamingBuffersAction {
 #[derive(Debug)]
 pub struct BuffersToFlush {
   // Unique IDs of buffers to flush.
-  pub buffer_ids: Arc<TinySet<Arc<BufferId>>>,
+  pub buffer_ids: Rc<TinySet<Rc<BufferId>>>,
   // Channel to notify the caller that the flush has been completed.
   pub response_tx: tokio::sync::oneshot::Sender<()>,
 }

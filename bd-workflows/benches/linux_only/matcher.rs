@@ -25,7 +25,7 @@ use gungraun::{
 };
 use std::future::Future;
 use std::hint::black_box;
-use std::sync::Arc;
+use std::rc::Rc;
 use time::OffsetDateTime;
 
 // fixfix add streaming config
@@ -64,8 +64,8 @@ impl Setup {
     engine
       .start(WorkflowsEngineConfig::new(
         WorkflowsConfiguration::new(workflows, vec![]),
-        TinySet::from([Arc::new("default_buffer_id".into())]).into(),
-        TinySet::from([Arc::new("continuous_buffer_id".into())]).into(),
+        TinySet::from([Rc::new("default_buffer_id".into())]).into(),
+        TinySet::from([Rc::new("continuous_buffer_id".into())]).into(),
       ))
       .await;
 
@@ -123,23 +123,28 @@ fn run_runtime_bench<T: Future<Output = WorkflowsEngine>>(engine: impl FnOnce() 
     .build()
     .unwrap()
     .block_on(async {
-      let mut engine = engine().await;
-      let now = OffsetDateTime::now_utc();
-      // Warm up to initialize any one lock type things.
-      let log = LogRef {
-        log_type: log.log_type,
-        log_level: log.log_level,
-        message: &log.message,
-        fields: FieldsRef::new(&log.fields, &log.matching_fields),
-        session_id: &log.session_id,
-        occurred_at: log.occurred_at,
-        capture_session: log.capture_session,
-      };
-      engine.process_log(&log, &TinySet::default(), now);
+      let local = tokio::task::LocalSet::new();
+      local
+        .run_until(async move {
+          let mut engine = engine().await;
+          let now = OffsetDateTime::now_utc();
+          // Warm up to initialize any one lock type things.
+          let log = LogRef {
+            log_type: log.log_type,
+            log_level: log.log_level,
+            message: &log.message,
+            fields: FieldsRef::new(&log.fields, &log.matching_fields),
+            session_id: &log.session_id,
+            occurred_at: log.occurred_at,
+            capture_session: log.capture_session,
+          };
+          engine.process_log(&log, &TinySet::default(), now);
 
-      gungraun::client_requests::callgrind::start_instrumentation();
-      engine.process_log(&log, &TinySet::default(), now);
-      gungraun::client_requests::callgrind::stop_instrumentation();
+          gungraun::client_requests::callgrind::start_instrumentation();
+          engine.process_log(&log, &TinySet::default(), now);
+          gungraun::client_requests::callgrind::stop_instrumentation();
+        })
+        .await;
     });
 }
 

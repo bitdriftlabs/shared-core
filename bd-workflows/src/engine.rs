@@ -9,6 +9,7 @@
 #[path = "./engine_test.rs"]
 mod engine_test;
 
+use crate::OwnedOrRef;
 use crate::actions_flush_buffers::{
   BuffersToFlush,
   Negotiator,
@@ -54,6 +55,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -79,14 +81,14 @@ pub struct WorkflowsEngine {
   configs: Vec<Config>,
   state: WorkflowsState,
   state_store: StateStore,
-  pending_buffer_flushes: HashMap<Arc<FlushBufferId>, tokio::sync::oneshot::Receiver<()>>,
+  pending_buffer_flushes: HashMap<Rc<FlushBufferId>, tokio::sync::oneshot::Receiver<()>>,
 
   needs_state_persistence: bool,
 
   stats: WorkflowsEngineStats,
 
   flush_buffers_actions_resolver: Resolver,
-  flush_buffers_negotiator_input_tx: Sender<Arc<PendingFlushBuffersAction>>,
+  flush_buffers_negotiator_input_tx: Sender<Rc<PendingFlushBuffersAction>>,
   flush_buffers_negotiator_output_rx: Receiver<NegotiatorOutput>,
   flush_buffers_negotiator_join_handle: JoinHandle<()>,
 
@@ -536,7 +538,7 @@ impl WorkflowsEngine {
   pub fn process_log<'a>(
     &'a mut self,
     log: &LogRef<'_>,
-    log_destination_buffer_ids: &'a TinySet<Arc<BufferId>>,
+    log_destination_buffer_ids: &'a TinySet<Rc<BufferId>>,
     now: OffsetDateTime,
   ) -> WorkflowsEngineResult<'a> {
     // Measure duration in here even if the list of workflows is empty.
@@ -680,7 +682,7 @@ impl WorkflowsEngine {
         }),
       };
 
-      flush_buffers_actions.insert(Arc::new(action));
+      flush_buffers_actions.insert(Rc::new(action));
     }
 
     let result = self
@@ -794,11 +796,11 @@ impl WorkflowsEngine {
       return PreparedActions::default();
     }
 
-    let flush_buffers_actions: TinySet<Arc<ActionFlushBuffers>> = actions
+    let flush_buffers_actions: TinySet<OwnedOrRef<'_, ActionFlushBuffers>> = actions
       .iter()
       .filter_map(|action| {
         if let TriggeredAction::FlushBuffers(flush_buffers_action) = action {
-          Some(flush_buffers_action.clone())
+          Some(OwnedOrRef::Ref(flush_buffers_action.as_ref()))
         } else {
           None
         }
@@ -858,7 +860,7 @@ impl Drop for WorkflowsEngine {
 
 #[derive(Default)]
 struct PreparedActions<'a> {
-  flush_buffers_actions: TinySet<Arc<ActionFlushBuffers>>,
+  flush_buffers_actions: TinySet<OwnedOrRef<'a, ActionFlushBuffers>>,
   emit_metric_actions: TinySet<&'a ActionEmitMetric>,
   emit_sankey_diagrams_actions: TinySet<TriggeredActionEmitSankey<'a>>,
   capture_screenshot_actions: TinySet<&'a ActionTakeScreenshot>,
@@ -870,12 +872,12 @@ struct PreparedActions<'a> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct WorkflowsEngineResult<'a> {
-  pub log_destination_buffer_ids: Cow<'a, TinySet<Arc<BufferId>>>,
+  pub log_destination_buffer_ids: Cow<'a, TinySet<Rc<BufferId>>>,
 
   // The identifier of workflow actions that triggered buffers flush(es).
-  pub triggered_flush_buffers_action_ids: TinySet<Arc<FlushBufferId>>,
+  pub triggered_flush_buffers_action_ids: TinySet<Rc<FlushBufferId>>,
   // The identifier of trigger buffers that should be flushed.
-  pub triggered_flushes_buffer_ids: TinySet<Arc<BufferId>>,
+  pub triggered_flushes_buffer_ids: TinySet<Rc<BufferId>>,
 
   // Whether a screenshot should be taken in response to processing the log.
   pub capture_screenshot: bool,
@@ -902,16 +904,16 @@ pub type AllWorkflowsDebugState = Vec<(String, WorkflowDebugStateMap)>;
 pub struct WorkflowsEngineConfig {
   pub(crate) workflows_configuration: WorkflowsConfiguration,
 
-  pub(crate) trigger_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
-  pub(crate) continuous_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
+  pub(crate) trigger_buffer_ids: Rc<TinySet<Rc<BufferId>>>,
+  pub(crate) continuous_buffer_ids: Rc<TinySet<Rc<BufferId>>>,
 }
 
 impl WorkflowsEngineConfig {
   #[must_use]
   pub const fn new(
     workflows_configuration: WorkflowsConfiguration,
-    trigger_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
-    continuous_buffer_ids: Arc<TinySet<Arc<BufferId>>>,
+    trigger_buffer_ids: Rc<TinySet<Rc<BufferId>>>,
+    continuous_buffer_ids: Rc<TinySet<Rc<BufferId>>>,
   ) -> Self {
     Self {
       workflows_configuration,
@@ -925,8 +927,8 @@ impl WorkflowsEngineConfig {
   pub fn new_with_workflow_configurations(workflow_configs: Vec<Config>) -> Self {
     Self::new(
       WorkflowsConfiguration::new_with_workflow_configurations_for_test(workflow_configs),
-      Arc::default(),
-      Arc::default(),
+      Rc::default(),
+      Rc::default(),
     )
   }
 }
@@ -1085,9 +1087,9 @@ pub(crate) struct WorkflowsState {
   workflows: Vec<Workflow>,
 
   // fixfix don't clone this.
-  pending_flush_actions: TinySet<Arc<PendingFlushBuffersAction>>,
+  pending_flush_actions: TinySet<Rc<PendingFlushBuffersAction>>,
   pending_sankey_actions: BTreeSet<PendingSankeyPathUpload>,
-  streaming_actions: Vec<Arc<StreamingBuffersAction>>,
+  streaming_actions: Vec<Rc<StreamingBuffersAction>>,
 }
 
 impl WorkflowsState {

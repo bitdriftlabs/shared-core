@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Deref;
-use std::sync::Arc;
+use std::rc::Rc;
 use time::Duration;
 use workflow::Workflow as WorkflowConfigProto;
 use workflow::workflow::action::action_emit_metric::Value_extractor_type;
@@ -573,7 +573,7 @@ pub(crate) enum Predicate {
 #[derive(Debug, PartialEq)]
 /// The action to perform.
 pub enum Action {
-  FlushBuffers(Arc<ActionFlushBuffers>),
+  FlushBuffers(Rc<ActionFlushBuffers>),
   EmitMetric(ActionEmitMetric),
   EmitSankey(ActionEmitSankey),
   TakeScreenshot(ActionTakeScreenshot),
@@ -594,7 +594,7 @@ impl Action {
 
         Ok(Self::FlushBuffers(
           ActionFlushBuffers {
-            id: Arc::new(FlushBufferId::WorkflowActionId(action.id)),
+            id: Rc::new(FlushBufferId::WorkflowActionId(action.id)),
             buffer_ids: action.buffer_ids.into_iter().map(BufferId).collect(),
             streaming,
           }
@@ -648,7 +648,7 @@ impl From<&str> for BufferId {
 pub struct ActionFlushBuffers {
   /// The identifier of an action. It should be attached as
   /// part of the logs upload payload.
-  pub id: Arc<FlushBufferId>,
+  pub id: Rc<FlushBufferId>,
   /// The list of buffer IDs to flush.
   pub buffer_ids: TinySet<BufferId>,
   /// The streaming configuration.
@@ -663,7 +663,7 @@ pub struct ActionFlushBuffers {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Streaming {
   /// The list of destination streaming buffer IDs.
-  pub(crate) destination_continuous_buffer_ids: TinySet<Arc<BufferId>>,
+  pub(crate) destination_continuous_buffer_ids: TinySet<Rc<BufferId>>,
 
   /// The maximum number of logs to stream. No maximum number of logs is configured if this field
   /// is not set.
@@ -677,7 +677,7 @@ impl Streaming {
     let destination_continuous_buffer_ids = streaming_proto
       .destination_streaming_buffer_ids
       .into_iter()
-      .map(|id| Arc::new(BufferId(id)))
+      .map(|id| Rc::new(BufferId(id)))
       .collect::<TinySet<_>>();
 
     let termination_criteria_types = streaming_proto

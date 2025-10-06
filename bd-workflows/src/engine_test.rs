@@ -57,6 +57,7 @@ use pretty_assertions::assert_eq;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 use std::vec;
@@ -220,7 +221,7 @@ struct AnnotatedWorkflowsEngine {
   engine: WorkflowsEngine,
 
   session_id: String,
-  log_destination_buffer_ids: TinySet<Arc<BufferId>>,
+  log_destination_buffer_ids: TinySet<Rc<BufferId>>,
 
   hooks: Arc<parking_lot::Mutex<Hooks>>,
 
@@ -284,7 +285,7 @@ impl AnnotatedWorkflowsEngine {
     let mut buffers_to_flush_rx = buffers_to_flush_rx;
     let mut data_upload_rx = data_upload_rx;
 
-    tokio::spawn(async move {
+    tokio::task::spawn_local(async move {
       loop {
         tokio::select! {
           Some(buffers_to_flush) = buffers_to_flush_rx.recv() => {
@@ -365,7 +366,7 @@ impl AnnotatedWorkflowsEngine {
     })
   }
 
-  fn flushed_buffers(&self) -> Vec<Arc<TinySet<Arc<BufferId>>>> {
+  fn flushed_buffers(&self) -> Vec<Rc<TinySet<Rc<BufferId>>>> {
     self
       .hooks
       .lock()
@@ -943,8 +944,8 @@ async fn engine_update_after_sdk_update() {
       WorkflowBuilder::new("2", &[&c, &d]).make_config(),
       WorkflowBuilder::new("1", &[&a, &b]).make_config(),
     ]),
-    TinySet::from([Arc::new("trigger_buffer_id".into())]).into(),
-    TinySet::from([Arc::new("continuous_buffer_id".into())]).into(),
+    TinySet::from([Rc::new("trigger_buffer_id".into())]).into(),
+    TinySet::from([Rc::new("continuous_buffer_id".into())]).into(),
   );
 
   let setup = Setup::new();
@@ -977,8 +978,8 @@ async fn engine_update_after_sdk_update() {
     WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
       WorkflowBuilder::new("1", &[&a, &b]).make_config(),
     ]),
-    TinySet::from([Arc::new("trigger_buffer_id".into())]).into(),
-    TinySet::from([Arc::new("continuous_buffer_id".into())]).into(),
+    TinySet::from([Rc::new("trigger_buffer_id".into())]).into(),
+    TinySet::from([Rc::new("continuous_buffer_id".into())]).into(),
   ));
 
   assert_eq!(workflows_engine.state.workflows.len(), 1);
@@ -1699,7 +1700,7 @@ async fn engine_processing_log() {
   let mut workflows_engine = setup
     .make_workflows_engine(WorkflowsEngineConfig::new(
       WorkflowsConfiguration::new_with_workflow_configurations_for_test(workflows),
-      TinySet::from([Arc::new("foo_buffer_id".into())]).into(),
+      TinySet::from([Rc::new("foo_buffer_id".into())]).into(),
       TinySet::default().into(),
     ))
     .await;
@@ -1707,15 +1708,15 @@ async fn engine_processing_log() {
   // * Two workflows are created in response to a passed workflows config.
   // * One run is created for each of the created workflows.
   // * Each workflow run advances from their initial to final state in response to "foo" log.
-  workflows_engine.log_destination_buffer_ids = TinySet::from([Arc::new("foo_buffer_id".into())]);
+  workflows_engine.log_destination_buffer_ids = TinySet::from([Rc::new("foo_buffer_id".into())]);
   let result = workflows_engine.process_log(TestLog::new("foo"));
   assert_eq!(
     WorkflowsEngineResult {
-      log_destination_buffer_ids: Cow::Owned(TinySet::from([Arc::new("foo_buffer_id".into())])),
-      triggered_flush_buffers_action_ids: TinySet::from([Arc::new(
+      log_destination_buffer_ids: Cow::Owned(TinySet::from([Rc::new("foo_buffer_id".into())])),
+      triggered_flush_buffers_action_ids: TinySet::from([Rc::new(
         FlushBufferId::WorkflowActionId("foo_action_id".into())
       )]),
-      triggered_flushes_buffer_ids: TinySet::from([Arc::new("foo_buffer_id".into())]),
+      triggered_flushes_buffer_ids: TinySet::from([Rc::new("foo_buffer_id".into())]),
       capture_screenshot: false,
       workflow_debug_state: vec![],
       has_debug_workflows: false,
@@ -1815,8 +1816,8 @@ async fn log_without_destination() {
     WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
       WorkflowBuilder::new("1", &[&a, &b]).make_config(),
     ]),
-    TinySet::from([Arc::new("trigger_buffer_id".into())]).into(),
-    TinySet::from([Arc::new("continuous_buffer_id".into())]).into(),
+    TinySet::from([Rc::new("trigger_buffer_id".into())]).into(),
+    TinySet::from([Rc::new("continuous_buffer_id".into())]).into(),
   );
 
   let setup = Setup::new();
@@ -1829,10 +1830,10 @@ async fn log_without_destination() {
   assert_eq!(
     WorkflowsEngineResult {
       log_destination_buffer_ids: Cow::Owned(TinySet::default()),
-      triggered_flush_buffers_action_ids: TinySet::from([Arc::new(
+      triggered_flush_buffers_action_ids: TinySet::from([Rc::new(
         FlushBufferId::WorkflowActionId("action".into())
       )]),
-      triggered_flushes_buffer_ids: TinySet::from([Arc::new("trigger_buffer_id".into())]),
+      triggered_flushes_buffer_ids: TinySet::from([Rc::new("trigger_buffer_id".into())]),
       capture_screenshot: false,
       workflow_debug_state: vec![],
       has_debug_workflows: false,
@@ -1922,10 +1923,10 @@ async fn logs_streaming() {
     WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
       WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e, &f, &g, &h]).make_config(),
     ]),
-    TinySet::from([Arc::new("trigger_buffer_id".into())]).into(),
+    TinySet::from([Rc::new("trigger_buffer_id".into())]).into(),
     TinySet::from([
-      Arc::new("continuous_buffer_id_1".into()),
-      Arc::new("continuous_buffer_id_2".into()),
+      Rc::new("continuous_buffer_id_1".into()),
+      Rc::new("continuous_buffer_id_2".into()),
     ])
     .into(),
   );
@@ -1936,7 +1937,7 @@ async fn logs_streaming() {
     .make_workflows_engine(workflows_engine_config.clone())
     .await;
   workflows_engine.log_destination_buffer_ids =
-    TinySet::from([Arc::new("trigger_buffer_id".into())]);
+    TinySet::from([Rc::new("trigger_buffer_id".into())]);
 
   // Emit four logs that results in four flushes of the buffer(s).
   // The logs upload intents for the first two buffer flushes are processed soon immediately after
@@ -1954,7 +1955,7 @@ async fn logs_streaming() {
   let result = workflows_engine.process_log(TestLog::new("immediate_drop"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("trigger_buffer_id".into())]))
+    Cow::Owned(TinySet::from([Rc::new("trigger_buffer_id".into())]))
   );
 
   // Allow the engine to perform logs upload intent and process the response to it (upload
@@ -1984,7 +1985,7 @@ async fn logs_streaming() {
   let result = workflows_engine.process_log(TestLog::new("immediate_upload_no_streaming"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("trigger_buffer_id".into())]))
+    Cow::Owned(TinySet::from([Rc::new("trigger_buffer_id".into())]))
   );
 
   // Allow the engine to perform logs upload intent and process the response to it (upload
@@ -2006,7 +2007,7 @@ async fn logs_streaming() {
   );
   assert_eq!(
     workflows_engine.flushed_buffers(),
-    vec![TinySet::from([Arc::new("trigger_buffer_id".into())]).into()],
+    vec![TinySet::from([Rc::new("trigger_buffer_id".into())]).into()],
   );
 
   setup.collector.assert_counter_eq(
@@ -2025,7 +2026,7 @@ async fn logs_streaming() {
   let result = workflows_engine.process_log(TestLog::new("immediate_upload_streaming"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("trigger_buffer_id".into())]))
+    Cow::Owned(TinySet::from([Rc::new("trigger_buffer_id".into())]))
   );
 
   // Allow the engine to perform logs upload intent and process the response to it (upload
@@ -2052,8 +2053,8 @@ async fn logs_streaming() {
   assert_eq!(
     workflows_engine.flushed_buffers(),
     vec![
-      TinySet::from([Arc::new("trigger_buffer_id".into())]).into(),
-      TinySet::from([Arc::new("trigger_buffer_id".into())]).into()
+      TinySet::from([Rc::new("trigger_buffer_id".into())]).into(),
+      TinySet::from([Rc::new("trigger_buffer_id".into())]).into()
     ],
   );
 
@@ -2077,7 +2078,7 @@ async fn logs_streaming() {
   let result = workflows_engine.process_log(TestLog::new("relaunch_upload_no_streaming"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("continuous_buffer_id_2".into())]))
+    Cow::Owned(TinySet::from([Rc::new("continuous_buffer_id_2".into())]))
   );
 
   // The resulting flush buffer action should be ignored as the same flush buffer action was
@@ -2085,7 +2086,7 @@ async fn logs_streaming() {
   let result = workflows_engine.process_log(TestLog::new("relaunch_upload_no_streaming"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("continuous_buffer_id_2".into())]))
+    Cow::Owned(TinySet::from([Rc::new("continuous_buffer_id_2".into())]))
   );
 
   // This should trigger a flush of a buffer that's followed by logs streaming to continuous log
@@ -2095,7 +2096,7 @@ async fn logs_streaming() {
   let result = workflows_engine.process_log(TestLog::new("relaunch_upload_streaming"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("continuous_buffer_id_2".into())]))
+    Cow::Owned(TinySet::from([Rc::new("continuous_buffer_id_2".into())]))
   );
 
   // Confirm that the state of the workflows engine is as expected prior to engine's shutdown.
@@ -2117,7 +2118,7 @@ async fn logs_streaming() {
 
   let mut workflows_engine = setup.make_workflows_engine(workflows_engine_config).await;
   workflows_engine.log_destination_buffer_ids =
-    TinySet::from([Arc::new("trigger_buffer_id".into())]);
+    TinySet::from([Rc::new("trigger_buffer_id".into())]);
 
   workflows_engine.set_awaiting_logs_upload_intent_decisions(vec![
     IntentDecision::UploadImmediately,
@@ -2127,7 +2128,7 @@ async fn logs_streaming() {
   let result = workflows_engine.process_log(TestLog::new("test log"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("continuous_buffer_id_2".into())]))
+    Cow::Owned(TinySet::from([Rc::new("continuous_buffer_id_2".into())]))
   );
 
   // Allow the engine to perform logs upload intent and process the response to it (upload
@@ -2149,7 +2150,7 @@ async fn logs_streaming() {
   );
   assert_eq!(
     workflows_engine.flushed_buffers(),
-    vec![TinySet::from([Arc::new("trigger_buffer_id".into())]).into()],
+    vec![TinySet::from([Rc::new("trigger_buffer_id".into())]).into()],
   );
 
   setup.collector.assert_counter_eq(
@@ -2161,7 +2162,7 @@ async fn logs_streaming() {
   let result = workflows_engine.process_log(TestLog::new("test log"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("continuous_buffer_id_2".into())]))
+    Cow::Owned(TinySet::from([Rc::new("continuous_buffer_id_2".into())]))
   );
 
   // Allow the engine to perform logs upload intent and process the response to it (upload
@@ -2184,8 +2185,8 @@ async fn logs_streaming() {
   assert_eq!(
     workflows_engine.flushed_buffers(),
     vec![
-      TinySet::from([Arc::new("trigger_buffer_id".into())]).into(),
-      TinySet::from([Arc::new("trigger_buffer_id".into())]).into()
+      TinySet::from([Rc::new("trigger_buffer_id".into())]).into(),
+      TinySet::from([Rc::new("trigger_buffer_id".into())]).into()
     ],
   );
 
@@ -2195,8 +2196,8 @@ async fn logs_streaming() {
   assert_eq!(
     result.log_destination_buffer_ids,
     Cow::Owned(TinySet::from([
-      Arc::new("continuous_buffer_id_2".into()),
-      Arc::new("continuous_buffer_id_1".into()),
+      Rc::new("continuous_buffer_id_2".into()),
+      Rc::new("continuous_buffer_id_1".into()),
     ]))
   );
 
@@ -2218,8 +2219,8 @@ async fn logs_streaming() {
   assert_eq!(
     workflows_engine.flushed_buffers(),
     vec![
-      TinySet::from([Arc::new("trigger_buffer_id".into())]).into(),
-      TinySet::from([Arc::new("trigger_buffer_id".into())]).into()
+      TinySet::from([Rc::new("trigger_buffer_id".into())]).into(),
+      TinySet::from([Rc::new("trigger_buffer_id".into())]).into()
     ],
   );
   workflows_engine.complete_flushes();
@@ -2236,7 +2237,7 @@ async fn logs_streaming() {
   let result = workflows_engine.process_log(TestLog::new("test log"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("trigger_buffer_id".into())]))
+    Cow::Owned(TinySet::from([Rc::new("trigger_buffer_id".into())]))
   );
 
   assert!(workflows_engine.state.pending_flush_actions.is_empty());
@@ -2254,8 +2255,8 @@ async fn engine_tracks_new_sessions() {
 
   let workflows_engine_config = WorkflowsEngineConfig::new(
     WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![]),
-    TinySet::from([Arc::new("trigger_buffer_id".into())]).into(),
-    TinySet::from([Arc::new("continuous_buffer_id".into())]).into(),
+    TinySet::from([Rc::new("trigger_buffer_id".into())]).into(),
+    TinySet::from([Rc::new("continuous_buffer_id".into())]).into(),
   );
 
   let mut workflows_engine = setup
@@ -2297,15 +2298,15 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
     WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
       WorkflowBuilder::new("1", &[&a, &b, &c]).make_config(),
     ]),
-    TinySet::from([Arc::new("trigger_buffer_id".into())]).into(),
-    TinySet::from([Arc::new("continuous_buffer_id".into())]).into(),
+    TinySet::from([Rc::new("trigger_buffer_id".into())]).into(),
+    TinySet::from([Rc::new("continuous_buffer_id".into())]).into(),
   );
 
   let mut workflows_engine = setup
     .make_workflows_engine(workflows_engine_config.clone())
     .await;
   workflows_engine.log_destination_buffer_ids =
-    TinySet::from([Arc::new("trigger_buffer_id".into())]);
+    TinySet::from([Rc::new("trigger_buffer_id".into())]);
 
   // Set up no responses so that the actions continue to wait for the server's response.
   workflows_engine.set_awaiting_logs_upload_intent_decisions(vec![]);
@@ -2314,7 +2315,7 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   let result = workflows_engine.process_log(TestLog::new("foo"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("trigger_buffer_id".into())]))
+    Cow::Owned(TinySet::from([Rc::new("trigger_buffer_id".into())]))
   );
 
   // The log below doesn't trigger a buffer flush, but it's emitted with a new session ID, which
@@ -2324,7 +2325,7 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   let result = workflows_engine.process_log(TestLog::new("not triggering"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("trigger_buffer_id".into())]))
+    Cow::Owned(TinySet::from([Rc::new("trigger_buffer_id".into())]))
   );
 
   // Confirm that the pending action was not cleaned up.
@@ -2340,7 +2341,7 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   let mut workflows_engine = setup.make_workflows_engine(workflows_engine_config).await;
   workflows_engine.session_id = "new session ID".to_string();
   workflows_engine.log_destination_buffer_ids =
-    TinySet::from([Arc::new("trigger_buffer_id".into())]);
+    TinySet::from([Rc::new("trigger_buffer_id".into())]);
 
   workflows_engine
     .set_awaiting_logs_upload_intent_decisions(vec![IntentDecision::UploadImmediately]);
@@ -2356,14 +2357,14 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   );
   assert_eq!(
     workflows_engine.flushed_buffers(),
-    vec![TinySet::from([Arc::new("trigger_buffer_id".into())]).into()],
+    vec![TinySet::from([Rc::new("trigger_buffer_id".into())]).into()],
   );
   workflows_engine.complete_flushes();
 
   let result = workflows_engine.process_log(TestLog::new("not triggering"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("trigger_buffer_id".into())]))
+    Cow::Owned(TinySet::from([Rc::new("trigger_buffer_id".into())]))
   );
 
   setup.collector.assert_counter_eq(
@@ -2403,15 +2404,15 @@ async fn engine_continues_to_stream_upload_not_complete() {
     WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
       WorkflowBuilder::new("1", &[&a, &b, &c]).make_config(),
     ]),
-    TinySet::from([Arc::new("trigger_buffer_id".into())]).into(),
-    TinySet::from([Arc::new("continuous_buffer_id".into())]).into(),
+    TinySet::from([Rc::new("trigger_buffer_id".into())]).into(),
+    TinySet::from([Rc::new("continuous_buffer_id".into())]).into(),
   );
 
   let mut workflows_engine = setup
     .make_workflows_engine(workflows_engine_config.clone())
     .await;
   workflows_engine.log_destination_buffer_ids =
-    TinySet::from([Arc::new("trigger_buffer_id".into())]).into();
+    TinySet::from([Rc::new("trigger_buffer_id".into())]).into();
 
   // Allow the intent to go through which should trigger an upload.
   workflows_engine
@@ -2421,7 +2422,7 @@ async fn engine_continues_to_stream_upload_not_complete() {
   let result = workflows_engine.process_log(TestLog::new("foo"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("trigger_buffer_id".into())]))
+    Cow::Owned(TinySet::from([Rc::new("trigger_buffer_id".into())]))
   );
 
   log::info!("Running the engine for the first time.");
@@ -2437,14 +2438,14 @@ async fn engine_continues_to_stream_upload_not_complete() {
   );
   assert_eq!(
     workflows_engine.flushed_buffers(),
-    vec![TinySet::from([Arc::new("trigger_buffer_id".into())]).into()],
+    vec![TinySet::from([Rc::new("trigger_buffer_id".into())]).into()],
   );
 
   // Verify that we have transitioned to streaming.
   let result = workflows_engine.process_log(TestLog::new("streamed"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("continuous_buffer_id".into())]))
+    Cow::Owned(TinySet::from([Rc::new("continuous_buffer_id".into())]))
   );
 
   // Change the session. This would typically cause the engine to stop streaming, but we haven't
@@ -2453,7 +2454,7 @@ async fn engine_continues_to_stream_upload_not_complete() {
   let result = workflows_engine.process_log(TestLog::new("streamed"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("continuous_buffer_id".into())]))
+    Cow::Owned(TinySet::from([Rc::new("continuous_buffer_id".into())]))
   );
 
   workflows_engine.complete_flushes();
@@ -2463,7 +2464,7 @@ async fn engine_continues_to_stream_upload_not_complete() {
   let result = workflows_engine.process_log(TestLog::new("not streamed"));
   assert_eq!(
     result.log_destination_buffer_ids,
-    Cow::Owned(TinySet::from([Arc::new("trigger_buffer_id".into())]))
+    Cow::Owned(TinySet::from([Rc::new("trigger_buffer_id".into())]))
   );
 
   setup.collector.assert_counter_eq(

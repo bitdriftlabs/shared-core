@@ -16,6 +16,8 @@
   clippy::unwrap_used
 )]
 
+use std::ops::Deref;
+
 pub mod actions_flush_buffers;
 pub mod config;
 pub mod engine;
@@ -24,3 +26,19 @@ pub mod metrics;
 mod sankey_diagram;
 pub mod test;
 pub mod workflow;
+
+enum OwnedOrRef<'a, T> {
+  Owned(T),
+  Ref(&'a T),
+}
+
+impl<T> Deref for OwnedOrRef<'_, T> {
+  type Target = T;
+
+  fn deref(&self) -> &Self::Target {
+    match self {
+      OwnedOrRef::Owned(s) => s,
+      OwnedOrRef::Ref(s) => s,
+    }
+  }
+}

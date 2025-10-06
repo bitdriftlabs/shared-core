@@ -28,7 +28,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::time::SystemTime;
 use time::OffsetDateTime;
 
@@ -1056,7 +1056,7 @@ impl Traversal {
     for action in actions {
       match action {
         Action::FlushBuffers(action) => {
-          triggered_actions.push(TriggeredAction::FlushBuffers(action.clone()));
+          triggered_actions.push(TriggeredAction::FlushBuffers(action));
         },
         Action::EmitMetric(action) => {
           triggered_actions.push(TriggeredAction::EmitMetric(action));
@@ -1104,7 +1104,7 @@ impl Traversal {
 #[derive(Clone, Debug, PartialEq)]
 /// The action to perform.
 pub(crate) enum TriggeredAction<'a> {
-  FlushBuffers(Arc<ActionFlushBuffers>),
+  FlushBuffers(&'a Rc<ActionFlushBuffers>),
   EmitMetric(&'a ActionEmitMetric),
   SankeyDiagram(TriggeredActionEmitSankey<'a>),
   TakeScreenshot(&'a ActionTakeScreenshot),
