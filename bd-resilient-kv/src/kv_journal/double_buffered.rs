@@ -96,26 +96,16 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
   where
     F: FnOnce(&mut dyn KVJournal) -> anyhow::Result<T>,
   {
-    // Record the current journal's high water mark status
-    let old_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
-
-    // Perform the operation and save the result
+    let hwm_was_already_triggered = self.active_journal().is_high_water_mark_triggered();
     let result = f(self.active_journal_mut())?;
+    let hwm_is_now_triggered = self.active_journal().is_high_water_mark_triggered();
 
-    // Check if the operation triggered a high water mark event
-    let new_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
-
-    // If high water mark was triggered by this operation
-    if !old_hwm_triggered && new_hwm_triggered {
+    if !hwm_was_already_triggered && hwm_is_now_triggered {
       // Call switch_journals to attempt compaction
       self.switch_journals()?;
-
-      // Get the new value of the current journal's high water mark status after switching
-      let post_switch_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
-
-      // Set our flag if the current journal's high water mark is triggered
-      self.high_water_mark_triggered = post_switch_hwm_triggered;
     }
+
+    self.high_water_mark_triggered = self.active_journal().is_high_water_mark_triggered();
 
     Ok(result)
   }
