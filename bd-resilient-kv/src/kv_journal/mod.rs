@@ -45,12 +45,7 @@ pub trait KVJournal {
   /// # Errors
   /// Returns an error if any journal entry cannot be written. If an error occurs,
   /// no data will have been written.
-  fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
-    for (key, value) in entries {
-      self.set(key, value)?;
-    }
-    Ok(())
-  }
+  fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()>;
 
   /// Generate a new journal entry recording the deletion of a key.
   ///
