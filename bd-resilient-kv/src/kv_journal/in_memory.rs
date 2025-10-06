@@ -382,7 +382,8 @@ impl KVJournal for InMemoryKVJournal<'_> {
   /// Note: Setting any value to `Value::Null` will mark that entry for DELETION!
   ///
   /// # Errors
-  /// Returns an error if the journal entries cannot be written.
+  /// Returns an error if the journal entries cannot be written. If an error occurs,
+  /// no data will have been written.
   fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
     if entries.is_empty() {
       return Ok(());

@@ -181,7 +181,8 @@ impl KVJournal for MemMappedKVJournal {
   /// Note: Setting any value to `Value::Null` will mark that entry for DELETION!
   ///
   /// # Errors
-  /// Returns an error if any journal entry cannot be written.
+  /// Returns an error if any journal entry cannot be written. If an error occurs,
+  /// no data will have been written.
   fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
     self.in_memory_kv.set_multiple(entries)
   }

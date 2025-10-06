@@ -150,6 +150,17 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
     self.with_active_journal_mut(|journal| journal.set(key, value))
   }
 
+  /// Set multiple key-value pairs in this journal.
+  ///
+  /// This will forward the operation to the currently active journal. If the operation
+  /// triggers a high water mark, the journal will automatically switch to the other buffer
+  /// and attempt compaction. If compaction succeeds and there's space, a retry will be attempted.
+  ///
+  /// Note: Setting any value to `Value::Null` will mark that entry for DELETION!
+  ///
+  /// # Errors
+  /// Returns an error if any journal entry cannot be written. If an error occurs,
+  /// no data will have been written.
   fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
     // First attempt using the standard logic
     let result = self.with_active_journal_mut(|journal| journal.set_multiple(entries));

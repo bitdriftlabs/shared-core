@@ -43,8 +43,8 @@ pub trait KVJournal {
   /// * `entries` - A map of keys to values to be set
   ///
   /// # Errors
-  /// Returns an error if any journal entry cannot be written. If an error occurs, some entries
-  /// may have been successfully written while others may not have been processed.
+  /// Returns an error if any journal entry cannot be written. If an error occurs,
+  /// no data will have been written.
   fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
     for (key, value) in entries {
       self.set(key, value)?;
