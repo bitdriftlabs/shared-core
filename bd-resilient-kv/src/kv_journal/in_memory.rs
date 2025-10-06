@@ -10,6 +10,7 @@ use bd_bonjson::Value;
 use bd_bonjson::decoder::from_slice;
 use bd_bonjson::encoder::encode_into_buf;
 use bd_bonjson::serialize_primitives::{
+  SerializationError,
   serialize_array_begin,
   serialize_container_end,
   serialize_map_begin,
@@ -335,13 +336,33 @@ impl<'a> InMemoryKVJournal<'a> {
     let buffer_len = self.buffer.len();
     let mut cursor = &mut self.buffer[self.position ..];
 
-    // Write all entries as a single BONJSON object
-    encode_into_buf(&mut cursor, &Value::Object(entries.clone()))
-      .map_err(|e| anyhow::anyhow!("Failed to encode entries object: {e:?}"))?;
+    // Try to write all entries as a single BONJSON object
+    let encode_result = encode_into_buf(&mut cursor, &Value::Object(entries.clone()));
 
-    let remaining = cursor.remaining_mut();
-    self.set_position(buffer_len - remaining);
-    Ok(())
+    match encode_result {
+      Ok(_bytes_written) => {
+        let remaining = cursor.remaining_mut();
+        self.set_position(buffer_len - remaining);
+        Ok(())
+      },
+      Err(SerializationError::BufferFull) => {
+        // If encoding failed due to buffer full, try triggering high water mark callback
+        // to see if it can free up space (e.g., through compaction)
+        self.trigger_high_water();
+
+        // Reset cursor and try encoding one more time
+        cursor = &mut self.buffer[self.position ..];
+        let _bytes_written = encode_into_buf(&mut cursor, &Value::Object(entries.clone()))
+          .map_err(|e| {
+            anyhow::anyhow!("Failed to encode entries object after high water mark trigger: {e:?}")
+          })?;
+
+        let remaining = cursor.remaining_mut();
+        self.set_position(buffer_len - remaining);
+        Ok(())
+      },
+      Err(e) => Err(anyhow::anyhow!("Failed to encode entries object: {e:?}")),
+    }
   }
 }
 
