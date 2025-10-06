@@ -295,7 +295,13 @@ impl<'a> InMemoryKVJournal<'a> {
 
   /// Check if the current position has exceeded the high water mark and trigger callback if needed.
   fn check_high_water_mark(&mut self) {
-    if !self.high_water_mark_triggered && self.position >= self.high_water_mark {
+    if self.position >= self.high_water_mark {
+      self.trigger_high_water();
+    }
+  }
+
+  fn trigger_high_water(&mut self) {
+    if !self.high_water_mark_triggered {
       self.high_water_mark_triggered = true;
       if let Some(callback) = self.high_water_mark_callback {
         callback(self.position, self.buffer.len(), self.high_water_mark);
