@@ -161,51 +161,14 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
   }
 
   fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
-    // Record the current journal's high water mark status before the operation
-    let old_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
+    // First attempt using the standard logic
+    let result = self.with_active_journal_mut(|journal| journal.set_multiple(entries));
 
-    // Try the operation first
-    let result = self.active_journal_mut().set_multiple(entries);
-
-    // Check if high water mark was triggered by this operation
-    let new_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
-
-    // If the operation failed and high water mark was triggered, try switching and retrying
-    if result.is_err() && !old_hwm_triggered && new_hwm_triggered {
-      // Switch journals to attempt compaction
-      if let Err(switch_error) = self.switch_journals() {
-        return Err(switch_error);
-      }
-
-      // Check if our own high water mark is triggered after switching
-      let post_switch_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
-
-      if post_switch_hwm_triggered {
-        // Compaction failed - set our flag and return the original error
-        self.high_water_mark_triggered = true;
-        result
-      } else {
-        // Compaction succeeded - retry the operation on the new journal
-        let retry_result = self.active_journal_mut().set_multiple(entries);
-
-        // After retry, check if high water mark is triggered and update our flag
-        let final_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
-        self.high_water_mark_triggered = final_hwm_triggered;
-
-        retry_result
-      }
+    // If it failed and our high water mark isn't triggered, try again
+    // (this handles the case where the underlying journal filled up but compaction freed space)
+    if result.is_err() && !self.high_water_mark_triggered {
+      self.with_active_journal_mut(|journal| journal.set_multiple(entries))
     } else {
-      // Operation succeeded or failed for other reasons - handle normally
-      if !old_hwm_triggered && new_hwm_triggered {
-        // High water mark was triggered - try compaction
-        if let Err(switch_error) = self.switch_journals() {
-          return Err(switch_error);
-        }
-
-        // Set our flag based on the current journal's high water mark status after switching
-        let post_switch_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
-        self.high_water_mark_triggered = post_switch_hwm_triggered;
-      }
       result
     }
   }
