@@ -116,6 +116,36 @@ impl KVStore {
     Ok(old_value)
   }
 
+  /// Insert multiple key-value pairs in a single operation.
+  ///
+  /// This method efficiently inserts multiple key-value pairs by using the underlying
+  /// journal's batch operation capability. For each key-value pair:
+  /// - Inserting `Value::Null` is equivalent to removing the key
+  /// - Other values are inserted normally
+  ///
+  /// # Arguments
+  /// * `entries` - A map of keys to values to be inserted
+  ///
+  /// # Errors
+  /// Returns an error if any value cannot be written to the journal. If an error occurs,
+  /// some entries may have been successfully written while others may not have been processed.
+  /// The cache will be synchronized with whatever was successfully written to the journal.
+  pub fn insert_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
+    // Use the journal's set_multiple method for efficient batch operations
+    self.journal.set_multiple(entries)?;
+
+    // Update the cache to reflect all changes
+    for (key, value) in entries {
+      if matches!(value, Value::Null) {
+        self.cached_map.remove(key);
+      } else {
+        self.cached_map.insert(key.clone(), value.clone());
+      }
+    }
+
+    Ok(())
+  }
+
   /// Remove a key and return its value if it existed.
   ///
   /// # Errors

@@ -143,6 +143,10 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
     self.with_active_journal_mut(|journal| journal.set(key, value))
   }
 
+  fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
+    self.with_active_journal_mut(|journal| journal.set_multiple(entries))
+  }
+
   fn delete(&mut self, key: &str) -> anyhow::Result<()> {
     self.with_active_journal_mut(|journal| journal.delete(key))
   }

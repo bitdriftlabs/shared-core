@@ -7,6 +7,7 @@
 
 use crate::KVStore;
 use bd_bonjson::Value;
+use std::collections::HashMap;
 use tempfile::TempDir;
 
 #[test]
@@ -79,6 +80,49 @@ fn test_kv_store_remove() -> anyhow::Result<()> {
   // Remove non-existent key
   let removed = store.remove("nonexistent")?;
   assert!(removed.is_none());
+
+  Ok(())
+}
+
+#[test]
+fn test_kv_store_insert_multiple() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let base_path = temp_dir.path().join("test_store");
+
+  let mut store = KVStore::new(&base_path, 4096, None, None)?;
+
+  // Create multiple entries to insert
+  let mut entries = HashMap::new();
+  entries.insert("key1".to_string(), Value::String("value1".to_string()));
+  entries.insert("key2".to_string(), Value::Signed(42));
+  entries.insert("key3".to_string(), Value::Bool(true));
+  entries.insert("key4".to_string(), Value::Float(3.14159));
+
+  // Insert all entries at once
+  store.insert_multiple(&entries)?;
+
+  // Verify all entries were inserted
+  assert_eq!(store.len(), 4);
+  assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
+  assert_eq!(store.get("key2"), Some(&Value::Signed(42)));
+  assert_eq!(store.get("key3"), Some(&Value::Bool(true)));
+  assert_eq!(store.get("key4"), Some(&Value::Float(3.14159)));
+
+  // Test inserting more entries, including one with Null (deletion)
+  let mut more_entries = HashMap::new();
+  more_entries.insert("key5".to_string(), Value::String("value5".to_string()));
+  more_entries.insert("key2".to_string(), Value::Null); // This should delete key2
+  more_entries.insert("key1".to_string(), Value::String("updated_value1".to_string())); // Update key1
+
+  store.insert_multiple(&more_entries)?;
+
+  // Verify the changes
+  assert_eq!(store.len(), 4); // key1, key3, key4, key5 (key2 deleted)
+  assert_eq!(store.get("key1"), Some(&Value::String("updated_value1".to_string())));
+  assert_eq!(store.get("key2"), None); // Deleted
+  assert_eq!(store.get("key3"), Some(&Value::Bool(true))); // Unchanged
+  assert_eq!(store.get("key4"), Some(&Value::Float(3.14159))); // Unchanged
+  assert_eq!(store.get("key5"), Some(&Value::String("value5".to_string()))); // New
 
   Ok(())
 }

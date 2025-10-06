@@ -177,6 +177,19 @@ impl KVJournal for MemMappedKVJournal {
     self.in_memory_kv.set(key, value)
   }
 
+  /// Set multiple key-value pairs in this journal.
+  ///
+  /// This will create journal entries for each key-value pair and automatically persist them
+  /// to the mapped file.
+  ///
+  /// Note: Setting any value to `Value::Null` will mark that entry for DELETION!
+  ///
+  /// # Errors
+  /// Returns an error if any journal entry cannot be written.
+  fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
+    self.in_memory_kv.set_multiple(entries)
+  }
+
   /// Delete a key from this journal.
   ///
   /// This will create a new journal entry and automatically persist it to the mapped file.

@@ -6,8 +6,9 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::InMemoryKVJournal;
-use crate::kv_journal::KVJournal;
+use crate::kv_journal::{DoubleBufferedKVJournal, KVJournal, MemMappedKVJournal};
 use bd_bonjson::Value;
+use std::collections::HashMap;
 use std::io::Write;
 use tempfile::NamedTempFile;
 
@@ -73,6 +74,101 @@ fn test_set_multiple_values() {
   assert_eq!(map.get("key1"), Some(&Value::String("value1".to_string())));
   assert_eq!(map.get("key2"), Some(&Value::Signed(123)));
   assert_eq!(map.get("key3"), Some(&Value::Bool(false)));
+}
+
+#[test]
+fn test_set_multiple_method() {
+  let mut buffer = vec![0; 256];
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
+
+  // Create a HashMap with multiple entries
+  let mut entries = HashMap::new();
+  entries.insert("key1".to_string(), Value::String("value1".to_string()));
+  entries.insert("key2".to_string(), Value::Signed(456));
+  entries.insert("key3".to_string(), Value::Bool(true));
+  entries.insert("key4".to_string(), Value::Float(3.14));
+
+  // Use set_multiple to set all entries at once
+  kv.set_multiple(&entries).unwrap();
+
+  let map = kv.as_hashmap().unwrap();
+  assert_eq!(map.len(), 4);
+  assert_eq!(map.get("key1"), Some(&Value::String("value1".to_string())));
+  assert_eq!(map.get("key2"), Some(&Value::Signed(456)));
+  assert_eq!(map.get("key3"), Some(&Value::Bool(true)));
+  assert_eq!(map.get("key4"), Some(&Value::Float(3.14)));
+}
+
+#[test]
+fn test_set_multiple_with_deletion() {
+  let mut buffer = vec![0; 256];
+  let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
+
+  // First set some initial values
+  kv.set("key1", &Value::String("value1".to_string())).unwrap();
+  kv.set("key2", &Value::Signed(123)).unwrap();
+  kv.set("key3", &Value::Bool(false)).unwrap();
+
+  // Now use set_multiple to update some and delete others
+  let mut entries = HashMap::new();
+  entries.insert("key1".to_string(), Value::String("updated_value1".to_string()));
+  entries.insert("key2".to_string(), Value::Null); // This should delete key2
+  entries.insert("key4".to_string(), Value::Float(2.71)); // This is a new key
+
+  kv.set_multiple(&entries).unwrap();
+
+  let map = kv.as_hashmap().unwrap();
+  assert_eq!(map.len(), 3); // key1, key3 (original), and key4 (new); key2 deleted
+  assert_eq!(map.get("key1"), Some(&Value::String("updated_value1".to_string())));
+  assert_eq!(map.get("key2"), None); // Deleted by Value::Null
+  assert_eq!(map.get("key3"), Some(&Value::Bool(false))); // Unchanged
+  assert_eq!(map.get("key4"), Some(&Value::Float(2.71))); // New entry
+}
+
+#[test]
+fn test_set_multiple_forwarding_double_buffered() {
+  let mut buffer_a = vec![0; 256];
+  let mut buffer_b = vec![0; 256];
+  let journal_a = InMemoryKVJournal::new(&mut buffer_a, None, None).unwrap();
+  let journal_b = InMemoryKVJournal::new(&mut buffer_b, None, None).unwrap();
+  let mut double_buffered = DoubleBufferedKVJournal::new(journal_a, journal_b).unwrap();
+
+  // Create multiple entries
+  let mut entries = HashMap::new();
+  entries.insert("db_key1".to_string(), Value::String("value1".to_string()));
+  entries.insert("db_key2".to_string(), Value::Signed(123));
+  entries.insert("db_key3".to_string(), Value::Bool(true));
+
+  // Use set_multiple on double buffered journal
+  double_buffered.set_multiple(&entries).unwrap();
+
+  let map = double_buffered.as_hashmap().unwrap();
+  assert_eq!(map.len(), 3);
+  assert_eq!(map.get("db_key1"), Some(&Value::String("value1".to_string())));
+  assert_eq!(map.get("db_key2"), Some(&Value::Signed(123)));
+  assert_eq!(map.get("db_key3"), Some(&Value::Bool(true)));
+}
+
+#[test]
+fn test_set_multiple_forwarding_memmapped() {
+  let temp_file = NamedTempFile::new().unwrap();
+  let path = temp_file.path().to_str().unwrap();
+  let mut memmapped = MemMappedKVJournal::new(path, 512, None, None).unwrap();
+
+  // Create multiple entries
+  let mut entries = HashMap::new();
+  entries.insert("mm_key1".to_string(), Value::String("mapped_value1".to_string()));
+  entries.insert("mm_key2".to_string(), Value::Float(3.14159));
+  entries.insert("mm_key3".to_string(), Value::Bool(false));
+
+  // Use set_multiple on memory-mapped journal
+  memmapped.set_multiple(&entries).unwrap();
+
+  let map = memmapped.as_hashmap().unwrap();
+  assert_eq!(map.len(), 3);
+  assert_eq!(map.get("mm_key1"), Some(&Value::String("mapped_value1".to_string())));
+  assert_eq!(map.get("mm_key2"), Some(&Value::Float(3.14159)));
+  assert_eq!(map.get("mm_key3"), Some(&Value::Bool(false)));
 }
 
 #[test]
