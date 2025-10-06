@@ -395,6 +395,22 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     ))
   }
 
+  /// Sends a message to set or update a feature flag.
+  ///
+  /// This is an internal method used by the logger to send feature flag update messages
+  /// to the async log buffer. The message is sent asynchronously and will be processed
+  /// by the log buffer thread.
+  ///
+  /// # Arguments
+  ///
+  /// * `tx` - The sender channel to the async log buffer
+  /// * `flag` - The name of the feature flag to set or update
+  /// * `variant` - The variant value for the flag (None for boolean-style flags)
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(())` if the message was sent successfully, or a `TrySendError`
+  /// if the channel is full or disconnected.
   pub fn set_feature_flag(
     tx: &Sender<AsyncLogBufferMessage>,
     flag: String,
@@ -403,6 +419,21 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     tx.try_send(AsyncLogBufferMessage::SetFeatureFlag(flag, variant))
   }
 
+  /// Sends a message to set or update multiple feature flags.
+  ///
+  /// This is an internal method used by the logger to send multiple feature flag update
+  /// messages to the async log buffer in a single operation. The message is sent
+  /// asynchronously and will be processed by the log buffer thread.
+  ///
+  /// # Arguments
+  ///
+  /// * `tx` - The sender channel to the async log buffer
+  /// * `flags` - A vector of tuples containing flag names and their variants
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(())` if the message was sent successfully, or a `TrySendError`
+  /// if the channel is full or disconnected.
   pub fn set_feature_flags(
     tx: &Sender<AsyncLogBufferMessage>,
     flags: Vec<(String, Option<String>)>,
@@ -410,6 +441,21 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     tx.try_send(AsyncLogBufferMessage::SetFeatureFlags(flags))
   }
 
+  /// Sends a message to remove a feature flag.
+  ///
+  /// This is an internal method used by the logger to send feature flag removal messages
+  /// to the async log buffer. The message is sent asynchronously and will be processed
+  /// by the log buffer thread.
+  ///
+  /// # Arguments
+  ///
+  /// * `tx` - The sender channel to the async log buffer
+  /// * `flag` - The name of the feature flag to remove
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(())` if the message was sent successfully, or a `TrySendError`
+  /// if the channel is full or disconnected.
   pub fn remove_feature_flag(
     tx: &Sender<AsyncLogBufferMessage>,
     flag: String,
