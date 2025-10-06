@@ -22,7 +22,6 @@ pub struct DoubleBufferedKVJournal<A: KVJournal, B: KVJournal> {
   journal_a: A,
   journal_b: B,
   journal_a_is_active: bool,
-  high_water_mark_triggered: bool,
 }
 
 impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
@@ -55,7 +54,6 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
       journal_a,
       journal_b,
       journal_a_is_active: active_journal_a,
-      high_water_mark_triggered: false,
     })
   }
 
@@ -105,8 +103,6 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
       self.switch_journals()?;
     }
 
-    self.high_water_mark_triggered = self.active_journal().is_high_water_mark_triggered();
-
     Ok(result)
   }
 
@@ -135,7 +131,7 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
   }
 
   fn is_high_water_mark_triggered(&self) -> bool {
-    self.high_water_mark_triggered
+    self.active_journal().is_high_water_mark_triggered()
   }
 
   fn buffer_usage_ratio(&self) -> f32 {
@@ -167,7 +163,7 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
 
     // If it failed and our high water mark isn't triggered, try again
     // (this handles the case where the underlying journal filled up but compaction freed space)
-    if result.is_err() && !self.high_water_mark_triggered {
+    if result.is_err() && !self.is_high_water_mark_triggered() {
       self.with_active_journal_mut(|journal| journal.set_multiple(entries))
     } else {
       result
