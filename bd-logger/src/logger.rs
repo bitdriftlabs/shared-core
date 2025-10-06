@@ -33,6 +33,7 @@ use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use parking_lot::Mutex;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -427,6 +428,20 @@ impl LoggerHandle {
       },
       "failed to set {:?} feature flag, setting flags from within a callback is not permitted",
       flag
+    );
+  }
+
+  pub fn set_feature_flags(&self, flags: HashMap<String, Option<String>>) {
+    with_reentrancy_guard!(
+      {
+        let result =
+          AsyncLogBuffer::<LoggerReplay>::set_feature_flags(&self.tx, flags);
+        if let Err(e) = result {
+          log::warn!("failed to set feature flags: {e:?}");
+        }
+      },
+      "failed to set {:?} feature flags, setting flags from within a callback is not permitted",
+      flags
     );
   }
 

@@ -72,6 +72,7 @@ pub enum AsyncLogBufferMessage {
   AddLogField(String, StringOrBytes<String, Vec<u8>>),
   RemoveLogField(String),
   SetFeatureFlag(String, Option<String>),
+  SetFeatureFlags(HashMap<String, Option<String>>),
   RemoveFeatureFlag(String),
   FlushState(Option<bd_completion::Sender<()>>),
 }
@@ -84,6 +85,7 @@ impl MemorySized for AsyncLogBufferMessage {
         Self::AddLogField(key, value) => key.size() + value.size(),
         Self::RemoveLogField(field_name) => field_name.len(),
         Self::SetFeatureFlag(flag, variant) => flag.len() + variant.as_ref().map_or(0, String::len),
+        Self::SetFeatureFlags(flags) => flags.iter().map(|(k, v)| k.len() + v.as_ref().map_or(0, String::len)).sum(),
         Self::RemoveFeatureFlag(flag) => flag.len(),
         Self::FlushState(sender) => size_of_val(sender),
       }
@@ -396,6 +398,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     variant: Option<String>,
   ) -> Result<(), TrySendError> {
     tx.try_send(AsyncLogBufferMessage::SetFeatureFlag(flag, variant))
+  }
+
+  pub fn set_feature_flags(
+    tx: &Sender<AsyncLogBufferMessage>,
+    flags: HashMap<String, Option<String>>,
+  ) -> Result<(), TrySendError> {
+    tx.try_send(AsyncLogBufferMessage::SetFeatureFlags(flags))
   }
 
   pub fn remove_feature_flag(
@@ -815,6 +824,17 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
                 feature_flags.set(&flag, variant.as_deref()).unwrap_or_else(|e| {
                   log::warn!("failed to set feature flag ({flag:?}): {e}");
+                });
+              }
+            },
+            AsyncLogBufferMessage::SetFeatureFlags(flags) => {
+              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
+                let flags_ref: HashMap<String, Option<&str>> = flags
+                  .iter()
+                  .map(|(k, v)| (k.clone(), v.as_deref()))
+                  .collect();
+                feature_flags.set_multiple(&flags_ref).unwrap_or_else(|e| {
+                  log::warn!("failed to set feature flags ({flags:?}): {e}");
                 });
               }
             },
