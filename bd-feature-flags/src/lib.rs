@@ -230,6 +230,45 @@ impl FeatureFlags {
     Ok(())
   }
 
+  /// Sets or updates multiple feature flags in a single operation.
+  ///
+  /// Creates or updates multiple feature flags with their respective variants. All flags are
+  /// immediately stored in persistent storage and receive timestamps indicating when they were
+  /// last modified. This method is more efficient than calling `set()` multiple times.
+  ///
+  /// # Arguments
+  ///
+  /// * `flags` - A map of flag names to their variants:
+  ///   - `Some(string)` sets the flag with the specified variant
+  ///   - `Some("")` treats the variant as `None`
+  ///   - `None` sets the flag without a variant (simple boolean-style flag)
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(())` on success, or an error if any flag cannot be stored.
+  ///
+  /// # Errors
+  ///
+  /// This function will return an error if:
+  /// - Any flag cannot be written to persistent storage due to I/O errors, insufficient disk space,
+  ///   or permission issues
+  /// - If an error occurs, some flags may have been successfully written while others may not have
+  ///   been processed
+  pub fn set_multiple(&mut self, flags: &HashMap<String, Option<&str>>) -> anyhow::Result<()> {
+    // Convert the input HashMap to the format expected by the KV store
+    let mut kv_entries = HashMap::new();
+
+    let now = time::OffsetDateTime::now_utc();
+    for (key, variant) in flags {
+      let feature_flag = FeatureFlag::new(*variant, Some(now))?;
+      let value = feature_flag.to_value();
+      kv_entries.insert(key.clone(), value);
+    }
+
+    self.flags_store.insert_multiple(&kv_entries)?;
+    Ok(())
+  }
+
   /// Removes a feature flag.
   ///
   /// # Arguments

@@ -105,13 +105,17 @@ fn test_set_multiple_with_deletion() {
   let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
 
   // First set some initial values
-  kv.set("key1", &Value::String("value1".to_string())).unwrap();
+  kv.set("key1", &Value::String("value1".to_string()))
+    .unwrap();
   kv.set("key2", &Value::Signed(123)).unwrap();
   kv.set("key3", &Value::Bool(false)).unwrap();
 
   // Now use set_multiple to update some and delete others
   let mut entries = HashMap::new();
-  entries.insert("key1".to_string(), Value::String("updated_value1".to_string()));
+  entries.insert(
+    "key1".to_string(),
+    Value::String("updated_value1".to_string()),
+  );
   entries.insert("key2".to_string(), Value::Null); // This should delete key2
   entries.insert("key4".to_string(), Value::Float(2.71)); // This is a new key
 
@@ -119,7 +123,10 @@ fn test_set_multiple_with_deletion() {
 
   let map = kv.as_hashmap().unwrap();
   assert_eq!(map.len(), 3); // key1, key3 (original), and key4 (new); key2 deleted
-  assert_eq!(map.get("key1"), Some(&Value::String("updated_value1".to_string())));
+  assert_eq!(
+    map.get("key1"),
+    Some(&Value::String("updated_value1".to_string()))
+  );
   assert_eq!(map.get("key2"), None); // Deleted by Value::Null
   assert_eq!(map.get("key3"), Some(&Value::Bool(false))); // Unchanged
   assert_eq!(map.get("key4"), Some(&Value::Float(2.71))); // New entry
@@ -144,7 +151,10 @@ fn test_set_multiple_forwarding_double_buffered() {
 
   let map = double_buffered.as_hashmap().unwrap();
   assert_eq!(map.len(), 3);
-  assert_eq!(map.get("db_key1"), Some(&Value::String("value1".to_string())));
+  assert_eq!(
+    map.get("db_key1"),
+    Some(&Value::String("value1".to_string()))
+  );
   assert_eq!(map.get("db_key2"), Some(&Value::Signed(123)));
   assert_eq!(map.get("db_key3"), Some(&Value::Bool(true)));
 }
@@ -157,7 +167,10 @@ fn test_set_multiple_forwarding_memmapped() {
 
   // Create multiple entries
   let mut entries = HashMap::new();
-  entries.insert("mm_key1".to_string(), Value::String("mapped_value1".to_string()));
+  entries.insert(
+    "mm_key1".to_string(),
+    Value::String("mapped_value1".to_string()),
+  );
   entries.insert("mm_key2".to_string(), Value::Float(3.14159));
   entries.insert("mm_key3".to_string(), Value::Bool(false));
 
@@ -166,7 +179,10 @@ fn test_set_multiple_forwarding_memmapped() {
 
   let map = memmapped.as_hashmap().unwrap();
   assert_eq!(map.len(), 3);
-  assert_eq!(map.get("mm_key1"), Some(&Value::String("mapped_value1".to_string())));
+  assert_eq!(
+    map.get("mm_key1"),
+    Some(&Value::String("mapped_value1".to_string()))
+  );
   assert_eq!(map.get("mm_key2"), Some(&Value::Float(3.14159)));
   assert_eq!(map.get("mm_key3"), Some(&Value::Bool(false)));
 }

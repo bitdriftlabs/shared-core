@@ -103,7 +103,10 @@ fn test_kv_store_insert_multiple() -> anyhow::Result<()> {
 
   // Verify all entries were inserted
   assert_eq!(store.len(), 4);
-  assert_eq!(store.get("key1"), Some(&Value::String("value1".to_string())));
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("value1".to_string()))
+  );
   assert_eq!(store.get("key2"), Some(&Value::Signed(42)));
   assert_eq!(store.get("key3"), Some(&Value::Bool(true)));
   assert_eq!(store.get("key4"), Some(&Value::Float(3.14159)));
@@ -112,17 +115,26 @@ fn test_kv_store_insert_multiple() -> anyhow::Result<()> {
   let mut more_entries = HashMap::new();
   more_entries.insert("key5".to_string(), Value::String("value5".to_string()));
   more_entries.insert("key2".to_string(), Value::Null); // This should delete key2
-  more_entries.insert("key1".to_string(), Value::String("updated_value1".to_string())); // Update key1
+  more_entries.insert(
+    "key1".to_string(),
+    Value::String("updated_value1".to_string()),
+  ); // Update key1
 
   store.insert_multiple(&more_entries)?;
 
   // Verify the changes
   assert_eq!(store.len(), 4); // key1, key3, key4, key5 (key2 deleted)
-  assert_eq!(store.get("key1"), Some(&Value::String("updated_value1".to_string())));
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("updated_value1".to_string()))
+  );
   assert_eq!(store.get("key2"), None); // Deleted
   assert_eq!(store.get("key3"), Some(&Value::Bool(true))); // Unchanged
   assert_eq!(store.get("key4"), Some(&Value::Float(3.14159))); // Unchanged
-  assert_eq!(store.get("key5"), Some(&Value::String("value5".to_string()))); // New
+  assert_eq!(
+    store.get("key5"),
+    Some(&Value::String("value5".to_string()))
+  ); // New
 
   Ok(())
 }

@@ -231,6 +231,124 @@ fn test_set_multiple_flags() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_set_multiple_method() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let temp_path = temp_dir.path();
+
+  let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
+
+  // Create a map of flags to set
+  let mut flag_map = HashMap::new();
+  flag_map.insert("batch_flag1".to_string(), Some("batch_variant1"));
+  flag_map.insert("batch_flag2".to_string(), None);
+  flag_map.insert("batch_flag3".to_string(), Some("batch_variant3"));
+  flag_map.insert("batch_flag4".to_string(), Some("")); // Empty string should be treated as None
+
+  // Set all flags at once
+  flags.set_multiple(&flag_map)?;
+
+  // Verify all flags were set correctly
+  assert_eq!(flags.as_hashmap().len(), 4);
+
+  let flag1 = flags.get("batch_flag1").expect("batch_flag1 should exist");
+  assert_eq!(flag1.variant, Some("batch_variant1".to_string()));
+
+  let flag2 = flags.get("batch_flag2").expect("batch_flag2 should exist");
+  assert_eq!(flag2.variant, None);
+
+  let flag3 = flags.get("batch_flag3").expect("batch_flag3 should exist");
+  assert_eq!(flag3.variant, Some("batch_variant3".to_string()));
+
+  let flag4 = flags.get("batch_flag4").expect("batch_flag4 should exist");
+  assert_eq!(flag4.variant, None); // Empty string treated as None
+
+  Ok(())
+}
+
+#[test]
+fn test_set_multiple_method_persistence() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let temp_path = temp_dir.path();
+
+  // Create flags and set multiple at once
+  {
+    let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
+
+    let mut flag_map = HashMap::new();
+    flag_map.insert("persist_flag1".to_string(), Some("persist_variant1"));
+    flag_map.insert("persist_flag2".to_string(), None);
+    flag_map.insert("persist_flag3".to_string(), Some("persist_variant3"));
+
+    flags.set_multiple(&flag_map)?;
+    flags.sync()?; // Ensure data is written to disk
+  } // Drop the instance
+
+  // Create new instance - should load from persistent storage
+  let flags = FeatureFlags::new(temp_path, 1024, None)?;
+
+  // Verify flags were persisted and loaded correctly
+  assert_eq!(flags.as_hashmap().len(), 3);
+
+  let flag1 = flags
+    .get("persist_flag1")
+    .expect("persist_flag1 should exist");
+  assert_eq!(flag1.variant, Some("persist_variant1".to_string()));
+
+  let flag2 = flags
+    .get("persist_flag2")
+    .expect("persist_flag2 should exist");
+  assert_eq!(flag2.variant, None);
+
+  let flag3 = flags
+    .get("persist_flag3")
+    .expect("persist_flag3 should exist");
+  assert_eq!(flag3.variant, Some("persist_variant3".to_string()));
+
+  Ok(())
+}
+
+#[test]
+fn test_set_multiple_method_overwrite_existing() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let temp_path = temp_dir.path();
+
+  let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
+
+  // Set some initial flags
+  flags.set("existing1", Some("old_value1"))?;
+  flags.set("existing2", Some("old_value2"))?;
+
+  let initial_flag1 = flags.get("existing1").expect("existing1 should exist");
+  let initial_timestamp1 = initial_flag1.timestamp;
+
+  // Wait a bit to ensure different timestamps
+  std::thread::sleep(std::time::Duration::from_millis(1));
+
+  // Update existing flags and add new ones using set_multiple
+  let mut flag_map = HashMap::new();
+  flag_map.insert("existing1".to_string(), Some("new_value1")); // Update existing
+  flag_map.insert("existing2".to_string(), None); // Update existing to None
+  flag_map.insert("new_flag".to_string(), Some("new_value")); // Add new
+
+  flags.set_multiple(&flag_map)?;
+
+  // Verify updates
+  assert_eq!(flags.as_hashmap().len(), 3);
+
+  let updated_flag1 = flags.get("existing1").expect("existing1 should exist");
+  assert_eq!(updated_flag1.variant, Some("new_value1".to_string()));
+  assert!(updated_flag1.timestamp > initial_timestamp1);
+
+  let updated_flag2 = flags.get("existing2").expect("existing2 should exist");
+  assert_eq!(updated_flag2.variant, None);
+
+  let new_flag = flags.get("new_flag").expect("new_flag should exist");
+  assert_eq!(new_flag.variant, Some("new_value".to_string()));
+
+  Ok(())
+}
+
+#[test]
 fn test_clear() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let temp_path = temp_dir.path();
