@@ -210,10 +210,7 @@ impl<'a> InMemoryKVJournal<'a> {
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
   /// # Errors
   /// Returns an error if serialization fails or if `high_water_mark_ratio` is invalid.
-  pub fn new(
-    buffer: &'a mut [u8],
-    high_water_mark_ratio: Option<f32>,
-  ) -> anyhow::Result<Self> {
+  pub fn new(buffer: &'a mut [u8], high_water_mark_ratio: Option<f32>) -> anyhow::Result<Self> {
     // If this operation gets interrupted, the buffer must be considered invalid.
     invalidate_version(buffer);
 
@@ -337,7 +334,10 @@ impl<'a> InMemoryKVJournal<'a> {
       Err(SerializationError::BufferFull) => {
         // We didn't have enough space to write all entries at once.
         self.trigger_high_water();
-        Err(anyhow::anyhow!("Failed to encode entries object: {:?}", SerializationError::BufferFull))
+        Err(anyhow::anyhow!(
+          "Failed to encode entries object: {:?}",
+          SerializationError::BufferFull
+        ))
       },
       Err(e) => Err(anyhow::anyhow!("Failed to encode entries object: {e:?}")),
     }
