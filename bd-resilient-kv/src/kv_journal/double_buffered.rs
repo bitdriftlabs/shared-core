@@ -94,9 +94,10 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
   where
     F: FnOnce(&mut dyn KVJournal) -> anyhow::Result<T>,
   {
-    let hwm_was_already_triggered = self.active_journal().is_high_water_mark_triggered();
-    let result = f(self.active_journal_mut())?;
-    let hwm_is_now_triggered = self.active_journal().is_high_water_mark_triggered();
+    let journal = self.active_journal_mut();
+    let hwm_was_already_triggered = journal.is_high_water_mark_triggered();
+    let result = f(journal)?;
+    let hwm_is_now_triggered = journal.is_high_water_mark_triggered();
 
     if !hwm_was_already_triggered && hwm_is_now_triggered {
       // Call switch_journals to attempt compaction
