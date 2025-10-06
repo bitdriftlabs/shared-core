@@ -472,6 +472,9 @@ impl KVJournal for InMemoryKVJournal<'_> {
     // If this operation gets interrupted, the buffer must be considered invalid.
     invalidate_version(self.buffer);
 
+    // Reset high water mark triggered flag since we're reinitializing
+    self.high_water_mark_triggered = false;
+
     // Write metadata with current timestamp
     let timestamp = current_timestamp()?;
     let mut position = write_metadata(self.buffer, timestamp)?;

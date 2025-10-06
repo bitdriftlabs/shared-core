@@ -928,6 +928,83 @@ fn test_reinit_from() {
 }
 
 #[test]
+fn test_reinit_from_resets_high_water_mark_triggered() {
+  // Create a very large source buffer to ensure we don't hit high water mark
+  let mut source_buffer = vec![0; 2048];
+  let mut source_kv = InMemoryKVJournal::new(&mut source_buffer, None, None).unwrap();
+
+  // Fill the source with some overwrites of the same key to generate journal entries
+  // but keep the final data small. This simulates a journal that has grown but
+  // hasn't hit its high water mark due to the large buffer.
+  for i in 0 .. 10 {
+    source_kv
+      .set("key1", &Value::String(format!("val_{i}")))
+      .unwrap();
+    source_kv.set("key2", &Value::Signed(i)).unwrap();
+  }
+
+  // Verify source hasn't hit high water mark (large buffer)
+  assert!(
+    !source_kv.is_high_water_mark_triggered(),
+    "Source should not have triggered high water mark (usage: {:.2}%)",
+    source_kv.buffer_usage_ratio() * 100.0
+  );
+
+  // Create a smaller target buffer with low high water mark
+  let mut target_buffer = vec![0; 256];
+  let mut target_kv = InMemoryKVJournal::new(&mut target_buffer, Some(0.3), None).unwrap();
+
+  // Fill target to trigger its high water mark
+  for i in 0 .. 8 {
+    target_kv
+      .set(
+        &format!("temp_{i}"),
+        &Value::String("temp_value".to_string()),
+      )
+      .unwrap();
+  }
+
+  // Verify target has triggered high water mark
+  assert!(
+    target_kv.is_high_water_mark_triggered(),
+    "Target should have triggered high water mark before reinit (usage: {:.2}%)",
+    target_kv.buffer_usage_ratio() * 100.0
+  );
+
+  // Reinitialize target from source
+  target_kv.reinit_from(&source_kv).unwrap();
+
+  // Verify the data was replaced with source data
+  let target_data = target_kv.as_hashmap().unwrap();
+  assert_eq!(target_data.len(), 2);
+  assert_eq!(
+    target_data.get("key1"),
+    Some(&Value::String("val_9".to_string()))
+  );
+  assert_eq!(target_data.get("key2"), Some(&Value::Signed(9)));
+
+  // The key test: high water mark should be properly evaluated after reinit
+  // The flag should be reset and then re-evaluated based on the new position
+  let final_triggered = target_kv.is_high_water_mark_triggered();
+  let final_usage = target_kv.buffer_usage_ratio();
+
+  // This assertion validates that the flag state matches the actual buffer usage
+  if final_usage >= 0.3 {
+    assert!(
+      final_triggered,
+      "High water mark should be triggered if usage >= ratio (usage: {:.2}%)",
+      final_usage * 100.0
+    );
+  } else {
+    assert!(
+      !final_triggered,
+      "High water mark should not be triggered if usage < ratio (usage: {:.2}%)",
+      final_usage * 100.0
+    );
+  }
+}
+
+#[test]
 fn test_journal_clear() {
   let mut buffer = vec![0; 512];
   let mut kv = InMemoryKVJournal::new(&mut buffer, None, None).unwrap();
