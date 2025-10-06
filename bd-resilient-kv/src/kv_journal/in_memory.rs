@@ -324,6 +324,19 @@ impl<'a> InMemoryKVJournal<'a> {
     self.set_position(buffer_len - remaining);
     Ok(())
   }
+
+  fn write_journal_entries(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
+    let buffer_len = self.buffer.len();
+    let mut cursor = &mut self.buffer[self.position ..];
+
+    // Write all entries as a single BONJSON object
+    encode_into_buf(&mut cursor, &Value::Object(entries.clone()))
+      .map_err(|e| anyhow::anyhow!("Failed to encode entries object: {e:?}"))?;
+
+    let remaining = cursor.remaining_mut();
+    self.set_position(buffer_len - remaining);
+    Ok(())
+  }
 }
 
 impl KVJournal for InMemoryKVJournal<'_> {
@@ -354,6 +367,24 @@ impl KVJournal for InMemoryKVJournal<'_> {
   /// Returns an error if the journal entry cannot be written.
   fn set(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {
     self.write_journal_entry(key, value)
+  }
+
+  /// Generate a new journal entry recording the setting of multiple key-value pairs.
+  ///
+  /// This is more efficient than calling `set()` multiple times as it writes
+  /// all entries as a single BONJSON object rather than individual objects.
+  ///
+  /// Note: Setting any value to `Value::Null` will mark that entry for DELETION!
+  ///
+  /// # Errors
+  /// Returns an error if the journal entries cannot be written.
+  fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
+    if entries.is_empty() {
+      return Ok(());
+    }
+
+    // Write all entries as a single BONJSON object for efficiency
+    self.write_journal_entries(entries)
   }
 
   /// Generate a new journal entry recording the deletion of a key.
