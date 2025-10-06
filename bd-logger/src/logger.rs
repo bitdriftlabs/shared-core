@@ -33,7 +33,6 @@ use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use parking_lot::Mutex;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -417,13 +416,12 @@ impl LoggerHandle {
     );
   }
 
-  pub fn set_feature_flag(&self, flag: &str, variant: Option<String>) {
+  pub fn set_feature_flag(&self, flag: String, variant: Option<String>) {
     with_reentrancy_guard!(
       {
-        let result =
-          AsyncLogBuffer::<LoggerReplay>::set_feature_flag(&self.tx, flag.to_string(), variant);
+        let result = AsyncLogBuffer::<LoggerReplay>::set_feature_flag(&self.tx, flag, variant);
         if let Err(e) = result {
-          log::warn!("failed to set feature flag {flag:?}: {e:?}");
+          log::warn!("failed to set feature flag: {e:?}");
         }
       },
       "failed to set {:?} feature flag, setting flags from within a callback is not permitted",
@@ -431,11 +429,10 @@ impl LoggerHandle {
     );
   }
 
-  pub fn set_feature_flags(&self, flags: HashMap<String, Option<String>>) {
+  pub fn set_feature_flags(&self, flags: Vec<(String, Option<String>)>) {
     with_reentrancy_guard!(
       {
-        let result =
-          AsyncLogBuffer::<LoggerReplay>::set_feature_flags(&self.tx, flags);
+        let result = AsyncLogBuffer::<LoggerReplay>::set_feature_flags(&self.tx, flags);
         if let Err(e) = result {
           log::warn!("failed to set feature flags: {e:?}");
         }

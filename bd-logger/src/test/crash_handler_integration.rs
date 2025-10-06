@@ -131,11 +131,13 @@ fn crash_reports_feature_flags() {
       ..Default::default()
     });
 
-    setup.logger_handle.set_feature_flag("flag_name", None);
+    setup
+      .logger_handle
+      .set_feature_flag("flag_name".to_string(), None);
 
     setup
       .logger_handle
-      .set_feature_flag("flag_with_variant", Some("variant".to_string()));
+      .set_feature_flag("flag_with_variant".to_string(), Some("variant".to_string()));
 
     // Log one log to trigger a global state update, blocking to make sure it gets processed.
     setup.logger_handle.log(

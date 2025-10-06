@@ -9,7 +9,6 @@
 #[path = "./encoder_test.rs"]
 mod encoder_test;
 
-use crate::{Value, ValueRef};
 use crate::serialize_primitives::{
   SerializationError,
   serialize_array_begin,
@@ -22,6 +21,7 @@ use crate::serialize_primitives::{
   serialize_string,
   serialize_u64,
 };
+use crate::{Value, ValueRef};
 use bytes::BufMut;
 use std::collections::HashMap;
 
@@ -157,23 +157,26 @@ fn encode_object_into_buf<B: BufMut>(
   Ok(())
 }
 
-/// Encode a ValueRef into a BufMut without cloning.
+/// Encode a `ValueRef` into a `BufMut` without cloning.
 /// This provides true zero-copy encoding for referenced data.
 ///
 /// # Arguments
 /// * `buf` - The mutable buffer that implements `BufMut`
-/// * `value` - The ValueRef to encode
+/// * `value` - The `ValueRef` to encode
 ///
 /// # Returns
 /// * `Ok(usize)` - The number of bytes written on success
 /// * `Err(SerializationError)` - If encoding fails (including buffer full)
-pub fn encode_ref_into_buf<B: BufMut>(buf: &mut B, value: &ValueRef<'_>) -> Result<usize, SerializationError> {
+pub fn encode_ref_into_buf<B: BufMut>(
+  buf: &mut B,
+  value: &ValueRef<'_>,
+) -> Result<usize, SerializationError> {
   let start_remaining = buf.remaining_mut();
   encode_ref_into_buf_impl(buf, value)?;
   Ok(start_remaining - buf.remaining_mut())
 }
 
-/// Internal implementation for encoding ValueRef without cloning.
+/// Internal implementation for encoding `ValueRef` without cloning.
 fn encode_ref_into_buf_impl<B: BufMut>(
   buf: &mut B,
   value: &ValueRef<'_>,
@@ -198,7 +201,10 @@ fn encode_ref_into_buf_impl<B: BufMut>(
 }
 
 /// Encodes an array reference into a buffer using `BufMut` without cloning.
-fn encode_array_ref_into_buf<B: BufMut>(buf: &mut B, arr: &[Value]) -> Result<(), SerializationError> {
+fn encode_array_ref_into_buf<B: BufMut>(
+  buf: &mut B,
+  arr: &[Value],
+) -> Result<(), SerializationError> {
   serialize_array_begin(buf)?;
   for item in arr {
     encode_into_buf_impl(buf, item)?;
