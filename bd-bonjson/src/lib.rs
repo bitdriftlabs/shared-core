@@ -39,6 +39,18 @@ pub enum Value {
   Object(HashMap<String, Value>),
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum ValueRef<'a> {
+  Null,
+  Bool(bool),
+  Float(f64),
+  Signed(i64),
+  Unsigned(u64),
+  String(&'a str),
+  Array(&'a [Value]),
+  Object(&'a HashMap<String, Value>),
+}
+
 // Helper methods for Value
 impl Value {
   /// Extract null value from this Value.

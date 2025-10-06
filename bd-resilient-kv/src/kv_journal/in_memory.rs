@@ -6,9 +6,9 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::KVJournal;
-use bd_bonjson::Value;
+use bd_bonjson::{Value, ValueRef};
 use bd_bonjson::decoder::from_slice;
-use bd_bonjson::encoder::encode_into_buf;
+use bd_bonjson::encoder::{encode_into_buf, encode_ref_into_buf};
 use bd_bonjson::serialize_primitives::{
   SerializationError,
   serialize_array_begin,
@@ -291,9 +291,7 @@ impl<'a> InMemoryKVJournal<'a> {
   }
 
   fn trigger_high_water(&mut self) {
-    if !self.high_water_mark_triggered {
-      self.high_water_mark_triggered = true;
-    }
+    self.high_water_mark_triggered = true;
   }
 
   fn write_journal_entry(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {
@@ -323,7 +321,7 @@ impl<'a> InMemoryKVJournal<'a> {
     let mut cursor = &mut self.buffer[self.position ..];
 
     // Try to write all entries as a single BONJSON object
-    let encode_result = encode_into_buf(&mut cursor, &Value::Object(entries.clone()));
+    let encode_result = encode_ref_into_buf(&mut cursor, &ValueRef::Object(entries));
 
     match encode_result {
       Ok(_bytes_written) => {
