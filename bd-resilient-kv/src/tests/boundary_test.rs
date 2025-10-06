@@ -16,7 +16,7 @@ use tempfile::TempDir;
 fn test_maximum_key_length() -> anyhow::Result<()> {
   // Test with very long keys
   let mut buffer = vec![0u8; 4096];
-  let mut journal = InMemoryKVJournal::new(&mut buffer, Some(0.8), None)?;
+  let mut journal = InMemoryKVJournal::new(&mut buffer, Some(0.8))?;
 
   // Test increasingly long keys
   for i in 1 ..= 10 {
@@ -40,7 +40,7 @@ fn test_maximum_key_length() -> anyhow::Result<()> {
 fn test_maximum_value_sizes() -> anyhow::Result<()> {
   // Test with very large values
   let mut buffer = vec![0u8; 65536]; // 64KB buffer
-  let mut journal = InMemoryKVJournal::new(&mut buffer, Some(0.8), None)?;
+  let mut journal = InMemoryKVJournal::new(&mut buffer, Some(0.8))?;
 
   // Test increasingly large values
   for i in 1 ..= 10 {
@@ -64,7 +64,7 @@ fn test_maximum_value_sizes() -> anyhow::Result<()> {
 fn test_many_small_entries() -> anyhow::Result<()> {
   // Test with many small entries to check overhead handling
   let mut buffer = vec![0u8; 32768]; // 32KB buffer
-  let mut journal = InMemoryKVJournal::new(&mut buffer, Some(0.8), None)?;
+  let mut journal = InMemoryKVJournal::new(&mut buffer, Some(0.8))?;
 
   let mut successful_writes = 0;
 
@@ -102,7 +102,7 @@ fn test_many_small_entries() -> anyhow::Result<()> {
 fn test_unicode_keys_and_values() -> anyhow::Result<()> {
   // Test with Unicode characters in keys and values
   let mut buffer = vec![0u8; 4096];
-  let mut journal = InMemoryKVJournal::new(&mut buffer, Some(0.8), None)?;
+  let mut journal = InMemoryKVJournal::new(&mut buffer, Some(0.8))?;
 
   let test_cases = vec![
     ("emoji_🔑", "emoji_value_🎉"),
@@ -135,7 +135,7 @@ fn test_unicode_keys_and_values() -> anyhow::Result<()> {
 fn test_special_character_keys() -> anyhow::Result<()> {
   // Test with special characters that might cause issues
   let mut buffer = vec![0u8; 2048];
-  let mut journal = InMemoryKVJournal::new(&mut buffer, Some(0.8), None)?;
+  let mut journal = InMemoryKVJournal::new(&mut buffer, Some(0.8))?;
 
   let special_keys = vec![
     "",     // Empty string
@@ -173,8 +173,8 @@ fn test_double_buffered_asymmetric_buffers() -> anyhow::Result<()> {
   let buffer_a = Box::leak(vec![0u8; 1024].into_boxed_slice()); // Small buffer
   let buffer_b = Box::leak(vec![0u8; 4096].into_boxed_slice()); // Large buffer
 
-  let journal_a = InMemoryKVJournal::new(buffer_a, Some(0.7), None)?;
-  let journal_b = InMemoryKVJournal::new(buffer_b, Some(0.7), None)?;
+  let journal_a = InMemoryKVJournal::new(buffer_a, Some(0.7))?;
+  let journal_b = InMemoryKVJournal::new(buffer_b, Some(0.7))?;
 
   let mut db_journal = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
 
@@ -228,7 +228,7 @@ fn test_memmapped_very_large_file() -> anyhow::Result<()> {
 
   // Create a 1MB file
   let large_size = 1024 * 1024;
-  let mut journal = MemMappedKVJournal::new(&file_path, large_size, Some(0.8), None)?;
+  let mut journal = MemMappedKVJournal::new(&file_path, large_size, Some(0.8))?;
 
   // Write a significant amount of data
   for i in 0 .. 1000 {
@@ -240,7 +240,7 @@ fn test_memmapped_very_large_file() -> anyhow::Result<()> {
   journal.sync()?;
 
   // Reopen and verify
-  let journal2 = MemMappedKVJournal::from_file(&file_path, large_size, None, None)?;
+  let journal2 = MemMappedKVJournal::from_file(&file_path, large_size, None)?;
   let data = journal2.as_hashmap()?;
   assert_eq!(data.len(), 1000);
 
@@ -251,7 +251,7 @@ fn test_memmapped_very_large_file() -> anyhow::Result<()> {
 fn test_buffer_usage_ratio_accuracy() -> anyhow::Result<()> {
   // Test that buffer usage ratio is calculated accurately
   let mut buffer = vec![0u8; 1000]; // Nice round number
-  let mut journal = InMemoryKVJournal::new(&mut buffer, Some(0.8), None)?;
+  let mut journal = InMemoryKVJournal::new(&mut buffer, Some(0.8))?;
 
   let initial_ratio = journal.buffer_usage_ratio();
   assert!(

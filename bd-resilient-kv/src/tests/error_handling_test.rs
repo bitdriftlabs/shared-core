@@ -27,7 +27,7 @@ fn test_metadata_corruption_handling() {
   buffer[19] = 0xFD;
 
   // from_buffer should fail gracefully
-  let result = InMemoryKVJournal::from_buffer(&mut buffer, None, None);
+  let result = InMemoryKVJournal::from_buffer(&mut buffer, None);
   assert!(result.is_err());
 }
 
@@ -36,9 +36,12 @@ fn test_buffer_too_small_for_any_data() {
   // Test with buffer that's smaller than header size
   let mut buffer = vec![0u8; 10]; // Less than 16 bytes needed for header
 
-  let result = InMemoryKVJournal::new(&mut buffer, None, None);
+  let result = InMemoryKVJournal::new(&mut buffer, None);
   assert!(result.is_err());
-  let error_message = result.unwrap_err().to_string();
+  let error_message = match result {
+    Err(e) => e.to_string(),
+    Ok(_) => panic!("Expected error but got Ok"),
+  };
   assert!(error_message.contains("Buffer too small") || error_message.contains("too small"));
 }
 
@@ -47,7 +50,7 @@ fn test_buffer_size_exactly_header() {
   // Test with buffer that's exactly header size
   let mut buffer = vec![0u8; 16];
 
-  let result = InMemoryKVJournal::from_buffer(&mut buffer, None, None);
+  let result = InMemoryKVJournal::from_buffer(&mut buffer, None);
   assert!(result.is_err());
 }
 
@@ -60,9 +63,13 @@ fn test_position_larger_than_buffer() {
   buffer[0 .. 8].copy_from_slice(&1u64.to_le_bytes()); // version
   buffer[8 .. 16].copy_from_slice(&1000u64.to_le_bytes()); // position > buffer size
 
-  let result = InMemoryKVJournal::from_buffer(&mut buffer, None, None);
+  let result = InMemoryKVJournal::from_buffer(&mut buffer, None);
   assert!(result.is_err());
-  assert!(result.unwrap_err().to_string().contains("Invalid position"));
+  let error_message = match result {
+    Err(e) => e.to_string(),
+    Ok(_) => panic!("Expected error but got Ok"),
+  };
+  assert!(error_message.contains("Invalid position"));
 }
 
 #[test]
@@ -73,14 +80,13 @@ fn test_unsupported_version() {
   buffer[0 .. 8].copy_from_slice(&999u64.to_le_bytes()); // unsupported version
   buffer[8 .. 16].copy_from_slice(&20u64.to_le_bytes()); // valid position
 
-  let result = InMemoryKVJournal::from_buffer(&mut buffer, None, None);
+  let result = InMemoryKVJournal::from_buffer(&mut buffer, None);
   assert!(result.is_err());
-  assert!(
-    result
-      .unwrap_err()
-      .to_string()
-      .contains("Unsupported version")
-  );
+  let error_message = match result {
+    Err(e) => e.to_string(),
+    Ok(_) => panic!("Expected error but got Ok"),
+  };
+  assert!(error_message.contains("Unsupported version"));
 }
 
 #[test]
@@ -88,21 +94,21 @@ fn test_high_water_mark_invalid_ratios() {
   let mut buffer = vec![0u8; 1024];
 
   // Test negative ratio
-  let result = InMemoryKVJournal::new(&mut buffer, Some(-0.1), None);
+  let result = InMemoryKVJournal::new(&mut buffer, Some(-0.1));
   assert!(result.is_err());
 
   // Test ratio > 1.0
   let mut buffer2 = vec![0u8; 1024];
-  let result2 = InMemoryKVJournal::new(&mut buffer2, Some(1.5), None);
+  let result2 = InMemoryKVJournal::new(&mut buffer2, Some(1.5));
   assert!(result2.is_err());
 
   // Test exactly 0.0 and 1.0 (should be valid)
   let mut buffer3 = vec![0u8; 1024];
-  let result3 = InMemoryKVJournal::new(&mut buffer3, Some(0.0), None);
+  let result3 = InMemoryKVJournal::new(&mut buffer3, Some(0.0));
   assert!(result3.is_ok());
 
   let mut buffer4 = vec![0u8; 1024];
-  let result4 = InMemoryKVJournal::new(&mut buffer4, Some(1.0), None);
+  let result4 = InMemoryKVJournal::new(&mut buffer4, Some(1.0));
   assert!(result4.is_ok());
 }
 
@@ -110,7 +116,7 @@ fn test_high_water_mark_invalid_ratios() {
 fn test_buffer_full_write_failure() -> anyhow::Result<()> {
   // Test writing to a nearly full buffer
   let mut buffer = vec![0u8; 64]; // Very small buffer
-  let mut journal = InMemoryKVJournal::new(&mut buffer, Some(0.8), None)?;
+  let mut journal = InMemoryKVJournal::new(&mut buffer, Some(0.8))?;
 
   // Try to write data that's too large
   let large_value = "x".repeat(100); // Definitely too large for 64 byte buffer
@@ -133,20 +139,20 @@ fn test_extract_timestamp_from_empty_metadata() {
   buffer[16] = 0x99; // array start
 
   // Write empty object metadata (no "initialized" key)
-  buffer[17] = 0x9a; // object start  
+  buffer[17] = 0x9a; // object start
   buffer[18] = 0x9b; // object end
 
-  let result = InMemoryKVJournal::from_buffer(&mut buffer, None, None);
+  let result = InMemoryKVJournal::from_buffer(&mut buffer, None);
   assert!(result.is_err());
 }
 
 #[test]
 fn test_reinit_from_failing_source() -> anyhow::Result<()> {
   let mut buffer1 = vec![0u8; 1024];
-  let mut journal1 = InMemoryKVJournal::new(&mut buffer1, Some(0.8), None)?;
+  let mut journal1 = InMemoryKVJournal::new(&mut buffer1, Some(0.8))?;
 
   let mut buffer2 = vec![0u8; 128]; // Small but reasonable buffer
-  let mut journal2 = InMemoryKVJournal::new(&mut buffer2, Some(0.8), None)?;
+  let mut journal2 = InMemoryKVJournal::new(&mut buffer2, Some(0.8))?;
 
   // Fill journal2 with some data
   for i in 0 .. 3 {

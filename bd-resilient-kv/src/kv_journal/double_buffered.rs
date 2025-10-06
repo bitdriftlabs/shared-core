@@ -17,10 +17,12 @@ use std::collections::HashMap;
 /// - When the active journal passes its high water mark, uses `reinit_from` to initialize the other
 ///   journal with the compressed journal state of the full one
 /// - Once the other journal is initialized, begins forwarding APIs to that journal
+#[derive(Debug)]
 pub struct DoubleBufferedKVJournal<A: KVJournal, B: KVJournal> {
   journal_a: A,
   journal_b: B,
   journal_a_is_active: bool,
+  high_water_mark_triggered: bool,
 }
 
 impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
@@ -53,6 +55,7 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
       journal_a,
       journal_b,
       journal_a_is_active: active_journal_a,
+      high_water_mark_triggered: false,
     })
   }
 
@@ -93,20 +96,25 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
   where
     F: FnOnce(&mut dyn KVJournal) -> anyhow::Result<T>,
   {
-    // Execute operation and check for high water mark
-    let (result, high_water_triggered) = if self.journal_a_is_active {
-      let result = f(&mut self.journal_a)?;
-      let high_water_triggered = self.journal_a.is_high_water_mark_triggered();
-      (result, high_water_triggered)
-    } else {
-      let result = f(&mut self.journal_b)?;
-      let high_water_triggered = self.journal_b.is_high_water_mark_triggered();
-      (result, high_water_triggered)
-    };
+    // Record the current journal's high water mark status
+    let old_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
 
-    // Check if we need to switch journals after the operation
-    if high_water_triggered {
+    // Perform the operation and save the result
+    let result = f(self.active_journal_mut())?;
+
+    // Check if the operation triggered a high water mark event
+    let new_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
+
+    // If high water mark was triggered by this operation
+    if !old_hwm_triggered && new_hwm_triggered {
+      // Call switch_journals to attempt compaction
       self.switch_journals()?;
+
+      // Get the new value of the current journal's high water mark status after switching
+      let post_switch_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
+
+      // Set our flag if the current journal's high water mark is triggered
+      self.high_water_mark_triggered = post_switch_hwm_triggered;
     }
 
     Ok(result)
@@ -120,6 +128,15 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
       &self.journal_b
     }
   }
+
+  /// Get a mutable reference to the currently active journal.
+  fn active_journal_mut(&mut self) -> &mut dyn KVJournal {
+    if self.journal_a_is_active {
+      &mut self.journal_a
+    } else {
+      &mut self.journal_b
+    }
+  }
 }
 
 impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
@@ -128,7 +145,7 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
   }
 
   fn is_high_water_mark_triggered(&self) -> bool {
-    self.active_journal().is_high_water_mark_triggered()
+    self.high_water_mark_triggered
   }
 
   fn buffer_usage_ratio(&self) -> f32 {
@@ -144,7 +161,53 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
   }
 
   fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
-    self.with_active_journal_mut(|journal| journal.set_multiple(entries))
+    // Record the current journal's high water mark status before the operation
+    let old_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
+
+    // Try the operation first
+    let result = self.active_journal_mut().set_multiple(entries);
+
+    // Check if high water mark was triggered by this operation
+    let new_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
+
+    // If the operation failed and high water mark was triggered, try switching and retrying
+    if result.is_err() && !old_hwm_triggered && new_hwm_triggered {
+      // Switch journals to attempt compaction
+      if let Err(switch_error) = self.switch_journals() {
+        return Err(switch_error);
+      }
+
+      // Check if our own high water mark is triggered after switching
+      let post_switch_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
+
+      if post_switch_hwm_triggered {
+        // Compaction failed - set our flag and return the original error
+        self.high_water_mark_triggered = true;
+        result
+      } else {
+        // Compaction succeeded - retry the operation on the new journal
+        let retry_result = self.active_journal_mut().set_multiple(entries);
+
+        // After retry, check if high water mark is triggered and update our flag
+        let final_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
+        self.high_water_mark_triggered = final_hwm_triggered;
+
+        retry_result
+      }
+    } else {
+      // Operation succeeded or failed for other reasons - handle normally
+      if !old_hwm_triggered && new_hwm_triggered {
+        // High water mark was triggered - try compaction
+        if let Err(switch_error) = self.switch_journals() {
+          return Err(switch_error);
+        }
+
+        // Set our flag based on the current journal's high water mark status after switching
+        let post_switch_hwm_triggered = self.active_journal().is_high_water_mark_triggered();
+        self.high_water_mark_triggered = post_switch_hwm_triggered;
+      }
+      result
+    }
   }
 
   fn delete(&mut self, key: &str) -> anyhow::Result<()> {

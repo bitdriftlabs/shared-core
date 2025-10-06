@@ -80,7 +80,7 @@ libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
   let base_path = temp_dir.path().join("fuzz_store");
 
   // Try to create a KVStore
-  let Ok(mut store) = KVStore::new(&base_path, 8192, Some(0.8), None) else {
+  let Ok(mut store) = KVStore::new(&base_path, 8192, Some(0.8)) else {
     return;
   };
 
@@ -148,7 +148,7 @@ libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
         drop(store);
 
         // Try to reopen the store from the existing files
-        store = match KVStore::new(&base_path, 8192, Some(0.8), None) {
+        store = match KVStore::new(&base_path, 8192, Some(0.8)) {
           Ok(s) => s,
           Err(_) => return,
         };

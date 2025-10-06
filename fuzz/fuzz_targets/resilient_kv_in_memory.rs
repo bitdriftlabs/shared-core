@@ -70,7 +70,7 @@ libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
   let mut buffer = vec![0u8; 8192];
 
   // Try to create an InMemoryKVJournal
-  let Ok(mut journal) = InMemoryKVJournal::new(&mut buffer, Some(0.8), None) else {
+  let Ok(mut journal) = InMemoryKVJournal::new(&mut buffer, Some(0.8)) else {
     return;
   };
 

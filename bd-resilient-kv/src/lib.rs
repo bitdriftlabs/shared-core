@@ -22,7 +22,6 @@ pub mod kv_store;
 
 pub use kv_journal::{
   DoubleBufferedKVJournal,
-  HighWaterMarkCallback,
   InMemoryKVJournal,
   KVJournal,
   MemMappedKVJournal,

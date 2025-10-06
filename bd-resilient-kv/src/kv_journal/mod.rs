@@ -8,12 +8,6 @@
 use bd_bonjson::Value;
 use std::collections::HashMap;
 
-/// Callback function type for high water mark notifications.
-///
-/// Called when a buffer usage exceeds the high water mark threshold.
-pub type HighWaterMarkCallback =
-  fn(current_position: usize, buffer_size: usize, high_water_mark_position: usize);
-
 /// Trait for a key-value journaling system whose data can be recovered up to the last successful
 /// write checkpoint.
 pub trait KVJournal {

@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{HighWaterMarkCallback, KVJournal};
+use super::KVJournal;
 use bd_bonjson::Value;
 use bd_bonjson::decoder::from_slice;
 use bd_bonjson::encoder::encode_into_buf;
@@ -30,7 +30,6 @@ pub struct InMemoryKVJournal<'a> {
   position: usize,
   buffer: &'a mut [u8],
   high_water_mark: usize,
-  high_water_mark_callback: Option<HighWaterMarkCallback>,
   high_water_mark_triggered: bool,
   initialized_at_unix_time_ns: u64,
 }
@@ -209,14 +208,11 @@ impl<'a> InMemoryKVJournal<'a> {
   /// # Arguments
   /// * `buffer` - The storage buffer
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  /// * `callback` - Optional callback function called when high water mark is exceeded
-  ///
   /// # Errors
   /// Returns an error if serialization fails or if `high_water_mark_ratio` is invalid.
   pub fn new(
     buffer: &'a mut [u8],
     high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>,
   ) -> anyhow::Result<Self> {
     // If this operation gets interrupted, the buffer must be considered invalid.
     invalidate_version(buffer);
@@ -241,7 +237,6 @@ impl<'a> InMemoryKVJournal<'a> {
       position,
       buffer,
       high_water_mark,
-      high_water_mark_callback: callback,
       high_water_mark_triggered: false,
       initialized_at_unix_time_ns: timestamp,
     })
@@ -254,7 +249,6 @@ impl<'a> InMemoryKVJournal<'a> {
   /// # Arguments
   /// * `buffer` - The storage buffer containing existing KV data
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  /// * `callback` - Optional callback function called when high water mark is exceeded
   ///
   /// # Errors
   /// Returns an error if the buffer is invalid, corrupted, or if `high_water_mark_ratio` is
@@ -262,7 +256,6 @@ impl<'a> InMemoryKVJournal<'a> {
   pub fn from_buffer(
     buffer: &'a mut [u8],
     high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>,
   ) -> anyhow::Result<Self> {
     let buffer_len = validate_buffer_len(buffer)?;
     let version = read_version(buffer)?;
@@ -275,7 +268,6 @@ impl<'a> InMemoryKVJournal<'a> {
       position,
       buffer,
       high_water_mark,
-      high_water_mark_callback: callback,
       high_water_mark_triggered: position >= high_water_mark,
       initialized_at_unix_time_ns: init_timestamp,
     })
@@ -304,9 +296,6 @@ impl<'a> InMemoryKVJournal<'a> {
   fn trigger_high_water(&mut self) {
     if !self.high_water_mark_triggered {
       self.high_water_mark_triggered = true;
-      if let Some(callback) = self.high_water_mark_callback {
-        callback(self.position, self.buffer.len(), self.high_water_mark);
-      }
     }
   }
 
@@ -346,20 +335,9 @@ impl<'a> InMemoryKVJournal<'a> {
         Ok(())
       },
       Err(SerializationError::BufferFull) => {
-        // If encoding failed due to buffer full, try triggering high water mark callback
-        // to see if it can free up space (e.g., through compaction)
+        // We didn't have enough space to write all entries at once.
         self.trigger_high_water();
-
-        // Reset cursor and try encoding one more time
-        cursor = &mut self.buffer[self.position ..];
-        let _bytes_written = encode_into_buf(&mut cursor, &Value::Object(entries.clone()))
-          .map_err(|e| {
-            anyhow::anyhow!("Failed to encode entries object after high water mark trigger: {e:?}")
-          })?;
-
-        let remaining = cursor.remaining_mut();
-        self.set_position(buffer_len - remaining);
-        Ok(())
+        Err(anyhow::anyhow!("Failed to encode entries object: {:?}", SerializationError::BufferFull))
       },
       Err(e) => Err(anyhow::anyhow!("Failed to encode entries object: {e:?}")),
     }

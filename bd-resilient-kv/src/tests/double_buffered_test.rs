@@ -15,8 +15,8 @@ fn create_test_double_buffered_journal()
   // Use Box::leak to get static lifetime for testing
   let buffer_a = Box::leak(vec![0u8; 1024].into_boxed_slice());
   let buffer_b = Box::leak(vec![0u8; 1024].into_boxed_slice());
-  let journal_a = InMemoryKVJournal::new(buffer_a, Some(0.8), None)?;
-  let journal_b = InMemoryKVJournal::new(buffer_b, Some(0.8), None)?;
+  let journal_a = InMemoryKVJournal::new(buffer_a, Some(0.8))?;
+  let journal_b = InMemoryKVJournal::new(buffer_b, Some(0.8))?;
   DoubleBufferedKVJournal::new(journal_a, journal_b)
 }
 
@@ -29,8 +29,8 @@ fn create_test_double_buffered_journal_with_sizes(
 {
   let buffer_a = Box::leak(vec![0u8; size_a].into_boxed_slice());
   let buffer_b = Box::leak(vec![0u8; size_b].into_boxed_slice());
-  let journal_a = InMemoryKVJournal::new(buffer_a, high_water_mark_ratio, None)?;
-  let journal_b = InMemoryKVJournal::new(buffer_b, high_water_mark_ratio, None)?;
+  let journal_a = InMemoryKVJournal::new(buffer_a, high_water_mark_ratio)?;
+  let journal_b = InMemoryKVJournal::new(buffer_b, high_water_mark_ratio)?;
   DoubleBufferedKVJournal::new(journal_a, journal_b)
 }
 

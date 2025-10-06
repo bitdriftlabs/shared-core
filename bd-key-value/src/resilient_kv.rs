@@ -53,9 +53,8 @@ impl ResilientKvStorage {
     base_path: P,
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
-    callback: Option<bd_resilient_kv::HighWaterMarkCallback>,
   ) -> anyhow::Result<Self> {
-    let kv_store = KVStore::new(base_path, buffer_size, high_water_mark_ratio, callback)?;
+    let kv_store = KVStore::new(base_path, buffer_size, high_water_mark_ratio)?;
     Ok(Self {
       store: Arc::new(Mutex::new(kv_store)),
     })

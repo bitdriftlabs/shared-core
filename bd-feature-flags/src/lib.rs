@@ -181,7 +181,6 @@ impl FeatureFlags {
       base_path,
       buffer_size,
       Some(high_water_mark_ratio.unwrap_or(DEFAULT_HIGH_WATER_MARK_RATIO)),
-      None,
     )?;
     Ok(Self { flags_store })
   }

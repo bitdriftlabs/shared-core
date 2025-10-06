@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::in_memory::InMemoryKVJournal;
-use super::{HighWaterMarkCallback, KVJournal};
+use super::KVJournal;
 use bd_bonjson::Value;
 use memmap2::{MmapMut, MmapOptions};
 use std::collections::HashMap;
@@ -59,7 +59,6 @@ impl MemMappedKVJournal {
   /// * `file_path` - Path to the file to use for storage
   /// * `size` - Minimum size of the file in bytes
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  /// * `callback` - Optional callback function called when high water mark is exceeded
   ///
   /// # Errors
   /// Returns an error if the file cannot be created/opened or memory-mapped.
@@ -67,7 +66,6 @@ impl MemMappedKVJournal {
     file_path: P,
     size: usize,
     high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>,
   ) -> anyhow::Result<Self> {
     let file = OpenOptions::new()
       .read(true)
@@ -83,7 +81,7 @@ impl MemMappedKVJournal {
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
-    let in_memory_kv = InMemoryKVJournal::new(buffer, high_water_mark_ratio, callback)?;
+    let in_memory_kv = InMemoryKVJournal::new(buffer, high_water_mark_ratio)?;
 
     Ok(Self { mmap, in_memory_kv })
   }
@@ -97,7 +95,6 @@ impl MemMappedKVJournal {
   /// * `file_path` - Path to the existing file
   /// * `size` - Size to resize the file to in bytes
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  /// * `callback` - Optional callback function called when high water mark is exceeded
   ///
   /// # Errors
   /// Returns an error if the file cannot be opened, memory-mapped, or contains invalid data.
@@ -106,7 +103,6 @@ impl MemMappedKVJournal {
     file_path: P,
     size: usize,
     high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>,
   ) -> anyhow::Result<Self> {
     let file = OpenOptions::new().read(true).write(true).open(file_path)?;
 
@@ -117,7 +113,7 @@ impl MemMappedKVJournal {
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
-    let in_memory_kv = InMemoryKVJournal::from_buffer(buffer, high_water_mark_ratio, callback)?;
+    let in_memory_kv = InMemoryKVJournal::from_buffer(buffer, high_water_mark_ratio)?;
 
     Ok(Self { mmap, in_memory_kv })
   }

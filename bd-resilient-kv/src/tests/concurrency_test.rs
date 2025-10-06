@@ -8,7 +8,7 @@
 // Test cases for potential concurrency issues and race conditions
 
 use crate::kv_journal::KVJournal;
-use crate::{InMemoryKVJournal, MemMappedKVJournal};
+use crate::MemMappedKVJournal;
 use bd_bonjson::Value;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -27,7 +27,7 @@ fn test_memmapped_concurrent_writes_different_files() -> anyhow::Result<()> {
 
       thread::spawn(move || {
         let file_path = temp_dir_path.join(format!("test_{}.kv", i));
-        match MemMappedKVJournal::new(&file_path, 1024, None, None) {
+        match MemMappedKVJournal::new(&file_path, 1024, None) {
           Ok(mut journal) => {
             for j in 0 .. 10 {
               let key = format!("thread_{}_key_{}", i, j);
@@ -69,7 +69,7 @@ fn test_memmapped_concurrent_writes_different_files() -> anyhow::Result<()> {
   // Verify all files were created and contain correct data
   for i in 0 .. 4 {
     let file_path = temp_dir.path().join(format!("test_{}.kv", i));
-    let journal = MemMappedKVJournal::from_file(&file_path, 1024, None, None)?;
+    let journal = MemMappedKVJournal::from_file(&file_path, 1024, None)?;
     let data = journal.as_hashmap()?;
     assert_eq!(data.len(), 10);
 
@@ -89,7 +89,7 @@ fn test_memmapped_rapid_sync_operations() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let file_path = temp_dir.path().join("rapid_sync.kv");
 
-  let mut journal = MemMappedKVJournal::new(&file_path, 4096, None, None)?; // Larger buffer
+  let mut journal = MemMappedKVJournal::new(&file_path, 4096, None)?; // Larger buffer
 
   // Perform rapid writes and syncs, but handle buffer full conditions
   let mut successful_writes = 0;
@@ -131,7 +131,7 @@ fn test_memmapped_file_size_growth_stress() -> anyhow::Result<()> {
   let file_path = temp_dir.path().join("growing.kv");
 
   // Start with larger file to accommodate more data
-  let mut journal = MemMappedKVJournal::new(&file_path, 8192, None, None)?;
+  let mut journal = MemMappedKVJournal::new(&file_path, 8192, None)?;
 
   // Write increasingly large data, but handle buffer full conditions
   let mut successful_writes = 0;
@@ -155,55 +155,6 @@ fn test_memmapped_file_size_growth_stress() -> anyhow::Result<()> {
     successful_writes > 10,
     "Should have written at least some entries before buffer full"
   );
-
-  Ok(())
-}
-
-#[test]
-fn test_high_water_mark_callback_timing() -> anyhow::Result<()> {
-  // Test that high water mark callbacks are called at the right time
-  use std::sync::atomic::{AtomicUsize, Ordering};
-
-  static CALLBACK_COUNT: AtomicUsize = AtomicUsize::new(0);
-
-  fn callback(_pos: usize, _size: usize, _hwm: usize) {
-    CALLBACK_COUNT.fetch_add(1, Ordering::SeqCst);
-  }
-
-  let mut buffer = vec![0u8; 256];
-  let mut journal = InMemoryKVJournal::new(&mut buffer, Some(0.5), Some(callback))?;
-
-  // Reset counter
-  CALLBACK_COUNT.store(0, Ordering::SeqCst);
-
-  // Write data until high water mark is triggered
-  let mut writes = 0;
-  loop {
-    writes += 1;
-    let key = format!("key_{}", writes);
-    let value = format!("value_that_takes_some_space_{}", writes);
-
-    match journal.set(&key, &Value::String(value)) {
-      Ok(_) => {
-        if journal.is_high_water_mark_triggered() {
-          break;
-        }
-        if writes > 100 {
-          // Safety break
-          break;
-        }
-      },
-      Err(_) => break, // Buffer full
-    }
-  }
-
-  // Callback should have been called exactly once
-  assert_eq!(CALLBACK_COUNT.load(Ordering::SeqCst), 1);
-
-  // Additional writes shouldn't trigger more callbacks
-  let initial_count = CALLBACK_COUNT.load(Ordering::SeqCst);
-  let _ = journal.set("extra", &Value::String("extra".to_string()));
-  assert_eq!(CALLBACK_COUNT.load(Ordering::SeqCst), initial_count);
 
   Ok(())
 }
