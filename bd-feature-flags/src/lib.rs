@@ -251,8 +251,7 @@ impl FeatureFlags {
   /// This function will return an error if:
   /// - Any flag cannot be written to persistent storage due to I/O errors, insufficient disk space,
   ///   or permission issues
-  /// - If an error occurs, some flags may have been successfully written while others may not have
-  ///   been processed
+  /// - If an error occurs, no flags will be written.
   pub fn set_multiple(&mut self, flags: &HashMap<String, Option<&str>>) -> anyhow::Result<()> {
     // Convert the input HashMap to the format expected by the KV store
     let mut kv_entries = HashMap::new();

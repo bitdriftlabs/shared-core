@@ -19,7 +19,7 @@ fn test_resilient_kv_storage_with_storage_trait() {
   let _ = std::fs::remove_file(test_path.with_extension("jrnb"));
 
   // Create ResilientKvStorage
-  let storage = ResilientKvStorage::new(&test_path, 1024 * 1024, None, None).unwrap();
+  let storage = ResilientKvStorage::new(&test_path, 1024 * 1024, None).unwrap();
 
   // Create Store with our ResilientKvStorage implementation
   let store = Store::new(Box::new(storage));
@@ -57,7 +57,7 @@ fn test_resilient_kv_storage_direct_operations() {
   let _ = std::fs::remove_file(test_path.with_extension("jrnb"));
 
   // Create ResilientKvStorage
-  let storage = ResilientKvStorage::new(&test_path, 1024 * 1024, None, None).unwrap();
+  let storage = ResilientKvStorage::new(&test_path, 1024 * 1024, None).unwrap();
 
   // Test direct Storage trait methods
   let key = "direct_test_key";

@@ -124,10 +124,8 @@ impl KVStore {
   ///
   /// # Errors
   /// Returns an error if any value cannot be written to the journal. If an error occurs,
-  /// some entries may have been successfully written while others may not have been processed.
-  /// The cache will be synchronized with whatever was successfully written to the journal.
+  /// no entries will be written.
   pub fn insert_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
-    // Use the journal's set_multiple method for efficient batch operations
     self.journal.set_multiple(entries)?;
 
     // Update the cache to reflect all changes
