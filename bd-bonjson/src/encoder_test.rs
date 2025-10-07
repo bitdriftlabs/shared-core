@@ -984,7 +984,7 @@ fn test_encode_kv_vec() {
     ("age".to_string(), Value::Signed(30)),
     ("active".to_string(), Value::Bool(true)),
   ];
-  let value = Value::KVVec(kv_vec.clone());
+  let value = Value::KVVec(kv_vec);
 
   let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode KVVec");
 
@@ -998,7 +998,10 @@ fn test_encode_kv_vec() {
   let decoded_obj = decoded.as_object().expect("Should be an object");
 
   // Verify all key-value pairs are present and correct
-  assert_eq!(decoded_obj.get("name"), Some(&Value::String("Alice".to_string())));
+  assert_eq!(
+    decoded_obj.get("name"),
+    Some(&Value::String("Alice".to_string()))
+  );
   assert_eq!(decoded_obj.get("age"), Some(&Value::Signed(30)));
   assert_eq!(decoded_obj.get("active"), Some(&Value::Bool(true)));
   assert_eq!(decoded_obj.len(), 3);
@@ -1011,7 +1014,7 @@ fn test_kv_vec_helper_methods() {
     ("name".to_string(), Value::String("Bob".to_string())),
     ("count".to_string(), Value::Signed(42)),
   ];
-  let value = Value::KVVec(kv_vec.clone());
+  let value = Value::KVVec(kv_vec);
 
   // Test type checking methods
   assert!(value.is_kv_vec(), "Should identify as KVVec");

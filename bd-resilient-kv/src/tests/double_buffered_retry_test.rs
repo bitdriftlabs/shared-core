@@ -61,7 +61,7 @@ fn test_double_buffered_set_multiple_forwards_correctly() {
   let mut journal = DoubleBufferedKVJournal::new(journal_a, journal_b).unwrap();
 
   // Create data for batch operation
-  let batch_data: Vec<(String, Value)> = (0..20)
+  let batch_data: Vec<(String, Value)> = (0 .. 20)
     .map(|i| {
       (
         format!("batch_key_{}", i),
@@ -117,20 +117,15 @@ fn test_double_buffered_high_water_mark_detection() {
   );
 
   // Step 1: Fill buffer to near capacity with small entries first
-  let small_batch: Vec<(String, Value)> = (0..5)
-    .map(|i| {
-      (
-        format!("key{}", i),
-        Value::String("small".to_string()),
-      )
-    })
+  let small_batch: Vec<(String, Value)> = (0 .. 5)
+    .map(|i| (format!("key{}", i), Value::String("small".to_string())))
     .collect();
 
   let result = journal.set_multiple(&small_batch);
   assert!(result.is_ok(), "Small batch should succeed");
 
   // Step 2: Add medium-sized entries to approach high water mark
-  let medium_batch: Vec<(String, Value)> = (0..10)
+  let medium_batch: Vec<(String, Value)> = (0 .. 10)
     .map(|i| {
       (
         format!("medium_key_{:02}", i),
@@ -143,7 +138,7 @@ fn test_double_buffered_high_water_mark_detection() {
   assert!(result.is_ok(), "Medium batch should succeed");
 
   // Step 3: Add more data to trigger high water mark
-  let trigger_batch: Vec<(String, Value)> = (0..15)
+  let trigger_batch: Vec<(String, Value)> = (0 .. 15)
     .map(|i| {
       (
         format!("trigger_key_{:03}", i),

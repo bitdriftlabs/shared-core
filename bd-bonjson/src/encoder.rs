@@ -35,7 +35,7 @@ use std::collections::HashMap;
 /// Supports all BONJSON value types including:
 /// - Primitive types (null, bool, numbers, strings)
 /// - Collections (arrays, objects)
-/// - Key-value vectors (KVVec) - encoded identically to objects
+/// - Key-value vectors (`KVVec`) - encoded identically to objects
 ///
 /// # Arguments
 /// * `buffer` - The buffer to use for encoding (will be cleared and reused)
@@ -86,7 +86,7 @@ pub fn encode_into_vec<'a>(
 /// allocating additional memory. It's useful for embedded systems or other
 /// scenarios where memory allocation should be avoided.
 ///
-/// Supports all BONJSON value types including key-value vectors (KVVec)
+/// Supports all BONJSON value types including key-value vectors (`KVVec`)
 /// which are encoded identically to objects/maps.
 ///
 /// # Arguments
@@ -105,7 +105,7 @@ pub fn encode_into_slice(buffer: &mut [u8], value: &Value) -> Result<usize, Seri
 /// This function writes BONJSON data directly to a `BufMut` implementation,
 /// which can automatically track position and provide better ergonomics.
 ///
-/// Supports all BONJSON value types including key-value vectors (KVVec)
+/// Supports all BONJSON value types including key-value vectors (`KVVec`)
 /// which are encoded identically to objects/maps for compatibility.
 ///
 /// # Arguments
@@ -175,7 +175,7 @@ fn encode_object_into_buf<B: BufMut>(
 /// Encodes a KV vector into a buffer using `BufMut`.
 ///
 /// KV vectors are encoded identically to objects (maps) for maximum compatibility.
-/// This allows KVVec data to be decoded as regular BONJSON objects by any decoder.
+/// This allows `KVVec` data to be decoded as regular BONJSON objects by any decoder.
 /// The encoding format uses BONJSON map structure with string keys and Value values.
 ///
 /// # Arguments
@@ -201,7 +201,7 @@ fn encode_kv_vec_into_buf<B: BufMut>(
 /// Encode a `ValueRef` into a `BufMut` without cloning.
 ///
 /// This provides true zero-copy encoding for referenced data, including support
-/// for KVSlice references which are encoded identically to objects/maps.
+/// for `KVSlice` references which are encoded identically to objects/maps.
 ///
 /// # Arguments
 /// * `buf` - The mutable buffer that implements `BufMut`

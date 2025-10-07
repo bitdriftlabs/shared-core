@@ -115,7 +115,10 @@ fn test_kv_store_insert_multiple() -> anyhow::Result<()> {
   let more_entries = vec![
     ("key5".to_string(), Value::String("value5".to_string())),
     ("key2".to_string(), Value::Null), // This should delete key2
-    ("key1".to_string(), Value::String("updated_value1".to_string())), // Update key1
+    (
+      "key1".to_string(),
+      Value::String("updated_value1".to_string()),
+    ), // Update key1
   ];
 
   store.insert_multiple(&more_entries)?;

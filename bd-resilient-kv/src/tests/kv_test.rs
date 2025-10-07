@@ -112,7 +112,10 @@ fn test_set_multiple_with_deletion() {
 
   // Now use set_multiple to update some and delete others
   let entries = vec![
-    ("key1".to_string(), Value::String("updated_value1".to_string())),
+    (
+      "key1".to_string(),
+      Value::String("updated_value1".to_string()),
+    ),
     ("key2".to_string(), Value::Null), // This should delete key2
     ("key4".to_string(), Value::Float(2.71)), // This is a new key
   ];
@@ -166,7 +169,10 @@ fn test_set_multiple_forwarding_memmapped() {
 
   // Create multiple entries
   let entries = vec![
-    ("mm_key1".to_string(), Value::String("mapped_value1".to_string())),
+    (
+      "mm_key1".to_string(),
+      Value::String("mapped_value1".to_string()),
+    ),
     ("mm_key2".to_string(), Value::Float(3.14159)),
     ("mm_key3".to_string(), Value::Bool(false)),
   ];
@@ -1008,13 +1014,13 @@ fn test_set_multiple_with_high_water_mark_callback_retry() {
   );
 
   // Create a set of entries that will likely trigger buffer full
-  let large_entries: Vec<(String, Value)> = (0..15)
+  let large_entries: Vec<(String, Value)> = (0 .. 15)
     .map(|i| {
       (
         format!("large_key_{i}"),
         Value::String(
-          "This is a relatively large value that will consume significant buffer space and trigger \
-           buffer full"
+          "This is a relatively large value that will consume significant buffer space and \
+           trigger buffer full"
             .to_string(),
         ),
       )

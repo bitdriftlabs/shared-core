@@ -257,7 +257,8 @@ impl FeatureFlags {
   pub fn set_multiple(&mut self, flags: Vec<(String, Option<String>)>) -> anyhow::Result<()> {
     // Convert the input vector to Vec format for the KV store
     let now = time::OffsetDateTime::now_utc();
-    let kv_entries: Vec<(String, bd_bonjson::Value)> = flags.into_iter()
+    let kv_entries: Vec<(String, bd_bonjson::Value)> = flags
+      .into_iter()
       .map(|(key, variant)| {
         let feature_flag = FeatureFlag::new(variant, Some(now))?;
         let value = feature_flag.to_value();
