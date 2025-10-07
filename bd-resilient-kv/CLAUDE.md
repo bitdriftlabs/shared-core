@@ -21,9 +21,9 @@ The `KVJournal` trait is the foundation of the system, providing:
 
 The system provides efficient bulk operations through a consistent pattern:
 
-**KVJournal Trait**: Defines `set_multiple(&mut self, entries: &HashMap<String, Value>)` for efficient batch updates
+**KVJournal Trait**: Defines `set_multiple(&mut self, entries: &[(String, Value)])` for efficient batch updates
 **KVStore Integration**: The `insert_multiple()` method in KVStore calls through to the underlying journal's `set_multiple()`
-**Feature Flags Integration**: The `set_multiple()` method in FeatureFlags converts `Vec<(String, Option<String>)>` inputs to the HashMap format expected by the KV store
+**Feature Flags Integration**: The `set_multiple()` method in FeatureFlags converts `Vec<(String, Option<String>)>` inputs to the Vec format expected by the KV store
 
 **Performance Benefits**:
 - Single transaction for multiple updates
@@ -47,7 +47,7 @@ The system includes sophisticated retry logic specifically for bulk operations:
 
 **Rationale**: This handles the edge case where:
 - The underlying journal buffer fills up during the operation
-- Background compaction frees space automatically  
+- Background compaction frees space automatically
 - A retry immediately after might succeed on the now-compacted journal
 - High water mark flag accurately reflects whether retry is worthwhile
 
@@ -76,7 +76,7 @@ The `DoubleBufferedKVJournal` implements automatic switching with sophisticated 
 **Critical Logic**:
 ```rust
 // Sophisticated retry logic in set_multiple
-fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
+fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
     // First attempt using the standard logic
     let result = self.with_active_journal_mut(|journal| journal.set_multiple(entries));
 
@@ -125,7 +125,7 @@ fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<(
    for i in 0..100 {
        large_batch.insert(format!("key_{}", i), generate_large_value());
    }
-   
+
    // This should trigger the retry logic in DoubleBufferedKVJournal
    let result = journal.set_multiple(&large_batch);
    ```
@@ -160,7 +160,7 @@ fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<(
 
 ## Key Methods and Their Purposes
 
-### `set_multiple(entries: &HashMap<String, Value>)`
+### `set_multiple(entries: &[(String, Value)])`
 - **Purpose**: Efficiently set multiple key-value pairs in a single operation
 - **Behavior**: Atomic batch update with automatic retry logic in DoubleBufferedKVJournal
 - **Retry Logic**: If initial attempt fails but high water mark not triggered, attempts once more
@@ -265,7 +265,7 @@ The kv_journal system is built around efficient append-only storage with intelli
 **Current State**: The system has been simplified by removing callback complexity in favor of simple boolean flags that can be checked as needed. The `DoubleBufferedKVJournal` provides automatic compaction with intelligent retry logic for bulk operations. Key features include:
 
 - **Bulk Operations**: Efficient `set_multiple` method with HashMap-based batch processing
-- **Smart Retry Logic**: Automatic retry on failure when high water mark conditions suggest success is possible  
+- **Smart Retry Logic**: Automatic retry on failure when high water mark conditions suggest success is possible
 - **Cross-Layer Integration**: Consistent bulk operation patterns from FeatureFlags → KVStore → KVJournal
 - **Optimized for Real-World Use**: Handles edge cases like partial buffer fills and concurrent compaction
 

@@ -316,12 +316,12 @@ impl<'a> InMemoryKVJournal<'a> {
     Ok(())
   }
 
-  fn write_journal_entries(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
+  fn write_journal_entries_kv_vec(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
     let buffer_len = self.buffer.len();
     let mut cursor = &mut self.buffer[self.position ..];
 
-    // Try to write all entries as a single BONJSON object
-    let encode_result = encode_ref_into_buf(&mut cursor, &ValueRef::Object(entries));
+    // Try to write all entries as a single BONJSON KVVec
+    let encode_result = encode_ref_into_buf(&mut cursor, &ValueRef::KVSlice(entries));
 
     match encode_result {
       Ok(_bytes_written) => {
@@ -333,11 +333,11 @@ impl<'a> InMemoryKVJournal<'a> {
         // We didn't have enough space to write all entries at once.
         self.trigger_high_water();
         Err(anyhow::anyhow!(
-          "Failed to encode entries object: {:?}",
+          "Failed to encode entries KVVec: {:?}",
           SerializationError::BufferFull
         ))
       },
-      Err(e) => Err(anyhow::anyhow!("Failed to encode entries object: {e:?}")),
+      Err(e) => Err(anyhow::anyhow!("Failed to encode entries KVVec: {e:?}")),
     }
   }
 }
@@ -382,13 +382,13 @@ impl KVJournal for InMemoryKVJournal<'_> {
   /// # Errors
   /// Returns an error if the journal entries cannot be written. If an error occurs,
   /// no data will have been written.
-  fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
+  fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
     if entries.is_empty() {
       return Ok(());
     }
 
-    // Write all entries as a single BONJSON object for efficiency
-    self.write_journal_entries(entries)
+    // Write all entries as a single BONJSON KVVec for efficiency
+    self.write_journal_entries_kv_vec(entries)
   }
 
   /// Generate a new journal entry recording the deletion of a key.

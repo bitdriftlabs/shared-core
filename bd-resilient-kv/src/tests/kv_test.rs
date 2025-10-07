@@ -8,7 +8,6 @@
 use crate::InMemoryKVJournal;
 use crate::kv_journal::{DoubleBufferedKVJournal, KVJournal, MemMappedKVJournal};
 use bd_bonjson::Value;
-use std::collections::HashMap;
 use std::io::Write;
 use tempfile::NamedTempFile;
 
@@ -81,12 +80,13 @@ fn test_set_multiple_method() {
   let mut buffer = vec![0; 256];
   let mut kv = InMemoryKVJournal::new(&mut buffer, None).unwrap();
 
-  // Create a HashMap with multiple entries
-  let mut entries = HashMap::new();
-  entries.insert("key1".to_string(), Value::String("value1".to_string()));
-  entries.insert("key2".to_string(), Value::Signed(456));
-  entries.insert("key3".to_string(), Value::Bool(true));
-  entries.insert("key4".to_string(), Value::Float(3.14));
+  // Create a Vec with multiple entries
+  let entries = vec![
+    ("key1".to_string(), Value::String("value1".to_string())),
+    ("key2".to_string(), Value::Signed(456)),
+    ("key3".to_string(), Value::Bool(true)),
+    ("key4".to_string(), Value::Float(3.14)),
+  ];
 
   // Use set_multiple to set all entries at once
   kv.set_multiple(&entries).unwrap();
@@ -111,13 +111,11 @@ fn test_set_multiple_with_deletion() {
   kv.set("key3", &Value::Bool(false)).unwrap();
 
   // Now use set_multiple to update some and delete others
-  let mut entries = HashMap::new();
-  entries.insert(
-    "key1".to_string(),
-    Value::String("updated_value1".to_string()),
-  );
-  entries.insert("key2".to_string(), Value::Null); // This should delete key2
-  entries.insert("key4".to_string(), Value::Float(2.71)); // This is a new key
+  let entries = vec![
+    ("key1".to_string(), Value::String("updated_value1".to_string())),
+    ("key2".to_string(), Value::Null), // This should delete key2
+    ("key4".to_string(), Value::Float(2.71)), // This is a new key
+  ];
 
   kv.set_multiple(&entries).unwrap();
 
@@ -141,10 +139,11 @@ fn test_set_multiple_forwarding_double_buffered() {
   let mut double_buffered = DoubleBufferedKVJournal::new(journal_a, journal_b).unwrap();
 
   // Create multiple entries
-  let mut entries = HashMap::new();
-  entries.insert("db_key1".to_string(), Value::String("value1".to_string()));
-  entries.insert("db_key2".to_string(), Value::Signed(123));
-  entries.insert("db_key3".to_string(), Value::Bool(true));
+  let entries = vec![
+    ("db_key1".to_string(), Value::String("value1".to_string())),
+    ("db_key2".to_string(), Value::Signed(123)),
+    ("db_key3".to_string(), Value::Bool(true)),
+  ];
 
   // Use set_multiple on double buffered journal
   double_buffered.set_multiple(&entries).unwrap();
@@ -166,13 +165,11 @@ fn test_set_multiple_forwarding_memmapped() {
   let mut memmapped = MemMappedKVJournal::new(path, 512, None).unwrap();
 
   // Create multiple entries
-  let mut entries = HashMap::new();
-  entries.insert(
-    "mm_key1".to_string(),
-    Value::String("mapped_value1".to_string()),
-  );
-  entries.insert("mm_key2".to_string(), Value::Float(3.14159));
-  entries.insert("mm_key3".to_string(), Value::Bool(false));
+  let entries = vec![
+    ("mm_key1".to_string(), Value::String("mapped_value1".to_string())),
+    ("mm_key2".to_string(), Value::Float(3.14159)),
+    ("mm_key3".to_string(), Value::Bool(false)),
+  ];
 
   // Use set_multiple on memory-mapped journal
   memmapped.set_multiple(&entries).unwrap();
@@ -1011,17 +1008,18 @@ fn test_set_multiple_with_high_water_mark_callback_retry() {
   );
 
   // Create a set of entries that will likely trigger buffer full
-  let mut large_entries = HashMap::new();
-  for i in 0 .. 15 {
-    large_entries.insert(
-      format!("large_key_{i}"),
-      Value::String(
-        "This is a relatively large value that will consume significant buffer space and trigger \
-         buffer full"
-          .to_string(),
-      ),
-    );
-  }
+  let large_entries: Vec<(String, Value)> = (0..15)
+    .map(|i| {
+      (
+        format!("large_key_{i}"),
+        Value::String(
+          "This is a relatively large value that will consume significant buffer space and trigger \
+           buffer full"
+            .to_string(),
+        ),
+      )
+    })
+    .collect();
 
   // Attempt to write the large entries
   // This tests the retry mechanism in write_journal_entries

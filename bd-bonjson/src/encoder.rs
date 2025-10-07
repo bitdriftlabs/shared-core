@@ -32,6 +32,11 @@ use std::collections::HashMap;
 ///
 /// Note: The buffer will automatically reserve 1024 bytes if it's smaller.
 ///
+/// Supports all BONJSON value types including:
+/// - Primitive types (null, bool, numbers, strings)
+/// - Collections (arrays, objects)
+/// - Key-value vectors (KVVec) - encoded identically to objects
+///
 /// # Arguments
 /// * `buffer` - The buffer to use for encoding (will be cleared and reused)
 /// * `value` - The value to encode
@@ -81,6 +86,9 @@ pub fn encode_into_vec<'a>(
 /// allocating additional memory. It's useful for embedded systems or other
 /// scenarios where memory allocation should be avoided.
 ///
+/// Supports all BONJSON value types including key-value vectors (KVVec)
+/// which are encoded identically to objects/maps.
+///
 /// # Arguments
 /// * `buffer` - The mutable slice to encode into
 /// * `value` - The value to encode
@@ -96,6 +104,9 @@ pub fn encode_into_slice(buffer: &mut [u8], value: &Value) -> Result<usize, Seri
 ///
 /// This function writes BONJSON data directly to a `BufMut` implementation,
 /// which can automatically track position and provide better ergonomics.
+///
+/// Supports all BONJSON value types including key-value vectors (KVVec)
+/// which are encoded identically to objects/maps for compatibility.
 ///
 /// # Arguments
 /// * `buf` - The mutable buffer that implements `BufMut`
@@ -129,6 +140,10 @@ pub fn encode_into_buf_impl<B: BufMut>(
       encode_object_into_buf(buf, obj)?;
       0
     },
+    Value::KVVec(kv_pairs) => {
+      encode_kv_vec_into_buf(buf, kv_pairs)?;
+      0
+    },
   };
   Ok(())
 }
@@ -157,8 +172,36 @@ fn encode_object_into_buf<B: BufMut>(
   Ok(())
 }
 
+/// Encodes a KV vector into a buffer using `BufMut`.
+///
+/// KV vectors are encoded identically to objects (maps) for maximum compatibility.
+/// This allows KVVec data to be decoded as regular BONJSON objects by any decoder.
+/// The encoding format uses BONJSON map structure with string keys and Value values.
+///
+/// # Arguments
+/// * `buf` - The mutable buffer that implements `BufMut`
+/// * `kv_pairs` - Vector of key-value pairs to encode
+///
+/// # Returns
+/// * `Ok(())` - On successful encoding
+/// * `Err(SerializationError)` - If encoding fails
+fn encode_kv_vec_into_buf<B: BufMut>(
+  buf: &mut B,
+  kv_pairs: &[(String, Value)],
+) -> Result<(), SerializationError> {
+  serialize_map_begin(buf)?;
+  for (key, value) in kv_pairs {
+    serialize_string(buf, key)?;
+    encode_into_buf_impl(buf, value)?;
+  }
+  serialize_container_end(buf)?;
+  Ok(())
+}
+
 /// Encode a `ValueRef` into a `BufMut` without cloning.
-/// This provides true zero-copy encoding for referenced data.
+///
+/// This provides true zero-copy encoding for referenced data, including support
+/// for KVSlice references which are encoded identically to objects/maps.
 ///
 /// # Arguments
 /// * `buf` - The mutable buffer that implements `BufMut`
@@ -196,6 +239,10 @@ fn encode_ref_into_buf_impl<B: BufMut>(
       encode_object_ref_into_buf(buf, obj)?;
       0
     },
+    ValueRef::KVSlice(kv_slice) => {
+      encode_kv_slice_ref_into_buf(buf, kv_slice)?;
+      0
+    },
   };
   Ok(())
 }
@@ -220,6 +267,21 @@ fn encode_object_ref_into_buf<B: BufMut>(
 ) -> Result<(), SerializationError> {
   serialize_map_begin(buf)?;
   for (key, value) in obj {
+    serialize_string(buf, key)?;
+    encode_into_buf_impl(buf, value)?;
+  }
+  serialize_container_end(buf)?;
+  Ok(())
+}
+
+/// Encodes a KV slice reference into a buffer using `BufMut` without cloning.
+/// KV slices are encoded the same way as objects (maps).
+fn encode_kv_slice_ref_into_buf<B: BufMut>(
+  buf: &mut B,
+  kv_slice: &[(String, Value)],
+) -> Result<(), SerializationError> {
+  serialize_map_begin(buf)?;
+  for (key, value) in kv_slice {
     serialize_string(buf, key)?;
     encode_into_buf_impl(buf, value)?;
   }

@@ -116,12 +116,12 @@ impl KVStore {
   /// - Other values are inserted normally
   ///
   /// # Arguments
-  /// * `entries` - A map of keys to values to be inserted
+  /// * `entries` - A slice of key-value pairs to be inserted
   ///
   /// # Errors
   /// Returns an error if any value cannot be written to the journal. If an error occurs,
   /// no entries will be written.
-  pub fn insert_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
+  pub fn insert_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
     self.journal.set_multiple(entries)?;
 
     // Update the cache to reflect all changes

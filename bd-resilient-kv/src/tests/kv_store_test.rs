@@ -7,7 +7,6 @@
 
 use crate::KVStore;
 use bd_bonjson::Value;
-use std::collections::HashMap;
 use tempfile::TempDir;
 
 #[test]
@@ -92,11 +91,12 @@ fn test_kv_store_insert_multiple() -> anyhow::Result<()> {
   let mut store = KVStore::new(&base_path, 4096, None)?;
 
   // Create multiple entries to insert
-  let mut entries = HashMap::new();
-  entries.insert("key1".to_string(), Value::String("value1".to_string()));
-  entries.insert("key2".to_string(), Value::Signed(42));
-  entries.insert("key3".to_string(), Value::Bool(true));
-  entries.insert("key4".to_string(), Value::Float(3.14159));
+  let entries = vec![
+    ("key1".to_string(), Value::String("value1".to_string())),
+    ("key2".to_string(), Value::Signed(42)),
+    ("key3".to_string(), Value::Bool(true)),
+    ("key4".to_string(), Value::Float(3.14159)),
+  ];
 
   // Insert all entries at once
   store.insert_multiple(&entries)?;
@@ -112,13 +112,11 @@ fn test_kv_store_insert_multiple() -> anyhow::Result<()> {
   assert_eq!(store.get("key4"), Some(&Value::Float(3.14159)));
 
   // Test inserting more entries, including one with Null (deletion)
-  let mut more_entries = HashMap::new();
-  more_entries.insert("key5".to_string(), Value::String("value5".to_string()));
-  more_entries.insert("key2".to_string(), Value::Null); // This should delete key2
-  more_entries.insert(
-    "key1".to_string(),
-    Value::String("updated_value1".to_string()),
-  ); // Update key1
+  let more_entries = vec![
+    ("key5".to_string(), Value::String("value5".to_string())),
+    ("key2".to_string(), Value::Null), // This should delete key2
+    ("key1".to_string(), Value::String("updated_value1".to_string())), // Update key1
+  ];
 
   store.insert_multiple(&more_entries)?;
 

@@ -33,19 +33,19 @@ pub trait KVJournal {
 
   /// Generate journal entries recording the setting of multiple keys to their respective values.
   ///
-  /// This method sets multiple key-value pairs in a single operation. The default implementation
-  /// calls `set()` for each pair individually, but implementations may provide more efficient
-  /// batch operations.
+  /// This method sets multiple key-value pairs in a single operation from a slice of
+  /// (key, value) tuples. The default implementation calls `set()` for each pair individually,
+  /// but implementations may provide more efficient batch operations.
   ///
   /// Note: Setting any value to `Value::Null` will mark that entry for DELETION!
   ///
   /// # Arguments
-  /// * `entries` - A map of keys to values to be set
+  /// * `entries` - A slice of (String, Value) tuples to be set
   ///
   /// # Errors
   /// Returns an error if any journal entry cannot be written. If an error occurs,
   /// no data will have been written.
-  fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()>;
+  fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()>;
 
   /// Generate a new journal entry recording the deletion of a key.
   ///

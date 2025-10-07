@@ -158,7 +158,7 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
   /// # Errors
   /// Returns an error if any journal entry cannot be written. If an error occurs,
   /// no data will have been written.
-  fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
+  fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
     // First attempt using the standard logic
     let result = self.with_active_journal_mut(|journal| journal.set_multiple(entries));
 

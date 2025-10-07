@@ -183,7 +183,7 @@ impl KVJournal for MemMappedKVJournal {
   /// # Errors
   /// Returns an error if any journal entry cannot be written. If an error occurs,
   /// no data will have been written.
-  fn set_multiple(&mut self, entries: &HashMap<String, Value>) -> anyhow::Result<()> {
+  fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
     self.in_memory_kv.set_multiple(entries)
   }
 

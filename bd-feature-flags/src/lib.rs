@@ -234,7 +234,8 @@ impl FeatureFlags {
   ///
   /// Creates or updates multiple feature flags with their respective variants. All flags are
   /// immediately stored in persistent storage and receive timestamps indicating when they were
-  /// last modified. This method is more efficient than calling `set()` multiple times.
+  /// last modified. This method converts the input into a Vec of (key, value) pairs for
+  /// efficient batch processing by the underlying KV store.
   ///
   /// # Arguments
   ///
@@ -254,15 +255,15 @@ impl FeatureFlags {
   ///   or permission issues
   /// - If an error occurs, no flags will be written.
   pub fn set_multiple(&mut self, flags: Vec<(String, Option<String>)>) -> anyhow::Result<()> {
-    // Convert the input vector to the format expected by the KV store
-    let mut kv_entries = HashMap::new();
-
+    // Convert the input vector to Vec format for the KV store
     let now = time::OffsetDateTime::now_utc();
-    for (key, variant) in flags {
-      let feature_flag = FeatureFlag::new(variant, Some(now))?;
-      let value = feature_flag.to_value();
-      kv_entries.insert(key, value);
-    }
+    let kv_entries: Vec<(String, bd_bonjson::Value)> = flags.into_iter()
+      .map(|(key, variant)| {
+        let feature_flag = FeatureFlag::new(variant, Some(now))?;
+        let value = feature_flag.to_value();
+        Ok((key, value))
+      })
+      .collect::<anyhow::Result<Vec<_>>>()?;
 
     self.flags_store.insert_multiple(&kv_entries)?;
     Ok(())
