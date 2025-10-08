@@ -400,10 +400,10 @@ impl LoggerBuilder {
     f: impl Future<Output = anyhow::Result<()>> + Send + 'static,
   ) -> anyhow::Result<()> {
     std::thread::Builder::new()
-      .name("bitdrift-tokio".to_string())
+      .name("bd-tokio".to_string())
       .spawn(move || {
         tokio::runtime::Builder::new_current_thread()
-          .thread_name("bitdrift-tokio-worker")
+          .thread_name("bd-tokio-worker")
           .enable_all()
           .build()?
           .block_on(async {
