@@ -37,6 +37,20 @@ pub enum Value {
   String(String),
   Array(Vec<Value>),
   Object(HashMap<String, Value>),
+  KVVec(Vec<(String, Value)>),
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum ValueRef<'a> {
+  Null,
+  Bool(bool),
+  Float(f64),
+  Signed(i64),
+  Unsigned(u64),
+  String(&'a str),
+  Array(&'a [Value]),
+  Object(&'a HashMap<String, Value>),
+  KVSlice(&'a [(String, Value)]),
 }
 
 // Helper methods for Value
@@ -130,11 +144,23 @@ impl Value {
     }
   }
 
+  /// Extract KV vector value from this Value.
+  ///
+  /// # Errors
+  /// Returns `DeserializationError::ExpectedMap` if this Value is not a KV vector.
+  pub fn as_kv_vec(&self) -> deserialize_primitives::Result<&Vec<(String, Self)>> {
+    match self {
+      Self::KVVec(kv_vec) => Ok(kv_vec),
+      _ => Err(DeserializationError::ExpectedMap),
+    }
+  }
+
   // JSON-like accessor methods
   #[must_use]
   pub fn get(&self, key: &str) -> Option<&Self> {
     match self {
       Self::Object(obj) => obj.get(key),
+      Self::KVVec(kv_vec) => kv_vec.iter().find(|(k, _)| k == key).map(|(_, v)| v),
       _ => None,
     }
   }
@@ -185,5 +211,10 @@ impl Value {
   #[must_use]
   pub fn is_object(&self) -> bool {
     matches!(self, Self::Object(_))
+  }
+
+  #[must_use]
+  pub fn is_kv_vec(&self) -> bool {
+    matches!(self, Self::KVVec(_))
   }
 }

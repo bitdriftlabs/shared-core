@@ -416,13 +416,30 @@ impl LoggerHandle {
     );
   }
 
-  pub fn set_feature_flag(&self, flag: &str, variant: Option<String>) {
+  /// Sets or updates a feature flag in the logger.
+  ///
+  /// Creates or updates a feature flag with the given name and variant. Feature flags
+  /// are used to control runtime behavior and logging configurations. The flag is
+  /// stored persistently and will be available across logger restarts.
+  ///
+  /// # Arguments
+  ///
+  /// * `flag` - The name of the feature flag to set or update
+  /// * `variant` - The variant value for the flag:
+  ///   - `Some(string)` sets the flag with the specified variant
+  ///   - `None` sets the flag without a variant (simple boolean-style flag)
+  ///
+  /// # Notes
+  ///
+  /// This method is non-blocking and will not panic if called from within a log field
+  /// provider callback. If called from within a callback, a warning will be logged
+  /// and the operation will be ignored.
+  pub fn set_feature_flag(&self, flag: String, variant: Option<String>) {
     with_reentrancy_guard!(
       {
-        let result =
-          AsyncLogBuffer::<LoggerReplay>::set_feature_flag(&self.tx, flag.to_string(), variant);
+        let result = AsyncLogBuffer::<LoggerReplay>::set_feature_flag(&self.tx, flag, variant);
         if let Err(e) = result {
-          log::warn!("failed to set feature flag {flag:?}: {e:?}");
+          log::warn!("failed to set feature flag: {e:?}");
         }
       },
       "failed to set {:?} feature flag, setting flags from within a callback is not permitted",
@@ -430,6 +447,51 @@ impl LoggerHandle {
     );
   }
 
+  /// Sets or updates multiple feature flags in a single operation.
+  ///
+  /// Creates or updates multiple feature flags with their respective variants. This method
+  /// is more efficient than calling `set_feature_flag()` multiple times as it batches
+  /// the operations. All flags are stored persistently and will be available across
+  /// logger restarts.
+  ///
+  /// # Arguments
+  ///
+  /// * `flags` - A vector of tuples containing flag names and their variants:
+  ///   - `Some(string)` sets the flag with the specified variant
+  ///   - `None` sets the flag without a variant (simple boolean-style flag)
+  ///
+  /// # Notes
+  ///
+  /// This method is non-blocking and will not panic if called from within a log field
+  /// provider callback. If called from within a callback, a warning will be logged
+  /// and the operation will be ignored.
+  pub fn set_feature_flags(&self, flags: Vec<(String, Option<String>)>) {
+    with_reentrancy_guard!(
+      {
+        let result = AsyncLogBuffer::<LoggerReplay>::set_feature_flags(&self.tx, flags);
+        if let Err(e) = result {
+          log::warn!("failed to set feature flags: {e:?}");
+        }
+      },
+      "failed to set {:?} feature flags, setting flags from within a callback is not permitted",
+      flags
+    );
+  }
+
+  /// Removes a feature flag from the logger.
+  ///
+  /// Deletes the specified feature flag from persistent storage. Once removed,
+  /// the flag will no longer be available and will not persist across logger restarts.
+  ///
+  /// # Arguments
+  ///
+  /// * `flag` - The name of the feature flag to remove
+  ///
+  /// # Notes
+  ///
+  /// This method is non-blocking and will not panic if called from within a log field
+  /// provider callback. If called from within a callback, a warning will be logged
+  /// and the operation will be ignored.
   pub fn remove_feature_flag(&self, flag: String) {
     with_reentrancy_guard!(
       {

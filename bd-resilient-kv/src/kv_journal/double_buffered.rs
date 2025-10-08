@@ -17,6 +17,7 @@ use std::collections::HashMap;
 /// - When the active journal passes its high water mark, uses `reinit_from` to initialize the other
 ///   journal with the compressed journal state of the full one
 /// - Once the other journal is initialized, begins forwarding APIs to that journal
+#[derive(Debug)]
 pub struct DoubleBufferedKVJournal<A: KVJournal, B: KVJournal> {
   journal_a: A,
   journal_b: B,
@@ -93,19 +94,13 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
   where
     F: FnOnce(&mut dyn KVJournal) -> anyhow::Result<T>,
   {
-    // Execute operation and check for high water mark
-    let (result, high_water_triggered) = if self.journal_a_is_active {
-      let result = f(&mut self.journal_a)?;
-      let high_water_triggered = self.journal_a.is_high_water_mark_triggered();
-      (result, high_water_triggered)
-    } else {
-      let result = f(&mut self.journal_b)?;
-      let high_water_triggered = self.journal_b.is_high_water_mark_triggered();
-      (result, high_water_triggered)
-    };
+    let journal = self.active_journal_mut();
+    let hwm_was_already_triggered = journal.is_high_water_mark_triggered();
+    let result = f(journal)?;
+    let hwm_is_now_triggered = journal.is_high_water_mark_triggered();
 
-    // Check if we need to switch journals after the operation
-    if high_water_triggered {
+    if !hwm_was_already_triggered && hwm_is_now_triggered {
+      // Call switch_journals to attempt compaction
       self.switch_journals()?;
     }
 
@@ -118,6 +113,15 @@ impl<A: KVJournal, B: KVJournal> DoubleBufferedKVJournal<A, B> {
       &self.journal_a
     } else {
       &self.journal_b
+    }
+  }
+
+  /// Get a mutable reference to the currently active journal.
+  fn active_journal_mut(&mut self) -> &mut dyn KVJournal {
+    if self.journal_a_is_active {
+      &mut self.journal_a
+    } else {
+      &mut self.journal_b
     }
   }
 }
@@ -141,6 +145,30 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
 
   fn set(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {
     self.with_active_journal_mut(|journal| journal.set(key, value))
+  }
+
+  /// Set multiple key-value pairs in this journal.
+  ///
+  /// This will forward the operation to the currently active journal. If the operation
+  /// triggers a high water mark, the journal will automatically switch to the other buffer
+  /// and attempt compaction. If compaction succeeds and there's space, a retry will be attempted.
+  ///
+  /// Note: Setting any value to `Value::Null` will mark that entry for DELETION!
+  ///
+  /// # Errors
+  /// Returns an error if any journal entry cannot be written. If an error occurs,
+  /// no data will have been written.
+  fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
+    // First attempt using the standard logic
+    let result = self.with_active_journal_mut(|journal| journal.set_multiple(entries));
+
+    // If it failed and our high water mark isn't triggered, try again
+    // (this handles the case where the underlying journal filled up but compaction freed space)
+    if result.is_err() && !self.is_high_water_mark_triggered() {
+      self.with_active_journal_mut(|journal| journal.set_multiple(entries))
+    } else {
+      result
+    }
   }
 
   fn delete(&mut self, key: &str) -> anyhow::Result<()> {

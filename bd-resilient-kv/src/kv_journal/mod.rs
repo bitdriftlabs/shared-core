@@ -8,12 +8,6 @@
 use bd_bonjson::Value;
 use std::collections::HashMap;
 
-/// Callback function type for high water mark notifications.
-///
-/// Called when a buffer usage exceeds the high water mark threshold.
-pub type HighWaterMarkCallback =
-  fn(current_position: usize, buffer_size: usize, high_water_mark_position: usize);
-
 /// Trait for a key-value journaling system whose data can be recovered up to the last successful
 /// write checkpoint.
 pub trait KVJournal {
@@ -36,6 +30,22 @@ pub trait KVJournal {
   /// # Errors
   /// Returns an error if the journal entry cannot be written.
   fn set(&mut self, key: &str, value: &Value) -> anyhow::Result<()>;
+
+  /// Generate journal entries recording the setting of multiple keys to their respective values.
+  ///
+  /// This method sets multiple key-value pairs in a single operation from a slice of
+  /// (key, value) tuples. The default implementation calls `set()` for each pair individually,
+  /// but implementations may provide more efficient batch operations.
+  ///
+  /// Note: Setting any value to `Value::Null` will mark that entry for DELETION!
+  ///
+  /// # Arguments
+  /// * `entries` - A slice of (String, Value) tuples to be set
+  ///
+  /// # Errors
+  /// Returns an error if any journal entry cannot be written. If an error occurs,
+  /// no data will have been written.
+  fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()>;
 
   /// Generate a new journal entry recording the deletion of a key.
   ///

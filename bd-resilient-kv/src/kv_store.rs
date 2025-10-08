@@ -5,12 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::kv_journal::{
-  DoubleBufferedKVJournal,
-  HighWaterMarkCallback,
-  KVJournal,
-  MemMappedKVJournal,
-};
+use crate::kv_journal::{DoubleBufferedKVJournal, KVJournal, MemMappedKVJournal};
 use bd_bonjson::Value;
 use std::collections::HashMap;
 use std::path::Path;
@@ -36,14 +31,13 @@ fn open_or_create_journal<P: AsRef<Path>>(
   file_path: P,
   target_size: usize,
   high_water_mark_ratio: Option<f32>,
-  callback: Option<HighWaterMarkCallback>,
 ) -> anyhow::Result<MemMappedKVJournal> {
   let path = file_path.as_ref();
 
   // Try to open with existing data first
-  MemMappedKVJournal::from_file(path, target_size, high_water_mark_ratio, callback).or_else(|_| {
+  MemMappedKVJournal::from_file(path, target_size, high_water_mark_ratio).or_else(|_| {
     // Data is corrupt or unreadable, create fresh
-    MemMappedKVJournal::new(path, target_size, high_water_mark_ratio, callback)
+    MemMappedKVJournal::new(path, target_size, high_water_mark_ratio)
   })
 }
 
@@ -60,7 +54,6 @@ impl KVStore {
   /// * `base_path` - Base path for the journal files (extensions will be added automatically)
   /// * `buffer_size` - Size in bytes for each journal buffer
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  /// * `callback` - Optional callback function called when high water mark is exceeded
   ///
   /// # Errors
   /// Returns an error if the journal files cannot be created/opened or if initialization fails.
@@ -68,15 +61,14 @@ impl KVStore {
     base_path: P,
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>,
   ) -> anyhow::Result<Self> {
     let base = base_path.as_ref();
     let file_a = base.with_extension("jrna");
     let file_b = base.with_extension("jrnb");
 
     // Try to create/open the journal files
-    let journal_a = open_or_create_journal(&file_a, buffer_size, high_water_mark_ratio, callback)?;
-    let journal_b = open_or_create_journal(&file_b, buffer_size, high_water_mark_ratio, callback)?;
+    let journal_a = open_or_create_journal(&file_a, buffer_size, high_water_mark_ratio)?;
+    let journal_b = open_or_create_journal(&file_b, buffer_size, high_water_mark_ratio)?;
 
     let journal = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
     let cached_map = journal.as_hashmap()?;
@@ -114,6 +106,34 @@ impl KVStore {
       self.cached_map.insert(key, value);
     }
     Ok(old_value)
+  }
+
+  /// Insert multiple key-value pairs in a single operation.
+  ///
+  /// This method efficiently inserts multiple key-value pairs by using the underlying
+  /// journal's batch operation capability. For each key-value pair:
+  /// - Inserting `Value::Null` is equivalent to removing the key
+  /// - Other values are inserted normally
+  ///
+  /// # Arguments
+  /// * `entries` - A slice of key-value pairs to be inserted
+  ///
+  /// # Errors
+  /// Returns an error if any value cannot be written to the journal. If an error occurs,
+  /// no entries will be written.
+  pub fn insert_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
+    self.journal.set_multiple(entries)?;
+
+    // Update the cache to reflect all changes
+    for (key, value) in entries {
+      if matches!(value, Value::Null) {
+        self.cached_map.remove(key);
+      } else {
+        self.cached_map.insert(key.clone(), value.clone());
+      }
+    }
+
+    Ok(())
   }
 
   /// Remove a key and return its value if it existed.

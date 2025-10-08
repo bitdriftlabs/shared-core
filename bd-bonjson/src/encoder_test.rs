@@ -973,3 +973,78 @@ fn test_standalone_encode_function() {
   assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(second_decoded, second_value);
 }
+
+#[test]
+fn test_encode_kv_vec() {
+  let mut buffer = Vec::new();
+
+  // Create a KVVec with some test data
+  let kv_vec = vec![
+    ("name".to_string(), Value::String("Alice".to_string())),
+    ("age".to_string(), Value::Signed(30)),
+    ("active".to_string(), Value::Bool(true)),
+  ];
+  let value = Value::KVVec(kv_vec);
+
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode KVVec");
+
+  // Since KVVec is encoded the same as an Object, the decoder will decode it as an Object
+  let data_slice = &result;
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
+
+  // The decoded value should be an Object with the same key-value pairs
+  assert!(decoded.is_object(), "Decoded value should be an object");
+  let decoded_obj = decoded.as_object().expect("Should be an object");
+
+  // Verify all key-value pairs are present and correct
+  assert_eq!(
+    decoded_obj.get("name"),
+    Some(&Value::String("Alice".to_string()))
+  );
+  assert_eq!(decoded_obj.get("age"), Some(&Value::Signed(30)));
+  assert_eq!(decoded_obj.get("active"), Some(&Value::Bool(true)));
+  assert_eq!(decoded_obj.len(), 3);
+}
+
+#[test]
+fn test_kv_vec_helper_methods() {
+  // Test the new helper methods for KVVec
+  let kv_vec = vec![
+    ("name".to_string(), Value::String("Bob".to_string())),
+    ("count".to_string(), Value::Signed(42)),
+  ];
+  let value = Value::KVVec(kv_vec);
+
+  // Test type checking methods
+  assert!(value.is_kv_vec(), "Should identify as KVVec");
+  assert!(!value.is_object(), "Should not identify as Object");
+  assert!(!value.is_array(), "Should not identify as Array");
+
+  // Test extraction method
+  let extracted = value.as_kv_vec().expect("Should extract as KVVec");
+  assert_eq!(extracted.len(), 2);
+  assert_eq!(extracted[0].0, "name");
+  assert_eq!(extracted[0].1, Value::String("Bob".to_string()));
+
+  // Test get method works with KVVec
+  assert_eq!(value.get("name"), Some(&Value::String("Bob".to_string())));
+  assert_eq!(value.get("count"), Some(&Value::Signed(42)));
+  assert_eq!(value.get("nonexistent"), None);
+}
+
+#[test]
+fn test_encode_empty_kv_vec() {
+  let mut buffer = Vec::new();
+  let value = Value::KVVec(vec![]);
+
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode empty KVVec");
+
+  // Verify we can decode it back as an empty object
+  let data_slice = &result;
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
+  assert!(decoded.is_object(), "Decoded value should be an object");
+  let decoded_obj = decoded.as_object().expect("Should be an object");
+  assert!(decoded_obj.is_empty(), "Decoded object should be empty");
+}

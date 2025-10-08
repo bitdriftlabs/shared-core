@@ -74,11 +74,11 @@ libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
   let file_path_b = temp_dir.path().join("fuzz_journal_b.dat");
 
   // Try to create two MemMappedKVJournals for the double buffered journal
-  let Ok(journal_a) = MemMappedKVJournal::new(&file_path_a, 8192, Some(0.8), None) else {
+  let Ok(journal_a) = MemMappedKVJournal::new(&file_path_a, 8192, Some(0.8)) else {
     return;
   };
 
-  let Ok(journal_b) = MemMappedKVJournal::new(&file_path_b, 8192, Some(0.8), None) else {
+  let Ok(journal_b) = MemMappedKVJournal::new(&file_path_b, 8192, Some(0.8)) else {
     return;
   };
 

@@ -70,13 +70,14 @@ impl FeatureFlag {
   ///
   /// If variant is `Some("")`, it is treated as `None`.
   pub fn new(
-    variant: Option<&str>,
+    variant: Option<String>,
     timestamp: Option<time::OffsetDateTime>,
   ) -> anyhow::Result<Self> {
     // Validate the variant - reject empty strings
     let validated_variant = match variant {
-      Some("") | None => None,
-      Some(s) => Some(s.to_string()),
+      Some(s) if s.is_empty() => None,
+      None => None,
+      Some(s) => Some(s),
     };
 
     Ok(Self {
@@ -181,7 +182,6 @@ impl FeatureFlags {
       base_path,
       buffer_size,
       Some(high_water_mark_ratio.unwrap_or(DEFAULT_HIGH_WATER_MARK_RATIO)),
-      None,
     )?;
     Ok(Self { flags_store })
   }
@@ -223,10 +223,50 @@ impl FeatureFlags {
   /// This function will return an error if:
   /// - The flag cannot be written to persistent storage due to I/O errors, insufficient disk space,
   ///   or permission issues
-  pub fn set(&mut self, key: &str, variant: Option<&str>) -> anyhow::Result<()> {
+  pub fn set(&mut self, key: String, variant: Option<String>) -> anyhow::Result<()> {
     let feature_flag = FeatureFlag::new(variant, None)?;
     let value = feature_flag.to_value();
-    self.flags_store.insert(key.to_string(), value)?;
+    self.flags_store.insert(key, value)?;
+    Ok(())
+  }
+
+  /// Sets or updates multiple feature flags in a single operation.
+  ///
+  /// Creates or updates multiple feature flags with their respective variants. All flags are
+  /// immediately stored in persistent storage and receive timestamps indicating when they were
+  /// last modified. This method converts the input into a Vec of (key, value) pairs for
+  /// efficient batch processing by the underlying KV store.
+  ///
+  /// # Arguments
+  ///
+  /// * `flags` - A vector of tuples containing flag names and their variants:
+  ///   - `Some(string)` sets the flag with the specified variant
+  ///   - `Some("")` treats the variant as `None`
+  ///   - `None` sets the flag without a variant (simple boolean-style flag)
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(())` on success, or an error if any flag cannot be stored.
+  ///
+  /// # Errors
+  ///
+  /// This function will return an error if:
+  /// - Any flag cannot be written to persistent storage due to I/O errors, insufficient disk space,
+  ///   or permission issues
+  /// - If an error occurs, no flags will be written.
+  pub fn set_multiple(&mut self, flags: Vec<(String, Option<String>)>) -> anyhow::Result<()> {
+    // Convert the input vector to Vec format for the KV store
+    let now = time::OffsetDateTime::now_utc();
+    let kv_entries: Vec<(String, bd_bonjson::Value)> = flags
+      .into_iter()
+      .map(|(key, variant)| {
+        let feature_flag = FeatureFlag::new(variant, Some(now))?;
+        let value = feature_flag.to_value();
+        Ok((key, value))
+      })
+      .collect::<anyhow::Result<Vec<_>>>()?;
+
+    self.flags_store.insert_multiple(&kv_entries)?;
     Ok(())
   }
 

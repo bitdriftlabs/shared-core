@@ -5,16 +5,17 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{HighWaterMarkCallback, KVJournal};
-use bd_bonjson::Value;
+use super::KVJournal;
 use bd_bonjson::decoder::from_slice;
-use bd_bonjson::encoder::encode_into_buf;
+use bd_bonjson::encoder::{encode_into_buf, encode_ref_into_buf};
 use bd_bonjson::serialize_primitives::{
+  SerializationError,
   serialize_array_begin,
   serialize_container_end,
   serialize_map_begin,
   serialize_string,
 };
+use bd_bonjson::{Value, ValueRef};
 use bd_client_common::error::InvariantError;
 use bytes::BufMut;
 use std::collections::HashMap;
@@ -29,7 +30,6 @@ pub struct InMemoryKVJournal<'a> {
   position: usize,
   buffer: &'a mut [u8],
   high_water_mark: usize,
-  high_water_mark_callback: Option<HighWaterMarkCallback>,
   high_water_mark_triggered: bool,
   initialized_at_unix_time_ns: u64,
 }
@@ -208,15 +208,9 @@ impl<'a> InMemoryKVJournal<'a> {
   /// # Arguments
   /// * `buffer` - The storage buffer
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  /// * `callback` - Optional callback function called when high water mark is exceeded
-  ///
   /// # Errors
   /// Returns an error if serialization fails or if `high_water_mark_ratio` is invalid.
-  pub fn new(
-    buffer: &'a mut [u8],
-    high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>,
-  ) -> anyhow::Result<Self> {
+  pub fn new(buffer: &'a mut [u8], high_water_mark_ratio: Option<f32>) -> anyhow::Result<Self> {
     // If this operation gets interrupted, the buffer must be considered invalid.
     invalidate_version(buffer);
 
@@ -240,7 +234,6 @@ impl<'a> InMemoryKVJournal<'a> {
       position,
       buffer,
       high_water_mark,
-      high_water_mark_callback: callback,
       high_water_mark_triggered: false,
       initialized_at_unix_time_ns: timestamp,
     })
@@ -253,7 +246,6 @@ impl<'a> InMemoryKVJournal<'a> {
   /// # Arguments
   /// * `buffer` - The storage buffer containing existing KV data
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  /// * `callback` - Optional callback function called when high water mark is exceeded
   ///
   /// # Errors
   /// Returns an error if the buffer is invalid, corrupted, or if `high_water_mark_ratio` is
@@ -261,7 +253,6 @@ impl<'a> InMemoryKVJournal<'a> {
   pub fn from_buffer(
     buffer: &'a mut [u8],
     high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>,
   ) -> anyhow::Result<Self> {
     let buffer_len = validate_buffer_len(buffer)?;
     let version = read_version(buffer)?;
@@ -274,7 +265,6 @@ impl<'a> InMemoryKVJournal<'a> {
       position,
       buffer,
       high_water_mark,
-      high_water_mark_callback: callback,
       high_water_mark_triggered: position >= high_water_mark,
       initialized_at_unix_time_ns: init_timestamp,
     })
@@ -295,12 +285,13 @@ impl<'a> InMemoryKVJournal<'a> {
 
   /// Check if the current position has exceeded the high water mark and trigger callback if needed.
   fn check_high_water_mark(&mut self) {
-    if !self.high_water_mark_triggered && self.position >= self.high_water_mark {
-      self.high_water_mark_triggered = true;
-      if let Some(callback) = self.high_water_mark_callback {
-        callback(self.position, self.buffer.len(), self.high_water_mark);
-      }
+    if self.position >= self.high_water_mark {
+      self.trigger_high_water();
     }
+  }
+
+  fn trigger_high_water(&mut self) {
+    self.high_water_mark_triggered = true;
   }
 
   fn write_journal_entry(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {
@@ -323,6 +314,31 @@ impl<'a> InMemoryKVJournal<'a> {
     let remaining = cursor.remaining_mut();
     self.set_position(buffer_len - remaining);
     Ok(())
+  }
+
+  fn write_journal_entries_kv_vec(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
+    let buffer_len = self.buffer.len();
+    let mut cursor = &mut self.buffer[self.position ..];
+
+    // Try to write all entries as a single BONJSON KVVec
+    let encode_result = encode_ref_into_buf(&mut cursor, &ValueRef::KVSlice(entries));
+
+    match encode_result {
+      Ok(_bytes_written) => {
+        let remaining = cursor.remaining_mut();
+        self.set_position(buffer_len - remaining);
+        Ok(())
+      },
+      Err(SerializationError::BufferFull) => {
+        // We didn't have enough space to write all entries at once.
+        self.trigger_high_water();
+        Err(anyhow::anyhow!(
+          "Failed to encode entries KVVec: {:?}",
+          SerializationError::BufferFull
+        ))
+      },
+      Err(e) => Err(anyhow::anyhow!("Failed to encode entries KVVec: {e:?}")),
+    }
   }
 }
 
@@ -354,6 +370,25 @@ impl KVJournal for InMemoryKVJournal<'_> {
   /// Returns an error if the journal entry cannot be written.
   fn set(&mut self, key: &str, value: &Value) -> anyhow::Result<()> {
     self.write_journal_entry(key, value)
+  }
+
+  /// Generate a new journal entry recording the setting of multiple key-value pairs.
+  ///
+  /// This is more efficient than calling `set()` multiple times as it writes
+  /// all entries as a single BONJSON object rather than individual objects.
+  ///
+  /// Note: Setting any value to `Value::Null` will mark that entry for DELETION!
+  ///
+  /// # Errors
+  /// Returns an error if the journal entries cannot be written. If an error occurs,
+  /// no data will have been written.
+  fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
+    if entries.is_empty() {
+      return Ok(());
+    }
+
+    // Write all entries as a single BONJSON KVVec for efficiency
+    self.write_journal_entries_kv_vec(entries)
   }
 
   /// Generate a new journal entry recording the deletion of a key.
@@ -434,6 +469,9 @@ impl KVJournal for InMemoryKVJournal<'_> {
 
     // If this operation gets interrupted, the buffer must be considered invalid.
     invalidate_version(self.buffer);
+
+    // Reset high water mark triggered flag since we're reinitializing
+    self.high_water_mark_triggered = false;
 
     // Write metadata with current timestamp
     let timestamp = current_timestamp()?;

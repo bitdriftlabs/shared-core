@@ -73,7 +73,7 @@ libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
   let file_path = temp_dir.path().join("fuzz_journal.dat");
 
   // Try to create a MemMappedKVJournal
-  let Ok(mut journal) = MemMappedKVJournal::new(&file_path, 8192, Some(0.8), None) else {
+  let Ok(mut journal) = MemMappedKVJournal::new(&file_path, 8192, Some(0.8)) else {
     return;
   };
 
@@ -100,7 +100,7 @@ libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
         drop(journal);
 
         // Try to reopen the journal from the existing file
-        journal = match MemMappedKVJournal::new(&file_path, 8192, Some(0.8), None) {
+        journal = match MemMappedKVJournal::new(&file_path, 8192, Some(0.8)) {
           Ok(j) => j,
           Err(_) => return,
         };

@@ -18,7 +18,7 @@ fn create_journal_with_data_and_time(
   timestamp_offset_nanos: i64,
 ) -> anyhow::Result<InMemoryKVJournal<'static>> {
   let buffer = Box::leak(vec![0u8; buffer_size].into_boxed_slice());
-  let mut journal = InMemoryKVJournal::new(buffer, Some(0.8), None)?;
+  let mut journal = InMemoryKVJournal::new(buffer, Some(0.8))?;
 
   // Add the data
   for (key, value) in data {
@@ -29,7 +29,7 @@ fn create_journal_with_data_and_time(
   // This simulates journals created at different times
   if timestamp_offset_nanos != 0 {
     let mut temp_buffer = vec![0u8; buffer_size];
-    let mut temp_journal = InMemoryKVJournal::new(&mut temp_buffer, Some(0.8), None)?;
+    let mut temp_journal = InMemoryKVJournal::new(&mut temp_buffer, Some(0.8))?;
     for (key, value) in journal.as_hashmap()? {
       temp_journal.set(&key, &value)?;
     }
@@ -104,8 +104,8 @@ fn test_journal_selection_error_handling() -> anyhow::Result<()> {
   let buffer_a = Box::leak(vec![0u8; 128].into_boxed_slice()); // Small but workable buffer
   let buffer_b = Box::leak(vec![0u8; 1024].into_boxed_slice());
 
-  let journal_a = InMemoryKVJournal::new(buffer_a, Some(0.8), None)?;
-  let journal_b = InMemoryKVJournal::new(buffer_b, Some(0.8), None)?;
+  let journal_a = InMemoryKVJournal::new(buffer_a, Some(0.8))?;
+  let journal_b = InMemoryKVJournal::new(buffer_b, Some(0.8))?;
 
   // This should succeed and select the appropriate journal
   let db_journal = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
@@ -122,8 +122,8 @@ fn test_forced_journal_switching() -> anyhow::Result<()> {
   let buffer_a = Box::leak(vec![0u8; 512].into_boxed_slice()); // Small buffer
   let buffer_b = Box::leak(vec![0u8; 2048].into_boxed_slice()); // Larger buffer
 
-  let journal_a = InMemoryKVJournal::new(buffer_a, Some(0.3), None)?; // Low water mark
-  let journal_b = InMemoryKVJournal::new(buffer_b, Some(0.8), None)?;
+  let journal_a = InMemoryKVJournal::new(buffer_a, Some(0.3))?; // Low water mark
+  let journal_b = InMemoryKVJournal::new(buffer_b, Some(0.8))?;
 
   let mut db_journal = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
 
