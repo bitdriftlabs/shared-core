@@ -13,10 +13,9 @@ use crate::config::{ActionEmitMetric, TagValue};
 use crate::workflow::TriggeredActionEmitSankey;
 use bd_client_stats::Stats;
 use bd_log_primitives::LogRef;
-use bd_log_primitives::tiny_set::TinySet;
 use bd_stats_common::MetricType;
 use std::borrow::Cow;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 //
@@ -33,11 +32,11 @@ impl MetricsCollector {
     Self { stats }
   }
 
-  pub(crate) fn emit_metrics(&self, actions: &TinySet<&ActionEmitMetric>, log: &LogRef<'_>) {
+  pub(crate) fn emit_metrics(&self, actions: &BTreeSet<&ActionEmitMetric>, log: &LogRef<'_>) {
     // TODO(Augustyniak): We dedupe stats in here too only when both their tags and the value of
     // If `counter_increment` values are identical, consider deduping metrics even if their
     // `counter_increment` fields have different values.
-    for action in actions.iter() {
+    for action in actions {
       let tags = Self::extract_tags(log, &action.tags);
 
       #[allow(clippy::cast_precision_loss)]
@@ -77,10 +76,10 @@ impl MetricsCollector {
 
   pub(crate) fn emit_sankeys(
     &self,
-    actions: &TinySet<TriggeredActionEmitSankey<'_>>,
+    actions: &BTreeSet<TriggeredActionEmitSankey<'_>>,
     log: &LogRef<'_>,
   ) {
-    for action in actions.iter() {
+    for action in actions {
       let mut tags = Self::extract_tags(log, action.action.tags());
       tags.insert("_path_id".to_string(), action.path.path_id.to_string());
 

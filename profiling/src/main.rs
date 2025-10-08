@@ -11,7 +11,6 @@ use crate::paths::PATHS;
 use bd_client_common::file::read_compressed_protobuf;
 use bd_client_stats::Stats;
 use bd_client_stats_store::{Collector, Scope};
-use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogRef, log_level};
 use bd_logger::LogFields;
 use bd_logger::builder::default_stats_flush_triggers;
@@ -43,7 +42,7 @@ use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use protobuf::Message;
 use rand::Rng;
 use sha2::Digest;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
@@ -112,8 +111,8 @@ impl AnnotatedWorkflowsEngine {
     engine
       .start(WorkflowsEngineConfig::new(
         WorkflowsConfiguration::new(workflow_configurations.configs(), vec![]),
-        TinySet::default(),
-        TinySet::default(),
+        BTreeSet::default(),
+        BTreeSet::default(),
       ))
       .await;
 
@@ -142,7 +141,7 @@ impl AnnotatedWorkflowsEngine {
         occurred_at: OffsetDateTime::now_utc(),
         capture_session: None,
       },
-      &TinySet::default(),
+      &BTreeSet::new(),
       OffsetDateTime::now_utc(),
     );
   }

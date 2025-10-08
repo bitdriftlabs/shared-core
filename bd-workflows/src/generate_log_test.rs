@@ -70,6 +70,7 @@ impl Helper {
     self
       .extractions
       .timestamps
+      .get_or_insert_default()
       .insert(id.to_string(), timestamp);
   }
 
@@ -77,6 +78,7 @@ impl Helper {
     self
       .extractions
       .fields
+      .get_or_insert_default()
       .insert(id.to_string(), value.to_string());
   }
 

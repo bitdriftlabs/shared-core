@@ -7,7 +7,6 @@
 
 use crate::matcher::Tree;
 use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
-use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{
   EMPTY_FIELDS,
   FieldsRef,
@@ -34,6 +33,7 @@ use log_matcher::base_log_matcher::tag_match::Value_match::{
 use log_matcher::{BaseLogMatcher, Matcher, MatcherList, base_log_matcher};
 use pretty_assertions::assert_eq;
 use protobuf::MessageField;
+use std::collections::BTreeMap;
 
 type Input<'a> = (LogType, LogLevel, LogMessage, LogFields);
 
@@ -230,7 +230,7 @@ fn test_extracted_string_matcher() {
       (log_tag("keyx", "exact"), false),
       (log_msg("no fields"), false),
     ],
-    &TinyMap::default(),
+    None,
   );
 
   match_test_runner_with_extractions(
@@ -240,7 +240,7 @@ fn test_extracted_string_matcher() {
       (log_tag("keyx", "exact"), false),
       (log_msg("no fields"), false),
     ],
-    &[("id1".to_string(), "exact".to_string())].into(),
+    Some(&BTreeMap::from([("id1".to_string(), "exact".to_string())])),
   );
 }
 
@@ -309,7 +309,7 @@ fn test_extracted_double_matcher() {
       (log_tag("key", "13.0"), false),
       (log_tag("key", "13"), false),
     ],
-    &TinyMap::default(),
+    None,
   );
   match_test_runner_with_extractions(
     config.clone(),
@@ -317,12 +317,12 @@ fn test_extracted_double_matcher() {
       (log_tag("key", "13.0"), false),
       (log_tag("key", "13"), false),
     ],
-    &[("id1".to_string(), "bad".to_string())].into(),
+    Some(&BTreeMap::from([("id1".to_string(), "bad".to_string())])),
   );
   match_test_runner_with_extractions(
     config,
     vec![(log_tag("key", "13.0"), true), (log_tag("key", "13"), true)],
-    &[("id1".to_string(), "13".to_string())].into(),
+    Some(&BTreeMap::from([("id1".to_string(), "13".to_string())])),
   );
 }
 
@@ -419,13 +419,13 @@ fn test_extracted_int_matcher() {
       (log_tag("key", "13"), false),
       (log_tag("key", "13.0"), false),
     ],
-    &TinyMap::default(),
+    None,
   );
 
   match_test_runner_with_extractions(
     config,
     vec![(log_tag("key", "13"), true), (log_tag("key", "13.0"), true)],
-    &[("id1".to_string(), "13".to_string())].into(),
+    Some(&BTreeMap::from([("id1".to_string(), "13".to_string())])),
   );
 }
 
@@ -856,14 +856,14 @@ fn make_message_match(operator: Operator, match_value: &str) -> base_log_matcher
 
 #[allow(clippy::needless_pass_by_value)]
 fn match_test_runner(config: LogMatcher, cases: Vec<(Input<'_>, bool)>) {
-  match_test_runner_with_extractions(config, cases, &TinyMap::default());
+  match_test_runner_with_extractions(config, cases, None);
 }
 
 #[allow(clippy::needless_pass_by_value)]
 fn match_test_runner_with_extractions(
   config: LogMatcher,
   cases: Vec<(Input<'_>, bool)>,
-  extracted_fields: &TinyMap<String, String>,
+  extracted_fields: Option<&BTreeMap<String, String>>,
 ) {
   let match_tree = Tree::new(&config).unwrap();
 

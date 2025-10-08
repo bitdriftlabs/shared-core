@@ -19,7 +19,6 @@
 mod filter_chain_test;
 
 use anyhow::{Context, Result, anyhow};
-use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{
   FieldsRef,
   LOG_FIELD_NAME_LEVEL,
@@ -88,13 +87,10 @@ impl FilterChain {
   pub fn process(&self, log: &mut Log) {
     for filter in &self.filters {
       let fields_ref = FieldsRef::new(&log.fields, &log.matching_fields);
-      if !filter.matcher.do_match(
-        log.log_level,
-        log.log_type,
-        &log.message,
-        fields_ref,
-        &TinyMap::default(),
-      ) {
+      if !filter
+        .matcher
+        .do_match(log.log_level, log.log_type, &log.message, fields_ref, None)
+      {
         continue;
       }
 
