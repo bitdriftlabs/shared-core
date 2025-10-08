@@ -15,7 +15,6 @@
 )]
 
 pub mod size;
-pub mod tiny_set;
 
 use crate::size::MemorySized;
 use ahash::AHashMap;

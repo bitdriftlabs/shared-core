@@ -6,10 +6,10 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_log_matcher::matcher::Tree;
-use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogType};
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 
 // A single buffer filter, containing the matchers used to determine if logs should be written to
 // the specific buffer.
@@ -60,11 +60,11 @@ impl BufferSelector {
     log_level: LogLevel,
     message: &LogMessage,
     fields: FieldsRef<'_>,
-  ) -> TinySet<Cow<'_, str>> {
-    let mut buffers = TinySet::default();
+  ) -> BTreeSet<Cow<'_, str>> {
+    let mut buffers = BTreeSet::new();
     for buffer in &self.buffer_filters {
       for (_id, matcher) in &buffer.matchers {
-        if matcher.do_match(log_level, log_type, message, fields, &TinyMap::default()) {
+        if matcher.do_match(log_level, log_type, message, fields, None) {
           buffers.insert(Cow::Borrowed(buffer.buffer_id.as_str()));
 
           // No reason to match further.
