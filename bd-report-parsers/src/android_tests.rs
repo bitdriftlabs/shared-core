@@ -356,6 +356,15 @@ fn anr_name_test() {
   );
   assert_eq!("Undetermined ANR", anr_name(Some("Full moon")));
   assert_eq!("Undetermined ANR", anr_name(None));
+
+  assert_eq!(
+    "App Start ANR",
+    anr_name(Some("App start timeout while launching"))
+  );
+  assert_eq!(
+    "App Start ANR",
+    anr_name(Some("Process com.example.app failed to complete startup"))
+  );
 }
 
 #[test]
