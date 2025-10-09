@@ -507,7 +507,10 @@ fn anr_name(description: Option<&str>) -> &'static str {
     ("Broadcast Receiver ANR", &["broadcast of intent"]),
     ("Content Provider ANR", &["content provider timeout"]),
     ("App Registered ANR", &["app registered timeout"]),
-    ("App Start ANR", &["app start timeout", "failed to complete startup"]),
+    (
+      "App Start ANR",
+      &["app start timeout", "failed to complete startup"],
+    ),
     (
       "Service ANR",
       &[
