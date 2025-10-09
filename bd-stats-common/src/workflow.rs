@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Debug)]
 pub struct WorkflowDebugKey {
   pub workflow_id: String,
   pub state_key: WorkflowDebugStateKey,

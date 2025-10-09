@@ -1079,6 +1079,143 @@ fn exclusive_workflow_log_rule_count() {
 }
 
 #[test]
+fn debug_with_fork() {
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let d = state("D");
+
+  a = a
+    .declare_transition(&b, rule!(log_matches!(message == "foo")))
+    .declare_transition(&c, rule!(log_matches!(message == "foo")));
+  let cloned_b = b.clone();
+  b = b.declare_transition_with_actions(
+    &cloned_b,
+    rule!(log_matches!(message == "bar")),
+    &[make_emit_counter_action(
+      "bar_metric",
+      metric_value(1),
+      vec![],
+    )],
+  );
+  c = c.declare_transition_with_actions(
+    &d,
+    rule!(log_matches!(message == "baz")),
+    &[make_emit_counter_action(
+      "baz_metric",
+      metric_value(1),
+      vec![],
+    )],
+  );
+
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d]).make_config();
+  let mut workflow = AnnotatedWorkflow::new(config);
+  assert!(workflow.runs().is_empty());
+
+  let result = workflow.process_log(TestLog::new("foo"));
+  assert_eq!(
+    result,
+    WorkflowResult {
+      triggered_actions: vec![],
+      logs_to_inject: BTreeMap::new(),
+      stats: WorkflowResultStats {
+        matched_logs_count: 2,
+        processed_timeout: false,
+      },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
+    }
+  );
+  assert_active_run_traversals!(workflow; 0; "B", "C");
+  assert!(!workflow.is_in_initial_state());
+
+  let result = workflow.process_log(TestLog::new("bar"));
+  assert_eq!(
+    result,
+    WorkflowResult {
+      triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
+        id: "bar_metric".to_string(),
+        tags: BTreeMap::new(),
+        increment: ValueIncrement::Fixed(1),
+        metric_type: MetricType::Counter,
+      })],
+      logs_to_inject: BTreeMap::new(),
+      stats: WorkflowResultStats {
+        matched_logs_count: 1,
+        processed_timeout: false,
+      },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "B".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      ),],
+    }
+  );
+  assert_active_run_traversals!(workflow; 1; "B", "C");
+  assert!(!workflow.is_in_initial_state());
+
+  let result = workflow.process_log(TestLog::new("baz"));
+  assert_eq!(
+    result,
+    WorkflowResult {
+      triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
+        id: "baz_metric".to_string(),
+        tags: BTreeMap::new(),
+        increment: ValueIncrement::Fixed(1),
+        metric_type: MetricType::Counter,
+      })],
+      logs_to_inject: BTreeMap::new(),
+      stats: WorkflowResultStats {
+        matched_logs_count: 1,
+        processed_timeout: false,
+      },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "C".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      ),],
+    }
+  );
+  assert_active_run_traversals!(workflow; 1; "B");
+  assert!(!workflow.is_in_initial_state());
+
+  let result = workflow.process_log(TestLog::new("bar"));
+  assert_eq!(
+    result,
+    WorkflowResult {
+      triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
+        id: "bar_metric".to_string(),
+        tags: BTreeMap::new(),
+        increment: ValueIncrement::Fixed(1),
+        metric_type: MetricType::Counter,
+      })],
+      logs_to_inject: BTreeMap::new(),
+      stats: WorkflowResultStats {
+        matched_logs_count: 1,
+        processed_timeout: false,
+      },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "B".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      ),],
+    }
+  );
+  assert_active_run_traversals!(workflow; 1; "B");
+  assert!(!workflow.is_in_initial_state());
+}
+
+#[test]
 #[allow(clippy::cognitive_complexity)]
 #[allow(clippy::many_single_char_names)]
 fn branching_exclusive_workflow() {
