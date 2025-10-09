@@ -587,8 +587,21 @@ impl Api {
 
     let mut disconnected_at = None;
     let mut last_disconnect_reason = None;
+    let mut reconnect_in: Option<std::time::Duration> = None;
+    let mut last_data_received_at = None;
 
     loop {
+      let spurious_upload = if let Some(reconnect_in) = reconnect_in {
+        log::debug!("reconnecting in {:?}", reconnect_in);
+
+        tokio::select! {
+            _ = tokio::time::sleep(reconnect_in) => {None},
+            upload = self.data_upload_rx.recv() => {upload},
+        }
+      } else {
+        None
+      };
+
       // If we have been disconnected for more than 15s switch our network quality to offline. We
       // don't want to do this immediately as we might be in a transient state during a normal
       // reconnect.
@@ -724,9 +737,19 @@ impl Api {
       *self.network_quality_provider.network_quality.write() = NetworkQuality::Online;
       disconnected_at = None;
 
+      if let Some(spurious_upload) = spurious_upload {
+        // If we received a spurious upload while waiting to reconnect, process it now.
+        last_data_received_at = Some(Instant::now());
+        stream_state.handle_data_upload(spurious_upload).await?;
+      }
+
       // At this point we have established the stream, so we should start the general
       // request/response handling.
       loop {
+        let disconnect_at = tokio::time::sleep_until(
+          last_data_received_at.unwrap_or_else(Instant::now) + 30.std_seconds(),
+        );
+
         let upstream_event = tokio::select! {
           // Fire a ping timer if the ping timer elapses.
           () = maybe_await(&mut stream_state.ping_sleep) => {
@@ -734,8 +757,16 @@ impl Api {
             continue;
           }
           Some(data_upload) = self.data_upload_rx.recv() => {
+            last_data_received_at = Some(Instant::now());
             stream_state.handle_data_upload(data_upload).await?;
             continue;
+          },
+          _ = disconnect_at, if last_data_received_at.is_some() => {
+            // We haven't received any data for 30s, so we will close the stream and reconnect.
+            log::debug!("no data received for 30s, reconnecting");
+            self.stats.remote_connect_failure.inc();
+            reconnect_in = Some(15.std_minutes());
+            break;
           },
           // Process network events coming from the platform layer, i.e. response data or stream
           // closures.
