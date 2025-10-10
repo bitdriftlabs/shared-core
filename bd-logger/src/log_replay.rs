@@ -128,11 +128,14 @@ impl ProcessingPipeline {
       );
 
       workflows_engine
-        .start(WorkflowsEngineConfig::new(
-          config.workflows_configuration,
-          config.buffer_producers.trigger_buffer_ids.clone(),
-          config.buffer_producers.continuous_buffer_ids.clone(),
-        ))
+        .start(
+          WorkflowsEngineConfig::new(
+            config.workflows_configuration,
+            config.buffer_producers.trigger_buffer_ids.clone(),
+            config.buffer_producers.continuous_buffer_ids.clone(),
+          ),
+          config.from_cache,
+        )
         .await;
 
       (workflows_engine, flush_buffers_tx)

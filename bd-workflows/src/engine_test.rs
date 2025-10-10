@@ -465,7 +465,7 @@ impl Setup {
     let task_handle =
       AnnotatedWorkflowsEngine::run_for_test(buffers_to_flush_rx, data_upload_rx, hooks.clone());
 
-    workflows_engine.start(workflows_engine_config).await;
+    workflows_engine.start(workflows_engine_config, false).await;
 
     AnnotatedWorkflowsEngine::new(workflows_engine, hooks, stats, task_handle)
   }
@@ -589,19 +589,19 @@ async fn debug_mode() {
           },
         ),
         (
-          DebugStateType::StateId("B", WorkflowDebugTransitionType::Normal(0)),
+          DebugStateType::StartOrReset,
           WorkflowTransitionDebugState {
             count: 1,
             last_transition_time: datetime!(
-              2023-01-01 00:00:01 UTC
+              2023-01-01 00:00:00 UTC
             )
             .into(),
           },
         ),
         (
-          DebugStateType::StartOrReset,
+          DebugStateType::StateId("B", WorkflowDebugTransitionType::Normal(0)),
           WorkflowTransitionDebugState {
-            count: 2,
+            count: 1,
             last_transition_time: datetime!(
               2023-01-01 00:00:01 UTC
             )
@@ -673,9 +673,9 @@ async fn debug_mode() {
         (
           DebugStateType::StartOrReset,
           WorkflowTransitionDebugState {
-            count: 2,
+            count: 1,
             last_transition_time: datetime!(
-              2023-01-01 00:00:01 UTC
+              2023-01-01 00:00:00 UTC
             )
             .into(),
           },
@@ -725,9 +725,9 @@ async fn debug_mode() {
         (
           DebugStateType::StartOrReset,
           WorkflowTransitionDebugState {
-            count: 3,
+            count: 1,
             last_transition_time: datetime!(
-              2023-01-01 00:01:02 UTC
+              2023-01-01 00:00:00 UTC
             )
             .into(),
           },
@@ -786,9 +786,9 @@ async fn debug_mode() {
         (
           DebugStateType::StartOrReset,
           WorkflowTransitionDebugState {
-            count: 3,
+            count: 1,
             last_transition_time: datetime!(
-              2023-01-01 00:01:02 UTC
+              2023-01-01 00:00:00 UTC
             )
             .into(),
           },
@@ -847,9 +847,9 @@ async fn debug_mode() {
         (
           DebugStateType::StartOrReset,
           WorkflowTransitionDebugState {
-            count: 4,
+            count: 1,
             last_transition_time: datetime!(
-              2023-01-01 00:01:04 UTC
+              2023-01-01 00:00:00 UTC
             )
             .into(),
           },
@@ -1597,9 +1597,10 @@ async fn ignore_persisted_state_if_invalid_dir() {
   );
 
   workflows_engine
-    .start(WorkflowsEngineConfig::new_with_workflow_configurations(
-      workflows.clone(),
-    ))
+    .start(
+      WorkflowsEngineConfig::new_with_workflow_configurations(workflows.clone()),
+      false,
+    )
     .await;
 
   // assert that the workflow has no runs.
@@ -1649,9 +1650,10 @@ async fn ignore_persisted_state_if_invalid_dir() {
   );
 
   workflows_engine
-    .start(WorkflowsEngineConfig::new_with_workflow_configurations(
-      workflows,
-    ))
+    .start(
+      WorkflowsEngineConfig::new_with_workflow_configurations(workflows),
+      false,
+    )
     .await;
 
   // assert that the workflow has a valid initial state - no runs.

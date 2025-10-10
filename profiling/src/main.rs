@@ -109,11 +109,14 @@ impl AnnotatedWorkflowsEngine {
     Self::create_networking_workflows(&mut workflow_configurations);
 
     engine
-      .start(WorkflowsEngineConfig::new(
-        WorkflowsConfiguration::new(workflow_configurations.configs(), vec![]),
-        BTreeSet::default(),
-        BTreeSet::default(),
-      ))
+      .start(
+        WorkflowsEngineConfig::new(
+          WorkflowsConfiguration::new(workflow_configurations.configs(), vec![]),
+          BTreeSet::default(),
+          BTreeSet::default(),
+        ),
+        false,
+      )
       .await;
 
     Self { engine }
