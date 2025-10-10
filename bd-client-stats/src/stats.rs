@@ -321,10 +321,12 @@ impl Flusher {
         .workflow_debug_data
         .entry(workflow_id)
         .or_default();
-      existing
-        .start_reset
-        .mut_or_insert_default()
-        .transition_count += debug_data.start_reset.transition_count;
+      if let Some(start_reset) = debug_data.start_reset.into_option() {
+        existing
+          .start_reset
+          .mut_or_insert_default()
+          .transition_count += start_reset.transition_count;
+      }
       for (state_id, state_data) in debug_data.states {
         log::debug!("merging workflow debug state for {state_id}");
         let existing_state = existing.states.entry(state_id).or_default();
@@ -421,7 +423,7 @@ impl Flusher {
           workflow_entry
             .start_reset
             .mut_or_insert_default()
-            .transition_count += count;
+            .transition_count = count;
         },
         WorkflowDebugStateKey::StateTransition {
           state_id,
