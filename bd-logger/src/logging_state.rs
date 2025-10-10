@@ -278,6 +278,7 @@ pub struct ConfigUpdate {
   pub(crate) workflows_configuration: WorkflowsConfiguration,
   pub(crate) tail_configs: TailConfigurations,
   pub(crate) filter_chain: FilterChain,
+  pub(crate) from_cache: bool,
 }
 
 pub struct BufferProducers {

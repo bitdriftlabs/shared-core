@@ -21,7 +21,11 @@ struct TestUpdate {
 
 #[async_trait::async_trait]
 impl super::ApplyConfig for TestUpdate {
-  async fn apply_configuration(&self, configuration: Configuration) -> anyhow::Result<()> {
+  async fn apply_configuration(
+    &self,
+    configuration: Configuration,
+    _from_cache: bool,
+  ) -> anyhow::Result<()> {
     self
       .configuration_tx
       .send(configuration)

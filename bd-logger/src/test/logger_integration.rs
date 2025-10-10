@@ -1413,8 +1413,8 @@ fn workflow_debugging() {
         "workflow_1".into(),
         WorkflowDebugData {
           start_reset: Some(WorkflowTransitionDebugData {
-            transition_count: 2,
-            last_transition_time: datetime!(2023-10-01 00:02:00 UTC).into_proto(),
+            transition_count: 1,
+            last_transition_time: datetime!(2023-10-01 00:00:00 UTC).into_proto(),
             ..Default::default()
           })
           .into(),

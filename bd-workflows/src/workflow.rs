@@ -53,22 +53,28 @@ pub struct Workflow {
   // Persisted workflow debug state. This is only used for live debugging. Global debugging is
   // persisted as part of stats snapshots.
   workflow_debug_state: OptWorkflowDebugStateMap,
+  // Whether we need to emit a "start" metric for this workflow. This is true when the workflow
+  // is first delivered to the client. If the workflow is subsequently loaded from cache it
+  // will not increment.
+  needs_start_metric: bool,
 }
 
 impl Workflow {
-  pub(crate) const fn new(config_id: String) -> Self {
-    Self::new_from_parts(config_id, vec![], None)
+  pub(crate) const fn new(config_id: String, needs_start_metric: bool) -> Self {
+    Self::new_from_parts(config_id, vec![], None, needs_start_metric)
   }
 
   pub(crate) const fn new_from_parts(
     config_id: String,
     runs: Vec<Run>,
     workflow_debug_state: OptWorkflowDebugStateMap,
+    needs_start_metric: bool,
   ) -> Self {
     Self {
       id: config_id,
       runs,
       workflow_debug_state,
+      needs_start_metric,
     }
   }
 
@@ -97,7 +103,6 @@ impl Workflow {
   ) -> WorkflowResult<'a> {
     let mut result = WorkflowResult::default();
 
-    let mut start_or_reset = false;
     if self.needs_new_run() {
       log::trace!("workflow={}: creating a new run", self.id);
       // The timeout is only initialized here (if applicable) if this is the primary run. If this
@@ -111,12 +116,7 @@ impl Workflow {
       {
         result.stats.processed_timeout = true;
       }
-      // We only consider this a "start or reset" if there are no runs at all. This will trigger
-      // when a workflow is new or if all existing runs were completed in the previous invocation.
-      // The reset case is handled below.
-      if self.runs.is_empty() {
-        start_or_reset = true;
-      }
+
       self.runs.insert(0, run);
     }
 
@@ -138,11 +138,6 @@ impl Workflow {
       match run_result.state {
         RunState::Stopped => {
           self.runs.remove(index);
-          // If there is an initial state run we consider this a start/reset event and track it as
-          // such.
-          if !self.runs.is_empty() {
-            start_or_reset = true;
-          }
         },
         RunState::Completed => {
           debug_assert!(
@@ -153,11 +148,6 @@ impl Workflow {
           did_make_progress = true;
           log::trace!("completed run, workflow id={}", self.id);
           self.runs.remove(index);
-          // If there is an initial state run we consider this a start/reset event and track it as
-          // such.
-          if !self.runs.is_empty() {
-            start_or_reset = true;
-          }
 
           // In the case where we completed the active run *and* there is a pending initial state
           // run, we need to see if there is a timeout to initialize on the initial state run. In
@@ -215,7 +205,6 @@ impl Workflow {
         // This is safe as `has_active_run == true means that there are at least two runs and
         // `is_initial_run == true`` means that we are processing run with index == 0.
         log::trace!("resetting workflow due to initial state transition");
-        start_or_reset = true;
         self.runs.remove(index + 1);
       } else {
         // The active state run made progress and the next run to be processed (if there is any)
@@ -225,11 +214,12 @@ impl Workflow {
       }
     }
 
-    if start_or_reset {
-      log::trace!("workflow {} started or reset", self.id);
+    if self.needs_start_metric {
+      log::trace!("workflow {} delivered", self.id);
       result
         .incremental_workflow_debug_state
         .push(WorkflowDebugStateKey::StartOrReset);
+      self.needs_start_metric = false;
     }
 
     result.finalize(config, &mut self.workflow_debug_state, now)
@@ -264,6 +254,7 @@ impl Workflow {
       self.id().to_string(),
       runs,
       self.workflow_debug_state.clone(),
+      false,
     )
   }
 

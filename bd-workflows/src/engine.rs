@@ -156,7 +156,7 @@ impl WorkflowsEngine {
     (workflows_engine, buffers_to_flush_rx)
   }
 
-  pub async fn start(&mut self, config: WorkflowsEngineConfig) {
+  pub async fn start(&mut self, config: WorkflowsEngineConfig, config_from_cache: bool) {
     self
       .flush_buffers_actions_resolver
       .update(ResolverConfig::new(
@@ -179,9 +179,14 @@ impl WorkflowsEngine {
       self.add_workflows(
         config.workflows_configuration.workflows,
         Some(state.workflows),
+        config_from_cache,
       );
     } else {
-      self.add_workflows(config.workflows_configuration.workflows, None);
+      self.add_workflows(
+        config.workflows_configuration.workflows,
+        None,
+        config_from_cache,
+      );
     }
 
     for action in &self.state.pending_flush_actions {
@@ -310,7 +315,7 @@ impl WorkflowsEngine {
         }
       } else {
         self.add_workflow(
-          Workflow::new(workflow_config.inner().id().to_string()),
+          Workflow::new(workflow_config.inner().id().to_string(), true),
           workflow_config,
         );
       }
@@ -336,7 +341,12 @@ impl WorkflowsEngine {
     );
   }
 
-  fn add_workflows(&mut self, workflows: Vec<Config>, existing_workflows: Option<Vec<Workflow>>) {
+  fn add_workflows(
+    &mut self,
+    workflows: Vec<Config>,
+    existing_workflows: Option<Vec<Workflow>>,
+    from_cache: bool,
+  ) {
     // `workflows` is the source of truth for workflow configurations from the server
     // while `existing_workflows` contains state of workflow who have been running on a device.
     //  * Combine the two by iterating over the list of configs from the server and associating
@@ -355,7 +365,7 @@ impl WorkflowsEngine {
         .remove(config.inner().id())
         .map_or_else(
           // No cached state for a given workflow ID, start from scratch.
-          || Workflow::new(config.inner().id().to_string()),
+          || Workflow::new(config.inner().id().to_string(), !from_cache),
           // We have cache state for a given workflow ID. It's possible that when coming back
           // online the debug state has changed so clean it if it's now disabled.
           |mut workflow| {
