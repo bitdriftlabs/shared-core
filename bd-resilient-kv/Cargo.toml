@@ -12,6 +12,7 @@ doctest = false
 tempfile.workspace = true
 
 [dependencies]
+ahash.workspace             = true
 anyhow.workspace            = true
 bd-bonjson                  = { path = "../bd-bonjson" }
 bd-client-common            = { path = "../bd-client-common" }

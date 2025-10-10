@@ -22,8 +22,8 @@ mod deserialize_primitives;
 pub mod serialize_primitives;
 pub mod type_codes;
 
+use ahash::AHashMap;
 use deserialize_primitives::DeserializationError;
-use std::collections::HashMap;
 
 /// BONJSON has the same value types and structure as JSON.
 /// Internally, the "Number" type can be a signed integer, unsigned integer, or float.
@@ -36,7 +36,7 @@ pub enum Value {
   Unsigned(u64),
   String(String),
   Array(Vec<Value>),
-  Object(HashMap<String, Value>),
+  Object(AHashMap<String, Value>),
   KVVec(Vec<(String, Value)>),
 }
 
@@ -49,7 +49,7 @@ pub enum ValueRef<'a> {
   Unsigned(u64),
   String(&'a str),
   Array(&'a [Value]),
-  Object(&'a HashMap<String, Value>),
+  Object(&'a AHashMap<String, Value>),
   KVSlice(&'a [(String, Value)]),
 }
 
@@ -137,7 +137,7 @@ impl Value {
   ///
   /// # Errors
   /// Returns `DeserializationError::ExpectedMap` if this Value is not an object.
-  pub fn as_object(&self) -> deserialize_primitives::Result<&HashMap<String, Self>> {
+  pub fn as_object(&self) -> deserialize_primitives::Result<&AHashMap<String, Self>> {
     match self {
       Self::Object(obj) => Ok(obj),
       _ => Err(DeserializationError::ExpectedMap),

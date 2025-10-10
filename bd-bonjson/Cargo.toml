@@ -18,6 +18,7 @@ tempfile.workspace        = true
 cbindgen.workspace = true
 
 [dependencies]
+ahash.workspace             = true
 bd-workspace-hack.workspace = true
 bytes.workspace             = true
 libc.workspace              = true

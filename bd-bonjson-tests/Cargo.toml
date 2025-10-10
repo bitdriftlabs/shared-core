@@ -9,6 +9,7 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
+ahash.workspace             = true
 bd-bonjson.path             = "../bd-bonjson"
 bd-bonjson-ffi.path         = "../bd-bonjson-ffi"
 bd-workspace-hack.workspace = true

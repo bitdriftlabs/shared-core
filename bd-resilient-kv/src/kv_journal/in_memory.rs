@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::KVJournal;
+use ahash::AHashMap;
 use bd_bonjson::decoder::from_slice;
 use bd_bonjson::encoder::{encode_into_buf, encode_ref_into_buf};
 use bd_bonjson::serialize_primitives::{
@@ -18,7 +19,6 @@ use bd_bonjson::serialize_primitives::{
 use bd_bonjson::{Value, ValueRef};
 use bd_client_common::error::InvariantError;
 use bytes::BufMut;
-use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// In-memory implementation of a key-value journaling system whose data can be recovered up to the
@@ -136,7 +136,7 @@ fn write_metadata(buffer: &mut [u8], timestamp: u64) -> anyhow::Result<usize> {
   let mut cursor = &mut buffer[METADATA_OFFSET ..];
 
   // Create metadata object
-  let mut metadata = HashMap::new();
+  let mut metadata = AHashMap::new();
   metadata.insert("initialized".to_string(), Value::Unsigned(timestamp));
 
   // Write metadata object
@@ -429,9 +429,9 @@ impl KVJournal for InMemoryKVJournal<'_> {
   ///
   /// # Errors
   /// Returns an error if the buffer cannot be decoded.
-  fn as_hashmap(&self) -> anyhow::Result<HashMap<String, Value>> {
+  fn as_hashmap(&self) -> anyhow::Result<AHashMap<String, Value>> {
     let array = read_bonjson_payload(self.buffer)?;
-    let mut map = HashMap::new();
+    let mut map = AHashMap::new();
     if let Value::Array(entries) = array {
       for (index, entry) in entries.iter().enumerate() {
         if let Value::Object(obj) = entry {
