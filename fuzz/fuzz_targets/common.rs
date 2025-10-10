@@ -7,7 +7,7 @@
 
 use arbitrary::{Arbitrary, Unstructured};
 use bd_bonjson::Value;
-use std::collections::HashMap;
+use ahash::AHashMap;
 
 // Custom implementation of Arbitrary for Value
 impl<'a> Arbitrary<'a> for Value {
@@ -30,7 +30,7 @@ impl<'a> Arbitrary<'a> for Value {
             }
             7 => {
                 let len = u.int_in_range(0..=3)?; // Keep objects small
-                let mut obj = HashMap::new();
+                let mut obj = AAHashMap::new();
                 for _ in 0..len {
                     let key: String = u.arbitrary()?;
                     let value = Value::arbitrary(u)?;

@@ -34,7 +34,6 @@
 
 use bd_bonjson::Value;
 use bd_resilient_kv::KVStore;
-use ahash::AHashMap;
 use std::path::{Path, PathBuf};
 
 #[cfg(test)]
@@ -331,26 +330,22 @@ impl FeatureFlags {
     self.flags_store.sync()
   }
 
-  /// Returns an `AHashMap` containing all feature flags.
+  /// Returns an iterator over all feature flags.
   ///
-  /// This method provides access to all feature flags as a standard
-  /// Rust `AHashMap`. This is useful for iterating over all flags or performing
-  /// bulk operations. The `AHashMap` is generated on-demand from the persistent storage.
+  /// This method provides an iterator that yields `(String, FeatureFlag)` pairs for all
+  /// valid feature flags in the store. Invalid entries are filtered out during iteration.
   ///
   /// # Returns
   ///
-  /// An `AHashMap<String, FeatureFlag>` containing all flags.
-  ///
-  /// TODO: Make an iterator instead
+  /// An iterator over `(String, FeatureFlag)` pairs.
   #[must_use]
-  pub fn as_hashmap(&self) -> AHashMap<String, FeatureFlag> {
-    let mut flags = AHashMap::new();
-    for (key, value) in self.flags_store.as_hashmap() {
-      if let Some(feature_flag) = FeatureFlag::from_value(value) {
-        flags.insert(key.clone(), feature_flag);
-      }
-    }
-    flags
+  pub fn iter(&self) -> impl Iterator<Item = (String, FeatureFlag)> + '_ {
+    self.flags_store
+      .as_hashmap()
+      .iter()
+      .filter_map(|(key, value)| {
+        FeatureFlag::from_value(value).map(|feature_flag| (key.clone(), feature_flag))
+      })
   }
 }
 

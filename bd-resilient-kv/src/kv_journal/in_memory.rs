@@ -18,7 +18,6 @@ use bd_bonjson::serialize_primitives::{
 use bd_bonjson::{Value, ValueRef};
 use bd_client_common::error::InvariantError;
 use bytes::BufMut;
-use std::collections::HashMap;
 use ahash::AHashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -137,7 +136,7 @@ fn write_metadata(buffer: &mut [u8], timestamp: u64) -> anyhow::Result<usize> {
   let mut cursor = &mut buffer[METADATA_OFFSET ..];
 
   // Create metadata object
-  let mut metadata = HashMap::new();
+  let mut metadata = AHashMap::new();
   metadata.insert("initialized".to_string(), Value::Unsigned(timestamp));
 
   // Write metadata object
@@ -486,9 +485,8 @@ impl KVJournal for InMemoryKVJournal<'_> {
       let buffer_len = self.buffer.len();
       let mut cursor = &mut self.buffer[position ..];
 
-      // Convert AHashMap to HashMap for Value::Object compatibility
-      let hashmap_data: HashMap<String, Value> = data.into_iter().collect();
-      encode_into_buf(&mut cursor, &Value::Object(hashmap_data))
+      // Use AHashMap directly with Value::Object
+      encode_into_buf(&mut cursor, &Value::Object(data))
         .map_err(|e| anyhow::anyhow!("Failed to encode data: {e:?}"))?;
 
       // Calculate new position

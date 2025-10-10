@@ -23,7 +23,7 @@ use crate::serialize_primitives::{
 };
 use crate::{Value, ValueRef};
 use bytes::BufMut;
-use std::collections::HashMap;
+use ahash::AHashMap;
 
 /// Encodes a `Value` into a `&mut Vec<u8>`.
 ///
@@ -161,7 +161,7 @@ fn encode_array_into_buf<B: BufMut>(buf: &mut B, arr: &[Value]) -> Result<(), Se
 /// Encodes an object into a buffer using `BufMut`.
 fn encode_object_into_buf<B: BufMut>(
   buf: &mut B,
-  obj: &HashMap<String, Value>,
+  obj: &AHashMap<String, Value>,
 ) -> Result<(), SerializationError> {
   serialize_map_begin(buf)?;
   for (key, value) in obj {
@@ -263,7 +263,7 @@ fn encode_array_ref_into_buf<B: BufMut>(
 /// Encodes an object reference into a buffer using `BufMut` without cloning.
 fn encode_object_ref_into_buf<B: BufMut>(
   buf: &mut B,
-  obj: &HashMap<String, Value>,
+  obj: &AHashMap<String, Value>,
 ) -> Result<(), SerializationError> {
   serialize_map_begin(buf)?;
   for (key, value) in obj {

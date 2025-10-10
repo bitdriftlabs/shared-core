@@ -8,6 +8,7 @@
 use crate::InMemoryKVJournal;
 use crate::kv_journal::{DoubleBufferedKVJournal, KVJournal, MemMappedKVJournal};
 use bd_bonjson::Value;
+use ahash::AHashMap;
 use std::io::Write;
 use tempfile::NamedTempFile;
 
@@ -558,13 +559,13 @@ fn test_object_values() {
   let mut kv = InMemoryKVJournal::new(&mut buffer, None).unwrap();
 
   // Test empty object
-  let empty_object = Value::Object(std::collections::HashMap::new());
+  let empty_object = Value::Object(AHashMap::new());
   kv.set("empty_obj", &empty_object).unwrap();
   let map = kv.as_hashmap().unwrap();
   assert_eq!(map.get("empty_obj"), Some(&empty_object));
 
   // Test object with mixed value types
-  let mut obj_map = std::collections::HashMap::new();
+  let mut obj_map = AHashMap::new();
   obj_map.insert("name".to_string(), Value::String("Alice".to_string()));
   obj_map.insert("age".to_string(), Value::Unsigned(30));
   obj_map.insert("score".to_string(), Value::Float(95.5));
@@ -588,11 +589,11 @@ fn test_object_values() {
   }
 
   // Test nested object
-  let mut inner_map = std::collections::HashMap::new();
+  let mut inner_map = AHashMap::new();
   inner_map.insert("city".to_string(), Value::String("Seattle".to_string()));
   inner_map.insert("zipcode".to_string(), Value::Unsigned(98101));
 
-  let mut outer_map = std::collections::HashMap::new();
+  let mut outer_map = AHashMap::new();
   outer_map.insert("name".to_string(), Value::String("Bob".to_string()));
   outer_map.insert("address".to_string(), Value::Object(inner_map));
 
@@ -624,11 +625,11 @@ fn test_complex_nested_structures() {
   let mut kv = InMemoryKVJournal::new(&mut buffer, None).unwrap();
 
   // Test array containing objects
-  let mut obj1 = std::collections::HashMap::new();
+  let mut obj1 = AHashMap::new();
   obj1.insert("id".to_string(), Value::Unsigned(1));
   obj1.insert("name".to_string(), Value::String("Item 1".to_string()));
 
-  let mut obj2 = std::collections::HashMap::new();
+  let mut obj2 = AHashMap::new();
   obj2.insert("id".to_string(), Value::Unsigned(2));
   obj2.insert("name".to_string(), Value::String("Item 2".to_string()));
 
@@ -658,7 +659,7 @@ fn test_complex_nested_structures() {
   }
 
   // Test object containing arrays
-  let mut config_map = std::collections::HashMap::new();
+  let mut config_map = AHashMap::new();
   config_map.insert(
     "tags".to_string(),
     Value::Array(vec![
