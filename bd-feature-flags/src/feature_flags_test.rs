@@ -797,3 +797,21 @@ fn test_to_value_produces_kvvec() -> anyhow::Result<()> {
 
   Ok(())
 }
+
+#[test]
+fn test_as_hashmap_returns_ahashmap() -> anyhow::Result<()> {
+  use ahash::AHashMap;
+
+  let temp_dir = TempDir::new()?;
+  let temp_path = temp_dir.path();
+
+  let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
+  flags.set("test_flag".to_string(), Some("test_variant".to_string()))?;
+
+  let hashmap = flags.as_hashmap();
+
+  // This verifies that the returned type is AHashMap<String, FeatureFlag>
+  let _: AHashMap<String, FeatureFlag> = hashmap;
+
+  Ok(())
+}

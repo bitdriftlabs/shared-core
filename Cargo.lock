@@ -660,6 +660,7 @@ dependencies = [
 name = "bd-feature-flags"
 version = "1.0.0"
 dependencies = [
+ "ahash",
  "anyhow",
  "bd-bonjson",
  "bd-client-common",
