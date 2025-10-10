@@ -7,8 +7,8 @@
 
 use crate::InMemoryKVJournal;
 use crate::kv_journal::{DoubleBufferedKVJournal, KVJournal, MemMappedKVJournal};
-use bd_bonjson::Value;
 use ahash::AHashMap;
+use bd_bonjson::Value;
 use std::io::Write;
 use tempfile::NamedTempFile;
 

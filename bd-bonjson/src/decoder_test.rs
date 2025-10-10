@@ -7,10 +7,10 @@
 
 use super::*;
 use crate::writer::Writer;
+use ahash::AHashMap;
 use core::f64;
 use std::io::Cursor;
 use std::vec;
-use ahash::AHashMap;
 
 #[ctor::ctor]
 fn test_global_init() {

@@ -22,8 +22,8 @@ mod deserialize_primitives;
 pub mod serialize_primitives;
 pub mod type_codes;
 
-use deserialize_primitives::DeserializationError;
 use ahash::AHashMap;
+use deserialize_primitives::DeserializationError;
 
 /// BONJSON has the same value types and structure as JSON.
 /// Internally, the "Number" type can be a signed integer, unsigned integer, or float.

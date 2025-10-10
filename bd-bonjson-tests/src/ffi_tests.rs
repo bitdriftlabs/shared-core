@@ -5,10 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use ahash::AHashMap;
 use assert_no_alloc::*;
 use bd_bonjson::Value;
 use bd_bonjson_ffi::BDCrashWriterHandle;
-use ahash::AHashMap;
 use std::ptr::null;
 use tempfile::NamedTempFile;
 

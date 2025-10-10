@@ -6,8 +6,8 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::KVJournal;
-use bd_bonjson::Value;
 use ahash::AHashMap;
+use bd_bonjson::Value;
 
 /// A double-buffered implementation of `KVJournal` that automatically switches between two
 /// journal instances when one reaches its high water mark.

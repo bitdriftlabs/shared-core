@@ -5,8 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_bonjson::Value;
 use ahash::AHashMap;
+use bd_bonjson::Value;
 
 /// Trait for a key-value journaling system whose data can be recovered up to the last successful
 /// write checkpoint.

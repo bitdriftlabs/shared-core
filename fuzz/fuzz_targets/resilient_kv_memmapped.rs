@@ -7,11 +7,11 @@
 
 #![no_main]
 
+use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
 use bd_bonjson::Value;
 use bd_resilient_kv::MemMappedKVJournal;
 use bd_resilient_kv::kv_journal::KVJournal;
-use ahash::AHashMap;
 use tempfile::TempDir;
 
 // Wrapper for Value to implement Arbitrary

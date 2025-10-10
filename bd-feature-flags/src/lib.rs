@@ -95,7 +95,7 @@ impl FeatureFlag {
       match value {
         Value::Object(obj) => obj.get(key),
         Value::KVVec(kv_vec) => kv_vec.iter().find(|(k, _)| k == key).map(|(_, v)| v),
-        _ => return None,
+        _ => None,
       }
     };
 
@@ -338,9 +338,9 @@ impl FeatureFlags {
   /// # Returns
   ///
   /// An iterator over `(String, FeatureFlag)` pairs.
-  #[must_use]
   pub fn iter(&self) -> impl Iterator<Item = (String, FeatureFlag)> + '_ {
-    self.flags_store
+    self
+      .flags_store
       .as_hashmap()
       .iter()
       .filter_map(|(key, value)| {

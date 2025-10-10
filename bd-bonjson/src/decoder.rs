@@ -23,8 +23,8 @@ use crate::deserialize_primitives::{
 };
 use crate::type_codes::TypeCode;
 use crate::{Value, deserialize_primitives};
-use bytes::Buf;
 use ahash::AHashMap;
+use bytes::Buf;
 use std::io::Cursor;
 
 /// Decode a buffer, returning the resulting value and the number of bytes read.

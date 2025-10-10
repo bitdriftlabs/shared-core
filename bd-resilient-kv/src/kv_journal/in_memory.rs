@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::KVJournal;
+use ahash::AHashMap;
 use bd_bonjson::decoder::from_slice;
 use bd_bonjson::encoder::{encode_into_buf, encode_ref_into_buf};
 use bd_bonjson::serialize_primitives::{
@@ -18,7 +19,6 @@ use bd_bonjson::serialize_primitives::{
 use bd_bonjson::{Value, ValueRef};
 use bd_client_common::error::InvariantError;
 use bytes::BufMut;
-use ahash::AHashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// In-memory implementation of a key-value journaling system whose data can be recovered up to the

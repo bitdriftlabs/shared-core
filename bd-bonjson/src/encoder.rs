@@ -22,8 +22,8 @@ use crate::serialize_primitives::{
   serialize_u64,
 };
 use crate::{Value, ValueRef};
-use bytes::BufMut;
 use ahash::AHashMap;
+use bytes::BufMut;
 
 /// Encodes a `Value` into a `&mut Vec<u8>`.
 ///

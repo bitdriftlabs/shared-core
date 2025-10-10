@@ -6,8 +6,8 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::*;
-use tempfile::TempDir;
 use ahash::AHashMap;
+use tempfile::TempDir;
 
 #[test]
 fn test_cache_populated_from_store() -> anyhow::Result<()> {
@@ -786,11 +786,16 @@ fn test_to_value_produces_kvvec() -> anyhow::Result<()> {
   assert_eq!(kv_vec.len(), 2);
 
   // Check that the variant and timestamp fields are present
-  let variant_found = kv_vec.iter().any(|(k, v)| k == "v" && v.as_string().unwrap_or("") == "test_variant");
+  let variant_found = kv_vec
+    .iter()
+    .any(|(k, v)| k == "v" && v.as_string().unwrap_or("") == "test_variant");
   let timestamp_found = kv_vec.iter().any(|(k, v)| k == "t" && v.is_unsigned());
 
   assert!(variant_found, "variant field should be present and correct");
-  assert!(timestamp_found, "timestamp field should be present and be unsigned");
+  assert!(
+    timestamp_found,
+    "timestamp field should be present and be unsigned"
+  );
 
   Ok(())
 }
@@ -817,7 +822,10 @@ fn test_iter_returns_all_unique_data() -> anyhow::Result<()> {
 
   // Insert all test data
   for (name, variant) in &expected_data {
-    flags.set(name.to_string(), variant.as_ref().map(|s| s.to_string()))?;
+    flags.set(
+      (*name).to_string(),
+      variant.as_ref().map(std::string::ToString::to_string),
+    )?;
   }
 
   // Collect iterator results
@@ -828,18 +836,23 @@ fn test_iter_returns_all_unique_data() -> anyhow::Result<()> {
 
   // Verify each flag exists with correct variant
   for (expected_name, expected_variant) in &expected_data {
-    let flag = collected.get(*expected_name)
-      .unwrap_or_else(|| panic!("Flag '{}' should exist in iterator results", expected_name));
+    let flag = collected
+      .get(*expected_name)
+      .unwrap_or_else(|| panic!("Flag '{expected_name}' should exist in iterator results"));
 
-    let expected_variant_processed = if expected_variant.as_ref().map_or(false, |s| s.is_empty()) {
+    let expected_variant_processed = if expected_variant.as_ref().is_some_and(|s| s.is_empty()) {
       None // Empty string should be treated as None
     } else {
-      expected_variant.as_ref().map(|s| s.to_string())
+      expected_variant
+        .as_ref()
+        .map(std::string::ToString::to_string)
     };
 
-    assert_eq!(flag.variant, expected_variant_processed,
+    assert_eq!(
+      flag.variant, expected_variant_processed,
       "Flag '{}' should have variant {:?} but got {:?}",
-      expected_name, expected_variant_processed, flag.variant);
+      expected_name, expected_variant_processed, flag.variant
+    );
 
     // Verify timestamp is reasonable
     assert!(flag.timestamp > time::OffsetDateTime::UNIX_EPOCH);
@@ -847,13 +860,16 @@ fn test_iter_returns_all_unique_data() -> anyhow::Result<()> {
 
   // Verify no extra flags exist
   for (name, _) in &collected {
-    assert!(expected_data.iter().any(|(expected_name, _)| expected_name == name),
-      "Unexpected flag '{}' found in iterator results", name);
+    assert!(
+      expected_data
+        .iter()
+        .any(|(expected_name, _)| expected_name == name),
+      "Unexpected flag '{name}' found in iterator results"
+    );
   }
 
   // Verify iterator can be consumed multiple times by collecting again
-  let collected_again: Vec<(String, FeatureFlag)> = flags.iter().collect();
-  assert_eq!(collected_again.len(), expected_data.len());
+  assert_eq!(flags.iter().count(), expected_data.len());
 
   Ok(())
 }

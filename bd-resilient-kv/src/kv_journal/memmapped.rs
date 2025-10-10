@@ -7,9 +7,9 @@
 
 use super::KVJournal;
 use super::in_memory::InMemoryKVJournal;
+use ahash::AHashMap;
 use bd_bonjson::Value;
 use memmap2::{MmapMut, MmapOptions};
-use ahash::AHashMap;
 use std::fs::OpenOptions;
 use std::path::Path;
 
