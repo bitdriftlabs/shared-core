@@ -30,7 +30,7 @@ impl<'a> Arbitrary<'a> for Value {
             }
             7 => {
                 let len = u.int_in_range(0..=3)?; // Keep objects small
-                let mut obj = AAHashMap::new();
+                let mut obj = AHashMap::new();
                 for _ in 0..len {
                     let key: String = u.arbitrary()?;
                     let value = Value::arbitrary(u)?;

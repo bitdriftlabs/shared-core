@@ -71,7 +71,7 @@ impl KVStore {
     let journal_b = open_or_create_journal(&file_b, buffer_size, high_water_mark_ratio)?;
 
     let journal = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
-    let cached_map = journal.as_hashmap()?.into_iter().collect();
+    let cached_map = journal.as_hashmap()?;
 
     Ok(Self {
       journal,

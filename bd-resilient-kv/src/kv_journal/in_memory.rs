@@ -485,7 +485,6 @@ impl KVJournal for InMemoryKVJournal<'_> {
       let buffer_len = self.buffer.len();
       let mut cursor = &mut self.buffer[position ..];
 
-      // Use AHashMap directly with Value::Object
       encode_into_buf(&mut cursor, &Value::Object(data))
         .map_err(|e| anyhow::anyhow!("Failed to encode data: {e:?}"))?;
 
