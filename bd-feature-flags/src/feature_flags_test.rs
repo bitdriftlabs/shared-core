@@ -774,3 +774,26 @@ fn test_high_water_mark_ratio() -> anyhow::Result<()> {
 
   Ok(())
 }
+
+#[test]
+fn test_to_value_produces_kvvec() -> anyhow::Result<()> {
+  let feature_flag = FeatureFlag::new(Some("test_variant".to_string()), None)?;
+  let value = feature_flag.to_value();
+
+  // Verify that to_value() now produces KVVec instead of Object
+  assert!(value.is_kv_vec(), "to_value() should produce KVVec");
+  assert!(!value.is_object(), "to_value() should not produce Object");
+
+  // Verify the contents are correct
+  let kv_vec = value.as_kv_vec().expect("should be KVVec");
+  assert_eq!(kv_vec.len(), 2);
+
+  // Check that the variant and timestamp fields are present
+  let variant_found = kv_vec.iter().any(|(k, v)| k == "v" && v.as_string().unwrap_or("") == "test_variant");
+  let timestamp_found = kv_vec.iter().any(|(k, v)| k == "t" && v.is_unsigned());
+
+  assert!(variant_found, "variant field should be present and correct");
+  assert!(timestamp_found, "timestamp field should be present and be unsigned");
+
+  Ok(())
+}

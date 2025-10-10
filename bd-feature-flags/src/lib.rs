@@ -91,34 +91,39 @@ impl FeatureFlag {
   /// Returns `None` if the value is not a valid feature flag object.
   #[must_use]
   pub fn from_value(value: &Value) -> Option<Self> {
-    if let Value::Object(obj) = value {
-      let variant = match obj.get(VARIANT_KEY) {
-        Some(Value::String(s)) => {
-          if s.is_empty() {
-            None
-          } else {
-            Some(s.to_string())
-          }
-        },
+    // Handle both Object and KVVec types for backward compatibility
+    let get_field = |key: &str| -> Option<&Value> {
+      match value {
+        Value::Object(obj) => obj.get(key),
+        Value::KVVec(kv_vec) => kv_vec.iter().find(|(k, _)| k == key).map(|(_, v)| v),
         _ => return None,
-      };
+      }
+    };
 
-      let timestamp = match obj.get(TIMESTAMP_KEY) {
-        Some(value) => {
-          let timestamp_nanos = match value {
-            Value::Unsigned(t) => *t,
-            Value::Signed(t) if *t >= 0 => u64::try_from(*t).ok()?,
-            _ => return None,
-          };
-          time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos)).ok()?
-        },
-        _ => return None,
-      };
+    let variant = match get_field(VARIANT_KEY) {
+      Some(Value::String(s)) => {
+        if s.is_empty() {
+          None
+        } else {
+          Some(s.to_string())
+        }
+      },
+      _ => return None,
+    };
 
-      Some(Self { variant, timestamp })
-    } else {
-      None
-    }
+    let timestamp = match get_field(TIMESTAMP_KEY) {
+      Some(value) => {
+        let timestamp_nanos = match value {
+          Value::Unsigned(t) => *t,
+          Value::Signed(t) if *t >= 0 => u64::try_from(*t).ok()?,
+          _ => return None,
+        };
+        time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos)).ok()?
+      },
+      _ => return None,
+    };
+
+    Some(Self { variant, timestamp })
   }
 
   /// Converts a `FeatureFlag` to a BONJSON Value.
@@ -130,11 +135,11 @@ impl FeatureFlag {
 
     let timestamp_nanos = u64::try_from(self.timestamp.unix_timestamp_nanos()).unwrap_or(0);
 
-    let obj = HashMap::from([
+    let kv_vec = vec![
       (VARIANT_KEY.to_string(), Value::String(storage_variant)),
       (TIMESTAMP_KEY.to_string(), Value::Unsigned(timestamp_nanos)),
-    ]);
-    Value::Object(obj)
+    ];
+    Value::KVVec(kv_vec)
   }
 }
 
