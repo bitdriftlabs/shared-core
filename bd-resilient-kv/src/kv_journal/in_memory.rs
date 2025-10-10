@@ -19,6 +19,7 @@ use bd_bonjson::{Value, ValueRef};
 use bd_client_common::error::InvariantError;
 use bytes::BufMut;
 use std::collections::HashMap;
+use ahash::AHashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// In-memory implementation of a key-value journaling system whose data can be recovered up to the
@@ -429,9 +430,9 @@ impl KVJournal for InMemoryKVJournal<'_> {
   ///
   /// # Errors
   /// Returns an error if the buffer cannot be decoded.
-  fn as_hashmap(&self) -> anyhow::Result<HashMap<String, Value>> {
+  fn as_hashmap(&self) -> anyhow::Result<AHashMap<String, Value>> {
     let array = read_bonjson_payload(self.buffer)?;
-    let mut map = HashMap::new();
+    let mut map = AHashMap::new();
     if let Value::Array(entries) = array {
       for (index, entry) in entries.iter().enumerate() {
         if let Value::Object(obj) = entry {
@@ -485,7 +486,9 @@ impl KVJournal for InMemoryKVJournal<'_> {
       let buffer_len = self.buffer.len();
       let mut cursor = &mut self.buffer[position ..];
 
-      encode_into_buf(&mut cursor, &Value::Object(data))
+      // Convert AHashMap to HashMap for Value::Object compatibility
+      let hashmap_data: HashMap<String, Value> = data.into_iter().collect();
+      encode_into_buf(&mut cursor, &Value::Object(hashmap_data))
         .map_err(|e| anyhow::anyhow!("Failed to encode data: {e:?}"))?;
 
       // Calculate new position

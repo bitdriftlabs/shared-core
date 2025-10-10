@@ -7,7 +7,7 @@
 
 use super::KVJournal;
 use bd_bonjson::Value;
-use std::collections::HashMap;
+use ahash::AHashMap;
 
 /// A double-buffered implementation of `KVJournal` that automatically switches between two
 /// journal instances when one reaches its high water mark.
@@ -179,7 +179,7 @@ impl<A: KVJournal, B: KVJournal> KVJournal for DoubleBufferedKVJournal<A, B> {
     self.with_active_journal_mut(|journal| journal.clear())
   }
 
-  fn as_hashmap(&self) -> anyhow::Result<HashMap<String, Value>> {
+  fn as_hashmap(&self) -> anyhow::Result<AHashMap<String, Value>> {
     self.active_journal().as_hashmap()
   }
 

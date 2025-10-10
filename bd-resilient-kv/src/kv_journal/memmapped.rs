@@ -9,7 +9,7 @@ use super::KVJournal;
 use super::in_memory::InMemoryKVJournal;
 use bd_bonjson::Value;
 use memmap2::{MmapMut, MmapOptions};
-use std::collections::HashMap;
+use ahash::AHashMap;
 use std::fs::OpenOptions;
 use std::path::Path;
 
@@ -216,7 +216,7 @@ impl KVJournal for MemMappedKVJournal {
   ///
   /// # Errors
   /// Returns an error if the buffer cannot be decoded.
-  fn as_hashmap(&self) -> anyhow::Result<HashMap<String, Value>> {
+  fn as_hashmap(&self) -> anyhow::Result<AHashMap<String, Value>> {
     self.in_memory_kv.as_hashmap()
   }
 

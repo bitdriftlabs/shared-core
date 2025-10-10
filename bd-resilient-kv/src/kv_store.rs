@@ -6,8 +6,8 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::kv_journal::{DoubleBufferedKVJournal, KVJournal, MemMappedKVJournal};
+use ahash::AHashMap;
 use bd_bonjson::Value;
-use std::collections::HashMap;
 use std::path::Path;
 
 /// A persistent key-value store that provides HashMap-like semantics.
@@ -23,7 +23,7 @@ use std::path::Path;
 /// based on the provided base path.
 pub struct KVStore {
   journal: DoubleBufferedKVJournal<MemMappedKVJournal, MemMappedKVJournal>,
-  cached_map: HashMap<String, Value>,
+  cached_map: AHashMap<String, Value>,
 }
 
 /// Create or open a single journal file, handling resizing as needed.
@@ -71,7 +71,7 @@ impl KVStore {
     let journal_b = open_or_create_journal(&file_b, buffer_size, high_water_mark_ratio)?;
 
     let journal = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
-    let cached_map = journal.as_hashmap()?;
+    let cached_map = journal.as_hashmap()?.into_iter().collect();
 
     Ok(Self {
       journal,
@@ -187,7 +187,7 @@ impl KVStore {
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
-  pub fn as_hashmap(&self) -> &HashMap<String, Value> {
+  pub fn as_hashmap(&self) -> &AHashMap<String, Value> {
     &self.cached_map
   }
 
