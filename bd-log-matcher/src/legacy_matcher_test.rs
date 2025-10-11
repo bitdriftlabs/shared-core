@@ -9,6 +9,7 @@
 
 use crate::matcher::Tree;
 use assert_matches::assert_matches;
+use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{
   EMPTY_FIELDS,
   FieldsRef,
@@ -79,7 +80,13 @@ fn match_test_runner(config: LegacyLogMatcher, cases: Vec<(Input<'_>, bool)>) {
 
     assert_eq!(
       should_match,
-      match_tree.do_match(log_level, log_type, &message, fields_ref, None),
+      match_tree.do_match(
+        log_level,
+        log_type,
+        &message,
+        fields_ref,
+        &TinyMap::default()
+      ),
       "{input:?} should result in {should_match} but did not",
     );
   }
