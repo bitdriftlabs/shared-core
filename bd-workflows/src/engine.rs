@@ -43,6 +43,7 @@ use bd_client_common::file::{read_compressed, write_compressed};
 use bd_client_stats::Stats;
 use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
+use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{Log, LogRef};
 use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
@@ -50,7 +51,7 @@ use bd_stats_common::labels;
 use bd_stats_common::workflow::WorkflowDebugKey;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -544,7 +545,7 @@ impl WorkflowsEngine {
   pub fn process_log<'a>(
     &'a mut self,
     log: &LogRef<'_>,
-    log_destination_buffer_ids: &'a BTreeSet<Cow<'a, str>>,
+    log_destination_buffer_ids: &'a TinySet<Cow<'a, str>>,
     now: OffsetDateTime,
   ) -> WorkflowsEngineResult<'a> {
     // Measure duration in here even if the list of workflows is empty.
@@ -593,17 +594,17 @@ impl WorkflowsEngine {
     {
       return WorkflowsEngineResult {
         log_destination_buffer_ids: Cow::Borrowed(log_destination_buffer_ids),
-        triggered_flushes_buffer_ids: BTreeSet::new(),
-        triggered_flush_buffers_action_ids: BTreeSet::new(),
+        triggered_flushes_buffer_ids: TinySet::default(),
+        triggered_flush_buffers_action_ids: BTreeSet::default(),
         capture_screenshot: false,
-        logs_to_inject: BTreeMap::new(),
+        logs_to_inject: TinyMap::default(),
         workflow_debug_state: vec![],
         has_debug_workflows: false,
       };
     }
 
     let mut actions: Vec<TriggeredAction<'_>> = vec![];
-    let mut logs_to_inject: BTreeMap<&'a str, Log> = BTreeMap::new();
+    let mut logs_to_inject: TinyMap<&'a str, Log> = TinyMap::default();
     let mut all_cumulative_workflow_debug_state = vec![];
     let mut all_incremental_workflow_debug_state = vec![];
     let mut has_debug_workflows = false;
@@ -878,18 +879,18 @@ struct PreparedActions<'a> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct WorkflowsEngineResult<'a> {
-  pub log_destination_buffer_ids: Cow<'a, BTreeSet<Cow<'a, str>>>,
+  pub log_destination_buffer_ids: Cow<'a, TinySet<Cow<'a, str>>>,
 
   // The identifier of workflow actions that triggered buffers flush(es).
   pub triggered_flush_buffers_action_ids: BTreeSet<Cow<'a, FlushBufferId>>,
   // The identifier of trigger buffers that should be flushed.
-  pub triggered_flushes_buffer_ids: BTreeSet<Cow<'static, str>>,
+  pub triggered_flushes_buffer_ids: TinySet<Cow<'static, str>>,
 
   // Whether a screenshot should be taken in response to processing the log.
   pub capture_screenshot: bool,
 
   // Logs to be injected back into the workflow engine after field attachment and other processing.
-  pub logs_to_inject: BTreeMap<&'a str, Log>,
+  pub logs_to_inject: TinyMap<&'a str, Log>,
 
   // If any workflows have debugging enabled, this will contain the *cumulative* debug state since
   // debugging started for each workflow. The state is persisted in the workflow state file to
@@ -910,16 +911,16 @@ pub type AllWorkflowsDebugState = Vec<(String, WorkflowDebugStateMap)>;
 pub struct WorkflowsEngineConfig {
   pub(crate) workflows_configuration: WorkflowsConfiguration,
 
-  pub(crate) trigger_buffer_ids: BTreeSet<Cow<'static, str>>,
-  pub(crate) continuous_buffer_ids: BTreeSet<Cow<'static, str>>,
+  pub(crate) trigger_buffer_ids: TinySet<Cow<'static, str>>,
+  pub(crate) continuous_buffer_ids: TinySet<Cow<'static, str>>,
 }
 
 impl WorkflowsEngineConfig {
   #[must_use]
   pub const fn new(
     workflows_configuration: WorkflowsConfiguration,
-    trigger_buffer_ids: BTreeSet<Cow<'static, str>>,
-    continuous_buffer_ids: BTreeSet<Cow<'static, str>>,
+    trigger_buffer_ids: TinySet<Cow<'static, str>>,
+    continuous_buffer_ids: TinySet<Cow<'static, str>>,
   ) -> Self {
     Self {
       workflows_configuration,
@@ -930,11 +931,11 @@ impl WorkflowsEngineConfig {
 
   #[cfg(test)]
   #[must_use]
-  pub const fn new_with_workflow_configurations(workflow_configs: Vec<Config>) -> Self {
+  pub fn new_with_workflow_configurations(workflow_configs: Vec<Config>) -> Self {
     Self::new(
       WorkflowsConfiguration::new_with_workflow_configurations_for_test(workflow_configs),
-      BTreeSet::new(),
-      BTreeSet::new(),
+      TinySet::default(),
+      TinySet::default(),
     )
   }
 }

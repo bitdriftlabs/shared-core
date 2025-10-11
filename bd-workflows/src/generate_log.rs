@@ -55,13 +55,11 @@ fn resolve_reference<'a>(
       .map(StringOrFloat::String),
     Value_reference_type::SavedFieldId(saved_field_id) => extractions
       .fields
-      .as_ref()
-      .and_then(|fields| fields.get(saved_field_id))
+      .get(saved_field_id)
       .map(|field| StringOrFloat::String(field.into())),
     Value_reference_type::SavedTimestampId(saved_timestamp_id) => extractions
       .timestamps
-      .as_ref()
-      .and_then(|timestamps| timestamps.get(saved_timestamp_id))
+      .get(saved_timestamp_id)
       .map(|timestamp| StringOrFloat::Float(fractional_milliseconds_since_epoch(*timestamp))),
     Value_reference_type::Uuid(_) => Some(StringOrFloat::String(Uuid::new_v4().to_string().into())),
   }
