@@ -16,8 +16,11 @@
 
 #[cfg(test)]
 #[path = "./lib_test.rs"]
-mod test;
+mod lib_test;
 
+pub mod test;
+
+use async_trait::async_trait;
 use parking_lot::Mutex;
 use protobuf::MessageField;
 use protobuf::well_known_types::timestamp::Timestamp;
@@ -27,6 +30,22 @@ use std::sync::Arc;
 use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::time::{Interval, MissedTickBehavior, Sleep, Timeout, interval, interval_at};
+
+//
+// Ticker
+//
+
+#[async_trait]
+pub trait Ticker: Send + Sync {
+  async fn tick(&mut self);
+}
+
+#[async_trait]
+impl Ticker for Interval {
+  async fn tick(&mut self) {
+    self.tick().await;
+  }
+}
 
 //
 // OffsetDateTimeExt

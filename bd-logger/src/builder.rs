@@ -22,7 +22,6 @@ use bd_client_stats::stats::{
   JitteredIntervalCreator,
   RuntimeWatchTicker,
   SleepModeAwareRuntimeWatchTicker,
-  Ticker,
 };
 use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
@@ -32,7 +31,7 @@ use bd_internal_logging::NoopLogger;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
 use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use bd_time::{SystemTimeProvider, TimeProvider};
+use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
 use futures_util::{Future, try_join};
 use std::pin::Pin;
 use std::sync::Arc;

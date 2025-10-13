@@ -17,7 +17,6 @@ use crate::{
   ReportProcessingSession,
 };
 use bd_client_stats::FlushTrigger;
-use bd_client_stats::test::TestTicker;
 use bd_device::Store;
 use bd_proto::protos::client::api::ConfigurationUpdate;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
@@ -39,6 +38,7 @@ use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::session::{DiskStorage, InMemoryStorage};
 use bd_test_helpers::test_api_server::{ExpectedStreamEvent, StreamAction, StreamHandle};
 use bd_time::TimeProvider;
+use bd_time::test::TestTicker;
 use bd_workflows::engine::WORKFLOWS_STATE_FILE_NAME;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;

@@ -8,7 +8,7 @@
 // Test code only.
 #![allow(clippy::unwrap_used)]
 
-use crate::stats::Ticker;
+use crate::Ticker;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
