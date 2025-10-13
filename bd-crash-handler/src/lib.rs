@@ -236,7 +236,9 @@ impl Monitor {
       .as_ref()
       .map(|ff| {
         ff.iter()
-          .map(|(name, flag)| SnappedFeatureFlag::new(name, flag.variant, flag.timestamp))
+          .map(|(name, flag)| {
+            SnappedFeatureFlag::new(name.to_string(), flag.variant, flag.timestamp)
+          })
           .collect()
       })
       .unwrap_or_default();

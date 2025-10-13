@@ -338,13 +338,13 @@ impl FeatureFlags {
   /// # Returns
   ///
   /// An iterator over `(String, FeatureFlag)` pairs.
-  pub fn iter(&self) -> impl Iterator<Item = (String, FeatureFlag)> + '_ {
+  pub fn iter(&self) -> impl Iterator<Item = (&str, FeatureFlag)> + '_ {
     self
       .flags_store
       .as_hashmap()
       .iter()
       .filter_map(|(key, value)| {
-        FeatureFlag::from_value(value).map(|feature_flag| (key.clone(), feature_flag))
+        FeatureFlag::from_value(value).map(|feature_flag| (key.as_str(), feature_flag))
       })
   }
 }

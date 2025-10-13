@@ -829,7 +829,10 @@ fn test_iter_returns_all_unique_data() -> anyhow::Result<()> {
   }
 
   // Collect iterator results
-  let collected: AHashMap<String, FeatureFlag> = flags.iter().collect();
+  let collected: AHashMap<String, FeatureFlag> = flags
+    .iter()
+    .map(|(key, flag)| (key.to_string(), flag))
+    .collect();
 
   // Verify we got the expected number of items
   assert_eq!(collected.len(), expected_data.len());
