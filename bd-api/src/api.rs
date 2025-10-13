@@ -457,6 +457,10 @@ impl Api {
     self.sdk_directory.join("client_kill_until")
   }
 
+  fn opaque_client_state_path(&self) -> PathBuf {
+    self.sdk_directory.join("opaque_client_state")
+  }
+
   fn hash_api_key(&self) -> Vec<u8> {
     // This hash is not guaranteed to be stable across different Rust releases, but it should be
     // stable for the lifetime of this SDK version, which is good enough for our use case. We
@@ -656,7 +660,11 @@ impl Api {
       log::debug!("sending handshake");
 
       stream_state
-        .send_request(self.handshake_request(&handshake_metadata, last_disconnect_reason.take()))
+        .send_request(
+          self
+            .handshake_request(&handshake_metadata, last_disconnect_reason.take())
+            .await,
+        )
         .await?;
 
       log::debug!("waiting for handshake");
@@ -906,15 +914,17 @@ impl Api {
   }
 
   // Creates a handshake request containing the current version nonces and static metadata.
-  fn handshake_request(
+  async fn handshake_request(
     &self,
     metadata: &HashMap<String, ProtoData>,
     previous_disconnect_reason: Option<String>,
   ) -> HandshakeRequest {
+    let opaque_client_state = tokio::fs::read(&self.opaque_client_state_path()).await.ok();
     let mut handshake = HandshakeRequest {
       static_device_metadata: metadata.clone(),
       previous_disconnect_reason: previous_disconnect_reason.unwrap_or_default(),
       sleep_mode: *self.sleep_mode_active.borrow(),
+      opaque_client_state,
       ..Default::default()
     };
 
@@ -922,6 +932,22 @@ impl Api {
     self.runtime_loader.fill_handshake(&mut handshake);
 
     handshake
+  }
+
+  async fn process_opaque_client_state(&self, state: Option<Vec<u8>>) {
+    if let Some(state) = state {
+      log::debug!("storing opaque client state ({} bytes)", state.len());
+      if let Err(e) = tokio::fs::write(self.opaque_client_state_path(), state).await {
+        log::warn!("failed to store opaque client state: {e}");
+      }
+    } else {
+      log::debug!("no opaque client state to store");
+      if let Err(e) = tokio::fs::remove_file(self.opaque_client_state_path()).await
+        && e.kind() != std::io::ErrorKind::NotFound
+      {
+        log::warn!("failed to remove opaque client state: {e}");
+      }
+    }
   }
 
   /// Waits for enough data to be collected to parse the initial handshake, handling various error
@@ -951,6 +977,9 @@ impl Api {
           match first.response_type {
             Some(Response_type::Handshake(mut h)) => {
               log::debug!("received handshake");
+              self
+                .process_opaque_client_state(h.opaque_client_state_to_echo)
+                .await;
               return Ok(HandshakeResult::Received {
                 stream_settings: h.stream_settings.take(),
                 configuration_update_status: h.configuration_update_status,
