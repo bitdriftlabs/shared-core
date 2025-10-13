@@ -888,3 +888,111 @@ fn test_cache_vs_journal_coherency_validation() -> anyhow::Result<()> {
 
   Ok(())
 }
+
+#[test]
+fn test_kv_store_lazy_initialization() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let base_path = temp_dir.path().join("test_lazy_store");
+
+  let file_a = base_path.with_extension("jrna");
+  let file_b = base_path.with_extension("jrnb");
+
+  // Create a new store where files don't exist
+  let mut store = KVStore::new(&base_path, 4096, None)?;
+
+  // Files should NOT exist yet (lazy initialization)
+  assert!(
+    !file_a.exists(),
+    "File A should not exist before first write"
+  );
+  assert!(
+    !file_b.exists(),
+    "File B should not exist before first write"
+  );
+
+  // Reading should work but return empty
+  assert!(store.is_empty());
+  assert_eq!(store.len(), 0);
+  assert!(store.get("key").is_none());
+  assert!(!store.contains_key("key"));
+
+  // First write should trigger initialization
+  store.insert("key1".to_string(), Value::String("value1".to_string()))?;
+
+  // Files should NOW exist
+  assert!(file_a.exists(), "File A should exist after first write");
+  assert!(file_b.exists(), "File B should exist after first write");
+
+  // Data should be accessible
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("value1".to_string()))
+  );
+
+  Ok(())
+}
+
+#[test]
+fn test_kv_store_ensure_initialized() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let base_path = temp_dir.path().join("test_ensure_init_store");
+
+  let file_a = base_path.with_extension("jrna");
+  let file_b = base_path.with_extension("jrnb");
+
+  // Create a new store where files don't exist
+  let mut store = KVStore::new(&base_path, 4096, None)?;
+
+  // Files should NOT exist yet
+  assert!(!file_a.exists());
+  assert!(!file_b.exists());
+
+  // Explicitly ensure initialization
+  store.ensure_initialized()?;
+
+  // Files should NOW exist even without any writes
+  assert!(
+    file_a.exists(),
+    "File A should exist after ensure_initialized"
+  );
+  assert!(
+    file_b.exists(),
+    "File B should exist after ensure_initialized"
+  );
+
+  // Calling ensure_initialized again should be safe (no-op)
+  store.ensure_initialized()?;
+
+  Ok(())
+}
+
+#[test]
+fn test_kv_store_lazy_initialization_existing_files() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let base_path = temp_dir.path().join("test_existing_store");
+
+  // First, create a store and write some data
+  {
+    let mut store = KVStore::new(&base_path, 4096, None)?;
+    store.insert("key1".to_string(), Value::String("value1".to_string()))?;
+  }
+
+  let file_a = base_path.with_extension("jrna");
+  let file_b = base_path.with_extension("jrnb");
+
+  // Files should exist
+  assert!(file_a.exists());
+  assert!(file_b.exists());
+
+  // Create a new store - it should load immediately (not lazy) because files exist
+  let store = KVStore::new(&base_path, 4096, None)?;
+
+  // Data should be immediately available (not lazy)
+  assert!(!store.is_empty());
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("value1".to_string()))
+  );
+
+  Ok(())
+}
