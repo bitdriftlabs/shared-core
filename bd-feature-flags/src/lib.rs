@@ -94,6 +94,8 @@ impl FeatureFlag {
     let get_field = |key: &str| -> Option<&Value> {
       match value {
         Value::Object(obj) => obj.get(key),
+        // Although this should never happen because the deserializer will always decode as an
+        // `Object`, `KVVec` is technically possible so we handle it.
         Value::KVVec(kv_vec) => kv_vec.iter().find(|(k, _)| k == key).map(|(_, v)| v),
         _ => None,
       }
