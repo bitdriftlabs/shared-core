@@ -16,6 +16,8 @@ The `KVJournal` trait is the foundation of the system, providing:
 1. **InMemoryKVJournal**: Core implementation backed by byte buffers
 2. **MemMappedKVJournal**: File-backed implementation wrapping InMemoryKVJournal
 3. **DoubleBufferedKVJournal**: High-level wrapper providing automatic compaction and retry logic
+4. **KVStore**: Persistent key-value store with in-memory caching for O(1) reads
+5. **LazyKVStore**: Lazy-initialization wrapper for KVStore that defers file creation until first use
 
 ### Bulk Operations Architecture
 
@@ -38,7 +40,47 @@ The system provides efficient bulk operations through a consistent pattern:
 
 **Implication**: Never assume compaction can always solve high water mark issues. Sometimes both buffers are legitimately full.
 
-### 2. Bulk Operations and Retry Logic
+### 2. LazyKVStore: Deferred Initialization Pattern
+**Key Insight**: `LazyKVStore` uses `OnceCell` to defer initialization until first access, avoiding unnecessary file I/O and resource allocation during construction.
+
+**Critical Implementation Details**:
+- **Constructor is infallible**: `new()` only stores configuration, never fails
+- **Initialization on first access**: Both read and write operations trigger initialization
+- **Interior mutability**: Uses `OnceCell` for thread-safe lazy initialization
+- **`get_mut_store()` pattern**: Ensures initialization, then gets mutable access using a careful two-step process:
+  ```rust
+  fn get_mut_store(&mut self) -> anyhow::Result<&mut KVStore> {
+      // Step 1: Ensure initialization (creates temporary reference)
+      self.get_store()?;
+
+      // Step 2: Get mutable access (temporary from step 1 is dropped at semicolon)
+      Ok(self.store.get_mut().ok_or(InvariantError::Invariant)?)
+  }
+  ```
+
+**Why This Works**: Rust's temporary lifetime rules ensure the reference from `get_store()` is dropped at the semicolon, allowing `get_mut()` to succeed. The temporary reference exists only during statement evaluation and is gone before the next statement.
+
+**API Design Choices**:
+- `initialize(&self)` takes `&self` (not `&mut self`) due to `OnceCell` interior mutability
+- All query methods return `Result<T>` - `Result` is already `#[must_use]`, so no additional annotation needed
+- Methods mirror underlying `KVStore` API with appropriate mutability (write ops: `&mut self`, read ops: `&self`)
+- No parameter validation in constructor - validation happens lazily on first access
+
+**Common Pattern**:
+```rust
+// Construction is cheap and never fails
+let store = LazyKVStore::new(path, 4096, None);
+
+// First access triggers initialization and may fail
+let value = store.get("key")?;  // Files created here
+
+// Subsequent operations use initialized store
+store.insert("key2".into(), Value::String("value".into()))?;
+```
+
+**Thread Safety Note**: `LazyKVStore` is NOT thread-safe by design. Use `Mutex<LazyKVStore>` for concurrent access.
+
+### 3. Bulk Operations and Retry Logic
 The system includes sophisticated retry logic specifically for bulk operations:
 
 **`set_multiple` Intelligence**: The `set_multiple` method in `DoubleBufferedKVJournal` implements a two-phase approach:
@@ -51,7 +93,7 @@ The system includes sophisticated retry logic specifically for bulk operations:
 - A retry immediately after might succeed on the now-compacted journal
 - High water mark flag accurately reflects whether retry is worthwhile
 
-### 3. Simplified High Water Mark Detection
+### 4. Simplified High Water Mark Detection
 The system uses a straightforward approach to high water mark detection:
 
 ```rust
@@ -66,7 +108,7 @@ if journal.is_high_water_mark_triggered() {
 - No callback complexity or thread safety concerns
 - Direct control over when to check status
 
-### 3. Double Buffered Journal Logic
+### 5. Double Buffered Journal Logic
 The `DoubleBufferedKVJournal` implements automatic switching with sophisticated retry logic:
 
 1. **Normal Operations**: Forward to active journal, switch if high water mark triggered
@@ -96,6 +138,43 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
 - A second attempt might succeed on the now-compacted journal
 
 ## Testing Strategies
+
+### LazyKVStore Test Patterns
+
+1. **Verify Deferred Initialization**:
+   ```rust
+   let store = LazyKVStore::new(path, 4096, None);
+   // Assert files don't exist
+   assert!(!path.with_extension("jrna").exists());
+
+   // Trigger initialization
+   store.get("key")?;
+
+   // Assert files now exist
+   assert!(path.with_extension("jrna").exists());
+   ```
+
+2. **Test Initialization Triggers**:
+   ```rust
+   // Any operation should trigger initialization
+   let operations = vec![
+       |s: &LazyKVStore| s.get("key"),           // Read
+       |s: &mut LazyKVStore| s.insert(...),      // Write
+       |s: &LazyKVStore| s.contains_key("key"),  // Query
+       |s: &LazyKVStore| s.initialize(),         // Explicit
+   ];
+   ```
+
+3. **Test Double Initialization Safety**:
+   ```rust
+   let mut store = LazyKVStore::new(path, 4096, None);
+   store.initialize()?;  // First init
+   store.initialize()?;  // Should be no-op
+   store.insert("key", value)?;
+   store.initialize()?;  // Should not affect data
+   ```
+
+### KVJournal Test Patterns
 
 ### Effective Test Patterns
 
@@ -146,19 +225,71 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
 
 ## Common Pitfalls
 
-### 1. Assuming Compaction Always Works
+### 1. LazyKVStore Initialization Timing
+**Wrong Assumption**: "Creating a `LazyKVStore` means the files exist"
+**Reality**: Files are not created until first method call (read or write)
+**Example**:
+```rust
+let store = LazyKVStore::new(path, 4096, None);
+// Files do NOT exist yet!
+
+// This creates the files:
+let _ = store.get("key")?;
+// Now files exist
+```
+
+### 2. Understanding `get_mut_store()` Reference Lifetimes
+**Wrong Assumption**: "Calling `get_store()` prevents `get_mut()` from working"
+**Reality**: Temporary references from `get_store()` are dropped at the semicolon
+**Correct Pattern**:
+```rust
+// Step 1: Initialize (temporary reference created and dropped)
+self.get_store()?;
+
+// Step 2: Get mutable access (no references exist anymore)
+Ok(self.store.get_mut().ok_or(InvariantError::Invariant)?)
+```
+
+### 3. `#[must_use]` on Result-Returning Methods
+**Wrong Assumption**: "I need to add `#[must_use]` to query methods"
+**Reality**: `Result<T>` is already `#[must_use]`, adding it again causes clippy errors
+**Correct**: All methods returning `Result` automatically warn if unused
+
+### 4. Assuming Compaction Always Works
 **Wrong Assumption**: "If we trigger compaction, the high water mark issue will be resolved"
 **Reality**: Compaction may reduce size but still exceed thresholds
 
-### 2. Misunderstanding the Flag Behavior
+### 5. Misunderstanding the Flag Behavior
 **Legacy Expectation**: Expecting callback-based notifications
 **Current Reality**: Simple boolean flag that must be checked explicitly
 
-### 3. Error Handling
+### 6. Error Handling
 **Wrong**: Assuming high water mark flag means operation failed
 **Right**: High water mark flag indicates resource pressure, operations may still succeed
 
 ## Key Methods and Their Purposes
+
+### LazyKVStore Methods
+
+#### `new(base_path, buffer_size, high_water_mark_ratio) -> Self`
+- **Purpose**: Construct a LazyKVStore without initializing files
+- **Behavior**: Stores configuration, never accesses filesystem
+- **Returns**: Self (never fails)
+- **When to use**: When you want to defer expensive I/O until actually needed
+
+#### `initialize(&self) -> Result<()>`
+- **Purpose**: Explicitly trigger initialization without performing other operations
+- **Behavior**: Creates backing files if they don't exist, no-op if already initialized
+- **Mutability**: Takes `&self` (uses `OnceCell` interior mutability)
+- **When to use**: To control exactly when files are created, or to pre-warm before operations
+
+#### `get(&self, key) -> Result<Option<&Value>>`
+- **Purpose**: Retrieve a value by key
+- **Side effects**: Initializes store on first call
+- **Returns**: `Result` (already `#[must_use]`)
+- **Performance**: O(1) from in-memory cache after initialization
+
+### KVJournal Methods
 
 ### `set_multiple(entries: &[(String, Value)])`
 - **Purpose**: Efficiently set multiple key-value pairs in a single operation
