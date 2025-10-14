@@ -16,7 +16,6 @@
 
 mod file_manager;
 pub mod stats;
-pub mod test;
 
 use crate::stats::Flusher;
 use bd_api::DataUpload;
@@ -25,10 +24,9 @@ use bd_client_stats_store::{Collector, Error as StatsError};
 use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::workflow::WorkflowDebugKey;
-use bd_time::SystemTimeProvider;
+use bd_time::{SystemTimeProvider, Ticker};
 use file_manager::FileManager;
 use parking_lot::Mutex;
-use stats::Ticker;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::Arc;

@@ -25,7 +25,7 @@ use bd_proto::protos::client::metric::{Metric as ProtoMetric, MetricsList};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, NameType};
-use bd_time::TimeDurationExt;
+use bd_time::{Ticker, TimeDurationExt};
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use debug_data_request::{WorkflowDebugData, WorkflowTransitionDebugData};
 use itertools::Itertools;
@@ -37,15 +37,6 @@ use std::sync::Arc;
 use time::Duration;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::MissedTickBehavior;
-
-//
-// Ticker
-//
-
-#[async_trait]
-pub trait Ticker: Send + Sync {
-  async fn tick(&mut self);
-}
 
 //
 // RuntimeWatchTicker
