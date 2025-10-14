@@ -32,4 +32,5 @@ pub mod double_buffered_test;
 pub mod error_handling_test;
 pub mod kv_store_test;
 pub mod kv_test;
+pub mod lazy_kv_store_test;
 pub mod memmapped_test;

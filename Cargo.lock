@@ -1088,6 +1088,7 @@ dependencies = [
  "bd-workspace-hack",
  "bytes",
  "memmap2",
+ "once_cell",
  "tempfile",
 ]
 
