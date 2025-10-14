@@ -7,6 +7,7 @@
 
 use super::*;
 use crate::writer::Writer;
+use ahash::AHashMap;
 use core::f64;
 use std::io::Cursor;
 use std::vec;
@@ -545,7 +546,7 @@ fn test_accessor_methods() {
   let arr = vec![Value::Signed(1), Value::Signed(2)];
   let array_val = Value::Array(arr);
 
-  let mut map = HashMap::new();
+  let mut map = AHashMap::new();
   map.insert("key".to_string(), Value::String("value".to_string()));
   let obj_val = Value::Object(map);
 
@@ -1052,8 +1053,6 @@ fn test_value_none_removed_partial_errors() {
 
 #[test]
 fn test_all_variants() {
-  use std::collections::HashMap;
-
   let all_value_types = vec![
     Value::Null,
     Value::Bool(true),
@@ -1062,7 +1061,7 @@ fn test_all_variants() {
     Value::Unsigned(42),
     Value::String("test".to_string()),
     Value::Array(vec![]),
-    Value::Object(HashMap::new()),
+    Value::Object(AHashMap::new()),
   ];
 
   assert_eq!(all_value_types.len(), 8);

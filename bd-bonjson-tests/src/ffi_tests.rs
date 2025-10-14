@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use ahash::AHashMap;
 use assert_no_alloc::*;
 use bd_bonjson::Value;
 use bd_bonjson_ffi::BDCrashWriterHandle;
@@ -280,7 +281,7 @@ fn test_write_map() {
   let bytes = std::fs::read(temp_file_path).unwrap();
   let (bytes_read, value) = bd_bonjson::decoder::from_slice(&bytes).unwrap();
   assert!(bytes_read > 0, "Should have read at least one byte");
-  let mut expected = std::collections::HashMap::new();
+  let mut expected = AHashMap::new();
   expected.insert("foo".to_string(), Value::Signed(42));
   expected.insert("bar".to_string(), Value::Bool(false));
   assert_eq!(value, Value::Object(expected));
@@ -326,13 +327,13 @@ fn test_write_deeply_nested_structure() {
   assert!(bytes_read > 0, "Should have read at least one byte");
 
   // Build expected value
-  let mut inner_map = std::collections::HashMap::new();
+  let mut inner_map = AHashMap::new();
   inner_map.insert(
     "inner".to_string(),
     Value::Array(vec![Value::Signed(1), Value::Signed(2), Value::Signed(3)]),
   );
   let expected = {
-    let mut outer_map = std::collections::HashMap::new();
+    let mut outer_map = AHashMap::new();
     outer_map.insert(
       "outer".to_string(),
       Value::Array(vec![Value::Object(inner_map)]),

@@ -34,7 +34,6 @@
 
 use bd_bonjson::Value;
 use bd_resilient_kv::KVStore;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[cfg(test)]
@@ -91,34 +90,41 @@ impl FeatureFlag {
   /// Returns `None` if the value is not a valid feature flag object.
   #[must_use]
   pub fn from_value(value: &Value) -> Option<Self> {
-    if let Value::Object(obj) = value {
-      let variant = match obj.get(VARIANT_KEY) {
-        Some(Value::String(s)) => {
-          if s.is_empty() {
-            None
-          } else {
-            Some(s.to_string())
-          }
-        },
-        _ => return None,
-      };
+    // Handle both Object and KVVec types for backward compatibility
+    let get_field = |key: &str| -> Option<&Value> {
+      match value {
+        Value::Object(obj) => obj.get(key),
+        // Although this should never happen because the deserializer will always decode as an
+        // `Object`, `KVVec` is technically possible so we handle it.
+        Value::KVVec(kv_vec) => kv_vec.iter().find(|(k, _)| k == key).map(|(_, v)| v),
+        _ => None,
+      }
+    };
 
-      let timestamp = match obj.get(TIMESTAMP_KEY) {
-        Some(value) => {
-          let timestamp_nanos = match value {
-            Value::Unsigned(t) => *t,
-            Value::Signed(t) if *t >= 0 => u64::try_from(*t).ok()?,
-            _ => return None,
-          };
-          time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos)).ok()?
-        },
-        _ => return None,
-      };
+    let variant = match get_field(VARIANT_KEY) {
+      Some(Value::String(s)) => {
+        if s.is_empty() {
+          None
+        } else {
+          Some(s.to_string())
+        }
+      },
+      _ => return None,
+    };
 
-      Some(Self { variant, timestamp })
-    } else {
-      None
-    }
+    let timestamp = match get_field(TIMESTAMP_KEY) {
+      Some(value) => {
+        let timestamp_nanos = match value {
+          Value::Unsigned(t) => *t,
+          Value::Signed(t) if *t >= 0 => u64::try_from(*t).ok()?,
+          _ => return None,
+        };
+        time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos)).ok()?
+      },
+      _ => return None,
+    };
+
+    Some(Self { variant, timestamp })
   }
 
   /// Converts a `FeatureFlag` to a BONJSON Value.
@@ -130,11 +136,11 @@ impl FeatureFlag {
 
     let timestamp_nanos = u64::try_from(self.timestamp.unix_timestamp_nanos()).unwrap_or(0);
 
-    let obj = HashMap::from([
+    let kv_vec = vec![
       (VARIANT_KEY.to_string(), Value::String(storage_variant)),
       (TIMESTAMP_KEY.to_string(), Value::Unsigned(timestamp_nanos)),
-    ]);
-    Value::Object(obj)
+    ];
+    Value::KVVec(kv_vec)
   }
 }
 
@@ -326,26 +332,22 @@ impl FeatureFlags {
     self.flags_store.sync()
   }
 
-  /// Returns a `HashMap` containing all feature flags.
+  /// Returns an iterator over all feature flags.
   ///
-  /// This method provides access to all feature flags as a standard
-  /// Rust `HashMap`. This is useful for iterating over all flags or performing
-  /// bulk operations. The `HashMap` is generated on-demand from the persistent storage.
+  /// This method provides an iterator that yields `(String, FeatureFlag)` pairs for all
+  /// valid feature flags in the store. Invalid entries are filtered out during iteration.
   ///
   /// # Returns
   ///
-  /// A `HashMap<String, FeatureFlag>` containing all flags.
-  ///
-  /// TODO: Make an iterator instead
-  #[must_use]
-  pub fn as_hashmap(&self) -> HashMap<String, FeatureFlag> {
-    let mut flags = HashMap::new();
-    for (key, value) in self.flags_store.as_hashmap() {
-      if let Some(feature_flag) = FeatureFlag::from_value(value) {
-        flags.insert(key.clone(), feature_flag);
-      }
-    }
-    flags
+  /// An iterator over `(String, FeatureFlag)` pairs.
+  pub fn iter(&self) -> impl Iterator<Item = (&str, FeatureFlag)> + '_ {
+    self
+      .flags_store
+      .as_hashmap()
+      .iter()
+      .filter_map(|(key, value)| {
+        FeatureFlag::from_value(value).map(|feature_flag| (key.as_str(), feature_flag))
+      })
   }
 }
 
