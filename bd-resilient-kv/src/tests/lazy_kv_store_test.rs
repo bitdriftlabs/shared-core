@@ -126,12 +126,12 @@ fn test_lazy_kv_store_initialization_on_remove() -> anyhow::Result<()> {
 
 #[test]
 fn test_lazy_kv_store_initialization_on_clear() -> anyhow::Result<()> {
-  test_mutable_operation_triggers_initialization(|store| store.clear())
+  test_mutable_operation_triggers_initialization(LazyKVStore::clear)
 }
 
 #[test]
 fn test_lazy_kv_store_initialization_on_compress() -> anyhow::Result<()> {
-  test_mutable_operation_triggers_initialization(|store| store.compress())
+  test_mutable_operation_triggers_initialization(LazyKVStore::compress)
 }
 
 #[test]

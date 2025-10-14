@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 ///
 /// The store automatically manages two journal files with extensions ".jrna" and ".jrnb"
 /// based on the provided base path.
+#[derive(Debug)]
 pub struct KVStore {
   journal: DoubleBufferedKVJournal<MemMappedKVJournal, MemMappedKVJournal>,
   cached_map: AHashMap<String, Value>,
@@ -229,6 +230,12 @@ impl KVStore {
 }
 
 /// A lazy wrapper for `KVStore` that defers initialization until first use.
+///
+/// # Thread Safety
+/// `LazyKVStore` is not thread-safe. Mutable operations require exclusive access
+/// via `&mut self`. If you need to share a `LazyKVStore` across threads, wrap it
+/// in a `Mutex` or similar synchronization primitive.
+#[derive(Debug)]
 pub struct LazyKVStore {
   store: OnceCell<KVStore>,
   base_path: PathBuf,
@@ -278,7 +285,14 @@ impl LazyKVStore {
   /// # Errors
   /// Returns an error if the store cannot be initialized.
   fn get_mut_store(&mut self) -> anyhow::Result<&mut KVStore> {
+    // Ensure that the store is initialized.
     self.get_store()?;
+
+    // Get mutable access. This should always succeed because:
+    // 1. We just initialized the store above
+    // 2. The temporary reference from get_store() was dropped at the semicolon
+    // 3. We have &mut self, so no other references can exist
+    // If this returns None, it's an invariant violation (impossible state)
     Ok(self.store.get_mut().ok_or(InvariantError::Invariant)?)
   }
 
@@ -397,7 +411,7 @@ impl LazyKVStore {
   ///
   /// # Errors
   /// Returns an error if the store cannot be initialized.
-  pub fn initialize(&mut self) -> anyhow::Result<()> {
+  pub fn initialize(&self) -> anyhow::Result<()> {
     self.get_store()?;
     Ok(())
   }
