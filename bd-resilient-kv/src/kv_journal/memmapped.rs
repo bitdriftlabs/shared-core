@@ -104,6 +104,7 @@ impl MemMappedKVJournal {
     size: usize,
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
+    // TODO: These file operations block. Need to init on another thread like in the ring buffer.
     let file = OpenOptions::new().read(true).write(true).open(file_path)?;
 
     let file_len = file.metadata()?.len();
