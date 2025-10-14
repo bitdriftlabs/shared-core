@@ -228,9 +228,6 @@ impl Monitor {
     let previous_feature_flags = self
       .feature_flags_manager
       .previous_feature_flags()
-      .inspect_err(|e| {
-        log::warn!("failed to load or create previous feature flags: {e}");
-      })
       .ok();
     let reporting_feature_flags: Vec<SnappedFeatureFlag> = previous_feature_flags
       .as_ref()
