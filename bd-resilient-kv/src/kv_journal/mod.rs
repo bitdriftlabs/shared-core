@@ -5,8 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use ahash::AHashMap;
 use bd_bonjson::Value;
-use std::collections::HashMap;
 
 /// Trait for a key-value journaling system whose data can be recovered up to the last successful
 /// write checkpoint.
@@ -66,7 +66,7 @@ pub trait KVJournal {
   ///
   /// # Errors
   /// Returns an error if the buffer cannot be decoded.
-  fn as_hashmap(&self) -> anyhow::Result<HashMap<String, Value>>;
+  fn as_hashmap(&self) -> anyhow::Result<AHashMap<String, Value>>;
 
   /// Reinitialize this journal using the data from another journal.
   ///

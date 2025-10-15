@@ -24,6 +24,7 @@ use base_log_matcher::tag_match::Value_match::{
   SemVerValueMatch,
   StringValueMatch,
 };
+use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogType};
 use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::StringMatchType;
 use bd_proto::protos::config::v1::config::log_matcher::{
@@ -46,7 +47,6 @@ use log_matcher::log_matcher::base_log_matcher::{
 use log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
 use regex::Regex;
 use std::borrow::Cow;
-use std::collections::BTreeMap;
 use std::ops::Deref;
 
 const LOG_LEVEL_KEY: &str = "log_level";
@@ -79,14 +79,11 @@ impl<T> From<T> for ValueOrSavedFieldId<T> {
 }
 
 impl<'a, T: MakeValueOrRef<'a, T>> ValueOrSavedFieldId<T> {
-  fn load(
-    &'a self,
-    extracted_fields: Option<&'a BTreeMap<String, String>>,
-  ) -> Option<ValueOrRef<'a, T>> {
+  fn load(&'a self, extracted_fields: &'a TinyMap<String, String>) -> Option<ValueOrRef<'a, T>> {
     match self {
       Self::Value(v) => Some(ValueOrRef::Ref(v)),
       Self::SaveFieldId(field_id) => extracted_fields
-        .and_then(|extracted_fields| extracted_fields.get(field_id))
+        .get(field_id)
         .and_then(|v| T::make_value_or_ref(v)),
     }
   }
@@ -207,7 +204,7 @@ impl Tree {
     log_type: LogType,
     message: &LogMessage,
     fields: FieldsRef<'_>,
-    extracted_fields: Option<&BTreeMap<String, String>>,
+    extracted_fields: &TinyMap<String, String>,
   ) -> bool {
     match self {
       Self::Base(base_matcher) => match base_matcher {
@@ -268,7 +265,7 @@ impl IntMatch {
     }
   }
 
-  fn evaluate(&self, candidate: i32, extracted_fields: Option<&BTreeMap<String, String>>) -> bool {
+  fn evaluate(&self, candidate: i32, extracted_fields: &TinyMap<String, String>) -> bool {
     let Some(value) = self.value.load(extracted_fields) else {
       return false;
     };
@@ -317,7 +314,7 @@ impl DoubleMatch {
     }
   }
 
-  fn evaluate(&self, candidate: f64, extracted_fields: Option<&BTreeMap<String, String>>) -> bool {
+  fn evaluate(&self, candidate: f64, extracted_fields: &TinyMap<String, String>) -> bool {
     let candidate = NanEqualFloat(candidate);
     let Some(value) = self.value.load(extracted_fields) else {
       return false;
@@ -386,7 +383,7 @@ impl StringMatch {
     })
   }
 
-  fn evaluate(&self, candidate: &str, extracted_fields: Option<&BTreeMap<String, String>>) -> bool {
+  fn evaluate(&self, candidate: &str, extracted_fields: &TinyMap<String, String>) -> bool {
     let Some(value) = self.value.load(extracted_fields) else {
       return false;
     };

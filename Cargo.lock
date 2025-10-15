@@ -385,6 +385,7 @@ dependencies = [
 name = "bd-bonjson"
 version = "1.0.0"
 dependencies = [
+ "ahash",
  "assert_no_alloc",
  "bd-test-helpers",
  "bd-workspace-hack",
@@ -416,6 +417,7 @@ dependencies = [
 name = "bd-bonjson-tests"
 version = "1.0.0"
 dependencies = [
+ "ahash",
  "assert_no_alloc",
  "bd-bonjson",
  "bd-bonjson-ffi",
@@ -661,6 +663,7 @@ dependencies = [
 name = "bd-feature-flags"
 version = "1.0.0"
 dependencies = [
+ "ahash",
  "anyhow",
  "bd-bonjson",
  "bd-client-common",
@@ -1079,6 +1082,7 @@ dependencies = [
 name = "bd-resilient-kv"
 version = "1.0.0"
 dependencies = [
+ "ahash",
  "anyhow",
  "bd-bonjson",
  "bd-client-common",
@@ -2079,6 +2083,7 @@ dependencies = [
 name = "fuzz"
 version = "0.0.0"
 dependencies = [
+ "ahash",
  "arbitrary",
  "bd-bonjson",
  "bd-buffer",

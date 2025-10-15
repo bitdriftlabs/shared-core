@@ -21,6 +21,7 @@ use bd_client_common::safe_file_cache::SafeFileCache;
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::FilterChain;
 use bd_log_primitives::LogRef;
+use bd_log_primitives::tiny_set::TinyMap;
 use bd_proto::protos::bdtail::bdtail_config::BdTailConfigurations;
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
@@ -45,7 +46,11 @@ use tokio::sync::mpsc::Sender;
 // logger.
 #[async_trait::async_trait]
 pub trait ApplyConfig {
-  async fn apply_configuration(&self, configuration: Configuration) -> anyhow::Result<()>;
+  async fn apply_configuration(
+    &self,
+    configuration: Configuration,
+    from_cache: bool,
+  ) -> anyhow::Result<()>;
 }
 
 #[cfg_attr(test, derive(Debug, Default, PartialEq))]
@@ -95,6 +100,7 @@ impl<A: ApplyConfig> Config<A> {
   async fn process_configuration_update_inner(
     &self,
     update: ConfigurationUpdate,
+    from_cache: bool,
   ) -> anyhow::Result<()> {
     let config = update
       .update_type
@@ -104,7 +110,7 @@ impl<A: ApplyConfig> Config<A> {
 
     self
       .apply_config
-      .apply_configuration(Configuration::new(sotw))
+      .apply_configuration(Configuration::new(sotw), from_cache)
       .await?;
 
     // Since we've validated that the configuration works and has been applied, we keep track
@@ -131,7 +137,7 @@ impl<A: ApplyConfig> Config<A> {
     self
       .file_cache
       .cache_update(compressed_protobuf, &version_nonce, async move {
-        self.process_configuration_update_inner(update).await
+        self.process_configuration_update_inner(update, false).await
       })
       .await
   }
@@ -141,7 +147,7 @@ impl<A: ApplyConfig> Config<A> {
     if let Some(configuration_update) = self.file_cache.handle_cached_config().await {
       // If this function succeeds, it should write back the file to disk.
       let maybe_nack = self
-        .process_configuration_update_inner(configuration_update)
+        .process_configuration_update_inner(configuration_update, true)
         .await;
 
       // We should never persist config that results in a Nack, but if we do we effectively drop
@@ -234,7 +240,11 @@ impl LoggerUpdate {
 
 #[async_trait::async_trait]
 impl ApplyConfig for LoggerUpdate {
-  async fn apply_configuration(&self, configuration: Configuration) -> anyhow::Result<()> {
+  async fn apply_configuration(
+    &self,
+    configuration: Configuration,
+    from_cache: bool,
+  ) -> anyhow::Result<()> {
     let Configuration {
       buffer,
       workflows,
@@ -281,6 +291,7 @@ impl ApplyConfig for LoggerUpdate {
           || self.stream_config_parse_failure.inc(),
         )?,
         filter_chain,
+        from_cache,
       })
       .await
     {
@@ -406,7 +417,13 @@ impl TailConfigurations {
         matcher
           .as_ref()
           .is_none_or(|matcher| {
-            matcher.do_match(log.log_level, log.log_type, log.message, log.fields, None)
+            matcher.do_match(
+              log.log_level,
+              log.log_type,
+              log.message,
+              log.fields,
+              &TinyMap::default(),
+            )
           })
           .then_some(id.as_str())
       })

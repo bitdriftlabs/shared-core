@@ -207,6 +207,7 @@ impl Setup {
       workflows_configuration,
       tail_configs: TailConfigurations::default(),
       filter_chain: FilterChain::new(FiltersConfiguration::default()).0,
+      from_cache: false,
     }
   }
 
@@ -488,6 +489,7 @@ fn enqueuing_log_blocks() {
           workflows_configuration: WorkflowsConfiguration::default(),
           tail_configs: TailConfigurations::default(),
           filter_chain: FilterChain::new(FiltersConfiguration::default()).0,
+          from_cache: false,
         })
         .await
     );

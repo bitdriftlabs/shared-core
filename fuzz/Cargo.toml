@@ -12,6 +12,7 @@ doctest = false
 cargo-fuzz = true
 
 [dependencies]
+ahash.workspace             = true
 arbitrary.workspace         = true
 bd-bonjson.path             = "../bd-bonjson"
 bd-buffer.path              = "../bd-buffer"

@@ -20,7 +20,6 @@ use crate::{
   wait_for,
 };
 use assert_matches::assert_matches;
-use bd_client_stats::test::TestTicker;
 use bd_error_reporter::reporter::UnexpectedErrorHandler;
 use bd_key_value::Store;
 use bd_log_metadata::LogFields;
@@ -79,6 +78,7 @@ use bd_test_helpers::workflow::{
   state,
 };
 use bd_test_helpers::{RecordingErrorReporter, field_value, set_field};
+use bd_time::test::TestTicker;
 use bd_time::{OffsetDateTimeExt, TestTimeProvider};
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use debug_data_request::{WorkflowDebugData, WorkflowStateDebugData};
@@ -1413,8 +1413,8 @@ fn workflow_debugging() {
         "workflow_1".into(),
         WorkflowDebugData {
           start_reset: Some(WorkflowTransitionDebugData {
-            transition_count: 2,
-            last_transition_time: datetime!(2023-10-01 00:02:00 UTC).into_proto(),
+            transition_count: 1,
+            last_transition_time: datetime!(2023-10-01 00:00:00 UTC).into_proto(),
             ..Default::default()
           })
           .into(),

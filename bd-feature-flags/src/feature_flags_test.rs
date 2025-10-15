@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::*;
+use ahash::AHashMap;
 use tempfile::TempDir;
 
 #[test]
@@ -25,7 +26,7 @@ fn test_cache_populated_from_store() -> anyhow::Result<()> {
   let flags = FeatureFlags::new(temp_path, 1024, None)?;
 
   // Verify flags were loaded into cache
-  assert_eq!(flags.as_hashmap().len(), 2);
+  assert_eq!(flags.iter().count(), 2);
 
   let flag1 = flags.get("flag1").expect("flag1 should exist");
   assert_eq!(flag1.variant, Some("variant1".to_string()));
@@ -39,7 +40,6 @@ fn test_cache_populated_from_store() -> anyhow::Result<()> {
 #[test]
 fn test_invalid_entries_discarded_on_load() -> anyhow::Result<()> {
   use bd_bonjson::Value;
-  use std::collections::HashMap;
 
   let temp_dir = TempDir::new()?;
   let temp_path = temp_dir.path();
@@ -55,7 +55,7 @@ fn test_invalid_entries_discarded_on_load() -> anyhow::Result<()> {
     let store = &mut flags.flags_store;
 
     // Entry missing VARIANT_KEY
-    let missing_variant = HashMap::from([("t".to_string(), Value::Unsigned(12345))]);
+    let missing_variant = AHashMap::from([("t".to_string(), Value::Unsigned(12345))]);
     store.insert(
       "missing_variant".to_string(),
       Value::Object(missing_variant),
@@ -63,7 +63,7 @@ fn test_invalid_entries_discarded_on_load() -> anyhow::Result<()> {
 
     // Entry missing TIMESTAMP_KEY
     let missing_timestamp =
-      HashMap::from([("v".to_string(), Value::String("some_variant".to_string()))]);
+      AHashMap::from([("v".to_string(), Value::String("some_variant".to_string()))]);
     store.insert(
       "missing_timestamp".to_string(),
       Value::Object(missing_timestamp),
@@ -71,7 +71,7 @@ fn test_invalid_entries_discarded_on_load() -> anyhow::Result<()> {
 
     // Entry missing both keys
     let missing_both =
-      HashMap::from([("other_key".to_string(), Value::String("value".to_string()))]);
+      AHashMap::from([("other_key".to_string(), Value::String("value".to_string()))]);
     store.insert("missing_both".to_string(), Value::Object(missing_both))?;
 
     flags.sync()?; // Ensure data is written to disk
@@ -81,7 +81,7 @@ fn test_invalid_entries_discarded_on_load() -> anyhow::Result<()> {
   let flags = FeatureFlags::new(temp_path, 1024, None)?;
 
   // Should only have the valid flag
-  assert_eq!(flags.as_hashmap().len(), 1);
+  assert_eq!(flags.iter().count(), 1);
   assert!(flags.get("valid_flag").is_some());
   assert!(flags.get("missing_variant").is_none());
   assert!(flags.get("missing_timestamp").is_none());
@@ -97,7 +97,7 @@ fn test_new_empty_store() -> anyhow::Result<()> {
 
   let flags = FeatureFlags::new(temp_path, 1024, None)?;
 
-  assert_eq!(flags.as_hashmap().len(), 0);
+  assert_eq!(flags.iter().count(), 0);
   assert!(flags.get("nonexistent").is_none());
 
   Ok(())
@@ -216,7 +216,7 @@ fn test_set_multiple_flags() -> anyhow::Result<()> {
   flags.set("flag2".to_string(), None)?;
   flags.set("flag3".to_string(), Some("variant3".to_string()))?;
 
-  assert_eq!(flags.as_hashmap().len(), 3);
+  assert_eq!(flags.iter().count(), 3);
 
   let flag1 = flags.get("flag1").expect("flag1 should exist");
   assert_eq!(flag1.variant, Some("variant1".to_string()));
@@ -255,7 +255,7 @@ fn test_set_multiple_method() -> anyhow::Result<()> {
   flags.set_multiple(flags_to_set)?;
 
   // Verify all flags were set correctly
-  assert_eq!(flags.as_hashmap().len(), 4);
+  assert_eq!(flags.iter().count(), 4);
 
   let flag1 = flags.get("batch_flag1").expect("batch_flag1 should exist");
   assert_eq!(flag1.variant, Some("batch_variant1".to_string()));
@@ -301,7 +301,7 @@ fn test_set_multiple_method_persistence() -> anyhow::Result<()> {
   let flags = FeatureFlags::new(temp_path, 1024, None)?;
 
   // Verify flags were persisted and loaded correctly
-  assert_eq!(flags.as_hashmap().len(), 3);
+  assert_eq!(flags.iter().count(), 3);
 
   let flag1 = flags
     .get("persist_flag1")
@@ -348,7 +348,7 @@ fn test_set_multiple_method_overwrite_existing() -> anyhow::Result<()> {
   flags.set_multiple(flags_to_set)?;
 
   // Verify updates
-  assert_eq!(flags.as_hashmap().len(), 3);
+  assert_eq!(flags.iter().count(), 3);
 
   let updated_flag1 = flags.get("existing1").expect("existing1 should exist");
   assert_eq!(updated_flag1.variant, Some("new_value1".to_string()));
@@ -373,11 +373,11 @@ fn test_clear() -> anyhow::Result<()> {
   // Add some flags
   flags.set("flag1".to_string(), Some("variant1".to_string()))?;
   flags.set("flag2".to_string(), None)?;
-  assert_eq!(flags.as_hashmap().len(), 2);
+  assert_eq!(flags.iter().count(), 2);
 
   // Clear all flags
   flags.clear()?;
-  assert_eq!(flags.as_hashmap().len(), 0);
+  assert_eq!(flags.iter().count(), 0);
   assert!(flags.get("flag1").is_none());
   assert!(flags.get("flag2").is_none());
 
@@ -399,7 +399,7 @@ fn test_persistence_across_instances() -> anyhow::Result<()> {
 
   // Create second instance and verify flags are loaded
   let flags = FeatureFlags::new(temp_path, 1024, None)?;
-  assert_eq!(flags.as_hashmap().len(), 2);
+  assert_eq!(flags.iter().count(), 2);
 
   let flag1 = flags.get("persistent_flag1").expect("flag1 should exist");
   assert_eq!(flag1.variant, Some("variant1".to_string()));
@@ -425,7 +425,7 @@ fn test_clear_persistence() -> anyhow::Result<()> {
 
   // Create second instance and verify no flags are loaded
   let flags = FeatureFlags::new(temp_path, 1024, None)?;
-  assert_eq!(flags.as_hashmap().len(), 0);
+  assert_eq!(flags.iter().count(), 0);
   assert!(flags.get("temp_flag").is_none());
 
   Ok(())
@@ -522,7 +522,6 @@ fn test_special_characters_in_names_and_variants() -> anyhow::Result<()> {
 #[test]
 fn test_negative_timestamp_entries_discarded() -> anyhow::Result<()> {
   use bd_bonjson::Value;
-  use std::collections::HashMap;
 
   let temp_dir = TempDir::new()?;
   let temp_path = temp_dir.path();
@@ -536,7 +535,7 @@ fn test_negative_timestamp_entries_discarded() -> anyhow::Result<()> {
 
     // Manually insert invalid entry with negative timestamp
     let store = &mut flags.flags_store;
-    let negative_timestamp_entry = HashMap::from([
+    let negative_timestamp_entry = AHashMap::from([
       ("v".to_string(), Value::String("variant".to_string())),
       ("t".to_string(), Value::Signed(-12345)),
     ]);
@@ -552,7 +551,7 @@ fn test_negative_timestamp_entries_discarded() -> anyhow::Result<()> {
   let flags = FeatureFlags::new(temp_path, 1024, None)?;
 
   // Should only have the valid flag, negative timestamp entry should be discarded
-  assert_eq!(flags.as_hashmap().len(), 1);
+  assert_eq!(flags.iter().count(), 1);
   assert!(flags.get("valid_flag").is_some());
   assert!(flags.get("negative_timestamp").is_none());
 
@@ -598,7 +597,7 @@ fn test_malformed_objects_discarded() -> anyhow::Result<()> {
   let flags = FeatureFlags::new(temp_path, 1024, None)?;
 
   // Should only have the valid flag, malformed entries should be discarded
-  assert_eq!(flags.as_hashmap().len(), 1);
+  assert_eq!(flags.iter().count(), 1);
   assert!(flags.get("valid_flag").is_some());
   assert!(flags.get("string_entry").is_none());
   assert!(flags.get("array_entry").is_none());
@@ -610,7 +609,6 @@ fn test_malformed_objects_discarded() -> anyhow::Result<()> {
 #[test]
 fn test_signed_timestamp_conversion() -> anyhow::Result<()> {
   use bd_bonjson::Value;
-  use std::collections::HashMap;
 
   let temp_dir = TempDir::new()?;
   let temp_path = temp_dir.path();
@@ -621,7 +619,7 @@ fn test_signed_timestamp_conversion() -> anyhow::Result<()> {
 
     // Manually insert entry with positive signed timestamp
     let store = &mut flags.flags_store;
-    let signed_timestamp_entry = HashMap::from([
+    let signed_timestamp_entry = AHashMap::from([
       ("v".to_string(), Value::String("variant".to_string())),
       ("t".to_string(), Value::Signed(12345)), // Positive signed value
     ]);
@@ -636,7 +634,7 @@ fn test_signed_timestamp_conversion() -> anyhow::Result<()> {
   // Create new instance - should load the signed timestamp entry
   let flags = FeatureFlags::new(temp_path, 1024, None)?;
 
-  assert_eq!(flags.as_hashmap().len(), 1);
+  assert_eq!(flags.iter().count(), 1);
   let flag = flags
     .get("signed_timestamp")
     .expect("signed timestamp flag should exist");
@@ -702,7 +700,6 @@ fn test_variant_with_variant_key_conflicts() -> anyhow::Result<()> {
 #[test]
 fn test_zero_timestamp_valid() -> anyhow::Result<()> {
   use bd_bonjson::Value;
-  use std::collections::HashMap;
 
   let temp_dir = TempDir::new()?;
   let temp_path = temp_dir.path();
@@ -712,7 +709,7 @@ fn test_zero_timestamp_valid() -> anyhow::Result<()> {
     let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
 
     let store = &mut flags.flags_store;
-    let zero_timestamp_entry = HashMap::from([
+    let zero_timestamp_entry = AHashMap::from([
       ("v".to_string(), Value::String("variant".to_string())),
       ("t".to_string(), Value::Unsigned(0)),
     ]);
@@ -727,7 +724,7 @@ fn test_zero_timestamp_valid() -> anyhow::Result<()> {
   // Create new instance - should load the zero timestamp entry
   let flags = FeatureFlags::new(temp_path, 1024, None)?;
 
-  assert_eq!(flags.as_hashmap().len(), 1);
+  assert_eq!(flags.iter().count(), 1);
   let flag = flags
     .get("zero_timestamp")
     .expect("zero timestamp flag should exist");
@@ -750,7 +747,7 @@ fn test_large_buffer_size() -> anyhow::Result<()> {
     flags.set(format!("flag_{i}"), Some(format!("variant_{i}")))?;
   }
 
-  assert_eq!(flags.as_hashmap().len(), 100);
+  assert_eq!(flags.iter().count(), 100);
 
   // Verify a few random flags
   let flag_50 = flags.get("flag_50").expect("flag_50 should exist");
@@ -771,6 +768,111 @@ fn test_high_water_mark_ratio() -> anyhow::Result<()> {
 
   let flag = flags.get("test_flag").expect("flag should exist");
   assert_eq!(flag.variant, Some("test_variant".to_string()));
+
+  Ok(())
+}
+
+#[test]
+fn test_to_value_produces_kvvec() -> anyhow::Result<()> {
+  let feature_flag = FeatureFlag::new(Some("test_variant".to_string()), None)?;
+  let value = feature_flag.to_value();
+
+  // Verify that to_value() now produces KVVec instead of Object
+  assert!(value.is_kv_vec(), "to_value() should produce KVVec");
+  assert!(!value.is_object(), "to_value() should not produce Object");
+
+  // Verify the contents are correct
+  let kv_vec = value.as_kv_vec().expect("should be KVVec");
+  assert_eq!(kv_vec.len(), 2);
+
+  // Check that the variant and timestamp fields are present
+  let variant_found = kv_vec
+    .iter()
+    .any(|(k, v)| k == "v" && v.as_string().unwrap_or("") == "test_variant");
+  let timestamp_found = kv_vec.iter().any(|(k, v)| k == "t" && v.is_unsigned());
+
+  assert!(variant_found, "variant field should be present and correct");
+  assert!(
+    timestamp_found,
+    "timestamp field should be present and be unsigned"
+  );
+
+  Ok(())
+}
+
+#[test]
+fn test_iter_returns_all_unique_data() -> anyhow::Result<()> {
+  use ahash::AHashMap;
+
+  let temp_dir = TempDir::new()?;
+  let temp_path = temp_dir.path();
+
+  let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
+
+  // Set multiple flags with different variants
+  let long_variant = "x".repeat(50);
+  let expected_data = vec![
+    ("flag1", Some("variant1")),
+    ("flag2", None),
+    ("flag3", Some("variant3")),
+    ("flag4", Some("")), // Empty string should be treated as None
+    ("unicode_flag", Some("🚀")),
+    ("long_flag", Some(long_variant.as_str())),
+  ];
+
+  // Insert all test data
+  for (name, variant) in &expected_data {
+    flags.set(
+      (*name).to_string(),
+      variant.as_ref().map(std::string::ToString::to_string),
+    )?;
+  }
+
+  // Collect iterator results
+  let collected: AHashMap<String, FeatureFlag> = flags
+    .iter()
+    .map(|(key, flag)| (key.to_string(), flag))
+    .collect();
+
+  // Verify we got the expected number of items
+  assert_eq!(collected.len(), expected_data.len());
+
+  // Verify each flag exists with correct variant
+  for (expected_name, expected_variant) in &expected_data {
+    let flag = collected
+      .get(*expected_name)
+      .unwrap_or_else(|| panic!("Flag '{expected_name}' should exist in iterator results"));
+
+    let expected_variant_processed = if expected_variant.as_ref().is_some_and(|s| s.is_empty()) {
+      None // Empty string should be treated as None
+    } else {
+      expected_variant
+        .as_ref()
+        .map(std::string::ToString::to_string)
+    };
+
+    assert_eq!(
+      flag.variant, expected_variant_processed,
+      "Flag '{}' should have variant {:?} but got {:?}",
+      expected_name, expected_variant_processed, flag.variant
+    );
+
+    // Verify timestamp is reasonable
+    assert!(flag.timestamp > time::OffsetDateTime::UNIX_EPOCH);
+  }
+
+  // Verify no extra flags exist
+  for (name, _) in &collected {
+    assert!(
+      expected_data
+        .iter()
+        .any(|(expected_name, _)| expected_name == name),
+      "Unexpected flag '{name}' found in iterator results"
+    );
+  }
+
+  // Verify iterator can be consumed multiple times by collecting again
+  assert_eq!(flags.iter().count(), expected_data.len());
 
   Ok(())
 }

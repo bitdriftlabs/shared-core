@@ -26,7 +26,8 @@ use std::collections::HashMap;
 // Version 30: Added support for workflow timeout transitions.
 // Version 31: Added support for the debug mux API.
 // Version 32: Added support for use the log body for tag extraction.
-const CONFIGURATION_VERSION: &str = "32";
+// Version 33: Added support for opaque client state in the mux handshake.
+const CONFIGURATION_VERSION: &str = "33";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

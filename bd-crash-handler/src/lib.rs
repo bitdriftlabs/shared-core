@@ -235,9 +235,10 @@ impl Monitor {
     let reporting_feature_flags: Vec<SnappedFeatureFlag> = previous_feature_flags
       .as_ref()
       .map(|ff| {
-        ff.as_hashmap()
-          .into_iter()
-          .map(|(name, flag)| SnappedFeatureFlag::new(name, flag.variant, flag.timestamp))
+        ff.iter()
+          .map(|(name, flag)| {
+            SnappedFeatureFlag::new(name.to_string(), flag.variant, flag.timestamp)
+          })
           .collect()
       })
       .unwrap_or_default();

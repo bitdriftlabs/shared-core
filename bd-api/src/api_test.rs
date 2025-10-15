@@ -288,11 +288,13 @@ impl Setup {
   fn make_handshake(
     configuration_update_status: u32,
     stream_settings: Option<StreamSettings>,
+    opaque_client_state_to_echo: Option<Vec<u8>>,
   ) -> ApiResponse {
     ApiResponse {
       response_type: Some(Response_type::Handshake(HandshakeResponse {
         stream_settings: stream_settings.into(),
         configuration_update_status,
+        opaque_client_state_to_echo,
         ..Default::default()
       })),
       ..Default::default()
@@ -303,11 +305,13 @@ impl Setup {
     &self,
     configuration_update_status: u32,
     stream_settings: Option<StreamSettings>,
+    opaque_client_state_to_echo: Option<Vec<u8>>,
   ) {
     self
       .send_response(Self::make_handshake(
         configuration_update_status,
         stream_settings,
+        opaque_client_state_to_echo,
       ))
       .await;
   }
@@ -510,6 +514,7 @@ async fn api_retry_stream() {
     .handshake_response(
       HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
       None,
+      None,
     )
     .await;
   61.seconds().sleep().await;
@@ -557,6 +562,7 @@ async fn api_retry_stream() {
     .handshake_response(
       HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
       None,
+      None,
     )
     .await;
   setup.close_stream().await;
@@ -573,7 +579,7 @@ async fn client_kill() {
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
-    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None)
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
     .await;
 
   let runtime_response = ApiResponse {
@@ -617,7 +623,7 @@ async fn client_kill() {
 
   // The client should be killed again after sending down the same config.
   setup
-    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None)
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
     .await;
   setup.send_response(runtime_response).await;
   setup.next_request(1.seconds()).await.unwrap();
@@ -701,7 +707,7 @@ async fn api_retry_stream_runtime_override() {
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
-    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None)
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
     .await;
 
   setup
@@ -739,6 +745,7 @@ async fn multiple_handshake_messages_with_error() {
       Setup::make_handshake(
         HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
         None,
+        None,
       ),
       Setup::make_error_shutdown(Code::Internal, "some message", Some(5.minutes())),
     ])
@@ -756,6 +763,7 @@ async fn error_response_with_retry_after() {
   setup
     .handshake_response(
       HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
       None,
     )
     .await;
@@ -854,6 +862,7 @@ async fn set_stats_upload_request_sent_at_field() {
     .handshake_response(
       HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
       None,
+      None,
     )
     .await;
 
@@ -879,6 +888,7 @@ async fn sleep_mode() {
         ping_interval: 60.seconds().into_proto(),
         ..Default::default()
       }),
+      None,
     )
     .await;
 
@@ -888,4 +898,65 @@ async fn sleep_mode() {
     panic!("expected ping request");
   };
   assert!(ping_request.sleep_mode);
+}
+
+#[tokio::test(start_paused = true)]
+async fn opaque_client_state() {
+  let mut setup = Setup::new();
+  assert!(
+    setup
+      .next_stream(1.seconds())
+      .await
+      .unwrap()
+      .opaque_client_state
+      .is_none()
+  );
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      Some(b"state".to_vec()),
+    )
+    .await;
+  setup.close_stream().await;
+  assert_eq!(
+    setup
+      .next_stream(2.seconds())
+      .await
+      .unwrap()
+      .opaque_client_state,
+    Some(b"state".to_vec())
+  );
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      Some(b"state2".to_vec()),
+    )
+    .await;
+  setup.close_stream().await;
+  assert_eq!(
+    setup
+      .next_stream(3.seconds())
+      .await
+      .unwrap()
+      .opaque_client_state,
+    Some(b"state2".to_vec())
+  );
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
+  setup.close_stream().await;
+  assert!(
+    setup
+      .next_stream(4.seconds())
+      .await
+      .unwrap()
+      .opaque_client_state
+      .is_none()
+  );
 }

@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::matcher::Tree;
+use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{FieldsRef, LogMessage, LogType, StringOrBytes, TypedLogLevel};
 use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
 use std::collections::HashMap;
@@ -41,7 +42,7 @@ impl TestMatcher {
       log_type,
       &message.into(),
       FieldsRef::new(&fields, &matching_fields),
-      None,
+      &TinyMap::default(),
     )
   }
 }

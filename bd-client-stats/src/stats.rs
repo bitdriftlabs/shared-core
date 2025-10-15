@@ -25,7 +25,7 @@ use bd_proto::protos::client::metric::{Metric as ProtoMetric, MetricsList};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, NameType};
-use bd_time::TimeDurationExt;
+use bd_time::{Ticker, TimeDurationExt};
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use debug_data_request::{WorkflowDebugData, WorkflowTransitionDebugData};
 use itertools::Itertools;
@@ -37,15 +37,6 @@ use std::sync::Arc;
 use time::Duration;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::MissedTickBehavior;
-
-//
-// Ticker
-//
-
-#[async_trait]
-pub trait Ticker: Send + Sync {
-  async fn tick(&mut self);
-}
 
 //
 // RuntimeWatchTicker
@@ -321,10 +312,12 @@ impl Flusher {
         .workflow_debug_data
         .entry(workflow_id)
         .or_default();
-      existing
-        .start_reset
-        .mut_or_insert_default()
-        .transition_count += debug_data.start_reset.transition_count;
+      if let Some(start_reset) = debug_data.start_reset.into_option() {
+        existing
+          .start_reset
+          .mut_or_insert_default()
+          .transition_count += start_reset.transition_count;
+      }
       for (state_id, state_data) in debug_data.states {
         log::debug!("merging workflow debug state for {state_id}");
         let existing_state = existing.states.entry(state_id).or_default();
@@ -421,7 +414,7 @@ impl Flusher {
           workflow_entry
             .start_reset
             .mut_or_insert_default()
-            .transition_count += count;
+            .transition_count = count;
         },
         WorkflowDebugStateKey::StateTransition {
           state_id,
