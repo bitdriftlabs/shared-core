@@ -333,6 +333,7 @@ struct Stats {
   rx_bytes_decompressed: Counter,
   stream_total: Counter,
   remote_connect_failure: Counter,
+  data_idle_timeout: Counter,
   error_shutdown_total: Counter,
 }
 
@@ -345,6 +346,7 @@ impl Stats {
       rx_bytes_decompressed: scope.counter("bandwidth_rx_decompressed"),
       stream_total: scope.counter("stream_total"),
       remote_connect_failure: scope.counter("remote_connect_failure"),
+        data_idle_timeout: scope.counter("data_idle_timeout"),
       error_shutdown_total: scope.counter("error_shutdown_total"),
     }
   }
@@ -594,7 +596,7 @@ impl Api {
     let mut disconnected_at = None;
     let mut last_disconnect_reason = None;
     let mut idle_timeout_reconnect_in: Option<std::time::Duration> = None;
-    let mut last_data_received_at = None;
+    let mut last_data_received_at = tokio::time::Instant::now();
 
     loop {
       // If we're blocked from connectecing due to a recent idle timeout, we'll want to wait until
@@ -754,17 +756,16 @@ impl Api {
 
       if let Some(spurious_upload) = upload_during_idle_timeout {
         // If we received a spurious upload while waiting to reconnect, process it now.
-        last_data_received_at = Some(Instant::now());
+        last_data_received_at = Instant::now();
         stream_state.handle_data_upload(spurious_upload).await?;
       }
 
       // At this point we have established the stream, so we should start the general
       // request/response handling.
       loop {
-        let data_idle_timeout_at = tokio::time::sleep_until(
-          last_data_received_at.unwrap_or_else(Instant::now)
-            + self.data_idle_timeout_interval.read().unsigned_abs(),
-        );
+        let data_idle_timeout_at = last_data_received_at + self.data_idle_timeout_interval.read().unsigned_abs();
+        log::info!("data idle timeout at {:?}", self.data_idle_timeout_interval.read().unsigned_abs());
+        let data_idle_timeout_at = tokio::time::sleep_until(data_idle_timeout_at);
 
         let upstream_event = tokio::select! {
           // Fire a ping timer if the ping timer elapses.
@@ -773,15 +774,15 @@ impl Api {
             continue;
           }
           Some(data_upload) = self.data_upload_rx.recv() => {
-            last_data_received_at = Some(Instant::now());
+            last_data_received_at = Instant::now();
             stream_state.handle_data_upload(data_upload).await?;
             continue;
           },
-          () = data_idle_timeout_at, if last_data_received_at.is_some() => {
+          () = data_idle_timeout_at => {
             // We haven't received any data to upload for a while, so we'll shut down the stream and
             // then reconnect after a short delay.
             log::debug!("no data received for {}, reconnecting", *self.data_idle_timeout_interval.read());
-            self.stats.remote_connect_failure.inc();
+            self.stats.data_idle_timeout.inc();
             idle_timeout_reconnect_in = Some(self.data_idle_reconnect_interval.read().unsigned_abs());
             break;
           },
@@ -789,6 +790,8 @@ impl Api {
           // closures.
           event = stream_state.stream_event_rx.recv() => event,
         };
+        
+        log::info!("upstream event: {:?}", upstream_event);
 
         let stream_closure_info = match stream_state.handle_upstream_event(upstream_event).await? {
           UpstreamEvent::UpstreamMessages(responses) => {

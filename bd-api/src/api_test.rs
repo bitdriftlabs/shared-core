@@ -649,6 +649,53 @@ async fn bad_client_kill_file() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn data_idle_timeout() {
+  let mut setup = Setup::new();
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None)
+    .await;
+
+  let runtime_response = ApiResponse {
+    response_type: Some(Response_type::RuntimeUpdate(RuntimeUpdate {
+      version_nonce: "test".to_string(),
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
+        bd_runtime::runtime::api::DataIdleTimeoutInterval::path(),
+        bd_test_helpers::runtime::ValueKind::Int(
+          10.seconds().whole_milliseconds().try_into().unwrap(),
+        ),
+      )]))
+      .into(),
+      ..Default::default()
+    })),
+    ..Default::default()
+  };
+  setup.send_response(runtime_response.clone()).await;
+
+  // Wait for the ACK to make sure the runtime update is processed.
+  setup.next_request(1.seconds()).await.unwrap();
+
+  // Restart to make sure the runtime is applied.
+  setup.restart().await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None)
+    .await;
+
+  // Now sleep for 11 seconds to trigger the idle timeout.
+  tokio::time::advance(11.seconds().unsigned_abs()).await;
+
+  setup
+    .collector
+    .wait_for_counter_eq(1, "api:data_idle_timeout", labels! {})
+    .await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+}
+
+#[tokio::test(start_paused = true)]
 async fn api_retry_stream_runtime_override() {
   let mut setup = Setup::new();
 

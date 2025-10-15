@@ -19,6 +19,7 @@ parking_lot.workspace       = true
 sketches-rust.workspace     = true
 thiserror.workspace         = true
 tokio.workspace             = true
+async-trait.workspace       = true
 
 [dev-dependencies]
 bd-test-helpers.path = "../bd-test-helpers"

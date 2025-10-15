@@ -544,6 +544,7 @@ name = "bd-client-stats-store"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bd-client-common",
  "bd-proto",
  "bd-stats-common",
