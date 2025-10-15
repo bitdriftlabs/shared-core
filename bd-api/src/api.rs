@@ -604,12 +604,11 @@ impl Api {
       let upload_during_idle_timeout =
         if let Some(idle_timeout_reconnect_in) = idle_timeout_reconnect_in {
           log::trace!(
-            "reconnecting from data idle timeout in {:?}",
-            idle_timeout_reconnect_in
+            "reconnecting from data idle timeout in {idle_timeout_reconnect_in:?}",
           );
 
           tokio::select! {
-              _ = tokio::time::sleep(idle_timeout_reconnect_in) => {None},
+              () = tokio::time::sleep(idle_timeout_reconnect_in) => {None},
               upload = self.data_upload_rx.recv() => {upload},
           }
         } else {
@@ -778,7 +777,7 @@ impl Api {
             stream_state.handle_data_upload(data_upload).await?;
             continue;
           },
-          _ = data_idle_timeout_at, if last_data_received_at.is_some() => {
+          () = data_idle_timeout_at, if last_data_received_at.is_some() => {
             // We haven't received any data to upload for a while, so we'll shut down the stream and
             // then reconnect after a short delay.
             log::debug!("no data received for {}, reconnecting", *self.data_idle_timeout_interval.read());
