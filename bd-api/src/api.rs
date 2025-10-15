@@ -390,6 +390,8 @@ pub struct Api {
   generic_kill_duration: DurationWatch<bd_runtime::runtime::client_kill::GenericKillDuration>,
   unauthenticated_kill_duration:
     DurationWatch<bd_runtime::runtime::client_kill::UnauthenticatedKillDuration>,
+  data_idle_timeout_interval: DurationWatch<bd_runtime::runtime::api::DataIdleTimeoutInterval>,
+  data_idle_reconnect_interval: DurationWatch<bd_runtime::runtime::api::DataIdleReconnectInterval>,
 }
 
 impl Api {
@@ -412,6 +414,8 @@ impl Api {
     let mut initial_backoff_interval = runtime_loader.register_duration_watch();
     let generic_kill_duration = runtime_loader.register_duration_watch();
     let unauthenticated_kill_duration = runtime_loader.register_duration_watch();
+    let data_idle_timeout_interval = runtime_loader.register_duration_watch();
+    let data_idle_reconnect_interval = runtime_loader.register_duration_watch();
 
     let backoff = crate::backoff_policy(&mut initial_backoff_interval, &mut max_backoff_interval);
 
@@ -436,6 +440,8 @@ impl Api {
       config_marked_safe_due_to_offline: false,
       sleep_mode_active,
       backoff,
+      data_idle_timeout_interval,
+      data_idle_reconnect_interval,
     }
   }
 
@@ -587,21 +593,31 @@ impl Api {
 
     let mut disconnected_at = None;
     let mut last_disconnect_reason = None;
-    let mut reconnect_in: Option<std::time::Duration> = None;
+    let mut idle_timeout_reconnect_in: Option<std::time::Duration> = None;
     let mut last_data_received_at = None;
 
     loop {
-      let spurious_upload = if let Some(reconnect_in) = reconnect_in {
-        log::debug!("reconnecting in {:?}", reconnect_in);
+      // If we're blocked from connectecing due to a recent idle timeout, we'll want to wait until
+      // there are either new uploads or the idle timeout reconnect timer is hit. We need to make
+      // sure that any uploads we receive while waiting for the timeout are processed, so we have
+      // to carry with us the upload we receive while waiting.
+      let upload_during_idle_timeout =
+        if let Some(idle_timeout_reconnect_in) = idle_timeout_reconnect_in {
+          log::trace!(
+            "reconnecting from data idle timeout in {:?}",
+            idle_timeout_reconnect_in
+          );
 
-        tokio::select! {
-            _ = tokio::time::sleep(reconnect_in) => {None},
-            upload = self.data_upload_rx.recv() => {upload},
-        }
-      } else {
-        None
-      };
+          tokio::select! {
+              _ = tokio::time::sleep(idle_timeout_reconnect_in) => {None},
+              upload = self.data_upload_rx.recv() => {upload},
+          }
+        } else {
+          None
+        };
 
+      // TODO(snowp): This feature would probably be completely broken when data idle timeouts are
+      // being hit as it would be indistinguishable from a normal disconnect.
       // If we have been disconnected for more than 15s switch our network quality to offline. We
       // don't want to do this immediately as we might be in a transient state during a normal
       // reconnect.
@@ -737,7 +753,7 @@ impl Api {
       *self.network_quality_provider.network_quality.write() = NetworkQuality::Online;
       disconnected_at = None;
 
-      if let Some(spurious_upload) = spurious_upload {
+      if let Some(spurious_upload) = upload_during_idle_timeout {
         // If we received a spurious upload while waiting to reconnect, process it now.
         last_data_received_at = Some(Instant::now());
         stream_state.handle_data_upload(spurious_upload).await?;
@@ -746,8 +762,9 @@ impl Api {
       // At this point we have established the stream, so we should start the general
       // request/response handling.
       loop {
-        let disconnect_at = tokio::time::sleep_until(
-          last_data_received_at.unwrap_or_else(Instant::now) + 30.std_seconds(),
+        let data_idle_timeout_at = tokio::time::sleep_until(
+          last_data_received_at.unwrap_or_else(Instant::now)
+            + self.data_idle_timeout_interval.read().unsigned_abs(),
         );
 
         let upstream_event = tokio::select! {
@@ -761,11 +778,12 @@ impl Api {
             stream_state.handle_data_upload(data_upload).await?;
             continue;
           },
-          _ = disconnect_at, if last_data_received_at.is_some() => {
-            // We haven't received any data for 30s, so we will close the stream and reconnect.
-            log::debug!("no data received for 30s, reconnecting");
+          _ = data_idle_timeout_at, if last_data_received_at.is_some() => {
+            // We haven't received any data to upload for a while, so we'll shut down the stream and
+            // then reconnect after a short delay.
+            log::debug!("no data received for {}, reconnecting", *self.data_idle_timeout_interval.read());
             self.stats.remote_connect_failure.inc();
-            reconnect_in = Some(15.std_minutes());
+            idle_timeout_reconnect_in = Some(self.data_idle_reconnect_interval.read().unsigned_abs());
             break;
           },
           // Process network events coming from the platform layer, i.e. response data or stream
