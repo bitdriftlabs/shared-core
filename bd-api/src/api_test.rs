@@ -660,7 +660,7 @@ async fn data_idle_timeout() {
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
-    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None)
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
     .await;
 
   let runtime_response = ApiResponse {
@@ -687,7 +687,7 @@ async fn data_idle_timeout() {
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
-    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None)
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
     .await;
 
   // Now sleep for 11 seconds to trigger the idle timeout.
