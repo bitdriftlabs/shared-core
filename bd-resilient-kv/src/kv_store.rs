@@ -42,6 +42,37 @@ fn open_or_create_journal<P: AsRef<Path>>(
 }
 
 impl KVStore {
+  /// Internal helper to create a KVStore from journals created by a closure.
+  fn from_journal_creator<P, F>(
+    base_path: P,
+    buffer_size: usize,
+    high_water_mark_ratio: Option<f32>,
+    journal_creator: F,
+  ) -> anyhow::Result<Self>
+  where
+    P: AsRef<Path>,
+    F: FnOnce(
+      &Path,
+      &Path,
+      usize,
+      Option<f32>,
+    ) -> anyhow::Result<(MemMappedKVJournal, MemMappedKVJournal)>,
+  {
+    let base = base_path.as_ref();
+    let file_a = base.with_extension("jrna");
+    let file_b = base.with_extension("jrnb");
+
+    let (journal_a, journal_b) =
+      journal_creator(&file_a, &file_b, buffer_size, high_water_mark_ratio)?;
+    let journal = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
+    let cached_map = journal.as_hashmap()?;
+
+    Ok(Self {
+      journal,
+      cached_map,
+    })
+  }
+
   /// Create a new `KVStore` with the specified base path and buffer size.
   ///
   /// The actual journal files will be created/opened with extensions ".jrna" and ".jrnb".
@@ -62,21 +93,49 @@ impl KVStore {
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
-    let base = base_path.as_ref();
-    let file_a = base.with_extension("jrna");
-    let file_b = base.with_extension("jrnb");
+    Self::from_journal_creator(
+      base_path,
+      buffer_size,
+      high_water_mark_ratio,
+      |file_a, file_b, size, hwm| {
+        let journal_a = open_or_create_journal(file_a, size, hwm)?;
+        let journal_b = open_or_create_journal(file_b, size, hwm)?;
+        Ok((journal_a, journal_b))
+      },
+    )
+  }
 
-    // Try to create/open the journal files
-    let journal_a = open_or_create_journal(&file_a, buffer_size, high_water_mark_ratio)?;
-    let journal_b = open_or_create_journal(&file_b, buffer_size, high_water_mark_ratio)?;
-
-    let journal = DoubleBufferedKVJournal::new(journal_a, journal_b)?;
-    let cached_map = journal.as_hashmap()?;
-
-    Ok(Self {
-      journal,
-      cached_map,
-    })
+  /// Open an existing `KVStore` from pre-existing journal files.
+  ///
+  /// Unlike `new()`, this method requires both journal files to exist and will fail if either
+  /// is missing.
+  ///
+  /// # Arguments
+  /// * `base_path` - Base path for the journal files (extensions will be added automatically)
+  /// * `buffer_size` - Size in bytes for each journal buffer
+  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
+  ///
+  /// # Errors
+  /// Returns an error if:
+  /// - Either journal file does not exist
+  /// - The journal files cannot be opened
+  /// - The journal files contain invalid data
+  /// - Initialization fails
+  pub fn open_existing<P: AsRef<Path>>(
+    base_path: P,
+    buffer_size: usize,
+    high_water_mark_ratio: Option<f32>,
+  ) -> anyhow::Result<Self> {
+    Self::from_journal_creator(
+      base_path,
+      buffer_size,
+      high_water_mark_ratio,
+      |file_a, file_b, size, hwm| {
+        let journal_a = MemMappedKVJournal::from_file(file_a, size, hwm)?;
+        let journal_b = MemMappedKVJournal::from_file(file_b, size, hwm)?;
+        Ok((journal_a, journal_b))
+      },
+    )
   }
 
   /// Get a value by key.
