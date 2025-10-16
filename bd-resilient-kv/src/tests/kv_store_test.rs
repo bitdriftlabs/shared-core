@@ -888,3 +888,59 @@ fn test_cache_vs_journal_coherency_validation() -> anyhow::Result<()> {
 
   Ok(())
 }
+
+#[test]
+fn test_kv_store_open_existing() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let base_path = temp_dir.path().join("test_store");
+
+  // Test 1: open_existing should fail when files don't exist
+  let result = KVStore::open_existing(&base_path, 1024, None);
+  assert!(
+    result.is_err(),
+    "open_existing should fail when files don't exist"
+  );
+
+  // Test 2: Create a store with some data using new()
+  {
+    let mut store = KVStore::new(&base_path, 1024, None)?;
+    store.insert("key1".to_string(), Value::String("value1".to_string()))?;
+    store.insert("key2".to_string(), Value::Signed(42))?;
+    store.insert("key3".to_string(), Value::Bool(true))?;
+    store.sync()?;
+  }
+
+  // Test 3: open_existing should succeed when both files exist
+  let store = KVStore::open_existing(&base_path, 1024, None)?;
+  assert_eq!(store.len(), 3, "Should have 3 keys");
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("value1".to_string()))
+  );
+  assert_eq!(store.get("key2"), Some(&Value::Signed(42)));
+  assert_eq!(store.get("key3"), Some(&Value::Bool(true)));
+
+  // Test 4: open_existing should fail if only one file exists
+  std::fs::remove_file(base_path.with_extension("jrnb"))?;
+  let result = KVStore::open_existing(&base_path, 1024, None);
+  assert!(
+    result.is_err(),
+    "open_existing should fail when only one file exists"
+  );
+
+  // Test 5: Recreate both files and verify open_existing works with different buffer size
+  {
+    let mut store = KVStore::new(&base_path, 1024, None)?;
+    store.insert("key1".to_string(), Value::String("resized".to_string()))?;
+    store.sync()?;
+  }
+
+  let store = KVStore::open_existing(&base_path, 2048, None)?;
+  assert_eq!(store.len(), 1, "Should have 1 key after resize");
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("resized".to_string()))
+  );
+
+  Ok(())
+}
