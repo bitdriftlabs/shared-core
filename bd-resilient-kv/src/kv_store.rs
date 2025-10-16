@@ -42,7 +42,7 @@ fn open_or_create_journal<P: AsRef<Path>>(
 }
 
 impl KVStore {
-  /// Internal helper to create a KVStore from journals created by a closure.
+  /// Internal helper to create a `KVStore` from journals created by a closure.
   fn from_journal_creator<P, F>(
     base_path: P,
     buffer_size: usize,
