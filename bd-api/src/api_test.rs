@@ -41,7 +41,7 @@ use bd_stats_common::labels;
 use bd_test_helpers::make_mut;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, ToProtoDuration};
 use mockall::predicate::eq;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::{Duration, OffsetDateTime};
@@ -841,6 +841,84 @@ async fn data_idle_timeout_data_resets_timeout() {
   assert_eq!(
     setup.network_quality_provider.get_network_quality(),
     NetworkQuality::Online
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn data_idle_timeout_data_sent_during_reconnect_timeout() {
+  let (idle_timeout_tx, mut idle_timeout_rx) = channel::<()>(1);
+  let mut setup = Setup::new_ex(
+    Setup::make_nice_mock_updater(),
+    Some(RuntimeUpdate {
+      version_nonce: "test".to_string(),
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
+        bd_runtime::runtime::api::DataIdleTimeoutInterval::path(),
+        bd_test_helpers::runtime::ValueKind::Int(
+          10.seconds().whole_milliseconds().try_into().unwrap(),
+        ),
+      )]))
+      .into(),
+      ..Default::default()
+    }),
+    Some(idle_timeout_tx),
+  )
+  .await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
+
+  1.seconds().sleep().await;
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Online
+  );
+
+  // Now sleep for 8 seconds, which should trigger the reconnect timeout.
+  tokio::time::advance(11.std_seconds()).await;
+
+  idle_timeout_rx.recv().await.unwrap();
+  setup
+    .collector
+    .assert_counter_eq(1, "api:data_idle_timeout", BTreeMap::new());
+
+  // Send a data upload during the reconnect timeout period, this should trigger an immediate
+  // reconnect.
+  setup
+    .data_tx
+    .send(DataUpload::StatsUpload(
+      Tracked::new("test".to_string(), StatsUploadRequest::default()).0,
+    ))
+    .await
+    .unwrap();
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  assert_eq!(
+    setup
+      .handshake_response(
+        HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+        None,
+        None,
+      )
+      .await,
+    ()
+  );
+  // Make sure the stats upload is processed.
+  assert_matches!(
+    setup
+      .next_request(1.seconds())
+      .await
+      .unwrap()
+      .request_type
+      .as_ref()
+      .unwrap(),
+    Request_type::StatsUpload(_)
   );
 }
 
