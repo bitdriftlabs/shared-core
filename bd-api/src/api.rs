@@ -790,7 +790,7 @@ impl Api {
                 // If the timeout is disabled, we can just await forever.
                 None
             } else {
-                log::trace!("setting data idle timeout for {:?}", interval);
+                log::trace!("setting data idle timeout for {interval:?}" );
                 let data_idle_timeout_at =  last_data_received_at + interval.unsigned_abs();
                 Box::pin(tokio::time::sleep_until(data_idle_timeout_at)).into()
             }
@@ -813,12 +813,13 @@ impl Api {
             // then reconnect after a short delay.
             let idle_timeout_interval = *self.data_idle_timeout_interval.read();
             let idle_reconnect_interval = *self.data_idle_reconnect_interval.read();
-            log::debug!("no data received for {}, disconnecting and reconnecting in {}", idle_timeout_interval, idle_reconnect_interval);
-            
+            log::debug!("no data received for {idle_timeout_interval}, disconnecting and reconnecting in {idle_reconnect_interval}");
+
             #[cfg(test)]
-            self.data_idle_timeout_test_hook.as_ref().map(|tx| {
+            if let Some(tx) = &
+            self.data_idle_timeout_test_hook {
                 let _ = tx.try_send(());
-            });
+            }
 
             self.stats.data_idle_timeout.inc();
             idle_timeout_reconnect_at = Some(tokio::time::Instant::now() + idle_reconnect_interval.unsigned_abs());

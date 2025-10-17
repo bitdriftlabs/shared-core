@@ -899,16 +899,13 @@ async fn data_idle_timeout_data_sent_during_reconnect_timeout() {
     .unwrap();
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
-  assert_eq!(
-    setup
-      .handshake_response(
-        HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
-        None,
-        None,
-      )
-      .await,
-    ()
-  );
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
   // Make sure the stats upload is processed.
   assert_matches!(
     setup
