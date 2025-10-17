@@ -599,7 +599,7 @@ impl Api {
 
     let mut disconnected_at = None;
     let mut last_disconnect_reason = None;
-    let mut idle_timeout_reconnect_in: Option<std::time::Duration> = None;
+    let mut idle_timeout_reconnect_at: Option<tokio::time::Instant> = None;
     let mut last_data_received_at = tokio::time::Instant::now();
 
     loop {
@@ -608,13 +608,13 @@ impl Api {
       // sure that any uploads we receive while waiting for the timeout are processed, so we have
       // to carry with us the upload we receive while waiting.
       let upload_during_idle_timeout =
-        if let Some(idle_timeout_reconnect_in) = idle_timeout_reconnect_in {
+        if let Some(idle_timeout_reconnect_at) = idle_timeout_reconnect_at {
           log::trace!(
-            "reconnecting from data idle timeout in {idle_timeout_reconnect_in:?}",
+            "reconnecting from data idle timeout in {idle_timeout_reconnect_at:?}",
           );
 
           tokio::select! {
-              () = tokio::time::sleep(idle_timeout_reconnect_in) => {None},
+              () = tokio::time::sleep_until(idle_timeout_reconnect_at) => {None},
               upload = self.data_upload_rx.recv() => {upload},
           }
         } else {
@@ -771,9 +771,17 @@ impl Api {
       // At this point we have established the stream, so we should start the general
       // request/response handling.
       loop {
-        let data_idle_timeout_at = last_data_received_at + self.data_idle_timeout_interval.read().unsigned_abs();
-        log::info!("data idle timeout at {:?}", self.data_idle_timeout_interval.read().unsigned_abs());
-        let data_idle_timeout_at = tokio::time::sleep_until(data_idle_timeout_at);
+        // Set up a data idle timeout if configured.
+        let mut data_idle_timeout_at = {
+            let interval = *self.data_idle_timeout_interval.read();
+            if interval.is_zero() {
+                // If the timeout is disabled, we can just await forever.
+                None
+            } else {
+                let data_idle_timeout_at =  last_data_received_at + interval.unsigned_abs();
+                Box::pin(tokio::time::sleep_until(data_idle_timeout_at)).into()
+            }
+        };
 
         let upstream_event = tokio::select! {
           // Fire a ping timer if the ping timer elapses.
@@ -786,19 +794,19 @@ impl Api {
             stream_state.handle_data_upload(data_upload).await?;
             continue;
           },
-          () = data_idle_timeout_at => {
+          () = maybe_await(&mut data_idle_timeout_at) => {
             // We haven't received any data to upload for a while, so we'll shut down the stream and
             // then reconnect after a short delay.
-            log::debug!("no data received for {}, reconnecting", *self.data_idle_timeout_interval.read());
+            log::debug!("no data received for {}, disconnecting", *self.data_idle_timeout_interval.read());
             self.stats.data_idle_timeout.inc();
-            idle_timeout_reconnect_in = Some(self.data_idle_reconnect_interval.read().unsigned_abs());
+            idle_timeout_reconnect_at = Some(tokio::time::Instant::now() + self.data_idle_reconnect_interval.read().unsigned_abs());
             break;
           },
           // Process network events coming from the platform layer, i.e. response data or stream
           // closures.
           event = stream_state.stream_event_rx.recv() => event,
         };
-        
+
         log::info!("upstream event: {:?}", upstream_event);
 
         let stream_closure_info = match stream_state.handle_upstream_event(upstream_event).await? {
