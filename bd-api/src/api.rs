@@ -807,8 +807,6 @@ impl Api {
           event = stream_state.stream_event_rx.recv() => event,
         };
 
-        log::info!("upstream event: {:?}", upstream_event);
-
         let stream_closure_info = match stream_state.handle_upstream_event(upstream_event).await? {
           UpstreamEvent::UpstreamMessages(responses) => {
             self.handle_responses(responses, &mut stream_state).await?

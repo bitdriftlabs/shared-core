@@ -46,22 +46,22 @@ impl StatsHelper for Collector {
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     for _ in 0 .. 20 {
       interval.tick().await;
-      if let Some(counter) = self.find_counter(&NameType::Global(name.to_string()), &labels) {
-        if counter.get() == value {
-          return true;
-        }
+      if let Some(counter) = self.find_counter(&NameType::Global(name.to_string()), &labels)
+        && counter.get() == value
+      {
+        return true;
       }
     }
 
     if let Some(counter) = self.find_counter(&NameType::Global(name.to_string()), &labels) {
       if counter.get() == value {
         return true;
-      } else {
-        panic!(
-          "Counter value did not match: {name} {labels:?} expected {value} got {}",
-          counter.get()
-        );
       }
+
+      panic!(
+        "Counter value did not match: {name} {labels:?} expected {value} got {}",
+        counter.get()
+      );
     }
 
     panic!("Counter not found or value not matched: {name} {labels:?}");
