@@ -394,6 +394,9 @@ pub struct Api {
     DurationWatch<bd_runtime::runtime::client_kill::UnauthenticatedKillDuration>,
   data_idle_timeout_interval: DurationWatch<bd_runtime::runtime::api::DataIdleTimeoutInterval>,
   data_idle_reconnect_interval: DurationWatch<bd_runtime::runtime::api::DataIdleReconnectInterval>,
+
+  #[cfg(test)]
+pub data_idle_timeout_test_hook: Option<tokio::sync::mpsc::Sender<()>>,
 }
 
 impl Api {
@@ -411,6 +414,7 @@ impl Api {
     self_logger: Arc<dyn bd_internal_logging::Logger>,
     stats: &Scope,
     sleep_mode_active: watch::Receiver<bool>,
+    #[cfg(test)] data_idle_timeout: Option<tokio::sync::mpsc::Sender<()>>,
   ) -> Self {
     let mut max_backoff_interval = runtime_loader.register_duration_watch();
     let mut initial_backoff_interval = runtime_loader.register_duration_watch();
@@ -444,6 +448,8 @@ impl Api {
       backoff,
       data_idle_timeout_interval,
       data_idle_reconnect_interval,
+      #[cfg(test)]
+        data_idle_timeout_test_hook: data_idle_timeout,
     }
   }
 
@@ -600,7 +606,6 @@ impl Api {
     let mut disconnected_at = None;
     let mut last_disconnect_reason = None;
     let mut idle_timeout_reconnect_at: Option<tokio::time::Instant> = None;
-    let mut last_data_received_at = tokio::time::Instant::now();
 
     loop {
       // If we're blocked from connectecing due to a recent idle timeout, we'll want to wait until
@@ -614,8 +619,11 @@ impl Api {
           );
 
           tokio::select! {
-              () = tokio::time::sleep_until(idle_timeout_reconnect_at) => {None},
-              upload = self.data_upload_rx.recv() => {upload},
+              () = tokio::time::sleep_until(idle_timeout_reconnect_at) => None,
+              upload = self.data_upload_rx.recv() => {
+                  log::trace!("reconnecting early due to data upload received during idle timeout");
+                  upload
+              }
           }
         } else {
           None
@@ -763,10 +771,14 @@ impl Api {
       disconnected_at = None;
 
       if let Some(spurious_upload) = upload_during_idle_timeout {
+          log::trace!("processing spurious upload received during idle timeout wait");
         // If we received a spurious upload while waiting to reconnect, process it now.
-        last_data_received_at = Instant::now();
         stream_state.handle_data_upload(spurious_upload).await?;
       }
+
+      // Consider the time we've processed the handshake or the spurious upload as the last
+      // time we received data at the start. This is refreshed below whenever we upload data.
+      let mut last_data_received_at = Instant::now();
 
       // At this point we have established the stream, so we should start the general
       // request/response handling.
@@ -778,6 +790,7 @@ impl Api {
                 // If the timeout is disabled, we can just await forever.
                 None
             } else {
+                log::trace!("setting data idle timeout for {:?}", interval);
                 let data_idle_timeout_at =  last_data_received_at + interval.unsigned_abs();
                 Box::pin(tokio::time::sleep_until(data_idle_timeout_at)).into()
             }
@@ -790,6 +803,7 @@ impl Api {
             continue;
           }
           Some(data_upload) = self.data_upload_rx.recv() => {
+              log::trace!("received data upload");
             last_data_received_at = Instant::now();
             stream_state.handle_data_upload(data_upload).await?;
             continue;
@@ -797,9 +811,23 @@ impl Api {
           () = maybe_await(&mut data_idle_timeout_at) => {
             // We haven't received any data to upload for a while, so we'll shut down the stream and
             // then reconnect after a short delay.
-            log::debug!("no data received for {}, disconnecting", *self.data_idle_timeout_interval.read());
+            let idle_timeout_interval = *self.data_idle_timeout_interval.read();
+            let idle_reconnect_interval = *self.data_idle_reconnect_interval.read();
+            log::debug!("no data received for {}, disconnecting and reconnecting in {}", idle_timeout_interval, idle_reconnect_interval);
+            
+            #[cfg(test)]
+            self.data_idle_timeout_test_hook.as_ref().map(|tx| {
+                let _ = tx.try_send(());
+            });
+
             self.stats.data_idle_timeout.inc();
-            idle_timeout_reconnect_at = Some(tokio::time::Instant::now() + self.data_idle_reconnect_interval.read().unsigned_abs());
+            idle_timeout_reconnect_at = Some(tokio::time::Instant::now() + idle_reconnect_interval.unsigned_abs());
+            // We are no longer able to tell if we are online or offline since we are
+            // intentionally disconnecting, so set to unknown.
+            // TODO(snowp): This needs to be reworked to not only depend on our own connection, as
+            // aggressive idle timeouts impacts our ability to determine network quality.
+            self.network_quality_provider.set_network_quality(NetworkQuality::Unknown);
+
             break;
           },
           // Process network events coming from the platform layer, i.e. response data or stream

@@ -48,7 +48,7 @@ use time::{Duration, OffsetDateTime};
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
-use tokio::time::Instant;
+use tokio::time::{Instant, timeout};
 
 //
 // EmptyMetadata
@@ -181,12 +181,13 @@ struct Setup {
 
 impl Setup {
   async fn new() -> Self {
-    Self::new_ex(Self::make_nice_mock_updater(), None).await
+    Self::new_ex(Self::make_nice_mock_updater(), None, None).await
   }
 
   async fn new_ex(
     config_updater: Arc<MockClientConfigurationUpdate>,
     initial_runtime: Option<RuntimeUpdate>,
+    idle_timeout_tx: Option<Sender<()>>,
   ) -> Self {
     let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
 
@@ -230,6 +231,7 @@ impl Setup {
       Arc::new(TestLog {}),
       &collector.scope("api"),
       sleep_mode_active_rx,
+      idle_timeout_tx,
     );
 
     let api_task = tokio::task::spawn(async move {
@@ -286,6 +288,7 @@ impl Setup {
       Arc::new(TestLog {}),
       &self.collector.scope("api"),
       self.sleep_mode_active.subscribe(),
+      None,
     );
 
     self.api_task = Some(tokio::task::spawn(api.start()));
@@ -487,6 +490,7 @@ async fn api_retry_stream() {
       ..Default::default()
     }
     .into(),
+    None,
   )
   .await;
 
@@ -693,6 +697,7 @@ async fn data_idle_timeout() {
       .into(),
       ..Default::default()
     }),
+    None,
   )
   .await;
 
@@ -705,19 +710,138 @@ async fn data_idle_timeout() {
     )
     .await;
 
+  1.seconds().sleep().await;
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Online
+  );
+
   // Now sleep for 11 seconds to trigger the idle timeout.
-  tokio::time::advance(11.seconds().unsigned_abs()).await;
+  tokio::time::advance(11.std_seconds()).await;
 
   setup
     .collector
     .wait_for_counter_eq(1, "api:data_idle_timeout", labels! {})
     .await;
 
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Unknown
+  );
+
   assert!(setup.next_stream(1.seconds()).await.is_none());
 
   tokio::time::advance(20.std_minutes()).await;
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
+
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
+
+  1.seconds().sleep().await;
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Online
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn data_idle_timeout_data_resets_timeout() {
+  let (idle_timeout_tx, mut idle_timeout_rx) = channel::<()>(1);
+  let mut setup = Setup::new_ex(
+    Setup::make_nice_mock_updater(),
+    Some(RuntimeUpdate {
+      version_nonce: "test".to_string(),
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
+        bd_runtime::runtime::api::DataIdleTimeoutInterval::path(),
+        bd_test_helpers::runtime::ValueKind::Int(
+          10.seconds().whole_milliseconds().try_into().unwrap(),
+        ),
+      )]))
+      .into(),
+      ..Default::default()
+    }),
+    Some(idle_timeout_tx),
+  )
+  .await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
+
+  1.seconds().sleep().await;
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Online
+  );
+
+  // Now sleep for 8 seconds, which should not be enough to trigger the timeout.
+  tokio::time::advance(8.std_seconds()).await;
+
+  setup
+    .data_tx
+    .send(DataUpload::StatsUpload(
+      Tracked::new("test".to_string(), StatsUploadRequest::default()).0,
+    ))
+    .await
+    .unwrap();
+
+  // Make sure we grab the request to ensure the data was processed.
+  setup.next_request(1.seconds()).await.unwrap();
+
+  // Advancing time by 4 seconds would have triggered the timeout if not for the data sent above.
+  tokio::time::advance(4.std_seconds()).await;
+
+  assert!(
+    timeout(1.std_seconds(), idle_timeout_rx.recv())
+      .await
+      .is_err()
+  );
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Online
+  );
+
+  // Advancing another 7 is enough to trigger the timeout.
+  tokio::time::advance(7.std_seconds()).await;
+
+  setup
+    .collector
+    .wait_for_counter_eq(1, "api:data_idle_timeout", labels! {})
+    .await;
+
+  tokio::time::advance(20.std_minutes()).await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
+
+  1.seconds().sleep().await;
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Online
+  );
 }
 
 #[tokio::test(start_paused = true)]
