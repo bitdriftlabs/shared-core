@@ -816,8 +816,7 @@ impl Api {
             log::debug!("no data received for {idle_timeout_interval}, disconnecting and reconnecting in {idle_reconnect_interval}");
 
             #[cfg(test)]
-            if let Some(tx) = &
-            self.data_idle_timeout_test_hook {
+            if let Some(tx) = &self.data_idle_timeout_test_hook {
                 let _ = tx.try_send(());
             }
 
