@@ -608,7 +608,7 @@ impl Api {
     let mut idle_timeout_reconnect_at: Option<tokio::time::Instant> = None;
 
     loop {
-      // If we're blocked from connectecing due to a recent idle timeout, we'll want to wait until
+      // If we're blocked from connecting due to a recent idle timeout, we'll want to wait until
       // there are either new uploads or the idle timeout reconnect timer is hit. We need to make
       // sure that any uploads we receive while waiting for the timeout are processed, so we have
       // to carry with us the upload we receive while waiting.
