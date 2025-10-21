@@ -12,8 +12,7 @@ use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
-use bd_api::DataUpload;
-use bd_api::api::SimpleNetworkQualityProvider;
+use bd_api::{DataUpload, SimpleNetworkQualityProvider};
 use bd_bounded_buffer::{self};
 use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_client_stats::{FlushTrigger, Stats};
@@ -122,6 +121,8 @@ impl Setup {
 
     let (_, report_rx) = tokio::sync::mpsc::channel(1);
 
+    let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
+
     AsyncLogBuffer::new(
       self.make_logging_context(),
       replayer,
@@ -137,7 +138,8 @@ impl Setup {
       report_rx,
       self.shutdown.as_ref().unwrap().make_handle(),
       &self.runtime,
-      Arc::new(SimpleNetworkQualityProvider::default()),
+      network_quality_provider.clone(),
+      network_quality_provider,
       String::new(),
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
       Arc::new(SystemTimeProvider),
@@ -154,6 +156,7 @@ impl Setup {
     AsyncLogBuffer<LoggerReplay>,
     bd_bounded_buffer::Sender<AsyncLogBufferMessage>,
   ) {
+    let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let (_, report_rx) = tokio::sync::mpsc::channel(1);
     AsyncLogBuffer::new(
       self.make_logging_context(),
@@ -170,7 +173,8 @@ impl Setup {
       report_rx,
       self.shutdown.as_ref().unwrap().make_handle(),
       &self.runtime,
-      Arc::new(SimpleNetworkQualityProvider::default()),
+      network_quality_provider.clone(),
+      network_quality_provider,
       String::new(),
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
       Arc::new(SystemTimeProvider),

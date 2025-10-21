@@ -9,11 +9,13 @@
 #[path = "./api_test.rs"]
 mod api_test;
 
+use crate::network_quality::DISCONNECTED_OFFLINE_GRACE_PERIOD;
 use crate::upload::{self, StateTracker};
 use crate::{
   DataUpload,
   PlatformNetworkManager,
   PlatformNetworkStream,
+  SimpleNetworkQualityProvider,
   StreamEvent,
   TriggerUpload,
 };
@@ -65,7 +67,6 @@ use bd_proto::protos::logging::payload::Data as ProtoData;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::DurationWatch;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
-use parking_lot::RwLock;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::future::pending;
@@ -79,38 +80,6 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::watch;
 use tokio::time::{Instant, Sleep, sleep};
 
-// The amount of time the API has to be in the disconnected state before network quality will be
-// switched to "offline". This offline grace period also governs when cached configuration will
-// be marked as safe to use if we can't contact the server. This prevents cached configuration
-// from being deleted during perpetually offline states if the process has been up for long
-// enough without crashing.
-const DISCONNECTED_OFFLINE_GRACE_PERIOD: std::time::Duration = std::time::Duration::from_secs(15);
-
-//
-// SimpleNetworkQualityProvider
-//
-
-pub struct SimpleNetworkQualityProvider {
-  network_quality: RwLock<NetworkQuality>,
-}
-
-impl Default for SimpleNetworkQualityProvider {
-  fn default() -> Self {
-    Self {
-      network_quality: RwLock::new(NetworkQuality::Unknown),
-    }
-  }
-}
-
-impl NetworkQualityProvider for SimpleNetworkQualityProvider {
-  fn get_network_quality(&self) -> NetworkQuality {
-    *self.network_quality.read()
-  }
-
-  fn set_network_quality(&self, quality: NetworkQuality) {
-    *self.network_quality.write() = quality;
-  }
-}
 
 //
 // StreamClosureInfo
@@ -599,14 +568,18 @@ impl Api {
       if *disconnected_at.get_or_insert_with(Instant::now) + DISCONNECTED_OFFLINE_GRACE_PERIOD
         < Instant::now()
       {
-        *self.network_quality_provider.network_quality.write() = NetworkQuality::Offline;
+        self
+          .network_quality_provider
+          .set_network_quality(NetworkQuality::Offline);
         if !self.config_marked_safe_due_to_offline {
           self.config_marked_safe_due_to_offline = true;
           self.runtime_loader.mark_safe().await;
           self.config_updater.mark_safe().await;
         }
       } else {
-        *self.network_quality_provider.network_quality.write() = NetworkQuality::Unknown;
+        self
+          .network_quality_provider
+          .set_network_quality(NetworkQuality::Unknown);
       }
 
       // If we have been killed, just put ourselves into a permanent pending state until the
@@ -729,7 +702,9 @@ impl Api {
 
       log::debug!("handshake received, entering main loop");
       let handshake_established = Instant::now();
-      *self.network_quality_provider.network_quality.write() = NetworkQuality::Online;
+      self
+        .network_quality_provider
+        .set_network_quality(NetworkQuality::Online);
       disconnected_at = None;
 
       // At this point we have established the stream, so we should start the general

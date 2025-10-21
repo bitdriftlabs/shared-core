@@ -28,10 +28,16 @@ use bd_proto::protos::client::api::{
 };
 use bd_runtime::runtime::DurationWatch;
 use bd_runtime::runtime::api::{InitialBackoffInterval, MaxBackoffInterval};
+pub use network_quality::{
+  AggregatedNetworkQualityProvider,
+  SimpleNetworkQualityProvider,
+  TimedNetworkQualityProvider,
+};
 use std::collections::HashMap;
 use upload::{TrackedIntent, TrackedUpload};
 
 pub mod api;
+mod network_quality;
 pub mod upload;
 
 pub use bd_metadata::{Metadata, Platform};

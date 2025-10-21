@@ -219,6 +219,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
     shutdown_trigger_handle: ComponentShutdownTriggerHandle,
     runtime_loader: &Arc<ConfigLoader>,
+    log_network_quality_provider: Arc<dyn NetworkQualityProvider>,
     network_quality_provider: Arc<dyn NetworkQualityProvider>,
     device_id: String,
     store: Arc<Store>,
@@ -250,7 +251,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       Arc::new(internal_report::Reporter::new(runtime_loader));
     let bandwidth_usage_tracker = Arc::new(network::HTTPTrafficDataUsageTracker::new(
       Arc::new(SystemTimeProvider),
-      network_quality_provider.clone(),
+      log_network_quality_provider.clone(),
     ));
     let network_quality_interceptor =
       Arc::new(NetworkQualityInterceptor::new(network_quality_provider));

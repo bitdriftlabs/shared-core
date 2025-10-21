@@ -719,6 +719,20 @@ pub mod session_replay {
   );
 }
 
+pub mod network_quality {
+  use time::ext::NumericalDuration as _;
+
+  // When we observe a network log that indicates that we completed a network call while online,
+  // we will mark the network quality as online for the duration indicated by this flag. This
+  // serves a an additional online indicator on top of just relying on the disconnected/connected
+  // API mux state.
+  duration_feature_flag!(
+    NetworkCallOnlineIndicatorTimeout,
+    "network_quality.network_call_online_indicator_timeout_ms",
+    15.seconds()
+  );
+}
+
 #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
 pub mod api {
   use time::ext::NumericalDuration;
