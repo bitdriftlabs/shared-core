@@ -234,7 +234,7 @@ impl LoggerBuilder {
       report_proc_rx,
       shutdown_handle.clone(),
       &runtime_loader,
-      log_network_quality_provider.clone(),
+      log_network_quality_provider,
       aggregated_network_quality_provider,
       self.params.device.id(),
       self.params.store.clone(),

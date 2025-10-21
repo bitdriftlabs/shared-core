@@ -251,7 +251,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       Arc::new(internal_report::Reporter::new(runtime_loader));
     let bandwidth_usage_tracker = Arc::new(network::HTTPTrafficDataUsageTracker::new(
       Arc::new(SystemTimeProvider),
-      log_network_quality_provider.clone(),
+      log_network_quality_provider,
     ));
     let network_quality_interceptor =
       Arc::new(NetworkQualityInterceptor::new(network_quality_provider));
