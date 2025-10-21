@@ -27,7 +27,7 @@ fn store_persisted_timeout() {
   );
 
   let new_state = ReconnectState::new(
-    store.clone(),
+    store,
     DurationWatch::new_for_testing(time::Duration::seconds(30)),
     time.clone(),
   );
