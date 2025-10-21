@@ -32,6 +32,7 @@ use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
 use bd_feature_flags::FeatureFlagsBuilder;
 use bd_internal_logging::NoopLogger;
+use bd_runtime::runtime::network_quality::NetworkCallOnlineIndicatorTimeout;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
 use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
@@ -198,12 +199,13 @@ impl LoggerBuilder {
     let api_network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let log_network_quality_provider = Arc::new(TimedNetworkQualityProvider::new(
       time_provider.clone(),
-      runtime_loader.register_duration_watch::<bd_runtime::runtime::network_quality::NetworkCallOnlineIndicatorTimeout>(),
+      runtime_loader.register_duration_watch::<NetworkCallOnlineIndicatorTimeout>(),
     ));
-    let aggregated_network_quality_provider = Arc::new(AggregatedNetworkQualityProvider::new(vec![
-      api_network_quality_provider.clone(),
-      log_network_quality_provider.clone(),
-    ]));
+    let aggregated_network_quality_provider =
+      Arc::new(AggregatedNetworkQualityProvider::new(vec![
+        api_network_quality_provider.clone(),
+        log_network_quality_provider.clone(),
+      ]));
 
     let feature_flags_builder = FeatureFlagsBuilder::new(
       &self.params.sdk_directory,

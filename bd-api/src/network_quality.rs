@@ -78,7 +78,7 @@ pub struct AggregatedNetworkQualityProvider {
 }
 
 impl AggregatedNetworkQualityProvider {
-  #[must_use] 
+  #[must_use]
   pub fn new(providers: Vec<Arc<dyn NetworkQualityProvider>>) -> Self {
     Self { providers }
   }
