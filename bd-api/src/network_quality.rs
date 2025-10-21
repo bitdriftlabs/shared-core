@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "./network_quality_test.rs"]
+mod tests;
+
 use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
 use bd_runtime::runtime::DurationWatch;
 use parking_lot::RwLock;
