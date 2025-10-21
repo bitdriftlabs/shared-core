@@ -7,7 +7,6 @@
 
 use crate::{Monitor, global_state};
 use bd_client_common::init_lifecycle::InitLifecycleState;
-use bd_device::Store;
 use bd_feature_flags::FeatureFlagsBuilder;
 use bd_log_primitives::{AnnotatedLogFields, LogFields};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
@@ -32,7 +31,7 @@ use bd_proto_util::ToFlatBufferString;
 use bd_runtime::runtime::{self};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::make_mut;
-use bd_test_helpers::session::InMemoryStorage;
+use bd_test_helpers::session::in_memory_store;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, WIPOffset};
 use itertools::Itertools;
 use std::io::Read;
@@ -55,7 +54,7 @@ impl Setup {
     std::fs::create_dir_all(directory.path().join("runtime")).unwrap();
 
     let shutdown = ComponentShutdownTrigger::default();
-    let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
+    let store = in_memory_store();
     let upload_client = Arc::new(bd_artifact_upload::MockClient::default());
 
     if let Some(global_state) = maybe_global_state {

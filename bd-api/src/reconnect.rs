@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "./reconnect_test.rs"]
+mod tests;
+
 use bd_key_value::{Key, Storable};
 use bd_runtime::runtime::DurationWatch;
 use bd_time::TimeProvider;
@@ -38,15 +42,14 @@ impl ReconnectState {
     }
   }
 
-  pub fn next_reconnect_at(&self) -> Option<tokio::time::Instant> {
+  pub fn next_reconnect_delay(&self) -> Option<std::time::Duration> {
     let last_connected_at = self.last_connected_at?;
 
     let next_reconnect_time = last_connected_at + *self.min_reconnect_interval.read();
     let delay = next_reconnect_time - self.time_provider.now();
     log::trace!("last reconnect was at {last_connected_at}, waiting {delay:?} before reconnecting",);
 
-    (delay > std::time::Duration::ZERO)
-      .then_some(tokio::time::Instant::now() + delay.unsigned_abs())
+    (delay > std::time::Duration::ZERO).then_some(delay.unsigned_abs())
   }
 
   /// Updates the reconnection state with a connectivity event. The last seen connectivity event is

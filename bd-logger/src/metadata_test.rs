@@ -8,12 +8,11 @@
 use crate::metadata::MetadataCollector;
 use assert_matches::assert_matches;
 use bd_crash_handler::global_state::{self, Reader};
-use bd_device::Store;
 use bd_log_primitives::{AnnotatedLogField, LogFields, StringOrBytes};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_runtime::runtime::Watch;
 use bd_test_helpers::metadata_provider::LogMetadata;
-use bd_test_helpers::session::InMemoryStorage;
+use bd_test_helpers::session::in_memory_store;
 use itertools::Itertools as _;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -32,10 +31,8 @@ fn collector_attaches_provider_fields_as_matching_fields() {
 
   let types = vec![LogType::Replay, LogType::Resource];
 
-  let mut tracker = global_state::Tracker::new(
-    Arc::new(Store::new(Box::<InMemoryStorage>::default())),
-    Watch::new_for_testing(10.seconds()),
-  );
+  let mut tracker =
+    global_state::Tracker::new(in_memory_store(), Watch::new_for_testing(10.seconds()));
 
   for log_type in types {
     let metadata = collector
@@ -100,7 +97,7 @@ fn collector_fields_hierarchy() {
     )
     .unwrap();
 
-  let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
+  let store = in_memory_store();
   let mut tracker = global_state::Tracker::new(store.clone(), Watch::new_for_testing(10.seconds()));
 
   let metadata = collector
@@ -200,10 +197,8 @@ fn collector_does_not_accept_reserved_fields() {
       .is_err()
   );
 
-  let mut tracker = global_state::Tracker::new(
-    Arc::new(Store::new(Box::<InMemoryStorage>::default())),
-    Watch::new_for_testing(10.seconds()),
-  );
+  let mut tracker =
+    global_state::Tracker::new(in_memory_store(), Watch::new_for_testing(10.seconds()));
 
   let metadata = collector
     .normalized_metadata_with_extra_fields([].into(), [].into(), LogType::Normal, &mut tracker)

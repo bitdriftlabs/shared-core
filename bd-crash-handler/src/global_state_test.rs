@@ -6,15 +6,13 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::global_state::{Reader, Tracker, UpdateResult};
-use bd_device::Store;
 use bd_runtime::runtime::Watch;
-use bd_test_helpers::session::InMemoryStorage;
-use std::sync::Arc;
+use bd_test_helpers::session::in_memory_store;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 
 #[test]
 fn global_state_update() {
-  let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
+  let store = in_memory_store();
   let reader = Reader::new(store.clone());
   let mut state_tracker = Tracker::new(store, Watch::new_for_testing(0.seconds()));
 
@@ -66,10 +64,9 @@ fn global_state_update() {
   assert_eq!(reader.global_state_fields(), updated_fields);
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn write_is_scheduled_and_deferred() {
-  tokio::time::pause();
-  let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
+  let store = in_memory_store();
   let mut tracker = Tracker::new(store.clone(), Watch::new_for_testing(10.seconds()));
   let initial = [("x".into(), "y".into())].into();
   assert_eq!(
@@ -107,7 +104,7 @@ async fn write_is_scheduled_and_deferred() {
 #[tokio::test]
 async fn no_scheduled_write_on_same_data() {
   tokio::time::pause();
-  let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
+  let store = in_memory_store();
   let mut tracker = Tracker::new(store, Watch::new_for_testing(6.seconds()));
   let original = [("m".into(), "n".into())].into();
   assert_eq!(
@@ -123,7 +120,7 @@ async fn no_scheduled_write_on_same_data() {
 #[tokio::test]
 async fn scheduled_write_no_change_after_window() {
   tokio::time::pause();
-  let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
+  let store = in_memory_store();
   let mut tracker = Tracker::new(store.clone(), Watch::new_for_testing(6.seconds()));
   let original = [("m".into(), "n".into())].into();
   assert_eq!(

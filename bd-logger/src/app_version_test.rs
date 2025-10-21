@@ -7,14 +7,12 @@
 
 use super::AppVersion;
 use crate::app_version::AppVersionExtra;
-use bd_device::Store;
-use bd_test_helpers::session::InMemoryStorage;
+use bd_test_helpers::session::in_memory_store;
 use pretty_assertions::assert_eq;
-use std::sync::Arc;
 
 #[test]
 fn app_version_repo() {
-  let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
+  let store = in_memory_store();
 
   let repo = super::Repository::new(store.clone());
   // Initial check

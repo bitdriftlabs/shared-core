@@ -40,7 +40,7 @@ use bd_proto::protos::client::api::{
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_stats_common::labels;
 use bd_test_helpers::make_mut;
-use bd_test_helpers::session::InMemoryStorage;
+use bd_test_helpers::session::in_memory_store;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, ToProtoDuration};
 use mockall::predicate::eq;
 use std::collections::{BTreeMap, HashMap};
@@ -221,7 +221,7 @@ impl Setup {
     let api_key = "api-key-test".to_string();
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
 
-    let store = Arc::new(Store::new(Box::new(InMemoryStorage::default())));
+    let store = in_memory_store();
     let mut api = Api::new(
       sdk_directory.path().to_path_buf(),
       api_key.clone(),
@@ -238,7 +238,7 @@ impl Setup {
       sleep_mode_active_rx,
       store.clone(),
     );
-    api.data_idle_timeout_test_hook = idle_timeout_tx.into();
+    api.data_idle_timeout_test_hook = idle_timeout_tx;
 
     let api_task = tokio::task::spawn(async move {
       runtime_loader.try_load_persisted_config().await;

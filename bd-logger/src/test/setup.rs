@@ -35,7 +35,7 @@ use bd_test_helpers::metadata::EmptyMetadata;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
 use bd_test_helpers::runtime::{ValueKind, make_update};
-use bd_test_helpers::session::{DiskStorage, InMemoryStorage};
+use bd_test_helpers::session::{DiskStorage, in_memory_store};
 use bd_test_helpers::test_api_server::{ExpectedStreamEvent, StreamAction, StreamHandle};
 use bd_time::TimeProvider;
 use bd_time::test::TestTicker;
@@ -147,7 +147,7 @@ impl Setup {
         options.sdk_directory.path().join("store"),
       ))))
     } else {
-      Arc::new(Store::new(Box::<InMemoryStorage>::default()))
+      in_memory_store()
     };
     let device = Arc::new(bd_device::Device::new(store.clone()));
 

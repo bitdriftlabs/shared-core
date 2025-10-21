@@ -620,9 +620,10 @@ impl Api {
       // sure that any uploads we receive while waiting for the timeout are processed, so we have
       // to carry with us the upload we receive while waiting.
       let upload_during_idle_timeout =
-        if let Some(reconnect_at) = self.reconnect_state.next_reconnect_at() {
+        if let Some(reconnect_delay) = self.reconnect_state.next_reconnect_delay() {
           // Use tokio::time::sleep_until since this plays better with test time compared to using
           // tokio::time::sleep.
+          let reconnect_at = tokio::time::Instant::now() + reconnect_delay;
           tokio::select! {
               () = tokio::time::sleep_until(reconnect_at) => None,
               upload = self.data_upload_rx.recv() => {

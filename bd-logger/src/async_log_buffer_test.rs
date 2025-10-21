@@ -20,7 +20,6 @@ use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
 use bd_feature_flags::FeatureFlagsBuilder;
-use bd_key_value::Store;
 use bd_log_filter::FilterChain;
 use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
@@ -43,7 +42,7 @@ use bd_test_helpers::events::NoOpListenerTarget;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
 use bd_test_helpers::runtime::ValueKind;
-use bd_test_helpers::session::InMemoryStorage;
+use bd_test_helpers::session::in_memory_store;
 use bd_test_helpers::workflow::{WorkflowBuilder, state};
 use bd_test_helpers::{log_matches, rule};
 use bd_time::{SystemTimeProvider, TimeDurationExt};
@@ -126,7 +125,7 @@ impl Setup {
       self.make_logging_context(),
       replayer,
       Arc::new(Strategy::Fixed(fixed::Strategy::new(
-        Arc::new(Store::new(Box::<InMemoryStorage>::default())),
+        in_memory_store(),
         Arc::new(UUIDCallbacks),
       ))),
       Arc::new(LogMetadata::default()),
@@ -139,7 +138,7 @@ impl Setup {
       &self.runtime,
       Arc::new(SimpleNetworkQualityProvider::default()),
       String::new(),
-      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
+      in_memory_store(),
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
       FeatureFlagsBuilder::new(&self.tmp_dir.path().join("feature_flags"), 1024, 0.8),
@@ -159,7 +158,7 @@ impl Setup {
       self.make_logging_context(),
       LoggerReplay {},
       Arc::new(Strategy::Fixed(fixed::Strategy::new(
-        Arc::new(Store::new(Box::<InMemoryStorage>::default())),
+        in_memory_store(),
         Arc::new(UUIDCallbacks),
       ))),
       Arc::new(LogMetadata::default()),
@@ -172,7 +171,7 @@ impl Setup {
       &self.runtime,
       Arc::new(SimpleNetworkQualityProvider::default()),
       String::new(),
-      Arc::new(Store::new(Box::<InMemoryStorage>::default())),
+      in_memory_store(),
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
       FeatureFlagsBuilder::new(&self.tmp_dir.path().join("feature_flags"), 1024, 0.8),
