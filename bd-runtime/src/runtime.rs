@@ -760,17 +760,18 @@ pub mod api {
     5.minutes()
   );
 
-  // This controls the minimum time between reconnect attempts after we've succesfully connected to
-  // the API backend. This does not apply to retries happening due to failure to connect, but only
-  // to how often we'll try to reconnect after a successful connection. This works in tandem with
-  // the data idle timeout to allow us to configure the client to not maintain a persistent
-  // connection to the backend when there is no data activity.
+  // This controls the time to wait before reconnecting to the API backend after previously having
+  // an active connection. When disconnecting from the API backend (for any reason, including the
+  // data idle timeout), the client will wait at least this interval before attempting to reconnect.
+  // This makes it possible to configure the client in such a way that does not attempt to maintain
+  // a constant connection to the backend, reducing resource usage on both the client and server
+  // side.
   //
-  // Note that the client will attempt to connect and bypass this interval whenever there is data
-  // to upload.
+  // By default this is set to 0ms, meaning the client will attempt to reconnect immediately after
+  // a disconnect.
   duration_feature_flag!(
     MinReconnectInterval,
-    "api.data_idle_reconnect_interval_ms",
+    "api.min_reconnect_interval_ms",
     0.seconds()
   );
 }
