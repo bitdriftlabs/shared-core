@@ -51,7 +51,7 @@ impl ReconnectState {
 
   pub fn set_last_connected_at(&mut self, last_connected_at: OffsetDateTime) {
     self.last_connected_at = Some(last_connected_at);
-    let _ = self.store.set(
+    let () = self.store.set(
       &LAST_CONNECTED_AT_KEY,
       &LastConnectedAt { last_connected_at },
     );
