@@ -772,9 +772,7 @@ impl Api {
 
       log::debug!("handshake received, entering main loop");
       let handshake_established = Instant::now();
-      self
-        .reconnect_state
-        .set_last_connected_at(self.time_provider.now());
+      self.reconnect_state.record_connectivity_event();
 
       *self.network_quality_provider.network_quality.write() = NetworkQuality::Online;
       disconnected_at = None;
@@ -783,6 +781,7 @@ impl Api {
         log::trace!("processing spurious upload received during idle timeout wait");
         // If we received a spurious upload while waiting to reconnect, process it now.
         stream_state.handle_data_upload(spurious_upload).await?;
+        self.reconnect_state.record_connectivity_event();
       }
 
       // Consider the time we've processed the handshake or the spurious upload as the last
@@ -815,6 +814,7 @@ impl Api {
               log::trace!("received data upload");
             last_data_received_at = Instant::now();
             stream_state.handle_data_upload(data_upload).await?;
+            self.reconnect_state.record_connectivity_event();
             continue;
           },
           () = maybe_await(&mut data_idle_timeout_at) => {

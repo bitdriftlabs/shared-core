@@ -49,7 +49,13 @@ impl ReconnectState {
       .then_some(tokio::time::Instant::now() + delay.unsigned_abs())
   }
 
-  pub fn set_last_connected_at(&mut self, last_connected_at: OffsetDateTime) {
+  /// Updates the reconnection state with a connectivity event. The last seen connectivity event is
+  /// used as the baseline for calculating the next reconnect time.
+  ///
+  /// In practice, this should be called whenever we've completed a handshake with the server or
+  /// we're sending data over a connected stream.
+  pub fn record_connectivity_event(&mut self) {
+    let last_connected_at = self.time_provider.now();
     self.last_connected_at = Some(last_connected_at);
     let () = self.store.set(
       &LAST_CONNECTED_AT_KEY,
