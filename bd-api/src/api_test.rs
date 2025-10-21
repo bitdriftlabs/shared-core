@@ -222,7 +222,7 @@ impl Setup {
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
 
     let store = Arc::new(Store::new(Box::new(InMemoryStorage::default())));
-    let api = Api::new(
+    let mut api = Api::new(
       sdk_directory.path().to_path_buf(),
       api_key.clone(),
       manager,
@@ -237,8 +237,8 @@ impl Setup {
       &collector.scope("api"),
       sleep_mode_active_rx,
       store.clone(),
-      idle_timeout_tx,
     );
+    api.data_idle_timeout_test_hook = idle_timeout_tx.into();
 
     let api_task = tokio::task::spawn(async move {
       runtime_loader.try_load_persisted_config().await;
@@ -296,7 +296,6 @@ impl Setup {
       &self.collector.scope("api"),
       self.sleep_mode_active.subscribe(),
       self.store.clone(),
-      None,
     );
 
     self.api_task = Some(tokio::task::spawn(api.start()));

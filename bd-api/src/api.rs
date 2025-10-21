@@ -417,7 +417,6 @@ impl Api {
     stats: &Scope,
     sleep_mode_active: watch::Receiver<bool>,
     store: Arc<bd_key_value::Store>,
-    #[cfg(test)] data_idle_timeout: Option<tokio::sync::mpsc::Sender<()>>,
   ) -> Self {
     let mut max_backoff_interval = runtime_loader.register_duration_watch();
     let mut initial_backoff_interval = runtime_loader.register_duration_watch();
@@ -458,7 +457,7 @@ impl Api {
       min_reconnect_interval,
       reconnect_state,
       #[cfg(test)]
-      data_idle_timeout_test_hook: data_idle_timeout,
+      data_idle_timeout_test_hook: None,
     }
   }
 
