@@ -760,17 +760,18 @@ pub mod api {
     5.minutes()
   );
 
-  // This controls the interval at which we resume the API mux stream after it has been closed due
-  // to a data idle timeout. This allows us to configure a client that has no periodic data
-  // upload to reconnect at a specific interval, allowing the client to receieve any pending
-  // configuration updates.
+  // This controls the minimum time between reconnect attempts after we've succesfully connected to
+  // the API backend. This does not apply to retries happening due to failure to connect, but only
+  // to how often we'll try to reconnect after a successful connection. This works in tandem with
+  // the data idle timeout to allow us to configure the client to not maintain a persistent
+  // connection to the backend when there is no data activity.
   //
-  // Note that this timeout has no effect if the data idle timeout is not set or if there are
-  // periodic uploads that would always trigger a reconnect before this timeout is hit.
+  // Note that the client will attempt to connect and bypass this interval whenever there is data
+  // to upload.
   duration_feature_flag!(
-    DataIdleReconnectInterval,
+    MinReconnectInterval,
     "api.data_idle_reconnect_interval_ms",
-    15.minutes()
+    0.seconds()
   );
 }
 

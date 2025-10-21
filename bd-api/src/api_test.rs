@@ -21,6 +21,7 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_grpc_codec::code::Code;
 use bd_grpc_codec::{Decompression, Encoder, OptimizeFor};
 use bd_internal_logging::{LogFields, LogLevel, LogType};
+use bd_key_value::Store;
 use bd_metadata::{Metadata, Platform};
 use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
 use bd_proto::protos::client::api::api_request::Request_type;
@@ -39,6 +40,7 @@ use bd_proto::protos::client::api::{
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_stats_common::labels;
 use bd_test_helpers::make_mut;
+use bd_test_helpers::session::InMemoryStorage;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, ToProtoDuration};
 use mockall::predicate::eq;
 use std::collections::{BTreeMap, HashMap};
@@ -176,6 +178,7 @@ struct Setup {
   api_key: String,
   network_quality_provider: Arc<SimpleNetworkQualityProvider>,
   sleep_mode_active: watch::Sender<bool>,
+  store: Arc<Store>,
   config_updater: Arc<MockClientConfigurationUpdate>,
 }
 
@@ -217,6 +220,8 @@ impl Setup {
 
     let api_key = "api-key-test".to_string();
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
+
+    let store = Arc::new(Store::new(Box::new(InMemoryStorage::default())));
     let api = Api::new(
       sdk_directory.path().to_path_buf(),
       api_key.clone(),
@@ -231,6 +236,7 @@ impl Setup {
       Arc::new(TestLog {}),
       &collector.scope("api"),
       sleep_mode_active_rx,
+      store.clone(),
       idle_timeout_tx,
     );
 
@@ -255,6 +261,7 @@ impl Setup {
       api_key,
       network_quality_provider,
       sleep_mode_active: sleep_mode_active_tx,
+      store,
       config_updater,
     }
   }
@@ -288,6 +295,7 @@ impl Setup {
       Arc::new(TestLog {}),
       &self.collector.scope("api"),
       self.sleep_mode_active.subscribe(),
+      self.store.clone(),
       None,
     );
 
@@ -688,12 +696,20 @@ async fn data_idle_timeout() {
     Setup::make_nice_mock_updater(),
     Some(RuntimeUpdate {
       version_nonce: "test".to_string(),
-      runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
-        bd_runtime::runtime::api::DataIdleTimeoutInterval::path(),
-        bd_test_helpers::runtime::ValueKind::Int(
-          10.seconds().whole_milliseconds().try_into().unwrap(),
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![
+        (
+          bd_runtime::runtime::api::DataIdleTimeoutInterval::path(),
+          bd_test_helpers::runtime::ValueKind::Int(
+            10.seconds().whole_milliseconds().try_into().unwrap(),
+          ),
         ),
-      )]))
+        (
+          bd_runtime::runtime::api::MinReconnectInterval::path(),
+          bd_test_helpers::runtime::ValueKind::Int(
+            15.minutes().whole_milliseconds().try_into().unwrap(),
+          ),
+        ),
+      ]))
       .into(),
       ..Default::default()
     }),

@@ -10,6 +10,7 @@ doctest = false
 
 [dependencies]
 anyhow.workspace            = true
+async-trait.workspace       = true
 bd-client-common            = { path = "../bd-client-common" }
 bd-proto                    = { path = "../bd-proto" }
 bd-stats-common             = { path = "../bd-stats-common" }
@@ -19,7 +20,6 @@ parking_lot.workspace       = true
 sketches-rust.workspace     = true
 thiserror.workspace         = true
 tokio.workspace             = true
-async-trait.workspace       = true
 
 [dev-dependencies]
 bd-test-helpers.path = "../bd-test-helpers"
