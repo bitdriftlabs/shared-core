@@ -225,13 +225,7 @@ impl Monitor {
     // TODO(snowp): Add smarter handling to avoid duplicate reporting.
     // TODO(snowp): Consider only reporting one of the pending reports if there are multiple.
 
-    let previous_feature_flags = self
-      .feature_flags_manager
-      .previous_feature_flags()
-      .inspect_err(|e| {
-        log::warn!("failed to load or create previous feature flags: {e}");
-      })
-      .ok();
+    let previous_feature_flags = self.feature_flags_manager.previous_feature_flags().ok();
     let reporting_feature_flags: Vec<SnappedFeatureFlag> = previous_feature_flags
       .as_ref()
       .map(|ff| {
@@ -246,6 +240,7 @@ impl Monitor {
     let mut logs = vec![];
 
     while let Ok(Some(entry)) = dir.next_entry().await {
+      log::debug!("Considering report file: {}", entry.path().display());
       let path = entry.path();
       let ext = path.extension().and_then(OsStr::to_str);
       if path.is_file() && ext == Some("cap") {

@@ -24,10 +24,9 @@ pub type LoggerFuture =
 pub const SESSION_FILE: &str = "session_id";
 
 pub struct LoggerHolder {
-  pub logger: Logger,
+  pub logger: Arc<Mutex<Logger>>,
   future: Mutex<Option<LoggerFuture>>,
-  #[allow(dead_code)] // holding it to avoid drop before the logger itself
-  shutdown_trigger: bd_shutdown::ComponentShutdownTrigger,
+  _shutdown_trigger: bd_shutdown::ComponentShutdownTrigger,
 }
 
 impl LoggerHolder {
@@ -37,9 +36,9 @@ impl LoggerHolder {
     shutdown_trigger: bd_shutdown::ComponentShutdownTrigger,
   ) -> Self {
     Self {
-      logger,
+      logger: Arc::new(Mutex::new(logger)),
       future: Mutex::new(Some(future)),
-      shutdown_trigger,
+      _shutdown_trigger: shutdown_trigger,
     }
   }
 
@@ -63,29 +62,36 @@ impl LoggerHolder {
     });
   }
 
-  pub fn process_crash_reports(&mut self) -> anyhow::Result<()> {
-    self
-      .logger
-      .process_crash_reports(bd_logger::ReportProcessingSession::PreviousRun)
+  pub fn process_crash_reports(&self) {
+    let logger = self.logger.clone();
+
+    // To work around the fact that process_crash_reports calls blocking_recv() we dispatch to the
+    // blocking thread pool.
+    tokio::task::spawn_blocking(move || {
+      logger
+        .lock()
+        .process_crash_reports(bd_logger::ReportProcessingSession::PreviousRun)
+        .inspect_err(|e| log::error!("Failed to process crash reports: {e}"))
+    });
   }
 
   pub fn start_new_session(&self) {
-    let handle = self.logger.new_logger_handle();
+    let handle = self.logger.lock().new_logger_handle();
     handle.start_new_session();
   }
 
   pub fn set_sleep_mode(&self, enabled: bool) {
-    let handle = self.logger.new_logger_handle();
+    let handle = self.logger.lock().new_logger_handle();
     handle.transition_sleep_mode(enabled);
   }
 
   pub fn stop(&self) {
     sleep(2.std_seconds());
-    self.logger.shutdown(true);
+    self.logger.lock().shutdown(true);
   }
 
   pub fn get_runtime_value(&self, name: &str, value_type: RuntimeValueType) -> String {
-    let snapshot = self.logger.runtime_snapshot();
+    let snapshot = self.logger.lock().runtime_snapshot();
     match value_type {
       RuntimeValueType::Bool => format!("{}", snapshot.get_bool(name, false)),
       RuntimeValueType::String => format!("'{}'", snapshot.get_string(name, String::new())),
@@ -112,7 +118,7 @@ impl LoggerHolder {
     } else {
       CaptureSession::default()
     };
-    self.logger.new_logger_handle().log(
+    self.logger.lock().new_logger_handle().log(
       log_level,
       log_type,
       message.into(),
@@ -170,6 +176,7 @@ pub fn make_logger(sdk_directory: &Path, config: &StartCommand) -> anyhow::Resul
     model: config.model.clone(),
   });
 
+
   let (logger, _, future, _) = bd_logger::LoggerBuilder::new(InitParams {
     sdk_directory: sdk_directory.to_path_buf(),
     api_key: config.api_key.clone(),
@@ -179,6 +186,11 @@ pub fn make_logger(sdk_directory: &Path, config: &StartCommand) -> anyhow::Resul
     ))),
     metadata_provider: Arc::new(LogMetadata {
       timestamp: time::OffsetDateTime::now_utc().into(),
+      ootb_fields: [(
+        "_app_version_code".into(),
+        config.app_version_code.clone().into(),
+      )]
+      .into(),
       ..Default::default()
     }),
     resource_utilization_target: Box::new(bd_test_helpers::resource_utilization::EmptyTarget),

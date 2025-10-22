@@ -51,7 +51,7 @@ pub struct Options {
     env = "LOGGER_HOST",
     long,
     required = false,
-    default_value = "127.0.0.1"
+    default_value = "localhost"
   )]
   pub host: String,
 
@@ -114,6 +114,10 @@ pub struct StartCommand {
   /// App version
   #[clap(long, required = false, default_value = "1.0.0")]
   pub app_version: String,
+
+  /// App version code (build number)
+  #[clap(long, required = false, default_value = "10")]
+  pub app_version_code: String,
 
   /// Device platform
   #[clap(long, required = false, default_value = "apple")]

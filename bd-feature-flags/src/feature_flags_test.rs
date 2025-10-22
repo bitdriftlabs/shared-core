@@ -876,3 +876,63 @@ fn test_iter_returns_all_unique_data() -> anyhow::Result<()> {
 
   Ok(())
 }
+
+#[test]
+fn test_open_existing() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let temp_path = temp_dir.path();
+
+  // Test 1: open_existing should fail when files don't exist
+  assert!(
+    FeatureFlags::open_existing(temp_path, 1024, None).is_err(),
+    "open_existing should fail when files don't exist"
+  );
+
+  // Test 2: Create files with new() and populate with data
+  {
+    let mut flags = FeatureFlags::new(temp_path, 1024, None)?;
+    flags.set("flag1".to_string(), Some("variant1".to_string()))?;
+    flags.set("flag2".to_string(), None)?;
+    flags.set("flag3".to_string(), Some("variant3".to_string()))?;
+    flags.sync()?; // Ensure data is written to disk
+  }
+
+  // Test 3: open_existing should succeed and load the data
+  {
+    let flags = FeatureFlags::open_existing(temp_path, 1024, None)?;
+
+    assert_eq!(flags.iter().count(), 3);
+
+    let flag1 = flags.get("flag1").expect("flag1 should exist");
+    assert_eq!(flag1.variant, Some("variant1".to_string()));
+
+    let flag2 = flags.get("flag2").expect("flag2 should exist");
+    assert_eq!(flag2.variant, None);
+
+    let flag3 = flags.get("flag3").expect("flag3 should exist");
+    assert_eq!(flag3.variant, Some("variant3".to_string()));
+  }
+
+  // Test 4: open_existing should work with different buffer sizes
+  {
+    let flags = FeatureFlags::open_existing(temp_path, 2048, None)?;
+    assert_eq!(flags.iter().count(), 3);
+  }
+
+  // Test 5: Verify data can be modified through open_existing
+  {
+    let mut flags = FeatureFlags::open_existing(temp_path, 1024, None)?;
+    flags.set("flag4".to_string(), Some("new_flag".to_string()))?;
+    flags.sync()?;
+  }
+
+  // Test 6: Verify modifications persisted
+  {
+    let flags = FeatureFlags::open_existing(temp_path, 1024, None)?;
+    assert_eq!(flags.iter().count(), 4);
+
+    let flag4 = flags.get("flag4").expect("flag4 should exist");
+    assert_eq!(flag4.variant, Some("new_flag".to_string()));
+  }
+  Ok(())
+}

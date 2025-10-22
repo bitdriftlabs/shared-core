@@ -192,6 +192,46 @@ impl FeatureFlags {
     Ok(Self { flags_store })
   }
 
+  /// Opens an existing `FeatureFlags` instance from pre-existing storage files.
+  ///
+  /// Unlike `new()`, this constructor requires both journal files to exist and will fail if either
+  /// is missing. This is useful when you want to ensure you're loading from an existing feature
+  /// flags store rather than creating a new one.
+  ///
+  /// # Arguments
+  ///
+  /// * `base_path` - The filesystem path to the file basename where feature flags are stored. Two
+  ///   files with extensions "jrna" and "jrnb" must already exist at this location.
+  /// * `buffer_size` - The size of the underlying storage buffer in bytes
+  /// * `high_water_mark_ratio` - Optional ratio (0.0-1.0) for buffer high water mark. When the
+  ///   buffer reaches this percentage full, older data may be compacted. If `None`, a default value
+  ///   of 0.8 will be used.
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(FeatureFlags)` on success, or an error if the storage files don't exist or
+  /// cannot be opened.
+  ///
+  /// # Errors
+  ///
+  /// This function will return an error if:
+  /// - Either of the required journal files does not exist
+  /// - The storage files cannot be opened or read
+  /// - The storage files contain invalid data
+  /// - Insufficient permissions to access the storage location
+  pub fn open_existing<P: AsRef<Path>>(
+    base_path: P,
+    buffer_size: usize,
+    high_water_mark_ratio: Option<f32>,
+  ) -> anyhow::Result<Self> {
+    let flags_store = KVStore::open_existing(
+      base_path,
+      buffer_size,
+      Some(high_water_mark_ratio.unwrap_or(DEFAULT_HIGH_WATER_MARK_RATIO)),
+    )?;
+    Ok(Self { flags_store })
+  }
+
   /// Retrieves a feature flag by name.
   ///
   /// Returns the feature flag if it exists, or `None` if no flag
@@ -417,7 +457,7 @@ impl FeatureFlagsBuilder {
   }
 
   pub fn previous_feature_flags(&self) -> anyhow::Result<FeatureFlags> {
-    FeatureFlags::new(
+    FeatureFlags::open_existing(
       &self.previous_path,
       self.file_size,
       Some(self.high_water_mark_ratio),
