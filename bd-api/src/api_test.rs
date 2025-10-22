@@ -845,7 +845,6 @@ async fn data_idle_timeout_fails_to_connect() {
   }
   assert!(reached_unknown, "NetworkQuality::Unknown was never reached");
 
-
   // Greater than the disconnect grace period.
   20.seconds().sleep().await;
 
