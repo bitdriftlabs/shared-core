@@ -100,14 +100,14 @@ impl HyperNetwork {
       // previous stream, so this serves to clear out the channel of events that
       // corresponded to the previous stream.
       log::debug!("awaiting next stream");
-      let new_stream = loop {
+      let new_stream = {
         let event = tokio::select! {
           event = self.stream_event_rx.recv() => event,
           () = self.shutdown.cancelled() => return Ok(()),
         };
 
         match event {
-          Some(new_stream) => break new_stream,
+          Some(new_stream) => new_stream,
           // Channel has been closed, so we must be shutting down.
           None => return Ok(()),
         }
