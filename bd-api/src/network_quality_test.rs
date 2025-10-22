@@ -135,12 +135,12 @@ fn aggregated_network_quality_provider() {
 
   // Test setting quality via the aggregated provider
   aggregated_provider.set_network_quality(NetworkQuality::Online);
-  // This should set all underlying providers to Online
-  assert_eq!(provider1.get_network_quality(), NetworkQuality::Online);
-  assert_eq!(provider2.get_network_quality(), NetworkQuality::Online);
+  // This should *not* set anything on the underlying providers to Online
+  assert_eq!(provider1.get_network_quality(), NetworkQuality::Unknown);
+  assert_eq!(provider2.get_network_quality(), NetworkQuality::Unknown);
   assert_eq!(
     aggregated_provider.get_network_quality(),
-    NetworkQuality::Online
+    NetworkQuality::Unknown
   );
 }
 

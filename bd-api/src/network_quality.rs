@@ -99,9 +99,7 @@ impl NetworkQualityProvider for AggregatedNetworkQualityProvider {
     NetworkQuality::Unknown
   }
 
-  fn set_network_quality(&self, quality: NetworkQuality) {
-    for provider in &self.providers {
-      provider.set_network_quality(quality);
-    }
+  fn set_network_quality(&self, _quality: NetworkQuality) {
+    // No-op: aggregated provider does not set quality
   }
 }
