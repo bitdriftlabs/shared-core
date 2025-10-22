@@ -18,7 +18,7 @@ use bd_log_primitives::{
   LogType,
   StringOrBytes,
 };
-use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
+use bd_network_quality::{NetworkQuality, NetworkQualityMonitor, NetworkQualityResolver};
 use itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
@@ -50,17 +50,17 @@ macro_rules! accumulate_samples {
 /// uploaded due to HTTP requests performed by the app, measured on a per-minute basis.
 pub struct HTTPTrafficDataUsageTracker {
   container: parking_lot::Mutex<MetricsContainer>,
-  network_quality_provider: Arc<dyn NetworkQualityProvider>,
+  network_quality_monitor: Arc<dyn NetworkQualityMonitor>,
 }
 
 impl HTTPTrafficDataUsageTracker {
   pub(crate) fn new(
     time_provider: Arc<dyn TimeProvider>,
-    network_quality_provider: Arc<dyn NetworkQualityProvider>,
+    network_quality_monitor: Arc<dyn NetworkQualityMonitor>,
   ) -> Self {
     Self {
       container: parking_lot::Mutex::new(MetricsContainer::new(time_provider)),
-      network_quality_provider,
+      network_quality_monitor,
     }
   }
 }
@@ -79,7 +79,7 @@ impl HTTPTrafficDataUsageTracker {
     // this in the future.
     if get_int_field_value(fields, "_status_code").is_some() {
       self
-        .network_quality_provider
+        .network_quality_monitor
         .set_network_quality(NetworkQuality::Online);
     }
 
@@ -323,13 +323,13 @@ impl TimeProvider for SystemTimeProvider {
 //
 
 pub struct NetworkQualityInterceptor {
-  network_quality_provider: Arc<dyn NetworkQualityProvider>,
+  network_quality_monitor: Arc<dyn NetworkQualityResolver>,
 }
 
 impl NetworkQualityInterceptor {
-  pub fn new(network_quality_provider: Arc<dyn NetworkQualityProvider>) -> Self {
+  pub fn new(network_quality_resolver: Arc<dyn NetworkQualityResolver>) -> Self {
     Self {
-      network_quality_provider,
+      network_quality_monitor: network_quality_resolver,
     }
   }
 }
@@ -352,7 +352,7 @@ impl LogInterceptor for NetworkQualityInterceptor {
 
     // Currently we only attach the field attribute if we think we are offline. In the future when
     // we have a more complex definition of network quality we can revisit this.
-    let network_quality = self.network_quality_provider.get_network_quality();
+    let network_quality = self.network_quality_monitor.get_network_quality();
     if network_quality != NetworkQuality::Offline {
       return;
     }

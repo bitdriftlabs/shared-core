@@ -5,10 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{Api, PlatformNetworkManager, PlatformNetworkStream, SimpleNetworkQualityProvider};
-use crate::DataUpload;
+use super::{Api, PlatformNetworkManager, PlatformNetworkStream};
 use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
 use crate::upload::Tracked;
+use crate::{DataUpload, SimpleNetworkQualityProvider};
 use anyhow::anyhow;
 use assert_matches::assert_matches;
 use bd_client_common::{
@@ -23,7 +23,7 @@ use bd_grpc_codec::{Decompression, Encoder, OptimizeFor};
 use bd_internal_logging::{LogFields, LogLevel, LogType};
 use bd_key_value::Store;
 use bd_metadata::{Metadata, Platform};
-use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
+use bd_network_quality::{NetworkQuality, NetworkQualityResolver as _};
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::client::api::api_response::Response_type;
 use bd_proto::protos::client::api::handshake_response::StreamSettings;
@@ -155,7 +155,7 @@ impl PlatformNetworkStream for Stream {
 // TestLog
 //
 
-struct TestLog {}
+struct TestLog;
 
 impl bd_internal_logging::Logger for TestLog {
   fn log(&self, _level: LogLevel, _log_type: LogType, _msg: &str, _fields: LogFields) {}
@@ -184,13 +184,14 @@ struct Setup {
 
 impl Setup {
   async fn new() -> Self {
-    Self::new_ex(Self::make_nice_mock_updater(), None, None).await
+    Self::new_ex(Self::make_nice_mock_updater(), None, None, None).await
   }
 
   async fn new_ex(
     config_updater: Arc<MockClientConfigurationUpdate>,
     initial_runtime: Option<RuntimeUpdate>,
     idle_timeout_tx: Option<Sender<()>>,
+    network_quality_provider: Option<SimpleNetworkQualityProvider>,
   ) -> Self {
     let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
 
@@ -219,7 +220,7 @@ impl Setup {
     }
 
     let api_key = "api-key-test".to_string();
-    let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
+    let network_quality_provider = Arc::new(network_quality_provider.unwrap_or_default());
 
     let store = in_memory_store();
     let mut api = Api::new(
@@ -401,7 +402,7 @@ impl Setup {
       .current_stream_tx
       .lock()
       .unwrap()
-      .as_ref()
+      .take()
       .unwrap()
       .clone();
 
@@ -497,6 +498,7 @@ async fn api_retry_stream() {
       ..Default::default()
     }
     .into(),
+    None,
     None,
   )
   .await;
@@ -713,6 +715,7 @@ async fn data_idle_timeout() {
       ..Default::default()
     }),
     None,
+    None,
   )
   .await;
 
@@ -768,6 +771,90 @@ async fn data_idle_timeout() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn data_idle_timeout_fails_to_connect() {
+  let mut network_quality = SimpleNetworkQualityProvider::default();
+  let mut quality_updates_rx = network_quality.with_update_channel();
+
+  let mut setup = Setup::new_ex(
+    Setup::make_nice_mock_updater(),
+    Some(RuntimeUpdate {
+      version_nonce: "test".to_string(),
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![
+        (
+          bd_runtime::runtime::api::DataIdleTimeoutInterval::path(),
+          bd_test_helpers::runtime::ValueKind::Int(
+            10.seconds().whole_milliseconds().try_into().unwrap(),
+          ),
+        ),
+        (
+          bd_runtime::runtime::api::MinReconnectInterval::path(),
+          bd_test_helpers::runtime::ValueKind::Int(
+            15.minutes().whole_milliseconds().try_into().unwrap(),
+          ),
+        ),
+      ]))
+      .into(),
+      ..Default::default()
+    }),
+    None,
+    Some(network_quality),
+  )
+  .await;
+
+  quality_updates_rx.recv().await.unwrap();
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Unknown
+  );
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
+
+  quality_updates_rx.recv().await.unwrap();
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Online
+  );
+
+  // Now sleep for 11 seconds to trigger the idle timeout.
+  tokio::time::advance(11.std_seconds()).await;
+
+  setup
+    .collector
+    .wait_for_counter_eq(1, "api:data_idle_timeout", labels! {})
+    .await;
+  quality_updates_rx.recv().await.unwrap();
+
+  // For the first attempt that is held back by the reconnect time we're marking the connectivity
+  // status as unknown.
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Unknown
+  );
+
+  // Now advance 20 minutes so that we can reconnect.
+  20.minutes().advance().await;
+  setup.time_provider.advance(20.minutes());
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  1.minutes().advance().await;
+  setup.time_provider.advance(1.minutes());
+  setup.close_stream().await;
+
+  quality_updates_rx.recv().await.unwrap();
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Offline
+  );
+}
+
+#[tokio::test(start_paused = true)]
 async fn data_idle_timeout_data_resets_timeout() {
   let (idle_timeout_tx, mut idle_timeout_rx) = channel::<()>(1);
   let mut setup = Setup::new_ex(
@@ -784,6 +871,7 @@ async fn data_idle_timeout_data_resets_timeout() {
       ..Default::default()
     }),
     Some(idle_timeout_tx),
+    None,
   )
   .await;
 
@@ -876,6 +964,7 @@ async fn data_idle_timeout_data_sent_during_reconnect_timeout() {
       ..Default::default()
     }),
     Some(idle_timeout_tx),
+    None,
   )
   .await;
 

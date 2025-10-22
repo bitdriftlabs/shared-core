@@ -13,8 +13,12 @@ use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
 use crate::logger::Logger;
 use crate::logging_state::UninitializedLoggingContext;
-use bd_api::DataUpload;
-use bd_api::api::SimpleNetworkQualityProvider;
+use bd_api::{
+  AggregatedNetworkQualityProvider,
+  DataUpload,
+  SimpleNetworkQualityProvider,
+  TimedNetworkQualityProvider,
+};
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_client_stats::FlushTrigger;
@@ -28,6 +32,7 @@ use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
 use bd_feature_flags::FeatureFlagsBuilder;
 use bd_internal_logging::NoopLogger;
+use bd_runtime::runtime::network_quality::NetworkCallOnlineIndicatorTimeout;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
 use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
@@ -191,7 +196,16 @@ impl LoggerBuilder {
     let (report_proc_tx, report_proc_rx) = tokio::sync::mpsc::channel(1);
     let (crash_monitor_tx, crash_monitor_rx) = tokio::sync::oneshot::channel();
 
-    let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
+    let api_network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
+    let log_network_quality_provider = Arc::new(TimedNetworkQualityProvider::new(
+      time_provider.clone(),
+      runtime_loader.register_duration_watch::<NetworkCallOnlineIndicatorTimeout>(),
+    ));
+    let aggregated_network_quality_provider =
+      Arc::new(AggregatedNetworkQualityProvider::new(vec![
+        api_network_quality_provider.clone(),
+        log_network_quality_provider.clone(),
+      ]));
 
     let feature_flags_builder = FeatureFlagsBuilder::new(
       &self.params.sdk_directory,
@@ -222,7 +236,8 @@ impl LoggerBuilder {
       report_proc_rx,
       shutdown_handle.clone(),
       &runtime_loader,
-      network_quality_provider.clone(),
+      log_network_quality_provider,
+      aggregated_network_quality_provider,
       self.params.device.id(),
       self.params.store.clone(),
       time_provider.clone(),
@@ -324,7 +339,7 @@ impl LoggerBuilder {
         runtime_loader.clone(),
         updater,
         time_provider,
-        network_quality_provider,
+        api_network_quality_provider,
         log.clone(),
         &scope.scope("api"),
         sleep_mode_active_rx,

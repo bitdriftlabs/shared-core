@@ -9,6 +9,7 @@
 #[path = "./api_test.rs"]
 mod api_test;
 
+use crate::network_quality::DISCONNECTED_OFFLINE_GRACE_PERIOD;
 use crate::upload::{self, StateTracker};
 use crate::{
   DataUpload,
@@ -37,7 +38,7 @@ use bd_grpc_codec::{
   OptimizeFor,
 };
 use bd_metadata::Metadata;
-use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
+use bd_network_quality::{NetworkQuality, NetworkQualityMonitor};
 use bd_proto::protos::client::api::api_response::Response_type;
 pub use bd_proto::protos::client::api::log_upload_intent_response::{
   Decision as LogsUploadDecision,
@@ -65,7 +66,6 @@ use bd_proto::protos::logging::payload::Data as ProtoData;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::DurationWatch;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
-use parking_lot::RwLock;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::future::pending;
@@ -79,38 +79,6 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::watch;
 use tokio::time::{Instant, Sleep, sleep};
 
-// The amount of time the API has to be in the disconnected state before network quality will be
-// switched to "offline". This offline grace period also governs when cached configuration will
-// be marked as safe to use if we can't contact the server. This prevents cached configuration
-// from being deleted during perpetually offline states if the process has been up for long
-// enough without crashing.
-const DISCONNECTED_OFFLINE_GRACE_PERIOD: std::time::Duration = std::time::Duration::from_secs(15);
-
-//
-// SimpleNetworkQualityProvider
-//
-
-pub struct SimpleNetworkQualityProvider {
-  network_quality: RwLock<NetworkQuality>,
-}
-
-impl Default for SimpleNetworkQualityProvider {
-  fn default() -> Self {
-    Self {
-      network_quality: RwLock::new(NetworkQuality::Unknown),
-    }
-  }
-}
-
-impl NetworkQualityProvider for SimpleNetworkQualityProvider {
-  fn get_network_quality(&self) -> NetworkQuality {
-    *self.network_quality.read()
-  }
-
-  fn set_network_quality(&self, quality: NetworkQuality) {
-    *self.network_quality.write() = quality;
-  }
-}
 
 //
 // StreamClosureInfo
@@ -377,7 +345,7 @@ pub struct Api {
 
   internal_logger: Arc<dyn bd_internal_logging::Logger>,
   time_provider: Arc<dyn TimeProvider>,
-  network_quality_provider: Arc<SimpleNetworkQualityProvider>,
+  network_quality_monitor: Arc<dyn NetworkQualityMonitor>,
 
   config_marked_safe_due_to_offline: bool,
 
@@ -412,7 +380,7 @@ impl Api {
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
     config_updater: Arc<dyn ClientConfigurationUpdate>,
     time_provider: Arc<dyn TimeProvider>,
-    network_quality_provider: Arc<SimpleNetworkQualityProvider>,
+    network_quality_monitor: Arc<dyn NetworkQualityMonitor>,
     self_logger: Arc<dyn bd_internal_logging::Logger>,
     stats: &Scope,
     sleep_mode_active: watch::Receiver<bool>,
@@ -440,7 +408,7 @@ impl Api {
       data_upload_rx,
       trigger_upload_tx,
       time_provider,
-      network_quality_provider,
+      network_quality_monitor,
       runtime_loader,
       max_backoff_interval,
       initial_backoff_interval,
@@ -615,12 +583,21 @@ impl Api {
     let mut last_disconnect_reason = None;
 
     loop {
+      let elapsed_since_last_disconnect =
+        disconnected_at.get_or_insert_with(Instant::now).elapsed();
+
       // If we're blocked from connecting due to configured reconnect delay, we'll want to wait
       // until there are either new uploads or the delay has elapsed. We need to make sure that any
       // uploads we receive while waiting for the delay are processed, so we have to carry
       // with us the upload we receive while waiting.
       let upload_during_idle_timeout =
         if let Some(reconnect_delay) = self.reconnect_state.next_reconnect_delay() {
+          // We are intentionally delaying reconnecting, so set network quality to unknown since
+          // we can't tell if we are actually offline or just delaying.
+          self
+            .network_quality_monitor
+            .set_network_quality(NetworkQuality::Unknown);
+
           // Use tokio::time::sleep_until since this plays better with test time compared to using
           // tokio::time::sleep.
           let reconnect_at = tokio::time::Instant::now() + reconnect_delay;
@@ -632,26 +609,37 @@ impl Api {
               }
           }
         } else {
+          // We don't want to flag the connection as being offline if we artificially delayed
+          // connecting due to the reconnct state, as we want to leave that as unknown until we've
+          // tried reconnecting once.
+
+          // If we have been disconnected for more than 15s switch our network quality to offline.
+          // We don't want to do this immediately as we might be in a transient state
+          // during a normal reconnect.
+
+          log::trace!(
+            "determining network quality, disconnect {elapsed_since_last_disconnect:?} ago",
+          );
+          if elapsed_since_last_disconnect > DISCONNECTED_OFFLINE_GRACE_PERIOD {
+            // TODO(snowp): Consider also taking number of connection attempts into consideration
+            // as this might play better with the reconnect delay logic.
+            self
+              .network_quality_monitor
+              .set_network_quality(NetworkQuality::Offline);
+            if !self.config_marked_safe_due_to_offline {
+              self.config_marked_safe_due_to_offline = true;
+              self.runtime_loader.mark_safe().await;
+              self.config_updater.mark_safe().await;
+            }
+          } else {
+            self
+              .network_quality_monitor
+              .set_network_quality(NetworkQuality::Unknown);
+          }
+
           None
         };
 
-      // TODO(snowp): This feature would probably be completely broken when data idle timeouts are
-      // being hit as it would be indistinguishable from a normal disconnect.
-      // If we have been disconnected for more than 15s switch our network quality to offline. We
-      // don't want to do this immediately as we might be in a transient state during a normal
-      // reconnect.
-      if *disconnected_at.get_or_insert_with(Instant::now) + DISCONNECTED_OFFLINE_GRACE_PERIOD
-        < Instant::now()
-      {
-        *self.network_quality_provider.network_quality.write() = NetworkQuality::Offline;
-        if !self.config_marked_safe_due_to_offline {
-          self.config_marked_safe_due_to_offline = true;
-          self.runtime_loader.mark_safe().await;
-          self.config_updater.mark_safe().await;
-        }
-      } else {
-        *self.network_quality_provider.network_quality.write() = NetworkQuality::Unknown;
-      }
 
       // If we have been killed, just put ourselves into a permanent pending state until the
       // process restarts.
@@ -773,9 +761,11 @@ impl Api {
 
       log::debug!("handshake received, entering main loop");
       let handshake_established = Instant::now();
+      self
+        .network_quality_monitor
+        .set_network_quality(NetworkQuality::Online);
       self.reconnect_state.record_connectivity_event();
 
-      *self.network_quality_provider.network_quality.write() = NetworkQuality::Online;
       disconnected_at = None;
 
       if let Some(spurious_upload) = upload_during_idle_timeout {
@@ -831,11 +821,6 @@ impl Api {
             }
 
             self.stats.data_idle_timeout.inc();
-            // We are no longer able to tell if we are online or offline since we are
-            // intentionally disconnecting, so set to unknown.
-            // TODO(snowp): This needs to be reworked to not only depend on our own connection, as
-            // aggressive idle timeouts impacts our ability to determine network quality.
-            self.network_quality_provider.set_network_quality(NetworkQuality::Unknown);
 
             break;
           },

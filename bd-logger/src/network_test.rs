@@ -7,7 +7,7 @@
 
 use super::{NetworkQualityInterceptor, TimeProvider};
 use crate::network::HTTPTrafficDataUsageTracker;
-use bd_api::api::SimpleNetworkQualityProvider;
+use bd_api::SimpleNetworkQualityProvider;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
@@ -17,7 +17,7 @@ use bd_log_primitives::{
   StringOrBytes,
   log_level,
 };
-use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
+use bd_network_quality::{NetworkQuality, NetworkQualityMonitor as _, NetworkQualityResolver as _};
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
 

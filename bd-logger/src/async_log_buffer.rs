@@ -42,7 +42,7 @@ use bd_log_primitives::{
   StringOrBytes,
   log_level,
 };
-use bd_network_quality::NetworkQualityProvider;
+use bd_network_quality::{NetworkQualityMonitor, NetworkQualityResolver};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::client::api::debug_data_request::{
   WorkflowDebugData,
@@ -219,7 +219,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
     shutdown_trigger_handle: ComponentShutdownTriggerHandle,
     runtime_loader: &Arc<ConfigLoader>,
-    network_quality_provider: Arc<dyn NetworkQualityProvider>,
+    log_network_quality_monitor: Arc<dyn NetworkQualityMonitor>,
+    network_quality_resolver: Arc<dyn NetworkQualityResolver>,
     device_id: String,
     store: Arc<Store>,
     time_provider: Arc<dyn TimeProvider>,
@@ -250,10 +251,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       Arc::new(internal_report::Reporter::new(runtime_loader));
     let bandwidth_usage_tracker = Arc::new(network::HTTPTrafficDataUsageTracker::new(
       Arc::new(SystemTimeProvider),
-      network_quality_provider.clone(),
+      log_network_quality_monitor,
     ));
     let network_quality_interceptor =
-      Arc::new(NetworkQualityInterceptor::new(network_quality_provider));
+      Arc::new(NetworkQualityInterceptor::new(network_quality_resolver));
     let device_id_interceptor = Arc::new(DeviceIdInterceptor::new(device_id));
 
     (
