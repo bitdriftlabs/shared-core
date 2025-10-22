@@ -618,8 +618,7 @@ impl Api {
           // during a normal reconnect.
 
           log::trace!(
-            "determining network quality, disconnect {:?} ago",
-            elapsed_since_last_disconnect,
+            "determining network quality, disconnect {elapsed_since_last_disconnect:?} ago",
           );
           if elapsed_since_last_disconnect > DISCONNECTED_OFFLINE_GRACE_PERIOD {
             // TODO(snowp): Consider also taking number of connection attempts into consideration
