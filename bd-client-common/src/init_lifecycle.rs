@@ -73,5 +73,12 @@ macro_rules! debug_check_lifecycle_less_than {
       let current_state = $lifecycle.get();
       debug_assert!(current_state < $expected_state, $text);
     }
+
+    #[cfg(not(debug_assertions))]
+    {
+      let _ = $lifecycle;
+      let _ = $expected_state;
+      let _ = $text;
+    }
   };
 }

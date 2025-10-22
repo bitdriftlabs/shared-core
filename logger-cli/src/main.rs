@@ -69,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
     },
     Command::NewSession => {
       let config_path = sdk_directory.join(SESSION_FILE);
-      std::fs::remove_file(&config_path)?;
+      let _ = std::fs::remove_file(&config_path);
       let generator = MaybeStaticSessionGenerator { config_path };
       let session_id = generator.generate_session_id()?;
       with_logger(&args, async |logger| {
