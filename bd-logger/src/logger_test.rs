@@ -10,12 +10,11 @@ use crate::LoggerHandle;
 use crate::app_version::Repository;
 use crate::logger::{Block, CaptureSession};
 use bd_client_stats_store::Collector;
-use bd_key_value::Store;
 use bd_log_primitives::log_level;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_session::Strategy;
 use bd_session::fixed::{self, UUIDCallbacks};
-use bd_test_helpers::session::InMemoryStorage;
+use bd_test_helpers::session::in_memory_store;
 use futures_util::poll;
 use std::sync::Arc;
 use tokio::pin;
@@ -26,7 +25,7 @@ use tokio_test::assert_pending;
 async fn thread_local_logger_guard() {
   let (tx, mut rx) = bd_bounded_buffer::channel(1, 100);
 
-  let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
+  let store = in_memory_store();
   let handle = LoggerHandle {
     tx,
     stats: Stats::new(&Collector::default().scope("")),

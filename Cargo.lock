@@ -327,6 +327,7 @@ dependencies = [
  "bd-error-reporter",
  "bd-grpc-codec",
  "bd-internal-logging",
+ "bd-key-value",
  "bd-metadata",
  "bd-network-quality",
  "bd-pgv",
@@ -342,6 +343,7 @@ dependencies = [
  "mockall",
  "parking_lot",
  "protobuf 4.0.0-alpha.0",
+ "serde",
  "tempfile",
  "time",
  "tokio",
@@ -546,6 +548,7 @@ name = "bd-client-stats-store"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bd-client-common",
  "bd-proto",
  "bd-stats-common",

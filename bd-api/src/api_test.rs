@@ -21,6 +21,7 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_grpc_codec::code::Code;
 use bd_grpc_codec::{Decompression, Encoder, OptimizeFor};
 use bd_internal_logging::{LogFields, LogLevel, LogType};
+use bd_key_value::Store;
 use bd_metadata::{Metadata, Platform};
 use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
 use bd_proto::protos::client::api::api_request::Request_type;
@@ -39,16 +40,17 @@ use bd_proto::protos::client::api::{
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_stats_common::labels;
 use bd_test_helpers::make_mut;
+use bd_test_helpers::session::in_memory_store;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, ToProtoDuration};
 use mockall::predicate::eq;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
-use time::ext::NumericalDuration;
+use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::{Duration, OffsetDateTime};
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
-use tokio::time::Instant;
+use tokio::time::{Instant, timeout};
 
 //
 // EmptyMetadata
@@ -176,15 +178,20 @@ struct Setup {
   api_key: String,
   network_quality_provider: Arc<SimpleNetworkQualityProvider>,
   sleep_mode_active: watch::Sender<bool>,
+  store: Arc<Store>,
   config_updater: Arc<MockClientConfigurationUpdate>,
 }
 
 impl Setup {
-  fn new() -> Self {
-    Self::new_with_config_updater(Self::make_nice_mock_updater())
+  async fn new() -> Self {
+    Self::new_ex(Self::make_nice_mock_updater(), None, None).await
   }
 
-  fn new_with_config_updater(config_updater: Arc<MockClientConfigurationUpdate>) -> Self {
+  async fn new_ex(
+    config_updater: Arc<MockClientConfigurationUpdate>,
+    initial_runtime: Option<RuntimeUpdate>,
+    idle_timeout_tx: Option<Sender<()>>,
+  ) -> Self {
     let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
 
     let (start_stream_tx, start_stream_rx) = channel(1);
@@ -204,9 +211,18 @@ impl Setup {
     let collector = Collector::default();
 
     let runtime_loader = ConfigLoader::new(sdk_directory.path());
+    if let Some(initial_runtime) = initial_runtime {
+      runtime_loader
+        .try_apply_config(initial_runtime)
+        .await
+        .unwrap();
+    }
+
     let api_key = "api-key-test".to_string();
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
-    let api = Api::new(
+
+    let store = in_memory_store();
+    let mut api = Api::new(
       sdk_directory.path().to_path_buf(),
       api_key.clone(),
       manager,
@@ -220,7 +236,9 @@ impl Setup {
       Arc::new(TestLog {}),
       &collector.scope("api"),
       sleep_mode_active_rx,
+      store.clone(),
     );
+    api.data_idle_timeout_test_hook = idle_timeout_tx;
 
     let api_task = tokio::task::spawn(async move {
       runtime_loader.try_load_persisted_config().await;
@@ -243,6 +261,7 @@ impl Setup {
       api_key,
       network_quality_provider,
       sleep_mode_active: sleep_mode_active_tx,
+      store,
       config_updater,
     }
   }
@@ -276,6 +295,7 @@ impl Setup {
       Arc::new(TestLog {}),
       &self.collector.scope("api"),
       self.sleep_mode_active.subscribe(),
+      self.store.clone(),
     );
 
     self.api_task = Some(tokio::task::spawn(api.start()));
@@ -465,7 +485,21 @@ async fn api_retry_stream() {
     .expect_try_load_persisted_config()
     .times(..)
     .returning(|| ());
-  let mut setup = Setup::new_with_config_updater(mock_updater.clone());
+  let mut setup = Setup::new_ex(
+    mock_updater.clone(),
+    RuntimeUpdate {
+      version_nonce: "test".to_string(),
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
+        bd_runtime::runtime::api::DataIdleTimeoutInterval::path(),
+        bd_test_helpers::runtime::ValueKind::Int(0),
+      )]))
+      .into(),
+      ..Default::default()
+    }
+    .into(),
+    None,
+  )
+  .await;
 
   // Since the backoff uses random values we have no control over, we loop multiple attempts
   // until it takes over a minute before we get a new stream. This demonstrates that the delay
@@ -517,6 +551,7 @@ async fn api_retry_stream() {
       None,
     )
     .await;
+
   61.seconds().sleep().await;
   assert_eq!(
     NetworkQuality::Online,
@@ -575,7 +610,7 @@ async fn api_retry_stream() {
 
 #[tokio::test(start_paused = true)]
 async fn client_kill() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
@@ -642,7 +677,7 @@ async fn client_kill() {
 
 #[tokio::test(start_paused = true)]
 async fn bad_client_kill_file() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
 
@@ -655,8 +690,253 @@ async fn bad_client_kill_file() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn data_idle_timeout() {
+  let mut setup = Setup::new_ex(
+    Setup::make_nice_mock_updater(),
+    Some(RuntimeUpdate {
+      version_nonce: "test".to_string(),
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![
+        (
+          bd_runtime::runtime::api::DataIdleTimeoutInterval::path(),
+          bd_test_helpers::runtime::ValueKind::Int(
+            10.seconds().whole_milliseconds().try_into().unwrap(),
+          ),
+        ),
+        (
+          bd_runtime::runtime::api::MinReconnectInterval::path(),
+          bd_test_helpers::runtime::ValueKind::Int(
+            15.minutes().whole_milliseconds().try_into().unwrap(),
+          ),
+        ),
+      ]))
+      .into(),
+      ..Default::default()
+    }),
+    None,
+  )
+  .await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
+
+  1.seconds().sleep().await;
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Online
+  );
+
+  // Now sleep for 11 seconds to trigger the idle timeout.
+  tokio::time::advance(11.std_seconds()).await;
+
+  setup
+    .collector
+    .wait_for_counter_eq(1, "api:data_idle_timeout", labels! {})
+    .await;
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Unknown
+  );
+
+  assert!(setup.next_stream(1.seconds()).await.is_none());
+
+  tokio::time::advance(20.std_minutes()).await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
+
+  1.seconds().sleep().await;
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Online
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn data_idle_timeout_data_resets_timeout() {
+  let (idle_timeout_tx, mut idle_timeout_rx) = channel::<()>(1);
+  let mut setup = Setup::new_ex(
+    Setup::make_nice_mock_updater(),
+    Some(RuntimeUpdate {
+      version_nonce: "test".to_string(),
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
+        bd_runtime::runtime::api::DataIdleTimeoutInterval::path(),
+        bd_test_helpers::runtime::ValueKind::Int(
+          10.seconds().whole_milliseconds().try_into().unwrap(),
+        ),
+      )]))
+      .into(),
+      ..Default::default()
+    }),
+    Some(idle_timeout_tx),
+  )
+  .await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
+
+  1.seconds().sleep().await;
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Online
+  );
+
+  // Now sleep for 8 seconds, which should not be enough to trigger the timeout.
+  tokio::time::advance(8.std_seconds()).await;
+
+  setup
+    .data_tx
+    .send(DataUpload::StatsUpload(
+      Tracked::new("test".to_string(), StatsUploadRequest::default()).0,
+    ))
+    .await
+    .unwrap();
+
+  // Make sure we grab the request to ensure the data was processed.
+  setup.next_request(1.seconds()).await.unwrap();
+
+  // Advancing time by 4 seconds would have triggered the timeout if not for the data sent above.
+  tokio::time::advance(4.std_seconds()).await;
+
+  assert!(
+    timeout(1.std_seconds(), idle_timeout_rx.recv())
+      .await
+      .is_err()
+  );
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Online
+  );
+
+  // Advancing another 7 is enough to trigger the timeout.
+  tokio::time::advance(7.std_seconds()).await;
+
+  setup
+    .collector
+    .wait_for_counter_eq(1, "api:data_idle_timeout", labels! {})
+    .await;
+
+  tokio::time::advance(20.std_minutes()).await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
+
+  1.seconds().sleep().await;
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Online
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn data_idle_timeout_data_sent_during_reconnect_timeout() {
+  let (idle_timeout_tx, mut idle_timeout_rx) = channel::<()>(1);
+  let mut setup = Setup::new_ex(
+    Setup::make_nice_mock_updater(),
+    Some(RuntimeUpdate {
+      version_nonce: "test".to_string(),
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
+        bd_runtime::runtime::api::DataIdleTimeoutInterval::path(),
+        bd_test_helpers::runtime::ValueKind::Int(
+          10.seconds().whole_milliseconds().try_into().unwrap(),
+        ),
+      )]))
+      .into(),
+      ..Default::default()
+    }),
+    Some(idle_timeout_tx),
+  )
+  .await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
+
+  1.seconds().sleep().await;
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Online
+  );
+
+  // Now sleep for 8 seconds, which should trigger the reconnect timeout.
+  tokio::time::advance(11.std_seconds()).await;
+
+  idle_timeout_rx.recv().await.unwrap();
+  setup
+    .collector
+    .assert_counter_eq(1, "api:data_idle_timeout", BTreeMap::new());
+
+  // Send a data upload during the reconnect timeout period, this should trigger an immediate
+  // reconnect.
+  setup
+    .data_tx
+    .send(DataUpload::StatsUpload(
+      Tracked::new("test".to_string(), StatsUploadRequest::default()).0,
+    ))
+    .await
+    .unwrap();
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
+  // Make sure the stats upload is processed.
+  assert_matches!(
+    setup
+      .next_request(1.seconds())
+      .await
+      .unwrap()
+      .request_type
+      .as_ref()
+      .unwrap(),
+    Request_type::StatsUpload(_)
+  );
+}
+
+#[tokio::test(start_paused = true)]
 async fn api_retry_stream_runtime_override() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
@@ -689,7 +969,7 @@ async fn api_retry_stream_runtime_override() {
 
 #[tokio::test(start_paused = true)]
 async fn multiple_handshake_messages_with_error() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
   let now = Instant::now();
@@ -710,7 +990,7 @@ async fn multiple_handshake_messages_with_error() {
 
 #[tokio::test(start_paused = true)]
 async fn error_response_with_retry_after() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
@@ -736,7 +1016,7 @@ async fn error_response_with_retry_after() {
 
 #[tokio::test(start_paused = true)]
 async fn error_response_before_handshake() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
 
@@ -756,7 +1036,7 @@ async fn error_response_before_handshake() {
 
 #[tokio::test(start_paused = true)]
 async fn rate_limited_response_before_handshake() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
 
@@ -771,7 +1051,7 @@ async fn rate_limited_response_before_handshake() {
 
 #[tokio::test(start_paused = true)]
 async fn unauthenticated_response_before_handshake() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
 
@@ -808,7 +1088,7 @@ async fn unauthenticated_response_before_handshake() {
 
 #[tokio::test]
 async fn set_stats_upload_request_sent_at_field() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
@@ -831,7 +1111,7 @@ async fn set_stats_upload_request_sent_at_field() {
 
 #[tokio::test(start_paused = true)]
 async fn sleep_mode() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
   setup.sleep_mode_active.send(true).unwrap();
   assert!(setup.next_stream(1.seconds()).await.unwrap().sleep_mode);
   setup
@@ -855,7 +1135,7 @@ async fn sleep_mode() {
 
 #[tokio::test(start_paused = true)]
 async fn opaque_client_state() {
-  let mut setup = Setup::new();
+  let mut setup = Setup::new().await;
   assert!(
     setup
       .next_stream(1.seconds())

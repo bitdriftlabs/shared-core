@@ -32,6 +32,7 @@ use std::collections::HashMap;
 use upload::{TrackedIntent, TrackedUpload};
 
 pub mod api;
+mod reconnect;
 pub mod upload;
 
 pub use bd_metadata::{Metadata, Platform};

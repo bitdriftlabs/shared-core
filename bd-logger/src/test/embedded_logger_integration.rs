@@ -8,7 +8,6 @@
 use crate::logger::{Block, CaptureSession};
 use crate::{InitParams, LogType, Logger, MetadataProvider, log_level};
 use assert_matches::assert_matches;
-use bd_key_value::Store;
 use bd_log_metadata::LogFields;
 use bd_proto::protos::client::api::RuntimeUpdate;
 use bd_proto::protos::client::runtime::Runtime;
@@ -27,7 +26,7 @@ use bd_test_helpers::config_helper::{
 use bd_test_helpers::metadata::EmptyMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
 use bd_test_helpers::runtime::make_update;
-use bd_test_helpers::session::InMemoryStorage;
+use bd_test_helpers::session::in_memory_store;
 use bd_test_helpers::test_api_server::StreamAction;
 use std::sync::Arc;
 
@@ -64,7 +63,7 @@ impl Setup {
 
     tokio::task::spawn(network.start());
 
-    let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
+    let store = in_memory_store();
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
     let (logger, _, future, _) = crate::LoggerBuilder::new(InitParams {

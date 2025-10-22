@@ -21,6 +21,9 @@ use base64::Engine;
 use bd_log::warn_every;
 use time::ext::NumericalDuration;
 
+pub mod resilient_kv;
+pub use resilient_kv::ResilientKvStorage;
+
 #[cfg(test)]
 #[ctor::ctor]
 fn test_global_init() {
@@ -162,6 +165,3 @@ where
     self.key
   }
 }
-
-pub mod resilient_kv;
-pub use resilient_kv::ResilientKvStorage;

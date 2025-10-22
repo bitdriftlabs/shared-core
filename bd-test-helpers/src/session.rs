@@ -8,6 +8,7 @@
 use bd_key_value::Storage;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 //
 // DiskStorage
@@ -96,4 +97,11 @@ impl Storage for InMemoryStorage {
     self.state.lock().remove(key);
     Ok(())
   }
+}
+
+#[must_use]
+pub fn in_memory_store() -> Arc<bd_key_value::Store> {
+  Arc::new(bd_key_value::Store::new(Box::new(
+    InMemoryStorage::default(),
+  )))
 }
