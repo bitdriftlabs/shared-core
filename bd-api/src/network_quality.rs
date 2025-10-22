@@ -124,6 +124,9 @@ impl AggregatedNetworkQualityProvider {
 
 impl NetworkQualityResolver for AggregatedNetworkQualityProvider {
   fn get_network_quality(&self) -> NetworkQuality {
+    // TODO(snowp): We should consider more sophisticated aggregation strategies here. For now, we
+    // just return the first non-Unknown quality and let the callers decide which provider to
+    // prefer.
     for provider in &self.providers {
       let quality = provider.get_network_quality();
       if quality != NetworkQuality::Unknown {
