@@ -590,6 +590,12 @@ impl Api {
       // with us the upload we receive while waiting.
       let upload_during_idle_timeout =
         if let Some(reconnect_delay) = self.reconnect_state.next_reconnect_delay() {
+          // We are intentionally delaying reconnecting, so set network quality to unknown since
+          // we can't tell if we are actually offline or just delaying.
+          self
+            .network_quality_provider
+            .set_network_quality(NetworkQuality::Unknown);
+
           // Use tokio::time::sleep_until since this plays better with test time compared to using
           // tokio::time::sleep.
           let reconnect_at = tokio::time::Instant::now() + reconnect_delay;
@@ -601,30 +607,39 @@ impl Api {
               }
           }
         } else {
+          // We don't want to flag the connection as being offline if we artifically delayed
+          // connecting due to the reconnct state, as we want to leave that as unknown until we've
+          // tried reconnecting once.
+
+          // If we have been disconnected for more than 15s switch our network quality to offline.
+          // We don't want to do this immediately as we might be in a transient state
+          // during a normal reconnect.
+
+          let disconnected_at = *disconnected_at.get_or_insert_with(Instant::now);
+          log::trace!(
+            "determining network quality, disconnect {:?} ago",
+            disconnected_at.elapsed()
+          );
+          if disconnected_at.elapsed() > DISCONNECTED_OFFLINE_GRACE_PERIOD {
+            // TODO(snowp): Consider also taking number of connection attempts into consideration
+            // as this might play better with the reconnect delay logic.
+            self
+              .network_quality_provider
+              .set_network_quality(NetworkQuality::Offline);
+            if !self.config_marked_safe_due_to_offline {
+              self.config_marked_safe_due_to_offline = true;
+              self.runtime_loader.mark_safe().await;
+              self.config_updater.mark_safe().await;
+            }
+          } else {
+            self
+              .network_quality_provider
+              .set_network_quality(NetworkQuality::Unknown);
+          }
+
           None
         };
 
-      // TODO(snowp): This feature would probably be completely broken when data idle timeouts are
-      // being hit as it would be indistinguishable from a normal disconnect.
-      // If we have been disconnected for more than 15s switch our network quality to offline. We
-      // don't want to do this immediately as we might be in a transient state during a normal
-      // reconnect.
-      if *disconnected_at.get_or_insert_with(Instant::now) + DISCONNECTED_OFFLINE_GRACE_PERIOD
-        < Instant::now()
-      {
-        self
-          .network_quality_provider
-          .set_network_quality(NetworkQuality::Offline);
-        if !self.config_marked_safe_due_to_offline {
-          self.config_marked_safe_due_to_offline = true;
-          self.runtime_loader.mark_safe().await;
-          self.config_updater.mark_safe().await;
-        }
-      } else {
-        self
-          .network_quality_provider
-          .set_network_quality(NetworkQuality::Unknown);
-      }
 
       // If we have been killed, just put ourselves into a permanent pending state until the
       // process restarts.
@@ -806,11 +821,6 @@ impl Api {
             }
 
             self.stats.data_idle_timeout.inc();
-            // We are no longer able to tell if we are online or offline since we are
-            // intentionally disconnecting, so set to unknown.
-            // TODO(snowp): This needs to be reworked to not only depend on our own connection, as
-            // aggressive idle timeouts impacts our ability to determine network quality.
-            self.network_quality_provider.set_network_quality(NetworkQuality::Unknown);
 
             break;
           },

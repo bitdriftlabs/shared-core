@@ -155,7 +155,7 @@ impl PlatformNetworkStream for Stream {
 // TestLog
 //
 
-struct TestLog {}
+struct TestLog;
 
 impl bd_internal_logging::Logger for TestLog {
   fn log(&self, _level: LogLevel, _log_type: LogType, _msg: &str, _fields: LogFields) {}
@@ -401,7 +401,7 @@ impl Setup {
       .current_stream_tx
       .lock()
       .unwrap()
-      .as_ref()
+      .take()
       .unwrap()
       .clone();
 
@@ -764,6 +764,98 @@ async fn data_idle_timeout() {
   assert_eq!(
     setup.network_quality_provider.get_network_quality(),
     NetworkQuality::Online
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn data_idle_timeout_fails_to_connect() {
+  let mut setup = Setup::new_ex(
+    Setup::make_nice_mock_updater(),
+    Some(RuntimeUpdate {
+      version_nonce: "test".to_string(),
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![
+        (
+          bd_runtime::runtime::api::DataIdleTimeoutInterval::path(),
+          bd_test_helpers::runtime::ValueKind::Int(
+            10.seconds().whole_milliseconds().try_into().unwrap(),
+          ),
+        ),
+        (
+          bd_runtime::runtime::api::MinReconnectInterval::path(),
+          bd_test_helpers::runtime::ValueKind::Int(
+            15.minutes().whole_milliseconds().try_into().unwrap(),
+          ),
+        ),
+      ]))
+      .into(),
+      ..Default::default()
+    }),
+    None,
+  )
+  .await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
+
+  1.seconds().sleep().await;
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Online
+  );
+
+  // Now sleep for 11 seconds to trigger the idle timeout.
+  tokio::time::advance(11.std_seconds()).await;
+
+  setup
+    .collector
+    .wait_for_counter_eq(1, "api:data_idle_timeout", labels! {})
+    .await;
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Unknown
+  );
+
+  assert!(setup.next_stream(1.seconds()).await.is_none());
+
+  tokio::time::advance(20.std_minutes()).await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+
+  // Advance test time as well since retry state relies on this.
+  setup.time_provider.advance(20.minutes());
+
+  setup.close_stream().await;
+
+  // This is a bit flaky due to timing, so we loop a few times to ensure we hit the unknown state.
+  let mut reached_unknown = false;
+  for _ in 0 .. 10 {
+    if setup.network_quality_provider.get_network_quality() == NetworkQuality::Unknown {
+      reached_unknown = true;
+      break;
+    }
+    tokio::task::yield_now().await;
+  }
+  assert!(reached_unknown, "NetworkQuality::Unknown was never reached");
+
+
+  // Greater than the disconnect grace period.
+  20.seconds().sleep().await;
+
+  setup.close_stream().await;
+
+  1.seconds().sleep().await;
+
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Offline
   );
 }
 

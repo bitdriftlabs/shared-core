@@ -77,6 +77,8 @@ impl ReconnectState {
   /// In practice, this should be called whenever we've completed a handshake with the server or
   /// we're sending data over a connected stream.
   pub fn record_connectivity_event(&mut self) {
+    log::trace!("recording connectivity event for reconnect state");
+
     let last_connected_at = self.time_provider.now();
     self.last_connected_at = Some(last_connected_at);
     let () = self.store.set(
