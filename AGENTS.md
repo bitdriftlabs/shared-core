@@ -11,12 +11,13 @@
 ## Code Style Guidelines
 - Use 2-space indentation (no tabs)
 - Max line width: 100 characters
-- Error handling: Use `anyhow` for error types
+- Error handling: Use `anyhow` for general errors, `thiserror` for custom error types
 - Use `#[cfg(test)]` and separate test files with `_test.rs` suffix
 - Imports: Group imports with `One` style, module granularity, and `HorizontalVertical` layout
-- Use workspace dependencies where available
+- Use workspace dependencies from Cargo.toml where available
 - Edition: Rust 2024
 - Make sure to run `cargo +nightly fmt` after making changes to apply default formatting rules.
+- Use pattern matching with if-let and match expressions for error handling
 
 ## Test File Conventions
 1. Test files should be placed adjacent to the implementation file they're testing
