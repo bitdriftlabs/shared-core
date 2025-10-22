@@ -31,21 +31,21 @@ type BodySender = mpsc::Sender<std::result::Result<Frame<Bytes>, Infallible>>;
 /// An implementation of `bd_api::PlatformNetworkManager` using hyper, for use in native contexts.
 #[derive(Debug)]
 pub struct HyperNetwork {
-  stream_event_rx: mpsc::Receiver<StreamEvent>,
+  stream_event_rx: mpsc::Receiver<NewStream>,
   uri: String,
   shutdown: ComponentShutdown,
+}
+
+struct NewStream {
+  event_tx: Sender<bd_api::StreamEvent>,
+  headers: HashMap<String, String>,
+  data_rx: mpsc::Receiver<Vec<u8>>,
 }
 
 /// The handle used to interface with the active hyper task.
 #[derive(Clone)]
 pub struct Handle {
-  stream_event_tx: mpsc::Sender<StreamEvent>,
-}
-
-#[derive(Debug)]
-enum StreamEvent {
-  Start(Sender<bd_api::StreamEvent>, HashMap<String, String>),
-  Data(Vec<u8>),
+  new_stream_tx: mpsc::Sender<NewStream>,
 }
 
 impl HyperNetwork {
@@ -75,14 +75,15 @@ impl HyperNetwork {
 
     let uri = format!("{address}/bitdrift_public.protobuf.client.v1.ApiService/Mux");
 
-
     (
       Self {
         stream_event_rx,
         uri,
         shutdown,
       },
-      Handle { stream_event_tx },
+      Handle {
+        new_stream_tx: stream_event_tx,
+      },
     )
   }
 
@@ -99,26 +100,28 @@ impl HyperNetwork {
       // previous stream, so this serves to clear out the channel of events that
       // corresponded to the previous stream.
       log::debug!("awaiting next stream");
-      let (event_tx, headers) = loop {
+      let new_stream = {
         let event = tokio::select! {
           event = self.stream_event_rx.recv() => event,
           () = self.shutdown.cancelled() => return Ok(()),
         };
 
         match event {
-          Some(StreamEvent::Start(event_tx, headers)) => break (event_tx, headers),
-          Some(_) => {},
+          Some(new_stream) => new_stream,
           // Channel has been closed, so we must be shutting down.
           None => return Ok(()),
         }
       };
 
-      let Some(event) = self.process_stream(&client, &event_tx, headers).await else {
+      let event_tx = new_stream.event_tx.clone();
+
+      let Some(event) = self.process_stream(&client, new_stream).await else {
         return Ok(());
       };
 
       if event_tx.send(event).await.is_err() {
         // Channel has shut down on us, we must be shutting down.
+        log::debug!("event channel closed, shutting down hyper networking");
         return Ok(());
       }
     }
@@ -127,12 +130,11 @@ impl HyperNetwork {
   async fn process_stream(
     &mut self,
     client: &Client<HttpsConnector<HttpConnector>, BoxBody>,
-    event_tx: &tokio::sync::mpsc::Sender<bd_api::StreamEvent>,
-    headers: HashMap<String, String>,
+    mut stream: NewStream,
   ) -> Option<bd_api::StreamEvent> {
     log::debug!("received request for new stream: {}", self.uri.as_str());
 
-    let (body_sender, request) = Self::create_request(self.uri.as_str(), headers);
+    let (body_sender, request) = Self::create_request(self.uri.as_str(), stream.headers);
 
     // TODO(snowp): Should this also be gated on the shutdown hook?
     let mut response = match client.request(request).await {
@@ -175,9 +177,10 @@ impl HyperNetwork {
     loop {
       // Handle either an inbound message from the server or an outbound message from the api mux.
       let maybe_event = tokio::select! {
-        stream_event = self.stream_event_rx.recv() => {
-          // Short circuit if stream_event has been closed - this indicates shutdown.
-          Self::handle_outbound_data(&body_sender, stream_event?).await
+        data = stream.data_rx.recv() => {
+          // Short circuit if stream.data_rx has been closed - this indicates shutdown or that the
+          // stream has been dropped.
+          Self::handle_outbound_data(&body_sender, data?).await
         },
         frame = response.body_mut().frame() => {
           Some(Self::handle_inbound_data(frame))
@@ -197,7 +200,8 @@ impl HyperNetwork {
       // with a StreamClosed then we bubble that up.
       match event {
         bd_api::StreamEvent::Data(data) => {
-          if event_tx
+          if stream
+            .event_tx
             .send(bd_api::StreamEvent::Data(data))
             .await
             .is_err()
@@ -216,26 +220,21 @@ impl HyperNetwork {
   /// if the stream should be closed.
   async fn handle_outbound_data(
     body_sender: &BodySender,
-    event: StreamEvent,
+    data: Vec<u8>,
   ) -> Option<bd_api::StreamEvent> {
-    match event {
-      StreamEvent::Start(..) => panic!("should never happen"),
-      StreamEvent::Data(data) => {
-        if body_sender
-          .send(Ok(Frame::data(data.into())))
-          .await
-          .is_err()
-        {
-          // We failed to send data over the body channel, the stream must have closed.
-          // Signal that the stream closed.
-          return Some(bd_api::StreamEvent::StreamClosed(
-            "upstream close".to_string(),
-          ));
-        }
-
-        None
-      },
+    if body_sender
+      .send(Ok(Frame::data(data.into())))
+      .await
+      .is_err()
+    {
+      // We failed to send data over the body channel, the stream must have closed.
+      // Signal that the stream closed.
+      return Some(bd_api::StreamEvent::StreamClosed(
+        "upstream close".to_string(),
+      ));
     }
+
+    None
   }
 
   /// Handles inbound data arriving via the hyper response channel. Returns true if the stream
@@ -283,28 +282,28 @@ impl<T> PlatformNetworkManager<T> for Handle {
       .map(|(&k, &v)| (k.to_string(), v.to_string()))
       .collect();
 
-    self
-      .stream_event_tx
-      .send(StreamEvent::Start(event_tx, headers))
-      .await
-      .unwrap();
+    let (data_tx, data_rx) = mpsc::channel(1);
 
-    // Unlike the other implementations we continue to use the same channel for both stream
-    // creation and events sent over the active stream.
-    // TODO(snowp): Consider teasing this apart, it might make parts of the processing loop
-    // simpler.
-    Ok(Box::new(self.clone()))
+    let new_stream = NewStream {
+      event_tx: event_tx.clone(),
+      headers,
+      data_rx,
+    };
+
+    self.new_stream_tx.send(new_stream).await.unwrap();
+
+    Ok(Box::new(StreamHandle { data_tx }))
   }
 }
 
+struct StreamHandle {
+  data_tx: mpsc::Sender<Vec<u8>>,
+}
+
 #[async_trait::async_trait]
-impl PlatformNetworkStream for Handle {
+impl PlatformNetworkStream for StreamHandle {
   async fn send_data(&mut self, data: &[u8]) -> anyhow::Result<()> {
-    self
-      .stream_event_tx
-      .send(StreamEvent::Data(Vec::from(data)))
-      .await
-      .unwrap();
+    let _ignored = self.data_tx.send(data.to_vec()).await;
 
     Ok(())
   }
