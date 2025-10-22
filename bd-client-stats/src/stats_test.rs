@@ -8,7 +8,6 @@
 use crate::Stats;
 use crate::file_manager::{FileManager, PENDING_AGGREGATION_INDEX_FILE, STATS_DIRECTORY};
 use crate::stats::{IntervalCreator, SleepModeAwareRuntimeWatchTicker, Ticker};
-use crate::test::TestTicker;
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
 use bd_api::upload::{Tracked, UploadResponse};
@@ -31,6 +30,7 @@ use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_test_helpers::stats::StatsRequestHelper;
+use bd_time::test::TestTicker;
 use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeDurationExt, TimeProvider};
 use futures_util::poll;
 use std::collections::{BTreeMap, HashMap};

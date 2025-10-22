@@ -10,7 +10,7 @@
 mod async_log_buffer_test;
 
 use crate::device_id::DeviceIdInterceptor;
-use crate::log_replay::LogReplay;
+use crate::log_replay::{LogReplay, LogReplayResult};
 use crate::logger::{ReportProcessingRequest, with_thread_local_logger_guard};
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
@@ -18,13 +18,16 @@ use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::PreConfigBuffer;
 use crate::{Block, internal_report, network};
 use anyhow::anyhow;
+use bd_api::DataUpload;
 use bd_bounded_buffer::{Receiver, Sender, TrySendError, channel};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
-use bd_client_common::maybe_await_map;
+use bd_client_common::{maybe_await, maybe_await_map};
 use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_error_reporter::reporter::{handle_unexpected, handle_unexpected_error_with_details};
+use bd_feature_flags::{FeatureFlags, FeatureFlagsBuilder};
+use bd_log::warn_every;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
@@ -41,21 +44,36 @@ use bd_log_primitives::{
 };
 use bd_network_quality::NetworkQualityProvider;
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use bd_proto::protos::client::api::debug_data_request::{
+  WorkflowDebugData,
+  WorkflowTransitionDebugData,
+};
+use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use bd_time::TimeProvider;
-use std::collections::VecDeque;
+use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
+use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
+use bd_workflows::workflow::WorkflowDebugStateMap;
+use debug_data_request::workflow_transition_debug_data::Transition_type;
+use std::collections::{HashMap, VecDeque};
 use std::mem::size_of_val;
+use std::pin::Pin;
 use std::sync::Arc;
 use time::OffsetDateTime;
+use time::ext::NumericalDuration;
 use tokio::sync::{mpsc, oneshot};
+use tokio::task;
+use tokio::time::Sleep;
 
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {
   EmitLog((LogLine, Option<oneshot::Sender<()>>)),
   AddLogField(String, StringOrBytes<String, Vec<u8>>),
   RemoveLogField(String),
+  SetFeatureFlag(String, Option<String>),
+  SetFeatureFlags(Vec<(String, Option<String>)>),
+  RemoveFeatureFlag(String),
   FlushState(Option<bd_completion::Sender<()>>),
 }
 
@@ -66,6 +84,12 @@ impl MemorySized for AsyncLogBufferMessage {
         Self::EmitLog((log, _)) => log.size(),
         Self::AddLogField(key, value) => key.size() + value.size(),
         Self::RemoveLogField(field_name) => field_name.len(),
+        Self::SetFeatureFlag(flag, variant) => flag.len() + variant.as_ref().map_or(0, String::len),
+        Self::SetFeatureFlags(flags) => flags
+          .iter()
+          .map(|(k, v)| k.len() + v.as_ref().map_or(0, String::len))
+          .sum(),
+        Self::RemoveFeatureFlag(flag) => flag.len(),
         Self::FlushState(sender) => size_of_val(sender),
       }
   }
@@ -97,7 +121,7 @@ pub struct LogLine {
 
   /// If set, indicates that the log should trigger a session capture. The provided value is an ID
   /// that helps identify why the session should be captured.
-  pub capture_session: Option<String>,
+  pub capture_session: Option<&'static str>,
 }
 
 //
@@ -109,6 +133,9 @@ pub enum LogAttributesOverrides {
   /// The hint that tells the SDK what the expected previous session ID was. The SDK uses it to
   /// verify whether the passed information matches its internal session ID tracking and drops
   /// logs whose hints are invalid.
+  ///
+  /// Use of this override assumes that all relevant metadata has been attached to the log as no
+  /// current session metadata will be added.
   PreviousRunSessionID(String, OffsetDateTime),
 
   /// Overrides the time when the log occurred at, useful for cases like spans with a provided
@@ -136,6 +163,14 @@ impl MemorySized for LogLine {
   }
 }
 
+/// Tracks the initialization state of the feature flags. By tracking the initialization state like
+/// this we can avoid attempting to initialize the feature flags multiple times in the case of
+/// failures.
+enum FeatureFlagInitialization {
+  Pending(FeatureFlagsBuilder),
+  Initialized(Option<FeatureFlags>),
+}
+
 //
 // AsyncLogBuffer
 //
@@ -146,6 +181,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   communication_rx: Receiver<AsyncLogBufferMessage>,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
   report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
+  data_upload_tx: mpsc::Sender<DataUpload>,
   shutdown_trigger_handle: ComponentShutdownTriggerHandle,
 
   session_strategy: Arc<bd_session::Strategy>,
@@ -158,16 +194,16 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   events_listener: bd_events::Listener,
 
   replayer: R,
-
   interceptors: Vec<Arc<dyn LogInterceptor>>,
 
   logging_state: LoggingState<bd_log_primitives::Log>,
-
   global_state_tracker: global_state::Tracker,
-
   time_provider: Arc<dyn TimeProvider>,
-
   lifecycle_state: InitLifecycleState,
+
+  feature_flags: FeatureFlagInitialization,
+  pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
+  send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -188,6 +224,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     store: Arc<Store>,
     time_provider: Arc<dyn TimeProvider>,
     lifecycle_state: InitLifecycleState,
+    feature_flags_builder: FeatureFlagsBuilder,
+    data_upload_tx: mpsc::Sender<DataUpload>,
   ) -> (Self, Sender<AsyncLogBufferMessage>) {
     let (async_log_buffer_communication_tx, async_log_buffer_communication_rx) = channel(
       uninitialized_logging_context
@@ -223,6 +261,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         communication_rx: async_log_buffer_communication_rx,
         config_update_rx,
         report_processor_rx,
+        data_upload_tx,
         shutdown_trigger_handle,
 
         replayer,
@@ -256,6 +295,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         ),
         time_provider,
         lifecycle_state,
+
+        feature_flags: FeatureFlagInitialization::Pending(feature_flags_builder),
+
+        pending_workflow_debug_state: HashMap::new(),
+        send_workflow_debug_state_delay: None,
       },
       async_log_buffer_communication_tx,
     )
@@ -270,7 +314,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     matching_fields: AnnotatedLogFields,
     attributes_overrides: Option<LogAttributesOverrides>,
     block: Block,
-    capture_session: Option<String>,
+    capture_session: Option<&'static str>,
   ) -> Result<(), TrySendError> {
     let (log_processing_completed_tx_option, log_processing_completed_rx_option) =
       if matches!(block, Block::Yes(_)) {
@@ -351,6 +395,74 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     ))
   }
 
+  /// Sends a message to set or update a feature flag.
+  ///
+  /// This is an internal method used by the logger to send feature flag update messages
+  /// to the async log buffer. The message is sent asynchronously and will be processed
+  /// by the log buffer thread.
+  ///
+  /// # Arguments
+  ///
+  /// * `tx` - The sender channel to the async log buffer
+  /// * `flag` - The name of the feature flag to set or update
+  /// * `variant` - The variant value for the flag (None for boolean-style flags)
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(())` if the message was sent successfully, or a `TrySendError`
+  /// if the channel is full or disconnected.
+  pub fn set_feature_flag(
+    tx: &Sender<AsyncLogBufferMessage>,
+    flag: String,
+    variant: Option<String>,
+  ) -> Result<(), TrySendError> {
+    tx.try_send(AsyncLogBufferMessage::SetFeatureFlag(flag, variant))
+  }
+
+  /// Sends a message to set or update multiple feature flags.
+  ///
+  /// This is an internal method used by the logger to send multiple feature flag update
+  /// messages to the async log buffer in a single operation. The message is sent
+  /// asynchronously and will be processed by the log buffer thread.
+  ///
+  /// # Arguments
+  ///
+  /// * `tx` - The sender channel to the async log buffer
+  /// * `flags` - A vector of tuples containing flag names and their variants
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(())` if the message was sent successfully, or a `TrySendError`
+  /// if the channel is full or disconnected.
+  pub fn set_feature_flags(
+    tx: &Sender<AsyncLogBufferMessage>,
+    flags: Vec<(String, Option<String>)>,
+  ) -> Result<(), TrySendError> {
+    tx.try_send(AsyncLogBufferMessage::SetFeatureFlags(flags))
+  }
+
+  /// Sends a message to remove a feature flag.
+  ///
+  /// This is an internal method used by the logger to send feature flag removal messages
+  /// to the async log buffer. The message is sent asynchronously and will be processed
+  /// by the log buffer thread.
+  ///
+  /// # Arguments
+  ///
+  /// * `tx` - The sender channel to the async log buffer
+  /// * `flag` - The name of the feature flag to remove
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(())` if the message was sent successfully, or a `TrySendError`
+  /// if the channel is full or disconnected.
+  pub fn remove_feature_flag(
+    tx: &Sender<AsyncLogBufferMessage>,
+    flag: String,
+  ) -> Result<(), TrySendError> {
+    tx.try_send(AsyncLogBufferMessage::RemoveFeatureFlag(flag))
+  }
+
   pub fn flush_state(tx: &Sender<AsyncLogBufferMessage>, block: Block) -> Result<(), TrySendError> {
     let (completion_tx, completion_rx) = if matches!(block, Block::Yes(_)) {
       let (tx, rx) = bd_completion::Sender::new();
@@ -382,8 +494,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     let mut logs = VecDeque::new();
     logs.push_back(log);
     while let Some(log) = logs.pop_front() {
-      let new_logs = self.process_log(log, block).await?;
-      logs.extend(new_logs.into_iter().map(|log| {
+      let log_replay_result = self.process_log(log, block).await?;
+      logs.extend(log_replay_result.logs_to_inject.into_iter().map(|log| {
         LogLine {
           log_level: log.log_level,
           log_type: log.log_type,
@@ -416,21 +528,46 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: log.capture_session,
         }
       }));
+
+      self
+        .pending_workflow_debug_state
+        .extend(log_replay_result.workflow_debug_state);
+      // We send a periodic workflow debug state update even if there have been no transitions.
+      // For an active debugging session this allows us to allow the UI to know we are actually
+      // attached and debugging.
+      if log_replay_result.engine_has_debug_workflows
+        && self.send_workflow_debug_state_delay.is_none()
+      {
+        // TODO(mattklein123): In a perfect world every time we transition from not debugging to
+        // debugging we should immediately send a debug update so that the server can get the
+        // baseline state and begin debugging properly. We can do this in a follow up.
+        self.send_workflow_debug_state_delay = Some(Box::pin(1.seconds().sleep()));
+      }
     }
     Ok(())
   }
 
-  async fn process_log(&mut self, log: LogLine, block: bool) -> anyhow::Result<Vec<Log>> {
+  async fn process_log(&mut self, log: LogLine, block: bool) -> anyhow::Result<LogReplayResult> {
     // Prevent re-entrancy when we are evaluating the log metadata.
     let result = with_thread_local_logger_guard(|| {
-      self
-        .metadata_collector
-        .normalized_metadata_with_extra_fields(
-          log.fields,
-          log.matching_fields,
-          log.log_type,
-          &mut self.global_state_tracker,
-        )
+      if let Some(LogAttributesOverrides::PreviousRunSessionID(_id, _timestamp)) =
+        &log.attributes_overrides
+      {
+        // avoid normalizing metadata for logs from previous sessions, which may
+        // have had different global state
+        self
+          .metadata_collector
+          .metadata_from_fields(log.fields, log.matching_fields)
+      } else {
+        self
+          .metadata_collector
+          .normalized_metadata_with_extra_fields(
+            log.fields,
+            log.matching_fields,
+            log.log_type,
+            &mut self.global_state_tracker,
+          )
+      }
     });
 
     match result {
@@ -497,7 +634,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 .await;
 
               // We drop the log as the provided override attributes do not match our expectations.
-              return Ok(vec![]);
+              return Ok(LogReplayResult::default());
             }
           },
           Some(LogAttributesOverrides::OccurredAt(overridden_timestamp)) => {
@@ -548,8 +685,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  async fn write_log(&mut self, log: Log, block: bool) -> anyhow::Result<Vec<Log>> {
-    let logs_to_inject = match &mut self.logging_state {
+  async fn write_log(&mut self, log: Log, block: bool) -> anyhow::Result<LogReplayResult> {
+    let log_replay_result = match &mut self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
         let result = uninitialized_logging_context
           .pre_config_log_buffer
@@ -563,7 +700,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           anyhow::bail!("failed to push log to a pre-config buffer: {e}");
         }
 
-        vec![]
+        LogReplayResult::default()
       },
       LoggingState::Initialized(initialized_logging_context) => self
         .replayer
@@ -577,7 +714,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         .map_err(|e| anyhow!("failed to replay async log buffer log: {e}"))?,
     };
 
-    Ok(logs_to_inject)
+    Ok(log_replay_result)
   }
 
   async fn update(mut self, config: ConfigUpdate) -> (Self, Option<PreConfigBuffer<Log>>) {
@@ -605,28 +742,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn maybe_replay_pre_config_buffer_logs(
     &mut self,
     pre_config_log_buffer: PreConfigBuffer<bd_log_primitives::Log>,
-    initial_logs: &mut Vec<Log>,
   ) {
     let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state else {
       return;
     };
 
     let now = self.time_provider.now();
-    for log_line in initial_logs.drain(..) {
-      if let Err(e) = self
-        .replayer
-        .replay_log(
-          log_line,
-          false,
-          &mut initialized_logging_context.processing_pipeline,
-          now,
-        )
-        .await
-      {
-        log::debug!("failed to reply initial logs: {e}");
-      }
-    }
-
     for log_line in pre_config_log_buffer.pop_all() {
       if let Err(e) = self
         .replayer
@@ -684,7 +805,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             self.lifecycle_state.set(InitLifecycle::LogProcessingStarted);
             self.maybe_replay_pre_config_buffer_logs(
                 pre_config_log_buffer,
-                &mut vec![]
+
             ).await;
           }
         },
@@ -708,7 +829,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               // Always capture the session when we process a crash log.
               // TODO(snowp): Ideally we should include information like the report and client side
               // grouping here to help make smarter decisions during intent negotiation.
-              capture_session: Some("crash_handler".to_string()),
+              capture_session: Some("crash_handler"),
             };
             if let Err(e) = self.process_all_logs(log, false).await {
               log::debug!("failed to process crash log: {e}");
@@ -747,6 +868,27 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             },
             AsyncLogBufferMessage::RemoveLogField(field_name) => {
               self.metadata_collector.remove_field(&field_name);
+            },
+            AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
+              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
+                feature_flags.set(flag, variant).unwrap_or_else(|e| {
+                  log::warn!("failed to set feature flag: {e}");
+                });
+              }
+            },
+            AsyncLogBufferMessage::SetFeatureFlags(flags) => {
+              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
+                feature_flags.set_multiple(flags).unwrap_or_else(|e| {
+                  log::warn!("failed to set feature flags: {e}");
+                });
+              }
+            },
+            AsyncLogBufferMessage::RemoveFeatureFlag(flag) => {
+              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
+                feature_flags.remove(&flag).unwrap_or_else(|e| {
+                  log::warn!("failed to remove feature flag ({flag:?}): {e}");
+                });
+              }
             },
             AsyncLogBufferMessage::FlushState(completion_tx) => {
               let (sender, receiver) = bd_completion::Sender::new();
@@ -788,6 +930,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             initialized_logging_context.processing_pipeline.run().await;
         })
           => {},
+        () = maybe_await(&mut self.send_workflow_debug_state_delay) => {
+          self.send_debug_data().await;
+        },
         () = self.resource_utilization_reporter.run() => {},
         () = self.session_replay_recorder.run() => {},
         () = self.events_listener.run() => {},
@@ -799,6 +944,86 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         },
       }
     }
+  }
+
+  /// Lazily initializes the feature flags if they have not been initialized yet.
+  async fn maybe_initialize_feature_flags(&mut self) -> Option<&mut FeatureFlags> {
+    if let FeatureFlagInitialization::Pending(builder) = &self.feature_flags {
+      let builder = builder.clone();
+      let feature_flags = task::spawn_blocking(move || {
+        // This should never fail unless there's a serious filesystem issue.
+        // Treat this as an unexpected error so we get visibility into it.
+        // If this keeps happening for normal reasons we can remove this later.
+        builder
+          .current_feature_flags()
+          .map_err(|e| {
+            handle_unexpected_error_with_details(e, "feature flag initialization", || None);
+          })
+          .ok()
+      })
+      .await
+      .ok()
+      .flatten();
+
+      self.feature_flags = FeatureFlagInitialization::Initialized(feature_flags);
+    }
+
+    if let FeatureFlagInitialization::Initialized(ref mut feature_flags) = self.feature_flags {
+      feature_flags.as_mut()
+    } else {
+      warn_every!(
+        30.seconds(),
+        "feature flags failed to initialize, will not be available"
+      );
+      None
+    }
+  }
+
+  async fn send_debug_data(&mut self) {
+    log::debug!("sending workflow debug data");
+    let mut workflow_debug_data: HashMap<String, WorkflowDebugData> = HashMap::new();
+    for (workflow_id, state) in std::mem::take(&mut self.pending_workflow_debug_state) {
+      let workflow_entry = workflow_debug_data.entry(workflow_id).or_default();
+      for (state_key, data) in state.into_inner() {
+        let last_transition_time: OffsetDateTime = data.last_transition_time.into();
+        match state_key {
+          WorkflowDebugStateKey::StartOrReset => {
+            let start_reset = workflow_entry.start_reset.mut_or_insert_default();
+            start_reset.transition_count += data.count;
+            start_reset.last_transition_time = last_transition_time.into_proto();
+          },
+          WorkflowDebugStateKey::StateTransition {
+            state_id,
+            transition_type,
+          } => {
+            workflow_entry
+              .states
+              .entry(state_id)
+              .or_default()
+              .transitions
+              .push(WorkflowTransitionDebugData {
+                transition_type: Some(match transition_type {
+                  WorkflowDebugTransitionType::Normal(index) => {
+                    Transition_type::TransitionIndex(index.try_into().unwrap_or(0))
+                  },
+                  WorkflowDebugTransitionType::Timeout => Transition_type::TimeoutTransition(true),
+                }),
+                transition_count: data.count,
+                last_transition_time: last_transition_time.into_proto(),
+                ..Default::default()
+              });
+          },
+        }
+      }
+    }
+
+    let _ = self
+      .data_upload_tx
+      .send(DataUpload::DebugData(DebugDataRequest {
+        workflow_debug_data,
+        ..Default::default()
+      }))
+      .await;
   }
 
   async fn write_log_internal(

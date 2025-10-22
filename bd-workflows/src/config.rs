@@ -8,7 +8,7 @@
 use crate::workflow::Traversal;
 use anyhow::{anyhow, bail};
 use bd_log_matcher::matcher::Tree;
-use bd_log_primitives::FieldsRef;
+use bd_log_primitives::{FieldsRef, LogMessage};
 use bd_proto::protos::workflow::workflow;
 use bd_proto::protos::workflow::workflow::workflow::action::ActionGenerateLog;
 use bd_proto::protos::workflow::workflow::workflow::transition_extension::Extension_type;
@@ -53,11 +53,41 @@ pub struct WorkflowsConfiguration {
 
 impl WorkflowsConfiguration {
   #[must_use]
-  pub fn new(workflows: Vec<WorkflowConfigProto>) -> Self {
-    let workflows = workflows
+  pub fn new(
+    workflows: Vec<WorkflowConfigProto>,
+    debug_workflows: Vec<WorkflowConfigProto>,
+  ) -> Self {
+    // In this method we assume that the number of debug workflows is either zero or very small so
+    // we do simple linear searches.
+    let mut found_debug_workflows = vec![false; debug_workflows.len()];
+
+    let mut workflows: Vec<_> = workflows
       .into_iter()
-      .filter_map(|config| Config::new(config).ok())
+      .filter_map(|config| {
+        let mode = if let Some((index, _)) = debug_workflows
+          .iter()
+          .enumerate()
+          .find(|(_, debug_config)| debug_config.id == config.id)
+        {
+          if let Some(v) = found_debug_workflows.get_mut(index) {
+            *v = true;
+          }
+          WorkflowDebugMode::DebugAndDeployed
+        } else {
+          WorkflowDebugMode::None
+        };
+
+        Config::new(config, mode).ok()
+      })
       .collect();
+    // Add debug workflows that are not deployed.
+    for (index, debug_config) in debug_workflows.into_iter().enumerate() {
+      if !found_debug_workflows.get(index).unwrap_or(&true)
+        && let Ok(config) = Config::new(debug_config, WorkflowDebugMode::DebugOnly)
+      {
+        workflows.push(config);
+      }
+    }
 
     Self { workflows }
   }
@@ -71,20 +101,34 @@ impl WorkflowsConfiguration {
 }
 
 //
-// Config
+// WorkflowDebugMode
+//
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkflowDebugMode {
+  // The workflow is not being debugged.
+  None,
+  // The workflow is being debugged, but is not deployed. This primarily means that actions will
+  // not be executed.
+  DebugOnly,
+  // The workflow is being debugged and is also deployed. Debug data will be generated and
+  // actions will be taken per normal.
+  DebugAndDeployed,
+}
+
+//
+// ConfigWithMode
 //
 
 #[cfg_attr(test, derive(Clone))]
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct Config {
-  id: String,
-  states: Vec<State>,
-  duration_limit: Option<Duration>,
-  matched_logs_count_limit: Option<u32>,
+  inner: InnerConfig,
+  mode: WorkflowDebugMode,
 }
 
 impl Config {
-  pub fn new(config: WorkflowConfigProto) -> anyhow::Result<Self> {
+  pub fn new(config: WorkflowConfigProto, mode: WorkflowDebugMode) -> anyhow::Result<Self> {
     if config.states.is_empty() {
       bail!("invalid workflow states configuration: states list is empty");
     }
@@ -122,15 +166,48 @@ impl Config {
     }
 
     Ok(Self {
-      id: config.id.clone(),
-      states,
-      duration_limit: Self::try_duration_limit_from_proto(&config.limit_duration)?,
-      matched_logs_count_limit: Self::try_matched_logs_count_limit_from_proto(
-        &config.limit_matched_logs_count,
-      )?,
+      inner: InnerConfig {
+        id: config.id.clone(),
+        states,
+        duration_limit: InnerConfig::try_duration_limit_from_proto(&config.limit_duration)?,
+        matched_logs_count_limit: InnerConfig::try_matched_logs_count_limit_from_proto(
+          &config.limit_matched_logs_count,
+        )?,
+      },
+      mode,
     })
   }
 
+  pub(crate) fn inner(&self) -> &InnerConfig {
+    &self.inner
+  }
+
+  pub(crate) const fn mode(&self) -> WorkflowDebugMode {
+    self.mode
+  }
+
+  pub(crate) fn set_mode(&mut self, mode: WorkflowDebugMode) {
+    self.mode = mode;
+  }
+}
+
+//
+// InnerConfig
+//
+
+// InnerConfig is split out from mode because there are places where we compare the known config
+// to the new config and we do not want to include debug more in that comparison. This makes that
+// cleaner.
+#[cfg_attr(test, derive(Clone))]
+#[derive(Debug, PartialEq)]
+pub struct InnerConfig {
+  id: String,
+  states: Vec<State>,
+  duration_limit: Option<Duration>,
+  matched_logs_count_limit: Option<u32>,
+}
+
+impl InnerConfig {
   pub(crate) fn id(&self) -> &str {
     &self.id
   }
@@ -343,7 +420,7 @@ impl SankeyExtraction {
       value: match value {
         sankey_diagram_value_extraction::Value_type::Fixed(value) => TagValue::Fixed(value.clone()),
         sankey_diagram_value_extraction::Value_type::FieldExtracted(extracted) => {
-          TagValue::Extract(extracted.field_name.clone())
+          TagValue::FieldExtract(extracted.field_name.clone())
         },
       },
       counts_toward_sankey_values_extraction_limit: proto.counts_toward_sankey_extraction_limit,
@@ -628,8 +705,9 @@ impl ActionEmitMetric {
       .map(|t| {
         let value = match t.tag_type {
           Some(Tag_type::FixedValue(value)) => TagValue::Fixed(value),
-          Some(Tag_type::FieldExtracted(extracted)) => TagValue::Extract(extracted.field_name),
-          _ => {
+          Some(Tag_type::FieldExtracted(extracted)) => TagValue::FieldExtract(extracted.field_name),
+          Some(Tag_type::LogBodyExtracted(_)) => TagValue::LogBodyExtract,
+          None => {
             anyhow::bail!("invalid action emit metric configuration: unknown tag_type")
           },
         };
@@ -694,7 +772,10 @@ impl ActionEmitSankey {
         .map(|tag| {
           let value = match tag.tag_type {
             Some(Tag_type::FixedValue(value)) => TagValue::Fixed(value),
-            Some(Tag_type::FieldExtracted(extracted)) => TagValue::Extract(extracted.field_name),
+            Some(Tag_type::FieldExtracted(extracted)) => {
+              TagValue::FieldExtract(extracted.field_name)
+            },
+            Some(Tag_type::LogBodyExtracted(_)) => TagValue::LogBodyExtract,
             None => {
               anyhow::bail!("invalid action emit sankey diagram configuration: unknown tag_type")
             },
@@ -760,16 +841,23 @@ pub enum ValueIncrement {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TagValue {
   // Use the value of the specified tag without further modification.
-  Extract(String),
+  FieldExtract(String),
   // Use a fixed value.
   Fixed(FieldKey),
+  // Use the value of the entire log line.
+  LogBodyExtract,
 }
 
 impl TagValue {
-  pub(crate) fn extract_value<'a>(&self, fields: FieldsRef<'a>) -> Option<Cow<'a, str>> {
+  pub(crate) fn extract_value<'a>(
+    &self,
+    fields: FieldsRef<'a>,
+    message: &'a LogMessage,
+  ) -> Option<Cow<'a, str>> {
     match self {
-      Self::Extract(field_key) => fields.field_value(field_key),
+      Self::FieldExtract(field_key) => fields.field_value(field_key),
       Self::Fixed(value) => Some(Cow::Owned(value.to_string())),
+      Self::LogBodyExtract => message.as_str().map(Cow::Borrowed),
     }
   }
 }

@@ -9,6 +9,7 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-bd-log-primitives.path = "../bd-log-primitives"
-bd-proto.path          = "../bd-proto"
-tokio.workspace        = true
+bd-log-primitives.path      = "../bd-log-primitives"
+bd-proto.path               = "../bd-proto"
+bd-workspace-hack.workspace = true
+tokio.workspace             = true

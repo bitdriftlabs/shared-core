@@ -9,14 +9,15 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace      = true
-base64ct.workspace    = true
-bd-proto.path         = "../bd-proto"
-flatbuffers.workspace = true
-itertools.workspace   = true
-protobuf.workspace    = true
-sha2.workspace        = true
-time.workspace        = true
+anyhow.workspace            = true
+base64ct.workspace          = true
+bd-proto.path               = "../bd-proto"
+bd-workspace-hack.workspace = true
+flatbuffers.workspace       = true
+itertools.workspace         = true
+protobuf.workspace          = true
+sha2.workspace              = true
+time.workspace              = true
 
 [build-dependencies]
 cc.workspace = true

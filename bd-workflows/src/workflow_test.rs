@@ -5,15 +5,29 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::config::{ActionEmitMetric, ActionFlushBuffers, Config, FlushBufferId, ValueIncrement};
+use crate::config::{
+  ActionEmitMetric,
+  ActionFlushBuffers,
+  Config,
+  FlushBufferId,
+  ValueIncrement,
+  WorkflowDebugMode,
+};
 use crate::test::{MakeConfig, TestLog};
 use crate::workflow::{Run, TriggeredAction, Workflow, WorkflowResult, WorkflowResultStats};
+use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{FieldsRef, LogFields, LogMessage, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, labels};
-use bd_test_helpers::metric_value;
-use bd_test_helpers::workflow::macros::{action, all, any, log_matches, rule};
-use bd_test_helpers::workflow::{WorkflowBuilder, state};
+use bd_test_helpers::workflow::macros::{all, any, log_matches, rule};
+use bd_test_helpers::workflow::{
+  WorkflowBuilder,
+  make_emit_counter_action,
+  make_flush_buffers_action,
+  metric_value,
+  state,
+};
 use pretty_assertions::assert_eq;
 use std::collections::{BTreeMap, BTreeSet};
 use std::vec;
@@ -41,7 +55,7 @@ pub struct AnnotatedWorkflow {
 impl AnnotatedWorkflow {
   pub fn new(config: Config) -> Self {
     Self {
-      workflow: Workflow::new(config.id().to_string()),
+      workflow: Workflow::new(config.inner().id().to_string(), true),
       config,
     }
   }
@@ -101,7 +115,7 @@ macro_rules! assert_active_runs {
       );
 
       for (index, id) in expected_states.iter().enumerate() {
-        let expected_state_index = $workflow_annotated.config.states().iter()
+        let expected_state_index = $workflow_annotated.config.inner().states().iter()
           .position(|state| state.id() == *id);
         assert!(
           expected_state_index.is_some(),
@@ -153,7 +167,7 @@ macro_rules! assert_active_run_traversals {
       );
 
       for (index, id) in expected_states.iter().enumerate() {
-        let expected_state_index = $annotated_workflow.config.states().iter()
+        let expected_state_index = $annotated_workflow.config.inner().states().iter()
         .position(|state| state.id() == *id);
         assert!(
           expected_state_index.is_some(),
@@ -176,7 +190,10 @@ fn one_state_workflow() {
 
   let config = WorkflowBuilder::new("1", &[&a]).build();
   assert_eq!(
-    Config::new(config).err().unwrap().to_string(),
+    Config::new(config, WorkflowDebugMode::None)
+      .err()
+      .unwrap()
+      .to_string(),
     "invalid workflow configuration: initial state must have at least one transition"
   );
 }
@@ -189,12 +206,15 @@ fn unknown_state_reference_workflow() {
   a = a.declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "foo")),
-    &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+    &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
   );
 
   let config = WorkflowBuilder::new("1", &[&a]).build();
   assert_eq!(
-    Config::new(config).err().unwrap().to_string(),
+    Config::new(config, WorkflowDebugMode::None)
+      .err()
+      .unwrap()
+      .to_string(),
     "invalid workflow state configuration: reference to an unexisting state"
   );
 }
@@ -208,12 +228,20 @@ fn timeout_no_parallel_match() {
   a = a.declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "foo")),
-    &[action!(emit_counter "foo_metric"; value metric_value!(1))],
+    &[make_emit_counter_action(
+      "foo_metric",
+      metric_value(1),
+      vec![],
+    )],
   );
   b = b.with_timeout(
     &c,
     1.seconds(),
-    &[action!(emit_counter "timeout_metric"; value metric_value!(1))],
+    &[make_emit_counter_action(
+      "timeout_metric",
+      metric_value(1),
+      vec![],
+    )],
   );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
@@ -230,11 +258,19 @@ fn timeout_no_parallel_match() {
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: true,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "B");
@@ -251,11 +287,16 @@ fn timeout_no_parallel_match() {
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 0,
         processed_timeout: true,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "B".to_string(),
+        WorkflowDebugTransitionType::Timeout
+      )],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -272,11 +313,16 @@ fn timeout_no_parallel_match() {
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: true,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "A".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      )],
     }
   );
   assert_active_runs!(workflow; "B");
@@ -293,11 +339,16 @@ fn timeout_no_parallel_match() {
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: true,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "A".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      )],
     }
   );
   assert_active_runs!(workflow; "B");
@@ -315,12 +366,16 @@ fn timeout_not_start() {
     .declare_transition_with_actions(
       &c,
       rule!(log_matches!(message == "bar")),
-      &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
+      &[make_flush_buffers_action(&["bar_buffer_id"], None, "bar")],
     )
     .with_timeout(
       &d,
       1.seconds(),
-      &[action!(emit_counter "bar_metric"; value metric_value!(1))],
+      &[make_emit_counter_action(
+        "bar_metric",
+        metric_value(1),
+        vec![],
+      )],
     );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d]).make_config();
@@ -351,11 +406,16 @@ fn timeout_not_start() {
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 0,
         processed_timeout: true,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "B".to_string(),
+        WorkflowDebugTransitionType::Timeout
+      )],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -373,11 +433,16 @@ fn timeout_not_start() {
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "B".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      )],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -395,12 +460,20 @@ fn initial_state_run_does_not_have_timeout() {
     .with_timeout(
       &c,
       1.seconds(),
-      &[action!(emit_counter "foo_metric"; value metric_value!(1))],
+      &[make_emit_counter_action(
+        "foo_metric",
+        metric_value(1),
+        vec![],
+      )],
     );
   b = b.declare_transition_with_actions(
     &d,
     rule!(log_matches!(message == "bar")),
-    &[action!(emit_counter "bar_metric"; value metric_value!(1))],
+    &[make_emit_counter_action(
+      "bar_metric",
+      metric_value(1),
+      vec![],
+    )],
   );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d]).make_config();
@@ -434,12 +507,16 @@ fn timeout_from_start() {
     .declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "foo")),
-      &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+      &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
     )
     .with_timeout(
       &c,
       1.seconds(),
-      &[action!(emit_counter "foo_metric"; value metric_value!(1))],
+      &[make_emit_counter_action(
+        "foo_metric",
+        metric_value(1),
+        vec![],
+      )],
     );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
@@ -469,11 +546,16 @@ fn timeout_from_start() {
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 0,
         processed_timeout: true,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "A".to_string(),
+        WorkflowDebugTransitionType::Timeout
+      )],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -498,7 +580,7 @@ fn multiple_start_nodes_initial_fork() {
   c = c.declare_transition_with_actions(
     &e,
     rule!(log_matches!(message == "E")),
-    &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+    &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
   );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config();
@@ -511,11 +593,23 @@ fn multiple_start_nodes_initial_fork() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
 
@@ -525,11 +619,22 @@ fn multiple_start_nodes_initial_fork() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        )
+      ],
     }
   );
 
@@ -543,11 +648,16 @@ fn multiple_start_nodes_initial_fork() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "C".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      )],
     }
   );
 }
@@ -570,7 +680,7 @@ fn multiple_start_nodes_initial_branching() {
   c = c.declare_transition_with_actions(
     &e,
     rule!(log_matches!(message == "E")),
-    &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+    &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
   );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config();
@@ -583,11 +693,19 @@ fn multiple_start_nodes_initial_branching() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
 
@@ -598,11 +716,16 @@ fn multiple_start_nodes_initial_branching() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "A".to_string(),
+        WorkflowDebugTransitionType::Normal(1)
+      )],
     }
   );
 
@@ -616,11 +739,16 @@ fn multiple_start_nodes_initial_branching() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "C".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      )],
     }
   );
 }
@@ -639,14 +767,14 @@ fn basic_exclusive_workflow() {
       log_matches!(tag("key") == "value"),
     )),
     &[
-      action!(flush_buffers &["foo_buffer_id"]; id "foo"),
-      action!(emit_counter "foo_metric"; value metric_value!(123)),
+      make_flush_buffers_action(&["foo_buffer_id"], None, "foo"),
+      make_emit_counter_action("foo_metric", metric_value(123), vec![]),
     ],
   );
   b = b.declare_transition_with_actions(
     &c,
     rule!(log_matches!(message == "bar")),
-    &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
+    &[make_flush_buffers_action(&["bar_buffer_id"], None, "bar")],
   );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
@@ -672,11 +800,19 @@ fn basic_exclusive_workflow() {
           metric_type: MetricType::Counter,
         })
       ],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "B");
@@ -693,11 +829,16 @@ fn basic_exclusive_workflow() {
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "B".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      )],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -742,11 +883,23 @@ fn exclusive_workflow_matched_logs_count_limit() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_run_traversals!(workflow; 0; "B", "D");
@@ -761,11 +914,13 @@ fn exclusive_workflow_matched_logs_count_limit() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![],
     }
   );
   assert_active_run_traversals!(workflow; 0; "A");
@@ -781,11 +936,13 @@ fn exclusive_workflow_matched_logs_count_limit() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -802,12 +959,12 @@ fn exclusive_workflow_log_rule_count() {
   a = a.declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "foo"); times 2),
-    &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+    &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
   );
   b = b.declare_transition_with_actions(
     &c,
     rule!(log_matches!(message == "bar")),
-    &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
+    &[make_flush_buffers_action(&["bar_buffer_id"], None, "bar")],
   );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
@@ -823,11 +980,13 @@ fn exclusive_workflow_log_rule_count() {
     result,
     WorkflowResult {
       triggered_actions: vec![],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::StartOrReset],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -844,11 +1003,16 @@ fn exclusive_workflow_log_rule_count() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "A".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      )],
     }
   );
   assert_active_runs!(workflow; "A", "B");
@@ -871,15 +1035,157 @@ fn exclusive_workflow_log_rule_count() {
         buffer_ids: BTreeSet::from(["bar_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "B".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      )],
     }
   );
   assert_active_runs!(workflow; "A");
   assert!(workflow.is_in_initial_state());
+}
+
+#[test]
+fn debug_with_fork() {
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let d = state("D");
+
+  a = a
+    .declare_transition(&b, rule!(log_matches!(message == "foo")))
+    .declare_transition(&c, rule!(log_matches!(message == "foo")));
+  let cloned_b = b.clone();
+  b = b.declare_transition_with_actions(
+    &cloned_b,
+    rule!(log_matches!(message == "bar")),
+    &[make_emit_counter_action(
+      "bar_metric",
+      metric_value(1),
+      vec![],
+    )],
+  );
+  c = c.declare_transition_with_actions(
+    &d,
+    rule!(log_matches!(message == "baz")),
+    &[make_emit_counter_action(
+      "baz_metric",
+      metric_value(1),
+      vec![],
+    )],
+  );
+
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d]).make_config();
+  let mut workflow = AnnotatedWorkflow::new(config);
+  assert!(workflow.runs().is_empty());
+
+  let result = workflow.process_log(TestLog::new("foo"));
+  assert_eq!(
+    result,
+    WorkflowResult {
+      triggered_actions: vec![],
+      logs_to_inject: TinyMap::default(),
+      stats: WorkflowResultStats {
+        matched_logs_count: 2,
+        processed_timeout: false,
+      },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
+    }
+  );
+  assert_active_run_traversals!(workflow; 0; "B", "C");
+  assert!(!workflow.is_in_initial_state());
+
+  let result = workflow.process_log(TestLog::new("bar"));
+  assert_eq!(
+    result,
+    WorkflowResult {
+      triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
+        id: "bar_metric".to_string(),
+        tags: BTreeMap::new(),
+        increment: ValueIncrement::Fixed(1),
+        metric_type: MetricType::Counter,
+      })],
+      logs_to_inject: TinyMap::default(),
+      stats: WorkflowResultStats {
+        matched_logs_count: 1,
+        processed_timeout: false,
+      },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "B".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      ),],
+    }
+  );
+  assert_active_run_traversals!(workflow; 1; "B", "C");
+  assert!(!workflow.is_in_initial_state());
+
+  let result = workflow.process_log(TestLog::new("baz"));
+  assert_eq!(
+    result,
+    WorkflowResult {
+      triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
+        id: "baz_metric".to_string(),
+        tags: BTreeMap::new(),
+        increment: ValueIncrement::Fixed(1),
+        metric_type: MetricType::Counter,
+      })],
+      logs_to_inject: TinyMap::default(),
+      stats: WorkflowResultStats {
+        matched_logs_count: 1,
+        processed_timeout: false,
+      },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "C".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      ),],
+    }
+  );
+  assert_active_run_traversals!(workflow; 1; "B");
+  assert!(!workflow.is_in_initial_state());
+
+  let result = workflow.process_log(TestLog::new("bar"));
+  assert_eq!(
+    result,
+    WorkflowResult {
+      triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
+        id: "bar_metric".to_string(),
+        tags: BTreeMap::new(),
+        increment: ValueIncrement::Fixed(1),
+        metric_type: MetricType::Counter,
+      })],
+      logs_to_inject: TinyMap::default(),
+      stats: WorkflowResultStats {
+        matched_logs_count: 1,
+        processed_timeout: false,
+      },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "B".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      ),],
+    }
+  );
+  assert_active_run_traversals!(workflow; 1; "B");
+  assert!(!workflow.is_in_initial_state());
 }
 
 #[test]
@@ -898,22 +1204,26 @@ fn branching_exclusive_workflow() {
       log_matches!(message == "foo"),
       log_matches!(tag("key") == "value"),
     )),
-    &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+    &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
   );
   b = b.declare_transition_with_actions(
     &d,
     rule!(log_matches!(message == "zoo")),
-    &[action!(flush_buffers &["zoo_buffer_id"]; id "zoo")],
+    &[make_flush_buffers_action(&["zoo_buffer_id"], None, "zoo")],
   );
   a = a.declare_transition_with_actions(
     &c,
     rule!(log_matches!(message == "bar")),
-    &[action!(flush_buffers &["bar_buffer_id"]; id "bar")],
+    &[make_flush_buffers_action(&["bar_buffer_id"], None, "bar")],
   );
   c = c.declare_transition_with_actions(
     &e,
     rule!(log_matches!(message == "barbar")),
-    &[action!(flush_buffers &["bar_buffer_id"]; id "barbar")],
+    &[make_flush_buffers_action(
+      &["bar_buffer_id"],
+      None,
+      "barbar",
+    )],
   );
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config();
@@ -930,11 +1240,19 @@ fn branching_exclusive_workflow() {
         buffer_ids: BTreeSet::from(["foo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::StartOrReset
+      ],
     }
   );
   assert_active_runs!(workflow; "B");
@@ -966,11 +1284,16 @@ fn branching_exclusive_workflow() {
         buffer_ids: BTreeSet::from(["zoo_buffer_id".to_string()]),
         streaming: None,
       })],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
+        "B".to_string(),
+        WorkflowDebugTransitionType::Normal(0)
+      )],
     }
   );
   assert_active_runs!(workflow; "A");
@@ -994,11 +1317,22 @@ fn branching_exclusive_workflow() {
           streaming: None,
         }),
       ],
-      logs_to_inject: BTreeMap::new(),
+      logs_to_inject: TinyMap::default(),
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
       },
+      cumulative_workflow_debug_state: None,
+      incremental_workflow_debug_state: vec![
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(0)
+        ),
+        WorkflowDebugStateKey::new_state_transition(
+          "A".to_string(),
+          WorkflowDebugTransitionType::Normal(1)
+        )
+      ],
     }
   );
   assert_eq!(2, workflow.runs()[0].traversals.len());

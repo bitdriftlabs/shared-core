@@ -11,6 +11,7 @@ use crate::paths::PATHS;
 use bd_client_common::file::read_compressed_protobuf;
 use bd_client_stats::Stats;
 use bd_client_stats_store::{Collector, Scope};
+use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogRef, log_level};
 use bd_logger::LogFields;
 use bd_logger::builder::default_stats_flush_triggers;
@@ -27,15 +28,22 @@ use bd_proto::protos::workflow::workflow::workflow::{Execution, State};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
-use bd_test_helpers::workflow::macros::{action, log_matches, metric_tag, metric_value, rule};
-use bd_test_helpers::workflow::state;
+use bd_test_helpers::workflow::macros::{log_matches, rule};
+use bd_test_helpers::workflow::{
+  extract_metric_tag,
+  extract_metric_value,
+  make_emit_counter_action,
+  metric_tag,
+  metric_value,
+  state,
+};
 use bd_time::TimeDurationExt;
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use protobuf::Message;
 use rand::Rng;
 use sha2::Digest;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs::{self};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
@@ -102,11 +110,14 @@ impl AnnotatedWorkflowsEngine {
     Self::create_networking_workflows(&mut workflow_configurations);
 
     engine
-      .start(WorkflowsEngineConfig::new(
-        WorkflowsConfiguration::new(workflow_configurations.configs()),
-        BTreeSet::default(),
-        BTreeSet::default(),
-      ))
+      .start(
+        WorkflowsEngineConfig::new(
+          WorkflowsConfiguration::new(workflow_configurations.configs(), vec![]),
+          TinySet::default(),
+          TinySet::default(),
+        ),
+        false,
+      )
       .await;
 
     Self { engine }
@@ -134,7 +145,7 @@ impl AnnotatedWorkflowsEngine {
         occurred_at: OffsetDateTime::now_utc(),
         capture_session: None,
       },
-      &BTreeSet::new(),
+      &TinySet::default(),
       OffsetDateTime::now_utc(),
     );
   }
@@ -168,22 +179,10 @@ impl AnnotatedWorkflowsEngine {
     a = a.declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "HTTPRequest")),
-      &[action!(emit_counter &Self::generate_action_id(); value metric_value!(1))],
-    );
-    workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
-
-    let mut a = state("A");
-    let b = state("B");
-    a = a.declare_transition_with_actions(
-      &b,
-      rule!(log_matches!(message == "HTTPResponse")),
-      &[action!(
-        emit_counter &Self::generate_action_id();
-        value metric_value!(1);
-        tags {
-          metric_tag!(extract "result" => "result"),
-          metric_tag!(extract "status_code" => "status_code")
-        }
+      &[make_emit_counter_action(
+        &Self::generate_action_id(),
+        metric_value(1),
+        vec![],
       )],
     );
     workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
@@ -193,12 +192,13 @@ impl AnnotatedWorkflowsEngine {
     a = a.declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "HTTPResponse")),
-      &[action!(
-        emit_counter &Self::generate_action_id();
-        value metric_value!(1);
-        tags {
-          metric_tag!(extract "result" => "result")
-        }
+      &[make_emit_counter_action(
+        &Self::generate_action_id(),
+        metric_value(1),
+        vec![
+          metric_tag("result", "result"),
+          extract_metric_tag("status_code", "status_code"),
+        ],
       )],
     );
     workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
@@ -208,13 +208,10 @@ impl AnnotatedWorkflowsEngine {
     a = a.declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "HTTPResponse")),
-      &[action!(
-        emit_counter &Self::generate_action_id();
-        value metric_value!(1);
-        tags {
-          metric_tag!(extract "result" => "result"),
-          metric_tag!(extract "status_code" => "status_code")
-        }
+      &[make_emit_counter_action(
+        &Self::generate_action_id(),
+        metric_value(1),
+        vec![metric_tag("result", "result")],
       )],
     );
     workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
@@ -224,13 +221,13 @@ impl AnnotatedWorkflowsEngine {
     a = a.declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "HTTPResponse")),
-      &[action!(
-        emit_counter &Self::generate_action_id();
-        value metric_value!(extract "body_bytes_sent_count");
-        tags {
-          metric_tag!(extract "result" => "result"),
-          metric_tag!(extract "status_code" => "status_code")
-        }
+      &[make_emit_counter_action(
+        &Self::generate_action_id(),
+        metric_value(1),
+        vec![
+          extract_metric_tag("result", "result"),
+          extract_metric_tag("status_code", "status_code"),
+        ],
       )],
     );
     workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
@@ -240,12 +237,13 @@ impl AnnotatedWorkflowsEngine {
     a = a.declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "HTTPResponse")),
-      &[action!(
-        emit_counter &Self::generate_action_id();
-        value metric_value!(extract "body_bytes_sent_count");
-        tags {
-          metric_tag!(extract "path" => "path")
-        }
+      &[make_emit_counter_action(
+        &Self::generate_action_id(),
+        extract_metric_value("body_bytes_sent_count"),
+        vec![
+          extract_metric_tag("result", "result"),
+          extract_metric_tag("status_code", "status_code"),
+        ],
       )],
     );
     workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
@@ -255,12 +253,10 @@ impl AnnotatedWorkflowsEngine {
     a = a.declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "HTTPResponse")),
-      &[action!(
-        emit_counter &Self::generate_action_id();
-        value metric_value!(extract "body_bytes_received_count");
-        tags {
-          metric_tag!(extract "path" => "path")
-        }
+      &[make_emit_counter_action(
+        &Self::generate_action_id(),
+        extract_metric_value("body_bytes_sent_count"),
+        vec![extract_metric_tag("path", "path")],
       )],
     );
     workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
@@ -270,12 +266,23 @@ impl AnnotatedWorkflowsEngine {
     a = a.declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "HTTPResponse")),
-      &[action!(
-        emit_counter &Self::generate_action_id();
-        value metric_value!(extract "duration_ms");
-        tags {
-          metric_tag!(extract "path" => "path")
-        }
+      &[make_emit_counter_action(
+        &Self::generate_action_id(),
+        extract_metric_value("body_bytes_received_count"),
+        vec![extract_metric_tag("path", "path")],
+      )],
+    );
+    workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
+
+    let mut a = state("A");
+    let b = state("B");
+    a = a.declare_transition_with_actions(
+      &b,
+      rule!(log_matches!(message == "HTTPResponse")),
+      &[make_emit_counter_action(
+        &Self::generate_action_id(),
+        extract_metric_value("duration_ms"),
+        vec![extract_metric_tag("path", "path")],
       )],
     );
     workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
@@ -287,7 +294,11 @@ impl AnnotatedWorkflowsEngine {
     a = a.declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "SceneDidActivate")),
-      &[action!(emit_counter &Self::generate_action_id(); value metric_value!(1))],
+      &[make_emit_counter_action(
+        &Self::generate_action_id(),
+        metric_value(1),
+        vec![],
+      )],
     );
     workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);
 
@@ -296,10 +307,10 @@ impl AnnotatedWorkflowsEngine {
     a = a.declare_transition_with_actions(
       &b,
       rule!(log_matches!(message ~= ".*")),
-      &[action!(
-        emit_counter &Self::generate_action_id();
-        value metric_value!(1);
-        tags { metric_tag!(extract "log_level" => "log_level") }
+      &[make_emit_counter_action(
+        &Self::generate_action_id(),
+        metric_value(1),
+        vec![extract_metric_tag("log_level", "log_level")],
       )],
     );
     workflow_configurations.push(vec![a.into_inner(), b.into_inner()]);

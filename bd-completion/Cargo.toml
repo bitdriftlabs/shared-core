@@ -9,7 +9,8 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace = true
-log.workspace    = true
-thiserror.workspace = true
-tokio.workspace  = true
+anyhow.workspace            = true
+bd-workspace-hack.workspace = true
+log.workspace               = true
+thiserror.workspace         = true
+tokio.workspace             = true

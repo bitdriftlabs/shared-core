@@ -9,12 +9,13 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-bd-stats-common.path = "../bd-stats-common"
-bytes.workspace      = true
-flate2               = { workspace = true, default-features = false }
-log.workspace        = true
-protobuf.workspace   = true
-thiserror.workspace  = true
+bd-stats-common.path        = "../bd-stats-common"
+bd-workspace-hack.workspace = true
+bytes.workspace             = true
+flate2                      = { workspace = true, default-features = false }
+log.workspace               = true
+protobuf.workspace          = true
+thiserror.workspace         = true
 
 [dev-dependencies]
 bd-test-helpers  = { path = "../bd-test-helpers" } # revert

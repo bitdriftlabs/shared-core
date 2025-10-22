@@ -33,10 +33,8 @@
 )]
 
 use bd_bonjson::Value;
-use bd_client_common::error::InvariantError;
 use bd_resilient_kv::KVStore;
-use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[cfg(test)]
 #[path = "./feature_flags_test.rs"]
@@ -69,16 +67,16 @@ impl FeatureFlag {
   /// Validates the variant (rejecting empty strings) and uses the current time
   /// if no timestamp is provided.
   ///
-  /// Returns an error if an empty string is provided as the variant.
+  /// If variant is `Some("")`, it is treated as `None`.
   pub fn new(
-    variant: Option<&str>,
+    variant: Option<String>,
     timestamp: Option<time::OffsetDateTime>,
   ) -> anyhow::Result<Self> {
     // Validate the variant - reject empty strings
     let validated_variant = match variant {
-      Some("") => return Err(InvariantError::Invariant.into()),
-      Some(s) => Some(s.to_string()),
+      Some(s) if s.is_empty() => None,
       None => None,
+      Some(s) => Some(s),
     };
 
     Ok(Self {
@@ -92,34 +90,41 @@ impl FeatureFlag {
   /// Returns `None` if the value is not a valid feature flag object.
   #[must_use]
   pub fn from_value(value: &Value) -> Option<Self> {
-    if let Value::Object(obj) = value {
-      let variant = match obj.get(VARIANT_KEY) {
-        Some(Value::String(s)) => {
-          if s.is_empty() {
-            None
-          } else {
-            Some(s.to_string())
-          }
-        },
-        _ => return None,
-      };
+    // Handle both Object and KVVec types for backward compatibility
+    let get_field = |key: &str| -> Option<&Value> {
+      match value {
+        Value::Object(obj) => obj.get(key),
+        // Although this should never happen because the deserializer will always decode as an
+        // `Object`, `KVVec` is technically possible so we handle it.
+        Value::KVVec(kv_vec) => kv_vec.iter().find(|(k, _)| k == key).map(|(_, v)| v),
+        _ => None,
+      }
+    };
 
-      let timestamp = match obj.get(TIMESTAMP_KEY) {
-        Some(value) => {
-          let timestamp_nanos = match value {
-            Value::Unsigned(t) => *t,
-            Value::Signed(t) if *t >= 0 => u64::try_from(*t).ok()?,
-            _ => return None,
-          };
-          time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos)).ok()?
-        },
-        _ => return None,
-      };
+    let variant = match get_field(VARIANT_KEY) {
+      Some(Value::String(s)) => {
+        if s.is_empty() {
+          None
+        } else {
+          Some(s.to_string())
+        }
+      },
+      _ => return None,
+    };
 
-      Some(Self { variant, timestamp })
-    } else {
-      None
-    }
+    let timestamp = match get_field(TIMESTAMP_KEY) {
+      Some(value) => {
+        let timestamp_nanos = match value {
+          Value::Unsigned(t) => *t,
+          Value::Signed(t) if *t >= 0 => u64::try_from(*t).ok()?,
+          _ => return None,
+        };
+        time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_nanos)).ok()?
+      },
+      _ => return None,
+    };
+
+    Some(Self { variant, timestamp })
   }
 
   /// Converts a `FeatureFlag` to a BONJSON Value.
@@ -131,11 +136,11 @@ impl FeatureFlag {
 
     let timestamp_nanos = u64::try_from(self.timestamp.unix_timestamp_nanos()).unwrap_or(0);
 
-    let obj = HashMap::from([
+    let kv_vec = vec![
       (VARIANT_KEY.to_string(), Value::String(storage_variant)),
       (TIMESTAMP_KEY.to_string(), Value::Unsigned(timestamp_nanos)),
-    ]);
-    Value::Object(obj)
+    ];
+    Value::KVVec(kv_vec)
   }
 }
 
@@ -183,7 +188,46 @@ impl FeatureFlags {
       base_path,
       buffer_size,
       Some(high_water_mark_ratio.unwrap_or(DEFAULT_HIGH_WATER_MARK_RATIO)),
-      None,
+    )?;
+    Ok(Self { flags_store })
+  }
+
+  /// Opens an existing `FeatureFlags` instance from pre-existing storage files.
+  ///
+  /// Unlike `new()`, this constructor requires both journal files to exist and will fail if either
+  /// is missing. This is useful when you want to ensure you're loading from an existing feature
+  /// flags store rather than creating a new one.
+  ///
+  /// # Arguments
+  ///
+  /// * `base_path` - The filesystem path to the file basename where feature flags are stored. Two
+  ///   files with extensions "jrna" and "jrnb" must already exist at this location.
+  /// * `buffer_size` - The size of the underlying storage buffer in bytes
+  /// * `high_water_mark_ratio` - Optional ratio (0.0-1.0) for buffer high water mark. When the
+  ///   buffer reaches this percentage full, older data may be compacted. If `None`, a default value
+  ///   of 0.8 will be used.
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(FeatureFlags)` on success, or an error if the storage files don't exist or
+  /// cannot be opened.
+  ///
+  /// # Errors
+  ///
+  /// This function will return an error if:
+  /// - Either of the required journal files does not exist
+  /// - The storage files cannot be opened or read
+  /// - The storage files contain invalid data
+  /// - Insufficient permissions to access the storage location
+  pub fn open_existing<P: AsRef<Path>>(
+    base_path: P,
+    buffer_size: usize,
+    high_water_mark_ratio: Option<f32>,
+  ) -> anyhow::Result<Self> {
+    let flags_store = KVStore::open_existing(
+      base_path,
+      buffer_size,
+      Some(high_water_mark_ratio.unwrap_or(DEFAULT_HIGH_WATER_MARK_RATIO)),
     )?;
     Ok(Self { flags_store })
   }
@@ -213,6 +257,7 @@ impl FeatureFlags {
   /// * `key` - The name of the feature flag to set or update
   /// * `variant` - The variant value for the flag:
   ///   - `Some(string)` sets the flag with the specified variant
+  ///   - `Some("")` treats the variant as `None`
   ///   - `None` sets the flag without a variant (simple boolean-style flag)
   ///
   /// # Returns
@@ -222,13 +267,71 @@ impl FeatureFlags {
   /// # Errors
   ///
   /// This function will return an error if:
-  /// - An empty string is provided as the variant (validation error)
   /// - The flag cannot be written to persistent storage due to I/O errors, insufficient disk space,
   ///   or permission issues
-  pub fn set(&mut self, key: &str, variant: Option<&str>) -> anyhow::Result<()> {
+  pub fn set(&mut self, key: String, variant: Option<String>) -> anyhow::Result<()> {
     let feature_flag = FeatureFlag::new(variant, None)?;
     let value = feature_flag.to_value();
-    self.flags_store.insert(key.to_string(), value)?;
+    self.flags_store.insert(key, value)?;
+    Ok(())
+  }
+
+  /// Sets or updates multiple feature flags in a single operation.
+  ///
+  /// Creates or updates multiple feature flags with their respective variants. All flags are
+  /// immediately stored in persistent storage and receive timestamps indicating when they were
+  /// last modified. This method converts the input into a Vec of (key, value) pairs for
+  /// efficient batch processing by the underlying KV store.
+  ///
+  /// # Arguments
+  ///
+  /// * `flags` - A vector of tuples containing flag names and their variants:
+  ///   - `Some(string)` sets the flag with the specified variant
+  ///   - `Some("")` treats the variant as `None`
+  ///   - `None` sets the flag without a variant (simple boolean-style flag)
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(())` on success, or an error if any flag cannot be stored.
+  ///
+  /// # Errors
+  ///
+  /// This function will return an error if:
+  /// - Any flag cannot be written to persistent storage due to I/O errors, insufficient disk space,
+  ///   or permission issues
+  /// - If an error occurs, no flags will be written.
+  pub fn set_multiple(&mut self, flags: Vec<(String, Option<String>)>) -> anyhow::Result<()> {
+    // Convert the input vector to Vec format for the KV store
+    let now = time::OffsetDateTime::now_utc();
+    let kv_entries: Vec<(String, bd_bonjson::Value)> = flags
+      .into_iter()
+      .map(|(key, variant)| {
+        let feature_flag = FeatureFlag::new(variant, Some(now))?;
+        let value = feature_flag.to_value();
+        Ok((key, value))
+      })
+      .collect::<anyhow::Result<Vec<_>>>()?;
+
+    self.flags_store.insert_multiple(&kv_entries)?;
+    Ok(())
+  }
+
+  /// Removes a feature flag.
+  ///
+  /// # Arguments
+  ///
+  /// * `key` - The name of the feature flag to remove
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(())` on success, or an error if the flag cannot be removed.
+  ///
+  /// # Errors
+  ///
+  /// This function will return an error if:
+  /// - The flag cannot be removed due to I/O errors, insufficient disk space, or permission issues
+  pub fn remove(&mut self, key: &str) -> anyhow::Result<()> {
+    self.flags_store.remove(key)?;
     Ok(())
   }
 
@@ -269,25 +372,95 @@ impl FeatureFlags {
     self.flags_store.sync()
   }
 
-  /// Returns a `HashMap` containing all feature flags.
+  /// Returns an iterator over all feature flags.
   ///
-  /// This method provides access to all feature flags as a standard
-  /// Rust `HashMap`. This is useful for iterating over all flags or performing
-  /// bulk operations. The `HashMap` is generated on-demand from the persistent storage.
+  /// This method provides an iterator that yields `(String, FeatureFlag)` pairs for all
+  /// valid feature flags in the store. Invalid entries are filtered out during iteration.
   ///
   /// # Returns
   ///
-  /// A `HashMap<String, FeatureFlag>` containing all flags.
-  ///
-  /// TODO: Make an iterator instead
+  /// An iterator over `(String, FeatureFlag)` pairs.
+  pub fn iter(&self) -> impl Iterator<Item = (&str, FeatureFlag)> + '_ {
+    self
+      .flags_store
+      .as_hashmap()
+      .iter()
+      .filter_map(|(key, value)| {
+        FeatureFlag::from_value(value).map(|feature_flag| (key.as_str(), feature_flag))
+      })
+  }
+}
+
+/// Builds `FeatureFlags` objects, and manages on-disk data for current and previous runs.
+#[derive(Clone)]
+pub struct FeatureFlagsBuilder {
+  current_path: PathBuf,
+  previous_path: PathBuf,
+  file_size: usize,
+  high_water_mark_ratio: f32,
+}
+
+impl FeatureFlagsBuilder {
   #[must_use]
-  pub fn as_hashmap(&self) -> HashMap<String, FeatureFlag> {
-    let mut flags = HashMap::new();
-    for (key, value) in self.flags_store.as_hashmap() {
-      if let Some(feature_flag) = FeatureFlag::from_value(value) {
-        flags.insert(key.clone(), feature_flag);
-      }
+  pub fn new(sdk_path: &Path, file_size: usize, high_water_mark_ratio: f32) -> Self {
+    Self {
+      current_path: sdk_path.join("feature_flags_current"),
+      previous_path: sdk_path.join("feature_flags_previous"),
+      file_size,
+      high_water_mark_ratio,
     }
-    flags
+  }
+
+  fn replace_file(from: &Path, to: &Path) {
+    // These should never fail unless there's a serious filesystem issue.
+    match std::fs::remove_file(to) {
+      Ok(()) => {},
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+      Err(e) => {
+        log::warn!("failed to remove existing file {}: {e}", to.display());
+      },
+    }
+
+    match std::fs::rename(from, to) {
+      Ok(()) => {},
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+      Err(e) => {
+        log::warn!(
+          "failed to rename file {} to {}: {e}",
+          from.display(),
+          to.display()
+        );
+      },
+    }
+  }
+
+  /// Backup the current feature flags.
+  /// This should be called only once, on relaunch, before getting current or previous feature
+  /// flags.
+  pub fn backup_previous(&self) {
+    Self::replace_file(
+      &self.current_path.with_extension("jrna"),
+      &self.previous_path.with_extension("jrna"),
+    );
+    Self::replace_file(
+      &self.current_path.with_extension("jrnb"),
+      &self.previous_path.with_extension("jrnb"),
+    );
+  }
+
+  pub fn current_feature_flags(&self) -> anyhow::Result<FeatureFlags> {
+    FeatureFlags::new(
+      &self.current_path,
+      self.file_size,
+      Some(self.high_water_mark_ratio),
+    )
+  }
+
+  pub fn previous_feature_flags(&self) -> anyhow::Result<FeatureFlags> {
+    FeatureFlags::open_existing(
+      &self.previous_path,
+      self.file_size,
+      Some(self.high_water_mark_ratio),
+    )
   }
 }

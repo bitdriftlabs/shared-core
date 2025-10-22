@@ -7,11 +7,11 @@
 
 #![no_main]
 
+use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
 use bd_bonjson::Value;
 use bd_resilient_kv::MemMappedKVJournal;
 use bd_resilient_kv::kv_journal::KVJournal;
-use std::collections::HashMap;
 use tempfile::TempDir;
 
 // Wrapper for Value to implement Arbitrary
@@ -38,7 +38,7 @@ impl<'a> Arbitrary<'a> for ArbitraryValue {
       },
       7 => {
         let len = u.int_in_range(0 ..= 2)?; // Keep objects small
-        let mut obj = HashMap::new();
+        let mut obj = AHashMap::new();
         for _ in 0 .. len {
           let key: String = u.arbitrary()?;
           let value = Self::arbitrary(u)?.0;
@@ -73,7 +73,7 @@ libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
   let file_path = temp_dir.path().join("fuzz_journal.dat");
 
   // Try to create a MemMappedKVJournal
-  let Ok(mut journal) = MemMappedKVJournal::new(&file_path, 8192, Some(0.8), None) else {
+  let Ok(mut journal) = MemMappedKVJournal::new(&file_path, 8192, Some(0.8)) else {
     return;
   };
 
@@ -100,7 +100,7 @@ libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
         drop(journal);
 
         // Try to reopen the journal from the existing file
-        journal = match MemMappedKVJournal::new(&file_path, 8192, Some(0.8), None) {
+        journal = match MemMappedKVJournal::new(&file_path, 8192, Some(0.8)) {
           Ok(j) => j,
           Err(_) => return,
         };

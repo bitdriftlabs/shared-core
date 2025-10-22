@@ -16,15 +16,14 @@
 
 pub mod decoder;
 pub mod encoder;
-pub mod ffi;
 pub mod writer;
 
 mod deserialize_primitives;
 pub mod serialize_primitives;
 pub mod type_codes;
 
+use ahash::AHashMap;
 use deserialize_primitives::DeserializationError;
-use std::collections::HashMap;
 
 /// BONJSON has the same value types and structure as JSON.
 /// Internally, the "Number" type can be a signed integer, unsigned integer, or float.
@@ -37,7 +36,21 @@ pub enum Value {
   Unsigned(u64),
   String(String),
   Array(Vec<Value>),
-  Object(HashMap<String, Value>),
+  Object(AHashMap<String, Value>),
+  KVVec(Vec<(String, Value)>),
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum ValueRef<'a> {
+  Null,
+  Bool(bool),
+  Float(f64),
+  Signed(i64),
+  Unsigned(u64),
+  String(&'a str),
+  Array(&'a [Value]),
+  Object(&'a AHashMap<String, Value>),
+  KVSlice(&'a [(String, Value)]),
 }
 
 // Helper methods for Value
@@ -124,9 +137,20 @@ impl Value {
   ///
   /// # Errors
   /// Returns `DeserializationError::ExpectedMap` if this Value is not an object.
-  pub fn as_object(&self) -> deserialize_primitives::Result<&HashMap<String, Self>> {
+  pub fn as_object(&self) -> deserialize_primitives::Result<&AHashMap<String, Self>> {
     match self {
       Self::Object(obj) => Ok(obj),
+      _ => Err(DeserializationError::ExpectedMap),
+    }
+  }
+
+  /// Extract KV vector value from this Value.
+  ///
+  /// # Errors
+  /// Returns `DeserializationError::ExpectedMap` if this Value is not a KV vector.
+  pub fn as_kv_vec(&self) -> deserialize_primitives::Result<&Vec<(String, Self)>> {
+    match self {
+      Self::KVVec(kv_vec) => Ok(kv_vec),
       _ => Err(DeserializationError::ExpectedMap),
     }
   }
@@ -136,6 +160,7 @@ impl Value {
   pub fn get(&self, key: &str) -> Option<&Self> {
     match self {
       Self::Object(obj) => obj.get(key),
+      Self::KVVec(kv_vec) => kv_vec.iter().find(|(k, _)| k == key).map(|(_, v)| v),
       _ => None,
     }
   }
@@ -186,5 +211,10 @@ impl Value {
   #[must_use]
   pub fn is_object(&self) -> bool {
     matches!(self, Self::Object(_))
+  }
+
+  #[must_use]
+  pub fn is_kv_vec(&self) -> bool {
+    matches!(self, Self::KVVec(_))
   }
 }

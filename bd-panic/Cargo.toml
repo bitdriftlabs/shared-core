@@ -9,6 +9,7 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-color-backtrace.workspace = true
-log.workspace             = true
-termcolor.workspace       = true
+bd-workspace-hack.workspace = true
+color-backtrace.workspace   = true
+log.workspace               = true
+termcolor.workspace         = true

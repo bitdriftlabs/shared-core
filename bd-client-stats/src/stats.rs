@@ -17,14 +17,17 @@ use bd_api::upload::{TrackedStatsUploadRequest, UploadResponse};
 use bd_client_common::{maybe_await, maybe_await_interval};
 use bd_client_stats_store::{Collector, Histogram, MetricData, MetricsByNameCore};
 use bd_error_reporter::reporter::handle_unexpected;
-use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapshot;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::Snapshot_type;
+use bd_proto::protos::client::api::{StatsUploadRequest, debug_data_request};
 use bd_proto::protos::client::metric::metric::Metric_name_type;
 use bd_proto::protos::client::metric::{Metric as ProtoMetric, MetricsList};
 use bd_shutdown::ComponentShutdown;
+use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, NameType};
-use bd_time::TimeDurationExt;
+use bd_time::{Ticker, TimeDurationExt};
+use debug_data_request::workflow_transition_debug_data::Transition_type;
+use debug_data_request::{WorkflowDebugData, WorkflowTransitionDebugData};
 use itertools::Itertools;
 #[cfg(test)]
 use stats_test::{TestHooks, TestHooksReceiver};
@@ -34,15 +37,6 @@ use std::sync::Arc;
 use time::Duration;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::MissedTickBehavior;
-
-//
-// Ticker
-//
-
-#[async_trait]
-pub trait Ticker: Send + Sync {
-  async fn tick(&mut self);
-}
 
 //
 // RuntimeWatchTicker
@@ -266,7 +260,8 @@ impl Flusher {
     // aggregation window.
     log::debug!("starting merge of delta snapshot to disk");
     let mut handle = self.file_manager.get_or_create_snapshot().await?;
-    let mut new_or_existing_snapshot = SnapshotHelper::new(handle.snapshot(), self.stats.limit());
+    let mut new_or_existing_snapshot =
+      SnapshotHelper::new(handle.snapshot(), self.stats.collector.limit());
 
     for ((metric_type, name), metrics) in delta_snapshot.metrics {
       for (labels, metric) in metrics {
@@ -311,9 +306,46 @@ impl Flusher {
         .or_insert(count);
     }
 
-    // If there are no metrics in the snapshot after merging in the latest delta, skip writing the
-    // aggregated snapshot to prevent empty stats uploads.
-    if new_or_existing_snapshot.metrics.is_empty() {
+    for (workflow_id, debug_data) in delta_snapshot.workflow_debug_data {
+      log::debug!("merging workflow debug data for {workflow_id}");
+      let existing = new_or_existing_snapshot
+        .workflow_debug_data
+        .entry(workflow_id)
+        .or_default();
+      if let Some(start_reset) = debug_data.start_reset.into_option() {
+        existing
+          .start_reset
+          .mut_or_insert_default()
+          .transition_count += start_reset.transition_count;
+      }
+      for (state_id, state_data) in debug_data.states {
+        log::debug!("merging workflow debug state for {state_id}");
+        let existing_state = existing.states.entry(state_id).or_default();
+        for transition in state_data.transitions {
+          log::debug!(
+            "merging workflow debug transition for {:?}",
+            transition.transition_type
+          );
+          if let Some(transition_type) = &transition.transition_type {
+            if let Some(existing_transition) = existing_state
+              .transitions
+              .iter_mut()
+              .find(|t| t.transition_type == Some(transition_type.clone()))
+            {
+              existing_transition.transition_count += transition.transition_count;
+            } else {
+              existing_state.transitions.push(transition);
+            }
+          }
+        }
+      }
+    }
+
+    // If there are no metrics or workflow debug state in the snapshot after merging in the latest
+    // delta, skip writing the aggregated snapshot to prevent empty stats uploads.
+    if new_or_existing_snapshot.metrics.is_empty()
+      && new_or_existing_snapshot.workflow_debug_data.is_empty()
+    {
       self.file_manager.remove_empty_snapshot().await?;
       return Ok(());
     }
@@ -321,9 +353,11 @@ impl Flusher {
     // Write the updated snapshot back to disk. This will either be read back up on the next
     // iteration of this task or converted into an upload payload by the upload task.
     log::debug!(
-      "updating aggregated snapshot file with {} metrics and {} overflowed IDs",
+      "updating aggregated snapshot file with {} metrics, {} overflowed IDs, and {} workflow \
+       debug entries",
       new_or_existing_snapshot.metrics.len(),
-      new_or_existing_snapshot.overflows.len()
+      new_or_existing_snapshot.overflows.len(),
+      new_or_existing_snapshot.workflow_debug_data.len()
     );
 
     // This might fail due to us being out of space or other I/O errors.
@@ -364,9 +398,48 @@ impl Flusher {
   }
 
   fn create_delta_snapshot(&self) -> SnapshotHelper {
-    let mut snapshot = SnapshotHelper::new(None, self.stats.limit());
+    let mut snapshot = SnapshotHelper::new(None, self.stats.collector.limit());
     Self::snap_collector_to_snapshot(&self.stats.collector, &mut snapshot);
     snapshot.overflows = std::mem::take(&mut self.stats.overflows.lock());
+
+    let workflow_debug_data = self.stats.take_workflow_debug_data();
+    let mut snapshot_workflow_debug_data: HashMap<String, WorkflowDebugData> = HashMap::new();
+    for (key, count) in workflow_debug_data {
+      let workflow_entry = snapshot_workflow_debug_data
+        .entry(key.workflow_id)
+        .or_default();
+
+      match key.state_key {
+        WorkflowDebugStateKey::StartOrReset => {
+          workflow_entry
+            .start_reset
+            .mut_or_insert_default()
+            .transition_count = count;
+        },
+        WorkflowDebugStateKey::StateTransition {
+          state_id,
+          transition_type,
+        } => {
+          workflow_entry
+            .states
+            .entry(state_id)
+            .or_default()
+            .transitions
+            .push(WorkflowTransitionDebugData {
+              transition_type: Some(match transition_type {
+                WorkflowDebugTransitionType::Normal(index) => {
+                  Transition_type::TransitionIndex(index.try_into().unwrap_or(0))
+                },
+                WorkflowDebugTransitionType::Timeout => Transition_type::TimeoutTransition(true),
+              }),
+              transition_count: count,
+              ..Default::default()
+            });
+        },
+      }
+    }
+    snapshot.workflow_debug_data = snapshot_workflow_debug_data;
+
     snapshot
   }
 
@@ -482,12 +555,14 @@ struct SnapshotHelper {
   metrics: MetricsByNameCore<(MetricType, NameType), MetricData>,
   overflows: HashMap<String, u64>,
   limit: Option<u32>,
+  workflow_debug_data: HashMap<String, WorkflowDebugData>,
 }
 
 #[derive(Default)]
 struct MetricsFromSnapshotResult {
   metrics: MetricsByNameCore<(MetricType, NameType), MetricData>,
   overflows: HashMap<String, u64>,
+  workflow_debug_data: HashMap<String, WorkflowDebugData>,
 }
 
 impl SnapshotHelper {
@@ -497,6 +572,7 @@ impl SnapshotHelper {
       metrics: result.metrics,
       overflows: result.overflows,
       limit,
+      workflow_debug_data: result.workflow_debug_data,
     }
   }
 
@@ -534,6 +610,7 @@ impl SnapshotHelper {
     Some(MetricsFromSnapshotResult {
       metrics: new_metrics,
       overflows: snapshot.metric_id_overflows,
+      workflow_debug_data: snapshot.workflow_debug_data,
     })
   }
 
@@ -601,6 +678,7 @@ impl SnapshotHelper {
         ..Default::default()
       })),
       metric_id_overflows: self.overflows,
+      workflow_debug_data: self.workflow_debug_data,
       ..Default::default()
     })
   }

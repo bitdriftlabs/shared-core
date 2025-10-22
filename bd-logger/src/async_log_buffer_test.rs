@@ -10,14 +10,16 @@ use crate::Block;
 use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay};
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
-use crate::log_replay::{LoggerReplay, ProcessingPipeline};
+use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
+use bd_api::DataUpload;
 use bd_api::api::SimpleNetworkQualityProvider;
 use bd_bounded_buffer::{self};
 use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
+use bd_feature_flags::FeatureFlagsBuilder;
 use bd_key_value::Store;
 use bd_log_filter::FilterChain;
 use bd_log_primitives::size::MemorySized;
@@ -51,6 +53,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
+use tokio::sync::mpsc;
 use tokio_test::assert_ok;
 
 struct Setup {
@@ -59,6 +62,8 @@ struct Setup {
   collector: Collector,
   stats: Arc<Stats>,
   tmp_dir: Arc<tempfile::TempDir>,
+  _data_upload_rx: mpsc::Receiver<DataUpload>,
+  data_upload_tx: mpsc::Sender<DataUpload>,
 
   replayer_log_count: Arc<AtomicUsize>,
   replayer_logs: Arc<parking_lot::Mutex<Vec<String>>>,
@@ -72,6 +77,7 @@ impl Setup {
     let runtime = &Self::make_runtime(&tmp_dir);
     let collector = Collector::default();
     let stats = Stats::new(collector.clone());
+    let (data_upload_tx, data_upload_rx) = mpsc::channel(1);
 
     Self {
       buffer_manager: bd_buffer::Manager::new(
@@ -88,6 +94,8 @@ impl Setup {
       replayer_logs: Arc::default(),
       replayer_fields: Arc::default(),
       shutdown: Some(ComponentShutdownTrigger::default()),
+      _data_upload_rx: data_upload_rx,
+      data_upload_tx,
     }
   }
 
@@ -134,6 +142,8 @@ impl Setup {
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
+      FeatureFlagsBuilder::new(&self.tmp_dir.path().join("feature_flags"), 1024, 0.8),
+      self.data_upload_tx.clone(),
     )
   }
 
@@ -165,6 +175,8 @@ impl Setup {
       Arc::new(Store::new(Box::<InMemoryStorage>::default())),
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
+      FeatureFlagsBuilder::new(&self.tmp_dir.path().join("feature_flags"), 1024, 0.8),
+      self.data_upload_tx.clone(),
     )
   }
 
@@ -195,6 +207,7 @@ impl Setup {
       workflows_configuration,
       tail_configs: TailConfigurations::default(),
       filter_chain: FilterChain::new(FiltersConfiguration::default()).0,
+      from_cache: false,
     }
   }
 
@@ -227,7 +240,7 @@ impl LogReplay for TestReplay {
     _block: bool,
     _processing_pipeline: &mut ProcessingPipeline,
     _now: OffsetDateTime,
-  ) -> anyhow::Result<Vec<Log>> {
+  ) -> anyhow::Result<LogReplayResult> {
     self.logs_count.fetch_add(1, Ordering::SeqCst);
     if let StringOrBytes::String(message) = &log.message {
       self.logs.lock().push(message.clone());
@@ -235,7 +248,7 @@ impl LogReplay for TestReplay {
 
     self.fields.lock().push(log.fields);
 
-    Ok(vec![])
+    Ok(LogReplayResult::default())
   }
 }
 
@@ -295,7 +308,7 @@ fn annotated_log_line_size_is_computed_correctly() {
       log_level: 0,
       log_type: LogType::Normal,
       message: "foo".into(),
-      fields: [("foo".into(), StringOrBytes::String("bar".to_string()))].into(),
+      fields: [("foo".into(), "bar".into())].into(),
       matching_fields: [].into(),
       session_id: "foo".into(),
       occurred_at: time::OffsetDateTime::now_utc(),
@@ -303,7 +316,7 @@ fn annotated_log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 569;
+  let baseline_log_expected_size = 561;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 
@@ -476,6 +489,7 @@ fn enqueuing_log_blocks() {
           workflows_configuration: WorkflowsConfiguration::default(),
           tail_configs: TailConfigurations::default(),
           filter_chain: FilterChain::new(FiltersConfiguration::default()).0,
+          from_cache: false,
         })
         .await
     );

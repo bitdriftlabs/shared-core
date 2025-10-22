@@ -13,17 +13,26 @@ use bd_buffer::{AbslCode, BuffersWithAck, Error};
 use bd_client_common::fb::make_log;
 use bd_client_stats::FlushTrigger;
 use bd_log_filter::FilterChain;
+use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{FieldsRef, Log, LogRef, LogType, log_level};
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::config::FlushBufferId;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
+use bd_workflows::workflow::WorkflowDebugStateMap;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::path::Path;
 use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
+
+#[derive(Default)]
+pub struct LogReplayResult {
+  pub logs_to_inject: Vec<Log>,
+  pub workflow_debug_state: Vec<(String, WorkflowDebugStateMap)>,
+  pub engine_has_debug_workflows: bool,
+}
 
 //
 // LogReplay
@@ -44,7 +53,7 @@ pub trait LogReplay {
     block: bool,
     pipeline: &mut ProcessingPipeline,
     now: OffsetDateTime,
-  ) -> anyhow::Result<Vec<Log>>;
+  ) -> anyhow::Result<LogReplayResult>;
 }
 
 //
@@ -61,7 +70,7 @@ impl LogReplay for LoggerReplay {
     block: bool,
     pipeline: &mut ProcessingPipeline,
     now: OffsetDateTime,
-  ) -> anyhow::Result<Vec<Log>> {
+  ) -> anyhow::Result<LogReplayResult> {
     pipeline.process_log(log, block, now).await
   }
 }
@@ -120,11 +129,14 @@ impl ProcessingPipeline {
       );
 
       workflows_engine
-        .start(WorkflowsEngineConfig::new(
-          config.workflows_configuration,
-          config.buffer_producers.trigger_buffer_ids.clone(),
-          config.buffer_producers.continuous_buffer_ids.clone(),
-        ))
+        .start(
+          WorkflowsEngineConfig::new(
+            config.workflows_configuration,
+            config.buffer_producers.trigger_buffer_ids.clone(),
+            config.buffer_producers.continuous_buffer_ids.clone(),
+          ),
+          config.from_cache,
+        )
         .await;
 
       (workflows_engine, flush_buffers_tx)
@@ -169,7 +181,7 @@ impl ProcessingPipeline {
     mut log: Log,
     block: bool,
     now: OffsetDateTime,
-  ) -> anyhow::Result<Vec<Log>> {
+  ) -> anyhow::Result<LogReplayResult> {
     self.stats.logs_received.inc();
 
     // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
@@ -182,7 +194,7 @@ impl ProcessingPipeline {
       fields: FieldsRef::new(&log.fields, &log.matching_fields),
       session_id: &log.session_id,
       occurred_at: log.occurred_at,
-      capture_session: log.capture_session.as_deref(),
+      capture_session: log.capture_session,
     };
 
     let flush_stats_trigger = self.flush_stats_trigger.clone();
@@ -210,9 +222,13 @@ impl ProcessingPipeline {
     let mut result = self
       .workflows_engine
       .process_log(log, &matching_buffers, now);
-    let logs_to_inject = std::mem::take(&mut result.logs_to_inject)
-      .into_values()
-      .collect();
+    let log_replay_result = LogReplayResult {
+      logs_to_inject: std::mem::take(&mut result.logs_to_inject)
+        .into_values()
+        .collect(),
+      workflow_debug_state: result.workflow_debug_state,
+      engine_has_debug_workflows: result.has_debug_workflows,
+    };
 
     log::debug!(
       "processed {:?} log, destination buffer(s): {:?}, capture session {:?}",
@@ -266,13 +282,13 @@ impl ProcessingPipeline {
         .await?;
     }
 
-    Ok(logs_to_inject)
+    Ok(log_replay_result)
   }
 
   async fn finish_blocking_log_processing(
     flush_buffers_tx: tokio::sync::mpsc::Sender<BuffersWithAck>,
     flush_stats_trigger: FlushTrigger,
-    matching_buffers: BTreeSet<Cow<'_, str>>,
+    matching_buffers: TinySet<Cow<'_, str>>,
   ) -> anyhow::Result<()> {
     // The processing of a blocking log is about to complete.
     // We make an arbitrary decision to start with the flushing of log buffers to disk first and
@@ -320,7 +336,7 @@ impl ProcessingPipeline {
 
   fn write_to_buffers<'a>(
     buffers: &mut BufferProducers,
-    matching_buffers: &BTreeSet<Cow<'_, str>>,
+    matching_buffers: &TinySet<Cow<'_, str>>,
     log: &LogRef<'_>,
     workflow_flush_buffer_action_ids: impl Iterator<Item = &'a str>,
   ) -> anyhow::Result<()> {
@@ -339,7 +355,7 @@ impl ProcessingPipeline {
       workflow_flush_buffer_action_ids,
       std::iter::empty(),
       |data| {
-        for buffer in matching_buffers {
+        for buffer in matching_buffers.iter() {
           // TODO(snowp): For both logger and buffer lookup we end up doing a map lookup, which
           // seems less than ideal in the logging path. Look into ways to optimize this,
           // possibly via vector indices instead of string keys.
@@ -369,8 +385,8 @@ impl ProcessingPipeline {
   fn process_flush_buffers_actions(
     triggered_flush_buffers_action_ids: &BTreeSet<Cow<'_, FlushBufferId>>,
     buffers: &mut BufferProducers,
-    triggered_flushes_buffer_ids: &BTreeSet<Cow<'_, str>>,
-    written_to_buffers: &BTreeSet<Cow<'_, str>>,
+    triggered_flushes_buffer_ids: &TinySet<Cow<'_, str>>,
+    written_to_buffers: &TinySet<Cow<'_, str>>,
     log: &LogRef<'_>,
   ) -> Option<String> {
     if triggered_flush_buffers_action_ids.is_empty() {

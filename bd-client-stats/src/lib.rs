@@ -16,7 +16,6 @@
 
 mod file_manager;
 pub mod stats;
-pub mod test;
 
 use crate::stats::Flusher;
 use bd_api::DataUpload;
@@ -24,10 +23,10 @@ use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats_store::{Collector, Error as StatsError};
 use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;
-use bd_time::SystemTimeProvider;
+use bd_stats_common::workflow::WorkflowDebugKey;
+use bd_time::{SystemTimeProvider, Ticker};
 use file_manager::FileManager;
 use parking_lot::Mutex;
-use stats::Ticker;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::Arc;
@@ -100,6 +99,7 @@ impl FlushTrigger {
 pub struct Stats {
   collector: Collector,
   overflows: Mutex<HashMap<String, u64>>,
+  workflow_debug_data: Mutex<HashMap<WorkflowDebugKey, u64>>,
 }
 
 impl Stats {
@@ -108,6 +108,7 @@ impl Stats {
     Arc::new(Self {
       collector,
       overflows: Mutex::default(),
+      workflow_debug_data: Mutex::default(),
     })
   }
 
@@ -170,6 +171,17 @@ impl Stats {
       .or_insert(1);
   }
 
+  pub fn record_workflow_debug_state(&self, state: Vec<WorkflowDebugKey>) {
+    log::debug!("recording workflow debug state: {state:?}");
+    let mut workflow_debug_data = self.workflow_debug_data.lock();
+    for key in state {
+      workflow_debug_data
+        .entry(key)
+        .and_modify(|e| *e += 1)
+        .or_insert(1);
+    }
+  }
+
   pub fn record_dynamic_counter(&self, tags: BTreeMap<String, String>, id: &str, value: u64) {
     match self.collector.dynamic_counter(tags, id) {
       Ok(counter) => counter.inc_by(value),
@@ -188,7 +200,11 @@ impl Stats {
     }
   }
 
-  pub fn limit(&self) -> Option<u32> {
-    self.collector.limit()
+  pub fn collector(&self) -> &Collector {
+    &self.collector
+  }
+
+  pub fn take_workflow_debug_data(&self) -> HashMap<WorkflowDebugKey, u64> {
+    std::mem::take(&mut *self.workflow_debug_data.lock())
   }
 }

@@ -14,7 +14,7 @@ fn test_kv_store_new() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let base_path = temp_dir.path().join("test_store");
 
-  let store = KVStore::new(&base_path, 4096, None, None)?;
+  let store = KVStore::new(&base_path, 4096, None)?;
 
   // Should start empty
   assert!(store.is_empty());
@@ -28,7 +28,7 @@ fn test_kv_store_basic_operations() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let base_path = temp_dir.path().join("test_store");
 
-  let mut store = KVStore::new(&base_path, 4096, None, None)?;
+  let mut store = KVStore::new(&base_path, 4096, None)?;
 
   // Test insert and get
   let old_value = store.insert("key1".to_string(), Value::String("value1".to_string()))?;
@@ -60,7 +60,7 @@ fn test_kv_store_remove() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let base_path = temp_dir.path().join("test_store");
 
-  let mut store = KVStore::new(&base_path, 4096, None, None)?;
+  let mut store = KVStore::new(&base_path, 4096, None)?;
 
   // Insert some values
   store.insert("key1".to_string(), Value::String("value1".to_string()))?;
@@ -84,11 +84,68 @@ fn test_kv_store_remove() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_kv_store_insert_multiple() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let base_path = temp_dir.path().join("test_store");
+
+  let mut store = KVStore::new(&base_path, 4096, None)?;
+
+  // Create multiple entries to insert
+  let entries = vec![
+    ("key1".to_string(), Value::String("value1".to_string())),
+    ("key2".to_string(), Value::Signed(42)),
+    ("key3".to_string(), Value::Bool(true)),
+    ("key4".to_string(), Value::Float(3.14159)),
+  ];
+
+  // Insert all entries at once
+  store.insert_multiple(&entries)?;
+
+  // Verify all entries were inserted
+  assert_eq!(store.len(), 4);
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("value1".to_string()))
+  );
+  assert_eq!(store.get("key2"), Some(&Value::Signed(42)));
+  assert_eq!(store.get("key3"), Some(&Value::Bool(true)));
+  assert_eq!(store.get("key4"), Some(&Value::Float(3.14159)));
+
+  // Test inserting more entries, including one with Null (deletion)
+  let more_entries = vec![
+    ("key5".to_string(), Value::String("value5".to_string())),
+    ("key2".to_string(), Value::Null), // This should delete key2
+    (
+      "key1".to_string(),
+      Value::String("updated_value1".to_string()),
+    ), // Update key1
+  ];
+
+  store.insert_multiple(&more_entries)?;
+
+  // Verify the changes
+  assert_eq!(store.len(), 4); // key1, key3, key4, key5 (key2 deleted)
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("updated_value1".to_string()))
+  );
+  assert_eq!(store.get("key2"), None); // Deleted
+  assert_eq!(store.get("key3"), Some(&Value::Bool(true))); // Unchanged
+  assert_eq!(store.get("key4"), Some(&Value::Float(3.14159))); // Unchanged
+  assert_eq!(
+    store.get("key5"),
+    Some(&Value::String("value5".to_string()))
+  ); // New
+
+  Ok(())
+}
+
+#[test]
 fn test_kv_store_clear() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let base_path = temp_dir.path().join("test_store");
 
-  let mut store = KVStore::new(&base_path, 4096, None, None)?;
+  let mut store = KVStore::new(&base_path, 4096, None)?;
 
   // Insert some values
   store.insert("key1".to_string(), Value::String("value1".to_string()))?;
@@ -114,7 +171,7 @@ fn test_kv_store_clear_efficiency() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let base_path = temp_dir.path().join("test_store");
 
-  let mut store = KVStore::new(&base_path, 4096, None, None)?;
+  let mut store = KVStore::new(&base_path, 4096, None)?;
 
   // Insert many key-value pairs
   for i in 0 .. 100 {
@@ -159,7 +216,7 @@ fn test_kv_store_hashmap_access() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let base_path = temp_dir.path().join("test_store");
 
-  let mut store = KVStore::new(&base_path, 4096, None, None)?;
+  let mut store = KVStore::new(&base_path, 4096, None)?;
 
   // Insert some values
   store.insert("key1".to_string(), Value::String("value1".to_string()))?;
@@ -200,7 +257,7 @@ fn test_kv_store_persistence() -> anyhow::Result<()> {
 
   // Create store and add data
   {
-    let mut store = KVStore::new(&base_path, 4096, None, None)?;
+    let mut store = KVStore::new(&base_path, 4096, None)?;
     store.insert(
       "persistent_key".to_string(),
       Value::String("persistent_value".to_string()),
@@ -215,7 +272,7 @@ fn test_kv_store_persistence() -> anyhow::Result<()> {
 
   // Open store again and verify data persisted
   {
-    let store = KVStore::new(&base_path, 4096, None, None)?;
+    let store = KVStore::new(&base_path, 4096, None)?;
 
     assert_eq!(store.len(), 2);
     assert_eq!(
@@ -235,14 +292,14 @@ fn test_kv_store_file_resizing() -> anyhow::Result<()> {
 
   // Create store with small size
   {
-    let mut store = KVStore::new(&base_path, 1024, None, None)?;
+    let mut store = KVStore::new(&base_path, 1024, None)?;
     store.insert("key1".to_string(), Value::String("value1".to_string()))?;
     store.sync()?;
   }
 
   // Reopen with larger size
   {
-    let mut store = KVStore::new(&base_path, 4096, None, None)?;
+    let mut store = KVStore::new(&base_path, 4096, None)?;
 
     // Data should still be there
     assert_eq!(
@@ -263,7 +320,7 @@ fn test_kv_store_compress() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let base_path = temp_dir.path().join("test_store");
 
-  let mut store = KVStore::new(&base_path, 4096, Some(0.5), None)?;
+  let mut store = KVStore::new(&base_path, 4096, Some(0.5))?;
 
   // Add some data
   store.insert("key1".to_string(), Value::String("value1".to_string()))?;
@@ -303,7 +360,7 @@ fn test_kv_store_mixed_value_types() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let base_path = temp_dir.path().join("test_store");
 
-  let mut store = KVStore::new(&base_path, 4096, None, None)?;
+  let mut store = KVStore::new(&base_path, 4096, None)?;
 
   // Insert different value types
   store.insert("string".to_string(), Value::String("hello".to_string()))?;
@@ -333,7 +390,7 @@ fn test_insert_null_is_deletion() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let base_path = temp_dir.path().join("test_null");
 
-  let mut store = KVStore::new(base_path, 1024, None, None)?;
+  let mut store = KVStore::new(base_path, 1024, None)?;
 
   // Insert a value
   store.insert("key1".to_string(), Value::String("value1".to_string()))?;
@@ -362,7 +419,7 @@ fn test_kv_store_caching_behavior() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let base_path = temp_dir.path().join("test_store");
 
-  let mut store = KVStore::new(&base_path, 4096, None, None)?;
+  let mut store = KVStore::new(&base_path, 4096, None)?;
 
   // Add some data
   store.insert("key1".to_string(), Value::String("value1".to_string()))?;
@@ -429,7 +486,7 @@ fn test_kv_store_constructor_cache_coherency_empty() -> anyhow::Result<()> {
   let base_path = temp_dir.path().join("test_store");
 
   // Create a new store - should have coherent empty cache
-  let store = KVStore::new(&base_path, 4096, None, None)?;
+  let store = KVStore::new(&base_path, 4096, None)?;
 
   // Cache should be empty and coherent with journal
   assert!(store.is_empty());
@@ -449,7 +506,7 @@ fn test_kv_store_constructor_cache_coherency_with_existing_data() -> anyhow::Res
 
   // Create store and add data
   {
-    let mut store = KVStore::new(&base_path, 4096, None, None)?;
+    let mut store = KVStore::new(&base_path, 4096, None)?;
     store.insert("key1".to_string(), Value::String("value1".to_string()))?;
     store.insert("key2".to_string(), Value::Signed(42))?;
     store.insert("key3".to_string(), Value::Bool(true))?;
@@ -457,7 +514,7 @@ fn test_kv_store_constructor_cache_coherency_with_existing_data() -> anyhow::Res
   }
 
   // Re-open the store - cache should be coherent with persisted data
-  let store = KVStore::new(&base_path, 4096, None, None)?;
+  let store = KVStore::new(&base_path, 4096, None)?;
 
   // Verify cache is coherent with journal data
   assert_eq!(store.len(), 3);
@@ -502,13 +559,13 @@ fn test_kv_store_constructor_cache_coherency_with_file_resize() -> anyhow::Resul
 
   // Create store with small buffer and add data
   {
-    let mut store = KVStore::new(&base_path, 512, None, None)?;
+    let mut store = KVStore::new(&base_path, 512, None)?;
     store.insert("key1".to_string(), Value::String("value1".to_string()))?;
     store.sync()?;
   }
 
   // Re-open with larger buffer - cache should be coherent with existing data
-  let store = KVStore::new(&base_path, 4096, None, None)?;
+  let store = KVStore::new(&base_path, 4096, None)?;
 
   // Verify cache is coherent after file resize
   assert_eq!(store.len(), 1);
@@ -528,7 +585,7 @@ fn test_kv_store_constructor_cache_coherency_with_corrupted_data() -> anyhow::Re
 
   // Create store and add data
   {
-    let mut store = KVStore::new(&base_path, 4096, None, None)?;
+    let mut store = KVStore::new(&base_path, 4096, None)?;
     store.insert("key1".to_string(), Value::String("value1".to_string()))?;
     store.sync()?;
   }
@@ -538,7 +595,7 @@ fn test_kv_store_constructor_cache_coherency_with_corrupted_data() -> anyhow::Re
   std::fs::write(&file_a, b"corrupted data")?;
 
   // Re-open store - should handle corruption and have coherent cache
-  let store = KVStore::new(&base_path, 4096, None, None)?;
+  let store = KVStore::new(&base_path, 4096, None)?;
 
   // Cache should be coherent (either empty for fresh journal or with data from non-corrupted
   // journal)
@@ -564,14 +621,14 @@ fn test_kv_store_constructor_cache_coherency_different_high_water_marks() -> any
 
   // Create store with specific high water mark and add data
   {
-    let mut store = KVStore::new(&base_path, 4096, Some(0.5), None)?;
+    let mut store = KVStore::new(&base_path, 4096, Some(0.5))?;
     store.insert("key1".to_string(), Value::String("value1".to_string()))?;
     store.insert("key2".to_string(), Value::String("value2".to_string()))?;
     store.sync()?;
   }
 
   // Re-open with different high water mark - cache should be coherent
-  let store = KVStore::new(&base_path, 4096, Some(0.8), None)?;
+  let store = KVStore::new(&base_path, 4096, Some(0.8))?;
 
   // Verify cache is coherent regardless of high water mark setting
   assert_eq!(store.len(), 2);
@@ -596,7 +653,7 @@ fn test_kv_store_constructor_cache_coherency_after_journal_switch() -> anyhow::R
 
   // Create store and force journal switching by filling one journal
   {
-    let mut store = KVStore::new(&base_path, 512, Some(0.7), None)?;
+    let mut store = KVStore::new(&base_path, 512, Some(0.7))?;
 
     // Add enough data to trigger high water mark and journal switching
     for i in 0 .. 20 {
@@ -606,7 +663,7 @@ fn test_kv_store_constructor_cache_coherency_after_journal_switch() -> anyhow::R
   }
 
   // Re-open store - cache should be coherent with the active journal data
-  let store = KVStore::new(&base_path, 512, Some(0.7), None)?;
+  let store = KVStore::new(&base_path, 512, Some(0.7))?;
 
   // Verify cache is coherent
   let len = store.len();
@@ -636,7 +693,7 @@ fn test_kv_store_comprehensive_cache_coherency() -> anyhow::Result<()> {
     // and verify it loads the exact same data as what's in the current cache
     store.sync()?; // Ensure all data is written to disk
 
-    let fresh_store = KVStore::new(base_path, 4096, None, None)?;
+    let fresh_store = KVStore::new(base_path, 4096, None)?;
     let fresh_hashmap = fresh_store.as_hashmap();
     let current_hashmap = store.as_hashmap();
 
@@ -683,7 +740,7 @@ fn test_kv_store_comprehensive_cache_coherency() -> anyhow::Result<()> {
     Ok(())
   };
 
-  let mut store = KVStore::new(&base_path, 4096, None, None)?;
+  let mut store = KVStore::new(&base_path, 4096, None)?;
 
   // Verify coherency on empty store
   verify_coherency(&store, &base_path)?;
@@ -760,7 +817,7 @@ fn test_cache_vs_journal_coherency_validation() -> anyhow::Result<()> {
 
   // Create a store and add some data
   {
-    let mut store = KVStore::new(&base_path, 4096, None, None)?;
+    let mut store = KVStore::new(&base_path, 4096, None)?;
     store.insert(
       "test_key1".to_string(),
       Value::String("test_value1".to_string()),
@@ -771,7 +828,7 @@ fn test_cache_vs_journal_coherency_validation() -> anyhow::Result<()> {
   }
 
   // Now open the store and verify its cache matches what's actually persisted
-  let store = KVStore::new(&base_path, 4096, None, None)?;
+  let store = KVStore::new(&base_path, 4096, None)?;
 
   // The cache should reflect the persisted state
   assert_eq!(store.len(), 3);
@@ -783,7 +840,7 @@ fn test_cache_vs_journal_coherency_validation() -> anyhow::Result<()> {
   assert_eq!(store.get("test_key3"), Some(&Value::Bool(false)));
 
   // Create another store instance to verify the journal data matches the cache
-  let verification_store = KVStore::new(&base_path, 4096, None, None)?;
+  let verification_store = KVStore::new(&base_path, 4096, None)?;
 
   // Both stores should have identical data
   assert_eq!(store.len(), verification_store.len());
@@ -810,7 +867,7 @@ fn test_cache_vs_journal_coherency_validation() -> anyhow::Result<()> {
   mutable_store.sync()?;
 
   // Create yet another store to verify the changes are persisted correctly
-  let final_verification_store = KVStore::new(&base_path, 4096, None, None)?;
+  let final_verification_store = KVStore::new(&base_path, 4096, None)?;
 
   // Should have the updated data (3 original - 1 removed + 1 added = 3)
   assert_eq!(final_verification_store.len(), 3);
@@ -827,6 +884,62 @@ fn test_cache_vs_journal_coherency_validation() -> anyhow::Result<()> {
   assert_eq!(
     final_verification_store.get("test_key3"),
     Some(&Value::Bool(false))
+  );
+
+  Ok(())
+}
+
+#[test]
+fn test_kv_store_open_existing() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let base_path = temp_dir.path().join("test_store");
+
+  // Test 1: open_existing should fail when files don't exist
+  let result = KVStore::open_existing(&base_path, 1024, None);
+  assert!(
+    result.is_err(),
+    "open_existing should fail when files don't exist"
+  );
+
+  // Test 2: Create a store with some data using new()
+  {
+    let mut store = KVStore::new(&base_path, 1024, None)?;
+    store.insert("key1".to_string(), Value::String("value1".to_string()))?;
+    store.insert("key2".to_string(), Value::Signed(42))?;
+    store.insert("key3".to_string(), Value::Bool(true))?;
+    store.sync()?;
+  }
+
+  // Test 3: open_existing should succeed when both files exist
+  let store = KVStore::open_existing(&base_path, 1024, None)?;
+  assert_eq!(store.len(), 3, "Should have 3 keys");
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("value1".to_string()))
+  );
+  assert_eq!(store.get("key2"), Some(&Value::Signed(42)));
+  assert_eq!(store.get("key3"), Some(&Value::Bool(true)));
+
+  // Test 4: open_existing should fail if only one file exists
+  std::fs::remove_file(base_path.with_extension("jrnb"))?;
+  let result = KVStore::open_existing(&base_path, 1024, None);
+  assert!(
+    result.is_err(),
+    "open_existing should fail when only one file exists"
+  );
+
+  // Test 5: Recreate both files and verify open_existing works with different buffer size
+  {
+    let mut store = KVStore::new(&base_path, 1024, None)?;
+    store.insert("key1".to_string(), Value::String("resized".to_string()))?;
+    store.sync()?;
+  }
+
+  let store = KVStore::open_existing(&base_path, 2048, None)?;
+  assert_eq!(store.len(), 1, "Should have 1 key after resize");
+  assert_eq!(
+    store.get("key1"),
+    Some(&Value::String("resized".to_string()))
   );
 
   Ok(())

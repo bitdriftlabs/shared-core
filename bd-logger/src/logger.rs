@@ -108,7 +108,7 @@ thread_local! {
 /// logger.
 ///
 /// # Panics
-/// This will panic if the logger guard has an outstanding borrowk, e.g. either if this function is
+/// This will panic if the logger guard has an outstanding borrow, e.g. either if this function is
 /// called again within the provided closure or some other code starts holding a borrow while
 /// calling this.
 pub fn with_thread_local_logger_guard<R>(f: impl FnOnce() -> R) -> R {
@@ -116,6 +116,22 @@ pub fn with_thread_local_logger_guard<R>(f: impl FnOnce() -> R) -> R {
     let _guard = cell.borrow_mut();
     f()
   })
+}
+
+/// Macro to execute a block of code with the reentrancy guard, logging a warning if the guard is
+/// already held.
+macro_rules! with_reentrancy_guard {
+  ($f:expr, $msg:expr, $($args:expr),*) => {
+    // We just need to see if we can borrow - no need to hold it for any longer than that, as
+    // this indicates that nothing is holding a mut borrow.
+    LOGGER_GUARD.with(|cell| {
+      if cell.try_borrow().is_ok() {
+        $f
+      } else {
+        warn_every!(30.seconds(), $msg, $($args),*);
+      }
+    });
+  };
 }
 
 #[derive(Clone, Copy)]
@@ -138,12 +154,12 @@ impl From<Block> for bool {
 //
 
 #[derive(Default)]
-pub struct CaptureSession(Option<String>);
+pub struct CaptureSession(Option<&'static str>);
 
 impl CaptureSession {
   #[must_use]
-  pub fn capture_with_id(id: &str) -> Self {
-    Self(Some(id.to_string()))
+  pub fn capture_with_id(id: &'static str) -> Self {
+    Self(Some(id))
   }
 }
 
@@ -175,13 +191,10 @@ impl LoggerHandle {
     matching_fields: AnnotatedLogFields,
     attributes_overrides: Option<LogAttributesOverrides>,
     block: Block,
-    capture_session: CaptureSession,
+    capture_session: &CaptureSession,
   ) {
-    LOGGER_GUARD.with(|cell| {
-      // We just need to see if we can borrow - no need to hold it for any longer than that, as
-      // this indicates that nothing is holding a mut borrow. This also guards for a hypothetical
-      // situation in which code in `enqueue_log` would try to mut borrow the guard.
-      if cell.try_borrow().is_ok() {
+    with_reentrancy_guard!(
+      {
         let result = AsyncLogBuffer::<LoggerReplay>::enqueue_log(
           &self.tx,
           log_level,
@@ -199,14 +212,10 @@ impl LoggerHandle {
         if let Err(e) = result {
           warn_every!(15.seconds(), "dropping log: {:?}", e);
         }
-      } else {
-        warn_every!(
-          15.seconds(),
-          "dropping log: message {:?}: emitting logs from within a field provider is not allowed",
-          message
-        );
-      }
-    });
+      },
+      "failed to log {:?}, emitting logs from within a field provider is not allowed",
+      message
+    );
   }
 
   pub fn log_resource_utilization(&self, mut fields: AnnotatedLogFields, duration: time::Duration) {
@@ -223,7 +232,7 @@ impl LoggerHandle {
       [].into(),
       None,
       Block::No,
-      CaptureSession::default(),
+      &CaptureSession::default(),
     );
   }
 
@@ -275,7 +284,7 @@ impl LoggerHandle {
       [].into(),
       None,
       Block::No,
-      CaptureSession::default(),
+      &CaptureSession::default(),
     );
 
     self
@@ -308,7 +317,7 @@ impl LoggerHandle {
       [].into(),
       None,
       Block::No,
-      CaptureSession::default(),
+      &CaptureSession::default(),
     );
   }
 
@@ -376,45 +385,124 @@ impl LoggerHandle {
       [].into(),
       None,
       Block::No,
-      CaptureSession::default(),
+      &CaptureSession::default(),
     );
   }
 
   pub fn add_log_field(&self, key: String, value: LogFieldValue) {
-    LOGGER_GUARD.with(|cell| {
-      if cell.try_borrow().is_ok() {
+    with_reentrancy_guard!(
+      {
         let field_name = key.clone();
         let result = AsyncLogBuffer::<LoggerReplay>::add_log_field(&self.tx, key, value);
         if let Err(e) = result {
           log::warn!("failed to add {field_name:?} log field: {e:?}");
         }
-      } else {
-        warn_every!(
-          15.seconds(),
-          "failed to add {:?} log field, adding log fields from within a field provider is not \
-           allowed",
-          key
-        );
-      }
-    });
+      },
+      "failed to add {:?} log field, adding log fields from within a field provider is not allowed",
+      key
+    );
   }
 
   pub fn remove_log_field(&self, field_name: &str) {
-    LOGGER_GUARD.with(|cell| {
-      if cell.try_borrow().is_ok() {
+    with_reentrancy_guard!(
+      {
         let result = AsyncLogBuffer::<LoggerReplay>::remove_log_field(&self.tx, field_name);
         if let Err(e) = result {
           log::warn!("failed to remove {field_name:?} log field: {e:?}");
         }
-      } else {
-        warn_every!(
-          15.seconds(),
-          "failed to remove {:?} log field, adding log fields from within a field provider is not \
-           allowed",
-          field_name
-        );
-      }
-    });
+      },
+      "failed to remove {:?} log field, adding log fields from within a callback is not permitted",
+      field_name
+    );
+  }
+
+  /// Sets or updates a feature flag in the logger.
+  ///
+  /// Creates or updates a feature flag with the given name and variant. Feature flags
+  /// are used to control runtime behavior and logging configurations. The flag is
+  /// stored persistently and will be available across logger restarts.
+  ///
+  /// # Arguments
+  ///
+  /// * `flag` - The name of the feature flag to set or update
+  /// * `variant` - The variant value for the flag:
+  ///   - `Some(string)` sets the flag with the specified variant
+  ///   - `None` sets the flag without a variant (simple boolean-style flag)
+  ///
+  /// # Notes
+  ///
+  /// This method is non-blocking and will not panic if called from within a log field
+  /// provider callback. If called from within a callback, a warning will be logged
+  /// and the operation will be ignored.
+  pub fn set_feature_flag(&self, flag: String, variant: Option<String>) {
+    with_reentrancy_guard!(
+      {
+        let result = AsyncLogBuffer::<LoggerReplay>::set_feature_flag(&self.tx, flag, variant);
+        if let Err(e) = result {
+          log::warn!("failed to set feature flag: {e:?}");
+        }
+      },
+      "failed to set {:?} feature flag, setting flags from within a callback is not permitted",
+      flag
+    );
+  }
+
+  /// Sets or updates multiple feature flags in a single operation.
+  ///
+  /// Creates or updates multiple feature flags with their respective variants. This method
+  /// is more efficient than calling `set_feature_flag()` multiple times as it batches
+  /// the operations. All flags are stored persistently and will be available across
+  /// logger restarts.
+  ///
+  /// # Arguments
+  ///
+  /// * `flags` - A vector of tuples containing flag names and their variants:
+  ///   - `Some(string)` sets the flag with the specified variant
+  ///   - `None` sets the flag without a variant (simple boolean-style flag)
+  ///
+  /// # Notes
+  ///
+  /// This method is non-blocking and will not panic if called from within a log field
+  /// provider callback. If called from within a callback, a warning will be logged
+  /// and the operation will be ignored.
+  pub fn set_feature_flags(&self, flags: Vec<(String, Option<String>)>) {
+    with_reentrancy_guard!(
+      {
+        let result = AsyncLogBuffer::<LoggerReplay>::set_feature_flags(&self.tx, flags);
+        if let Err(e) = result {
+          log::warn!("failed to set feature flags: {e:?}");
+        }
+      },
+      "failed to set {:?} feature flags, setting flags from within a callback is not permitted",
+      flags
+    );
+  }
+
+  /// Removes a feature flag from the logger.
+  ///
+  /// Deletes the specified feature flag from persistent storage. Once removed,
+  /// the flag will no longer be available and will not persist across logger restarts.
+  ///
+  /// # Arguments
+  ///
+  /// * `flag` - The name of the feature flag to remove
+  ///
+  /// # Notes
+  ///
+  /// This method is non-blocking and will not panic if called from within a log field
+  /// provider callback. If called from within a callback, a warning will be logged
+  /// and the operation will be ignored.
+  pub fn remove_feature_flag(&self, flag: String) {
+    with_reentrancy_guard!(
+      {
+        let result = AsyncLogBuffer::<LoggerReplay>::remove_feature_flag(&self.tx, flag);
+        if let Err(e) = result {
+          log::warn!("failed to remove feature flag: {e:?}");
+        }
+      },
+      "failed to remove {:?} feature flag, removing flags from within a callback is not permitted",
+      flag
+    );
   }
 
   pub fn flush_state(&self, block: Block) {
@@ -472,6 +560,9 @@ pub struct InitParams {
   // Whether the logger should start in sleep mode. It can then be transitioned using the provided
   // transition APIs.
   pub start_in_sleep_mode: bool,
+
+  pub feature_flags_file_size_bytes: usize,
+  pub feature_flags_high_watermark: f32,
 }
 
 pub struct ReportProcessingRequest {
@@ -555,7 +646,7 @@ impl Logger {
     let buffer_directory = directory.join("buffers");
 
     if let Err(e) = std::fs::create_dir_all(&buffer_directory) {
-      anyhow::bail!("failed to create sdk buffer(s) directory: {:?}", e);
+      anyhow::bail!("failed to create sdk buffer(s) directory: {e:?}");
     }
 
     Ok(buffer_directory)

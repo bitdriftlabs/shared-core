@@ -5,6 +5,13 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+// TODO(mattklein123): This appears to be required when compiling benchmarks.
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+
+use parking_lot::RwLock;
+use std::sync::Arc;
+
 #[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
 pub enum InitLifecycle {

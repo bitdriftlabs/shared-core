@@ -16,7 +16,7 @@
 
 mod uploader;
 
-pub use uploader::{Client, MockClient, Uploader};
+pub use uploader::{Client, MockClient, SnappedFeatureFlag, Uploader};
 
 #[cfg(test)]
 #[ctor::ctor]

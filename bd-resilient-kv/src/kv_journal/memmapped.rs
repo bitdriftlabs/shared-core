@@ -5,11 +5,11 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use super::KVJournal;
 use super::in_memory::InMemoryKVJournal;
-use super::{HighWaterMarkCallback, KVJournal};
+use ahash::AHashMap;
 use bd_bonjson::Value;
 use memmap2::{MmapMut, MmapOptions};
-use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::path::Path;
 
@@ -59,7 +59,6 @@ impl MemMappedKVJournal {
   /// * `file_path` - Path to the file to use for storage
   /// * `size` - Minimum size of the file in bytes
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  /// * `callback` - Optional callback function called when high water mark is exceeded
   ///
   /// # Errors
   /// Returns an error if the file cannot be created/opened or memory-mapped.
@@ -67,7 +66,6 @@ impl MemMappedKVJournal {
     file_path: P,
     size: usize,
     high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>,
   ) -> anyhow::Result<Self> {
     let file = OpenOptions::new()
       .read(true)
@@ -83,7 +81,7 @@ impl MemMappedKVJournal {
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
-    let in_memory_kv = InMemoryKVJournal::new(buffer, high_water_mark_ratio, callback)?;
+    let in_memory_kv = InMemoryKVJournal::new(buffer, high_water_mark_ratio)?;
 
     Ok(Self { mmap, in_memory_kv })
   }
@@ -97,7 +95,6 @@ impl MemMappedKVJournal {
   /// * `file_path` - Path to the existing file
   /// * `size` - Size to resize the file to in bytes
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  /// * `callback` - Optional callback function called when high water mark is exceeded
   ///
   /// # Errors
   /// Returns an error if the file cannot be opened, memory-mapped, or contains invalid data.
@@ -106,7 +103,6 @@ impl MemMappedKVJournal {
     file_path: P,
     size: usize,
     high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>,
   ) -> anyhow::Result<Self> {
     let file = OpenOptions::new().read(true).write(true).open(file_path)?;
 
@@ -117,7 +113,7 @@ impl MemMappedKVJournal {
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
-    let in_memory_kv = InMemoryKVJournal::from_buffer(buffer, high_water_mark_ratio, callback)?;
+    let in_memory_kv = InMemoryKVJournal::from_buffer(buffer, high_water_mark_ratio)?;
 
     Ok(Self { mmap, in_memory_kv })
   }
@@ -177,6 +173,20 @@ impl KVJournal for MemMappedKVJournal {
     self.in_memory_kv.set(key, value)
   }
 
+  /// Set multiple key-value pairs in this journal.
+  ///
+  /// This will create journal entries for each key-value pair and automatically persist them
+  /// to the mapped file.
+  ///
+  /// Note: Setting any value to `Value::Null` will mark that entry for DELETION!
+  ///
+  /// # Errors
+  /// Returns an error if any journal entry cannot be written. If an error occurs,
+  /// no data will have been written.
+  fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
+    self.in_memory_kv.set_multiple(entries)
+  }
+
   /// Delete a key from this journal.
   ///
   /// This will create a new journal entry and automatically persist it to the mapped file.
@@ -206,7 +216,7 @@ impl KVJournal for MemMappedKVJournal {
   ///
   /// # Errors
   /// Returns an error if the buffer cannot be decoded.
-  fn as_hashmap(&self) -> anyhow::Result<HashMap<String, Value>> {
+  fn as_hashmap(&self) -> anyhow::Result<AHashMap<String, Value>> {
     self.in_memory_kv.as_hashmap()
   }
 

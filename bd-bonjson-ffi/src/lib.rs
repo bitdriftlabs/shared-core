@@ -5,15 +5,45 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::writer::Writer;
-use libc;
+use bd_bonjson::writer::Writer;
 use std::ffi::c_void;
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufWriter, Write};
+use std::ops::{Deref, DerefMut};
 use std::ptr::null;
 
 pub type BDCrashWriterHandle = *mut *const c_void;
-pub type WriterBufWriterFile = Writer<BufWriter<File>>;
+
+/// Newtype wrapper around `Writer<BufWriter<File>>` to allow implementing traits
+pub struct WriterBufWriterFile(Writer<BufWriter<File>>);
+
+impl WriterBufWriterFile {
+  #[must_use]
+  pub fn new(writer: Writer<BufWriter<File>>) -> Self {
+    Self(writer)
+  }
+
+  #[must_use]
+  pub fn into_raw(self) -> *const c_void {
+    Box::into_raw(Box::new(self)) as *const c_void
+  }
+}
+
+impl Deref for WriterBufWriterFile {
+  type Target = Writer<BufWriter<File>>;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl DerefMut for WriterBufWriterFile {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
+  }
+}
+
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FFIError {
@@ -59,9 +89,7 @@ fn new_writer(path: &str) -> io::Result<WriterBufWriterFile> {
     .write(true)
     .truncate(true)
     .open(path)?;
-  Ok(Writer {
-    writer: BufWriter::new(file),
-  })
+  Ok(WriterBufWriterFile::new(Writer::new(BufWriter::new(file))))
 }
 
 /// Attempt to open a writer to the specified path.

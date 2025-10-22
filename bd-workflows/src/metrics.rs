@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 // Responsible for emitting statistics related to workflow action metrics.
 pub(crate) struct MetricsCollector {
-  stats: Arc<Stats>,
+  pub(crate) stats: Arc<Stats>,
 }
 
 impl MetricsCollector {
@@ -33,10 +33,6 @@ impl MetricsCollector {
   }
 
   pub(crate) fn emit_metrics(&self, actions: &BTreeSet<&ActionEmitMetric>, log: &LogRef<'_>) {
-    if actions.is_empty() {
-      return;
-    }
-
     // TODO(Augustyniak): We dedupe stats in here too only when both their tags and the value of
     // If `counter_increment` values are identical, consider deduping metrics even if their
     // `counter_increment` fields have different values.
@@ -47,7 +43,7 @@ impl MetricsCollector {
       let maybe_value: anyhow::Result<f64> = match &action.increment {
         crate::config::ValueIncrement::Fixed(value) => Ok(*value as f64),
         crate::config::ValueIncrement::Extract(extract) => Self::resolve_field_name(extract, log)
-          .ok_or_else(|| anyhow::anyhow!("field {:?} not found", extract))
+          .ok_or_else(|| anyhow::anyhow!("field {extract:?} not found"))
           .and_then(|value| value.parse::<f64>().map_err(Into::into)),
       };
 
@@ -106,8 +102,9 @@ impl MetricsCollector {
 
     for (key, value) in tags {
       if let Some(extracted_value) = match value {
-        crate::config::TagValue::Extract(extract) => Self::resolve_field_name(extract, log),
+        crate::config::TagValue::FieldExtract(extract) => Self::resolve_field_name(extract, log),
         crate::config::TagValue::Fixed(value) => Some(value.as_str().into()),
+        crate::config::TagValue::LogBodyExtract => log.message.as_str().map(Cow::Borrowed),
       } {
         extracted_tags.insert(key.to_string(), extracted_value.into_owned());
       }

@@ -8,16 +8,23 @@
 use bd_api::DataUpload;
 use bd_client_stats::Stats;
 use bd_client_stats_store::Collector;
+use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{FieldsRef, LogFields, LogRef, LogType, log_level};
 use bd_proto::protos::workflow::workflow::Workflow;
 use bd_runtime::runtime::ConfigLoader;
-use bd_test_helpers::workflow::{WorkflowBuilder, state};
-use bd_test_helpers::{action, log_matches, rule};
+use bd_test_helpers::workflow::{WorkflowBuilder, make_flush_buffers_action, state};
+use bd_test_helpers::{log_matches, rule};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
-use criterion::{Bencher, Criterion, criterion_group, criterion_main};
-use std::collections::BTreeSet;
+use gungraun::{
+  Callgrind,
+  EntryPoint,
+  LibraryBenchmarkConfig,
+  library_benchmark,
+  library_benchmark_group,
+};
 use std::future::Future;
+use std::hint::black_box;
 use time::OffsetDateTime;
 
 struct Setup {
@@ -52,36 +59,39 @@ impl Setup {
     assert!(!workflows.is_empty());
 
     engine
-      .start(WorkflowsEngineConfig::new(
-        WorkflowsConfiguration::new(workflows),
-        BTreeSet::default(),
-        BTreeSet::default(),
-      ))
+      .start(
+        WorkflowsEngineConfig::new(
+          WorkflowsConfiguration::new(workflows, vec![]),
+          TinySet::default(),
+          TinySet::default(),
+        ),
+        false,
+      )
       .await;
 
     engine
   }
 
-  async fn simple_workflow(&self) -> WorkflowsEngine {
+  async fn simple_workflow(self) -> WorkflowsEngine {
     let b = state("B");
     let a = state("A").declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "foo")),
-      &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+      &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
     );
 
     let config = WorkflowBuilder::new("1", &[&a, &b]).build();
     self.new_engine(vec![config]).await
   }
 
-  async fn many_simple_workflows(&self) -> WorkflowsEngine {
+  async fn many_simple_workflows(self) -> WorkflowsEngine {
     let mut workflows = vec![];
     for i in 0 .. 30 {
       let b = state("B");
       let a = state("A").declare_transition_with_actions(
         &b,
         rule!(log_matches!(message == "foo")),
-        &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+        &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
       );
 
       let mut config = WorkflowBuilder::new("1", &[&a, &b]).build();
@@ -95,20 +105,19 @@ impl Setup {
       let a = state("A").declare_transition_with_actions(
         &b,
         rule!(log_matches!(message == "baz")),
-        &[action!(flush_buffers &["foo_buffer_id"]; id "foo")],
+        &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
       );
       let mut config = WorkflowBuilder::new("1", &[&a, &b]).build();
       config.id = format!("baz_{i}");
+
+      workflows.push(config);
     }
 
     self.new_engine(workflows).await
   }
 }
 
-fn run_runtime_bench<T: Future<Output = WorkflowsEngine>>(
-  bencher: &mut Bencher<'_>,
-  engine: impl FnOnce() -> T,
-) {
+fn run_runtime_bench<T: Future<Output = WorkflowsEngine>>(engine: impl FnOnce() -> T) {
   tokio::runtime::Builder::new_current_thread()
     .enable_all()
     .build()
@@ -116,36 +125,45 @@ fn run_runtime_bench<T: Future<Output = WorkflowsEngine>>(
     .block_on(async {
       let mut engine = engine().await;
       let now = OffsetDateTime::now_utc();
-      bencher.iter(|| {
-        engine.process_log(
-          std::hint::black_box(&LogRef {
-            log_type: LogType::Normal,
-            log_level: log_level::DEBUG,
-            message: &"foo".into(),
-            fields: FieldsRef::new(&LogFields::new(), &LogFields::new()),
-            session_id: "session_id",
-            occurred_at: OffsetDateTime::now_utc(),
-            capture_session: None,
-          }),
-          &BTreeSet::default(),
-          now,
-        );
-      });
+      // Warm up to initialize any one lock type things.
+      let fields = LogFields::new();
+      let log = LogRef {
+        log_type: LogType::Normal,
+        log_level: log_level::DEBUG,
+        message: &"no match".into(),
+        fields: FieldsRef::new(&fields, &fields),
+        session_id: "session_id",
+        occurred_at: OffsetDateTime::now_utc(),
+        capture_session: None,
+      };
+      engine.process_log(&log, &TinySet::default(), now);
+
+      gungraun::client_requests::callgrind::start_instrumentation();
+      engine.process_log(&log, &TinySet::default(), now);
+      gungraun::client_requests::callgrind::stop_instrumentation();
     });
 }
 
-fn criterion_benchmark(c: &mut Criterion) {
+#[library_benchmark(
+  config = LibraryBenchmarkConfig::default()
+        .tool(Callgrind::with_args(["--instr-atstart=no", "--dump-instr=yes"])
+            .entry_point(EntryPoint::None)
+        ))]
+#[bench::simple(|setup: Setup| setup.simple_workflow())]
+#[bench::many_simple(|setup: Setup| setup.many_simple_workflows())]
+fn bench_workflow<T: Future<Output = WorkflowsEngine>>(engine: impl FnOnce(Setup) -> T) {
   let setup = Setup::new();
 
-  bd_log::SwapLogger::initialize();
+  // TODO(mattklein123): For reasons I have not figured out, using the normal logger with RUST_LOG
+  // doesn't work, probably because the runner eats it. This logger does work if you want to
+  // temporarily see what a benchmark is doing.
+  //let _ = simplelog::SimpleLogger::init(simplelog::LevelFilter::Trace,
+  // simplelog::Config::default());
 
-  c.bench_function("simple workflow", |b| {
-    run_runtime_bench(b, || setup.simple_workflow());
-  });
-  c.bench_function("many simple workflows", |b| {
-    run_runtime_bench(b, || setup.many_simple_workflows());
-  });
+  black_box(run_runtime_bench(|| engine(setup)));
 }
 
-criterion_group!(benches, criterion_benchmark);
-criterion_main!(benches);
+library_benchmark_group!(
+    name = benches;
+    benchmarks = bench_workflow
+);

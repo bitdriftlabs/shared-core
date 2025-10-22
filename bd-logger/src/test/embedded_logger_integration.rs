@@ -83,6 +83,8 @@ impl Setup {
       static_metadata: Arc::new(EmptyMetadata),
       api_key: "apikey".to_string(),
       start_in_sleep_mode: false,
+      feature_flags_file_size_bytes: 1024 * 1024,
+      feature_flags_high_watermark: 0.8,
     })
     .with_shutdown_handle(shutdown.make_handle())
     .build()
@@ -177,7 +179,7 @@ async fn configuration_update_with_log_uploads() {
     [].into(),
     None,
     Block::No,
-    CaptureSession::default(),
+    &CaptureSession::default(),
   );
 
   assert_matches!(setup.server.next_log_upload().await, Some(log_upload) => {

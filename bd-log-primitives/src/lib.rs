@@ -15,6 +15,7 @@
 )]
 
 pub mod size;
+pub mod tiny_set;
 
 use crate::size::MemorySized;
 use ahash::AHashMap;
@@ -228,7 +229,7 @@ pub struct Log {
   pub session_id: String,
   pub occurred_at: time::OffsetDateTime,
 
-  pub capture_session: Option<String>,
+  pub capture_session: Option<&'static str>,
 }
 
 //

@@ -9,7 +9,8 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace      = true
-async-trait.workspace = true
-bd-api                = { path = "../bd-api" }
-bd-client-common      = { path = "../bd-client-common" }
+anyhow.workspace            = true
+async-trait.workspace       = true
+bd-api                      = { path = "../bd-api" }
+bd-client-common            = { path = "../bd-client-common" }
+bd-workspace-hack.workspace = true

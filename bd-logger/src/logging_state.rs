@@ -16,6 +16,7 @@ use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::FilterChain;
 use bd_log_primitives::size::MemorySized;
+use bd_log_primitives::tiny_set::TinySet;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_stats_common::labels;
@@ -23,7 +24,7 @@ use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::WorkflowsEngine;
 use flatbuffers::FlatBufferBuilder;
 use std::borrow::Cow;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -278,13 +279,14 @@ pub struct ConfigUpdate {
   pub(crate) workflows_configuration: WorkflowsConfiguration,
   pub(crate) tail_configs: TailConfigurations,
   pub(crate) filter_chain: FilterChain,
+  pub(crate) from_cache: bool,
 }
 
 pub struct BufferProducers {
   pub(crate) buffers: HashMap<String, bd_buffer::Producer>,
   pub(crate) builder: FlatBufferBuilder<'static>,
-  pub(crate) continuous_buffer_ids: BTreeSet<Cow<'static, str>>,
-  pub(crate) trigger_buffer_ids: BTreeSet<Cow<'static, str>>,
+  pub(crate) continuous_buffer_ids: TinySet<Cow<'static, str>>,
+  pub(crate) trigger_buffer_ids: TinySet<Cow<'static, str>>,
 }
 
 impl BufferProducers {
@@ -297,8 +299,8 @@ impl BufferProducers {
       .map(|(id, buffer)| Ok((id.clone(), buffer.1.new_thread_local_producer()?)))
       .collect::<anyhow::Result<_>>()?;
 
-    let mut continuous_buffer_ids = BTreeSet::new();
-    let mut trigger_buffer_ids = BTreeSet::new();
+    let mut continuous_buffer_ids = TinySet::default();
+    let mut trigger_buffer_ids = TinySet::default();
 
     for (buffer_id, (buffer_type, _)) in buffer_manager.buffers() {
       match buffer_type {

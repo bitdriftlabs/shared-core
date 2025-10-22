@@ -17,7 +17,6 @@ use crate::{
   ReportProcessingSession,
 };
 use bd_client_stats::FlushTrigger;
-use bd_client_stats::test::TestTicker;
 use bd_device::Store;
 use bd_proto::protos::client::api::ConfigurationUpdate;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
@@ -38,6 +37,9 @@ use bd_test_helpers::resource_utilization::EmptyTarget;
 use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::session::{DiskStorage, InMemoryStorage};
 use bd_test_helpers::test_api_server::{ExpectedStreamEvent, StreamAction, StreamHandle};
+use bd_time::TimeProvider;
+use bd_time::test::TestTicker;
+use bd_workflows::engine::WORKFLOWS_STATE_FILE_NAME;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use tempfile::TempDir;
@@ -87,6 +89,7 @@ pub struct SetupOptions {
   pub metadata_provider: Arc<LogMetadata>,
   pub disk_storage: bool,
   pub start_in_sleep_mode: bool,
+  pub time_provider: Option<Arc<dyn TimeProvider>>,
 }
 
 impl Default for SetupOptions {
@@ -96,6 +99,7 @@ impl Default for SetupOptions {
       metadata_provider: Arc::default(),
       disk_storage: false,
       start_in_sleep_mode: false,
+      time_provider: None,
     }
   }
 }
@@ -170,9 +174,12 @@ impl Setup {
       network: Box::new(Self::run_network(server.port, shutdown.make_shutdown())),
       static_metadata: Arc::new(EmptyMetadata),
       start_in_sleep_mode: options.start_in_sleep_mode,
+      feature_flags_file_size_bytes: 1024 * 1024,
+      feature_flags_high_watermark: 0.8,
     })
     .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
     .with_internal_logger(true)
+    .with_time_provider(options.time_provider)
     .build_dedicated_thread()
     .unwrap();
 
@@ -285,7 +292,7 @@ impl Setup {
       matching_fields,
       attributes_overrides,
       Block::No,
-      CaptureSession::default(),
+      &CaptureSession::default(),
     );
   }
 
@@ -305,7 +312,7 @@ impl Setup {
       matching_fields,
       None,
       Block::Yes(15.std_seconds()),
-      CaptureSession::default(),
+      &CaptureSession::default(),
     );
   }
 
@@ -325,7 +332,7 @@ impl Setup {
       matching_fields,
       None,
       Block::No,
-      CaptureSession::capture_with_id("test"),
+      &CaptureSession::capture_with_id("test"),
     );
   }
 
@@ -402,10 +409,7 @@ impl Setup {
   }
 
   pub fn workflows_state_file_path(&self) -> std::path::PathBuf {
-    self
-      .sdk_directory
-      .path()
-      .join("workflows_state_snapshot.9.bin")
+    self.sdk_directory.path().join(WORKFLOWS_STATE_FILE_NAME)
   }
 }
 

@@ -7,10 +7,10 @@
 
 #![no_main]
 
+use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
 use bd_bonjson::Value;
 use bd_resilient_kv::KVStore;
-use std::collections::HashMap;
 use tempfile::TempDir;
 
 // Wrapper for Value to implement Arbitrary
@@ -37,7 +37,7 @@ impl<'a> Arbitrary<'a> for ArbitraryValue {
       },
       7 => {
         let len = u.int_in_range(0 ..= 2)?; // Keep objects small
-        let mut obj = HashMap::new();
+        let mut obj = AHashMap::new();
         for _ in 0 .. len {
           let key: String = u.arbitrary()?;
           let value = Self::arbitrary(u)?.0;
@@ -80,7 +80,7 @@ libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
   let base_path = temp_dir.path().join("fuzz_store");
 
   // Try to create a KVStore
-  let Ok(mut store) = KVStore::new(&base_path, 8192, Some(0.8), None) else {
+  let Ok(mut store) = KVStore::new(&base_path, 8192, Some(0.8)) else {
     return;
   };
 
@@ -148,7 +148,7 @@ libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
         drop(store);
 
         // Try to reopen the store from the existing files
-        store = match KVStore::new(&base_path, 8192, Some(0.8), None) {
+        store = match KVStore::new(&base_path, 8192, Some(0.8)) {
           Ok(s) => s,
           Err(_) => return,
         };

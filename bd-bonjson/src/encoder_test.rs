@@ -8,7 +8,7 @@
 use crate::Value;
 use crate::decoder::from_slice;
 use crate::encoder::encode_into_vec;
-use std::collections::HashMap;
+use ahash::AHashMap;
 
 #[test]
 fn test_encode_null() {
@@ -213,7 +213,7 @@ fn test_encode_nested_arrays() {
 #[test]
 fn test_encode_empty_object() {
   let mut buffer = Vec::new();
-  let value = Value::Object(HashMap::new());
+  let value = Value::Object(AHashMap::new());
 
   let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode");
 
@@ -227,7 +227,7 @@ fn test_encode_empty_object() {
 #[test]
 fn test_encode_object_with_values() {
   let mut buffer = Vec::new();
-  let mut obj = HashMap::new();
+  let mut obj = AHashMap::new();
   obj.insert("null_key".to_string(), Value::Null);
   obj.insert("bool_key".to_string(), Value::Bool(false));
   obj.insert("number_key".to_string(), Value::Signed(123));
@@ -248,13 +248,13 @@ fn test_encode_object_with_values() {
 fn test_encode_nested_objects() {
   let mut buffer = Vec::new();
 
-  let mut inner_obj = HashMap::new();
+  let mut inner_obj = AHashMap::new();
   inner_obj.insert(
     "inner_key".to_string(),
     Value::String("inner_value".to_string()),
   );
 
-  let mut outer_obj = HashMap::new();
+  let mut outer_obj = AHashMap::new();
   outer_obj.insert("outer_key".to_string(), Value::Object(inner_obj));
   outer_obj.insert("simple_key".to_string(), Value::Signed(42));
 
@@ -273,7 +273,7 @@ fn test_encode_nested_objects() {
 fn test_encode_mixed_nested_structure() {
   let mut buffer = Vec::new();
 
-  let mut obj = HashMap::new();
+  let mut obj = AHashMap::new();
   obj.insert(
     "array".to_string(),
     Value::Array(vec![
@@ -283,7 +283,7 @@ fn test_encode_mixed_nested_structure() {
     ]),
   );
   obj.insert("object".to_string(), {
-    let mut inner = HashMap::new();
+    let mut inner = AHashMap::new();
     inner.insert("key".to_string(), Value::Bool(true));
     Value::Object(inner)
   });
@@ -463,7 +463,7 @@ fn test_encode_deeply_nested_mixed_structures() {
   let mut buffer = Vec::new();
 
   // Build a complex deeply nested structure with mixed arrays and objects
-  let mut root_obj = HashMap::new();
+  let mut root_obj = AHashMap::new();
 
   // Add a deeply nested array structure (5 levels deep)
   let deep_array = Value::Array(vec![
@@ -486,18 +486,18 @@ fn test_encode_deeply_nested_mixed_structures() {
   root_obj.insert("deep_arrays".to_string(), deep_array);
 
   // Add a mixed object-array-object structure
-  let mut level1_obj = HashMap::new();
+  let mut level1_obj = AHashMap::new();
   level1_obj.insert(
     "data".to_string(),
     Value::Array(vec![
       Value::Signed(1),
       Value::Signed(2),
       {
-        let mut nested_obj = HashMap::new();
+        let mut nested_obj = AHashMap::new();
         nested_obj.insert(
           "inner".to_string(),
           Value::Array(vec![Value::String("nested_string".to_string()), {
-            let mut deep_obj = HashMap::new();
+            let mut deep_obj = AHashMap::new();
             deep_obj.insert("deepest".to_string(), Value::Bool(false));
             deep_obj.insert(
               "numbers".to_string(),
@@ -522,14 +522,14 @@ fn test_encode_deeply_nested_mixed_structures() {
   // Add an array of objects with various data types
   let objects_array = Value::Array(vec![
     {
-      let mut obj1 = HashMap::new();
+      let mut obj1 = AHashMap::new();
       obj1.insert("type".to_string(), Value::String("first".to_string()));
       obj1.insert("value".to_string(), Value::Signed(123));
       obj1.insert("active".to_string(), Value::Bool(true));
       Value::Object(obj1)
     },
     {
-      let mut obj2 = HashMap::new();
+      let mut obj2 = AHashMap::new();
       obj2.insert("type".to_string(), Value::String("second".to_string()));
       obj2.insert(
         "coordinates".to_string(),
@@ -549,10 +549,10 @@ fn test_encode_deeply_nested_mixed_structures() {
       Value::Object(obj2)
     },
     {
-      let mut obj3 = HashMap::new();
+      let mut obj3 = AHashMap::new();
       obj3.insert("type".to_string(), Value::String("third".to_string()));
       obj3.insert("empty_array".to_string(), Value::Array(vec![]));
-      obj3.insert("empty_object".to_string(), Value::Object(HashMap::new()));
+      obj3.insert("empty_object".to_string(), Value::Object(AHashMap::new()));
       obj3.insert("null_value".to_string(), Value::Null);
       Value::Object(obj3)
     },
@@ -837,7 +837,7 @@ fn test_in_place_encode_array() {
 fn test_in_place_encode_object() {
   let mut buffer = [0u8; 128];
 
-  let mut obj = HashMap::new();
+  let mut obj = AHashMap::new();
   obj.insert("name".to_string(), Value::String("test".to_string()));
   obj.insert("age".to_string(), Value::Signed(25));
   let value = Value::Object(obj);
@@ -948,7 +948,7 @@ fn test_in_place_encode_deeply_nested() {
 fn test_standalone_encode_function() {
   let mut buffer = Vec::new();
   let value = Value::Object({
-    let mut map = HashMap::new();
+    let mut map = AHashMap::new();
     map.insert("test".to_string(), Value::Signed(42));
     map.insert("flag".to_string(), Value::Bool(true));
     map
@@ -972,4 +972,79 @@ fn test_standalone_encode_function() {
     from_slice(second_result).expect("Failed to decode second value");
   assert!(bytes_read > 0, "Should have read at least one byte");
   assert_eq!(second_decoded, second_value);
+}
+
+#[test]
+fn test_encode_kv_vec() {
+  let mut buffer = Vec::new();
+
+  // Create a KVVec with some test data
+  let kv_vec = vec![
+    ("name".to_string(), Value::String("Alice".to_string())),
+    ("age".to_string(), Value::Signed(30)),
+    ("active".to_string(), Value::Bool(true)),
+  ];
+  let value = Value::KVVec(kv_vec);
+
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode KVVec");
+
+  // Since KVVec is encoded the same as an Object, the decoder will decode it as an Object
+  let data_slice = &result;
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
+
+  // The decoded value should be an Object with the same key-value pairs
+  assert!(decoded.is_object(), "Decoded value should be an object");
+  let decoded_obj = decoded.as_object().expect("Should be an object");
+
+  // Verify all key-value pairs are present and correct
+  assert_eq!(
+    decoded_obj.get("name"),
+    Some(&Value::String("Alice".to_string()))
+  );
+  assert_eq!(decoded_obj.get("age"), Some(&Value::Signed(30)));
+  assert_eq!(decoded_obj.get("active"), Some(&Value::Bool(true)));
+  assert_eq!(decoded_obj.len(), 3);
+}
+
+#[test]
+fn test_kv_vec_helper_methods() {
+  // Test the new helper methods for KVVec
+  let kv_vec = vec![
+    ("name".to_string(), Value::String("Bob".to_string())),
+    ("count".to_string(), Value::Signed(42)),
+  ];
+  let value = Value::KVVec(kv_vec);
+
+  // Test type checking methods
+  assert!(value.is_kv_vec(), "Should identify as KVVec");
+  assert!(!value.is_object(), "Should not identify as Object");
+  assert!(!value.is_array(), "Should not identify as Array");
+
+  // Test extraction method
+  let extracted = value.as_kv_vec().expect("Should extract as KVVec");
+  assert_eq!(extracted.len(), 2);
+  assert_eq!(extracted[0].0, "name");
+  assert_eq!(extracted[0].1, Value::String("Bob".to_string()));
+
+  // Test get method works with KVVec
+  assert_eq!(value.get("name"), Some(&Value::String("Bob".to_string())));
+  assert_eq!(value.get("count"), Some(&Value::Signed(42)));
+  assert_eq!(value.get("nonexistent"), None);
+}
+
+#[test]
+fn test_encode_empty_kv_vec() {
+  let mut buffer = Vec::new();
+  let value = Value::KVVec(vec![]);
+
+  let result = encode_into_vec(&mut buffer, &value).expect("Failed to encode empty KVVec");
+
+  // Verify we can decode it back as an empty object
+  let data_slice = &result;
+  let (bytes_read, decoded) = from_slice(data_slice).expect("Failed to decode");
+  assert!(bytes_read > 0, "Should have read at least one byte");
+  assert!(decoded.is_object(), "Decoded value should be an object");
+  let decoded_obj = decoded.as_object().expect("Should be an object");
+  assert!(decoded_obj.is_empty(), "Decoded object should be empty");
 }

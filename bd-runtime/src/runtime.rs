@@ -12,7 +12,7 @@ mod runtime_test;
 use anyhow::anyhow;
 use bd_client_common::HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE;
 use bd_client_common::file::write_compressed_protobuf;
-use bd_client_common::payload_conversion::{IntoRequest, RuntimeConfigurationUpdate};
+use bd_client_common::payload_conversion::{IntoRequest, RuntimeConfigurationUpdateAck};
 use bd_client_common::safe_file_cache::SafeFileCache;
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
 use bd_proto::protos::client::api::{
@@ -151,7 +151,7 @@ impl ConfigLoader {
     let result = self.update_snapshot(update).await;
 
     Some(
-      RuntimeConfigurationUpdate(ConfigurationUpdateAck {
+      RuntimeConfigurationUpdateAck(ConfigurationUpdateAck {
         last_applied_version_nonce: self.snapshot().nonce.clone().unwrap_or_default(),
         nack: if let Err(e) = result {
           Some(Nack {

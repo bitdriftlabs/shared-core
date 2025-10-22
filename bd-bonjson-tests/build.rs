@@ -7,10 +7,10 @@
 
 pub fn main() {
   println!("cargo:rerun-if-changed=src/ffi_tests.c");
-  println!("cargo:rerun-if-changed=../bd-bonjson/src/ffi.rs");
+  println!("cargo:rerun-if-changed=../bd-bonjson-ffi/src/lib.rs");
   cc::Build::new()
     .cpp(false)
     .file("src/ffi_tests.c")
-    .include("../bd-bonjson/include")
+    .include("../bd-bonjson-ffi/include")
     .compile("bdbj");
 }

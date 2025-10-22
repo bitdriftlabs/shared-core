@@ -9,15 +9,17 @@ version      = "1.0.0"
 doctest = false
 
 [dev-dependencies]
-assert_no_alloc      = "1.1.2"
-bd-test-helpers.path = "../bd-test-helpers"
-ctor.workspace       = true
-tempfile.workspace   = true
+assert_no_alloc.workspace = true
+bd-test-helpers.path      = "../bd-test-helpers"
+ctor.workspace            = true
+tempfile.workspace        = true
 
 [build-dependencies]
 cbindgen.workspace = true
 
 [dependencies]
-bytes.workspace = true
-libc          = "0.2.175"
-log.workspace = true
+ahash.workspace             = true
+bd-workspace-hack.workspace = true
+bytes.workspace             = true
+libc.workspace              = true
+log.workspace               = true

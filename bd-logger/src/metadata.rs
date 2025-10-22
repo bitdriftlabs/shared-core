@@ -64,6 +64,27 @@ impl MetadataCollector {
       fields: [].into(),
     }
   }
+
+  /// Creates metadata from log fields without interpolating provider fields
+  pub(crate) fn metadata_from_fields(
+    &self,
+    fields: AnnotatedLogFields,
+    matching_fields: AnnotatedLogFields,
+  ) -> anyhow::Result<LogMetadata> {
+    let timestamp = self.metadata_provider.timestamp()?;
+    Ok(LogMetadata {
+      timestamp,
+      fields: fields
+        .into_iter()
+        .map(|(k, v)| (k.clone(), v.value))
+        .collect(),
+      matching_fields: matching_fields
+        .into_iter()
+        .map(|(k, v)| (k.clone(), v.value))
+        .collect(),
+    })
+  }
+
   /// Returns metadata created by combining values acquired by combining the receiver's fields and
   /// passed `fields` argument. It ensures that the `fields` property of the output value does
   /// not have duplicate keys. The combining logic gives precedence to fields coming from the field
@@ -138,7 +159,6 @@ impl MetadataCollector {
     .unique_by(|(key, _)| key.clone())
     .collect();
 
-
     let matching_fields = partition_fields(matching_fields);
 
     let matching_fields = [
@@ -202,17 +222,15 @@ fn partition_fields(field: AnnotatedLogFields) -> PartitionedFields {
 fn verify_custom_field_name(key: &str) -> anyhow::Result<()> {
   if RESERVED_FIELD_NAMES.contains(key) {
     anyhow::bail!(
-      "Custom global field with {:?} name is not allowed as the name is reserved for SDK internal \
-       use",
-      key
+      "Custom global field with {key:?} name is not allowed as the name is reserved for SDK \
+       internal use"
     );
   }
 
   if key.starts_with('_') {
     anyhow::bail!(
-      "Custom global field with {:?} key is not allowed, fields whose key starts with \"_\" are \
-       reserved for SDK internal use",
-      key
+      "Custom global field with {key:?} key is not allowed, fields whose key starts with \"_\" \
+       are reserved for SDK internal use"
     );
   }
 

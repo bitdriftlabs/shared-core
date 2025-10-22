@@ -104,12 +104,12 @@ impl Store {
     if let Err(e) =
       bincode::serde::encode_into_std_write(value, &mut bytes, bincode::config::legacy())
     {
-      anyhow::bail!("failed to serialize value: {:?}", e);
+      anyhow::bail!("failed to serialize value: {e:?}");
     }
 
     let base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
     if let Err(e) = self.storage.set_string(key.key, &base64) {
-      anyhow::bail!("failed to set string: {:?}", e);
+      anyhow::bail!("failed to set string: {e:?}");
     }
 
     Ok(())
@@ -124,14 +124,14 @@ impl Store {
 
         let result = base64::engine::general_purpose::STANDARD.decode(base64);
         Ok(result.map_or_else(
-          |e| anyhow::bail!("failed to decode base64 value: {:?}", e),
+          |e| anyhow::bail!("failed to decode base64 value: {e:?}"),
           |bytes| match bincode::serde::decode_from_slice(&bytes[..], bincode::config::legacy()) {
             Ok(model) => Ok(Some(model.0)),
-            Err(e) => anyhow::bail!("failed to deserialize model: {:?}", e),
+            Err(e) => anyhow::bail!("failed to deserialize model: {e:?}"),
           },
         )?)
       },
-      Err(e) => anyhow::bail!("failed to get string: {:?}", e),
+      Err(e) => anyhow::bail!("failed to get string: {e:?}"),
     }
   }
 }
@@ -162,3 +162,6 @@ where
     self.key
   }
 }
+
+pub mod resilient_kv;
+pub use resilient_kv::ResilientKvStorage;

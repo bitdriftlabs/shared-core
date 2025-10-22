@@ -20,12 +20,15 @@ use crate::{
   wait_for,
 };
 use assert_matches::assert_matches;
-use bd_client_stats::test::TestTicker;
 use bd_error_reporter::reporter::UnexpectedErrorHandler;
 use bd_key_value::Store;
+use bd_log_metadata::LogFields;
+use bd_log_primitives::AnnotatedLogFields;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
+use bd_proto::protos::client::api::debug_data_request::WorkflowTransitionDebugData;
+use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
@@ -56,17 +59,31 @@ use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::session::InMemoryStorage;
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_test_helpers::test_api_server::StreamAction;
-use bd_test_helpers::workflow::macros::{action, log_matches, rule};
+use bd_test_helpers::workflow::macros::{log_matches, rule};
 use bd_test_helpers::workflow::{
   TestFieldRef,
   TestFieldType,
   WorkflowBuilder,
+  extract_log_body_tag,
+  extract_metric_tag,
+  extract_metric_value,
+  make_emit_counter_action,
+  make_emit_histogram_action,
+  make_flush_buffers_action,
   make_generate_log_action_proto,
   make_save_timestamp_extraction,
+  make_take_screenshot_action,
+  metric_tag,
+  metric_value,
   state,
 };
-use bd_test_helpers::{RecordingErrorReporter, field_value, metric_tag, metric_value, set_field};
+use bd_test_helpers::{RecordingErrorReporter, field_value, set_field};
+use bd_time::test::TestTicker;
+use bd_time::{OffsetDateTimeExt, TestTimeProvider};
+use debug_data_request::workflow_transition_debug_data::Transition_type;
+use debug_data_request::{WorkflowDebugData, WorkflowStateDebugData};
 use parking_lot::Mutex;
+use pretty_assertions::assert_eq;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Instant;
@@ -313,6 +330,7 @@ fn log_upload_attributes_override() {
   let time_first = time::OffsetDateTime::now_utc();
   let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
     timestamp: Mutex::new(time_first),
+    ootb_fields: LogFields::from([("_some_version".into(), "400".into())]),
     ..Default::default()
   }));
 
@@ -337,12 +355,27 @@ fn log_upload_attributes_override() {
 
   let current_session_id = setup.logger.new_logger_handle().session_id();
 
-  // This log should end up being emitted with an overridden session ID and timestamp.
+  // This log should end up being emitted with an overridden session ID and timestamp,
+  // and no fields associated with the current session
   setup.log(
     log_level::DEBUG,
     LogType::Normal,
     "log with overridden attributes".into(),
     [].into(),
+    [].into(),
+    Some(LogAttributesOverrides::PreviousRunSessionID(
+      "foo_overridden".to_string(),
+      time_second,
+    )),
+  );
+
+  // This log should end up being emitted with an overridden session ID, timestamp,
+  // and fields
+  setup.log(
+    log_level::DEBUG,
+    LogType::Normal,
+    "log with overridden attributes and fields".into(),
+    AnnotatedLogFields::from([("_some_version".into(), AnnotatedLogField::new_ootb("350"))]),
     [].into(),
     Some(LogAttributesOverrides::PreviousRunSessionID(
       "foo_overridden".to_string(),
@@ -363,7 +396,7 @@ fn log_upload_attributes_override() {
     )),
   );
 
-  for _ in 0 .. 7 {
+  for _ in 0 .. 6 {
     setup.log(
       log_level::DEBUG,
       LogType::Normal,
@@ -395,15 +428,27 @@ fn log_upload_attributes_override() {
     assert_eq!(first_uploaded_log.timestamp(), time_second);
     assert_eq!(first_uploaded_log.field("_logged_at"), time_first.to_string());
     assert_eq!(first_uploaded_log.message(), "log with overridden attributes");
+    // Confirm provider fields are not added to previous session logs
+    assert!(!first_uploaded_log.has_field("_some_version"));
+
+    // Confirm that session ID, timestamp, and fields are overridden
+    let second_uploaded_log = &log_upload.logs()[1];
+    assert_eq!(second_uploaded_log.session_id(), "foo_overridden");
+    assert_eq!(second_uploaded_log.timestamp(), time_second);
+    assert_eq!(second_uploaded_log.field("_logged_at"), time_first.to_string());
+    assert_eq!(second_uploaded_log.message(), "log with overridden attributes and fields");
+    // Confirm can override provider fields
+    assert_eq!(second_uploaded_log.field("_some_version"), "350".to_string());
 
     // Confirm that second log was dropped and error was emitted.
-    let second_uploaded_log = &log_upload.logs()[1];
-    assert_eq!(second_uploaded_log.session_id(), current_session_id);
-    assert_eq!(second_uploaded_log.field("_override_session_id"), "bar_overridden");
+    let third_uploaded_log = &log_upload.logs()[2];
+    assert_eq!(third_uploaded_log.session_id(), current_session_id);
+    assert_eq!(third_uploaded_log.field("_override_session_id"), "bar_overridden");
 
     // Confirm the log overriding the time worked.
     let occurred_at_overriden_log = &log_upload.logs()[9];
     assert_eq!(occurred_at_overriden_log.timestamp(), time_first);
+    assert_eq!(occurred_at_overriden_log.field("_some_version"), "400".to_string());
 
     assert!(error_reporter.error().is_some());
   });
@@ -630,7 +675,7 @@ fn session_replay_actions() {
   let a = state("A").declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "take a screenshot")),
-    &[action!(screenshot "screenshot_id")],
+    &[make_take_screenshot_action("screenshot_id")],
   );
 
   // Send a configuration that takes a screenshot on "foo" message.
@@ -955,24 +1000,21 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
         message == "fire flush trigger buffer and start streaming action!"
       )),
       &[
-        action!(
-          flush_buffers &["trigger_buffer_id"];
-          continue_streaming_to vec!["default"];
-          logs_count 10;
-          id "flush_with_streaming_action_id"
+        make_flush_buffers_action(
+          &["trigger_buffer_id"],
+          Some((vec!["default"], 10)),
+          "flush_with_streaming_action_id",
         ),
-        action!(
-          emit_counter "insight_action_id";
-          value metric_value!(1)
-        ),
+        make_emit_counter_action("insight_action_id", metric_value(1), vec![]),
       ],
     )
     .declare_transition_with_actions(
       &c,
       rule!(log_matches!(message == "fire flush trigger buffer action!")),
-      &[action!(
-        flush_buffers &["trigger_buffer_id"];
-        id "flush_with_streaming_action_id"
+      &[make_flush_buffers_action(
+        &["trigger_buffer_id"],
+        None,
+        "flush_with_streaming_action_id",
       )],
     );
 
@@ -1134,15 +1176,25 @@ fn workflow_generate_log_to_histogram() {
     &c,
     rule!(log_matches!(message == "bar")),
     &[
-      action!(flush_buffers &["default"]; id "flush_action_id"),
-      action!(generate_log make_generate_log_action_proto("message", &[
-      ("_duration_ms",
-       TestFieldType::Subtract(
-        TestFieldRef::SavedTimestampId("timestamp2"),
-        TestFieldRef::SavedTimestampId("timestamp1")
-       )),
-       ("other", TestFieldType::Single(TestFieldRef::SavedFieldId("id1"))),
-    ], "id", LogType::Span)),
+      make_flush_buffers_action(&["default"], None, "flush_action_id"),
+      make_generate_log_action_proto(
+        "message",
+        &[
+          (
+            "_duration_ms",
+            TestFieldType::Subtract(
+              TestFieldRef::SavedTimestampId("timestamp2"),
+              TestFieldRef::SavedTimestampId("timestamp1"),
+            ),
+          ),
+          (
+            "other",
+            TestFieldType::Single(TestFieldRef::SavedFieldId("id1")),
+          ),
+        ],
+        "id",
+        LogType::Span,
+      ),
     ],
     &[make_save_timestamp_extraction("timestamp2")],
   );
@@ -1150,12 +1202,10 @@ fn workflow_generate_log_to_histogram() {
   c = c.declare_transition_with_actions(
     &d,
     rule!(log_matches!(tag("_generate_log_id") == "id")),
-    &[action!(
-      emit_histogram "foo_id";
-      value metric_value!(extract "_duration_ms");
-      tags {
-        metric_tag!(fix "fixed_key" => "fixed_value")
-      }
+    &[make_emit_histogram_action(
+      "foo_id",
+      extract_metric_value("_duration_ms"),
+      vec![metric_tag("fixed_key", "fixed_value")],
     )],
   );
 
@@ -1214,6 +1264,183 @@ fn workflow_generate_log_to_histogram() {
 }
 
 #[test]
+fn workflow_debugging() {
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2023-10-01 00:00:00 UTC)));
+  let mut setup = Setup::new_with_options(SetupOptions {
+    time_provider: Some(time_provider.clone()),
+    ..Default::default()
+  });
+  setup.send_runtime_update();
+
+  setup.send_runtime_update();
+
+  let b = state("B");
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    rule!(log_matches!(message == "fire workflow action!")),
+    &[make_emit_counter_action(
+      "foo_id",
+      metric_value(123),
+      vec![],
+    )],
+  );
+
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "1",
+    ConfigurationUpdateParts {
+      debug_workflows: vec![WorkflowBuilder::new("workflow_1", &[&a, &b]).build()],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  // We should send a debug data upload even when there is no state change every 1s driven by
+  // when logs are processed.
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::Normal,
+    "something else".into(),
+    [].into(),
+    [].into(),
+  );
+  let debug_data = setup.server.next_debug_data_request().unwrap();
+  assert_eq!(
+    debug_data,
+    DebugDataRequest {
+      workflow_debug_data: [(
+        "workflow_1".into(),
+        WorkflowDebugData {
+          start_reset: Some(WorkflowTransitionDebugData {
+            transition_count: 1,
+            last_transition_time: datetime!(2023-10-01 00:00:00 UTC).into_proto(),
+            ..Default::default()
+          })
+          .into(),
+          ..Default::default()
+        }
+      )]
+      .into(),
+      ..Default::default()
+    }
+  );
+
+  // Now send a log that will match.
+  time_provider.advance(1.minutes());
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::Normal,
+    "fire workflow action!".into(),
+    [].into(),
+    [].into(),
+  );
+
+  // Make sure there is no metric as we are only in debug mode.
+  setup.flush_and_upload_stats();
+  let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
+  assert!(
+    stat_upload
+      .get_workflow_counter("foo_id", labels! {})
+      .is_none()
+  );
+
+  let debug_data = setup.server.next_debug_data_request().unwrap();
+  assert_eq!(
+    debug_data,
+    DebugDataRequest {
+      workflow_debug_data: [(
+        "workflow_1".into(),
+        WorkflowDebugData {
+          start_reset: Some(WorkflowTransitionDebugData {
+            transition_count: 1,
+            last_transition_time: datetime!(2023-10-01 00:00:00 UTC).into_proto(),
+            ..Default::default()
+          })
+          .into(),
+          states: [(
+            "A".into(),
+            WorkflowStateDebugData {
+              transitions: vec![WorkflowTransitionDebugData {
+                transition_type: Some(Transition_type::TransitionIndex(0)),
+                transition_count: 1,
+                last_transition_time: datetime!(2023-10-01 00:01:00 UTC).into_proto(),
+                ..Default::default()
+              }],
+              ..Default::default()
+            }
+          )]
+          .into(),
+          ..Default::default()
+        }
+      )]
+      .into(),
+      ..Default::default()
+    }
+  );
+
+  // Deploy the workflow and also send it in debug mode, so it should send debug data and also
+  // emit metrics.
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "2",
+    ConfigurationUpdateParts {
+      workflows: vec![WorkflowBuilder::new("workflow_1", &[&a, &b]).build()],
+      debug_workflows: vec![WorkflowBuilder::new("workflow_1", &[&a, &b]).build()],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  time_provider.advance(1.minutes());
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::Normal,
+    "fire workflow action!".into(),
+    [].into(),
+    [].into(),
+  );
+
+  setup.flush_and_upload_stats();
+  let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
+  assert_eq!(
+    stat_upload.get_workflow_counter("foo_id", labels! {}),
+    Some(123),
+  );
+
+  let debug_data = setup.server.next_debug_data_request().unwrap();
+  assert_eq!(
+    debug_data,
+    DebugDataRequest {
+      workflow_debug_data: [(
+        "workflow_1".into(),
+        WorkflowDebugData {
+          start_reset: Some(WorkflowTransitionDebugData {
+            transition_count: 1,
+            last_transition_time: datetime!(2023-10-01 00:00:00 UTC).into_proto(),
+            ..Default::default()
+          })
+          .into(),
+          states: [(
+            "A".into(),
+            WorkflowStateDebugData {
+              transitions: vec![WorkflowTransitionDebugData {
+                transition_type: Some(Transition_type::TransitionIndex(0)),
+                transition_count: 2,
+                last_transition_time: datetime!(2023-10-01 00:02:00 UTC).into_proto(),
+                ..Default::default()
+              }],
+              ..Default::default()
+            }
+          )]
+          .into(),
+          ..Default::default()
+        }
+      )]
+      .into(),
+      ..Default::default()
+    }
+  );
+}
+
+#[test]
 fn workflow_emit_metric_action_emits_metric() {
   let mut setup = Setup::new();
 
@@ -1223,13 +1450,14 @@ fn workflow_emit_metric_action_emits_metric() {
   let a = state("A").declare_transition_with_actions(
     &b,
     rule!(log_matches!(message == "fire workflow action!")),
-    &[action!(
-      emit_counter "foo_id";
-      value metric_value!(123);
-      tags {
-        metric_tag!(fix "fixed_key" => "fixed_value"),
-        metric_tag!(extract "extraction_key_from" => "extraction_key_to")
-      }
+    &[make_emit_counter_action(
+      "foo_id",
+      metric_value(123),
+      vec![
+        metric_tag("fixed_key", "fixed_value"),
+        extract_metric_tag("extraction_key_from", "extraction_key_to"),
+        extract_log_body_tag(),
+      ],
     )],
   );
 
@@ -1272,11 +1500,64 @@ fn workflow_emit_metric_action_emits_metric() {
       labels! {
         "fixed_key" => "fixed_value",
         "extraction_key_to" => "extracted_value",
+        "__log_body__" => "fire workflow action!",
       }
     ),
     // There are 2 emit metric actions that increment a counter with `_id=foo_id` by 123
     // but since both of them have the same action ID we dedup them and perform action only once.
     Some(123),
+  );
+  assert_eq!(
+    stat_upload.request.snapshot[0].workflow_debug_data,
+    [
+      (
+        "workflow_1".into(),
+        WorkflowDebugData {
+          states: [(
+            "A".into(),
+            WorkflowStateDebugData {
+              transitions: vec![WorkflowTransitionDebugData {
+                transition_type: Some(Transition_type::TransitionIndex(0)),
+                transition_count: 1,
+                ..Default::default()
+              }],
+              ..Default::default()
+            }
+          )]
+          .into(),
+          start_reset: Some(WorkflowTransitionDebugData {
+            transition_count: 1,
+            ..Default::default()
+          })
+          .into(),
+          ..Default::default()
+        }
+      ),
+      (
+        "workflow_2".into(),
+        WorkflowDebugData {
+          states: [(
+            "A".into(),
+            WorkflowStateDebugData {
+              transitions: vec![WorkflowTransitionDebugData {
+                transition_type: Some(Transition_type::TransitionIndex(0)),
+                transition_count: 1,
+                ..Default::default()
+              }],
+              ..Default::default()
+            }
+          )]
+          .into(),
+          start_reset: Some(WorkflowTransitionDebugData {
+            transition_count: 1,
+            ..Default::default()
+          })
+          .into(),
+          ..Default::default()
+        }
+      ),
+    ]
+    .into()
   );
 }
 
@@ -1301,18 +1582,16 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
     .declare_transition_with_actions(
       &b,
       rule!(log_matches!(message == "first log")),
-      &[action!(
-        emit_counter "foo";
-        value metric_value!(1);
-        tags {
-          metric_tag!(extract "extracted" => "extracted")
-        }
+      &[make_emit_counter_action(
+        "foo",
+        metric_value(1),
+        vec![extract_metric_tag("extracted", "extracted")],
       )],
     )
     .declare_transition_with_actions(
       &c,
       rule!(log_matches!(message == "second log")),
-      &[action!(emit_counter "bar"; value metric_value!(1))],
+      &[make_emit_counter_action("bar", metric_value(1), vec![])],
     );
 
   let workflow = WorkflowBuilder::new("1", &[&a, &b, &c]).build();
@@ -2023,7 +2302,7 @@ fn logs_before_cache_load() {
       [].into(),
       None,
       Block::No,
-      CaptureSession::default(),
+      &CaptureSession::default(),
     );
   }
 
@@ -2036,7 +2315,7 @@ fn logs_before_cache_load() {
     [].into(),
     None,
     Block::No,
-    CaptureSession::default(),
+    &CaptureSession::default(),
   );
 
   setup
@@ -2140,6 +2419,8 @@ fn runtime_caching() {
       metadata_provider: Arc::new(LogMetadata::default()),
       device,
       start_in_sleep_mode: false,
+      feature_flags_file_size_bytes: 1024 * 1024,
+      feature_flags_high_watermark: 0.8,
     })
     .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
     .build_dedicated_thread()

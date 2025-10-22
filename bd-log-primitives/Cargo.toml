@@ -9,7 +9,8 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-ahash.workspace = true
-bd-proto        = { path = "../bd-proto" }
-serde.workspace = true
-time.workspace  = true
+ahash.workspace             = true
+bd-proto                    = { path = "../bd-proto" }
+bd-workspace-hack.workspace = true
+serde.workspace             = true
+time.workspace              = true

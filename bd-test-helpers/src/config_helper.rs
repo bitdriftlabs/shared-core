@@ -22,15 +22,19 @@ use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
 use bd_proto::protos::workflow::workflow::{Workflow, WorkflowsConfiguration};
 #[rustfmt::skip]
 use crate::workflow::macros::{
-  action,
   all,
   any,
   log_matches,
-  metric_value,
   not,
   rule,
 };
-use crate::workflow::{WorkflowBuilder, state};
+use crate::workflow::{
+  WorkflowBuilder,
+  make_emit_counter_action,
+  make_flush_buffers_action,
+  metric_value,
+  state,
+};
 use bd_proto::protos::config::v1::config::{
   BufferConfig,
   BufferConfigList,
@@ -137,6 +141,7 @@ pub fn configuration_update(version: &str, sow: StateOfTheWorld) -> Configuratio
 pub struct ConfigurationUpdateParts {
   pub buffer_config: Vec<BufferConfig>,
   pub workflows: Vec<Workflow>,
+  pub debug_workflows: Vec<Workflow>,
   pub bdtail_streams: Vec<BdTailStream>,
   pub filters_configuration: Vec<Filter>,
 }
@@ -158,6 +163,12 @@ pub fn configuration_update_from_parts(
       workflows_configuration: (!parts.workflows.is_empty())
         .then(|| WorkflowsConfiguration {
           workflows: parts.workflows,
+          ..Default::default()
+        })
+        .into(),
+      debug_workflows: (!parts.debug_workflows.is_empty())
+        .then(|| WorkflowsConfiguration {
+          workflows: parts.debug_workflows,
           ..Default::default()
         })
         .into(),
@@ -208,7 +219,11 @@ pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationU
       log_matches!(message == "SceneWillEnterFG"),
       log_matches!(tag("os") == "iOS"),
     )),
-    &[action!(emit_counter "app_open"; value metric_value!(1))],
+    &[make_emit_counter_action(
+      "app_open",
+      metric_value(1),
+      vec![],
+    )],
   );
 
   let workflow1 = WorkflowBuilder::new("1", &[&a, &b]).build();
@@ -226,7 +241,11 @@ pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationU
         log_matches!(tag("os") == "iOS"),
       ),
     )),
-    &[action!(emit_counter "app_close"; value metric_value!(1))],
+    &[make_emit_counter_action(
+      "app_close",
+      metric_value(1),
+      vec![],
+    )],
   );
 
   let workflow2 = WorkflowBuilder::new("2", &[&c, &d]).build();
@@ -329,7 +348,11 @@ pub fn make_configuration_update_with_workflow_flushing_buffer_on_anything(
       log_matches!(message == "foo"),
       not!(crate::log_matches!(message == "foo")),
     )),
-    &[action!(flush_buffers &[buffer_id]; id "flush_action_id")],
+    &[make_flush_buffers_action(
+      &[buffer_id],
+      None,
+      "flush_action_id",
+    )],
   );
 
   let workflow = WorkflowBuilder::new("1", &[&a, &b]).build();
@@ -355,7 +378,11 @@ pub fn make_configuration_update_with_workflow_flushing_buffer(
   let a = state("a").declare_transition_with_actions(
     &b,
     rule!(workflow_matcher),
-    &[action!(flush_buffers &[buffer_id]; id "flush_action_id")],
+    &[make_flush_buffers_action(
+      &[buffer_id],
+      None,
+      "flush_action_id",
+    )],
   );
 
   let workflow = WorkflowBuilder::new("1", &[&a, &b]).build();
@@ -379,7 +406,11 @@ pub fn make_workflow_config_flushing_buffer(
   let a = state("a").declare_transition_with_actions(
     &b,
     rule!(matcher),
-    &[action!(flush_buffers &[buffer_id]; id "flush_action_id")],
+    &[make_flush_buffers_action(
+      &[buffer_id],
+      None,
+      "flush_action_id",
+    )],
   );
 
   vec![WorkflowBuilder::new("1", &[&a, &b]).build()]

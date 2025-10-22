@@ -7,11 +7,11 @@
 
 #![no_main]
 
+use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
 use bd_bonjson::Value;
 use bd_resilient_kv::InMemoryKVJournal;
 use bd_resilient_kv::kv_journal::KVJournal;
-use std::collections::HashMap;
 
 // Wrapper for Value to implement Arbitrary
 #[derive(Debug, Clone)]
@@ -37,7 +37,7 @@ impl<'a> Arbitrary<'a> for ArbitraryValue {
       },
       7 => {
         let len = u.int_in_range(0 ..= 2)?; // Keep objects small
-        let mut obj = HashMap::new();
+        let mut obj = AHashMap::new();
         for _ in 0 .. len {
           let key: String = u.arbitrary()?;
           let value = Self::arbitrary(u)?.0;
@@ -70,7 +70,7 @@ libfuzzer_sys::fuzz_target!(|data: Vec<Operation>| {
   let mut buffer = vec![0u8; 8192];
 
   // Try to create an InMemoryKVJournal
-  let Ok(mut journal) = InMemoryKVJournal::new(&mut buffer, Some(0.8), None) else {
+  let Ok(mut journal) = InMemoryKVJournal::new(&mut buffer, Some(0.8)) else {
     return;
   };
 
