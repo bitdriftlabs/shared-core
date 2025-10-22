@@ -609,7 +609,7 @@ impl Api {
               }
           }
         } else {
-          // We don't want to flag the connection as being offline if we artifically delayed
+          // We don't want to flag the connection as being offline if we artificially delayed
           // connecting due to the reconnct state, as we want to leave that as unknown until we've
           // tried reconnecting once.
 
