@@ -115,6 +115,10 @@ pub struct StartCommand {
   #[clap(long, required = false, default_value = "1.0.0")]
   pub app_version: String,
 
+  /// App version code (build number)
+  #[clap(long, required = false, default_value = "10")]
+  pub app_version_code: String,
+
   /// Device platform
   #[clap(long, required = false, default_value = "apple")]
   pub platform: CliPlatform,

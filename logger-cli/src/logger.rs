@@ -186,7 +186,7 @@ pub fn make_logger(sdk_directory: &Path, config: &StartCommand) -> anyhow::Resul
     ))),
     metadata_provider: Arc::new(LogMetadata {
       timestamp: time::OffsetDateTime::now_utc().into(),
-      ootb_fields: [("_app_version_code".into(), "10".into())].into(),
+      ootb_fields: [("_app_version_code".into(), config.app_version_code.clone().into())].into(),
       ..Default::default()
     }),
     resource_utilization_target: Box::new(bd_test_helpers::resource_utilization::EmptyTarget),

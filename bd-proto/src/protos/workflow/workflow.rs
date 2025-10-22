@@ -5465,8 +5465,33 @@ pub mod workflow {
                 }
             }
 
+            // bool log_body_extracted = 4;
+
+            pub fn log_body_extracted(&self) -> bool {
+                match self.tag_type {
+                    ::std::option::Option::Some(tag::Tag_type::LogBodyExtracted(v)) => v,
+                    _ => false,
+                }
+            }
+
+            pub fn clear_log_body_extracted(&mut self) {
+                self.tag_type = ::std::option::Option::None;
+            }
+
+            pub fn has_log_body_extracted(&self) -> bool {
+                match self.tag_type {
+                    ::std::option::Option::Some(tag::Tag_type::LogBodyExtracted(..)) => true,
+                    _ => false,
+                }
+            }
+
+            // Param is passed by value, moved
+            pub fn set_log_body_extracted(&mut self, v: bool) {
+                self.tag_type = ::std::option::Option::Some(tag::Tag_type::LogBodyExtracted(v))
+            }
+
             pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                let mut fields = ::std::vec::Vec::with_capacity(3);
+                let mut fields = ::std::vec::Vec::with_capacity(4);
                 let mut oneofs = ::std::vec::Vec::with_capacity(1);
                 fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                     "name",
@@ -5485,6 +5510,12 @@ pub mod workflow {
                     Tag::field_extracted,
                     Tag::mut_field_extracted,
                     Tag::set_field_extracted,
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
+                    "log_body_extracted",
+                    Tag::has_log_body_extracted,
+                    Tag::log_body_extracted,
+                    Tag::set_log_body_extracted,
                 ));
                 oneofs.push(tag::Tag_type::generated_oneof_descriptor_data());
                 ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Tag>(
@@ -5514,6 +5545,9 @@ pub mod workflow {
                         26 => {
                             self.tag_type = ::std::option::Option::Some(tag::Tag_type::FieldExtracted(is.read_message()?));
                         },
+                        32 => {
+                            self.tag_type = ::std::option::Option::Some(tag::Tag_type::LogBodyExtracted(is.read_bool()?));
+                        },
                         tag => {
                             ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                         },
@@ -5538,6 +5572,9 @@ pub mod workflow {
                             let len = v.compute_size();
                             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                         },
+                        &tag::Tag_type::LogBodyExtracted(v) => {
+                            my_size += 1 + 1;
+                        },
                     };
                 }
                 my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -5556,6 +5593,9 @@ pub mod workflow {
                         },
                         &tag::Tag_type::FieldExtracted(ref v) => {
                             ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                        },
+                        &tag::Tag_type::LogBodyExtracted(v) => {
+                            os.write_bool(4, v)?;
                         },
                     };
                 }
@@ -5577,6 +5617,7 @@ pub mod workflow {
 
             fn clear(&mut self) {
                 self.name.clear();
+                self.tag_type = ::std::option::Option::None;
                 self.tag_type = ::std::option::Option::None;
                 self.tag_type = ::std::option::Option::None;
                 self.special_fields.clear();
@@ -5619,6 +5660,8 @@ pub mod workflow {
                 FixedValue(::std::string::String),
                 // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.Tag.field_extracted)
                 FieldExtracted(super::super::FieldExtracted),
+                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.Tag.log_body_extracted)
+                LogBodyExtracted(bool),
             }
 
             impl ::protobuf::Oneof for Tag_type {
@@ -6652,7 +6695,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ic.protobuf.workflow.v1\x1a\x17validate/validate.proto\x1a5bitdrift_publ\
     ic/protobuf/matcher/v1/log_matcher.proto\"f\n\x16WorkflowsConfiguration\
     \x12L\n\tworkflows\x18\x01\x20\x03(\x0b2..bitdrift_public.protobuf.workf\
-    low.v1.WorkflowR\tworkflows\"\xc62\n\x08Workflow\x12\x17\n\x02id\x18\x01\
+    low.v1.WorkflowR\tworkflows\"\xf12\n\x08Workflow\x12\x17\n\x02id\x18\x01\
     \x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12V\n\x06states\x18\x02\
     \x20\x03(\x0b24.bitdrift_public.protobuf.workflow.v1.Workflow.StateR\x06\
     statesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12V\n\texecution\x18\x03\x20\
@@ -6699,7 +6742,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x0eextension_type\x12\x03\xf8B\x01\x1a\x89\x01\n\x0cRuleLogMatch\x12Z\n\
     \x0blog_matcher\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf.matcher.\
     v1.LogMatcherR\nlogMatcherB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x1d\n\
-    \x05count\x18\x02\x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a\xc7\
+    \x05count\x18\x02\x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a\xf7\
     \x1c\n\x06Action\x12|\n\x14action_flush_buffers\x18\x01\x20\x01(\x0b2H.b\
     itdrift_public.protobuf.workflow.v1.Workflow.Action.ActionFlushBuffersH\
     \0R\x12actionFlushBuffers\x12v\n\x12action_emit_metric\x18\x02\x20\x01(\
@@ -6765,11 +6808,12 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12\x1d\n\x05limit\
     \x18\x02\x20\x01(\rR\x05limitB\x07\xfaB\x04*\x02\x20\0\x12M\n\x04tags\
     \x18\x03\x20\x03(\x0b29.bitdrift_public.protobuf.workflow.v1.Workflow.Ac\
-    tion.TagR\x04tags\x1a\xc9\x01\n\x03Tag\x12\x1b\n\x04name\x18\x01\x20\x01\
+    tion.TagR\x04tags\x1a\xf9\x01\n\x03Tag\x12\x1b\n\x04name\x18\x01\x20\x01\
     (\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x12*\n\x0bfixed_value\x18\x02\
     \x20\x01(\tH\0R\nfixedValueB\x07\xfaB\x04r\x02\x10\x01\x12h\n\x0ffield_e\
     xtracted\x18\x03\x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v1.Wor\
-    kflow.FieldExtractedH\0R\x0efieldExtractedB\x0f\n\x08tag_type\x12\x03\
+    kflow.FieldExtractedH\0R\x0efieldExtracted\x12.\n\x12log_body_extracted\
+    \x18\x04\x20\x01(\x08H\0R\x10logBodyExtractedB\x0f\n\x08tag_type\x12\x03\
     \xf8B\x01\x1a/\n\x14ActionTakeScreenshot\x12\x17\n\x02id\x18\x01\x20\x01\
     (\tR\x02idB\x07\xfaB\x04r\x02\x10\x01B\x12\n\x0baction_type\x12\x03\xf8B\
     \x01\x1a\xb9\x01\n\tExecution\x12~\n\x13execution_exclusive\x18\x01\x20\
@@ -6778,11 +6822,11 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     B\x10\n\x0eexecution_typeJ\x04\x08\x02\x10\x03\x1a6\n\x15LimitMatchedLog\
     sCount\x12\x1d\n\x05count\x18\x01\x20\x01(\rR\x05countB\x07\xfaB\x04*\
     \x02\x20\0\x1a9\n\rLimitDuration\x12(\n\x0bduration_ms\x18\x02\x20\x01(\
-    \x04R\ndurationMsB\x07\xfaB\x042\x02\x20\0\x1a\xb6\x01\n\x0eFieldExtract\
+    \x04R\ndurationMsB\x07\xfaB\x042\x02\x20\0\x1a\xb1\x01\n\x0eFieldExtract\
     ed\x12&\n\nfield_name\x18\x01\x20\x01(\tR\tfieldNameB\x07\xfaB\x04r\x02\
     \x10\x01\x12[\n\x05exact\x18\x02\x20\x01(\x0b2C.bitdrift_public.protobuf\
     .workflow.v1.Workflow.FieldExtracted.ExactH\0R\x05exact\x1a\x07\n\x05Exa\
-    ctB\x16\n\x0fextraction_type\x12\x03\xf8B\x01b\x06proto3\
+    ctB\x11\n\x0fextraction_typeb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
