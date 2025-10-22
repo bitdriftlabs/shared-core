@@ -30,11 +30,3 @@
    ```
 4. Tests in the same file as the implementation code should be avoided
 5. Test names should *not* start with `test_`, as this is redundant
-
-## Code Quality Checks
-- After generating or modifying code, always run clippy to check for static lint violations:
-  `SKIP_PROTO_GEN=1 cargo clippy --workspace --bins --examples --tests -- --no-deps`
-- For automatic fixing of some linting issues, use the `--fix` flag:
-  `SKIP_PROTO_GEN=1 cargo clippy --workspace --bins --examples --tests --fix -- --no-deps`
-- Fix any remaining warnings before committing code
-- Running clippy is especially important after code generation or modification to catch any potential issues
