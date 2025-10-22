@@ -583,6 +583,9 @@ impl Api {
     let mut last_disconnect_reason = None;
 
     loop {
+      let elapsed_since_last_disconnect =
+        disconnected_at.get_or_insert_with(Instant::now).elapsed();
+
       // If we're blocked from connecting due to configured reconnect delay, we'll want to wait
       // until there are either new uploads or the delay has elapsed. We need to make sure that any
       // uploads we receive while waiting for the delay are processed, so we have to carry
@@ -614,12 +617,11 @@ impl Api {
           // We don't want to do this immediately as we might be in a transient state
           // during a normal reconnect.
 
-          let disconnected_at = *disconnected_at.get_or_insert_with(Instant::now);
           log::trace!(
             "determining network quality, disconnect {:?} ago",
-            disconnected_at.elapsed()
+            elapsed_since_last_disconnect,
           );
-          if disconnected_at.elapsed() > DISCONNECTED_OFFLINE_GRACE_PERIOD {
+          if elapsed_since_last_disconnect > DISCONNECTED_OFFLINE_GRACE_PERIOD {
             // TODO(snowp): Consider also taking number of connection attempts into consideration
             // as this might play better with the reconnect delay logic.
             self

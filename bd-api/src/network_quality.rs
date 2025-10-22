@@ -29,13 +29,27 @@ pub const DISCONNECTED_OFFLINE_GRACE_PERIOD: std::time::Duration =
 
 pub struct SimpleNetworkQualityProvider {
   network_quality: RwLock<NetworkQuality>,
+
+  #[cfg(test)]
+  pub(crate) update_received_tx: Option<tokio::sync::mpsc::Sender<()>>,
 }
 
 impl Default for SimpleNetworkQualityProvider {
   fn default() -> Self {
     Self {
       network_quality: RwLock::new(NetworkQuality::Unknown),
+      #[cfg(test)]
+      update_received_tx: None,
     }
+  }
+}
+
+#[cfg(test)]
+impl SimpleNetworkQualityProvider {
+  pub fn with_update_channel(&mut self) -> tokio::sync::mpsc::Receiver<()> {
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
+    self.update_received_tx = Some(tx);
+    rx
   }
 }
 
@@ -48,6 +62,11 @@ impl NetworkQualityResolver for SimpleNetworkQualityProvider {
 impl NetworkQualityMonitor for SimpleNetworkQualityProvider {
   fn set_network_quality(&self, quality: NetworkQuality) {
     *self.network_quality.write() = quality;
+
+    #[cfg(test)]
+    if let Some(tx) = &self.update_received_tx {
+      let _ = tx.try_send(());
+    }
   }
 }
 

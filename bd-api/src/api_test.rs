@@ -184,13 +184,14 @@ struct Setup {
 
 impl Setup {
   async fn new() -> Self {
-    Self::new_ex(Self::make_nice_mock_updater(), None, None).await
+    Self::new_ex(Self::make_nice_mock_updater(), None, None, None).await
   }
 
   async fn new_ex(
     config_updater: Arc<MockClientConfigurationUpdate>,
     initial_runtime: Option<RuntimeUpdate>,
     idle_timeout_tx: Option<Sender<()>>,
+    network_quality_provider: Option<SimpleNetworkQualityProvider>,
   ) -> Self {
     let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
 
@@ -219,7 +220,7 @@ impl Setup {
     }
 
     let api_key = "api-key-test".to_string();
-    let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
+    let network_quality_provider = Arc::new(network_quality_provider.unwrap_or_default());
 
     let store = in_memory_store();
     let mut api = Api::new(
@@ -498,6 +499,7 @@ async fn api_retry_stream() {
     }
     .into(),
     None,
+    None,
   )
   .await;
 
@@ -713,6 +715,7 @@ async fn data_idle_timeout() {
       ..Default::default()
     }),
     None,
+    None,
   )
   .await;
 
@@ -769,6 +772,9 @@ async fn data_idle_timeout() {
 
 #[tokio::test(start_paused = true)]
 async fn data_idle_timeout_fails_to_connect() {
+  let mut network_quality = SimpleNetworkQualityProvider::default();
+  let mut quality_updates_rx = network_quality.with_update_channel();
+
   let mut setup = Setup::new_ex(
     Setup::make_nice_mock_updater(),
     Some(RuntimeUpdate {
@@ -791,8 +797,15 @@ async fn data_idle_timeout_fails_to_connect() {
       ..Default::default()
     }),
     None,
+    Some(network_quality),
   )
   .await;
+
+  quality_updates_rx.recv().await.unwrap();
+  assert_eq!(
+    setup.network_quality_provider.get_network_quality(),
+    NetworkQuality::Unknown
+  );
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
@@ -803,8 +816,7 @@ async fn data_idle_timeout_fails_to_connect() {
     )
     .await;
 
-  1.seconds().sleep().await;
-
+  quality_updates_rx.recv().await.unwrap();
   assert_eq!(
     setup.network_quality_provider.get_network_quality(),
     NetworkQuality::Online
@@ -817,41 +829,25 @@ async fn data_idle_timeout_fails_to_connect() {
     .collector
     .wait_for_counter_eq(1, "api:data_idle_timeout", labels! {})
     .await;
+  quality_updates_rx.recv().await.unwrap();
 
+  // For the first attempt that is held back by the reconnect time we're marking the connectivity
+  // status as unknown.
   assert_eq!(
     setup.network_quality_provider.get_network_quality(),
     NetworkQuality::Unknown
   );
 
-  assert!(setup.next_stream(1.seconds()).await.is_none());
-
-  tokio::time::advance(20.std_minutes()).await;
-
-  assert!(setup.next_stream(1.seconds()).await.is_some());
-
-  // Advance test time as well since retry state relies on this.
+  // Now advance 20 minutes so that we can reconnect.
+  20.minutes().advance().await;
   setup.time_provider.advance(20.minutes());
 
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  1.minutes().advance().await;
+  setup.time_provider.advance(1.minutes());
   setup.close_stream().await;
 
-  // This is a bit flaky due to timing, so we loop a few times to ensure we hit the unknown state.
-  let mut reached_unknown = false;
-  for _ in 0 .. 10 {
-    if setup.network_quality_provider.get_network_quality() == NetworkQuality::Unknown {
-      reached_unknown = true;
-      break;
-    }
-    tokio::task::yield_now().await;
-  }
-  assert!(reached_unknown, "NetworkQuality::Unknown was never reached");
-
-  // Greater than the disconnect grace period.
-  20.seconds().sleep().await;
-
-  setup.close_stream().await;
-
-  1.seconds().sleep().await;
-
+  quality_updates_rx.recv().await.unwrap();
   assert_eq!(
     setup.network_quality_provider.get_network_quality(),
     NetworkQuality::Offline
@@ -875,6 +871,7 @@ async fn data_idle_timeout_data_resets_timeout() {
       ..Default::default()
     }),
     Some(idle_timeout_tx),
+    None,
   )
   .await;
 
@@ -967,6 +964,7 @@ async fn data_idle_timeout_data_sent_during_reconnect_timeout() {
       ..Default::default()
     }),
     Some(idle_timeout_tx),
+    None,
   )
   .await;
 
