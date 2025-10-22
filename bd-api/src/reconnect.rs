@@ -51,12 +51,24 @@ impl ReconnectState {
 
   pub fn next_reconnect_delay(&self) -> Option<std::time::Duration> {
     let last_connected_at = self.last_connected_at?;
+    let min_reconnect_interval = *self.min_reconnect_interval.read();
 
-    let next_reconnect_time = last_connected_at + *self.min_reconnect_interval.read();
+    let next_reconnect_time = last_connected_at + min_reconnect_interval;
     let delay = next_reconnect_time - self.time_provider.now();
-    log::trace!("last reconnect was at {last_connected_at}, waiting {delay:?} before reconnecting",);
 
-    (delay > std::time::Duration::ZERO).then_some(delay.unsigned_abs())
+    // If delay is negative or zero, return None (no delay needed)
+    if delay <= std::time::Duration::ZERO {
+      log::trace!("last reconnect was at {last_connected_at}, no delay needed");
+      return None;
+    }
+
+    // Cap the delay at the minimum reconnect interval to prevent excessively long waits
+    let capped_delay = std::cmp::min(delay.unsigned_abs(), min_reconnect_interval.unsigned_abs());
+    log::trace!(
+      "last reconnect was at {last_connected_at}, waiting {capped_delay:?} before reconnecting"
+    );
+
+    Some(capped_delay)
   }
 
   /// Updates the reconnection state with a connectivity event. The last seen connectivity event is
