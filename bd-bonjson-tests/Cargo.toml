@@ -22,4 +22,4 @@ tempfile.workspace        = true
 
 [build-dependencies]
 bd-bonjson-ffi.path = "../bd-bonjson-ffi"
-cc.workspace    = true
+cc.workspace        = true

@@ -21,7 +21,6 @@ use crate::{
 };
 use assert_matches::assert_matches;
 use bd_error_reporter::reporter::UnexpectedErrorHandler;
-use bd_key_value::Store;
 use bd_log_metadata::LogFields;
 use bd_log_primitives::AnnotatedLogFields;
 use bd_noop_network::NoopNetwork;
@@ -56,7 +55,7 @@ use bd_test_helpers::metadata::EmptyMetadata;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
 use bd_test_helpers::runtime::{ValueKind, make_update};
-use bd_test_helpers::session::InMemoryStorage;
+use bd_test_helpers::session::in_memory_store;
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_test_helpers::test_api_server::StreamAction;
 use bd_test_helpers::workflow::macros::{log_matches, rule};
@@ -2400,7 +2399,7 @@ fn runtime_caching() {
 
   // Start up a new logger that won't be able to connect to the server.
   {
-    let store = Arc::new(Store::new(Box::<InMemoryStorage>::default()));
+    let store = in_memory_store();
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
     let logger = crate::LoggerBuilder::new(InitParams {

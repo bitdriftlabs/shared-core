@@ -755,6 +755,39 @@ pub mod api {
     "api.initial_backoff_interval_ms",
     500.milliseconds()
   );
+
+  // This controls the time we'll wait after the last received data upload before we close the API
+  // mux stream. This allows the stream to use a configurable amount of idle time before we close
+  // it, allowing us to shut down idle streams/connections to reduce the amount of active streams.
+  //
+  // As we use activity on the `DataUpload` channel to determine activity, this means that as long
+  // as the client is uploading data, the stream will be kept alive. If the client is configured
+  // to upload data infrequently, this timeout can be set to below the upload interval to ensure
+  // that the stream is closed while there are no uploads.
+  //
+  // Note that by default the client will be uploading more often than every 5 mintues due to stats
+  // flushes, so the default timeout will typically not be hit unless the client is configured to
+  // upload stats less frequently than that.
+  duration_feature_flag!(
+    DataIdleTimeoutInterval,
+    "api.data_idle_timeout_interval_ms",
+    5.minutes()
+  );
+
+  // This controls the time to wait before reconnecting to the API backend after previously having
+  // an active connection. When disconnecting from the API backend (for any reason, including the
+  // data idle timeout), the client will wait at least this interval before attempting to reconnect.
+  // This makes it possible to configure the client in such a way that does not attempt to maintain
+  // a constant connection to the backend, reducing resource usage on both the client and server
+  // side.
+  //
+  // By default this is set to 0ms, meaning the client will attempt to reconnect immediately after
+  // a disconnect.
+  duration_feature_flag!(
+    MinReconnectInterval,
+    "api.min_reconnect_interval_ms",
+    0.seconds()
+  );
 }
 
 pub mod stats {

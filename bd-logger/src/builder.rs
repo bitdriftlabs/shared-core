@@ -343,6 +343,7 @@ impl LoggerBuilder {
         log.clone(),
         &scope.scope("api"),
         sleep_mode_active_rx,
+        self.params.store.clone(),
       );
 
       let mut config_writer = bd_crash_handler::ConfigWriter::new(
