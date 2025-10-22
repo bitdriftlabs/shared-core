@@ -7,10 +7,12 @@
 
 use crate::network_quality::{
   AggregatedNetworkQualityProvider,
+  NetworkQualityMonitor,
+  NetworkQualityResolver,
   SimpleNetworkQualityProvider,
   TimedNetworkQualityProvider,
 };
-use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
+use bd_network_quality::NetworkQuality;
 use bd_runtime::runtime::{FeatureFlag, Watch};
 use bd_time::TestTimeProvider;
 use std::sync::Arc;
@@ -34,19 +36,31 @@ fn simple_network_quality_provider() {
   let provider = SimpleNetworkQualityProvider::default();
 
   // Default quality should be Unknown
-  assert_eq!(provider.get_network_quality(), NetworkQuality::Unknown);
+  assert_eq!(
+    NetworkQualityResolver::get_network_quality(&provider),
+    NetworkQuality::Unknown
+  );
 
   // Set to Online and verify
-  provider.set_network_quality(NetworkQuality::Online);
-  assert_eq!(provider.get_network_quality(), NetworkQuality::Online);
+  NetworkQualityMonitor::set_network_quality(&provider, NetworkQuality::Online);
+  assert_eq!(
+    NetworkQualityResolver::get_network_quality(&provider),
+    NetworkQuality::Online
+  );
 
   // Set to Offline and verify
-  provider.set_network_quality(NetworkQuality::Offline);
-  assert_eq!(provider.get_network_quality(), NetworkQuality::Offline);
+  NetworkQualityMonitor::set_network_quality(&provider, NetworkQuality::Offline);
+  assert_eq!(
+    NetworkQualityResolver::get_network_quality(&provider),
+    NetworkQuality::Offline
+  );
 
   // Set back to Unknown and verify
-  provider.set_network_quality(NetworkQuality::Unknown);
-  assert_eq!(provider.get_network_quality(), NetworkQuality::Unknown);
+  NetworkQualityMonitor::set_network_quality(&provider, NetworkQuality::Unknown);
+  assert_eq!(
+    NetworkQualityResolver::get_network_quality(&provider),
+    NetworkQuality::Unknown
+  );
 }
 
 #[test]
@@ -61,28 +75,46 @@ fn timed_network_quality_provider() {
   let provider = TimedNetworkQualityProvider::new(time_provider.clone(), watch);
 
   // Default quality should be Unknown
-  assert_eq!(provider.get_network_quality(), NetworkQuality::Unknown);
+  assert_eq!(
+    NetworkQualityResolver::get_network_quality(&provider),
+    NetworkQuality::Unknown
+  );
 
   // Set to Online and verify
-  provider.set_network_quality(NetworkQuality::Online);
-  assert_eq!(provider.get_network_quality(), NetworkQuality::Online);
+  NetworkQualityMonitor::set_network_quality(&provider, NetworkQuality::Online);
+  assert_eq!(
+    NetworkQualityResolver::get_network_quality(&provider),
+    NetworkQuality::Online
+  );
 
   // Set to Offline and verify
-  provider.set_network_quality(NetworkQuality::Offline);
-  assert_eq!(provider.get_network_quality(), NetworkQuality::Offline);
+  NetworkQualityMonitor::set_network_quality(&provider, NetworkQuality::Offline);
+  assert_eq!(
+    NetworkQualityResolver::get_network_quality(&provider),
+    NetworkQuality::Offline
+  );
 
   // Advance time by 30 seconds (still within timeout)
   time_provider.advance(time::Duration::seconds(30));
-  assert_eq!(provider.get_network_quality(), NetworkQuality::Offline);
+  assert_eq!(
+    NetworkQualityResolver::get_network_quality(&provider),
+    NetworkQuality::Offline
+  );
 
   // Advance time by another 31 seconds (past timeout)
   time_provider.advance(time::Duration::seconds(31));
   // Quality should revert to Unknown after timeout
-  assert_eq!(provider.get_network_quality(), NetworkQuality::Unknown);
+  assert_eq!(
+    NetworkQualityResolver::get_network_quality(&provider),
+    NetworkQuality::Unknown
+  );
 
   // Set quality again and verify it works
-  provider.set_network_quality(NetworkQuality::Online);
-  assert_eq!(provider.get_network_quality(), NetworkQuality::Online);
+  NetworkQualityMonitor::set_network_quality(&provider, NetworkQuality::Online);
+  assert_eq!(
+    NetworkQualityResolver::get_network_quality(&provider),
+    NetworkQuality::Online
+  );
 }
 
 #[test]
@@ -102,7 +134,7 @@ fn aggregated_network_quality_provider() {
   );
 
   // Set first provider to Online
-  provider1.set_network_quality(NetworkQuality::Online);
+  NetworkQualityMonitor::set_network_quality(&*provider1, NetworkQuality::Online);
   // Aggregated should return the first non-Unknown quality (Online)
   assert_eq!(
     aggregated_provider.get_network_quality(),
@@ -110,7 +142,7 @@ fn aggregated_network_quality_provider() {
   );
 
   // Set second provider to Offline
-  provider2.set_network_quality(NetworkQuality::Offline);
+  NetworkQualityMonitor::set_network_quality(&*provider2, NetworkQuality::Offline);
   // Aggregated should still return the first non-Unknown quality (Online from provider1)
   assert_eq!(
     aggregated_provider.get_network_quality(),
@@ -118,7 +150,7 @@ fn aggregated_network_quality_provider() {
   );
 
   // Set first provider back to Unknown
-  provider1.set_network_quality(NetworkQuality::Unknown);
+  NetworkQualityMonitor::set_network_quality(&*provider1, NetworkQuality::Unknown);
   // Aggregated should now return the quality from provider2 (Offline)
   assert_eq!(
     aggregated_provider.get_network_quality(),
@@ -126,7 +158,7 @@ fn aggregated_network_quality_provider() {
   );
 
   // Set second provider to Unknown as well
-  provider2.set_network_quality(NetworkQuality::Unknown);
+  NetworkQualityMonitor::set_network_quality(&*provider2, NetworkQuality::Unknown);
   // All providers are Unknown, so aggregated should be Unknown
   assert_eq!(
     aggregated_provider.get_network_quality(),
@@ -134,10 +166,16 @@ fn aggregated_network_quality_provider() {
   );
 
   // Test setting quality via the aggregated provider
-  aggregated_provider.set_network_quality(NetworkQuality::Online);
   // This should *not* set anything on the underlying providers to Online
-  assert_eq!(provider1.get_network_quality(), NetworkQuality::Unknown);
-  assert_eq!(provider2.get_network_quality(), NetworkQuality::Unknown);
+  // There's no set_network_quality on AggregatedNetworkQualityProvider anymore
+  assert_eq!(
+    NetworkQualityResolver::get_network_quality(&*provider1),
+    NetworkQuality::Unknown
+  );
+  assert_eq!(
+    NetworkQualityResolver::get_network_quality(&*provider2),
+    NetworkQuality::Unknown
+  );
   assert_eq!(
     aggregated_provider.get_network_quality(),
     NetworkQuality::Unknown
@@ -170,7 +208,7 @@ fn aggregated_provider_with_mixed_providers() {
   );
 
   // Set timed provider to Online
-  timed_provider.set_network_quality(NetworkQuality::Online);
+  NetworkQualityMonitor::set_network_quality(&*timed_provider, NetworkQuality::Online);
   assert_eq!(
     aggregated_provider.get_network_quality(),
     NetworkQuality::Online
@@ -179,7 +217,7 @@ fn aggregated_provider_with_mixed_providers() {
   // Advance time past the timeout to make timed provider return Unknown
   time_provider.advance(time::Duration::seconds(61));
   assert_eq!(
-    timed_provider.get_network_quality(),
+    NetworkQualityResolver::get_network_quality(&*timed_provider),
     NetworkQuality::Unknown
   );
 
@@ -190,7 +228,7 @@ fn aggregated_provider_with_mixed_providers() {
   );
 
   // Set simple provider to Offline
-  simple_provider.set_network_quality(NetworkQuality::Offline);
+  NetworkQualityMonitor::set_network_quality(&*simple_provider, NetworkQuality::Offline);
   // Aggregated provider should now return Offline
   assert_eq!(
     aggregated_provider.get_network_quality(),

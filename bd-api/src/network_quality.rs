@@ -9,7 +9,7 @@
 #[path = "./network_quality_test.rs"]
 mod tests;
 
-use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
+use bd_network_quality::{NetworkQuality, NetworkQualityMonitor, NetworkQualityResolver};
 use bd_runtime::runtime::DurationWatch;
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -39,11 +39,13 @@ impl Default for SimpleNetworkQualityProvider {
   }
 }
 
-impl NetworkQualityProvider for SimpleNetworkQualityProvider {
+impl NetworkQualityResolver for SimpleNetworkQualityProvider {
   fn get_network_quality(&self) -> NetworkQuality {
     *self.network_quality.read()
   }
+}
 
+impl NetworkQualityMonitor for SimpleNetworkQualityProvider {
   fn set_network_quality(&self, quality: NetworkQuality) {
     *self.network_quality.write() = quality;
   }
@@ -65,37 +67,43 @@ impl<T: bd_runtime::runtime::FeatureFlag<time::Duration>> TimedNetworkQualityPro
   }
 }
 
-impl<T: bd_runtime::runtime::FeatureFlag<time::Duration> + Send + Sync> NetworkQualityProvider
+impl<T: bd_runtime::runtime::FeatureFlag<time::Duration> + Send + Sync> NetworkQualityResolver
   for TimedNetworkQualityProvider<T>
 {
   fn get_network_quality(&self) -> NetworkQuality {
     let (quality, timestamp) = *self.rw_network_quality.read();
-
     if timestamp + *self.timeout.read() < self.time_provider.now() {
       return NetworkQuality::Unknown;
     }
-
     quality
   }
+}
 
+impl<T: bd_runtime::runtime::FeatureFlag<time::Duration> + Send + Sync> NetworkQualityMonitor
+  for TimedNetworkQualityProvider<T>
+{
   fn set_network_quality(&self, quality: NetworkQuality) {
     let now = self.time_provider.now();
     *self.rw_network_quality.write() = (quality, now);
   }
 }
 
+//
+// AggregatedNetworkQualityProvider
+//
+
 pub struct AggregatedNetworkQualityProvider {
-  providers: Vec<Arc<dyn NetworkQualityProvider>>,
+  providers: Vec<Arc<dyn NetworkQualityResolver>>,
 }
 
 impl AggregatedNetworkQualityProvider {
   #[must_use]
-  pub fn new(providers: Vec<Arc<dyn NetworkQualityProvider>>) -> Self {
+  pub fn new(providers: Vec<Arc<dyn NetworkQualityResolver>>) -> Self {
     Self { providers }
   }
 }
 
-impl NetworkQualityProvider for AggregatedNetworkQualityProvider {
+impl NetworkQualityResolver for AggregatedNetworkQualityProvider {
   fn get_network_quality(&self) -> NetworkQuality {
     for provider in &self.providers {
       let quality = provider.get_network_quality();
@@ -104,9 +112,5 @@ impl NetworkQualityProvider for AggregatedNetworkQualityProvider {
       }
     }
     NetworkQuality::Unknown
-  }
-
-  fn set_network_quality(&self, _quality: NetworkQuality) {
-    // No-op: aggregated provider does not set quality
   }
 }

@@ -26,10 +26,15 @@ pub enum NetworkQuality {
 }
 
 //
-// NetworkQualityProvider
+// NetworkQualityMonitor
 //
 
-pub trait NetworkQualityProvider: Send + Sync {
-  fn get_network_quality(&self) -> NetworkQuality;
+pub trait NetworkQualityMonitor: Send + Sync {
   fn set_network_quality(&self, quality: NetworkQuality);
+}
+
+// NetworkQualityResolver
+
+pub trait NetworkQualityResolver: Send + Sync {
+  fn get_network_quality(&self) -> NetworkQuality;
 }

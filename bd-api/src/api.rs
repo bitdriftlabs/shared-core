@@ -15,7 +15,6 @@ use crate::{
   DataUpload,
   PlatformNetworkManager,
   PlatformNetworkStream,
-  SimpleNetworkQualityProvider,
   StreamEvent,
   TriggerUpload,
 };
@@ -39,7 +38,7 @@ use bd_grpc_codec::{
   OptimizeFor,
 };
 use bd_metadata::Metadata;
-use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
+use bd_network_quality::{NetworkQuality, NetworkQualityMonitor};
 use bd_proto::protos::client::api::api_response::Response_type;
 pub use bd_proto::protos::client::api::log_upload_intent_response::{
   Decision as LogsUploadDecision,
@@ -346,7 +345,7 @@ pub struct Api {
 
   internal_logger: Arc<dyn bd_internal_logging::Logger>,
   time_provider: Arc<dyn TimeProvider>,
-  network_quality_provider: Arc<SimpleNetworkQualityProvider>,
+  network_quality_monitor: Arc<dyn NetworkQualityMonitor>,
 
   config_marked_safe_due_to_offline: bool,
 
@@ -381,7 +380,7 @@ impl Api {
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
     config_updater: Arc<dyn ClientConfigurationUpdate>,
     time_provider: Arc<dyn TimeProvider>,
-    network_quality_provider: Arc<SimpleNetworkQualityProvider>,
+    network_quality_monitor: Arc<dyn NetworkQualityMonitor>,
     self_logger: Arc<dyn bd_internal_logging::Logger>,
     stats: &Scope,
     sleep_mode_active: watch::Receiver<bool>,
@@ -409,7 +408,7 @@ impl Api {
       data_upload_rx,
       trigger_upload_tx,
       time_provider,
-      network_quality_provider,
+      network_quality_monitor,
       runtime_loader,
       max_backoff_interval,
       initial_backoff_interval,
@@ -593,7 +592,7 @@ impl Api {
           // We are intentionally delaying reconnecting, so set network quality to unknown since
           // we can't tell if we are actually offline or just delaying.
           self
-            .network_quality_provider
+            .network_quality_monitor
             .set_network_quality(NetworkQuality::Unknown);
 
           // Use tokio::time::sleep_until since this plays better with test time compared to using
@@ -624,7 +623,7 @@ impl Api {
             // TODO(snowp): Consider also taking number of connection attempts into consideration
             // as this might play better with the reconnect delay logic.
             self
-              .network_quality_provider
+              .network_quality_monitor
               .set_network_quality(NetworkQuality::Offline);
             if !self.config_marked_safe_due_to_offline {
               self.config_marked_safe_due_to_offline = true;
@@ -633,7 +632,7 @@ impl Api {
             }
           } else {
             self
-              .network_quality_provider
+              .network_quality_monitor
               .set_network_quality(NetworkQuality::Unknown);
           }
 
@@ -762,7 +761,7 @@ impl Api {
       log::debug!("handshake received, entering main loop");
       let handshake_established = Instant::now();
       self
-        .network_quality_provider
+        .network_quality_monitor
         .set_network_quality(NetworkQuality::Online);
       self.reconnect_state.record_connectivity_event();
 

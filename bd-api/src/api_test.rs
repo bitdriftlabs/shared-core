@@ -5,10 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{Api, PlatformNetworkManager, PlatformNetworkStream, SimpleNetworkQualityProvider};
-use crate::DataUpload;
+use super::{Api, PlatformNetworkManager, PlatformNetworkStream};
 use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
 use crate::upload::Tracked;
+use crate::{DataUpload, SimpleNetworkQualityProvider};
 use anyhow::anyhow;
 use assert_matches::assert_matches;
 use bd_client_common::{
@@ -23,7 +23,7 @@ use bd_grpc_codec::{Decompression, Encoder, OptimizeFor};
 use bd_internal_logging::{LogFields, LogLevel, LogType};
 use bd_key_value::Store;
 use bd_metadata::{Metadata, Platform};
-use bd_network_quality::{NetworkQuality, NetworkQualityProvider};
+use bd_network_quality::{NetworkQuality, NetworkQualityResolver as _};
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::client::api::api_response::Response_type;
 use bd_proto::protos::client::api::handshake_response::StreamSettings;
