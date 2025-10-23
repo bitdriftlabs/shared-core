@@ -50,10 +50,10 @@ pub mod v_1 {
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 pub const ENUM_MIN_REPORT_TYPE: i8 = 0;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MAX_REPORT_TYPE: i8 = 6;
+pub const ENUM_MAX_REPORT_TYPE: i8 = 7;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 #[allow(non_camel_case_types)]
-pub const ENUM_VALUES_REPORT_TYPE: [ReportType; 7] = [
+pub const ENUM_VALUES_REPORT_TYPE: [ReportType; 8] = [
   ReportType::Unknown,
   ReportType::AppNotResponding,
   ReportType::HandledError,
@@ -61,6 +61,7 @@ pub const ENUM_VALUES_REPORT_TYPE: [ReportType; 7] = [
   ReportType::MemoryTermination,
   ReportType::NativeCrash,
   ReportType::StrictModeViolation,
+  ReportType::JavaScriptError,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -75,9 +76,10 @@ impl ReportType {
   pub const MemoryTermination: Self = Self(4);
   pub const NativeCrash: Self = Self(5);
   pub const StrictModeViolation: Self = Self(6);
+  pub const JavaScriptError: Self = Self(7);
 
   pub const ENUM_MIN: i8 = 0;
-  pub const ENUM_MAX: i8 = 6;
+  pub const ENUM_MAX: i8 = 7;
   pub const ENUM_VALUES: &'static [Self] = &[
     Self::Unknown,
     Self::AppNotResponding,
@@ -86,6 +88,7 @@ impl ReportType {
     Self::MemoryTermination,
     Self::NativeCrash,
     Self::StrictModeViolation,
+    Self::JavaScriptError,
   ];
   /// Returns the variant's name or "" if unknown.
   pub fn variant_name(self) -> Option<&'static str> {
@@ -97,6 +100,7 @@ impl ReportType {
       Self::MemoryTermination => Some("MemoryTermination"),
       Self::NativeCrash => Some("NativeCrash"),
       Self::StrictModeViolation => Some("StrictModeViolation"),
+      Self::JavaScriptError => Some("JavaScriptError"),
       _ => None,
     }
   }
@@ -345,14 +349,15 @@ impl flatbuffers::SimpleToVerifyInSlice for Architecture {}
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 pub const ENUM_MIN_FRAME_TYPE: i8 = 0;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MAX_FRAME_TYPE: i8 = 3;
+pub const ENUM_MAX_FRAME_TYPE: i8 = 4;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 #[allow(non_camel_case_types)]
-pub const ENUM_VALUES_FRAME_TYPE: [FrameType; 4] = [
+pub const ENUM_VALUES_FRAME_TYPE: [FrameType; 5] = [
   FrameType::Unknown,
   FrameType::JVM,
   FrameType::DWARF,
   FrameType::AndroidNative,
+  FrameType::JavaScript,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -364,14 +369,16 @@ impl FrameType {
   pub const JVM: Self = Self(1);
   pub const DWARF: Self = Self(2);
   pub const AndroidNative: Self = Self(3);
+  pub const JavaScript: Self = Self(4);
 
   pub const ENUM_MIN: i8 = 0;
-  pub const ENUM_MAX: i8 = 3;
+  pub const ENUM_MAX: i8 = 4;
   pub const ENUM_VALUES: &'static [Self] = &[
     Self::Unknown,
     Self::JVM,
     Self::DWARF,
     Self::AndroidNative,
+    Self::JavaScript,
   ];
   /// Returns the variant's name or "" if unknown.
   pub fn variant_name(self) -> Option<&'static str> {
@@ -380,6 +387,7 @@ impl FrameType {
       Self::JVM => Some("JVM"),
       Self::DWARF => Some("DWARF"),
       Self::AndroidNative => Some("AndroidNative"),
+      Self::JavaScript => Some("JavaScript"),
       _ => None,
     }
   }
@@ -706,6 +714,95 @@ impl<'a> flatbuffers::Verifiable for NetworkState {
 }
 
 impl flatbuffers::SimpleToVerifyInSlice for NetworkState {}
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MIN_JAVA_SCRIPT_ENGINE: i8 = 0;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MAX_JAVA_SCRIPT_ENGINE: i8 = 2;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+#[allow(non_camel_case_types)]
+pub const ENUM_VALUES_JAVA_SCRIPT_ENGINE: [JavaScriptEngine; 3] = [
+  JavaScriptEngine::UnknownJsEngine,
+  JavaScriptEngine::JavaScriptCore,
+  JavaScriptEngine::Hermes,
+];
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[repr(transparent)]
+pub struct JavaScriptEngine(pub i8);
+#[allow(non_upper_case_globals)]
+impl JavaScriptEngine {
+  pub const UnknownJsEngine: Self = Self(0);
+  pub const JavaScriptCore: Self = Self(1);
+  pub const Hermes: Self = Self(2);
+
+  pub const ENUM_MIN: i8 = 0;
+  pub const ENUM_MAX: i8 = 2;
+  pub const ENUM_VALUES: &'static [Self] = &[
+    Self::UnknownJsEngine,
+    Self::JavaScriptCore,
+    Self::Hermes,
+  ];
+  /// Returns the variant's name or "" if unknown.
+  pub fn variant_name(self) -> Option<&'static str> {
+    match self {
+      Self::UnknownJsEngine => Some("UnknownJsEngine"),
+      Self::JavaScriptCore => Some("JavaScriptCore"),
+      Self::Hermes => Some("Hermes"),
+      _ => None,
+    }
+  }
+}
+impl core::fmt::Debug for JavaScriptEngine {
+  fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    if let Some(name) = self.variant_name() {
+      f.write_str(name)
+    } else {
+      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+    }
+  }
+}
+impl<'a> flatbuffers::Follow<'a> for JavaScriptEngine {
+  type Inner = Self;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    let b = unsafe { flatbuffers::read_scalar_at::<i8>(buf, loc) };
+    Self(b)
+  }
+}
+
+impl flatbuffers::Push for JavaScriptEngine {
+    type Output = JavaScriptEngine;
+    #[inline]
+    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+        unsafe { flatbuffers::emplace_scalar::<i8>(dst, self.0); }
+    }
+}
+
+impl flatbuffers::EndianScalar for JavaScriptEngine {
+  type Scalar = i8;
+  #[inline]
+  fn to_little_endian(self) -> i8 {
+    self.0.to_le()
+  }
+  #[inline]
+  #[allow(clippy::wrong_self_convention)]
+  fn from_little_endian(v: i8) -> Self {
+    let b = i8::from_le(v);
+    Self(b)
+  }
+}
+
+impl<'a> flatbuffers::Verifiable for JavaScriptEngine {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    i8::run_verifier(v, pos)
+  }
+}
+
+impl flatbuffers::SimpleToVerifyInSlice for JavaScriptEngine {}
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 pub const ENUM_MIN_ROTATION: i8 = 0;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
@@ -1441,6 +1538,7 @@ impl<'a> AppMetrics<'a> {
   pub const VT_REGION_FORMAT: flatbuffers::VOffsetT = 16;
   pub const VT_CPU_USAGE: flatbuffers::VOffsetT = 18;
   pub const VT_LIFECYCLE_EVENT: flatbuffers::VOffsetT = 20;
+  pub const VT_JAVASCRIPT_ENGINE: flatbuffers::VOffsetT = 22;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -1461,6 +1559,7 @@ impl<'a> AppMetrics<'a> {
     if let Some(x) = args.version { builder.add_version(x); }
     if let Some(x) = args.memory { builder.add_memory(x); }
     if let Some(x) = args.app_id { builder.add_app_id(x); }
+    builder.add_javascript_engine(args.javascript_engine);
     builder.finish()
   }
 
@@ -1528,6 +1627,13 @@ impl<'a> AppMetrics<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(AppMetrics::VT_LIFECYCLE_EVENT, None)}
   }
+  #[inline]
+  pub fn javascript_engine(&self) -> JavaScriptEngine {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<JavaScriptEngine>(AppMetrics::VT_JAVASCRIPT_ENGINE, Some(JavaScriptEngine::UnknownJsEngine)).unwrap()}
+  }
 }
 
 impl flatbuffers::Verifiable for AppMetrics<'_> {
@@ -1546,6 +1652,7 @@ impl flatbuffers::Verifiable for AppMetrics<'_> {
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("region_format", Self::VT_REGION_FORMAT, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<ProcessorUsage>>("cpu_usage", Self::VT_CPU_USAGE, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("lifecycle_event", Self::VT_LIFECYCLE_EVENT, false)?
+     .visit_field::<JavaScriptEngine>("javascript_engine", Self::VT_JAVASCRIPT_ENGINE, false)?
      .finish();
     Ok(())
   }
@@ -1560,6 +1667,7 @@ pub struct AppMetricsArgs<'a> {
     pub region_format: Option<flatbuffers::WIPOffset<&'a str>>,
     pub cpu_usage: Option<flatbuffers::WIPOffset<ProcessorUsage<'a>>>,
     pub lifecycle_event: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub javascript_engine: JavaScriptEngine,
 }
 impl<'a> Default for AppMetricsArgs<'a> {
   #[inline]
@@ -1574,6 +1682,7 @@ impl<'a> Default for AppMetricsArgs<'a> {
       region_format: None,
       cpu_usage: None,
       lifecycle_event: None,
+      javascript_engine: JavaScriptEngine::UnknownJsEngine,
     }
   }
 }
@@ -1620,6 +1729,10 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> AppMetricsBuilder<'a, 'b, A> {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(AppMetrics::VT_LIFECYCLE_EVENT, lifecycle_event);
   }
   #[inline]
+  pub fn add_javascript_engine(&mut self, javascript_engine: JavaScriptEngine) {
+    self.fbb_.push_slot::<JavaScriptEngine>(AppMetrics::VT_JAVASCRIPT_ENGINE, javascript_engine, JavaScriptEngine::UnknownJsEngine);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> AppMetricsBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     AppMetricsBuilder {
@@ -1646,6 +1759,7 @@ impl core::fmt::Debug for AppMetrics<'_> {
       ds.field("region_format", &self.region_format());
       ds.field("cpu_usage", &self.cpu_usage());
       ds.field("lifecycle_event", &self.lifecycle_event());
+      ds.field("javascript_engine", &self.javascript_engine());
       ds.finish()
   }
 }
@@ -2651,6 +2765,7 @@ impl<'a> Frame<'a> {
   pub const VT_ORIGINAL_INDEX: flatbuffers::VOffsetT = 24;
   pub const VT_IN_APP: flatbuffers::VOffsetT = 26;
   pub const VT_SYMBOLICATED_NAME: flatbuffers::VOffsetT = 28;
+  pub const VT_JS_BUNDLE_PATH: flatbuffers::VOffsetT = 30;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -2665,6 +2780,7 @@ impl<'a> Frame<'a> {
     builder.add_original_index(args.original_index);
     builder.add_symbol_address(args.symbol_address);
     builder.add_frame_address(args.frame_address);
+    if let Some(x) = args.js_bundle_path { builder.add_js_bundle_path(x); }
     if let Some(x) = args.symbolicated_name { builder.add_symbolicated_name(x); }
     if let Some(x) = args.state { builder.add_state(x); }
     if let Some(x) = args.registers { builder.add_registers(x); }
@@ -2770,6 +2886,13 @@ impl<'a> Frame<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(Frame::VT_SYMBOLICATED_NAME, None)}
   }
+  #[inline]
+  pub fn js_bundle_path(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(Frame::VT_JS_BUNDLE_PATH, None)}
+  }
 }
 
 impl flatbuffers::Verifiable for Frame<'_> {
@@ -2792,6 +2915,7 @@ impl flatbuffers::Verifiable for Frame<'_> {
      .visit_field::<u64>("original_index", Self::VT_ORIGINAL_INDEX, false)?
      .visit_field::<bool>("in_app", Self::VT_IN_APP, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("symbolicated_name", Self::VT_SYMBOLICATED_NAME, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("js_bundle_path", Self::VT_JS_BUNDLE_PATH, false)?
      .finish();
     Ok(())
   }
@@ -2810,6 +2934,7 @@ pub struct FrameArgs<'a> {
     pub original_index: u64,
     pub in_app: bool,
     pub symbolicated_name: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub js_bundle_path: Option<flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for FrameArgs<'a> {
   #[inline]
@@ -2828,6 +2953,7 @@ impl<'a> Default for FrameArgs<'a> {
       original_index: 0,
       in_app: false,
       symbolicated_name: None,
+      js_bundle_path: None,
     }
   }
 }
@@ -2890,6 +3016,10 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> FrameBuilder<'a, 'b, A> {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Frame::VT_SYMBOLICATED_NAME, symbolicated_name);
   }
   #[inline]
+  pub fn add_js_bundle_path(&mut self, js_bundle_path: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Frame::VT_JS_BUNDLE_PATH, js_bundle_path);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> FrameBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     FrameBuilder {
@@ -2920,6 +3050,7 @@ impl core::fmt::Debug for Frame<'_> {
       ds.field("original_index", &self.original_index());
       ds.field("in_app", &self.in_app());
       ds.field("symbolicated_name", &self.symbolicated_name());
+      ds.field("js_bundle_path", &self.js_bundle_path());
       ds.finish()
   }
 }
