@@ -1,6 +1,5 @@
 ---
 source: bd-report-parsers/src/./android_tests.rs
-assertion_line: 121
 expression: thread
 ---
 Thread {
@@ -34,6 +33,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: AndroidNative,
@@ -53,6 +53,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: AndroidNative,
@@ -72,6 +73,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: AndroidNative,
@@ -91,6 +93,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: AndroidNative,
@@ -110,6 +113,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: AndroidNative,
@@ -129,6 +133,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: AndroidNative,
@@ -148,6 +153,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
         ],
     ),
