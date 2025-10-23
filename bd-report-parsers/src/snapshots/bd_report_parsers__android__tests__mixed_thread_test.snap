@@ -1,6 +1,5 @@
 ---
 source: bd-report-parsers/src/./android_tests.rs
-assertion_line: 142
 expression: thread
 ---
 Thread {
@@ -45,6 +44,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: JVM,
@@ -70,6 +70,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: JVM,
@@ -95,6 +96,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: JVM,
@@ -120,6 +122,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: JVM,
@@ -145,6 +148,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: JVM,
@@ -170,6 +174,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: JVM,
@@ -195,6 +200,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: JVM,
@@ -220,6 +226,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: JVM,
@@ -245,6 +252,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: JVM,
@@ -270,6 +278,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: JVM,
@@ -295,6 +304,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: JVM,
@@ -320,6 +330,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: JVM,
@@ -345,6 +356,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: JVM,
@@ -370,6 +382,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
             Frame {
                 type_: JVM,
@@ -395,6 +408,7 @@ Thread {
                 original_index: 0,
                 in_app: false,
                 symbolicated_name: None,
+                js_bundle_path: None,
             },
         ],
     ),

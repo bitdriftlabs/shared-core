@@ -491,6 +491,7 @@ extern "C-unwind" fn bdrw_add_app(handle: BDProcessorHandle, app_ptr: *const BDA
         lifecycle_event: None,
         region_format: None,
         cpu_usage: None,
+        javascript_engine: JavaScriptEngine::UnknownJsEngine,
       },
     );
     processor.app = Some(metrics);
