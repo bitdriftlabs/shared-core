@@ -10,6 +10,7 @@ concurrency:
   cancel-in-progress: true
 env:
   CARGO_NET_GIT_FETCH_WITH_CLI: true
+  CARGO_TERM_COLOR: always
 jobs:
   test:
     name: rust
@@ -33,6 +34,11 @@ jobs:
 
       - name: Cache
         uses: Swatinem/rust-cache@v2.7.8
+
+      - name: nextest cache
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
 
       - name: CI Setup
         run: if [[ -f ci/setup.sh ]]; then ci/setup.sh; fi
