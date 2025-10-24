@@ -121,11 +121,12 @@ enum ReportType : int8_t {
   ReportType_MemoryTermination = 4,
   ReportType_NativeCrash = 5,
   ReportType_StrictModeViolation = 6,
+  ReportType_JavaScriptError = 7,
   ReportType_MIN = ReportType_Unknown,
-  ReportType_MAX = ReportType_StrictModeViolation
+  ReportType_MAX = ReportType_JavaScriptError
 };
 
-inline const ReportType (&EnumValuesReportType())[7] {
+inline const ReportType (&EnumValuesReportType())[8] {
   static const ReportType values[] = {
     ReportType_Unknown,
     ReportType_AppNotResponding,
@@ -133,13 +134,14 @@ inline const ReportType (&EnumValuesReportType())[7] {
     ReportType_JVMCrash,
     ReportType_MemoryTermination,
     ReportType_NativeCrash,
-    ReportType_StrictModeViolation
+    ReportType_StrictModeViolation,
+    ReportType_JavaScriptError
   };
   return values;
 }
 
 inline const char * const *EnumNamesReportType() {
-  static const char * const names[8] = {
+  static const char * const names[9] = {
     "Unknown",
     "AppNotResponding",
     "HandledError",
@@ -147,13 +149,14 @@ inline const char * const *EnumNamesReportType() {
     "MemoryTermination",
     "NativeCrash",
     "StrictModeViolation",
+    "JavaScriptError",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameReportType(ReportType e) {
-  if (::flatbuffers::IsOutRange(e, ReportType_Unknown, ReportType_StrictModeViolation)) return "";
+  if (::flatbuffers::IsOutRange(e, ReportType_Unknown, ReportType_JavaScriptError)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesReportType()[index];
 }
@@ -238,33 +241,36 @@ enum FrameType : int8_t {
   FrameType_JVM = 1,
   FrameType_DWARF = 2,
   FrameType_AndroidNative = 3,
+  FrameType_JavaScript = 4,
   FrameType_MIN = FrameType_Unknown,
-  FrameType_MAX = FrameType_AndroidNative
+  FrameType_MAX = FrameType_JavaScript
 };
 
-inline const FrameType (&EnumValuesFrameType())[4] {
+inline const FrameType (&EnumValuesFrameType())[5] {
   static const FrameType values[] = {
     FrameType_Unknown,
     FrameType_JVM,
     FrameType_DWARF,
-    FrameType_AndroidNative
+    FrameType_AndroidNative,
+    FrameType_JavaScript
   };
   return values;
 }
 
 inline const char * const *EnumNamesFrameType() {
-  static const char * const names[5] = {
+  static const char * const names[6] = {
     "Unknown",
     "JVM",
     "DWARF",
     "AndroidNative",
+    "JavaScript",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameFrameType(FrameType e) {
-  if (::flatbuffers::IsOutRange(e, FrameType_Unknown, FrameType_AndroidNative)) return "";
+  if (::flatbuffers::IsOutRange(e, FrameType_Unknown, FrameType_JavaScript)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesFrameType()[index];
 }
@@ -369,6 +375,39 @@ inline const char *EnumNameNetworkState(NetworkState e) {
   if (::flatbuffers::IsOutRange(e, NetworkState_Unknown, NetworkState_WiFi)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesNetworkState()[index];
+}
+
+enum JavaScriptEngine : int8_t {
+  JavaScriptEngine_UnknownJsEngine = 0,
+  JavaScriptEngine_JavaScriptCore = 1,
+  JavaScriptEngine_Hermes = 2,
+  JavaScriptEngine_MIN = JavaScriptEngine_UnknownJsEngine,
+  JavaScriptEngine_MAX = JavaScriptEngine_Hermes
+};
+
+inline const JavaScriptEngine (&EnumValuesJavaScriptEngine())[3] {
+  static const JavaScriptEngine values[] = {
+    JavaScriptEngine_UnknownJsEngine,
+    JavaScriptEngine_JavaScriptCore,
+    JavaScriptEngine_Hermes
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesJavaScriptEngine() {
+  static const char * const names[4] = {
+    "UnknownJsEngine",
+    "JavaScriptCore",
+    "Hermes",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameJavaScriptEngine(JavaScriptEngine e) {
+  if (::flatbuffers::IsOutRange(e, JavaScriptEngine_UnknownJsEngine, JavaScriptEngine_Hermes)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesJavaScriptEngine()[index];
 }
 
 enum Rotation : int8_t {
@@ -646,7 +685,8 @@ struct AppMetrics FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_PROCESS_ID = 14,
     VT_REGION_FORMAT = 16,
     VT_CPU_USAGE = 18,
-    VT_LIFECYCLE_EVENT = 20
+    VT_LIFECYCLE_EVENT = 20,
+    VT_JAVASCRIPT_ENGINE = 22
   };
   const ::flatbuffers::String *app_id() const {
     return GetPointer<const ::flatbuffers::String *>(VT_APP_ID);
@@ -675,6 +715,9 @@ struct AppMetrics FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::String *lifecycle_event() const {
     return GetPointer<const ::flatbuffers::String *>(VT_LIFECYCLE_EVENT);
   }
+  bitdrift_public::fbs::issue_reporting::v1::JavaScriptEngine javascript_engine() const {
+    return static_cast<bitdrift_public::fbs::issue_reporting::v1::JavaScriptEngine>(GetField<int8_t>(VT_JAVASCRIPT_ENGINE, 0));
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_APP_ID) &&
@@ -693,6 +736,7 @@ struct AppMetrics FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            verifier.VerifyTable(cpu_usage()) &&
            VerifyOffset(verifier, VT_LIFECYCLE_EVENT) &&
            verifier.VerifyString(lifecycle_event()) &&
+           VerifyField<int8_t>(verifier, VT_JAVASCRIPT_ENGINE, 1) &&
            verifier.EndTable();
   }
 };
@@ -728,6 +772,9 @@ struct AppMetricsBuilder {
   void add_lifecycle_event(::flatbuffers::Offset<::flatbuffers::String> lifecycle_event) {
     fbb_.AddOffset(AppMetrics::VT_LIFECYCLE_EVENT, lifecycle_event);
   }
+  void add_javascript_engine(bitdrift_public::fbs::issue_reporting::v1::JavaScriptEngine javascript_engine) {
+    fbb_.AddElement<int8_t>(AppMetrics::VT_JAVASCRIPT_ENGINE, static_cast<int8_t>(javascript_engine), 0);
+  }
   explicit AppMetricsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -749,7 +796,8 @@ inline ::flatbuffers::Offset<AppMetrics> CreateAppMetrics(
     uint32_t process_id = 0,
     ::flatbuffers::Offset<::flatbuffers::String> region_format = 0,
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessorUsage> cpu_usage = 0,
-    ::flatbuffers::Offset<::flatbuffers::String> lifecycle_event = 0) {
+    ::flatbuffers::Offset<::flatbuffers::String> lifecycle_event = 0,
+    bitdrift_public::fbs::issue_reporting::v1::JavaScriptEngine javascript_engine = bitdrift_public::fbs::issue_reporting::v1::JavaScriptEngine_UnknownJsEngine) {
   AppMetricsBuilder builder_(_fbb);
   builder_.add_lifecycle_event(lifecycle_event);
   builder_.add_cpu_usage(cpu_usage);
@@ -760,6 +808,7 @@ inline ::flatbuffers::Offset<AppMetrics> CreateAppMetrics(
   builder_.add_version(version);
   builder_.add_memory(memory);
   builder_.add_app_id(app_id);
+  builder_.add_javascript_engine(javascript_engine);
   return builder_.Finish();
 }
 
@@ -773,7 +822,8 @@ inline ::flatbuffers::Offset<AppMetrics> CreateAppMetricsDirect(
     uint32_t process_id = 0,
     const char *region_format = nullptr,
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessorUsage> cpu_usage = 0,
-    const char *lifecycle_event = nullptr) {
+    const char *lifecycle_event = nullptr,
+    bitdrift_public::fbs::issue_reporting::v1::JavaScriptEngine javascript_engine = bitdrift_public::fbs::issue_reporting::v1::JavaScriptEngine_UnknownJsEngine) {
   auto app_id__ = app_id ? _fbb.CreateString(app_id) : 0;
   auto version__ = version ? _fbb.CreateString(version) : 0;
   auto running_state__ = running_state ? _fbb.CreateString(running_state) : 0;
@@ -789,7 +839,8 @@ inline ::flatbuffers::Offset<AppMetrics> CreateAppMetricsDirect(
       process_id,
       region_format__,
       cpu_usage,
-      lifecycle_event__);
+      lifecycle_event__,
+      javascript_engine);
 }
 
 struct OSBuild FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -1401,7 +1452,8 @@ struct Frame FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_FRAME_STATUS = 22,
     VT_ORIGINAL_INDEX = 24,
     VT_IN_APP = 26,
-    VT_SYMBOLICATED_NAME = 28
+    VT_SYMBOLICATED_NAME = 28,
+    VT_JS_BUNDLE_PATH = 30
   };
   bitdrift_public::fbs::issue_reporting::v1::FrameType type() const {
     return static_cast<bitdrift_public::fbs::issue_reporting::v1::FrameType>(GetField<int8_t>(VT_TYPE, 0));
@@ -1442,6 +1494,9 @@ struct Frame FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::String *symbolicated_name() const {
     return GetPointer<const ::flatbuffers::String *>(VT_SYMBOLICATED_NAME);
   }
+  const ::flatbuffers::String *js_bundle_path() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_JS_BUNDLE_PATH);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_TYPE, 1) &&
@@ -1466,6 +1521,8 @@ struct Frame FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyField<uint8_t>(verifier, VT_IN_APP, 1) &&
            VerifyOffset(verifier, VT_SYMBOLICATED_NAME) &&
            verifier.VerifyString(symbolicated_name()) &&
+           VerifyOffset(verifier, VT_JS_BUNDLE_PATH) &&
+           verifier.VerifyString(js_bundle_path()) &&
            verifier.EndTable();
   }
 };
@@ -1513,6 +1570,9 @@ struct FrameBuilder {
   void add_symbolicated_name(::flatbuffers::Offset<::flatbuffers::String> symbolicated_name) {
     fbb_.AddOffset(Frame::VT_SYMBOLICATED_NAME, symbolicated_name);
   }
+  void add_js_bundle_path(::flatbuffers::Offset<::flatbuffers::String> js_bundle_path) {
+    fbb_.AddOffset(Frame::VT_JS_BUNDLE_PATH, js_bundle_path);
+  }
   explicit FrameBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1538,11 +1598,13 @@ inline ::flatbuffers::Offset<Frame> CreateFrame(
     bitdrift_public::fbs::issue_reporting::v1::FrameStatus frame_status = bitdrift_public::fbs::issue_reporting::v1::FrameStatus_Missing,
     uint64_t original_index = 0,
     bool in_app = false,
-    ::flatbuffers::Offset<::flatbuffers::String> symbolicated_name = 0) {
+    ::flatbuffers::Offset<::flatbuffers::String> symbolicated_name = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> js_bundle_path = 0) {
   FrameBuilder builder_(_fbb);
   builder_.add_original_index(original_index);
   builder_.add_symbol_address(symbol_address);
   builder_.add_frame_address(frame_address);
+  builder_.add_js_bundle_path(js_bundle_path);
   builder_.add_symbolicated_name(symbolicated_name);
   builder_.add_state(state);
   builder_.add_registers(registers);
@@ -1570,13 +1632,15 @@ inline ::flatbuffers::Offset<Frame> CreateFrameDirect(
     bitdrift_public::fbs::issue_reporting::v1::FrameStatus frame_status = bitdrift_public::fbs::issue_reporting::v1::FrameStatus_Missing,
     uint64_t original_index = 0,
     bool in_app = false,
-    const char *symbolicated_name = nullptr) {
+    const char *symbolicated_name = nullptr,
+    const char *js_bundle_path = nullptr) {
   auto class_name__ = class_name ? _fbb.CreateString(class_name) : 0;
   auto symbol_name__ = symbol_name ? _fbb.CreateString(symbol_name) : 0;
   auto image_id__ = image_id ? _fbb.CreateString(image_id) : 0;
   auto registers__ = registers ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CPURegister>>(*registers) : 0;
   auto state__ = state ? _fbb.CreateVector<::flatbuffers::Offset<::flatbuffers::String>>(*state) : 0;
   auto symbolicated_name__ = symbolicated_name ? _fbb.CreateString(symbolicated_name) : 0;
+  auto js_bundle_path__ = js_bundle_path ? _fbb.CreateString(js_bundle_path) : 0;
   return bitdrift_public::fbs::issue_reporting::v1::CreateFrame(
       _fbb,
       type,
@@ -1591,7 +1655,8 @@ inline ::flatbuffers::Offset<Frame> CreateFrameDirect(
       frame_status,
       original_index,
       in_app,
-      symbolicated_name__);
+      symbolicated_name__,
+      js_bundle_path__);
 }
 
 struct Thread FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -2302,6 +2367,7 @@ inline const ::flatbuffers::TypeTable *ReportTypeTypeTable() {
     { ::flatbuffers::ET_CHAR, 0, 0 },
     { ::flatbuffers::ET_CHAR, 0, 0 },
     { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
     { ::flatbuffers::ET_CHAR, 0, 0 }
   };
   static const ::flatbuffers::TypeFunction type_refs[] = {
@@ -2314,10 +2380,11 @@ inline const ::flatbuffers::TypeTable *ReportTypeTypeTable() {
     "JVMCrash",
     "MemoryTermination",
     "NativeCrash",
-    "StrictModeViolation"
+    "StrictModeViolation",
+    "JavaScriptError"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_ENUM, 7, type_codes, type_refs, nullptr, nullptr, names
+    ::flatbuffers::ST_ENUM, 8, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
@@ -2373,6 +2440,7 @@ inline const ::flatbuffers::TypeTable *FrameTypeTypeTable() {
     { ::flatbuffers::ET_CHAR, 0, 0 },
     { ::flatbuffers::ET_CHAR, 0, 0 },
     { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
     { ::flatbuffers::ET_CHAR, 0, 0 }
   };
   static const ::flatbuffers::TypeFunction type_refs[] = {
@@ -2382,10 +2450,11 @@ inline const ::flatbuffers::TypeTable *FrameTypeTypeTable() {
     "Unknown",
     "JVM",
     "DWARF",
-    "AndroidNative"
+    "AndroidNative",
+    "JavaScript"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_ENUM, 4, type_codes, type_refs, nullptr, nullptr, names
+    ::flatbuffers::ST_ENUM, 5, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
@@ -2449,6 +2518,26 @@ inline const ::flatbuffers::TypeTable *NetworkStateTypeTable() {
   };
   static const ::flatbuffers::TypeTable tt = {
     ::flatbuffers::ST_ENUM, 4, type_codes, type_refs, nullptr, nullptr, names
+  };
+  return &tt;
+}
+
+inline const ::flatbuffers::TypeTable *JavaScriptEngineTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 }
+  };
+  static const ::flatbuffers::TypeFunction type_refs[] = {
+    bitdrift_public::fbs::issue_reporting::v1::JavaScriptEngineTypeTable
+  };
+  static const char * const names[] = {
+    "UnknownJsEngine",
+    "JavaScriptCore",
+    "Hermes"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_ENUM, 3, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
@@ -2575,12 +2664,14 @@ inline const ::flatbuffers::TypeTable *AppMetricsTypeTable() {
     { ::flatbuffers::ET_UINT, 0, -1 },
     { ::flatbuffers::ET_STRING, 0, -1 },
     { ::flatbuffers::ET_SEQUENCE, 0, 2 },
-    { ::flatbuffers::ET_STRING, 0, -1 }
+    { ::flatbuffers::ET_STRING, 0, -1 },
+    { ::flatbuffers::ET_CHAR, 0, 3 }
   };
   static const ::flatbuffers::TypeFunction type_refs[] = {
     bitdrift_public::fbs::issue_reporting::v1::MemoryTypeTable,
     bitdrift_public::fbs::issue_reporting::v1::AppBuildNumberTypeTable,
-    bitdrift_public::fbs::issue_reporting::v1::ProcessorUsageTypeTable
+    bitdrift_public::fbs::issue_reporting::v1::ProcessorUsageTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::JavaScriptEngineTypeTable
   };
   static const char * const names[] = {
     "app_id",
@@ -2591,10 +2682,11 @@ inline const ::flatbuffers::TypeTable *AppMetricsTypeTable() {
     "process_id",
     "region_format",
     "cpu_usage",
-    "lifecycle_event"
+    "lifecycle_event",
+    "javascript_engine"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_TABLE, 9, type_codes, type_refs, nullptr, nullptr, names
+    ::flatbuffers::ST_TABLE, 10, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
@@ -2751,6 +2843,7 @@ inline const ::flatbuffers::TypeTable *FrameTypeTable() {
     { ::flatbuffers::ET_CHAR, 0, 3 },
     { ::flatbuffers::ET_ULONG, 0, -1 },
     { ::flatbuffers::ET_BOOL, 0, -1 },
+    { ::flatbuffers::ET_STRING, 0, -1 },
     { ::flatbuffers::ET_STRING, 0, -1 }
   };
   static const ::flatbuffers::TypeFunction type_refs[] = {
@@ -2772,10 +2865,11 @@ inline const ::flatbuffers::TypeTable *FrameTypeTable() {
     "frame_status",
     "original_index",
     "in_app",
-    "symbolicated_name"
+    "symbolicated_name",
+    "js_bundle_path"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_TABLE, 13, type_codes, type_refs, nullptr, nullptr, names
+    ::flatbuffers::ST_TABLE, 14, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
