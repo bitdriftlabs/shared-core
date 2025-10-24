@@ -6,8 +6,6 @@ set -e
 # Initialize proto submodule
 git submodule update --init --recursive
 
-cargo install cargo-nextest
-
 # Install library compile deps.
 if ! [[ -z "$RUNNER_TEMP" ]]; then
   sudo apt-get update
