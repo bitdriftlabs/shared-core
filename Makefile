@@ -16,5 +16,5 @@ clippy: setup
 test: setup
 	for i in $(shell seq 1 1); do \
   	echo "Running test iteration $$i..."; \
-		RUST_BACKTRACE=1 SKIP_PROTO_GEN=1 RUST_LOG=error cargo test || exit 1; \
+		RUST_BACKTRACE=1 SKIP_PROTO_GEN=1 RUST_LOG=error cargo nextest run || exit 1; \
 	done
