@@ -35,3 +35,7 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[[bin]]
+name = "logger-mcp"
+path = "src/bin/mcp.rs"

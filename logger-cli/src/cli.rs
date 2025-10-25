@@ -98,7 +98,7 @@ pub struct StartCommand {
 
 impl From<StartCommand> for LoggerArgs {
   fn from(cmd: StartCommand) -> Self {
-    LoggerArgs {
+    Self {
       api_url: cmd.api_url,
       api_key: cmd.api_key,
       app_id: cmd.app_id,

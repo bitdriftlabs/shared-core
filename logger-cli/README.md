@@ -46,7 +46,7 @@ An alternative way to interact with the logger CLI is via a small MCP server tha
 To set up, build the mcp server using:
 ```bash
 
-cargo build --bin mcp -p logger-cli
+cargo install --bin logger-mcp -p logger-cli
 ```
 
 And add the MCP server to the configuration for your agent of choice. For example, using opencode this looks like
@@ -55,9 +55,7 @@ And add the MCP server to the configuration for your agent of choice. For exampl
     "logger-cli": {
       "type": "local",
       "enabled": true,
-      "command": [
-        "/Users/snow/src/shared-core/target/debug/mcp"
-      ],
+      "command": ["logger-mcp"],
     },
 ```
 
