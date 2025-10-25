@@ -5,8 +5,9 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::types::{LogLevel, LogType, Platform, RuntimeValueType};
 use clap::{ArgAction, Args, Parser, Subcommand};
+use logger_cli::logger::LoggerArgs;
+use logger_cli::types::{LogLevel, LogType, Platform, RuntimeValueType};
 use std::collections::HashMap;
 use std::hash::BuildHasher;
 
@@ -93,6 +94,20 @@ pub struct StartCommand {
   /// Device model
   #[clap(long, required = false, default_value = "iPhone12,1")]
   pub model: String,
+}
+
+impl From<StartCommand> for LoggerArgs {
+  fn from(cmd: StartCommand) -> Self {
+    LoggerArgs {
+      api_url: cmd.api_url,
+      api_key: cmd.api_key,
+      app_id: cmd.app_id,
+      platform: cmd.platform,
+      app_version: cmd.app_version,
+      app_version_code: cmd.app_version_code,
+      model: cmd.model,
+    }
+  }
 }
 
 #[derive(clap::ValueEnum, PartialEq, Eq, Debug, Clone)]

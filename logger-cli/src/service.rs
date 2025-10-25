@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::logger::LoggerHolder;
+use crate::logger::{LoggerArgs, LoggerHolder};
 use crate::types::{LogLevel, LogType, RuntimeValueType};
 use futures::future;
 use futures::prelude::*;
@@ -47,12 +47,8 @@ async fn spawn(fut: impl Future<Output = ()> + Send + 'static) {
 
 static LOGGER: parking_lot::Mutex<Option<LoggerHolder>> = parking_lot::Mutex::new(None);
 
-pub async fn start(
-  sdk_directory: &Path,
-  config: &crate::cli::StartCommand,
-  port: u16,
-) -> anyhow::Result<()> {
-  let logger = crate::logger::make_logger(sdk_directory, config)?;
+pub async fn start(sdk_directory: &Path, args: &LoggerArgs, port: u16) -> anyhow::Result<()> {
+  let logger = crate::logger::make_logger(sdk_directory, args)?;
   logger.start();
   LOGGER.lock().replace(logger);
 
@@ -66,7 +62,7 @@ pub async fn start(
       .map(|channel| {
           let server = Server {
             addr: channel.transport().peer_addr().unwrap(),
-            api_url: config.api_url.clone(),
+            api_url: args.api_url.clone(),
           };
           channel.execute(server.serve()).for_each(spawn)
       })
