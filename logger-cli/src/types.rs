@@ -3,8 +3,8 @@ use rmcp::schemars;
 
 /// A log type enum for categorizing logs.
 ///
-/// This matches the `LogType` enum in bd_logger, but is redeclared here to allow additional traits
-/// like `clap::ValueEnum`.
+/// This matches the `LogType` enum in `bd_logger`, but is redeclared here to allow additional
+/// traits like `clap::ValueEnum`.
 #[derive(
   clap::ValueEnum, Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
 )]
@@ -36,7 +36,7 @@ impl From<LogType> for bd_logger::LogType {
 
 /// A log level enum for categorizing log severity.
 ///
-/// This matches the `LogLevel` enum from bd_logger, but is redeclared here to allow additional
+/// This matches the `LogLevel` enum from `bd_logger`, but is redeclared here to allow additional
 /// traits like `clap::ValueEnum`.
 #[derive(
   clap::ValueEnum, Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema,
@@ -63,7 +63,7 @@ impl From<LogLevel> for bd_logger::LogLevel {
 
 /// A platform enum for categorizing platforms associated with the logger.
 ///
-/// This matches the `Platform` enum defined in bd_logger, but is redeclared here to allow
+/// This matches the `Platform` enum defined in `bd_logger`, but is redeclared here to allow
 /// additional traits like `clap::ValueEnum`.
 #[derive(clap::ValueEnum, Debug, Clone)]
 pub enum Platform {

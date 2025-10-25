@@ -8,6 +8,7 @@
 use crate::types::{LogLevel, LogType, Platform, RuntimeValueType};
 use clap::{ArgAction, Args, Parser, Subcommand};
 use std::collections::HashMap;
+use std::hash::BuildHasher;
 
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
@@ -142,7 +143,7 @@ pub struct RuntimeValueCommand {
 }
 
 pub struct FieldPairs<T>(pub Vec<T>);
-impl From<FieldPairs<String>> for HashMap<String, String> {
+impl<S: BuildHasher> From<FieldPairs<String>> for HashMap<String, String, S> {
   fn from(value: FieldPairs<String>) -> Self {
     value
       .0

@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
         logger
           .log(
             context::current(),
-            cmd.log_level.clone().into(),
+            cmd.log_level.clone(),
             cmd.log_type.clone(),
             cmd.message.clone(),
             FieldPairs(cmd.field.clone()).into(),
