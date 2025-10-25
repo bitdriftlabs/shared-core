@@ -5,13 +5,15 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::cli::{FieldPairs, RuntimeValueType, StartCommand};
+use crate::cli::StartCommand;
 use crate::metadata::Metadata;
 use crate::storage::SQLiteStorage;
+use crate::types::RuntimeValueType;
 use bd_logger::{CaptureSession, InitParams, Logger};
 use bd_session::{Strategy, fixed};
 use bd_test_helpers::metadata_provider::LogMetadata;
 use parking_lot::Mutex;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -110,7 +112,7 @@ impl LoggerHolder {
     log_level: bd_logger::LogLevel,
     log_type: bd_logger::LogType,
     message: String,
-    fields: Vec<String>,
+    fields: HashMap<String, String>,
     capture_session: bool,
   ) {
     let session_capture = if capture_session {
@@ -122,7 +124,18 @@ impl LoggerHolder {
       log_level,
       log_type,
       message.into(),
-      FieldPairs(fields).into(),
+      fields
+        .into_iter()
+        .map(|(k, v)| {
+          (
+            k.into(),
+            bd_logger::AnnotatedLogField {
+              value: v.into(),
+              kind: bd_logger::LogFieldKind::Ootb,
+            },
+          )
+        })
+        .collect(),
       [].into(),
       None,
       bd_logger::Block::Yes(1.std_seconds()),

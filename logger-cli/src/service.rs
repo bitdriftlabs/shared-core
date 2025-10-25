@@ -5,10 +5,11 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::cli::{CliLogType, RuntimeValueType};
 use crate::logger::LoggerHolder;
+use crate::types::{LogLevel, LogType, RuntimeValueType};
 use futures::future;
 use futures::prelude::*;
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::path::Path;
 use std::process::exit;
@@ -20,10 +21,10 @@ pub trait Remote {
   async fn breakpoint();
   async fn stop();
   async fn log(
-    log_level: bd_logger::LogLevel,
-    log_type: CliLogType,
+    log_level: LogLevel,
+    log_type: LogType,
     message: String,
-    fields: Vec<String>,
+    fields: HashMap<String, String>,
     capture_session: bool,
   );
   async fn process_crash_reports();
@@ -103,14 +104,20 @@ impl Remote for Server {
   async fn log(
     self,
     _: ::tarpc::context::Context,
-    log_level: bd_logger::LogLevel,
-    log_type: CliLogType,
+    log_level: LogLevel,
+    log_type: LogType,
     message: String,
-    fields: Vec<String>,
+    fields: HashMap<String, String>,
     capture_session: bool,
   ) {
     if let Some(logger) = &*LOGGER.lock() {
-      logger.log(log_level, log_type.into(), message, fields, capture_session);
+      logger.log(
+        log_level.into(),
+        log_type.into(),
+        message,
+        fields,
+        capture_session,
+      );
     }
   }
 

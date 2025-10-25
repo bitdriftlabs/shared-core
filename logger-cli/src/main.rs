@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::cli::{Command, EnableFlag, Options};
+use crate::cli::{Command, EnableFlag, FieldPairs, Options};
 use crate::logger::{MaybeStaticSessionGenerator, SESSION_FILE};
 use crate::service::RemoteClient;
 use bd_session::fixed::Callbacks;
@@ -23,6 +23,7 @@ mod logger;
 mod metadata;
 mod service;
 mod storage;
+mod types;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -59,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
             cmd.log_level.clone().into(),
             cmd.log_type.clone(),
             cmd.message.clone(),
-            cmd.field.clone(),
+            FieldPairs(cmd.field.clone()).into(),
             true,
           )
           .await?;
