@@ -30,7 +30,6 @@ use rmcp::{
   tool_router,
 };
 use serde_json::json;
-use std::collections::HashMap;
 use tarpc::client;
 use tarpc::tokio_serde::formats::Json;
 use tracing_subscriber::EnvFilter;
@@ -53,12 +52,31 @@ async fn main() -> anyhow::Result<()> {
 }
 
 #[derive(serde::Deserialize, Debug, schemars::JsonSchema)]
+struct LogField {
+  /// The name of the log field.
+  name: String,
+
+  /// The value of the log field.
+  value: String,
+}
+
+#[derive(serde::Deserialize, Debug, schemars::JsonSchema)]
 struct LogParameters {
+  /// The log level for the log message.
   level: LogLevel,
+
+  /// The log type for the log message.
   log_type: LogType,
-  message: String,
+
+  /// The log message to log. This typically contains the main content of the log but can be empty
+  /// for certain logs that rely on fields to provide the entire context.
   #[serde(default)]
-  fields: HashMap<String, String>,
+  message: String,
+
+  /// Additional fields that provide additional context for the log message. The various log types
+  /// have different expected fields that can be included here.
+  #[serde(default)]
+  fields: Vec<LogField>,
 }
 
 struct Tool {
@@ -105,7 +123,11 @@ impl Tool {
             params.level,
             params.log_type,
             params.message,
-            params.fields,
+            params
+              .fields
+              .into_iter()
+              .map(|f| (f.name, f.value))
+              .collect(),
             false,
           )
           .await?;

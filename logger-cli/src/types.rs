@@ -16,13 +16,37 @@ use rmcp::schemars;
   clap::ValueEnum, Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
 )]
 pub enum LogType {
+  /// The default log type, used for most application logs that are not emitted through a well
+  /// known integration.
   Normal,
+
+  /// Logs emitted by the session replay system. These logs will have an empty message and will
+  /// encode a session replay event field in the `_session_replay_event` field.
   Replay,
+
+  /// Logs related to application lifecycle events, such as app start, app stop, and significant
+  /// state transitions.
   Lifecycle,
+
+  /// Logs used to report resouce utilization metrics, such as memory usage, CPU usage, and network
+  /// usage. These are typically emitted at regular intervals by the platform layer.
+  ///
+  /// Each collected metric is reported as a single field, while the log message is empty.
   Resource,
+
+  /// Logs related to view events, such as screen transitions and view appearances/disappearances.
   View,
+
+  /// Logs related to device information and state, such as device model, OS version, and other
   Device,
+
+  /// Logs related to user experience (UX) events, such as button taps, form submissions, and other
   UX,
+
+  /// Logs related to spans started and stopped within the application. For example, network
+  /// requests are modeled as a start span log when the request is initiated, and a stop span log
+  /// when the response is received. A pair of spans can be correlated via a shared span ID included
+  /// in the `_span_id` field.
   Span,
 }
 
