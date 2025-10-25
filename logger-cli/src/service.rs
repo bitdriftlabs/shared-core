@@ -5,10 +5,11 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::cli::{CliLogType, RuntimeValueType};
-use crate::logger::LoggerHolder;
+use crate::logger::{LoggerArgs, LoggerHolder};
+use crate::types::{LogLevel, LogType, RuntimeValueType};
 use futures::future;
 use futures::prelude::*;
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::path::Path;
 use std::process::exit;
@@ -20,10 +21,10 @@ pub trait Remote {
   async fn breakpoint();
   async fn stop();
   async fn log(
-    log_level: bd_logger::LogLevel,
-    log_type: CliLogType,
+    log_level: LogLevel,
+    log_type: LogType,
     message: String,
-    fields: Vec<String>,
+    fields: HashMap<String, String>,
     capture_session: bool,
   );
   async fn process_crash_reports();
@@ -46,12 +47,8 @@ async fn spawn(fut: impl Future<Output = ()> + Send + 'static) {
 
 static LOGGER: parking_lot::Mutex<Option<LoggerHolder>> = parking_lot::Mutex::new(None);
 
-pub async fn start(
-  sdk_directory: &Path,
-  config: &crate::cli::StartCommand,
-  port: u16,
-) -> anyhow::Result<()> {
-  let logger = crate::logger::make_logger(sdk_directory, config)?;
+pub async fn start(sdk_directory: &Path, args: &LoggerArgs, port: u16) -> anyhow::Result<()> {
+  let logger = crate::logger::make_logger(sdk_directory, args)?;
   logger.start();
   LOGGER.lock().replace(logger);
 
@@ -65,7 +62,7 @@ pub async fn start(
       .map(|channel| {
           let server = Server {
             addr: channel.transport().peer_addr().unwrap(),
-            api_url: config.api_url.clone(),
+            api_url: args.api_url.clone(),
           };
           channel.execute(server.serve()).for_each(spawn)
       })
@@ -103,14 +100,20 @@ impl Remote for Server {
   async fn log(
     self,
     _: ::tarpc::context::Context,
-    log_level: bd_logger::LogLevel,
-    log_type: CliLogType,
+    log_level: LogLevel,
+    log_type: LogType,
     message: String,
-    fields: Vec<String>,
+    fields: HashMap<String, String>,
     capture_session: bool,
   ) {
     if let Some(logger) = &*LOGGER.lock() {
-      logger.log(log_level, log_type.into(), message, fields, capture_session);
+      logger.log(
+        log_level.into(),
+        log_type.into(),
+        message,
+        fields,
+        capture_session,
+      );
     }
   }
 

@@ -5,11 +5,11 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::cli::{Command, EnableFlag, Options};
-use crate::logger::{MaybeStaticSessionGenerator, SESSION_FILE};
-use crate::service::RemoteClient;
+use crate::cli::{Command, EnableFlag, FieldPairs, Options};
 use bd_session::fixed::Callbacks;
 use clap::Parser;
+use logger_cli::logger::{MaybeStaticSessionGenerator, SESSION_FILE};
+use logger_cli::service::RemoteClient;
 use std::env;
 use std::path::Path;
 use tarpc::tokio_serde::formats::Json;
@@ -19,10 +19,6 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
 mod cli;
-mod logger;
-mod metadata;
-mod service;
-mod storage;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -46,20 +42,20 @@ async fn main() -> anyhow::Result<()> {
         )?;
       }
     },
-    Command::Start(ref cmd) => {
+    Command::Start(cmd) => {
       let port = args.port;
       eprintln!("starting server on :{port}");
-      crate::service::start(&sdk_directory, cmd, port).await?;
+      logger_cli::service::start(&sdk_directory, &cmd.into(), port).await?;
     },
     Command::Log(ref cmd) => {
       with_logger(&args, async |logger| {
         logger
           .log(
             context::current(),
-            cmd.log_level.clone().into(),
+            cmd.log_level.clone(),
             cmd.log_type.clone(),
             cmd.message.clone(),
-            cmd.field.clone(),
+            FieldPairs(cmd.field.clone()).into(),
             true,
           )
           .await?;
