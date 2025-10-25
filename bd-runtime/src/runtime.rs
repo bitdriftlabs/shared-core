@@ -835,6 +835,20 @@ pub mod sleep_mode {
     "sleep_mode.stats_upload_flush_interval_ms",
     15.minutes()
   );
+
+  // This is an override for "api.data_idle_timeout_interval_ms" when operating in sleep mode.
+  duration_feature_flag!(
+    DataIdleTimeoutInterval,
+    "sleep_mode.api_data_idle_timeout_interval_ms",
+    15.seconds()
+  );
+
+  // This is an override for "api.min_reconnect_interval_ms" when operating in sleep mode.
+  duration_feature_flag!(
+    MinReconnectInterval,
+    "sleep_mode.api_min_reconnect_interval_ms",
+    15.minutes()
+  );
 }
 
 pub mod buffers {

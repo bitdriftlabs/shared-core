@@ -361,7 +361,11 @@ pub struct Api {
   unauthenticated_kill_duration:
     DurationWatch<bd_runtime::runtime::client_kill::UnauthenticatedKillDuration>,
   data_idle_timeout_interval: DurationWatch<bd_runtime::runtime::api::DataIdleTimeoutInterval>,
+  sleep_mode_idle_timeout_interval:
+    DurationWatch<bd_runtime::runtime::sleep_mode::DataIdleTimeoutInterval>,
   min_reconnect_interval: DurationWatch<bd_runtime::runtime::api::MinReconnectInterval>,
+  sleep_mode_min_reconnect_interval:
+    DurationWatch<bd_runtime::runtime::sleep_mode::MinReconnectInterval>,
 
   reconnect_state: crate::reconnect::ReconnectState,
 
@@ -391,15 +395,13 @@ impl Api {
     let generic_kill_duration = runtime_loader.register_duration_watch();
     let unauthenticated_kill_duration = runtime_loader.register_duration_watch();
     let data_idle_timeout_interval = runtime_loader.register_duration_watch();
+    let sleep_mode_idle_timeout_interval = runtime_loader.register_duration_watch();
     let min_reconnect_interval = runtime_loader.register_duration_watch();
+    let sleep_mode_min_reconnect_interval = runtime_loader.register_duration_watch();
 
     let backoff = crate::backoff_policy(&mut initial_backoff_interval, &mut max_backoff_interval);
 
-    let reconnect_state = crate::reconnect::ReconnectState::new(
-      store,
-      runtime_loader.register_duration_watch(),
-      time_provider.clone(),
-    );
+    let reconnect_state = crate::reconnect::ReconnectState::new(store, time_provider.clone());
     Self {
       sdk_directory,
       api_key,
@@ -422,7 +424,9 @@ impl Api {
       sleep_mode_active,
       backoff,
       data_idle_timeout_interval,
+      sleep_mode_idle_timeout_interval,
       min_reconnect_interval,
+      sleep_mode_min_reconnect_interval,
       reconnect_state,
       #[cfg(test)]
       data_idle_timeout_test_hook: None,
@@ -557,6 +561,22 @@ impl Api {
     tokio::time::sleep(reconnect_delay).await;
   }
 
+  fn get_data_idle_timeout(&mut self) -> Duration {
+    if *self.sleep_mode_active.borrow_and_update() {
+      *self.sleep_mode_idle_timeout_interval.read()
+    } else {
+      *self.data_idle_timeout_interval.read()
+    }
+  }
+
+  fn get_min_reconnect_interval(&mut self) -> Duration {
+    if *self.sleep_mode_active.borrow_and_update() {
+      *self.sleep_mode_min_reconnect_interval.read()
+    } else {
+      *self.min_reconnect_interval.read()
+    }
+  }
+
   // Maintains an active stream by re-establishing a stream whenever we disconnect (with backoff),
   // until shutdown has been signaled.
   #[tracing::instrument(skip(self), level = "debug", name = "api")]
@@ -590,56 +610,58 @@ impl Api {
       // until there are either new uploads or the delay has elapsed. We need to make sure that any
       // uploads we receive while waiting for the delay are processed, so we have to carry
       // with us the upload we receive while waiting.
-      let upload_during_idle_timeout =
-        if let Some(reconnect_delay) = self.reconnect_state.next_reconnect_delay() {
-          // We are intentionally delaying reconnecting, so set network quality to unknown since
-          // we can't tell if we are actually offline or just delaying.
+      let min_reconnect_interval = self.get_min_reconnect_interval();
+      let upload_during_idle_timeout = if let Some(reconnect_delay) = self
+        .reconnect_state
+        .next_reconnect_delay(min_reconnect_interval)
+      {
+        // We are intentionally delaying reconnecting, so set network quality to unknown since
+        // we can't tell if we are actually offline or just delaying.
+        self
+          .network_quality_monitor
+          .set_network_quality(NetworkQuality::Unknown);
+
+        // Use tokio::time::sleep_until since this plays better with test time compared to using
+        // tokio::time::sleep.
+        let reconnect_at = tokio::time::Instant::now() + reconnect_delay;
+        tokio::select! {
+            () = tokio::time::sleep_until(reconnect_at) => None,
+            upload = self.data_upload_rx.recv() => {
+                log::trace!("reconnecting early due to data upload received during idle timeout");
+                upload
+            }
+        }
+      } else {
+        // We don't want to flag the connection as being offline if we artificially delayed
+        // connecting due to the reconnect state, as we want to leave that as unknown until we've
+        // tried reconnecting once.
+
+        // If we have been disconnected for more than 15s switch our network quality to offline.
+        // We don't want to do this immediately as we might be in a transient state
+        // during a normal reconnect.
+
+        log::trace!(
+          "determining network quality, disconnect {elapsed_since_last_disconnect:?} ago",
+        );
+        if elapsed_since_last_disconnect > DISCONNECTED_OFFLINE_GRACE_PERIOD {
+          // TODO(snowp): Consider also taking number of connection attempts into consideration
+          // as this might play better with the reconnect delay logic.
+          self
+            .network_quality_monitor
+            .set_network_quality(NetworkQuality::Offline);
+          if !self.config_marked_safe_due_to_offline {
+            self.config_marked_safe_due_to_offline = true;
+            self.runtime_loader.mark_safe().await;
+            self.config_updater.mark_safe().await;
+          }
+        } else {
           self
             .network_quality_monitor
             .set_network_quality(NetworkQuality::Unknown);
+        }
 
-          // Use tokio::time::sleep_until since this plays better with test time compared to using
-          // tokio::time::sleep.
-          let reconnect_at = tokio::time::Instant::now() + reconnect_delay;
-          tokio::select! {
-              () = tokio::time::sleep_until(reconnect_at) => None,
-              upload = self.data_upload_rx.recv() => {
-                  log::trace!("reconnecting early due to data upload received during idle timeout");
-                  upload
-              }
-          }
-        } else {
-          // We don't want to flag the connection as being offline if we artificially delayed
-          // connecting due to the reconnct state, as we want to leave that as unknown until we've
-          // tried reconnecting once.
-
-          // If we have been disconnected for more than 15s switch our network quality to offline.
-          // We don't want to do this immediately as we might be in a transient state
-          // during a normal reconnect.
-
-          log::trace!(
-            "determining network quality, disconnect {elapsed_since_last_disconnect:?} ago",
-          );
-          if elapsed_since_last_disconnect > DISCONNECTED_OFFLINE_GRACE_PERIOD {
-            // TODO(snowp): Consider also taking number of connection attempts into consideration
-            // as this might play better with the reconnect delay logic.
-            self
-              .network_quality_monitor
-              .set_network_quality(NetworkQuality::Offline);
-            if !self.config_marked_safe_due_to_offline {
-              self.config_marked_safe_due_to_offline = true;
-              self.runtime_loader.mark_safe().await;
-              self.config_updater.mark_safe().await;
-            }
-          } else {
-            self
-              .network_quality_monitor
-              .set_network_quality(NetworkQuality::Unknown);
-          }
-
-          None
-        };
-
+        None
+      };
 
       // If we have been killed, just put ourselves into a permanent pending state until the
       // process restarts.
@@ -784,7 +806,7 @@ impl Api {
       loop {
         // Set up a data idle timeout if configured.
         let mut data_idle_timeout_at = {
-          let interval = *self.data_idle_timeout_interval.read();
+          let interval = self.get_data_idle_timeout();
           if interval.is_zero() {
             // If the timeout is disabled, we can just await forever.
             None
@@ -801,6 +823,11 @@ impl Api {
             stream_state.send_ping().await?;
             continue;
           }
+          _ = stream_state.sleep_mode_active.changed() => {
+            // Sleep mode state has changed, we need to re-evaluate our data idle timeout.
+            log::trace!("sleep mode state changed, re-evaluating data idle timeout");
+            continue;
+          }
           Some(data_upload) = self.data_upload_rx.recv() => {
               log::trace!("received data upload");
             last_data_received_at = Instant::now();
@@ -811,13 +838,13 @@ impl Api {
           () = maybe_await(&mut data_idle_timeout_at) => {
             // We haven't received any data to upload for a while, so we'll shut down the stream and
             // then reconnect after a short delay.
-            let idle_timeout_interval = *self.data_idle_timeout_interval.read();
-            let idle_reconnect_interval = *self.min_reconnect_interval.read();
+            let idle_timeout_interval = self.get_data_idle_timeout();
+            let idle_reconnect_interval = self.get_min_reconnect_interval();
             log::debug!("no data received for {idle_timeout_interval}, disconnecting and reconnecting in {idle_reconnect_interval}");
 
             #[cfg(test)]
             if let Some(tx) = & self.data_idle_timeout_test_hook {
-                let _ = tx.try_send(());
+              let _ = tx.try_send(());
             }
 
             self.stats.data_idle_timeout.inc();

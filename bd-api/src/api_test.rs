@@ -1214,12 +1214,8 @@ async fn sleep_mode() {
     )
     .await;
 
-  let Some(Request_type::Ping(ping_request)) =
-    setup.next_request(61.seconds()).await.unwrap().request_type
-  else {
-    panic!("expected ping request");
-  };
-  assert!(ping_request.sleep_mode);
+  // We should not get a ping request while in sleep mode because we data idle.
+  assert!(setup.next_request(61.seconds()).await.is_none());
 }
 
 #[tokio::test(start_paused = true)]

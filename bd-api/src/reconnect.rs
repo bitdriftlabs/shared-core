@@ -10,10 +10,9 @@
 mod tests;
 
 use bd_key_value::{Key, Storable};
-use bd_runtime::runtime::DurationWatch;
 use bd_time::TimeProvider;
 use std::sync::Arc;
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 
 const LAST_CONNECTED_AT_KEY: Key<LastConnectedAt> = Key::new("api:reconnect:last_connected_at");
 
@@ -27,16 +26,11 @@ impl Storable for LastConnectedAt {}
 pub struct ReconnectState {
   store: Arc<bd_key_value::Store>,
   last_connected_at: Option<OffsetDateTime>,
-  min_reconnect_interval: DurationWatch<bd_runtime::runtime::api::MinReconnectInterval>,
   time_provider: Arc<dyn TimeProvider>,
 }
 
 impl ReconnectState {
-  pub fn new(
-    store: Arc<bd_key_value::Store>,
-    min_reconnect_interval: DurationWatch<bd_runtime::runtime::api::MinReconnectInterval>,
-    time_provider: Arc<dyn TimeProvider>,
-  ) -> Self {
+  pub fn new(store: Arc<bd_key_value::Store>, time_provider: Arc<dyn TimeProvider>) -> Self {
     let last_connected_at = store
       .get(&LAST_CONNECTED_AT_KEY)
       .map(|v| v.last_connected_at);
@@ -44,14 +38,18 @@ impl ReconnectState {
     Self {
       store,
       last_connected_at,
-      min_reconnect_interval,
       time_provider,
     }
   }
 
-  pub fn next_reconnect_delay(&self) -> Option<std::time::Duration> {
-    let last_connected_at = self.last_connected_at?;
-    let min_reconnect_interval = *self.min_reconnect_interval.read();
+  pub fn next_reconnect_delay(
+    &self,
+    min_reconnect_interval: Duration,
+  ) -> Option<std::time::Duration> {
+    let Some(last_connected_at) = self.last_connected_at else {
+      log::trace!("no prior connectivity event, reconnect immediately");
+      return None;
+    };
 
     let next_reconnect_time = last_connected_at + min_reconnect_interval;
     let delay = next_reconnect_time - self.time_provider.now();
