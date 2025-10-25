@@ -143,7 +143,7 @@ pub struct RuntimeValueCommand {
 }
 
 pub struct FieldPairs<T>(pub Vec<T>);
-impl<S: BuildHasher> From<FieldPairs<String>> for HashMap<String, String, S> {
+impl<S: BuildHasher + Default> From<FieldPairs<String>> for HashMap<String, String, S> {
   fn from(value: FieldPairs<String>) -> Self {
     value
       .0
