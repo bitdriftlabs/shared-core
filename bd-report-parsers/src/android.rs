@@ -520,7 +520,7 @@ fn anr_name(description: Option<&str>) -> &'static str {
         "timed out while trying to bind",
         "job service timeout",
         "no response to onstopjob",
-        "No response to onStartJob",
+        "no response to onstartjob",
         "service start timeout",
       ],
     ),
