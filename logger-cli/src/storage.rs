@@ -19,6 +19,7 @@ pub struct SQLiteStorage {
 }
 
 impl SQLiteStorage {
+  #[must_use]
   pub fn new(path: &Path) -> Self {
     Self {
       path: path.to_path_buf(),

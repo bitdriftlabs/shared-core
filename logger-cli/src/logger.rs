@@ -5,13 +5,14 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::cli::{FieldPairs, RuntimeValueType, StartCommand};
 use crate::metadata::Metadata;
 use crate::storage::SQLiteStorage;
+use crate::types::{Platform, RuntimeValueType};
 use bd_logger::{CaptureSession, InitParams, Logger};
 use bd_session::{Strategy, fixed};
 use bd_test_helpers::metadata_provider::LogMetadata;
 use parking_lot::Mutex;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -110,7 +111,7 @@ impl LoggerHolder {
     log_level: bd_logger::LogLevel,
     log_type: bd_logger::LogType,
     message: String,
-    fields: Vec<String>,
+    fields: HashMap<String, String>,
     capture_session: bool,
   ) {
     let session_capture = if capture_session {
@@ -122,7 +123,18 @@ impl LoggerHolder {
       log_level,
       log_type,
       message.into(),
-      FieldPairs(fields).into(),
+      fields
+        .into_iter()
+        .map(|(k, v)| {
+          (
+            k.into(),
+            bd_logger::AnnotatedLogField {
+              value: v.into(),
+              kind: bd_logger::LogFieldKind::Ootb,
+            },
+          )
+        })
+        .collect(),
       [].into(),
       None,
       bd_logger::Block::Yes(1.std_seconds()),
@@ -156,7 +168,17 @@ impl fixed::Callbacks for MaybeStaticSessionGenerator {
   }
 }
 
-pub fn make_logger(sdk_directory: &Path, config: &StartCommand) -> anyhow::Result<LoggerHolder> {
+pub struct LoggerArgs {
+  pub api_url: String,
+  pub api_key: String,
+  pub app_id: String,
+  pub platform: Platform,
+  pub app_version: String,
+  pub app_version_code: String,
+  pub model: String,
+}
+
+pub fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Result<LoggerHolder> {
   let session_callbacks = Arc::new(MaybeStaticSessionGenerator {
     config_path: sdk_directory.join(SESSION_FILE),
   });
@@ -166,20 +188,20 @@ pub fn make_logger(sdk_directory: &Path, config: &StartCommand) -> anyhow::Resul
   let device = Arc::new(bd_device::Device::new(store.clone()));
   let shutdown_trigger = bd_shutdown::ComponentShutdownTrigger::default();
   let shutdown = shutdown_trigger.make_shutdown();
-  let network = bd_hyper_network::HyperNetwork::run_on_thread(&config.api_url, shutdown);
+  let network = bd_hyper_network::HyperNetwork::run_on_thread(&args.api_url, shutdown);
 
   let static_metadata = Arc::new(Metadata {
-    app_id: Some(config.app_id.clone()),
-    app_version: Some(config.app_version.clone()),
-    platform: config.platform.clone().into(),
+    app_id: Some(args.app_id.clone()),
+    app_version: Some(args.app_version.clone()),
+    platform: args.platform.clone().into(),
     device: device.clone(),
-    model: config.model.clone(),
+    model: args.model.clone(),
   });
 
 
   let (logger, _, future, _) = bd_logger::LoggerBuilder::new(InitParams {
     sdk_directory: sdk_directory.to_path_buf(),
-    api_key: config.api_key.clone(),
+    api_key: args.api_key.clone(),
     session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
       store.clone(),
       session_callbacks,
@@ -188,7 +210,7 @@ pub fn make_logger(sdk_directory: &Path, config: &StartCommand) -> anyhow::Resul
       timestamp: time::OffsetDateTime::now_utc().into(),
       ootb_fields: [(
         "_app_version_code".into(),
-        config.app_version_code.clone().into(),
+        args.app_version_code.clone().into(),
       )]
       .into(),
       ..Default::default()
