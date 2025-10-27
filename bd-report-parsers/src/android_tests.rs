@@ -366,10 +366,7 @@ fn anr_name_test() {
     anr_name(Some("Process com.example.app failed to complete startup"))
   );
 
-  assert_eq!(
-    "Service ANR",
-    anr_name(Some("No response to onStartJob"))
-  );
+  assert_eq!("Service ANR", anr_name(Some("No response to onStartJob")));
 }
 
 #[test]
