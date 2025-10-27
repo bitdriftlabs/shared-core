@@ -953,7 +953,12 @@ dependencies = [
 name = "bd-network-quality"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
+ "async-trait",
  "bd-workspace-hack",
+ "parking_lot",
+ "tokio",
+ "tokio-test",
 ]
 
 [[package]]
