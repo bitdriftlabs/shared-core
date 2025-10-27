@@ -9,4 +9,11 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
+anyhow.workspace           = true
+async-trait.workspace      = true
 bd-workspace-hack.workspace = true
+parking_lot.workspace      = true
+tokio.workspace            = true
+
+[dev-dependencies]
+tokio-test.workspace = true

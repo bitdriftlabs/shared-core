@@ -14,6 +14,8 @@
   clippy::unwrap_used
 )]
 
+pub mod dns_monitor;
+
 //
 // NetworkQuality
 //
