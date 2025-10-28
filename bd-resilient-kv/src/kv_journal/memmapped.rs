@@ -10,7 +10,7 @@ use super::in_memory::InMemoryKVJournal;
 use ahash::AHashMap;
 use bd_bonjson::Value;
 use memmap2::{MmapMut, MmapOptions};
-use std::fs::OpenOptions;
+use std::fs::{create_dir_all, OpenOptions};
 use std::path::Path;
 
 /// Memory-mapped implementation of a crash-resilient key-value journal.
@@ -67,6 +67,8 @@ impl MemMappedKVJournal {
     size: usize,
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
+    let parent = file_path.as_ref().parent().ok_or(anyhow::anyhow!("Invalid file path"))?;
+    create_dir_all(parent)?;
     let file = OpenOptions::new()
       .read(true)
       .write(true)

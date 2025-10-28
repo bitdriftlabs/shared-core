@@ -79,6 +79,7 @@ impl LogType {
   pub const Device: Self = Self(6);
   pub const UX: Self = Self(7);
   pub const Span: Self = Self(8);
+  pub const FeatureFlag: Self = Self(9);
 
   pub const ENUM_MIN: u32 = 0;
   pub const ENUM_MAX: u32 = 8;
@@ -92,6 +93,7 @@ impl LogType {
     Self::Device,
     Self::UX,
     Self::Span,
+    Self::FeatureFlag,
   ];
   /// Returns the variant's name or "" if unknown.
   pub fn variant_name(self) -> Option<&'static str> {
@@ -105,6 +107,7 @@ impl LogType {
       Self::Device => Some("Device"),
       Self::UX => Some("UX"),
       Self::Span => Some("Span"),
+      Self::FeatureFlag => Some("FeatureFlag"),
       _ => None,
     }
   }

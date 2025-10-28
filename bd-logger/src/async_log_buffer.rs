@@ -892,9 +892,36 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             },
             AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
               if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
-                feature_flags.set(flag, variant).unwrap_or_else(|e| {
+                let prev_flag = feature_flags.get(&flag);
+                if feature_flags.set(flag.clone(), variant.clone()).inspect_err(|e| {
                   log::warn!("failed to set feature flag: {e}");
-                });
+                }).is_ok() {
+                  if prev_flag.is_some() && prev_flag.as_ref().unwrap().variant == variant {
+                    // No change, do not log.
+                  } else {
+                    let operation = if prev_flag.is_some() {
+                      "Change"
+                    } else {
+                      "Set"
+                    };
+                    let log_line = LogLine {
+                      log_level: log_level::INFO,
+                      log_type: LogType::FeatureFlag,
+                      message: LogMessage::String(if variant.is_some() {
+                        format!("FeatureFlag{operation}: {flag} = {}", variant.unwrap())
+                      } else {
+                        format!("FeatureFlag{operation}: {flag}")
+                      }),
+                      fields: AnnotatedLogFields::new(),
+                      matching_fields: AnnotatedLogFields::new(),
+                      attributes_overrides: None,
+                      capture_session: None,
+                    };
+                    self.process_log(log_line, false).await.map_err(|e| {
+                      log::debug!("failed to process log for feature flag {operation}: {e}");
+                    }).ok();
+                  }
+                }
               }
             },
             AsyncLogBufferMessage::SetFeatureFlags(flags) => {
@@ -906,9 +933,22 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             },
             AsyncLogBufferMessage::RemoveFeatureFlag(flag) => {
               if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
-                feature_flags.remove(&flag).unwrap_or_else(|e| {
+                if feature_flags.remove(&flag).inspect_err(|e| {
                   log::warn!("failed to remove feature flag ({flag:?}): {e}");
-                });
+                }).is_ok() {
+                  let log_line = LogLine {
+                    log_level: log_level::INFO,
+                    log_type: LogType::FeatureFlag,
+                    message: LogMessage::String(format!("FeatureFlagRemove: {flag}")),
+                    fields: AnnotatedLogFields::new(),
+                    matching_fields: AnnotatedLogFields::new(),
+                    attributes_overrides: None,
+                    capture_session: None,
+                  };
+                  self.process_log(log_line, false).await.map_err(|e| {
+                    log::debug!("failed to process log for feature flag remove: {e}");
+                  }).ok();
+                }
               }
             },
             AsyncLogBufferMessage::ClearFeatureFlags => {

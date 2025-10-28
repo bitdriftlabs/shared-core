@@ -49,6 +49,7 @@ use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::test::MakeConfig;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::vec;
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::sync::mpsc;
@@ -255,6 +256,91 @@ impl LogReplay for TestReplay {
   }
 }
 
+/// Assert that the async log buffer generates logs as expected when using the provided function.
+/// The function is called with the buffer sender and the current run index, and should return the
+/// expected log message.
+async fn assert_generates_logs<F>(run_count: usize, f: F)
+where
+    F: Fn(&bd_bounded_buffer::Sender<AsyncLogBufferMessage>, usize) -> Option<String> + Send + Sync + 'static,
+{
+  let mut setup = Setup::new();
+
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+
+  let (buffer, buffer_tx) = setup.make_test_async_log_buffer(config_update_rx);
+
+  let written_logs = Arc::new(Mutex::new(vec![]));
+  let shutdown = Arc::new(AtomicBool::new(false));
+  let cloned_shutdown = shutdown.clone();
+
+  let written_logs_clone = written_logs.clone();
+  // The test sometimes produces zero logs on the background threads when left unchecked, so use
+  // a second channel to ensure that we get a certain number of logs processed.
+  let (counting_logs_tx, mut counting_logs_rx) = tokio::sync::mpsc::channel(5000);
+
+  let logging_task = std::thread::spawn(move || {
+    let mut counter = 0;
+    while counter < run_count && !cloned_shutdown.load(Ordering::SeqCst) {
+      let current_log_message = f(&buffer_tx, counter);
+      if current_log_message.is_some() {
+        let current_log_message = current_log_message.unwrap();
+        written_logs_clone
+          .lock()
+          .unwrap()
+          .push(current_log_message.clone());
+      }
+      counter += 1;
+
+      // It's possible that we fill up this channel and we don't want that to prevent the threads
+      // from being able to shut down on cancel.
+      let _ignored = counting_logs_tx.blocking_send(());
+    }
+  });
+
+  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
+  let config_update_task = std::thread::spawn(move || {
+    // Send an initial workflows config update to allow
+    // the async log buffer to start replaying buffered logs.
+    assert_ok!(config_update_tx.blocking_send(config_update));
+    drop(config_update_tx);
+  });
+
+  // Wait until we've seen significant activity from the logging threads before we try to replay
+  // the logs.
+  let mut counted_logs = 0;
+  while counted_logs < run_count {
+    counting_logs_rx.recv().await.unwrap();
+    counted_logs += 1;
+  }
+
+  setup.shutdown_in(1.seconds());
+
+  let run_buffer_task = tokio::task::spawn(async move {
+    _ = buffer.run().await;
+  });
+
+  shutdown.store(true, Ordering::SeqCst);
+
+  assert_ok!(logging_task.join());
+  assert_ok!(config_update_task.join());
+
+  _ = run_buffer_task.await;
+
+  let written_logs = written_logs.lock().unwrap();
+
+  assert!(!written_logs.is_empty());
+  assert_eq!(
+    written_logs.len(),
+    setup.replayer_log_count.load(Ordering::SeqCst),
+  );
+  for index in 0 .. written_logs.len() {
+    assert_eq!(
+      written_logs[index],
+      setup.replayer_logs.lock()[index].as_str()
+    );
+  }
+}
+
 #[test]
 fn log_line_size_is_computed_correctly() {
   fn create_baseline_log() -> LogLine {
@@ -363,93 +449,59 @@ fn annotated_log_line_size_is_computed_correctly() {
 
 #[tokio::test]
 async fn logs_are_replayed_in_order() {
-  let mut setup = Setup::new();
-
-  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-
-  let (buffer, buffer_tx) = setup.make_test_async_log_buffer(config_update_rx);
-
-  let written_logs = Arc::new(Mutex::new(vec![]));
-  let shutdown = Arc::new(AtomicBool::new(false));
-  let cloned_shutdown = shutdown.clone();
-
-  let written_logs_clone = written_logs.clone();
-  // The test sometimes produces zero logs on the background threads when left unchecked, so use
-  // a second channel to ensure that we get a certain number of logs processed.
-  let (counting_logs_tx, mut counting_logs_rx) = tokio::sync::mpsc::channel(5000);
-
-  let logging_task = std::thread::spawn(move || {
-    let mut counter = 0;
-    while !cloned_shutdown.load(Ordering::SeqCst) {
-      let current_log_message = format!("{counter}");
-      written_logs_clone
-        .lock()
-        .unwrap()
-        .push(current_log_message.clone());
-
-      counter += 1;
-      let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
-        &buffer_tx,
-        0,
-        LogType::Normal,
-        current_log_message.as_str().into(),
-        [].into(),
-        [].into(),
-        None,
-        Block::No,
-        None,
-      );
-
-      assert_ok!(result);
-
-      // It's possible that we fill up this channel and we don't want that to prevent the threads
-      // from being able to shut down on cancel.
-      let _ignored = counting_logs_tx.blocking_send(());
-    }
-  });
-
-  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
-  let config_update_task = std::thread::spawn(move || {
-    // Send an initial workflows config update to allow
-    // the async log buffer to start replaying buffered logs.
-    assert_ok!(config_update_tx.blocking_send(config_update));
-    drop(config_update_tx);
-  });
-
-  // Wait until we've seen significant activity from the logging threads before we try to replay
-  // the logs.
-  let mut counted_logs = 0;
-  while counted_logs < 100 {
-    counting_logs_rx.recv().await.unwrap();
-    counted_logs += 1;
-  }
-
-  setup.shutdown_in(1.seconds());
-
-  let run_buffer_task = tokio::task::spawn(async move {
-    _ = buffer.run().await;
-  });
-
-  shutdown.store(true, Ordering::SeqCst);
-
-  assert_ok!(logging_task.join());
-  assert_ok!(config_update_task.join());
-
-  _ = run_buffer_task.await;
-
-  let written_logs = written_logs.lock().unwrap();
-
-  assert!(!written_logs.is_empty());
-  assert_eq!(
-    written_logs.len(),
-    setup.replayer_log_count.load(Ordering::SeqCst),
-  );
-  for index in 0 .. written_logs.len() {
-    assert_eq!(
-      written_logs[index],
-      setup.replayer_logs.lock()[index].as_str()
+  let count = 100;
+  let f = |buffer_tx: &bd_bounded_buffer::Sender<AsyncLogBufferMessage>, counter: usize| {
+    let current_log_message = format!("{counter}");
+    let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
+      buffer_tx,
+      0,
+      LogType::Normal,
+      current_log_message.as_str().into(),
+      [].into(),
+      [].into(),
+      None,
+      Block::No,
+      None,
     );
-  }
+
+    assert_ok!(result);
+    Some(current_log_message)
+  };
+  assert_generates_logs(count, f).await
+}
+
+#[tokio::test]
+async fn feature_flags_generate_logs() {
+  let count = 9;
+  let f = |buffer_tx: &bd_bounded_buffer::Sender<AsyncLogBufferMessage>, counter: usize| {
+    let script = vec![
+      ("Set", "Flag A", Some("X"), Some("FeatureFlagSet: Flag A = X")),
+      ("Set", "Flag A", Some("X"), None),
+      ("Set", "Flag A", None, Some("FeatureFlagChange: Flag A")),
+      ("Set", "Flag B", None, Some("FeatureFlagSet: Flag B")),
+      ("Set", "Flag A", None, None),
+      ("Set", "Flag A", Some("X"), Some("FeatureFlagChange: Flag A = X")),
+      ("Set", "Flag B", Some("Y"), Some("FeatureFlagChange: Flag B = Y")),
+      ("Remove", "Flag B", None, Some("FeatureFlagRemove: Flag B")),
+      ("Set", "Flag B", Some("Y"), Some("FeatureFlagSet: Flag B = Y")),
+    ];
+    let current = &script[counter];
+    let operation = current.0;
+    let name = current.1;
+    let variant = current.2.map(|v| v.to_string());
+    let result = match operation {
+      "Set" => {
+        AsyncLogBuffer::<TestReplay>::set_feature_flag(buffer_tx, String::from(name), variant)
+      }
+      "Remove" => {
+        AsyncLogBuffer::<TestReplay>::remove_feature_flag(buffer_tx, String::from(name))
+      }
+      _ => panic!("unexpected operation: {}", operation),
+    };
+    assert_ok!(result);
+    current.3.map(|v| v.to_string())
+  };
+  assert_generates_logs(count, f).await
 }
 
 #[test]
