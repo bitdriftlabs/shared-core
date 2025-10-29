@@ -1962,10 +1962,7 @@ fn matching_on_but_not_capturing_matching_fields() {
         }
         .build(),
       ],
-      workflows: make_workflow_config_flushing_buffer(
-        "trigger",
-        field_equals("key", "value"),
-      ),
+      workflows: make_workflow_config_flushing_buffer("trigger", field_equals("key", "value")),
       ..Default::default()
     },
   ));
@@ -2339,10 +2336,7 @@ fn logs_before_cache_load() {
             }
             .build(),
           ],
-          workflows: make_workflow_config_flushing_buffer(
-            "trigger",
-            message_equals("trigger"),
-          ),
+          workflows: make_workflow_config_flushing_buffer("trigger", message_equals("trigger")),
           ..Default::default()
         },
       ),

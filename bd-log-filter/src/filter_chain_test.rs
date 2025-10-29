@@ -208,10 +208,8 @@ fn set_matching_field_transform_adds_new_field() {
 
 #[test]
 fn remove_field_transform_removes_existing_fields() {
-  let filter_chain = make_filter_chain(
-    message_equals("matching"),
-    vec![remove_field!("remove_me")],
-  );
+  let filter_chain =
+    make_filter_chain(message_equals("matching"), vec![remove_field!("remove_me")]);
 
   let mut log = make_log(
     "matching",

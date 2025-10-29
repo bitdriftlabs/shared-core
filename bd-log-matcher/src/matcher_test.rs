@@ -801,7 +801,7 @@ fn test_and_matcher() {
 fn test_not_matcher() {
   let config = make_not_matcher(simple_log_matcher(make_message_match(
     Operator::OPERATOR_REGEX,
-    "foo"
+    "foo",
   )));
 
   match_test_runner(

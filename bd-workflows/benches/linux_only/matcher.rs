@@ -12,8 +12,13 @@ use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{FieldsRef, LogFields, LogRef, LogType, log_level};
 use bd_proto::protos::workflow::workflow::Workflow;
 use bd_runtime::runtime::ConfigLoader;
-use bd_test_helpers::workflow::{WorkflowBuilder, make_flush_buffers_action, message_equals, state};
 use bd_test_helpers::rule;
+use bd_test_helpers::workflow::{
+  WorkflowBuilder,
+  make_flush_buffers_action,
+  message_equals,
+  state,
+};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use gungraun::{

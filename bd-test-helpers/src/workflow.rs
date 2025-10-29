@@ -5,15 +5,18 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::int_value_match::Int_value_match_type;
-use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::tag_match::Value_match::IntValueMatch;
 use action_generate_log::generated_field::Generated_field_value_type;
 use action_generate_log::value_reference::Value_reference_type;
 use action_generate_log::{GeneratedField, ValueReference, ValueReferencePair};
 use bd_log_primitives::{LogFields, LogType, StringOrBytes};
 use bd_proto::protos;
 use bd_proto::protos::log_matcher::log_matcher::log_matcher;
-use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::{ IsSetMatch, Operator};
+use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::{
+  IsSetMatch,
+  Operator,
+  int_value_match,
+  tag_match,
+};
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::Streaming;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::streaming::{
   TerminationCriterion,
@@ -43,6 +46,7 @@ use bd_proto::protos::workflow::workflow::workflow::{
   TransitionExtension,
   TransitionTimeout,
 };
+use int_value_match::Int_value_match_type;
 use log_matcher::base_log_matcher::string_value_match::String_value_match_type;
 use protobuf::MessageField;
 use protos::log_matcher::log_matcher::LogMatcher;
@@ -74,6 +78,7 @@ use protos::workflow::workflow::workflow::{
   State,
 };
 use std::collections::BTreeMap;
+use tag_match::Value_match::IntValueMatch;
 use time::Duration;
 
 pub struct WorkflowBuilder {
@@ -355,11 +360,7 @@ pub fn ios_matcher() -> LogMatcher {
 #[inline]
 #[must_use]
 pub fn android_matcher() -> LogMatcher {
-  log_field_matcher(
-      "os",
-    "Android",
-    Operator::OPERATOR_EQUALS,
-  )
+  log_field_matcher("os", "Android", Operator::OPERATOR_EQUALS)
 }
 
 /// Creates a matcher that matches when the log is set, i.e., it has been logged.
@@ -407,11 +408,13 @@ fn log_field_matcher(field: &str, value: &str, operator: Operator) -> LogMatcher
     matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
       match_type: Some(TagMatch(base_log_matcher::TagMatch {
         tag_key: field.to_string(),
-        value_match: Some(Value_match::StringValueMatch(base_log_matcher::StringValueMatch {
-          operator: operator.into(),
-          string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
-          ..Default::default()
-        })),
+        value_match: Some(Value_match::StringValueMatch(
+          base_log_matcher::StringValueMatch {
+            operator: operator.into(),
+            string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
+            ..Default::default()
+          },
+        )),
         ..Default::default()
       })),
       ..Default::default()
