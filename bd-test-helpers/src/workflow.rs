@@ -5,12 +5,15 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::int_value_match::Int_value_match_type;
+use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::tag_match::Value_match::IntValueMatch;
 use action_generate_log::generated_field::Generated_field_value_type;
 use action_generate_log::value_reference::Value_reference_type;
 use action_generate_log::{GeneratedField, ValueReference, ValueReferencePair};
 use bd_log_primitives::{LogFields, LogType, StringOrBytes};
 use bd_proto::protos;
 use bd_proto::protos::log_matcher::log_matcher::log_matcher;
+use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::{ IsSetMatch, Operator};
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::Streaming;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::streaming::{
   TerminationCriterion,
@@ -228,6 +231,220 @@ pub fn state(id: &str) -> StateBuilder {
   }
 }
 
+// Explicit wrapper functions for creating LogMatcher instances for common matching operations.
+// These functions provide a clean, type-safe API for log filtering.
+
+/// Creates a matcher for logs where `log_type` equals the specified value.
+///
+/// # Example
+/// ```ignore
+/// let matcher = log_type_equals(LogType::Lifecycle);
+/// ```
+#[inline]
+#[must_use]
+pub fn log_type_equals(log_type: LogType) -> LogMatcher {
+  log_type_matcher(log_type)
+}
+
+/// Creates a matcher for logs where `log_level` equals the specified value.
+///
+/// # Example
+/// ```ignore
+/// let matcher = log_level_equals(2);
+/// ```
+#[inline]
+#[must_use]
+pub fn log_level_equals(level: i32) -> LogMatcher {
+  LogMatcher {
+    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
+      match_type: Some(TagMatch(base_log_matcher::TagMatch {
+        tag_key: "log_level".to_string(),
+        value_match: Some(IntValueMatch(base_log_matcher::IntValueMatch {
+          operator: Operator::OPERATOR_EQUALS.into(),
+          int_value_match_type: Some(Int_value_match_type::MatchValue(level)),
+          ..Default::default()
+        })),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+/// Creates a matcher for logs where message equals the specified value.
+///
+/// # Example
+/// ```ignore
+/// let matcher = message_equals("AppFinishedLaunching");
+/// ```
+#[inline]
+#[must_use]
+pub fn message_equals(msg: &str) -> LogMatcher {
+  make_log_message_matcher(msg, Operator::OPERATOR_EQUALS)
+}
+
+/// Creates a matcher for logs where message matches the specified regex pattern.
+///
+/// # Example
+/// ```ignore
+/// let matcher = message_regex_matches("^ERROR.*");
+/// ```
+#[inline]
+#[must_use]
+pub fn message_regex_matches(pattern: &str) -> LogMatcher {
+  make_log_message_matcher(pattern, Operator::OPERATOR_REGEX)
+}
+
+/// Creates a matcher for logs where a field value equals the specified value.
+///
+/// # Example
+/// ```ignore
+/// let matcher = field_equals("app_id", "beta");
+/// ```
+#[inline]
+#[must_use]
+pub fn field_equals(key: &str, value: &str) -> LogMatcher {
+  make_log_tag_matcher(key, value)
+}
+
+/// Creates a matcher for logs where tag value does not equal the specified value.
+///
+/// # Example
+/// ```ignore
+/// let matcher = field_not_equals("status", "error");
+/// ```
+#[inline]
+#[must_use]
+pub fn field_not_equals(key: &str, value: &str) -> LogMatcher {
+  log_field_matcher(key, value, Operator::OPERATOR_NOT_EQUALS)
+}
+
+/// Creates a matcher for logs where field value matches the specified regex pattern.
+///
+/// # Example
+/// ```ignore
+/// let matcher = field_regex_matches("log", "^ERROR.*");
+/// ```
+#[inline]
+#[must_use]
+pub fn field_regex_matches(key: &str, pattern: &str) -> LogMatcher {
+  log_field_matcher(key, pattern, Operator::OPERATOR_REGEX)
+}
+
+/// Creates a matcher for logs where a field contains a double value equal to the specified value.
+///
+/// # Example
+/// ```ignore
+/// let matcher = tag_double_equals("temperature", 98.6);
+/// ```
+#[inline]
+#[must_use]
+pub fn field_double_equals(key: &str, value: f64) -> LogMatcher {
+  log_field_double_matcher(key, value, Operator::OPERATOR_EQUALS)
+}
+
+/// Returns a log matcher matching iOS logs (logs with OS tag equal to "iOS").
+#[inline]
+#[must_use]
+pub fn ios_matcher() -> LogMatcher {
+  log_field_matcher("os", "iOS", Operator::OPERATOR_EQUALS)
+}
+
+/// Returns a log matcher matching Android logs (logs with OS tag equal to "Android").
+#[inline]
+#[must_use]
+pub fn android_matcher() -> LogMatcher {
+  log_field_matcher(
+      "os",
+    "Android",
+    Operator::OPERATOR_EQUALS,
+  )
+}
+
+/// Creates a matcher that matches when the log is set, i.e., it has been logged.
+#[must_use]
+pub fn field_is_set_matcher(field: &str) -> LogMatcher {
+  LogMatcher {
+    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
+      match_type: Some(TagMatch(base_log_matcher::TagMatch {
+        tag_key: field.to_string(),
+        value_match: Some(Value_match::IsSetMatch(IsSetMatch::default())),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+/// Creates a `log_type` matcher that matches when the `log_type` is equal to the provided value.
+#[must_use]
+pub fn log_type_matcher(log_type: LogType) -> LogMatcher {
+  LogMatcher {
+    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
+      match_type: Some(TagMatch(base_log_matcher::TagMatch {
+        tag_key: "log_type".to_string(),
+        value_match: Some(IntValueMatch(base_log_matcher::IntValueMatch {
+          operator: Operator::OPERATOR_EQUALS.into(),
+          int_value_match_type: Some(Int_value_match_type::MatchValue(
+            log_type.0.try_into().unwrap(),
+          )),
+          ..Default::default()
+        })),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+/// Creates a log field matcher that matches when a field is equal to the provided string value.
+#[must_use]
+fn log_field_matcher(field: &str, value: &str, operator: Operator) -> LogMatcher {
+  LogMatcher {
+    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
+      match_type: Some(TagMatch(base_log_matcher::TagMatch {
+        tag_key: field.to_string(),
+        value_match: Some(Value_match::StringValueMatch(base_log_matcher::StringValueMatch {
+          operator: operator.into(),
+          string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
+          ..Default::default()
+        })),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+/// Creates a log field matcher that matches when a field is equal to the provided double value.
+#[must_use]
+pub fn log_field_double_matcher(key: &str, value: f64, operator: Operator) -> LogMatcher {
+  use base_log_matcher::DoubleValueMatch;
+  use base_log_matcher::double_value_match::Double_value_match_type;
+  use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher;
+
+  LogMatcher {
+    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
+      match_type: Some(TagMatch(base_log_matcher::TagMatch {
+        tag_key: key.to_string(),
+        value_match: Some(Value_match::DoubleValueMatch(DoubleValueMatch {
+          operator: operator.into(),
+          double_value_match_type: Some(Double_value_match_type::MatchValue(value)),
+          ..Default::default()
+        })),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+
 #[allow(clippy::module_inception)]
 pub mod macros {
   /// A macro that takes a matcher and creates a rule to use when
@@ -239,56 +456,6 @@ pub mod macros {
     };
     ($matcher:expr; times $count:expr) => {
       $crate::workflow::make_log_match_rule($matcher, $count)
-    };
-  }
-
-  /// A macro that takes a list of matchers and returns a matcher
-  /// that matches if all of the matchers match.
-  #[macro_export]
-  macro_rules! all {
-    ($($e:expr,)+) => {
-      $crate::workflow::make_and_matcher(vec![$($e,)+])
-    }
-  }
-
-  #[macro_export]
-  /// A macro that takes a list of matchers and returns a matcher
-  /// that matches if any of the matchers match.
-  macro_rules! any {
-    ($($e:expr,)+) => {
-      $crate::workflow::make_or_matcher(vec![$($e,)+])
-    }
-  }
-
-  #[macro_export]
-  /// Return the invert of a given predicate.
-  macro_rules! not {
-    ($e:expr) => {
-      $crate::workflow::make_not_matcher($e)
-    };
-  }
-
-  /// Creates a matcher that pattern matches on the lhs and the
-  /// operator in order to produce a more human readable way
-  /// to express a matcher.
-  #[macro_export]
-  macro_rules! log_matches {
-    (message == $message:expr) => {{
-      use bd_proto::protos::log_matcher::log_matcher;
-      $crate::workflow::make_log_message_matcher(
-        $message,
-        log_matcher::log_matcher::base_log_matcher::Operator::OPERATOR_EQUALS,
-      )
-    }};
-    (message ~ = $message:expr) => {{
-      use bd_proto::protos::log_matcher::log_matcher;
-      $crate::workflow::make_log_message_matcher(
-        $message,
-        log_matcher::log_matcher::base_log_matcher::Operator::OPERATOR_REGEX,
-      )
-    }};
-    (tag($name:expr) == $value:expr) => {
-      $crate::workflow::make_log_tag_matcher($name, $value)
     };
   }
 
@@ -317,7 +484,7 @@ pub mod macros {
   }
 
   #[allow(clippy::module_name_repetitions)]
-  pub use {all, any, log_matches, not, rule, sankey_value};
+  pub use {rule, sankey_value};
 }
 
 #[must_use]

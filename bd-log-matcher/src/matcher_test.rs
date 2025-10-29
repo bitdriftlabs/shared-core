@@ -19,7 +19,7 @@ use bd_log_primitives::{
   log_level,
 };
 use bd_proto::protos::log_matcher::log_matcher::{LogMatcher, log_matcher};
-use bd_test_helpers::workflow::macros::not;
+use bd_test_helpers::workflow::make_not_matcher;
 use log_matcher::base_log_matcher::Match_type::{MessageMatch, TagMatch};
 use log_matcher::base_log_matcher::Operator;
 use log_matcher::base_log_matcher::double_value_match::Double_value_match_type;
@@ -799,7 +799,7 @@ fn test_and_matcher() {
 
 #[test]
 fn test_not_matcher() {
-  let config = not!(simple_log_matcher(make_message_match(
+  let config = make_not_matcher(simple_log_matcher(make_message_match(
     Operator::OPERATOR_REGEX,
     "foo"
   )));

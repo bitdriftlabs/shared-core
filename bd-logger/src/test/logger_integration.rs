@@ -58,7 +58,7 @@ use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::session::in_memory_store;
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_test_helpers::test_api_server::StreamAction;
-use bd_test_helpers::workflow::macros::{log_matches, rule};
+use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   TestFieldRef,
   TestFieldType,
@@ -66,12 +66,14 @@ use bd_test_helpers::workflow::{
   extract_log_body_tag,
   extract_metric_tag,
   extract_metric_value,
+  field_equals,
   make_emit_counter_action,
   make_emit_histogram_action,
   make_flush_buffers_action,
   make_generate_log_action_proto,
   make_save_timestamp_extraction,
   make_take_screenshot_action,
+  message_equals,
   metric_tag,
   metric_value,
   state,
@@ -646,7 +648,7 @@ fn blocking_log() {
         Type::TRIGGER,
         make_buffer_matcher_matching_everything().into(),
       )],
-      workflows: make_workflow_config_flushing_buffer("default", log_matches!(message == "foo")),
+      workflows: make_workflow_config_flushing_buffer("default", message_equals("foo")),
       ..Default::default()
     },
   ));
@@ -673,7 +675,7 @@ fn session_replay_actions() {
   let b = state("B");
   let a = state("A").declare_transition_with_actions(
     &b,
-    rule!(log_matches!(message == "take a screenshot")),
+    rule!(message_equals("take a screenshot")),
     &[make_take_screenshot_action("screenshot_id")],
   );
 
@@ -805,7 +807,7 @@ fn blocking_flush_state() {
         Type::TRIGGER,
         make_buffer_matcher_matching_everything().into(),
       )],
-      workflows: make_workflow_config_flushing_buffer("default", log_matches!(message == "foo")),
+      workflows: make_workflow_config_flushing_buffer("default", message_equals("foo")),
       ..Default::default()
     },
   ));
@@ -903,7 +905,7 @@ fn log_tailing() {
           },
           BdTailStream {
             stream_id: "some".into(),
-            matcher: Some(log_matches!(message == "something")).into(),
+            matcher: Some(message_equals("something")).into(),
             ..Default::default()
           },
         ],
@@ -952,7 +954,7 @@ fn workflow_flush_buffers_action_uploads_buffer() {
       )],
       workflows: make_workflow_config_flushing_buffer(
         "default",
-        log_matches!(message == "fire workflow action!"),
+        message_equals("fire workflow action!"),
       ),
       ..Default::default()
     },
@@ -995,8 +997,8 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   let a = state("A")
     .declare_transition_with_actions(
       &b,
-      rule!(log_matches!(
-        message == "fire flush trigger buffer and start streaming action!"
+      rule!(message_equals(
+        "fire flush trigger buffer and start streaming action!"
       )),
       &[
         make_flush_buffers_action(
@@ -1009,7 +1011,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
     )
     .declare_transition_with_actions(
       &c,
-      rule!(log_matches!(message == "fire flush trigger buffer action!")),
+      rule!(message_equals("fire flush trigger buffer action!")),
       &[make_flush_buffers_action(
         &["trigger_buffer_id"],
         None,
@@ -1167,13 +1169,13 @@ fn workflow_generate_log_to_histogram() {
 
   a = a.declare_transition_with_extractions(
     &b,
-    rule!(log_matches!(message == "foo")),
+    rule!(message_equals("foo")),
     &[make_save_timestamp_extraction("timestamp1")],
   );
 
   b = b.declare_transition_with_all(
     &c,
-    rule!(log_matches!(message == "bar")),
+    rule!(message_equals("bar")),
     &[
       make_flush_buffers_action(&["default"], None, "flush_action_id"),
       make_generate_log_action_proto(
@@ -1200,7 +1202,7 @@ fn workflow_generate_log_to_histogram() {
 
   c = c.declare_transition_with_actions(
     &d,
-    rule!(log_matches!(tag("_generate_log_id") == "id")),
+    rule!(field_equals("_generate_log_id", "id")),
     &[make_emit_histogram_action(
       "foo_id",
       extract_metric_value("_duration_ms"),
@@ -1276,7 +1278,7 @@ fn workflow_debugging() {
   let b = state("B");
   let a = state("A").declare_transition_with_actions(
     &b,
-    rule!(log_matches!(message == "fire workflow action!")),
+    rule!(message_equals("fire workflow action!")),
     &[make_emit_counter_action(
       "foo_id",
       metric_value(123),
@@ -1448,7 +1450,7 @@ fn workflow_emit_metric_action_emits_metric() {
   let b = state("B");
   let a = state("A").declare_transition_with_actions(
     &b,
-    rule!(log_matches!(message == "fire workflow action!")),
+    rule!(message_equals("fire workflow action!")),
     &[make_emit_counter_action(
       "foo_id",
       metric_value(123),
@@ -1580,7 +1582,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
   let a = state("a")
     .declare_transition_with_actions(
       &b,
-      rule!(log_matches!(message == "first log")),
+      rule!(message_equals("first log")),
       &[make_emit_counter_action(
         "foo",
         metric_value(1),
@@ -1589,7 +1591,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
     )
     .declare_transition_with_actions(
       &c,
-      rule!(log_matches!(message == "second log")),
+      rule!(message_equals("second log")),
       &[make_emit_counter_action("bar", metric_value(1), vec![])],
     );
 
@@ -1678,10 +1680,10 @@ fn transforms_emitted_logs_according_to_filters() {
       )],
       workflows: make_workflow_config_flushing_buffer(
         "default",
-        log_matches!(tag("foo") == "fire workflow action!"),
+        field_equals("foo", "fire workflow action!"),
       ),
       filters_configuration: vec![Filter {
-        matcher: Some(log_matches!(message == "yet another message!")).into(),
+        matcher: Some(message_equals("yet another message!")).into(),
         transforms: vec![set_field!(
           captured("foo") = field_value!("fire workflow action!")
         )],
@@ -1807,7 +1809,7 @@ fn continuous_and_trigger_buffer() {
         }
         .build(),
       ],
-      workflows: make_workflow_config_flushing_buffer("trigger", log_matches!(message == "fire!")),
+      workflows: make_workflow_config_flushing_buffer("trigger", message_equals("fire!")),
       ..Default::default()
     },
   ));
@@ -1902,7 +1904,7 @@ fn device_id_matching() {
       ],
       workflows: make_workflow_config_flushing_buffer(
         "trigger",
-        log_matches!(tag("_device_id") == &device_id),
+        field_equals("_device_id", &device_id),
       ),
       ..Default::default()
     },
@@ -1962,7 +1964,7 @@ fn matching_on_but_not_capturing_matching_fields() {
       ],
       workflows: make_workflow_config_flushing_buffer(
         "trigger",
-        log_matches!(tag("key") == "value"),
+        field_equals("key", "value"),
       ),
       ..Default::default()
     },
@@ -2339,7 +2341,7 @@ fn logs_before_cache_load() {
           ],
           workflows: make_workflow_config_flushing_buffer(
             "trigger",
-            log_matches!(message == "trigger"),
+            message_equals("trigger"),
           ),
           ..Default::default()
         },
