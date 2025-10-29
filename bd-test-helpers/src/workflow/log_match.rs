@@ -21,13 +21,9 @@
 //! ]);
 //! ```
 
+use base_log_matcher::int_value_match::Int_value_match_type;
+use base_log_matcher::{IsSetMatch, Operator, tag_match};
 use bd_log_primitives::LogType;
-use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::{
-  IsSetMatch,
-  Operator,
-  int_value_match::Int_value_match_type,
-  tag_match,
-};
 use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
 use bd_proto::protos::log_matcher::log_matcher::log_matcher::{
   BaseLogMatcher,
@@ -184,7 +180,7 @@ pub fn field_double(key: &str, value: f64, operator: Operator) -> LogMatcher {
 /// ```
 #[must_use]
 pub fn field_is_set(field: &str) -> LogMatcher {
-  use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type::TagMatch;
+  use base_log_matcher::Match_type::TagMatch;
 
   LogMatcher {
     matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
@@ -220,7 +216,7 @@ pub fn log_type_equals(log_type: LogType) -> LogMatcher {
 #[inline]
 #[must_use]
 pub fn log_level_equals(level: i32) -> LogMatcher {
-  use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type::TagMatch;
+  use base_log_matcher::Match_type::TagMatch;
 
   LogMatcher {
     matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
@@ -247,7 +243,7 @@ pub fn log_level_equals(level: i32) -> LogMatcher {
 /// ```
 #[must_use]
 pub fn log_type(log_type: LogType) -> LogMatcher {
-  use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type::TagMatch;
+  use base_log_matcher::Match_type::TagMatch;
 
   LogMatcher {
     matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {

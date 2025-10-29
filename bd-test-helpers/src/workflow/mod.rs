@@ -49,11 +49,7 @@ use protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type:
   TagMatch,
 };
 use protos::log_matcher::log_matcher::log_matcher::base_log_matcher::tag_match::Value_match;
-use protos::log_matcher::log_matcher::log_matcher::{
-  BaseLogMatcher,
-  Matcher,
-  base_log_matcher,
-};
+use protos::log_matcher::log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
 use protos::workflow::workflow::workflow::action::action_emit_metric::Value_extractor_type;
 use protos::workflow::workflow::workflow::action::{
   Action_type,
