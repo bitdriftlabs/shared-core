@@ -478,7 +478,7 @@ fn api_bandwidth_counters() {
       assert_eq!(upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}), Some(119));
       assert!(bandwidth_tx > 100, "bandwidth_tx = {bandwidth_tx}");
       assert!(bandwidth_rx < 400, "bandwidth_rx = {bandwidth_rx}");
-      assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(230));
+      assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(279));
       assert_eq!(upload.get_counter("api:stream_total", labels! {}), Some(1));
   });
 }

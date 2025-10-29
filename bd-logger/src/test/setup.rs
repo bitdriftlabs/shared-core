@@ -262,6 +262,10 @@ impl Setup {
         bd_runtime::runtime::session_replay::PeriodicScreensEnabledFlag::path(),
         ValueKind::Bool(true),
       ),
+      (
+        bd_runtime::runtime::sleep_mode::MinReconnectInterval::path(),
+        ValueKind::Int(1.seconds().whole_milliseconds().try_into().unwrap()),
+      ),
     ]
   }
 

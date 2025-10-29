@@ -6,7 +6,6 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::reconnect::ReconnectState;
-use bd_runtime::runtime::DurationWatch;
 use bd_test_helpers::session::in_memory_store;
 use bd_time::TestTimeProvider;
 use std::sync::Arc;
@@ -18,40 +17,32 @@ fn store_persisted_timeout() {
   let store = in_memory_store();
   let time = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
-  let mut state = ReconnectState::new(
-    store.clone(),
-    DurationWatch::new_for_testing(time::Duration::seconds(30)),
-    time.clone(),
-  );
+  let mut state = ReconnectState::new(store.clone(), time.clone());
 
-  assert_eq!(state.next_reconnect_delay(), None);
+  assert_eq!(state.next_reconnect_delay(30.seconds()), None);
 
   state.record_connectivity_event();
 
   assert_eq!(
-    state.next_reconnect_delay(),
+    state.next_reconnect_delay(30.seconds()),
     Some(std::time::Duration::from_secs(30))
   );
 
-  let new_state = ReconnectState::new(
-    store,
-    DurationWatch::new_for_testing(time::Duration::seconds(30)),
-    time.clone(),
-  );
+  let new_state = ReconnectState::new(store, time.clone());
 
   assert_eq!(
-    new_state.next_reconnect_delay(),
+    new_state.next_reconnect_delay(30.seconds()),
     Some(std::time::Duration::from_secs(30))
   );
 
   time.advance(5.seconds());
 
   assert_eq!(
-    new_state.next_reconnect_delay(),
+    new_state.next_reconnect_delay(30.seconds()),
     Some(std::time::Duration::from_secs(25))
   );
   assert_eq!(
-    state.next_reconnect_delay(),
+    state.next_reconnect_delay(30.seconds()),
     Some(std::time::Duration::from_secs(25))
   );
 }
@@ -61,11 +52,7 @@ fn negative_delay_returns_none() {
   let store = in_memory_store();
   let time = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
-  let mut state = ReconnectState::new(
-    store,
-    DurationWatch::new_for_testing(time::Duration::seconds(30)),
-    time.clone(),
-  );
+  let mut state = ReconnectState::new(store, time.clone());
 
   state.record_connectivity_event();
 
@@ -73,7 +60,7 @@ fn negative_delay_returns_none() {
   time.advance(35.seconds());
 
   // Since we've passed the interval, no delay should be needed
-  assert_eq!(state.next_reconnect_delay(), None);
+  assert_eq!(state.next_reconnect_delay(30.seconds()), None);
 }
 
 #[test]
@@ -83,11 +70,7 @@ fn excessive_delay_gets_capped() {
   let time = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
   // Create a custom state with a manipulated last_connected_at that would cause excessive delay
-  let mut state = ReconnectState::new(
-    store,
-    DurationWatch::new_for_testing(time::Duration::seconds(30)),
-    time.clone(),
-  );
+  let mut state = ReconnectState::new(store, time.clone());
 
   // Record a connectivity event
   state.record_connectivity_event();
@@ -98,7 +81,7 @@ fn excessive_delay_gets_capped() {
 
   // Even though the calculation would give a 24-hour delay, it should be capped at 30 seconds
   assert_eq!(
-    state.next_reconnect_delay(),
+    state.next_reconnect_delay(30.seconds()),
     Some(std::time::Duration::from_secs(30)) // Capped at min_reconnect_interval
   );
 }
