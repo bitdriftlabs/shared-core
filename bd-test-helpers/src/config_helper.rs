@@ -22,9 +22,9 @@ use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
 use bd_proto::protos::workflow::workflow::{Workflow, WorkflowsConfiguration};
 #[rustfmt::skip]
 use crate::workflow::macros::rule;
-use crate::workflow::log_match;
 use crate::workflow::{
   WorkflowBuilder,
+  log_match,
   make_emit_counter_action,
   make_flush_buffers_action,
   metric_value,
