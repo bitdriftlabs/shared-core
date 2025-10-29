@@ -74,6 +74,7 @@ pub enum AsyncLogBufferMessage {
   SetFeatureFlag(String, Option<String>),
   SetFeatureFlags(Vec<(String, Option<String>)>),
   RemoveFeatureFlag(String),
+  ClearFeatureFlags,
   FlushState(Option<bd_completion::Sender<()>>),
 }
 
@@ -90,6 +91,7 @@ impl MemorySized for AsyncLogBufferMessage {
           .map(|(k, v)| k.len() + v.as_ref().map_or(0, String::len))
           .sum(),
         Self::RemoveFeatureFlag(flag) => flag.len(),
+        Self::ClearFeatureFlags => 0,
         Self::FlushState(sender) => size_of_val(sender),
       }
   }
@@ -462,6 +464,24 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     flag: String,
   ) -> Result<(), TrySendError> {
     tx.try_send(AsyncLogBufferMessage::RemoveFeatureFlag(flag))
+  }
+
+  /// Sends a message to clear all feature flags.
+  ///
+  /// This is an internal method used by the logger to send feature flag clear messages
+  /// to the async log buffer. The message is sent asynchronously and will be processed
+  /// by the log buffer thread.
+  ///
+  /// # Arguments
+  ///
+  /// * `tx` - The sender channel to the async log buffer
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(())` if the message was sent successfully, or a `TrySendError`
+  /// if the channel is full or disconnected.
+  pub fn clear_feature_flags(tx: &Sender<AsyncLogBufferMessage>) -> Result<(), TrySendError> {
+    tx.try_send(AsyncLogBufferMessage::ClearFeatureFlags)
   }
 
   pub fn flush_state(tx: &Sender<AsyncLogBufferMessage>, block: Block) -> Result<(), TrySendError> {
@@ -888,6 +908,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
                 feature_flags.remove(&flag).unwrap_or_else(|e| {
                   log::warn!("failed to remove feature flag ({flag:?}): {e}");
+                });
+              }
+            },
+            AsyncLogBufferMessage::ClearFeatureFlags => {
+              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
+                feature_flags.clear().unwrap_or_else(|e| {
+                  log::warn!("failed to clear feature flags: {e}");
                 });
               }
             },
