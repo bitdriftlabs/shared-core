@@ -40,7 +40,6 @@ use bd_test_helpers::workflow::{
   WorkflowBuilder,
   extract_metric_tag,
   extract_metric_value,
-  field_equals,
   log_match,
   make_emit_counter_action,
   make_emit_sankey_action,
@@ -49,11 +48,11 @@ use bd_test_helpers::workflow::{
   make_save_field_extraction,
   make_save_timestamp_extraction,
   make_take_screenshot_action,
-  message_equals,
   metric_tag,
   metric_value,
   state,
 };
+use bd_test_helpers::workflow::log_match::{field_equals, message_equals};
 use bd_time::TimeDurationExt;
 use itertools::Itertools;
 use pretty_assertions::assert_eq;

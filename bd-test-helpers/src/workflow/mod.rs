@@ -275,26 +275,6 @@ pub fn log_field_double_matcher(key: &str, value: f64, operator: Operator) -> Lo
   }
 }
 
-// Re-export all log_match functions at the top level for backward compatibility.
-// This allows existing code to continue working without changes.
-pub use log_match::{
-  and as make_and_matcher,
-  android as android_matcher,
-  field_double_equals,
-  field_equals,
-  field_is_set as field_is_set_matcher,
-  field_not_equals,
-  field_regex_matches,
-  ios as ios_matcher,
-  log_level_equals,
-  log_type as log_type_matcher,
-  log_type_equals,
-  message_equals,
-  message_regex_matches,
-  not as make_not_matcher,
-  or as make_or_matcher,
-};
-
 #[allow(clippy::module_inception)]
 pub mod macros {
   /// A macro that takes a matcher and creates a rule to use when

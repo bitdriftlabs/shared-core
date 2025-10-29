@@ -160,18 +160,6 @@ pub fn field_double_equals(key: &str, value: f64) -> LogMatcher {
   crate::workflow::log_field_double_matcher(key, value, Operator::OPERATOR_EQUALS)
 }
 
-/// Creates a log field matcher that matches when a field is equal to the provided double value.
-///
-/// # Example
-/// ```ignore
-/// let matcher = log_match::field_double("temperature", 98.6, Operator::OPERATOR_EQUALS);
-/// ```
-#[inline]
-#[must_use]
-pub fn field_double(key: &str, value: f64, operator: Operator) -> LogMatcher {
-  crate::workflow::log_field_double_matcher(key, value, operator)
-}
-
 /// Creates a matcher that matches when a field is set.
 ///
 /// # Example

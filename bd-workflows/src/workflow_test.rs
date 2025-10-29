@@ -23,14 +23,13 @@ use bd_stats_common::{MetricType, labels};
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   WorkflowBuilder,
-  field_equals,
   log_match,
   make_emit_counter_action,
   make_flush_buffers_action,
-  message_equals,
   metric_value,
   state,
 };
+use bd_test_helpers::workflow::log_match::{field_equals, message_equals};
 use pretty_assertions::assert_eq;
 use std::collections::{BTreeMap, BTreeSet};
 use std::vec;

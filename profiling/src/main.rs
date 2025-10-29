@@ -33,12 +33,11 @@ use bd_test_helpers::workflow::{
   extract_metric_tag,
   extract_metric_value,
   make_emit_counter_action,
-  message_equals,
-  message_regex_matches,
   metric_tag,
   metric_value,
   state,
 };
+use bd_test_helpers::workflow::log_match::{message_equals, message_regex_matches};
 use bd_time::TimeDurationExt;
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};

@@ -66,18 +66,17 @@ use bd_test_helpers::workflow::{
   extract_log_body_tag,
   extract_metric_tag,
   extract_metric_value,
-  field_equals,
   make_emit_counter_action,
   make_emit_histogram_action,
   make_flush_buffers_action,
   make_generate_log_action_proto,
   make_save_timestamp_extraction,
   make_take_screenshot_action,
-  message_equals,
   metric_tag,
   metric_value,
   state,
 };
+use bd_test_helpers::workflow::log_match::{field_equals, message_equals};
 use bd_test_helpers::{RecordingErrorReporter, field_value, set_field};
 use bd_time::test::TestTicker;
 use bd_time::{OffsetDateTimeExt, TestTimeProvider};

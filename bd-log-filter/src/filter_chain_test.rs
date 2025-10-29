@@ -9,7 +9,7 @@ use crate::FilterChain;
 use bd_log_primitives::{Log, LogFields, LogType, log_level};
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
 use bd_test_helpers::filter::macros::regex_match_and_substitute_field;
-use bd_test_helpers::workflow::{message_equals, message_regex_matches};
+use bd_test_helpers::workflow::log_match::{message_equals, message_regex_matches};
 use bd_test_helpers::{capture_field, field_value, remove_field, set_field};
 use pretty_assertions::assert_eq;
 use time::macros::datetime;
