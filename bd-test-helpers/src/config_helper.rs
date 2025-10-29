@@ -22,15 +22,11 @@ use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
 use bd_proto::protos::workflow::workflow::{Workflow, WorkflowsConfiguration};
 #[rustfmt::skip]
 use crate::workflow::macros::rule;
+use crate::workflow::log_match;
 use crate::workflow::{
   WorkflowBuilder,
-  field_equals,
-  make_and_matcher,
   make_emit_counter_action,
   make_flush_buffers_action,
-  make_not_matcher,
-  make_or_matcher,
-  message_equals,
   metric_value,
   state,
 };
@@ -214,9 +210,9 @@ pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationU
   let b = state("b");
   let a = state("a").declare_transition_with_actions(
     &b,
-    rule!(make_and_matcher(vec![
-      message_equals("SceneWillEnterFG"),
-      field_equals("os", "iOS"),
+    rule!(log_match::and(vec![
+      log_match::message_equals("SceneWillEnterFG"),
+      log_match::field_equals("os", "iOS"),
     ])),
     &[make_emit_counter_action(
       "app_open",
@@ -230,14 +226,14 @@ pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationU
   let d = state("d");
   let c = state("c").declare_transition_with_actions(
     &d,
-    rule!(make_or_matcher(vec![
-      make_and_matcher(vec![
-        message_equals("SceneDidEnterBG"),
-        field_equals("os", "iOS"),
+    rule!(log_match::or(vec![
+      log_match::and(vec![
+        log_match::message_equals("SceneDidEnterBG"),
+        log_match::field_equals("os", "iOS"),
       ]),
-      make_and_matcher(vec![
-        message_equals("AppFinishedLaunching"),
-        field_equals("os", "iOS"),
+      log_match::and(vec![
+        log_match::message_equals("AppFinishedLaunching"),
+        log_match::field_equals("os", "iOS"),
       ]),
     ])),
     &[make_emit_counter_action(
@@ -317,7 +313,7 @@ pub fn make_buffer_matcher_matching_resource_logs() -> BufferLogMatcher {
 
 #[must_use]
 pub fn make_workflow_matcher_matching_everything_except_internal_logs() -> LogMatcher {
-  make_not_matcher(field_equals("log_type", "0"))
+  log_match::not(log_match::field_equals("log_type", "0"))
 }
 
 #[must_use]
@@ -343,9 +339,9 @@ pub fn make_configuration_update_with_workflow_flushing_buffer_on_anything(
   let b = state("b");
   let a = state("a").declare_transition_with_actions(
     &b,
-    rule!(make_or_matcher(vec![
-      message_equals("foo"),
-      make_not_matcher(crate::workflow::message_equals("foo")),
+    rule!(log_match::or(vec![
+      log_match::message_equals("foo"),
+      log_match::not(crate::workflow::log_match::message_equals("foo")),
     ])),
     &[make_flush_buffers_action(
       &[buffer_id],

@@ -24,10 +24,9 @@ use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   WorkflowBuilder,
   field_equals,
-  make_and_matcher,
+  log_match,
   make_emit_counter_action,
   make_flush_buffers_action,
-  make_or_matcher,
   message_equals,
   metric_value,
   state,
@@ -766,7 +765,7 @@ fn basic_exclusive_workflow() {
 
   a = a.declare_transition_with_actions(
     &b,
-    rule!(make_and_matcher(vec![
+    rule!(log_match::and(vec![
       message_equals("foo"),
       field_equals("key", "value"),
     ])),
@@ -1204,7 +1203,7 @@ fn branching_exclusive_workflow() {
 
   a = a.declare_transition_with_actions(
     &b,
-    rule!(make_or_matcher(vec![
+    rule!(log_match::or(vec![
       message_equals("foo"),
       field_equals("key", "value"),
     ])),

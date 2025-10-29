@@ -41,11 +41,11 @@ use bd_test_helpers::workflow::{
   extract_metric_tag,
   extract_metric_value,
   field_equals,
+  log_match,
   make_emit_counter_action,
   make_emit_sankey_action,
   make_flush_buffers_action,
   make_generate_log_action_proto,
-  make_or_matcher,
   make_save_field_extraction,
   make_save_timestamp_extraction,
   make_take_screenshot_action,
@@ -2490,7 +2490,7 @@ async fn creating_new_runs_after_first_log_processing() {
   a = a.declare_transition(
     &b,
     rule!(
-      make_or_matcher(vec![
+      log_match::or(vec![
         message_equals("foo"),
         field_equals("key", "value"),
       ]); times 100),
@@ -2498,7 +2498,7 @@ async fn creating_new_runs_after_first_log_processing() {
   c = c.declare_transition(&d, rule!(message_equals("bar")));
   d = d.declare_transition(
     &e,
-    rule!(make_or_matcher(vec![
+    rule!(log_match::or(vec![
       message_equals("zar"),
       field_equals("key", "value"),
     ])),
