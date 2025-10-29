@@ -480,8 +480,7 @@ impl LoggerHandle {
 
   /// Removes a feature flag from the logger.
   ///
-  /// Deletes the specified feature flag from persistent storage. Once removed,
-  /// the flag will no longer be available and will not persist across logger restarts.
+  /// Deletes the specified feature flag (in memory and from persistent storage).
   ///
   /// # Arguments
   ///
@@ -502,6 +501,22 @@ impl LoggerHandle {
       },
       "failed to remove {:?} feature flag, removing flags from within a callback is not permitted",
       flag
+    );
+  }
+
+  /// Clears all feature flags from the logger.
+  ///
+  /// Deletes all feature flags (in memory and from persistent storage).
+  pub fn clear_feature_flags(&self) {
+    with_reentrancy_guard!(
+      {
+        let result = AsyncLogBuffer::<LoggerReplay>::clear_feature_flags(&self.tx);
+        if let Err(e) = result {
+          log::warn!("failed to clear feature flags: {e:?}");
+        }
+      },
+      "failed to clear feature flags, clearing flags from within a callback is not permitted{}",
+      ""
     );
   }
 
