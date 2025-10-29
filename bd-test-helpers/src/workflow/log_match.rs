@@ -183,18 +183,6 @@ pub fn field_is_set(field: &str) -> LogMatcher {
   }
 }
 
-/// Creates a matcher for logs where `log_type` equals the specified value.
-///
-/// # Example
-/// ```ignore
-/// let matcher = log_match::log_type_equals(LogType::Lifecycle);
-/// ```
-#[inline]
-#[must_use]
-pub fn log_type_equals(log_type: LogType) -> LogMatcher {
-  self::log_type(log_type)
-}
-
 /// Creates a matcher for logs where `log_level` equals the specified value.
 ///
 /// # Example
@@ -223,14 +211,14 @@ pub fn log_level_equals(level: i32) -> LogMatcher {
   }
 }
 
-/// Creates a `log_type` matcher that matches when the `log_type` is equal to the provided value.
+/// Creates a matcher for logs where `log_type` equals the specified value.
 ///
 /// # Example
 /// ```ignore
-/// let matcher = log_match::log_type(LogType::Lifecycle);
+/// let matcher = log_match::log_type_equals(LogType::Lifecycle);
 /// ```
 #[must_use]
-pub fn log_type(log_type: LogType) -> LogMatcher {
+pub fn log_type_equals(log_type: LogType) -> LogMatcher {
   use base_log_matcher::Match_type::TagMatch;
 
   LogMatcher {
