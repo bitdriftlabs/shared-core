@@ -20,6 +20,7 @@ use bd_log_primitives::{FieldsRef, LogFields, LogMessage, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, labels};
+use bd_test_helpers::workflow::log_match::{field_equals, message_equals};
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   WorkflowBuilder,
@@ -29,7 +30,6 @@ use bd_test_helpers::workflow::{
   metric_value,
   state,
 };
-use bd_test_helpers::workflow::log_match::{field_equals, message_equals};
 use pretty_assertions::assert_eq;
 use std::collections::{BTreeMap, BTreeSet};
 use std::vec;

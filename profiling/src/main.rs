@@ -28,6 +28,7 @@ use bd_proto::protos::workflow::workflow::workflow::{Execution, State};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
+use bd_test_helpers::workflow::log_match::{message_equals, message_regex_matches};
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   extract_metric_tag,
@@ -37,7 +38,6 @@ use bd_test_helpers::workflow::{
   metric_value,
   state,
 };
-use bd_test_helpers::workflow::log_match::{message_equals, message_regex_matches};
 use bd_time::TimeDurationExt;
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};

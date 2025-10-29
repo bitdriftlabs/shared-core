@@ -33,6 +33,7 @@ use bd_runtime::runtime::ConfigLoader;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{NameType, labels};
 use bd_test_helpers::sankey_value;
+use bd_test_helpers::workflow::log_match::{field_equals, message_equals};
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   TestFieldRef,
@@ -52,7 +53,6 @@ use bd_test_helpers::workflow::{
   metric_value,
   state,
 };
-use bd_test_helpers::workflow::log_match::{field_equals, message_equals};
 use bd_time::TimeDurationExt;
 use itertools::Itertools;
 use pretty_assertions::assert_eq;
