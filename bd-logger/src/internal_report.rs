@@ -11,8 +11,8 @@ use bd_log_primitives::{
   LogInterceptor,
   LogLevel,
   LogMessage,
-  LogType,
 };
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{BoolWatch, ConfigLoader, debugging};
 
 //
@@ -50,31 +50,31 @@ impl LogInterceptor for Reporter {
     guard.logs_total_count += 1;
 
     match log_type {
-      LogType::Device => {
+      LogType::DEVICE => {
         guard.device_logs_count += 1;
         guard.device_logs_total_count += 1;
       },
-      LogType::InternalSDK => {
+      LogType::INTERNAL_SDK => {
         guard.internal_logs_count += 1;
         guard.internal_logs_total_count += 1;
       },
-      LogType::Lifecycle => {
+      LogType::LIFECYCLE => {
         guard.lifecycle_logs_count += 1;
         guard.lifecycle_logs_total_count += 1;
       },
-      LogType::Span => {
+      LogType::SPAN => {
         guard.network_logs_count += 1;
         guard.network_logs_total_count += 1;
       },
-      LogType::Normal => {
+      LogType::NORMAL => {
         guard.normal_logs_count += 1;
         guard.normal_logs_total_count += 1;
       },
-      LogType::Replay => {
+      LogType::REPLAY => {
         guard.replay_logs_count += 1;
         guard.replay_logs_total_count += 1;
       },
-      LogType::Resource => {
+      LogType::RESOURCE => {
         guard.resource_logs_count += 1;
         guard.resource_logs_total_count += 1;
       },
@@ -82,7 +82,7 @@ impl LogInterceptor for Reporter {
     }
 
     let LogMessage::String(msg) = msg else { return };
-    if !(log_type == LogType::Resource && msg.is_empty() && *self.is_enabled_flag.read()) {
+    if !(log_type == LogType::RESOURCE && msg.is_empty() && *self.is_enabled_flag.read()) {
       return;
     }
 

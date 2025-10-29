@@ -20,7 +20,7 @@ use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
 use bd_grpc_codec::code::Code;
 use bd_grpc_codec::{Decompression, Encoder, OptimizeFor};
-use bd_internal_logging::{LogFields, LogLevel, LogType};
+use bd_internal_logging::{LogFields, LogLevel};
 use bd_key_value::Store;
 use bd_metadata::{Metadata, Platform};
 use bd_network_quality::{NetworkQuality, NetworkQualityResolver as _};
@@ -37,6 +37,7 @@ use bd_proto::protos::client::api::{
   RuntimeUpdate,
   StatsUploadRequest,
 };
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_stats_common::labels;
 use bd_test_helpers::make_mut;

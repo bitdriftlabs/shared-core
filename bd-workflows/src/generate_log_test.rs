@@ -7,7 +7,8 @@
 
 use crate::generate_log::generate_log_action;
 use crate::workflow::TraversalExtractions;
-use bd_log_primitives::{FieldsRef, Log, LogFieldKey, LogFields, LogType, log_level};
+use bd_log_primitives::{FieldsRef, Log, LogFieldKey, LogFields, log_level};
+use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow::workflow::action::ActionGenerateLog;
 use bd_test_helpers::workflow::{TestFieldRef, TestFieldType, make_generate_log_action};
 use pretty_assertions::assert_eq;
@@ -91,8 +92,8 @@ fn generate_log_no_fields() {
   helper.expect_log(
     "message",
     &[],
-    LogType::Normal,
-    &make_generate_log_action("message", &[], "id", LogType::Normal),
+    LogType::NORMAL,
+    &make_generate_log_action("message", &[], "id", LogType::NORMAL),
   );
 }
 
@@ -131,7 +132,7 @@ fn generate_log_with_saved_fields_math() {
       ),
     ],
     "id",
-    LogType::Normal,
+    LogType::NORMAL,
   );
   let mut helper = Helper::new();
   helper.expect_log(
@@ -142,7 +143,7 @@ fn generate_log_with_saved_fields_math() {
       ("multiply", "NaN"),
       ("divide", "NaN"),
     ],
-    LogType::Normal,
+    LogType::NORMAL,
     &action,
   );
   helper.add_extracted_field("id1", "10.0");
@@ -155,7 +156,7 @@ fn generate_log_with_saved_fields_math() {
       ("multiply", "120"),
       ("divide", "0.8333333333333334"),
     ],
-    LogType::Normal,
+    LogType::NORMAL,
     &action,
   );
 }
@@ -188,7 +189,7 @@ fn generate_log_with_field_from_current_log() {
       ),
     ],
     "id",
-    LogType::Normal,
+    LogType::NORMAL,
   );
   let mut helper = Helper::new();
   helper.add_extracted_field("bad1", "not a number");
@@ -198,7 +199,7 @@ fn generate_log_with_field_from_current_log() {
   helper.expect_log(
     "hello world",
     &[("add_both_bad", "NaN"), ("add_1_bad", "NaN"), ("add", "32")],
-    LogType::Normal,
+    LogType::NORMAL,
     &action,
   );
 }
@@ -221,13 +222,13 @@ fn generate_log_with_saved_timestamp_math() {
       ),
     ],
     "id",
-    LogType::Span,
+    LogType::SPAN,
   );
   let mut helper = Helper::new();
   helper.expect_log(
     "hello world",
     &[("single", "single_value"), ("subtract", "NaN")],
-    LogType::Span,
+    LogType::SPAN,
     &action,
   );
   helper.add_extracted_timestamp("id1", datetime!(2023-10-01 12:00:00 UTC));
@@ -235,7 +236,7 @@ fn generate_log_with_saved_timestamp_math() {
   helper.expect_log(
     "hello world",
     &[("single", "single_value"), ("subtract", "3")],
-    LogType::Span,
+    LogType::SPAN,
     &action,
   );
 }
@@ -246,7 +247,7 @@ fn generate_log_with_uuid() {
     "hello world",
     &[("uuid", TestFieldType::Single(TestFieldRef::Uuid))],
     "id",
-    LogType::Span,
+    LogType::SPAN,
   );
   let helper = Helper::new();
   let log = generate_log_action(

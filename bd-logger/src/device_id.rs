@@ -11,8 +11,8 @@ use bd_log_primitives::{
   LogInterceptor,
   LogLevel,
   LogMessage,
-  LogType,
 };
+use bd_proto::protos::logging::payload::LogType;
 use std::sync::Arc;
 
 //

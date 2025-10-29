@@ -24,11 +24,11 @@ use super::{
   RingBufferProducer,
   RingBufferStats,
   VolatileRingBuffer,
-  to_u32,
 };
 #[cfg(test)]
 use crate::buffer::test::thread_synchronizer::ThreadSynchronizer;
 use crate::{AbslCode, Error, Result};
+use bd_log_primitives::LossyIntToU32;
 use parking_lot::Mutex;
 #[cfg(test)]
 use std::any::Any;
@@ -76,7 +76,7 @@ impl SharedData {
       // the volatile buffer.
       match producer
         .as_mut()
-        .reserve(to_u32(read_reservation.len()), true)
+        .reserve(read_reservation.len().to_u32(), true)
       {
         Ok(write_reservation) => {
           write_reservation.copy_from_slice(read_reservation);
@@ -138,8 +138,8 @@ impl RingBufferImpl {
     // For aggregate buffers, the size of the file (after subtracting header space) must be >= the
     // size of RAM. This is to avoid situations in which we accept a record into RAM but cannot ever
     // write it to disk.
-    if non_volatile_size < to_u32(std::mem::size_of::<FileHeader>())
-      || volatile_size > (non_volatile_size - to_u32(std::mem::size_of::<FileHeader>()))
+    if non_volatile_size < std::mem::size_of::<FileHeader>().to_u32()
+      || volatile_size > (non_volatile_size - std::mem::size_of::<FileHeader>().to_u32())
     {
       log::error!(
         "file size '{}' not big enough for header size '{}' or file size (minus header) not \

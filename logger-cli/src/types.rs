@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_logger::log_level;
+use bd_proto::protos::logging::payload::LogType as ProtoLogType;
 use rmcp::schemars;
 
 /// A log type enum for categorizing logs.
@@ -50,17 +51,17 @@ pub enum LogType {
   Span,
 }
 
-impl From<LogType> for bd_logger::LogType {
+impl From<LogType> for ProtoLogType {
   fn from(value: LogType) -> Self {
     match value {
-      LogType::Device => Self::Device,
-      LogType::Lifecycle => Self::Lifecycle,
-      LogType::Normal => Self::Normal,
-      LogType::Replay => Self::Replay,
-      LogType::Resource => Self::Resource,
-      LogType::Span => Self::Span,
+      LogType::Device => Self::DEVICE,
+      LogType::Lifecycle => Self::LIFECYCLE,
+      LogType::Normal => Self::NORMAL,
+      LogType::Replay => Self::REPLAY,
+      LogType::Resource => Self::RESOURCE,
+      LogType::Span => Self::SPAN,
       LogType::UX => Self::UX,
-      LogType::View => Self::View,
+      LogType::View => Self::VIEW,
     }
   }
 }

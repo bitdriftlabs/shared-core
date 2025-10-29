@@ -10,18 +10,18 @@
 mod client_config_test;
 
 use crate::logging_state::{BufferProducers, ConfigUpdate};
+use crate::write_log_to_buffer;
 use anyhow::anyhow;
-use bd_buffer::{AbslCode, RingBuffer as _};
+use bd_buffer::RingBuffer as _;
 use bd_client_common::HANDSHAKE_FLAG_CONFIG_UP_TO_DATE;
 use bd_client_common::error::InvariantError;
-use bd_client_common::fb::make_log;
 use bd_client_common::file::write_compressed_protobuf;
 use bd_client_common::payload_conversion::{ClientConfigurationUpdateAck, IntoRequest};
 use bd_client_common::safe_file_cache::SafeFileCache;
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::FilterChain;
-use bd_log_primitives::LogRef;
 use bd_log_primitives::tiny_set::TinyMap;
+use bd_log_primitives::{FieldsRef, Log};
 use bd_proto::protos::bdtail::bdtail_config::BdTailConfigurations;
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
@@ -313,47 +313,6 @@ struct Inner {
   stream_producer: bd_buffer::Producer,
 }
 
-impl Inner {
-  fn write_to_stream_buffer<'a>(
-    stream_producer: &mut bd_buffer::Producer,
-    buffers: &mut BufferProducers,
-    stream_ids: impl Iterator<Item = &'a str>,
-    log: &LogRef<'_>,
-  ) -> anyhow::Result<()> {
-    make_log(
-      &mut buffers.builder,
-      log.log_level,
-      log.log_type,
-      log.message,
-      log.fields.captured_fields,
-      log.session_id,
-      log.occurred_at,
-      std::iter::empty(),
-      stream_ids,
-      |data| {
-        // TODO(snowp): For both logger and buffer lookup we end up doing a map lookup, which
-        // seems less than ideal in the logging path. Look into ways to optimize this,
-        // possibly via vector indices instead of string keys.
-        match stream_producer.write(data) {
-          // If the buffer is locked, drop the error. This helps ensure that we are able to
-          // log to all buffers even if one of them is locked.
-          // TODO(snowp): Track how often logs are dropped due to locks.
-          // If the buffer is out of space, drop the error.
-          // TODO(mattklein123): Track this via stats.
-          Err(bd_buffer::Error::AbslStatus(
-            AbslCode::FailedPrecondition | AbslCode::ResourceExhausted,
-            _,
-          )) => Ok(()),
-          e => e,
-        }?;
-        Ok(())
-      },
-    )?;
-
-    Ok(())
-  }
-}
-
 #[derive(Default)]
 pub struct TailConfigurations {
   // The inner structure is only initialized when there are any active streams.
@@ -401,11 +360,7 @@ impl TailConfigurations {
     })
   }
 
-  pub(crate) fn maybe_stream_log(
-    &mut self,
-    buffers: &mut BufferProducers,
-    log: &LogRef<'_>,
-  ) -> anyhow::Result<bool> {
+  pub(crate) fn maybe_stream_log(&mut self, log: &Log) -> anyhow::Result<bool> {
     let Some(inner) = &mut self.inner else {
       return Ok(false);
     };
@@ -420,8 +375,8 @@ impl TailConfigurations {
             matcher.do_match(
               log.log_level,
               log.log_type,
-              log.message,
-              log.fields,
+              &log.message,
+              FieldsRef::new(&log.fields, &log.matching_fields),
               &TinyMap::default(),
             )
           })
@@ -433,12 +388,7 @@ impl TailConfigurations {
       return Ok(false);
     }
 
-    Inner::write_to_stream_buffer(
-      &mut inner.stream_producer,
-      buffers,
-      active_streams.into_iter(),
-      log,
-    )?;
+    write_log_to_buffer(&mut inner.stream_producer, log, &[], &active_streams)?;
 
     Ok(true)
   }

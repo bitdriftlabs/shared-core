@@ -18,8 +18,9 @@ use crate::buffer::test::{
   read_and_verify,
   start_read_and_verify,
 };
-use crate::buffer::{RingBuffer, RingBufferStats, StatsTestHelper, to_u32};
+use crate::buffer::{RingBuffer, RingBufferStats, StatsTestHelper};
 use bd_client_stats_store::Collector;
+use bd_log_primitives::LossyIntToU32;
 use futures::poll;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -48,7 +49,7 @@ impl Helper {
       "test",
       volatile_size,
       temp_dir.path().join("buffer"),
-      non_volatile_size + to_u32(std::mem::size_of::<FileHeader>()),
+      non_volatile_size + std::mem::size_of::<FileHeader>().to_u32(),
       PerRecordCrc32Check::Yes,
       allow_overwrite,
       Arc::new(RingBufferStats::default()),
@@ -80,7 +81,7 @@ impl Helper {
         "test",
         self.volatile_size,
         self.temp_dir.path().join("buffer"),
-        self.non_volatile_size + to_u32(std::mem::size_of::<FileHeader>()),
+        self.non_volatile_size + std::mem::size_of::<FileHeader>().to_u32(),
         PerRecordCrc32Check::Yes,
         self.allow_overwrite,
         Arc::new(RingBufferStats::default()),

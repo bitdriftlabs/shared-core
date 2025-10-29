@@ -22,7 +22,6 @@ use bd_session_replay::CaptureScreenshotHandler;
 use bd_stats_common::labels;
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::WorkflowsEngine;
-use flatbuffers::FlatBufferBuilder;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -284,7 +283,6 @@ pub struct ConfigUpdate {
 
 pub struct BufferProducers {
   pub(crate) buffers: HashMap<String, bd_buffer::Producer>,
-  pub(crate) builder: FlatBufferBuilder<'static>,
   pub(crate) continuous_buffer_ids: TinySet<Cow<'static, str>>,
   pub(crate) trigger_buffer_ids: TinySet<Cow<'static, str>>,
 }
@@ -315,7 +313,6 @@ impl BufferProducers {
 
     Ok(Self {
       buffers,
-      builder: FlatBufferBuilder::new(),
       continuous_buffer_ids,
       trigger_buffer_ids,
     })

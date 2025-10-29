@@ -12,7 +12,7 @@ mod metrics_test;
 use crate::config::{ActionEmitMetric, TagValue};
 use crate::workflow::TriggeredActionEmitSankey;
 use bd_client_stats::Stats;
-use bd_log_primitives::LogRef;
+use bd_log_primitives::Log;
 use bd_stats_common::MetricType;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -32,7 +32,7 @@ impl MetricsCollector {
     Self { stats }
   }
 
-  pub(crate) fn emit_metrics(&self, actions: &BTreeSet<&ActionEmitMetric>, log: &LogRef<'_>) {
+  pub(crate) fn emit_metrics(&self, actions: &BTreeSet<&ActionEmitMetric>, log: &Log) {
     // TODO(Augustyniak): We dedupe stats in here too only when both their tags and the value of
     // If `counter_increment` values are identical, consider deduping metrics even if their
     // `counter_increment` fields have different values.
@@ -74,11 +74,7 @@ impl MetricsCollector {
     }
   }
 
-  pub(crate) fn emit_sankeys(
-    &self,
-    actions: &BTreeSet<TriggeredActionEmitSankey<'_>>,
-    log: &LogRef<'_>,
-  ) {
+  pub(crate) fn emit_sankeys(&self, actions: &BTreeSet<TriggeredActionEmitSankey<'_>>, log: &Log) {
     for action in actions {
       let mut tags = Self::extract_tags(log, action.action.tags());
       tags.insert("_path_id".to_string(), action.path.path_id.clone());
@@ -89,15 +85,15 @@ impl MetricsCollector {
     }
   }
 
-  fn resolve_field_name<'a>(key: &str, log: &'a LogRef<'a>) -> Option<Cow<'a, str>> {
+  fn resolve_field_name<'a>(key: &str, log: &'a Log) -> Option<Cow<'a, str>> {
     match key {
       "log_level" => Some(log.log_level.to_string().into()),
-      "log_type" => Some(log.log_type.0.to_string().into()),
-      key => log.fields.field_value(key),
+      "log_type" => Some((log.log_type as u32).to_string().into()),
+      key => log.field_value(key),
     }
   }
 
-  fn extract_tags(log: &LogRef<'_>, tags: &BTreeMap<String, TagValue>) -> BTreeMap<String, String> {
+  fn extract_tags(log: &Log, tags: &BTreeMap<String, TagValue>) -> BTreeMap<String, String> {
     let mut extracted_tags = BTreeMap::new();
 
     for (key, value) in tags {
