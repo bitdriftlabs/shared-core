@@ -23,6 +23,7 @@ use base_log_matcher::tag_match::Value_match::{
   IsSetMatch,
   SemVerValueMatch,
   StringValueMatch,
+  FeatureFlagMatch,
 };
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogType};
@@ -36,6 +37,7 @@ use bd_proto::protos::config::v1::config::{
   log_matcher as legacy_log_matcher,
 };
 use bd_proto::protos::log_matcher::log_matcher;
+use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::{feature_flag_match, FeatureFlagMatch};
 use log_matcher::LogMatcher;
 use log_matcher::log_matcher::base_log_matcher::double_value_match::Double_value_match_type;
 use log_matcher::log_matcher::base_log_matcher::int_value_match::Int_value_match_type;
@@ -651,6 +653,16 @@ impl Leaf {
         IsSetMatch(_) => Ok(Self::IsSetValue(InputType::Field(
           tag_match.tag_key.clone(),
         ))),
+        FeatureFlagMatch(feature_flag_match) => Ok(Self::StringValue(
+          InputType::Field(feature_flag_match.flag_name.clone()),
+          StringMatch::new(
+            feature_flag_match
+              .operator
+              .enum_value()
+              .map_err(|_| anyhow!("unknown field or enum"))?,
+            transform_string_value_match(feature_flag_match),
+          )?,
+        )),
       },
     }
   }

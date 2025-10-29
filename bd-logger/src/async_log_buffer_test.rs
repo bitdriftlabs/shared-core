@@ -49,7 +49,7 @@ use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::test::MakeConfig;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::vec;
+use std::{thread, vec};
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::sync::mpsc;
@@ -278,23 +278,27 @@ where
   // a second channel to ensure that we get a certain number of logs processed.
   let (counting_logs_tx, mut counting_logs_rx) = tokio::sync::mpsc::channel(5000);
 
-  let logging_task = std::thread::spawn(move || {
-    let mut counter = 0;
-    while counter < run_count && !cloned_shutdown.load(Ordering::SeqCst) {
-      let current_log_message = f(&buffer_tx, counter);
-      if current_log_message.is_some() {
-        let current_log_message = current_log_message.unwrap();
-        written_logs_clone
-          .lock()
-          .unwrap()
-          .push(current_log_message.clone());
-      }
-      counter += 1;
+  thread::scope(|s| {
+    let logging_task = s.spawn(move || {
+      let mut counter = 0;
+      while counter < run_count && !cloned_shutdown.load(Ordering::SeqCst) {
+        let current_log_message = f(&buffer_tx, counter);
+        if current_log_message.is_some() {
+          let current_log_message = current_log_message.unwrap();
+          written_logs_clone
+            .lock()
+            .unwrap()
+            .push(current_log_message.clone());
+        }
+        counter += 1;
 
-      // It's possible that we fill up this channel and we don't want that to prevent the threads
-      // from being able to shut down on cancel.
-      let _ignored = counting_logs_tx.blocking_send(());
-    }
+        // It's possible that we fill up this channel and we don't want that to prevent the threads
+        // from being able to shut down on cancel.
+        let _ignored = counting_logs_tx.blocking_send(());
+      }
+    });
+
+    assert_ok!(logging_task.join());
   });
 
   let config_update = setup.make_config_update(WorkflowsConfiguration::default());
@@ -321,7 +325,6 @@ where
 
   shutdown.store(true, Ordering::SeqCst);
 
-  assert_ok!(logging_task.join());
   assert_ok!(config_update_task.join());
 
   _ = run_buffer_task.await;

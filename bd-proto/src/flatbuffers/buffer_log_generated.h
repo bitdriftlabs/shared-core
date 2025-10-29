@@ -33,11 +33,12 @@ enum LogType : uint32_t {
   LogType_Device = 6,
   LogType_UX = 7,
   LogType_Span = 8,
+  LogType_FeatureFlags = 9,
   LogType_MIN = LogType_Normal,
-  LogType_MAX = LogType_Span
+  LogType_MAX = LogType_FeatureFlags
 };
 
-inline const LogType (&EnumValuesLogType())[9] {
+inline const LogType (&EnumValuesLogType())[10] {
   static const LogType values[] = {
     LogType_Normal,
     LogType_Replay,
@@ -47,13 +48,14 @@ inline const LogType (&EnumValuesLogType())[9] {
     LogType_View,
     LogType_Device,
     LogType_UX,
-    LogType_Span
+    LogType_Span,
+    LogType_FeatureFlags
   };
   return values;
 }
 
 inline const char * const *EnumNamesLogType() {
-  static const char * const names[10] = {
+  static const char * const names[11] = {
     "Normal",
     "Replay",
     "Lifecycle",
@@ -63,13 +65,14 @@ inline const char * const *EnumNamesLogType() {
     "Device",
     "UX",
     "Span",
+    "FeatureFlags",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameLogType(LogType e) {
-  if (::flatbuffers::IsOutRange(e, LogType_Normal, LogType_Span)) return "";
+  if (::flatbuffers::IsOutRange(e, LogType_Normal, LogType_FeatureFlags)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesLogType()[index];
 }

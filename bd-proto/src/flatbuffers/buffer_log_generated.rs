@@ -50,10 +50,10 @@ pub mod v_1 {
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 pub const ENUM_MIN_LOG_TYPE: u32 = 0;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MAX_LOG_TYPE: u32 = 8;
+pub const ENUM_MAX_LOG_TYPE: u32 = 9;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 #[allow(non_camel_case_types)]
-pub const ENUM_VALUES_LOG_TYPE: [LogType; 9] = [
+pub const ENUM_VALUES_LOG_TYPE: [LogType; 10] = [
   LogType::Normal,
   LogType::Replay,
   LogType::Lifecycle,
@@ -63,6 +63,7 @@ pub const ENUM_VALUES_LOG_TYPE: [LogType; 9] = [
   LogType::Device,
   LogType::UX,
   LogType::Span,
+  LogType::FeatureFlags,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -79,10 +80,10 @@ impl LogType {
   pub const Device: Self = Self(6);
   pub const UX: Self = Self(7);
   pub const Span: Self = Self(8);
-  pub const FeatureFlag: Self = Self(9);
+  pub const FeatureFlags: Self = Self(9);
 
   pub const ENUM_MIN: u32 = 0;
-  pub const ENUM_MAX: u32 = 8;
+  pub const ENUM_MAX: u32 = 9;
   pub const ENUM_VALUES: &'static [Self] = &[
     Self::Normal,
     Self::Replay,
@@ -93,7 +94,7 @@ impl LogType {
     Self::Device,
     Self::UX,
     Self::Span,
-    Self::FeatureFlag,
+    Self::FeatureFlags,
   ];
   /// Returns the variant's name or "" if unknown.
   pub fn variant_name(self) -> Option<&'static str> {
@@ -107,7 +108,7 @@ impl LogType {
       Self::Device => Some("Device"),
       Self::UX => Some("UX"),
       Self::Span => Some("Span"),
-      Self::FeatureFlag => Some("FeatureFlag"),
+      Self::FeatureFlags => Some("FeatureFlags"),
       _ => None,
     }
   }
