@@ -9,14 +9,15 @@ use crate::FilterChain;
 use bd_log_primitives::{Log, LogFields, LogType, log_level};
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
 use bd_test_helpers::filter::macros::regex_match_and_substitute_field;
-use bd_test_helpers::{capture_field, field_value, log_matches, remove_field, set_field};
+use bd_test_helpers::workflow::log_match::{message_equals, message_regex_matches};
+use bd_test_helpers::{capture_field, field_value, remove_field, set_field};
 use pretty_assertions::assert_eq;
 use time::macros::datetime;
 
 #[test]
 fn filters_are_not_applied_to_non_matching_logs_only() {
   let filter_chain = make_filter_chain(
-    log_matches!(message == "matching"),
+    message_equals("matching"),
     vec![capture_field!(single "foo")],
   );
 
@@ -32,7 +33,7 @@ fn filters_are_not_applied_to_non_matching_logs_only() {
 #[test]
 fn filter_transforms_are_applied_in_order() {
   let filter_chain = make_filter_chain(
-    log_matches!(message == "matching"),
+    message_equals("matching"),
     vec![
       set_field!(matching("foo") = field_value!("bar")),
       capture_field!(single "foo"),
@@ -56,12 +57,12 @@ fn filters_are_applied_in_order() {
   let (filter_chain, _) = FilterChain::new(FiltersConfiguration {
     filters: vec![
       Filter {
-        matcher: Some(log_matches!(message == "matching")).into(),
+        matcher: Some(message_equals("matching")).into(),
         transforms: vec![set_field!(matching("foo") = field_value!("bar"))],
         ..Default::default()
       },
       Filter {
-        matcher: Some(log_matches!(message == "matching")).into(),
+        matcher: Some(message_equals("matching")).into(),
         transforms: vec![capture_field!(single "foo")],
         ..Default::default()
       },
@@ -84,7 +85,7 @@ fn filters_are_applied_in_order() {
 #[test]
 fn capture_field_transform() {
   let filter_chain = make_filter_chain(
-    log_matches!(message == "matching"),
+    message_equals("matching"),
     vec![capture_field!(single "foo")],
   );
 
@@ -107,7 +108,7 @@ fn capture_field_transform() {
 #[test]
 fn set_captured_field_transform_overrides_existing_field() {
   let filter_chain = make_filter_chain(
-    log_matches!(message == "matching"),
+    message_equals("matching"),
     vec![set_field!(captured("foo") = field_value!("bar"))],
   );
 
@@ -123,7 +124,7 @@ fn set_captured_field_transform_overrides_existing_field() {
 #[test]
 fn set_captured_field_transform_does_not_override_existing_field() {
   let filter_chain = make_filter_chain(
-    log_matches!(message == "matching"),
+    message_equals("matching"),
     vec![set_field!(captured("foo") = field_value!("bar"), false)],
   );
 
@@ -135,7 +136,7 @@ fn set_captured_field_transform_does_not_override_existing_field() {
 #[test]
 fn set_captured_field_transform_adds_new_field() {
   let filter_chain = make_filter_chain(
-    log_matches!(message == "matching"),
+    message_equals("matching"),
     vec![set_field!(captured("new_foo") = field_value!("bar"))],
   );
 
@@ -157,7 +158,7 @@ fn set_captured_field_transform_adds_new_field() {
 #[test]
 fn set_captured_field_transform_copies_existing_field_value() {
   let filter_chain = make_filter_chain(
-    log_matches!(message == "matching"),
+    message_equals("matching"),
     vec![set_field!(captured("new_foo") = field_value!(field "foo"))],
   );
 
@@ -175,7 +176,7 @@ fn set_captured_field_transform_copies_existing_field_value() {
 #[test]
 fn set_matching_field_transform_overrides_existing_field() {
   let filter_chain = make_filter_chain(
-    log_matches!(message == "matching"),
+    message_equals("matching"),
     vec![set_field!(matching("foo") = field_value!("bar"))],
   );
 
@@ -190,7 +191,7 @@ fn set_matching_field_transform_overrides_existing_field() {
 #[test]
 fn set_matching_field_transform_adds_new_field() {
   let filter_chain = make_filter_chain(
-    log_matches!(message == "matching"),
+    message_equals("matching"),
     vec![set_field!(matching("new_foo") = field_value!("bar"))],
   );
 
@@ -207,10 +208,8 @@ fn set_matching_field_transform_adds_new_field() {
 
 #[test]
 fn remove_field_transform_removes_existing_fields() {
-  let filter_chain = make_filter_chain(
-    log_matches!(message == "matching"),
-    vec![remove_field!("remove_me")],
-  );
+  let filter_chain =
+    make_filter_chain(message_equals("matching"), vec![remove_field!("remove_me")]);
 
   let mut log = make_log(
     "matching",
@@ -238,7 +237,7 @@ fn remove_field_transform_removes_existing_fields() {
 #[test]
 fn regex_match_and_substitute() {
   let filter_chain: FilterChain = make_filter_chain(
-    log_matches!(message == "matching"),
+    message_equals("matching"),
     vec![
       regex_match_and_substitute_field!(
         "foo",
@@ -281,7 +280,7 @@ fn regex_match_and_substitute() {
 #[test]
 fn regex_match_and_invalid_substitute() {
   let filter_chain = make_filter_chain(
-    log_matches!(message == "matching"),
+    message_equals("matching"),
     vec![regex_match_and_substitute_field!(
       "foo",
       "^(.*)([0-9a-f]{8}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?\
@@ -315,7 +314,7 @@ fn regex_match_and_invalid_substitute() {
 #[test]
 fn invalid_regex_match() {
   let filter_chain = make_filter_chain(
-    log_matches!(message == "matching"),
+    message_equals("matching"),
     vec![regex_match_and_substitute_field!(
       "foo",
       "([])([])([])", // invalid regex
@@ -329,7 +328,7 @@ fn invalid_regex_match() {
 #[test]
 fn extracts_message_portion_and_creates_field_with_it() {
   let filter_chain = make_filter_chain(
-    log_matches!(message ~= "^I like"),
+    message_regex_matches("^I like"),
     vec![
       set_field!(captured("fruit") = field_value!(field "_message")),
       regex_match_and_substitute_field!("fruit", "I like ()", "${1}"),
@@ -346,7 +345,7 @@ fn extracts_message_portion_and_creates_field_with_it() {
 #[test]
 fn copies_log_level_and_log_type() {
   let filter_chain = make_filter_chain(
-    log_matches!(message ~= "foo"),
+    message_regex_matches("foo"),
     vec![
       set_field!(captured("new_log_level") = field_value!(field "log_level")),
       set_field!(captured("new_log_type") = field_value!(field "log_type")),

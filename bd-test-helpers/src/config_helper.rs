@@ -21,15 +21,10 @@ use bd_proto::protos::config::v1::config::log_matcher::{
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
 use bd_proto::protos::workflow::workflow::{Workflow, WorkflowsConfiguration};
 #[rustfmt::skip]
-use crate::workflow::macros::{
-  all,
-  any,
-  log_matches,
-  not,
-  rule,
-};
+use crate::workflow::macros::rule;
 use crate::workflow::{
   WorkflowBuilder,
+  log_match,
   make_emit_counter_action,
   make_flush_buffers_action,
   metric_value,
@@ -215,10 +210,10 @@ pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationU
   let b = state("b");
   let a = state("a").declare_transition_with_actions(
     &b,
-    rule!(all!(
-      log_matches!(message == "SceneWillEnterFG"),
-      log_matches!(tag("os") == "iOS"),
-    )),
+    rule!(log_match::and(vec![
+      log_match::message_equals("SceneWillEnterFG"),
+      log_match::field_equals("os", "iOS"),
+    ])),
     &[make_emit_counter_action(
       "app_open",
       metric_value(1),
@@ -231,16 +226,16 @@ pub fn make_benchmarking_configuration_with_workflows_update() -> ConfigurationU
   let d = state("d");
   let c = state("c").declare_transition_with_actions(
     &d,
-    rule!(any!(
-      all!(
-        log_matches!(message == "SceneDidEnterBG"),
-        log_matches!(tag("os") == "iOS"),
-      ),
-      all!(
-        log_matches!(message == "AppFinishedLaunching"),
-        log_matches!(tag("os") == "iOS"),
-      ),
-    )),
+    rule!(log_match::or(vec![
+      log_match::and(vec![
+        log_match::message_equals("SceneDidEnterBG"),
+        log_match::field_equals("os", "iOS"),
+      ]),
+      log_match::and(vec![
+        log_match::message_equals("AppFinishedLaunching"),
+        log_match::field_equals("os", "iOS"),
+      ]),
+    ])),
     &[make_emit_counter_action(
       "app_close",
       metric_value(1),
@@ -318,7 +313,7 @@ pub fn make_buffer_matcher_matching_resource_logs() -> BufferLogMatcher {
 
 #[must_use]
 pub fn make_workflow_matcher_matching_everything_except_internal_logs() -> LogMatcher {
-  not!(log_matches!(tag("log_type") == "0"))
+  log_match::not(log_match::field_equals("log_type", "0"))
 }
 
 #[must_use]
@@ -344,10 +339,10 @@ pub fn make_configuration_update_with_workflow_flushing_buffer_on_anything(
   let b = state("b");
   let a = state("a").declare_transition_with_actions(
     &b,
-    rule!(any!(
-      log_matches!(message == "foo"),
-      not!(crate::log_matches!(message == "foo")),
-    )),
+    rule!(log_match::or(vec![
+      log_match::message_equals("foo"),
+      log_match::not(crate::workflow::log_match::message_equals("foo")),
+    ])),
     &[make_flush_buffers_action(
       &[buffer_id],
       None,

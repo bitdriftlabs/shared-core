@@ -40,10 +40,11 @@ use bd_stats_common::labels;
 use bd_test_helpers::events::NoOpListenerTarget;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
+use bd_test_helpers::rule;
 use bd_test_helpers::runtime::ValueKind;
 use bd_test_helpers::session::in_memory_store;
+use bd_test_helpers::workflow::log_match::message_equals;
 use bd_test_helpers::workflow::{WorkflowBuilder, state};
-use bd_test_helpers::{log_matches, rule};
 use bd_time::{SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::test::MakeConfig;
@@ -554,7 +555,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   let config_update1 = setup.make_config_update(WorkflowsConfiguration::default());
   let mut a = state("A");
   let b = state("B");
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
 
   let config_update2 = setup.make_config_update(
     WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![

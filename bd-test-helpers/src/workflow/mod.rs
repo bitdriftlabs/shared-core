@@ -11,6 +11,7 @@ use action_generate_log::{GeneratedField, ValueReference, ValueReferencePair};
 use bd_log_primitives::{LogFields, LogType, StringOrBytes};
 use bd_proto::protos;
 use bd_proto::protos::log_matcher::log_matcher::log_matcher;
+use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Operator;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::Streaming;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::streaming::{
   TerminationCriterion,
@@ -48,12 +49,7 @@ use protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type:
   TagMatch,
 };
 use protos::log_matcher::log_matcher::log_matcher::base_log_matcher::tag_match::Value_match;
-use protos::log_matcher::log_matcher::log_matcher::{
-  BaseLogMatcher,
-  Matcher,
-  MatcherList,
-  base_log_matcher,
-};
+use protos::log_matcher::log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
 use protos::workflow::workflow::workflow::action::action_emit_metric::Value_extractor_type;
 use protos::workflow::workflow::workflow::action::{
   Action_type,
@@ -72,6 +68,8 @@ use protos::workflow::workflow::workflow::{
 };
 use std::collections::BTreeMap;
 use time::Duration;
+
+pub mod log_match;
 
 pub struct WorkflowBuilder {
   id: String,
@@ -228,6 +226,55 @@ pub fn state(id: &str) -> StateBuilder {
   }
 }
 
+// Explicit wrapper functions for creating LogMatcher instances for common matching operations.
+// These functions provide a clean, type-safe API for log filtering.
+
+/// Creates a log field matcher that matches when a field is equal to the provided string value.
+#[must_use]
+fn log_field_matcher(field: &str, value: &str, operator: Operator) -> LogMatcher {
+  LogMatcher {
+    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
+      match_type: Some(TagMatch(base_log_matcher::TagMatch {
+        tag_key: field.to_string(),
+        value_match: Some(Value_match::StringValueMatch(
+          base_log_matcher::StringValueMatch {
+            operator: operator.into(),
+            string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
+            ..Default::default()
+          },
+        )),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+/// Creates a log field matcher that matches when a field is equal to the provided double value.
+#[must_use]
+pub fn log_field_double_matcher(key: &str, value: f64, operator: Operator) -> LogMatcher {
+  use base_log_matcher::DoubleValueMatch;
+  use base_log_matcher::double_value_match::Double_value_match_type;
+  use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher;
+
+  LogMatcher {
+    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
+      match_type: Some(TagMatch(base_log_matcher::TagMatch {
+        tag_key: key.to_string(),
+        value_match: Some(Value_match::DoubleValueMatch(DoubleValueMatch {
+          operator: operator.into(),
+          double_value_match_type: Some(Double_value_match_type::MatchValue(value)),
+          ..Default::default()
+        })),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
 #[allow(clippy::module_inception)]
 pub mod macros {
   /// A macro that takes a matcher and creates a rule to use when
@@ -239,56 +286,6 @@ pub mod macros {
     };
     ($matcher:expr; times $count:expr) => {
       $crate::workflow::make_log_match_rule($matcher, $count)
-    };
-  }
-
-  /// A macro that takes a list of matchers and returns a matcher
-  /// that matches if all of the matchers match.
-  #[macro_export]
-  macro_rules! all {
-    ($($e:expr,)+) => {
-      $crate::workflow::make_and_matcher(vec![$($e,)+])
-    }
-  }
-
-  #[macro_export]
-  /// A macro that takes a list of matchers and returns a matcher
-  /// that matches if any of the matchers match.
-  macro_rules! any {
-    ($($e:expr,)+) => {
-      $crate::workflow::make_or_matcher(vec![$($e,)+])
-    }
-  }
-
-  #[macro_export]
-  /// Return the invert of a given predicate.
-  macro_rules! not {
-    ($e:expr) => {
-      $crate::workflow::make_not_matcher($e)
-    };
-  }
-
-  /// Creates a matcher that pattern matches on the lhs and the
-  /// operator in order to produce a more human readable way
-  /// to express a matcher.
-  #[macro_export]
-  macro_rules! log_matches {
-    (message == $message:expr) => {{
-      use bd_proto::protos::log_matcher::log_matcher;
-      $crate::workflow::make_log_message_matcher(
-        $message,
-        log_matcher::log_matcher::base_log_matcher::Operator::OPERATOR_EQUALS,
-      )
-    }};
-    (message ~ = $message:expr) => {{
-      use bd_proto::protos::log_matcher::log_matcher;
-      $crate::workflow::make_log_message_matcher(
-        $message,
-        log_matcher::log_matcher::base_log_matcher::Operator::OPERATOR_REGEX,
-      )
-    }};
-    (tag($name:expr) == $value:expr) => {
-      $crate::workflow::make_log_tag_matcher($name, $value)
     };
   }
 
@@ -317,7 +314,7 @@ pub mod macros {
   }
 
   #[allow(clippy::module_name_repetitions)]
-  pub use {all, any, log_matches, not, rule, sankey_value};
+  pub use {rule, sankey_value};
 }
 
 #[must_use]
@@ -560,36 +557,6 @@ fn make_emit_metric_action(
     value_extractor_type: Some(value),
     ..Default::default()
   })
-}
-
-#[must_use]
-pub fn make_and_matcher(matchers: Vec<LogMatcher>) -> LogMatcher {
-  LogMatcher {
-    matcher: Some(Matcher::AndMatcher(MatcherList {
-      log_matchers: matchers,
-      ..Default::default()
-    })),
-    ..Default::default()
-  }
-}
-
-#[must_use]
-pub fn make_or_matcher(matchers: Vec<LogMatcher>) -> LogMatcher {
-  LogMatcher {
-    matcher: Some(Matcher::OrMatcher(MatcherList {
-      log_matchers: matchers,
-      ..Default::default()
-    })),
-    ..Default::default()
-  }
-}
-
-#[must_use]
-pub fn make_not_matcher(matcher: LogMatcher) -> LogMatcher {
-  LogMatcher {
-    matcher: Some(Matcher::NotMatcher(Box::new(matcher))),
-    ..Default::default()
-  }
 }
 
 pub fn make_log_match_rule(matcher: LogMatcher, count: u32) -> Rule {

@@ -33,13 +33,15 @@ use bd_runtime::runtime::ConfigLoader;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{NameType, labels};
 use bd_test_helpers::sankey_value;
-use bd_test_helpers::workflow::macros::{any, log_matches, rule};
+use bd_test_helpers::workflow::log_match::{field_equals, message_equals};
+use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   TestFieldRef,
   TestFieldType,
   WorkflowBuilder,
   extract_metric_tag,
   extract_metric_value,
+  log_match,
   make_emit_counter_action,
   make_emit_sankey_action,
   make_flush_buffers_action,
@@ -491,7 +493,7 @@ async fn debug_mode() {
   let b = state("B")
     .declare_transition_with_actions(
       &c,
-      rule!(log_matches!(message == "bar")),
+      rule!(message_equals("bar")),
       &[make_emit_counter_action(
         "bar_metric",
         metric_value(123),
@@ -500,7 +502,7 @@ async fn debug_mode() {
     )
     .declare_transition_with_actions(
       &d,
-      rule!(log_matches!(message == "baz")),
+      rule!(message_equals("baz")),
       &[make_emit_counter_action(
         "baz_metric",
         metric_value(123),
@@ -510,7 +512,7 @@ async fn debug_mode() {
   let a = state("A")
     .declare_transition_with_actions(
       &b,
-      rule!(log_matches!(message == "foo")),
+      rule!(message_equals("foo")),
       &[make_emit_counter_action(
         "foo_metric",
         metric_value(123),
@@ -876,7 +878,7 @@ async fn debug_mode() {
 #[tokio::test]
 async fn engine_initialization_and_update() {
   let b = state("B");
-  let a = state("A").declare_transition(&b, rule!(log_matches!(message == "foo")));
+  let a = state("A").declare_transition(&b, rule!(message_equals("foo")));
 
   let workflows = vec![
     WorkflowBuilder::new("1", &[&a, &b]).make_config(),
@@ -927,7 +929,7 @@ async fn engine_update_after_sdk_update() {
   // that it doesn't recognize.
   let a = state("A").declare_transition_with_actions(
     &b,
-    rule!(log_matches!(message == "foo")),
+    rule!(message_equals("foo")),
     &[make_flush_buffers_action(
       &["trigger_buffer_id"],
       None,
@@ -936,7 +938,7 @@ async fn engine_update_after_sdk_update() {
   );
 
   let d = state("D");
-  let c = state("C").declare_transition(&d, rule!(log_matches!(message == "foo")));
+  let c = state("C").declare_transition(&d, rule!(message_equals("foo")));
 
   let cached_config_update = WorkflowsEngineConfig::new(
     WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
@@ -962,7 +964,7 @@ async fn engine_update_after_sdk_update() {
   let b = state("B");
   let a = state("A").declare_transition_with_actions(
     &b,
-    rule!(log_matches!(message == "foo")),
+    rule!(message_equals("foo")),
     &[make_flush_buffers_action(
       &["trigger_buffer_id"],
       Some((vec!["continuous_buffer_id"], 10)),
@@ -1007,7 +1009,7 @@ async fn persist_initial_state_timeout() {
   let c = state("C");
 
   a = a
-    .declare_transition(&b, rule!(log_matches!(message == "foo")))
+    .declare_transition(&b, rule!(message_equals("foo")))
     .with_timeout(
       &c,
       1.seconds(),
@@ -1061,11 +1063,11 @@ async fn persistence_succeeds() {
   let mut d = state("D");
   let e = state("E");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
-  b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
-  a = a.declare_transition(&d, rule!(log_matches!(message == "foo")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
+  b = b.declare_transition(&c, rule!(message_equals("bar")));
+  a = a.declare_transition(&d, rule!(message_equals("foo")));
 
-  d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
+  d = d.declare_transition(&e, rule!(message_equals("zar")));
 
   let workflows = vec![
     WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config(),
@@ -1129,8 +1131,8 @@ async fn persistence_skipped_if_no_workflow_progress_is_made() {
   let mut b = state("B");
   let c = state("C");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
-  b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
+  b = b.declare_transition(&c, rule!(message_equals("bar")));
 
   let workflows = vec![WorkflowBuilder::new("1", &[&a, &b, &c]).make_config()];
 
@@ -1172,7 +1174,7 @@ async fn persistence_skipped_if_no_workflow_progress_is_made() {
 #[tokio::test]
 async fn persistence_skipped_if_workflow_stays_in_an_initial_state() {
   let b = state("B");
-  let a = state("A").declare_transition(&b, rule!(log_matches!(message == "foo")));
+  let a = state("A").declare_transition(&b, rule!(message_equals("foo")));
 
   let workflows = vec![WorkflowBuilder::new("1", &[&a, &b]).make_config()];
 
@@ -1200,8 +1202,8 @@ async fn persist_workflows_with_at_least_one_non_initial_state_run_only() {
   let mut c = state("C");
   let d = state("D");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo"); times 10));
-  c = c.declare_transition(&d, rule!(log_matches!(message == "bar")));
+  a = a.declare_transition(&b, rule!(message_equals("foo"); times 10));
+  c = c.declare_transition(&d, rule!(message_equals("bar")));
 
   let workflows = vec![
     WorkflowBuilder::new("1", &[&a, &b]).make_config(),
@@ -1240,8 +1242,8 @@ async fn needs_persistence_if_workflow_moves_to_an_initial_state() {
   let mut b = state("B");
   let c = state("C");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
-  b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
+  b = b.declare_transition(&c, rule!(message_equals("bar")));
 
   let workflows = vec![WorkflowBuilder::new("1", &[&a, &b, &c]).make_config()];
 
@@ -1280,14 +1282,14 @@ async fn persistence_is_respected_through_consecutive_workflows() {
   let mut b = state("B");
   let c = state("C");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
-  b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
+  b = b.declare_transition(&c, rule!(message_equals("bar")));
 
   // Second workflow
   let mut x = state("X");
   let y = state("Y");
 
-  x = x.declare_transition(&y, rule!(log_matches!(message == "zoo")));
+  x = x.declare_transition(&y, rule!(message_equals("zoo")));
 
   let workflows = vec![
     WorkflowBuilder::new("1", &[&a, &b, &c]).make_config(),
@@ -1325,8 +1327,8 @@ async fn persistence_performed_if_match_is_found_without_advancing() {
   let mut b = state("B");
   let c = state("C");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo"); times 2));
-  b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
+  a = a.declare_transition(&b, rule!(message_equals("foo"); times 2));
+  b = b.declare_transition(&c, rule!(message_equals("bar")));
 
   let workflows = vec![WorkflowBuilder::new("1", &[&a, &b, &c]).make_config()];
 
@@ -1365,10 +1367,10 @@ async fn persistence_to_disk_is_rate_limited() {
   let mut d = state("D");
   let e = state("E");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
-  b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
-  a = a.declare_transition(&d, rule!(log_matches!(message == "foo")));
-  d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
+  b = b.declare_transition(&c, rule!(message_equals("bar")));
+  a = a.declare_transition(&d, rule!(message_equals("foo")));
+  d = d.declare_transition(&e, rule!(message_equals("zar")));
 
   let workflows = vec![WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config()];
 
@@ -1428,8 +1430,8 @@ async fn runs_in_initial_state_are_not_persisted() {
   let mut b = state("B");
   let c = state("C");
 
-  a = a.declare_transition(&c, rule!(log_matches!(message == "foo"); times 10));
-  b = b.declare_transition(&c, rule!(log_matches!(message == "zar")));
+  a = a.declare_transition(&c, rule!(message_equals("foo"); times 10));
+  b = b.declare_transition(&c, rule!(message_equals("zar")));
 
   let workflows = vec![
     WorkflowBuilder::new("1", &[&a, &c]).make_config(),
@@ -1494,10 +1496,10 @@ async fn ignore_persisted_state_if_corrupted() {
   let mut d = state("D");
   let e = state("E");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
-  b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
-  a = a.declare_transition(&d, rule!(log_matches!(message == "foo")));
-  d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
+  b = b.declare_transition(&c, rule!(message_equals("bar")));
+  a = a.declare_transition(&d, rule!(message_equals("foo")));
+  d = d.declare_transition(&e, rule!(message_equals("zar")));
 
   let workflows = vec![WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config()];
 
@@ -1575,10 +1577,10 @@ async fn ignore_persisted_state_if_invalid_dir() {
   let reporter = TestReporter {};
   UnexpectedErrorHandler::set_reporter(std::sync::Arc::new(reporter));
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
-  b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
-  a = a.declare_transition(&d, rule!(log_matches!(message == "foo")));
-  d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
+  b = b.declare_transition(&c, rule!(message_equals("bar")));
+  a = a.declare_transition(&d, rule!(message_equals("foo")));
+  d = d.declare_transition(&e, rule!(message_equals("zar")));
 
   let workflows = vec![WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config()];
 
@@ -1675,7 +1677,7 @@ async fn engine_processing_log() {
 
   a = a.declare_transition_with_actions(
     &b,
-    rule!(log_matches!(message == "foo")),
+    rule!(message_equals("foo")),
     &[make_flush_buffers_action(
       &["foo_buffer_id"],
       None,
@@ -1684,7 +1686,7 @@ async fn engine_processing_log() {
   );
   c = c.declare_transition_with_actions(
     &d,
-    rule!(log_matches!(message == "foo")),
+    rule!(message_equals("foo")),
     &[make_emit_counter_action(
       "foo_metric",
       metric_value(123),
@@ -1758,8 +1760,8 @@ async fn exclusive_workflow_duration_limit() {
   let mut b = state("B");
   let c = state("C");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
-  b = b.declare_transition(&c, rule!(log_matches!(message == "zar")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
+  b = b.declare_transition(&c, rule!(message_equals("zar")));
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c])
     .with_log_limit(100)
@@ -1805,7 +1807,7 @@ async fn log_without_destination() {
 
   a = a.declare_transition_with_actions(
     &b,
-    rule!(log_matches!(message == "foo")),
+    rule!(message_equals("foo")),
     &[make_flush_buffers_action(
       &["trigger_buffer_id"],
       Some((vec!["continuous_buffer_id"], 100_000)),
@@ -1858,7 +1860,7 @@ async fn logs_streaming() {
 
   a = a.declare_transition_with_actions(
     &b,
-    rule!(log_matches!(message == "immediate_drop")),
+    rule!(message_equals("immediate_drop")),
     &[make_flush_buffers_action(
       &["trigger_buffer_id"],
       None,
@@ -1867,7 +1869,7 @@ async fn logs_streaming() {
   );
   b = b.declare_transition_with_actions(
     &c,
-    rule!(log_matches!(message == "immediate_upload_no_streaming")),
+    rule!(message_equals("immediate_upload_no_streaming")),
     &[make_flush_buffers_action(
       &["trigger_buffer_id"],
       None,
@@ -1876,7 +1878,7 @@ async fn logs_streaming() {
   );
   c = c.declare_transition_with_actions(
     &d,
-    rule!(log_matches!(message == "immediate_upload_streaming")),
+    rule!(message_equals("immediate_upload_streaming")),
     &[make_flush_buffers_action(
       &["trigger_buffer_id"],
       Some((vec!["continuous_buffer_id_2"], 10)),
@@ -1885,7 +1887,7 @@ async fn logs_streaming() {
   );
   d = d.declare_transition_with_actions(
     &e,
-    rule!(log_matches!(message == "relaunch_upload_no_streaming")),
+    rule!(message_equals("relaunch_upload_no_streaming")),
     &[make_flush_buffers_action(
       &["trigger_buffer_id"],
       None,
@@ -1894,7 +1896,7 @@ async fn logs_streaming() {
   );
   e = e.declare_transition_with_actions(
     &f,
-    rule!(log_matches!(message == "relaunch_upload_no_streaming")),
+    rule!(message_equals("relaunch_upload_no_streaming")),
     &[make_flush_buffers_action(
       &["trigger_buffer_id"],
       None,
@@ -1903,7 +1905,7 @@ async fn logs_streaming() {
   );
   f = f.declare_transition_with_actions(
     &g,
-    rule!(log_matches!(message == "relaunch_upload_streaming")),
+    rule!(message_equals("relaunch_upload_streaming")),
     &[make_flush_buffers_action(
       &["trigger_buffer_id"],
       Some((vec![], 10)),
@@ -1912,7 +1914,7 @@ async fn logs_streaming() {
   );
   g = g.declare_transition_with_actions(
     &h,
-    rule!(log_matches!(message == "relaunch_upload_streaming_2")),
+    rule!(message_equals("relaunch_upload_streaming_2")),
     &[make_flush_buffers_action(
       &["trigger_buffer_id"],
       Some((vec![], 10)),
@@ -2281,14 +2283,14 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
 
   a = a.declare_transition_with_actions(
     &b,
-    rule!(log_matches!(message == "foo")),
+    rule!(message_equals("foo")),
     &[make_flush_buffers_action(
       &["trigger_buffer_id"],
       Some((vec!["continuous_buffer_id"], 10)),
       "eventually_upload",
     )],
   );
-  b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
+  b = b.declare_transition(&c, rule!(message_equals("bar")));
 
   let setup = Setup::new();
 
@@ -2385,14 +2387,14 @@ async fn engine_continues_to_stream_upload_not_complete() {
 
   a = a.declare_transition_with_actions(
     &b,
-    rule!(log_matches!(message == "foo")),
+    rule!(message_equals("foo")),
     &[make_flush_buffers_action(
       &["trigger_buffer_id"],
       Some((vec!["continuous_buffer_id"], 10)),
       "eventually_upload",
     )],
   );
-  b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
+  b = b.declare_transition(&c, rule!(message_equals("bar")));
 
   let setup = Setup::new();
 
@@ -2487,18 +2489,18 @@ async fn creating_new_runs_after_first_log_processing() {
   a = a.declare_transition(
     &b,
     rule!(
-      any!(
-        log_matches!(message == "foo"),
-        log_matches!(tag("key") == "value"),
-      ); times 100),
+      log_match::or(vec![
+        message_equals("foo"),
+        field_equals("key", "value"),
+      ]); times 100),
   );
-  c = c.declare_transition(&d, rule!(log_matches!(message == "bar")));
+  c = c.declare_transition(&d, rule!(message_equals("bar")));
   d = d.declare_transition(
     &e,
-    rule!(any!(
-      log_matches!(message == "zar"),
-      log_matches!(tag("key") == "value"),
-    )),
+    rule!(log_match::or(vec![
+      message_equals("zar"),
+      field_equals("key", "value"),
+    ])),
   );
 
   let setup = Setup::new();
@@ -2551,8 +2553,8 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   let mut b = state("B");
   let c = state("C");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo"); times 10));
-  b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
+  a = a.declare_transition(&b, rule!(message_equals("foo"); times 10));
+  b = b.declare_transition(&c, rule!(message_equals("bar")));
 
   let engine_config = WorkflowsEngineConfig::new_with_workflow_configurations(vec![
     WorkflowBuilder::new("1", &[&a, &b, &c]).make_config(),
@@ -2624,15 +2626,15 @@ async fn test_traversals_count_tracking() {
   let mut e = state("E");
   let f = state("F");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
 
   // First branch.
-  b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
-  c = c.declare_transition(&d, rule!(log_matches!(message == "car")));
+  b = b.declare_transition(&c, rule!(message_equals("bar")));
+  c = c.declare_transition(&d, rule!(message_equals("car")));
 
   // Second branch.
-  b = b.declare_transition(&e, rule!(log_matches!(message == "dar")));
-  e = e.declare_transition(&f, rule!(log_matches!(message == "far")));
+  b = b.declare_transition(&e, rule!(message_equals("dar")));
+  e = e.declare_transition(&f, rule!(message_equals("far")));
 
   let workflow = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e, &f]).make_config();
   let setup = Setup::new();
@@ -2727,9 +2729,9 @@ async fn test_exclusive_workflow_state_reset() {
   let mut c = state("C");
   let d = state("D");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
-  b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
-  c = c.declare_transition(&d, rule!(log_matches!(message == "dar")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
+  b = b.declare_transition(&c, rule!(message_equals("bar")));
+  c = c.declare_transition(&d, rule!(message_equals("dar")));
 
   let workflow = WorkflowBuilder::new("1", &[&a, &b, &c, &d]).make_config();
   let setup = Setup::new();
@@ -2773,10 +2775,10 @@ async fn test_exclusive_workflow_potential_fork() {
   let mut d = state("D");
   let e = state("E");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
-  b = b.declare_transition(&c, rule!(log_matches!(message == "bar")));
-  c = c.declare_transition(&d, rule!(log_matches!(message == "foo")));
-  d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
+  b = b.declare_transition(&c, rule!(message_equals("bar")));
+  c = c.declare_transition(&d, rule!(message_equals("foo")));
+  d = d.declare_transition(&e, rule!(message_equals("zar")));
 
   let workflow = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config();
   let setup = Setup::new();
@@ -2813,22 +2815,22 @@ fn sankey_workflow() -> crate::config::Config {
 
   a = a.declare_transition_with_extractions(
     &b,
-    rule!(log_matches!(message == "foo")),
+    rule!(message_equals("foo")),
     &[sankey_value!(fixed "sankey" => "first_extracted", counts_toward_limit false)],
   );
   b = b.declare_transition_with_extractions(
     &c,
-    rule!(log_matches!(message == "bar")),
+    rule!(message_equals("bar")),
     &[sankey_value!(extract_field "sankey" => "field_to_extract_key", counts_toward_limit false)],
   );
   b = b.declare_transition_with_extractions(
     &b_clone,
-    rule!(log_matches!(message == "bar_loop")),
+    rule!(message_equals("bar_loop")),
     &[sankey_value!(fixed "sankey" => "loop", counts_toward_limit true)],
   );
   c = c.declare_transition_with_actions(
     &d,
-    rule!(log_matches!(message == "dar")),
+    rule!(message_equals("dar")),
     &[make_emit_sankey_action(
       "sankey",
       2,
@@ -2857,19 +2859,19 @@ async fn generate_log_multiple() {
 
   a = a.declare_transition_with_extractions(
     &b,
-    rule!(log_matches!(message == "foo")),
+    rule!(message_equals("foo")),
     &[make_save_timestamp_extraction("timestamp1")],
   );
 
   b = b.declare_transition_with_extractions(
     &c,
-    rule!(log_matches!(message == "bar")),
+    rule!(message_equals("bar")),
     &[make_save_timestamp_extraction("timestamp2")],
   );
 
   c = c.declare_transition_with_all(
     &d,
-    rule!(log_matches!(message == "baz")),
+    rule!(message_equals("baz")),
     &[make_generate_log_action_proto(
       "message1",
       &[(
@@ -2887,7 +2889,7 @@ async fn generate_log_multiple() {
 
   c = c.declare_transition_with_all(
     &e,
-    rule!(log_matches!(message == "baz")),
+    rule!(message_equals("baz")),
     &[make_generate_log_action_proto(
       "message2",
       &[(
@@ -2905,7 +2907,7 @@ async fn generate_log_multiple() {
 
   d = d.declare_transition_with_actions(
     &f,
-    rule!(log_matches!(tag("_generate_log_id") == "id1")),
+    rule!(field_equals("_generate_log_id", "id1")),
     &[make_emit_counter_action(
       "foo_metric",
       extract_metric_value("duration"),
@@ -2915,7 +2917,7 @@ async fn generate_log_multiple() {
 
   e = e.declare_transition_with_actions(
     &g,
-    rule!(log_matches!(tag("_generate_log_id") == "id2")),
+    rule!(field_equals("_generate_log_id", "id2")),
     &[make_emit_counter_action(
       "bar_metric",
       extract_metric_value("duration"),
@@ -2992,7 +2994,7 @@ async fn generate_log_action() {
 
   a = a.declare_transition_with_extractions(
     &b,
-    rule!(log_matches!(message == "foo")),
+    rule!(message_equals("foo")),
     &[
       make_save_field_extraction("id1", "field1"),
       make_save_timestamp_extraction("timestamp1"),
@@ -3001,7 +3003,7 @@ async fn generate_log_action() {
 
   b = b.declare_transition_with_all(
     &c,
-    rule!(log_matches!(message == "bar")),
+    rule!(message_equals("bar")),
     &[make_generate_log_action_proto(
       "message",
       &[
@@ -3300,7 +3302,7 @@ async fn take_screenshot_action() {
   let b = state("B");
   let a = state("A").declare_transition_with_actions(
     &b,
-    rule!(log_matches!(message == "foo")),
+    rule!(message_equals("foo")),
     &[make_take_screenshot_action("screenshot_action_id")],
   );
 

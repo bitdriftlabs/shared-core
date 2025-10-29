@@ -20,9 +20,11 @@ use bd_log_primitives::{FieldsRef, LogFields, LogMessage, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, labels};
-use bd_test_helpers::workflow::macros::{all, any, log_matches, rule};
+use bd_test_helpers::workflow::log_match::{field_equals, message_equals};
+use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   WorkflowBuilder,
+  log_match,
   make_emit_counter_action,
   make_flush_buffers_action,
   metric_value,
@@ -205,7 +207,7 @@ fn unknown_state_reference_workflow() {
 
   a = a.declare_transition_with_actions(
     &b,
-    rule!(log_matches!(message == "foo")),
+    rule!(message_equals("foo")),
     &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
   );
 
@@ -227,7 +229,7 @@ fn timeout_no_parallel_match() {
 
   a = a.declare_transition_with_actions(
     &b,
-    rule!(log_matches!(message == "foo")),
+    rule!(message_equals("foo")),
     &[make_emit_counter_action(
       "foo_metric",
       metric_value(1),
@@ -361,11 +363,11 @@ fn timeout_not_start() {
   let c = state("C");
   let d = state("D");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
   b = b
     .declare_transition_with_actions(
       &c,
-      rule!(log_matches!(message == "bar")),
+      rule!(message_equals("bar")),
       &[make_flush_buffers_action(&["bar_buffer_id"], None, "bar")],
     )
     .with_timeout(
@@ -456,7 +458,7 @@ fn initial_state_run_does_not_have_timeout() {
   let d = state("D");
 
   a = a
-    .declare_transition(&b, rule!(log_matches!(message == "foo")))
+    .declare_transition(&b, rule!(message_equals("foo")))
     .with_timeout(
       &c,
       1.seconds(),
@@ -468,7 +470,7 @@ fn initial_state_run_does_not_have_timeout() {
     );
   b = b.declare_transition_with_actions(
     &d,
-    rule!(log_matches!(message == "bar")),
+    rule!(message_equals("bar")),
     &[make_emit_counter_action(
       "bar_metric",
       metric_value(1),
@@ -506,7 +508,7 @@ fn timeout_from_start() {
   a = a
     .declare_transition_with_actions(
       &b,
-      rule!(log_matches!(message == "foo")),
+      rule!(message_equals("foo")),
       &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
     )
     .with_timeout(
@@ -571,15 +573,15 @@ fn multiple_start_nodes_initial_fork() {
   let d = state("D");
   let e = state("E");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
 
-  b = b.declare_transition(&d, rule!(log_matches!(message == "D")));
+  b = b.declare_transition(&d, rule!(message_equals("D")));
 
-  a = a.declare_transition(&c, rule!(log_matches!(message == "foo")));
+  a = a.declare_transition(&c, rule!(message_equals("foo")));
 
   c = c.declare_transition_with_actions(
     &e,
-    rule!(log_matches!(message == "E")),
+    rule!(message_equals("E")),
     &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
   );
 
@@ -671,15 +673,15 @@ fn multiple_start_nodes_initial_branching() {
   let d = state("D");
   let e = state("E");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
 
-  b = b.declare_transition(&d, rule!(log_matches!(message == "D")));
+  b = b.declare_transition(&d, rule!(message_equals("D")));
 
-  a = a.declare_transition(&c, rule!(log_matches!(message == "bar")));
+  a = a.declare_transition(&c, rule!(message_equals("bar")));
 
   c = c.declare_transition_with_actions(
     &e,
-    rule!(log_matches!(message == "E")),
+    rule!(message_equals("E")),
     &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
   );
 
@@ -762,10 +764,10 @@ fn basic_exclusive_workflow() {
 
   a = a.declare_transition_with_actions(
     &b,
-    rule!(all!(
-      log_matches!(message == "foo"),
-      log_matches!(tag("key") == "value"),
-    )),
+    rule!(log_match::and(vec![
+      message_equals("foo"),
+      field_equals("key", "value"),
+    ])),
     &[
       make_flush_buffers_action(&["foo_buffer_id"], None, "foo"),
       make_emit_counter_action("foo_metric", metric_value(123), vec![]),
@@ -773,7 +775,7 @@ fn basic_exclusive_workflow() {
   );
   b = b.declare_transition_with_actions(
     &c,
-    rule!(log_matches!(message == "bar")),
+    rule!(message_equals("bar")),
     &[make_flush_buffers_action(&["bar_buffer_id"], None, "bar")],
   );
 
@@ -862,10 +864,10 @@ fn exclusive_workflow_matched_logs_count_limit() {
   let mut d = state("D");
   let e = state("E");
 
-  a = a.declare_transition(&b, rule!(log_matches!(message == "foo")));
-  b = b.declare_transition(&c, rule!(log_matches!(message == "bar"); times 3));
-  a = a.declare_transition(&d, rule!(log_matches!(message == "foo")));
-  d = d.declare_transition(&e, rule!(log_matches!(message == "zar")));
+  a = a.declare_transition(&b, rule!(message_equals("foo")));
+  b = b.declare_transition(&c, rule!(message_equals("bar"); times 3));
+  a = a.declare_transition(&d, rule!(message_equals("foo")));
+  d = d.declare_transition(&e, rule!(message_equals("zar")));
 
   let config: Config = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e])
     .with_log_limit(3)
@@ -958,12 +960,12 @@ fn exclusive_workflow_log_rule_count() {
 
   a = a.declare_transition_with_actions(
     &b,
-    rule!(log_matches!(message == "foo"); times 2),
+    rule!(message_equals("foo"); times 2),
     &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
   );
   b = b.declare_transition_with_actions(
     &c,
-    rule!(log_matches!(message == "bar")),
+    rule!(message_equals("bar")),
     &[make_flush_buffers_action(&["bar_buffer_id"], None, "bar")],
   );
 
@@ -1059,12 +1061,12 @@ fn debug_with_fork() {
   let d = state("D");
 
   a = a
-    .declare_transition(&b, rule!(log_matches!(message == "foo")))
-    .declare_transition(&c, rule!(log_matches!(message == "foo")));
+    .declare_transition(&b, rule!(message_equals("foo")))
+    .declare_transition(&c, rule!(message_equals("foo")));
   let cloned_b = b.clone();
   b = b.declare_transition_with_actions(
     &cloned_b,
-    rule!(log_matches!(message == "bar")),
+    rule!(message_equals("bar")),
     &[make_emit_counter_action(
       "bar_metric",
       metric_value(1),
@@ -1073,7 +1075,7 @@ fn debug_with_fork() {
   );
   c = c.declare_transition_with_actions(
     &d,
-    rule!(log_matches!(message == "baz")),
+    rule!(message_equals("baz")),
     &[make_emit_counter_action(
       "baz_metric",
       metric_value(1),
@@ -1200,25 +1202,25 @@ fn branching_exclusive_workflow() {
 
   a = a.declare_transition_with_actions(
     &b,
-    rule!(any!(
-      log_matches!(message == "foo"),
-      log_matches!(tag("key") == "value"),
-    )),
+    rule!(log_match::or(vec![
+      message_equals("foo"),
+      field_equals("key", "value"),
+    ])),
     &[make_flush_buffers_action(&["foo_buffer_id"], None, "foo")],
   );
   b = b.declare_transition_with_actions(
     &d,
-    rule!(log_matches!(message == "zoo")),
+    rule!(message_equals("zoo")),
     &[make_flush_buffers_action(&["zoo_buffer_id"], None, "zoo")],
   );
   a = a.declare_transition_with_actions(
     &c,
-    rule!(log_matches!(message == "bar")),
+    rule!(message_equals("bar")),
     &[make_flush_buffers_action(&["bar_buffer_id"], None, "bar")],
   );
   c = c.declare_transition_with_actions(
     &e,
-    rule!(log_matches!(message == "barbar")),
+    rule!(message_equals("barbar")),
     &[make_flush_buffers_action(
       &["bar_buffer_id"],
       None,

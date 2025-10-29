@@ -28,7 +28,8 @@ use bd_proto::protos::workflow::workflow::workflow::{Execution, State};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
-use bd_test_helpers::workflow::macros::{log_matches, rule};
+use bd_test_helpers::workflow::log_match::{message_equals, message_regex_matches};
+use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   extract_metric_tag,
   extract_metric_value,
@@ -178,7 +179,7 @@ impl AnnotatedWorkflowsEngine {
     let b = state("B");
     a = a.declare_transition_with_actions(
       &b,
-      rule!(log_matches!(message == "HTTPRequest")),
+      rule!(message_equals("HTTPRequest")),
       &[make_emit_counter_action(
         &Self::generate_action_id(),
         metric_value(1),
@@ -191,7 +192,7 @@ impl AnnotatedWorkflowsEngine {
     let b = state("B");
     a = a.declare_transition_with_actions(
       &b,
-      rule!(log_matches!(message == "HTTPResponse")),
+      rule!(message_equals("HTTPResponse")),
       &[make_emit_counter_action(
         &Self::generate_action_id(),
         metric_value(1),
@@ -207,7 +208,7 @@ impl AnnotatedWorkflowsEngine {
     let b = state("B");
     a = a.declare_transition_with_actions(
       &b,
-      rule!(log_matches!(message == "HTTPResponse")),
+      rule!(message_equals("HTTPResponse")),
       &[make_emit_counter_action(
         &Self::generate_action_id(),
         metric_value(1),
@@ -220,7 +221,7 @@ impl AnnotatedWorkflowsEngine {
     let b = state("B");
     a = a.declare_transition_with_actions(
       &b,
-      rule!(log_matches!(message == "HTTPResponse")),
+      rule!(message_equals("HTTPResponse")),
       &[make_emit_counter_action(
         &Self::generate_action_id(),
         metric_value(1),
@@ -236,7 +237,7 @@ impl AnnotatedWorkflowsEngine {
     let b = state("B");
     a = a.declare_transition_with_actions(
       &b,
-      rule!(log_matches!(message == "HTTPResponse")),
+      rule!(message_equals("HTTPResponse")),
       &[make_emit_counter_action(
         &Self::generate_action_id(),
         extract_metric_value("body_bytes_sent_count"),
@@ -252,7 +253,7 @@ impl AnnotatedWorkflowsEngine {
     let b = state("B");
     a = a.declare_transition_with_actions(
       &b,
-      rule!(log_matches!(message == "HTTPResponse")),
+      rule!(message_equals("HTTPResponse")),
       &[make_emit_counter_action(
         &Self::generate_action_id(),
         extract_metric_value("body_bytes_sent_count"),
@@ -265,7 +266,7 @@ impl AnnotatedWorkflowsEngine {
     let b = state("B");
     a = a.declare_transition_with_actions(
       &b,
-      rule!(log_matches!(message == "HTTPResponse")),
+      rule!(message_equals("HTTPResponse")),
       &[make_emit_counter_action(
         &Self::generate_action_id(),
         extract_metric_value("body_bytes_received_count"),
@@ -278,7 +279,7 @@ impl AnnotatedWorkflowsEngine {
     let b = state("B");
     a = a.declare_transition_with_actions(
       &b,
-      rule!(log_matches!(message == "HTTPResponse")),
+      rule!(message_equals("HTTPResponse")),
       &[make_emit_counter_action(
         &Self::generate_action_id(),
         extract_metric_value("duration_ms"),
@@ -293,7 +294,7 @@ impl AnnotatedWorkflowsEngine {
     let b = state("B");
     a = a.declare_transition_with_actions(
       &b,
-      rule!(log_matches!(message == "SceneDidActivate")),
+      rule!(message_equals("SceneDidActivate")),
       &[make_emit_counter_action(
         &Self::generate_action_id(),
         metric_value(1),
@@ -306,7 +307,7 @@ impl AnnotatedWorkflowsEngine {
     let b = state("B");
     a = a.declare_transition_with_actions(
       &b,
-      rule!(log_matches!(message ~= ".*")),
+      rule!(message_regex_matches(".*")),
       &[make_emit_counter_action(
         &Self::generate_action_id(),
         metric_value(1),
