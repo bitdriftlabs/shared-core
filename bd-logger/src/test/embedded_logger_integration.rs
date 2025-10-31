@@ -182,7 +182,7 @@ async fn configuration_update_with_log_uploads() {
   );
 
   assert_matches!(setup.server.next_log_upload().await, Some(log_upload) => {
-      assert_eq!(log_upload.logs.len(), 1);
+      assert_eq!(log_upload.legacy_flatbuffer_logs.len(), 1);
   });
 
   setup.shutdown.shutdown().await;
