@@ -50,10 +50,10 @@ pub mod v_1 {
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 pub const ENUM_MIN_REPORT_TYPE: i8 = 0;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MAX_REPORT_TYPE: i8 = 7;
+pub const ENUM_MAX_REPORT_TYPE: i8 = 8;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 #[allow(non_camel_case_types)]
-pub const ENUM_VALUES_REPORT_TYPE: [ReportType; 8] = [
+pub const ENUM_VALUES_REPORT_TYPE: [ReportType; 9] = [
   ReportType::Unknown,
   ReportType::AppNotResponding,
   ReportType::HandledError,
@@ -61,7 +61,8 @@ pub const ENUM_VALUES_REPORT_TYPE: [ReportType; 8] = [
   ReportType::MemoryTermination,
   ReportType::NativeCrash,
   ReportType::StrictModeViolation,
-  ReportType::JavaScriptError,
+  ReportType::JavaScriptNonFatalError,
+  ReportType::JavaScriptFatalError,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -76,10 +77,11 @@ impl ReportType {
   pub const MemoryTermination: Self = Self(4);
   pub const NativeCrash: Self = Self(5);
   pub const StrictModeViolation: Self = Self(6);
-  pub const JavaScriptError: Self = Self(7);
+  pub const JavaScriptNonFatalError: Self = Self(7);
+  pub const JavaScriptFatalError: Self = Self(8);
 
   pub const ENUM_MIN: i8 = 0;
-  pub const ENUM_MAX: i8 = 7;
+  pub const ENUM_MAX: i8 = 8;
   pub const ENUM_VALUES: &'static [Self] = &[
     Self::Unknown,
     Self::AppNotResponding,
@@ -88,7 +90,8 @@ impl ReportType {
     Self::MemoryTermination,
     Self::NativeCrash,
     Self::StrictModeViolation,
-    Self::JavaScriptError,
+    Self::JavaScriptNonFatalError,
+    Self::JavaScriptFatalError,
   ];
   /// Returns the variant's name or "" if unknown.
   pub fn variant_name(self) -> Option<&'static str> {
@@ -100,7 +103,8 @@ impl ReportType {
       Self::MemoryTermination => Some("MemoryTermination"),
       Self::NativeCrash => Some("NativeCrash"),
       Self::StrictModeViolation => Some("StrictModeViolation"),
-      Self::JavaScriptError => Some("JavaScriptError"),
+      Self::JavaScriptNonFatalError => Some("JavaScriptNonFatalError"),
+      Self::JavaScriptFatalError => Some("JavaScriptFatalError"),
       _ => None,
     }
   }
