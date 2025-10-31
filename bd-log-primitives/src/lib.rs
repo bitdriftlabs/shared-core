@@ -19,14 +19,51 @@ pub mod tiny_set;
 
 use crate::size::MemorySized;
 use ahash::AHashMap;
-pub use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use bd_proto::protos::logging::payload::LogType;
+use protobuf::rt::WireType;
+use protobuf::{CodedInputStream, CodedOutputStream};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::sync::{Arc, LazyLock};
+use time::OffsetDateTime;
 
 pub const LOG_FIELD_NAME_TYPE: &str = "log_type";
 pub const LOG_FIELD_NAME_LEVEL: &str = "log_level";
 pub const LOG_FIELD_NAME_MESSAGE: &str = "_message";
+
+// Helpers for doing raw casts where we are sure the value fits and don't want to pay for
+// checks and avoid clippy lints.
+pub trait LossyIntToU32 {
+  fn to_u32(self) -> u32;
+}
+
+#[allow(clippy::cast_possible_truncation)]
+impl LossyIntToU32 for usize {
+  fn to_u32(self) -> u32 {
+    debug_assert!(u32::try_from(self).is_ok());
+    self as u32
+  }
+}
+
+#[allow(clippy::cast_possible_truncation)]
+impl LossyIntToU32 for u64 {
+  fn to_u32(self) -> u32 {
+    debug_assert!(u32::try_from(self).is_ok());
+    self as u32
+  }
+}
+
+pub trait LossyIntToU64 {
+  fn to_u64(self) -> u64;
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+impl LossyIntToU64 for i128 {
+  fn to_u64(self) -> u64 {
+    debug_assert!(u64::try_from(self).is_ok());
+    self as u64
+  }
+}
 
 /// A union type that allows representing either a UTF-8 string or an opaque series of bytes. This
 /// is generic over the underlying String type to support different ownership models.
@@ -215,12 +252,16 @@ pub enum LogFieldKind {
 // Log
 //
 
-/// A copy of an incoming log line.
+// This is a wrapper around an owned log entry that is being processed by the workflow engine.
+// Most of this code is a custom protobuf serialization implementation to avoid the overhead of
+// the normal protobuf generated code which requires extensive copying. Note that the proto
+// implementation calculates size every time it's invoked vs. caching it. In general we expect
+// the size calculation to be fast and in the common case it is only computed once making
+// caching not useful.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Log {
-  // Remember to update the implementation
-  // of the `MemorySized` trait every
-  // time the struct is modified!!!
+  // Remember to update the implementation of the `MemorySized` trait every time the struct is
+  // modified!!!
   pub log_level: LogLevel,
   pub log_type: LogType,
   pub message: StringOrBytes<String, Vec<u8>>,
@@ -228,25 +269,222 @@ pub struct Log {
   pub matching_fields: LogFields,
   pub session_id: String,
   pub occurred_at: time::OffsetDateTime,
-
   pub capture_session: Option<&'static str>,
 }
 
-//
-// LogRef
-//
+impl Log {
+  #[must_use]
+  pub fn field_value<'a>(&'a self, field_key: &str) -> Option<Cow<'a, str>> {
+    FieldsRef::new(&self.fields, &self.matching_fields).field_value(field_key)
+  }
 
-/// A reference to a log message and its associated fields.
-#[derive(Clone, Copy, Debug)]
-pub struct LogRef<'a> {
-  pub log_type: LogType,
-  pub log_level: LogLevel,
-  pub message: &'a LogMessage,
-  pub fields: FieldsRef<'a>,
-  pub session_id: &'a str,
-  pub occurred_at: time::OffsetDateTime,
+  fn size_proto_data(value: &LogFieldValue) -> u64 {
+    let mut my_size = 0;
+    match value {
+      StringOrBytes::String(s) => {
+        my_size += ::protobuf::rt::string_size(1, s);
+      },
+      StringOrBytes::SharedString(s) => {
+        my_size += ::protobuf::rt::string_size(1, s.as_ref());
+      },
+      StringOrBytes::Bytes(b) => {
+        // This encodes the Binary proto message.
+        let inner_len = ::protobuf::rt::bytes_size(2, b);
+        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(inner_len) + inner_len;
+      },
+    }
 
-  pub capture_session: Option<&'a str>,
+    my_size
+  }
+
+  fn serialize_proto_data(
+    field_number: u32,
+    value: &LogFieldValue,
+    os: &mut CodedOutputStream<'_>,
+  ) -> anyhow::Result<()> {
+    os.write_tag(field_number, WireType::LengthDelimited)?;
+    os.write_raw_varint32(Self::size_proto_data(value).to_u32())?;
+    match value {
+      StringOrBytes::String(s) => {
+        os.write_string(1, s)?;
+      },
+      StringOrBytes::SharedString(s) => {
+        os.write_string(1, s.as_ref())?;
+      },
+      StringOrBytes::Bytes(b) => {
+        // This encodes the Binary proto message.
+        let inner_len = ::protobuf::rt::bytes_size(2, b);
+        os.write_tag(2, WireType::LengthDelimited)?;
+        os.write_raw_varint32(inner_len.to_u32())?;
+        os.write_bytes(2, b)?;
+      },
+    }
+
+    Ok(())
+  }
+
+  fn size_proto_field(key: &LogFieldKey, value: &LogFieldValue) -> u64 {
+    let mut my_size = 0;
+    my_size += ::protobuf::rt::string_size(1, key.as_ref());
+    let value_len = Self::size_proto_data(value);
+    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(value_len) + value_len;
+    my_size
+  }
+
+  fn serialize_proto_field(
+    field_number: u32,
+    key: &LogFieldKey,
+    value: &LogFieldValue,
+    os: &mut CodedOutputStream<'_>,
+  ) -> anyhow::Result<()> {
+    os.write_tag(field_number, WireType::LengthDelimited)?;
+    os.write_raw_varint32(Self::size_proto_field(key, value).to_u32())?;
+    os.write_string(1, key.as_ref())?;
+    Self::serialize_proto_data(2, value, os)?;
+    Ok(())
+  }
+
+  #[must_use]
+  pub fn serialize_proto_size_inner(
+    log_level: u32,
+    message: &LogFieldValue,
+    fields: &LogFields,
+    session_id: &str,
+    occurred_at: OffsetDateTime,
+    log_type: LogType,
+    action_ids: &[&str],
+    stream_ids: &[&str],
+  ) -> u64 {
+    let mut my_size = 0;
+
+    my_size += ::protobuf::rt::uint64_size(1, occurred_at.unix_timestamp_nanos().to_u64() / 1000);
+
+    if log_level != 0 {
+      my_size += ::protobuf::rt::uint32_size(2, log_level);
+    }
+
+    let message_len = Self::size_proto_data(message);
+    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(message_len) + message_len;
+
+    for value in fields {
+      let len = Self::size_proto_field(value.0, value.1);
+      my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+    }
+
+    my_size += ::protobuf::rt::string_size(5, session_id);
+
+    for value in action_ids {
+      my_size += ::protobuf::rt::string_size(6, value);
+    }
+
+    if log_type != LogType::NORMAL {
+      my_size += ::protobuf::rt::int32_size(7, log_type as i32);
+    }
+
+    for value in stream_ids {
+      my_size += ::protobuf::rt::string_size(8, value);
+    }
+
+    my_size
+  }
+
+  #[must_use]
+  pub fn serialized_proto_size(&self, action_ids: &[&str], stream_ids: &[&str]) -> u64 {
+    Self::serialize_proto_size_inner(
+      self.log_level,
+      &self.message,
+      &self.fields,
+      &self.session_id,
+      self.occurred_at,
+      self.log_type,
+      action_ids,
+      stream_ids,
+    )
+  }
+
+  pub fn serialize_proto_to_stream_inner(
+    log_level: u32,
+    message: &LogFieldValue,
+    fields: &LogFields,
+    session_id: &str,
+    occurred_at: OffsetDateTime,
+    log_type: LogType,
+    action_ids: &[&str],
+    stream_ids: &[&str],
+    os: &mut CodedOutputStream<'_>,
+  ) -> anyhow::Result<()> {
+    os.write_uint64(1, occurred_at.unix_timestamp_nanos().to_u64() / 1000)?;
+
+    if log_level != 0 {
+      os.write_uint32(2, log_level)?;
+    }
+
+    Self::serialize_proto_data(3, message, os)?;
+
+    for v in fields {
+      Self::serialize_proto_field(4, v.0, v.1, os)?;
+    }
+
+    os.write_string(5, session_id)?;
+
+    for v in action_ids {
+      os.write_string(6, v)?;
+    }
+
+    if log_type != LogType::NORMAL {
+      os.write_enum(7, log_type as i32)?;
+    }
+
+    for v in stream_ids {
+      os.write_string(8, v)?;
+    }
+
+    Ok(())
+  }
+
+  pub fn serialized_proto_to_stream(
+    &self,
+    action_ids: &[&str],
+    stream_ids: &[&str],
+    os: &mut CodedOutputStream<'_>,
+  ) -> anyhow::Result<()> {
+    Self::serialize_proto_to_stream_inner(
+      self.log_level,
+      &self.message,
+      &self.fields,
+      &self.session_id,
+      self.occurred_at,
+      self.log_type,
+      action_ids,
+      stream_ids,
+      os,
+    )
+  }
+
+  pub fn serialized_proto_to_bytes(
+    &self,
+    action_ids: &[&str],
+    stream_ids: &[&str],
+    buffer: &mut [u8],
+  ) -> anyhow::Result<()> {
+    let mut os = CodedOutputStream::bytes(buffer);
+    self.serialized_proto_to_stream(action_ids, stream_ids, &mut os)
+  }
+
+  // Currently this assumes timestamp is encoded first and will fail otherwise.
+  #[must_use]
+  pub fn extract_timestamp(bytes: &[u8]) -> Option<OffsetDateTime> {
+    let mut cis = CodedInputStream::from_bytes(bytes);
+    let raw_tag = cis.read_raw_tag_or_eof().ok()??;
+    // Field number 1, WireType Varint
+    if raw_tag == 8
+      && let Some(ts_micros) = cis.read_uint64().ok()
+    {
+      return OffsetDateTime::from_unix_timestamp_nanos((ts_micros * 1000).into()).ok();
+    }
+
+    None
+  }
 }
 
 //

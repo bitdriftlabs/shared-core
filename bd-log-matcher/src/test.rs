@@ -7,8 +7,9 @@
 
 use crate::matcher::Tree;
 use bd_log_primitives::tiny_set::TinyMap;
-use bd_log_primitives::{FieldsRef, LogMessage, LogType, StringOrBytes, TypedLogLevel};
+use bd_log_primitives::{FieldsRef, LogMessage, StringOrBytes, TypedLogLevel};
 use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
+use bd_proto::protos::logging::payload::LogType;
 use std::collections::HashMap;
 
 /// Test helper that provides a more convenient way to test log matchers.

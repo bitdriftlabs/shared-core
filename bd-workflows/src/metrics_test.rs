@@ -10,7 +10,8 @@ use crate::config::{ActionEmitMetric, TagValue};
 use bd_client_stats::Stats;
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
-use bd_log_primitives::{FieldsRef, LogRef, LogType, log_level};
+use bd_log_primitives::{Log, log_level};
+use bd_proto::protos::logging::payload::LogType;
 use bd_stats_common::{MetricType, NameType, labels};
 use std::collections::BTreeMap;
 
@@ -68,13 +69,14 @@ fn metric_increment_value_extraction() {
       },
     ]
     .into(),
-    &LogRef {
-      message: &"message".into(),
-      session_id: "session_id",
+    &Log {
+      message: "message".into(),
+      session_id: "session_id".to_string(),
       occurred_at: time::OffsetDateTime::now_utc(),
       log_level: log_level::DEBUG,
-      log_type: LogType::Normal,
-      fields: FieldsRef::new(&fields, &matching_only_fields),
+      log_type: LogType::NORMAL,
+      fields,
+      matching_fields: matching_only_fields,
       capture_session: None,
     },
   );
@@ -137,13 +139,14 @@ fn counter_label_extraction() {
       metric_type: MetricType::Counter,
     }]
     .into(),
-    &LogRef {
-      message: &"message".into(),
-      session_id: "session_id",
+    &Log {
+      message: "message".into(),
+      session_id: "session_id".to_string(),
       occurred_at: time::OffsetDateTime::now_utc(),
       log_level: log_level::DEBUG,
-      log_type: LogType::Normal,
-      fields: FieldsRef::new(&fields, &matching_only_fields),
+      log_type: LogType::NORMAL,
+      fields,
+      matching_fields: matching_only_fields,
       capture_session: None,
     },
   );

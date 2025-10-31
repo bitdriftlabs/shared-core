@@ -11,20 +11,20 @@ use assert_matches::assert_matches;
 use bd_api::upload::{Tracked, UploadResponse};
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::{Buffer, BufferEvent, BufferEventWithResponse, RingBuffer, RingBufferStats};
-use bd_client_common::fb::{make_log, root_as_log};
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
-use bd_log_primitives::{LogType, log_level};
+use bd_log_primitives::{Log, log_level};
 use bd_proto::protos::client::api::ApiRequest;
 use bd_proto::protos::client::api::api_request::Request_type;
+use bd_proto::protos::logging::payload::{Log as ProtoLog, LogType};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_time::{OffsetDateTimeExt as _, TimeDurationExt};
 use core::panic;
-use flatbuffers::FlatBufferBuilder;
 use futures_util::poll;
+use protobuf::{CodedOutputStream, Message};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -167,10 +167,7 @@ async fn upload_retries() {
   // upload attempts.
   for _ in 0 .. 11 {
     let log_upload = setup.next_upload().await;
-    assert_eq!(
-      log_upload.payload.log_upload().legacy_flatbuffer_logs.len(),
-      10
-    );
+    assert_eq!(log_upload.payload.log_upload().proto_logs.len(), 10);
     log_upload
       .response_tx
       .send(UploadResponse {
@@ -194,10 +191,7 @@ async fn upload_retries() {
   // We should now receive an upload with the logs from the second batch, as we already gave up on
   // the first one.
   let log_upload = setup.next_upload().await;
-  assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs[0],
-    b"b"
-  );
+  assert_eq!(log_upload.payload.log_upload().proto_logs[0], b"b");
   log_upload
     .response_tx
     .send(UploadResponse {
@@ -277,14 +271,8 @@ async fn continuous_buffer_upload_byte_limit() {
 
   // The first upload should just one log, as the 150 byte log exceeds the 100 limit.
   let log_upload = setup.next_upload().await;
-  assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs.len(),
-    1
-  );
-  assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs[0].len(),
-    150
-  );
+  assert_eq!(log_upload.payload.log_upload().proto_logs.len(), 1);
+  assert_eq!(log_upload.payload.log_upload().proto_logs[0].len(), 150);
 
   log_upload
     .response_tx
@@ -296,14 +284,8 @@ async fn continuous_buffer_upload_byte_limit() {
 
   // We should then receive a second upload with the second log line.
   let log_upload = setup.next_upload().await;
-  assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs.len(),
-    1
-  );
-  assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs[0].len(),
-    150
-  );
+  assert_eq!(log_upload.payload.log_upload().proto_logs.len(), 1);
+  assert_eq!(log_upload.payload.log_upload().proto_logs[0].len(), 150);
 }
 
 // Verifies that we shut down the continuous buffer even if there is a pending log upload.
@@ -324,10 +306,7 @@ async fn continuous_buffer_upload_shutdown() {
   setup.producer.write(&[0; 150]).unwrap();
 
   let log_upload = setup.next_upload().await;
-  assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs.len(),
-    1
-  );
+  assert_eq!(log_upload.payload.log_upload().proto_logs.len(), 1);
 
   // Without responding to the upload, we shut down the continuous buffer.
   setup.shutdown().await;
@@ -357,14 +336,8 @@ async fn uploading_full_batch_failure() {
 
   // The first upload should contain 10 (batch size) logs, starting at the start of the buffer.
   let log_upload = setup.next_upload().await;
-  assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs.len(),
-    10
-  );
-  assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs[0],
-    &[0]
-  );
+  assert_eq!(log_upload.payload.log_upload().proto_logs.len(), 10);
+  assert_eq!(log_upload.payload.log_upload().proto_logs[0], &[0]);
 
   let first_uuid = log_upload.uuid.clone();
 
@@ -379,14 +352,8 @@ async fn uploading_full_batch_failure() {
 
   // The second upload should be the same as the previous one, with the same uuid as before.
   let log_upload = setup.next_upload().await;
-  assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs.len(),
-    10
-  );
-  assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs[0],
-    &[0]
-  );
+  assert_eq!(log_upload.payload.log_upload().proto_logs.len(), 10);
+  assert_eq!(log_upload.payload.log_upload().proto_logs[0], &[0]);
   assert_eq!(log_upload.uuid, first_uuid);
 
   // This time we signal that the upload was ack'd.
@@ -405,14 +372,8 @@ async fn uploading_full_batch_failure() {
 
   // The third upload should only contain one log (11 - 10 = 1).
   let log_upload = setup.next_upload().await;
-  assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs.len(),
-    1
-  );
-  assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs[0],
-    &[10]
-  );
+  assert_eq!(log_upload.payload.log_upload().proto_logs.len(), 1);
+  assert_eq!(log_upload.payload.log_upload().proto_logs[0], &[10]);
 
   // Since this is not retrying the first one, ensure that the uuid is different.
   assert_ne!(log_upload.uuid, first_uuid);
@@ -441,10 +402,7 @@ async fn uploading_partial_batch_failure() {
   // We haven't reached the batch limit, but awaiting will have us hit the time deadline once there
   // are no more logs to read.
   let log_upload = setup.next_upload().await;
-  assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs.len(),
-    4
-  );
+  assert_eq!(log_upload.payload.log_upload().proto_logs.len(), 4);
 
   let uuid = log_upload.uuid;
 
@@ -465,10 +423,7 @@ async fn uploading_partial_batch_failure() {
 
   let log_upload = setup.next_upload().await;
   assert_eq!(log_upload.uuid, uuid);
-  assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs.len(),
-    4
-  );
+  assert_eq!(log_upload.payload.log_upload().proto_logs.len(), 4);
 
   log_upload
     .response_tx
@@ -495,10 +450,7 @@ async fn total_batch_upload_timeout() {
   setup.await_logs_flushed(2).await;
 
   let log_upload = setup.next_upload().await;
-  assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs.len(),
-    2
-  );
+  assert_eq!(log_upload.payload.log_upload().proto_logs.len(), 2);
 
   setup.shutdown().await;
 }
@@ -583,17 +535,14 @@ async fn age_limit_log_uploads() {
 
   // We should only get the 2 most recent logs.
   let log_upload = setup.next_upload().await;
+  assert_eq!(log_upload.payload.log_upload().proto_logs.len(), 2);
   assert_eq!(
-    log_upload.payload.log_upload().legacy_flatbuffer_logs.len(),
-    2
-  );
-  assert_eq!(
-    time::OffsetDateTime::from_unix_timestamp(
-      root_as_log(&log_upload.payload.log_upload().legacy_flatbuffer_logs[0])
+    time::OffsetDateTime::from_unix_timestamp_nanos(
+      (ProtoLog::parse_from_bytes(&log_upload.payload.log_upload().proto_logs[0])
         .unwrap()
-        .timestamp()
-        .unwrap()
-        .seconds()
+        .timestamp_unix_micro
+        * 1_000)
+        .into()
     )
     .unwrap(),
     now - time::Duration::minutes(1)
@@ -608,28 +557,21 @@ async fn age_limit_log_uploads() {
 }
 
 fn make_test_log(t: time::OffsetDateTime) -> Vec<u8> {
-  let mut fbb = FlatBufferBuilder::new();
-
-  let mut log = Vec::new();
-
-  make_log(
-    &mut fbb,
-    log_level::INFO,
-    LogType::Normal,
-    &"".into(),
-    &[].into(),
-    "",
-    t,
-    std::iter::empty(),
-    std::iter::empty(),
-    |l| {
-      log = l.to_vec();
-      Ok(())
-    },
-  )
-  .unwrap();
-
-  log
+  let log = Log {
+    log_level: log_level::INFO,
+    log_type: LogType::NORMAL,
+    message: "".into(),
+    fields: [].into(),
+    matching_fields: [].into(),
+    session_id: String::new(),
+    occurred_at: t,
+    capture_session: None,
+  };
+  let mut output = Vec::with_capacity(log.serialized_proto_size(&[], &[]).try_into().unwrap());
+  let mut os = CodedOutputStream::vec(&mut output);
+  log.serialized_proto_to_stream(&[], &[], &mut os).unwrap();
+  drop(os);
+  output
 }
 
 struct SetupMultiConsumer {
@@ -770,9 +712,9 @@ async fn upload_multiple_continuous_buffers() {
 
   let upload_1_payload = upload_1.payload;
   // The order is unspecified, so figure out which one is which.
-  if *upload_1_payload.log_upload().legacy_flatbuffer_logs == vec![b"a".to_vec()] {
+  if *upload_1_payload.log_upload().proto_logs == vec![b"a".to_vec()] {
     assert_eq!(
-      *upload_2.payload.log_upload().legacy_flatbuffer_logs,
+      *upload_2.payload.log_upload().proto_logs,
       vec![b"b".to_vec()]
     );
     upload_1
@@ -784,11 +726,11 @@ async fn upload_multiple_continuous_buffers() {
       .unwrap();
   } else {
     assert_eq!(
-      *upload_1_payload.log_upload().legacy_flatbuffer_logs,
+      *upload_1_payload.log_upload().proto_logs,
       vec![b"b".to_vec()]
     );
     assert_eq!(
-      *upload_2.payload.log_upload().legacy_flatbuffer_logs,
+      *upload_2.payload.log_upload().proto_logs,
       vec![b"a".to_vec()]
     );
     upload_2
@@ -813,7 +755,7 @@ async fn upload_multiple_continuous_buffers() {
 
   let upload_3 = setup.next_upload().await;
   assert_eq!(
-    *upload_3.payload.log_upload().legacy_flatbuffer_logs,
+    *upload_3.payload.log_upload().proto_logs,
     vec![b"a2".to_vec()]
   );
 
@@ -866,7 +808,7 @@ async fn trigger_upload_byte_size_limit() {
 
   log::debug!("waiting for upload");
   let upload = setup.next_upload().await;
-  assert_eq!(upload.payload.log_upload().legacy_flatbuffer_logs.len(), 1);
+  assert_eq!(upload.payload.log_upload().proto_logs.len(), 1);
 }
 
 #[tokio::test]
@@ -927,7 +869,7 @@ async fn uploaded_trigger() {
 
   let upload = setup.next_upload().await;
 
-  assert_eq!(upload.payload.log_upload().legacy_flatbuffer_logs.len(), 2);
+  assert_eq!(upload.payload.log_upload().proto_logs.len(), 2);
 }
 
 #[tokio::test]
@@ -970,9 +912,9 @@ async fn log_streaming() {
   producer.write(b"more data").unwrap();
 
   assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::AcklessLogsUpload(upload) => {
-      assert_eq!(upload.legacy_flatbuffer_logs.len(), 2);
-    assert_eq!(upload.legacy_flatbuffer_logs[0], b"data");
-    assert_eq!(upload.legacy_flatbuffer_logs[1], b"more data");
+      assert_eq!(upload.proto_logs.len(), 2);
+    assert_eq!(upload.proto_logs[0], b"data");
+    assert_eq!(upload.proto_logs[1], b"more data");
   });
 }
 
@@ -1028,12 +970,12 @@ async fn streaming_batch_size_flag() {
 
   // Should batch foo+bar (due to batch size = 2)
   assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::AcklessLogsUpload(upload) => {
-    assert_eq!(upload.legacy_flatbuffer_logs, vec![b"foo".to_vec(), b"bar".to_vec()]);
+    assert_eq!(upload.proto_logs, vec![b"foo".to_vec(), b"bar".to_vec()]);
   });
 
   // Next upload should contain "baz"
   assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::AcklessLogsUpload(upload) => {
-    assert_eq!(upload.legacy_flatbuffer_logs, vec![b"baz".to_vec()]);
+    assert_eq!(upload.proto_logs, vec![b"baz".to_vec()]);
   });
 }
 
@@ -1082,7 +1024,7 @@ async fn log_streaming_shutdown() {
 
   // Receive the upload request but do not complete it.
   assert_matches!(log_upload_rx.recv().await.unwrap(), DataUpload::AcklessLogsUpload(upload) => {
-    assert_eq!(upload.legacy_flatbuffer_logs[0], b"data");
+    assert_eq!(upload.proto_logs[0], b"data");
   });
 
   // Perform a shutdown, making sure that we complete the shutdown even if there is a pending

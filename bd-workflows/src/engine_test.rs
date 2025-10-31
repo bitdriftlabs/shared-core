@@ -21,8 +21,7 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_error_reporter::reporter::{Reporter, UnexpectedErrorHandler};
 use bd_log_matcher::builder::{field_equals, message_equals, or};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_log_primitives::{FieldsRef, Log, LogFields, LogMessage, LogRef, log_level};
-use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use bd_log_primitives::{Log, LogFields, LogMessage, log_level};
 use bd_proto::protos::client::api::log_upload_intent_request::Intent_type::WorkflowActionUpload;
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{
@@ -30,6 +29,7 @@ use bd_proto::protos::client::api::{
   SankeyPathUploadRequest,
   log_upload_intent_request,
 };
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{NameType, labels};
@@ -253,17 +253,14 @@ impl AnnotatedWorkflowsEngine {
 
   fn process_log(&mut self, log: TestLog) -> WorkflowsEngineResult<'_> {
     self.engine.process_log(
-      &bd_log_primitives::LogRef {
-        log_type:
-          bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType::Normal,
+      &bd_log_primitives::Log {
+        log_type: LogType::NORMAL,
         log_level: log_level::DEBUG,
-        message: &LogMessage::String(log.message),
-        session_id: log.session.as_ref().map_or(&self.session_id, |s| &**s),
+        message: LogMessage::String(log.message),
+        session_id: log.session.unwrap_or_else(|| self.session_id.clone()),
         occurred_at: log.occurred_at,
-        fields: FieldsRef::new(
-          &bd_test_helpers::workflow::make_tags(log.tags),
-          &LogFields::new(),
-        ),
+        fields: bd_test_helpers::workflow::make_tags(log.tags),
+        matching_fields: LogFields::new(),
         capture_session: None,
       },
       &self.log_destination_buffer_ids,
@@ -1615,15 +1612,13 @@ async fn ignore_persisted_state_if_invalid_dir() {
 
   // Change workflows state
   workflows_engine.process_log(
-    &LogRef {
-      log_type: LogType::Normal,
+    &Log {
+      log_type: LogType::NORMAL,
       log_level: log_level::DEBUG,
-      message: &LogMessage::String("foo".to_string()),
-      fields: FieldsRef::new(
-        &bd_test_helpers::workflow::make_tags(labels! {}),
-        &LogFields::new(),
-      ),
-      session_id: "foo_session",
+      message: LogMessage::String("foo".to_string()),
+      fields: bd_test_helpers::workflow::make_tags(labels! {}),
+      matching_fields: LogFields::new(),
+      session_id: "foo_session".to_string(),
       occurred_at: OffsetDateTime::now_utc(),
       capture_session: None,
     },
@@ -2881,7 +2876,7 @@ async fn generate_log_multiple() {
         ),
       )],
       "id1",
-      LogType::Normal,
+      LogType::NORMAL,
     )],
     &[make_save_timestamp_extraction("timestamp3")],
   );
@@ -2899,7 +2894,7 @@ async fn generate_log_multiple() {
         ),
       )],
       "id2",
-      LogType::Normal,
+      LogType::NORMAL,
     )],
     &[make_save_timestamp_extraction("timestamp3")],
   );
@@ -2943,7 +2938,7 @@ async fn generate_log_multiple() {
     vec![
       Log {
         log_level: log_level::DEBUG,
-        log_type: LogType::Normal,
+        log_type: LogType::NORMAL,
         message: "message1".into(),
         fields: [("duration".into(), "1000".into(),),].into(),
         matching_fields: [("_generate_log_id".into(), "id1".into(),)].into(),
@@ -2953,7 +2948,7 @@ async fn generate_log_multiple() {
       },
       Log {
         log_level: log_level::DEBUG,
-        log_type: LogType::Normal,
+        log_type: LogType::NORMAL,
         message: "message2".into(),
         fields: [("duration".into(), "2000".into(),),].into(),
         matching_fields: [("_generate_log_id".into(), "id2".into(),)].into(),
@@ -3019,7 +3014,7 @@ async fn generate_log_action() {
         ),
       ],
       "id",
-      LogType::Normal,
+      LogType::NORMAL,
     )],
     &[make_save_timestamp_extraction("timestamp2")],
   );
@@ -3042,7 +3037,7 @@ async fn generate_log_action() {
     result.logs_to_inject.into_values().collect_vec(),
     vec![Log {
       log_level: log_level::DEBUG,
-      log_type: LogType::Normal,
+      log_type: LogType::NORMAL,
       message: "message".into(),
       fields: [
         ("duration".into(), "3".into(),),

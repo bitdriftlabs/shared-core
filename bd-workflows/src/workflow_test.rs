@@ -17,8 +17,8 @@ use crate::test::{MakeConfig, TestLog};
 use crate::workflow::{Run, TriggeredAction, Workflow, WorkflowResult, WorkflowResultStats};
 use bd_log_matcher::builder::{field_equals, message_equals};
 use bd_log_primitives::tiny_set::TinyMap;
-use bd_log_primitives::{FieldsRef, LogFields, LogMessage, log_level};
-use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use bd_log_primitives::{LogFields, LogMessage, log_level};
+use bd_proto::protos::logging::payload::LogType;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, labels};
 use bd_test_helpers::workflow::macros::rule;
@@ -80,16 +80,14 @@ impl AnnotatedWorkflow {
   fn process_log(&mut self, log: TestLog) -> WorkflowResult<'_> {
     self.workflow.process_log(
       &self.config,
-      &bd_log_primitives::LogRef {
-        log_type: LogType::Normal,
+      &bd_log_primitives::Log {
+        log_type: LogType::NORMAL,
         log_level: log_level::DEBUG,
-        message: &LogMessage::String(log.message),
-        session_id: log.session.as_ref().map_or("foo", |s| &**s),
+        message: LogMessage::String(log.message),
+        session_id: log.session.unwrap_or_else(|| "foo".to_string()),
         occurred_at: log.occurred_at,
-        fields: FieldsRef::new(
-          &bd_test_helpers::workflow::make_tags(log.tags),
-          &LogFields::new(),
-        ),
+        fields: bd_test_helpers::workflow::make_tags(log.tags),
+        matching_fields: LogFields::new(),
         capture_session: None,
       },
       log.now,

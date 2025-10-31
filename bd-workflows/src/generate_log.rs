@@ -14,9 +14,11 @@ use action::ActionGenerateLog;
 use action::action_generate_log::ValueReference;
 use action::action_generate_log::generated_field::Generated_field_value_type;
 use action::action_generate_log::value_reference::Value_reference_type;
-use bd_log_primitives::{FieldsRef, Log, LogFields, LogType, StringOrBytes, log_level};
+use bd_log_primitives::{FieldsRef, Log, LogFields, StringOrBytes, log_level};
+use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow::workflow::action;
 use bd_proto::protos::workflow::workflow::workflow::action::action_generate_log::ValueReferencePair;
+use protobuf::Enum;
 use std::borrow::Cow;
 use std::fmt::Display;
 use time::OffsetDateTime;
@@ -132,7 +134,8 @@ pub fn generate_log_action(
 
   Some(Log {
     log_level: log_level::DEBUG,
-    log_type: LogType(action.log_type),
+    #[allow(clippy::cast_possible_wrap)]
+    log_type: LogType::from_i32(action.log_type as i32).unwrap_or_default(),
     fields,
     message: StringOrBytes::String(message),
     matching_fields: LogFields::from([(

@@ -12,7 +12,6 @@ use crate::{
   LogAttributesOverrides,
   LogLevel,
   LogMessage,
-  LogType,
   Logger,
   ReportProcessingSession,
 };
@@ -22,6 +21,7 @@ use bd_proto::protos::client::api::ConfigurationUpdate;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
 use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::FeatureFlag as _;
 use bd_session::Strategy;
 use bd_session::fixed::{self, UUIDCallbacks};

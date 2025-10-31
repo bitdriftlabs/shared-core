@@ -13,11 +13,11 @@ use bd_log_primitives::{
   AnnotatedLogFields,
   LogInterceptor,
   LogMessage,
-  LogType,
   StringOrBytes,
   log_level,
 };
 use bd_network_quality::{NetworkQuality, NetworkQualityMonitor as _, NetworkQualityResolver as _};
+use bd_proto::protos::logging::payload::LogType;
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
 
@@ -58,7 +58,7 @@ fn network_quality() {
     let mut fields = [].into();
     interceptor.process(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       &"".into(),
       &mut fields,
       &mut [].into(),
@@ -67,7 +67,7 @@ fn network_quality() {
     network_quality_provider.set_network_quality(NetworkQuality::Online);
     interceptor.process(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       &"".into(),
       &mut fields,
       &mut [].into(),
@@ -76,7 +76,7 @@ fn network_quality() {
     network_quality_provider.set_network_quality(NetworkQuality::Offline);
     interceptor.process(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       &"".into(),
       &mut fields,
       &mut [].into(),
@@ -90,7 +90,7 @@ fn network_quality() {
     let mut fields = [].into();
     interceptor.process(
       log_level::DEBUG,
-      LogType::Replay,
+      LogType::REPLAY,
       &"".into(),
       &mut fields,
       &mut [].into(),
@@ -116,7 +116,7 @@ async fn collects_bandwidth_sample() {
     let mut fields = [].into();
     tracker.process(
       log_level::DEBUG,
-      LogType::Resource,
+      LogType::RESOURCE,
       &"".into(),
       &mut fields,
       &mut [].into(),
@@ -126,7 +126,7 @@ async fn collects_bandwidth_sample() {
 
   tracker.process(
     log_level::DEBUG,
-    LogType::Span,
+    LogType::SPAN,
     &LogMessage::String("HTTPResponse".to_string()),
     &mut [
       ("_status_code".into(), create_int_field(200)),
@@ -159,7 +159,7 @@ async fn collects_bandwidth_sample() {
     let mut fields = [].into();
     tracker.process(
       log_level::DEBUG,
-      LogType::Resource,
+      LogType::RESOURCE,
       &"".into(),
       &mut fields,
       &mut [].into(),
@@ -201,7 +201,7 @@ async fn collects_bandwidth_sample() {
   let mut fields = [].into();
   tracker.process(
     log_level::DEBUG,
-    LogType::Resource,
+    LogType::RESOURCE,
     &"".into(),
     &mut fields,
     &mut [].into(),

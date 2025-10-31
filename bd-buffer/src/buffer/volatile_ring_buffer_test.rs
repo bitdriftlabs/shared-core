@@ -8,9 +8,10 @@
 use crate::buffer::common_ring_buffer::Cursor;
 use crate::buffer::test::{Helper, reserve_no_commit};
 use crate::buffer::volatile_ring_buffer::RingBufferImpl;
-use crate::buffer::{RingBufferProducer, RingBufferStats, to_u32};
+use crate::buffer::{RingBufferProducer, RingBufferStats};
 use crate::{AbslCode, Error};
 use assert_matches::assert_matches;
+use bd_log_primitives::LossyIntToU32;
 use itertools::Itertools;
 
 fn make_helper(size: u32) -> Helper {
@@ -377,7 +378,7 @@ fn write_into_concurrent_reader() {
   // Start reading 0-9 and then reserve and commit what should go into 10-19.
   let reserved = helper.start_read_and_verify("aaaaaa");
   assert_matches!(
-    helper.producer().reserve(to_u32("dddddd".len()), true),
+    helper.producer().reserve("dddddd".len().to_u32(), true),
     Err(Error::AbslStatus(code, message))
       if code == AbslCode::ResourceExhausted && message == "writing into concurrent read"
   );

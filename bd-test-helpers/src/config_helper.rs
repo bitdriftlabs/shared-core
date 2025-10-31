@@ -6,7 +6,6 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use base_log_matcher::{AnyMatch, MessageMatch, StringMatchType, TypeMatch};
-use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
 use bd_proto::protos::client::api::ConfigurationUpdate;
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
@@ -19,6 +18,7 @@ use bd_proto::protos::config::v1::config::log_matcher::{
   base_log_matcher,
 };
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
+use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow::{Workflow, WorkflowsConfiguration};
 #[rustfmt::skip]
 use crate::workflow::macros::rule;
@@ -286,7 +286,7 @@ pub fn make_buffer_matcher_matching_everything_except_internal_logs() -> BufferL
     match_type: Some(Match_type::NotMatcher(Box::new(BufferLogMatcher {
       match_type: Some(Match_type::BaseMatcher(BaseLogMatcher {
         match_type: Some(base_log_matcher::Match_type::TypeMatch(TypeMatch {
-          type_: LogType::InternalSDK.0,
+          type_: LogType::INTERNAL_SDK as u32,
           ..Default::default()
         })),
         ..Default::default()
@@ -302,7 +302,7 @@ pub fn make_buffer_matcher_matching_resource_logs() -> BufferLogMatcher {
   BufferLogMatcher {
     match_type: Some(Match_type::BaseMatcher(BaseLogMatcher {
       match_type: Some(base_log_matcher::Match_type::TypeMatch(TypeMatch {
-        type_: LogType::Resource.0,
+        type_: LogType::RESOURCE as u32,
         ..Default::default()
       })),
       ..Default::default()

@@ -14,10 +14,10 @@ use bd_api::upload::LogBatch;
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
 use bd_client_common::error::InvariantError;
-use bd_client_common::fb::root_as_log;
 use bd_client_common::maybe_await;
 use bd_client_stats_store::{Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected_error_with_details;
+use bd_log_primitives::Log;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use futures_util::future::try_join_all;
@@ -710,21 +710,13 @@ impl CompleteBufferUpload {
         // Log available, add to batch and flush if batch size hit.
         Ok(log) => {
           if let Some(lookback_window) = self.lookback_window {
-            // The buffer producer/consumer API doesn't limit the input to flatbuffer logs, so we
-            // defensively check that we get back a valid log before trying to access the
-            // timestamp.
-            if let Ok(log) = root_as_log(&log) {
-              // There should always be a timestamp on the log, but this relies on the log being
-              // correctly constructed so we stay on the safe side and check for None.
-              if let Some(ts) = log.timestamp() {
-                let ts = OffsetDateTime::from_unix_timestamp(ts.seconds())?
-                  + time::Duration::nanoseconds(i64::from(ts.nanos()));
-                if ts < lookback_window {
-                  log::debug!("skipping log, outside lookback window");
-                  self.old_logs_dropped.inc();
-                  continue;
-                }
-              }
+            // We are defensive here as we can't be sure the log is well formed.
+            if let Some(ts) = Log::extract_timestamp(&log)
+              && ts < lookback_window
+            {
+              log::debug!("skipping log, outside lookback window");
+              self.old_logs_dropped.inc();
+              continue;
             }
           }
 

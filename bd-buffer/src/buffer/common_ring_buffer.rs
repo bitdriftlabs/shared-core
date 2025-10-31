@@ -9,11 +9,12 @@
 #[path = "./common_ring_buffer_test.rs"]
 mod common_ring_buffer_test;
 
+use super::RingBufferStats;
 #[cfg(test)]
 use super::test::thread_synchronizer::ThreadSynchronizer;
-use super::{RingBufferStats, to_u32};
 use crate::{AbslCode, Error, Result};
 use bd_client_common::error::InvariantError;
+use bd_log_primitives::LossyIntToU32;
 use parking_lot::{Condvar, Mutex, MutexGuard};
 use std::fmt::Display;
 use std::ptr::NonNull;
@@ -229,14 +230,14 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
   // part of the record. The extra space is always fixed and is the value stored in
   // extra_bytes_per_record_.
   fn record_size_offset(&self, start: u32) -> u32 {
-    debug_assert!(self.extra_bytes_per_record >= to_u32(std::mem::size_of::<u32>()));
-    start + (self.extra_bytes_per_record - to_u32(std::mem::size_of::<u32>()))
+    debug_assert!(self.extra_bytes_per_record >= std::mem::size_of::<u32>().to_u32());
+    start + (self.extra_bytes_per_record - std::mem::size_of::<u32>().to_u32())
   }
 
   // Returns any extra space at the beginning of the reservation. See recordSizeOffset() for more
   // information on the record layout.
   fn extra_data(&mut self, start: u32) -> &mut [u8] {
-    debug_assert!(self.extra_bytes_per_record >= to_u32(std::mem::size_of::<u32>()));
+    debug_assert!(self.extra_bytes_per_record >= std::mem::size_of::<u32>().to_u32());
     let start = start as usize;
     let extra_bytes_per_record = self.extra_bytes_per_record as usize;
     &mut self.memory()[start .. start + extra_bytes_per_record - std::mem::size_of::<u32>()]
@@ -299,7 +300,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     // space. This can overflow but as long as we are within the memory space crc checks will catch
     // further corruption.
     let size_index = self.record_size_offset(next_read_start_to_use);
-    if size_index + to_u32(std::mem::size_of::<u32>()) > to_u32(self.memory.0.len()) {
+    if size_index + std::mem::size_of::<u32>().to_u32() > self.memory.0.len().to_u32() {
       return Err(Error::AbslStatus(
         AbslCode::DataLoss,
         "corrupted record size index".to_string(),
@@ -318,7 +319,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     // space crc checks will catch further corruption.
     if size == 0
       || Self::overflow_add(&[next_read_start_to_use, self.extra_bytes_per_record, size])
-        .is_none_or(|next_read_start_index| next_read_start_index > to_u32(self.memory.0.len()))
+        .is_none_or(|next_read_start_index| next_read_start_index > self.memory.0.len().to_u32())
     {
       return Err(Error::AbslStatus(
         AbslCode::DataLoss,
@@ -343,7 +344,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
         .last_write_end_before_wrap
         .ok_or(InvariantError::Invariant)?
         + 1,
-      size: to_u32(self.memory.0.len())
+      size: self.memory.0.len().to_u32()
         - (reservation_data
           .last_write_end_before_wrap
           .ok_or(InvariantError::Invariant)?
@@ -469,7 +470,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     let mut reservation_data = TempReservationData::default();
     let next_write_start = *self.next_write_start();
 
-    if next_write_start + write_size <= to_u32(self.memory.0.len()) {
+    if next_write_start + write_size <= self.memory.0.len().to_u32() {
       // It fits in the remainder without wrapping.
       reservation_data.range.start = next_write_start;
       reservation_data.next_write_start = next_write_start + write_size;
@@ -529,7 +530,7 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     };
 
     // If size is 0 or > then the ring buffer size we can't do anything.
-    if size == 0 || actual_size > to_u32(self.memory.0.len()) {
+    if size == 0 || actual_size > self.memory.0.len().to_u32() {
       log::trace!("({}) invalid reservation size: {}", self.name, size);
       // Note that we don't record the bytes lost in this case, since a very large number is likely
       // to cause overflow.
@@ -996,7 +997,7 @@ impl<ExtraLockedData> CommonRingBuffer<ExtraLockedData> {
         lock_count: AtomicU32::default().into(),
         shutdown_lock: None,
         stats,
-        extra_bytes_per_record: extra_bytes_per_record + to_u32(std::mem::size_of::<u32>()),
+        extra_bytes_per_record: extra_bytes_per_record + std::mem::size_of::<u32>().to_u32(),
         extra_locked_data,
         allow_overwrite,
         on_total_data_loss_cb: Box::new(on_total_data_loss_cb),

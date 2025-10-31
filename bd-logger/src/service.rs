@@ -143,7 +143,7 @@ impl tower::Service<UploadRequest> for Uploader {
 
     let log_upload_request = LogUploadRequest {
       upload_uuid: request.uuid.clone(),
-      legacy_flatbuffer_logs: request.log_upload.logs.clone(),
+      proto_logs: request.log_upload.logs.clone(),
       buffer_uuid: request.log_upload.buffer_id.clone(),
       ackless: request.ackless,
       ..Default::default()

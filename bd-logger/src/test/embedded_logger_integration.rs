@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::logger::{Block, CaptureSession};
-use crate::{InitParams, LogType, Logger, MetadataProvider, log_level};
+use crate::{InitParams, Logger, MetadataProvider, log_level};
 use assert_matches::assert_matches;
 use bd_log_metadata::LogFields;
 use bd_proto::protos::client::api::RuntimeUpdate;
@@ -14,6 +14,7 @@ use bd_proto::protos::client::runtime::Runtime;
 use bd_proto::protos::client::runtime::runtime::{Value, value};
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::FeatureFlag;
 use bd_session::fixed::UUIDCallbacks;
 use bd_session::{Strategy, fixed};
@@ -172,7 +173,7 @@ async fn configuration_update_with_log_uploads() {
 
   setup.logger.new_logger_handle().log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "test".into(),
     [].into(),
     [].into(),
@@ -182,7 +183,7 @@ async fn configuration_update_with_log_uploads() {
   );
 
   assert_matches!(setup.server.next_log_upload().await, Some(log_upload) => {
-      assert_eq!(log_upload.legacy_flatbuffer_logs.len(), 1);
+      assert_eq!(log_upload.proto_logs.len(), 1);
   });
 
   setup.shutdown.shutdown().await;

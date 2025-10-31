@@ -9,7 +9,7 @@ use super::setup::Setup;
 use crate::logger::{Block, CaptureSession, ReportProcessingSession};
 use crate::test::setup::SetupOptions;
 use assert_matches::assert_matches;
-use bd_log_primitives::LogType;
+use bd_proto::protos::logging::payload::LogType;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::test_api_server::log_upload::LogUpload;
 use itertools::Itertools as _;
@@ -40,7 +40,7 @@ fn crash_reports_artifact_upload() {
     // Log one log to trigger a global state update, blocking to make sure it gets processed.
     setup.logger_handle.log(
       0,
-      LogType::Normal,
+      LogType::NORMAL,
       "".into(),
       [].into(),
       [].into(),
@@ -142,7 +142,7 @@ fn crash_reports_feature_flags() {
     // Log one log to trigger a global state update, blocking to make sure it gets processed.
     setup.logger_handle.log(
       0,
-      LogType::Normal,
+      LogType::NORMAL,
       "".into(),
       [].into(),
       [].into(),

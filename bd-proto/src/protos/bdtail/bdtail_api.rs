@@ -37,6 +37,8 @@ pub struct TailLogsRequest {
     // message fields
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.bdtail.v1.TailLogsRequest.dsl_expression)
     pub dsl_expression: ::protobuf::Chars,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.bdtail.v1.TailLogsRequest.config_version)
+    pub config_version: u32,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.bdtail.v1.TailLogsRequest.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -54,12 +56,17 @@ impl TailLogsRequest {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut fields = ::std::vec::Vec::with_capacity(2);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "dsl_expression",
             |m: &TailLogsRequest| { &m.dsl_expression },
             |m: &mut TailLogsRequest| { &mut m.dsl_expression },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "config_version",
+            |m: &TailLogsRequest| { &m.config_version },
+            |m: &mut TailLogsRequest| { &mut m.config_version },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<TailLogsRequest>(
             "TailLogsRequest",
@@ -82,6 +89,9 @@ impl ::protobuf::Message for TailLogsRequest {
                 10 => {
                     self.dsl_expression = is.read_tokio_chars()?;
                 },
+                16 => {
+                    self.config_version = is.read_uint32()?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -97,6 +107,9 @@ impl ::protobuf::Message for TailLogsRequest {
         if !self.dsl_expression.is_empty() {
             my_size += ::protobuf::rt::string_size(1, &self.dsl_expression);
         }
+        if self.config_version != 0 {
+            my_size += ::protobuf::rt::uint32_size(2, self.config_version);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -105,6 +118,9 @@ impl ::protobuf::Message for TailLogsRequest {
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
         if !self.dsl_expression.is_empty() {
             os.write_string(1, &self.dsl_expression)?;
+        }
+        if self.config_version != 0 {
+            os.write_uint32(2, self.config_version)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -124,12 +140,14 @@ impl ::protobuf::Message for TailLogsRequest {
 
     fn clear(&mut self) {
         self.dsl_expression.clear();
+        self.config_version = 0;
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static TailLogsRequest {
         static instance: TailLogsRequest = TailLogsRequest {
             dsl_expression: ::protobuf::Chars::new(),
+            config_version: 0,
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -159,6 +177,8 @@ pub struct Logs {
     // message fields
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.bdtail.v1.Logs.logs)
     pub logs: ::std::vec::Vec<::bytes::Bytes>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.bdtail.v1.Logs.proto_logs)
+    pub proto_logs: ::std::vec::Vec<super::payload::Log>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.bdtail.v1.Logs.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -176,12 +196,17 @@ impl Logs {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut fields = ::std::vec::Vec::with_capacity(2);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "logs",
             |m: &Logs| { &m.logs },
             |m: &mut Logs| { &mut m.logs },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "proto_logs",
+            |m: &Logs| { &m.proto_logs },
+            |m: &mut Logs| { &mut m.proto_logs },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Logs>(
             "Logs",
@@ -204,6 +229,9 @@ impl ::protobuf::Message for Logs {
                 10 => {
                     self.logs.push(is.read_tokio_bytes()?);
                 },
+                18 => {
+                    self.proto_logs.push(is.read_message()?);
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -219,6 +247,10 @@ impl ::protobuf::Message for Logs {
         for value in &self.logs {
             my_size += ::protobuf::rt::bytes_size(1, &value);
         };
+        for value in &self.proto_logs {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -227,6 +259,9 @@ impl ::protobuf::Message for Logs {
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
         for v in &self.logs {
             os.write_bytes(1, &v)?;
+        };
+        for v in &self.proto_logs {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
         };
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -246,12 +281,14 @@ impl ::protobuf::Message for Logs {
 
     fn clear(&mut self) {
         self.logs.clear();
+        self.proto_logs.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static Logs {
         static instance: Logs = Logs {
             logs: ::std::vec::Vec::new(),
+            proto_logs: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -677,17 +714,20 @@ pub mod tail_logs_response {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n3bitdrift_public/protobuf/bdtail/v1/bdtail_api.proto\x12\"bitdrift_pub\
-    lic.protobuf.bdtail.v1\x1a\x17validate/validate.proto\"8\n\x0fTailLogsRe\
-    quest\x12%\n\x0edsl_expression\x18\x01\x20\x01(\tR\rdslExpression\"$\n\
-    \x04Logs\x12\x1c\n\x04logs\x18\x01\x20\x03(\x0cR\x04logsB\x08\xfaB\x05\
-    \x92\x01\x02\x08\x01\">\n\x0eInvalidRequest\x12,\n\rerror_message\x18\
-    \x01\x20\x01(\tR\x0cerrorMessageB\x07\xfaB\x04r\x02\x10\x01\"\xbd\x01\n\
-    \x10TailLogsResponse\x12>\n\x04logs\x18\x01\x20\x01(\x0b2(.bitdrift_publ\
-    ic.protobuf.bdtail.v1.LogsH\0R\x04logs\x12]\n\x0finvalid_request\x18\x02\
-    \x20\x01(\x0b22.bitdrift_public.protobuf.bdtail.v1.InvalidRequestH\0R\
-    \x0einvalidRequestB\n\n\x08response2\x81\x01\n\x06BDTail\x12w\n\x08TailL\
-    ogs\x123.bitdrift_public.protobuf.bdtail.v1.TailLogsRequest\x1a4.bitdrif\
-    t_public.protobuf.bdtail.v1.TailLogsResponse0\x01b\x06proto3\
+    lic.protobuf.bdtail.v1\x1a1bitdrift_public/protobuf/logging/v1/payload.p\
+    roto\x1a\x17validate/validate.proto\"_\n\x0fTailLogsRequest\x12%\n\x0eds\
+    l_expression\x18\x01\x20\x01(\tR\rdslExpression\x12%\n\x0econfig_version\
+    \x18\x02\x20\x01(\rR\rconfigVersion\"c\n\x04Logs\x12\x12\n\x04logs\x18\
+    \x01\x20\x03(\x0cR\x04logs\x12G\n\nproto_logs\x18\x02\x20\x03(\x0b2(.bit\
+    drift_public.protobuf.logging.v1.LogR\tprotoLogs\">\n\x0eInvalidRequest\
+    \x12,\n\rerror_message\x18\x01\x20\x01(\tR\x0cerrorMessageB\x07\xfaB\x04\
+    r\x02\x10\x01\"\xbd\x01\n\x10TailLogsResponse\x12>\n\x04logs\x18\x01\x20\
+    \x01(\x0b2(.bitdrift_public.protobuf.bdtail.v1.LogsH\0R\x04logs\x12]\n\
+    \x0finvalid_request\x18\x02\x20\x01(\x0b22.bitdrift_public.protobuf.bdta\
+    il.v1.InvalidRequestH\0R\x0einvalidRequestB\n\n\x08response2\x81\x01\n\
+    \x06BDTail\x12w\n\x08TailLogs\x123.bitdrift_public.protobuf.bdtail.v1.Ta\
+    ilLogsRequest\x1a4.bitdrift_public.protobuf.bdtail.v1.TailLogsResponse0\
+    \x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -704,7 +744,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(1);
+            let mut deps = ::std::vec::Vec::with_capacity(2);
+            deps.push(super::payload::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(4);
             messages.push(TailLogsRequest::generated_message_descriptor_data());

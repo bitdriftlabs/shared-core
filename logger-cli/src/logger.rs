@@ -9,6 +9,7 @@ use crate::metadata::Metadata;
 use crate::storage::SQLiteStorage;
 use crate::types::{Platform, RuntimeValueType};
 use bd_logger::{CaptureSession, InitParams, Logger};
+use bd_proto::protos::logging::payload::LogType as ProtoLogType;
 use bd_session::{Strategy, fixed};
 use bd_test_helpers::metadata_provider::LogMetadata;
 use parking_lot::Mutex;
@@ -109,7 +110,7 @@ impl LoggerHolder {
   pub fn log(
     &self,
     log_level: bd_logger::LogLevel,
-    log_type: bd_logger::LogType,
+    log_type: ProtoLogType,
     message: String,
     fields: HashMap<String, String>,
     capture_session: bool,

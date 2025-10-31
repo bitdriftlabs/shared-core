@@ -18,6 +18,7 @@ bd-bonjson.path             = "../bd-bonjson"
 bd-buffer.path              = "../bd-buffer"
 bd-client-common.path       = "../bd-client-common"
 bd-client-stats-store.path  = "../bd-client-stats-store"
+bd-log-primitives.path      = "../bd-log-primitives"
 bd-resilient-kv.path        = "../bd-resilient-kv"
 bd-workspace-hack.workspace = true
 libfuzzer-sys.workspace     = true

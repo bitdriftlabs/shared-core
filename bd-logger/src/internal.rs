@@ -7,7 +7,7 @@
 
 use crate::logger::{Block, CaptureSession, LoggerHandle};
 use bd_log_primitives::{AnnotatedLogField, LogFields, LogLevel};
-use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 
 //

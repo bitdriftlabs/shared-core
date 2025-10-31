@@ -24,7 +24,6 @@
 use base_log_matcher::int_value_match::Int_value_match_type;
 use base_log_matcher::string_value_match::String_value_match_type;
 use base_log_matcher::{IsSetMatch, Operator, tag_match};
-use bd_log_primitives::LogType;
 use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
 use bd_proto::protos::log_matcher::log_matcher::log_matcher::{
   BaseLogMatcher,
@@ -32,6 +31,7 @@ use bd_proto::protos::log_matcher::log_matcher::log_matcher::{
   MatcherList,
   base_log_matcher,
 };
+use bd_proto::protos::logging::payload::LogType;
 use tag_match::Value_match;
 use tag_match::Value_match::IntValueMatch;
 
@@ -229,7 +229,7 @@ pub fn log_type_equals(log_type: LogType) -> LogMatcher {
         tag_key: "log_type".to_string(),
         value_match: Some(IntValueMatch(base_log_matcher::IntValueMatch {
           operator: Operator::OPERATOR_EQUALS.into(),
-          int_value_match_type: Some(Int_value_match_type::MatchValue(log_type.0 as i32)),
+          int_value_match_type: Some(Int_value_match_type::MatchValue(log_type as i32)),
           ..Default::default()
         })),
         ..Default::default()

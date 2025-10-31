@@ -25,7 +25,7 @@ use base_log_matcher::tag_match::Value_match::{
   StringValueMatch,
 };
 use bd_log_primitives::tiny_set::TinyMap;
-use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogType};
+use bd_log_primitives::{FieldsRef, LogLevel, LogMessage};
 use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::StringMatchType;
 use bd_proto::protos::config::v1::config::log_matcher::{
   BaseLogMatcher as LegacyBaseLogMatcher,
@@ -36,6 +36,7 @@ use bd_proto::protos::config::v1::config::{
   log_matcher as legacy_log_matcher,
 };
 use bd_proto::protos::log_matcher::log_matcher;
+use bd_proto::protos::logging::payload::LogType;
 use log_matcher::LogMatcher;
 use log_matcher::log_matcher::base_log_matcher::double_value_match::Double_value_match_type;
 use log_matcher::log_matcher::base_log_matcher::int_value_match::Int_value_match_type;
@@ -211,7 +212,7 @@ impl Tree {
         Leaf::LogLevel(log_level_matcher) => log_level
           .try_into()
           .is_ok_and(|log_level| log_level_matcher.evaluate(log_level, extracted_fields)),
-        Leaf::LogType(l_type) => *l_type == log_type.0,
+        Leaf::LogType(l_type) => *l_type == log_type as u32,
         Leaf::IntValue(input, criteria) =>
         {
           #[allow(clippy::cast_possible_truncation)]

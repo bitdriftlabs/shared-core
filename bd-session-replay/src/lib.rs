@@ -21,7 +21,7 @@ mod recorder_test;
 use bd_client_common::maybe_await_interval;
 use bd_client_stats_store::{Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
-use bd_log_primitives::LogType;
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch, session_replay};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_stats_common::labels;
@@ -300,12 +300,12 @@ impl bd_log_primitives::LogInterceptor for ScreenshotLogInterceptor {
   fn process(
     &self,
     _log_level: bd_log_primitives::LogLevel,
-    log_type: bd_log_primitives::LogType,
+    log_type: LogType,
     msg: &bd_log_primitives::LogMessage,
     _fields: &mut bd_log_primitives::AnnotatedLogFields,
     _matching_fields: &mut bd_log_primitives::AnnotatedLogFields,
   ) {
-    if !(log_type == LogType::Replay && msg.as_str() == Some(SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE))
+    if !(log_type == LogType::REPLAY && msg.as_str() == Some(SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE))
     {
       return;
     }

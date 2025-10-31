@@ -11,7 +11,7 @@ use crate::app_version::Repository;
 use crate::logger::{Block, CaptureSession};
 use bd_client_stats_store::Collector;
 use bd_log_primitives::log_level;
-use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use bd_proto::protos::logging::payload::LogType;
 use bd_session::Strategy;
 use bd_session::fixed::{self, UUIDCallbacks};
 use bd_test_helpers::session::in_memory_store;
@@ -42,7 +42,7 @@ async fn thread_local_logger_guard() {
   with_thread_local_logger_guard(|| {
     handle.log(
       log_level::INFO,
-      LogType::Normal,
+      LogType::NORMAL,
       "msg".into(),
       [].into(),
       [].into(),

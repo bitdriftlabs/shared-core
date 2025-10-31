@@ -18,7 +18,8 @@ use crate::{
 };
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
-use bd_log_primitives::{LogInterceptor, LogType, log_level};
+use bd_log_primitives::{LogInterceptor, log_level};
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
@@ -262,7 +263,7 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
   // Simulate a screenshot log.
   screenshot_log_interceptor.process(
     log_level::INFO,
-    LogType::Replay,
+    LogType::REPLAY,
     &SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE.into(),
     &mut [].into(),
     &mut [].into(),
@@ -296,7 +297,7 @@ async fn limits_the_number_of_concurrent_screenshots_to_one() {
 
   screenshot_log_interceptor.process(
     log_level::INFO,
-    LogType::Replay,
+    LogType::REPLAY,
     &SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE.into(),
     &mut [].into(),
     &mut [].into(),

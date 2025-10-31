@@ -43,12 +43,12 @@ use bd_log_primitives::{
   log_level,
 };
 use bd_network_quality::{NetworkQualityMonitor, NetworkQualityResolver};
-use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::client::api::debug_data_request::{
   WorkflowDebugData,
   WorkflowTransitionDebugData,
 };
 use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
@@ -682,9 +682,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           fields: if let Some(extra_fields) = extra_fields {
             metadata
               .fields
-              .iter()
-              .chain(extra_fields.iter())
-              .map(|(k, v)| (k.clone(), v.clone()))
+              .into_iter()
+              .chain(extra_fields.into_iter())
               .collect()
           } else {
             metadata.fields
@@ -841,7 +840,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               )
             });
             let log = LogLine {
-              log_type: LogType::Lifecycle,
+              log_type: LogType::LIFECYCLE,
               log_level: crash_log.log_level,
               message: crash_log.message.clone(),
               fields: crash_log.fields,
@@ -1067,7 +1066,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       .write_log(
         Log {
           log_level: log_level::WARNING,
-          log_type: LogType::InternalSDK,
+          log_type: LogType::INTERNAL_SDK,
           message: msg.into(),
           fields,
           matching_fields,

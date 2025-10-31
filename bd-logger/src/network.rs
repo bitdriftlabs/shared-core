@@ -15,10 +15,10 @@ use bd_log_primitives::{
   LogInterceptor,
   LogLevel,
   LogMessage,
-  LogType,
   StringOrBytes,
 };
 use bd_network_quality::{NetworkQuality, NetworkQualityMonitor, NetworkQualityResolver};
+use bd_proto::protos::logging::payload::LogType;
 use itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
@@ -162,9 +162,9 @@ impl LogInterceptor for HTTPTrafficDataUsageTracker {
   ) {
     let LogMessage::String(msg) = msg else { return };
 
-    if log_type == LogType::Span && msg == "HTTPResponse" {
+    if log_type == LogType::SPAN && msg == "HTTPResponse" {
       self.process_http_response_log(fields);
-    } else if log_type == LogType::Resource && msg.is_empty() {
+    } else if log_type == LogType::RESOURCE && msg.is_empty() {
       self.process_resource_utilization_log(fields);
     }
   }
@@ -343,9 +343,9 @@ impl LogInterceptor for NetworkQualityInterceptor {
     fields: &mut AnnotatedLogFields,
     _matching_fields: &mut AnnotatedLogFields,
   ) {
-    if log_type == LogType::Resource
-      || log_type == LogType::Replay
-      || log_type == LogType::InternalSDK
+    if log_type == LogType::RESOURCE
+      || log_type == LogType::REPLAY
+      || log_type == LogType::INTERNAL_SDK
     {
       return;
     }

@@ -8,13 +8,8 @@
 pub mod thread_synchronizer;
 
 use crate::buffer::common_ring_buffer::Cursor;
-use crate::buffer::{
-  RingBuffer,
-  RingBufferConsumer,
-  RingBufferCursorConsumer,
-  RingBufferProducer,
-  to_u32,
-};
+use crate::buffer::{RingBuffer, RingBufferConsumer, RingBufferCursorConsumer, RingBufferProducer};
+use bd_log_primitives::LossyIntToU32;
 use std::sync::Arc;
 
 #[ctor::ctor]
@@ -42,7 +37,7 @@ impl StartRead {
 }
 
 pub fn reserve_no_commit(producer: &mut dyn RingBufferProducer, data: &str) {
-  let reserved = producer.reserve(to_u32(data.len()), true).unwrap();
+  let reserved = producer.reserve(data.len().to_u32(), true).unwrap();
   assert_eq!(reserved.len(), data.len());
   reserved.copy_from_slice(data.as_bytes());
 }

@@ -13,7 +13,7 @@ use bd_crash_handler::global_state;
 use bd_log::warn_every;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{AnnotatedLogFields, LogFieldKey, LogFieldKind, LogFieldValue, LogFields};
-use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use bd_proto::protos::logging::payload::LogType;
 use itertools::Itertools;
 use std::collections::BTreeSet;
 use std::sync::{Arc, LazyLock};
@@ -133,9 +133,9 @@ impl MetadataCollector {
     // Attach field provider's fields to session replay, resource logs, and internal SDK logs
     // as matching fields as opposed to 'normal' fields to save on bandwidth usage while still
     // allowing matching on them.
-    let (provider_fields, provider_matching_fields) = if log_type == LogType::Replay
-      || log_type == LogType::Resource
-      || log_type == LogType::InternalSDK
+    let (provider_fields, provider_matching_fields) = if log_type == LogType::REPLAY
+      || log_type == LogType::RESOURCE
+      || log_type == LogType::INTERNAL_SDK
     {
       (PartitionedFields::default(), provider_fields)
     } else {

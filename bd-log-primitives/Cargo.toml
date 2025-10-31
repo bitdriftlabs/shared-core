@@ -10,7 +10,9 @@ doctest = false
 
 [dependencies]
 ahash.workspace             = true
+anyhow.workspace            = true
 bd-proto                    = { path = "../bd-proto" }
 bd-workspace-hack.workspace = true
+protobuf.workspace          = true
 serde.workspace             = true
 time.workspace              = true

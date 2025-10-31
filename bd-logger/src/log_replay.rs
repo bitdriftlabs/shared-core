@@ -8,19 +8,22 @@
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::logging_state::{BufferProducers, ConfigUpdate, InitializedLoggingContextStats};
+use crate::write_log_to_buffer;
 use bd_api::{DataUpload, TriggerUpload};
-use bd_buffer::{AbslCode, BuffersWithAck, Error};
-use bd_client_common::fb::make_log;
+use bd_buffer::BuffersWithAck;
 use bd_client_stats::FlushTrigger;
 use bd_log_filter::FilterChain;
 use bd_log_primitives::tiny_set::TinySet;
-use bd_log_primitives::{FieldsRef, Log, LogRef, LogType, log_level};
+use bd_log_primitives::{FieldsRef, Log, LossyIntToU32, log_level};
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::config::FlushBufferId;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use bd_workflows::workflow::WorkflowDebugStateMap;
+use itertools::Itertools;
+use protobuf::CodedOutputStream;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -187,23 +190,10 @@ impl ProcessingPipeline {
     // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
     self.filter_chain.process(&mut log);
 
-    let log = &LogRef {
-      log_type: log.log_type,
-      log_level: log.log_level,
-      message: &log.message,
-      fields: FieldsRef::new(&log.fields, &log.matching_fields),
-      session_id: &log.session_id,
-      occurred_at: log.occurred_at,
-      capture_session: log.capture_session,
-    };
-
     let flush_stats_trigger = self.flush_stats_trigger.clone();
     let flush_buffers_tx = self.flush_buffers_tx.clone();
 
-    match self
-      .tail_configs
-      .maybe_stream_log(&mut self.buffer_producers, log)
-    {
+    match self.tail_configs.maybe_stream_log(&log) {
       Ok(streamed) => {
         if streamed {
           self.stats.streamed_logs.inc();
@@ -214,14 +204,16 @@ impl ProcessingPipeline {
       },
     }
 
-    let mut matching_buffers =
-      self
-        .buffer_selector
-        .buffers(log.log_type, log.log_level, log.message, log.fields);
+    let mut matching_buffers = self.buffer_selector.buffers(
+      log.log_type,
+      log.log_level,
+      &log.message,
+      FieldsRef::new(&log.fields, &log.matching_fields),
+    );
 
     let mut result = self
       .workflows_engine
-      .process_log(log, &matching_buffers, now);
+      .process_log(&log, &matching_buffers, now);
     let log_replay_result = LogReplayResult {
       logs_to_inject: std::mem::take(&mut result.logs_to_inject)
         .into_values()
@@ -251,15 +243,16 @@ impl ProcessingPipeline {
     Self::write_to_buffers(
       &mut self.buffer_producers,
       &result.log_destination_buffer_ids,
-      log,
-      result
+      &log,
+      &result
         .triggered_flush_buffers_action_ids
         .iter()
         .filter_map(|id| match id.as_ref() {
           bd_workflows::config::FlushBufferId::WorkflowActionId(workflow) => Some(workflow),
           bd_workflows::config::FlushBufferId::ExplicitSessionCapture(_) => None,
         })
-        .map(std::convert::AsRef::as_ref),
+        .map(std::convert::AsRef::as_ref)
+        .collect_vec(),
     )?;
 
     if let Some(extra_matching_buffer) = Self::process_flush_buffers_actions(
@@ -267,7 +260,7 @@ impl ProcessingPipeline {
       &mut self.buffer_producers,
       &result.triggered_flushes_buffer_ids,
       &result.log_destination_buffer_ids,
-      log,
+      &log,
     ) {
       // We emitted a synthetic log. Add the buffer it was written to to the list of matching
       // buffers.
@@ -334,50 +327,23 @@ impl ProcessingPipeline {
     })
   }
 
-  fn write_to_buffers<'a>(
+  fn write_to_buffers(
     buffers: &mut BufferProducers,
     matching_buffers: &TinySet<Cow<'_, str>>,
-    log: &LogRef<'_>,
-    workflow_flush_buffer_action_ids: impl Iterator<Item = &'a str>,
+    log: &Log,
+    action_ids: &[&str],
   ) -> anyhow::Result<()> {
     if matching_buffers.is_empty() {
       return Ok(());
     }
 
-    make_log(
-      &mut buffers.builder,
-      log.log_level,
-      log.log_type,
-      log.message,
-      log.fields.captured_fields,
-      log.session_id,
-      log.occurred_at,
-      workflow_flush_buffer_action_ids,
-      std::iter::empty(),
-      |data| {
-        for buffer in matching_buffers.iter() {
-          // TODO(snowp): For both logger and buffer lookup we end up doing a map lookup, which
-          // seems less than ideal in the logging path. Look into ways to optimize this,
-          // possibly via vector indices instead of string keys.
-          match BufferProducers::producer(&mut buffers.buffers, buffer)?.write(data) {
-            // If the buffer is locked, drop the error. This helps ensure that we are able to
-            // log to all buffers even if one of them is locked.
-            // TODO(snowp): Track how often logs are dropped due to locks.
-            // If the buffer is out of space, drop the error.
-            // TODO(mattklein123): Track this via stats.
-            e @ Err(Error::AbslStatus(
-              AbslCode::FailedPrecondition | AbslCode::ResourceExhausted,
-              _,
-            )) => {
-              log::debug!("failed to write log to buffer: {e:?}");
-              Ok(())
-            },
-            e => e,
-          }?;
-        }
-        Ok(())
-      },
-    )?;
+    for buffer in matching_buffers.iter() {
+      // TODO(snowp): For both logger and buffer lookup we end up doing a map lookup, which
+      // seems less than ideal in the logging path. Look into ways to optimize this,
+      // possibly via vector indices instead of string keys.
+      let producer = BufferProducers::producer(&mut buffers.buffers, buffer)?;
+      write_log_to_buffer(producer, log, action_ids, &[])?;
+    }
 
     Ok(())
   }
@@ -387,7 +353,7 @@ impl ProcessingPipeline {
     buffers: &mut BufferProducers,
     triggered_flushes_buffer_ids: &TinySet<Cow<'_, str>>,
     written_to_buffers: &TinySet<Cow<'_, str>>,
-    log: &LogRef<'_>,
+    log: &Log,
   ) -> Option<String> {
     if triggered_flush_buffers_action_ids.is_empty() {
       return None;
@@ -426,37 +392,46 @@ impl ProcessingPipeline {
         triggered_flush_buffers_action_ids
       );
 
-      let result = make_log(
-        &mut buffers.builder,
-        log_level::DEBUG,
-        LogType::InternalSDK,
-        log.message,
-        log.fields.captured_fields,
-        log.session_id,
-        log.occurred_at,
-        triggered_flush_buffers_action_ids
-          .clone()
-          .iter()
-          .filter_map(|id| match id.as_ref() {
-            bd_workflows::config::FlushBufferId::WorkflowActionId(workflow) => Some(workflow),
-            bd_workflows::config::FlushBufferId::ExplicitSessionCapture(_) => None,
-          })
-          .map(std::convert::AsRef::as_ref),
-        std::iter::empty(),
-        |synthetic_log| {
-          if let Ok(buffer_producer) =
-            BufferProducers::producer(&mut buffers.buffers, arbitrary_buffer_id_to_flush.as_str())
-            && let Err(e) = buffer_producer.write(synthetic_log)
-          {
-            log::debug!("failed to write synthetic log to buffer: {e}");
-          }
-
-          Ok(())
-        },
-      );
-      if let Err(e) = result {
-        log::debug!("failed to make a synthetic log: {e}");
-        return None;
+      if let Ok(buffer_producer) =
+        BufferProducers::producer(&mut buffers.buffers, arbitrary_buffer_id_to_flush.as_str())
+        && let Err(e) = (|| {
+          let action_ids = triggered_flush_buffers_action_ids
+            .iter()
+            .filter_map(|id| match id.as_ref() {
+              bd_workflows::config::FlushBufferId::WorkflowActionId(workflow) => Some(workflow),
+              bd_workflows::config::FlushBufferId::ExplicitSessionCapture(_) => None,
+            })
+            .map(std::convert::AsRef::as_ref)
+            .collect_vec();
+          let size = Log::serialize_proto_size_inner(
+            log_level::DEBUG,
+            &log.message,
+            &log.fields,
+            &log.session_id,
+            log.occurred_at,
+            LogType::INTERNAL_SDK,
+            &action_ids,
+            &[],
+          );
+          let reserved = buffer_producer.reserve(size.to_u32(), true)?;
+          let mut os = CodedOutputStream::bytes(reserved);
+          Log::serialize_proto_to_stream_inner(
+            log_level::DEBUG,
+            &log.message,
+            &log.fields,
+            &log.session_id,
+            log.occurred_at,
+            LogType::INTERNAL_SDK,
+            &action_ids,
+            &[],
+            &mut os,
+          )?;
+          drop(os);
+          buffer_producer.commit()?;
+          Ok::<_, anyhow::Error>(())
+        })()
+      {
+        log::debug!("failed to write synthetic log to buffer: {e}");
       }
 
       return Some(arbitrary_buffer_id_to_flush);

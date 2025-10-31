@@ -19,7 +19,6 @@ use std::future::{Future, pending};
 use tokio::time::Interval;
 
 pub mod error;
-pub mod fb;
 pub mod file;
 pub mod file_system;
 pub mod init_lifecycle;
