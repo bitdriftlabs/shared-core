@@ -590,7 +590,7 @@ impl Api {
       .iter()
       .map(|(k, v)| {
         (
-          k.to_string(),
+          k.clone(),
           ProtoData {
             data_type: Some(Data_type::StringData(v.clone())),
             ..Default::default()
