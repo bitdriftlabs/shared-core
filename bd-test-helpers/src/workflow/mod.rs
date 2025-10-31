@@ -69,8 +69,6 @@ use protos::workflow::workflow::workflow::{
 use std::collections::BTreeMap;
 use time::Duration;
 
-pub mod log_match;
-
 pub struct WorkflowBuilder {
   id: String,
   states: Vec<StateBuilder>,
@@ -223,31 +221,6 @@ pub fn state(id: &str) -> StateBuilder {
       id: id.to_string(),
       ..Default::default()
     },
-  }
-}
-
-// Explicit wrapper functions for creating LogMatcher instances for common matching operations.
-// These functions provide a clean, type-safe API for log filtering.
-
-/// Creates a log field matcher that matches when a field is equal to the provided string value.
-#[must_use]
-fn log_field_matcher(field: &str, value: &str, operator: Operator) -> LogMatcher {
-  LogMatcher {
-    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
-      match_type: Some(TagMatch(base_log_matcher::TagMatch {
-        tag_key: field.to_string(),
-        value_match: Some(Value_match::StringValueMatch(
-          base_log_matcher::StringValueMatch {
-            operator: operator.into(),
-            string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
-            ..Default::default()
-          },
-        )),
-        ..Default::default()
-      })),
-      ..Default::default()
-    })),
-    ..Default::default()
   }
 }
 
