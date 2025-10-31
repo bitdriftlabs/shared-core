@@ -121,12 +121,13 @@ enum ReportType : int8_t {
   ReportType_MemoryTermination = 4,
   ReportType_NativeCrash = 5,
   ReportType_StrictModeViolation = 6,
-  ReportType_JavaScriptError = 7,
+  ReportType_JavaScriptNonFatalError = 7,
+  ReportType_JavaScriptFatalError = 8,
   ReportType_MIN = ReportType_Unknown,
-  ReportType_MAX = ReportType_JavaScriptError
+  ReportType_MAX = ReportType_JavaScriptFatalError
 };
 
-inline const ReportType (&EnumValuesReportType())[8] {
+inline const ReportType (&EnumValuesReportType())[9] {
   static const ReportType values[] = {
     ReportType_Unknown,
     ReportType_AppNotResponding,
@@ -135,13 +136,14 @@ inline const ReportType (&EnumValuesReportType())[8] {
     ReportType_MemoryTermination,
     ReportType_NativeCrash,
     ReportType_StrictModeViolation,
-    ReportType_JavaScriptError
+    ReportType_JavaScriptNonFatalError,
+    ReportType_JavaScriptFatalError
   };
   return values;
 }
 
 inline const char * const *EnumNamesReportType() {
-  static const char * const names[9] = {
+  static const char * const names[10] = {
     "Unknown",
     "AppNotResponding",
     "HandledError",
@@ -149,14 +151,15 @@ inline const char * const *EnumNamesReportType() {
     "MemoryTermination",
     "NativeCrash",
     "StrictModeViolation",
-    "JavaScriptError",
+    "JavaScriptNonFatalError",
+    "JavaScriptFatalError",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameReportType(ReportType e) {
-  if (::flatbuffers::IsOutRange(e, ReportType_Unknown, ReportType_JavaScriptError)) return "";
+  if (::flatbuffers::IsOutRange(e, ReportType_Unknown, ReportType_JavaScriptFatalError)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesReportType()[index];
 }
@@ -2368,6 +2371,7 @@ inline const ::flatbuffers::TypeTable *ReportTypeTypeTable() {
     { ::flatbuffers::ET_CHAR, 0, 0 },
     { ::flatbuffers::ET_CHAR, 0, 0 },
     { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
     { ::flatbuffers::ET_CHAR, 0, 0 }
   };
   static const ::flatbuffers::TypeFunction type_refs[] = {
@@ -2381,10 +2385,11 @@ inline const ::flatbuffers::TypeTable *ReportTypeTypeTable() {
     "MemoryTermination",
     "NativeCrash",
     "StrictModeViolation",
-    "JavaScriptError"
+    "JavaScriptNonFatalError",
+    "JavaScriptFatalError"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_ENUM, 8, type_codes, type_refs, nullptr, nullptr, names
+    ::flatbuffers::ST_ENUM, 9, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
