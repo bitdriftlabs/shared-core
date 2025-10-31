@@ -11,6 +11,7 @@ use crate::paths::PATHS;
 use bd_client_common::file::read_compressed_protobuf;
 use bd_client_stats::Stats;
 use bd_client_stats_store::{Collector, Scope};
+use bd_log_matcher::builder::{message_equals, message_regex_matches};
 use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogRef, log_level};
 use bd_logger::LogFields;
@@ -28,7 +29,6 @@ use bd_proto::protos::workflow::workflow::workflow::{Execution, State};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
-use bd_test_helpers::workflow::log_match::{message_equals, message_regex_matches};
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   extract_metric_tag,

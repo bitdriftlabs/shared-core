@@ -21,6 +21,7 @@ use crate::{
 };
 use assert_matches::assert_matches;
 use bd_error_reporter::reporter::UnexpectedErrorHandler;
+use bd_log_matcher::builder::{field_equals, message_equals};
 use bd_log_metadata::LogFields;
 use bd_log_primitives::AnnotatedLogFields;
 use bd_noop_network::NoopNetwork;
@@ -58,7 +59,6 @@ use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::session::in_memory_store;
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_test_helpers::test_api_server::StreamAction;
-use bd_test_helpers::workflow::log_match::{field_equals, message_equals};
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   TestFieldRef,
