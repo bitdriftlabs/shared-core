@@ -416,7 +416,7 @@ impl SankeyExtraction {
     };
 
     Ok(Self {
-      sankey_id: proto.sankey_diagram_id.to_string(),
+      sankey_id: proto.sankey_diagram_id.clone(),
       value: match value {
         sankey_diagram_value_extraction::Value_type::Fixed(value) => TagValue::Fixed(value.clone()),
         sankey_diagram_value_extraction::Value_type::FieldExtracted(extracted) => {
@@ -856,7 +856,7 @@ impl TagValue {
   ) -> Option<Cow<'a, str>> {
     match self {
       Self::FieldExtract(field_key) => fields.field_value(field_key),
-      Self::Fixed(value) => Some(Cow::Owned(value.to_string())),
+      Self::Fixed(value) => Some(Cow::Owned(value.clone())),
       Self::LogBodyExtract => message.as_str().map(Cow::Borrowed),
     }
   }

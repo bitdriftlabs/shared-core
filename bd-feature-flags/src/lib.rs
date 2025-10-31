@@ -106,7 +106,7 @@ impl FeatureFlag {
         if s.is_empty() {
           None
         } else {
-          Some(s.to_string())
+          Some(s.clone())
         }
       },
       _ => return None,

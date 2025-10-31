@@ -136,10 +136,10 @@ impl RequestProcessor {
           .iter()
           .map(|(key, value)| {
             let string_value = match &value.data_type {
-              Some(Data_type::StringData(s)) => s.to_string(),
+              Some(Data_type::StringData(s)) => s.clone(),
               _ => String::new(),
             };
-            (key.to_string(), string_value)
+            (key.clone(), string_value)
           })
           .collect();
 

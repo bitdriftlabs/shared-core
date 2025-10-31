@@ -47,8 +47,8 @@ struct ProcessedIntents(Vec<SeenSankeyPath>);
 impl ProcessedIntents {
   fn contains(&mut self, sankey_path: &SankeyPath) -> bool {
     let seen_path = SeenSankeyPath {
-      sankey_id: sankey_path.sankey_id.to_string(),
-      path_id: sankey_path.path_id.to_string(),
+      sankey_id: sankey_path.sankey_id.clone(),
+      path_id: sankey_path.path_id.clone(),
     };
 
     let Some(index) = self.0.iter().position(|e| e == &seen_path) else {
@@ -246,14 +246,14 @@ impl Processor {
     let intent_upload_uuid: String = TrackedSankeyPathUploadRequest::upload_uuid();
 
     let intent_request = SankeyIntentRequest {
-      intent_uuid: intent_upload_uuid.to_string(),
+      intent_uuid: intent_upload_uuid.clone(),
       sankey_diagram_id: sankey_path.sankey_id.clone(),
       path_id: sankey_path.path_id.clone(),
       ..Default::default()
     };
 
     let (intent_upload_request, response) =
-      TrackedSankeyPathUploadIntentRequest::new(intent_upload_uuid.to_string(), intent_request);
+      TrackedSankeyPathUploadIntentRequest::new(intent_upload_uuid.clone(), intent_request);
 
     self
       .data_upload_tx

@@ -1104,7 +1104,7 @@ impl WorkflowsState {
   /// non initial state runs.
   fn optimized(&self) -> Self {
     Self {
-      session_id: self.session_id.to_string(),
+      session_id: self.session_id.clone(),
       workflows: self
         .workflows
         .iter()

@@ -137,7 +137,7 @@ pub fn generate_log_action(
     message: StringOrBytes::String(message),
     matching_fields: LogFields::from([(
       "_generate_log_id".into(),
-      StringOrBytes::String(action.id.to_string()),
+      StringOrBytes::String(action.id.clone()),
     )]),
     // These will be filled in later via the log processor.
     session_id: String::new(),

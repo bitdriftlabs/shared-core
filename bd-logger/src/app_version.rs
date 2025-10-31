@@ -44,7 +44,7 @@ impl AppVersionExtra {
 
   pub(crate) fn string_value(&self) -> String {
     match self {
-      Self::BuildNumber(value) => value.to_string(),
+      Self::BuildNumber(value) => value.clone(),
       Self::AppVersionCode(value) => value.to_string(),
     }
   }

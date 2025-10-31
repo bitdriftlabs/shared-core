@@ -49,7 +49,7 @@ impl Device {
 
     #[allow(clippy::option_if_let_else)]
     if let Some(id) = guard.as_ref() {
-      id.to_string()
+      id.clone()
     } else {
       let id = self.store.get(&DEVICE_ID_KEY).map_or_else(
         || {
