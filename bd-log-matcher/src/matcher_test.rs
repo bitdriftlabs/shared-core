@@ -846,6 +846,11 @@ fn feature_flag_matcher() {
       matches: true,
     },
     Input {
+      flags: vec![("flag1", None)],
+      matcher: make_string_feature_flag_matcher("flag1", Operator::OPERATOR_EQUALS, ""),
+      matches: true,
+    },
+    Input {
       flags: vec![("flag1", Some("value1"))],
       matcher: make_string_feature_flag_matcher("flag1", Operator::OPERATOR_EQUALS, "value2"),
       matches: false,
