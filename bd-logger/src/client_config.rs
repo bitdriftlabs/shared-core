@@ -405,6 +405,7 @@ impl TailConfigurations {
     &mut self,
     buffers: &mut BufferProducers,
     log: &LogRef<'_>,
+    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
   ) -> anyhow::Result<bool> {
     let Some(inner) = &mut self.inner else {
       return Ok(false);
@@ -422,6 +423,7 @@ impl TailConfigurations {
               log.log_type,
               log.message,
               log.fields,
+              feature_flags,
               &TinyMap::default(),
             )
           })

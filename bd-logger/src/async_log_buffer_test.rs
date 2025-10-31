@@ -18,7 +18,7 @@ use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
-use bd_feature_flags::FeatureFlagsBuilder;
+use bd_feature_flags::{FeatureFlags, FeatureFlagsBuilder};
 use bd_log_filter::FilterChain;
 use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
@@ -243,6 +243,7 @@ impl LogReplay for TestReplay {
     log: Log,
     _block: bool,
     _processing_pipeline: &mut ProcessingPipeline,
+    _feature_flags: Option<&FeatureFlags>,
     _now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     self.logs_count.fetch_add(1, Ordering::SeqCst);

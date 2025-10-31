@@ -40,38 +40,36 @@ use std::path::{Path, PathBuf};
 #[path = "./feature_flags_test.rs"]
 mod feature_flags_test;
 
+pub mod test;
+
 const VARIANT_KEY: &str = "v";
 const TIMESTAMP_KEY: &str = "t";
 const DEFAULT_HIGH_WATER_MARK_RATIO: f32 = 0.8;
 
 /// A feature flag containing an optional variant and timestamp.
 ///
-/// Each feature flag consists of:
+/// Each flag consists of:
 /// - An optional variant string that can be used to configure behavior
 /// - A timestamp indicating when the flag was last updated
 #[derive(Debug)]
-pub struct FeatureFlag {
-  /// The variant string for this feature flag.
+pub struct Flag<'a> {
+  /// The variant string for this flag.
   ///
   /// - `Some(variant)` indicates the flag is enabled with the specified variant
   /// - `None` indicates the flag is enabled without a specific variant
-  pub variant: Option<String>,
+  pub variant: Option<&'a str>,
 
   /// Timestamp when this flag was last updated.
   pub timestamp: time::OffsetDateTime,
 }
 
-impl FeatureFlag {
-  /// Creates a new `FeatureFlag` with the given variant and optional timestamp.
+impl<'a> Flag<'a> {
+  /// Creates a new `Flag` with the given variant and optional timestamp.
   ///
-  /// Validates the variant (rejecting empty strings) and uses the current time
-  /// if no timestamp is provided.
+  /// Uses the current time if no timestamp is provided.
   ///
   /// If variant is `Some("")`, it is treated as `None`.
-  pub fn new(
-    variant: Option<String>,
-    timestamp: Option<time::OffsetDateTime>,
-  ) -> anyhow::Result<Self> {
+  pub fn new(variant: Option<&'a str>, timestamp: Option<time::OffsetDateTime>) -> Self {
     // Validate the variant - reject empty strings
     let validated_variant = match variant {
       Some(s) if s.is_empty() => None,
@@ -79,17 +77,17 @@ impl FeatureFlag {
       Some(s) => Some(s),
     };
 
-    Ok(Self {
+    Self {
       variant: validated_variant,
       timestamp: timestamp.unwrap_or_else(time::OffsetDateTime::now_utc),
-    })
+    }
   }
 
-  /// Creates a new `FeatureFlag` from a BONJSON Value.
+  /// Creates a new `Flag` from a BONJSON Value.
   ///
   /// Returns `None` if the value is not a valid feature flag object.
   #[must_use]
-  pub fn from_value(value: &Value) -> Option<Self> {
+  pub fn from_value(value: &'a Value) -> Option<Self> {
     // Handle both Object and KVVec types for backward compatibility
     let get_field = |key: &str| -> Option<&Value> {
       match value {
@@ -106,7 +104,7 @@ impl FeatureFlag {
         if s.is_empty() {
           None
         } else {
-          Some(s.to_string())
+          Some(s.as_ref())
         }
       },
       _ => return None,
@@ -127,12 +125,12 @@ impl FeatureFlag {
     Some(Self { variant, timestamp })
   }
 
-  /// Converts a `FeatureFlag` to a BONJSON Value.
+  /// Converts a `Flag` to a BONJSON Value.
   pub fn to_value(&self) -> Value {
     let storage_variant = self
       .variant
       .as_ref()
-      .map_or_else(String::new, std::clone::Clone::clone);
+      .map_or_else(String::new, ToString::to_string);
 
     let timestamp_nanos = u64::try_from(self.timestamp.unix_timestamp_nanos()).unwrap_or(0);
 
@@ -241,9 +239,9 @@ impl FeatureFlags {
   ///
   /// * `key` - The name of the feature flag to retrieve
   #[must_use]
-  pub fn get(&self, key: &str) -> Option<FeatureFlag> {
+  pub fn get(&self, key: &str) -> Option<Flag<'_>> {
     let value = self.flags_store.get(key)?;
-    FeatureFlag::from_value(value)
+    Flag::from_value(value)
   }
 
   /// Sets or updates a feature flag.
@@ -269,8 +267,8 @@ impl FeatureFlags {
   /// This function will return an error if:
   /// - The flag cannot be written to persistent storage due to I/O errors, insufficient disk space,
   ///   or permission issues
-  pub fn set(&mut self, key: String, variant: Option<String>) -> anyhow::Result<()> {
-    let feature_flag = FeatureFlag::new(variant, None)?;
+  pub fn set(&mut self, key: String, variant: Option<&str>) -> anyhow::Result<()> {
+    let feature_flag = Flag::new(variant, None);
     let value = feature_flag.to_value();
     self.flags_store.insert(key, value)?;
     Ok(())
@@ -300,13 +298,16 @@ impl FeatureFlags {
   /// - Any flag cannot be written to persistent storage due to I/O errors, insufficient disk space,
   ///   or permission issues
   /// - If an error occurs, no flags will be written.
-  pub fn set_multiple(&mut self, flags: Vec<(String, Option<String>)>) -> anyhow::Result<()> {
+  pub fn set_multiple(
+    &mut self,
+    flags: Vec<(String, Option<impl AsRef<str>>)>,
+  ) -> anyhow::Result<()> {
     // Convert the input vector to Vec format for the KV store
     let now = time::OffsetDateTime::now_utc();
     let kv_entries: Vec<(String, bd_bonjson::Value)> = flags
       .into_iter()
       .map(|(key, variant)| {
-        let feature_flag = FeatureFlag::new(variant, Some(now))?;
+        let feature_flag = Flag::new(variant.as_ref().map(|s| s.as_ref()), Some(now));
         let value = feature_flag.to_value();
         Ok((key, value))
       })
@@ -380,13 +381,13 @@ impl FeatureFlags {
   /// # Returns
   ///
   /// An iterator over `(String, FeatureFlag)` pairs.
-  pub fn iter(&self) -> impl Iterator<Item = (&str, FeatureFlag)> + '_ {
+  pub fn iter(&self) -> impl Iterator<Item = (&str, Flag<'_>)> + '_ {
     self
       .flags_store
       .as_hashmap()
       .iter()
       .filter_map(|(key, value)| {
-        FeatureFlag::from_value(value).map(|feature_flag| (key.as_str(), feature_flag))
+        Flag::from_value(value).map(|feature_flag| (key.as_str(), feature_flag))
       })
   }
 }

@@ -77,6 +77,7 @@ fn metric_increment_value_extraction() {
       fields: FieldsRef::new(&fields, &matching_only_fields),
       capture_session: None,
     },
+    None,
   );
 
   collector.assert_workflow_counter_eq(1, "action_id_1", labels! {});
@@ -146,6 +147,7 @@ fn counter_label_extraction() {
       fields: FieldsRef::new(&fields, &matching_only_fields),
       capture_session: None,
     },
+    None,
   );
 
   collector.assert_workflow_counter_eq(

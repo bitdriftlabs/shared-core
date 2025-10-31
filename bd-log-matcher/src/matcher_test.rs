@@ -7,6 +7,8 @@
 
 use crate::matcher::Tree;
 use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
+use crate::test::TestMatcher;
+use bd_feature_flags::test::TestFeatureFlags;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{
   EMPTY_FIELDS,
@@ -16,8 +18,10 @@ use bd_log_primitives::{
   LogMessage,
   LogType,
   StringOrBytes,
+  TypedLogLevel,
   log_level,
 };
+use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::feature_flag_match;
 use bd_proto::protos::log_matcher::log_matcher::{LogMatcher, log_matcher};
 use bd_test_helpers::workflow::log_match;
 use log_matcher::base_log_matcher::Match_type::{MessageMatch, TagMatch};
@@ -833,6 +837,57 @@ fn test_is_set_matcher() {
   );
 }
 
+#[test]
+fn feature_flag_matcher() {
+  struct Input {
+    flags: Vec<(&'static str, Option<&'static str>)>,
+    matcher: LogMatcher,
+    matches: bool,
+  }
+
+  for input in [
+    Input {
+      flags: vec![("flag1", Some("value1"))],
+      matcher: make_string_feature_flag_matcher("flag1", Operator::OPERATOR_EQUALS, "value1"),
+      matches: true,
+    },
+    Input {
+      flags: vec![("flag2", Some("value2"))],
+      matcher: make_string_feature_flag_matcher("flag2", Operator::OPERATOR_NOT_EQUALS, "value1"),
+      matches: true,
+    },
+    Input {
+      flags: vec![("flag3", None)],
+      matcher: make_string_feature_flag_matcher("flag3", Operator::OPERATOR_NOT_EQUALS, "value1"),
+      matches: true,
+    },
+  ] {
+    let matcher = TestMatcher::new(&input.matcher).unwrap();
+
+    let mut feature_flags = TestFeatureFlags::default();
+    feature_flags
+      .set_multiple(
+        input
+          .flags
+          .into_iter()
+          .map(|(k, v)| (k.to_string(), v))
+          .collect(),
+      )
+      .unwrap();
+
+    assert_eq!(
+      input.matches,
+      matcher.match_log_with_feature_flags(
+        TypedLogLevel::Debug,
+        LogType::Normal,
+        "foo",
+        [],
+        &feature_flags,
+      )
+    );
+  }
+}
+
 fn simple_log_matcher(match_type: base_log_matcher::Match_type) -> LogMatcher {
   LogMatcher {
     matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
@@ -852,6 +907,30 @@ fn make_message_match(operator: Operator, match_value: &str) -> base_log_matcher
     })),
     ..Default::default()
   })
+}
+
+fn make_string_feature_flag_matcher(
+  flag_name: &str,
+  operator: Operator,
+  match_value: &str,
+) -> LogMatcher {
+  simple_log_matcher(log_matcher::base_log_matcher::Match_type::FeatureFlagMatch(
+    base_log_matcher::FeatureFlagMatch {
+      flag_name: flag_name.to_string(),
+      value_match: Some(feature_flag_match::Value_match::StringValueMatch(
+        base_log_matcher::StringValueMatch {
+          operator: operator.into(),
+          string_value_match_type: Some(
+            log_matcher::base_log_matcher::string_value_match::String_value_match_type::MatchValue(
+              match_value.to_string(),
+            ),
+          ),
+          ..Default::default()
+        },
+      )),
+      ..Default::default()
+    },
+  ))
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -879,6 +958,7 @@ fn match_test_runner_with_extractions(
         bd_log_primitives::LogType(log_type.0),
         &message,
         fields,
+        None,
         extracted_fields,
       ),
       "{input:?} should result in {should_match} but did not",

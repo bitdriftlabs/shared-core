@@ -93,6 +93,7 @@ impl AnnotatedWorkflow {
         ),
         capture_session: None,
       },
+      None,
       log.now,
     )
   }

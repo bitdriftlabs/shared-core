@@ -16,7 +16,7 @@ impl LogUpload {
   pub fn logs(&self) -> Vec<Log<'_>> {
     self
       .0
-      .logs
+      .legacy_flatbuffer_logs
       .iter()
       .map(|log| Log(root_as_log(log).unwrap()))
       .collect()

@@ -22,6 +22,7 @@ bd-log-primitives.path      = "../bd-log-primitives"
 bd-proto.path               = "../bd-proto"
 bd-runtime.path             = "../bd-runtime"
 bd-shutdown.path            = "../bd-shutdown"
+bd-feature-flags.path            = "../bd-feature-flags"
 bd-stats-common.path        = "../bd-stats-common"
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
 bd-time.path                = "../bd-time"

@@ -447,6 +447,497 @@ pub mod data {
     }
 }
 
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.logging.v1.Log)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct Log {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.timestamp_unix_micro)
+    pub timestamp_unix_micro: u64,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.log_level)
+    pub log_level: u32,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.message)
+    pub message: ::protobuf::MessageField<Data>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.fields)
+    pub fields: ::std::vec::Vec<log::Field>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.session_id)
+    pub session_id: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.action_ids)
+    pub action_ids: ::std::vec::Vec<::std::string::String>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.log_type)
+    pub log_type: ::protobuf::EnumOrUnknown<LogType>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.stream_ids)
+    pub stream_ids: ::std::vec::Vec<::std::string::String>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.logging.v1.Log.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a Log {
+    fn default() -> &'a Log {
+        <Log as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl Log {
+    pub fn new() -> Log {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(8);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "timestamp_unix_micro",
+            |m: &Log| { &m.timestamp_unix_micro },
+            |m: &mut Log| { &mut m.timestamp_unix_micro },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "log_level",
+            |m: &Log| { &m.log_level },
+            |m: &mut Log| { &mut m.log_level },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, Data>(
+            "message",
+            |m: &Log| { &m.message },
+            |m: &mut Log| { &mut m.message },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "fields",
+            |m: &Log| { &m.fields },
+            |m: &mut Log| { &mut m.fields },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "session_id",
+            |m: &Log| { &m.session_id },
+            |m: &mut Log| { &mut m.session_id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "action_ids",
+            |m: &Log| { &m.action_ids },
+            |m: &mut Log| { &mut m.action_ids },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "log_type",
+            |m: &Log| { &m.log_type },
+            |m: &mut Log| { &mut m.log_type },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "stream_ids",
+            |m: &Log| { &m.stream_ids },
+            |m: &mut Log| { &mut m.stream_ids },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Log>(
+            "Log",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for Log {
+    const NAME: &'static str = "Log";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.timestamp_unix_micro = is.read_uint64()?;
+                },
+                16 => {
+                    self.log_level = is.read_uint32()?;
+                },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.message)?;
+                },
+                34 => {
+                    self.fields.push(is.read_message()?);
+                },
+                42 => {
+                    self.session_id = is.read_string()?;
+                },
+                50 => {
+                    self.action_ids.push(is.read_string()?);
+                },
+                56 => {
+                    self.log_type = is.read_enum_or_unknown()?;
+                },
+                66 => {
+                    self.stream_ids.push(is.read_string()?);
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if self.timestamp_unix_micro != 0 {
+            my_size += ::protobuf::rt::uint64_size(1, self.timestamp_unix_micro);
+        }
+        if self.log_level != 0 {
+            my_size += ::protobuf::rt::uint32_size(2, self.log_level);
+        }
+        if let Some(v) = self.message.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        for value in &self.fields {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        if !self.session_id.is_empty() {
+            my_size += ::protobuf::rt::string_size(5, &self.session_id);
+        }
+        for value in &self.action_ids {
+            my_size += ::protobuf::rt::string_size(6, &value);
+        };
+        if self.log_type != ::protobuf::EnumOrUnknown::new(LogType::NORMAL) {
+            my_size += ::protobuf::rt::int32_size(7, self.log_type.value());
+        }
+        for value in &self.stream_ids {
+            my_size += ::protobuf::rt::string_size(8, &value);
+        };
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.timestamp_unix_micro != 0 {
+            os.write_uint64(1, self.timestamp_unix_micro)?;
+        }
+        if self.log_level != 0 {
+            os.write_uint32(2, self.log_level)?;
+        }
+        if let Some(v) = self.message.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        for v in &self.fields {
+            ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+        };
+        if !self.session_id.is_empty() {
+            os.write_string(5, &self.session_id)?;
+        }
+        for v in &self.action_ids {
+            os.write_string(6, &v)?;
+        };
+        if self.log_type != ::protobuf::EnumOrUnknown::new(LogType::NORMAL) {
+            os.write_enum(7, ::protobuf::EnumOrUnknown::value(&self.log_type))?;
+        }
+        for v in &self.stream_ids {
+            os.write_string(8, &v)?;
+        };
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> Log {
+        Log::new()
+    }
+
+    fn clear(&mut self) {
+        self.timestamp_unix_micro = 0;
+        self.log_level = 0;
+        self.message.clear();
+        self.fields.clear();
+        self.session_id.clear();
+        self.action_ids.clear();
+        self.log_type = ::protobuf::EnumOrUnknown::new(LogType::NORMAL);
+        self.stream_ids.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static Log {
+        static instance: Log = Log {
+            timestamp_unix_micro: 0,
+            log_level: 0,
+            message: ::protobuf::MessageField::none(),
+            fields: ::std::vec::Vec::new(),
+            session_id: ::std::string::String::new(),
+            action_ids: ::std::vec::Vec::new(),
+            log_type: ::protobuf::EnumOrUnknown::from_i32(0),
+            stream_ids: ::std::vec::Vec::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for Log {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("Log").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for Log {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for Log {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `Log`
+pub mod log {
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.logging.v1.Log.Field)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Field {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.Field.key)
+        pub key: ::std::string::String,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.Field.value)
+        pub value: ::protobuf::MessageField<super::Data>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.logging.v1.Log.Field.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Field {
+        fn default() -> &'a Field {
+            <Field as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Field {
+        pub fn new() -> Field {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "key",
+                |m: &Field| { &m.key },
+                |m: &mut Field| { &mut m.key },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::Data>(
+                "value",
+                |m: &Field| { &m.value },
+                |m: &mut Field| { &mut m.value },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Field>(
+                "Log.Field",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Field {
+        const NAME: &'static str = "Field";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.key = is.read_string()?;
+                    },
+                    18 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.value)?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.key.is_empty() {
+                my_size += ::protobuf::rt::string_size(1, &self.key);
+            }
+            if let Some(v) = self.value.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.key.is_empty() {
+                os.write_string(1, &self.key)?;
+            }
+            if let Some(v) = self.value.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Field {
+            Field::new()
+        }
+
+        fn clear(&mut self) {
+            self.key.clear();
+            self.value.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Field {
+            static instance: Field = Field {
+                key: ::std::string::String::new(),
+                value: ::protobuf::MessageField::none(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Field {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("Log.Field").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Field {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Field {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+}
+
+#[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+// @@protoc_insertion_point(enum:bitdrift_public.protobuf.logging.v1.LogType)
+pub enum LogType {
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.logging.v1.LogType.NORMAL)
+    NORMAL = 0,
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.logging.v1.LogType.REPLAY)
+    REPLAY = 1,
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.logging.v1.LogType.LIFECYCLE)
+    LIFECYCLE = 2,
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.logging.v1.LogType.RESOURCE)
+    RESOURCE = 3,
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.logging.v1.LogType.INTERNAL_SDK)
+    INTERNAL_SDK = 4,
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.logging.v1.LogType.VIEW)
+    VIEW = 5,
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.logging.v1.LogType.DEVICE)
+    DEVICE = 6,
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.logging.v1.LogType.UX)
+    UX = 7,
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.logging.v1.LogType.SPAN)
+    SPAN = 8,
+}
+
+impl ::protobuf::Enum for LogType {
+    const NAME: &'static str = "LogType";
+
+    fn value(&self) -> i32 {
+        *self as i32
+    }
+
+    fn from_i32(value: i32) -> ::std::option::Option<LogType> {
+        match value {
+            0 => ::std::option::Option::Some(LogType::NORMAL),
+            1 => ::std::option::Option::Some(LogType::REPLAY),
+            2 => ::std::option::Option::Some(LogType::LIFECYCLE),
+            3 => ::std::option::Option::Some(LogType::RESOURCE),
+            4 => ::std::option::Option::Some(LogType::INTERNAL_SDK),
+            5 => ::std::option::Option::Some(LogType::VIEW),
+            6 => ::std::option::Option::Some(LogType::DEVICE),
+            7 => ::std::option::Option::Some(LogType::UX),
+            8 => ::std::option::Option::Some(LogType::SPAN),
+            _ => ::std::option::Option::None
+        }
+    }
+
+    fn from_str(str: &str) -> ::std::option::Option<LogType> {
+        match str {
+            "NORMAL" => ::std::option::Option::Some(LogType::NORMAL),
+            "REPLAY" => ::std::option::Option::Some(LogType::REPLAY),
+            "LIFECYCLE" => ::std::option::Option::Some(LogType::LIFECYCLE),
+            "RESOURCE" => ::std::option::Option::Some(LogType::RESOURCE),
+            "INTERNAL_SDK" => ::std::option::Option::Some(LogType::INTERNAL_SDK),
+            "VIEW" => ::std::option::Option::Some(LogType::VIEW),
+            "DEVICE" => ::std::option::Option::Some(LogType::DEVICE),
+            "UX" => ::std::option::Option::Some(LogType::UX),
+            "SPAN" => ::std::option::Option::Some(LogType::SPAN),
+            _ => ::std::option::Option::None
+        }
+    }
+
+    const VALUES: &'static [LogType] = &[
+        LogType::NORMAL,
+        LogType::REPLAY,
+        LogType::LIFECYCLE,
+        LogType::RESOURCE,
+        LogType::INTERNAL_SDK,
+        LogType::VIEW,
+        LogType::DEVICE,
+        LogType::UX,
+        LogType::SPAN,
+    ];
+}
+
+impl ::protobuf::EnumFull for LogType {
+    fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().enum_by_package_relative_name("LogType").unwrap()).clone()
+    }
+
+    fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+        let index = *self as usize;
+        Self::enum_descriptor().value_by_index(index)
+    }
+}
+
+impl ::std::default::Default for LogType {
+    fn default() -> Self {
+        LogType::NORMAL
+    }
+}
+
+impl LogType {
+    fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+        ::protobuf::reflect::GeneratedEnumDescriptorData::new::<LogType>("LogType")
+    }
+}
+
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n1bitdrift_public/protobuf/logging/v1/payload.proto\x12#bitdrift_public\
     .protobuf.logging.v1\"H\n\nBinaryData\x12\x17\n\x04type\x18\x01\x20\x01(\
@@ -454,7 +945,21 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x07payloadB\x07\n\x05_type\"\x8a\x01\n\x04Data\x12!\n\x0bstring_data\
     \x18\x01\x20\x01(\tH\0R\nstringData\x12R\n\x0bbinary_data\x18\x02\x20\
     \x01(\x0b2/.bitdrift_public.protobuf.logging.v1.BinaryDataH\0R\nbinaryDa\
-    taB\x0b\n\tdata_typeb\x06proto3\
+    taB\x0b\n\tdata_type\"\xe3\x03\n\x03Log\x120\n\x14timestamp_unix_micro\
+    \x18\x01\x20\x01(\x04R\x12timestampUnixMicro\x12\x1b\n\tlog_level\x18\
+    \x02\x20\x01(\rR\x08logLevel\x12C\n\x07message\x18\x03\x20\x01(\x0b2).bi\
+    tdrift_public.protobuf.logging.v1.DataR\x07message\x12F\n\x06fields\x18\
+    \x04\x20\x03(\x0b2..bitdrift_public.protobuf.logging.v1.Log.FieldR\x06fi\
+    elds\x12\x1d\n\nsession_id\x18\x05\x20\x01(\tR\tsessionId\x12\x1d\n\nact\
+    ion_ids\x18\x06\x20\x03(\tR\tactionIds\x12G\n\x08log_type\x18\x07\x20\
+    \x01(\x0e2,.bitdrift_public.protobuf.logging.v1.LogTypeR\x07logType\x12\
+    \x1d\n\nstream_ids\x18\x08\x20\x03(\tR\tstreamIds\x1aZ\n\x05Field\x12\
+    \x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01\
+    (\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05value*x\n\x07LogTyp\
+    e\x12\n\n\x06NORMAL\x10\0\x12\n\n\x06REPLAY\x10\x01\x12\r\n\tLIFECYCLE\
+    \x10\x02\x12\x0c\n\x08RESOURCE\x10\x03\x12\x10\n\x0cINTERNAL_SDK\x10\x04\
+    \x12\x08\n\x04VIEW\x10\x05\x12\n\n\x06DEVICE\x10\x06\x12\x06\n\x02UX\x10\
+    \x07\x12\x08\n\x04SPAN\x10\x08b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -472,10 +977,13 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
             let mut deps = ::std::vec::Vec::with_capacity(0);
-            let mut messages = ::std::vec::Vec::with_capacity(2);
+            let mut messages = ::std::vec::Vec::with_capacity(4);
             messages.push(BinaryData::generated_message_descriptor_data());
             messages.push(Data::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(0);
+            messages.push(Log::generated_message_descriptor_data());
+            messages.push(log::Field::generated_message_descriptor_data());
+            let mut enums = ::std::vec::Vec::with_capacity(1);
+            enums.push(LogType::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
                 deps,

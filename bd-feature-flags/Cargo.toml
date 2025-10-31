@@ -20,3 +20,4 @@ bd-resilient-kv             = { path = "../bd-resilient-kv" }
 bd-workspace-hack.workspace = true
 log.workspace               = true
 time.workspace              = true
+tempfile.workspace              = true
