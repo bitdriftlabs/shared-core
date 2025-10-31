@@ -19,6 +19,7 @@ use bd_client_stats::Stats;
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
 use bd_error_reporter::reporter::{Reporter, UnexpectedErrorHandler};
+use bd_log_matcher::builder::{field_equals, message_equals, or};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{FieldsRef, Log, LogFields, LogMessage, LogRef, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
@@ -33,7 +34,6 @@ use bd_runtime::runtime::ConfigLoader;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{NameType, labels};
 use bd_test_helpers::sankey_value;
-use bd_test_helpers::workflow::log_match::{field_equals, message_equals};
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   TestFieldRef,
@@ -41,7 +41,6 @@ use bd_test_helpers::workflow::{
   WorkflowBuilder,
   extract_metric_tag,
   extract_metric_value,
-  log_match,
   make_emit_counter_action,
   make_emit_sankey_action,
   make_flush_buffers_action,
@@ -2489,7 +2488,7 @@ async fn creating_new_runs_after_first_log_processing() {
   a = a.declare_transition(
     &b,
     rule!(
-      log_match::or(vec![
+      or(vec![
         message_equals("foo"),
         field_equals("key", "value"),
       ]); times 100),
@@ -2497,7 +2496,7 @@ async fn creating_new_runs_after_first_log_processing() {
   c = c.declare_transition(&d, rule!(message_equals("bar")));
   d = d.declare_transition(
     &e,
-    rule!(log_match::or(vec![
+    rule!(or(vec![
       message_equals("zar"),
       field_equals("key", "value"),
     ])),

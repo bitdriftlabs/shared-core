@@ -15,16 +15,15 @@ use crate::config::{
 };
 use crate::test::{MakeConfig, TestLog};
 use crate::workflow::{Run, TriggeredAction, Workflow, WorkflowResult, WorkflowResultStats};
+use bd_log_matcher::builder::{field_equals, message_equals};
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{FieldsRef, LogFields, LogMessage, log_level};
 use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, labels};
-use bd_test_helpers::workflow::log_match::{field_equals, message_equals};
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   WorkflowBuilder,
-  log_match,
   make_emit_counter_action,
   make_flush_buffers_action,
   metric_value,
@@ -764,7 +763,7 @@ fn basic_exclusive_workflow() {
 
   a = a.declare_transition_with_actions(
     &b,
-    rule!(log_match::and(vec![
+    rule!(bd_log_matcher::builder::and(vec![
       message_equals("foo"),
       field_equals("key", "value"),
     ])),
@@ -1202,7 +1201,7 @@ fn branching_exclusive_workflow() {
 
   a = a.declare_transition_with_actions(
     &b,
-    rule!(log_match::or(vec![
+    rule!(bd_log_matcher::builder::or(vec![
       message_equals("foo"),
       field_equals("key", "value"),
     ])),
