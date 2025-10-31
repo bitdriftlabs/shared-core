@@ -10,14 +10,14 @@ doctest = false
 
 [dependencies]
 anyhow.workspace            = true
+bd-feature-flags.path       = "../bd-feature-flags"
 bd-log-primitives.path      = "../bd-log-primitives"
 bd-proto.path               = "../bd-proto"
-bd-feature-flags.path      = "../bd-feature-flags"
 bd-workspace-hack.workspace = true
 itertools.workspace         = true
 protobuf.workspace          = true
 regex.workspace             = true
-tempfile.workspace              = true
+tempfile.workspace          = true
 
 
 [dev-dependencies]

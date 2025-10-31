@@ -11,9 +11,9 @@ doctest = false
 [dependencies]
 anyhow.workspace            = true
 bd-client-stats-store.path  = "../bd-client-stats-store"
+bd-feature-flags.path       = "../bd-feature-flags"
 bd-log-matcher.path         = "../bd-log-matcher"
 bd-log-primitives.path      = "../bd-log-primitives"
-bd-feature-flags.path      = "../bd-feature-flags"
 bd-proto.path               = "../bd-proto"
 bd-workspace-hack.workspace = true
 itertools.workspace         = true
