@@ -11,7 +11,6 @@ use action_generate_log::{GeneratedField, ValueReference, ValueReferencePair};
 use bd_log_primitives::{LogFields, LogType, StringOrBytes};
 use bd_proto::protos;
 use bd_proto::protos::log_matcher::log_matcher::log_matcher;
-use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Operator;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::Streaming;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::streaming::{
   TerminationCriterion,
@@ -221,30 +220,6 @@ pub fn state(id: &str) -> StateBuilder {
       id: id.to_string(),
       ..Default::default()
     },
-  }
-}
-
-/// Creates a log field matcher that matches when a field is equal to the provided double value.
-#[must_use]
-pub fn log_field_double_matcher(key: &str, value: f64, operator: Operator) -> LogMatcher {
-  use base_log_matcher::DoubleValueMatch;
-  use base_log_matcher::double_value_match::Double_value_match_type;
-  use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher;
-
-  LogMatcher {
-    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
-      match_type: Some(TagMatch(base_log_matcher::TagMatch {
-        tag_key: key.to_string(),
-        value_match: Some(Value_match::DoubleValueMatch(DoubleValueMatch {
-          operator: operator.into(),
-          double_value_match_type: Some(Double_value_match_type::MatchValue(value)),
-          ..Default::default()
-        })),
-        ..Default::default()
-      })),
-      ..Default::default()
-    })),
-    ..Default::default()
   }
 }
 
