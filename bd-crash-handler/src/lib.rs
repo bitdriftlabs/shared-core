@@ -231,7 +231,11 @@ impl Monitor {
       .map(|ff| {
         ff.iter()
           .map(|(name, flag)| {
-            SnappedFeatureFlag::new(name.to_string(), flag.variant, flag.timestamp)
+            SnappedFeatureFlag::new(
+              name.to_string(),
+              flag.variant.map(ToString::to_string),
+              flag.timestamp,
+            )
           })
           .collect()
       })

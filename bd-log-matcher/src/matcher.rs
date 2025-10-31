@@ -15,7 +15,7 @@ mod legacy_matcher_test;
 
 use crate::version;
 use anyhow::{Result, anyhow};
-use base_log_matcher::Match_type::{MessageMatch, TagMatch};
+use base_log_matcher::Match_type::{FeatureFlagMatch, MessageMatch, TagMatch};
 use base_log_matcher::Operator;
 use base_log_matcher::tag_match::Value_match::{
   DoubleValueMatch,
@@ -204,6 +204,7 @@ impl Tree {
     log_type: LogType,
     message: &LogMessage,
     fields: FieldsRef<'_>,
+    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
     extracted_fields: &TinyMap<String, String>,
   ) -> bool {
     match self {
@@ -215,35 +216,58 @@ impl Tree {
         Leaf::IntValue(input, criteria) =>
         {
           #[allow(clippy::cast_possible_truncation)]
-          input.get(message, fields).is_some_and(|input| {
-            input
-              .parse::<f64>()
-              .is_ok_and(|v| criteria.evaluate(v as i32, extracted_fields))
-          })
-        },
-        Leaf::DoubleValue(input, criteria) => input.get(message, fields).is_some_and(|input| {
           input
-            .parse()
-            .is_ok_and(|v| criteria.evaluate(v, extracted_fields))
-        }),
+            .get(message, fields, feature_flags)
+            .is_some_and(|input| {
+              input
+                .parse::<f64>()
+                .is_ok_and(|v| criteria.evaluate(v as i32, extracted_fields))
+            })
+        },
+        Leaf::DoubleValue(input, criteria) => input
+          .get(message, fields, feature_flags)
+          .is_some_and(|input| {
+            input
+              .parse()
+              .is_ok_and(|v| criteria.evaluate(v, extracted_fields))
+          }),
         Leaf::StringValue(input, criteria) => input
-          .get(message, fields)
+          .get(message, fields, feature_flags)
           .is_some_and(|input| criteria.evaluate(input.as_ref(), extracted_fields)),
         Leaf::VersionValue(input, criteria) => input
-          .get(message, fields)
+          .get(message, fields, feature_flags)
           .is_some_and(|input| criteria.evaluate(input.as_ref())),
-        Leaf::IsSetValue(input) => input.get(message, fields).is_some(),
+        Leaf::IsSetValue(input) => input.get(message, fields, feature_flags).is_some(),
         Leaf::Any => true,
       },
-      Self::Or(or_matchers) => or_matchers
-        .iter()
-        .any(|matcher| matcher.do_match(log_level, log_type, message, fields, extracted_fields)),
-      Self::And(and_matchers) => and_matchers
-        .iter()
-        .all(|matcher| matcher.do_match(log_level, log_type, message, fields, extracted_fields)),
-      Self::Not(matcher) => {
-        !matcher.do_match(log_level, log_type, message, fields, extracted_fields)
-      },
+      Self::Or(or_matchers) => or_matchers.iter().any(|matcher| {
+        matcher.do_match(
+          log_level,
+          log_type,
+          message,
+          fields,
+          feature_flags,
+          extracted_fields,
+        )
+      }),
+      Self::And(and_matchers) => and_matchers.iter().all(|matcher| {
+        matcher.do_match(
+          log_level,
+          log_type,
+          message,
+          fields,
+          feature_flags,
+          extracted_fields,
+        )
+      }),
+      Self::Not(matcher) => !matcher.do_match(
+        log_level,
+        log_type,
+        message,
+        fields,
+        feature_flags,
+        extracted_fields,
+      ),
     }
   }
 }
@@ -411,13 +435,23 @@ impl StringMatch {
 pub enum InputType {
   Message,
   Field(String),
+  FeatureFlag(String),
 }
 
 impl InputType {
-  fn get<'a>(&self, message: &'a LogMessage, fields: FieldsRef<'a>) -> Option<Cow<'a, str>> {
+  fn get<'a>(
+    &self,
+    message: &'a LogMessage,
+    fields: FieldsRef<'a>,
+    feature_flags: Option<&'a bd_feature_flags::FeatureFlags>,
+  ) -> Option<Cow<'a, str>> {
     match self {
       Self::Message => message.as_str().map(Cow::Borrowed),
       Self::Field(field_key) => fields.field_value(field_key),
+      Self::FeatureFlag(flag_key) => feature_flags?
+        .get(flag_key)
+        .map(|v| v.variant.unwrap_or_default())
+        .map(Cow::Borrowed),
     }
   }
 }
@@ -549,109 +583,131 @@ impl Leaf {
       }
     }
 
-    match log_matcher
-      .match_type
-      .as_ref()
-      .ok_or_else(|| anyhow!("missing log_matcher"))?
-    {
-      MessageMatch(message_match) => Ok(Self::StringValue(
-        InputType::Message,
-        StringMatch::new(
-          message_match
-            .string_value_match
-            .operator
-            .enum_value()
-            .map_err(|_| anyhow!("unknown field or enum"))?,
-          transform_string_value_match(&message_match.string_value_match),
-        )?,
-      )),
-      TagMatch(tag_match) => match tag_match
-        .value_match
+    Ok(
+      match log_matcher
+        .match_type
         .as_ref()
-        .ok_or_else(|| anyhow!("missing tag_match value_match"))?
+        .ok_or_else(|| anyhow!("missing log_matcher"))?
       {
-        IntValueMatch(int_value_match) => match tag_match.tag_key.as_str() {
-          // Special case for key="log_level"
-          // We're special casing log level because we need to look for this tag outside of the
-          // regular fields map It should be a bd_matcher::log_level enum value, so
-          // using an IntMatch should work
-          LOG_LEVEL_KEY => Ok(Self::LogLevel(IntMatch::new(
-            int_value_match
+        MessageMatch(message_match) => Self::StringValue(
+          InputType::Message,
+          StringMatch::new(
+            message_match
+              .string_value_match
               .operator
               .enum_value()
               .map_err(|_| anyhow!("unknown field or enum"))?,
-            transform_int_value_match(int_value_match),
-          )?)),
-          // Special case for key="log_type"
-          // We're special casing log type because we need to look for this tag outside of the
-          // regular fields map It should be a bd_matcher::LogType u32 value, so we
-          // try to convert it from i32
-          LOG_TYPE_KEY => Ok(Self::LogType(
-            match transform_int_value_match(int_value_match) {
-              ValueOrSavedFieldId::Value(v) => v.try_into()?,
-              ValueOrSavedFieldId::SaveFieldId(_) => {
-                return Err(anyhow!("log_type must be a value"));
-              },
-            },
-          )),
-          // Any other int uses the IntValue match
-          _ => Ok(Self::IntValue(
-            InputType::Field(tag_match.tag_key.clone()),
-            IntMatch::new(
+            transform_string_value_match(&message_match.string_value_match),
+          )?,
+        ),
+        FeatureFlagMatch(feature_flag_match) => match feature_flag_match
+          .value_match
+          .as_ref()
+          .ok_or_else(|| anyhow!("missing feature_flag_match value_match"))?
+        {
+          base_log_matcher::feature_flag_match::Value_match::StringValueMatch(
+            string_value_match,
+          ) => Self::StringValue(
+            InputType::FeatureFlag(feature_flag_match.flag_name.clone()),
+            StringMatch::new(
+              string_value_match
+                .operator
+                .enum_value()
+                .map_err(|_| anyhow!("unknown field or enum"))?,
+              transform_string_value_match(string_value_match),
+            )?,
+          ),
+          base_log_matcher::feature_flag_match::Value_match::IsSetMatch(_) => {
+            Self::IsSetValue(InputType::FeatureFlag(feature_flag_match.flag_name.clone()))
+          },
+        },
+        TagMatch(tag_match) => match tag_match
+          .value_match
+          .as_ref()
+          .ok_or_else(|| anyhow!("missing tag_match value_match"))?
+        {
+          IntValueMatch(int_value_match) => match tag_match.tag_key.as_str() {
+            // Special case for key="log_level"
+            // We're special casing log level because we need to look for this tag outside of the
+            // regular fields map It should be a bd_matcher::log_level enum value, so
+            // using an IntMatch should work
+            LOG_LEVEL_KEY => Self::LogLevel(IntMatch::new(
               int_value_match
                 .operator
                 .enum_value()
                 .map_err(|_| anyhow!("unknown field or enum"))?,
               transform_int_value_match(int_value_match),
+            )?),
+            // Special case for key="log_type"
+            // We're special casing log type because we need to look for this tag outside of the
+            // regular fields map It should be a bd_matcher::LogType u32 value, so we
+            // try to convert it from i32
+            LOG_TYPE_KEY => Self::LogType(match transform_int_value_match(int_value_match) {
+              ValueOrSavedFieldId::Value(v) => v.try_into()?,
+              ValueOrSavedFieldId::SaveFieldId(_) => {
+                return Err(anyhow!("log_type must be a value"));
+              },
+            }),
+            // Any other int uses the IntValue match
+            _ => Self::IntValue(
+              InputType::Field(tag_match.tag_key.clone()),
+              IntMatch::new(
+                int_value_match
+                  .operator
+                  .enum_value()
+                  .map_err(|_| anyhow!("unknown field or enum"))?,
+                transform_int_value_match(int_value_match),
+              )?,
+            ),
+          },
+          DoubleValueMatch(double_value_match) => {
+            Self::DoubleValue(
+              InputType::Field(tag_match.tag_key.clone()),
+              DoubleMatch::new(
+                double_value_match
+                  .operator
+                  .enum_value()
+                  .map_err(|_| anyhow!("unknown field or enum"))?,
+                // This used to not be a oneof so supply an equivalent default if the field is not
+                // set.
+                match double_value_match
+                  .double_value_match_type
+                  .as_ref()
+                  .unwrap_or(&Double_value_match_type::MatchValue(0.0))
+                {
+                  Double_value_match_type::MatchValue(d) => {
+                    ValueOrSavedFieldId::Value(NanEqualFloat(*d))
+                  },
+                  Double_value_match_type::SaveFieldId(s) => {
+                    ValueOrSavedFieldId::SaveFieldId(s.clone())
+                  },
+                },
+              )?,
+            )
+          },
+          StringValueMatch(string_value_match) => Self::StringValue(
+            InputType::Field(tag_match.tag_key.clone()),
+            StringMatch::new(
+              string_value_match
+                .operator
+                .enum_value()
+                .map_err(|_| anyhow!("unknown field or enum"))?,
+              transform_string_value_match(string_value_match),
             )?,
-          )),
+          ),
+          SemVerValueMatch(sem_ver_value_match) => Self::VersionValue(
+            InputType::Field(tag_match.tag_key.clone()),
+            version::VersionMatch::new(
+              sem_ver_value_match
+                .operator
+                .enum_value()
+                .map_err(|_| anyhow!("unknown field or enum"))?,
+              sem_ver_value_match.match_value.as_str(),
+            )?,
+          ),
+          IsSetMatch(_) => Self::IsSetValue(InputType::Field(tag_match.tag_key.clone())),
         },
-        DoubleValueMatch(double_value_match) => Ok(Self::DoubleValue(
-          InputType::Field(tag_match.tag_key.clone()),
-          DoubleMatch::new(
-            double_value_match
-              .operator
-              .enum_value()
-              .map_err(|_| anyhow!("unknown field or enum"))?,
-            // This used to not be a oneof so supply an equivalent default if the field is not set.
-            match double_value_match
-              .double_value_match_type
-              .as_ref()
-              .unwrap_or(&Double_value_match_type::MatchValue(0.0))
-            {
-              Double_value_match_type::MatchValue(d) => {
-                ValueOrSavedFieldId::Value(NanEqualFloat(*d))
-              },
-              Double_value_match_type::SaveFieldId(s) => {
-                ValueOrSavedFieldId::SaveFieldId(s.clone())
-              },
-            },
-          )?,
-        )),
-        StringValueMatch(string_value_match) => Ok(Self::StringValue(
-          InputType::Field(tag_match.tag_key.clone()),
-          StringMatch::new(
-            string_value_match
-              .operator
-              .enum_value()
-              .map_err(|_| anyhow!("unknown field or enum"))?,
-            transform_string_value_match(string_value_match),
-          )?,
-        )),
-        SemVerValueMatch(sem_ver_value_match) => Ok(Self::VersionValue(
-          InputType::Field(tag_match.tag_key.clone()),
-          version::VersionMatch::new(
-            sem_ver_value_match
-              .operator
-              .enum_value()
-              .map_err(|_| anyhow!("unknown field or enum"))?,
-            sem_ver_value_match.match_value.as_str(),
-          )?,
-        )),
-        IsSetMatch(_) => Ok(Self::IsSetValue(InputType::Field(
-          tag_match.tag_key.clone(),
-        ))),
       },
-    }
+    )
   }
 }

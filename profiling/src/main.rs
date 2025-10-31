@@ -147,6 +147,7 @@ impl AnnotatedWorkflowsEngine {
         capture_session: None,
       },
       &TinySet::default(),
+      None,
       OffsetDateTime::now_utc(),
     );
   }

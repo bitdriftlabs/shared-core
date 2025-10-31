@@ -10,6 +10,7 @@ use crate::config::{ActionEmitMetric, TagValue};
 use bd_client_stats::Stats;
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
+use bd_feature_flags::test::TestFeatureFlags;
 use bd_log_primitives::{FieldsRef, LogRef, LogType, log_level};
 use bd_stats_common::{MetricType, NameType, labels};
 use std::collections::BTreeMap;
@@ -77,6 +78,7 @@ fn metric_increment_value_extraction() {
       fields: FieldsRef::new(&fields, &matching_only_fields),
       capture_session: None,
     },
+    None,
   );
 
   collector.assert_workflow_counter_eq(1, "action_id_1", labels! {});
@@ -105,6 +107,14 @@ fn counter_label_extraction() {
 
   let (metrics_collector, collector) = make_metrics_collector();
 
+  let mut feature_flags = TestFeatureFlags::default();
+  feature_flags
+    .set("enabled_flag".to_string(), Some("variant_a"))
+    .unwrap();
+  feature_flags
+    .set("no variant flag".to_string(), None)
+    .unwrap();
+
   metrics_collector.emit_metrics(
     &[&ActionEmitMetric {
       id: "action_id_1".to_string(),
@@ -131,6 +141,18 @@ fn counter_label_extraction() {
           TagValue::FieldExtract("log_type".to_string()),
         ),
         ("tag_7".to_string(), TagValue::LogBodyExtract),
+        (
+          "tag_8".to_string(),
+          TagValue::FeatureFlagExtract("enabled_flag".to_string()),
+        ),
+        (
+          "tag_9".to_string(),
+          TagValue::FeatureFlagExtract("missing_flag".to_string()),
+        ),
+        (
+          "tag_10".to_string(),
+          TagValue::FeatureFlagExtract("no variant flag".to_string()),
+        ),
       ]
       .into(),
       increment: crate::config::ValueIncrement::Fixed(1),
@@ -146,6 +168,7 @@ fn counter_label_extraction() {
       fields: FieldsRef::new(&fields, &matching_only_fields),
       capture_session: None,
     },
+    Some(&feature_flags),
   );
 
   collector.assert_workflow_counter_eq(
@@ -159,6 +182,7 @@ fn counter_label_extraction() {
         "tag_5" => "1",
         "tag_6" => "0",
         "tag_7" => "message",
+        "tag_8" => "variant_a",
     },
   );
 }

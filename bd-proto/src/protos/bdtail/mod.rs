@@ -9,4 +9,5 @@ pub mod bdtail_api;
 pub mod bdtail_config;
 
 use super::log_matcher::log_matcher;
+use super::logging::payload;
 use bd_pgv::generated::protos::validate;
