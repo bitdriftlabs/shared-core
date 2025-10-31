@@ -1,3 +1,6 @@
+// Test code only.
+#![allow(clippy::unwrap_used, clippy::panic)]
+
 use std::ops::{Deref, DerefMut};
 
 //

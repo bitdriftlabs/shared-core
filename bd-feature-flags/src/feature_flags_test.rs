@@ -761,7 +761,7 @@ fn test_high_water_mark_ratio() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_to_value_produces_kvvec() -> anyhow::Result<()> {
+fn test_to_value_produces_kvvec() {
   let feature_flag = Flag::new(Some("test_variant"), None);
   let value = feature_flag.to_value();
 
@@ -784,8 +784,6 @@ fn test_to_value_produces_kvvec() -> anyhow::Result<()> {
     timestamp_found,
     "timestamp field should be present and be unsigned"
   );
-
-  Ok(())
 }
 
 #[test]
