@@ -97,10 +97,8 @@ fn log_level(log_level: LogLevel) -> Input<'static> {
 
 #[test]
 fn test_message_string_eq_matcher() {
-  let config = simple_log_matcher(make_message_match(Operator::OPERATOR_EQUALS, "exact"));
-
   match_test_runner(
-    config,
+    log_match::message_equals("exact"),
     vec![
       (log_msg("exact"), true),
       (log_msg("EXACT"), false),
@@ -181,22 +179,18 @@ fn test_message_string_gt_matcher() {
 
 #[test]
 fn test_message_binary_string_eq_matcher() {
-  let config = simple_log_matcher(make_message_match(
-    Operator::OPERATOR_EQUALS,
-    "exact_binary",
-  ));
-
   // We ignore binary messages for now as they don't work well with some of the matchers (e.g.
   // regex), so even though this appear to be an exact match we still expect to see no match.
-  match_test_runner(config, vec![(binary_log_msg(b"exact_binary"), false)]);
+  match_test_runner(
+    log_match::message_equals("exact_binary"),
+    vec![(binary_log_msg(b"exact_binary"), false)],
+  );
 }
 
 #[test]
 fn test_message_string_regex_matcher() {
-  let config = simple_log_matcher(make_message_match(Operator::OPERATOR_REGEX, "fo.*r"));
-
   match_test_runner(
-    config,
+    log_match::message_regex_matches("fo.*r"),
     vec![
       (log_msg("foobar"), true),
       (log_msg("for"), true),
@@ -207,7 +201,7 @@ fn test_message_string_regex_matcher() {
 
 #[test]
 fn test_message_string_invalid_regex_config() {
-  let config = simple_log_matcher(make_message_match(Operator::OPERATOR_REGEX, "*r"));
+  let config = log_match::message_regex_matches("*r");
 
   assert_eq!(
     Tree::new(&config).err().unwrap().to_string(),
@@ -852,6 +846,11 @@ fn feature_flag_matcher() {
       matches: true,
     },
     Input {
+      flags: vec![("flag1", Some("value1"))],
+      matcher: make_string_feature_flag_matcher("flag1", Operator::OPERATOR_EQUALS, "value2"),
+      matches: false,
+    },
+    Input {
       flags: vec![("flag2", Some("value2"))],
       matcher: make_string_feature_flag_matcher("flag2", Operator::OPERATOR_NOT_EQUALS, "value1"),
       matches: true,
@@ -860,6 +859,16 @@ fn feature_flag_matcher() {
       flags: vec![("flag3", None)],
       matcher: make_string_feature_flag_matcher("flag3", Operator::OPERATOR_NOT_EQUALS, "value1"),
       matches: true,
+    },
+    Input {
+      flags: vec![("flag3", None)],
+      matcher: make_feature_flag_is_set_matcher("flag3"),
+      matches: true,
+    },
+    Input {
+      flags: vec![("flag3", None)],
+      matcher: make_feature_flag_is_set_matcher("flag2"),
+      matches: false,
     },
   ] {
     let matcher = TestMatcher::new(&input.matcher).unwrap();
@@ -927,6 +936,18 @@ fn make_string_feature_flag_matcher(
           ),
           ..Default::default()
         },
+      )),
+      ..Default::default()
+    },
+  ))
+}
+
+fn make_feature_flag_is_set_matcher(flag_name: &str) -> LogMatcher {
+  simple_log_matcher(log_matcher::base_log_matcher::Match_type::FeatureFlagMatch(
+    base_log_matcher::FeatureFlagMatch {
+      flag_name: flag_name.to_string(),
+      value_match: Some(feature_flag_match::Value_match::IsSetMatch(
+        base_log_matcher::IsSetMatch::default(),
       )),
       ..Default::default()
     },
