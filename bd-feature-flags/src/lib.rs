@@ -307,7 +307,7 @@ impl FeatureFlags {
     let kv_entries: Vec<(String, bd_bonjson::Value)> = flags
       .into_iter()
       .map(|(key, variant)| {
-        let feature_flag = Flag::new(variant.as_ref().map(|s| s.as_ref()), Some(now));
+        let feature_flag = Flag::new(variant.as_ref().map(std::convert::AsRef::as_ref), Some(now));
         let value = feature_flag.to_value();
         Ok((key, value))
       })

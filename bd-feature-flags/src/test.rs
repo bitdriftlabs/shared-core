@@ -12,6 +12,7 @@ pub struct TestFeatureFlags {
 }
 
 impl TestFeatureFlags {
+  #[must_use]
   pub fn new() -> Self {
     let temp_dir = tempfile::tempdir().unwrap();
     let flags = crate::FeatureFlags::new(temp_dir.path(), 1024, None).unwrap();

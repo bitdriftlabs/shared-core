@@ -176,8 +176,8 @@ enum FeatureFlagInitialization {
 impl FeatureFlagInitialization {
   fn get(&self) -> Option<&FeatureFlags> {
     match self {
-      FeatureFlagInitialization::Pending(_) => None,
-      FeatureFlagInitialization::Initialized(flags_option) => flags_option.as_ref(),
+      Self::Pending(_) => None,
+      Self::Initialized(flags_option) => flags_option.as_ref(),
     }
   }
 }
