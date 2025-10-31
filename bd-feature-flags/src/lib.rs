@@ -72,8 +72,7 @@ impl<'a> Flag<'a> {
   pub fn new(variant: Option<&'a str>, timestamp: Option<time::OffsetDateTime>) -> Self {
     // Validate the variant - reject empty strings
     let validated_variant = match variant {
-      Some(s) if s.is_empty() => None,
-      None => None,
+      Some("") | None => None,
       Some(s) => Some(s),
     };
 
