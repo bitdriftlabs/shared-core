@@ -81,7 +81,7 @@ impl MetricsCollector {
   ) {
     for action in actions {
       let mut tags = Self::extract_tags(log, action.action.tags());
-      tags.insert("_path_id".to_string(), action.path.path_id.to_string());
+      tags.insert("_path_id".to_string(), action.path.path_id.clone());
 
       self
         .stats
@@ -106,7 +106,7 @@ impl MetricsCollector {
         crate::config::TagValue::Fixed(value) => Some(value.as_str().into()),
         crate::config::TagValue::LogBodyExtract => log.message.as_str().map(Cow::Borrowed),
       } {
-        extracted_tags.insert(key.to_string(), extracted_value.into_owned());
+        extracted_tags.insert(key.clone(), extracted_value.into_owned());
       }
     }
 

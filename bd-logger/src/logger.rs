@@ -301,7 +301,7 @@ impl LoggerHandle {
       ),
       (
         "_sdk_version".into(),
-        AnnotatedLogField::new_ootb(self.sdk_version.to_string()),
+        AnnotatedLogField::new_ootb(self.sdk_version.clone()),
       ),
       (
         "_session_strategy".into(),
