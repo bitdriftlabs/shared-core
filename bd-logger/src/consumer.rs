@@ -234,9 +234,7 @@ impl BufferUploadManager {
 
         // We never cancel the trigger uploads directly, so just reuse the top level shutdown
         // token.
-        self
-          .shutdowns
-          .insert(buffer_id.to_string(), shutdown_trigger);
+        self.shutdowns.insert(buffer_id.clone(), shutdown_trigger);
       } else {
         log::debug!("ignoring upload for {buffer_id}, unknown buffer");
       }

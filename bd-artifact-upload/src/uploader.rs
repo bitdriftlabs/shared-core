@@ -590,11 +590,7 @@ impl Uploader {
 
         #[cfg(test)]
         if let Some(hooks) = &self.test_hooks {
-          hooks
-            .entry_received_tx
-            .send(uuid.to_string())
-            .await
-            .unwrap();
+          hooks.entry_received_tx.send(uuid.clone()).await.unwrap();
         }
         return;
       },
@@ -606,11 +602,7 @@ impl Uploader {
 
       #[cfg(test)]
       if let Some(hooks) = &self.test_hooks {
-        hooks
-          .entry_received_tx
-          .send(uuid.to_string())
-          .await
-          .unwrap();
+        hooks.entry_received_tx.send(uuid.clone()).await.unwrap();
       }
       return;
     }
@@ -668,11 +660,7 @@ impl Uploader {
 
     #[cfg(test)]
     if let Some(hooks) = &self.test_hooks {
-      hooks
-        .entry_received_tx
-        .send(uuid.to_string())
-        .await
-        .unwrap();
+      hooks.entry_received_tx.send(uuid.clone()).await.unwrap();
     }
   }
 
@@ -766,8 +754,8 @@ impl Uploader {
         upload_uuid.clone(),
         UploadArtifactIntentRequest {
           type_id: "client_report".to_string(),
-          artifact_id: id.to_string(),
-          intent_uuid: upload_uuid.to_string(),
+          artifact_id: id.clone(),
+          intent_uuid: upload_uuid.clone(),
           time: timestamp.into_proto(),
           // TODO(snowp): Figure out how to send relevant metadata about the artifact here.
           metadata: vec![],

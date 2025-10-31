@@ -288,7 +288,7 @@ impl SetField {
 
     // Get the desired new value for the field.
     let value = match &self.value {
-      SetFieldValue::StringValue(value) => value.to_string(),
+      SetFieldValue::StringValue(value) => value.clone(),
       SetFieldValue::ExistingField(field_name) => {
         let Some(value) = extract_value(log, field_name) else {
           // The field to copy from doesn't exist, the transform is a no-op.

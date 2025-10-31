@@ -1053,7 +1053,7 @@ fn test_value_none_removed_partial_errors() {
 
 #[test]
 fn test_all_variants() {
-  let all_value_types = vec![
+  let all_value_types = [
     Value::Null,
     Value::Bool(true),
     Value::Float(std::f64::consts::PI),
