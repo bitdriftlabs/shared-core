@@ -98,7 +98,7 @@ fn log_level(log_level: LogLevel) -> Input<'static> {
 #[test]
 fn test_message_string_eq_matcher() {
   match_test_runner(
-    log_match::message_equals("exact"),
+    builder::message_equals("exact"),
     vec![
       (log_msg("exact"), true),
       (log_msg("EXACT"), false),
@@ -182,7 +182,7 @@ fn test_message_binary_string_eq_matcher() {
   // We ignore binary messages for now as they don't work well with some of the matchers (e.g.
   // regex), so even though this appear to be an exact match we still expect to see no match.
   match_test_runner(
-    log_match::message_equals("exact_binary"),
+    builder::message_equals("exact_binary"),
     vec![(binary_log_msg(b"exact_binary"), false)],
   );
 }
@@ -190,7 +190,7 @@ fn test_message_binary_string_eq_matcher() {
 #[test]
 fn test_message_string_regex_matcher() {
   match_test_runner(
-    log_match::message_regex_matches("fo.*r"),
+    builder::message_regex_matches("fo.*r"),
     vec![
       (log_msg("foobar"), true),
       (log_msg("for"), true),
@@ -201,7 +201,7 @@ fn test_message_string_regex_matcher() {
 
 #[test]
 fn test_message_string_invalid_regex_config() {
-  let config = log_match::message_regex_matches("*r");
+  let config = builder::message_regex_matches("*r");
 
   assert_eq!(
     Tree::new(&config).err().unwrap().to_string(),
@@ -244,15 +244,7 @@ fn test_extracted_string_matcher() {
 
 #[test]
 fn test_tag_string_eq_matcher() {
-  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
-    tag_key: "key".to_string(),
-    value_match: Some(StringValueMatch(base_log_matcher::StringValueMatch {
-      operator: Operator::OPERATOR_EQUALS.into(),
-      string_value_match_type: Some(String_value_match_type::MatchValue("exact".to_string())),
-      ..Default::default()
-    })),
-    ..Default::default()
-  }));
+  let config = builder::field_equals("key", "exact");
 
   match_test_runner(
     config,
@@ -269,17 +261,7 @@ fn test_tag_string_eq_matcher() {
 
 #[test]
 fn test_tag_binary_string_eq_matcher() {
-  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
-    tag_key: "key".to_string(),
-    value_match: Some(StringValueMatch(base_log_matcher::StringValueMatch {
-      operator: Operator::OPERATOR_EQUALS.into(),
-      string_value_match_type: Some(String_value_match_type::MatchValue(
-        "exact_binary".to_string(),
-      )),
-      ..Default::default()
-    })),
-    ..Default::default()
-  }));
+  let config = builder::field_equals("key", "exact_binary");
 
   // We ignore binary fields for now as they don't work well with some of the matchers (e.g.
   // regex), so even though this appear to be an exact match we still expect to see no match.
