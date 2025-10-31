@@ -28,7 +28,7 @@ use std::collections::HashMap;
 // Version 32: Added support for use the log body for tag extraction.
 // Version 33: Added support for opaque client state in the mux handshake.
 // Version 34: Added support for data idle timeouts and reconnect delays.
-// Version 35: Added support for workflow matching and tag extraction in feature flags.
+// Version 35: Added support for workflow matching and tag extraction against feature flags.
 const CONFIGURATION_VERSION: &str = "35";
 
 /// The platform we're currently running as.
