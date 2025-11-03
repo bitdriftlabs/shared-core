@@ -689,6 +689,13 @@ async fn logs_resource_utilization_log() {
 
 #[tokio::test]
 async fn feature_flag_logs() {
+  struct TestCase {
+    name: &'static str,
+    message: AsyncLogBufferMessage,
+    expected_log: &'static str,
+    expected_fields: LogFields,
+  }
+
   let setup = Setup::new();
 
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
@@ -707,14 +714,7 @@ async fn feature_flag_logs() {
     .await
     .unwrap();
 
-  struct TestCase {
-    name: &'static str,
-    message: AsyncLogBufferMessage,
-    expected_log: &'static str,
-    expected_fields: LogFields,
-  }
-
-  for test_case in vec![
+  for test_case in [
     TestCase {
       name: "SetFeatureFlag with variant",
       message: AsyncLogBufferMessage::SetFeatureFlag(
