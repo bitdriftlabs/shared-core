@@ -74,7 +74,9 @@ fn write_log_to_buffer(
   stream_ids: &[&str],
 ) -> anyhow::Result<()> {
   match producer.reserve(
-    log.serialized_proto_size(action_ids, stream_ids).to_u32(),
+    log
+      .serialized_proto_size(action_ids, stream_ids)
+      .to_u32_lossy(),
     true,
   ) {
     // If the buffer is locked, drop the error. This helps ensure that we are able to

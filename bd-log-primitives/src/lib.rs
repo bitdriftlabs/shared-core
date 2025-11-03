@@ -14,6 +14,10 @@
   clippy::unwrap_used
 )]
 
+#[cfg(test)]
+#[path = "./lib_test.rs"]
+mod lib_test;
+
 pub mod size;
 pub mod tiny_set;
 
@@ -34,12 +38,12 @@ pub const LOG_FIELD_NAME_MESSAGE: &str = "_message";
 // Helpers for doing raw casts where we are sure the value fits and don't want to pay for
 // checks and avoid clippy lints.
 pub trait LossyIntToU32 {
-  fn to_u32(self) -> u32;
+  fn to_u32_lossy(self) -> u32;
 }
 
 #[allow(clippy::cast_possible_truncation)]
 impl LossyIntToU32 for usize {
-  fn to_u32(self) -> u32 {
+  fn to_u32_lossy(self) -> u32 {
     debug_assert!(u32::try_from(self).is_ok());
     self as u32
   }
@@ -47,19 +51,19 @@ impl LossyIntToU32 for usize {
 
 #[allow(clippy::cast_possible_truncation)]
 impl LossyIntToU32 for u64 {
-  fn to_u32(self) -> u32 {
+  fn to_u32_lossy(self) -> u32 {
     debug_assert!(u32::try_from(self).is_ok());
     self as u32
   }
 }
 
 pub trait LossyIntToU64 {
-  fn to_u64(self) -> u64;
+  fn to_u64_lossy(self) -> u64;
 }
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 impl LossyIntToU64 for i128 {
-  fn to_u64(self) -> u64 {
+  fn to_u64_lossy(self) -> u64 {
     debug_assert!(u64::try_from(self).is_ok());
     self as u64
   }
@@ -278,18 +282,23 @@ impl Log {
     FieldsRef::new(&self.fields, &self.matching_fields).field_value(field_key)
   }
 
+  // bitdrift_public.protobuf.logging.v1.Data
   fn size_proto_data(value: &LogFieldValue) -> u64 {
     let mut my_size = 0;
     match value {
       StringOrBytes::String(s) => {
+        // string string_data = 1;
         my_size += ::protobuf::rt::string_size(1, s);
       },
       StringOrBytes::SharedString(s) => {
+        // string string_data = 1;
         my_size += ::protobuf::rt::string_size(1, s.as_ref());
       },
       StringOrBytes::Bytes(b) => {
         // This encodes the Binary proto message.
+        // bytes payload = 2;
         let inner_len = ::protobuf::rt::bytes_size(2, b);
+        // BinaryData binary_data = 2;
         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(inner_len) + inner_len;
       },
     }
@@ -297,25 +306,30 @@ impl Log {
     my_size
   }
 
+  // bitdrift_public.protobuf.logging.v1.Data
   fn serialize_proto_data(
     field_number: u32,
     value: &LogFieldValue,
     os: &mut CodedOutputStream<'_>,
   ) -> anyhow::Result<()> {
     os.write_tag(field_number, WireType::LengthDelimited)?;
-    os.write_raw_varint32(Self::size_proto_data(value).to_u32())?;
+    os.write_raw_varint32(Self::size_proto_data(value).to_u32_lossy())?;
     match value {
       StringOrBytes::String(s) => {
+        // string string_data = 1;
         os.write_string(1, s)?;
       },
       StringOrBytes::SharedString(s) => {
+        // string string_data = 1;
         os.write_string(1, s.as_ref())?;
       },
       StringOrBytes::Bytes(b) => {
         // This encodes the Binary proto message.
+        // bytes payload = 2;
         let inner_len = ::protobuf::rt::bytes_size(2, b);
         os.write_tag(2, WireType::LengthDelimited)?;
-        os.write_raw_varint32(inner_len.to_u32())?;
+        os.write_raw_varint32(inner_len.to_u32_lossy())?;
+        // BinaryData binary_data = 2;
         os.write_bytes(2, b)?;
       },
     }
@@ -323,14 +337,18 @@ impl Log {
     Ok(())
   }
 
+  // bitdrift_public.protobuf.logging.v1.Log.Field
   fn size_proto_field(key: &LogFieldKey, value: &LogFieldValue) -> u64 {
     let mut my_size = 0;
+    // string key = 1;
     my_size += ::protobuf::rt::string_size(1, key.as_ref());
+    // Data value = 2;
     let value_len = Self::size_proto_data(value);
     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(value_len) + value_len;
     my_size
   }
 
+  // bitdrift_public.protobuf.logging.v1.Log.Field
   fn serialize_proto_field(
     field_number: u32,
     key: &LogFieldKey,
@@ -338,12 +356,15 @@ impl Log {
     os: &mut CodedOutputStream<'_>,
   ) -> anyhow::Result<()> {
     os.write_tag(field_number, WireType::LengthDelimited)?;
-    os.write_raw_varint32(Self::size_proto_field(key, value).to_u32())?;
+    os.write_raw_varint32(Self::size_proto_field(key, value).to_u32_lossy())?;
+    // string key = 1;
     os.write_string(1, key.as_ref())?;
+    // Data value = 2;
     Self::serialize_proto_data(2, value, os)?;
     Ok(())
   }
 
+  // bitdrift_public.protobuf.logging.v1.Log
   #[must_use]
   pub fn serialize_proto_size_inner(
     log_level: u32,
@@ -357,30 +378,42 @@ impl Log {
   ) -> u64 {
     let mut my_size = 0;
 
-    my_size += ::protobuf::rt::uint64_size(1, occurred_at.unix_timestamp_nanos().to_u64() / 1000);
+    // uint64 timestamp_unix_micro = 1;
+    // No zero check is this should always be set.
+    my_size +=
+      ::protobuf::rt::uint64_size(1, occurred_at.unix_timestamp_nanos().to_u64_lossy() / 1000);
 
+    // uint32 log_level = 2;
     if log_level != 0 {
       my_size += ::protobuf::rt::uint32_size(2, log_level);
     }
 
+    // Data message = 3;
+    // No empty check as this should always be set.
     let message_len = Self::size_proto_data(message);
     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(message_len) + message_len;
 
+    // repeated Field fields = 4;
     for value in fields {
       let len = Self::size_proto_field(value.0, value.1);
       my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
     }
 
+    // string session_id = 5;
+    // No zero check as this should always be set.
     my_size += ::protobuf::rt::string_size(5, session_id);
 
+    // repeated string action_ids = 6;
     for value in action_ids {
       my_size += ::protobuf::rt::string_size(6, value);
     }
 
+    // LogType log_type = 7;
     if log_type != LogType::NORMAL {
       my_size += ::protobuf::rt::int32_size(7, log_type as i32);
     }
 
+    // repeated string stream_ids = 8;
     for value in stream_ids {
       my_size += ::protobuf::rt::string_size(8, value);
     }
@@ -388,6 +421,7 @@ impl Log {
     my_size
   }
 
+  // bitdrift_public.protobuf.logging.v1.Log
   #[must_use]
   pub fn serialized_proto_size(&self, action_ids: &[&str], stream_ids: &[&str]) -> u64 {
     Self::serialize_proto_size_inner(
@@ -402,6 +436,7 @@ impl Log {
     )
   }
 
+  // bitdrift_public.protobuf.logging.v1.Log
   pub fn serialize_proto_to_stream_inner(
     log_level: u32,
     message: &LogFieldValue,
@@ -413,28 +448,36 @@ impl Log {
     stream_ids: &[&str],
     os: &mut CodedOutputStream<'_>,
   ) -> anyhow::Result<()> {
-    os.write_uint64(1, occurred_at.unix_timestamp_nanos().to_u64() / 1000)?;
+    // uint64 timestamp_unix_micro = 1;
+    os.write_uint64(1, occurred_at.unix_timestamp_nanos().to_u64_lossy() / 1000)?;
 
+    // uint32 log_level = 2;
     if log_level != 0 {
       os.write_uint32(2, log_level)?;
     }
 
+    // Data message = 3;
     Self::serialize_proto_data(3, message, os)?;
 
+    // repeated Field fields = 4;
     for v in fields {
       Self::serialize_proto_field(4, v.0, v.1, os)?;
     }
 
+    // string session_id = 5;
     os.write_string(5, session_id)?;
 
+    // repeated string action_ids = 6;
     for v in action_ids {
       os.write_string(6, v)?;
     }
 
+    // LogType log_type = 7;
     if log_type != LogType::NORMAL {
       os.write_enum(7, log_type as i32)?;
     }
 
+    // repeated string stream_ids = 8;
     for v in stream_ids {
       os.write_string(8, v)?;
     }
@@ -442,6 +485,7 @@ impl Log {
     Ok(())
   }
 
+  // bitdrift_public.protobuf.logging.v1.Log
   pub fn serialized_proto_to_stream(
     &self,
     action_ids: &[&str],
@@ -461,6 +505,7 @@ impl Log {
     )
   }
 
+  // bitdrift_public.protobuf.logging.v1.Log
   pub fn serialized_proto_to_bytes(
     &self,
     action_ids: &[&str],
@@ -476,8 +521,8 @@ impl Log {
   pub fn extract_timestamp(bytes: &[u8]) -> Option<OffsetDateTime> {
     let mut cis = CodedInputStream::from_bytes(bytes);
     let raw_tag = cis.read_raw_tag_or_eof().ok()??;
-    // Field number 1, WireType Varint
-    if raw_tag == 8
+    // uint64 timestamp_unix_micro = 1;
+    if raw_tag == 8 // field number 1, wire type 0
       && let Some(ts_micros) = cis.read_uint64().ok()
     {
       return OffsetDateTime::from_unix_timestamp_nanos((ts_micros * 1000).into()).ok();

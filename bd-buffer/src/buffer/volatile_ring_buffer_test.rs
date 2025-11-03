@@ -378,7 +378,7 @@ fn write_into_concurrent_reader() {
   // Start reading 0-9 and then reserve and commit what should go into 10-19.
   let reserved = helper.start_read_and_verify("aaaaaa");
   assert_matches!(
-    helper.producer().reserve("dddddd".len().to_u32(), true),
+    helper.producer().reserve("dddddd".len().to_u32_lossy(), true),
     Err(Error::AbslStatus(code, message))
       if code == AbslCode::ResourceExhausted && message == "writing into concurrent read"
   );

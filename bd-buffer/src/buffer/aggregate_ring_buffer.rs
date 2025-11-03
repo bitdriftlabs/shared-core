@@ -76,7 +76,7 @@ impl SharedData {
       // the volatile buffer.
       match producer
         .as_mut()
-        .reserve(read_reservation.len().to_u32(), true)
+        .reserve(read_reservation.len().to_u32_lossy(), true)
       {
         Ok(write_reservation) => {
           write_reservation.copy_from_slice(read_reservation);
@@ -138,8 +138,8 @@ impl RingBufferImpl {
     // For aggregate buffers, the size of the file (after subtracting header space) must be >= the
     // size of RAM. This is to avoid situations in which we accept a record into RAM but cannot ever
     // write it to disk.
-    if non_volatile_size < std::mem::size_of::<FileHeader>().to_u32()
-      || volatile_size > (non_volatile_size - std::mem::size_of::<FileHeader>().to_u32())
+    if non_volatile_size < std::mem::size_of::<FileHeader>().to_u32_lossy()
+      || volatile_size > (non_volatile_size - std::mem::size_of::<FileHeader>().to_u32_lossy())
     {
       log::error!(
         "file size '{}' not big enough for header size '{}' or file size (minus header) not \

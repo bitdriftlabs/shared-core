@@ -413,7 +413,7 @@ impl ProcessingPipeline {
             &action_ids,
             &[],
           );
-          let reserved = buffer_producer.reserve(size.to_u32(), true)?;
+          let reserved = buffer_producer.reserve(size.to_u32_lossy(), true)?;
           let mut os = CodedOutputStream::bytes(reserved);
           Log::serialize_proto_to_stream_inner(
             log_level::DEBUG,

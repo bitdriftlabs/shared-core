@@ -35,7 +35,7 @@ impl Helper {
     let buffer = RingBufferImpl::new(
       "test".to_string(),
       temp_dir.path().join("buffer"),
-      size + std::mem::size_of::<FileHeader>().to_u32(),
+      size + std::mem::size_of::<FileHeader>().to_u32_lossy(),
       allow_overwrite,
       super::BlockWhenReservingIntoConcurrentRead::No,
       super::PerRecordCrc32Check::Yes,
@@ -77,7 +77,7 @@ impl Helper {
       RingBufferImpl::new(
         "test".to_string(),
         self.temp_dir.path().join("buffer"),
-        self.size + std::mem::size_of::<FileHeader>().to_u32(),
+        self.size + std::mem::size_of::<FileHeader>().to_u32_lossy(),
         self.allow_overwrite,
         super::BlockWhenReservingIntoConcurrentRead::No,
         super::PerRecordCrc32Check::Yes,

@@ -94,7 +94,7 @@ pub trait RingBufferProducer: Send {
 
   // Writes a single record to the buffer by copying the provided data into the record reservation.
   fn write(&mut self, data: &[u8]) -> Result<()> {
-    let reserved = self.reserve(data.len().to_u32(), true)?;
+    let reserved = self.reserve(data.len().to_u32_lossy(), true)?;
     reserved.copy_from_slice(data);
     self.commit()
   }

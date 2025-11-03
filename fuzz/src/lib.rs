@@ -123,7 +123,7 @@ impl BufferState {
         match NonVolatileRingBuffer::new(
           "test".to_string(),
           temp_dir.path().join("buffer"),
-          test_case.buffer_size + std::mem::size_of::<NonVolatileFileHeader>().to_u32(),
+          test_case.buffer_size + std::mem::size_of::<NonVolatileFileHeader>().to_u32_lossy(),
           if test_case.cursor_consumer {
             AllowOverwrite::Block
           } else {
@@ -156,7 +156,7 @@ impl BufferState {
           "test",
           test_case.buffer_size,
           temp_dir.path().join("buffer"),
-          test_case.buffer_size + std::mem::size_of::<NonVolatileFileHeader>().to_u32() + 4,
+          test_case.buffer_size + std::mem::size_of::<NonVolatileFileHeader>().to_u32_lossy() + 4,
           PerRecordCrc32Check::Yes,
           if test_case.cursor_consumer {
             AllowOverwrite::Block
@@ -312,13 +312,14 @@ impl BufferFuzzTest {
       let mut buffer = Vec::new();
       file.read_to_end(&mut buffer).unwrap();
       let offset = corrupt_byte.offset
-        % (self.test_case.buffer_size + std::mem::size_of::<NonVolatileFileHeader>().to_u32());
+        % (self.test_case.buffer_size
+          + std::mem::size_of::<NonVolatileFileHeader>().to_u32_lossy());
       log::trace!("corrupting byte at offset {offset}");
       buffer[offset as usize] = corrupt_byte.new_byte;
       let mut file = File::create(self.temp_dir.path().join("buffer")).unwrap();
       file.write_all(&buffer).unwrap();
 
-      if offset < std::mem::size_of::<NonVolatileFileHeader>().to_u32() {
+      if offset < std::mem::size_of::<NonVolatileFileHeader>().to_u32_lossy() {
         // In this case we should expect further reopens to fail so we can track that.
         self.saw_file_header_corruption = true;
       } else {

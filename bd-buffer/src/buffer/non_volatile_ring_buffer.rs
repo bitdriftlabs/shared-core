@@ -740,7 +740,7 @@ impl RingBufferImpl {
     const_assert_eq!(offset_of!(FileHeader, next_read_start), 28);
     const_assert_eq!(offset_of!(FileHeader, crc32), 36);
 
-    if size < std::mem::size_of::<FileHeader>().to_u32() {
+    if size < std::mem::size_of::<FileHeader>().to_u32_lossy() {
       log::error!(
         "({name}) file size '{}' not big enough for header size '{}'",
         size,

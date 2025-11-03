@@ -37,7 +37,7 @@ impl StartRead {
 }
 
 pub fn reserve_no_commit(producer: &mut dyn RingBufferProducer, data: &str) {
-  let reserved = producer.reserve(data.len().to_u32(), true).unwrap();
+  let reserved = producer.reserve(data.len().to_u32_lossy(), true).unwrap();
   assert_eq!(reserved.len(), data.len());
   reserved.copy_from_slice(data.as_bytes());
 }

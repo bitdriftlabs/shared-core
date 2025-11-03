@@ -78,7 +78,7 @@ impl Helper {
       TestType::NonVolatile => NonVolatileRingBuffer::new(
         "test".to_string(),
         temp_dir.path().join("buffer"),
-        size + std::mem::size_of::<FileHeader>().to_u32(),
+        size + std::mem::size_of::<FileHeader>().to_u32_lossy(),
         AllowOverwrite::Yes,
         BlockWhenReservingIntoConcurrentRead::No,
         PerRecordCrc32Check::No,
@@ -89,7 +89,7 @@ impl Helper {
         "test",
         size,
         temp_dir.path().join("buffer"),
-        size + std::mem::size_of::<FileHeader>().to_u32(),
+        size + std::mem::size_of::<FileHeader>().to_u32_lossy(),
         PerRecordCrc32Check::No,
         AllowOverwrite::Yes,
         Arc::new(RingBufferStats::default()),
