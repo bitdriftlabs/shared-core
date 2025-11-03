@@ -53,6 +53,9 @@ impl FeatureFlagsHolder {
         });
     }
 
+    // TODO(snowp): For all these calls we need to make sure that the timestamp on the long matches
+    // the timestamp on the feature flag update.
+
     LogLine::new_with_fields(
       log_level::INFO,
       LogType::Device,
