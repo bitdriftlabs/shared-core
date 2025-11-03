@@ -546,6 +546,7 @@ impl WorkflowsEngine {
     &'a mut self,
     log: &LogRef<'_>,
     log_destination_buffer_ids: &'a TinySet<Cow<'a, str>>,
+    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
     now: OffsetDateTime,
   ) -> WorkflowsEngineResult<'a> {
     // Measure duration in here even if the list of workflows is empty.
@@ -614,7 +615,7 @@ impl WorkflowsEngine {
       };
 
       let was_in_initial_state = workflow.is_in_initial_state();
-      let result = workflow.process_log(config, log, now);
+      let result = workflow.process_log(config, log, feature_flags, now);
 
       macro_rules! inc_by {
         ($field:ident, $value:ident) => {
@@ -734,10 +735,10 @@ impl WorkflowsEngine {
       .record_workflow_debug_state(all_incremental_workflow_debug_state);
     self
       .metrics_collector
-      .emit_metrics(&emit_metric_actions, log);
+      .emit_metrics(&emit_metric_actions, log, feature_flags);
     self
       .metrics_collector
-      .emit_sankeys(&emit_sankey_diagrams_actions, log);
+      .emit_sankeys(&emit_sankey_diagrams_actions, log, feature_flags);
 
     for action in emit_sankey_diagrams_actions {
       // There is no real limit on the number of sankey paths we might want to upload, so ensure

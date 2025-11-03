@@ -707,6 +707,9 @@ impl ActionEmitMetric {
           Some(Tag_type::FixedValue(value)) => TagValue::Fixed(value),
           Some(Tag_type::FieldExtracted(extracted)) => TagValue::FieldExtract(extracted.field_name),
           Some(Tag_type::LogBodyExtracted(_)) => TagValue::LogBodyExtract,
+          Some(Tag_type::FeatureFlagExtracted(extracted)) => {
+            TagValue::FeatureFlagExtract(extracted.name)
+          },
           None => {
             anyhow::bail!("invalid action emit metric configuration: unknown tag_type")
           },
@@ -775,6 +778,9 @@ impl ActionEmitSankey {
             Some(Tag_type::FieldExtracted(extracted)) => {
               TagValue::FieldExtract(extracted.field_name)
             },
+            Some(Tag_type::FeatureFlagExtracted(extracted)) => {
+              TagValue::FeatureFlagExtract(extracted.name)
+            },
             Some(Tag_type::LogBodyExtracted(_)) => TagValue::LogBodyExtract,
             None => {
               anyhow::bail!("invalid action emit sankey diagram configuration: unknown tag_type")
@@ -842,6 +848,8 @@ pub enum ValueIncrement {
 pub enum TagValue {
   // Use the value of the specified tag without further modification.
   FieldExtract(String),
+  // Use the value of the variant for an active feature flag.
+  FeatureFlagExtract(String),
   // Use a fixed value.
   Fixed(FieldKey),
   // Use the value of the entire log line.
@@ -853,9 +861,16 @@ impl TagValue {
     &self,
     fields: FieldsRef<'a>,
     message: &'a LogMessage,
+    feature_flags: Option<&'a bd_feature_flags::FeatureFlags>,
   ) -> Option<Cow<'a, str>> {
     match self {
       Self::FieldExtract(field_key) => fields.field_value(field_key),
+      Self::FeatureFlagExtract(flag_key) => feature_flags.and_then(|feature_flags| {
+        feature_flags
+          .get(flag_key)
+          .and_then(|flag| flag.variant)
+          .map(Cow::Borrowed)
+      }),
       Self::Fixed(value) => Some(Cow::Owned(value.clone())),
       Self::LogBodyExtract => message.as_str().map(Cow::Borrowed),
     }

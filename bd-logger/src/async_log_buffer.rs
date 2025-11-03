@@ -173,6 +173,15 @@ enum FeatureFlagInitialization {
   Initialized(Option<FeatureFlags>),
 }
 
+impl FeatureFlagInitialization {
+  fn get(&self) -> Option<&FeatureFlags> {
+    match self {
+      Self::Pending(_) => None,
+      Self::Initialized(flags_option) => flags_option.as_ref(),
+    }
+  }
+}
+
 //
 // AsyncLogBuffer
 //
@@ -729,6 +738,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log,
           block,
           &mut initialized_logging_context.processing_pipeline,
+          self.feature_flags.get(),
           self.time_provider.now(),
         )
         .await
@@ -776,6 +786,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log_line,
           false,
           &mut initialized_logging_context.processing_pipeline,
+          self.feature_flags.get(),
           now,
         )
         .await
@@ -892,7 +903,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             },
             AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
               if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
-                feature_flags.set(flag, variant).unwrap_or_else(|e| {
+                feature_flags.set(flag, variant.as_deref()).unwrap_or_else(|e| {
                   log::warn!("failed to set feature flag: {e}");
                 });
               }

@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::matcher::Tree;
+use bd_feature_flags::test::TestFeatureFlags;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{FieldsRef, LogMessage, LogType, StringOrBytes, TypedLogLevel};
 use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
@@ -24,12 +25,13 @@ impl TestMatcher {
   }
 
   /// A simplified version of `match_log` that takes a simpler set of parameters.
-  pub fn match_log<'a>(
+  pub fn match_log_with_feature_flags<'a>(
     &self,
     log_level: TypedLogLevel,
     log_type: LogType,
     message: impl Into<LogMessage>,
     fields: impl Into<HashMap<&'a str, &'a str>>,
+    feature_flags: &bd_feature_flags::FeatureFlags,
   ) -> bool {
     let fields = fields
       .into()
@@ -42,7 +44,24 @@ impl TestMatcher {
       log_type,
       &message.into(),
       FieldsRef::new(&fields, &matching_fields),
+      Some(feature_flags),
       &TinyMap::default(),
+    )
+  }
+
+  pub fn match_log<'a>(
+    &self,
+    log_level: TypedLogLevel,
+    log_type: LogType,
+    message: impl Into<LogMessage>,
+    fields: impl Into<HashMap<&'a str, &'a str>>,
+  ) -> bool {
+    self.match_log_with_feature_flags(
+      log_level,
+      log_type,
+      message,
+      fields,
+      &TestFeatureFlags::default(),
     )
   }
 }
