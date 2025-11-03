@@ -838,7 +838,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           self.report_processor_rx.recv() => {
           let session_id_override = match report_processing_session_type {
             ReportProcessingSession::Current => None,
-            ReportProcessingSession::Other(_) => None,
+            ReportProcessingSession::Other(id) => Some(id),
             ReportProcessingSession::PreviousRun => crash_monitor.previous_session_id.clone(),
           };
 
