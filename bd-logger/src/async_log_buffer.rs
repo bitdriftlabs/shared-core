@@ -836,26 +836,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         },
         Some(ReportProcessingRequest { crash_monitor, report_processing_session_type }) =
           self.report_processor_rx.recv() => {
-          let (is_previous_run, session_id_override) = match report_processing_session_type {
-            ReportProcessingSession::Current =>
-                  (false, Some(self.session_strategy.session_id())),
-            ReportProcessingSession::Other(id) =>
-                  (false, Some(id)),
-            ReportProcessingSession::PreviousRun =>
-                  (true, crash_monitor.previous_session_id.clone()),
+          let session_id_override = match report_processing_session_type {
+            ReportProcessingSession::Current => None,
+            ReportProcessingSession::Other(_) => None,
+            ReportProcessingSession::PreviousRun => crash_monitor.previous_session_id.clone(),
           };
 
           for crash_log in crash_monitor.process_new_reports().await {
-            let attributes_overrides = if is_previous_run {
-              session_id_override.clone().map(|id| {
-                LogAttributesOverrides::PreviousRunSessionID(
-                    id,
-                    crash_log.timestamp,
-                )
-              })
-            } else {
-              None
-            };
+            let attributes_overrides = session_id_override.as_ref().map(|id| {
+              LogAttributesOverrides::PreviousRunSessionID(
+                id.clone(),
+                crash_log.timestamp,
+              )
+            });
             let log = LogLine {
               log_type: LogType::Lifecycle,
               log_level: crash_log.log_level,
