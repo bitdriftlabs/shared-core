@@ -90,7 +90,7 @@ impl FeatureFlagsHolder {
         .map(|(flag, variant)| {
           (
             format!("_set_flag_{flag}").into(),
-            AnnotatedLogField::new_ootb(variant.unwrap_or("none".to_string())),
+            AnnotatedLogField::new_ootb(variant.unwrap_or_else(|| "none".to_string())),
           )
         })
         .collect(),
