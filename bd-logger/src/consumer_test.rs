@@ -13,7 +13,7 @@ use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::{Buffer, BufferEvent, BufferEventWithResponse, RingBuffer, RingBufferStats};
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
-use bd_log_primitives::{Log, log_level};
+use bd_log_primitives::{Log, LogEncodingHelper, log_level};
 use bd_proto::protos::client::api::ApiRequest;
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::logging::payload::{Log as ProtoLog, LogType};
@@ -557,17 +557,26 @@ async fn age_limit_log_uploads() {
 }
 
 fn make_test_log(t: time::OffsetDateTime) -> Vec<u8> {
-  let log = Log {
-    log_level: log_level::INFO,
-    log_type: LogType::NORMAL,
-    message: "".into(),
-    fields: [].into(),
-    matching_fields: [].into(),
-    session_id: String::new(),
-    occurred_at: t,
-    capture_session: None,
-  };
-  let mut output = Vec::with_capacity(log.serialized_proto_size(&[], &[]).try_into().unwrap());
+  let mut log = LogEncodingHelper::new(
+    Log {
+      log_level: log_level::INFO,
+      log_type: LogType::NORMAL,
+      message: "".into(),
+      fields: [].into(),
+      matching_fields: [].into(),
+      session_id: String::new(),
+      occurred_at: t,
+      capture_session: None,
+    },
+    u64::MAX,
+  );
+  let mut output = Vec::with_capacity(
+    log
+      .serialized_proto_size(&[], &[])
+      .unwrap()
+      .try_into()
+      .unwrap(),
+  );
   let mut os = CodedOutputStream::vec(&mut output);
   log.serialized_proto_to_stream(&[], &[], &mut os).unwrap();
   drop(os);

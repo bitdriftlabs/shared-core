@@ -21,7 +21,7 @@ use bd_client_common::safe_file_cache::SafeFileCache;
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::FilterChain;
 use bd_log_primitives::tiny_set::TinyMap;
-use bd_log_primitives::{FieldsRef, Log};
+use bd_log_primitives::{FieldsRef, LogEncodingHelper};
 use bd_proto::protos::bdtail::bdtail_config::BdTailConfigurations;
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
@@ -362,7 +362,7 @@ impl TailConfigurations {
 
   pub(crate) fn maybe_stream_log(
     &mut self,
-    log: &Log,
+    log: &mut LogEncodingHelper,
     feature_flags: Option<&bd_feature_flags::FeatureFlags>,
   ) -> anyhow::Result<bool> {
     let Some(inner) = &mut self.inner else {
@@ -377,10 +377,10 @@ impl TailConfigurations {
           .as_ref()
           .is_none_or(|matcher| {
             matcher.do_match(
-              log.log_level,
-              log.log_type,
-              &log.message,
-              FieldsRef::new(&log.fields, &log.matching_fields),
+              log.log.log_level,
+              log.log.log_type,
+              &log.log.message,
+              FieldsRef::new(&log.log.fields, &log.log.matching_fields),
               feature_flags,
               &TinyMap::default(),
             )

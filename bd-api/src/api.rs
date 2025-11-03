@@ -24,7 +24,6 @@ use backoff::backoff::Backoff;
 use backoff::exponential::ExponentialBackoff;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::payload_conversion::IntoRequest;
-use bd_client_common::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use bd_client_common::{ClientConfigurationUpdate, maybe_await};
 use bd_client_stats_store::{Counter, CounterWrapper, Scope};
 use bd_error_reporter::reporter::UnexpectedErrorHandler;
@@ -37,6 +36,7 @@ use bd_grpc_codec::{
   GRPC_ENCODING_HEADER,
   OptimizeFor,
 };
+use bd_log_primitives::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use bd_metadata::Metadata;
 use bd_network_quality::{NetworkQuality, NetworkQualityMonitor};
 use bd_proto::protos::client::api::api_response::Response_type;
