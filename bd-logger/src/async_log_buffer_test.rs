@@ -48,11 +48,11 @@ use bd_test_helpers::workflow::{WorkflowBuilder, state};
 use bd_time::{SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::test::MakeConfig;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc};
 use tokio_test::assert_ok;
 
 struct Setup {
@@ -64,9 +64,7 @@ struct Setup {
   _data_upload_rx: mpsc::Receiver<DataUpload>,
   data_upload_tx: mpsc::Sender<DataUpload>,
 
-  replayer_log_count: Arc<AtomicUsize>,
-  replayer_logs: Arc<parking_lot::Mutex<Vec<String>>>,
-  replayer_fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
+  replayer: TestReplay,
   shutdown: Option<ComponentShutdownTrigger>,
 }
 
@@ -77,6 +75,8 @@ impl Setup {
     let collector = Collector::default();
     let stats = Stats::new(collector.clone());
     let (data_upload_tx, data_upload_rx) = mpsc::channel(1);
+
+    std::fs::create_dir_all(tmp_dir.path().join("feature_flags")).unwrap();
 
     Self {
       buffer_manager: bd_buffer::Manager::new(
@@ -89,9 +89,7 @@ impl Setup {
       collector,
       stats,
       tmp_dir,
-      replayer_log_count: Arc::default(),
-      replayer_logs: Arc::default(),
-      replayer_fields: Arc::default(),
+      replayer: TestReplay::new(),
       shutdown: Some(ComponentShutdownTrigger::default()),
       _data_upload_rx: data_upload_rx,
       data_upload_tx,
@@ -108,24 +106,19 @@ impl Setup {
 
 
   fn make_test_async_log_buffer(
-    &mut self,
+    &self,
     config_update_rx: tokio::sync::mpsc::Receiver<ConfigUpdate>,
   ) -> (
     AsyncLogBuffer<TestReplay>,
     bd_bounded_buffer::Sender<AsyncLogBufferMessage>,
   ) {
-    let replayer = TestReplay::new();
-    self.replayer_log_count = replayer.logs_count.clone();
-    self.replayer_logs = replayer.logs.clone();
-    self.replayer_fields = replayer.fields.clone();
-
     let (_, report_rx) = tokio::sync::mpsc::channel(1);
 
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
 
     AsyncLogBuffer::new(
       self.make_logging_context(),
-      replayer,
+      self.replayer.clone(),
       Arc::new(Strategy::Fixed(fixed::Strategy::new(
         in_memory_store(),
         Arc::new(UUIDCallbacks),
@@ -220,10 +213,12 @@ impl Setup {
   }
 }
 
+#[derive(Clone)]
 struct TestReplay {
   logs_count: Arc<AtomicUsize>,
-  logs: Arc<parking_lot::Mutex<Vec<std::string::String>>>,
+  logs: Arc<parking_lot::Mutex<Vec<(std::string::String, LogFields)>>>,
   fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
+  notify: Arc<Notify>,
 }
 
 impl TestReplay {
@@ -232,6 +227,16 @@ impl TestReplay {
       logs_count: Arc::new(AtomicUsize::new(0)),
       logs: Arc::new(parking_lot::Mutex::new(vec![])),
       fields: Arc::new(parking_lot::Mutex::new(vec![])),
+      notify: Arc::new(Notify::new()),
+    }
+  }
+
+  async fn next_log(&self) -> (String, LogFields) {
+    loop {
+      if !self.logs.lock().is_empty() {
+        return self.logs.lock().remove(0);
+      }
+      self.notify.notified().await;
     }
   }
 }
@@ -248,10 +253,13 @@ impl LogReplay for TestReplay {
   ) -> anyhow::Result<LogReplayResult> {
     self.logs_count.fetch_add(1, Ordering::SeqCst);
     if let StringOrBytes::String(message) = &log.message {
-      self.logs.lock().push(message.clone());
+      self.logs.lock().push((message.clone(), log.fields.clone()));
     }
 
     self.fields.lock().push(log.fields);
+
+    // Notify any threads/tasks waiting
+    self.notify.notify_waiters();
 
     Ok(LogReplayResult::default())
   }
@@ -371,7 +379,7 @@ async fn logs_are_replayed_in_order() {
 
   let (buffer, buffer_tx) = setup.make_test_async_log_buffer(config_update_rx);
 
-  let written_logs = Arc::new(Mutex::new(vec![]));
+  let written_logs = Arc::new(parking_lot::Mutex::new(vec![]));
   let shutdown = Arc::new(AtomicBool::new(false));
   let cloned_shutdown = shutdown.clone();
 
@@ -384,10 +392,7 @@ async fn logs_are_replayed_in_order() {
     let mut counter = 0;
     while !cloned_shutdown.load(Ordering::SeqCst) {
       let current_log_message = format!("{counter}");
-      written_logs_clone
-        .lock()
-        .unwrap()
-        .push(current_log_message.clone());
+      written_logs_clone.lock().push(current_log_message.clone());
 
       counter += 1;
       let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
@@ -439,17 +444,17 @@ async fn logs_are_replayed_in_order() {
 
   _ = run_buffer_task.await;
 
-  let written_logs = written_logs.lock().unwrap();
+  let written_logs = written_logs.lock();
 
   assert!(!written_logs.is_empty());
   assert_eq!(
     written_logs.len(),
-    setup.replayer_log_count.load(Ordering::SeqCst),
+    setup.replayer.logs_count.load(Ordering::SeqCst),
   );
   for index in 0 .. written_logs.len() {
     assert_eq!(
       written_logs[index],
-      setup.replayer_logs.lock()[index].as_str()
+      setup.replayer.logs.lock()[index].0.as_str()
     );
   }
 }
@@ -611,7 +616,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
 
 #[tokio::test]
 async fn logs_resource_utilization_log() {
-  let mut setup = Setup::new();
+  let setup = Setup::new();
 
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
 
@@ -674,10 +679,103 @@ async fn logs_resource_utilization_log() {
 
   // There should be at least one periodic internal log reported by using >= to avoid flakes as
   // there are many time dependant things happening in this test.
-  assert!(setup.replayer_log_count.load(Ordering::SeqCst) >= 1);
-  assert_eq!("", setup.replayer_logs.lock()[0]);
+  assert!(setup.replayer.logs_count.load(Ordering::SeqCst) >= 1);
+  assert_eq!("", setup.replayer.logs.lock()[0].0);
 
   // Confirm that internal fields are added if enabled.
-  assert!(!setup.replayer_fields.lock().is_empty());
-  assert!(setup.replayer_fields.lock()[0].contains_key("_logs_count"));
+  assert!(!setup.replayer.fields.lock().is_empty());
+  assert!(setup.replayer.fields.lock()[0].contains_key("_logs_count"));
+}
+
+#[tokio::test]
+async fn feature_flag_logs() {
+  let setup = Setup::new();
+
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+
+  let shutdown = ComponentShutdownTrigger::default();
+  let shutdown = shutdown.make_shutdown();
+
+  tokio::spawn(async move {
+    buffer.run_with_shutdown(shutdown).await;
+  });
+
+  config_update_tx
+    .send(setup.make_config_update(WorkflowsConfiguration::default()))
+    .await
+    .unwrap();
+
+  struct TestCase {
+    name: &'static str,
+    message: AsyncLogBufferMessage,
+    expected_log: &'static str,
+    expected_fields: LogFields,
+  }
+
+  for test_case in vec![
+    TestCase {
+      name: "SetFeatureFlag with variant",
+      message: AsyncLogBufferMessage::SetFeatureFlag(
+        "foo".to_string(),
+        Some("variant".to_string()),
+      ),
+      expected_log: "Set feature flag",
+      expected_fields: [
+        ("_set_flag".into(), "foo".into()),
+        ("_set_variant".into(), "variant".into()),
+      ]
+      .into(),
+    },
+    TestCase {
+      name: "SetFeatureFlag without variant",
+      message: AsyncLogBufferMessage::SetFeatureFlag("bar".to_string(), None),
+      expected_log: "Set feature flag",
+      expected_fields: [
+        ("_set_flag".into(), "bar".into()),
+        ("_set_variant".into(), "none".into()),
+      ]
+      .into(),
+    },
+    TestCase {
+      name: "SetFeatureFlags with mixed variants",
+      message: AsyncLogBufferMessage::SetFeatureFlags(vec![
+        ("baz".to_string(), Some("variant".to_string())),
+        ("qux".to_string(), None),
+      ]),
+      expected_log: "Set multiple feature flags",
+      expected_fields: [
+        ("_set_flag_baz".into(), "variant".into()),
+        ("_set_flag_qux".into(), "none".into()),
+      ]
+      .into(),
+    },
+    TestCase {
+      name: "RemoveFeatureFlag",
+      message: AsyncLogBufferMessage::RemoveFeatureFlag("baz".to_string()),
+      expected_log: "Removed feature flag",
+      expected_fields: [("_removed_flag".into(), "baz".into())].into(),
+    },
+    TestCase {
+      name: "ClearFeatureFlags",
+      message: AsyncLogBufferMessage::ClearFeatureFlags,
+      expected_log: "Cleared all feature flags",
+      expected_fields: [].into(),
+    },
+  ] {
+    sender.try_send(test_case.message).unwrap();
+
+    let (message, fields) = setup.replayer.next_log().await;
+    assert_eq!(
+      message, test_case.expected_log,
+      "Log message should match for {:?} test case",
+      test_case.name
+    );
+    assert_eq!(
+      fields, test_case.expected_fields,
+      "Log message should match for {:?} test case",
+      test_case.name
+    );
+  }
 }
