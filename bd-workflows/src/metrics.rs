@@ -87,7 +87,7 @@ impl MetricsCollector {
   ) {
     for action in actions {
       let mut tags = Self::extract_tags(log, feature_flags, action.action.tags());
-      tags.insert("_path_id".to_string(), action.path.path_id.to_string());
+      tags.insert("_path_id".to_string(), action.path.path_id.clone());
 
       self
         .stats
