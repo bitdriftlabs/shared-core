@@ -7,8 +7,9 @@
 
 use crate::FilterChain;
 use bd_log_matcher::builder::{message_equals, message_regex_matches};
-use bd_log_primitives::{Log, LogFields, LogType, log_level};
+use bd_log_primitives::{Log, LogFields, log_level};
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
+use bd_proto::protos::logging::payload::LogType;
 use bd_test_helpers::filter::macros::regex_match_and_substitute_field;
 use bd_test_helpers::{capture_field, field_value, remove_field, set_field};
 use pretty_assertions::assert_eq;
@@ -384,7 +385,7 @@ fn make_filter_chain(
 fn make_log(message: &str, fields: LogFields, matching_fields: LogFields) -> Log {
   Log {
     log_level: log_level::DEBUG,
-    log_type: LogType::Normal,
+    log_type: LogType::NORMAL,
     message: message.into(),
     fields,
     matching_fields,

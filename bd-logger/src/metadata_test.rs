@@ -9,7 +9,7 @@ use crate::metadata::MetadataCollector;
 use assert_matches::assert_matches;
 use bd_crash_handler::global_state::{self, Reader};
 use bd_log_primitives::{AnnotatedLogField, LogFields, StringOrBytes};
-use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::Watch;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::session::in_memory_store;
@@ -29,7 +29,7 @@ fn collector_attaches_provider_fields_as_matching_fields() {
 
   let collector = MetadataCollector::new(Arc::new(metadata));
 
-  let types = vec![LogType::Replay, LogType::Resource];
+  let types = vec![LogType::REPLAY, LogType::RESOURCE];
 
   let mut tracker =
     global_state::Tracker::new(in_memory_store(), Watch::new_for_testing(10.seconds()));
@@ -120,7 +120,7 @@ fn collector_fields_hierarchy() {
       ]
       .into(),
       [].into(),
-      LogType::Lifecycle,
+      LogType::LIFECYCLE,
       &mut tracker,
     )
     .unwrap();
@@ -201,7 +201,7 @@ fn collector_does_not_accept_reserved_fields() {
     global_state::Tracker::new(in_memory_store(), Watch::new_for_testing(10.seconds()));
 
   let metadata = collector
-    .normalized_metadata_with_extra_fields([].into(), [].into(), LogType::Normal, &mut tracker)
+    .normalized_metadata_with_extra_fields([].into(), [].into(), LogType::NORMAL, &mut tracker)
     .unwrap();
 
   assert!(

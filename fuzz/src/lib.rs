@@ -21,10 +21,10 @@ use bd_buffer::buffer::{
   RingBufferStats,
   StatsTestHelper,
   VolatileRingBuffer,
-  to_u32,
 };
 use bd_buffer::{AbslCode, Error};
 use bd_client_stats_store::Collector;
+use bd_log_primitives::LossyIntToU32;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::sync::Arc;
@@ -123,7 +123,7 @@ impl BufferState {
         match NonVolatileRingBuffer::new(
           "test".to_string(),
           temp_dir.path().join("buffer"),
-          test_case.buffer_size + to_u32(std::mem::size_of::<NonVolatileFileHeader>()),
+          test_case.buffer_size + std::mem::size_of::<NonVolatileFileHeader>().to_u32_lossy(),
           if test_case.cursor_consumer {
             AllowOverwrite::Block
           } else {
@@ -156,7 +156,7 @@ impl BufferState {
           "test",
           test_case.buffer_size,
           temp_dir.path().join("buffer"),
-          test_case.buffer_size + to_u32(std::mem::size_of::<NonVolatileFileHeader>()) + 4,
+          test_case.buffer_size + std::mem::size_of::<NonVolatileFileHeader>().to_u32_lossy() + 4,
           PerRecordCrc32Check::Yes,
           if test_case.cursor_consumer {
             AllowOverwrite::Block
@@ -312,13 +312,14 @@ impl BufferFuzzTest {
       let mut buffer = Vec::new();
       file.read_to_end(&mut buffer).unwrap();
       let offset = corrupt_byte.offset
-        % (self.test_case.buffer_size + to_u32(std::mem::size_of::<NonVolatileFileHeader>()));
+        % (self.test_case.buffer_size
+          + std::mem::size_of::<NonVolatileFileHeader>().to_u32_lossy());
       log::trace!("corrupting byte at offset {offset}");
       buffer[offset as usize] = corrupt_byte.new_byte;
       let mut file = File::create(self.temp_dir.path().join("buffer")).unwrap();
       file.write_all(&buffer).unwrap();
 
-      if offset < to_u32(std::mem::size_of::<NonVolatileFileHeader>()) {
+      if offset < std::mem::size_of::<NonVolatileFileHeader>().to_u32_lossy() {
         // In this case we should expect further reopens to fail so we can track that.
         self.saw_file_header_corruption = true;
       } else {

@@ -405,7 +405,7 @@ fn extract_value<'a>(log: &'a Log, key: &str) -> Option<Cow<'a, str>> {
   match key {
     LOG_FIELD_NAME_MESSAGE => log.message.as_str().map(Cow::Borrowed),
     LOG_FIELD_NAME_LEVEL => Some(Cow::Owned(log.log_level.to_string())),
-    LOG_FIELD_NAME_TYPE => Some(Cow::Owned(log.log_type.0.to_string())),
+    LOG_FIELD_NAME_TYPE => Some(Cow::Owned((log.log_type as u32).to_string())),
     _ => log
       .fields
       .iter()

@@ -22,11 +22,11 @@ use crate::buffer::{
   RingBufferStats,
   StatsTestHelper,
   VolatileRingBuffer,
-  to_u32,
 };
 use crate::{AbslCode, Error};
 use assert_matches::assert_matches;
 use bd_client_stats_store::Collector;
+use bd_log_primitives::LossyIntToU32;
 use parameterized::parameterized;
 use std::any::Any;
 use std::sync::Arc;
@@ -78,7 +78,7 @@ impl Helper {
       TestType::NonVolatile => NonVolatileRingBuffer::new(
         "test".to_string(),
         temp_dir.path().join("buffer"),
-        size + to_u32(std::mem::size_of::<FileHeader>()),
+        size + std::mem::size_of::<FileHeader>().to_u32_lossy(),
         AllowOverwrite::Yes,
         BlockWhenReservingIntoConcurrentRead::No,
         PerRecordCrc32Check::No,
@@ -89,7 +89,7 @@ impl Helper {
         "test",
         size,
         temp_dir.path().join("buffer"),
-        size + to_u32(std::mem::size_of::<FileHeader>()),
+        size + std::mem::size_of::<FileHeader>().to_u32_lossy(),
         PerRecordCrc32Check::No,
         AllowOverwrite::Yes,
         Arc::new(RingBufferStats::default()),

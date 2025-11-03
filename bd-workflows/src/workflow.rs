@@ -22,7 +22,7 @@ use crate::config::{
 use crate::generate_log::generate_log_action;
 use bd_feature_flags::FeatureFlags;
 use bd_log_primitives::tiny_set::TinyMap;
-use bd_log_primitives::{FieldsRef, Log, LogRef};
+use bd_log_primitives::{FieldsRef, Log};
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::OffsetDateTimeExt;
 use itertools::Itertools;
@@ -100,7 +100,7 @@ impl Workflow {
   pub(crate) fn process_log<'a>(
     &mut self,
     config: &'a Config,
-    log: &LogRef<'_>,
+    log: &Log,
     feature_flags: Option<&bd_feature_flags::FeatureFlags>,
     now: OffsetDateTime,
   ) -> WorkflowResult<'a> {
@@ -546,7 +546,7 @@ impl Run {
   fn process_log<'a>(
     &mut self,
     config: &'a Config,
-    log: &LogRef<'_>,
+    log: &Log,
     feature_flags: Option<&bd_feature_flags::FeatureFlags>,
     now: OffsetDateTime,
   ) -> RunResult<'a> {
@@ -833,7 +833,7 @@ impl Traversal {
   fn process_log<'a>(
     &mut self,
     config: &'a Config,
-    log: &LogRef<'_>,
+    log: &Log,
     feature_flags: Option<&FeatureFlags>,
     now: OffsetDateTime,
   ) -> TraversalResult<'a> {
@@ -841,7 +841,7 @@ impl Traversal {
       result: &mut TraversalResult<'a>,
       mut extractions: TraversalExtractions,
       actions: &'a [Action],
-      log: &LogRef<'_>,
+      log: &Log,
       current_state_index: usize,
       next_state_index: usize,
       transition_type: WorkflowDebugTransitionType,
@@ -851,8 +851,11 @@ impl Traversal {
       result.followed_transitions_count += 1;
 
       // Collect triggered actions and injected logs.
-      let (triggered_actions, logs_to_inject) =
-        Traversal::triggered_actions(actions, &mut extractions, log.fields);
+      let (triggered_actions, logs_to_inject) = Traversal::triggered_actions(
+        actions,
+        &mut extractions,
+        FieldsRef::new(&log.fields, &log.matching_fields),
+      );
 
       result.triggered_actions.extend(triggered_actions);
       result.log_to_inject.extend(logs_to_inject);
@@ -903,8 +906,8 @@ impl Traversal {
           if log_match.do_match(
             log.log_level,
             log.log_type,
-            log.message,
-            log.fields,
+            &log.message,
+            FieldsRef::new(&log.fields, &log.matching_fields),
             feature_flags,
             &self.extractions.fields,
           ) {
@@ -992,7 +995,7 @@ impl Traversal {
     &self,
     config: &Config,
     index: usize,
-    log: &LogRef<'_>,
+    log: &Log,
     feature_flags: Option<&FeatureFlags>,
   ) -> TraversalExtractions {
     // TODO(mattklein123): In the common case without forking we should be able to move this data
@@ -1004,11 +1007,11 @@ impl Traversal {
       return new_extractions;
     };
     for extraction in &extractions.sankey_extractions {
-      let Some(extracted_value) =
-        extraction
-          .value
-          .extract_value(log.fields, log.message, feature_flags)
-      else {
+      let Some(extracted_value) = extraction.value.extract_value(
+        FieldsRef::new(&log.fields, &log.matching_fields),
+        &log.message,
+        feature_flags,
+      ) else {
         continue;
       };
 
@@ -1031,7 +1034,7 @@ impl Traversal {
     }
 
     for extraction in &extractions.field_extractions {
-      if let Some(value) = log.fields.field_value(&extraction.field_name) {
+      if let Some(value) = log.field_value(&extraction.field_name) {
         log::debug!(
           "extracted field value {} for extraction ID {}",
           value,

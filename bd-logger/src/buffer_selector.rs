@@ -7,8 +7,9 @@
 
 use bd_log_matcher::matcher::Tree;
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogType};
+use bd_log_primitives::{FieldsRef, LogLevel, LogMessage};
 use bd_proto::protos::config::v1::config::BufferConfigList;
+use bd_proto::protos::logging::payload::LogType;
 use std::borrow::Cow;
 
 // A single buffer filter, containing the matchers used to determine if logs should be written to

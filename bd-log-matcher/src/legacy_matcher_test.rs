@@ -10,15 +10,7 @@
 use crate::matcher::Tree;
 use assert_matches::assert_matches;
 use bd_log_primitives::tiny_set::TinyMap;
-use bd_log_primitives::{
-  EMPTY_FIELDS,
-  FieldsRef,
-  LogFields,
-  LogLevel,
-  LogMessage,
-  LogType,
-  log_level,
-};
+use bd_log_primitives::{EMPTY_FIELDS, FieldsRef, LogFields, LogLevel, LogMessage, log_level};
 use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::AnyMatch;
 use bd_proto::protos::config::v1::config::log_matcher::{
   BaseLogMatcher as LegacyBaseLogMatcherMsg,
@@ -29,12 +21,13 @@ use bd_proto::protos::config::v1::config::{
   LogMatcher as LegacyLogMatcher,
   log_matcher as legacy_log_matcher,
 };
+use bd_proto::protos::logging::payload::LogType;
 
 type Input<'a> = (LogType, LogLevel, LogMessage, LogFields);
 
 fn log_msg(message: &str) -> Input<'_> {
   (
-    LogType::Normal,
+    LogType::NORMAL,
     log_level::DEBUG,
     LogMessage::String(message.to_string()),
     LogFields::default(),
@@ -43,7 +36,7 @@ fn log_msg(message: &str) -> Input<'_> {
 
 fn log_tag(key: &'static str, value: &'static str) -> Input<'static> {
   (
-    LogType::Normal,
+    LogType::NORMAL,
     log_level::DEBUG,
     "message".into(),
     [(key.into(), value.into())].into(),
@@ -52,7 +45,7 @@ fn log_tag(key: &'static str, value: &'static str) -> Input<'static> {
 
 fn binary_log_msg(message: &[u8]) -> Input<'_> {
   (
-    LogType::Normal,
+    LogType::NORMAL,
     log_level::DEBUG,
     LogMessage::Bytes(message.to_vec()),
     LogFields::default(),
@@ -61,7 +54,7 @@ fn binary_log_msg(message: &[u8]) -> Input<'_> {
 
 fn binary_log_tag(key: &'static str, value: &'static [u8]) -> Input<'static> {
   (
-    LogType::Normal,
+    LogType::NORMAL,
     log_level::DEBUG,
     "message".into(),
     [(key.into(), value.into())].into(),
@@ -272,11 +265,11 @@ fn type_matcher() {
     config,
     vec![
       (
-        (LogType::Normal, log_level::DEBUG, "foo".into(), [].into()),
+        (LogType::NORMAL, log_level::DEBUG, "foo".into(), [].into()),
         false,
       ),
       (
-        (LogType::Replay, log_level::DEBUG, "foo".into(), [].into()),
+        (LogType::REPLAY, log_level::DEBUG, "foo".into(), [].into()),
         true,
       ),
     ],

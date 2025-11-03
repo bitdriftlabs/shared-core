@@ -26,7 +26,7 @@ use bd_log_primitives::{
   LogMessage,
   log_level,
 };
-use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::Snapshot;
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_shutdown::ComponentShutdownTrigger;
@@ -226,7 +226,7 @@ impl LoggerHandle {
 
     self.log(
       log_level::DEBUG,
-      LogType::Resource,
+      LogType::RESOURCE,
       "".into(),
       fields,
       [].into(),
@@ -278,7 +278,7 @@ impl LoggerHandle {
 
     self.log(
       log_level::INFO,
-      LogType::Replay,
+      LogType::REPLAY,
       message.into(),
       fields,
       [].into(),
@@ -311,7 +311,7 @@ impl LoggerHandle {
 
     self.log(
       log_level::INFO,
-      LogType::Lifecycle,
+      LogType::LIFECYCLE,
       "SDKConfigured".into(),
       fields,
       [].into(),
@@ -379,7 +379,7 @@ impl LoggerHandle {
 
     self.log(
       log_level::INFO,
-      LogType::Lifecycle,
+      LogType::LIFECYCLE,
       "AppUpdated".into(),
       fields,
       [].into(),

@@ -13,12 +13,12 @@ use bd_client_stats::Stats;
 use bd_client_stats_store::{Collector, Scope};
 use bd_log_matcher::builder::{message_equals, message_regex_matches};
 use bd_log_primitives::tiny_set::TinySet;
-use bd_log_primitives::{FieldsRef, LogLevel, LogMessage, LogRef, log_level};
+use bd_log_primitives::{Log, LogLevel, LogMessage, log_level};
 use bd_logger::LogFields;
 use bd_logger::builder::default_stats_flush_triggers;
-use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::client::api::{RuntimeUpdate, StatsUploadRequest};
 use bd_proto::protos::client::metric::PendingAggregationIndex;
+use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow;
 use bd_proto::protos::workflow::workflow::Workflow;
 use bd_proto::protos::workflow::workflow::workflow::execution::{
@@ -137,12 +137,13 @@ impl AnnotatedWorkflowsEngine {
     }
 
     self.engine.process_log(
-      &LogRef {
-        log_type: LogType::Normal,
+      &Log {
+        log_type: LogType::NORMAL,
         log_level,
-        message: &LogMessage::String(message.to_string()),
-        fields: FieldsRef::new(&fields, &[].into()),
-        session_id: "1231231231312312312312",
+        message: LogMessage::String(message.to_string()),
+        fields,
+        matching_fields: [].into(),
+        session_id: "1231231231312312312312".to_string(),
         occurred_at: OffsetDateTime::now_utc(),
         capture_session: None,
       },

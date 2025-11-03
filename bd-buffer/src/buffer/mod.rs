@@ -16,19 +16,12 @@ mod volatile_ring_buffer;
 mod test;
 
 use bd_client_stats_store::Counter;
+use bd_log_primitives::LossyIntToU32;
 #[cfg(test)]
 use std::any::Any;
 use std::sync::Arc;
 #[cfg(test)]
 use test::thread_synchronizer::ThreadSynchronizer;
-
-// Wrapper that allows converting a usize to a u32. This avoids verbosity in places we know this is
-// safe.
-#[allow(clippy::cast_possible_truncation)]
-#[must_use]
-pub const fn to_u32(value: usize) -> u32 {
-  value as u32
-}
 
 //
 // RingBufferStats
@@ -101,7 +94,7 @@ pub trait RingBufferProducer: Send {
 
   // Writes a single record to the buffer by copying the provided data into the record reservation.
   fn write(&mut self, data: &[u8]) -> Result<()> {
-    let reserved = self.reserve(to_u32(data.len()), true)?;
+    let reserved = self.reserve(data.len().to_u32_lossy(), true)?;
     reserved.copy_from_slice(data);
     self.commit()
   }

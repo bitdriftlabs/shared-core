@@ -30,9 +30,9 @@ use bd_log_primitives::{
   StringOrBytes,
   log_level,
 };
-use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::LogType;
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::fixed::UUIDCallbacks;
 use bd_session::{Strategy, fixed};
@@ -262,7 +262,7 @@ fn log_line_size_is_computed_correctly() {
   fn create_baseline_log() -> LogLine {
     LogLine {
       log_level: 0,
-      log_type: LogType::Normal,
+      log_type: LogType::NORMAL,
       message: "foo".into(),
       fields: [("foo".into(), AnnotatedLogField::new_ootb("bar"))].into(),
       matching_fields: [].into(),
@@ -271,7 +271,7 @@ fn log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 511;
+  let baseline_log_expected_size = 508;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 
@@ -311,7 +311,7 @@ fn annotated_log_line_size_is_computed_correctly() {
   fn create_baseline_log() -> Log {
     Log {
       log_level: 0,
-      log_type: LogType::Normal,
+      log_type: LogType::NORMAL,
       message: "foo".into(),
       fields: [("foo".into(), "bar".into())].into(),
       matching_fields: [].into(),
@@ -393,7 +393,7 @@ async fn logs_are_replayed_in_order() {
       let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
         &buffer_tx,
         0,
-        LogType::Normal,
+        LogType::NORMAL,
         current_log_message.as_str().into(),
         [].into(),
         [].into(),
@@ -464,7 +464,7 @@ fn enqueuing_log_does_not_block() {
   let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
     &buffer_tx,
     0,
-    LogType::Normal,
+    LogType::NORMAL,
     "test".into(),
     [].into(),
     [].into(),
@@ -509,7 +509,7 @@ fn enqueuing_log_blocks() {
   let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
     &buffer_tx,
     0,
-    LogType::Normal,
+    LogType::NORMAL,
     "test".into(),
     [].into(),
     [].into(),
@@ -649,7 +649,7 @@ async fn logs_resource_utilization_log() {
   let message = AsyncLogBufferMessage::EmitLog((
     LogLine {
       log_level: log_level::DEBUG,
-      log_type: LogType::Resource,
+      log_type: LogType::RESOURCE,
       message: StringOrBytes::String(String::new()),
       fields: AnnotatedLogFields::new(),
       matching_fields: AnnotatedLogFields::new(),

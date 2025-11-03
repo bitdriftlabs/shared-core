@@ -466,6 +466,7 @@ dependencies = [
  "bd-client-stats-store",
  "bd-completion",
  "bd-error-reporter",
+ "bd-log-primitives",
  "bd-proto",
  "bd-runtime",
  "bd-stats-common",
@@ -882,8 +883,10 @@ name = "bd-log-primitives"
 version = "1.0.0"
 dependencies = [
  "ahash",
+ "anyhow",
  "bd-proto",
  "bd-workspace-hack",
+ "protobuf 4.0.0-alpha.0",
  "serde",
  "time",
 ]
@@ -1229,6 +1232,7 @@ dependencies = [
  "bd-client-stats-store",
  "bd-error-reporter",
  "bd-log-primitives",
+ "bd-proto",
  "bd-runtime",
  "bd-shutdown",
  "bd-stats-common",
@@ -2163,6 +2167,7 @@ dependencies = [
  "bd-buffer",
  "bd-client-common",
  "bd-client-stats-store",
+ "bd-log-primitives",
  "bd-resilient-kv",
  "bd-test-helpers",
  "bd-workspace-hack",
@@ -2837,6 +2842,7 @@ dependencies = [
  "bd-key-value",
  "bd-log",
  "bd-logger",
+ "bd-proto",
  "bd-session",
  "bd-shutdown",
  "bd-test-helpers",

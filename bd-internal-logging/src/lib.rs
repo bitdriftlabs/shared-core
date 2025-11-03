@@ -14,7 +14,8 @@
   clippy::unwrap_used
 )]
 
-pub use bd_log_primitives::{LogFields, LogLevel, LogType, log_level};
+pub use bd_log_primitives::{LogFields, LogLevel, log_level};
+use bd_proto::protos::logging::payload::LogType;
 use std::sync::Arc;
 
 //
@@ -31,7 +32,7 @@ pub trait Logger: Send + Sync {
   fn log_internal(&self, msg: &str) {
     self.log(
       log_level::DEBUG,
-      LogType::InternalSDK,
+      LogType::INTERNAL_SDK,
       msg,
       LogFields::default(),
     );

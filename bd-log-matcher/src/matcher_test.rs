@@ -17,13 +17,13 @@ use bd_log_primitives::{
   LogFields,
   LogLevel,
   LogMessage,
-  LogType,
   StringOrBytes,
   TypedLogLevel,
   log_level,
 };
 use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::feature_flag_match;
 use bd_proto::protos::log_matcher::log_matcher::{LogMatcher, log_matcher};
+use bd_proto::protos::logging::payload::LogType;
 use log_matcher::base_log_matcher::Match_type::{MessageMatch, TagMatch};
 use log_matcher::base_log_matcher::Operator;
 use log_matcher::base_log_matcher::double_value_match::Double_value_match_type;
@@ -37,13 +37,13 @@ use log_matcher::base_log_matcher::tag_match::Value_match::{
 };
 use log_matcher::{BaseLogMatcher, Matcher, MatcherList, base_log_matcher};
 use pretty_assertions::assert_eq;
-use protobuf::MessageField;
+use protobuf::{Enum, MessageField};
 
 type Input<'a> = (LogType, LogLevel, LogMessage, LogFields);
 
 fn log_msg(message: &str) -> Input<'_> {
   (
-    LogType::Normal,
+    LogType::NORMAL,
     log_level::DEBUG,
     LogMessage::String(message.to_string()),
     [].into(),
@@ -52,7 +52,7 @@ fn log_msg(message: &str) -> Input<'_> {
 
 fn binary_log_msg(message: &[u8]) -> Input<'_> {
   (
-    LogType::Normal,
+    LogType::NORMAL,
     log_level::DEBUG,
     LogMessage::Bytes(message.to_vec()),
     [].into(),
@@ -61,7 +61,7 @@ fn binary_log_msg(message: &[u8]) -> Input<'_> {
 
 fn log_tag(key: &'static str, value: &'static str) -> Input<'static> {
   (
-    LogType::Normal,
+    LogType::NORMAL,
     log_level::DEBUG,
     LogMessage::String("message".into()),
     [(key.into(), StringOrBytes::String(value.into()))].into(),
@@ -70,7 +70,7 @@ fn log_tag(key: &'static str, value: &'static str) -> Input<'static> {
 
 fn binary_log_tag(key: &'static str, value: &'static [u8]) -> Input<'static> {
   (
-    LogType::Normal,
+    LogType::NORMAL,
     log_level::DEBUG,
     LogMessage::String("message".into()),
     [(key.into(), StringOrBytes::Bytes(value.into()))].into(),
@@ -88,7 +88,7 @@ fn log_type(log_type: LogType) -> Input<'static> {
 
 fn log_level(log_level: LogLevel) -> Input<'static> {
   (
-    LogType::Normal,
+    LogType::NORMAL,
     log_level,
     LogMessage::String("message".into()),
     [].into(),
@@ -520,8 +520,11 @@ fn test_tag_log_type() {
     config,
     vec![
       // invalid u32::MAX input for matcher
-      (log_type(LogType(u32::MAX)), false),
-      (log_type(LogType::Resource), true),
+      (
+        log_type(LogType::from_i32(i32::MAX).unwrap_or_default()),
+        false,
+      ),
+      (log_type(LogType::RESOURCE), true),
     ],
   );
 }
@@ -875,7 +878,7 @@ fn feature_flag_matcher() {
       input.matches,
       matcher.match_log_with_feature_flags(
         TypedLogLevel::Debug,
-        LogType::Normal,
+        LogType::NORMAL,
         "foo",
         [],
         &feature_flags,
@@ -963,11 +966,11 @@ fn match_test_runner_with_extractions(
       should_match,
       match_tree.do_match(
         log_level,
-        bd_log_primitives::LogType(log_type.0),
+        log_type,
         &message,
         fields,
         None,
-        extracted_fields,
+        extracted_fields
       ),
       "{input:?} should result in {should_match} but did not",
     );

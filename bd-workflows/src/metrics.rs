@@ -12,7 +12,7 @@ mod metrics_test;
 use crate::config::{ActionEmitMetric, TagValue};
 use crate::workflow::TriggeredActionEmitSankey;
 use bd_client_stats::Stats;
-use bd_log_primitives::LogRef;
+use bd_log_primitives::Log;
 use bd_stats_common::MetricType;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -35,7 +35,7 @@ impl MetricsCollector {
   pub(crate) fn emit_metrics(
     &self,
     actions: &BTreeSet<&ActionEmitMetric>,
-    log: &LogRef<'_>,
+    log: &Log,
     feature_flags: Option<&bd_feature_flags::FeatureFlags>,
   ) {
     // TODO(Augustyniak): We dedupe stats in here too only when both their tags and the value of
@@ -82,7 +82,7 @@ impl MetricsCollector {
   pub(crate) fn emit_sankeys(
     &self,
     actions: &BTreeSet<TriggeredActionEmitSankey<'_>>,
-    log: &LogRef<'_>,
+    log: &Log,
     feature_flags: Option<&bd_feature_flags::FeatureFlags>,
   ) {
     for action in actions {
@@ -95,11 +95,11 @@ impl MetricsCollector {
     }
   }
 
-  fn resolve_field_name<'a>(key: &str, log: &'a LogRef<'a>) -> Option<Cow<'a, str>> {
+  fn resolve_field_name<'a>(key: &str, log: &'a Log) -> Option<Cow<'a, str>> {
     match key {
       "log_level" => Some(log.log_level.to_string().into()),
-      "log_type" => Some(log.log_type.0.to_string().into()),
-      key => log.fields.field_value(key),
+      "log_type" => Some((log.log_type as u32).to_string().into()),
+      key => log.field_value(key),
     }
   }
 
@@ -114,7 +114,7 @@ impl MetricsCollector {
   }
 
   fn extract_tags(
-    log: &LogRef<'_>,
+    log: &Log,
     feature_flags: Option<&bd_feature_flags::FeatureFlags>,
     tags: &BTreeMap<String, TagValue>,
   ) -> BTreeMap<String, String> {

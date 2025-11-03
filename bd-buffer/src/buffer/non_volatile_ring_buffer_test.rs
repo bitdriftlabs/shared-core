@@ -8,10 +8,11 @@
 use super::{FileHeader, RingBufferImpl};
 use crate::buffer::common_ring_buffer::{AllowOverwrite, Cursor};
 use crate::buffer::test::{Helper as CommonHelper, reserve_and_commit};
-use crate::buffer::{OptionalStatGetter, StatsTestHelper, to_u32};
+use crate::buffer::{OptionalStatGetter, StatsTestHelper};
 use crate::{AbslCode, Error, Result};
 use assert_matches::assert_matches;
 use bd_client_stats_store::Collector;
+use bd_log_primitives::LossyIntToU32;
 use intrusive_collections::offset_of;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -34,7 +35,7 @@ impl Helper {
     let buffer = RingBufferImpl::new(
       "test".to_string(),
       temp_dir.path().join("buffer"),
-      size + to_u32(std::mem::size_of::<FileHeader>()),
+      size + std::mem::size_of::<FileHeader>().to_u32_lossy(),
       allow_overwrite,
       super::BlockWhenReservingIntoConcurrentRead::No,
       super::PerRecordCrc32Check::Yes,
@@ -76,7 +77,7 @@ impl Helper {
       RingBufferImpl::new(
         "test".to_string(),
         self.temp_dir.path().join("buffer"),
-        self.size + to_u32(std::mem::size_of::<FileHeader>()),
+        self.size + std::mem::size_of::<FileHeader>().to_u32_lossy(),
         self.allow_overwrite,
         super::BlockWhenReservingIntoConcurrentRead::No,
         super::PerRecordCrc32Check::Yes,

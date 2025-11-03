@@ -14,7 +14,6 @@ use crate::{
   InitParams,
   LogAttributesOverrides,
   LogMessage,
-  LogType,
   StringOrBytes,
   log_level,
   wait_for,
@@ -32,6 +31,7 @@ use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::FeatureFlag;
 use bd_session::fixed::{State, UUIDCallbacks};
 use bd_session::{Strategy, fixed};
@@ -156,7 +156,7 @@ fn log_upload() {
   for _ in 0 .. 10 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "some log".into(),
       [].into(),
       [].into(),
@@ -207,7 +207,7 @@ fn explicit_session_capture() {
   for _ in 0 .. 9 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "some log".into(),
       [].into(),
       [].into(),
@@ -217,7 +217,7 @@ fn explicit_session_capture() {
 
   setup.log_with_session_capture(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "some log".into(),
     [].into(),
     [].into(),
@@ -235,7 +235,7 @@ fn explicit_session_capture() {
   for _ in 0 .. 100 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "some log".into(),
       [].into(),
       [].into(),
@@ -297,7 +297,7 @@ fn explicit_session_capture_disabled_streaming() {
   for _ in 0 .. 9 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "some log".into(),
       [].into(),
       [].into(),
@@ -307,7 +307,7 @@ fn explicit_session_capture_disabled_streaming() {
 
   setup.log_with_session_capture(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "some log".into(),
     [].into(),
     [].into(),
@@ -327,7 +327,7 @@ fn explicit_session_capture_disabled_streaming() {
 
 #[test]
 fn log_upload_attributes_override() {
-  let time_first = time::OffsetDateTime::now_utc();
+  let time_first = datetime!(2024-06-01 12:00:00 UTC);
   let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
     timestamp: Mutex::new(time_first),
     ootb_fields: LogFields::from([("_some_version".into(), "400".into())]),
@@ -341,7 +341,7 @@ fn log_upload_attributes_override() {
     ),
   );
 
-  let time_second = time::OffsetDateTime::now_utc();
+  let time_second = datetime!(2024-06-01 13:00:00 UTC);
 
   let error_reporter = Arc::new(RecordingErrorReporter::default());
   UnexpectedErrorHandler::set_reporter(error_reporter.clone());
@@ -359,7 +359,7 @@ fn log_upload_attributes_override() {
   // and no fields associated with the current session
   setup.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "log with overridden attributes".into(),
     [].into(),
     [].into(),
@@ -373,7 +373,7 @@ fn log_upload_attributes_override() {
   // and fields
   setup.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "log with overridden attributes and fields".into(),
     AnnotatedLogFields::from([("_some_version".into(), AnnotatedLogField::new_ootb("350"))]),
     [].into(),
@@ -386,7 +386,7 @@ fn log_upload_attributes_override() {
   // This log should end up being dropped.
   setup.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "log with overridden attributes".into(),
     [].into(),
     [].into(),
@@ -399,7 +399,7 @@ fn log_upload_attributes_override() {
   for _ in 0 .. 6 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "some log".into(),
       [].into(),
       [].into(),
@@ -410,7 +410,7 @@ fn log_upload_attributes_override() {
   // This log should end up with a custom occurred_at
   setup.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "override time only".into(),
     [].into(),
     [].into(),
@@ -506,7 +506,7 @@ fn buffer_selection_update() {
   for _ in 0 .. 10 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "something".into(),
       [].into(),
       [].into(),
@@ -534,7 +534,7 @@ fn buffer_selection_update() {
   for _ in 0 .. 10 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "something".into(),
       [].into(),
       [].into(),
@@ -583,7 +583,7 @@ fn configuration_caching() {
 
   setup.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "foo".into(),
     [].into(),
     [].into(),
@@ -619,7 +619,7 @@ fn trigger_buffers_not_uploaded() {
   for _ in 0 .. 10 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "something".into(),
       [].into(),
       [].into(),
@@ -655,7 +655,7 @@ fn blocking_log() {
 
   setup.blocking_log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "foo".into(),
     [].into(),
     [].into(),
@@ -695,7 +695,7 @@ fn session_replay_actions() {
   // Emit a log that should not result in taking a screenshot.
   setup.blocking_log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "bar".into(),
     [].into(),
     [].into(),
@@ -713,7 +713,7 @@ fn session_replay_actions() {
   // Emit a log that should result in taking a screenshot.
   setup.blocking_log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "take a screenshot".into(),
     [].into(),
     [].into(),
@@ -727,7 +727,7 @@ fn session_replay_actions() {
   // Simulate a capture of a screenshot.
   setup.blocking_log(
     log_level::DEBUG,
-    LogType::Replay,
+    LogType::REPLAY,
     SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE.into(),
     [].into(),
     [].into(),
@@ -748,7 +748,7 @@ fn session_replay_actions() {
   // Emit a log that should result in taking a screenshot.
   setup.blocking_log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "take a screenshot".into(),
     [].into(),
     [].into(),
@@ -814,7 +814,7 @@ fn blocking_flush_state() {
 
   setup.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "foo".into(),
     [].into(),
     [].into(),
@@ -877,7 +877,7 @@ fn log_tailing() {
 
   setup.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "something".into(),
     [].into(),
     [].into(),
@@ -889,7 +889,7 @@ fn log_tailing() {
     assert_eq!(log_upload.buffer_id(), "streamed");
     assert_eq!(log_upload.logs().len(), 1);
     assert_eq!("something", log_upload.logs()[0].message());
-    assert_eq!(vec!["all"], log_upload.logs()[0].stream_ids());
+    assert_eq!(vec!["all"], *log_upload.logs()[0].stream_ids());
   });
 
   let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
@@ -918,7 +918,7 @@ fn log_tailing() {
 
   setup.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "something".into(),
     [].into(),
     [].into(),
@@ -931,7 +931,7 @@ fn log_tailing() {
     assert_eq!(log_upload.buffer_id(), "streamed");
     assert_eq!(log_upload.logs().len(), 1);
     assert_eq!("something", log_upload.logs()[0].message());
-    assert_eq!(vec!["all", "some"], log_upload.logs()[0].stream_ids());
+    assert_eq!(vec!["all", "some"], *log_upload.logs()[0].stream_ids());
   });
 }
 
@@ -963,7 +963,7 @@ fn workflow_flush_buffers_action_uploads_buffer() {
   for _ in 0 .. 9 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "something".into(),
       [].into(),
       [].into(),
@@ -973,7 +973,7 @@ fn workflow_flush_buffers_action_uploads_buffer() {
 
   setup.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "fire workflow action!".into(),
     [].into(),
     [].into(),
@@ -985,7 +985,7 @@ fn workflow_flush_buffers_action_uploads_buffer() {
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
     assert_eq!(log_upload.buffer_id(), "default");
     assert_eq!(log_upload.logs().len(), 10);
-    assert_eq!(vec!["flush_action_id"], log_upload.logs()[9].workflow_action_ids());
+    assert_eq!(vec!["flush_action_id"], *log_upload.logs()[9].workflow_action_ids());
   });
 }
 
@@ -1054,7 +1054,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   for _ in 0 .. 9 {
     setup.log(
       log_level::DEBUG,
-      LogType::InternalSDK,
+      LogType::INTERNAL_SDK,
       "something".into(),
       [].into(),
       [].into(),
@@ -1064,7 +1064,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
 
   setup.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "fire flush trigger buffer and start streaming action!".into(),
     vec![("k3".into(), StringOrBytes::String("value_3".into()))]
       .into_iter()
@@ -1091,13 +1091,13 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
     assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
     assert_eq!(log_upload.logs().len(), 1);
 
-    assert_eq!(vec!["flush_with_streaming_action_id"], log_upload.logs()[0].workflow_action_ids());
+    assert_eq!(vec!["flush_with_streaming_action_id"], *log_upload.logs()[0].workflow_action_ids());
 
     assert_eq!("provider_value_1", log_upload.logs()[0].field("k1"));
     assert_eq!("provider_value_2", log_upload.logs()[0].field( "k2"));
     assert_eq!("value_3", log_upload.logs()[0].field("k3"));
 
-    assert_eq!(LogType::Normal, log_upload.logs()[0].log_type());
+    assert_eq!(LogType::NORMAL, log_upload.logs()[0].log_type());
   });
 
   // Emit 10 logs that should go to a "trigger_buffer_id" but due to the streaming
@@ -1106,7 +1106,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   for _ in 0 .. 10 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "message that should be streamed".into(),
       [].into(),
       [].into(),
@@ -1124,7 +1124,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   for _ in 10 .. 19 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "message that should not be streamed".into(),
       [].into(),
       [].into(),
@@ -1135,7 +1135,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   // Trigger the upload of a trigger "trigger_buffer_id" buffer.
   setup.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "fire flush trigger buffer action!".into(),
     [].into(),
     [].into(),
@@ -1193,7 +1193,7 @@ fn workflow_generate_log_to_histogram() {
           ),
         ],
         "id",
-        LogType::Span,
+        LogType::SPAN,
       ),
     ],
     &[make_save_timestamp_extraction("timestamp2")],
@@ -1224,7 +1224,7 @@ fn workflow_generate_log_to_histogram() {
 
   setup.blocking_log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "foo".into(),
     [].into(),
     [].into(),
@@ -1234,7 +1234,7 @@ fn workflow_generate_log_to_histogram() {
 
   setup.blocking_log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "bar".into(),
     [].into(),
     [].into(),
@@ -1256,7 +1256,7 @@ fn workflow_generate_log_to_histogram() {
     assert_eq!(log_upload.buffer_id(), "default");
     assert_eq!(log_upload.logs().len(), 3);
     assert_eq!(log_upload.logs()[2].message(), "message");
-    assert_eq!(log_upload.logs()[2].log_type(), LogType::Span);
+    assert_eq!(log_upload.logs()[2].log_type(), LogType::SPAN);
     assert_eq!(log_upload.logs()[2].field("_duration_ms"), "1003");
     assert_ne!(log_upload.logs()[2].session_id(), "");
     assert_ne!(log_upload.logs()[2].timestamp(), OffsetDateTime::UNIX_EPOCH);
@@ -1298,7 +1298,7 @@ fn workflow_debugging() {
   // when logs are processed.
   setup.blocking_log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "something else".into(),
     [].into(),
     [].into(),
@@ -1328,7 +1328,7 @@ fn workflow_debugging() {
   time_provider.advance(1.minutes());
   setup.blocking_log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "fire workflow action!".into(),
     [].into(),
     [].into(),
@@ -1392,7 +1392,7 @@ fn workflow_debugging() {
   time_provider.advance(1.minutes());
   setup.blocking_log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "fire workflow action!".into(),
     [].into(),
     [].into(),
@@ -1481,7 +1481,7 @@ fn workflow_emit_metric_action_emits_metric() {
 
   setup.blocking_log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "fire workflow action!".into(),
     std::iter::once((
       "extraction_key_from".into(),
@@ -1607,7 +1607,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
 
   setup.blocking_log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "first log".into(),
     [("extracted".into(), AnnotatedLogField::new_custom("hello"))].into(),
     [].into(),
@@ -1616,7 +1616,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
   // Blocked due to cardinality limits on the action ID.
   setup.blocking_log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "first log".into(),
     [("extracted".into(), AnnotatedLogField::new_custom("world"))].into(),
     [].into(),
@@ -1625,7 +1625,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
   // Allowed as it is a different action ID.
   setup.blocking_log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "second log".into(),
     [].into(),
     [].into(),
@@ -1697,7 +1697,7 @@ fn transforms_emitted_logs_according_to_filters() {
   for _ in 0 .. 9 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "message".into(),
       [].into(),
       [].into(),
@@ -1707,7 +1707,7 @@ fn transforms_emitted_logs_according_to_filters() {
 
   setup.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "yet another message!".into(),
     [(
       "foo".into(),
@@ -1724,7 +1724,7 @@ fn transforms_emitted_logs_according_to_filters() {
     assert_eq!(log_upload.buffer_id(), "default");
     assert_eq!(log_upload.logs().len(), 10);
     assert_eq!("fire workflow action!", log_upload.logs()[9].field("foo"));
-    assert_eq!(vec!["flush_action_id"], log_upload.logs()[9].workflow_action_ids());
+    assert_eq!(vec!["flush_action_id"], *log_upload.logs()[9].workflow_action_ids());
   });
 }
 
@@ -1761,7 +1761,7 @@ fn remote_buffer_upload() {
   for _ in 0 .. 10 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "test".into(),
       [].into(),
       [].into(),
@@ -1817,7 +1817,7 @@ fn continuous_and_trigger_buffer() {
   for _ in 0 .. 10 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "test".into(),
       [].into(),
       [].into(),
@@ -1833,7 +1833,7 @@ fn continuous_and_trigger_buffer() {
 
   setup.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "fire!".into(),
     [].into(),
     [].into(),
@@ -1863,7 +1863,7 @@ fn continuous_and_trigger_buffer() {
   for _ in 0 .. 9 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "test".into(),
       [].into(),
       [].into(),
@@ -1913,7 +1913,7 @@ fn device_id_matching() {
   for _ in 0 .. 9 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "test".into(),
       [].into(),
       [].into(),
@@ -1923,7 +1923,7 @@ fn device_id_matching() {
 
   setup.log(
     log_level::DEBUG,
-    LogType::InternalSDK,
+    LogType::INTERNAL_SDK,
     "fire!".into(),
     [].into(),
     [].into(),
@@ -1970,7 +1970,7 @@ fn matching_on_but_not_capturing_matching_fields() {
   for _ in 0 .. 9 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "test".into(),
       [].into(),
       [].into(),
@@ -1980,7 +1980,7 @@ fn matching_on_but_not_capturing_matching_fields() {
 
   setup.log(
     log_level::DEBUG,
-    LogType::InternalSDK,
+    LogType::INTERNAL_SDK,
     "fire!".into(),
     [
       (
@@ -2044,7 +2044,7 @@ fn log_app_update() {
   for _ in 0 .. 9 {
     setup.log(
       log_level::DEBUG,
-      LogType::Normal,
+      LogType::NORMAL,
       "test".into(),
       [].into(),
       [].into(),
@@ -2097,7 +2097,7 @@ fn continuous_buffer_resume_with_full_buffer() {
   // Log a single log to the continuous buffer.
   setup.blocking_log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "test".into(),
     [].into(),
     [].into(),
@@ -2130,7 +2130,7 @@ fn continuous_buffer_resume_with_full_buffer() {
 
   setup.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "after startup".into(),
     [].into(),
     [].into(),
@@ -2204,7 +2204,7 @@ fn stats_upload() {
   ] {
     setup.log(
       *level,
-      LogType::Normal,
+      LogType::NORMAL,
       "log".into(),
       [].into(),
       [].into(),
@@ -2262,7 +2262,7 @@ fn binary_message_and_fields() {
 
   setup.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     LogMessage::Bytes(vec![1, 2, 3]),
     [
       ("str".into(), StringOrBytes::String("str-data".to_string())),
@@ -2293,7 +2293,7 @@ fn logs_before_cache_load() {
 
     setup.logger_handle.log(
       log_level::ERROR,
-      LogType::Normal,
+      LogType::NORMAL,
       msg.as_str().into(),
       [].into(),
       [].into(),
@@ -2306,7 +2306,7 @@ fn logs_before_cache_load() {
   // This log should trigger a trigger buffer upload.
   setup.logger_handle.log(
     log_level::DEBUG,
-    LogType::Normal,
+    LogType::NORMAL,
     "trigger".into(),
     [].into(),
     [].into(),

@@ -29,10 +29,10 @@ use super::{
   RingBufferCursorConsumer,
   RingBufferProducer,
   RingBufferStats,
-  to_u32,
 };
 use crate::{AbslCode, Error, Result};
 use bd_client_common::error::InvariantError;
+use bd_log_primitives::LossyIntToU32;
 use crc32fast::Hasher;
 use fs2::FileExt;
 use intrusive_collections::offset_of;
@@ -632,7 +632,9 @@ pub struct FileHeader {
   crc32: u32,
 }
 
-const FILE_HEADER_CURRENT_VERSION: u32 = 1;
+// Version 1: Original version.
+// Version 2: Switched to protobuf encoding for records.
+const FILE_HEADER_CURRENT_VERSION: u32 = 2;
 
 //
 // ConsumerType
@@ -738,7 +740,7 @@ impl RingBufferImpl {
     const_assert_eq!(offset_of!(FileHeader, next_read_start), 28);
     const_assert_eq!(offset_of!(FileHeader, crc32), 36);
 
-    if size < to_u32(std::mem::size_of::<FileHeader>()) {
+    if size < std::mem::size_of::<FileHeader>().to_u32_lossy() {
       log::error!(
         "({name}) file size '{}' not big enough for header size '{}'",
         size,

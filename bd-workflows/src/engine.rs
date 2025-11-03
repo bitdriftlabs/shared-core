@@ -43,8 +43,8 @@ use bd_client_common::file::{read_compressed, write_compressed};
 use bd_client_stats::Stats;
 use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
+use bd_log_primitives::Log;
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_log_primitives::{Log, LogRef};
 use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
 use bd_stats_common::labels;
@@ -544,7 +544,7 @@ impl WorkflowsEngine {
   /// as the result of processing a log.
   pub fn process_log<'a>(
     &'a mut self,
-    log: &LogRef<'_>,
+    log: &Log,
     log_destination_buffer_ids: &'a TinySet<Cow<'a, str>>,
     feature_flags: Option<&bd_feature_flags::FeatureFlags>,
     now: OffsetDateTime,
@@ -564,7 +564,7 @@ impl WorkflowsEngine {
       // state on session change, having empty session ID
       // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
       // all workflows in their initial states.
-      self.state.session_id = log.session_id.to_string();
+      self.state.session_id.clone_from(&log.session_id);
       self.stats.sessions_total.inc();
     } else if self.state.session_id != log.session_id {
       log::debug!(
@@ -581,7 +581,7 @@ impl WorkflowsEngine {
       // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
       // all workflows in their initial states.
       self.clean_state();
-      self.state.session_id = log.session_id.to_string();
+      self.state.session_id.clone_from(&log.session_id);
       self.stats.sessions_total.inc();
     }
 
