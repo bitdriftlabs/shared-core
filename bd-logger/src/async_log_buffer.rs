@@ -11,7 +11,11 @@ mod async_log_buffer_test;
 
 use crate::device_id::DeviceIdInterceptor;
 use crate::log_replay::{LogReplay, LogReplayResult};
-use crate::logger::{ReportProcessingRequest, with_thread_local_logger_guard};
+use crate::logger::{
+  ReportProcessingRequest,
+  ReportProcessingSession,
+  with_thread_local_logger_guard,
+};
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
@@ -830,16 +834,24 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             ).await;
           }
         },
-        Some(ReportProcessingRequest {
-          crash_monitor, session_id_override
-        }) = self.report_processor_rx.recv() => {
+        Some(ReportProcessingRequest { crash_monitor, report_processing_session_type }) = self.report_processor_rx.recv() => {
+          let (is_previous_run, session_id_override) = match report_processing_session_type {
+            ReportProcessingSession::Current => (false, Some(self.session_strategy.session_id())),
+            ReportProcessingSession::Other(id) => (false, Some(id)),
+            ReportProcessingSession::PreviousRun => (true, crash_monitor.previous_session_id.clone()),
+          };
+
           for crash_log in crash_monitor.process_new_reports().await {
-            let attributes_overrides = session_id_override.clone().map(|id| {
-              LogAttributesOverrides::PreviousRunSessionID(
-                  id,
-                  crash_log.timestamp,
-              )
-            });
+            let attributes_overrides = if is_previous_run {
+              session_id_override.clone().map(|id| {
+                LogAttributesOverrides::PreviousRunSessionID(
+                    id,
+                    crash_log.timestamp,
+                )
+              })
+            } else {
+              None
+            };
             let log = LogLine {
               log_type: LogType::Lifecycle,
               log_level: crash_log.log_level,

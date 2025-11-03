@@ -38,7 +38,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::{oneshot, watch};
+use tokio::sync::watch;
 
 #[derive(Clone)]
 #[allow(clippy::struct_field_names)]
@@ -584,8 +584,8 @@ pub struct ReportProcessingRequest {
   /// Monitor for processing files
   pub crash_monitor: Monitor,
 
-  /// Session ID to use in reports, or None to use the current session
-  pub session_id_override: Option<String>,
+  /// Which session context to use when processing crash reports
+  pub report_processing_session_type: ReportProcessingSession,
 }
 
 /// A single logger instance. This manages the lifetime of the logger and can be used to access
@@ -616,9 +616,8 @@ pub struct Logger {
 
   sleep_mode_active: watch::Sender<bool>,
 
-  // Channel for receiving a processor for crash reports, once runtime config
-  // loading is completed
-  crash_monitor_rx: Option<oneshot::Receiver<Monitor>>,
+  // Shared crash monitor instance initialized by the builder
+  crash_monitor: Arc<Mutex<Option<Monitor>>>,
 }
 
 impl Logger {
@@ -633,7 +632,7 @@ impl Logger {
     sdk_version: &str,
     store: Arc<bd_key_value::Store>,
     sleep_mode_active: watch::Sender<bool>,
-    crash_monitor_rx: Option<oneshot::Receiver<Monitor>>,
+    crash_monitor: Arc<Mutex<Option<Monitor>>>,
   ) -> Self {
     let stats = Stats::new(&stats_scope);
 
@@ -652,7 +651,7 @@ impl Logger {
       stats_scope,
       store,
       sleep_mode_active,
-      crash_monitor_rx,
+      crash_monitor,
     }
   }
 
@@ -677,23 +676,16 @@ impl Logger {
   /// crash monitor is constructed (early in the launch cycle) and logs are
   /// dispatched. Subsequent calls to this function currently have no effect.
   pub fn process_crash_reports(&mut self, session: ReportProcessingSession) -> anyhow::Result<()> {
-    let Some(rx) = self.crash_monitor_rx.take() else {
-      // TODO(delisa): converting this function to support multiple invocations
-      // in the future is mostly trivial and only dependent on storing the crash
-      // monitor and updating the processor tx to accept a reference
-      anyhow::bail!("crash monitor rx exhausted");
-    };
+    let crash_monitor = self
+      .crash_monitor
+      .lock()
+      .as_ref()
+      .ok_or_else(|| anyhow::anyhow!("crash monitor not initialized"))?
+      .clone();
 
-    let crash_monitor = rx.blocking_recv()?;
-
-    let session_id_override = match session {
-      ReportProcessingSession::Current => None,
-      ReportProcessingSession::Other(id) => Some(id),
-      ReportProcessingSession::PreviousRun => crash_monitor.previous_session_id.clone(),
-    };
     Ok(self.report_processor_tx.try_send(ReportProcessingRequest {
       crash_monitor,
-      session_id_override,
+      report_processing_session_type: session,
     })?)
   }
 
