@@ -834,11 +834,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             ).await;
           }
         },
-        Some(ReportProcessingRequest { crash_monitor, report_processing_session_type }) = self.report_processor_rx.recv() => {
+        Some(ReportProcessingRequest { crash_monitor, report_processing_session_type }) =
+          self.report_processor_rx.recv() => {
           let (is_previous_run, session_id_override) = match report_processing_session_type {
-            ReportProcessingSession::Current => (false, Some(self.session_strategy.session_id())),
-            ReportProcessingSession::Other(id) => (false, Some(id)),
-            ReportProcessingSession::PreviousRun => (true, crash_monitor.previous_session_id.clone()),
+            ReportProcessingSession::Current =>
+                  (false, Some(self.session_strategy.session_id())),
+            ReportProcessingSession::Other(id) =>
+                  (false, Some(id)),
+            ReportProcessingSession::PreviousRun =>
+                  (true, crash_monitor.previous_session_id.clone()),
           };
 
           for crash_log in crash_monitor.process_new_reports().await {
