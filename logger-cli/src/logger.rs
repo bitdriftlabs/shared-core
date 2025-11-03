@@ -83,7 +83,7 @@ impl LoggerHolder {
 
   pub fn set_feature_flag(&self, name: String, variant: Option<String>) {
     let handle = self.logger.lock().new_logger_handle();
-    handle.set_feature_flag(name.into(), variant.map(|v| v.into()));
+    handle.set_feature_flag(name, variant);
   }
 
   pub fn set_feature_flags(&self, flags: Vec<(String, String)>) {
@@ -91,7 +91,7 @@ impl LoggerHolder {
     handle.set_feature_flags(
       flags
         .into_iter()
-        .map(|(k, v)| (k.into(), v.into()))
+        .map(|(k, v)| (k, v.into()))
         .collect(),
     );
   }

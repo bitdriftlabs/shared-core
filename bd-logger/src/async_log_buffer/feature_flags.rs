@@ -47,7 +47,7 @@ impl FeatureFlagsHolder {
   pub async fn set(&mut self, flag: String, variant: Option<&str>) -> LogLine {
     if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
       feature_flags
-        .set(flag.clone(), variant.as_deref())
+        .set(flag.clone(), variant)
         .unwrap_or_else(|e| {
           log::warn!("failed to set feature flag: {e}");
         });
@@ -89,7 +89,7 @@ impl FeatureFlagsHolder {
         .into_iter()
         .map(|(flag, variant)| {
           (
-            format!("_set_flag_{}", flag).into(),
+            format!("_set_flag_{flag}").into(),
             AnnotatedLogField::new_ootb(variant.unwrap_or("none".to_string())),
           )
         })
