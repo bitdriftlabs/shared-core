@@ -9,6 +9,9 @@
 #[path = "./async_log_buffer_test.rs"]
 mod async_log_buffer_test;
 
+mod feature_flags;
+
+use crate::async_log_buffer::feature_flags::FeatureFlagsHolder;
 use crate::device_id::DeviceIdInterceptor;
 use crate::log_replay::{LogReplay, LogReplayResult};
 use crate::logger::{ReportProcessingRequest, with_thread_local_logger_guard};
@@ -26,8 +29,7 @@ use bd_client_common::{maybe_await, maybe_await_map};
 use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_error_reporter::reporter::{handle_unexpected, handle_unexpected_error_with_details};
-use bd_feature_flags::{FeatureFlags, FeatureFlagsBuilder};
-use bd_log::warn_every;
+use bd_feature_flags::FeatureFlagsBuilder;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
@@ -63,7 +65,6 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use tokio::sync::{mpsc, oneshot};
-use tokio::task;
 use tokio::time::Sleep;
 
 #[derive(Debug)]
@@ -126,6 +127,29 @@ pub struct LogLine {
   pub capture_session: Option<&'static str>,
 }
 
+impl LogLine {
+  pub fn new_simple(log_level: LogLevel, log_type: LogType, message: LogMessage) -> Self {
+    Self::new_with_fields(log_level, log_type, message, AnnotatedLogFields::new())
+  }
+
+  pub fn new_with_fields(
+    log_level: LogLevel,
+    log_type: LogType,
+    message: LogMessage,
+    fields: AnnotatedLogFields,
+  ) -> Self {
+    Self {
+      log_level,
+      log_type,
+      message,
+      fields,
+      matching_fields: AnnotatedLogFields::new(),
+      attributes_overrides: None,
+      capture_session: None,
+    }
+  }
+}
+
 //
 // LogAttributesOverrides
 //
@@ -165,23 +189,6 @@ impl MemorySized for LogLine {
   }
 }
 
-/// Tracks the initialization state of the feature flags. By tracking the initialization state like
-/// this we can avoid attempting to initialize the feature flags multiple times in the case of
-/// failures.
-enum FeatureFlagInitialization {
-  Pending(FeatureFlagsBuilder),
-  Initialized(Option<FeatureFlags>),
-}
-
-impl FeatureFlagInitialization {
-  fn get(&self) -> Option<&FeatureFlags> {
-    match self {
-      Self::Pending(_) => None,
-      Self::Initialized(flags_option) => flags_option.as_ref(),
-    }
-  }
-}
-
 //
 // AsyncLogBuffer
 //
@@ -212,7 +219,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   time_provider: Arc<dyn TimeProvider>,
   lifecycle_state: InitLifecycleState,
 
-  feature_flags: FeatureFlagInitialization,
+  feature_flags: FeatureFlagsHolder,
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
 }
@@ -308,7 +315,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         time_provider,
         lifecycle_state,
 
-        feature_flags: FeatureFlagInitialization::Pending(feature_flags_builder),
+        feature_flags: FeatureFlagsHolder::new(feature_flags_builder),
 
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
@@ -902,32 +909,32 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               self.metadata_collector.remove_field(&field_name);
             },
             AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
-              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
-                feature_flags.set(flag, variant.as_deref()).unwrap_or_else(|e| {
-                  log::warn!("failed to set feature flag: {e}");
-                });
-              }
+                let log_line =
+                self.feature_flags.set(flag, variant.as_deref()).await;
+
+                if let Err(e) = self.process_log(log_line, false).await {
+                    log::debug!("failed to process log after setting feature flag: {e}");
+                }
             },
             AsyncLogBufferMessage::SetFeatureFlags(flags) => {
-              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
-                feature_flags.set_multiple(flags).unwrap_or_else(|e| {
-                  log::warn!("failed to set feature flags: {e}");
-                });
-              }
+                let log_line = self.feature_flags.set_multiple(flags).await;
+                if let Err(e) = self.process_log(log_line, false).await {
+                    log::debug!("failed to process log after setting feature flags: {e}");
+                }
             },
             AsyncLogBufferMessage::RemoveFeatureFlag(flag) => {
-              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
-                feature_flags.remove(&flag).unwrap_or_else(|e| {
-                  log::warn!("failed to remove feature flag ({flag:?}): {e}");
-                });
-              }
+                let log_line = self.feature_flags.remove(flag).await;
+
+                if let Err(e) = self.process_log(log_line, false).await {
+                    log::debug!("failed to process log after removing feature flag: {e}");
+                }
             },
             AsyncLogBufferMessage::ClearFeatureFlags => {
-              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
-                feature_flags.clear().unwrap_or_else(|e| {
-                  log::warn!("failed to clear feature flags: {e}");
-                });
-              }
+                let log_line = self.feature_flags.clear().await;
+
+                if let Err(e) = self.process_log(log_line, false).await {
+                    log::debug!("failed to process log after clearing feature flags: {e}");
+                }
             },
             AsyncLogBufferMessage::FlushState(completion_tx) => {
               let (sender, receiver) = bd_completion::Sender::new();
@@ -982,39 +989,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           return self;
         },
       }
-    }
-  }
-
-  /// Lazily initializes the feature flags if they have not been initialized yet.
-  async fn maybe_initialize_feature_flags(&mut self) -> Option<&mut FeatureFlags> {
-    if let FeatureFlagInitialization::Pending(builder) = &self.feature_flags {
-      let builder = builder.clone();
-      let feature_flags = task::spawn_blocking(move || {
-        // This should never fail unless there's a serious filesystem issue.
-        // Treat this as an unexpected error so we get visibility into it.
-        // If this keeps happening for normal reasons we can remove this later.
-        builder
-          .current_feature_flags()
-          .map_err(|e| {
-            handle_unexpected_error_with_details(e, "feature flag initialization", || None);
-          })
-          .ok()
-      })
-      .await
-      .ok()
-      .flatten();
-
-      self.feature_flags = FeatureFlagInitialization::Initialized(feature_flags);
-    }
-
-    if let FeatureFlagInitialization::Initialized(ref mut feature_flags) = self.feature_flags {
-      feature_flags.as_mut()
-    } else {
-      warn_every!(
-        30.seconds(),
-        "feature flags failed to initialize, will not be available"
-      );
-      None
     }
   }
 

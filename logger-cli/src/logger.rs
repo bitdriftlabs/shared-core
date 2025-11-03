@@ -81,6 +81,21 @@ impl LoggerHolder {
     handle.start_new_session();
   }
 
+  pub fn set_feature_flag(&self, name: String, variant: Option<String>) {
+    let handle = self.logger.lock().new_logger_handle();
+    handle.set_feature_flag(name.into(), variant.map(|v| v.into()));
+  }
+
+  pub fn set_feature_flags(&self, flags: Vec<(String, String)>) {
+    let handle = self.logger.lock().new_logger_handle();
+    handle.set_feature_flags(
+      flags
+        .into_iter()
+        .map(|(k, v)| (k.into(), v.into()))
+        .collect(),
+    );
+  }
+
   pub fn set_sleep_mode(&self, enabled: bool) {
     let handle = self.logger.lock().new_logger_handle();
     handle.transition_sleep_mode(enabled);

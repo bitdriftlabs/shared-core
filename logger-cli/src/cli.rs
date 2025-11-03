@@ -63,6 +63,23 @@ pub enum Command {
 
   /// Toggle sleep mode
   SetSleepMode(SleepModeCommand),
+
+  /// Sets a feature flag with an optional variant.
+  SetFeatureFlag {
+    /// Feature flag name
+    name: String,
+
+    /// Feature flag variant
+    #[clap(required = false)]
+    variant: Option<String>,
+  },
+
+  /// Sets a feature flag with an optional variant.
+  SetMultipleFeatureFlag {
+    /// Feature flag key/value pairs
+    #[clap(long, num_args=2, value_names=["key", "value"], action=ArgAction::Append)]
+    flags: Vec<String>,
+  },
 }
 
 #[derive(Args, Debug)]
