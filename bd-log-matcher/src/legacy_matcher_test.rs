@@ -78,6 +78,7 @@ fn match_test_runner(config: LegacyLogMatcher, cases: Vec<(Input<'_>, bool)>) {
         log_type,
         &message,
         fields_ref,
+        None,
         &TinyMap::default()
       ),
       "{input:?} should result in {should_match} but did not",

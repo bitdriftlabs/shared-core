@@ -55,6 +55,7 @@ pub trait LogReplay {
     log: Log,
     block: bool,
     pipeline: &mut ProcessingPipeline,
+    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult>;
 }
@@ -72,9 +73,10 @@ impl LogReplay for LoggerReplay {
     log: Log,
     block: bool,
     pipeline: &mut ProcessingPipeline,
+    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
-    pipeline.process_log(log, block, now).await
+    pipeline.process_log(log, feature_flags, block, now).await
   }
 }
 
@@ -182,18 +184,19 @@ impl ProcessingPipeline {
   async fn process_log(
     &mut self,
     mut log: Log,
+    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
     block: bool,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     self.stats.logs_received.inc();
 
     // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
-    self.filter_chain.process(&mut log);
+    self.filter_chain.process(&mut log, feature_flags);
 
     let flush_stats_trigger = self.flush_stats_trigger.clone();
     let flush_buffers_tx = self.flush_buffers_tx.clone();
 
-    match self.tail_configs.maybe_stream_log(&log) {
+    match self.tail_configs.maybe_stream_log(&log, feature_flags) {
       Ok(streamed) => {
         if streamed {
           self.stats.streamed_logs.inc();
@@ -213,7 +216,7 @@ impl ProcessingPipeline {
 
     let mut result = self
       .workflows_engine
-      .process_log(&log, &matching_buffers, now);
+      .process_log(&log, &matching_buffers, feature_flags, now);
     let log_replay_result = LogReplayResult {
       logs_to_inject: std::mem::take(&mut result.logs_to_inject)
         .into_values()

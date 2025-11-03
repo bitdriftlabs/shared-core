@@ -65,7 +65,17 @@ impl BufferSelector {
     let mut buffers = TinySet::default();
     for buffer in &self.buffer_filters {
       for (_id, matcher) in &buffer.matchers {
-        if matcher.do_match(log_level, log_type, message, fields, &TinyMap::default()) {
+        if matcher.do_match(
+          log_level,
+          log_type,
+          message,
+          fields,
+          // TODO(snowp): If we ever support using the new matcher format for buffer selectors
+          // we'll want to plumb through feature flags here. For now there is no way to specify a
+          // feature flag matcher so there is no point.
+          None,
+          &TinyMap::default(),
+        ) {
           buffers.insert(Cow::Borrowed(buffer.buffer_id.as_str()));
 
           // No reason to match further.

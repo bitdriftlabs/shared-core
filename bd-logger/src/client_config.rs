@@ -360,7 +360,11 @@ impl TailConfigurations {
     })
   }
 
-  pub(crate) fn maybe_stream_log(&mut self, log: &Log) -> anyhow::Result<bool> {
+  pub(crate) fn maybe_stream_log(
+    &mut self,
+    log: &Log,
+    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
+  ) -> anyhow::Result<bool> {
     let Some(inner) = &mut self.inner else {
       return Ok(false);
     };
@@ -377,6 +381,7 @@ impl TailConfigurations {
               log.log_type,
               &log.message,
               FieldsRef::new(&log.fields, &log.matching_fields),
+              feature_flags,
               &TinyMap::default(),
             )
           })

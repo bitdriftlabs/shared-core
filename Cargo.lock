@@ -833,6 +833,7 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "bd-client-stats-store",
+ "bd-feature-flags",
  "bd-log-matcher",
  "bd-log-primitives",
  "bd-proto",
@@ -853,6 +854,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "assert_matches",
+ "bd-feature-flags",
  "bd-log-primitives",
  "bd-proto",
  "bd-test-helpers",
@@ -862,6 +864,7 @@ dependencies = [
  "pretty_assertions",
  "protobuf 4.0.0-alpha.0",
  "regex",
+ "tempfile",
  "time",
 ]
 
@@ -1333,6 +1336,7 @@ dependencies = [
  "bd-client-stats-store",
  "bd-completion",
  "bd-error-reporter",
+ "bd-feature-flags",
  "bd-log",
  "bd-log-matcher",
  "bd-log-primitives",

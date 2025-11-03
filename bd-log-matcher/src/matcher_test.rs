@@ -8,6 +8,8 @@
 use crate::builder;
 use crate::matcher::Tree;
 use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
+use crate::test::TestMatcher;
+use bd_feature_flags::test::TestFeatureFlags;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{
   EMPTY_FIELDS,
@@ -16,8 +18,10 @@ use bd_log_primitives::{
   LogLevel,
   LogMessage,
   StringOrBytes,
+  TypedLogLevel,
   log_level,
 };
+use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::feature_flag_match;
 use bd_proto::protos::log_matcher::log_matcher::{LogMatcher, log_matcher};
 use bd_proto::protos::logging::payload::LogType;
 use log_matcher::base_log_matcher::Match_type::{MessageMatch, TagMatch};
@@ -93,10 +97,8 @@ fn log_level(log_level: LogLevel) -> Input<'static> {
 
 #[test]
 fn test_message_string_eq_matcher() {
-  let config = simple_log_matcher(make_message_match(Operator::OPERATOR_EQUALS, "exact"));
-
   match_test_runner(
-    config,
+    builder::message_equals("exact"),
     vec![
       (log_msg("exact"), true),
       (log_msg("EXACT"), false),
@@ -177,22 +179,18 @@ fn test_message_string_gt_matcher() {
 
 #[test]
 fn test_message_binary_string_eq_matcher() {
-  let config = simple_log_matcher(make_message_match(
-    Operator::OPERATOR_EQUALS,
-    "exact_binary",
-  ));
-
   // We ignore binary messages for now as they don't work well with some of the matchers (e.g.
   // regex), so even though this appear to be an exact match we still expect to see no match.
-  match_test_runner(config, vec![(binary_log_msg(b"exact_binary"), false)]);
+  match_test_runner(
+    builder::message_equals("exact_binary"),
+    vec![(binary_log_msg(b"exact_binary"), false)],
+  );
 }
 
 #[test]
 fn test_message_string_regex_matcher() {
-  let config = simple_log_matcher(make_message_match(Operator::OPERATOR_REGEX, "fo.*r"));
-
   match_test_runner(
-    config,
+    builder::message_regex_matches("fo.*r"),
     vec![
       (log_msg("foobar"), true),
       (log_msg("for"), true),
@@ -203,7 +201,7 @@ fn test_message_string_regex_matcher() {
 
 #[test]
 fn test_message_string_invalid_regex_config() {
-  let config = simple_log_matcher(make_message_match(Operator::OPERATOR_REGEX, "*r"));
+  let config = builder::message_regex_matches("*r");
 
   assert_eq!(
     Tree::new(&config).err().unwrap().to_string(),
@@ -246,15 +244,7 @@ fn test_extracted_string_matcher() {
 
 #[test]
 fn test_tag_string_eq_matcher() {
-  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
-    tag_key: "key".to_string(),
-    value_match: Some(StringValueMatch(base_log_matcher::StringValueMatch {
-      operator: Operator::OPERATOR_EQUALS.into(),
-      string_value_match_type: Some(String_value_match_type::MatchValue("exact".to_string())),
-      ..Default::default()
-    })),
-    ..Default::default()
-  }));
+  let config = builder::field_equals("key", "exact");
 
   match_test_runner(
     config,
@@ -271,17 +261,7 @@ fn test_tag_string_eq_matcher() {
 
 #[test]
 fn test_tag_binary_string_eq_matcher() {
-  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
-    tag_key: "key".to_string(),
-    value_match: Some(StringValueMatch(base_log_matcher::StringValueMatch {
-      operator: Operator::OPERATOR_EQUALS.into(),
-      string_value_match_type: Some(String_value_match_type::MatchValue(
-        "exact_binary".to_string(),
-      )),
-      ..Default::default()
-    })),
-    ..Default::default()
-  }));
+  let config = builder::field_equals("key", "exact_binary");
 
   // We ignore binary fields for now as they don't work well with some of the matchers (e.g.
   // regex), so even though this appear to be an exact match we still expect to see no match.
@@ -836,6 +816,77 @@ fn test_is_set_matcher() {
   );
 }
 
+#[test]
+fn feature_flag_matcher() {
+  struct Input {
+    flags: Vec<(&'static str, Option<&'static str>)>,
+    matcher: LogMatcher,
+    matches: bool,
+  }
+
+  for input in [
+    Input {
+      flags: vec![("flag1", Some("value1"))],
+      matcher: make_string_feature_flag_matcher("flag1", Operator::OPERATOR_EQUALS, "value1"),
+      matches: true,
+    },
+    Input {
+      flags: vec![("flag1", None)],
+      matcher: make_string_feature_flag_matcher("flag1", Operator::OPERATOR_EQUALS, ""),
+      matches: true,
+    },
+    Input {
+      flags: vec![("flag1", Some("value1"))],
+      matcher: make_string_feature_flag_matcher("flag1", Operator::OPERATOR_EQUALS, "value2"),
+      matches: false,
+    },
+    Input {
+      flags: vec![("flag2", Some("value2"))],
+      matcher: make_string_feature_flag_matcher("flag2", Operator::OPERATOR_NOT_EQUALS, "value1"),
+      matches: true,
+    },
+    Input {
+      flags: vec![("flag3", None)],
+      matcher: make_string_feature_flag_matcher("flag3", Operator::OPERATOR_NOT_EQUALS, "value1"),
+      matches: true,
+    },
+    Input {
+      flags: vec![("flag3", None)],
+      matcher: make_feature_flag_is_set_matcher("flag3"),
+      matches: true,
+    },
+    Input {
+      flags: vec![("flag3", None)],
+      matcher: make_feature_flag_is_set_matcher("flag2"),
+      matches: false,
+    },
+  ] {
+    let matcher = TestMatcher::new(&input.matcher).unwrap();
+
+    let mut feature_flags = TestFeatureFlags::default();
+    feature_flags
+      .set_multiple(
+        input
+          .flags
+          .into_iter()
+          .map(|(k, v)| (k.to_string(), v))
+          .collect(),
+      )
+      .unwrap();
+
+    assert_eq!(
+      input.matches,
+      matcher.match_log_with_feature_flags(
+        TypedLogLevel::Debug,
+        LogType::NORMAL,
+        "foo",
+        [],
+        &feature_flags,
+      )
+    );
+  }
+}
+
 fn simple_log_matcher(match_type: base_log_matcher::Match_type) -> LogMatcher {
   LogMatcher {
     matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
@@ -855,6 +906,42 @@ fn make_message_match(operator: Operator, match_value: &str) -> base_log_matcher
     })),
     ..Default::default()
   })
+}
+
+fn make_string_feature_flag_matcher(
+  flag_name: &str,
+  operator: Operator,
+  match_value: &str,
+) -> LogMatcher {
+  simple_log_matcher(log_matcher::base_log_matcher::Match_type::FeatureFlagMatch(
+    base_log_matcher::FeatureFlagMatch {
+      flag_name: flag_name.to_string(),
+      value_match: Some(feature_flag_match::Value_match::StringValueMatch(
+        base_log_matcher::StringValueMatch {
+          operator: operator.into(),
+          string_value_match_type: Some(
+            log_matcher::base_log_matcher::string_value_match::String_value_match_type::MatchValue(
+              match_value.to_string(),
+            ),
+          ),
+          ..Default::default()
+        },
+      )),
+      ..Default::default()
+    },
+  ))
+}
+
+fn make_feature_flag_is_set_matcher(flag_name: &str) -> LogMatcher {
+  simple_log_matcher(log_matcher::base_log_matcher::Match_type::FeatureFlagMatch(
+    base_log_matcher::FeatureFlagMatch {
+      flag_name: flag_name.to_string(),
+      value_match: Some(feature_flag_match::Value_match::IsSetMatch(
+        base_log_matcher::IsSetMatch::default(),
+      )),
+      ..Default::default()
+    },
+  ))
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -877,7 +964,14 @@ fn match_test_runner_with_extractions(
 
     assert_eq!(
       should_match,
-      match_tree.do_match(log_level, log_type, &message, fields, extracted_fields,),
+      match_tree.do_match(
+        log_level,
+        log_type,
+        &message,
+        fields,
+        None,
+        extracted_fields
+      ),
       "{input:?} should result in {should_match} but did not",
     );
   }
