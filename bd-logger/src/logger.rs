@@ -672,16 +672,16 @@ impl Logger {
   /// the logs, depending on whether the crash occurred in the current or prior
   /// session.
   ///
-  /// This function is **blocking** for whichever thread calls it while the
-  /// crash monitor is constructed (early in the launch cycle) and logs are
-  /// dispatched. Subsequent calls to this function currently have no effect.
+  /// This function blocks until the crash monitor is initialized (which happens
+  /// early in the launch cycle) and then enqueues the crash report processing
+  /// request.
   pub fn process_crash_reports(&mut self, session: ReportProcessingSession) -> anyhow::Result<()> {
-    let crash_monitor = self
-      .crash_monitor
-      .lock()
-      .as_ref()
-      .ok_or_else(|| anyhow::anyhow!("crash monitor not initialized"))?
-      .clone();
+    let crash_monitor = loop {
+      if let Some(monitor) = self.crash_monitor.lock().as_ref().cloned() {
+        break monitor;
+      }
+      std::thread::sleep(Duration::from_millis(10));
+    };
 
     Ok(self.report_processor_tx.try_send(ReportProcessingRequest {
       crash_monitor,
