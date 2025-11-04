@@ -38,8 +38,18 @@ pub struct WrappedLog(Log);
 
 impl WrappedLog {
   #[must_use]
+  pub fn compressed_contents(&self) -> &[u8] {
+    &self.0.compressed_contents
+  }
+
+  #[must_use]
   pub fn session_id(&self) -> &str {
     &self.0.session_id
+  }
+
+  #[must_use]
+  pub fn has_message(&self) -> bool {
+    self.0.message.is_some()
   }
 
   #[must_use]

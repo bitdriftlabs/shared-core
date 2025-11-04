@@ -20,10 +20,14 @@ mod lib_test;
 
 pub mod size;
 pub mod tiny_set;
+pub mod zlib;
 
 use crate::size::MemorySized;
+use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use ahash::AHashMap;
 use bd_proto::protos::logging::payload::LogType;
+use flate2::Compression;
+use flate2::write::ZlibEncoder;
 use protobuf::rt::WireType;
 use protobuf::{CodedInputStream, CodedOutputStream};
 use serde::{Deserialize, Serialize};
@@ -66,6 +70,18 @@ impl LossyIntToU64 for i128 {
   fn to_u64_lossy(self) -> u64 {
     debug_assert!(u64::try_from(self).is_ok());
     self as u64
+  }
+}
+
+pub trait LossyIntToUsize {
+  fn to_usize_lossy(self) -> usize;
+}
+
+#[allow(clippy::cast_possible_truncation)]
+impl LossyIntToUsize for u64 {
+  fn to_usize_lossy(self) -> usize {
+    debug_assert!(usize::try_from(self).is_ok());
+    self as usize
   }
 }
 
@@ -258,10 +274,10 @@ pub enum LogFieldKind {
 
 // This is a wrapper around an owned log entry that is being processed by the workflow engine.
 // Most of this code is a custom protobuf serialization implementation to avoid the overhead of
-// the normal protobuf generated code which requires extensive copying. Note that the proto
-// implementation calculates size every time it's invoked vs. caching it. In general we expect
-// the size calculation to be fast and in the common case it is only computed once making
-// caching not useful.
+// the normal protobuf generated code which requires extensive copying.
+//
+// TODO(mattklein123): Very likely if we wrote a custom proc macro we could generate this code
+// automatically (though with compression logic it may be tricky).
 #[derive(Debug, PartialEq, Eq)]
 pub struct Log {
   // Remember to update the implementation of the `MemorySized` trait every time the struct is
@@ -280,6 +296,31 @@ impl Log {
   #[must_use]
   pub fn field_value<'a>(&'a self, field_key: &str) -> Option<Cow<'a, str>> {
     FieldsRef::new(&self.fields, &self.matching_fields).field_value(field_key)
+  }
+}
+
+pub struct LogEncodingHelper {
+  pub log: Log,
+  compression_min_size: u64,
+  cached_encoding_data: Option<CachedEncodingData>,
+}
+
+pub struct CachedEncodingData {
+  // The size of everything except action IDs and stream IDs, since these are sent/encoded on
+  // demand depending on the context.
+  core_size: u64,
+  // If we have decided to compress the log, this contains the compressed contents.
+  compressed_contents: Option<Vec<u8>>,
+}
+
+impl LogEncodingHelper {
+  #[must_use]
+  pub fn new(log: Log, compression_min_size: u64) -> Self {
+    Self {
+      log,
+      compression_min_size,
+      cached_encoding_data: None,
+    }
   }
 
   // bitdrift_public.protobuf.logging.v1.Data
@@ -365,7 +406,6 @@ impl Log {
   }
 
   // bitdrift_public.protobuf.logging.v1.Log
-  #[must_use]
   pub fn serialize_proto_size_inner(
     log_level: u32,
     message: &LogFieldValue,
@@ -375,42 +415,94 @@ impl Log {
     log_type: LogType,
     action_ids: &[&str],
     stream_ids: &[&str],
-  ) -> u64 {
-    let mut my_size = 0;
+    cached_encoding_data: &mut Option<CachedEncodingData>,
+    compression_min_size: u64,
+  ) -> anyhow::Result<u64> {
+    let mut my_size = match cached_encoding_data {
+      None => {
+        // Start by figuring out the size of message and fields as this is what we may want to
+        // compress.
+        let mut message_and_fields_size = 0;
 
-    // uint64 timestamp_unix_micro = 1;
-    // No zero check is this should always be set.
-    my_size +=
-      ::protobuf::rt::uint64_size(1, occurred_at.unix_timestamp_nanos().to_u64_lossy() / 1000);
+        // Data message = 3;
+        // No empty check as this should always be set.
+        let message_len = Self::size_proto_data(message);
+        message_and_fields_size +=
+          1 + ::protobuf::rt::compute_raw_varint64_size(message_len) + message_len;
 
-    // uint32 log_level = 2;
-    if log_level != 0 {
-      my_size += ::protobuf::rt::uint32_size(2, log_level);
-    }
+        // repeated Field fields = 4;
+        for value in fields {
+          let len = Self::size_proto_field(value.0, value.1);
+          message_and_fields_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
 
-    // Data message = 3;
-    // No empty check as this should always be set.
-    let message_len = Self::size_proto_data(message);
-    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(message_len) + message_len;
+        let (message_and_fields_size, compressed_contents) =
+          if compression_min_size <= message_and_fields_size {
+            // If we are compressing, we need to actually do the compression here and we cache the
+            // compression result. This allows us to compute the final size including with the
+            // compression result.
+            let compressed_output = Vec::with_capacity(message_and_fields_size.to_usize_lossy());
+            let mut encoder = ZlibEncoder::new(
+              compressed_output,
+              Compression::new(DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL),
+            );
+            let mut cos = CodedOutputStream::new(&mut encoder);
 
-    // repeated Field fields = 4;
-    for value in fields {
-      let len = Self::size_proto_field(value.0, value.1);
-      my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-    }
+            // The following encodes bitdrift_public.protobuf.logging.v1.Log.CompressedContents
+            // Data message = 1;
+            Self::serialize_proto_data(1, message, &mut cos)?;
 
-    // string session_id = 5;
-    // No zero check as this should always be set.
-    my_size += ::protobuf::rt::string_size(5, session_id);
+            // repeated Field fields = 2;
+            for v in fields {
+              Self::serialize_proto_field(2, v.0, v.1, &mut cos)?;
+            }
+
+            drop(cos);
+            let compressed_output = encoder.finish()?;
+
+            // bytes compressed_contents = 9;
+            (
+              ::protobuf::rt::bytes_size(9, &compressed_output),
+              Some(compressed_output),
+            )
+          } else {
+            (message_and_fields_size, None)
+          };
+
+        let mut my_size = message_and_fields_size;
+
+        // uint64 timestamp_unix_micro = 1;
+        // No zero check is this should always be set.
+        my_size +=
+          ::protobuf::rt::uint64_size(1, occurred_at.unix_timestamp_nanos().to_u64_lossy() / 1000);
+
+        // uint32 log_level = 2;
+        if log_level != 0 {
+          my_size += ::protobuf::rt::uint32_size(2, log_level);
+        }
+
+        // string session_id = 5;
+        // No zero check as this should always be set.
+        my_size += ::protobuf::rt::string_size(5, session_id);
+
+        // LogType log_type = 7;
+        if log_type != LogType::NORMAL {
+          my_size += ::protobuf::rt::int32_size(7, log_type as i32);
+        }
+
+        *cached_encoding_data = Some(CachedEncodingData {
+          core_size: my_size,
+          compressed_contents,
+        });
+
+        my_size
+      },
+      Some(cached_data) => cached_data.core_size,
+    };
 
     // repeated string action_ids = 6;
     for value in action_ids {
       my_size += ::protobuf::rt::string_size(6, value);
-    }
-
-    // LogType log_type = 7;
-    if log_type != LogType::NORMAL {
-      my_size += ::protobuf::rt::int32_size(7, log_type as i32);
     }
 
     // repeated string stream_ids = 8;
@@ -418,21 +510,26 @@ impl Log {
       my_size += ::protobuf::rt::string_size(8, value);
     }
 
-    my_size
+    Ok(my_size)
   }
 
   // bitdrift_public.protobuf.logging.v1.Log
-  #[must_use]
-  pub fn serialized_proto_size(&self, action_ids: &[&str], stream_ids: &[&str]) -> u64 {
+  pub fn serialized_proto_size(
+    &mut self,
+    action_ids: &[&str],
+    stream_ids: &[&str],
+  ) -> anyhow::Result<u64> {
     Self::serialize_proto_size_inner(
-      self.log_level,
-      &self.message,
-      &self.fields,
-      &self.session_id,
-      self.occurred_at,
-      self.log_type,
+      self.log.log_level,
+      &self.log.message,
+      &self.log.fields,
+      &self.log.session_id,
+      self.log.occurred_at,
+      self.log.log_type,
       action_ids,
       stream_ids,
+      &mut self.cached_encoding_data,
+      self.compression_min_size,
     )
   }
 
@@ -447,6 +544,7 @@ impl Log {
     action_ids: &[&str],
     stream_ids: &[&str],
     os: &mut CodedOutputStream<'_>,
+    cached_encoding_data: Option<&CachedEncodingData>,
   ) -> anyhow::Result<()> {
     // uint64 timestamp_unix_micro = 1;
     os.write_uint64(1, occurred_at.unix_timestamp_nanos().to_u64_lossy() / 1000)?;
@@ -456,12 +554,16 @@ impl Log {
       os.write_uint32(2, log_level)?;
     }
 
-    // Data message = 3;
-    Self::serialize_proto_data(3, message, os)?;
+    if cached_encoding_data
+      .is_none_or(|cached_encoding_data| cached_encoding_data.compressed_contents.is_none())
+    {
+      // Data message = 3;
+      Self::serialize_proto_data(3, message, os)?;
 
-    // repeated Field fields = 4;
-    for v in fields {
-      Self::serialize_proto_field(4, v.0, v.1, os)?;
+      // repeated Field fields = 4;
+      for v in fields {
+        Self::serialize_proto_field(4, v.0, v.1, os)?;
+      }
     }
 
     // string session_id = 5;
@@ -482,6 +584,13 @@ impl Log {
       os.write_string(8, v)?;
     }
 
+    // bytes compressed_contents = 9;
+    if let Some(cached_encoding_data) = cached_encoding_data
+      && let Some(compressed_contents) = &cached_encoding_data.compressed_contents
+    {
+      os.write_bytes(9, compressed_contents)?;
+    }
+
     Ok(())
   }
 
@@ -493,15 +602,16 @@ impl Log {
     os: &mut CodedOutputStream<'_>,
   ) -> anyhow::Result<()> {
     Self::serialize_proto_to_stream_inner(
-      self.log_level,
-      &self.message,
-      &self.fields,
-      &self.session_id,
-      self.occurred_at,
-      self.log_type,
+      self.log.log_level,
+      &self.log.message,
+      &self.log.fields,
+      &self.log.session_id,
+      self.log.occurred_at,
+      self.log.log_type,
       action_ids,
       stream_ids,
       os,
+      self.cached_encoding_data.as_ref(),
     )
   }
 

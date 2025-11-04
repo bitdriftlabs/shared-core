@@ -9,7 +9,7 @@
 #[path = "./file_test.rs"]
 mod tests;
 
-use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
+use bd_log_primitives::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use flate2::Compression;
 use flate2::read::{ZlibDecoder, ZlibEncoder};
 use std::io::Read;

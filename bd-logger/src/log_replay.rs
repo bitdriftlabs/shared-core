@@ -14,9 +14,10 @@ use bd_buffer::BuffersWithAck;
 use bd_client_stats::FlushTrigger;
 use bd_log_filter::FilterChain;
 use bd_log_primitives::tiny_set::TinySet;
-use bd_log_primitives::{FieldsRef, Log, LossyIntToU32, log_level};
+use bd_log_primitives::{FieldsRef, Log, LogEncodingHelper, LossyIntToU32, log_level};
 use bd_proto::protos::logging::payload::LogType;
-use bd_runtime::runtime::ConfigLoader;
+use bd_runtime::runtime::log_upload::MinLogCompressionSize;
+use bd_runtime::runtime::{ConfigLoader, IntWatch};
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::config::FlushBufferId;
@@ -96,6 +97,7 @@ pub struct ProcessingPipeline {
   pub(crate) workflows_engine: WorkflowsEngine,
   tail_configs: TailConfigurations,
   filter_chain: FilterChain,
+  min_log_compression_size: IntWatch<MinLogCompressionSize>,
 
   pub(crate) flush_buffers_tx: Sender<BuffersWithAck>,
   pub(crate) flush_stats_trigger: FlushTrigger,
@@ -153,6 +155,7 @@ impl ProcessingPipeline {
       workflows_engine,
       tail_configs: config.tail_configs,
       filter_chain: config.filter_chain,
+      min_log_compression_size: runtime.register_int_watch(),
 
       flush_buffers_tx,
       flush_stats_trigger,
@@ -192,11 +195,12 @@ impl ProcessingPipeline {
 
     // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
     self.filter_chain.process(&mut log, feature_flags);
+    let mut log = LogEncodingHelper::new(log, (*self.min_log_compression_size.read()).into());
 
     let flush_stats_trigger = self.flush_stats_trigger.clone();
     let flush_buffers_tx = self.flush_buffers_tx.clone();
 
-    match self.tail_configs.maybe_stream_log(&log, feature_flags) {
+    match self.tail_configs.maybe_stream_log(&mut log, feature_flags) {
       Ok(streamed) => {
         if streamed {
           self.stats.streamed_logs.inc();
@@ -208,15 +212,16 @@ impl ProcessingPipeline {
     }
 
     let mut matching_buffers = self.buffer_selector.buffers(
-      log.log_type,
-      log.log_level,
-      &log.message,
-      FieldsRef::new(&log.fields, &log.matching_fields),
+      log.log.log_type,
+      log.log.log_level,
+      &log.log.message,
+      FieldsRef::new(&log.log.fields, &log.log.matching_fields),
     );
 
-    let mut result = self
-      .workflows_engine
-      .process_log(&log, &matching_buffers, feature_flags, now);
+    let mut result =
+      self
+        .workflows_engine
+        .process_log(&log.log, &matching_buffers, feature_flags, now);
     let log_replay_result = LogReplayResult {
       logs_to_inject: std::mem::take(&mut result.logs_to_inject)
         .into_values()
@@ -227,9 +232,9 @@ impl ProcessingPipeline {
 
     log::debug!(
       "processed {:?} log, destination buffer(s): {:?}, capture session {:?}",
-      log.message.as_str().unwrap_or("[DATA]"),
+      log.log.message.as_str().unwrap_or("[DATA]"),
       result.log_destination_buffer_ids,
-      log.capture_session
+      log.log.capture_session
     );
 
     if !result.triggered_flush_buffers_action_ids.is_empty() {
@@ -246,7 +251,7 @@ impl ProcessingPipeline {
     Self::write_to_buffers(
       &mut self.buffer_producers,
       &result.log_destination_buffer_ids,
-      &log,
+      &mut log,
       &result
         .triggered_flush_buffers_action_ids
         .iter()
@@ -263,7 +268,7 @@ impl ProcessingPipeline {
       &mut self.buffer_producers,
       &result.triggered_flushes_buffer_ids,
       &result.log_destination_buffer_ids,
-      &log,
+      &log.log,
     ) {
       // We emitted a synthetic log. Add the buffer it was written to to the list of matching
       // buffers.
@@ -333,7 +338,7 @@ impl ProcessingPipeline {
   fn write_to_buffers(
     buffers: &mut BufferProducers,
     matching_buffers: &TinySet<Cow<'_, str>>,
-    log: &Log,
+    log: &mut LogEncodingHelper,
     action_ids: &[&str],
   ) -> anyhow::Result<()> {
     if matching_buffers.is_empty() {
@@ -406,7 +411,8 @@ impl ProcessingPipeline {
             })
             .map(std::convert::AsRef::as_ref)
             .collect_vec();
-          let size = Log::serialize_proto_size_inner(
+          let mut cached_encoding_data = None;
+          let size = LogEncodingHelper::serialize_proto_size_inner(
             log_level::DEBUG,
             &log.message,
             &log.fields,
@@ -415,10 +421,12 @@ impl ProcessingPipeline {
             LogType::INTERNAL_SDK,
             &action_ids,
             &[],
-          );
+            &mut cached_encoding_data,
+            u64::MAX,
+          )?;
           let reserved = buffer_producer.reserve(size.to_u32_lossy(), true)?;
           let mut os = CodedOutputStream::bytes(reserved);
-          Log::serialize_proto_to_stream_inner(
+          LogEncodingHelper::serialize_proto_to_stream_inner(
             log_level::DEBUG,
             &log.message,
             &log.fields,
@@ -428,6 +436,7 @@ impl ProcessingPipeline {
             &action_ids,
             &[],
             &mut os,
+            cached_encoding_data.as_ref(),
           )?;
           drop(os);
           buffer_producer.commit()?;

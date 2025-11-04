@@ -69,13 +69,13 @@ fn test_global_init() {
 
 fn write_log_to_buffer(
   producer: &mut bd_buffer::Producer,
-  log: &bd_log_primitives::Log,
+  log: &mut bd_log_primitives::LogEncodingHelper,
   action_ids: &[&str],
   stream_ids: &[&str],
 ) -> anyhow::Result<()> {
   match producer.reserve(
     log
-      .serialized_proto_size(action_ids, stream_ids)
+      .serialized_proto_size(action_ids, stream_ids)?
       .to_u32_lossy(),
     true,
   ) {

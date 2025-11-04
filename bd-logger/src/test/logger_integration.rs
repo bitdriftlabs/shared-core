@@ -32,7 +32,9 @@ use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::logging::payload::log::CompressedContents;
 use bd_runtime::runtime::FeatureFlag;
+use bd_runtime::runtime::log_upload::MinLogCompressionSize;
 use bd_session::fixed::{State, UUIDCallbacks};
 use bd_session::{Strategy, fixed};
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
@@ -82,8 +84,11 @@ use bd_time::test::TestTicker;
 use bd_time::{OffsetDateTimeExt, TestTimeProvider};
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use debug_data_request::{WorkflowDebugData, WorkflowStateDebugData};
+use flate2::write::ZlibDecoder;
 use parking_lot::Mutex;
 use pretty_assertions::assert_eq;
+use protobuf::Message;
+use std::io::Write;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Instant;
@@ -170,6 +175,71 @@ fn log_upload() {
     assert_eq!(log_upload.logs().len(), 10);
 
     assert_eq!(log_upload.logs()[0].message(), "some log");
+  });
+}
+
+#[test]
+fn log_upload_with_compression() {
+  let mut setup = Setup::new();
+  setup.send_configuration_update(
+    make_configuration_update_with_workflow_flushing_buffer_on_anything(
+      "default",
+      Type::CONTINUOUS,
+    ),
+  );
+  let mut runtime_values = Setup::get_default_runtime_values();
+  runtime_values.push((MinLogCompressionSize::path(), ValueKind::Int(4096)));
+
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::SendRuntime(make_update(
+      runtime_values,
+      "version".to_string(),
+    )));
+  let (_, response) = setup.server.blocking_next_runtime_ack();
+  assert!(response.nack.is_none());
+
+  for i in 0 .. 10 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::NORMAL,
+      "some log".into(),
+      AnnotatedLogFields::from([(
+        "super_long".into(),
+        AnnotatedLogField::new_custom("A".repeat((i + 1) * 1024)),
+      )]),
+      [].into(),
+      None,
+    );
+  }
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "default");
+    uuid::Uuid::parse_str(log_upload.upload_uuid()).unwrap();
+    assert_eq!(log_upload.logs().len(), 10);
+
+    // With the 4KiB limit we expect the first three logs to be inline an the rest compressed.
+    for i in 0.. 10 {
+      if i < 3 {
+        assert_eq!(log_upload.logs()[i].message(), "some log");
+        assert!(log_upload.logs()[i].field("super_long") == "A".repeat((i + 1) * 1024));
+      } else {
+        assert!(!log_upload.logs()[i].has_message());
+        assert!(!log_upload.logs()[i].has_field("super_long"));
+
+        let decoded = Vec::new();
+        let mut decoder = ZlibDecoder::new(decoded);
+        decoder.write_all(log_upload.logs()[i].compressed_contents()).unwrap();
+        let decoded = decoder.finish().unwrap();
+        let compressed_contents = CompressedContents::parse_from_bytes(&decoded).unwrap();
+        assert_eq!(compressed_contents.message.string_data(), "some log");
+        assert_eq!(compressed_contents.fields[0].key, "super_long");
+        assert_eq!(
+          compressed_contents.fields[0].value.string_data(),
+          "A".repeat((i + 1) * 1024)
+        );
+      }
+    }
   });
 }
 

@@ -656,6 +656,12 @@ pub mod log_upload {
     "workflows.flush_buffer_lookback_ms",
     time::Duration::ZERO
   );
+
+  int_feature_flag!(
+    MinLogCompressionSize,
+    "log_uploader.min_log_compression_size",
+    u32::MAX
+  );
 }
 
 pub mod client_kill {

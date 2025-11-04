@@ -25,7 +25,6 @@ pub mod init_lifecycle;
 pub mod payload_conversion;
 pub mod safe_file_cache;
 pub mod test;
-pub mod zlib;
 
 #[cfg(test)]
 #[ctor::ctor]
