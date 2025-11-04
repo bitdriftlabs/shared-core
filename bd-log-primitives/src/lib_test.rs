@@ -23,7 +23,8 @@ fn custom_proto_encoder() {
       | "session_id"
       | "action_ids"
       | "log_type"
-      | "stream_ids" => {},
+      | "stream_ids"
+      | "compressed_contents" => {},
       other => panic!("unexpected field added to Log proto: {other}"),
     });
   Field::descriptor()

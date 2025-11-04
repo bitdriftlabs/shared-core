@@ -467,6 +467,8 @@ pub struct Log {
     pub log_type: ::protobuf::EnumOrUnknown<LogType>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.stream_ids)
     pub stream_ids: ::std::vec::Vec<::std::string::String>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.compressed_contents)
+    pub compressed_contents: ::std::vec::Vec<u8>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.logging.v1.Log.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -484,7 +486,7 @@ impl Log {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(8);
+        let mut fields = ::std::vec::Vec::with_capacity(9);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "timestamp_unix_micro",
@@ -525,6 +527,11 @@ impl Log {
             "stream_ids",
             |m: &Log| { &m.stream_ids },
             |m: &mut Log| { &mut m.stream_ids },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "compressed_contents",
+            |m: &Log| { &m.compressed_contents },
+            |m: &mut Log| { &mut m.compressed_contents },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Log>(
             "Log",
@@ -568,6 +575,9 @@ impl ::protobuf::Message for Log {
                 66 => {
                     self.stream_ids.push(is.read_string()?);
                 },
+                74 => {
+                    self.compressed_contents = is.read_bytes()?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -606,6 +616,9 @@ impl ::protobuf::Message for Log {
         for value in &self.stream_ids {
             my_size += ::protobuf::rt::string_size(8, &value);
         };
+        if !self.compressed_contents.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(9, &self.compressed_contents);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -636,6 +649,9 @@ impl ::protobuf::Message for Log {
         for v in &self.stream_ids {
             os.write_string(8, &v)?;
         };
+        if !self.compressed_contents.is_empty() {
+            os.write_bytes(9, &self.compressed_contents)?;
+        }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -661,6 +677,7 @@ impl ::protobuf::Message for Log {
         self.action_ids.clear();
         self.log_type = ::protobuf::EnumOrUnknown::new(LogType::NORMAL);
         self.stream_ids.clear();
+        self.compressed_contents.clear();
         self.special_fields.clear();
     }
 
@@ -674,6 +691,7 @@ impl ::protobuf::Message for Log {
             action_ids: ::std::vec::Vec::new(),
             log_type: ::protobuf::EnumOrUnknown::from_i32(0),
             stream_ids: ::std::vec::Vec::new(),
+            compressed_contents: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -839,6 +857,148 @@ pub mod log {
     impl ::protobuf::reflect::ProtobufValue for Field {
         type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
     }
+
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.logging.v1.Log.CompressedContents)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct CompressedContents {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.CompressedContents.message)
+        pub message: ::protobuf::MessageField<super::Data>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.CompressedContents.fields)
+        pub fields: ::std::vec::Vec<Field>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.logging.v1.Log.CompressedContents.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a CompressedContents {
+        fn default() -> &'a CompressedContents {
+            <CompressedContents as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl CompressedContents {
+        pub fn new() -> CompressedContents {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::Data>(
+                "message",
+                |m: &CompressedContents| { &m.message },
+                |m: &mut CompressedContents| { &mut m.message },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "fields",
+                |m: &CompressedContents| { &m.fields },
+                |m: &mut CompressedContents| { &mut m.fields },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<CompressedContents>(
+                "Log.CompressedContents",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for CompressedContents {
+        const NAME: &'static str = "CompressedContents";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.message)?;
+                    },
+                    18 => {
+                        self.fields.push(is.read_message()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.message.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            for value in &self.fields {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.message.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            for v in &self.fields {
+                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+            };
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> CompressedContents {
+            CompressedContents::new()
+        }
+
+        fn clear(&mut self) {
+            self.message.clear();
+            self.fields.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static CompressedContents {
+            static instance: CompressedContents = CompressedContents {
+                message: ::protobuf::MessageField::none(),
+                fields: ::std::vec::Vec::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for CompressedContents {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("Log.CompressedContents").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for CompressedContents {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for CompressedContents {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
 }
 
 #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
@@ -945,7 +1105,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x07payloadB\x07\n\x05_type\"\x8a\x01\n\x04Data\x12!\n\x0bstring_data\
     \x18\x01\x20\x01(\tH\0R\nstringData\x12R\n\x0bbinary_data\x18\x02\x20\
     \x01(\x0b2/.bitdrift_public.protobuf.logging.v1.BinaryDataH\0R\nbinaryDa\
-    taB\x0b\n\tdata_type\"\xe3\x03\n\x03Log\x120\n\x14timestamp_unix_micro\
+    taB\x0b\n\tdata_type\"\xb8\x05\n\x03Log\x120\n\x14timestamp_unix_micro\
     \x18\x01\x20\x01(\x04R\x12timestampUnixMicro\x12\x1b\n\tlog_level\x18\
     \x02\x20\x01(\rR\x08logLevel\x12C\n\x07message\x18\x03\x20\x01(\x0b2).bi\
     tdrift_public.protobuf.logging.v1.DataR\x07message\x12F\n\x06fields\x18\
@@ -953,13 +1113,17 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     elds\x12\x1d\n\nsession_id\x18\x05\x20\x01(\tR\tsessionId\x12\x1d\n\nact\
     ion_ids\x18\x06\x20\x03(\tR\tactionIds\x12G\n\x08log_type\x18\x07\x20\
     \x01(\x0e2,.bitdrift_public.protobuf.logging.v1.LogTypeR\x07logType\x12\
-    \x1d\n\nstream_ids\x18\x08\x20\x03(\tR\tstreamIds\x1aZ\n\x05Field\x12\
+    \x1d\n\nstream_ids\x18\x08\x20\x03(\tR\tstreamIds\x12/\n\x13compressed_c\
+    ontents\x18\t\x20\x01(\x0cR\x12compressedContents\x1aZ\n\x05Field\x12\
     \x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01\
-    (\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05value*x\n\x07LogTyp\
-    e\x12\n\n\x06NORMAL\x10\0\x12\n\n\x06REPLAY\x10\x01\x12\r\n\tLIFECYCLE\
-    \x10\x02\x12\x0c\n\x08RESOURCE\x10\x03\x12\x10\n\x0cINTERNAL_SDK\x10\x04\
-    \x12\x08\n\x04VIEW\x10\x05\x12\n\n\x06DEVICE\x10\x06\x12\x06\n\x02UX\x10\
-    \x07\x12\x08\n\x04SPAN\x10\x08b\x06proto3\
+    (\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05value\x1a\xa1\x01\n\
+    \x12CompressedContents\x12C\n\x07message\x18\x01\x20\x01(\x0b2).bitdrift\
+    _public.protobuf.logging.v1.DataR\x07message\x12F\n\x06fields\x18\x02\
+    \x20\x03(\x0b2..bitdrift_public.protobuf.logging.v1.Log.FieldR\x06fields\
+    *x\n\x07LogType\x12\n\n\x06NORMAL\x10\0\x12\n\n\x06REPLAY\x10\x01\x12\r\
+    \n\tLIFECYCLE\x10\x02\x12\x0c\n\x08RESOURCE\x10\x03\x12\x10\n\x0cINTERNA\
+    L_SDK\x10\x04\x12\x08\n\x04VIEW\x10\x05\x12\n\n\x06DEVICE\x10\x06\x12\
+    \x06\n\x02UX\x10\x07\x12\x08\n\x04SPAN\x10\x08b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -977,11 +1141,12 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
             let mut deps = ::std::vec::Vec::with_capacity(0);
-            let mut messages = ::std::vec::Vec::with_capacity(4);
+            let mut messages = ::std::vec::Vec::with_capacity(5);
             messages.push(BinaryData::generated_message_descriptor_data());
             messages.push(Data::generated_message_descriptor_data());
             messages.push(Log::generated_message_descriptor_data());
             messages.push(log::Field::generated_message_descriptor_data());
+            messages.push(log::CompressedContents::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(1);
             enums.push(LogType::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
