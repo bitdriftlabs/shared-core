@@ -93,82 +93,16 @@ fn test_versioned_store_remove() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_point_in_time_recovery() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
-
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
-
-  // Create a sequence of writes
-  let v1 = store.insert("key1".to_string(), Value::String("value1".to_string()))?;
-  let v2 = store.insert("key2".to_string(), Value::String("value2".to_string()))?;
-  let v3 = store.insert("key1".to_string(), Value::String("updated1".to_string()))?;
-  let v4 = store.remove("key2")?;
-
-  // Current state should have key1=updated1, key2 deleted
-  assert_eq!(
-    store.get("key1"),
-    Some(&Value::String("updated1".to_string()))
-  );
-  assert_eq!(store.get("key2"), None);
-  assert_eq!(store.len(), 1);
-
-  // Recover at v1: should have key1=value1
-  let state_v1 = store.as_hashmap_at_version(v1)?;
-  assert_eq!(state_v1.len(), 1);
-  assert_eq!(
-    state_v1.get("key1"),
-    Some(&Value::String("value1".to_string()))
-  );
-
-  // Recover at v2: should have key1=value1, key2=value2
-  let state_v2 = store.as_hashmap_at_version(v2)?;
-  assert_eq!(state_v2.len(), 2);
-  assert_eq!(
-    state_v2.get("key1"),
-    Some(&Value::String("value1".to_string()))
-  );
-  assert_eq!(
-    state_v2.get("key2"),
-    Some(&Value::String("value2".to_string()))
-  );
-
-  // Recover at v3: should have key1=updated1, key2=value2
-  let state_v3 = store.as_hashmap_at_version(v3)?;
-  assert_eq!(state_v3.len(), 2);
-  assert_eq!(
-    state_v3.get("key1"),
-    Some(&Value::String("updated1".to_string()))
-  );
-  assert_eq!(
-    state_v3.get("key2"),
-    Some(&Value::String("value2".to_string()))
-  );
-
-  // Recover at v4: should have key1=updated1, key2 deleted
-  let state_v4 = store.as_hashmap_at_version(v4.unwrap())?;
-  assert_eq!(state_v4.len(), 1);
-  assert_eq!(
-    state_v4.get("key1"),
-    Some(&Value::String("updated1".to_string()))
-  );
-  assert!(!state_v4.contains_key("key2"));
-
-  Ok(())
-}
-
-#[test]
 fn test_persistence_and_reload() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let file_path = temp_dir.path().join("test.jrn");
 
-  let v1;
   let v2;
 
   // Create store and write some data
   {
     let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
-    v1 = store.insert("key1".to_string(), Value::String("value1".to_string()))?;
+    let _v1 = store.insert("key1".to_string(), Value::String("value1".to_string()))?;
     v2 = store.insert("key2".to_string(), Value::Signed(42))?;
     store.sync()?;
   }
@@ -185,14 +119,6 @@ fn test_persistence_and_reload() -> anyhow::Result<()> {
 
     // Version numbers should be preserved
     assert_eq!(store.current_version(), v2);
-
-    // Point-in-time recovery should still work
-    let state_v1 = store.as_hashmap_at_version(v1)?;
-    assert_eq!(state_v1.len(), 1);
-    assert_eq!(
-      state_v1.get("key1"),
-      Some(&Value::String("value1".to_string()))
-    );
   }
 
   Ok(())
@@ -275,10 +201,10 @@ fn test_manual_rotation() -> anyhow::Result<()> {
   let rotation_version = store.current_version();
   store.rotate_journal()?;
 
-  // Verify archived file exists
+  // Verify archived file exists (compressed)
   let archived_path = temp_dir
     .path()
-    .join(format!("test.jrn.v{}", rotation_version));
+    .join(format!("test.jrn.v{}.zz", rotation_version));
   assert!(archived_path.exists());
 
   // Verify active journal still works
@@ -319,7 +245,7 @@ fn test_rotation_preserves_state() -> anyhow::Result<()> {
   store.insert("key3".to_string(), Value::Bool(true))?;
   store.insert("key4".to_string(), Value::Float(3.14159))?;
 
-  let pre_rotation_state = store.as_hashmap().clone();
+  let pre_rotation_state = store.as_hashmap();
   let pre_rotation_version = store.current_version();
 
   // Rotate
@@ -327,7 +253,7 @@ fn test_rotation_preserves_state() -> anyhow::Result<()> {
 
   // Verify state is preserved exactly
   let post_rotation_state = store.as_hashmap();
-  assert_eq!(&pre_rotation_state, post_rotation_state);
+  assert_eq!(pre_rotation_state, post_rotation_state);
   assert_eq!(store.len(), 4);
 
   // Verify we can continue writing
@@ -351,10 +277,6 @@ fn test_empty_store_operations() -> anyhow::Result<()> {
   assert_eq!(store.remove("nonexistent")?, None);
   assert!(store.is_empty());
   assert_eq!(store.len(), 0);
-
-  // Point-in-time recovery of empty state
-  let state = store.as_hashmap_at_version(1)?;
-  assert!(state.is_empty());
 
   Ok(())
 }
@@ -394,3 +316,229 @@ fn test_version_monotonicity() -> anyhow::Result<()> {
 
   Ok(())
 }
+
+#[test]
+fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let file_path = temp_dir.path().join("test.jrn");
+
+  // Create store with small buffer to trigger rotation easily
+  let mut store = VersionedKVStore::new(&file_path, 2048, Some(0.5))?;
+
+  // Insert some keys and capture their timestamps
+  store.insert("key1".to_string(), Value::String("value1".to_string()))?;
+  #[allow(clippy::unwrap_used)]
+  let ts1 = store
+    .get_with_timestamp("key1")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  // Small sleep to ensure different timestamps
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  store.insert("key2".to_string(), Value::String("value2".to_string()))?;
+  #[allow(clippy::unwrap_used)]
+  let ts2 = store
+    .get_with_timestamp("key2")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  // Verify timestamps are different
+  assert_ne!(ts1, ts2, "Timestamps should be different");
+  assert!(ts2 > ts1, "Later writes should have later timestamps");
+
+  // Write enough data to trigger rotation
+  for i in 0 .. 50 {
+    store.insert(format!("fill{i}"), Value::Signed(i))?;
+  }
+
+  // Verify that after rotation, the original timestamps are preserved
+  #[allow(clippy::unwrap_used)]
+  let ts1_after = store
+    .get_with_timestamp("key1")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  #[allow(clippy::unwrap_used)]
+  let ts2_after = store
+    .get_with_timestamp("key2")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  assert_eq!(
+    ts1, ts1_after,
+    "key1 timestamp should be preserved during rotation"
+  );
+  assert_eq!(
+    ts2, ts2_after,
+    "key2 timestamp should be preserved during rotation"
+  );
+
+  // Verify ordering is still correct
+  assert!(ts2_after > ts1_after, "Timestamp ordering should be preserved");
+
+  Ok(())
+}
+
+#[test]
+fn test_compression_during_rotation() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let file_path = temp_dir.path().join("test.jrn");
+
+  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+
+  // Insert some data
+  let data = "x".repeat(1000); // Large value to make compression effective
+  store.insert("key1".to_string(), Value::String(data.clone()))?;
+  store.insert("key2".to_string(), Value::String(data.clone()))?;
+  store.insert("key3".to_string(), Value::String(data))?;
+
+  // Get size of uncompressed journal before rotation
+  let uncompressed_size = std::fs::metadata(&file_path)?.len();
+
+  // Get current version before rotation (this is what will be used in the archive name)
+  let rotation_version = store.current_version();
+  
+  // Trigger rotation
+  store.rotate_journal()?;
+
+  // Verify compressed archive exists
+  let archived_path = temp_dir
+    .path()
+    .join(format!("test.jrn.v{}.zz", rotation_version));
+  assert!(
+    archived_path.exists(),
+    "Compressed archive should exist at {:?}",
+    archived_path
+  );
+
+  // Verify compressed size is smaller than original
+  let compressed_size = std::fs::metadata(&archived_path)?.len();
+  assert!(
+    compressed_size < uncompressed_size,
+    "Compressed size ({}) should be smaller than uncompressed ({})",
+    compressed_size,
+    uncompressed_size
+  );
+
+  // Verify uncompressed temporary file was deleted
+  let temp_archive_path = temp_dir.path().join("test.jrn.old");
+  assert!(
+    !temp_archive_path.exists(),
+    "Temporary uncompressed archive should be deleted"
+  );
+
+  // Verify active journal still works
+  store.insert("key4".to_string(), Value::String("value4".to_string()))?;
+  assert_eq!(store.len(), 4);
+
+  Ok(())
+}
+
+#[test]
+fn test_compression_ratio() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let file_path = temp_dir.path().join("test.jrn");
+
+  let mut store = VersionedKVStore::new(&file_path, 8192, None)?;
+
+  // Insert highly compressible data
+  let compressible_data = "A".repeat(500);
+  for i in 0 .. 10 {
+    store.insert(format!("key{}", i), Value::String(compressible_data.clone()))?;
+  }
+
+  let uncompressed_size = std::fs::metadata(&file_path)?.len();
+  let rotation_version = store.current_version();
+
+  store.rotate_journal()?;
+
+  let archived_path = temp_dir
+    .path()
+    .join(format!("test.jrn.v{}.zz", rotation_version));
+  let compressed_size = std::fs::metadata(&archived_path)?.len();
+
+  // With highly compressible data, we should get significant compression
+  // Expecting at least 50% compression ratio for repeated characters
+  #[allow(clippy::cast_precision_loss)]
+  let compression_ratio = (compressed_size as f64) / (uncompressed_size as f64);
+  assert!(
+    compression_ratio < 0.5,
+    "Compression ratio should be better than 50% for repeated data, got {:.2}%",
+    compression_ratio * 100.0
+  );
+
+  Ok(())
+}
+
+#[test]
+fn test_multiple_rotations_with_compression() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let file_path = temp_dir.path().join("test.jrn");
+
+  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+
+  let mut rotation_versions = Vec::new();
+
+  // Perform multiple rotations
+  for i in 0 .. 3 {
+    let key = format!("key{}", i);
+    let value = Value::String(format!("value{}", i));
+    let version = store.insert(key, value)?;
+    rotation_versions.push(version);
+    store.rotate_journal()?;
+  }
+
+  // Verify all compressed archives exist
+  for version in rotation_versions {
+    let archived_path = temp_dir
+      .path()
+      .join(format!("test.jrn.v{}.zz", version));
+    assert!(
+      archived_path.exists(),
+      "Compressed archive for version {} should exist",
+      version
+    );
+  }
+
+  Ok(())
+}
+
+#[test]
+fn test_rotation_callback_receives_compressed_path() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let file_path = temp_dir.path().join("test.jrn");
+
+  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+
+  let callback_data = Arc::new(Mutex::new(None));
+  let callback_data_clone = Arc::clone(&callback_data);
+
+  store.set_rotation_callback(Box::new(move |old_path, _new_path, _version| {
+    let mut data = callback_data_clone.lock().unwrap();
+    *data = Some(old_path.to_path_buf());
+  }));
+
+  store.insert("key1".to_string(), Value::String("value1".to_string()))?;
+  store.rotate_journal()?;
+
+  // Verify callback received compressed path
+  let data = callback_data.lock().unwrap();
+  #[allow(clippy::unwrap_used)]
+  let archived_path = data.as_ref().unwrap();
+
+  assert!(
+    archived_path.to_string_lossy().ends_with(".zz"),
+    "Callback should receive compressed archive path ending with .zz, got: {:?}",
+    archived_path
+  );
+
+  // Verify the file actually exists
+  assert!(
+    archived_path.exists(),
+    "Compressed archive passed to callback should exist"
+  );
+
+  Ok(())
+}
+

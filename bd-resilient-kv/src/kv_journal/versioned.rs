@@ -15,6 +15,15 @@ use bytes::BufMut;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Represents a value with its associated timestamp.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimestampedValue {
+  /// The value stored in the key-value store.
+  pub value: Value,
+  /// The timestamp (in nanoseconds since UNIX epoch) when this value was last written.
+  pub timestamp: u64,
+}
+
 /// Versioned implementation of a key-value journaling system that tracks write versions
 /// for point-in-time recovery.
 ///
@@ -329,13 +338,13 @@ impl<'a> VersionedKVJournal<'a> {
     self.high_water_mark_triggered = true;
   }
 
-  /// Write a versioned journal entry.
+  /// Write a versioned journal entry and return the timestamp.
   fn write_versioned_entry(
     &mut self,
     version: u64,
     key: &str,
     value: &Value,
-  ) -> anyhow::Result<()> {
+  ) -> anyhow::Result<u64> {
     let buffer_len = self.buffer.len();
     let mut cursor = &mut self.buffer[self.position ..];
 
@@ -352,21 +361,23 @@ impl<'a> VersionedKVJournal<'a> {
 
     let remaining = cursor.remaining_mut();
     self.set_position(buffer_len - remaining);
-    Ok(())
+    Ok(timestamp)
   }
 
   /// Set a key-value pair with automatic version increment.
-  pub fn set_versioned(&mut self, key: &str, value: &Value) -> anyhow::Result<u64> {
+  /// Returns a tuple of (version, timestamp).
+  pub fn set_versioned(&mut self, key: &str, value: &Value) -> anyhow::Result<(u64, u64)> {
     let version = self.current_version.fetch_add(1, Ordering::SeqCst) + 1;
-    self.write_versioned_entry(version, key, value)?;
-    Ok(version)
+    let timestamp = self.write_versioned_entry(version, key, value)?;
+    Ok((version, timestamp))
   }
 
   /// Delete a key with automatic version increment.
-  pub fn delete_versioned(&mut self, key: &str) -> anyhow::Result<u64> {
+  /// Returns a tuple of (version, timestamp).
+  pub fn delete_versioned(&mut self, key: &str) -> anyhow::Result<(u64, u64)> {
     let version = self.current_version.fetch_add(1, Ordering::SeqCst) + 1;
-    self.write_versioned_entry(version, key, &Value::Null)?;
-    Ok(version)
+    let timestamp = self.write_versioned_entry(version, key, &Value::Null)?;
+    Ok((version, timestamp))
   }
 
   /// Get the high water mark position.
@@ -418,6 +429,52 @@ impl<'a> VersionedKVJournal<'a> {
               map.remove(key);
             } else {
               map.insert(key.clone(), operation.clone());
+            }
+          }
+        }
+      }
+    }
+
+    Ok(map)
+  }
+
+  /// Reconstruct the hashmap with timestamps by replaying all journal entries.
+  pub fn as_hashmap_with_timestamps(&self) -> anyhow::Result<AHashMap<String, TimestampedValue>> {
+    let array = read_bonjson_payload(self.buffer)?;
+    let mut map = AHashMap::new();
+
+    if let Value::Array(entries) = array {
+      for (index, entry) in entries.iter().enumerate() {
+        // Skip metadata (first entry)
+        if index == 0 {
+          continue;
+        }
+
+        if let Value::Object(obj) = entry {
+          // Extract key, operation, and timestamp from versioned entry
+          if let Some(Value::String(key)) = obj.get("k")
+            && let Some(operation) = obj.get("o")
+          {
+            // Extract timestamp (default to 0 if not found)
+            let timestamp = if let Some(Value::Unsigned(t)) = obj.get("t") {
+              *t
+            } else if let Some(Value::Signed(t)) = obj.get("t") {
+              #[allow(clippy::cast_sign_loss)]
+              (*t as u64)
+            } else {
+              0
+            };
+
+            if operation.is_null() {
+              map.remove(key);
+            } else {
+              map.insert(
+                key.clone(),
+                TimestampedValue {
+                  value: operation.clone(),
+                  timestamp,
+                },
+              );
             }
           }
         }
@@ -488,12 +545,12 @@ impl<'a> VersionedKVJournal<'a> {
   /// Create a new journal initialized with the compacted state from a snapshot version.
   ///
   /// The new journal will have all current key-value pairs written as versioned entries
-  /// at the `snapshot_version`, followed by the ability to continue with incremental writes.
+  /// at the `snapshot_version`, using their original timestamps to preserve historical accuracy.
   ///
   /// # Arguments
   /// * `buffer` - The buffer to write the new journal to
   /// * `snapshot_version` - The version to assign to all compacted state entries
-  /// * `state` - The current key-value state to write
+  /// * `state` - The current key-value state with timestamps to write
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark
   ///
   /// # Errors
@@ -501,24 +558,27 @@ impl<'a> VersionedKVJournal<'a> {
   pub fn create_rotated_journal(
     buffer: &'a mut [u8],
     snapshot_version: u64,
-    state: &AHashMap<String, Value>,
+    state: &AHashMap<String, TimestampedValue>,
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
     // Create a new journal with the snapshot version as the base
     let mut journal = Self::new(buffer, snapshot_version, high_water_mark_ratio)?;
 
     // Write all current state as versioned entries at the snapshot version
-    let timestamp = current_timestamp()?;
-    for (key, value) in state {
+    // Use the original timestamp from each entry to preserve historical accuracy
+    for (key, timestamped_value) in state {
       let buffer_len = journal.buffer.len();
       let mut cursor = &mut journal.buffer[journal.position ..];
 
       // Create entry object: {"v": version, "t": timestamp, "k": key, "o": value}
       let mut entry = AHashMap::new();
       entry.insert("v".to_string(), Value::Unsigned(snapshot_version));
-      entry.insert("t".to_string(), Value::Unsigned(timestamp));
+      entry.insert(
+        "t".to_string(),
+        Value::Unsigned(timestamped_value.timestamp),
+      );
       entry.insert("k".to_string(), Value::String(key.clone()));
-      entry.insert("o".to_string(), value.clone());
+      entry.insert("o".to_string(), timestamped_value.value.clone());
 
       encode_into_buf(&mut cursor, &Value::Object(entry))
         .map_err(|e| anyhow::anyhow!("Failed to encode state entry: {e:?}"))?;

@@ -101,4 +101,4 @@ pub use double_buffered::DoubleBufferedKVJournal;
 pub use in_memory::InMemoryKVJournal;
 pub use memmapped::MemMappedKVJournal;
 pub use memmapped_versioned::MemMappedVersionedKVJournal;
-pub use versioned::VersionedKVJournal;
+pub use versioned::{TimestampedValue, VersionedKVJournal};

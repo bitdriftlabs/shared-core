@@ -4,6 +4,11 @@ This document provides insights and understanding about the `bd-resilient-kv` jo
 
 ## Core Architecture
 
+The `bd-resilient-kv` library provides two storage models:
+
+1. **KVStore**: Standard double-buffered key-value store with automatic compaction
+2. **VersionedKVStore**: Version-tracked store with point-in-time recovery and automatic rotation
+
 ### KVJournal Trait
 The `KVJournal` trait is the foundation of the system, providing:
 - **Append-only semantics**: Journals accumulate entries over time without removing old data
@@ -16,6 +21,9 @@ The `KVJournal` trait is the foundation of the system, providing:
 1. **InMemoryKVJournal**: Core implementation backed by byte buffers
 2. **MemMappedKVJournal**: File-backed implementation wrapping InMemoryKVJournal
 3. **DoubleBufferedKVJournal**: High-level wrapper providing automatic compaction and retry logic
+4. **VersionedKVJournal**: Versioned journal with entry-level version tracking
+5. **MemMappedVersionedKVJournal**: Memory-mapped wrapper for versioned journals
+6. **VersionedKVStore**: High-level API for versioned key-value storage with automatic rotation
 
 ### Bulk Operations Architecture
 
@@ -31,14 +39,74 @@ The system provides efficient bulk operations through a consistent pattern:
 - Optimized for batch processing scenarios
 - Automatic timestamp synchronization for related entries
 
+### Versioned Storage Architecture
+
+The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJournal`:
+
+**Key Components**:
+- **VersionedKVJournal**: Low-level journal that tracks version numbers for each entry
+- **MemMappedVersionedKVJournal**: Memory-mapped persistence layer
+- **VersionedKVStore**: High-level HashMap-like API with automatic rotation
+
+**Version Tracking**:
+- Every write operation (`insert`, `remove`) returns a monotonically increasing version number
+- Version numbers start at 1 (base version), first write is version 2
+- Entries with `Value::Null` are treated as deletions but still versioned
+
+**Rotation Strategy**:
+- Automatic rotation when journal size exceeds high water mark
+- Current state is compacted into a new journal as versioned entries
+- Old journal is archived with `.v{version}.zz` suffix
+- Archived journals are automatically compressed using zlib (RFC 1950, level 3)
+- Optional callback invoked with archived path and version
+- Application controls upload/cleanup of archived journals
+
+**Compression**:
+- All archived journals are automatically compressed during rotation
+- Active journals remain uncompressed for write performance
+- Compression uses zlib format (RFC 1950) with level 3 for balanced speed/ratio
+- Typical compression achieves >50% size reduction for text-based data
+- File extension `.zz` indicates compressed archives
+- Recovery transparently decompresses archived journals when needed
+
+**Note on Point-in-Time Recovery**:
+The `VersionedKVJournal` trait provides `as_hashmap_at_version()` for replaying entries within a single journal. However, `VersionedKVStore` does not expose this functionality because it only works within the current journal - once rotation occurs, historical versions in archived journals cannot be accessed. For true point-in-time recovery across rotations, applications would need to implement their own mechanism to load and replay archived journal files.
+
 ## Critical Design Insights
 
-### 1. Compaction Efficiency
+### 1. Two Storage Models
+
+**KVStore (Double-Buffered)**:
+- Best for: General-purpose key-value storage, configuration, caches
+- Architecture: Two journals with automatic switching
+- Compaction: Compresses entire state into inactive journal
+- No version tracking
+
+**VersionedKVStore (Single Journal with Rotation)**:
+- Best for: Audit logs, state history, remote backup
+- Architecture: Single journal with archived versions
+- Rotation: Creates new journal with compacted state
+- Version tracking: Every write returns a version number
+
+### 2. Compaction Efficiency
 **Key Insight**: Compaction via `reinit_from()` is already maximally efficient. It writes data in the most compact possible serialized form (hashmap → bytes). If even this compact representation exceeds high water marks, then the data volume itself is the limiting factor, not inefficient storage.
 
 **Implication**: Never assume compaction can always solve high water mark issues. Sometimes both buffers are legitimately full.
 
-### 2. Bulk Operations and Retry Logic
+### 3. Versioned Store Rotation vs KVStore Compaction
+
+**Key Differences**:
+- **KVStore**: Switches between two buffers, old buffer is reset and reused
+- **VersionedKVStore**: Archives old journal with `.v{version}` suffix, creates new journal
+- **Callback**: Only `VersionedKVStore` supports rotation callbacks for upload/cleanup
+- **Version Preservation**: Archived journals preserve complete history for recovery
+
+**When Rotation Occurs**:
+- Triggered during `insert()` or `remove()` when journal size exceeds high water mark
+- Can be manually triggered via `rotate()`
+- Automatic and transparent to the caller (except for callback)
+
+### 4. Bulk Operations and Retry Logic
 The system includes sophisticated retry logic specifically for bulk operations:
 
 **`set_multiple` Intelligence**: The `set_multiple` method in `DoubleBufferedKVJournal` implements a two-phase approach:
@@ -51,7 +119,7 @@ The system includes sophisticated retry logic specifically for bulk operations:
 - A retry immediately after might succeed on the now-compacted journal
 - High water mark flag accurately reflects whether retry is worthwhile
 
-### 3. Simplified High Water Mark Detection
+### 5. Simplified High Water Mark Detection
 The system uses a straightforward approach to high water mark detection:
 
 ```rust
@@ -66,7 +134,7 @@ if journal.is_high_water_mark_triggered() {
 - No callback complexity or thread safety concerns
 - Direct control over when to check status
 
-### 3. Double Buffered Journal Logic
+### 6. Double Buffered Journal Logic
 The `DoubleBufferedKVJournal` implements automatic switching with sophisticated retry logic:
 
 1. **Normal Operations**: Forward to active journal, switch if high water mark triggered

@@ -5,9 +5,12 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::kv_journal::{MemMappedVersionedKVJournal, VersionedKVJournal};
+use crate::kv_journal::{MemMappedVersionedKVJournal, TimestampedValue, VersionedKVJournal};
 use ahash::AHashMap;
 use bd_bonjson::Value;
+use flate2::write::ZlibEncoder;
+use flate2::Compression;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// Callback invoked when journal rotation occurs.
@@ -21,11 +24,24 @@ use std::path::{Path, PathBuf};
 /// storage, perform cleanup, or other post-rotation operations.
 pub type RotationCallback = Box<dyn FnMut(&Path, &Path, u64) + Send>;
 
-/// A persistent key-value store with version tracking for point-in-time recovery.
+/// Compress an archived journal using zlib.
+fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result<()> {
+  let journal_bytes = std::fs::read(source)?;
+
+  let mut encoder = ZlibEncoder::new(Vec::new(), Compression::new(3));
+  encoder.write_all(&journal_bytes)?;
+  let compressed = encoder.finish()?;
+
+  std::fs::write(dest, compressed)?;
+
+  Ok(())
+}
+
+/// A persistent key-value store with version tracking.
 ///
 /// `VersionedKVStore` provides HashMap-like semantics backed by a versioned journal that
 /// assigns a monotonically increasing version number to each write operation. This enables:
-/// - Point-in-time recovery to any historical version
+/// - Audit logs with version tracking for every write
 /// - Automatic journal rotation when high water mark is reached
 /// - Optional callbacks for post-rotation operations (e.g., remote backup)
 ///
@@ -50,13 +66,10 @@ pub type RotationCallback = Box<dyn FnMut(&Path, &Path, u64) + Send>;
 /// // Insert with version tracking
 /// let v1 = store.insert("key1".to_string(), Value::from(42))?;
 /// let v2 = store.insert("key2".to_string(), Value::from("hello"))?;
-///
-/// // Point-in-time recovery
-/// let state_at_v1 = store.as_hashmap_at_version(v1)?;
 /// ```
 pub struct VersionedKVStore {
   journal: MemMappedVersionedKVJournal,
-  cached_map: AHashMap<String, Value>,
+  cached_map: AHashMap<String, TimestampedValue>,
   base_path: PathBuf,
   buffer_size: usize,
   high_water_mark_ratio: Option<f32>,
@@ -99,7 +112,7 @@ impl VersionedKVStore {
       MemMappedVersionedKVJournal::new(path, buffer_size, 1, high_water_mark_ratio)?
     };
 
-    let cached_map = journal.as_hashmap()?;
+    let cached_map = journal.as_hashmap_with_timestamps()?;
 
     Ok(Self {
       journal,
@@ -136,7 +149,7 @@ impl VersionedKVStore {
     let base_path = path.to_path_buf();
 
     let journal = MemMappedVersionedKVJournal::from_file(path, buffer_size, high_water_mark_ratio)?;
-    let cached_map = journal.as_hashmap()?;
+    let cached_map = journal.as_hashmap_with_timestamps()?;
 
     Ok(Self {
       journal,
@@ -162,6 +175,14 @@ impl VersionedKVStore {
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
   pub fn get(&self, key: &str) -> Option<&Value> {
+    self.cached_map.get(key).map(|tv| &tv.value)
+  }
+
+  /// Get a value with its timestamp by key.
+  ///
+  /// This operation is O(1) as it reads from the in-memory cache.
+  #[must_use]
+  pub fn get_with_timestamp(&self, key: &str) -> Option<&TimestampedValue> {
     self.cached_map.get(key)
   }
 
@@ -174,12 +195,18 @@ impl VersionedKVStore {
   pub fn insert(&mut self, key: String, value: Value) -> anyhow::Result<u64> {
     let version = if matches!(value, Value::Null) {
       // Inserting null is equivalent to deletion
-      let version = self.journal.delete_versioned(&key)?;
+      let (version, _timestamp) = self.journal.delete_versioned(&key)?;
       self.cached_map.remove(&key);
       version
     } else {
-      let version = self.journal.set_versioned(&key, &value)?;
-      self.cached_map.insert(key, value);
+      let (version, timestamp) = self.journal.set_versioned(&key, &value)?;
+      self.cached_map.insert(
+        key,
+        TimestampedValue {
+          value,
+          timestamp,
+        },
+      );
       version
     };
 
@@ -202,7 +229,7 @@ impl VersionedKVStore {
       return Ok(None);
     }
 
-    let version = self.journal.delete_versioned(key)?;
+    let (version, _timestamp) = self.journal.delete_versioned(key)?;
     self.cached_map.remove(key);
 
     // Check if rotation is needed
@@ -237,25 +264,28 @@ impl VersionedKVStore {
     self.len() == 0
   }
 
-  /// Get a reference to the current hash map.
+  /// Get a reference to the current hash map with timestamps.
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
-  pub fn as_hashmap(&self) -> &AHashMap<String, Value> {
+  pub fn as_hashmap_with_timestamps(&self) -> &AHashMap<String, TimestampedValue> {
     &self.cached_map
   }
 
-  /// Reconstruct the hashmap at a specific version by replaying entries up to that version.
+  /// Get a reference to the current hash map (values only, without timestamps).
   ///
-  /// This allows point-in-time recovery to any historical version in the current journal.
+  /// Note: This method creates a temporary hashmap. For better performance,
+  /// consider using `get()` for individual lookups or `as_hashmap_with_timestamps()`
+  /// if you need the full map with timestamps.
   ///
-  /// # Errors
-  /// Returns an error if the journal cannot be decoded or the version is out of range.
-  pub fn as_hashmap_at_version(
-    &self,
-    target_version: u64,
-  ) -> anyhow::Result<AHashMap<String, Value>> {
-    self.journal.as_hashmap_at_version(target_version)
+  /// This operation is O(n) where n is the number of keys.
+  #[must_use]
+  pub fn as_hashmap(&self) -> AHashMap<String, Value> {
+    self
+      .cached_map
+      .iter()
+      .map(|(k, tv)| (k.clone(), tv.value.clone()))
+      .collect()
   }
 
   /// Get the current version number.
@@ -293,6 +323,7 @@ impl VersionedKVStore {
   /// Manually trigger journal rotation.
   ///
   /// This will create a new journal with the current state compacted and archive the old journal.
+  /// The archived journal will be compressed using zlib to reduce storage size.
   /// Rotation typically happens automatically when the high water mark is reached, but this
   /// method allows manual control when needed.
   ///
@@ -301,7 +332,7 @@ impl VersionedKVStore {
   pub fn rotate_journal(&mut self) -> anyhow::Result<()> {
     let rotation_version = self.journal.current_version();
 
-    // Generate archived journal path with rotation version
+    // Generate archived journal path with rotation version (compressed)
     let archived_path = self.generate_archived_path(rotation_version);
 
     // Create new journal with rotated state
@@ -310,13 +341,20 @@ impl VersionedKVStore {
     // Replace old journal with new one
     let old_journal = std::mem::replace(&mut self.journal, new_journal);
 
-    // Move old journal to archived location
+    // Move old journal to temporary location
     drop(old_journal); // Release mmap before moving file
-    std::fs::rename(&self.base_path, &archived_path)?;
+    let temp_uncompressed = self.base_path.with_extension("jrn.old");
+    std::fs::rename(&self.base_path, &temp_uncompressed)?;
 
     // Rename new journal to base path
     let temp_path = self.base_path.with_extension("jrn.tmp");
     std::fs::rename(&temp_path, &self.base_path)?;
+
+    // Compress the archived journal
+    compress_archived_journal(&temp_uncompressed, &archived_path)?;
+
+    // Remove uncompressed version
+    std::fs::remove_file(&temp_uncompressed)?;
 
     // Invoke rotation callback if set
     if let Some(ref mut callback) = self.rotation_callback {
@@ -327,10 +365,11 @@ impl VersionedKVStore {
   }
 
   /// Generate the archived journal path for a given rotation version.
+  /// Archived journals use the .zz extension to indicate zlib compression.
   fn generate_archived_path(&self, rotation_version: u64) -> PathBuf {
     let mut path = self.base_path.clone();
     if let Some(file_name) = path.file_name() {
-      let new_name = format!("{}.v{}", file_name.to_string_lossy(), rotation_version);
+      let new_name = format!("{}.v{}.zz", file_name.to_string_lossy(), rotation_version);
       path.set_file_name(new_name);
     }
     path

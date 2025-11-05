@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::versioned::VersionedKVJournal;
+use super::versioned::{TimestampedValue, VersionedKVJournal};
 use ahash::AHashMap;
 use bd_bonjson::Value;
 use memmap2::{MmapMut, MmapOptions};
@@ -122,21 +122,21 @@ impl MemMappedVersionedKVJournal {
 
   /// Set a key-value pair with automatic version increment.
   ///
-  /// Returns the version number assigned to this write.
+  /// Returns a tuple of (version, timestamp).
   ///
   /// # Errors
   /// Returns an error if the journal entry cannot be written.
-  pub fn set_versioned(&mut self, key: &str, value: &Value) -> anyhow::Result<u64> {
+  pub fn set_versioned(&mut self, key: &str, value: &Value) -> anyhow::Result<(u64, u64)> {
     self.versioned_kv.set_versioned(key, value)
   }
 
   /// Delete a key with automatic version increment.
   ///
-  /// Returns the version number assigned to this deletion.
+  /// Returns a tuple of (version, timestamp).
   ///
   /// # Errors
   /// Returns an error if the journal entry cannot be written.
-  pub fn delete_versioned(&mut self, key: &str) -> anyhow::Result<u64> {
+  pub fn delete_versioned(&mut self, key: &str) -> anyhow::Result<(u64, u64)> {
     self.versioned_kv.delete_versioned(key)
   }
 
@@ -182,6 +182,14 @@ impl MemMappedVersionedKVJournal {
   /// Returns an error if the buffer cannot be decoded.
   pub fn as_hashmap(&self) -> anyhow::Result<AHashMap<String, Value>> {
     self.versioned_kv.as_hashmap()
+  }
+
+  /// Reconstruct the hashmap with timestamps by replaying all journal entries.
+  ///
+  /// # Errors
+  /// Returns an error if the buffer cannot be decoded.
+  pub fn as_hashmap_with_timestamps(&self) -> anyhow::Result<AHashMap<String, TimestampedValue>> {
+    self.versioned_kv.as_hashmap_with_timestamps()
   }
 
   /// Reconstruct the hashmap at a specific version by replaying entries up to that version.

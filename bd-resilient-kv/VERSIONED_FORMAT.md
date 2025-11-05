@@ -2,13 +2,13 @@
 
 ## Overview
 
-This document describes the versioned journal format (VERSION 2) that enables point-in-time recovery by tracking write versions for each operation.
+This document describes the versioned journal format (VERSION 2) that enables version tracking for audit logs and remote backup by tracking write versions for each operation.
 
 ## Goals
 
 1. **Version Tracking**: Each write operation gets a unique, monotonically increasing version number
-2. **Point-in-Time Recovery**: Ability to reconstruct exact state at any version
-3. **Journal Rotation**: Periodic compaction with self-contained state in each journal
+2. **Journal Rotation**: Periodic compaction with self-contained state in each journal
+3. **Remote Backup**: Archived journals can be uploaded to remote storage
 4. **Backward Compatible**: New format coexists with existing VERSION 1
 
 ## Design Philosophy
@@ -22,10 +22,12 @@ Unlike traditional journal systems that use separate snapshot files, this design
 ## File Types
 
 ### 1. Active Journal (`my_store.jrn`)
-The current active journal receiving new writes.
+The current active journal receiving new writes. Active journals are **not compressed** for performance reasons.
 
-### 2. Archived Journals (`my_store.jrn.v00020000`, `my_store.jrn.v00030000`, etc.)
+### 2. Archived Journals (`my_store.jrn.v00020000.zz`, `my_store.jrn.v00030000.zz`, etc.)
 Previous journals, archived during rotation. Each contains complete state at rotation version plus subsequent incremental writes. The version number in the filename indicates the rotation/snapshot version.
+
+**Archived journals are automatically compressed using zlib** (indicated by the `.zz` extension) to reduce storage space and bandwidth requirements for remote backup. Compression is mandatory and occurs automatically during rotation.
 
 ## Format Specification
 
@@ -102,9 +104,11 @@ When high water mark is reached at version N:
 
 1. **Create New Journal**: Initialize fresh journal file (e.g., `my_store.jrn.tmp`)
 2. **Write Compacted State**: Write all current key-value pairs as versioned entries at version N
-3. **Archive Old Journal**: Rename `my_store.jrn` → `my_store.jrn.v{N}`
+3. **Archive Old Journal**: Rename `my_store.jrn` → `my_store.jrn.old` (temporary)
 4. **Activate New Journal**: Rename `my_store.jrn.tmp` → `my_store.jrn`
-5. **Callback**: Notify application for upload/cleanup of archived journal
+5. **Compress Archive**: Compress `my_store.jrn.old` → `my_store.jrn.v{N}.zz` using zlib
+6. **Delete Temporary**: Remove uncompressed `my_store.jrn.old`
+7. **Callback**: Notify application for upload/cleanup of compressed archived journal
 
 Example:
 ```
@@ -113,53 +117,109 @@ Before rotation at v30000:
 
 After rotation:
   my_store.jrn                    # Active, base_version=30000, contains compacted state at v30000
-  my_store.jrn.v30000            # Archived, contains v20000-v30000
+  my_store.jrn.v30000.zz         # Compressed archive, contains v20000-v30000
 ```
 
-## Recovery Process
+### Compression
+
+Archived journals are automatically compressed using zlib (compression level 3) during rotation:
+- **Format**: Standard zlib format (RFC 1950)
+- **Extension**: `.zz` indicates zlib compression
+- **Transparency**: `VersionedRecovery` automatically decompresses archives when reading
+- **Benefits**: Reduced storage space and bandwidth for remote backups
+- **Performance**: Compression level 3 provides good balance between speed and compression ratio
+
+## Recovery and Audit
 
 ### Current State Recovery
-Simply read the active journal (`my_store.jrn`) and replay all entries.
+Simply read the active journal (`my_store.jrn`) and replay all entries to reconstruct the current state.
 
-### Point-in-Time Recovery
+### Audit and Analysis
+While `VersionedKVStore` does not support point-in-time recovery through its API, archived journals contain complete historical data that can be used for:
 
-To recover state at target version T:
+- **Audit Logging**: Review what changes were made and when
+- **Offline Analysis**: Process archived journals to understand historical patterns
+- **Remote Backup**: Upload archived journals to remote storage for disaster recovery
+- **Compliance**: Maintain immutable records of all changes with version tracking
 
-1. **Find Correct Journal**: 
-   - Check active journal's base_version and current_version range
-   - If T is in active journal range, use active journal
-   - Otherwise, find archived journal with appropriate version range
+The version numbers in each entry allow you to understand the exact sequence of operations and build custom tooling for analyzing historical data.
 
-2. **Replay Entries**:
-   - Read all entries from the journal
-   - Apply entries with version <= T
-   - Stop when reaching entries with version > T
+### Point-in-Time Recovery with VersionedRecovery
 
-3. **Result**: Exact state at version T
+While `VersionedKVStore` is designed for active operation and does not support point-in-time recovery through its API, the `VersionedRecovery` utility provides a way to reconstruct state at arbitrary historical versions from raw journal bytes.
 
-### Example Recovery Scenarios
+#### Overview
 
-**File Structure:**
+`VersionedRecovery` is a separate utility that:
+- Works with raw journal bytes (`&[u8]`), not file paths
+- Does not perform any file I/O operations
+- Can process multiple journals for cross-rotation recovery
+- Designed for offline analysis, server-side tooling, and audit systems
+- Completely independent from `VersionedKVStore`
+
+#### Use Cases
+
+- **Server-Side Analysis**: Reconstruct state at specific versions for debugging or investigation
+- **Audit Tooling**: Build custom audit systems that analyze historical changes
+- **Cross-Rotation Recovery**: Recover state spanning multiple archived journals
+- **Compliance**: Extract state at specific points in time for regulatory requirements
+- **Testing**: Validate that state at historical versions matches expectations
+
+#### API Methods
+
+```rust
+// Create recovery utility from journal byte slices (oldest to newest)
+let recovery = VersionedRecovery::new(vec![&archived_journal, &active_journal])?;
+
+// Recover state at specific version
+let state = recovery.recover_at_version(25000)?;
+
+// Get current state (latest version)
+let current = recovery.recover_current()?;
+
+// Get available version range
+if let Some((min, max)) = recovery.version_range() {
+    println!("Can recover versions {min} to {max}");
+}
 ```
-my_store.jrn                # Active, base_version=30000, current=35000
-my_store.jrn.v30000        # Archived, contains v20000-v30000  
-my_store.jrn.v20000        # Archived, contains v10000-v20000
+
+#### Example: Cross-Rotation Recovery
+
+```rust
+use bd_resilient_kv::VersionedRecovery;
+use std::fs;
+
+// Load archived journals from remote storage or local disk
+let journal_v20000 = fs::read("store.jrn.v20000")?;
+let journal_v30000 = fs::read("store.jrn.v30000")?;
+let journal_active = fs::read("store.jrn")?;
+
+// Create recovery utility with all journals
+let recovery = VersionedRecovery::new(vec![
+    &journal_v20000,
+    &journal_v30000,
+    &journal_active,
+])?;
+
+// Recover state at version 25000 (in archived journal)
+let state_at_25000 = recovery.recover_at_version(25000)?;
+
+// Recover state at version 35000 (across rotation boundary)
+let state_at_35000 = recovery.recover_at_version(35000)?;
+
+// Process the recovered state
+for (key, value) in state_at_25000 {
+    println!("{key} = {value:?}");
+}
 ```
 
-**Recover at v25000:**
-1. Load `my_store.jrn.v30000` (archived journal)
-2. Replay entries with version <= 25000
-3. Result: State at v25000
+#### Implementation Details
 
-**Recover at v30000:**
-1. Load `my_store.jrn.v30000` (archived journal)
-2. Replay all entries up to v30000
-3. Result: State at v30000
-
-**Recover at v32000:**
-1. Load `my_store.jrn` (active journal, base_version=30000)
-2. Replay entries with version <= 32000
-3. Result: State at v32000
+- **No File I/O**: Works purely with byte slices, caller is responsible for loading data
+- **Chronological Order**: Journals should be provided oldest to newest
+- **Efficient Replay**: Automatically skips journals outside the target version range
+- **Cross-Rotation**: Seamlessly handles recovery across multiple archived journals
+- **Version Tracking**: Replays all entries up to and including the target version
 
 ## Storage Efficiency
 
@@ -193,8 +253,8 @@ let mut store = VersionedKVStore::new("mystore.jrn", 1024 * 1024, None)?;
 let v1 = store.insert("key1".to_string(), Value::from(42))?;
 let v2 = store.insert("key2".to_string(), Value::from("hello"))?;
 
-// Point-in-time recovery
-let state_at_v1 = store.as_hashmap_at_version(v1)?;
+// Read current values
+let value = store.get("key1")?;
 ```
 
 ### Rotation Callback
