@@ -82,34 +82,110 @@ async fn test_recovery_single_journal() -> anyhow::Result<()> {
   Ok(())
 }
 
-// Tests for compression detection heuristic
-
 #[tokio::test]
-async fn test_detection_uncompressed_format_v1() -> anyhow::Result<()> {
+async fn test_recover_current_only_needs_last_journal() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
-
-  // Create a v1 format journal (though VersionedKVStore creates v2, we test the detection)
+  // Create a store with multiple rotations to build up history
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+
+  // Add initial data
   store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
+  store
+    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .await?;
+
+  // First rotation
+  let _archive1_version = store.current_version();
+  store.rotate_journal().await?;
+
+  // Update key1 and add key3
+  store
+    .insert("key1".to_string(), Value::String("updated1".to_string()))
+    .await?;
+  store
+    .insert("key3".to_string(), Value::String("value3".to_string()))
+    .await?;
+
+  // Second rotation
+  let _archive2_version = store.current_version();
+  store.rotate_journal().await?;
+
+  // Add more data and delete key2
+  store
+    .insert("key4".to_string(), Value::String("value4".to_string()))
+    .await?;
+  store.remove("key2").await?;
+
   store.sync()?;
 
-  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
+  // Get expected current state using the store's hashmap
+  let expected_state = store.as_hashmap();
 
-  // Verify first 8 bytes contain format version 2
-  let version_bytes: [u8; 8] = journal_data[0 .. 8].try_into()?;
-  let version = u64::from_le_bytes(version_bytes);
-  assert_eq!(version, 2, "VersionedKVStore should create v2 format");
+  // Read ALL journals
+  let mut all_journals = Vec::new();
+  let mut archived_paths = std::fs::read_dir(temp_dir.path())?
+    .filter_map(|entry| {
+      let entry = entry.ok()?;
+      let path = entry.path();
+      if path.file_name()?.to_str()?.starts_with("test.jrn.v") {
+        Some(path)
+      } else {
+        None
+      }
+    })
+    .collect::<Vec<_>>();
 
-  // Should successfully detect as uncompressed
-  let recovery = VersionedRecovery::new(vec![&journal_data])?;
-  let state = recovery.recover_current()?;
-  assert_eq!(state.len(), 1);
+  // Sort to ensure chronological order
+  archived_paths.sort();
+
+  for archived_path in &archived_paths {
+    all_journals.push(std::fs::read(archived_path)?);
+  }
+
+  // Read active journal (the last one)
+  let active_journal = std::fs::read(temp_dir.path().join("test.jrn"))?;
+  all_journals.push(active_journal.clone());
+
+  // Test 1: Verify recover_current() with ALL journals gives correct state
+  let all_journal_refs: Vec<&[u8]> = all_journals.iter().map(Vec::as_slice).collect();
+  let recovery_all = VersionedRecovery::new(all_journal_refs)?;
+  let state_all = recovery_all.recover_current()?;
+
+  // Convert to comparable format (Value only, not TimestampedValue)
+  let state_all_values: ahash::AHashMap<String, Value> =
+    state_all.into_iter().map(|(k, tv)| (k, tv.value)).collect();
+
+  assert_eq!(state_all_values, expected_state);
+
+  // Test 2: Verify recover_current() with ONLY the last journal gives the same state
+  // This is the optimization we want to prove works!
+  let recovery_last = VersionedRecovery::new(vec![&active_journal])?;
+  let state_last = recovery_last.recover_current()?;
+
+  let state_last_values: ahash::AHashMap<String, Value> = state_last
+    .into_iter()
+    .map(|(k, tv)| (k, tv.value))
+    .collect();
+
+  // The last journal alone should give us the same current state
+  assert_eq!(state_last_values, expected_state);
+
+  // Verify the expected final state has the right keys
+  assert!(state_last_values.contains_key("key1"));
+  assert!(!state_last_values.contains_key("key2")); // deleted
+  assert!(state_last_values.contains_key("key3"));
+  assert!(state_last_values.contains_key("key4"));
+  assert_eq!(
+    state_last_values.get("key1"),
+    Some(&Value::String("updated1".to_string()))
+  );
 
   Ok(())
 }
+
 
 #[tokio::test]
 async fn test_detection_compressed_journal() -> anyhow::Result<()> {

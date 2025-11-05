@@ -24,7 +24,8 @@ use std::path::Path;
 fn read_u64_field(obj: &AHashMap<String, Value>, key: &str) -> Option<u64> {
   match obj.get(key) {
     Some(Value::Unsigned(v)) => Some(*v),
-    Some(Value::Signed(v)) if *v >= 0 => {
+    Some(Value::Signed(v)) if *v >= 0 =>
+    {
       #[allow(clippy::cast_sign_loss)]
       Some(*v as u64)
     },
@@ -185,8 +186,11 @@ impl VersionedRecovery {
   pub fn recover_current(&self) -> anyhow::Result<AHashMap<String, TimestampedValue>> {
     let mut map = AHashMap::new();
 
-    for journal in &self.journals {
-      replay_journal_to_version(&journal.data, u64::MAX, &mut map)?;
+    // Optimization: Only read the last journal since journal rotation writes
+    // the complete state at the snapshot version, so the last journal contains
+    // all current state.
+    if let Some(last_journal) = self.journals.last() {
+      replay_journal_to_version(&last_journal.data, u64::MAX, &mut map)?;
     }
 
     Ok(map)

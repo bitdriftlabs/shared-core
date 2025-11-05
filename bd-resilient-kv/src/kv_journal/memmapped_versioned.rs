@@ -170,12 +170,6 @@ impl MemMappedVersionedKVJournal {
     self.versioned_kv.buffer_usage_ratio()
   }
 
-  /// Get the time when the journal was initialized (nanoseconds since UNIX epoch).
-  #[must_use]
-  pub fn get_init_time(&self) -> u64 {
-    self.versioned_kv.get_init_time()
-  }
-
   /// Reconstruct the hashmap by replaying all journal entries.
   ///
   /// # Errors
@@ -190,17 +184,6 @@ impl MemMappedVersionedKVJournal {
   /// Returns an error if the buffer cannot be decoded.
   pub fn as_hashmap_with_timestamps(&self) -> anyhow::Result<AHashMap<String, TimestampedValue>> {
     self.versioned_kv.as_hashmap_with_timestamps()
-  }
-
-  /// Reconstruct the hashmap at a specific version by replaying entries up to that version.
-  ///
-  /// # Errors
-  /// Returns an error if the buffer cannot be decoded.
-  pub fn as_hashmap_at_version(
-    &self,
-    target_version: u64,
-  ) -> anyhow::Result<AHashMap<String, Value>> {
-    self.versioned_kv.as_hashmap_at_version(target_version)
   }
 
   /// Synchronize changes to disk.

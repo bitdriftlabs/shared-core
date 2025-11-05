@@ -12,7 +12,6 @@ use bd_bonjson::encoder::encode_into_buf;
 use bd_bonjson::serialize_primitives::serialize_array_begin;
 use bd_client_common::error::InvariantError;
 use bytes::BufMut;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Represents a value with its associated timestamp.
@@ -38,7 +37,7 @@ pub struct VersionedKVJournal<'a> {
   high_water_mark: usize,
   high_water_mark_triggered: bool,
   initialized_at_unix_time_ns: u64,
-  current_version: AtomicU64,
+  current_version: u64,
   base_version: u64, // First version in this journal
 }
 
@@ -76,7 +75,8 @@ const MIN_BUFFER_SIZE: usize = HEADER_SIZE + 4;
 fn read_u64_field(obj: &AHashMap<String, Value>, key: &str) -> Option<u64> {
   match obj.get(key) {
     Some(Value::Unsigned(v)) => Some(*v),
-    Some(Value::Signed(v)) if *v >= 0 => {
+    Some(Value::Signed(v)) if *v >= 0 =>
+    {
       #[allow(clippy::cast_sign_loss)]
       Some(*v as u64)
     },
@@ -249,7 +249,7 @@ impl<'a> VersionedKVJournal<'a> {
       high_water_mark,
       high_water_mark_triggered: false,
       initialized_at_unix_time_ns: timestamp,
-      current_version: AtomicU64::new(base_version),
+      current_version: base_version,
       base_version,
     })
   }
@@ -284,7 +284,7 @@ impl<'a> VersionedKVJournal<'a> {
       high_water_mark,
       high_water_mark_triggered: position >= high_water_mark,
       initialized_at_unix_time_ns: init_timestamp,
-      current_version: AtomicU64::new(current_version),
+      current_version,
       base_version,
     })
   }
@@ -312,7 +312,7 @@ impl<'a> VersionedKVJournal<'a> {
   /// Get the current version number.
   #[must_use]
   pub fn current_version(&self) -> u64 {
-    self.current_version.load(Ordering::SeqCst)
+    self.current_version
   }
 
   /// Get the base version (first version in this journal).
@@ -349,11 +349,15 @@ impl<'a> VersionedKVJournal<'a> {
 
     // Create entry object: {"v": version, "t": timestamp, "k": key, "o": value}
     let timestamp = current_timestamp()?;
-    let mut entry = AHashMap::new();
-    entry.insert("v".to_string(), Value::Unsigned(version));
-    entry.insert("t".to_string(), Value::Unsigned(timestamp));
-    entry.insert("k".to_string(), Value::String(key.to_string()));
-    entry.insert("o".to_string(), value.clone());
+
+    // TODO(snowp): It would be nice to be able to pass impl AsRef<str> for key or Cow to avoid
+    // allocating small strings repeatedly.
+    let entry = AHashMap::from([
+      ("v".to_string(), Value::Unsigned(version)),
+      ("t".to_string(), Value::Unsigned(timestamp)),
+      ("k".to_string(), Value::String(key.to_string())),
+      ("o".to_string(), value.clone()),
+    ]);
 
     encode_into_buf(&mut cursor, &Value::Object(entry))
       .map_err(|e| anyhow::anyhow!("Failed to encode versioned entry: {e:?}"))?;
@@ -366,7 +370,8 @@ impl<'a> VersionedKVJournal<'a> {
   /// Set a key-value pair with automatic version increment.
   /// Returns a tuple of (version, timestamp).
   pub fn set_versioned(&mut self, key: &str, value: &Value) -> anyhow::Result<(u64, u64)> {
-    let version = self.current_version.fetch_add(1, Ordering::SeqCst) + 1;
+    self.current_version += 1;
+    let version = self.current_version;
     let timestamp = self.write_versioned_entry(version, key, value)?;
     Ok((version, timestamp))
   }
@@ -374,7 +379,8 @@ impl<'a> VersionedKVJournal<'a> {
   /// Delete a key with automatic version increment.
   /// Returns a tuple of (version, timestamp).
   pub fn delete_versioned(&mut self, key: &str) -> anyhow::Result<(u64, u64)> {
-    let version = self.current_version.fetch_add(1, Ordering::SeqCst) + 1;
+    self.current_version += 1;
+    let version = self.current_version;
     let timestamp = self.write_versioned_entry(version, key, &Value::Null)?;
     Ok((version, timestamp))
   }
@@ -476,49 +482,6 @@ impl<'a> VersionedKVJournal<'a> {
     Ok(map)
   }
 
-  /// Reconstruct the hashmap at a specific version by replaying entries up to that version.
-  pub fn as_hashmap_at_version(
-    &self,
-    target_version: u64,
-  ) -> anyhow::Result<AHashMap<String, Value>> {
-    let array = read_bonjson_payload(self.buffer)?;
-    let mut map = AHashMap::new();
-
-    if let Value::Array(entries) = array {
-      for (index, entry) in entries.iter().enumerate() {
-        // Skip metadata (first entry)
-        if index == 0 {
-          continue;
-        }
-
-        if let Value::Object(obj) = entry {
-          // Check version
-          let Some(entry_version) = read_u64_field(obj, "v") else {
-            continue; // Skip entries without version
-          };
-
-          // Only apply entries up to target version
-          if entry_version > target_version {
-            break;
-          }
-
-          // Extract key and operation
-          if let Some(Value::String(key)) = obj.get("k")
-            && let Some(operation) = obj.get("o")
-          {
-            if operation.is_null() {
-              map.remove(key);
-            } else {
-              map.insert(key.clone(), operation.clone());
-            }
-          }
-        }
-      }
-    }
-
-    Ok(map)
-  }
-
   /// Get a copy of the buffer for testing purposes
   #[cfg(test)]
   #[must_use]
@@ -558,14 +521,17 @@ impl<'a> VersionedKVJournal<'a> {
       let mut cursor = &mut journal.buffer[journal.position ..];
 
       // Create entry object: {"v": version, "t": timestamp, "k": key, "o": value}
-      let mut entry = AHashMap::new();
-      entry.insert("v".to_string(), Value::Unsigned(snapshot_version));
-      entry.insert(
-        "t".to_string(),
-        Value::Unsigned(timestamped_value.timestamp),
-      );
-      entry.insert("k".to_string(), Value::String(key.clone()));
-      entry.insert("o".to_string(), timestamped_value.value.clone());
+      // TODO(snowp): It would be nice to be able to pass impl AsRef<str> for key or Cow to avoid
+      // allocating small strings repeatedly.
+      let entry = AHashMap::from([
+        ("v".to_string(), Value::Unsigned(snapshot_version)),
+        (
+          "t".to_string(),
+          Value::Unsigned(timestamped_value.timestamp),
+        ),
+        ("k".to_string(), Value::String(key.clone())),
+        ("o".to_string(), timestamped_value.value.clone()),
+      ]);
 
       encode_into_buf(&mut cursor, &Value::Object(entry))
         .map_err(|e| anyhow::anyhow!("Failed to encode state entry: {e:?}"))?;
