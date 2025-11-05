@@ -25,14 +25,14 @@ use std::path::{Path, PathBuf};
 pub type RotationCallback = Box<dyn FnMut(&Path, &Path, u64) + Send>;
 
 /// Compress an archived journal using zlib.
-fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result<()> {
-  let journal_bytes = std::fs::read(source)?;
+async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result<()> {
+  let journal_bytes = tokio::fs::read(source).await?;
 
   let mut encoder = ZlibEncoder::new(Vec::new(), Compression::new(3));
   encoder.write_all(&journal_bytes)?;
   let compressed = encoder.finish()?;
 
-  std::fs::write(dest, compressed)?;
+  tokio::fs::write(dest, compressed).await?;
 
   Ok(())
 }
@@ -192,7 +192,7 @@ impl VersionedKVStore {
   ///
   /// # Errors
   /// Returns an error if the value cannot be written to the journal.
-  pub fn insert(&mut self, key: String, value: Value) -> anyhow::Result<u64> {
+  pub async fn insert(&mut self, key: String, value: Value) -> anyhow::Result<u64> {
     let version = if matches!(value, Value::Null) {
       // Inserting null is equivalent to deletion
       let (version, _timestamp) = self.journal.delete_versioned(&key)?;
@@ -208,7 +208,7 @@ impl VersionedKVStore {
 
     // Check if rotation is needed
     if self.journal.is_high_water_mark_triggered() {
-      self.rotate_journal()?;
+      self.rotate_journal().await?;
     }
 
     Ok(version)
@@ -220,7 +220,7 @@ impl VersionedKVStore {
   ///
   /// # Errors
   /// Returns an error if the deletion cannot be written to the journal.
-  pub fn remove(&mut self, key: &str) -> anyhow::Result<Option<u64>> {
+  pub async fn remove(&mut self, key: &str) -> anyhow::Result<Option<u64>> {
     if !self.cached_map.contains_key(key) {
       return Ok(None);
     }
@@ -230,7 +230,7 @@ impl VersionedKVStore {
 
     // Check if rotation is needed
     if self.journal.is_high_water_mark_triggered() {
-      self.rotate_journal()?;
+      self.rotate_journal().await?;
     }
 
     Ok(Some(version))
@@ -325,14 +325,14 @@ impl VersionedKVStore {
   ///
   /// # Errors
   /// Returns an error if rotation fails.
-  pub fn rotate_journal(&mut self) -> anyhow::Result<()> {
+  pub async fn rotate_journal(&mut self) -> anyhow::Result<()> {
     let rotation_version = self.journal.current_version();
 
     // Generate archived journal path with rotation version (compressed)
     let archived_path = self.generate_archived_path(rotation_version);
 
     // Create new journal with rotated state
-    let new_journal = self.create_rotated_journal(rotation_version)?;
+    let new_journal = self.create_rotated_journal(rotation_version).await?;
 
     // Replace old journal with new one
     let old_journal = std::mem::replace(&mut self.journal, new_journal);
@@ -340,17 +340,17 @@ impl VersionedKVStore {
     // Move old journal to temporary location
     drop(old_journal); // Release mmap before moving file
     let temp_uncompressed = self.base_path.with_extension("jrn.old");
-    std::fs::rename(&self.base_path, &temp_uncompressed)?;
+    tokio::fs::rename(&self.base_path, &temp_uncompressed).await?;
 
     // Rename new journal to base path
     let temp_path = self.base_path.with_extension("jrn.tmp");
-    std::fs::rename(&temp_path, &self.base_path)?;
+    tokio::fs::rename(&temp_path, &self.base_path).await?;
 
     // Compress the archived journal
-    compress_archived_journal(&temp_uncompressed, &archived_path)?;
+    compress_archived_journal(&temp_uncompressed, &archived_path).await?;
 
     // Remove uncompressed version
-    std::fs::remove_file(&temp_uncompressed)?;
+    tokio::fs::remove_file(&temp_uncompressed).await?;
 
     // Invoke rotation callback if set
     if let Some(ref mut callback) = self.rotation_callback {
@@ -372,7 +372,7 @@ impl VersionedKVStore {
   }
 
   /// Create a new rotated journal with compacted state.
-  fn create_rotated_journal(
+  async fn create_rotated_journal(
     &self,
     rotation_version: u64,
   ) -> anyhow::Result<MemMappedVersionedKVJournal> {
@@ -391,7 +391,7 @@ impl VersionedKVStore {
     )?;
 
     // Write buffer to temporary file
-    std::fs::write(&temp_path, &buffer)?;
+    tokio::fs::write(&temp_path, &buffer).await?;
 
     // Open as memory-mapped journal
     MemMappedVersionedKVJournal::from_file(&temp_path, self.buffer_size, self.high_water_mark_ratio)

@@ -10,16 +10,22 @@ use crate::versioned_recovery::VersionedRecovery;
 use bd_bonjson::Value;
 use tempfile::TempDir;
 
-#[test]
-fn test_recovery_single_journal() -> anyhow::Result<()> {
+#[tokio::test]
+async fn test_recovery_single_journal() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let file_path = temp_dir.path().join("test.jrn");
 
   // Create a store and write some versioned data
   let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
-  let v1 = store.insert("key1".to_string(), Value::String("value1".to_string()))?;
-  let v2 = store.insert("key2".to_string(), Value::String("value2".to_string()))?;
-  let v3 = store.insert("key1".to_string(), Value::String("updated1".to_string()))?;
+  let v1 = store
+    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .await?;
+  let v2 = store
+    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .await?;
+  let v3 = store
+    .insert("key1".to_string(), Value::String("updated1".to_string()))
+    .await?;
   store.sync()?;
 
   // Read the journal data
@@ -75,16 +81,20 @@ fn test_recovery_single_journal() -> anyhow::Result<()> {
   Ok(())
 }
 
-#[test]
-fn test_recovery_with_deletions() -> anyhow::Result<()> {
+#[tokio::test]
+async fn test_recovery_with_deletions() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let file_path = temp_dir.path().join("test.jrn");
 
   // Create a store with deletions
   let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
-  let v1 = store.insert("key1".to_string(), Value::String("value1".to_string()))?;
-  let v2 = store.insert("key2".to_string(), Value::String("value2".to_string()))?;
-  let v3_opt = store.remove("key1")?;
+  let v1 = store
+    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .await?;
+  let v2 = store
+    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .await?;
+  let v3_opt = store.remove("key1").await?;
   assert!(v3_opt.is_some());
   #[allow(clippy::unwrap_used)]
   let v3 = v3_opt.unwrap();
@@ -112,8 +122,8 @@ fn test_recovery_with_deletions() -> anyhow::Result<()> {
   Ok(())
 }
 
-#[test]
-fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
+#[tokio::test]
+async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let file_path = temp_dir.path().join("test.jrn");
 
@@ -121,21 +131,27 @@ fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   let mut store = VersionedKVStore::new(&file_path, 2048, None)?;
 
   // Write data that will trigger rotation
-  let v1 = store.insert("key1".to_string(), Value::String("value1".to_string()))?;
-  store.insert("key2".to_string(), Value::String("value2".to_string()))?;
+  let v1 = store
+    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .await?;
+  store
+    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .await?;
 
   // Write more data to trigger rotation
   for i in 0 .. 20 {
-    store.insert(format!("key{i}"), Value::Signed(i))?;
+    store.insert(format!("key{i}"), Value::Signed(i)).await?;
   }
 
   let v_middle = store.current_version();
 
   // Write more after rotation
-  let v_final = store.insert(
-    "final".to_string(),
-    Value::String("final_value".to_string()),
-  )?;
+  let v_final = store
+    .insert(
+      "final".to_string(),
+      Value::String("final_value".to_string()),
+    )
+    .await?;
   store.sync()?;
 
   // Read all journal files
@@ -213,15 +229,21 @@ fn test_recovery_empty_journal() -> anyhow::Result<()> {
   Ok(())
 }
 
-#[test]
-fn test_recovery_version_range() -> anyhow::Result<()> {
+#[tokio::test]
+async fn test_recovery_version_range() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let file_path = temp_dir.path().join("test.jrn");
 
   let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
-  store.insert("key1".to_string(), Value::String("value1".to_string()))?;
-  store.insert("key2".to_string(), Value::String("value2".to_string()))?;
-  let v3 = store.insert("key3".to_string(), Value::String("value3".to_string()))?;
+  store
+    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .await?;
+  store
+    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .await?;
+  let v3 = store
+    .insert("key3".to_string(), Value::String("value3".to_string()))
+    .await?;
   store.sync()?;
 
   let journal_data = std::fs::read(&file_path)?;
@@ -237,15 +259,15 @@ fn test_recovery_version_range() -> anyhow::Result<()> {
   Ok(())
 }
 
-#[test]
-fn test_recovery_with_overwrites() -> anyhow::Result<()> {
+#[tokio::test]
+async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let file_path = temp_dir.path().join("test.jrn");
 
   let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
-  let v1 = store.insert("key".to_string(), Value::Signed(1))?;
-  let v2 = store.insert("key".to_string(), Value::Signed(2))?;
-  let v3 = store.insert("key".to_string(), Value::Signed(3))?;
+  let v1 = store.insert("key".to_string(), Value::Signed(1)).await?;
+  let v2 = store.insert("key".to_string(), Value::Signed(2)).await?;
+  let v3 = store.insert("key".to_string(), Value::Signed(3)).await?;
   store.sync()?;
 
   let journal_data = std::fs::read(&file_path)?;
@@ -273,16 +295,22 @@ fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   Ok(())
 }
 
-#[test]
-fn test_recovery_various_value_types() -> anyhow::Result<()> {
+#[tokio::test]
+async fn test_recovery_various_value_types() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let file_path = temp_dir.path().join("test.jrn");
 
   let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
-  store.insert("string".to_string(), Value::String("hello".to_string()))?;
-  store.insert("number".to_string(), Value::Signed(42))?;
-  store.insert("float".to_string(), Value::Float(3.14))?;
-  store.insert("bool".to_string(), Value::Bool(true))?;
+  store
+    .insert("string".to_string(), Value::String("hello".to_string()))
+    .await?;
+  store
+    .insert("number".to_string(), Value::Signed(42))
+    .await?;
+  store
+    .insert("float".to_string(), Value::Float(3.14))
+    .await?;
+  store.insert("bool".to_string(), Value::Bool(true)).await?;
   let v_final = store.current_version();
   store.sync()?;
 
@@ -311,25 +339,31 @@ fn test_recovery_various_value_types() -> anyhow::Result<()> {
   Ok(())
 }
 
-#[test]
-fn test_recovery_from_compressed_archive() -> anyhow::Result<()> {
+#[tokio::test]
+async fn test_recovery_from_compressed_archive() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let file_path = temp_dir.path().join("test.jrn");
 
   // Create a store and write some data
   let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
-  let v1 = store.insert("key1".to_string(), Value::String("value1".to_string()))?;
-  let v2 = store.insert("key2".to_string(), Value::String("value2".to_string()))?;
+  let v1 = store
+    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .await?;
+  let v2 = store
+    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .await?;
   store.sync()?;
 
   // Get the current version before rotation (this will be used in the archive name)
   let archive_version = store.current_version();
 
   // Rotate to create compressed archive
-  store.rotate_journal()?;
+  store.rotate_journal().await?;
 
   // Add more data to active journal
-  let v3 = store.insert("key3".to_string(), Value::String("value3".to_string()))?;
+  let v3 = store
+    .insert("key3".to_string(), Value::String("value3".to_string()))
+    .await?;
   store.sync()?;
 
   // Find the compressed archive (using the version at the time of rotation)
@@ -376,22 +410,28 @@ fn test_recovery_from_compressed_archive() -> anyhow::Result<()> {
   Ok(())
 }
 
-#[test]
-fn test_recovery_from_multiple_compressed_archives() -> anyhow::Result<()> {
+#[tokio::test]
+async fn test_recovery_from_multiple_compressed_archives() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let file_path = temp_dir.path().join("test.jrn");
 
   // Create a store and perform multiple rotations
   let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
-  let v1 = store.insert("key1".to_string(), Value::String("value1".to_string()))?;
+  let v1 = store
+    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .await?;
   let archive1_version = store.current_version();
-  store.rotate_journal()?;
+  store.rotate_journal().await?;
 
-  let v2 = store.insert("key2".to_string(), Value::String("value2".to_string()))?;
+  let v2 = store
+    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .await?;
   let archive2_version = store.current_version();
-  store.rotate_journal()?;
+  store.rotate_journal().await?;
 
-  let v3 = store.insert("key3".to_string(), Value::String("value3".to_string()))?;
+  let v3 = store
+    .insert("key3".to_string(), Value::String("value3".to_string()))
+    .await?;
   store.sync()?;
 
   // Collect all journal data (2 compressed + 1 active)
@@ -428,17 +468,19 @@ fn test_recovery_from_multiple_compressed_archives() -> anyhow::Result<()> {
   Ok(())
 }
 
-#[test]
-fn test_recovery_mixed_compressed_and_uncompressed() -> anyhow::Result<()> {
+#[tokio::test]
+async fn test_recovery_mixed_compressed_and_uncompressed() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let file_path = temp_dir.path().join("test.jrn");
 
   // Create initial store and archive (will be compressed)
   let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
-  let _v1 = store.insert("key1".to_string(), Value::String("value1".to_string()))?;
+  let _v1 = store
+    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .await?;
   store.sync()?;
   let archive_version = store.current_version();
-  store.rotate_journal()?;
+  store.rotate_journal().await?;
 
   // Get compressed archive
   let compressed_archive_path = temp_dir
@@ -448,7 +490,9 @@ fn test_recovery_mixed_compressed_and_uncompressed() -> anyhow::Result<()> {
 
   // Create uncompressed journal data manually
   let mut uncompressed_store = VersionedKVStore::new(&file_path, 4096, None)?;
-  let v2 = uncompressed_store.insert("key2".to_string(), Value::String("value2".to_string()))?;
+  let v2 = uncompressed_store
+    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .await?;
   uncompressed_store.sync()?;
   let uncompressed_data = std::fs::read(&file_path)?;
 
@@ -463,15 +507,17 @@ fn test_recovery_mixed_compressed_and_uncompressed() -> anyhow::Result<()> {
   Ok(())
 }
 
-#[test]
-fn test_recovery_decompression_transparent() -> anyhow::Result<()> {
+#[tokio::test]
+async fn test_recovery_decompression_transparent() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let file_path = temp_dir.path().join("test.jrn");
 
   // Create store with compressible data
   let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
   let compressible = "A".repeat(500);
-  let v1 = store.insert("data".to_string(), Value::String(compressible.clone()))?;
+  let v1 = store
+    .insert("data".to_string(), Value::String(compressible.clone()))
+    .await?;
   store.sync()?;
 
   // Create uncompressed recovery baseline
@@ -483,7 +529,7 @@ fn test_recovery_decompression_transparent() -> anyhow::Result<()> {
   let archive_version = store.current_version();
 
   // Rotate to compress
-  store.rotate_journal()?;
+  store.rotate_journal().await?;
 
   // Read compressed archive
   let compressed_path = temp_dir

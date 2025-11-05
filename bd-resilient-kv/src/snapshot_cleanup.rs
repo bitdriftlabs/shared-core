@@ -5,7 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Information about an archived journal snapshot.
@@ -87,7 +86,7 @@ impl SnapshotCleanup {
   ///
   /// # Errors
   /// Returns an error if the directory cannot be read or if file metadata cannot be accessed.
-  pub fn list_snapshots(&self) -> anyhow::Result<Vec<SnapshotInfo>> {
+  pub async fn list_snapshots(&self) -> anyhow::Result<Vec<SnapshotInfo>> {
     let mut snapshots = Vec::new();
 
     // Read directory entries
@@ -95,15 +94,14 @@ impl SnapshotCleanup {
       return Ok(snapshots);
     }
 
-    let entries = fs::read_dir(&self.directory)?;
+    let mut entries = tokio::fs::read_dir(&self.directory).await?;
 
-    for entry in entries {
-      let entry = entry?;
+    while let Some(entry) = entries.next_entry().await? {
       let path = entry.path();
 
       // Check if this is an archived snapshot for our journal
       if let Some(version) = self.extract_version_from_path(&path) {
-        let metadata = entry.metadata()?;
+        let metadata = entry.metadata().await?;
         snapshots.push(SnapshotInfo {
           path: path.clone(),
           version,
@@ -139,13 +137,16 @@ impl SnapshotCleanup {
   /// // Keep snapshots at version 5000 and later, remove older ones
   /// let removed = cleanup.cleanup_before_version(5000)?;
   /// ```
-  pub fn cleanup_before_version(&self, min_version: u64) -> anyhow::Result<Vec<SnapshotInfo>> {
-    let snapshots = self.list_snapshots()?;
+  pub async fn cleanup_before_version(
+    &self,
+    min_version: u64,
+  ) -> anyhow::Result<Vec<SnapshotInfo>> {
+    let snapshots = self.list_snapshots().await?;
     let mut removed = Vec::new();
 
     for snapshot in snapshots {
       if snapshot.version < min_version {
-        fs::remove_file(&snapshot.path)?;
+        tokio::fs::remove_file(&snapshot.path).await?;
         removed.push(snapshot);
       }
     }
@@ -171,8 +172,8 @@ impl SnapshotCleanup {
   /// // Keep only the 5 most recent snapshots
   /// let removed = cleanup.cleanup_keep_recent(5)?;
   /// ```
-  pub fn cleanup_keep_recent(&self, keep_count: usize) -> anyhow::Result<Vec<SnapshotInfo>> {
-    let mut snapshots = self.list_snapshots()?;
+  pub async fn cleanup_keep_recent(&self, keep_count: usize) -> anyhow::Result<Vec<SnapshotInfo>> {
+    let mut snapshots = self.list_snapshots().await?;
 
     if snapshots.len() <= keep_count {
       return Ok(Vec::new());
@@ -184,7 +185,7 @@ impl SnapshotCleanup {
     // Remove all except the most recent keep_count
     let mut removed = Vec::new();
     for snapshot in snapshots.into_iter().skip(keep_count) {
-      fs::remove_file(&snapshot.path)?;
+      tokio::fs::remove_file(&snapshot.path).await?;
       removed.push(snapshot);
     }
 
@@ -198,8 +199,8 @@ impl SnapshotCleanup {
   ///
   /// # Errors
   /// Returns an error if snapshots cannot be listed.
-  pub fn total_snapshot_size(&self) -> anyhow::Result<u64> {
-    let snapshots = self.list_snapshots()?;
+  pub async fn total_snapshot_size(&self) -> anyhow::Result<u64> {
+    let snapshots = self.list_snapshots().await?;
     Ok(snapshots.iter().map(|s| s.size_bytes).sum())
   }
 
@@ -209,8 +210,8 @@ impl SnapshotCleanup {
   ///
   /// # Errors
   /// Returns an error if snapshots cannot be listed.
-  pub fn oldest_snapshot_version(&self) -> anyhow::Result<Option<u64>> {
-    let snapshots = self.list_snapshots()?;
+  pub async fn oldest_snapshot_version(&self) -> anyhow::Result<Option<u64>> {
+    let snapshots = self.list_snapshots().await?;
     Ok(snapshots.first().map(|s| s.version))
   }
 
@@ -220,8 +221,8 @@ impl SnapshotCleanup {
   ///
   /// # Errors
   /// Returns an error if snapshots cannot be listed.
-  pub fn newest_snapshot_version(&self) -> anyhow::Result<Option<u64>> {
-    let snapshots = self.list_snapshots()?;
+  pub async fn newest_snapshot_version(&self) -> anyhow::Result<Option<u64>> {
+    let snapshots = self.list_snapshots().await?;
     Ok(snapshots.last().map(|s| s.version))
   }
 

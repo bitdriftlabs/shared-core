@@ -20,3 +20,4 @@ bd-workspace-hack.workspace = true
 bytes.workspace             = true
 flate2.workspace            = true
 memmap2.workspace           = true
+tokio.workspace             = true

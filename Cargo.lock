@@ -1111,6 +1111,7 @@ dependencies = [
  "flate2",
  "memmap2",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]

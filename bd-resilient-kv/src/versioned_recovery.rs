@@ -11,6 +11,7 @@ use bd_bonjson::Value;
 use bd_bonjson::decoder::from_slice;
 use flate2::read::ZlibDecoder;
 use std::io::Read;
+use std::path::Path;
 
 /// A utility for recovering state at arbitrary versions from raw journal data.
 ///
@@ -74,6 +75,28 @@ impl VersionedRecovery {
     Ok(Self {
       journals: journal_infos,
     })
+  }
+
+  /// Create a new recovery utility from journal file paths.
+  ///
+  /// This is an async convenience method that reads journal files from disk.
+  /// The journals should be provided in chronological order (oldest to newest).
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if any file cannot be read or if any journal is invalid.
+  pub async fn from_files(journal_paths: Vec<&Path>) -> anyhow::Result<Self> {
+    let mut journal_data = Vec::new();
+
+    for path in journal_paths {
+      let data = tokio::fs::read(path).await?;
+      journal_data.push(data);
+    }
+
+    // Convert Vec<Vec<u8>> to Vec<&[u8]>
+    let journal_slices: Vec<&[u8]> = journal_data.iter().map(Vec::as_slice).collect();
+
+    Self::new(journal_slices)
   }
 
   /// Recover the key-value state at a specific version.
