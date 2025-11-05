@@ -67,6 +67,11 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 - Optional callback invoked with archived path and version
 - Application controls upload/cleanup of archived journals
 
+**Rotation Guarantees**:
+- **Impossible Failure Mode**: Rotation cannot fail due to insufficient buffer space
+- **Reasoning**: Rotation creates a new journal with the same buffer size as the original. Since compaction only removes redundant updates (old versions of keys), the compacted state is always ≤ the current journal size. If data fits in the journal during normal operation, it will always fit during rotation.
+- **Implication**: Applications do not need to handle "buffer overflow during rotation" errors. This is an architectural guarantee.
+
 **Compression**:
 - All archived journals are automatically compressed during rotation using async I/O
 - Active journals remain uncompressed for write performance
@@ -228,6 +233,45 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
 - **Retry Logic**: `set_multiple` should retry on failure if high water mark not triggered
 - **Error Scenarios**: Actual errors should be propagated, not masked
 
+## Failure Modes: What to Handle vs What's Impossible
+
+### Failure Modes Applications Must Handle
+
+1. **Buffer Full During Normal Writes**
+   - **When**: Writing to journal when buffer is at capacity
+   - **Result**: Write operations return `SerializationError::BufferFull`
+   - **Action**: Check `is_high_water_mark_triggered()`, trigger compaction/rotation if needed
+   - **Note**: Even after compaction, if unique data exceeds buffer size, writes will still fail
+
+2. **High Water Mark Triggered After Compaction (KVStore)**
+   - **When**: Compacted state still exceeds high water mark threshold
+   - **Result**: `is_high_water_mark_triggered()` returns true after `switch_journals()`
+   - **Action**: Indicates buffer size is too small for the unique data volume, not a transient issue
+
+3. **I/O Errors During Persistence**
+   - **When**: File operations fail (disk full, permissions, etc.)
+   - **Result**: I/O errors propagated from memory-mapped operations
+   - **Action**: Handle as standard I/O errors
+
+4. **Compression/Archive Errors (VersionedKVStore)**
+   - **When**: Rotation callback receives archived journal path but compression fails
+   - **Result**: Application-level error in rotation callback
+   - **Action**: Retry compression, handle cleanup appropriately
+
+### Impossible Failure Modes (Architectural Guarantees)
+
+1. **Buffer Overflow During Rotation (VersionedKVStore)**
+   - **Why Impossible**: Rotation creates new journal with same buffer size. Compaction only removes redundant updates, so compacted state ≤ current journal size. If data fits during normal operation, it always fits during rotation.
+   - **Implication**: No need to handle "insufficient buffer during rotation" errors
+
+2. **Buffer Overflow During Compaction (KVStore)**
+   - **Why Impossible**: Compaction via `reinit_from()` writes to inactive buffer of the same size. Same reasoning as rotation.
+   - **Implication**: `switch_journals()` may set high water mark flag, but won't fail due to buffer overflow
+
+3. **Version Number Overflow (VersionedKVStore)**
+   - **Why Practically Impossible**: Uses u64, would require 58+ million years at 10,000 writes/second
+   - **Implication**: No overflow handling needed in practice
+
 ## Common Pitfalls
 
 ### 1. Assuming Compaction Always Works
@@ -241,6 +285,10 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
 ### 3. Error Handling
 **Wrong**: Assuming high water mark flag means operation failed
 **Right**: High water mark flag indicates resource pressure, operations may still succeed
+
+### 4. Over-Engineering for Impossible Scenarios
+**Wrong**: Adding error handling for rotation buffer overflow
+**Right**: Trust architectural guarantees, focus on actual failure modes
 
 ## Key Methods and Their Purposes
 

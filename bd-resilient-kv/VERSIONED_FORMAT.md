@@ -132,6 +132,24 @@ Archived journals are automatically compressed using zlib (compression level 3) 
 - **Benefits**: Reduced storage space and bandwidth for remote backups
 - **Performance**: Compression level 3 provides good balance between speed and compression ratio
 
+### Rotation Failure Modes
+
+**Impossible Failure: Buffer Overflow During Rotation**
+
+Rotation **cannot fail** due to insufficient buffer space. This is an architectural guarantee:
+
+- **Why**: Rotation creates a new journal with the same buffer size as the original journal
+- **Compaction Property**: The compacted state only includes current key-value pairs (removes redundant/old versions)
+- **Mathematical Guarantee**: Compacted state size ≤ current journal size
+- **Conclusion**: If data fits in the journal during normal operation, it will always fit during rotation
+
+**What Can Fail:**
+- I/O errors (disk full, permissions, etc.)
+- Compression errors in the callback phase (application-level)
+
+**What Cannot Fail:**
+- Writing compacted state to new journal buffer (guaranteed to fit)
+
 ## Recovery and Audit
 
 ### Current State Recovery
