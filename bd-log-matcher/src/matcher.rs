@@ -205,7 +205,7 @@ impl Tree {
     log_type: LogType,
     message: &LogMessage,
     fields: FieldsRef<'_>,
-    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
+    state: &dyn bd_state::StateReader,
     extracted_fields: &TinyMap<String, String>,
   ) -> bool {
     match self {
@@ -217,28 +217,26 @@ impl Tree {
         Leaf::IntValue(input, criteria) =>
         {
           #[allow(clippy::cast_possible_truncation)]
-          input
-            .get(message, fields, feature_flags)
-            .is_some_and(|input| {
-              input
-                .parse::<f64>()
-                .is_ok_and(|v| criteria.evaluate(v as i32, extracted_fields))
-            })
+          input.get(message, fields, state).is_some_and(|input| {
+            input
+              .parse::<f64>()
+              .is_ok_and(|v| criteria.evaluate(v as i32, extracted_fields))
+          })
         },
-        Leaf::DoubleValue(input, criteria) => input
-          .get(message, fields, feature_flags)
-          .is_some_and(|input| {
+        Leaf::DoubleValue(input, criteria) => {
+          input.get(message, fields, state).is_some_and(|input| {
             input
               .parse()
               .is_ok_and(|v| criteria.evaluate(v, extracted_fields))
-          }),
+          })
+        },
         Leaf::StringValue(input, criteria) => input
-          .get(message, fields, feature_flags)
+          .get(message, fields, state)
           .is_some_and(|input| criteria.evaluate(input.as_ref(), extracted_fields)),
         Leaf::VersionValue(input, criteria) => input
-          .get(message, fields, feature_flags)
+          .get(message, fields, state)
           .is_some_and(|input| criteria.evaluate(input.as_ref())),
-        Leaf::IsSetValue(input) => input.get(message, fields, feature_flags).is_some(),
+        Leaf::IsSetValue(input) => input.get(message, fields, state).is_some(),
         Leaf::Any => true,
       },
       Self::Or(or_matchers) => or_matchers.iter().any(|matcher| {
@@ -247,7 +245,7 @@ impl Tree {
           log_type,
           message,
           fields,
-          feature_flags,
+          state,
           extracted_fields,
         )
       }),
@@ -257,7 +255,7 @@ impl Tree {
           log_type,
           message,
           fields,
-          feature_flags,
+          state,
           extracted_fields,
         )
       }),
@@ -266,7 +264,7 @@ impl Tree {
         log_type,
         message,
         fields,
-        feature_flags,
+        state,
         extracted_fields,
       ),
     }
@@ -444,14 +442,13 @@ impl InputType {
     &self,
     message: &'a LogMessage,
     fields: FieldsRef<'a>,
-    feature_flags: Option<&'a bd_feature_flags::FeatureFlags>,
+    state: &'a dyn bd_state::StateReader,
   ) -> Option<Cow<'a, str>> {
     match self {
       Self::Message => message.as_str().map(Cow::Borrowed),
       Self::Field(field_key) => fields.field_value(field_key),
-      Self::FeatureFlag(flag_key) => feature_flags?
-        .get(flag_key)
-        .map(|v| v.variant.unwrap_or_default())
+      Self::FeatureFlag(flag_key) => state
+        .get(bd_state::Scope::FeatureFlag, flag_key)
         .map(Cow::Borrowed),
     }
   }

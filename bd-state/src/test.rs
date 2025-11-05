@@ -1,0 +1,102 @@
+// shared-core - bitdrift's common client/server libraries
+// Copyright Bitdrift, Inc. All rights reserved.
+//
+// Use of this source code is governed by a source available license that can be found in the
+// LICENSE file or at:
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
+
+// Test code only.
+#![allow(clippy::unwrap_used, clippy::panic)]
+
+use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
+
+//
+// TestStateReader
+//
+
+/// A simple in-memory state reader for tests. This avoids the need for async,
+/// temporary directories, or complex setup in tests that only need to read state.
+///
+/// # Example
+/// ```
+/// use bd_state::test::TestStateReader;
+/// use bd_state::{Scope, StateReader};
+///
+/// let mut reader = TestStateReader::default();
+/// reader.insert(Scope::FeatureFlag, "my_flag", "true");
+/// assert_eq!(reader.get(Scope::FeatureFlag, "my_flag"), Some("true"));
+/// ```
+#[derive(Default)]
+pub struct TestStateReader {
+  data: HashMap<(crate::Scope, String), String>,
+}
+
+impl TestStateReader {
+  #[must_use]
+  pub fn new() -> Self {
+    Self::default()
+  }
+
+  /// Inserts a value into the test state reader. This is synchronous and doesn't
+  /// require async, making it easy to use in tests.
+  pub fn insert(&mut self, scope: crate::Scope, key: impl Into<String>, value: impl Into<String>) {
+    self.data.insert((scope, key.into()), value.into());
+  }
+}
+
+impl crate::StateReader for TestStateReader {
+  fn get(&self, scope: crate::Scope, key: &str) -> Option<&str> {
+    self.data.get(&(scope, key.to_string())).map(String::as_str)
+  }
+}
+
+//
+// TestStore
+//
+
+/// A wrapper around `Store` for use in tests. Handles temporary directory
+/// creation and cleanup.
+pub struct TestStore {
+  _dir: tempfile::TempDir,
+  inner: crate::Store,
+}
+
+impl TestStore {
+  #[must_use]
+  pub fn new() -> Self {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let store = crate::Store::new(temp_dir.path()).unwrap();
+
+    Self {
+      _dir: temp_dir,
+      inner: store,
+    }
+  }
+}
+
+impl Default for TestStore {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl Deref for TestStore {
+  type Target = crate::Store;
+
+  fn deref(&self) -> &Self::Target {
+    &self.inner
+  }
+}
+
+impl DerefMut for TestStore {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.inner
+  }
+}
+
+impl crate::StateReader for TestStore {
+  fn get(&self, scope: crate::Scope, key: &str) -> Option<&str> {
+    self.inner.get(scope, key)
+  }
+}

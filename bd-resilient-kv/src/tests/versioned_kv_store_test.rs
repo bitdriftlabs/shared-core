@@ -9,6 +9,7 @@
 
 use crate::VersionedKVStore;
 use bd_bonjson::Value;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
@@ -167,10 +168,12 @@ async fn test_rotation_callback() -> anyhow::Result<()> {
   let callback_data = Arc::new(Mutex::new(Vec::new()));
   let callback_data_clone = Arc::clone(&callback_data);
 
-  store.set_rotation_callback(Box::new(move |old_path, new_path, version| {
-    let mut data = callback_data_clone.lock().unwrap();
-    data.push((old_path.to_path_buf(), new_path.to_path_buf(), version));
-  }));
+  store.set_rotation_callback(Arc::new(Mutex::new(
+    move |old_path: &Path, new_path: &Path, version: u64| {
+      let mut data = callback_data_clone.lock().unwrap();
+      data.push((old_path.to_path_buf(), new_path.to_path_buf(), version));
+    },
+  )));
 
   // Write enough data to trigger rotation
   let mut last_version = 0;
@@ -557,10 +560,12 @@ async fn test_rotation_callback_receives_compressed_path() -> anyhow::Result<()>
   let callback_data = Arc::new(Mutex::new(None));
   let callback_data_clone = Arc::clone(&callback_data);
 
-  store.set_rotation_callback(Box::new(move |old_path, _new_path, _version| {
-    let mut data = callback_data_clone.lock().unwrap();
-    *data = Some(old_path.to_path_buf());
-  }));
+  store.set_rotation_callback(Arc::new(Mutex::new(
+    move |old_path: &Path, _new_path: &Path, _version: u64| {
+      let mut data = callback_data_clone.lock().unwrap();
+      *data = Some(old_path.to_path_buf());
+    },
+  )));
 
   store
     .insert("key1".to_string(), Value::String("value1".to_string()))

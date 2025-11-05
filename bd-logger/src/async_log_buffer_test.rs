@@ -18,7 +18,6 @@ use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
-use bd_feature_flags::{FeatureFlags, FeatureFlagsBuilder};
 use bd_log_filter::FilterChain;
 use bd_log_matcher::builder::message_equals;
 use bd_log_primitives::size::MemorySized;
@@ -124,6 +123,7 @@ impl Setup {
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
 
     AsyncLogBuffer::new(
+      self.tmp_dir.path(),
       self.make_logging_context(),
       replayer,
       Arc::new(Strategy::Fixed(fixed::Strategy::new(
@@ -144,7 +144,6 @@ impl Setup {
       in_memory_store(),
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
-      FeatureFlagsBuilder::new(&self.tmp_dir.path().join("feature_flags"), 1024, 0.8),
       self.data_upload_tx.clone(),
     )
   }
@@ -159,6 +158,7 @@ impl Setup {
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let (_, report_rx) = tokio::sync::mpsc::channel(1);
     AsyncLogBuffer::new(
+      self.tmp_dir.path(),
       self.make_logging_context(),
       LoggerReplay {},
       Arc::new(Strategy::Fixed(fixed::Strategy::new(
@@ -179,7 +179,6 @@ impl Setup {
       in_memory_store(),
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
-      FeatureFlagsBuilder::new(&self.tmp_dir.path().join("feature_flags"), 1024, 0.8),
       self.data_upload_tx.clone(),
     )
   }
@@ -243,7 +242,7 @@ impl LogReplay for TestReplay {
     log: Log,
     _block: bool,
     _processing_pipeline: &mut ProcessingPipeline,
-    _feature_flags: Option<&FeatureFlags>,
+    _state: Option<&bd_state::Store>,
     _now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     self.logs_count.fetch_add(1, Ordering::SeqCst);

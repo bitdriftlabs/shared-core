@@ -12,7 +12,9 @@ mod metadata_test;
 use bd_crash_handler::global_state;
 use bd_log::warn_every;
 use bd_log_metadata::MetadataProvider;
-use bd_log_primitives::{AnnotatedLogFields, LogFieldKey, LogFieldKind, LogFieldValue, LogFields};
+use bd_log_primitives::{AnnotatedLogFields, LogFieldKind, LogFields};
+#[cfg(test)]
+use bd_log_primitives::{LogFieldKey, LogFieldValue};
 use bd_proto::protos::logging::payload::LogType;
 use itertools::Itertools;
 use std::collections::BTreeSet;
@@ -179,6 +181,7 @@ impl MetadataCollector {
     })
   }
 
+  #[cfg(test)]
   pub(crate) fn add_field(&mut self, key: LogFieldKey, value: LogFieldValue) -> anyhow::Result<()> {
     verify_custom_field_name(&key)?;
 
@@ -187,6 +190,7 @@ impl MetadataCollector {
     Ok(())
   }
 
+  #[cfg(test)]
   pub(crate) fn remove_field(&mut self, field_key: &str) {
     self.fields.remove(field_key);
   }

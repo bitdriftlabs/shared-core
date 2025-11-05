@@ -26,8 +26,6 @@ use bd_client_common::{maybe_await, maybe_await_map};
 use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_error_reporter::reporter::{handle_unexpected, handle_unexpected_error_with_details};
-use bd_feature_flags::{FeatureFlags, FeatureFlagsBuilder};
-use bd_log::warn_every;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
@@ -58,24 +56,21 @@ use bd_workflows::workflow::WorkflowDebugStateMap;
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use std::collections::{HashMap, VecDeque};
 use std::mem::size_of_val;
+use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use tokio::sync::{mpsc, oneshot};
-use tokio::task;
 use tokio::time::Sleep;
 
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {
   EmitLog((LogLine, Option<oneshot::Sender<()>>)),
-  AddLogField(String, StringOrBytes<String, Vec<u8>>),
-  RemoveLogField(String),
-  SetFeatureFlag(String, Option<String>),
-  SetFeatureFlags(Vec<(String, Option<String>)>),
-  RemoveFeatureFlag(String),
-  ClearFeatureFlags,
   FlushState(Option<bd_completion::Sender<()>>),
+  UpsertState(bd_state::Scope, String, String),
+  RemoveState(bd_state::Scope, String),
+  ClearState(bd_state::Scope),
 }
 
 impl MemorySized for AsyncLogBufferMessage {
@@ -83,16 +78,8 @@ impl MemorySized for AsyncLogBufferMessage {
     size_of_val(self)
       + match self {
         Self::EmitLog((log, _)) => log.size(),
-        Self::AddLogField(key, value) => key.size() + value.size(),
-        Self::RemoveLogField(field_name) => field_name.len(),
-        Self::SetFeatureFlag(flag, variant) => flag.len() + variant.as_ref().map_or(0, String::len),
-        Self::SetFeatureFlags(flags) => flags
-          .iter()
-          .map(|(k, v)| k.len() + v.as_ref().map_or(0, String::len))
-          .sum(),
-        Self::RemoveFeatureFlag(flag) => flag.len(),
-        Self::ClearFeatureFlags => 0,
         Self::FlushState(sender) => size_of_val(sender),
+        Self::UpsertState(..) | Self::RemoveState(..) | Self::ClearState(_) => 0,
       }
   }
 }
@@ -165,22 +152,7 @@ impl MemorySized for LogLine {
   }
 }
 
-/// Tracks the initialization state of the feature flags. By tracking the initialization state like
-/// this we can avoid attempting to initialize the feature flags multiple times in the case of
-/// failures.
-enum FeatureFlagInitialization {
-  Pending(FeatureFlagsBuilder),
-  Initialized(Option<FeatureFlags>),
-}
 
-impl FeatureFlagInitialization {
-  fn get(&self) -> Option<&FeatureFlags> {
-    match self {
-      Self::Pending(_) => None,
-      Self::Initialized(flags_option) => flags_option.as_ref(),
-    }
-  }
-}
 
 //
 // AsyncLogBuffer
@@ -212,13 +184,14 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   time_provider: Arc<dyn TimeProvider>,
   lifecycle_state: InitLifecycleState,
 
-  feature_flags: FeatureFlagInitialization,
+  state_store: bd_state::Store,
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   pub(crate) fn new(
+    sdk_directory: &Path,
     uninitialized_logging_context: UninitializedLoggingContext<bd_log_primitives::Log>,
     replayer: R,
     session_strategy: Arc<bd_session::Strategy>,
@@ -236,7 +209,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     store: Arc<Store>,
     time_provider: Arc<dyn TimeProvider>,
     lifecycle_state: InitLifecycleState,
-    feature_flags_builder: FeatureFlagsBuilder,
     data_upload_tx: mpsc::Sender<DataUpload>,
   ) -> (Self, Sender<AsyncLogBufferMessage>) {
     let (async_log_buffer_communication_tx, async_log_buffer_communication_rx) = channel(
@@ -308,7 +280,17 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         time_provider,
         lifecycle_state,
 
-        feature_flags: FeatureFlagInitialization::Pending(feature_flags_builder),
+        // TODO(snowp): We need to handle new vs old here.
+        state_store: {
+          let state_dir = sdk_directory.join("state");
+          if let Err(e) = std::fs::create_dir_all(&state_dir) {
+            log::error!("Failed to create state directory: {e}");
+          }
+          bd_state::Store::new(&state_dir).unwrap_or_else(|e| {
+            log::error!("Failed to create state store: {e}");
+            std::process::exit(1);
+          })
+        },
 
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
@@ -392,105 +374,34 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
   pub fn add_log_field(
     tx: &Sender<AsyncLogBufferMessage>,
-    key: String,
+    key: &str,
     value: StringOrBytes<String, Vec<u8>>,
   ) -> Result<(), TrySendError> {
-    tx.try_send(AsyncLogBufferMessage::AddLogField(key, value))
+    // Convert the value to a string representation for storage
+    let value_string = match value {
+      StringOrBytes::String(s) => s,
+      StringOrBytes::SharedString(s) => (*s).clone(),
+      StringOrBytes::Bytes(b) => {
+        // For bytes, we'll use base64 encoding to store as string
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode(&b)
+      },
+    };
+    tx.try_send(AsyncLogBufferMessage::UpsertState(
+      bd_state::Scope::GlobalState,
+      format!("log_field:{key}"),
+      value_string,
+    ))
   }
 
   pub fn remove_log_field(
     tx: &Sender<AsyncLogBufferMessage>,
     field_name: &str,
   ) -> Result<(), TrySendError> {
-    tx.try_send(AsyncLogBufferMessage::RemoveLogField(
-      field_name.to_string(),
+    tx.try_send(AsyncLogBufferMessage::RemoveState(
+      bd_state::Scope::GlobalState,
+      format!("log_field:{field_name}"),
     ))
-  }
-
-  /// Sends a message to set or update a feature flag.
-  ///
-  /// This is an internal method used by the logger to send feature flag update messages
-  /// to the async log buffer. The message is sent asynchronously and will be processed
-  /// by the log buffer thread.
-  ///
-  /// # Arguments
-  ///
-  /// * `tx` - The sender channel to the async log buffer
-  /// * `flag` - The name of the feature flag to set or update
-  /// * `variant` - The variant value for the flag (None for boolean-style flags)
-  ///
-  /// # Returns
-  ///
-  /// Returns `Ok(())` if the message was sent successfully, or a `TrySendError`
-  /// if the channel is full or disconnected.
-  pub fn set_feature_flag(
-    tx: &Sender<AsyncLogBufferMessage>,
-    flag: String,
-    variant: Option<String>,
-  ) -> Result<(), TrySendError> {
-    tx.try_send(AsyncLogBufferMessage::SetFeatureFlag(flag, variant))
-  }
-
-  /// Sends a message to set or update multiple feature flags.
-  ///
-  /// This is an internal method used by the logger to send multiple feature flag update
-  /// messages to the async log buffer in a single operation. The message is sent
-  /// asynchronously and will be processed by the log buffer thread.
-  ///
-  /// # Arguments
-  ///
-  /// * `tx` - The sender channel to the async log buffer
-  /// * `flags` - A vector of tuples containing flag names and their variants
-  ///
-  /// # Returns
-  ///
-  /// Returns `Ok(())` if the message was sent successfully, or a `TrySendError`
-  /// if the channel is full or disconnected.
-  pub fn set_feature_flags(
-    tx: &Sender<AsyncLogBufferMessage>,
-    flags: Vec<(String, Option<String>)>,
-  ) -> Result<(), TrySendError> {
-    tx.try_send(AsyncLogBufferMessage::SetFeatureFlags(flags))
-  }
-
-  /// Sends a message to remove a feature flag.
-  ///
-  /// This is an internal method used by the logger to send feature flag removal messages
-  /// to the async log buffer. The message is sent asynchronously and will be processed
-  /// by the log buffer thread.
-  ///
-  /// # Arguments
-  ///
-  /// * `tx` - The sender channel to the async log buffer
-  /// * `flag` - The name of the feature flag to remove
-  ///
-  /// # Returns
-  ///
-  /// Returns `Ok(())` if the message was sent successfully, or a `TrySendError`
-  /// if the channel is full or disconnected.
-  pub fn remove_feature_flag(
-    tx: &Sender<AsyncLogBufferMessage>,
-    flag: String,
-  ) -> Result<(), TrySendError> {
-    tx.try_send(AsyncLogBufferMessage::RemoveFeatureFlag(flag))
-  }
-
-  /// Sends a message to clear all feature flags.
-  ///
-  /// This is an internal method used by the logger to send feature flag clear messages
-  /// to the async log buffer. The message is sent asynchronously and will be processed
-  /// by the log buffer thread.
-  ///
-  /// # Arguments
-  ///
-  /// * `tx` - The sender channel to the async log buffer
-  ///
-  /// # Returns
-  ///
-  /// Returns `Ok(())` if the message was sent successfully, or a `TrySendError`
-  /// if the channel is full or disconnected.
-  pub fn clear_feature_flags(tx: &Sender<AsyncLogBufferMessage>) -> Result<(), TrySendError> {
-    tx.try_send(AsyncLogBufferMessage::ClearFeatureFlags)
   }
 
   pub fn flush_state(tx: &Sender<AsyncLogBufferMessage>, block: Block) -> Result<(), TrySendError> {
@@ -737,7 +648,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log,
           block,
           &mut initialized_logging_context.processing_pipeline,
-          self.feature_flags.get(),
+          Some(&self.state_store),
           self.time_provider.now(),
         )
         .await
@@ -785,7 +696,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log_line,
           false,
           &mut initialized_logging_context.processing_pipeline,
-          self.feature_flags.get(),
+          Some(&self.state_store),
           now,
         )
         .await
@@ -892,40 +803,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 log::debug!("failed to send log processing completion");
               }
             },
-            AsyncLogBufferMessage::AddLogField(key, value) => {
-              if let Err(e) = self.metadata_collector.add_field(key.clone().into(), value.clone()) {
-                log::warn!("failed to add log field ({key:?}): {e}");
+            AsyncLogBufferMessage::UpsertState(scope, key, value) => {
+              if let Err(e) = self.state_store.insert(scope, &key, value).await {
+                log::debug!("failed to upsert state for key '{key}': {e}");
               }
             },
-            AsyncLogBufferMessage::RemoveLogField(field_name) => {
-              self.metadata_collector.remove_field(&field_name);
-            },
-            AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
-              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
-                feature_flags.set(flag, variant.as_deref()).unwrap_or_else(|e| {
-                  log::warn!("failed to set feature flag: {e}");
-                });
+            AsyncLogBufferMessage::RemoveState(scope, key) => {
+              if let Err(e) = self.state_store.remove(scope, &key).await {
+                log::debug!("failed to remove state for key '{key}': {e}");
               }
             },
-            AsyncLogBufferMessage::SetFeatureFlags(flags) => {
-              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
-                feature_flags.set_multiple(flags).unwrap_or_else(|e| {
-                  log::warn!("failed to set feature flags: {e}");
-                });
-              }
-            },
-            AsyncLogBufferMessage::RemoveFeatureFlag(flag) => {
-              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
-                feature_flags.remove(&flag).unwrap_or_else(|e| {
-                  log::warn!("failed to remove feature flag ({flag:?}): {e}");
-                });
-              }
-            },
-            AsyncLogBufferMessage::ClearFeatureFlags => {
-              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
-                feature_flags.clear().unwrap_or_else(|e| {
-                  log::warn!("failed to clear feature flags: {e}");
-                });
+            AsyncLogBufferMessage::ClearState(scope) => {
+              if let Err(e) = self.state_store.clear(scope).await {
+                log::debug!("failed to clear state: {e}");
               }
             },
             AsyncLogBufferMessage::FlushState(completion_tx) => {
@@ -981,39 +871,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           return self;
         },
       }
-    }
-  }
-
-  /// Lazily initializes the feature flags if they have not been initialized yet.
-  async fn maybe_initialize_feature_flags(&mut self) -> Option<&mut FeatureFlags> {
-    if let FeatureFlagInitialization::Pending(builder) = &self.feature_flags {
-      let builder = builder.clone();
-      let feature_flags = task::spawn_blocking(move || {
-        // This should never fail unless there's a serious filesystem issue.
-        // Treat this as an unexpected error so we get visibility into it.
-        // If this keeps happening for normal reasons we can remove this later.
-        builder
-          .current_feature_flags()
-          .map_err(|e| {
-            handle_unexpected_error_with_details(e, "feature flag initialization", || None);
-          })
-          .ok()
-      })
-      .await
-      .ok()
-      .flatten();
-
-      self.feature_flags = FeatureFlagInitialization::Initialized(feature_flags);
-    }
-
-    if let FeatureFlagInitialization::Initialized(ref mut feature_flags) = self.feature_flags {
-      feature_flags.as_mut()
-    } else {
-      warn_every!(
-        30.seconds(),
-        "feature flags failed to initialize, will not be available"
-      );
-      None
     }
   }
 

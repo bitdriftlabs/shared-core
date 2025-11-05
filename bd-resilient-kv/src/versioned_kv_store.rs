@@ -10,6 +10,7 @@ use ahash::AHashMap;
 use async_compression::tokio::write::ZlibEncoder;
 use bd_bonjson::Value;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use tokio::io::AsyncWriteExt;
 
 /// Callback invoked when journal rotation occurs.
@@ -21,7 +22,10 @@ use tokio::io::AsyncWriteExt;
 ///
 /// This callback can be used to trigger asynchronous upload of archived journals to remote
 /// storage, perform cleanup, or other post-rotation operations.
-pub type RotationCallback = Box<dyn FnMut(&Path, &Path, u64) + Send>;
+///
+/// The callback is wrapped in `Arc<Mutex<>>` to allow it to be safely shared across threads
+/// while still allowing mutation.
+pub type RotationCallback = Arc<Mutex<dyn FnMut(&Path, &Path, u64) + Send>>;
 
 /// Compress an archived journal using zlib with streaming I/O.
 ///
@@ -379,8 +383,10 @@ impl VersionedKVStore {
     tokio::fs::remove_file(&temp_uncompressed).await?;
 
     // Invoke rotation callback if set
-    if let Some(ref mut callback) = self.rotation_callback {
-      callback(&archived_path, &journal_path, rotation_version);
+    if let Some(ref callback) = self.rotation_callback
+      && let Ok(mut cb) = callback.lock()
+    {
+      cb(&archived_path, &journal_path, rotation_version);
     }
 
     Ok(())

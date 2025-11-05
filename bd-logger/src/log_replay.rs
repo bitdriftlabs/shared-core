@@ -56,7 +56,7 @@ pub trait LogReplay {
     log: Log,
     block: bool,
     pipeline: &mut ProcessingPipeline,
-    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
+    state: Option<&bd_state::Store>,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult>;
 }
@@ -74,10 +74,12 @@ impl LogReplay for LoggerReplay {
     log: Log,
     block: bool,
     pipeline: &mut ProcessingPipeline,
-    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
+    state: Option<&bd_state::Store>,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
-    pipeline.process_log(log, feature_flags, block, now).await
+    // State should always be present in production code
+    let state = state.ok_or_else(|| anyhow::anyhow!("state must be present"))?;
+    pipeline.process_log(log, state, block, now).await
   }
 }
 
@@ -187,20 +189,20 @@ impl ProcessingPipeline {
   async fn process_log(
     &mut self,
     mut log: Log,
-    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
+    state: &bd_state::Store,
     block: bool,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     self.stats.logs_received.inc();
 
     // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
-    self.filter_chain.process(&mut log, feature_flags);
+    self.filter_chain.process(&mut log, state);
     let mut log = LogEncodingHelper::new(log, (*self.min_log_compression_size.read()).into());
 
     let flush_stats_trigger = self.flush_stats_trigger.clone();
     let flush_buffers_tx = self.flush_buffers_tx.clone();
 
-    match self.tail_configs.maybe_stream_log(&mut log, feature_flags) {
+    match self.tail_configs.maybe_stream_log(&mut log, state) {
       Ok(streamed) => {
         if streamed {
           self.stats.streamed_logs.inc();
@@ -216,12 +218,12 @@ impl ProcessingPipeline {
       log.log.log_level,
       &log.log.message,
       FieldsRef::new(&log.log.fields, &log.log.matching_fields),
+      state,
     );
 
-    let mut result =
-      self
-        .workflows_engine
-        .process_log(&log.log, &matching_buffers, feature_flags, now);
+    let mut result = self
+      .workflows_engine
+      .process_log(&log.log, &matching_buffers, state, now);
     let log_replay_result = LogReplayResult {
       logs_to_inject: std::mem::take(&mut result.logs_to_inject)
         .into_values()

@@ -30,7 +30,6 @@ use bd_client_stats::stats::{
 use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
-use bd_feature_flags::FeatureFlagsBuilder;
 use bd_internal_logging::NoopLogger;
 use bd_runtime::runtime::network_quality::NetworkCallOnlineIndicatorTimeout;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
@@ -207,13 +206,8 @@ impl LoggerBuilder {
         log_network_quality_provider.clone(),
       ]));
 
-    let feature_flags_builder = FeatureFlagsBuilder::new(
-      &self.params.sdk_directory,
-      self.params.feature_flags_file_size_bytes,
-      self.params.feature_flags_high_watermark,
-    );
-
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
+      &self.params.sdk_directory,
       UninitializedLoggingContext::new(
         &self.params.sdk_directory,
         &runtime_loader,
@@ -242,7 +236,6 @@ impl LoggerBuilder {
       self.params.store.clone(),
       time_provider.clone(),
       init_lifecycle.clone(),
-      feature_flags_builder.clone(),
       data_upload_tx.clone(),
     );
 
@@ -273,10 +266,22 @@ impl LoggerBuilder {
 
     UnexpectedErrorHandler::register_stats(&scope);
 
+    // Backup the state before creating the logger future.
+    // This is done synchronously to avoid Send/Sync issues with the Store.
+    {
+      let state_directory = self.params.sdk_directory.join("state");
+      if let Ok(state_store) = bd_state::Store::new(&state_directory) {
+        if let Err(e) = state_store.backup_previous(&state_directory) {
+          log::warn!("Failed to backup previous state: {e}");
+        }
+        // state_store is explicitly dropped here
+        drop(state_store);
+      }
+    }
+
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
       init_lifecycle.set(bd_client_common::init_lifecycle::InitLifecycle::RuntimeLoaded);
-      feature_flags_builder.backup_previous();
 
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
@@ -293,7 +298,6 @@ impl LoggerBuilder {
         Arc::new(artifact_client),
         self.params.session_strategy.previous_process_session_id(),
         &init_lifecycle,
-        feature_flags_builder,
       );
 
       // Building the crash monitor requires artifact uploader and knowing

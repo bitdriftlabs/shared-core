@@ -24,7 +24,6 @@ pub mod global_state;
 use bd_artifact_upload::SnappedFeatureFlag;
 use bd_client_common::debug_check_lifecycle_less_than;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
-use bd_feature_flags::FeatureFlagsBuilder;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
@@ -99,7 +98,7 @@ pub struct Monitor {
   report_directory: PathBuf,
   previous_run_global_state: LogFields,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
-  feature_flags_manager: FeatureFlagsBuilder,
+  sdk_directory: PathBuf,
 }
 
 impl Monitor {
@@ -109,7 +108,6 @@ impl Monitor {
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
     previous_session_id: Option<String>,
     init_lifecycle: &InitLifecycleState,
-    feature_flags_manager: FeatureFlagsBuilder,
   ) -> Self {
     debug_check_lifecycle_less_than!(
       init_lifecycle,
@@ -124,7 +122,7 @@ impl Monitor {
       artifact_client,
       previous_session_id,
       previous_run_global_state,
-      feature_flags_manager,
+      sdk_directory: sdk_directory.to_path_buf(),
     }
   }
 
@@ -225,17 +223,24 @@ impl Monitor {
     // TODO(snowp): Add smarter handling to avoid duplicate reporting.
     // TODO(snowp): Consider only reporting one of the pending reports if there are multiple.
 
-    let previous_feature_flags = self.feature_flags_manager.previous_feature_flags().ok();
-    let reporting_feature_flags: Vec<SnappedFeatureFlag> = previous_feature_flags
+    // Try to open the previous state to read feature flags. If this fails, we'll just use empty
+    // feature flags.
+    let previous_state = bd_state::Store::open_previous(&self.sdk_directory.join("state")).ok();
+    let reporting_feature_flags: Vec<SnappedFeatureFlag> = previous_state
       .as_ref()
-      .map(|ff| {
-        ff.iter()
-          .map(|(name, flag)| {
-            SnappedFeatureFlag::new(
-              name.to_string(),
-              flag.variant.map(ToString::to_string),
-              flag.timestamp,
-            )
+      .map(|state| {
+        state
+          .iter_scope(bd_state::Scope::FeatureFlag)
+          .map(|(name, value)| {
+            // Use current time as timestamp since we don't store timestamps in the state store.
+            // This is acceptable for crash reporting as we just need the flag values.
+            // Empty strings represent flags without variants (stored as None).
+            let variant = if value.is_empty() {
+              None
+            } else {
+              Some(value.to_string())
+            };
+            SnappedFeatureFlag::new(name.to_string(), variant, OffsetDateTime::now_utc())
           })
           .collect()
       })

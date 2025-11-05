@@ -9,7 +9,6 @@ use crate::builder;
 use crate::matcher::Tree;
 use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
 use crate::test::TestMatcher;
-use bd_feature_flags::test::TestFeatureFlags;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{
   EMPTY_FIELDS,
@@ -816,8 +815,8 @@ fn test_is_set_matcher() {
   );
 }
 
-#[test]
-fn feature_flag_matcher() {
+#[tokio::test]
+async fn feature_flag_matcher() {
   struct Input {
     flags: Vec<(&'static str, Option<&'static str>)>,
     matcher: LogMatcher,
@@ -863,26 +862,21 @@ fn feature_flag_matcher() {
   ] {
     let matcher = TestMatcher::new(&input.matcher).unwrap();
 
-    let mut feature_flags = TestFeatureFlags::default();
-    feature_flags
-      .set_multiple(
-        input
-          .flags
-          .into_iter()
-          .map(|(k, v)| (k.to_string(), v))
-          .collect(),
-      )
-      .unwrap();
+    let mut state = bd_state::test::TestStore::default();
+    for (key, value) in input.flags {
+      state
+        .insert(
+          bd_state::Scope::FeatureFlag,
+          key,
+          value.unwrap_or("").to_string(),
+        )
+        .await
+        .unwrap();
+    }
 
     assert_eq!(
       input.matches,
-      matcher.match_log_with_feature_flags(
-        TypedLogLevel::Debug,
-        LogType::NORMAL,
-        "foo",
-        [],
-        &feature_flags,
-      )
+      matcher.match_log_with_state(TypedLogLevel::Debug, LogType::NORMAL, "foo", [], &state,)
     );
   }
 }
@@ -956,6 +950,7 @@ fn match_test_runner_with_extractions(
   extracted_fields: &TinyMap<String, String>,
 ) {
   let match_tree = Tree::new(&config).unwrap();
+  let state = bd_state::test::TestStore::default();
 
   for (input, should_match) in cases {
     let (log_type, log_level, message, fields) = input.clone();
@@ -969,7 +964,7 @@ fn match_test_runner_with_extractions(
         log_type,
         &message,
         fields,
-        None,
+        &state,
         extracted_fields
       ),
       "{input:?} should result in {should_match} but did not",

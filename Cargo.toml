@@ -17,6 +17,7 @@ members = [
   "bd-error-reporter",
   "bd-events",
   "bd-feature-flags",
+  "bd-state",
   "bd-grpc",
   "bd-grpc-codec",
   "bd-hyper-network",

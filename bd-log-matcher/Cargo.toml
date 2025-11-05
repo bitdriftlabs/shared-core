@@ -10,7 +10,7 @@ doctest = false
 
 [dependencies]
 anyhow.workspace            = true
-bd-feature-flags.path       = "../bd-feature-flags"
+bd-state.path       = "../bd-state"
 bd-log-primitives.path      = "../bd-log-primitives"
 bd-proto.path               = "../bd-proto"
 bd-workspace-hack.workspace = true
@@ -26,3 +26,4 @@ bd-test-helpers.path        = "../bd-test-helpers"
 matches.workspace           = true
 pretty_assertions.workspace = true
 time.workspace              = true
+tokio.workspace             = true

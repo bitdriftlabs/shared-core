@@ -602,6 +602,7 @@ dependencies = [
  "bd-proto-util",
  "bd-runtime",
  "bd-shutdown",
+ "bd-state",
  "bd-test-helpers",
  "bd-time",
  "bd-workspace-hack",
@@ -681,6 +682,7 @@ dependencies = [
  "bd-bonjson",
  "bd-client-common",
  "bd-resilient-kv",
+ "bd-state",
  "bd-workspace-hack",
  "log",
  "tempfile",
@@ -834,10 +836,10 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "bd-client-stats-store",
- "bd-feature-flags",
  "bd-log-matcher",
  "bd-log-primitives",
  "bd-proto",
+ "bd-state",
  "bd-test-helpers",
  "bd-time",
  "bd-workspace-hack",
@@ -855,9 +857,9 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "assert_matches",
- "bd-feature-flags",
  "bd-log-primitives",
  "bd-proto",
+ "bd-state",
  "bd-test-helpers",
  "bd-workspace-hack",
  "itertools 0.14.0",
@@ -867,6 +869,7 @@ dependencies = [
  "regex",
  "tempfile",
  "time",
+ "tokio",
 ]
 
 [[package]]
@@ -901,6 +904,7 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "backoff",
+ "base64",
  "bd-api",
  "bd-artifact-upload",
  "bd-bounded-buffer",
@@ -930,6 +934,7 @@ dependencies = [
  "bd-session",
  "bd-session-replay",
  "bd-shutdown",
+ "bd-state",
  "bd-stats-common",
  "bd-test-helpers",
  "bd-time",
@@ -1264,6 +1269,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-state"
+version = "1.0.0"
+dependencies = [
+ "ahash",
+ "anyhow",
+ "bd-bonjson",
+ "bd-client-common",
+ "bd-resilient-kv",
+ "bd-workspace-hack",
+ "itertools 0.14.0",
+ "log",
+ "tempfile",
+ "time",
+]
+
+[[package]]
 name = "bd-stats-common"
 version = "1.0.0"
 dependencies = [
@@ -1349,6 +1370,7 @@ dependencies = [
  "bd-proto",
  "bd-runtime",
  "bd-shutdown",
+ "bd-state",
  "bd-stats-common",
  "bd-test-helpers",
  "bd-time",
@@ -4152,6 +4174,7 @@ dependencies = [
  "bd-proto",
  "bd-runtime",
  "bd-shutdown",
+ "bd-state",
  "bd-stats-common",
  "bd-test-helpers",
  "bd-time",

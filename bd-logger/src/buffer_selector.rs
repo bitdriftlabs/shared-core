@@ -61,6 +61,7 @@ impl BufferSelector {
     log_level: LogLevel,
     message: &LogMessage,
     fields: FieldsRef<'_>,
+    state: &dyn bd_state::StateReader,
   ) -> TinySet<Cow<'_, str>> {
     let mut buffers = TinySet::default();
     for buffer in &self.buffer_filters {
@@ -70,10 +71,7 @@ impl BufferSelector {
           log_type,
           message,
           fields,
-          // TODO(snowp): If we ever support using the new matcher format for buffer selectors
-          // we'll want to plumb through feature flags here. For now there is no way to specify a
-          // feature flag matcher so there is no point.
-          None,
+          state,
           &TinyMap::default(),
         ) {
           buffers.insert(Cow::Borrowed(buffer.buffer_id.as_str()));

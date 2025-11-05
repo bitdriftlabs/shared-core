@@ -15,6 +15,10 @@ use bd_test_helpers::{capture_field, field_value, remove_field, set_field};
 use pretty_assertions::assert_eq;
 use time::macros::datetime;
 
+fn reader() -> bd_state::test::TestStateReader {
+  bd_state::test::TestStateReader::default()
+}
+
 #[test]
 fn filters_are_not_applied_to_non_matching_logs_only() {
   let filter_chain = make_filter_chain(
@@ -27,7 +31,7 @@ fn filters_are_not_applied_to_non_matching_logs_only() {
 
   // Filter's transform are not applied to logs that don't match filter's matcher.
   let mut log = make_log("not matching", fields.clone(), matching_fields.clone());
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
   assert_eq!(log, make_log("not matching", fields, matching_fields));
 }
 
@@ -42,7 +46,7 @@ fn filter_transforms_are_applied_in_order() {
   );
 
   let mut log = make_log("matching", [].into(), [].into());
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
   assert_eq!(
     log,
     make_log(
@@ -72,7 +76,7 @@ fn filters_are_applied_in_order() {
   });
 
   let mut log = make_log("matching", [].into(), [].into());
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
   assert_eq!(
     log,
     make_log(
@@ -95,13 +99,13 @@ fn capture_field_transform() {
 
   // Filter's transform captures an existing matching field.
   let mut log = make_log("matching", [].into(), [].into());
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
   assert!(log.fields.is_empty());
   assert!(log.matching_fields.is_empty());
 
   // Filter's transform does nothing when asked to capture a non-existing matching field.
   let mut log = make_log("matching", fields, matching_fields.clone());
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
   assert_eq!(log.fields, matching_fields);
   assert!(log.matching_fields.is_empty());
 }
@@ -118,7 +122,7 @@ fn set_captured_field_transform_overrides_existing_field() {
     LogFields::from([("foo".into(), "baz".into())]),
     [].into(),
   );
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
   assert_eq!(LogFields::from([("foo".into(), "bar".into(),)]), log.fields);
 }
 
@@ -130,7 +134,7 @@ fn set_captured_field_transform_does_not_override_existing_field() {
   );
 
   let mut log = make_log("matching", [("foo".into(), "baz".into())].into(), [].into());
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
   assert_eq!(LogFields::from([("foo".into(), "baz".into(),)]), log.fields);
 }
 
@@ -146,7 +150,7 @@ fn set_captured_field_transform_adds_new_field() {
     LogFields::from([("foo".into(), "bar".into())]),
     [].into(),
   );
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
   assert_eq!(
     LogFields::from([
       ("foo".into(), "bar".into(),),
@@ -164,7 +168,7 @@ fn set_captured_field_transform_copies_existing_field_value() {
   );
 
   let mut log = make_log("matching", [("foo".into(), "bar".into())].into(), [].into());
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
   assert_eq!(
     LogFields::from([
       ("foo".into(), "bar".into(),),
@@ -182,7 +186,7 @@ fn set_matching_field_transform_overrides_existing_field() {
   );
 
   let mut log = make_log("matching", [].into(), [("foo".into(), "baz".into())].into());
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
   assert_eq!(
     LogFields::from([("foo".into(), "bar".into(),)]),
     log.matching_fields
@@ -197,7 +201,7 @@ fn set_matching_field_transform_adds_new_field() {
   );
 
   let mut log = make_log("matching", [].into(), [("foo".into(), "bar".into())].into());
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
   assert_eq!(
     LogFields::from([
       ("foo".into(), "bar".into(),),
@@ -226,7 +230,7 @@ fn remove_field_transform_removes_existing_fields() {
     .into(),
   );
 
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
 
   assert_eq!(LogFields::from([("foo".into(), "bar".into(),)]), log.fields);
   assert_eq!(
@@ -267,7 +271,7 @@ fn regex_match_and_substitute() {
     [].into(),
   );
 
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
 
   assert_eq!(
     LogFields::from([
@@ -300,7 +304,7 @@ fn regex_match_and_invalid_substitute() {
     [].into(),
   );
 
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
 
   assert_eq!(
     LogFields::from([(
@@ -338,7 +342,7 @@ fn extracts_message_portion_and_creates_field_with_it() {
 
   let mut log = make_log("I like apple", [].into(), [].into());
 
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
 
   assert_eq!(log.fields, [("fruit".into(), "apple".into(),)].into());
 }
@@ -355,7 +359,7 @@ fn copies_log_level_and_log_type() {
 
   let mut log = make_log("foo", [].into(), [].into());
 
-  filter_chain.process(&mut log, None);
+  filter_chain.process(&mut log, &reader());
 
   assert_eq!(
     log.fields,
