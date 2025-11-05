@@ -375,7 +375,10 @@ fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
   );
 
   // Verify ordering is still correct
-  assert!(ts2_after > ts1_after, "Timestamp ordering should be preserved");
+  assert!(
+    ts2_after > ts1_after,
+    "Timestamp ordering should be preserved"
+  );
 
   Ok(())
 }
@@ -398,7 +401,7 @@ fn test_compression_during_rotation() -> anyhow::Result<()> {
 
   // Get current version before rotation (this is what will be used in the archive name)
   let rotation_version = store.current_version();
-  
+
   // Trigger rotation
   store.rotate_journal()?;
 
@@ -445,7 +448,10 @@ fn test_compression_ratio() -> anyhow::Result<()> {
   // Insert highly compressible data
   let compressible_data = "A".repeat(500);
   for i in 0 .. 10 {
-    store.insert(format!("key{}", i), Value::String(compressible_data.clone()))?;
+    store.insert(
+      format!("key{}", i),
+      Value::String(compressible_data.clone()),
+    )?;
   }
 
   let uncompressed_size = std::fs::metadata(&file_path)?.len();
@@ -491,9 +497,7 @@ fn test_multiple_rotations_with_compression() -> anyhow::Result<()> {
 
   // Verify all compressed archives exist
   for version in rotation_versions {
-    let archived_path = temp_dir
-      .path()
-      .join(format!("test.jrn.v{}.zz", version));
+    let archived_path = temp_dir.path().join(format!("test.jrn.v{}.zz", version));
     assert!(
       archived_path.exists(),
       "Compressed archive for version {} should exist",
@@ -541,4 +545,3 @@ fn test_rotation_callback_receives_compressed_path() -> anyhow::Result<()> {
 
   Ok(())
 }
-

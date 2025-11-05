@@ -570,6 +570,84 @@ fn main() -> anyhow::Result<()> {
 - Only archived journals are compressed during rotation
 - No configuration needed - compression is automatic
 
+### Snapshot Cleanup Management
+
+**SnapshotCleanup** provides utilities for managing disk space by cleaning up old archived journals:
+
+```rust
+use bd_resilient_kv::SnapshotCleanup;
+
+fn main() -> anyhow::Result<()> {
+    // Create cleanup utility for your journal
+    let cleanup = SnapshotCleanup::new("my_store.jrn")?;
+
+    // List all archived snapshots
+    let snapshots = cleanup.list_snapshots()?;
+    for snapshot in &snapshots {
+        println!("Version: {}, Size: {} bytes, Path: {:?}",
+                 snapshot.version, snapshot.size_bytes, snapshot.path);
+    }
+
+    // Strategy 1: Remove snapshots older than a specific version
+    // (e.g., your system determined you need to keep data back to version 5000)
+    let removed = cleanup.cleanup_before_version(5000)?;
+    println!("Removed {} old snapshots", removed.len());
+
+    // Strategy 2: Keep only the N most recent snapshots
+    let removed = cleanup.cleanup_keep_recent(10)?;
+    println!("Removed {} snapshots, kept 10 most recent", removed.len());
+
+    // Check disk usage
+    let total_size = cleanup.total_snapshot_size()?;
+    println!("Total snapshot size: {} bytes", total_size);
+
+    // Get version range
+    if let Some(oldest) = cleanup.oldest_snapshot_version()? {
+        if let Some(newest) = cleanup.newest_snapshot_version()? {
+            println!("Snapshots range from version {} to {}", oldest, newest);
+        }
+    }
+
+    Ok(())
+}
+```
+
+**Key Features**:
+- **Version-based cleanup**: Remove snapshots before a specific version
+- **Count-based cleanup**: Keep only N most recent snapshots
+- **Safe operations**: Only removes compressed archives (`.zz` files), never active journals
+- **Disk space monitoring**: Query total size and version ranges
+- **Per-journal isolation**: Each cleanup instance only manages its own journal's snapshots
+
+**Integration with VersionedKVStore**:
+```rust
+use bd_resilient_kv::{VersionedKVStore, SnapshotCleanup};
+use bd_bonjson::Value;
+
+fn main() -> anyhow::Result<()> {
+    // Your application logic determines minimum required version
+    let min_version_from_external_system = get_minimum_required_version();
+
+    // Create store
+    let mut store = VersionedKVStore::new("my_store.jrn", 1024 * 1024, None)?;
+
+    // Perform operations...
+    store.insert("key".to_string(), Value::from(42))?;
+
+    // Periodically clean up old snapshots
+    let cleanup = SnapshotCleanup::new("my_store.jrn")?;
+    cleanup.cleanup_before_version(min_version_from_external_system)?;
+
+    Ok(())
+}
+
+fn get_minimum_required_version() -> u64 {
+    // Your external system (e.g., backup service, replication manager)
+    // tells you how far back you need to maintain history
+    5000
+}
+```
+
 ### Custom Buffer Sizes
 
 Choose buffer sizes based on your use case:

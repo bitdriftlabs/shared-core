@@ -8,8 +8,8 @@
 use crate::kv_journal::{MemMappedVersionedKVJournal, TimestampedValue, VersionedKVJournal};
 use ahash::AHashMap;
 use bd_bonjson::Value;
-use flate2::write::ZlibEncoder;
 use flate2::Compression;
+use flate2::write::ZlibEncoder;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -200,13 +200,9 @@ impl VersionedKVStore {
       version
     } else {
       let (version, timestamp) = self.journal.set_versioned(&key, &value)?;
-      self.cached_map.insert(
-        key,
-        TimestampedValue {
-          value,
-          timestamp,
-        },
-      );
+      self
+        .cached_map
+        .insert(key, TimestampedValue { value, timestamp });
       version
     };
 

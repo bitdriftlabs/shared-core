@@ -253,13 +253,22 @@ fn test_recovery_with_overwrites() -> anyhow::Result<()> {
 
   // Each version should show the value at that time
   let state_v1 = recovery.recover_at_version(v1)?;
-  assert_eq!(state_v1.get("key").map(|tv| &tv.value), Some(&Value::Signed(1)));
+  assert_eq!(
+    state_v1.get("key").map(|tv| &tv.value),
+    Some(&Value::Signed(1))
+  );
 
   let state_v2 = recovery.recover_at_version(v2)?;
-  assert_eq!(state_v2.get("key").map(|tv| &tv.value), Some(&Value::Signed(2)));
+  assert_eq!(
+    state_v2.get("key").map(|tv| &tv.value),
+    Some(&Value::Signed(2))
+  );
 
   let state_v3 = recovery.recover_at_version(v3)?;
-  assert_eq!(state_v3.get("key").map(|tv| &tv.value), Some(&Value::Signed(3)));
+  assert_eq!(
+    state_v3.get("key").map(|tv| &tv.value),
+    Some(&Value::Signed(3))
+  );
 
   Ok(())
 }
@@ -286,9 +295,18 @@ fn test_recovery_various_value_types() -> anyhow::Result<()> {
     state.get("string").map(|tv| &tv.value),
     Some(&Value::String("hello".to_string()))
   );
-  assert_eq!(state.get("number").map(|tv| &tv.value), Some(&Value::Signed(42)));
-  assert_eq!(state.get("float").map(|tv| &tv.value), Some(&Value::Float(3.14)));
-  assert_eq!(state.get("bool").map(|tv| &tv.value), Some(&Value::Bool(true)));
+  assert_eq!(
+    state.get("number").map(|tv| &tv.value),
+    Some(&Value::Signed(42))
+  );
+  assert_eq!(
+    state.get("float").map(|tv| &tv.value),
+    Some(&Value::Float(3.14))
+  );
+  assert_eq!(
+    state.get("bool").map(|tv| &tv.value),
+    Some(&Value::Bool(true))
+  );
 
   Ok(())
 }
@@ -306,7 +324,7 @@ fn test_recovery_from_compressed_archive() -> anyhow::Result<()> {
 
   // Get the current version before rotation (this will be used in the archive name)
   let archive_version = store.current_version();
-  
+
   // Rotate to create compressed archive
   store.rotate_journal()?;
 
@@ -315,7 +333,9 @@ fn test_recovery_from_compressed_archive() -> anyhow::Result<()> {
   store.sync()?;
 
   // Find the compressed archive (using the version at the time of rotation)
-  let archived_path = temp_dir.path().join(format!("test.jrn.v{}.zz", archive_version));
+  let archived_path = temp_dir
+    .path()
+    .join(format!("test.jrn.v{}.zz", archive_version));
   assert!(archived_path.exists(), "Compressed archive should exist");
 
   // Read both journals
@@ -375,8 +395,12 @@ fn test_recovery_from_multiple_compressed_archives() -> anyhow::Result<()> {
   store.sync()?;
 
   // Collect all journal data (2 compressed + 1 active)
-  let archive1_path = temp_dir.path().join(format!("test.jrn.v{}.zz", archive1_version));
-  let archive2_path = temp_dir.path().join(format!("test.jrn.v{}.zz", archive2_version));
+  let archive1_path = temp_dir
+    .path()
+    .join(format!("test.jrn.v{}.zz", archive1_version));
+  let archive2_path = temp_dir
+    .path()
+    .join(format!("test.jrn.v{}.zz", archive2_version));
 
   let archive1_data = std::fs::read(&archive1_path)?;
   let archive2_data = std::fs::read(&archive2_path)?;
@@ -417,7 +441,9 @@ fn test_recovery_mixed_compressed_and_uncompressed() -> anyhow::Result<()> {
   store.rotate_journal()?;
 
   // Get compressed archive
-  let compressed_archive_path = temp_dir.path().join(format!("test.jrn.v{}.zz", archive_version));
+  let compressed_archive_path = temp_dir
+    .path()
+    .join(format!("test.jrn.v{}.zz", archive_version));
   let compressed_data = std::fs::read(&compressed_archive_path)?;
 
   // Create uncompressed journal data manually
@@ -455,12 +481,14 @@ fn test_recovery_decompression_transparent() -> anyhow::Result<()> {
 
   // Get archive version before rotation
   let archive_version = store.current_version();
-  
+
   // Rotate to compress
   store.rotate_journal()?;
 
   // Read compressed archive
-  let compressed_path = temp_dir.path().join(format!("test.jrn.v{}.zz", archive_version));
+  let compressed_path = temp_dir
+    .path()
+    .join(format!("test.jrn.v{}.zz", archive_version));
   let compressed_data = std::fs::read(&compressed_path)?;
 
   // Verify it's actually compressed (smaller)

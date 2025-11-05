@@ -19,6 +19,7 @@ mod tests;
 
 pub mod kv_journal;
 pub mod kv_store;
+pub mod snapshot_cleanup;
 pub mod versioned_kv_store;
 pub mod versioned_recovery;
 
@@ -31,5 +32,6 @@ pub use kv_journal::{
   VersionedKVJournal,
 };
 pub use kv_store::KVStore;
+pub use snapshot_cleanup::{SnapshotCleanup, SnapshotInfo};
 pub use versioned_kv_store::{RotationCallback, VersionedKVStore};
 pub use versioned_recovery::VersionedRecovery;
