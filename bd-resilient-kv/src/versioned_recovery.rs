@@ -13,6 +13,25 @@ use flate2::read::ZlibDecoder;
 use std::io::Read;
 use std::path::Path;
 
+/// Helper function to read a u64 field from a BONJSON object.
+///
+/// BONJSON's decoder automatically converts unsigned values that fit in i64 to signed values
+/// during decoding (see bd-bonjson/src/decoder.rs:227-234). This means that even though we
+/// write `Value::Unsigned(version)`, the decoder returns `Value::Signed(version as i64)`.
+///
+/// TODO(snowp): Consider changing BONJSON's decoder to preserve the original unsigned type
+/// to avoid this normalization behavior and eliminate the need for this helper.
+fn read_u64_field(obj: &AHashMap<String, Value>, key: &str) -> Option<u64> {
+  match obj.get(key) {
+    Some(Value::Unsigned(v)) => Some(*v),
+    Some(Value::Signed(v)) if *v >= 0 => {
+      #[allow(clippy::cast_sign_loss)]
+      Some(*v as u64)
+    },
+    _ => None,
+  }
+}
+
 /// A utility for recovering state at arbitrary versions from raw journal data.
 ///
 /// This utility operates on raw byte slices from versioned journals and can reconstruct
@@ -224,14 +243,7 @@ fn extract_version_range(buffer: &[u8]) -> anyhow::Result<(u64, u64)> {
   let base_version = if let Value::Array(entries) = &array
     && let Some(Value::Object(obj)) = entries.first()
   {
-    if let Some(Value::Unsigned(base)) = obj.get("base_version") {
-      *base
-    } else if let Some(Value::Signed(base)) = obj.get("base_version") {
-      #[allow(clippy::cast_sign_loss)]
-      (*base as u64)
-    } else {
-      1 // Default to 1 for compatibility
-    }
+    read_u64_field(obj, "base_version").unwrap_or(1)
   } else {
     anyhow::bail!("Failed to extract metadata from journal");
   };
@@ -244,15 +256,10 @@ fn extract_version_range(buffer: &[u8]) -> anyhow::Result<(u64, u64)> {
         continue; // Skip metadata
       }
 
-      if let Value::Object(obj) = entry {
-        if let Some(Value::Unsigned(v)) = obj.get("v") {
-          max_version = max_version.max(*v);
-        } else if let Some(Value::Signed(v)) = obj.get("v") {
-          #[allow(clippy::cast_sign_loss)]
-          {
-            max_version = max_version.max(*v as u64);
-          }
-        }
+      if let Value::Object(obj) = entry
+        && let Some(v) = read_u64_field(obj, "v")
+      {
+        max_version = max_version.max(v);
       }
     }
   }
@@ -277,12 +284,7 @@ fn replay_journal_to_version(
 
       if let Value::Object(obj) = entry {
         // Check version
-        let entry_version = if let Some(Value::Unsigned(v)) = obj.get("v") {
-          *v
-        } else if let Some(Value::Signed(v)) = obj.get("v") {
-          #[allow(clippy::cast_sign_loss)]
-          (*v as u64)
-        } else {
+        let Some(entry_version) = read_u64_field(obj, "v") else {
           continue; // Skip entries without version
         };
 
@@ -291,15 +293,8 @@ fn replay_journal_to_version(
           break;
         }
 
-        // Extract timestamp
-        let timestamp = if let Some(Value::Unsigned(t)) = obj.get("t") {
-          *t
-        } else if let Some(Value::Signed(t)) = obj.get("t") {
-          #[allow(clippy::cast_sign_loss)]
-          (*t as u64)
-        } else {
-          0 // Default to 0 if not found (shouldn't happen in v2 format)
-        };
+        // Extract timestamp (default to 0 if not found)
+        let timestamp = read_u64_field(obj, "t").unwrap_or(0);
 
         // Extract key and operation
         if let Some(Value::String(key)) = obj.get("k")
