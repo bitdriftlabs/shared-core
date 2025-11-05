@@ -585,3 +585,46 @@ async fn test_rotation_callback_receives_compressed_path() -> anyhow::Result<()>
 
   Ok(())
 }
+
+#[tokio::test]
+async fn test_rotation_with_many_unique_keys() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+
+  // This test verifies that rotation works correctly even with many unique keys
+  // Note: The scenario where compacted state exceeds buffer size is impossible because:
+  // - Compacted state only includes current key-value pairs
+  // - If keys fit in the journal during normal operation, they will fit during rotation
+  // - Rotation uses the same buffer size, and compaction removes redundant updates
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 2048, Some(0.8))?;
+
+  // Insert many unique keys
+  for i in 0 .. 50 {
+    let key = format!("key_{}", i);
+    let value = Value::String(format!("value_{}", i));
+    match store.insert(key, value).await {
+      Ok(_) => {},
+      Err(_) => break, // Buffer full
+    }
+  }
+
+  let entries_before = store.len();
+  assert!(entries_before > 20, "Should have written many entries");
+
+  // Rotation should succeed because compacted state fits in same-sized buffer
+  store.rotate_journal().await?;
+
+  // Verify all data is preserved
+  assert_eq!(store.len(), entries_before);
+
+  // Verify we can continue writing after rotation
+  store
+    .insert(
+      "new_key".to_string(),
+      Value::String("new_value".to_string()),
+    )
+    .await?;
+  assert_eq!(store.len(), entries_before + 1);
+
+  Ok(())
+}
