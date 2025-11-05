@@ -205,15 +205,17 @@ impl MemMappedVersionedKVJournal {
 
   /// Synchronize changes to disk.
   ///
-  /// This forces any changes in the memory-mapped region to be written to the underlying file.
+  /// This method explicitly flushes any pending changes to the underlying file.
   /// Note that changes are typically synced automatically by the OS, but this provides
   /// explicit control when needed.
+  ///
+  /// This is a blocking operation that performs synchronous I/O (`msync()` system call).
+  /// In async contexts, consider wrapping this call with `tokio::task::spawn_blocking`.
   ///
   /// # Errors
   /// Returns an error if the sync operation fails.
   pub fn sync(&self) -> anyhow::Result<()> {
-    self.mmap.flush()?;
-    Ok(())
+    self.mmap.flush().map_err(Into::into)
   }
 
   /// Get the size of the underlying file in bytes.

@@ -176,12 +176,28 @@ impl VersionedRecovery {
 
 /// Decompress journal data if it's zlib-compressed, otherwise return as-is.
 ///
-/// Detection: Try to read the header. If it's a valid journal header (format version at offset 0),
-/// it's uncompressed. Otherwise, attempt zlib decompression.
+/// Detection: Checks for zlib magic bytes first (RFC 1950). If not present, validates
+/// as uncompressed journal by checking format version.
 fn decompress_if_needed(data: &[u8]) -> anyhow::Result<Vec<u8>> {
   const HEADER_SIZE: usize = 16;
 
-  // Check if data looks like a valid uncompressed journal
+  // Check for zlib magic bytes first (RFC 1950)
+  // Zlib compressed data starts with 0x78 followed by a second byte where:
+  // - 0x01 (no/low compression)
+  // - 0x5E (also valid)
+  // - 0x9C (default compression)
+  // - 0xDA (best compression)
+  // The second byte's lower 5 bits are the window size, and bit 5 is the FDICT flag.
+  // We check that bit 5 (0x20) is not set for typical zlib streams without preset dictionary.
+  if data.len() >= 2 && data[0] == 0x78 && (data[1] & 0x20) == 0 {
+    // Looks like zlib compressed data
+    let mut decoder = ZlibDecoder::new(data);
+    let mut decompressed = Vec::new();
+    decoder.read_to_end(&mut decompressed)?;
+    return Ok(decompressed);
+  }
+
+  // Otherwise, treat as uncompressed and validate it's a proper journal
   if data.len() >= HEADER_SIZE {
     // Read format version (first 8 bytes as u64 little-endian)
     let version_bytes: [u8; 8] = data[0 .. 8]
@@ -189,18 +205,15 @@ fn decompress_if_needed(data: &[u8]) -> anyhow::Result<Vec<u8>> {
       .map_err(|_| anyhow::anyhow!("Failed to read version bytes"))?;
     let format_version = u64::from_le_bytes(version_bytes);
 
-    // If format version is 1 or 2, it's likely uncompressed
+    // Check for known format versions
     if format_version == 1 || format_version == 2 {
       return Ok(data.to_vec());
     }
+
+    anyhow::bail!("Invalid journal format version: {format_version}");
   }
 
-  // Try to decompress as zlib
-  let mut decoder = ZlibDecoder::new(data);
-  let mut decompressed = Vec::new();
-  decoder.read_to_end(&mut decompressed)?;
-
-  Ok(decompressed)
+  anyhow::bail!("Data too small to be valid journal (size: {})", data.len())
 }
 
 /// Extract the base version and maximum version from a journal.

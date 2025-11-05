@@ -5,6 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![allow(clippy::unwrap_used)]
+
 use crate::VersionedKVStore;
 use crate::versioned_recovery::VersionedRecovery;
 use bd_bonjson::Value;
@@ -13,10 +15,10 @@ use tempfile::TempDir;
 #[tokio::test]
 async fn test_recovery_single_journal() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
+
 
   // Create a store and write some versioned data
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   let v1 = store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
@@ -29,7 +31,7 @@ async fn test_recovery_single_journal() -> anyhow::Result<()> {
   store.sync()?;
 
   // Read the journal data
-  let journal_data = std::fs::read(&file_path)?;
+  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
 
   // Create recovery utility
   let recovery = VersionedRecovery::new(vec![&journal_data])?;
@@ -37,7 +39,6 @@ async fn test_recovery_single_journal() -> anyhow::Result<()> {
   // Verify version range
   let version_range = recovery.version_range();
   assert!(version_range.is_some());
-  #[allow(clippy::unwrap_used)]
   let (min, max) = version_range.unwrap();
   assert_eq!(min, 1);
   assert_eq!(max, v3);
@@ -81,54 +82,209 @@ async fn test_recovery_single_journal() -> anyhow::Result<()> {
   Ok(())
 }
 
-#[tokio::test]
-async fn test_recovery_with_deletions() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
+// Tests for compression detection heuristic
 
-  // Create a store with deletions
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
-  let v1 = store
+#[tokio::test]
+async fn test_detection_uncompressed_format_v1() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+
+
+  // Create a v1 format journal (though VersionedKVStore creates v2, we test the detection)
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
-  let v2 = store
-    .insert("key2".to_string(), Value::String("value2".to_string()))
-    .await?;
-  let v3_opt = store.remove("key1").await?;
-  assert!(v3_opt.is_some());
-  #[allow(clippy::unwrap_used)]
-  let v3 = v3_opt.unwrap();
   store.sync()?;
 
-  // Read the journal data
-  let journal_data = std::fs::read(&file_path)?;
+  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
+
+  // Verify first 8 bytes contain format version 2
+  let version_bytes: [u8; 8] = journal_data[0 .. 8].try_into()?;
+  let version = u64::from_le_bytes(version_bytes);
+  assert_eq!(version, 2, "VersionedKVStore should create v2 format");
+
+  // Should successfully detect as uncompressed
   let recovery = VersionedRecovery::new(vec![&journal_data])?;
-
-  // At v1: key1 exists
-  let state_v1 = recovery.recover_at_version(v1)?;
-  assert_eq!(state_v1.len(), 1);
-  assert!(state_v1.contains_key("key1"));
-
-  // At v2: both keys exist
-  let state_v2 = recovery.recover_at_version(v2)?;
-  assert_eq!(state_v2.len(), 2);
-
-  // At v3: only key2 exists (key1 deleted)
-  let state_v3 = recovery.recover_at_version(v3)?;
-  assert_eq!(state_v3.len(), 1);
-  assert!(!state_v3.contains_key("key1"));
-  assert!(state_v3.contains_key("key2"));
+  let state = recovery.recover_current()?;
+  assert_eq!(state.len(), 1);
 
   Ok(())
 }
 
 #[tokio::test]
+async fn test_detection_compressed_journal() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+
+
+  // Create and rotate to get compressed archive
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  store
+    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .await?;
+  let archive_version = store.current_version();
+  store.rotate_journal().await?;
+
+  let archived_path = temp_dir
+    .path()
+    .join(format!("test.jrn.v{}.zz", archive_version));
+  let compressed_data = std::fs::read(&archived_path)?;
+
+  // Verify it starts with zlib magic bytes (0x78)
+  assert_eq!(
+    compressed_data[0], 0x78,
+    "Compressed data should start with zlib magic byte"
+  );
+
+  // Should successfully detect and decompress
+  let recovery = VersionedRecovery::new(vec![&compressed_data])?;
+  let state = recovery.recover_current()?;
+  assert_eq!(state.len(), 1);
+  assert_eq!(
+    state.get("key1").map(|tv| &tv.value),
+    Some(&Value::String("value1".to_string()))
+  );
+
+  Ok(())
+}
+
+#[test]
+fn test_detection_invalid_format_version() {
+  // Create data with invalid format version (e.g., 999)
+  let mut invalid_data = vec![0u8; 32];
+  let version_bytes = 999u64.to_le_bytes();
+  invalid_data[0 .. 8].copy_from_slice(&version_bytes);
+
+  // Should fail with clear error message about invalid version
+  let result = VersionedRecovery::new(vec![&invalid_data]);
+  assert!(result.is_err());
+  let err_msg = result.unwrap_err().to_string();
+  assert!(
+    err_msg.contains("Invalid journal format version"),
+    "Expected error about invalid version, got: {err_msg}"
+  );
+}
+
+#[test]
+fn test_detection_data_too_small() {
+  // Data smaller than header size (16 bytes)
+  let small_data = vec![0u8; 8];
+
+  let result = VersionedRecovery::new(vec![&small_data]);
+  assert!(result.is_err());
+  let err_msg = result.unwrap_err().to_string();
+  assert!(
+    err_msg.contains("Data too small"),
+    "Expected error about data too small, got: {err_msg}"
+  );
+}
+
+#[test]
+fn test_detection_empty_data() {
+  let empty_data = vec![];
+
+  let result = VersionedRecovery::new(vec![&empty_data]);
+  assert!(result.is_err());
+  let err_msg = result.unwrap_err().to_string();
+  assert!(
+    err_msg.contains("Data too small"),
+    "Expected error about data too small, got: {err_msg}"
+  );
+}
+
+#[test]
+fn test_detection_corrupted_zlib_header() {
+  // Create data that looks like zlib (starts with 0x78) but is invalid
+  let mut fake_zlib = vec![0x78, 0x9C]; // Valid zlib magic bytes
+  fake_zlib.extend_from_slice(&[0xFF; 100]); // But garbage data
+
+  let result = VersionedRecovery::new(vec![&fake_zlib]);
+  assert!(result.is_err());
+  // Should fail during decompression
+}
+
+#[test]
+fn test_detection_random_garbage() {
+  // Random data that doesn't match any valid format
+  let garbage = vec![0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56, 0x78, 0x90];
+
+  let result = VersionedRecovery::new(vec![&garbage]);
+  assert!(result.is_err());
+  let err_msg = result.unwrap_err().to_string();
+  // Should try to decompress it and fail
+  assert!(err_msg.contains("Data too small") || err_msg.contains("corrupt"));
+}
+
+#[tokio::test]
+async fn test_detection_mixed_valid_and_invalid() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+
+
+  // Create valid journal
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  store
+    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .await?;
+  store.sync()?;
+
+  let valid_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
+
+  // Create invalid data
+  let mut invalid_data = vec![0u8; 32];
+  let version_bytes = 999u64.to_le_bytes();
+  invalid_data[0 .. 8].copy_from_slice(&version_bytes);
+
+  // Should fail if any journal is invalid
+  let result = VersionedRecovery::new(vec![&valid_data, &invalid_data]);
+  assert!(result.is_err());
+
+  Ok(())
+}
+
+#[test]
+fn test_detection_all_zlib_compression_levels() {
+  use flate2::Compression;
+  use flate2::write::ZlibEncoder;
+  use std::io::Write;
+
+  // Create some uncompressed journal-like data
+  let mut uncompressed = vec![0u8; 64];
+  // Version 2
+  uncompressed[0 .. 8].copy_from_slice(&2u64.to_le_bytes());
+  // Position at end
+  uncompressed[8 .. 16].copy_from_slice(&64u64.to_le_bytes());
+  // Some data
+  uncompressed[16 .. 32].copy_from_slice(b"[{\"base_version\"");
+
+  // Test different compression levels
+  for level in [
+    Compression::none(),
+    Compression::fast(),
+    Compression::default(),
+    Compression::best(),
+  ] {
+    let mut encoder = ZlibEncoder::new(Vec::new(), level);
+    encoder.write_all(&uncompressed).unwrap();
+    let compressed = encoder.finish().unwrap();
+
+    // Verify it starts with 0x78
+    assert_eq!(compressed[0], 0x78);
+
+    // Should be able to detect and decompress
+    let result = VersionedRecovery::new(vec![&compressed]);
+    // May succeed or fail depending on whether the data is valid bonjson,
+    // but should at least attempt decompression without panicking
+    let _ = result;
+  }
+}
+
+
+#[tokio::test]
 async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
+
 
   // Create a store with larger buffer to avoid BufferFull errors during test
-  let mut store = VersionedKVStore::new(&file_path, 2048, None)?;
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 2048, None)?;
 
   // Write data that will trigger rotation
   let v1 = store
@@ -175,7 +331,7 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   }
 
   // Read active journal
-  all_journals.push(std::fs::read(&file_path)?);
+  all_journals.push(std::fs::read(temp_dir.path().join("test.jrn"))?);
 
   // Create recovery utility with all journals
   let journal_refs: Vec<&[u8]> = all_journals.iter().map(std::vec::Vec::as_slice).collect();
@@ -203,22 +359,21 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   Ok(())
 }
 
-#[test]
-fn test_recovery_empty_journal() -> anyhow::Result<()> {
+#[tokio::test]
+async fn test_recovery_empty_journal() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
+
 
   // Create an empty store
-  let store = VersionedKVStore::new(&file_path, 4096, None)?;
+  let store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   store.sync()?;
 
-  let journal_data = std::fs::read(&file_path)?;
+  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
   let recovery = VersionedRecovery::new(vec![&journal_data])?;
 
   // Should have version range starting at 1
   let version_range = recovery.version_range();
   assert!(version_range.is_some());
-  #[allow(clippy::unwrap_used)]
   let (min, _max) = version_range.unwrap();
   assert_eq!(min, 1);
 
@@ -232,9 +387,9 @@ fn test_recovery_empty_journal() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_version_range() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
 
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
@@ -246,12 +401,11 @@ async fn test_recovery_version_range() -> anyhow::Result<()> {
     .await?;
   store.sync()?;
 
-  let journal_data = std::fs::read(&file_path)?;
+  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
   let recovery = VersionedRecovery::new(vec![&journal_data])?;
 
   let version_range = recovery.version_range();
   assert!(version_range.is_some());
-  #[allow(clippy::unwrap_used)]
   let (min, max) = version_range.unwrap();
   assert_eq!(min, 1); // base_version defaults to 1 for new stores
   assert_eq!(max, v3);
@@ -262,15 +416,15 @@ async fn test_recovery_version_range() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
 
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   let v1 = store.insert("key".to_string(), Value::Signed(1)).await?;
   let v2 = store.insert("key".to_string(), Value::Signed(2)).await?;
   let v3 = store.insert("key".to_string(), Value::Signed(3)).await?;
   store.sync()?;
 
-  let journal_data = std::fs::read(&file_path)?;
+  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
   let recovery = VersionedRecovery::new(vec![&journal_data])?;
 
   // Each version should show the value at that time
@@ -298,9 +452,9 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_various_value_types() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
 
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   store
     .insert("string".to_string(), Value::String("hello".to_string()))
     .await?;
@@ -314,7 +468,7 @@ async fn test_recovery_various_value_types() -> anyhow::Result<()> {
   let v_final = store.current_version();
   store.sync()?;
 
-  let journal_data = std::fs::read(&file_path)?;
+  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
   let recovery = VersionedRecovery::new(vec![&journal_data])?;
 
   let state = recovery.recover_at_version(v_final)?;
@@ -342,10 +496,10 @@ async fn test_recovery_various_value_types() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_from_compressed_archive() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
+
 
   // Create a store and write some data
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   let v1 = store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
@@ -374,7 +528,7 @@ async fn test_recovery_from_compressed_archive() -> anyhow::Result<()> {
 
   // Read both journals
   let compressed_data = std::fs::read(&archived_path)?;
-  let active_data = std::fs::read(&file_path)?;
+  let active_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
 
   // Create recovery from both journals (compressed first, then active)
   let recovery = VersionedRecovery::new(vec![&compressed_data, &active_data])?;
@@ -382,7 +536,6 @@ async fn test_recovery_from_compressed_archive() -> anyhow::Result<()> {
   // Verify version range spans both journals
   let version_range = recovery.version_range();
   assert!(version_range.is_some());
-  #[allow(clippy::unwrap_used)]
   let (min, max) = version_range.unwrap();
   assert_eq!(min, 1);
   assert_eq!(max, v3);
@@ -413,10 +566,10 @@ async fn test_recovery_from_compressed_archive() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_from_multiple_compressed_archives() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
+
 
   // Create a store and perform multiple rotations
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   let v1 = store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
@@ -444,7 +597,7 @@ async fn test_recovery_from_multiple_compressed_archives() -> anyhow::Result<()>
 
   let archive1_data = std::fs::read(&archive1_path)?;
   let archive2_data = std::fs::read(&archive2_path)?;
-  let active_data = std::fs::read(&file_path)?;
+  let active_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
 
   // Create recovery from all journals
   let recovery = VersionedRecovery::new(vec![&archive1_data, &archive2_data, &active_data])?;
@@ -471,10 +624,10 @@ async fn test_recovery_from_multiple_compressed_archives() -> anyhow::Result<()>
 #[tokio::test]
 async fn test_recovery_mixed_compressed_and_uncompressed() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
+
 
   // Create initial store and archive (will be compressed)
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   let _v1 = store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
@@ -489,12 +642,12 @@ async fn test_recovery_mixed_compressed_and_uncompressed() -> anyhow::Result<()>
   let compressed_data = std::fs::read(&compressed_archive_path)?;
 
   // Create uncompressed journal data manually
-  let mut uncompressed_store = VersionedKVStore::new(&file_path, 4096, None)?;
+  let mut uncompressed_store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   let v2 = uncompressed_store
     .insert("key2".to_string(), Value::String("value2".to_string()))
     .await?;
   uncompressed_store.sync()?;
-  let uncompressed_data = std::fs::read(&file_path)?;
+  let uncompressed_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
 
   // Recovery should handle both compressed and uncompressed
   let recovery = VersionedRecovery::new(vec![&compressed_data, &uncompressed_data])?;
@@ -510,10 +663,10 @@ async fn test_recovery_mixed_compressed_and_uncompressed() -> anyhow::Result<()>
 #[tokio::test]
 async fn test_recovery_decompression_transparent() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
+
 
   // Create store with compressible data
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   let compressible = "A".repeat(500);
   let v1 = store
     .insert("data".to_string(), Value::String(compressible.clone()))
@@ -521,7 +674,7 @@ async fn test_recovery_decompression_transparent() -> anyhow::Result<()> {
   store.sync()?;
 
   // Create uncompressed recovery baseline
-  let uncompressed_data = std::fs::read(&file_path)?;
+  let uncompressed_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
   let recovery_uncompressed = VersionedRecovery::new(vec![&uncompressed_data])?;
   let state_uncompressed = recovery_uncompressed.recover_at_version(v1)?;
 

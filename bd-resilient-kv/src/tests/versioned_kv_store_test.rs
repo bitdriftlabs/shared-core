@@ -5,6 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![allow(clippy::unwrap_used)]
+
 use crate::VersionedKVStore;
 use bd_bonjson::Value;
 use std::sync::{Arc, Mutex};
@@ -13,9 +15,8 @@ use tempfile::TempDir;
 #[test]
 fn test_versioned_store_new() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
 
-  let store = VersionedKVStore::new(&file_path, 4096, None)?;
+  let store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Should start empty
   assert!(store.is_empty());
@@ -29,9 +30,8 @@ fn test_versioned_store_new() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_versioned_store_basic_operations() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
 
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Test insert with version tracking
   let v1 = store
@@ -69,9 +69,9 @@ async fn test_versioned_store_basic_operations() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_versioned_store_remove() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
 
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Insert some values
   let v1 = store
@@ -103,13 +103,13 @@ async fn test_versioned_store_remove() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_persistence_and_reload() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
+
 
   let v2;
 
   // Create store and write some data
   {
-    let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+    let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
     let _v1 = store
       .insert("key1".to_string(), Value::String("value1".to_string()))
       .await?;
@@ -119,7 +119,7 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
 
   // Reopen and verify data persisted
   {
-    let store = VersionedKVStore::open_existing(&file_path, 4096, None)?;
+    let store = VersionedKVStore::open_existing(temp_dir.path(), "test", 4096, None)?;
     assert_eq!(store.len(), 2);
     assert_eq!(
       store.get("key1"),
@@ -137,9 +137,9 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_null_value_is_deletion() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
 
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Insert a value
   store
@@ -158,10 +158,10 @@ async fn test_null_value_is_deletion() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_rotation_callback() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
+
 
   // Use a small buffer and low high water mark to trigger rotation easily
-  let mut store = VersionedKVStore::new(&file_path, 1024, Some(0.3))?;
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 1024, Some(0.3))?;
 
   // Set up callback to track rotation events
   let callback_data = Arc::new(Mutex::new(Vec::new()));
@@ -192,7 +192,7 @@ async fn test_rotation_callback() -> anyhow::Result<()> {
 
   let (old_path, new_path, rotation_version) = &data[0];
   assert!(old_path.to_string_lossy().contains(".v"));
-  assert_eq!(new_path, &file_path);
+  assert_eq!(new_path, &temp_dir.path().join("test.jrn"));
   assert!(*rotation_version <= last_version);
 
   Ok(())
@@ -201,9 +201,9 @@ async fn test_rotation_callback() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_manual_rotation() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
 
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Insert some data
   let _v1 = store
@@ -253,9 +253,9 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_rotation_preserves_state() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
 
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Create complex state
   store
@@ -291,9 +291,9 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_empty_store_operations() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
 
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Operations on empty store
   assert_eq!(store.get("nonexistent"), None);
@@ -308,9 +308,9 @@ async fn test_empty_store_operations() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_version_monotonicity() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
 
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   let mut last_version = store.current_version();
 
@@ -349,16 +349,15 @@ async fn test_version_monotonicity() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
+
 
   // Create store with small buffer to trigger rotation easily
-  let mut store = VersionedKVStore::new(&file_path, 2048, Some(0.5))?;
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 2048, Some(0.5))?;
 
   // Insert some keys and capture their timestamps
   store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
-  #[allow(clippy::unwrap_used)]
   let ts1 = store
     .get_with_timestamp("key1")
     .map(|tv| tv.timestamp)
@@ -370,7 +369,6 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
   store
     .insert("key2".to_string(), Value::String("value2".to_string()))
     .await?;
-  #[allow(clippy::unwrap_used)]
   let ts2 = store
     .get_with_timestamp("key2")
     .map(|tv| tv.timestamp)
@@ -386,13 +384,11 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
   }
 
   // Verify that after rotation, the original timestamps are preserved
-  #[allow(clippy::unwrap_used)]
   let ts1_after = store
     .get_with_timestamp("key1")
     .map(|tv| tv.timestamp)
     .unwrap();
 
-  #[allow(clippy::unwrap_used)]
   let ts2_after = store
     .get_with_timestamp("key2")
     .map(|tv| tv.timestamp)
@@ -419,9 +415,9 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_compression_during_rotation() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
 
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Insert some data
   let data = "x".repeat(1000); // Large value to make compression effective
@@ -436,7 +432,7 @@ async fn test_compression_during_rotation() -> anyhow::Result<()> {
     .await?;
 
   // Get size of uncompressed journal before rotation
-  let uncompressed_size = std::fs::metadata(&file_path)?.len();
+  let uncompressed_size = std::fs::metadata(temp_dir.path().join("test.jrn"))?.len();
 
   // Get current version before rotation (this is what will be used in the archive name)
   let rotation_version = store.current_version();
@@ -482,9 +478,9 @@ async fn test_compression_during_rotation() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_compression_ratio() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
 
-  let mut store = VersionedKVStore::new(&file_path, 8192, None)?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 8192, None)?;
 
   // Insert highly compressible data
   let compressible_data = "A".repeat(500);
@@ -497,7 +493,7 @@ async fn test_compression_ratio() -> anyhow::Result<()> {
       .await?;
   }
 
-  let uncompressed_size = std::fs::metadata(&file_path)?.len();
+  let uncompressed_size = std::fs::metadata(temp_dir.path().join("test.jrn"))?.len();
   let rotation_version = store.current_version();
 
   store.rotate_journal().await?;
@@ -523,9 +519,9 @@ async fn test_compression_ratio() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_multiple_rotations_with_compression() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
 
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   let mut rotation_versions = Vec::new();
 
@@ -554,9 +550,9 @@ async fn test_multiple_rotations_with_compression() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_rotation_callback_receives_compressed_path() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let file_path = temp_dir.path().join("test.jrn");
 
-  let mut store = VersionedKVStore::new(&file_path, 4096, None)?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   let callback_data = Arc::new(Mutex::new(None));
   let callback_data_clone = Arc::clone(&callback_data);
@@ -573,7 +569,6 @@ async fn test_rotation_callback_receives_compressed_path() -> anyhow::Result<()>
 
   // Verify callback received compressed path
   let data = callback_data.lock().unwrap();
-  #[allow(clippy::unwrap_used)]
   let archived_path = data.as_ref().unwrap();
 
   assert!(

@@ -7,11 +7,10 @@
 
 use crate::kv_journal::{MemMappedVersionedKVJournal, TimestampedValue, VersionedKVJournal};
 use ahash::AHashMap;
+use async_compression::tokio::write::ZlibEncoder;
 use bd_bonjson::Value;
-use flate2::Compression;
-use flate2::write::ZlibEncoder;
-use std::io::Write;
 use std::path::{Path, PathBuf};
+use tokio::io::AsyncWriteExt;
 
 /// Callback invoked when journal rotation occurs.
 ///
@@ -24,15 +23,25 @@ use std::path::{Path, PathBuf};
 /// storage, perform cleanup, or other post-rotation operations.
 pub type RotationCallback = Box<dyn FnMut(&Path, &Path, u64) + Send>;
 
-/// Compress an archived journal using zlib.
+/// Compress an archived journal using zlib with streaming I/O.
+///
+/// This function uses async I/O to stream data directly from the source file
+/// through a zlib encoder to the destination file, without loading the entire
+/// journal into memory.
 async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result<()> {
-  let journal_bytes = tokio::fs::read(source).await?;
+  // Open source and destination files
+  let source_file = tokio::fs::File::open(source).await?;
+  let dest_file = tokio::fs::File::create(dest).await?;
 
-  let mut encoder = ZlibEncoder::new(Vec::new(), Compression::new(3));
-  encoder.write_all(&journal_bytes)?;
-  let compressed = encoder.finish()?;
+  // Create zlib encoder that writes directly to the destination file
+  let mut encoder = ZlibEncoder::new(dest_file);
 
-  tokio::fs::write(dest, compressed).await?;
+  // Copy data from source through encoder to destination
+  let mut source_reader = tokio::io::BufReader::new(source_file);
+  tokio::io::copy(&mut source_reader, &mut encoder).await?;
+
+  // Flush and finalize compression
+  encoder.shutdown().await?;
 
   Ok(())
 }
@@ -61,7 +70,7 @@ async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result
 /// use bd_resilient_kv::VersionedKVStore;
 /// use bd_bonjson::Value;
 ///
-/// let mut store = VersionedKVStore::new("mystore.jrn", 1024 * 1024, None)?;
+/// let mut store = VersionedKVStore::new("/path/to/dir", "mystore", 1024 * 1024, None)?;
 ///
 /// // Insert with version tracking
 /// let v1 = store.insert("key1".to_string(), Value::from(42))?;
@@ -70,46 +79,49 @@ async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result
 pub struct VersionedKVStore {
   journal: MemMappedVersionedKVJournal,
   cached_map: AHashMap<String, TimestampedValue>,
-  base_path: PathBuf,
+  dir_path: PathBuf,
+  journal_name: String,
   buffer_size: usize,
   high_water_mark_ratio: Option<f32>,
   rotation_callback: Option<RotationCallback>,
 }
 
 impl VersionedKVStore {
-  /// Create a new `VersionedKVStore` with the specified path and buffer size.
+  /// Create a new `VersionedKVStore` with the specified directory, name, and buffer size.
   ///
+  /// The journal file will be named `<name>.jrn` within the specified directory.
   /// If the file already exists, it will be loaded with its existing contents.
   /// If the specified size is larger than an existing file, it will be resized while preserving
   /// data. If the specified size is smaller and the existing data doesn't fit, a fresh journal
   /// will be created.
   ///
   /// # Arguments
-  /// * `file_path` - Path for the journal file
+  /// * `dir_path` - Directory path where the journal will be stored
+  /// * `name` - Base name for the journal (e.g., "store" will create "store.jrn")
   /// * `buffer_size` - Size in bytes for the journal buffer
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
   ///
   /// # Errors
   /// Returns an error if the journal file cannot be created/opened or if initialization fails.
   pub fn new<P: AsRef<Path>>(
-    file_path: P,
+    dir_path: P,
+    name: &str,
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
-    let path = file_path.as_ref();
-    let base_path = path.to_path_buf();
+    let dir = dir_path.as_ref();
+    let journal_path = dir.join(format!("{name}.jrn"));
 
-    let journal = if path.exists() {
+    let journal = if journal_path.exists() {
       // Try to open existing journal
-      MemMappedVersionedKVJournal::from_file(path, buffer_size, high_water_mark_ratio).or_else(
-        |_| {
+      MemMappedVersionedKVJournal::from_file(&journal_path, buffer_size, high_water_mark_ratio)
+        .or_else(|_| {
           // Data is corrupt or unreadable, create fresh with base version 1
-          MemMappedVersionedKVJournal::new(path, buffer_size, 1, high_water_mark_ratio)
-        },
-      )?
+          MemMappedVersionedKVJournal::new(&journal_path, buffer_size, 1, high_water_mark_ratio)
+        })?
     } else {
       // Create new journal with base version 1
-      MemMappedVersionedKVJournal::new(path, buffer_size, 1, high_water_mark_ratio)?
+      MemMappedVersionedKVJournal::new(&journal_path, buffer_size, 1, high_water_mark_ratio)?
     };
 
     let cached_map = journal.as_hashmap_with_timestamps()?;
@@ -117,7 +129,8 @@ impl VersionedKVStore {
     Ok(Self {
       journal,
       cached_map,
-      base_path,
+      dir_path: dir.to_path_buf(),
+      journal_name: name.to_string(),
       buffer_size,
       high_water_mark_ratio,
       rotation_callback: None,
@@ -130,7 +143,8 @@ impl VersionedKVStore {
   /// missing.
   ///
   /// # Arguments
-  /// * `file_path` - Path to the existing journal file
+  /// * `dir_path` - Directory path where the journal is stored
+  /// * `name` - Base name of the journal (e.g., "store" for "store.jrn")
   /// * `buffer_size` - Size in bytes for the journal buffer
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
   ///
@@ -141,24 +155,32 @@ impl VersionedKVStore {
   /// - The journal file contains invalid data
   /// - Initialization fails
   pub fn open_existing<P: AsRef<Path>>(
-    file_path: P,
+    dir_path: P,
+    name: &str,
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
-    let path = file_path.as_ref();
-    let base_path = path.to_path_buf();
+    let dir = dir_path.as_ref();
+    let journal_path = dir.join(format!("{name}.jrn"));
 
-    let journal = MemMappedVersionedKVJournal::from_file(path, buffer_size, high_water_mark_ratio)?;
+    let journal =
+      MemMappedVersionedKVJournal::from_file(&journal_path, buffer_size, high_water_mark_ratio)?;
     let cached_map = journal.as_hashmap_with_timestamps()?;
 
     Ok(Self {
       journal,
       cached_map,
-      base_path,
+      dir_path: dir.to_path_buf(),
+      journal_name: name.to_string(),
       buffer_size,
       high_water_mark_ratio,
       rotation_callback: None,
     })
+  }
+
+  /// Get the path to the active journal file.
+  fn journal_path(&self) -> PathBuf {
+    self.dir_path.join(format!("{}.jrn", self.journal_name))
   }
 
   /// Set a callback to be invoked when journal rotation occurs.
@@ -298,6 +320,9 @@ impl VersionedKVStore {
 
   /// Synchronize changes to disk.
   ///
+  /// This is a blocking operation that performs synchronous I/O. In async contexts,
+  /// consider wrapping this call with `tokio::task::spawn_blocking`.
+  ///
   /// # Errors
   /// Returns an error if the sync operation fails.
   pub fn sync(&self) -> anyhow::Result<()> {
@@ -339,12 +364,13 @@ impl VersionedKVStore {
 
     // Move old journal to temporary location
     drop(old_journal); // Release mmap before moving file
-    let temp_uncompressed = self.base_path.with_extension("jrn.old");
-    tokio::fs::rename(&self.base_path, &temp_uncompressed).await?;
+    let journal_path = self.journal_path();
+    let temp_uncompressed = self.dir_path.join(format!("{}.jrn.old", self.journal_name));
+    tokio::fs::rename(&journal_path, &temp_uncompressed).await?;
 
     // Rename new journal to base path
-    let temp_path = self.base_path.with_extension("jrn.tmp");
-    tokio::fs::rename(&temp_path, &self.base_path).await?;
+    let temp_path = self.dir_path.join(format!("{}.jrn.tmp", self.journal_name));
+    tokio::fs::rename(&temp_path, &journal_path).await?;
 
     // Compress the archived journal
     compress_archived_journal(&temp_uncompressed, &archived_path).await?;
@@ -354,7 +380,7 @@ impl VersionedKVStore {
 
     // Invoke rotation callback if set
     if let Some(ref mut callback) = self.rotation_callback {
-      callback(&archived_path, &self.base_path, rotation_version);
+      callback(&archived_path, &journal_path, rotation_version);
     }
 
     Ok(())
@@ -363,12 +389,10 @@ impl VersionedKVStore {
   /// Generate the archived journal path for a given rotation version.
   /// Archived journals use the .zz extension to indicate zlib compression.
   fn generate_archived_path(&self, rotation_version: u64) -> PathBuf {
-    let mut path = self.base_path.clone();
-    if let Some(file_name) = path.file_name() {
-      let new_name = format!("{}.v{}.zz", file_name.to_string_lossy(), rotation_version);
-      path.set_file_name(new_name);
-    }
-    path
+    self.dir_path.join(format!(
+      "{}.jrn.v{}.zz",
+      self.journal_name, rotation_version
+    ))
   }
 
   /// Create a new rotated journal with compacted state.
@@ -377,7 +401,7 @@ impl VersionedKVStore {
     rotation_version: u64,
   ) -> anyhow::Result<MemMappedVersionedKVJournal> {
     // Create temporary journal file
-    let temp_path = self.base_path.with_extension("jrn.tmp");
+    let temp_path = self.dir_path.join(format!("{}.jrn.tmp", self.journal_name));
 
     // Create in-memory buffer for new journal
     let mut buffer = vec![0u8; self.buffer_size];

@@ -30,6 +30,11 @@
    ```
 4. Tests in the same file as the implementation code should be avoided
 5. Test names should *not* start with `test_`, as this is redundant
+6. Use module-level clippy allow blocks instead of per-test allows:
+   ```rust
+   #![allow(clippy::unwrap_used)]
+   ```
+   This should be placed at the top of the test file, after the license header and before imports.
 
 ## Code Quality Checks
 - After generating or modifying code, always run clippy to check for static lint violations:

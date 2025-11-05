@@ -118,19 +118,6 @@ impl MemMappedKVJournal {
     Ok(Self { mmap, in_memory_kv })
   }
 
-  /// Synchronize changes to disk.
-  ///
-  /// This forces any changes in the memory-mapped region to be written to the underlying file.
-  /// Note that changes are typically synced automatically by the OS, but this provides
-  /// explicit control when needed.
-  ///
-  /// # Errors
-  /// Returns an error if the sync operation fails.
-  pub fn sync(&self) -> anyhow::Result<()> {
-    self.mmap.flush()?;
-    Ok(())
-  }
-
   /// Get the size of the underlying file in bytes.
   #[must_use]
   pub fn file_size(&self) -> usize {
@@ -245,6 +232,6 @@ impl KVJournal for MemMappedKVJournal {
   /// # Errors
   /// Returns an error if the sync operation fails.
   fn sync(&self) -> anyhow::Result<()> {
-    self.sync()
+    self.mmap.flush().map_err(Into::into)
   }
 }

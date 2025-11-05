@@ -286,13 +286,13 @@ fn test_kv_store_persistence() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_kv_store_file_resizing() -> anyhow::Result<()> {
+fn test_kv_store_constructor_cache_coherency_with_file_resize() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let base_path = temp_dir.path().join("test_store");
 
-  // Create store with small size
+  // Create store with small buffer and add data
   {
-    let mut store = KVStore::new(&base_path, 1024, None)?;
+    let mut store = KVStore::new(&base_path, 512, None)?;
     store.insert("key1".to_string(), Value::String("value1".to_string()))?;
     store.sync()?;
   }
@@ -548,32 +548,6 @@ fn test_kv_store_constructor_cache_coherency_with_existing_data() -> anyhow::Res
   assert!(keys.contains(&&"key3".to_string()));
 
   assert_eq!(map.values().count(), 3);
-
-  Ok(())
-}
-
-#[test]
-fn test_kv_store_constructor_cache_coherency_with_file_resize() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-  let base_path = temp_dir.path().join("test_store");
-
-  // Create store with small buffer and add data
-  {
-    let mut store = KVStore::new(&base_path, 512, None)?;
-    store.insert("key1".to_string(), Value::String("value1".to_string()))?;
-    store.sync()?;
-  }
-
-  // Re-open with larger buffer - cache should be coherent with existing data
-  let store = KVStore::new(&base_path, 4096, None)?;
-
-  // Verify cache is coherent after file resize
-  assert_eq!(store.len(), 1);
-  assert!(store.contains_key("key1"));
-  assert_eq!(
-    store.get("key1"),
-    Some(&Value::String("value1".to_string()))
-  );
 
   Ok(())
 }
