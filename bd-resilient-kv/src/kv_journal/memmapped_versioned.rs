@@ -1,0 +1,223 @@
+// shared-core - bitdrift's common client/server libraries
+// Copyright Bitdrift, Inc. All rights reserved.
+//
+// Use of this source code is governed by a source available license that can be found in the
+// LICENSE file or at:
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
+
+use super::versioned::VersionedKVJournal;
+use ahash::AHashMap;
+use bd_bonjson::Value;
+use memmap2::{MmapMut, MmapOptions};
+use std::fs::OpenOptions;
+use std::path::Path;
+
+/// Memory-mapped implementation of a versioned key-value journal.
+///
+/// This implementation uses memory-mapped files to provide persistence while maintaining
+/// the efficiency of in-memory operations. All changes are automatically synced to disk.
+/// Each write operation receives a unique version number for point-in-time recovery.
+///
+/// # Safety
+/// During construction, we unsafely declare mmap's internal buffer as having a static
+/// lifetime, but it's actually tied to the lifetime of `versioned_kv`. This works because
+/// nothing external holds a reference to the buffer.
+#[derive(Debug)]
+pub struct MemMappedVersionedKVJournal {
+  // Note: mmap MUST de-init AFTER versioned_kv because mmap uses it.
+  mmap: MmapMut,
+  versioned_kv: VersionedKVJournal<'static>,
+}
+
+impl MemMappedVersionedKVJournal {
+  /// Create a memory-mapped buffer from a file and convert it to a static lifetime slice.
+  ///
+  /// # Safety
+  /// The returned slice has a static lifetime, but it's actually tied to the lifetime of the
+  /// `MmapMut`. This is safe as long as the `MmapMut` is kept alive for the entire lifetime of
+  /// the slice usage.
+  #[allow(clippy::needless_pass_by_value)]
+  unsafe fn create_mmap_buffer(
+    file: std::fs::File,
+  ) -> anyhow::Result<(MmapMut, &'static mut [u8])> {
+    let mut mmap = unsafe { MmapOptions::new().map_mut(&file)? };
+
+    // Convert the mmap slice to a static lifetime slice
+    // This is safe because we keep the mmap alive for the lifetime of the struct
+    let buffer: &'static mut [u8] =
+      unsafe { std::slice::from_raw_parts_mut(mmap.as_mut_ptr(), mmap.len()) };
+
+    Ok((mmap, buffer))
+  }
+
+  /// Create a new memory-mapped versioned KV journal using the provided file path.
+  ///
+  /// The file will be created if it doesn't exist, or opened if it does.
+  /// The file will be resized to the specified size if it's different.
+  ///
+  /// # Arguments
+  /// * `file_path` - Path to the file to use for storage
+  /// * `size` - Minimum size of the file in bytes
+  /// * `base_version` - The starting version for this journal
+  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
+  ///
+  /// # Errors
+  /// Returns an error if the file cannot be created/opened or memory-mapped.
+  pub fn new<P: AsRef<Path>>(
+    file_path: P,
+    size: usize,
+    base_version: u64,
+    high_water_mark_ratio: Option<f32>,
+  ) -> anyhow::Result<Self> {
+    let file = OpenOptions::new()
+      .read(true)
+      .write(true)
+      .create(true)
+      .truncate(false)
+      .open(file_path)?;
+
+    let file_len = file.metadata()?.len();
+    if file_len != size as u64 {
+      file.set_len(size as u64)?;
+    }
+
+    let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
+
+    let versioned_kv = VersionedKVJournal::new(buffer, base_version, high_water_mark_ratio)?;
+
+    Ok(Self { mmap, versioned_kv })
+  }
+
+  /// Create a new memory-mapped versioned KV journal from an existing file.
+  ///
+  /// The file must already exist and contain a properly formatted versioned KV journal.
+  /// The file will be resized to the specified size if it's different.
+  ///
+  /// # Arguments
+  /// * `file_path` - Path to the existing file
+  /// * `size` - Size to resize the file to in bytes
+  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
+  ///
+  /// # Errors
+  /// Returns an error if the file cannot be opened, memory-mapped, or contains invalid data.
+  /// Note: If the new size is smaller than the current file size, data may be truncated.
+  pub fn from_file<P: AsRef<Path>>(
+    file_path: P,
+    size: usize,
+    high_water_mark_ratio: Option<f32>,
+  ) -> anyhow::Result<Self> {
+    let file = OpenOptions::new().read(true).write(true).open(file_path)?;
+
+    let file_len = file.metadata()?.len();
+    if file_len != size as u64 {
+      file.set_len(size as u64)?;
+    }
+
+    let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
+
+    let versioned_kv = VersionedKVJournal::from_buffer(buffer, high_water_mark_ratio)?;
+
+    Ok(Self { mmap, versioned_kv })
+  }
+
+  /// Set a key-value pair with automatic version increment.
+  ///
+  /// Returns the version number assigned to this write.
+  ///
+  /// # Errors
+  /// Returns an error if the journal entry cannot be written.
+  pub fn set_versioned(&mut self, key: &str, value: &Value) -> anyhow::Result<u64> {
+    self.versioned_kv.set_versioned(key, value)
+  }
+
+  /// Delete a key with automatic version increment.
+  ///
+  /// Returns the version number assigned to this deletion.
+  ///
+  /// # Errors
+  /// Returns an error if the journal entry cannot be written.
+  pub fn delete_versioned(&mut self, key: &str) -> anyhow::Result<u64> {
+    self.versioned_kv.delete_versioned(key)
+  }
+
+  /// Get the current version number.
+  #[must_use]
+  pub fn current_version(&self) -> u64 {
+    self.versioned_kv.current_version()
+  }
+
+  /// Get the base version (first version in this journal).
+  #[must_use]
+  pub fn base_version(&self) -> u64 {
+    self.versioned_kv.base_version()
+  }
+
+  /// Get the current high water mark position.
+  #[must_use]
+  pub fn high_water_mark(&self) -> usize {
+    self.versioned_kv.high_water_mark()
+  }
+
+  /// Check if the high water mark has been triggered.
+  #[must_use]
+  pub fn is_high_water_mark_triggered(&self) -> bool {
+    self.versioned_kv.is_high_water_mark_triggered()
+  }
+
+  /// Get the current buffer usage as a percentage (0.0 to 1.0).
+  #[must_use]
+  pub fn buffer_usage_ratio(&self) -> f32 {
+    self.versioned_kv.buffer_usage_ratio()
+  }
+
+  /// Get the time when the journal was initialized (nanoseconds since UNIX epoch).
+  #[must_use]
+  pub fn get_init_time(&self) -> u64 {
+    self.versioned_kv.get_init_time()
+  }
+
+  /// Reconstruct the hashmap by replaying all journal entries.
+  ///
+  /// # Errors
+  /// Returns an error if the buffer cannot be decoded.
+  pub fn as_hashmap(&self) -> anyhow::Result<AHashMap<String, Value>> {
+    self.versioned_kv.as_hashmap()
+  }
+
+  /// Reconstruct the hashmap at a specific version by replaying entries up to that version.
+  ///
+  /// # Errors
+  /// Returns an error if the buffer cannot be decoded.
+  pub fn as_hashmap_at_version(
+    &self,
+    target_version: u64,
+  ) -> anyhow::Result<AHashMap<String, Value>> {
+    self.versioned_kv.as_hashmap_at_version(target_version)
+  }
+
+  /// Synchronize changes to disk.
+  ///
+  /// This forces any changes in the memory-mapped region to be written to the underlying file.
+  /// Note that changes are typically synced automatically by the OS, but this provides
+  /// explicit control when needed.
+  ///
+  /// # Errors
+  /// Returns an error if the sync operation fails.
+  pub fn sync(&self) -> anyhow::Result<()> {
+    self.mmap.flush()?;
+    Ok(())
+  }
+
+  /// Get the size of the underlying file in bytes.
+  #[must_use]
+  pub fn file_size(&self) -> usize {
+    self.mmap.len()
+  }
+
+  /// Get a copy of the buffer for testing purposes
+  #[cfg(test)]
+  #[must_use]
+  pub fn buffer_copy(&self) -> Vec<u8> {
+    self.versioned_kv.buffer_copy()
+  }
+}

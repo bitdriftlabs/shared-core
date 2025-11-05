@@ -19,6 +19,15 @@ mod tests;
 
 pub mod kv_journal;
 pub mod kv_store;
+pub mod versioned_kv_store;
 
-pub use kv_journal::{DoubleBufferedKVJournal, InMemoryKVJournal, KVJournal, MemMappedKVJournal};
+pub use kv_journal::{
+  DoubleBufferedKVJournal,
+  InMemoryKVJournal,
+  KVJournal,
+  MemMappedKVJournal,
+  MemMappedVersionedKVJournal,
+  VersionedKVJournal,
+};
 pub use kv_store::KVStore;
+pub use versioned_kv_store::{RotationCallback, VersionedKVStore};
