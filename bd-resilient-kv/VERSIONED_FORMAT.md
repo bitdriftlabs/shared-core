@@ -84,9 +84,9 @@ When first created with base version 1:
 After rotation at version 30000, the new journal contains:
 ```json
 {"initialized": 1699564900000000000, "format_version": 2, "base_version": 30000}
-{"v": 30000, "t": 1699564900000000000, "k": "key1", "o": "value1"}  // Compacted state
-{"v": 30000, "t": 1699564900000000000, "k": "key2", "o": "value2"}  // Compacted state
-{"v": 30000, "t": 1699564900000000000, "k": "key3", "o": "value3"}  // Compacted state
+{"v": 30000, "t": 1699564800123456789, "k": "key1", "o": "value1"}  // Compacted state (original timestamp)
+{"v": 30000, "t": 1699564850987654321, "k": "key2", "o": "value2"}  // Compacted state (original timestamp)
+{"v": 30000, "t": 1699564875111222333, "k": "key3", "o": "value3"}  // Compacted state (original timestamp)
 {"v": 30001, "t": 1699564901000000000, "k": "key4", "o": "value4"}  // New write
 {"v": 30002, "t": 1699564902000000000, "k": "key1", "o": "updated1"} // New write
 ...
@@ -94,6 +94,7 @@ After rotation at version 30000, the new journal contains:
 
 Key observations:
 - All compacted state entries have the same version (30000)
+- **Timestamps are preserved**: Each compacted entry retains its original write timestamp (not the rotation time)
 - These are regular journal entries, not a special format
 - Incremental writes continue with version 30001+
 - Each rotated journal is self-contained and can be read independently
@@ -104,6 +105,8 @@ When high water mark is reached at version N:
 
 1. **Create New Journal**: Initialize fresh journal file (e.g., `my_store.jrn.tmp`)
 2. **Write Compacted State**: Write all current key-value pairs as versioned entries at version N
+   - **Timestamp Preservation**: Each entry retains its original write timestamp, not the rotation timestamp
+   - This preserves historical accuracy and allows proper temporal analysis of the data
 3. **Archive Old Journal**: Rename `my_store.jrn` → `my_store.jrn.old` (temporary)
 4. **Activate New Journal**: Rename `my_store.jrn.tmp` → `my_store.jrn`
 5. **Compress Archive**: Compress `my_store.jrn.old` → `my_store.jrn.v{N}.zz` using zlib
@@ -144,6 +147,8 @@ While `VersionedKVStore` does not support point-in-time recovery through its API
 
 The version numbers in each entry allow you to understand the exact sequence of operations and build custom tooling for analyzing historical data.
 
+**Timestamp Accuracy**: All entries preserve their original write timestamps, even after rotation. This means you can accurately track when each write originally occurred, making the journals suitable for temporal analysis, compliance auditing, and debugging time-sensitive issues.
+
 ### Point-in-Time Recovery with VersionedRecovery
 
 While `VersionedKVStore` is designed for active operation and does not support point-in-time recovery through its API, the `VersionedRecovery` utility provides a way to reconstruct state at arbitrary historical versions from raw journal bytes.
@@ -151,8 +156,8 @@ While `VersionedKVStore` is designed for active operation and does not support p
 #### Overview
 
 `VersionedRecovery` is a separate utility that:
-- Works with raw journal bytes (`&[u8]`), not file paths
-- Does not perform any file I/O operations
+- Loads journals from file paths and automatically handles decompression of `.zz` archives
+- Uses async I/O for efficient file loading
 - Can process multiple journals for cross-rotation recovery
 - Designed for offline analysis, server-side tooling, and audit systems
 - Completely independent from `VersionedKVStore`
@@ -168,8 +173,12 @@ While `VersionedKVStore` is designed for active operation and does not support p
 #### API Methods
 
 ```rust
-// Create recovery utility from journal byte slices (oldest to newest)
-let recovery = VersionedRecovery::new(vec![&archived_journal, &active_journal])?;
+// Create recovery utility from journal files (oldest to newest) - async
+let recovery = VersionedRecovery::from_files(vec![
+    "store.jrn.v20000.zz",
+    "store.jrn.v30000.zz", 
+    "store.jrn"
+]).await?;
 
 // Recover state at specific version
 let state = recovery.recover_at_version(25000)?;
@@ -187,35 +196,36 @@ if let Some((min, max)) = recovery.version_range() {
 
 ```rust
 use bd_resilient_kv::VersionedRecovery;
-use std::fs;
 
-// Load archived journals from remote storage or local disk
-let journal_v20000 = fs::read("store.jrn.v20000")?;
-let journal_v30000 = fs::read("store.jrn.v30000")?;
-let journal_active = fs::read("store.jrn")?;
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Create recovery utility from files (automatically decompresses .zz archives)
+    // Provide journal paths in chronological order (oldest to newest)
+    let recovery = VersionedRecovery::from_files(vec![
+        "store.jrn.v20000.zz",
+        "store.jrn.v30000.zz",
+        "store.jrn",
+    ]).await?;
 
-// Create recovery utility with all journals
-let recovery = VersionedRecovery::new(vec![
-    &journal_v20000,
-    &journal_v30000,
-    &journal_active,
-])?;
+    // Recover state at version 25000 (in archived journal)
+    let state_at_25000 = recovery.recover_at_version(25000)?;
 
-// Recover state at version 25000 (in archived journal)
-let state_at_25000 = recovery.recover_at_version(25000)?;
+    // Recover state at version 35000 (across rotation boundary)
+    let state_at_35000 = recovery.recover_at_version(35000)?;
 
-// Recover state at version 35000 (across rotation boundary)
-let state_at_35000 = recovery.recover_at_version(35000)?;
-
-// Process the recovered state
-for (key, value) in state_at_25000 {
-    println!("{key} = {value:?}");
+    // Process the recovered state
+    for (key, value) in state_at_25000 {
+        println!("{key} = {value:?}");
+    }
+    
+    Ok(())
 }
 ```
 
 #### Implementation Details
 
-- **No File I/O**: Works purely with byte slices, caller is responsible for loading data
+- **Async File Loading**: Constructor uses async I/O to load journal files efficiently
+- **Automatic Decompression**: Transparently decompresses `.zz` archives when loading
 - **Chronological Order**: Journals should be provided oldest to newest
 - **Efficient Replay**: Automatically skips journals outside the target version range
 - **Cross-Rotation**: Seamlessly handles recovery across multiple archived journals
@@ -246,15 +256,20 @@ for (key, value) in state_at_25000 {
 use bd_resilient_kv::VersionedKVStore;
 use bd_bonjson::Value;
 
-// Create or open store
-let mut store = VersionedKVStore::new("mystore.jrn", 1024 * 1024, None)?;
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Create or open store (requires directory path and name)
+    let mut store = VersionedKVStore::new("/path/to/dir", "mystore", 1024 * 1024, None)?;
 
-// Writes return version numbers
-let v1 = store.insert("key1".to_string(), Value::from(42))?;
-let v2 = store.insert("key2".to_string(), Value::from("hello"))?;
+    // Writes return version numbers (async operations)
+    let v1 = store.insert("key1".to_string(), Value::from(42)).await?;
+    let v2 = store.insert("key2".to_string(), Value::from("hello")).await?;
 
-// Read current values
-let value = store.get("key1")?;
+    // Read current values (synchronous)
+    let value = store.get("key1")?;
+    
+    Ok(())
+}
 ```
 
 ### Rotation Callback
@@ -262,9 +277,9 @@ let value = store.get("key1")?;
 ```rust
 // Set callback for rotation events
 store.set_rotation_callback(Box::new(|old_path, new_path, version| {
-    println!("Rotated at version {}", version);
-    println!("Archived journal: {:?}", old_path);
-    println!("New active journal: {:?}", new_path);
+    println!("Rotated at version {version}");
+    println!("Archived journal (compressed): {old_path:?}");
+    println!("New active journal: {new_path:?}");
     // Upload old_path to remote storage...
 }));
 ```
@@ -273,11 +288,11 @@ store.set_rotation_callback(Box::new(|old_path, new_path, version| {
 
 ```rust
 // Automatic rotation on high water mark
-let version = store.insert("key".to_string(), Value::from("value"))?;
+let version = store.insert("key".to_string(), Value::from("value")).await?;
 // Rotation happens automatically if high water mark exceeded
 
-// Or manually trigger rotation
-store.rotate_journal()?;
+// Or manually trigger rotation (async)
+store.rotate_journal().await?;
 ```
 
 ## Migration from VERSION 1

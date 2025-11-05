@@ -46,7 +46,13 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 **Key Components**:
 - **VersionedKVJournal**: Low-level journal that tracks version numbers for each entry
 - **MemMappedVersionedKVJournal**: Memory-mapped persistence layer
-- **VersionedKVStore**: High-level HashMap-like API with automatic rotation
+- **VersionedKVStore**: High-level HashMap-like API with automatic rotation and async write operations
+
+**Async API**:
+- Write operations (`insert()`, `remove()`, `rotate_journal()`) are async and require a Tokio runtime
+- Compression of archived journals is performed asynchronously using streaming I/O
+- Read operations remain synchronous and operate on the in-memory cache
+- The async API enables efficient background compression without blocking the main thread
 
 **Version Tracking**:
 - Every write operation (`insert`, `remove`) returns a monotonically increasing version number
@@ -54,23 +60,33 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 - Entries with `Value::Null` are treated as deletions but still versioned
 
 **Rotation Strategy**:
-- Automatic rotation when journal size exceeds high water mark
+- Automatic rotation when journal size exceeds high water mark (triggered during async write operations)
 - Current state is compacted into a new journal as versioned entries
 - Old journal is archived with `.v{version}.zz` suffix
-- Archived journals are automatically compressed using zlib (RFC 1950, level 3)
+- Archived journals are automatically compressed using zlib (RFC 1950, level 3) asynchronously
 - Optional callback invoked with archived path and version
 - Application controls upload/cleanup of archived journals
 
 **Compression**:
-- All archived journals are automatically compressed during rotation
+- All archived journals are automatically compressed during rotation using async I/O
 - Active journals remain uncompressed for write performance
 - Compression uses zlib format (RFC 1950) with level 3 for balanced speed/ratio
+- Streaming compression avoids loading entire journals into memory
 - Typical compression achieves >50% size reduction for text-based data
 - File extension `.zz` indicates compressed archives
 - Recovery transparently decompresses archived journals when needed
 
-**Note on Point-in-Time Recovery**:
-The `VersionedKVJournal` trait provides `as_hashmap_at_version()` for replaying entries within a single journal. However, `VersionedKVStore` does not expose this functionality because it only works within the current journal - once rotation occurs, historical versions in archived journals cannot be accessed. For true point-in-time recovery across rotations, applications would need to implement their own mechanism to load and replay archived journal files.
+**Point-in-Time Recovery**:
+The `VersionedRecovery` utility provides point-in-time recovery capabilities for versioned journals. It works with raw journal bytes and can reconstruct state at any historical version, including across rotation boundaries. `VersionedRecovery` is designed for offline analysis, audit tooling, and server-side operations - it is separate from `VersionedKVStore` which is focused on active write operations. Applications can use `VersionedRecovery` to analyze archived journals and recover state at specific versions. The `from_files()` constructor is async for efficient file reading.
+
+**Recovery Optimization**:
+The `recover_current()` method in `VersionedRecovery` is optimized to only read the last journal rather than replaying all journals from the beginning. This is possible because journal rotation writes the complete current state into the new journal at the snapshot version, so the last journal alone contains the full current state. For historical version recovery, `recover_at_version()` intelligently selects and replays only the necessary journals.
+
+**Snapshot Cleanup**:
+The `SnapshotCleanup` utility provides async methods for managing archived journal snapshots:
+- All cleanup operations are async and require a Tokio runtime
+- `list_snapshots()`, `cleanup_before_version()`, `cleanup_keep_recent()` are all async
+- Enables efficient disk space management without blocking operations
 
 ## Critical Design Insights
 

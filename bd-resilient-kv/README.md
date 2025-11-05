@@ -194,26 +194,28 @@ For applications that require version tracking, audit logs, or point-in-time rec
 use bd_resilient_kv::VersionedKVStore;
 use bd_bonjson::Value;
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     // Create a versioned store with automatic rotation at 1MB
     let mut store = VersionedKVStore::new(
-        "versioned_store.jrn",
-        1024 * 1024,  // Rotate when journal reaches 1MB
-        None          // Optional rotation callback
+        ".",                // Directory path
+        "versioned_store",  // Journal name
+        1024 * 1024,        // Rotate when journal reaches 1MB
+        None                // Optional high water mark ratio
     )?;
 
-    // All write operations return version numbers
-    let v1 = store.insert("config".to_string(), Value::String("v1".to_string()))?;
+    // Write operations are async and return version numbers
+    let v1 = store.insert("config".to_string(), Value::String("v1".to_string())).await?;
     println!("Inserted at version: {}", v1);
 
-    let v2 = store.insert("config".to_string(), Value::String("v2".to_string()))?;
+    let v2 = store.insert("config".to_string(), Value::String("v2".to_string())).await?;
     println!("Updated at version: {}", v2);
 
     // Read current state (O(1) from cache)
     assert_eq!(store.get("config"), Some(&Value::String("v2".to_string())));
 
-    // Removing a key also returns a version
-    let v3 = store.remove("config")?;
+    // Removing a key is also async and returns a version
+    let v3 = store.remove("config").await?;
     if let Some(version) = v3 {
         println!("Removed at version: {}", version);
     }
@@ -229,20 +231,21 @@ Monitor journal rotation events for remote backup or cleanup:
 ```rust
 use bd_resilient_kv::{VersionedKVStore, RotationCallback};
 use bd_bonjson::Value;
-use std::sync::Arc;
 
-fn upload_to_remote(path: &str, version: u64) {
-    println!("Uploading archived journal {} at version {}", path, version);
+fn upload_to_remote(path: &std::path::Path, version: u64) {
+    println!("Uploading archived journal {:?} at version {}", path, version);
     // Upload to S3, backup server, etc.
 }
 
-fn main() -> anyhow::Result<()> {
-    let callback: RotationCallback = Arc::new(|archived_path, version| {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let callback: RotationCallback = Box::new(|archived_path, _new_path, version| {
         upload_to_remote(archived_path, version);
     });
 
     let mut store = VersionedKVStore::new(
-        "my_store.jrn",
+        ".",           // Directory path
+        "my_store",    // Journal name
         512 * 1024,    // 512KB rotation threshold
         Some(callback)
     )?;
@@ -250,12 +253,12 @@ fn main() -> anyhow::Result<()> {
     // When high water mark is reached during insert/remove,
     // the callback will be invoked with archived journal path
     for i in 0..10000 {
-        store.insert(format!("key_{}", i), Value::Integer(i as i64))?;
+        store.insert(format!("key_{}", i), Value::Integer(i as i64)).await?;
         // Automatic rotation happens when journal exceeds 512KB
     }
 
-    // Manual rotation is also supported
-    store.rotate()?;
+    // Manual rotation is also supported (also async)
+    store.rotate_journal().await?;
 
     Ok(())
 }
@@ -263,18 +266,20 @@ fn main() -> anyhow::Result<()> {
 
 ### Key Features of VersionedKVStore
 
+- **Async API**: Write operations (`insert()`, `remove()`, `rotate_journal()`) are async and require a Tokio runtime
 - **Version Tracking**: Every `insert()` and `remove()` returns a monotonically increasing version number
 - **Timestamp Preservation**: Write timestamps are internally tracked and preserved during journal rotation for recovery purposes
 - **Automatic Rotation**: When the journal exceeds the high water mark, it automatically:
   - Creates a new journal with the current state as versioned entries (compaction)
   - Preserves original timestamps from the initial writes
   - Archives the old journal with `.v{version}.zz` suffix
-  - Compresses the archived journal using zlib (RFC 1950, level 3)
+  - Compresses the archived journal using zlib (RFC 1950, level 3) asynchronously
   - Invokes the rotation callback (if provided) for upload/cleanup
 - **Automatic Compression**: Archived journals are automatically compressed to save disk space
   - Active journals remain uncompressed for write performance
   - Typically achieves >50% size reduction for text-based data
   - Transparent decompression during recovery operations
+  - Compression is performed asynchronously using streaming I/O
 - **O(1) Reads**: In-memory cache provides constant-time access to current state
 - **Persistent**: Uses memory-mapped journals for crash-resilient storage
 
@@ -320,42 +325,42 @@ pub fn clear(&mut self) -> anyhow::Result<()>
 
 ### VersionedKVStore (Version-Tracked Key-Value Store)
 
-A higher-level store that tracks versions for every write operation and supports point-in-time recovery.
+A higher-level store that tracks versions for every write operation and supports point-in-time recovery. Write operations are async and require a Tokio runtime.
 
 #### Constructor
 
 ```rust
 pub fn new<P: AsRef<Path>>(
-    journal_path: P,
-    high_water_mark: usize,
-    rotation_callback: Option<RotationCallback>
+    dir_path: P,
+    name: &str,
+    buffer_size: usize,
+    high_water_mark_ratio: Option<f32>
 ) -> anyhow::Result<Self>
 ```
 
-- `journal_path`: Path to the journal file (e.g., "my_store.jrn")
-- `high_water_mark`: Size threshold for automatic rotation (in bytes)
-- `rotation_callback`: Optional callback invoked when journal is rotated
-  - Signature: `Arc<dyn Fn(&str, u64) + Send + Sync>`
-  - Parameters: `(archived_journal_path, version_at_rotation)`
+- `dir_path`: Directory path where the journal will be stored
+- `name`: Base name for the journal (e.g., "store" will create "store.jrn")
+- `buffer_size`: Size in bytes for the journal buffer
+- `high_water_mark_ratio`: Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
 
 #### Core Methods
 
 ```rust
-// Read operations (O(1) from cache)
+// Read operations (O(1) from cache, synchronous)
 pub fn get(&self, key: &str) -> Option<&Value>
 pub fn contains_key(&self, key: &str) -> bool
 pub fn len(&self) -> usize
 pub fn is_empty(&self) -> bool
 pub fn as_hashmap(&self) -> HashMap<String, &Value>
 
-// Write operations (return version numbers)
-pub fn insert(&mut self, key: String, value: Value) -> anyhow::Result<u64>
-pub fn remove(&mut self, key: &str) -> anyhow::Result<Option<u64>>
+// Write operations (async, return version numbers)
+pub async fn insert(&mut self, key: String, value: Value) -> anyhow::Result<u64>
+pub async fn remove(&mut self, key: &str) -> anyhow::Result<Option<u64>>
 
-// Manual rotation
-pub fn rotate(&mut self) -> anyhow::Result<()>
+// Manual rotation (async)
+pub async fn rotate_journal(&mut self) -> anyhow::Result<()>
 
-// Version information
+// Version information (synchronous)
 pub fn current_version(&self) -> u64
 ```
 
@@ -364,8 +369,13 @@ pub fn current_version(&self) -> u64
 #### Type Aliases
 
 ```rust
-pub type RotationCallback = Arc<dyn Fn(&str, u64) + Send + Sync>;
+pub type RotationCallback = Box<dyn FnMut(&Path, &Path, u64) + Send>;
 ```
+
+**Note**: The callback receives three parameters:
+- `old_journal_path`: Path to the archived journal that was rotated out
+- `new_journal_path`: Path to the new active journal
+- `rotation_version`: The version at which rotation occurred
 
 ## Architecture
 
@@ -450,12 +460,12 @@ Both `KVStore` and `VersionedKVStore` use the same caching approach:
 | Operation          | Time Complexity | Notes                               |
 |--------------------|-----------------|-------------------------------------|
 | `get()`            | O(1)            | Reads from in-memory cache          |
-| `insert()`         | O(1) amortized  | Journal write + cache + version     |
-| `remove()`         | O(1) amortized  | Journal write + cache + version     |
+| `insert()`         | O(1) amortized  | Async journal write + cache + version |
+| `remove()`         | O(1) amortized  | Async journal write + cache + version |
 | `contains_key()`   | O(1)            | Cache lookup                        |
 | `len()`            | O(1)            | Cache size                          |
 | `as_hashmap()`     | O(n)            | Creates temporary map of values     |
-| `rotate()`         | O(n)            | Serializes current state to new journal |
+| `rotate_journal()` | O(n)            | Async - serializes current state to new journal |
 | `current_version()`| O(1)            | Returns version counter             |
 
 ## Error Handling
@@ -532,27 +542,29 @@ let store = Arc::new(Mutex::new(
 
 ### Archived Journal Compression
 
-**VersionedKVStore** automatically compresses archived journals to save disk space:
+**VersionedKVStore** automatically compresses archived journals asynchronously to save disk space:
 
 ```rust
 use bd_resilient_kv::VersionedKVStore;
 use bd_bonjson::Value;
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     let mut store = VersionedKVStore::new(
-        "my_store.jrn",
+        ".",         // Directory path
+        "my_store",  // Journal name
         512 * 1024,  // 512KB rotation threshold
         None
     )?;
 
     // Write data that will trigger rotation
     for i in 0..10000 {
-        store.insert(format!("key_{}", i), Value::Integer(i as i64))?;
+        store.insert(format!("key_{}", i), Value::Integer(i as i64)).await?;
     }
 
     // After rotation, archived journals are automatically compressed:
     // - my_store.jrn (active, uncompressed)
-    // - my_store.jrn.v10000.zz (archived, compressed with zlib)
+    // - my_store.jrn.v10000.zz (archived, compressed with zlib asynchronously)
 
     Ok(())
 }
@@ -560,50 +572,51 @@ fn main() -> anyhow::Result<()> {
 
 **Compression Details**:
 - **Format**: zlib (RFC 1950) with compression level 3
-- **Performance**: Balanced speed/compression ratio
+- **Performance**: Balanced speed/compression ratio, performed asynchronously with streaming I/O
 - **Transparency**: Recovery automatically detects and decompresses archived journals
 - **Naming**: `.zz` extension indicates compressed archives
 - **Typical Savings**: >50% size reduction for text-based data
 
 **Active vs Archived**:
 - Active journals remain **uncompressed** for maximum write performance
-- Only archived journals are compressed during rotation
+- Only archived journals are compressed during rotation (asynchronously)
 - No configuration needed - compression is automatic
 
 ### Snapshot Cleanup Management
 
-**SnapshotCleanup** provides utilities for managing disk space by cleaning up old archived journals:
+**SnapshotCleanup** provides utilities for managing disk space by cleaning up old archived journals. Its methods are async and require a Tokio runtime.
 
 ```rust
 use bd_resilient_kv::SnapshotCleanup;
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     // Create cleanup utility for your journal
     let cleanup = SnapshotCleanup::new("my_store.jrn")?;
 
-    // List all archived snapshots
-    let snapshots = cleanup.list_snapshots()?;
+    // List all archived snapshots (async)
+    let snapshots = cleanup.list_snapshots().await?;
     for snapshot in &snapshots {
         println!("Version: {}, Size: {} bytes, Path: {:?}",
                  snapshot.version, snapshot.size_bytes, snapshot.path);
     }
 
-    // Strategy 1: Remove snapshots older than a specific version
+    // Strategy 1: Remove snapshots older than a specific version (async)
     // (e.g., your system determined you need to keep data back to version 5000)
-    let removed = cleanup.cleanup_before_version(5000)?;
+    let removed = cleanup.cleanup_before_version(5000).await?;
     println!("Removed {} old snapshots", removed.len());
 
-    // Strategy 2: Keep only the N most recent snapshots
-    let removed = cleanup.cleanup_keep_recent(10)?;
+    // Strategy 2: Keep only the N most recent snapshots (async)
+    let removed = cleanup.cleanup_keep_recent(10).await?;
     println!("Removed {} snapshots, kept 10 most recent", removed.len());
 
-    // Check disk usage
-    let total_size = cleanup.total_snapshot_size()?;
+    // Check disk usage (async)
+    let total_size = cleanup.total_snapshot_size().await?;
     println!("Total snapshot size: {} bytes", total_size);
 
-    // Get version range
-    if let Some(oldest) = cleanup.oldest_snapshot_version()? {
-        if let Some(newest) = cleanup.newest_snapshot_version()? {
+    // Get version range (async)
+    if let Some(oldest) = cleanup.oldest_snapshot_version().await? {
+        if let Some(newest) = cleanup.newest_snapshot_version().await? {
             println!("Snapshots range from version {} to {}", oldest, newest);
         }
     }
@@ -613,6 +626,7 @@ fn main() -> anyhow::Result<()> {
 ```
 
 **Key Features**:
+- **Async operations**: All methods are async and require a Tokio runtime
 - **Version-based cleanup**: Remove snapshots before a specific version
 - **Count-based cleanup**: Keep only N most recent snapshots
 - **Safe operations**: Only removes compressed archives (`.zz` files), never active journals
@@ -624,19 +638,20 @@ fn main() -> anyhow::Result<()> {
 use bd_resilient_kv::{VersionedKVStore, SnapshotCleanup};
 use bd_bonjson::Value;
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     // Your application logic determines minimum required version
     let min_version_from_external_system = get_minimum_required_version();
 
     // Create store
-    let mut store = VersionedKVStore::new("my_store.jrn", 1024 * 1024, None)?;
+    let mut store = VersionedKVStore::new(".", "my_store", 1024 * 1024, None)?;
 
-    // Perform operations...
-    store.insert("key".to_string(), Value::from(42))?;
+    // Perform operations... (async)
+    store.insert("key".to_string(), Value::from(42)).await?;
 
-    // Periodically clean up old snapshots
+    // Periodically clean up old snapshots (async)
     let cleanup = SnapshotCleanup::new("my_store.jrn")?;
-    cleanup.cleanup_before_version(min_version_from_external_system)?;
+    cleanup.cleanup_before_version(min_version_from_external_system).await?;
 
     Ok(())
 }
