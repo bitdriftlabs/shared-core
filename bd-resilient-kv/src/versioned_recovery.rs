@@ -41,31 +41,13 @@ fn read_u64_field(obj: &AHashMap<String, Value>, key: &str) -> Option<u64> {
 /// # Timestamp-Based Recovery
 ///
 /// The primary use case is timestamp-based recovery, which enables correlation with
-/// external timestamped event streams:
-/// - `recover_at_timestamp(ts)` - Recover state at a specific timestamp
-/// - Timestamps are monotonically increasing logical clocks (not pure wall time)
-/// - Enables uploading KV snapshots that match specific event buffer timestamps
+/// external timestamped event streams. Timestamps are monotonically non-decreasing logical
+/// clocks (not pure wall time), enabling snapshots that match specific event buffer timestamps.
 ///
 /// Version-based recovery is also supported for backward compatibility.
 ///
 /// Supports both compressed (zlib) and uncompressed journals. Compressed journals are
 /// automatically detected and decompressed transparently.
-///
-/// # Usage
-///
-/// ```ignore
-/// use bd_resilient_kv::VersionedRecovery;
-///
-/// // Load journal data as byte slices (may be compressed or uncompressed)
-/// let archived_journal = std::fs::read("store.jrn.v30000.zz")?; // Compressed
-/// let active_journal = std::fs::read("store.jrn")?; // Uncompressed
-///
-/// // Create recovery utility with both journals
-/// let recovery = VersionedRecovery::new(vec![&archived_journal, &active_journal])?;
-///
-/// // Recover state at specific version
-/// let state_at_25000 = recovery.recover_at_version(25000)?;
-/// ```
 #[derive(Debug)]
 pub struct VersionedRecovery {
   journals: Vec<JournalInfo>,
@@ -212,6 +194,17 @@ impl VersionedRecovery {
   ///
   /// This method replays all journal entries from all provided journals up to and including
   /// the target timestamp, reconstructing the exact state at that point in time.
+  ///
+  /// ## Important: "Up to and including" semantics
+  ///
+  /// When recovering at timestamp T, **ALL entries with timestamp ≤ T are included**.
+  /// This is critical because timestamps are monotonically non-decreasing (not strictly
+  /// increasing): if the system clock doesn't advance between writes, multiple entries
+  /// will share the same timestamp value. These entries must all be included to ensure
+  /// a consistent view of the state.
+  ///
+  /// Entries with the same timestamp are applied in version order (which reflects write
+  /// order), so later writes correctly overwrite earlier ones ("last write wins").
   ///
   /// # Arguments
   ///
@@ -427,7 +420,16 @@ fn replay_journal_to_version(
   Ok(())
 }
 
-/// Replay journal entries up to a target timestamp.
+/// Replay journal entries up to and including the target timestamp.
+///
+/// This function processes all journal entries with timestamp ≤ `target_timestamp`.
+/// The "up to and including" behavior is essential because timestamps are monotonically
+/// non-decreasing (not strictly increasing): if the system clock doesn't advance between
+/// writes, multiple entries may share the same timestamp. All such entries must be
+/// applied to ensure state consistency.
+///
+/// Entries are processed in version order, ensuring "last write wins" semantics when
+/// multiple operations affect the same key at the same timestamp.
 fn replay_journal_to_timestamp(
   buffer: &[u8],
   target_timestamp: u64,

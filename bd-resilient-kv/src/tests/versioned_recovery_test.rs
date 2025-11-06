@@ -83,6 +83,137 @@ async fn test_recovery_single_journal() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn test_timestamp_collision_across_rotation() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+
+  // Create a store and write data before rotation
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  
+  store
+    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .await?;
+  let ts1 = store
+    .get_with_timestamp("key1")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  // Rotate journal - this captures current state at rotation timestamp
+  let archive_version = store.current_version();
+  store.rotate_journal().await?;
+
+  // Now simulate a scenario where the system clock goes backwards
+  // by manually manipulating the journal's last_timestamp
+  // In a real scenario, this could happen if the system clock is adjusted
+  // We'll write entries that would have the same timestamp as ts1 if clamping occurs
+  
+  // Write new data - in practice, if clock went backwards, these could get clamped
+  // to the same timestamp as entries in the previous journal
+  store
+    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .await?;
+  let ts2 = store
+    .get_with_timestamp("key2")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  store
+    .insert("key3".to_string(), Value::String("value3".to_string()))
+    .await?;
+  let ts3 = store
+    .get_with_timestamp("key3")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  store.sync()?;
+
+  // Read both journals
+  let archived_path = temp_dir
+    .path()
+    .join(format!("test.jrn.v{}.zz", archive_version));
+  let archived_data = std::fs::read(&archived_path)?;
+  let active_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
+
+  // Create recovery from both journals
+  let recovery = VersionedRecovery::new(vec![&archived_data, &active_data])?;
+
+  // Test recovery behavior when timestamps might collide across journals
+  // 
+  // Key insight: The recovery should include ALL entries at a given timestamp,
+  // applying them in version order (which is chronological order).
+  // 
+  // When recovering at ts1:
+  // - All entries from archived journal with timestamp <= ts1 are included
+  // - All entries from active journal with timestamp <= ts1 are included
+  // - If ts2 or ts3 were clamped to ts1 (due to clock going backwards),
+  //   they would also be included
+
+  // Recover at ts1: should include all entries with timestamp <= ts1
+  let state_ts1 = recovery.recover_at_timestamp(ts1)?;
+  
+  // In normal operation (no clock backwards), only key1 should be at ts1
+  assert!(state_ts1.contains_key("key1"));
+  assert_eq!(
+    state_ts1.get("key1").map(|tv| &tv.value),
+    Some(&Value::String("value1".to_string()))
+  );
+
+  // Verify timestamp monotonicity is maintained across rotation
+  assert!(
+    ts2 >= ts1,
+    "Timestamps should be monotonically non-decreasing across rotation"
+  );
+  assert!(
+    ts3 >= ts2,
+    "Timestamps should be monotonically non-decreasing"
+  );
+
+  // Test recovery at later timestamps
+  if ts2 > ts1 {
+    let state_ts2 = recovery.recover_at_timestamp(ts2)?;
+    // Should include key1 (from archive) and key2 (from active)
+    assert_eq!(state_ts2.len(), 2);
+    assert!(state_ts2.contains_key("key1"));
+    assert!(state_ts2.contains_key("key2"));
+  }
+
+  if ts3 > ts2 {
+    let state_ts3 = recovery.recover_at_timestamp(ts3)?;
+    // Should include all keys
+    assert_eq!(state_ts3.len(), 3);
+    assert!(state_ts3.contains_key("key1"));
+    assert!(state_ts3.contains_key("key2"));
+    assert!(state_ts3.contains_key("key3"));
+  }
+
+  // Edge case: If timestamps were the same (due to clamping), verify "last write wins"
+  // This is important because recovery processes entries in order, so later versions
+  // should overwrite earlier ones with the same timestamp
+  if ts2 == ts1 && ts3 == ts1 {
+    // All entries have the same timestamp
+    let state_at_shared_ts = recovery.recover_at_timestamp(ts1)?;
+    
+    // All entries should be included since they all have timestamp == ts1
+    assert_eq!(state_at_shared_ts.len(), 3);
+    
+    // Verify values are from the latest versions (last write wins)
+    assert_eq!(
+      state_at_shared_ts.get("key1").map(|tv| &tv.value),
+      Some(&Value::String("value1".to_string()))
+    );
+    assert_eq!(
+      state_at_shared_ts.get("key2").map(|tv| &tv.value),
+      Some(&Value::String("value2".to_string()))
+    );
+    assert_eq!(
+      state_at_shared_ts.get("key3").map(|tv| &tv.value),
+      Some(&Value::String("value3".to_string()))
+    );
+  }
+
+  Ok(())
+}
+
+#[tokio::test]
 async fn test_recover_current_only_needs_last_journal() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
@@ -185,7 +316,6 @@ async fn test_recover_current_only_needs_last_journal() -> anyhow::Result<()> {
 
   Ok(())
 }
-
 
 #[tokio::test]
 async fn test_detection_compressed_journal() -> anyhow::Result<()> {

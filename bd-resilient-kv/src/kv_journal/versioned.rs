@@ -26,7 +26,7 @@ pub struct TimestampedValue {
 /// Versioned implementation of a key-value journaling system that tracks write timestamps
 /// for point-in-time recovery.
 ///
-/// Each write operation is assigned a monotonically increasing timestamp (in nanoseconds
+/// Each write operation is assigned a monotonically non-decreasing timestamp (in nanoseconds
 /// since UNIX epoch), enabling exact state reconstruction at any historical timestamp.
 /// The monotonicity is enforced by clamping: if the system clock goes backwards, we reuse
 /// the same timestamp value to maintain ordering guarantees without artificial clock skew.
@@ -60,7 +60,7 @@ pub struct VersionedKVJournal<'a> {
 // # Timestamp Semantics
 //
 // Timestamps serve as logical clocks with monotonic guarantees rather than pure wall time:
-// - Each write gets a timestamp that is guaranteed to be >= previous writes
+// - Each write gets a timestamp that is guaranteed to be >= previous writes (non-decreasing)
 // - If system clock goes backward, timestamps are clamped to last_timestamp (reuse same value)
 // - This ensures total ordering while allowing correlation with external timestamped systems
 // - Version numbers (v) are maintained for backward compatibility and as secondary ordering
