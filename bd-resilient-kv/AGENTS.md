@@ -97,12 +97,6 @@ The `VersionedRecovery` utility provides point-in-time recovery capabilities for
 **Recovery Optimization**:
 The `recover_current()` method in `VersionedRecovery` is optimized to only read the last journal rather than replaying all journals from the beginning. This is possible because journal rotation writes the complete current state into the new journal at the snapshot version, so the last journal alone contains the full current state. For historical version recovery, `recover_at_version()` intelligently selects and replays only the necessary journals.
 
-**Snapshot Cleanup**:
-The `SnapshotCleanup` utility provides async methods for managing archived journal snapshots:
-- All cleanup operations are async and require a Tokio runtime
-- `list_snapshots()`, `cleanup_before_version()`, `cleanup_keep_recent()` are all async
-- Enables efficient disk space management without blocking operations
-
 ## Critical Design Insights
 
 ### 1. Two Storage Models
