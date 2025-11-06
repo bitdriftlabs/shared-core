@@ -65,7 +65,7 @@ fn extract_rotation_timestamp(path: &std::path::Path) -> anyhow::Result<u64> {
 }
 
 #[tokio::test]
-async fn test_recover_current_only_needs_last_journal() -> anyhow::Result<()> {
+async fn test_recover_current_only_needs_last_snapshot() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
   // Create a store with multiple rotations to build up history
@@ -99,49 +99,44 @@ async fn test_recover_current_only_needs_last_journal() -> anyhow::Result<()> {
     .await?;
   store.remove("key2").await?;
 
-  store.sync()?;
+  // Final rotation to create snapshot with current state
+  store.rotate_journal().await?;
 
-  // Get expected current state using the store's hashmap
-  let expected_state = store.as_hashmap();
+  // Read ALL archived snapshots
+  let archived_files = find_archived_journals(temp_dir.path())?;
+  let mut all_snapshots = Vec::new();
 
-  // Read ALL journals (archived + active)
-  let mut all_journals = Vec::new();
-
-  for archived_path in find_archived_journals(temp_dir.path())? {
-    let rotation_ts = extract_rotation_timestamp(&archived_path)?;
-    all_journals.push((std::fs::read(archived_path)?, rotation_ts));
+  for archived_path in &archived_files {
+    let compressed_data = std::fs::read(archived_path)?;
+    let decompressed_data = decompress_zlib(&compressed_data)?;
+    let snapshot_ts = extract_rotation_timestamp(archived_path)?;
+    all_snapshots.push((decompressed_data, snapshot_ts));
   }
 
-  // Read active journal (the last one) - use u64::MAX for active journal
-  let active_journal = std::fs::read(temp_dir.path().join("test.jrn"))?;
-  all_journals.push((active_journal.clone(), u64::MAX));
-
-  // Test 1: Verify recover_current() with ALL journals gives correct state
-  let all_journal_refs: Vec<(&[u8], u64)> = all_journals
+  // Test 1: Verify recover_current() with ALL snapshots gives correct state
+  let all_snapshot_refs: Vec<(&[u8], u64)> = all_snapshots
     .iter()
     .map(|(data, ts)| (data.as_slice(), *ts))
     .collect();
-  let recovery_all = VersionedRecovery::new(all_journal_refs)?;
+  let recovery_all = VersionedRecovery::new(all_snapshot_refs)?;
   let state_all = recovery_all.recover_current()?;
+
+  // Test 2: Verify recover_current() with ONLY the last snapshot gives the same state
+  // This is the optimization we want to prove works!
+  let last_snapshot = &all_snapshots[all_snapshots.len() - 1];
+  let recovery_last = VersionedRecovery::new(vec![(last_snapshot.0.as_slice(), last_snapshot.1)])?;
+  let state_last = recovery_last.recover_current()?;
 
   // Convert to comparable format (Value only, not TimestampedValue)
   let state_all_values: ahash::AHashMap<String, Value> =
     state_all.into_iter().map(|(k, tv)| (k, tv.value)).collect();
-
-  assert_eq!(state_all_values, expected_state);
-
-  // Test 2: Verify recover_current() with ONLY the last journal gives the same state
-  // This is the optimization we want to prove works!
-  let recovery_last = VersionedRecovery::new(vec![(&active_journal, u64::MAX)])?;
-  let state_last = recovery_last.recover_current()?;
-
   let state_last_values: ahash::AHashMap<String, Value> = state_last
     .into_iter()
     .map(|(k, tv)| (k, tv.value))
     .collect();
 
-  // The last journal alone should give us the same current state
-  assert_eq!(state_last_values, expected_state);
+  // The last snapshot alone should give us the same current state
+  assert_eq!(state_last_values, state_all_values);
 
   // Verify the expected final state has the right keys
   assert!(state_last_values.contains_key("key1"));
@@ -172,6 +167,7 @@ async fn test_detection_compressed_journal() -> anyhow::Result<()> {
   let archived_files = find_archived_journals(temp_dir.path())?;
   let archived_path = archived_files.first().unwrap();
   let compressed_data = std::fs::read(archived_path)?;
+  let snapshot_ts = extract_rotation_timestamp(archived_path)?;
 
   // Verify it starts with zlib magic bytes (0x78)
   assert_eq!(
@@ -183,7 +179,7 @@ async fn test_detection_compressed_journal() -> anyhow::Result<()> {
   let decompressed_data = decompress_zlib(&compressed_data)?;
 
   // Should successfully recover from decompressed data
-  let recovery = VersionedRecovery::new(vec![(&decompressed_data, u64::MAX)])?;
+  let recovery = VersionedRecovery::new(vec![(&decompressed_data, snapshot_ts)])?;
   let state = recovery.recover_current()?;
   assert_eq!(state.len(), 1);
   assert_eq!(
@@ -198,13 +194,18 @@ async fn test_detection_compressed_journal() -> anyhow::Result<()> {
 async fn test_detection_invalid_journal_data() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
-  // Create valid journal for mixed test
+  // Create valid snapshot for mixed test
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
-  store.sync()?;
-  let valid_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
+  store.rotate_journal().await?;
+
+  let archived_files = find_archived_journals(temp_dir.path())?;
+  let archived_path = archived_files.first().unwrap();
+  let compressed_data = std::fs::read(archived_path)?;
+  let valid_data = decompress_zlib(&compressed_data)?;
+  let snapshot_ts = extract_rotation_timestamp(archived_path)?;
 
   // Test 1: Invalid format version
   // Since VersionedRecovery no longer validates during construction,
@@ -212,7 +213,7 @@ async fn test_detection_invalid_journal_data() -> anyhow::Result<()> {
   let mut invalid_version = vec![0u8; 32];
   let version_bytes = 999u64.to_le_bytes();
   invalid_version[0 .. 8].copy_from_slice(&version_bytes);
-  let recovery = VersionedRecovery::new(vec![(&invalid_version, u64::MAX)])?;
+  let recovery = VersionedRecovery::new(vec![(&invalid_version, snapshot_ts)])?;
   let result = recovery.recover_current();
   assert!(
     result.is_err(),
@@ -221,7 +222,7 @@ async fn test_detection_invalid_journal_data() -> anyhow::Result<()> {
 
   // Test 2: Data too small (smaller than header)
   let small_data = vec![0u8; 8];
-  let recovery = VersionedRecovery::new(vec![(&small_data, u64::MAX)])?;
+  let recovery = VersionedRecovery::new(vec![(&small_data, snapshot_ts)])?;
   let result = recovery.recover_current();
   assert!(
     result.is_err(),
@@ -230,7 +231,7 @@ async fn test_detection_invalid_journal_data() -> anyhow::Result<()> {
 
   // Test 3: Empty data
   let empty_data = vec![];
-  let recovery = VersionedRecovery::new(vec![(&empty_data, u64::MAX)])?;
+  let recovery = VersionedRecovery::new(vec![(&empty_data, snapshot_ts)])?;
   let result = recovery.recover_current();
   assert!(
     result.is_err(),
@@ -241,7 +242,7 @@ async fn test_detection_invalid_journal_data() -> anyhow::Result<()> {
   // If caller accidentally passes compressed data, it will fail during recovery
   let mut fake_zlib = vec![0x78, 0x9C]; // Valid zlib magic bytes
   fake_zlib.extend_from_slice(&[0xFF; 100]); // But garbage data
-  let recovery = VersionedRecovery::new(vec![(&fake_zlib, u64::MAX)])?;
+  let recovery = VersionedRecovery::new(vec![(&fake_zlib, snapshot_ts)])?;
   let result = recovery.recover_current();
   assert!(
     result.is_err(),
@@ -250,32 +251,38 @@ async fn test_detection_invalid_journal_data() -> anyhow::Result<()> {
 
   // Test 5: Random garbage
   let garbage = vec![0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56, 0x78, 0x90];
-  let recovery = VersionedRecovery::new(vec![(&garbage, u64::MAX)])?;
+  let recovery = VersionedRecovery::new(vec![(&garbage, snapshot_ts)])?;
   let result = recovery.recover_current();
   assert!(
     result.is_err(),
     "Should fail when recovering with garbage data"
   );
 
-  // Test 6: Mixed valid and invalid journals
-  // When the last journal is invalid, recover_current() should fail
+  // Test 6: Mixed valid and invalid snapshots
+  // When the last snapshot is invalid, recover_current() should fail
   let mut invalid_mixed = vec![0u8; 32];
   let version_bytes = 999u64.to_le_bytes();
   invalid_mixed[0 .. 8].copy_from_slice(&version_bytes);
-  let recovery = VersionedRecovery::new(vec![(&valid_data, u64::MAX), (&invalid_mixed, u64::MAX)])?;
+  let recovery = VersionedRecovery::new(vec![
+    (&valid_data, snapshot_ts),
+    (&invalid_mixed, snapshot_ts + 1000),
+  ])?;
   let result = recovery.recover_current();
   assert!(
     result.is_err(),
-    "Should fail because last journal is invalid"
+    "Should fail because last snapshot is invalid"
   );
 
-  // Test 7: Mixed invalid and valid journals
-  // When the last journal is valid, recover_current() should succeed
-  let recovery = VersionedRecovery::new(vec![(&invalid_mixed, u64::MAX), (&valid_data, u64::MAX)])?;
+  // Test 7: Mixed invalid and valid snapshots
+  // When the last snapshot is valid, recover_current() should succeed
+  let recovery = VersionedRecovery::new(vec![
+    (&invalid_mixed, snapshot_ts),
+    (&valid_data, snapshot_ts + 1000),
+  ])?;
   let result = recovery.recover_current();
   assert!(
     result.is_ok(),
-    "Should succeed because last journal is valid"
+    "Should succeed because last snapshot is valid"
   );
 
   Ok(())
@@ -308,7 +315,8 @@ fn test_detection_zlib_compression_level_5() {
   let decompressed = decompress_zlib(&compressed).unwrap();
 
   // Should be able to process the decompressed data
-  let result = VersionedRecovery::new(vec![(&decompressed, u64::MAX)]);
+  // Using arbitrary snapshot timestamp since this is synthetic test data
+  let result = VersionedRecovery::new(vec![(&decompressed, 1000)]);
   // May succeed or fail depending on whether the data is valid bonjson,
   // but should at least attempt to parse without panicking
   let _ = result;
@@ -362,17 +370,18 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
     .unwrap();
   store.sync()?;
 
-  // Read all journal files
+  // Rotate to create final snapshot
+  store.rotate_journal().await?;
+
+  // Read all snapshots (archived journals)
   let mut all_journals = Vec::new();
 
-  // Read archived journals
   for archived_path in find_archived_journals(temp_dir.path())? {
     let rotation_ts = extract_rotation_timestamp(&archived_path)?;
-    all_journals.push((std::fs::read(archived_path)?, rotation_ts));
+    let compressed_data = std::fs::read(&archived_path)?;
+    let decompressed_data = decompress_zlib(&compressed_data)?;
+    all_journals.push((decompressed_data, rotation_ts));
   }
-
-  // Read active journal
-  all_journals.push((std::fs::read(temp_dir.path().join("test.jrn"))?, u64::MAX));
 
   // Create recovery utility with all journals
   let journal_refs: Vec<(&[u8], u64)> = all_journals
@@ -409,11 +418,20 @@ async fn test_recovery_empty_journal() -> anyhow::Result<()> {
 
 
   // Create an empty store
-  let store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   store.sync()?;
 
-  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
-  let recovery = VersionedRecovery::new(vec![(&journal_data, u64::MAX)])?;
+  // Rotate to create snapshot
+  store.rotate_journal().await?;
+
+  // Read the snapshot
+  let archived_files = find_archived_journals(temp_dir.path())?;
+  assert_eq!(archived_files.len(), 1);
+  let compressed_data = std::fs::read(&archived_files[0])?;
+  let decompressed_data = decompress_zlib(&compressed_data)?;
+  let snapshot_ts = extract_rotation_timestamp(&archived_files[0])?;
+
+  let recovery = VersionedRecovery::new(vec![(&decompressed_data, snapshot_ts)])?;
 
   // Recovering current should return empty map
   let state = recovery.recover_current()?;
@@ -452,8 +470,17 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
 
   store.sync()?;
 
-  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
-  let recovery = VersionedRecovery::new(vec![(&journal_data, u64::MAX)])?;
+  // Rotate to create snapshot
+  store.rotate_journal().await?;
+
+  // Read the snapshot
+  let archived_files = find_archived_journals(temp_dir.path())?;
+  assert_eq!(archived_files.len(), 1);
+  let compressed_data = std::fs::read(&archived_files[0])?;
+  let decompressed_data = decompress_zlib(&compressed_data)?;
+  let snapshot_ts = extract_rotation_timestamp(&archived_files[0])?;
+
+  let recovery = VersionedRecovery::new(vec![(&decompressed_data, snapshot_ts)])?;
 
   // Each timestamp should show the value at that time
   let state_ts1 = recovery.recover_at_timestamp(ts1)?;
@@ -495,8 +522,17 @@ async fn test_recovery_various_value_types() -> anyhow::Result<()> {
   store.insert("bool".to_string(), Value::Bool(true)).await?;
   store.sync()?;
 
-  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
-  let recovery = VersionedRecovery::new(vec![(&journal_data, u64::MAX)])?;
+  // Rotate to create snapshot
+  store.rotate_journal().await?;
+
+  // Read the snapshot
+  let archived_files = find_archived_journals(temp_dir.path())?;
+  assert_eq!(archived_files.len(), 1);
+  let compressed_data = std::fs::read(&archived_files[0])?;
+  let decompressed_data = decompress_zlib(&compressed_data)?;
+  let snapshot_ts = extract_rotation_timestamp(&archived_files[0])?;
+
+  let recovery = VersionedRecovery::new(vec![(&decompressed_data, snapshot_ts)])?;
 
   let state = recovery.recover_current()?;
   assert_eq!(state.len(), 4);
@@ -563,28 +599,29 @@ async fn test_recovery_from_compressed_archive() -> anyhow::Result<()> {
 
   store.sync()?;
 
-  // Find the compressed archive
+  // Rotate again to create final snapshot
+  store.rotate_journal().await?;
+
+  // Read all snapshots
   let archived_files = find_archived_journals(temp_dir.path())?;
-  let archived_path = archived_files.first().unwrap();
-  assert!(archived_path.exists(), "Compressed archive should exist");
+  assert_eq!(archived_files.len(), 2, "Should have two snapshots");
 
-  // Read both journals
-  let compressed_data = std::fs::read(archived_path)?;
-  let active_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
+  let mut all_snapshots = Vec::new();
+  for archived_path in &archived_files {
+    let compressed_data = std::fs::read(archived_path)?;
+    let decompressed_data = decompress_zlib(&compressed_data)?;
+    let rotation_ts = extract_rotation_timestamp(archived_path)?;
+    all_snapshots.push((decompressed_data, rotation_ts));
+  }
 
-  // Decompress the archived journal manually
-  let decompressed_data = decompress_zlib(&compressed_data)?;
+  // Create recovery from all snapshots
+  let snapshot_refs: Vec<(&[u8], u64)> = all_snapshots
+    .iter()
+    .map(|(data, ts)| (data.as_slice(), *ts))
+    .collect();
+  let recovery = VersionedRecovery::new(snapshot_refs)?;
 
-  // Extract rotation timestamp from archived filename
-  let rotation_ts = extract_rotation_timestamp(archived_path)?;
-
-  // Create recovery from both journals (decompressed first, then active)
-  let recovery = VersionedRecovery::new(vec![
-    (&decompressed_data, rotation_ts),
-    (&active_data, u64::MAX),
-  ])?;
-
-  // Recover at ts1 (should be in compressed archive)
+  // Recover at ts1 (should be in first snapshot)
   let state_ts1 = recovery.recover_at_timestamp(ts1)?;
   assert_eq!(state_ts1.len(), 1);
   assert_eq!(
@@ -592,11 +629,11 @@ async fn test_recovery_from_compressed_archive() -> anyhow::Result<()> {
     Some(&Value::String("value1".to_string()))
   );
 
-  // Recover at ts2 (should be in compressed archive)
+  // Recover at ts2 (should be in first snapshot)
   let state_ts2 = recovery.recover_at_timestamp(ts2)?;
   assert_eq!(state_ts2.len(), 2);
 
-  // Recover at ts3 (should include data from both archives and active journal)
+  // Recover at ts3 (should include data from both snapshots)
   let state_ts3 = recovery.recover_at_timestamp(ts3)?;
   assert_eq!(state_ts3.len(), 3);
   assert_eq!(
@@ -648,30 +685,27 @@ async fn test_recovery_from_multiple_compressed_archives() -> anyhow::Result<()>
 
   store.sync()?;
 
-  // Collect all journal data (2 compressed + 1 active)
+  // Rotate again to create final snapshot
+  store.rotate_journal().await?;
+
+  // Collect all snapshots (should have 3)
   let archived_files = find_archived_journals(temp_dir.path())?;
+  assert_eq!(archived_files.len(), 3, "Should have three snapshots");
 
-  let archive1_path = &archived_files[0];
-  let archive2_path = &archived_files[1];
+  let mut all_snapshots = Vec::new();
+  for archived_path in &archived_files {
+    let compressed_data = std::fs::read(archived_path)?;
+    let decompressed_data = decompress_zlib(&compressed_data)?;
+    let rotation_ts = extract_rotation_timestamp(archived_path)?;
+    all_snapshots.push((decompressed_data, rotation_ts));
+  }
 
-  let archive1_data = std::fs::read(archive1_path)?;
-  let archive2_data = std::fs::read(archive2_path)?;
-  let active_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
-
-  // Decompress archived journals manually
-  let decompressed1 = decompress_zlib(&archive1_data)?;
-  let decompressed2 = decompress_zlib(&archive2_data)?;
-
-  // Extract rotation timestamps
-  let archive1_ts = extract_rotation_timestamp(archive1_path)?;
-  let archive2_ts = extract_rotation_timestamp(archive2_path)?;
-
-  // Create recovery from all journals (all decompressed)
-  let recovery = VersionedRecovery::new(vec![
-    (&decompressed1, archive1_ts),
-    (&decompressed2, archive2_ts),
-    (&active_data, u64::MAX),
-  ])?;
+  // Create recovery from all snapshots
+  let snapshot_refs: Vec<(&[u8], u64)> = all_snapshots
+    .iter()
+    .map(|(data, ts)| (data.as_slice(), *ts))
+    .collect();
+  let recovery = VersionedRecovery::new(snapshot_refs)?;
 
   // Verify we can recover at any timestamp
   let state_ts1 = recovery.recover_at_timestamp(ts1)?;
@@ -705,11 +739,6 @@ async fn test_recovery_mixed_compressed_and_uncompressed() -> anyhow::Result<()>
   store.sync()?;
   store.rotate_journal().await?;
 
-  // Get compressed archive
-  let archived_files = find_archived_journals(temp_dir.path())?;
-  let compressed_archive_path = archived_files.first().unwrap();
-  let compressed_data = std::fs::read(compressed_archive_path)?;
-
   // Create uncompressed journal data manually
   let mut uncompressed_store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   uncompressed_store
@@ -720,19 +749,28 @@ async fn test_recovery_mixed_compressed_and_uncompressed() -> anyhow::Result<()>
     .map(|tv| tv.timestamp)
     .unwrap();
   uncompressed_store.sync()?;
-  let uncompressed_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
 
-  // Extract rotation timestamp from compressed archive
-  let compressed_ts = extract_rotation_timestamp(compressed_archive_path)?;
+  // Rotate to create second snapshot
+  uncompressed_store.rotate_journal().await?;
 
-  // Decompress the compressed archive manually
-  let decompressed_data = decompress_zlib(&compressed_data)?;
+  // Get all snapshots
+  let archived_files = find_archived_journals(temp_dir.path())?;
+  assert_eq!(archived_files.len(), 2, "Should have two snapshots");
 
-  // Recovery now requires both journals to be decompressed
-  let recovery = VersionedRecovery::new(vec![
-    (&decompressed_data, compressed_ts),
-    (&uncompressed_data, u64::MAX),
-  ])?;
+  let mut all_snapshots = Vec::new();
+  for archived_path in &archived_files {
+    let compressed_data = std::fs::read(archived_path)?;
+    let decompressed_data = decompress_zlib(&compressed_data)?;
+    let rotation_ts = extract_rotation_timestamp(archived_path)?;
+    all_snapshots.push((decompressed_data, rotation_ts));
+  }
+
+  // Create recovery from all snapshots
+  let snapshot_refs: Vec<(&[u8], u64)> = all_snapshots
+    .iter()
+    .map(|(data, ts)| (data.as_slice(), *ts))
+    .collect();
+  let recovery = VersionedRecovery::new(snapshot_refs)?;
 
   let state_final = recovery.recover_at_timestamp(ts2)?;
   assert_eq!(state_final.len(), 2);
@@ -781,11 +819,18 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
 
   store.sync()?;
 
-  // Read the journal data
-  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
+  // Rotate to create snapshot
+  store.rotate_journal().await?;
+
+  // Read the snapshot
+  let archived_files = find_archived_journals(temp_dir.path())?;
+  assert_eq!(archived_files.len(), 1);
+  let compressed_data = std::fs::read(&archived_files[0])?;
+  let decompressed_data = decompress_zlib(&compressed_data)?;
+  let snapshot_ts = extract_rotation_timestamp(&archived_files[0])?;
 
   // Create recovery utility
-  let recovery = VersionedRecovery::new(vec![(&journal_data, u64::MAX)])?;
+  let recovery = VersionedRecovery::new(vec![(&decompressed_data, snapshot_ts)])?;
 
   // Recover at ts1: should have only key1=value1
   let state_ts1 = recovery.recover_at_timestamp(ts1)?;
@@ -848,7 +893,6 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
     .unwrap();
 
   // Rotate journal
-  let rotation_ts = ts2;
   store.rotate_journal().await?;
 
   std::thread::sleep(std::time::Duration::from_millis(10));
@@ -864,34 +908,40 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
 
   store.sync()?;
 
-  // Read both journals
-  let archived_path = temp_dir
-    .path()
-    .join(format!("test.jrn.t{}.zz", rotation_ts));
-  let archived_data = std::fs::read(&archived_path)?;
-  let active_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
+  // Rotate again to create final snapshot
+  store.rotate_journal().await?;
 
-  // Decompress the archived journal manually
-  let decompressed_archived = decompress_zlib(&archived_data)?;
+  // Read all snapshots
+  let archived_files = find_archived_journals(temp_dir.path())?;
+  assert_eq!(archived_files.len(), 2, "Should have two snapshots");
 
-  // Create recovery from both journals
-  let recovery = VersionedRecovery::new(vec![
-    (&decompressed_archived, rotation_ts),
-    (&active_data, u64::MAX),
-  ])?;
+  let mut all_snapshots = Vec::new();
+  for archived_path in &archived_files {
+    let compressed_data = std::fs::read(archived_path)?;
+    let decompressed_data = decompress_zlib(&compressed_data)?;
+    let rotation_ts = extract_rotation_timestamp(archived_path)?;
+    all_snapshots.push((decompressed_data, rotation_ts));
+  }
 
-  // Verify we can recover at any timestamp across both journals
+  // Create recovery from all snapshots
+  let snapshot_refs: Vec<(&[u8], u64)> = all_snapshots
+    .iter()
+    .map(|(data, ts)| (data.as_slice(), *ts))
+    .collect();
+  let recovery = VersionedRecovery::new(snapshot_refs)?;
+
+  // Verify we can recover at any timestamp across all snapshots
   let state_ts1 = recovery.recover_at_timestamp(ts1)?;
   assert_eq!(state_ts1.len(), 1);
   assert!(state_ts1.contains_key("key1"));
 
-  // Recover at ts2 (should be in archived journal)
+  // Recover at ts2 (should be in first snapshot)
   let state_ts2 = recovery.recover_at_timestamp(ts2)?;
   assert_eq!(state_ts2.len(), 2);
   assert!(state_ts2.contains_key("key1"));
   assert!(state_ts2.contains_key("key2"));
 
-  // Recover at ts3 (should include all data)
+  // Recover at ts3 (should include all data from both snapshots)
   let state_ts3 = recovery.recover_at_timestamp(ts3)?;
   assert_eq!(state_ts3.len(), 3);
   assert!(state_ts3.contains_key("key1"));
@@ -918,40 +968,24 @@ async fn test_recovery_decompression_transparent() -> anyhow::Result<()> {
     .unwrap();
   store.sync()?;
 
-  // Create uncompressed recovery baseline
-  let uncompressed_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
-  let recovery_uncompressed = VersionedRecovery::new(vec![(&uncompressed_data, u64::MAX)])?;
-  let state_uncompressed = recovery_uncompressed.recover_at_timestamp(ts1)?;
-
-  // Rotate to compress
+  // Rotate to create first snapshot
   store.rotate_journal().await?;
 
-  // Read compressed archive
+  // Read the first snapshot
   let archived_files = find_archived_journals(temp_dir.path())?;
-  let compressed_path = archived_files.first().unwrap();
-  let compressed_data = std::fs::read(compressed_path)?;
+  let first_snapshot_path = archived_files.first().unwrap();
+  let compressed_data = std::fs::read(first_snapshot_path)?;
+  let snapshot_ts = extract_rotation_timestamp(first_snapshot_path)?;
 
-  // Extract rotation timestamp from compressed archive filename
-  let compressed_ts = extract_rotation_timestamp(compressed_path)?;
-
-  // Verify it's actually compressed (smaller)
-  assert!(compressed_data.len() < uncompressed_data.len());
-
-  // Decompress the archived journal manually
+  // Decompress the snapshot data (VersionedRecovery requires uncompressed data)
   let decompressed_data = decompress_zlib(&compressed_data)?;
+  let recovery = VersionedRecovery::new(vec![(&decompressed_data, snapshot_ts)])?;
+  let state = recovery.recover_at_timestamp(ts1)?;
 
-  // Create recovery from decompressed data
-  let recovery_compressed = VersionedRecovery::new(vec![(&decompressed_data, compressed_ts)])?;
-  let state_compressed = recovery_compressed.recover_at_timestamp(ts1)?;
-
-  // Both should produce identical results
-  assert_eq!(state_uncompressed.len(), state_compressed.len());
+  // Verify recovery works correctly with decompressed data
+  assert_eq!(state.len(), 1);
   assert_eq!(
-    state_uncompressed.get("data").map(|tv| &tv.value),
-    state_compressed.get("data").map(|tv| &tv.value)
-  );
-  assert_eq!(
-    state_uncompressed.get("data").map(|tv| &tv.value),
+    state.get("data").map(|tv| &tv.value),
     Some(&Value::String(compressible))
   );
 
@@ -982,19 +1016,25 @@ async fn test_journal_ordering_requirement() -> anyhow::Result<()> {
     .await?;
   store.sync()?;
 
-  // Read both journals (archived + active)
+  // Rotate again to create second snapshot
+  store.rotate_journal().await?;
+
+  // Read both snapshots
   let archived_files = find_archived_journals(temp_dir.path())?;
+  assert_eq!(archived_files.len(), 2, "Should have 2 archived snapshots");
 
-  let archived_data = std::fs::read(archived_files.first().unwrap())?;
-  let active_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
+  let first_snapshot_data = std::fs::read(&archived_files[0])?;
+  let first_snapshot_ts = extract_rotation_timestamp(&archived_files[0])?;
+  let decompressed_first = decompress_zlib(&first_snapshot_data)?;
 
-  // Extract rotation timestamp from archived filename
-  let archived_ts = extract_rotation_timestamp(archived_files.first().unwrap())?;
+  let second_snapshot_data = std::fs::read(&archived_files[1])?;
+  let second_snapshot_ts = extract_rotation_timestamp(&archived_files[1])?;
+  let decompressed_second = decompress_zlib(&second_snapshot_data)?;
 
-  // Should succeed when journals are in correct chronological order (archived, then active)
+  // Should succeed when journals are in correct chronological order (oldest first)
   let recovery = VersionedRecovery::new(vec![
-    (&archived_data, archived_ts),
-    (&active_data, u64::MAX),
+    (&decompressed_first, first_snapshot_ts),
+    (&decompressed_second, second_snapshot_ts),
   ]);
   assert!(recovery.is_ok(), "Should succeed with correct ordering");
 

@@ -76,18 +76,6 @@ async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result
 ///
 /// For detailed information about timestamp semantics, recovery bucketing, and invariants,
 /// see the `VersionedRecovery` documentation.
-///
-/// # Example
-/// ```ignore
-/// use bd_resilient_kv::VersionedKVStore;
-/// use bd_bonjson::Value;
-///
-/// let mut store = VersionedKVStore::new("/path/to/dir", "mystore", 1024 * 1024, None)?;
-///
-/// // Insert with timestamp tracking
-/// let t1 = store.insert("key1".to_string(), Value::from(42))?;
-/// let t2 = store.insert("key2".to_string(), Value::from("hello"))?;
-/// ```
 pub struct VersionedKVStore {
   journal: MemMappedVersionedKVJournal,
   cached_map: AHashMap<String, TimestampedValue>,

@@ -30,75 +30,77 @@ fn read_u64_field(obj: &AHashMap<String, Value>, key: &str) -> Option<u64> {
   }
 }
 
-/// A utility for recovering state at arbitrary timestamps from raw journal data.
+/// A utility for recovering state at arbitrary timestamps from journal snapshots.
 ///
-/// This utility operates on raw uncompressed byte slices from timestamped journals and can
-/// reconstruct the key-value state at any historical timestamp by replaying journal entries.
+/// This utility operates on raw uncompressed byte slices from archived journal snapshots
+/// (created during rotation) and can reconstruct the key-value state at any historical
+/// timestamp by replaying journal entries.
 ///
 /// # Recovery Model
 ///
-/// Recovery works by replaying journal entries in chronological order up to the target timestamp.
-/// When journals are rotated, compacted entries preserve their original timestamps, which means
-/// entry timestamps may overlap across adjacent journal snapshots. Recovery handles this correctly
-/// by replaying journals sequentially and applying entries in timestamp order.
+/// Recovery works exclusively with journal snapshots - complete archived journals created
+/// during rotation. Each snapshot contains the full compacted state at the time of rotation,
+/// with all entries preserving their original timestamps.
+///
+/// Recovery replays snapshot entries in chronological order up to the target timestamp.
+/// Since entry timestamps may overlap across adjacent snapshots, recovery handles this by
+/// replaying snapshots sequentially and applying entries in timestamp order.
 ///
 /// ## Optimization
 ///
-/// To recover the current state, only the last journal needs to be read since rotation writes
-/// the complete compacted state with original timestamps preserved. For historical timestamp
-/// recovery, the utility automatically identifies and replays only the necessary journals.
+/// To recover the current state, only the last snapshot needs to be read since each snapshot
+/// contains the complete compacted state at rotation time. For historical timestamp recovery,
+/// the utility automatically identifies and replays only the necessary snapshots.
 ///
-/// **Note:** Callers are responsible for decompressing journal data if needed before passing
+/// **Note:** Callers are responsible for decompressing snapshot data if needed before passing
 /// it to this utility.
 #[derive(Debug)]
 pub struct VersionedRecovery {
-  journals: Vec<JournalInfo>,
+  snapshots: Vec<SnapshotInfo>,
 }
 
 #[derive(Debug)]
-struct JournalInfo {
+struct SnapshotInfo {
   data: Vec<u8>,
-  rotation_timestamp: u64,
+  snapshot_timestamp: u64,
 }
 
 impl VersionedRecovery {
-  /// Create a new recovery utility from a list of uncompressed journal byte slices with rotation
-  /// timestamps.
+  /// Create a new recovery utility from a list of uncompressed snapshot byte slices.
   ///
-  /// The journals should be provided in chronological order (oldest to newest).
-  /// Each journal must be a valid uncompressed versioned journal (VERSION 2 format).
+  /// The snapshots should be provided in chronological order (oldest to newest).
+  /// Each snapshot must be a valid uncompressed versioned journal (VERSION 2 format).
   ///
   /// # Arguments
   ///
-  /// * `journals` - A vector of tuples containing (`journal_data`, `rotation_timestamp`). The
-  ///   `rotation_timestamp` represents when this journal was archived (the snapshot boundary). For
-  ///   the active journal (not yet rotated), use `u64::MAX`.
+  /// * `snapshots` - A vector of tuples containing (`snapshot_data`, `snapshot_timestamp`). The
+  ///   `snapshot_timestamp` represents when this snapshot was created (archived during rotation).
   ///
   /// # Errors
   ///
-  /// Returns an error if any journal is invalid or cannot be parsed.
+  /// Returns an error if any snapshot is invalid or cannot be parsed.
   ///
   /// # Note
   ///
-  /// Callers must decompress journal data before passing it to this method if the data
+  /// Callers must decompress snapshot data before passing it to this method if the data
   /// is compressed (e.g., with zlib).
-  pub fn new(journals: Vec<(&[u8], u64)>) -> anyhow::Result<Self> {
-    let journal_infos = journals
+  pub fn new(snapshots: Vec<(&[u8], u64)>) -> anyhow::Result<Self> {
+    let snapshot_infos = snapshots
       .into_iter()
-      .map(|(data, rotation_timestamp)| JournalInfo {
+      .map(|(data, snapshot_timestamp)| SnapshotInfo {
         data: data.to_vec(),
-        rotation_timestamp,
+        snapshot_timestamp,
       })
       .collect();
 
     Ok(Self {
-      journals: journal_infos,
+      snapshots: snapshot_infos,
     })
   }
 
   /// Recover the key-value state at a specific timestamp.
   ///
-  /// This method replays all journal entries from all provided journals up to and including
+  /// This method replays all snapshot entries from all provided snapshots up to and including
   /// the target timestamp, reconstructing the exact state at that point in time.
   ///
   /// ## Important: "Up to and including" semantics
@@ -124,23 +126,23 @@ impl VersionedRecovery {
   /// # Errors
   ///
   /// Returns an error if:
-  /// - The target timestamp is not found in any journal
-  /// - Journal data is corrupted or invalid
+  /// - The target timestamp is not found in any snapshot
+  /// - Snapshot data is corrupted or invalid
   pub fn recover_at_timestamp(
     &self,
     target_timestamp: u64,
   ) -> anyhow::Result<AHashMap<String, TimestampedValue>> {
     let mut map = AHashMap::new();
 
-    // Replay journals up to and including the journal that was active at target_timestamp.
-    // A journal with rotation_timestamp T was the active journal for all timestamps <= T.
-    for journal in &self.journals {
-      // Replay entries from this journal up to target_timestamp
-      replay_journal_to_timestamp(&journal.data, target_timestamp, &mut map)?;
+    // Replay snapshots up to and including the snapshot that was created at or after
+    // target_timestamp. A snapshot with snapshot_timestamp T contains all state up to time T.
+    for snapshot in &self.snapshots {
+      // Replay entries from this snapshot up to target_timestamp
+      replay_journal_to_timestamp(&snapshot.data, target_timestamp, &mut map)?;
 
-      // If this journal was rotated at or after our target timestamp, we're done.
-      // This journal contains all state up to target_timestamp.
-      if journal.rotation_timestamp >= target_timestamp {
+      // If this snapshot was created at or after our target timestamp, we're done.
+      // This snapshot contains all state up to target_timestamp.
+      if snapshot.snapshot_timestamp >= target_timestamp {
         break;
       }
     }
@@ -148,28 +150,30 @@ impl VersionedRecovery {
     Ok(map)
   }
 
-  /// Get the current state (at the latest timestamp).
+  /// Get the current state from the latest snapshot.
+  ///
+  /// Since each snapshot contains the complete compacted state at rotation time,
+  /// only the last snapshot needs to be read to get the current state.
   ///
   /// # Errors
   ///
-  /// Returns an error if journal data is corrupted or invalid.
+  /// Returns an error if snapshot data is corrupted or invalid.
   pub fn recover_current(&self) -> anyhow::Result<AHashMap<String, TimestampedValue>> {
     let mut map = AHashMap::new();
 
-    // Optimization: Only read the last journal since journal rotation writes
-    // the complete state at the snapshot timestamp, so the last journal contains
-    // all current state.
-    if let Some(last_journal) = self.journals.last() {
-      replay_journal_to_timestamp(&last_journal.data, u64::MAX, &mut map)?;
+    // Optimization: Only read the last snapshot since rotation writes the complete
+    // compacted state, so the last snapshot contains all current state.
+    if let Some(last_snapshot) = self.snapshots.last() {
+      replay_journal_to_timestamp(&last_snapshot.data, u64::MAX, &mut map)?;
     }
 
     Ok(map)
   }
 }
 
-/// Replay journal entries up to and including the target timestamp.
+/// Replay snapshot entries up to and including the target timestamp.
 ///
-/// This function processes all journal entries with timestamp ≤ `target_timestamp`.
+/// This function processes all entries with timestamp ≤ `target_timestamp`.
 /// The "up to and including" behavior is essential because timestamps are monotonically
 /// non-decreasing (not strictly increasing): if the system clock doesn't advance between
 /// writes, multiple entries may share the same timestamp. All such entries must be
@@ -225,7 +229,7 @@ fn replay_journal_to_timestamp(
   Ok(())
 }
 
-/// Read the bonjson payload from a journal buffer.
+/// Read the bonjson payload from a snapshot buffer.
 fn read_bonjson_payload(buffer: &[u8]) -> anyhow::Result<Value> {
   const HEADER_SIZE: usize = 16;
   const ARRAY_BEGIN: usize = 16;
