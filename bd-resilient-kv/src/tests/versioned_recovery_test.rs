@@ -228,7 +228,7 @@ async fn test_detection_invalid_journal_data() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_detection_all_zlib_compression_levels() {
+fn test_detection_zlib_compression_level_5() {
   use flate2::Compression;
   use flate2::write::ZlibEncoder;
   use std::io::Write;
@@ -242,26 +242,19 @@ fn test_detection_all_zlib_compression_levels() {
   // Some data
   uncompressed[16 .. 32].copy_from_slice(b"[{\"base_version\"");
 
-  // Test different compression levels
-  for level in [
-    Compression::none(),
-    Compression::fast(),
-    Compression::default(),
-    Compression::best(),
-  ] {
-    let mut encoder = ZlibEncoder::new(Vec::new(), level);
-    encoder.write_all(&uncompressed).unwrap();
-    let compressed = encoder.finish().unwrap();
+  // Test compression level 5 (what we use in production)
+  let mut encoder = ZlibEncoder::new(Vec::new(), Compression::new(5));
+  encoder.write_all(&uncompressed).unwrap();
+  let compressed = encoder.finish().unwrap();
 
-    // Verify it starts with 0x78
-    assert_eq!(compressed[0], 0x78);
+  // Verify it starts with 0x78 (zlib magic byte)
+  assert_eq!(compressed[0], 0x78);
 
-    // Should be able to detect and decompress
-    let result = VersionedRecovery::new(vec![&compressed]);
-    // May succeed or fail depending on whether the data is valid bonjson,
-    // but should at least attempt decompression without panicking
-    let _ = result;
-  }
+  // Should be able to detect and decompress
+  let result = VersionedRecovery::new(vec![&compressed]);
+  // May succeed or fail depending on whether the data is valid bonjson,
+  // but should at least attempt decompression without panicking
+  let _ = result;
 }
 
 

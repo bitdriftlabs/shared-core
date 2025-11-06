@@ -36,7 +36,7 @@ async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result
 
     let source_file = std::fs::File::open(&source)?;
     let dest_file = std::fs::File::create(&dest)?;
-    let mut encoder = ZlibEncoder::new(dest_file, Compression::default());
+    let mut encoder = ZlibEncoder::new(dest_file, Compression::new(5));
     copy(&mut BufReader::new(source_file), &mut encoder)?;
     encoder.finish()?;
     Ok::<_, anyhow::Error>(())
