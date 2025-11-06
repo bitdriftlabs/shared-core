@@ -58,7 +58,6 @@ impl MemMappedVersionedKVJournal {
   /// # Arguments
   /// * `file_path` - Path to the file to use for storage
   /// * `size` - Minimum size of the file in bytes
-  /// * `base_timestamp` - The starting timestamp for this journal (typically current time)
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
   ///
   /// # Errors
@@ -66,7 +65,6 @@ impl MemMappedVersionedKVJournal {
   pub fn new<P: AsRef<Path>>(
     file_path: P,
     size: usize,
-    base_timestamp: u64,
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
     let file = OpenOptions::new()
@@ -83,7 +81,7 @@ impl MemMappedVersionedKVJournal {
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
-    let versioned_kv = VersionedKVJournal::new(buffer, base_timestamp, high_water_mark_ratio)?;
+    let versioned_kv = VersionedKVJournal::new(buffer, high_water_mark_ratio)?;
 
     Ok(Self { mmap, versioned_kv })
   }

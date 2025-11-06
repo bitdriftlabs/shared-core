@@ -47,8 +47,7 @@ Previous journals, archived during rotation. Each contains complete state at rot
 ```json
 {
   "initialized": <u64 timestamp in ns>,
-  "format_version": 2,
-  "base_version": <u64 starting version for this journal>
+  "format_version": 2
 }
 ```
 
@@ -74,9 +73,9 @@ Timestamps are monotonically non-decreasing, not strictly increasing. If the sys
 ## Journal Structure
 
 ### Initial Journal
-When first created with base version 1:
+When first created:
 ```json
-{"initialized": 1699564800000000000, "format_version": 2, "base_version": 1}
+{"initialized": 1699564800000000000, "format_version": 2}
 {"v": 2, "t": 1699564801000000000, "k": "key1", "o": "value1"}
 {"v": 3, "t": 1699564802000000000, "k": "key2", "o": "value2"}
 ...
@@ -85,7 +84,7 @@ When first created with base version 1:
 ### Rotated Journal
 After rotation at version 30000, the new journal contains:
 ```json
-{"initialized": 1699564900000000000, "format_version": 2, "base_version": 30000}
+{"initialized": 1699564900000000000, "format_version": 2}
 {"v": 30000, "t": 1699564800123456789, "k": "key1", "o": "value1"}  // Compacted state (original timestamp)
 {"v": 30000, "t": 1699564850987654321, "k": "key2", "o": "value2"}  // Compacted state (original timestamp)
 {"v": 30000, "t": 1699564875111222333, "k": "key3", "o": "value3"}  // Compacted state (original timestamp)
@@ -118,10 +117,10 @@ When high water mark is reached at version N:
 Example:
 ```
 Before rotation at v30000:
-  my_store.jrn                    # Active, base_version=20000, contains v20000-v30000
+  my_store.jrn                    # Active, contains v20000-v30000
 
 After rotation:
-  my_store.jrn                    # Active, base_version=30000, contains compacted state at v30000
+  my_store.jrn                    # Active, contains compacted state at v30000
   my_store.jrn.v30000.zz         # Compressed archive, contains v20000-v30000
 ```
 

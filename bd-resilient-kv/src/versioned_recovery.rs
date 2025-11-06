@@ -56,7 +56,6 @@ fn read_u64_field(obj: &AHashMap<String, Value>, key: &str) -> Option<u64> {
 /// - **Future-proof**: Preserves historical information that may become useful
 ///
 /// Each snapshot has:
-/// - `base_timestamp`: Stored in metadata, used for monotonic write enforcement
 /// - `min_timestamp`: Minimum entry timestamp in the snapshot (from actual entries)
 /// - `max_timestamp`: Maximum entry timestamp in the snapshot (from actual entries)
 /// - Filename timestamp: The rotation point (equals `max_timestamp` of archived journal)
@@ -64,13 +63,11 @@ fn read_u64_field(obj: &AHashMap<String, Value>, key: &str) -> Option<u64> {
 /// Example timeline:
 /// ```text
 /// Snapshot 1: store.jrn.t300.zz
-///   - base_timestamp: 0
 ///   - Entries: foo@100, bar@200, foo@300
 ///   - min_timestamp: 100, max_timestamp: 300
 ///   - Range: [100, 300]
 ///
 /// Snapshot 2: store.jrn.t500.zz
-///   - base_timestamp: 300 (rotation point of Snapshot 1)
 ///   - Compacted entries: foo@300, bar@200 (original timestamps!)
 ///   - New entries: baz@400, qux@500
 ///   - min_timestamp: 200, max_timestamp: 500
@@ -95,9 +92,7 @@ fn read_u64_field(obj: &AHashMap<String, Value>, key: &str) -> Option<u64> {
 ///
 /// ## Invariants
 ///
-/// - `base_timestamp` values are non-decreasing across snapshots
 /// - Filename timestamps strictly increase (t300 < t500)
-/// - `base_timestamp[i]` >= `max_timestamp[i-1]` (validated in `new()`)
 /// - Entry timestamp ranges may overlap between adjacent snapshots
 /// - Sequential replay produces correct state at any timestamp
 ///
@@ -111,7 +106,6 @@ pub struct VersionedRecovery {
 #[derive(Debug)]
 struct JournalInfo {
   data: Vec<u8>,
-  base_timestamp: u64,
   min_timestamp: u64,
   max_timestamp: u64,
 }
@@ -132,29 +126,12 @@ impl VersionedRecovery {
     for data in journals {
       // Detect and decompress if needed
       let decompressed = decompress_if_needed(data)?;
-      let (base_timestamp, min_timestamp, max_timestamp) = extract_timestamp_range(&decompressed)?;
+      let (min_timestamp, max_timestamp) = extract_timestamp_range(&decompressed)?;
       journal_infos.push(JournalInfo {
         data: decompressed,
-        base_timestamp,
         min_timestamp,
         max_timestamp,
       });
-    }
-
-    // Validate that base_timestamp values are consistent across journals
-    // Each journal's base_timestamp should be >= the previous journal's max_timestamp
-    for i in 1 .. journal_infos.len() {
-      let prev = &journal_infos[i - 1];
-      let curr = &journal_infos[i];
-
-      if curr.base_timestamp < prev.max_timestamp {
-        anyhow::bail!(
-          "Journal {} has base_timestamp {} which is less than previous journal's max_timestamp {}",
-          i,
-          curr.base_timestamp,
-          prev.max_timestamp
-        );
-      }
     }
 
     Ok(Self {
@@ -315,24 +292,18 @@ fn decompress_if_needed(data: &[u8]) -> anyhow::Result<Vec<u8>> {
   anyhow::bail!("Data too small to be valid journal (size: {})", data.len())
 }
 
-/// Extract the base timestamp and the minimum/maximum timestamps from a journal.
+/// Extract the minimum/maximum timestamps from a journal.
 ///
-/// Returns (`base_timestamp`, `min_timestamp`, `max_timestamp`).
-/// The `base_timestamp` comes from the metadata, while min/max are computed from actual entries.
-fn extract_timestamp_range(buffer: &[u8]) -> anyhow::Result<(u64, u64, u64)> {
+/// Returns (`min_timestamp`, `max_timestamp`).
+/// These are computed from actual entry timestamps in the journal.
+fn extract_timestamp_range(buffer: &[u8]) -> anyhow::Result<(u64, u64)> {
   let array = read_bonjson_payload(buffer)?;
 
-  let mut base_timestamp = 0;
   let mut min_timestamp = u64::MAX;
   let mut max_timestamp = 0;
 
   if let Value::Array(entries) = array {
-    // First entry is metadata - extract base_timestamp
-    if let Some(Value::Object(metadata)) = entries.first() {
-      base_timestamp = read_u64_field(metadata, "base_timestamp").unwrap_or(0);
-    }
-
-    // Process remaining entries to find min/max timestamps
+    // Process entries to find min/max timestamps (skip metadata at index 0)
     for (index, entry) in entries.iter().enumerate() {
       if index == 0 {
         continue; // Skip metadata
@@ -347,13 +318,13 @@ fn extract_timestamp_range(buffer: &[u8]) -> anyhow::Result<(u64, u64, u64)> {
     }
   }
 
-  // If no entries found, default to (base_timestamp, base_timestamp)
+  // If no entries found, default to (0, 0)
   if min_timestamp == u64::MAX {
-    min_timestamp = base_timestamp;
-    max_timestamp = base_timestamp;
+    min_timestamp = 0;
+    max_timestamp = 0;
   }
 
-  Ok((base_timestamp, min_timestamp, max_timestamp))
+  Ok((min_timestamp, max_timestamp))
 }
 
 /// Replay journal entries up to and including the target timestamp.

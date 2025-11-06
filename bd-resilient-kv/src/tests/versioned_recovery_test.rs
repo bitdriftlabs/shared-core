@@ -179,7 +179,10 @@ async fn test_detection_invalid_journal_data() -> anyhow::Result<()> {
   let result = VersionedRecovery::new(vec![&invalid_version]);
   assert!(result.is_err());
   assert!(
-    result.unwrap_err().to_string().contains("Invalid journal format version"),
+    result
+      .unwrap_err()
+      .to_string()
+      .contains("Invalid journal format version"),
     "Should fail with invalid version error"
   );
 
@@ -986,7 +989,7 @@ async fn test_recovery_decompression_transparent() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn test_base_timestamp_validation() -> anyhow::Result<()> {
+async fn test_journal_ordering_requirement() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
   // Create a store and perform rotation to get proper sequential journals
@@ -1030,20 +1033,17 @@ async fn test_base_timestamp_validation() -> anyhow::Result<()> {
   let recovery = VersionedRecovery::new(vec![&archived_data, &active_data]);
   assert!(recovery.is_ok(), "Should succeed with correct ordering");
 
-  // Should fail when journals are in wrong order (active before archived)
-  let recovery_reversed = VersionedRecovery::new(vec![&active_data, &archived_data]);
-  assert!(
-    recovery_reversed.is_err(),
-    "Should fail when base_timestamp ordering is violated"
-  );
+  // Verify correct ordering produces expected results
+  let state = recovery?.recover_current()?;
+  assert_eq!(state.len(), 2);
+  assert!(state.contains_key("key1"));
+  assert!(state.contains_key("key2"));
 
-  let err = recovery_reversed.unwrap_err();
-  let err_msg = err.to_string();
-  assert!(
-    err_msg.contains("base_timestamp") && err_msg.contains("max_timestamp"),
-    "Error should mention base_timestamp and max_timestamp validation, got: {}",
-    err_msg
-  );
+  // Note: Journals with reversed order may not produce correct results
+  // because recovery replays journals sequentially. Users must provide
+  // journals in chronological order (oldest to newest).
+  // The removal of base_timestamp metadata field doesn't change this requirement -
+  // chronological order is determined by filename timestamps (e.g., store.jrn.t300.zz)
 
   Ok(())
 }

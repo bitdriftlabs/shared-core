@@ -142,7 +142,7 @@ fn read_bonjson_payload(buffer: &[u8]) -> anyhow::Result<Value> {
 }
 
 /// Create and write the metadata section of a versioned journal.
-fn write_metadata(buffer: &mut [u8], timestamp: u64, base_timestamp: u64) -> anyhow::Result<usize> {
+fn write_metadata(buffer: &mut [u8], timestamp: u64) -> anyhow::Result<usize> {
   let buffer_len = buffer.len();
   let mut cursor = &mut buffer[METADATA_OFFSET ..];
 
@@ -150,10 +150,6 @@ fn write_metadata(buffer: &mut [u8], timestamp: u64, base_timestamp: u64) -> any
   let mut metadata = AHashMap::new();
   metadata.insert("initialized".to_string(), Value::Unsigned(timestamp));
   metadata.insert("format_version".to_string(), Value::Unsigned(VERSION));
-  metadata.insert(
-    "base_timestamp".to_string(),
-    Value::Unsigned(base_timestamp),
-  );
 
   // Write metadata object
   encode_into_buf(&mut cursor, &Value::Object(metadata))
@@ -210,16 +206,11 @@ impl<'a> VersionedKVJournal<'a> {
   ///
   /// # Arguments
   /// * `buffer` - The storage buffer
-  /// * `base_timestamp` - The starting timestamp for this journal (typically current time)
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
   ///
   /// # Errors
   /// Returns an error if the buffer is too small or if `high_water_mark_ratio` is invalid.
-  pub fn new(
-    buffer: &'a mut [u8],
-    base_timestamp: u64,
-    high_water_mark_ratio: Option<f32>,
-  ) -> anyhow::Result<Self> {
+  pub fn new(buffer: &'a mut [u8], high_water_mark_ratio: Option<f32>) -> anyhow::Result<Self> {
     let buffer_len = validate_buffer_len(buffer)?;
     let high_water_mark = calculate_high_water_mark(buffer_len, high_water_mark_ratio)?;
 
@@ -229,7 +220,7 @@ impl<'a> VersionedKVJournal<'a> {
 
     // Write metadata with current timestamp
     let timestamp = current_timestamp()?;
-    let position = write_metadata(buffer, timestamp, base_timestamp)?;
+    let position = write_metadata(buffer, timestamp)?;
 
     write_position(buffer, position);
     write_version(buffer);
@@ -240,7 +231,7 @@ impl<'a> VersionedKVJournal<'a> {
       high_water_mark,
       high_water_mark_triggered: false,
       initialized_at_unix_time_ns: timestamp,
-      last_timestamp: std::cmp::max(timestamp, base_timestamp),
+      last_timestamp: timestamp,
     })
   }
 
@@ -492,10 +483,10 @@ impl<'a> VersionedKVJournal<'a> {
   ///   - Final state: foo=v3@300, bar=v1@200
   ///   - rotation_timestamp = 300 (max of all timestamps)
   ///
-  /// New journal (created by this function with base_timestamp=300):
+  /// New journal (created by this function):
   ///   - Compacted entries: foo=v3@300, bar=v1@200  ← Original timestamps preserved!
   ///   - These timestamps (300, 200) may equal/overlap with old journal's range [100, 300]
-  ///   - Future entries will have t >= 300 (enforced by base_timestamp)
+  ///   - Future entries will have t >= 300 (enforced by last_timestamp initialization)
   /// ```
   ///
   /// ## Design Rationale
@@ -514,7 +505,6 @@ impl<'a> VersionedKVJournal<'a> {
   ///
   /// # Arguments
   /// * `buffer` - The buffer to write the new journal to
-  /// * `base_timestamp` - The starting timestamp for the journal (for monotonic enforcement)
   /// * `state` - The current key-value state with timestamps to write
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark
   ///
@@ -522,12 +512,11 @@ impl<'a> VersionedKVJournal<'a> {
   /// Returns an error if serialization fails or buffer is too small.
   pub fn create_rotated_journal(
     buffer: &'a mut [u8],
-    base_timestamp: u64,
     state: &AHashMap<String, TimestampedValue>,
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
-    // Create a new journal with the base timestamp
-    let mut journal = Self::new(buffer, base_timestamp, high_water_mark_ratio)?;
+    // Create a new journal
+    let mut journal = Self::new(buffer, high_water_mark_ratio)?;
 
     // Find the maximum timestamp in the state to maintain monotonicity
     let max_state_timestamp = state.values().map(|tv| tv.timestamp).max().unwrap_or(0);

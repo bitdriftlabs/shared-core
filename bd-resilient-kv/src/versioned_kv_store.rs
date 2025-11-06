@@ -75,7 +75,7 @@ async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result
 /// ## Rotation Process
 /// 1. Computes `rotation_timestamp` = max timestamp of all current entries
 /// 2. Archives old journal as `<name>.jrn.t<rotation_timestamp>.zz` (compressed)
-/// 3. Creates new journal with `base_timestamp = rotation_timestamp`
+/// 3. Creates new journal with compacted state
 /// 4. Writes compacted state with **original timestamps preserved**
 /// 5. Continues normal operations in the new journal
 ///
@@ -139,12 +139,12 @@ impl VersionedKVStore {
       // Try to open existing journal
       MemMappedVersionedKVJournal::from_file(&journal_path, buffer_size, high_water_mark_ratio)
         .or_else(|_| {
-          // Data is corrupt or unreadable, create fresh with base version 1
-          MemMappedVersionedKVJournal::new(&journal_path, buffer_size, 1, high_water_mark_ratio)
+          // Data is corrupt or unreadable, create fresh journal
+          MemMappedVersionedKVJournal::new(&journal_path, buffer_size, high_water_mark_ratio)
         })?
     } else {
-      // Create new journal with base version 1
-      MemMappedVersionedKVJournal::new(&journal_path, buffer_size, 1, high_water_mark_ratio)?
+      // Create new journal
+      MemMappedVersionedKVJournal::new(&journal_path, buffer_size, high_water_mark_ratio)?
     };
 
     let cached_map = journal.as_hashmap_with_timestamps()?;
@@ -374,7 +374,7 @@ impl VersionedKVStore {
     let archived_path = self.generate_archived_path(rotation_timestamp);
 
     // Create new journal with rotated state
-    let new_journal = self.create_rotated_journal(rotation_timestamp).await?;
+    let new_journal = self.create_rotated_journal().await?;
 
     // Replace old journal with new one
     let old_journal = std::mem::replace(&mut self.journal, new_journal);
@@ -413,10 +413,7 @@ impl VersionedKVStore {
   }
 
   /// Create a new rotated journal with compacted state.
-  async fn create_rotated_journal(
-    &self,
-    base_timestamp: u64,
-  ) -> anyhow::Result<MemMappedVersionedKVJournal> {
+  async fn create_rotated_journal(&self) -> anyhow::Result<MemMappedVersionedKVJournal> {
     // Create temporary journal file
     let temp_path = self.dir_path.join(format!("{}.jrn.tmp", self.journal_name));
 
@@ -426,7 +423,6 @@ impl VersionedKVStore {
     // Use VersionedKVJournal to create rotated journal in memory
     let _rotated = VersionedKVJournal::create_rotated_journal(
       &mut buffer,
-      base_timestamp,
       &self.cached_map,
       self.high_water_mark_ratio,
     )?;
