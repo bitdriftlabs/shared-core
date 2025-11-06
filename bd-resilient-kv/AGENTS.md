@@ -77,11 +77,6 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 - Archived journals are automatically compressed using zlib (RFC 1950, level 5) asynchronously
 - Application controls upload/cleanup of archived journals
 
-**Rotation Guarantees**:
-- **Impossible Failure Mode**: Rotation cannot fail due to insufficient buffer space
-- **Reasoning**: Rotation creates a new journal with the same buffer size as the original. Since compaction only removes redundant updates (old versions of keys), the compacted state is always ≤ the current journal size. If data fits in the journal during normal operation, it will always fit during rotation.
-- **Implication**: Applications do not need to handle "buffer overflow during rotation" errors. This is an architectural guarantee.
-
 **Compression**:
 - All archived journals are automatically compressed during rotation using async I/O
 - Active journals remain uncompressed for write performance
@@ -263,15 +258,7 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
 
 ### Impossible Failure Modes (Architectural Guarantees)
 
-1. **Buffer Overflow During Rotation (VersionedKVStore)**
-   - **Why Impossible**: Rotation creates new journal with same buffer size. Compaction only removes redundant updates, so compacted state ≤ current journal size. If data fits during normal operation, it always fits during rotation.
-   - **Implication**: No need to handle "insufficient buffer during rotation" errors
-
-2. **Buffer Overflow During Compaction (KVStore)**
-   - **Why Impossible**: Compaction via `reinit_from()` writes to inactive buffer of the same size. Same reasoning as rotation.
-   - **Implication**: `switch_journals()` may set high water mark flag, but won't fail due to buffer overflow
-
-3. **Timestamp Overflow (VersionedKVStore)**
+1. **Timestamp Overflow (VersionedKVStore)**
    - **Why Practically Impossible**: Uses u64 for nanosecond timestamps, would require 584+ years to overflow (u64::MAX nanoseconds ≈ year 2554)
    - **Implication**: No overflow handling needed in practice
 
