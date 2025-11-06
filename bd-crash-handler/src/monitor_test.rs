@@ -297,4 +297,8 @@ fn test_report_type_to_reason() {
     "Non-Fatal JavaScript Error",
     Monitor::report_type_to_reason(ReportType::JavaScriptNonFatalError)
   );
+  assert_eq!(
+    "Handled Error",
+    Monitor::report_type_to_reason(ReportType::HandledError)
+  );
 }

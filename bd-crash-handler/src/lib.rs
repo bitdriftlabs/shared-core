@@ -208,6 +208,7 @@ impl Monitor {
       ReportType::MemoryTermination => "Memory Termination",
       ReportType::JavaScriptFatalError => "Fatal JavaScript Error",
       ReportType::JavaScriptNonFatalError => "Non-Fatal JavaScript Error",
+      ReportType::HandledError => "Handled Error",
       _ => "Unknown",
     }
   }
