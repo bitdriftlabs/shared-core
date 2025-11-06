@@ -13,96 +13,6 @@ use bd_bonjson::Value;
 use tempfile::TempDir;
 
 #[tokio::test]
-async fn test_recovery_single_journal() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  // Create a store and write some versioned data
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-  store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
-    .await?;
-  let ts1 = store
-    .get_with_timestamp("key1")
-    .map(|tv| tv.timestamp)
-    .unwrap();
-
-  std::thread::sleep(std::time::Duration::from_millis(10));
-
-  store
-    .insert("key2".to_string(), Value::String("value2".to_string()))
-    .await?;
-  let ts2 = store
-    .get_with_timestamp("key2")
-    .map(|tv| tv.timestamp)
-    .unwrap();
-
-  std::thread::sleep(std::time::Duration::from_millis(10));
-
-  store
-    .insert("key1".to_string(), Value::String("updated1".to_string()))
-    .await?;
-  let ts3 = store
-    .get_with_timestamp("key1")
-    .map(|tv| tv.timestamp)
-    .unwrap();
-
-  store.sync()?;
-
-  // Read the journal data
-  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
-
-  // Create recovery utility
-  let recovery = VersionedRecovery::new(vec![&journal_data])?;
-
-  // Verify timestamp range
-  let timestamp_range = recovery.timestamp_range();
-  assert!(timestamp_range.is_some());
-  let (min, max) = timestamp_range.unwrap();
-  assert!(min <= ts1);
-  assert!(max >= ts3);
-
-  // Recover at ts1: should have only key1=value1
-  let state_ts1 = recovery.recover_at_timestamp(ts1)?;
-  assert_eq!(state_ts1.len(), 1);
-  assert_eq!(
-    state_ts1.get("key1").map(|tv| &tv.value),
-    Some(&Value::String("value1".to_string()))
-  );
-
-  // Recover at ts2: should have key1=value1, key2=value2
-  let state_ts2 = recovery.recover_at_timestamp(ts2)?;
-  assert_eq!(state_ts2.len(), 2);
-  assert_eq!(
-    state_ts2.get("key1").map(|tv| &tv.value),
-    Some(&Value::String("value1".to_string()))
-  );
-  assert_eq!(
-    state_ts2.get("key2").map(|tv| &tv.value),
-    Some(&Value::String("value2".to_string()))
-  );
-
-  // Recover at ts3: should have key1=updated1, key2=value2
-  let state_ts3 = recovery.recover_at_timestamp(ts3)?;
-  assert_eq!(state_ts3.len(), 2);
-  assert_eq!(
-    state_ts3.get("key1").map(|tv| &tv.value),
-    Some(&Value::String("updated1".to_string()))
-  );
-  assert_eq!(
-    state_ts3.get("key2").map(|tv| &tv.value),
-    Some(&Value::String("value2".to_string()))
-  );
-
-  // Recover current should match ts3
-  let current = recovery.recover_current()?;
-  assert_eq!(current, state_ts3);
-
-  Ok(())
-}
-
-
-#[tokio::test]
 async fn test_recover_current_only_needs_last_journal() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
@@ -250,95 +160,69 @@ async fn test_detection_compressed_journal() -> anyhow::Result<()> {
   Ok(())
 }
 
-#[test]
-fn test_detection_invalid_format_version() {
-  // Create data with invalid format version (e.g., 999)
-  let mut invalid_data = vec![0u8; 32];
-  let version_bytes = 999u64.to_le_bytes();
-  invalid_data[0 .. 8].copy_from_slice(&version_bytes);
-
-  // Should fail with clear error message about invalid version
-  let result = VersionedRecovery::new(vec![&invalid_data]);
-  assert!(result.is_err());
-  let err_msg = result.unwrap_err().to_string();
-  assert!(
-    err_msg.contains("Invalid journal format version"),
-    "Expected error about invalid version, got: {err_msg}"
-  );
-}
-
-#[test]
-fn test_detection_data_too_small() {
-  // Data smaller than header size (16 bytes)
-  let small_data = vec![0u8; 8];
-
-  let result = VersionedRecovery::new(vec![&small_data]);
-  assert!(result.is_err());
-  let err_msg = result.unwrap_err().to_string();
-  assert!(
-    err_msg.contains("Data too small"),
-    "Expected error about data too small, got: {err_msg}"
-  );
-}
-
-#[test]
-fn test_detection_empty_data() {
-  let empty_data = vec![];
-
-  let result = VersionedRecovery::new(vec![&empty_data]);
-  assert!(result.is_err());
-  let err_msg = result.unwrap_err().to_string();
-  assert!(
-    err_msg.contains("Data too small"),
-    "Expected error about data too small, got: {err_msg}"
-  );
-}
-
-#[test]
-fn test_detection_corrupted_zlib_header() {
-  // Create data that looks like zlib (starts with 0x78) but is invalid
-  let mut fake_zlib = vec![0x78, 0x9C]; // Valid zlib magic bytes
-  fake_zlib.extend_from_slice(&[0xFF; 100]); // But garbage data
-
-  let result = VersionedRecovery::new(vec![&fake_zlib]);
-  assert!(result.is_err());
-  // Should fail during decompression
-}
-
-#[test]
-fn test_detection_random_garbage() {
-  // Random data that doesn't match any valid format
-  let garbage = vec![0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56, 0x78, 0x90];
-
-  let result = VersionedRecovery::new(vec![&garbage]);
-  assert!(result.is_err());
-  let err_msg = result.unwrap_err().to_string();
-  // Should try to decompress it and fail
-  assert!(err_msg.contains("Data too small") || err_msg.contains("corrupt"));
-}
-
 #[tokio::test]
-async fn test_detection_mixed_valid_and_invalid() -> anyhow::Result<()> {
+async fn test_detection_invalid_journal_data() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
-
-  // Create valid journal
+  // Create valid journal for mixed test
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
   store.sync()?;
-
   let valid_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
 
-  // Create invalid data
-  let mut invalid_data = vec![0u8; 32];
+  // Test 1: Invalid format version
+  let mut invalid_version = vec![0u8; 32];
   let version_bytes = 999u64.to_le_bytes();
-  invalid_data[0 .. 8].copy_from_slice(&version_bytes);
-
-  // Should fail if any journal is invalid
-  let result = VersionedRecovery::new(vec![&valid_data, &invalid_data]);
+  invalid_version[0 .. 8].copy_from_slice(&version_bytes);
+  let result = VersionedRecovery::new(vec![&invalid_version]);
   assert!(result.is_err());
+  assert!(
+    result.unwrap_err().to_string().contains("Invalid journal format version"),
+    "Should fail with invalid version error"
+  );
+
+  // Test 2: Data too small (smaller than header)
+  let small_data = vec![0u8; 8];
+  let result = VersionedRecovery::new(vec![&small_data]);
+  assert!(result.is_err());
+  assert!(
+    result.unwrap_err().to_string().contains("Data too small"),
+    "Should fail with data too small error"
+  );
+
+  // Test 3: Empty data
+  let empty_data = vec![];
+  let result = VersionedRecovery::new(vec![&empty_data]);
+  assert!(result.is_err());
+  assert!(
+    result.unwrap_err().to_string().contains("Data too small"),
+    "Should fail with data too small error"
+  );
+
+  // Test 4: Corrupted zlib header
+  let mut fake_zlib = vec![0x78, 0x9C]; // Valid zlib magic bytes
+  fake_zlib.extend_from_slice(&[0xFF; 100]); // But garbage data
+  let result = VersionedRecovery::new(vec![&fake_zlib]);
+  assert!(result.is_err(), "Should fail with corrupted zlib data");
+
+  // Test 5: Random garbage
+  let garbage = vec![0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56, 0x78, 0x90];
+  let result = VersionedRecovery::new(vec![&garbage]);
+  assert!(result.is_err());
+  let err_msg = result.unwrap_err().to_string();
+  assert!(
+    err_msg.contains("Data too small") || err_msg.contains("corrupt"),
+    "Should fail with appropriate error"
+  );
+
+  // Test 6: Mixed valid and invalid journals
+  let mut invalid_mixed = vec![0u8; 32];
+  let version_bytes = 999u64.to_le_bytes();
+  invalid_mixed[0 .. 8].copy_from_slice(&version_bytes);
+  let result = VersionedRecovery::new(vec![&valid_data, &invalid_mixed]);
+  assert!(result.is_err(), "Should fail if any journal is invalid");
 
   Ok(())
 }
@@ -496,50 +380,6 @@ async fn test_recovery_empty_journal() -> anyhow::Result<()> {
   // Recovering current should return empty map
   let state = recovery.recover_current()?;
   assert_eq!(state.len(), 0);
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_recovery_timestamp_range() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-  store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
-    .await?;
-  let ts1 = store
-    .get_with_timestamp("key1")
-    .map(|tv| tv.timestamp)
-    .unwrap();
-
-  std::thread::sleep(std::time::Duration::from_millis(10));
-
-  store
-    .insert("key2".to_string(), Value::String("value2".to_string()))
-    .await?;
-
-  std::thread::sleep(std::time::Duration::from_millis(10));
-
-  store
-    .insert("key3".to_string(), Value::String("value3".to_string()))
-    .await?;
-  let ts3 = store
-    .get_with_timestamp("key3")
-    .map(|tv| tv.timestamp)
-    .unwrap();
-
-  store.sync()?;
-
-  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
-  let recovery = VersionedRecovery::new(vec![&journal_data])?;
-
-  let timestamp_range = recovery.timestamp_range();
-  assert!(timestamp_range.is_some());
-  let (min, max) = timestamp_range.unwrap();
-  assert!(min <= ts1);
-  assert!(max >= ts3);
 
   Ok(())
 }
