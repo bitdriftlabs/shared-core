@@ -93,6 +93,7 @@ pub trait CrashLogger: Send + Sync {
 /// - `reports/` - The root directory for all all reports.
 /// - `reports/new/` - A directory where new crash reports are placed. The platform layer is
 ///   responsible for copying the raw files into this directory.
+#[derive(Clone)]
 pub struct Monitor {
   pub previous_session_id: Option<String>,
 
