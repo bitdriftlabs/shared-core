@@ -44,7 +44,7 @@ The system provides efficient bulk operations through a consistent pattern:
 The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJournal`:
 
 **Key Components**:
-- **VersionedKVJournal**: Low-level journal that tracks version numbers for each entry
+- **VersionedKVJournal**: Low-level journal that tracks timestamps for each entry
 - **MemMappedVersionedKVJournal**: Memory-mapped persistence layer
 - **VersionedKVStore**: High-level HashMap-like API with automatic rotation and async write operations
 
@@ -55,10 +55,11 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 - The async API enables efficient background compression without blocking the main thread
 
 **Version Tracking**:
-- Every write operation (`insert`, `remove`) returns a monotonically non-decreasing version number
-- Version numbers start at 1 (base version), first write is version 2
-- Entries with `Value::Null` are treated as deletions but still versioned
-- During rotation, all snapshot entries share the same version (the rotation version)
+- Every write operation (`insert`, `remove`) returns a monotonically non-decreasing timestamp (nanoseconds since UNIX epoch)
+- Timestamps serve as both version identifiers and logical clocks
+- If the system clock goes backward, timestamps are clamped to the last timestamp to maintain monotonicity
+- Entries with `Value::Null` are treated as deletions but still timestamped
+- During rotation, snapshot entries preserve their original timestamps
 
 **Timestamp Tracking**:
 - Each entry records a timestamp (nanoseconds since UNIX epoch) when the write occurred
@@ -91,10 +92,10 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 - Recovery transparently decompresses archived journals when needed
 
 **Point-in-Time Recovery**:
-The `VersionedRecovery` utility provides point-in-time recovery capabilities for versioned journals. It works with raw journal bytes and can reconstruct state at any historical version, including across rotation boundaries. `VersionedRecovery` is designed for offline analysis, audit tooling, and server-side operations - it is separate from `VersionedKVStore` which is focused on active write operations. Applications can use `VersionedRecovery` to analyze archived journals and recover state at specific versions. The `from_files()` constructor is async for efficient file reading.
+The `VersionedRecovery` utility provides point-in-time recovery capabilities for versioned journals. It works with raw journal bytes and can reconstruct state at any historical timestamp, including across rotation boundaries. `VersionedRecovery` is designed for offline analysis, audit tooling, and server-side operations - it is separate from `VersionedKVStore` which is focused on active write operations. Applications can use `VersionedRecovery` to analyze archived journals and recover state at specific timestamps. The `from_files()` constructor is async for efficient file reading.
 
 **Recovery Optimization**:
-The `recover_current()` method in `VersionedRecovery` is optimized to only read the last journal rather than replaying all journals from the beginning. This is possible because journal rotation writes the complete current state into the new journal at the snapshot version, so the last journal alone contains the full current state. For historical version recovery, `recover_at_version()` intelligently selects and replays only the necessary journals.
+The `recover_current()` method in `VersionedRecovery` is optimized to only read the last journal rather than replaying all journals from the beginning. This is possible because journal rotation writes the complete current state into the new journal with original timestamps preserved, so the last journal alone contains the full current state. For historical timestamp recovery, `recover_at_timestamp()` intelligently selects and replays only the necessary journals.
 
 ## Critical Design Insights
 
@@ -110,7 +111,7 @@ The `recover_current()` method in `VersionedRecovery` is optimized to only read 
 - Best for: Audit logs, state history, remote backup
 - Architecture: Single journal with archived versions
 - Rotation: Creates new journal with compacted state
-- Version tracking: Every write returns a version number
+- Timestamp tracking: Every write returns a timestamp
 
 ### 2. Compaction Efficiency
 **Key Insight**: Compaction via `reinit_from()` is already maximally efficient. It writes data in the most compact possible serialized form (hashmap → bytes). If even this compact representation exceeds high water marks, then the data volume itself is the limiting factor, not inefficient storage.
@@ -270,8 +271,8 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
    - **Why Impossible**: Compaction via `reinit_from()` writes to inactive buffer of the same size. Same reasoning as rotation.
    - **Implication**: `switch_journals()` may set high water mark flag, but won't fail due to buffer overflow
 
-3. **Version Number Overflow (VersionedKVStore)**
-   - **Why Practically Impossible**: Uses u64, would require 58+ million years at 10,000 writes/second
+3. **Timestamp Overflow (VersionedKVStore)**
+   - **Why Practically Impossible**: Uses u64 for nanosecond timestamps, would require 584+ years to overflow (u64::MAX nanoseconds ≈ year 2554)
    - **Implication**: No overflow handling needed in practice
 
 ## Common Pitfalls
