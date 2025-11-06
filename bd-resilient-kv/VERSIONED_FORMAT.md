@@ -126,12 +126,12 @@ After rotation:
 
 ### Compression
 
-Archived journals are automatically compressed using zlib (compression level 3) during rotation:
+Archived journals are automatically compressed using zlib (compression level 5) during rotation:
 - **Format**: Standard zlib format (RFC 1950)
 - **Extension**: `.zz` indicates zlib compression
 - **Transparency**: `VersionedRecovery` automatically decompresses archives when reading
 - **Benefits**: Reduced storage space and bandwidth for remote backups
-- **Performance**: Compression level 3 provides good balance between speed and compression ratio
+- **Performance**: Compression level 5 provides good balance between speed and compression ratio
 
 ### Rotation Failure Modes
 

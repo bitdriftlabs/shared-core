@@ -233,7 +233,7 @@ async fn main() -> anyhow::Result<()> {
   - Creates a new journal with the current state as versioned entries (compaction)
   - Preserves original timestamps from the initial writes
   - Archives the old journal with `.v{version}.zz` suffix
-  - Compresses the archived journal using zlib (RFC 1950, level 3) asynchronously
+  - Compresses the archived journal using zlib (RFC 1950, level 5) asynchronously
   - Invokes the rotation callback (if provided) for upload/cleanup
 - **Automatic Compression**: Archived journals are automatically compressed to save disk space
   - Active journals remain uncompressed for write performance
@@ -377,7 +377,7 @@ After rotation:
 ```
 
 **Compression**:
-- Archived journals are automatically compressed using zlib (RFC 1950, level 3)
+- Archived journals are automatically compressed using zlib (RFC 1950, level 5)
 - Active journals remain uncompressed for optimal write performance
 - Decompression is handled transparently during recovery
 - File extension `.zz` indicates compressed archives
@@ -531,7 +531,7 @@ async fn main() -> anyhow::Result<()> {
 ```
 
 **Compression Details**:
-- **Format**: zlib (RFC 1950) with compression level 3
+- **Format**: zlib (RFC 1950) with compression level 5
 - **Performance**: Balanced speed/compression ratio, performed asynchronously with streaming I/O
 - **Transparency**: Recovery automatically detects and decompresses archived journals
 - **Naming**: `.zz` extension indicates compressed archives

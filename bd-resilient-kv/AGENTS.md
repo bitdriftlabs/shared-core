@@ -73,7 +73,7 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 - Automatic rotation when journal size exceeds high water mark (triggered during async write operations)
 - Current state is compacted into a new journal as versioned entries
 - Old journal is archived with `.v{version}.zz` suffix
-- Archived journals are automatically compressed using zlib (RFC 1950, level 3) asynchronously
+- Archived journals are automatically compressed using zlib (RFC 1950, level 5) asynchronously
 - Application controls upload/cleanup of archived journals
 
 **Rotation Guarantees**:
@@ -84,7 +84,7 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 **Compression**:
 - All archived journals are automatically compressed during rotation using async I/O
 - Active journals remain uncompressed for write performance
-- Compression uses zlib format (RFC 1950) with level 3 for balanced speed/ratio
+- Compression uses zlib format (RFC 1950) with level 5 for balanced speed/ratio
 - Streaming compression avoids loading entire journals into memory
 - Typical compression achieves >50% size reduction for text-based data
 - File extension `.zz` indicates compressed archives
@@ -121,13 +121,13 @@ The `recover_current()` method in `VersionedRecovery` is optimized to only read 
 
 **Key Differences**:
 - **KVStore**: Switches between two buffers, old buffer is reset and reused
-- **VersionedKVStore**: Archives old journal with `.v{version}` suffix, creates new journal
+- **VersionedKVStore**: Archives old journal with `.t{timestamp}` suffix, creates new journal
 - **Version Preservation**: Archived journals preserve complete history for recovery
 
 **When Rotation Occurs**:
 - Triggered during `insert()` or `remove()` when journal size exceeds high water mark
 - Can be manually triggered via `rotate()`
-- Automatic and transparent to the caller (except for callback)
+- Automatic and transparent to the caller
 
 ### 4. Bulk Operations and Retry Logic
 The system includes sophisticated retry logic specifically for bulk operations:
