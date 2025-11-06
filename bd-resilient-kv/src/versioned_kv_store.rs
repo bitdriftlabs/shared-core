@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 /// The callback receives:
 /// - `old_journal_path`: The path to the archived journal file that was just rotated out
 /// - `new_journal_path`: The path to the new active journal file
-/// - `rotation_version`: The version at which rotation occurred (snapshot version)
+/// - `rotation_timestamp`: The timestamp at which rotation occurred (snapshot timestamp)
 ///
 /// This callback can be used to trigger asynchronous upload of archived journals to remote
 /// storage, perform cleanup, or other post-rotation operations.
@@ -44,11 +44,10 @@ async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result
   .await?
 }
 
-/// A persistent key-value store with version and timestamp tracking.
+/// A persistent key-value store with timestamp tracking.
 ///
-/// `VersionedKVStore` provides HashMap-like semantics backed by a versioned journal that
-/// assigns both a version number and a monotonically increasing timestamp to each write
-/// operation. This enables:
+/// `VersionedKVStore` provides HashMap-like semantics backed by a timestamped journal that
+/// assigns a monotonically increasing timestamp to each write operation. This enables:
 /// - Audit logs with timestamp tracking for every write (timestamps serve as logical clocks)
 /// - Point-in-time recovery at any historical timestamp
 /// - Correlation with external timestamped event streams
@@ -62,18 +61,32 @@ async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result
 /// - If system clock goes backward, timestamps are clamped to maintain ordering
 /// - Multiple operations may share the same timestamp if system clock hasn't advanced
 /// - Enables natural correlation with timestamped event buffers for upload
-/// - Version numbers provide secondary ordering and backward compatibility
 ///
 /// For performance optimization, `VersionedKVStore` maintains an in-memory cache of the
 /// current key-value data to provide O(1) read operations and avoid expensive journal
 /// decoding on every access.
 ///
 /// # Rotation Strategy
-/// When the journal reaches its high water mark, the store automatically:
-/// 1. Creates a new journal file with a rotated name (e.g., `store.jrn.v12345`)
-/// 2. Writes the current state as versioned entries at the rotation version
-/// 3. Archives the old journal for potential upload/cleanup
-/// 4. Continues normal operations in the new journal
+///
+/// When the journal reaches its high water mark, the store automatically rotates to a new journal.
+/// The rotation process creates a snapshot of the current state while preserving timestamp
+/// semantics for accurate point-in-time recovery.
+///
+/// ## Rotation Process
+/// 1. Computes `rotation_timestamp` = max timestamp of all current entries
+/// 2. Archives old journal as `<name>.jrn.t<rotation_timestamp>.zz` (compressed)
+/// 3. Creates new journal with `base_timestamp = rotation_timestamp`
+/// 4. Writes compacted state with **original timestamps preserved**
+/// 5. Continues normal operations in the new journal
+///
+/// ## Timestamp Semantics Across Snapshots
+///
+/// Compacted entries in the new journal preserve their original timestamps, which means entry
+/// timestamps may overlap across adjacent snapshots. The filename timestamp (`t300`, `t500`)
+/// represents the rotation point (snapshot boundary), not the minimum timestamp of entries.
+///
+/// For detailed information about timestamp semantics, recovery bucketing, and invariants,
+/// see the `VersionedRecovery` documentation.
 ///
 /// # Example
 /// ```ignore
@@ -82,9 +95,9 @@ async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result
 ///
 /// let mut store = VersionedKVStore::new("/path/to/dir", "mystore", 1024 * 1024, None)?;
 ///
-/// // Insert with version tracking
-/// let v1 = store.insert("key1".to_string(), Value::from(42))?;
-/// let v2 = store.insert("key2".to_string(), Value::from("hello"))?;
+/// // Insert with timestamp tracking
+/// let t1 = store.insert("key1".to_string(), Value::from(42))?;
+/// let t2 = store.insert("key2".to_string(), Value::from("hello"))?;
 /// ```
 pub struct VersionedKVStore {
   journal: MemMappedVersionedKVJournal,
@@ -218,24 +231,24 @@ impl VersionedKVStore {
     self.cached_map.get(key)
   }
 
-  /// Insert a value for a key, returning the version number assigned to this write.
+  /// Insert a value for a key, returning the timestamp assigned to this write.
   ///
   /// Note: Inserting `Value::Null` is equivalent to removing the key.
   ///
   /// # Errors
   /// Returns an error if the value cannot be written to the journal.
   pub async fn insert(&mut self, key: String, value: Value) -> anyhow::Result<u64> {
-    let version = if matches!(value, Value::Null) {
+    let timestamp = if matches!(value, Value::Null) {
       // Inserting null is equivalent to deletion
-      let (version, _timestamp) = self.journal.delete_versioned(&key)?;
+      let timestamp = self.journal.delete_versioned(&key)?;
       self.cached_map.remove(&key);
-      version
+      timestamp
     } else {
-      let (version, timestamp) = self.journal.set_versioned(&key, &value)?;
+      let timestamp = self.journal.set_versioned(&key, &value)?;
       self
         .cached_map
         .insert(key, TimestampedValue { value, timestamp });
-      version
+      timestamp
     };
 
     // Check if rotation is needed
@@ -243,12 +256,12 @@ impl VersionedKVStore {
       self.rotate_journal().await?;
     }
 
-    Ok(version)
+    Ok(timestamp)
   }
 
-  /// Remove a key and return the version number assigned to this deletion.
+  /// Remove a key and return the timestamp assigned to this deletion.
   ///
-  /// Returns `None` if the key didn't exist, otherwise returns the version number.
+  /// Returns `None` if the key didn't exist, otherwise returns the timestamp.
   ///
   /// # Errors
   /// Returns an error if the deletion cannot be written to the journal.
@@ -257,7 +270,7 @@ impl VersionedKVStore {
       return Ok(None);
     }
 
-    let (version, _timestamp) = self.journal.delete_versioned(key)?;
+    let timestamp = self.journal.delete_versioned(key)?;
     self.cached_map.remove(key);
 
     // Check if rotation is needed
@@ -265,7 +278,7 @@ impl VersionedKVStore {
       self.rotate_journal().await?;
     }
 
-    Ok(Some(version))
+    Ok(Some(timestamp))
   }
 
   /// Check if the store contains a key.
@@ -316,18 +329,6 @@ impl VersionedKVStore {
       .collect()
   }
 
-  /// Get the current version number.
-  #[must_use]
-  pub fn current_version(&self) -> u64 {
-    self.journal.current_version()
-  }
-
-  /// Get the base version (first version in this journal).
-  #[must_use]
-  pub fn base_version(&self) -> u64 {
-    self.journal.base_version()
-  }
-
   /// Synchronize changes to disk.
   ///
   /// This is a blocking operation that performs synchronous I/O. In async contexts,
@@ -361,13 +362,19 @@ impl VersionedKVStore {
   /// # Errors
   /// Returns an error if rotation fails.
   pub async fn rotate_journal(&mut self) -> anyhow::Result<()> {
-    let rotation_version = self.journal.current_version();
+    // Get the maximum timestamp from current state for rotation tracking
+    let rotation_timestamp = self
+      .cached_map
+      .values()
+      .map(|tv| tv.timestamp)
+      .max()
+      .unwrap_or(0);
 
-    // Generate archived journal path with rotation version (compressed)
-    let archived_path = self.generate_archived_path(rotation_version);
+    // Generate archived journal path with rotation timestamp (compressed)
+    let archived_path = self.generate_archived_path(rotation_timestamp);
 
     // Create new journal with rotated state
-    let new_journal = self.create_rotated_journal(rotation_version).await?;
+    let new_journal = self.create_rotated_journal(rotation_timestamp).await?;
 
     // Replace old journal with new one
     let old_journal = std::mem::replace(&mut self.journal, new_journal);
@@ -390,25 +397,25 @@ impl VersionedKVStore {
 
     // Invoke rotation callback if set
     if let Some(ref mut callback) = self.rotation_callback {
-      callback(&archived_path, &journal_path, rotation_version);
+      callback(&archived_path, &journal_path, rotation_timestamp);
     }
 
     Ok(())
   }
 
-  /// Generate the archived journal path for a given rotation version.
+  /// Generate the archived journal path for a given rotation timestamp.
   /// Archived journals use the .zz extension to indicate zlib compression.
-  fn generate_archived_path(&self, rotation_version: u64) -> PathBuf {
+  fn generate_archived_path(&self, rotation_timestamp: u64) -> PathBuf {
     self.dir_path.join(format!(
-      "{}.jrn.v{}.zz",
-      self.journal_name, rotation_version
+      "{}.jrn.t{}.zz",
+      self.journal_name, rotation_timestamp
     ))
   }
 
   /// Create a new rotated journal with compacted state.
   async fn create_rotated_journal(
     &self,
-    rotation_version: u64,
+    base_timestamp: u64,
   ) -> anyhow::Result<MemMappedVersionedKVJournal> {
     // Create temporary journal file
     let temp_path = self.dir_path.join(format!("{}.jrn.tmp", self.journal_name));
@@ -419,7 +426,7 @@ impl VersionedKVStore {
     // Use VersionedKVJournal to create rotated journal in memory
     let _rotated = VersionedKVJournal::create_rotated_journal(
       &mut buffer,
-      rotation_version,
+      base_timestamp,
       &self.cached_map,
       self.high_water_mark_ratio,
     )?;

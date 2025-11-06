@@ -33,18 +33,73 @@ fn read_u64_field(obj: &AHashMap<String, Value>, key: &str) -> Option<u64> {
   }
 }
 
-/// A utility for recovering state at arbitrary versions or timestamps from raw journal data.
+/// A utility for recovering state at arbitrary timestamps from raw journal data.
 ///
-/// This utility operates on raw byte slices from versioned journals and can reconstruct
-/// the key-value state at any historical version or timestamp by replaying journal entries.
+/// This utility operates on raw byte slices from timestamped journals and can reconstruct
+/// the key-value state at any historical timestamp by replaying journal entries.
 ///
 /// # Timestamp-Based Recovery
 ///
-/// The primary use case is timestamp-based recovery, which enables correlation with
-/// external timestamped event streams. Timestamps are monotonically non-decreasing logical
-/// clocks (not pure wall time), enabling snapshots that match specific event buffer timestamps.
+/// Timestamps are monotonically non-decreasing logical clocks (not pure wall time),
+/// enabling snapshots that match specific event buffer timestamps.
 ///
-/// Version-based recovery is also supported for backward compatibility.
+/// ## Snapshot Bucketing and Entry Timestamp Overlaps
+///
+/// Entry timestamps may overlap across adjacent snapshots because compacted entries preserve
+/// their original timestamps during rotation. This design provides implementation simplicity
+/// and audit trail preservation without affecting recovery correctness.
+///
+/// **Design rationale:** Preserving original timestamps is not strictly required for
+/// point-in-time state reconstruction, but provides benefits at zero cost:
+/// - **Implementation simplicity**: No timestamp rewriting logic needed during rotation
+/// - **Semantic accuracy**: Maintains "when was this value last modified" for audit trails
+/// - **Future-proof**: Preserves historical information that may become useful
+///
+/// Each snapshot has:
+/// - `base_timestamp`: Stored in metadata, used for monotonic write enforcement
+/// - `min_timestamp`: Minimum entry timestamp in the snapshot (from actual entries)
+/// - `max_timestamp`: Maximum entry timestamp in the snapshot (from actual entries)
+/// - Filename timestamp: The rotation point (equals `max_timestamp` of archived journal)
+///
+/// Example timeline:
+/// ```text
+/// Snapshot 1: store.jrn.t300.zz
+///   - base_timestamp: 0
+///   - Entries: foo@100, bar@200, foo@300
+///   - min_timestamp: 100, max_timestamp: 300
+///   - Range: [100, 300]
+///
+/// Snapshot 2: store.jrn.t500.zz
+///   - base_timestamp: 300 (rotation point of Snapshot 1)
+///   - Compacted entries: foo@300, bar@200 (original timestamps!)
+///   - New entries: baz@400, qux@500
+///   - min_timestamp: 200, max_timestamp: 500
+///   - Range: [200, 500] — overlaps with [100, 300]!
+/// ```
+///
+/// ## Recovery Bucketing Model
+///
+/// To recover state for multiple logs at different timestamps efficiently:
+///
+/// 1. **Bucket logs by snapshot:** Compare log timestamp against each snapshot's `[min_timestamp,
+///    max_timestamp]` range
+/// 2. **Sequential replay:** For each bucket, replay journals sequentially up to target timestamp
+/// 3. **State reconstruction:** Overlapping timestamps are handled correctly because compacted
+///    entries represent the state at rotation time
+///
+/// Example: Recovering logs at timestamps [100, 250, 400, 500]
+/// - Log@100: Use Snapshot 1 (100 is in range [100, 300])
+/// - Log@250: Use Snapshot 1 (250 is in range [100, 300])
+/// - Log@400: Use Snapshot 2 (400 is in range [200, 500], replay compacted state + new entries)
+/// - Log@500: Use Snapshot 2 (500 is in range [200, 500])
+///
+/// ## Invariants
+///
+/// - `base_timestamp` values are non-decreasing across snapshots
+/// - Filename timestamps strictly increase (t300 < t500)
+/// - `base_timestamp[i]` >= `max_timestamp[i-1]` (validated in `new()`)
+/// - Entry timestamp ranges may overlap between adjacent snapshots
+/// - Sequential replay produces correct state at any timestamp
 ///
 /// Supports both compressed (zlib) and uncompressed journals. Compressed journals are
 /// automatically detected and decompressed transparently.
@@ -56,8 +111,7 @@ pub struct VersionedRecovery {
 #[derive(Debug)]
 struct JournalInfo {
   data: Vec<u8>,
-  base_version: u64,
-  max_version: u64,
+  base_timestamp: u64,
   min_timestamp: u64,
   max_timestamp: u64,
 }
@@ -78,15 +132,29 @@ impl VersionedRecovery {
     for data in journals {
       // Detect and decompress if needed
       let decompressed = decompress_if_needed(data)?;
-      let (base_version, max_version) = extract_version_range(&decompressed)?;
-      let (min_timestamp, max_timestamp) = extract_timestamp_range(&decompressed)?;
+      let (base_timestamp, min_timestamp, max_timestamp) = extract_timestamp_range(&decompressed)?;
       journal_infos.push(JournalInfo {
         data: decompressed,
-        base_version,
-        max_version,
+        base_timestamp,
         min_timestamp,
         max_timestamp,
       });
+    }
+
+    // Validate that base_timestamp values are consistent across journals
+    // Each journal's base_timestamp should be >= the previous journal's max_timestamp
+    for i in 1 .. journal_infos.len() {
+      let prev = &journal_infos[i - 1];
+      let curr = &journal_infos[i];
+
+      if curr.base_timestamp < prev.max_timestamp {
+        anyhow::bail!(
+          "Journal {} has base_timestamp {} which is less than previous journal's max_timestamp {}",
+          i,
+          curr.base_timestamp,
+          prev.max_timestamp
+        );
+      }
     }
 
     Ok(Self {
@@ -114,65 +182,6 @@ impl VersionedRecovery {
     let journal_slices: Vec<&[u8]> = journal_data.iter().map(Vec::as_slice).collect();
 
     Self::new(journal_slices)
-  }
-
-  /// Recover the key-value state at a specific version.
-  ///
-  /// This method replays all journal entries from all provided journals up to and including
-  /// the target version, reconstructing the exact state at that point in time.
-  ///
-  /// # Arguments
-  ///
-  /// * `target_version` - The version to recover state at
-  ///
-  /// # Returns
-  ///
-  /// A hashmap containing all key-value pairs with their timestamps as they existed at the
-  /// target version.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if:
-  /// - The target version is not found in any journal
-  /// - Journal data is corrupted or invalid
-  pub fn recover_at_version(
-    &self,
-    target_version: u64,
-  ) -> anyhow::Result<AHashMap<String, TimestampedValue>> {
-    let mut map = AHashMap::new();
-
-    // Find all journals that might contain entries up to target version
-    for journal in &self.journals {
-      // Skip journals that start after our target
-      if journal.base_version > target_version {
-        break;
-      }
-
-      // Replay entries from this journal
-      replay_journal_to_version(&journal.data, target_version, &mut map)?;
-
-      // If this journal contains the target version, we're done
-      if journal.max_version >= target_version {
-        break;
-      }
-    }
-
-    Ok(map)
-  }
-
-  /// Get the range of versions available in the recovery utility.
-  ///
-  /// Returns (`min_version`, `max_version`) tuple representing the earliest and latest
-  /// versions that can be recovered.
-  #[must_use]
-  pub fn version_range(&self) -> Option<(u64, u64)> {
-    if self.journals.is_empty() {
-      return None;
-    }
-
-    let min = self.journals.first().map(|j| j.base_version)?;
-    let max = self.journals.last().map(|j| j.max_version)?;
-    Some((min, max))
   }
 
   /// Get the range of timestamps available in the recovery utility.
@@ -245,7 +254,7 @@ impl VersionedRecovery {
     Ok(map)
   }
 
-  /// Get the current state (at the latest version).
+  /// Get the current state (at the latest timestamp).
   ///
   /// # Errors
   ///
@@ -254,10 +263,10 @@ impl VersionedRecovery {
     let mut map = AHashMap::new();
 
     // Optimization: Only read the last journal since journal rotation writes
-    // the complete state at the snapshot version, so the last journal contains
+    // the complete state at the snapshot timestamp, so the last journal contains
     // all current state.
     if let Some(last_journal) = self.journals.last() {
-      replay_journal_to_version(&last_journal.data, u64::MAX, &mut map)?;
+      replay_journal_to_timestamp(&last_journal.data, u64::MAX, &mut map)?;
     }
 
     Ok(map)
@@ -306,46 +315,24 @@ fn decompress_if_needed(data: &[u8]) -> anyhow::Result<Vec<u8>> {
   anyhow::bail!("Data too small to be valid journal (size: {})", data.len())
 }
 
-/// Extract the base version and maximum version from a journal.
-fn extract_version_range(buffer: &[u8]) -> anyhow::Result<(u64, u64)> {
+/// Extract the base timestamp and the minimum/maximum timestamps from a journal.
+///
+/// Returns (`base_timestamp`, `min_timestamp`, `max_timestamp`).
+/// The `base_timestamp` comes from the metadata, while min/max are computed from actual entries.
+fn extract_timestamp_range(buffer: &[u8]) -> anyhow::Result<(u64, u64, u64)> {
   let array = read_bonjson_payload(buffer)?;
 
-  // Extract base_version from metadata (default to 1 if not found)
-  let base_version = if let Value::Array(entries) = &array
-    && let Some(Value::Object(obj)) = entries.first()
-  {
-    read_u64_field(obj, "base_version").unwrap_or(1)
-  } else {
-    anyhow::bail!("Failed to extract metadata from journal");
-  };
-
-  // Find the maximum version by scanning all entries
-  let mut max_version = base_version;
-  if let Value::Array(entries) = array {
-    for (index, entry) in entries.iter().enumerate() {
-      if index == 0 {
-        continue; // Skip metadata
-      }
-
-      if let Value::Object(obj) = entry
-        && let Some(v) = read_u64_field(obj, "v")
-      {
-        max_version = max_version.max(v);
-      }
-    }
-  }
-
-  Ok((base_version, max_version))
-}
-
-/// Extract the minimum and maximum timestamps from a journal.
-fn extract_timestamp_range(buffer: &[u8]) -> anyhow::Result<(u64, u64)> {
-  let array = read_bonjson_payload(buffer)?;
-
+  let mut base_timestamp = 0;
   let mut min_timestamp = u64::MAX;
   let mut max_timestamp = 0;
 
   if let Value::Array(entries) = array {
+    // First entry is metadata - extract base_timestamp
+    if let Some(Value::Object(metadata)) = entries.first() {
+      base_timestamp = read_u64_field(metadata, "base_timestamp").unwrap_or(0);
+    }
+
+    // Process remaining entries to find min/max timestamps
     for (index, entry) in entries.iter().enumerate() {
       if index == 0 {
         continue; // Skip metadata
@@ -360,64 +347,13 @@ fn extract_timestamp_range(buffer: &[u8]) -> anyhow::Result<(u64, u64)> {
     }
   }
 
-  // If no entries found, default to (0, 0)
+  // If no entries found, default to (base_timestamp, base_timestamp)
   if min_timestamp == u64::MAX {
-    min_timestamp = 0;
+    min_timestamp = base_timestamp;
+    max_timestamp = base_timestamp;
   }
 
-  Ok((min_timestamp, max_timestamp))
-}
-
-/// Replay journal entries up to a target version.
-fn replay_journal_to_version(
-  buffer: &[u8],
-  target_version: u64,
-  map: &mut AHashMap<String, TimestampedValue>,
-) -> anyhow::Result<()> {
-  let array = read_bonjson_payload(buffer)?;
-
-  if let Value::Array(entries) = array {
-    for (index, entry) in entries.iter().enumerate() {
-      // Skip metadata (first entry)
-      if index == 0 {
-        continue;
-      }
-
-      if let Value::Object(obj) = entry {
-        // Check version
-        let Some(entry_version) = read_u64_field(obj, "v") else {
-          continue; // Skip entries without version
-        };
-
-        // Only apply entries up to target version
-        if entry_version > target_version {
-          break;
-        }
-
-        // Extract timestamp (default to 0 if not found)
-        let timestamp = read_u64_field(obj, "t").unwrap_or(0);
-
-        // Extract key and operation
-        if let Some(Value::String(key)) = obj.get("k")
-          && let Some(operation) = obj.get("o")
-        {
-          if operation.is_null() {
-            map.remove(key);
-          } else {
-            map.insert(
-              key.clone(),
-              TimestampedValue {
-                value: operation.clone(),
-                timestamp,
-              },
-            );
-          }
-        }
-      }
-    }
-  }
-
-  Ok(())
+  Ok((base_timestamp, min_timestamp, max_timestamp))
 }
 
 /// Replay journal entries up to and including the target timestamp.

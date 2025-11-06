@@ -19,76 +19,6 @@ async fn test_recovery_single_journal() -> anyhow::Result<()> {
 
   // Create a store and write some versioned data
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-  let v1 = store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
-    .await?;
-  let v2 = store
-    .insert("key2".to_string(), Value::String("value2".to_string()))
-    .await?;
-  let v3 = store
-    .insert("key1".to_string(), Value::String("updated1".to_string()))
-    .await?;
-  store.sync()?;
-
-  // Read the journal data
-  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
-
-  // Create recovery utility
-  let recovery = VersionedRecovery::new(vec![&journal_data])?;
-
-  // Verify version range
-  let version_range = recovery.version_range();
-  assert!(version_range.is_some());
-  let (min, max) = version_range.unwrap();
-  assert_eq!(min, 1);
-  assert_eq!(max, v3);
-
-  // Recover at v1: should have only key1=value1
-  let state_v1 = recovery.recover_at_version(v1)?;
-  assert_eq!(state_v1.len(), 1);
-  assert_eq!(
-    state_v1.get("key1").map(|tv| &tv.value),
-    Some(&Value::String("value1".to_string()))
-  );
-
-  // Recover at v2: should have key1=value1, key2=value2
-  let state_v2 = recovery.recover_at_version(v2)?;
-  assert_eq!(state_v2.len(), 2);
-  assert_eq!(
-    state_v2.get("key1").map(|tv| &tv.value),
-    Some(&Value::String("value1".to_string()))
-  );
-  assert_eq!(
-    state_v2.get("key2").map(|tv| &tv.value),
-    Some(&Value::String("value2".to_string()))
-  );
-
-  // Recover at v3: should have key1=updated1, key2=value2
-  let state_v3 = recovery.recover_at_version(v3)?;
-  assert_eq!(state_v3.len(), 2);
-  assert_eq!(
-    state_v3.get("key1").map(|tv| &tv.value),
-    Some(&Value::String("updated1".to_string()))
-  );
-  assert_eq!(
-    state_v3.get("key2").map(|tv| &tv.value),
-    Some(&Value::String("value2".to_string()))
-  );
-
-  // Recover current should match v3
-  let current = recovery.recover_current()?;
-  assert_eq!(current, state_v3);
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_timestamp_collision_across_rotation() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-  // Create a store and write data before rotation
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-  
   store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
@@ -97,17 +27,8 @@ async fn test_timestamp_collision_across_rotation() -> anyhow::Result<()> {
     .map(|tv| tv.timestamp)
     .unwrap();
 
-  // Rotate journal - this captures current state at rotation timestamp
-  let archive_version = store.current_version();
-  store.rotate_journal().await?;
+  std::thread::sleep(std::time::Duration::from_millis(10));
 
-  // Now simulate a scenario where the system clock goes backwards
-  // by manually manipulating the journal's last_timestamp
-  // In a real scenario, this could happen if the system clock is adjusted
-  // We'll write entries that would have the same timestamp as ts1 if clamping occurs
-  
-  // Write new data - in practice, if clock went backwards, these could get clamped
-  // to the same timestamp as entries in the previous journal
   store
     .insert("key2".to_string(), Value::String("value2".to_string()))
     .await?;
@@ -116,102 +37,70 @@ async fn test_timestamp_collision_across_rotation() -> anyhow::Result<()> {
     .map(|tv| tv.timestamp)
     .unwrap();
 
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
   store
-    .insert("key3".to_string(), Value::String("value3".to_string()))
+    .insert("key1".to_string(), Value::String("updated1".to_string()))
     .await?;
   let ts3 = store
-    .get_with_timestamp("key3")
+    .get_with_timestamp("key1")
     .map(|tv| tv.timestamp)
     .unwrap();
 
   store.sync()?;
 
-  // Read both journals
-  let archived_path = temp_dir
-    .path()
-    .join(format!("test.jrn.v{}.zz", archive_version));
-  let archived_data = std::fs::read(&archived_path)?;
-  let active_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
+  // Read the journal data
+  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
 
-  // Create recovery from both journals
-  let recovery = VersionedRecovery::new(vec![&archived_data, &active_data])?;
+  // Create recovery utility
+  let recovery = VersionedRecovery::new(vec![&journal_data])?;
 
-  // Test recovery behavior when timestamps might collide across journals
-  // 
-  // Key insight: The recovery should include ALL entries at a given timestamp,
-  // applying them in version order (which is chronological order).
-  // 
-  // When recovering at ts1:
-  // - All entries from archived journal with timestamp <= ts1 are included
-  // - All entries from active journal with timestamp <= ts1 are included
-  // - If ts2 or ts3 were clamped to ts1 (due to clock going backwards),
-  //   they would also be included
+  // Verify timestamp range
+  let timestamp_range = recovery.timestamp_range();
+  assert!(timestamp_range.is_some());
+  let (min, max) = timestamp_range.unwrap();
+  assert!(min <= ts1);
+  assert!(max >= ts3);
 
-  // Recover at ts1: should include all entries with timestamp <= ts1
+  // Recover at ts1: should have only key1=value1
   let state_ts1 = recovery.recover_at_timestamp(ts1)?;
-  
-  // In normal operation (no clock backwards), only key1 should be at ts1
-  assert!(state_ts1.contains_key("key1"));
+  assert_eq!(state_ts1.len(), 1);
   assert_eq!(
     state_ts1.get("key1").map(|tv| &tv.value),
     Some(&Value::String("value1".to_string()))
   );
 
-  // Verify timestamp monotonicity is maintained across rotation
-  assert!(
-    ts2 >= ts1,
-    "Timestamps should be monotonically non-decreasing across rotation"
+  // Recover at ts2: should have key1=value1, key2=value2
+  let state_ts2 = recovery.recover_at_timestamp(ts2)?;
+  assert_eq!(state_ts2.len(), 2);
+  assert_eq!(
+    state_ts2.get("key1").map(|tv| &tv.value),
+    Some(&Value::String("value1".to_string()))
   );
-  assert!(
-    ts3 >= ts2,
-    "Timestamps should be monotonically non-decreasing"
+  assert_eq!(
+    state_ts2.get("key2").map(|tv| &tv.value),
+    Some(&Value::String("value2".to_string()))
   );
 
-  // Test recovery at later timestamps
-  if ts2 > ts1 {
-    let state_ts2 = recovery.recover_at_timestamp(ts2)?;
-    // Should include key1 (from archive) and key2 (from active)
-    assert_eq!(state_ts2.len(), 2);
-    assert!(state_ts2.contains_key("key1"));
-    assert!(state_ts2.contains_key("key2"));
-  }
+  // Recover at ts3: should have key1=updated1, key2=value2
+  let state_ts3 = recovery.recover_at_timestamp(ts3)?;
+  assert_eq!(state_ts3.len(), 2);
+  assert_eq!(
+    state_ts3.get("key1").map(|tv| &tv.value),
+    Some(&Value::String("updated1".to_string()))
+  );
+  assert_eq!(
+    state_ts3.get("key2").map(|tv| &tv.value),
+    Some(&Value::String("value2".to_string()))
+  );
 
-  if ts3 > ts2 {
-    let state_ts3 = recovery.recover_at_timestamp(ts3)?;
-    // Should include all keys
-    assert_eq!(state_ts3.len(), 3);
-    assert!(state_ts3.contains_key("key1"));
-    assert!(state_ts3.contains_key("key2"));
-    assert!(state_ts3.contains_key("key3"));
-  }
-
-  // Edge case: If timestamps were the same (due to clamping), verify "last write wins"
-  // This is important because recovery processes entries in order, so later versions
-  // should overwrite earlier ones with the same timestamp
-  if ts2 == ts1 && ts3 == ts1 {
-    // All entries have the same timestamp
-    let state_at_shared_ts = recovery.recover_at_timestamp(ts1)?;
-    
-    // All entries should be included since they all have timestamp == ts1
-    assert_eq!(state_at_shared_ts.len(), 3);
-    
-    // Verify values are from the latest versions (last write wins)
-    assert_eq!(
-      state_at_shared_ts.get("key1").map(|tv| &tv.value),
-      Some(&Value::String("value1".to_string()))
-    );
-    assert_eq!(
-      state_at_shared_ts.get("key2").map(|tv| &tv.value),
-      Some(&Value::String("value2".to_string()))
-    );
-    assert_eq!(
-      state_at_shared_ts.get("key3").map(|tv| &tv.value),
-      Some(&Value::String("value3".to_string()))
-    );
-  }
+  // Recover current should match ts3
+  let current = recovery.recover_current()?;
+  assert_eq!(current, state_ts3);
 
   Ok(())
 }
+
 
 #[tokio::test]
 async fn test_recover_current_only_needs_last_journal() -> anyhow::Result<()> {
@@ -229,7 +118,6 @@ async fn test_recover_current_only_needs_last_journal() -> anyhow::Result<()> {
     .await?;
 
   // First rotation
-  let _archive1_version = store.current_version();
   store.rotate_journal().await?;
 
   // Update key1 and add key3
@@ -241,7 +129,6 @@ async fn test_recover_current_only_needs_last_journal() -> anyhow::Result<()> {
     .await?;
 
   // Second rotation
-  let _archive2_version = store.current_version();
   store.rotate_journal().await?;
 
   // Add more data and delete key2
@@ -261,7 +148,7 @@ async fn test_recover_current_only_needs_last_journal() -> anyhow::Result<()> {
     .filter_map(|entry| {
       let entry = entry.ok()?;
       let path = entry.path();
-      if path.file_name()?.to_str()?.starts_with("test.jrn.v") {
+      if path.file_name()?.to_str()?.starts_with("test.jrn.t") {
         Some(path)
       } else {
         None
@@ -327,13 +214,23 @@ async fn test_detection_compressed_journal() -> anyhow::Result<()> {
   store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
-  let archive_version = store.current_version();
   store.rotate_journal().await?;
 
-  let archived_path = temp_dir
-    .path()
-    .join(format!("test.jrn.v{}.zz", archive_version));
-  let compressed_data = std::fs::read(&archived_path)?;
+  // Find the archived file
+  let mut archived_files = std::fs::read_dir(temp_dir.path())?
+    .filter_map(|entry| {
+      let entry = entry.ok()?;
+      let path = entry.path();
+      if path.file_name()?.to_str()?.starts_with("test.jrn.t") {
+        Some(path)
+      } else {
+        None
+      }
+    })
+    .collect::<Vec<_>>();
+  archived_files.sort();
+  let archived_path = archived_files.first().unwrap();
+  let compressed_data = std::fs::read(archived_path)?;
 
   // Verify it starts with zlib magic bytes (0x78)
   assert_eq!(
@@ -492,10 +389,16 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   // Create a store with larger buffer to avoid BufferFull errors during test
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 2048, None)?;
 
-  // Write data that will trigger rotation
-  let v1 = store
+  store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
+  let ts1 = store
+    .get_with_timestamp("key1")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
   store
     .insert("key2".to_string(), Value::String("value2".to_string()))
     .await?;
@@ -505,15 +408,24 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
     store.insert(format!("key{i}"), Value::Signed(i)).await?;
   }
 
-  let v_middle = store.current_version();
+  let ts_middle = store
+    .get_with_timestamp("key19")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  std::thread::sleep(std::time::Duration::from_millis(10));
 
   // Write more after rotation
-  let v_final = store
+  store
     .insert(
       "final".to_string(),
       Value::String("final_value".to_string()),
     )
     .await?;
+  let ts_final = store
+    .get_with_timestamp("final")
+    .map(|tv| tv.timestamp)
+    .unwrap();
   store.sync()?;
 
   // Read all journal files
@@ -524,7 +436,7 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
     .filter_map(|entry| {
       let entry = entry.ok()?;
       let path = entry.path();
-      if path.file_name()?.to_str()?.starts_with("test.jrn.v") {
+      if path.file_name()?.to_str()?.starts_with("test.jrn.t") {
         Some(path)
       } else {
         None
@@ -543,19 +455,19 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   let journal_refs: Vec<&[u8]> = all_journals.iter().map(std::vec::Vec::as_slice).collect();
   let recovery = VersionedRecovery::new(journal_refs)?;
 
-  // Verify we can recover at early version
-  let state_v1 = recovery.recover_at_version(v1)?;
-  assert_eq!(state_v1.len(), 1);
-  assert!(state_v1.contains_key("key1"));
+  // Verify we can recover at early timestamp
+  let state_ts1 = recovery.recover_at_timestamp(ts1)?;
+  assert_eq!(state_ts1.len(), 1);
+  assert!(state_ts1.contains_key("key1"));
 
-  // Verify we can recover at middle version (after rotation)
-  let state_middle = recovery.recover_at_version(v_middle)?;
+  // Verify we can recover at middle timestamp (after rotation)
+  let state_middle = recovery.recover_at_timestamp(ts_middle)?;
   assert!(state_middle.len() > 2);
   assert!(state_middle.contains_key("key1"));
   assert!(state_middle.contains_key("key2"));
 
-  // Verify we can recover at final version
-  let state_final = recovery.recover_at_version(v_final)?;
+  // Verify we can recover at final timestamp
+  let state_final = recovery.recover_at_timestamp(ts_final)?;
   assert!(state_final.contains_key("final"));
   assert_eq!(
     state_final.get("final").map(|tv| &tv.value),
@@ -577,21 +489,19 @@ async fn test_recovery_empty_journal() -> anyhow::Result<()> {
   let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
   let recovery = VersionedRecovery::new(vec![&journal_data])?;
 
-  // Should have version range starting at 1
-  let version_range = recovery.version_range();
-  assert!(version_range.is_some());
-  let (min, _max) = version_range.unwrap();
-  assert_eq!(min, 1);
+  // Should have timestamp range starting at base
+  let timestamp_range = recovery.timestamp_range();
+  assert!(timestamp_range.is_some());
 
-  // Recovering at any version should return empty map
-  let state = recovery.recover_at_version(1)?;
+  // Recovering current should return empty map
+  let state = recovery.recover_current()?;
   assert_eq!(state.len(), 0);
 
   Ok(())
 }
 
 #[tokio::test]
-async fn test_recovery_version_range() -> anyhow::Result<()> {
+async fn test_recovery_timestamp_range() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
 
@@ -599,22 +509,37 @@ async fn test_recovery_version_range() -> anyhow::Result<()> {
   store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
+  let ts1 = store
+    .get_with_timestamp("key1")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
   store
     .insert("key2".to_string(), Value::String("value2".to_string()))
     .await?;
-  let v3 = store
+
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  store
     .insert("key3".to_string(), Value::String("value3".to_string()))
     .await?;
+  let ts3 = store
+    .get_with_timestamp("key3")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
   store.sync()?;
 
   let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
   let recovery = VersionedRecovery::new(vec![&journal_data])?;
 
-  let version_range = recovery.version_range();
-  assert!(version_range.is_some());
-  let (min, max) = version_range.unwrap();
-  assert_eq!(min, 1); // base_version defaults to 1 for new stores
-  assert_eq!(max, v3);
+  let timestamp_range = recovery.timestamp_range();
+  assert!(timestamp_range.is_some());
+  let (min, max) = timestamp_range.unwrap();
+  assert!(min <= ts1);
+  assert!(max >= ts3);
 
   Ok(())
 }
@@ -625,30 +550,49 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
 
 
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-  let v1 = store.insert("key".to_string(), Value::Signed(1)).await?;
-  let v2 = store.insert("key".to_string(), Value::Signed(2)).await?;
-  let v3 = store.insert("key".to_string(), Value::Signed(3)).await?;
+  store.insert("key".to_string(), Value::Signed(1)).await?;
+  let ts1 = store
+    .get_with_timestamp("key")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  store.insert("key".to_string(), Value::Signed(2)).await?;
+  let ts2 = store
+    .get_with_timestamp("key")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  store.insert("key".to_string(), Value::Signed(3)).await?;
+  let ts3 = store
+    .get_with_timestamp("key")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
   store.sync()?;
 
   let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
   let recovery = VersionedRecovery::new(vec![&journal_data])?;
 
-  // Each version should show the value at that time
-  let state_v1 = recovery.recover_at_version(v1)?;
+  // Each timestamp should show the value at that time
+  let state_ts1 = recovery.recover_at_timestamp(ts1)?;
   assert_eq!(
-    state_v1.get("key").map(|tv| &tv.value),
+    state_ts1.get("key").map(|tv| &tv.value),
     Some(&Value::Signed(1))
   );
 
-  let state_v2 = recovery.recover_at_version(v2)?;
+  let state_ts2 = recovery.recover_at_timestamp(ts2)?;
   assert_eq!(
-    state_v2.get("key").map(|tv| &tv.value),
+    state_ts2.get("key").map(|tv| &tv.value),
     Some(&Value::Signed(2))
   );
 
-  let state_v3 = recovery.recover_at_version(v3)?;
+  let state_ts3 = recovery.recover_at_timestamp(ts3)?;
   assert_eq!(
-    state_v3.get("key").map(|tv| &tv.value),
+    state_ts3.get("key").map(|tv| &tv.value),
     Some(&Value::Signed(3))
   );
 
@@ -671,13 +615,12 @@ async fn test_recovery_various_value_types() -> anyhow::Result<()> {
     .insert("float".to_string(), Value::Float(3.14))
     .await?;
   store.insert("bool".to_string(), Value::Bool(true)).await?;
-  let v_final = store.current_version();
   store.sync()?;
 
   let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
   let recovery = VersionedRecovery::new(vec![&journal_data])?;
 
-  let state = recovery.recover_at_version(v_final)?;
+  let state = recovery.recover_current()?;
   assert_eq!(state.len(), 4);
   assert_eq!(
     state.get("string").map(|tv| &tv.value),
@@ -706,63 +649,89 @@ async fn test_recovery_from_compressed_archive() -> anyhow::Result<()> {
 
   // Create a store and write some data
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-  let v1 = store
+  store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
-  let v2 = store
+  let ts1 = store
+    .get_with_timestamp("key1")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  store
     .insert("key2".to_string(), Value::String("value2".to_string()))
     .await?;
-  store.sync()?;
+  let ts2 = store
+    .get_with_timestamp("key2")
+    .map(|tv| tv.timestamp)
+    .unwrap();
 
-  // Get the current version before rotation (this will be used in the archive name)
-  let archive_version = store.current_version();
+  store.sync()?;
 
   // Rotate to create compressed archive
   store.rotate_journal().await?;
 
   // Add more data to active journal
-  let v3 = store
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  store
     .insert("key3".to_string(), Value::String("value3".to_string()))
     .await?;
+  let ts3 = store
+    .get_with_timestamp("key3")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
   store.sync()?;
 
-  // Find the compressed archive (using the version at the time of rotation)
-  let archived_path = temp_dir
-    .path()
-    .join(format!("test.jrn.v{}.zz", archive_version));
+  // Find the compressed archive
+  let mut archived_files = std::fs::read_dir(temp_dir.path())?
+    .filter_map(|entry| {
+      let entry = entry.ok()?;
+      let path = entry.path();
+      if path.file_name()?.to_str()?.starts_with("test.jrn.t") {
+        Some(path)
+      } else {
+        None
+      }
+    })
+    .collect::<Vec<_>>();
+  archived_files.sort();
+  let archived_path = archived_files.first().unwrap();
   assert!(archived_path.exists(), "Compressed archive should exist");
 
   // Read both journals
-  let compressed_data = std::fs::read(&archived_path)?;
+  let compressed_data = std::fs::read(archived_path)?;
   let active_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
 
   // Create recovery from both journals (compressed first, then active)
   let recovery = VersionedRecovery::new(vec![&compressed_data, &active_data])?;
 
-  // Verify version range spans both journals
-  let version_range = recovery.version_range();
-  assert!(version_range.is_some());
-  let (min, max) = version_range.unwrap();
-  assert_eq!(min, 1);
-  assert_eq!(max, v3);
+  // Verify timestamp range spans both journals
+  let timestamp_range = recovery.timestamp_range();
+  assert!(timestamp_range.is_some());
+  let (min, max) = timestamp_range.unwrap();
+  assert!(min <= ts1);
+  assert!(max >= ts3);
 
-  // Recover at v1 (should be in compressed archive)
-  let state_v1 = recovery.recover_at_version(v1)?;
-  assert_eq!(state_v1.len(), 1);
+  // Recover at ts1 (should be in compressed archive)
+  let state_ts1 = recovery.recover_at_timestamp(ts1)?;
+  assert_eq!(state_ts1.len(), 1);
   assert_eq!(
-    state_v1.get("key1").map(|tv| &tv.value),
+    state_ts1.get("key1").map(|tv| &tv.value),
     Some(&Value::String("value1".to_string()))
   );
 
-  // Recover at v2 (should be in compressed archive)
-  let state_v2 = recovery.recover_at_version(v2)?;
-  assert_eq!(state_v2.len(), 2);
+  // Recover at ts2 (should be in compressed archive)
+  let state_ts2 = recovery.recover_at_timestamp(ts2)?;
+  assert_eq!(state_ts2.len(), 2);
 
-  // Recover at v3 (should include data from both archives and active journal)
-  let state_v3 = recovery.recover_at_version(v3)?;
-  assert_eq!(state_v3.len(), 3);
+  // Recover at ts3 (should include data from both archives and active journal)
+  let state_ts3 = recovery.recover_at_timestamp(ts3)?;
+  assert_eq!(state_ts3.len(), 3);
   assert_eq!(
-    state_v3.get("key3").map(|tv| &tv.value),
+    state_ts3.get("key3").map(|tv| &tv.value),
     Some(&Value::String("value3".to_string()))
   );
 
@@ -776,53 +745,79 @@ async fn test_recovery_from_multiple_compressed_archives() -> anyhow::Result<()>
 
   // Create a store and perform multiple rotations
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-  let v1 = store
+  store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
-  let archive1_version = store.current_version();
+  let ts1 = store
+    .get_with_timestamp("key1")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
   store.rotate_journal().await?;
 
-  let v2 = store
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  store
     .insert("key2".to_string(), Value::String("value2".to_string()))
     .await?;
-  let archive2_version = store.current_version();
+  let ts2 = store
+    .get_with_timestamp("key2")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
   store.rotate_journal().await?;
 
-  let v3 = store
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  store
     .insert("key3".to_string(), Value::String("value3".to_string()))
     .await?;
+  let ts3 = store
+    .get_with_timestamp("key3")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
   store.sync()?;
 
   // Collect all journal data (2 compressed + 1 active)
-  let archive1_path = temp_dir
-    .path()
-    .join(format!("test.jrn.v{}.zz", archive1_version));
-  let archive2_path = temp_dir
-    .path()
-    .join(format!("test.jrn.v{}.zz", archive2_version));
+  let mut archived_files = std::fs::read_dir(temp_dir.path())?
+    .filter_map(|entry| {
+      let entry = entry.ok()?;
+      let path = entry.path();
+      if path.file_name()?.to_str()?.starts_with("test.jrn.t") {
+        Some(path)
+      } else {
+        None
+      }
+    })
+    .collect::<Vec<_>>();
+  archived_files.sort();
 
-  let archive1_data = std::fs::read(&archive1_path)?;
-  let archive2_data = std::fs::read(&archive2_path)?;
+  let archive1_path = &archived_files[0];
+  let archive2_path = &archived_files[1];
+
+  let archive1_data = std::fs::read(archive1_path)?;
+  let archive2_data = std::fs::read(archive2_path)?;
   let active_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
 
   // Create recovery from all journals
   let recovery = VersionedRecovery::new(vec![&archive1_data, &archive2_data, &active_data])?;
 
-  // Verify we can recover at any version
-  let state_v1 = recovery.recover_at_version(v1)?;
-  assert_eq!(state_v1.len(), 1);
-  assert!(state_v1.contains_key("key1"));
+  // Verify we can recover at any timestamp
+  let state_ts1 = recovery.recover_at_timestamp(ts1)?;
+  assert_eq!(state_ts1.len(), 1);
+  assert!(state_ts1.contains_key("key1"));
 
-  let state_v2 = recovery.recover_at_version(v2)?;
-  assert_eq!(state_v2.len(), 2);
-  assert!(state_v2.contains_key("key1"));
-  assert!(state_v2.contains_key("key2"));
+  let state_ts2 = recovery.recover_at_timestamp(ts2)?;
+  assert_eq!(state_ts2.len(), 2);
+  assert!(state_ts2.contains_key("key1"));
+  assert!(state_ts2.contains_key("key2"));
 
-  let state_v3 = recovery.recover_at_version(v3)?;
-  assert_eq!(state_v3.len(), 3);
-  assert!(state_v3.contains_key("key1"));
-  assert!(state_v3.contains_key("key2"));
-  assert!(state_v3.contains_key("key3"));
+  let state_ts3 = recovery.recover_at_timestamp(ts3)?;
+  assert_eq!(state_ts3.len(), 3);
+  assert!(state_ts3.contains_key("key1"));
+  assert!(state_ts3.contains_key("key2"));
+  assert!(state_ts3.contains_key("key3"));
 
   Ok(())
 }
@@ -834,31 +829,44 @@ async fn test_recovery_mixed_compressed_and_uncompressed() -> anyhow::Result<()>
 
   // Create initial store and archive (will be compressed)
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-  let _v1 = store
+  let _ts1 = store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
   store.sync()?;
-  let archive_version = store.current_version();
   store.rotate_journal().await?;
 
   // Get compressed archive
-  let compressed_archive_path = temp_dir
-    .path()
-    .join(format!("test.jrn.v{}.zz", archive_version));
-  let compressed_data = std::fs::read(&compressed_archive_path)?;
+  let mut archived_files = std::fs::read_dir(temp_dir.path())?
+    .filter_map(|entry| {
+      let entry = entry.ok()?;
+      let path = entry.path();
+      if path.file_name()?.to_str()?.starts_with("test.jrn.t") {
+        Some(path)
+      } else {
+        None
+      }
+    })
+    .collect::<Vec<_>>();
+  archived_files.sort();
+  let compressed_archive_path = archived_files.first().unwrap();
+  let compressed_data = std::fs::read(compressed_archive_path)?;
 
   // Create uncompressed journal data manually
   let mut uncompressed_store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-  let v2 = uncompressed_store
+  uncompressed_store
     .insert("key2".to_string(), Value::String("value2".to_string()))
     .await?;
+  let ts2 = uncompressed_store
+    .get_with_timestamp("key2")
+    .map(|tv| tv.timestamp)
+    .unwrap();
   uncompressed_store.sync()?;
   let uncompressed_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
 
   // Recovery should handle both compressed and uncompressed
   let recovery = VersionedRecovery::new(vec![&compressed_data, &uncompressed_data])?;
 
-  let state_final = recovery.recover_at_version(v2)?;
+  let state_final = recovery.recover_at_timestamp(ts2)?;
   assert_eq!(state_final.len(), 2);
   assert!(state_final.contains_key("key1"));
   assert!(state_final.contains_key("key2"));
@@ -872,7 +880,7 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
 
   // Create a store and write some timestamped data
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-  
+
   store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
@@ -979,7 +987,7 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
     .unwrap();
 
   // Rotate journal
-  let archive_version = store.current_version();
+  let rotation_ts = ts2;
   store.rotate_journal().await?;
 
   std::thread::sleep(std::time::Duration::from_millis(10));
@@ -998,7 +1006,7 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
   // Read both journals
   let archived_path = temp_dir
     .path()
-    .join(format!("test.jrn.v{}.zz", archive_version));
+    .join(format!("test.jrn.t{}.zz", rotation_ts));
   let archived_data = std::fs::read(&archived_path)?;
   let active_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
 
@@ -1038,7 +1046,7 @@ async fn test_timestamp_range() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-  
+
   store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
@@ -1071,11 +1079,11 @@ async fn test_timestamp_range() -> anyhow::Result<()> {
   let timestamp_range = recovery.timestamp_range();
   assert!(timestamp_range.is_some());
   let (min, max) = timestamp_range.unwrap();
-  
+
   // Min should be <= first timestamp, max should be >= last timestamp
   assert!(min <= ts1);
   assert!(max >= ts3);
-  
+
   // Timestamps should be ordered
   assert!(ts3 > ts1);
 
@@ -1090,34 +1098,45 @@ async fn test_recovery_decompression_transparent() -> anyhow::Result<()> {
   // Create store with compressible data
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   let compressible = "A".repeat(500);
-  let v1 = store
+  store
     .insert("data".to_string(), Value::String(compressible.clone()))
     .await?;
+  let ts1 = store
+    .get_with_timestamp("data")
+    .map(|tv| tv.timestamp)
+    .unwrap();
   store.sync()?;
 
   // Create uncompressed recovery baseline
   let uncompressed_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
   let recovery_uncompressed = VersionedRecovery::new(vec![&uncompressed_data])?;
-  let state_uncompressed = recovery_uncompressed.recover_at_version(v1)?;
-
-  // Get archive version before rotation
-  let archive_version = store.current_version();
+  let state_uncompressed = recovery_uncompressed.recover_at_timestamp(ts1)?;
 
   // Rotate to compress
   store.rotate_journal().await?;
 
   // Read compressed archive
-  let compressed_path = temp_dir
-    .path()
-    .join(format!("test.jrn.v{}.zz", archive_version));
-  let compressed_data = std::fs::read(&compressed_path)?;
+  let mut archived_files = std::fs::read_dir(temp_dir.path())?
+    .filter_map(|entry| {
+      let entry = entry.ok()?;
+      let path = entry.path();
+      if path.file_name()?.to_str()?.starts_with("test.jrn.t") {
+        Some(path)
+      } else {
+        None
+      }
+    })
+    .collect::<Vec<_>>();
+  archived_files.sort();
+  let compressed_path = archived_files.first().unwrap();
+  let compressed_data = std::fs::read(compressed_path)?;
 
   // Verify it's actually compressed (smaller)
   assert!(compressed_data.len() < uncompressed_data.len());
 
   // Create recovery from compressed data
   let recovery_compressed = VersionedRecovery::new(vec![&compressed_data])?;
-  let state_compressed = recovery_compressed.recover_at_version(v1)?;
+  let state_compressed = recovery_compressed.recover_at_timestamp(ts1)?;
 
   // Both should produce identical results
   assert_eq!(state_uncompressed.len(), state_compressed.len());
@@ -1128,6 +1147,69 @@ async fn test_recovery_decompression_transparent() -> anyhow::Result<()> {
   assert_eq!(
     state_uncompressed.get("data").map(|tv| &tv.value),
     Some(&Value::String(compressible))
+  );
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn test_base_timestamp_validation() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+
+  // Create a store and perform rotation to get proper sequential journals
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+
+  // Add initial data
+  store
+    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .await?;
+  store.sync()?;
+
+  // Rotate to create first archived journal
+  store.rotate_journal().await?;
+
+  std::thread::sleep(std::time::Duration::from_millis(50));
+
+  // Add more data after rotation
+  store
+    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .await?;
+  store.sync()?;
+
+  // Read both journals (archived + active)
+  let mut archived_files = std::fs::read_dir(temp_dir.path())?
+    .filter_map(|entry| {
+      let entry = entry.ok()?;
+      let path = entry.path();
+      if path.file_name()?.to_str()?.starts_with("test.jrn.t") {
+        Some(path)
+      } else {
+        None
+      }
+    })
+    .collect::<Vec<_>>();
+  archived_files.sort();
+
+  let archived_data = std::fs::read(archived_files.first().unwrap())?;
+  let active_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
+
+  // Should succeed when journals are in correct chronological order (archived, then active)
+  let recovery = VersionedRecovery::new(vec![&archived_data, &active_data]);
+  assert!(recovery.is_ok(), "Should succeed with correct ordering");
+
+  // Should fail when journals are in wrong order (active before archived)
+  let recovery_reversed = VersionedRecovery::new(vec![&active_data, &archived_data]);
+  assert!(
+    recovery_reversed.is_err(),
+    "Should fail when base_timestamp ordering is violated"
+  );
+
+  let err = recovery_reversed.unwrap_err();
+  let err_msg = err.to_string();
+  assert!(
+    err_msg.contains("base_timestamp") && err_msg.contains("max_timestamp"),
+    "Error should mention base_timestamp and max_timestamp validation, got: {}",
+    err_msg
   );
 
   Ok(())

@@ -23,24 +23,21 @@ pub struct TimestampedValue {
   pub timestamp: u64,
 }
 
-/// Versioned implementation of a key-value journaling system that tracks write timestamps
-/// for point-in-time recovery.
+/// Timestamped implementation of a key-value journaling system that uses timestamps
+/// as the version identifier for point-in-time recovery.
 ///
 /// Each write operation is assigned a monotonically non-decreasing timestamp (in nanoseconds
 /// since UNIX epoch), enabling exact state reconstruction at any historical timestamp.
 /// The monotonicity is enforced by clamping: if the system clock goes backwards, we reuse
-/// the same timestamp value to maintain ordering guarantees without artificial clock skew.
+/// the same timestamp value to maintain ordering guarantees. When timestamps collide,
+/// journal ordering determines precedence.
 #[derive(Debug)]
 pub struct VersionedKVJournal<'a> {
-  #[allow(dead_code)]
-  format_version: u64,
   position: usize,
   buffer: &'a mut [u8],
   high_water_mark: usize,
   high_water_mark_triggered: bool,
   initialized_at_unix_time_ns: u64,
-  current_version: u64,
-  base_version: u64, // First version in this journal
   last_timestamp: u64, // Most recent timestamp written (for monotonic enforcement)
 }
 
@@ -51,22 +48,21 @@ pub struct VersionedKVJournal<'a> {
 // | 8        | Position                 | u64            |
 // | 16       | Type Code: Array Start   | u8             |
 // | 17       | Metadata Object          | BONJSON Object |
-// | ...      | Versioned Journal Entry  | BONJSON Object |
-// | ...      | Versioned Journal Entry  | BONJSON Object |
+// | ...      | Timestamped Journal Entry| BONJSON Object |
+// | ...      | Timestamped Journal Entry| BONJSON Object |
 //
-// Metadata object: {"initialized": <timestamp>, "format_version": 2, "base_version": <version>}
-// Journal entries: {"v": <version>, "t": <timestamp>, "k": "<key>", "o": <value or null>}
+// Metadata object: {"initialized": <timestamp>, "format_version": 2}
+// Journal entries: {"t": <timestamp>, "k": "<key>", "o": <value or null>}
 //
 // # Timestamp Semantics
 //
-// Timestamps serve as logical clocks with monotonic guarantees rather than pure wall time:
+// Timestamps serve as both version identifiers and logical clocks with monotonic guarantees:
 // - Each write gets a timestamp that is guaranteed to be >= previous writes (non-decreasing)
 // - If system clock goes backward, timestamps are clamped to last_timestamp (reuse same value)
+// - When timestamps collide, journal ordering determines precedence
 // - This ensures total ordering while allowing correlation with external timestamped systems
-// - Version numbers (v) are maintained for backward compatibility and as secondary ordering
 
 const VERSION: u64 = 2; // The versioned format version
-const INVALID_VERSION: u64 = 0; // 0 will never be a valid version
 
 const HEADER_SIZE: usize = 16;
 const ARRAY_BEGIN: usize = 16;
@@ -103,14 +99,6 @@ fn current_timestamp() -> anyhow::Result<u64> {
     .and_then(|d| u64::try_from(d.as_nanos()).map_err(|_| InvariantError::Invariant.into()))
 }
 
-fn read_version(buffer: &[u8]) -> anyhow::Result<u64> {
-  let version_bytes: [u8; 8] = buffer[.. 8].try_into()?;
-  let version = u64::from_le_bytes(version_bytes);
-  if version != VERSION {
-    anyhow::bail!("Unsupported version: {version}, expected {VERSION}");
-  }
-  Ok(version)
-}
 
 /// Write to the version field of a journal buffer.
 fn write_version_field(buffer: &mut [u8], version: u64) {
@@ -121,11 +109,6 @@ fn write_version_field(buffer: &mut [u8], version: u64) {
 /// Write the version to a journal buffer.
 fn write_version(buffer: &mut [u8]) {
   write_version_field(buffer, VERSION);
-}
-
-/// Invalidate the version field of a journal buffer.
-fn invalidate_version(buffer: &mut [u8]) {
-  write_version_field(buffer, INVALID_VERSION);
 }
 
 fn read_position(buffer: &[u8]) -> anyhow::Result<usize> {
@@ -159,7 +142,7 @@ fn read_bonjson_payload(buffer: &[u8]) -> anyhow::Result<Value> {
 }
 
 /// Create and write the metadata section of a versioned journal.
-fn write_metadata(buffer: &mut [u8], timestamp: u64, base_version: u64) -> anyhow::Result<usize> {
+fn write_metadata(buffer: &mut [u8], timestamp: u64, base_timestamp: u64) -> anyhow::Result<usize> {
   let buffer_len = buffer.len();
   let mut cursor = &mut buffer[METADATA_OFFSET ..];
 
@@ -167,7 +150,10 @@ fn write_metadata(buffer: &mut [u8], timestamp: u64, base_version: u64) -> anyho
   let mut metadata = AHashMap::new();
   metadata.insert("initialized".to_string(), Value::Unsigned(timestamp));
   metadata.insert("format_version".to_string(), Value::Unsigned(VERSION));
-  metadata.insert("base_version".to_string(), Value::Unsigned(base_version));
+  metadata.insert(
+    "base_timestamp".to_string(),
+    Value::Unsigned(base_timestamp),
+  );
 
   // Write metadata object
   encode_into_buf(&mut cursor, &Value::Object(metadata))
@@ -177,7 +163,7 @@ fn write_metadata(buffer: &mut [u8], timestamp: u64, base_version: u64) -> anyho
 }
 
 /// Extract metadata from the buffer.
-fn extract_metadata_from_buffer(buffer: &[u8]) -> anyhow::Result<(u64, u64)> {
+fn extract_metadata_from_buffer(buffer: &[u8]) -> anyhow::Result<u64> {
   let array = read_bonjson_payload(buffer)?;
   if let Value::Array(entries) = array
     && let Some(Value::Object(obj)) = entries.first()
@@ -185,9 +171,7 @@ fn extract_metadata_from_buffer(buffer: &[u8]) -> anyhow::Result<(u64, u64)> {
     let timestamp = read_u64_field(obj, "initialized")
       .ok_or_else(|| anyhow::anyhow!("No initialized timestamp found in metadata"))?;
 
-    let base_version = read_u64_field(obj, "base_version").unwrap_or(0);
-
-    return Ok((timestamp, base_version));
+    return Ok(timestamp);
   }
   anyhow::bail!("No valid metadata found");
 }
@@ -226,19 +210,16 @@ impl<'a> VersionedKVJournal<'a> {
   ///
   /// # Arguments
   /// * `buffer` - The storage buffer
-  /// * `base_version` - The starting version for this journal
+  /// * `base_timestamp` - The starting timestamp for this journal (typically current time)
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
   ///
   /// # Errors
-  /// Returns an error if serialization fails or if `high_water_mark_ratio` is invalid.
+  /// Returns an error if the buffer is too small or if `high_water_mark_ratio` is invalid.
   pub fn new(
     buffer: &'a mut [u8],
-    base_version: u64,
+    base_timestamp: u64,
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
-    // If this operation gets interrupted, the buffer must be considered invalid.
-    invalidate_version(buffer);
-
     let buffer_len = validate_buffer_len(buffer)?;
     let high_water_mark = calculate_high_water_mark(buffer_len, high_water_mark_ratio)?;
 
@@ -246,23 +227,20 @@ impl<'a> VersionedKVJournal<'a> {
     let mut cursor = &mut buffer[HEADER_SIZE ..];
     serialize_array_begin(&mut cursor).map_err(|_| InvariantError::Invariant)?;
 
-    // Write metadata with current timestamp and base version
+    // Write metadata with current timestamp
     let timestamp = current_timestamp()?;
-    let position = write_metadata(buffer, timestamp, base_version)?;
+    let position = write_metadata(buffer, timestamp, base_timestamp)?;
 
     write_position(buffer, position);
     write_version(buffer);
 
     Ok(Self {
-      format_version: VERSION,
       position,
       buffer,
       high_water_mark,
       high_water_mark_triggered: false,
       initialized_at_unix_time_ns: timestamp,
-      current_version: base_version,
-      base_version,
-      last_timestamp: timestamp,
+      last_timestamp: std::cmp::max(timestamp, base_timestamp),
     })
   }
 
@@ -280,50 +258,22 @@ impl<'a> VersionedKVJournal<'a> {
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
     let buffer_len = validate_buffer_len(buffer)?;
-    let format_version = read_version(buffer)?;
     let position = read_position(buffer)?;
-    let (init_timestamp, base_version) = extract_metadata_from_buffer(buffer)?;
+    let init_timestamp = extract_metadata_from_buffer(buffer)?;
     let high_water_mark = calculate_high_water_mark(buffer_len, high_water_mark_ratio)?;
-
-    // Find the highest version in the journal
-    let highest_version = Self::find_highest_version(buffer)?;
-    let current_version = highest_version.unwrap_or(base_version);
 
     // Find the highest timestamp in the journal
     let highest_timestamp = Self::find_highest_timestamp(buffer)?;
     let last_timestamp = highest_timestamp.unwrap_or(init_timestamp);
 
     Ok(Self {
-      format_version,
       position,
       buffer,
       high_water_mark,
       high_water_mark_triggered: position >= high_water_mark,
       initialized_at_unix_time_ns: init_timestamp,
-      current_version,
-      base_version,
       last_timestamp,
     })
-  }
-
-  /// Find the highest version number in the journal.
-  ///
-  /// Since versions are monotonically increasing, this simply returns the version
-  /// from the last entry in the journal.
-  fn find_highest_version(buffer: &[u8]) -> anyhow::Result<Option<u64>> {
-    let array = read_bonjson_payload(buffer)?;
-
-    if let Value::Array(entries) = array {
-      // Skip metadata (index 0) and get the last actual entry
-      // Since versions are monotonically increasing, the last entry has the highest version
-      if entries.len() > 1
-        && let Some(Value::Object(obj)) = entries.last()
-      {
-        return Ok(read_u64_field(obj, "v"));
-      }
-    }
-
-    Ok(None)
   }
 
   /// Find the highest timestamp in the journal.
@@ -344,18 +294,6 @@ impl<'a> VersionedKVJournal<'a> {
     }
 
     Ok(None)
-  }
-
-  /// Get the current version number.
-  #[must_use]
-  pub fn current_version(&self) -> u64 {
-    self.current_version
-  }
-
-  /// Get the base version (first version in this journal).
-  #[must_use]
-  pub fn base_version(&self) -> u64 {
-    self.base_version
   }
 
   /// Get the next monotonically increasing timestamp.
@@ -387,23 +325,17 @@ impl<'a> VersionedKVJournal<'a> {
   }
 
   /// Write a versioned journal entry and return the timestamp.
-  fn write_versioned_entry(
-    &mut self,
-    version: u64,
-    key: &str,
-    value: &Value,
-  ) -> anyhow::Result<u64> {
+  fn write_versioned_entry(&mut self, key: &str, value: &Value) -> anyhow::Result<u64> {
     // Get monotonically increasing timestamp before borrowing buffer
     let timestamp = self.next_monotonic_timestamp()?;
 
     let buffer_len = self.buffer.len();
     let mut cursor = &mut self.buffer[self.position ..];
 
-    // Create entry object: {"v": version, "t": timestamp, "k": key, "o": value}
+    // Create entry object: {"t": timestamp, "k": key, "o": value}
     // TODO(snowp): It would be nice to be able to pass impl AsRef<str> for key or Cow to avoid
     // allocating small strings repeatedly.
     let entry = AHashMap::from([
-      ("v".to_string(), Value::Unsigned(version)),
       ("t".to_string(), Value::Unsigned(timestamp)),
       ("k".to_string(), Value::String(key.to_string())),
       ("o".to_string(), value.clone()),
@@ -417,28 +349,22 @@ impl<'a> VersionedKVJournal<'a> {
     Ok(timestamp)
   }
 
-  /// Set a key-value pair with automatic version increment.
-  /// Returns a tuple of (version, timestamp).
+  /// Set a key-value pair.
+  /// Returns the timestamp of the operation.
   ///
-  /// The timestamp is monotonically increasing and serves as the primary ordering mechanism.
+  /// The timestamp is monotonically non-decreasing and serves as the version identifier.
   /// If the system clock goes backwards, timestamps are clamped to maintain monotonicity.
-  pub fn set_versioned(&mut self, key: &str, value: &Value) -> anyhow::Result<(u64, u64)> {
-    self.current_version += 1;
-    let version = self.current_version;
-    let timestamp = self.write_versioned_entry(version, key, value)?;
-    Ok((version, timestamp))
+  pub fn set_versioned(&mut self, key: &str, value: &Value) -> anyhow::Result<u64> {
+    self.write_versioned_entry(key, value)
   }
 
-  /// Delete a key with automatic version increment.
-  /// Returns a tuple of (version, timestamp).
+  /// Delete a key.
+  /// Returns the timestamp of the operation.
   ///
-  /// The timestamp is monotonically increasing and serves as the primary ordering mechanism.
+  /// The timestamp is monotonically non-decreasing and serves as the version identifier.
   /// If the system clock goes backwards, timestamps are clamped to maintain monotonicity.
-  pub fn delete_versioned(&mut self, key: &str) -> anyhow::Result<(u64, u64)> {
-    self.current_version += 1;
-    let version = self.current_version;
-    let timestamp = self.write_versioned_entry(version, key, &Value::Null)?;
-    Ok((version, timestamp))
+  pub fn delete_versioned(&mut self, key: &str) -> anyhow::Result<u64> {
+    self.write_versioned_entry(key, &Value::Null)
   }
 
   /// Get the high water mark position.
@@ -548,16 +474,47 @@ impl<'a> VersionedKVJournal<'a> {
 
 /// Rotation utilities for creating new journals with compacted state
 impl<'a> VersionedKVJournal<'a> {
-  /// Create a new journal initialized with the compacted state from a snapshot version.
+  /// Create a new journal initialized with the compacted state from a snapshot.
   ///
-  /// The new journal will have all current key-value pairs written as versioned entries
-  /// at the `snapshot_version`, using their original timestamps to preserve historical accuracy.
-  /// The journal's monotonic timestamp enforcement will respect the highest timestamp in the
-  /// provided state.
+  /// The new journal will have all current key-value pairs written with their **original
+  /// timestamps** to preserve historical accuracy. The journal's monotonic timestamp
+  /// enforcement will respect the highest timestamp in the provided state.
+  ///
+  /// ## Timestamp Preservation and Snapshot Overlaps
+  ///
+  /// This function preserves the original timestamps of all entries, which means the new
+  /// journal's entry timestamps may overlap with or equal timestamps from the previous journal.
+  ///
+  /// Example during rotation:
+  /// ```text
+  /// Old journal (about to be archived as store.jrn.t300.zz):
+  ///   - Entries: key="foo" t=100, key="foo" t=200, key="foo" t=300
+  ///   - Final state: foo=v3@300, bar=v1@200
+  ///   - rotation_timestamp = 300 (max of all timestamps)
+  ///
+  /// New journal (created by this function with base_timestamp=300):
+  ///   - Compacted entries: foo=v3@300, bar=v1@200  ← Original timestamps preserved!
+  ///   - These timestamps (300, 200) may equal/overlap with old journal's range [100, 300]
+  ///   - Future entries will have t >= 300 (enforced by base_timestamp)
+  /// ```
+  ///
+  /// ## Design Rationale
+  ///
+  /// Preserving original timestamps is **not strictly required** for point-in-time state
+  /// reconstruction (we could rewrite all compacted entries to `rotation_timestamp`), but it
+  /// provides benefits at zero cost:
+  ///
+  /// - **Implementation simplicity**: No timestamp rewriting logic needed
+  /// - **Semantic accuracy**: Preserves "when was this value last modified" for audit trails
+  /// - **Future-proof**: Maintains historical information that may be useful later
+  /// - **Zero overhead**: No performance difference vs rewriting timestamps
+  ///
+  /// Recovery systems bucket logs to snapshots using min/max timestamp ranges and replay
+  /// journals sequentially to reconstruct state at any point in time.
   ///
   /// # Arguments
   /// * `buffer` - The buffer to write the new journal to
-  /// * `snapshot_version` - The version to assign to all compacted state entries
+  /// * `base_timestamp` - The starting timestamp for the journal (for monotonic enforcement)
   /// * `state` - The current key-value state with timestamps to write
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark
   ///
@@ -565,18 +522,17 @@ impl<'a> VersionedKVJournal<'a> {
   /// Returns an error if serialization fails or buffer is too small.
   pub fn create_rotated_journal(
     buffer: &'a mut [u8],
-    snapshot_version: u64,
+    base_timestamp: u64,
     state: &AHashMap<String, TimestampedValue>,
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
-    // Create a new journal with the snapshot version as the base
-    let mut journal = Self::new(buffer, snapshot_version, high_water_mark_ratio)?;
+    // Create a new journal with the base timestamp
+    let mut journal = Self::new(buffer, base_timestamp, high_water_mark_ratio)?;
 
     // Find the maximum timestamp in the state to maintain monotonicity
     let max_state_timestamp = state.values().map(|tv| tv.timestamp).max().unwrap_or(0);
 
-    // Write all current state as versioned entries at the snapshot version
-    // Use the original timestamp from each entry to preserve historical accuracy
+    // Write all current state with their original timestamps
     for (key, timestamped_value) in state {
       let buffer_len = journal.buffer.len();
       let mut cursor = &mut journal.buffer[journal.position ..];
@@ -585,11 +541,10 @@ impl<'a> VersionedKVJournal<'a> {
       // We use the actual timestamp from the entry, but track the maximum for future writes
       journal.last_timestamp = std::cmp::max(journal.last_timestamp, timestamped_value.timestamp);
 
-      // Create entry object: {"v": version, "t": timestamp, "k": key, "o": value}
+      // Create entry object: {"t": timestamp, "k": key, "o": value}
       // TODO(snowp): It would be nice to be able to pass impl AsRef<str> for key or Cow to avoid
       // allocating small strings repeatedly.
       let entry = AHashMap::from([
-        ("v".to_string(), Value::Unsigned(snapshot_version)),
         (
           "t".to_string(),
           Value::Unsigned(timestamped_value.timestamp),

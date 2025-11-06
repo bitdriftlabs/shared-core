@@ -55,9 +55,19 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 - The async API enables efficient background compression without blocking the main thread
 
 **Version Tracking**:
-- Every write operation (`insert`, `remove`) returns a monotonically increasing version number
+- Every write operation (`insert`, `remove`) returns a monotonically non-decreasing version number
 - Version numbers start at 1 (base version), first write is version 2
 - Entries with `Value::Null` are treated as deletions but still versioned
+- During rotation, all snapshot entries share the same version (the rotation version)
+
+**Timestamp Tracking**:
+- Each entry records a timestamp (nanoseconds since UNIX epoch) when the write occurred
+- Timestamps are monotonically non-decreasing, not strictly increasing
+- Multiple entries may share the same timestamp if the system clock doesn't advance between writes
+- This is expected behavior, particularly during rapid writes or in test environments
+- Recovery at timestamp T includes ALL entries with timestamp ≤ T, applied in version order
+- Timestamps are preserved during rotation, maintaining temporal accuracy for audit purposes
+- Test coverage: `test_timestamp_collision_across_rotation` in `versioned_recovery_test.rs`
 
 **Rotation Strategy**:
 - Automatic rotation when journal size exceeds high water mark (triggered during async write operations)

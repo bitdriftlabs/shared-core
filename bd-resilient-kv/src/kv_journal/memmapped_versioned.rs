@@ -12,11 +12,11 @@ use memmap2::{MmapMut, MmapOptions};
 use std::fs::OpenOptions;
 use std::path::Path;
 
-/// Memory-mapped implementation of a versioned key-value journal.
+/// Memory-mapped implementation of a timestamped key-value journal.
 ///
 /// This implementation uses memory-mapped files to provide persistence while maintaining
 /// the efficiency of in-memory operations. All changes are automatically synced to disk.
-/// Each write operation receives a unique version number for point-in-time recovery.
+/// Each write operation receives a timestamp for point-in-time recovery.
 ///
 /// # Safety
 /// During construction, we unsafely declare mmap's internal buffer as having a static
@@ -58,7 +58,7 @@ impl MemMappedVersionedKVJournal {
   /// # Arguments
   /// * `file_path` - Path to the file to use for storage
   /// * `size` - Minimum size of the file in bytes
-  /// * `base_version` - The starting version for this journal
+  /// * `base_timestamp` - The starting timestamp for this journal (typically current time)
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
   ///
   /// # Errors
@@ -66,7 +66,7 @@ impl MemMappedVersionedKVJournal {
   pub fn new<P: AsRef<Path>>(
     file_path: P,
     size: usize,
-    base_version: u64,
+    base_timestamp: u64,
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
     let file = OpenOptions::new()
@@ -83,7 +83,7 @@ impl MemMappedVersionedKVJournal {
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
-    let versioned_kv = VersionedKVJournal::new(buffer, base_version, high_water_mark_ratio)?;
+    let versioned_kv = VersionedKVJournal::new(buffer, base_timestamp, high_water_mark_ratio)?;
 
     Ok(Self { mmap, versioned_kv })
   }
@@ -120,36 +120,24 @@ impl MemMappedVersionedKVJournal {
     Ok(Self { mmap, versioned_kv })
   }
 
-  /// Set a key-value pair with automatic version increment.
+  /// Set a key-value pair with automatic timestamp assignment.
   ///
-  /// Returns a tuple of (version, timestamp).
+  /// Returns the timestamp of the operation.
   ///
   /// # Errors
   /// Returns an error if the journal entry cannot be written.
-  pub fn set_versioned(&mut self, key: &str, value: &Value) -> anyhow::Result<(u64, u64)> {
+  pub fn set_versioned(&mut self, key: &str, value: &Value) -> anyhow::Result<u64> {
     self.versioned_kv.set_versioned(key, value)
   }
 
-  /// Delete a key with automatic version increment.
+  /// Delete a key with automatic timestamp assignment.
   ///
-  /// Returns a tuple of (version, timestamp).
+  /// Returns the timestamp of the operation.
   ///
   /// # Errors
   /// Returns an error if the journal entry cannot be written.
-  pub fn delete_versioned(&mut self, key: &str) -> anyhow::Result<(u64, u64)> {
+  pub fn delete_versioned(&mut self, key: &str) -> anyhow::Result<u64> {
     self.versioned_kv.delete_versioned(key)
-  }
-
-  /// Get the current version number.
-  #[must_use]
-  pub fn current_version(&self) -> u64 {
-    self.versioned_kv.current_version()
-  }
-
-  /// Get the base version (first version in this journal).
-  #[must_use]
-  pub fn base_version(&self) -> u64 {
-    self.versioned_kv.base_version()
   }
 
   /// Get the current high water mark position.

@@ -2,14 +2,13 @@
 
 ## Overview
 
-This document describes the versioned journal format (VERSION 2) that enables version tracking for audit logs and remote backup by tracking write versions for each operation.
+This document describes the versioned journal format (VERSION 2) that enables audit logs and remote backup by tracking both version numbers and timestamps for each write operation.
 
 ## Goals
 
-1. **Version Tracking**: Each write operation gets a unique, monotonically increasing version number
+1. **Version and Timestamp Tracking**: Each write operation records a monotonically non-decreasing version number and timestamp
 2. **Journal Rotation**: Periodic compaction with self-contained state in each journal
 3. **Remote Backup**: Archived journals can be uploaded to remote storage
-4. **Backward Compatible**: New format coexists with existing VERSION 1
 
 ## Design Philosophy
 
@@ -64,10 +63,13 @@ Previous journals, archived during rotation. Each contains complete state at rot
 ```
 
 Fields:
-- `v` (version): Monotonic write version number
-- `t` (timestamp): When the write occurred (ns since UNIX epoch)
+- `v` (version): Monotonically non-decreasing write version number
+- `t` (timestamp): When the write occurred (ns since UNIX epoch), monotonically non-decreasing
 - `k` (key): The key being written
 - `o` (operation): The value (for SET) or null (for DELETE)
+
+**Timestamp Semantics:**
+Timestamps are monotonically non-decreasing, not strictly increasing. If the system clock doesn't advance between writes, multiple entries may share the same timestamp. This is expected behavior and ensures proper ordering without clock skew.
 
 ## Journal Structure
 
@@ -188,58 +190,6 @@ While `VersionedKVStore` is designed for active operation and does not support p
 - **Compliance**: Extract state at specific points in time for regulatory requirements
 - **Testing**: Validate that state at historical versions matches expectations
 
-#### API Methods
-
-```rust
-// Create recovery utility from journal files (oldest to newest) - async
-let recovery = VersionedRecovery::from_files(vec![
-    "store.jrn.v20000.zz",
-    "store.jrn.v30000.zz", 
-    "store.jrn"
-]).await?;
-
-// Recover state at specific version
-let state = recovery.recover_at_version(25000)?;
-
-// Get current state (latest version)
-let current = recovery.recover_current()?;
-
-// Get available version range
-if let Some((min, max)) = recovery.version_range() {
-    println!("Can recover versions {min} to {max}");
-}
-```
-
-#### Example: Cross-Rotation Recovery
-
-```rust
-use bd_resilient_kv::VersionedRecovery;
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Create recovery utility from files (automatically decompresses .zz archives)
-    // Provide journal paths in chronological order (oldest to newest)
-    let recovery = VersionedRecovery::from_files(vec![
-        "store.jrn.v20000.zz",
-        "store.jrn.v30000.zz",
-        "store.jrn",
-    ]).await?;
-
-    // Recover state at version 25000 (in archived journal)
-    let state_at_25000 = recovery.recover_at_version(25000)?;
-
-    // Recover state at version 35000 (across rotation boundary)
-    let state_at_35000 = recovery.recover_at_version(35000)?;
-
-    // Process the recovered state
-    for (key, value) in state_at_25000 {
-        println!("{key} = {value:?}");
-    }
-    
-    Ok(())
-}
-```
-
 #### Implementation Details
 
 - **Async File Loading**: Constructor uses async I/O to load journal files efficiently
@@ -266,65 +216,11 @@ async fn main() -> anyhow::Result<()> {
 - Upload archived journals to remote storage
 - Delete old archived journals after successful upload
 
-## API Usage
-
-### Basic Operations
-
-```rust
-use bd_resilient_kv::VersionedKVStore;
-use bd_bonjson::Value;
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Create or open store (requires directory path and name)
-    let mut store = VersionedKVStore::new("/path/to/dir", "mystore", 1024 * 1024, None)?;
-
-    // Writes return version numbers (async operations)
-    let v1 = store.insert("key1".to_string(), Value::from(42)).await?;
-    let v2 = store.insert("key2".to_string(), Value::from("hello")).await?;
-
-    // Read current values (synchronous)
-    let value = store.get("key1")?;
-    
-    Ok(())
-}
-```
-
-### Rotation Callback
-
-```rust
-// Set callback for rotation events
-store.set_rotation_callback(Box::new(|old_path, new_path, version| {
-    println!("Rotated at version {version}");
-    println!("Archived journal (compressed): {old_path:?}");
-    println!("New active journal: {new_path:?}");
-    // Upload old_path to remote storage...
-}));
-```
-
-### Manual Rotation
-
-```rust
-// Automatic rotation on high water mark
-let version = store.insert("key".to_string(), Value::from("value")).await?;
-// Rotation happens automatically if high water mark exceeded
-
-// Or manually trigger rotation (async)
-store.rotate_journal().await?;
-```
-
-## Migration from VERSION 1
-
-VERSION 1 journals (without versioning) can coexist with VERSION 2:
-- Existing VERSION 1 files continue to work with current `KVStore`
-- New `VersionedKVStore` creates VERSION 2 journals
-- No automatic migration (opt-in by using `VersionedKVStore`)
-
 ## Implementation Notes
 
 1. **Version Counter Persistence**: Stored in metadata, initialized from journal on restart
 2. **Atomicity**: Version increments are atomic with writes
-3. **Monotonicity**: Versions never decrease or skip
+3. **Monotonicity**: Versions are monotonically non-decreasing (multiple entries may share the same version during rotation)
 4. **Concurrency**: Not thread-safe by design (same as current implementation)
 5. **Format Field Names**: Use short names (`v`, `t`, `k`, `o`) to minimize storage overhead
 6. **Self-Contained Journals**: Each rotated journal can be read independently without dependencies

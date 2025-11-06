@@ -21,8 +21,6 @@ fn test_versioned_store_new() -> anyhow::Result<()> {
   // Should start empty
   assert!(store.is_empty());
   assert_eq!(store.len(), 0);
-  assert_eq!(store.base_version(), 1); // Base version starts at 1
-  assert_eq!(store.current_version(), 1);
 
   Ok(())
 }
@@ -66,18 +64,30 @@ async fn test_timestamp_collision_on_clamping() -> anyhow::Result<()> {
     .unwrap();
 
   // Verify monotonicity: timestamps should never decrease
-  assert!(ts2 >= ts1, "Timestamps should be monotonically non-decreasing");
-  assert!(ts3 >= ts2, "Timestamps should be monotonically non-decreasing");
-  assert!(ts4 >= ts3, "Timestamps should be monotonically non-decreasing");
+  assert!(
+    ts2 >= ts1,
+    "Timestamps should be monotonically non-decreasing"
+  );
+  assert!(
+    ts3 >= ts2,
+    "Timestamps should be monotonically non-decreasing"
+  );
+  assert!(
+    ts4 >= ts3,
+    "Timestamps should be monotonically non-decreasing"
+  );
 
   // Document that timestamps CAN be equal (this is the key difference from the old +1 behavior)
   // When system clock doesn't advance or goes backwards, we reuse the same timestamp
   // This is acceptable because version numbers provide total ordering
-  
+
   // Count unique timestamps - with rapid operations, we might have collisions
   let timestamps = [ts1, ts2, ts3, ts4];
-  let unique_count = timestamps.iter().collect::<std::collections::HashSet<_>>().len();
-  
+  let unique_count = timestamps
+    .iter()
+    .collect::<std::collections::HashSet<_>>()
+    .len();
+
   // We should have at least 1 unique timestamp (all could be the same in extreme cases)
   assert!(
     unique_count >= 1 && unique_count <= 4,
@@ -97,20 +107,20 @@ async fn test_versioned_store_remove() -> anyhow::Result<()> {
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Insert some values
-  let v1 = store
+  let ts1 = store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
-  let v2 = store
+  let ts2 = store
     .insert("key2".to_string(), Value::String("value2".to_string()))
     .await?;
 
   assert_eq!(store.len(), 2);
-  assert!(v2 > v1);
+  assert!(ts2 >= ts1);
 
   // Remove a key
-  let v3 = store.remove("key1").await?;
-  assert!(v3.is_some());
-  assert!(v3.unwrap() > v2);
+  let ts3 = store.remove("key1").await?;
+  assert!(ts3.is_some());
+  assert!(ts3.unwrap() >= ts2);
 
   assert_eq!(store.len(), 1);
   assert!(!store.contains_key("key1"));
@@ -128,15 +138,13 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
 
-  let v2;
-
   // Create store and write some data
   {
     let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-    let _v1 = store
+    let _ts1 = store
       .insert("key1".to_string(), Value::String("value1".to_string()))
       .await?;
-    v2 = store.insert("key2".to_string(), Value::Signed(42)).await?;
+    let _ts2 = store.insert("key2".to_string(), Value::Signed(42)).await?;
     store.sync()?;
   }
 
@@ -149,9 +157,6 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
       Some(&Value::String("value1".to_string()))
     );
     assert_eq!(store.get("key2"), Some(&Value::Signed(42)));
-
-    // Version numbers should be preserved
-    assert_eq!(store.current_version(), v2);
   }
 
   Ok(())
@@ -190,17 +195,17 @@ async fn test_rotation_callback() -> anyhow::Result<()> {
   let callback_data = Arc::new(Mutex::new(Vec::new()));
   let callback_data_clone = Arc::clone(&callback_data);
 
-  store.set_rotation_callback(Box::new(move |old_path, new_path, version| {
+  store.set_rotation_callback(Box::new(move |old_path, new_path, timestamp| {
     let mut data = callback_data_clone.lock().unwrap();
-    data.push((old_path.to_path_buf(), new_path.to_path_buf(), version));
+    data.push((old_path.to_path_buf(), new_path.to_path_buf(), timestamp));
   }));
 
   // Write enough data to trigger rotation
-  let mut last_version = 0;
+  let mut last_timestamp = 0;
   for i in 0 .. 100 {
     let key = format!("key{}", i);
     let value = Value::String(format!("value_{}_with_some_extra_padding", i));
-    last_version = store.insert(key, value).await?;
+    last_timestamp = store.insert(key, value).await?;
 
     // Rotation happens automatically inside insert when high water mark is triggered
     let data = callback_data.lock().unwrap();
@@ -213,10 +218,10 @@ async fn test_rotation_callback() -> anyhow::Result<()> {
   let data = callback_data.lock().unwrap();
   assert!(data.len() >= 1, "Expected at least one rotation event");
 
-  let (old_path, new_path, rotation_version) = &data[0];
-  assert!(old_path.to_string_lossy().contains(".v"));
+  let (old_path, new_path, rotation_timestamp) = &data[0];
+  assert!(old_path.to_string_lossy().contains(".t"));
   assert_eq!(new_path, &temp_dir.path().join("test.jrn"));
-  assert!(*rotation_version <= last_version);
+  assert!(*rotation_timestamp <= last_timestamp);
 
   Ok(())
 }
@@ -229,28 +234,33 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Insert some data
-  let _v1 = store
+  let _ts1 = store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
-  let v2 = store
+  let ts2 = store
     .insert("key2".to_string(), Value::String("value2".to_string()))
     .await?;
 
+  // Get max timestamp before rotation (this will be used in the archive name)
+  let rotation_timestamp = store
+    .get_with_timestamp("key2")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
   // Manually trigger rotation
-  let rotation_version = store.current_version();
   store.rotate_journal().await?;
 
   // Verify archived file exists (compressed)
   let archived_path = temp_dir
     .path()
-    .join(format!("test.jrn.v{}.zz", rotation_version));
+    .join(format!("test.jrn.t{}.zz", rotation_timestamp));
   assert!(archived_path.exists());
 
   // Verify active journal still works
-  let v3 = store
+  let ts3 = store
     .insert("key3".to_string(), Value::String("value3".to_string()))
     .await?;
-  assert!(v3 > v2);
+  assert!(ts3 >= ts2);
   assert_eq!(store.len(), 3);
 
   // Verify data is intact
@@ -266,9 +276,6 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
     store.get("key3"),
     Some(&Value::String("value3".to_string()))
   );
-
-  // New journal should have base version at rotation point
-  assert_eq!(store.base_version(), rotation_version);
 
   Ok(())
 }
@@ -291,7 +298,10 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
     .await?;
 
   let pre_rotation_state = store.as_hashmap();
-  let pre_rotation_version = store.current_version();
+  let pre_rotation_ts = store
+    .get_with_timestamp("key4")
+    .map(|tv| tv.timestamp)
+    .unwrap();
 
   // Rotate
   store.rotate_journal().await?;
@@ -302,10 +312,10 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
   assert_eq!(store.len(), 4);
 
   // Verify we can continue writing
-  let v_new = store
+  let ts_new = store
     .insert("key5".to_string(), Value::String("value5".to_string()))
     .await?;
-  assert!(v_new > pre_rotation_version);
+  assert!(ts_new >= pre_rotation_ts);
   assert_eq!(store.len(), 5);
 
   Ok(())
@@ -335,11 +345,11 @@ async fn test_version_monotonicity() -> anyhow::Result<()> {
 
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
-  let mut last_version = store.current_version();
+  let mut last_timestamp = 0u64;
 
-  // Perform various operations and ensure version always increases
+  // Perform various operations and ensure timestamp always increases
   for i in 0 .. 20 {
-    let op_version = if i % 3 == 0 {
+    let op_timestamp = if i % 3 == 0 {
       store
         .insert(format!("key{}", i), Value::Signed(i as i64))
         .await?
@@ -354,17 +364,15 @@ async fn test_version_monotonicity() -> anyhow::Result<()> {
       store
         .remove(&format!("key{}", i / 3))
         .await?
-        .unwrap_or(last_version)
+        .unwrap_or(last_timestamp)
     };
 
     assert!(
-      op_version >= last_version,
-      "Version should be monotonically increasing"
+      op_timestamp >= last_timestamp,
+      "Timestamp should be monotonically non-decreasing"
     );
-    last_version = op_version;
+    last_timestamp = op_timestamp;
   }
-
-  assert_eq!(store.current_version(), last_version);
 
   Ok(())
 }
@@ -449,12 +457,12 @@ async fn test_timestamp_monotonicity() -> anyhow::Result<()> {
     store
       .insert(format!("key{}", i), Value::Signed(i as i64))
       .await?;
-    
+
     let ts = store
       .get_with_timestamp(&format!("key{}", i))
       .map(|tv| tv.timestamp)
       .unwrap();
-    
+
     timestamps.push(ts);
   }
 
@@ -573,8 +581,11 @@ async fn test_compression_during_rotation() -> anyhow::Result<()> {
   // Get size of uncompressed journal before rotation
   let uncompressed_size = std::fs::metadata(temp_dir.path().join("test.jrn"))?.len();
 
-  // Get current version before rotation (this is what will be used in the archive name)
-  let rotation_version = store.current_version();
+  // Get max timestamp before rotation (this will be used in the archive name)
+  let rotation_timestamp = store
+    .get_with_timestamp("key3")
+    .map(|tv| tv.timestamp)
+    .unwrap();
 
   // Trigger rotation
   store.rotate_journal().await?;
@@ -582,7 +593,7 @@ async fn test_compression_during_rotation() -> anyhow::Result<()> {
   // Verify compressed archive exists
   let archived_path = temp_dir
     .path()
-    .join(format!("test.jrn.v{}.zz", rotation_version));
+    .join(format!("test.jrn.t{}.zz", rotation_timestamp));
   assert!(
     archived_path.exists(),
     "Compressed archive should exist at {:?}",
@@ -633,13 +644,16 @@ async fn test_compression_ratio() -> anyhow::Result<()> {
   }
 
   let uncompressed_size = std::fs::metadata(temp_dir.path().join("test.jrn"))?.len();
-  let rotation_version = store.current_version();
+  let rotation_timestamp = store
+    .get_with_timestamp(&format!("key{}", 9))
+    .map(|tv| tv.timestamp)
+    .unwrap();
 
   store.rotate_journal().await?;
 
   let archived_path = temp_dir
     .path()
-    .join(format!("test.jrn.v{}.zz", rotation_version));
+    .join(format!("test.jrn.t{}.zz", rotation_timestamp));
   let compressed_size = std::fs::metadata(&archived_path)?.len();
 
   // With highly compressible data, we should get significant compression
@@ -662,24 +676,28 @@ async fn test_multiple_rotations_with_compression() -> anyhow::Result<()> {
 
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
-  let mut rotation_versions = Vec::new();
+  let mut rotation_timestamps = Vec::new();
 
   // Perform multiple rotations
   for i in 0 .. 3 {
     let key = format!("key{}", i);
     let value = Value::String(format!("value{}", i));
-    let version = store.insert(key, value).await?;
-    rotation_versions.push(version);
+    store.insert(key.clone(), value).await?;
+    let timestamp = store
+      .get_with_timestamp(&key)
+      .map(|tv| tv.timestamp)
+      .unwrap();
+    rotation_timestamps.push(timestamp);
     store.rotate_journal().await?;
   }
 
   // Verify all compressed archives exist
-  for version in rotation_versions {
-    let archived_path = temp_dir.path().join(format!("test.jrn.v{}.zz", version));
+  for timestamp in rotation_timestamps {
+    let archived_path = temp_dir.path().join(format!("test.jrn.t{}.zz", timestamp));
     assert!(
       archived_path.exists(),
-      "Compressed archive for version {} should exist",
-      version
+      "Compressed archive for timestamp {} should exist",
+      timestamp
     );
   }
 
