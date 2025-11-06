@@ -9,9 +9,6 @@ use crate::kv_journal::TimestampedValue;
 use ahash::AHashMap;
 use bd_bonjson::Value;
 use bd_bonjson::decoder::from_slice;
-use flate2::read::ZlibDecoder;
-use std::io::Read;
-use std::path::Path;
 
 /// Helper function to read a u64 field from a BONJSON object.
 ///
@@ -35,69 +32,24 @@ fn read_u64_field(obj: &AHashMap<String, Value>, key: &str) -> Option<u64> {
 
 /// A utility for recovering state at arbitrary timestamps from raw journal data.
 ///
-/// This utility operates on raw byte slices from timestamped journals and can reconstruct
-/// the key-value state at any historical timestamp by replaying journal entries.
+/// This utility operates on raw uncompressed byte slices from timestamped journals and can
+/// reconstruct the key-value state at any historical timestamp by replaying journal entries.
 ///
-/// # Timestamp-Based Recovery
+/// # Recovery Model
 ///
-/// Timestamps are monotonically non-decreasing logical clocks (not pure wall time),
-/// enabling snapshots that match specific event buffer timestamps.
+/// Recovery works by replaying journal entries in chronological order up to the target timestamp.
+/// When journals are rotated, compacted entries preserve their original timestamps, which means
+/// entry timestamps may overlap across adjacent journal snapshots. Recovery handles this correctly
+/// by replaying journals sequentially and applying entries in timestamp order.
 ///
-/// ## Snapshot Bucketing and Entry Timestamp Overlaps
+/// ## Optimization
 ///
-/// Entry timestamps may overlap across adjacent snapshots because compacted entries preserve
-/// their original timestamps during rotation. This design provides implementation simplicity
-/// and audit trail preservation without affecting recovery correctness.
+/// To recover the current state, only the last journal needs to be read since rotation writes
+/// the complete compacted state with original timestamps preserved. For historical timestamp
+/// recovery, the utility automatically identifies and replays only the necessary journals.
 ///
-/// **Design rationale:** Preserving original timestamps is not strictly required for
-/// point-in-time state reconstruction, but provides benefits at zero cost:
-/// - **Implementation simplicity**: No timestamp rewriting logic needed during rotation
-/// - **Semantic accuracy**: Maintains "when was this value last modified" for audit trails
-/// - **Future-proof**: Preserves historical information that may become useful
-///
-/// Each snapshot has:
-/// - `min_timestamp`: Minimum entry timestamp in the snapshot (from actual entries)
-/// - `max_timestamp`: Maximum entry timestamp in the snapshot (from actual entries)
-/// - Filename timestamp: The rotation point (equals `max_timestamp` of archived journal)
-///
-/// Example timeline:
-/// ```text
-/// Snapshot 1: store.jrn.t300.zz
-///   - Entries: foo@100, bar@200, foo@300
-///   - min_timestamp: 100, max_timestamp: 300
-///   - Range: [100, 300]
-///
-/// Snapshot 2: store.jrn.t500.zz
-///   - Compacted entries: foo@300, bar@200 (original timestamps!)
-///   - New entries: baz@400, qux@500
-///   - min_timestamp: 200, max_timestamp: 500
-///   - Range: [200, 500] — overlaps with [100, 300]!
-/// ```
-///
-/// ## Recovery Bucketing Model
-///
-/// To recover state for multiple logs at different timestamps efficiently:
-///
-/// 1. **Bucket logs by snapshot:** Compare log timestamp against each snapshot's `[min_timestamp,
-///    max_timestamp]` range
-/// 2. **Sequential replay:** For each bucket, replay journals sequentially up to target timestamp
-/// 3. **State reconstruction:** Overlapping timestamps are handled correctly because compacted
-///    entries represent the state at rotation time
-///
-/// Example: Recovering logs at timestamps [100, 250, 400, 500]
-/// - Log@100: Use Snapshot 1 (100 is in range [100, 300])
-/// - Log@250: Use Snapshot 1 (250 is in range [100, 300])
-/// - Log@400: Use Snapshot 2 (400 is in range [200, 500], replay compacted state + new entries)
-/// - Log@500: Use Snapshot 2 (500 is in range [200, 500])
-///
-/// ## Invariants
-///
-/// - Filename timestamps strictly increase (t300 < t500)
-/// - Entry timestamp ranges may overlap between adjacent snapshots
-/// - Sequential replay produces correct state at any timestamp
-///
-/// Supports both compressed (zlib) and uncompressed journals. Compressed journals are
-/// automatically detected and decompressed transparently.
+/// **Note:** Callers are responsible for decompressing journal data if needed before passing
+/// it to this utility.
 #[derive(Debug)]
 pub struct VersionedRecovery {
   journals: Vec<JournalInfo>,
@@ -106,74 +58,42 @@ pub struct VersionedRecovery {
 #[derive(Debug)]
 struct JournalInfo {
   data: Vec<u8>,
-  min_timestamp: u64,
-  max_timestamp: u64,
+  rotation_timestamp: u64,
 }
 
 impl VersionedRecovery {
-  /// Create a new recovery utility from a list of journal byte slices.
+  /// Create a new recovery utility from a list of uncompressed journal byte slices with rotation
+  /// timestamps.
   ///
   /// The journals should be provided in chronological order (oldest to newest).
-  /// Each journal must be a valid versioned journal (VERSION 2 format).
-  /// Journals may be compressed with zlib or uncompressed - decompression is automatic.
+  /// Each journal must be a valid uncompressed versioned journal (VERSION 2 format).
+  ///
+  /// # Arguments
+  ///
+  /// * `journals` - A vector of tuples containing (`journal_data`, `rotation_timestamp`). The
+  ///   `rotation_timestamp` represents when this journal was archived (the snapshot boundary). For
+  ///   the active journal (not yet rotated), use `u64::MAX`.
   ///
   /// # Errors
   ///
   /// Returns an error if any journal is invalid or cannot be parsed.
-  pub fn new(journals: Vec<&[u8]>) -> anyhow::Result<Self> {
-    let mut journal_infos = Vec::new();
-
-    for data in journals {
-      // Detect and decompress if needed
-      let decompressed = decompress_if_needed(data)?;
-      let (min_timestamp, max_timestamp) = extract_timestamp_range(&decompressed)?;
-      journal_infos.push(JournalInfo {
-        data: decompressed,
-        min_timestamp,
-        max_timestamp,
-      });
-    }
+  ///
+  /// # Note
+  ///
+  /// Callers must decompress journal data before passing it to this method if the data
+  /// is compressed (e.g., with zlib).
+  pub fn new(journals: Vec<(&[u8], u64)>) -> anyhow::Result<Self> {
+    let journal_infos = journals
+      .into_iter()
+      .map(|(data, rotation_timestamp)| JournalInfo {
+        data: data.to_vec(),
+        rotation_timestamp,
+      })
+      .collect();
 
     Ok(Self {
       journals: journal_infos,
     })
-  }
-
-  /// Create a new recovery utility from journal file paths.
-  ///
-  /// This is an async convenience method that reads journal files from disk.
-  /// The journals should be provided in chronological order (oldest to newest).
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if any file cannot be read or if any journal is invalid.
-  pub async fn from_files(journal_paths: Vec<&Path>) -> anyhow::Result<Self> {
-    let mut journal_data = Vec::new();
-
-    for path in journal_paths {
-      let data = tokio::fs::read(path).await?;
-      journal_data.push(data);
-    }
-
-    // Convert Vec<Vec<u8>> to Vec<&[u8]>
-    let journal_slices: Vec<&[u8]> = journal_data.iter().map(Vec::as_slice).collect();
-
-    Self::new(journal_slices)
-  }
-
-  /// Get the range of timestamps available in the recovery utility.
-  ///
-  /// Returns (`min_timestamp`, `max_timestamp`) tuple representing the earliest and latest
-  /// timestamps that can be recovered.
-  #[must_use]
-  pub fn timestamp_range(&self) -> Option<(u64, u64)> {
-    if self.journals.is_empty() {
-      return None;
-    }
-
-    let min = self.journals.first().map(|j| j.min_timestamp)?;
-    let max = self.journals.last().map(|j| j.max_timestamp)?;
-    Some((min, max))
   }
 
   /// Recover the key-value state at a specific timestamp.
@@ -212,18 +132,15 @@ impl VersionedRecovery {
   ) -> anyhow::Result<AHashMap<String, TimestampedValue>> {
     let mut map = AHashMap::new();
 
-    // Find all journals that might contain entries up to target timestamp
+    // Replay journals up to and including the journal that was active at target_timestamp.
+    // A journal with rotation_timestamp T was the active journal for all timestamps <= T.
     for journal in &self.journals {
-      // Skip journals that start after our target
-      if journal.min_timestamp > target_timestamp {
-        break;
-      }
-
-      // Replay entries from this journal
+      // Replay entries from this journal up to target_timestamp
       replay_journal_to_timestamp(&journal.data, target_timestamp, &mut map)?;
 
-      // If this journal contains the target timestamp, we're done
-      if journal.max_timestamp >= target_timestamp {
+      // If this journal was rotated at or after our target timestamp, we're done.
+      // This journal contains all state up to target_timestamp.
+      if journal.rotation_timestamp >= target_timestamp {
         break;
       }
     }
@@ -248,83 +165,6 @@ impl VersionedRecovery {
 
     Ok(map)
   }
-}
-
-/// Decompress journal data if it's zlib-compressed, otherwise return as-is.
-///
-/// Detection: Checks for zlib magic bytes first (RFC 1950). If not present, validates
-/// as uncompressed journal by checking format version.
-fn decompress_if_needed(data: &[u8]) -> anyhow::Result<Vec<u8>> {
-  const HEADER_SIZE: usize = 16;
-
-  // Check for zlib magic bytes first (RFC 1950)
-  // Zlib compressed data starts with 0x78 followed by a second byte where:
-  // - 0x01 (no/low compression)
-  // - 0x5E (also valid)
-  // - 0x9C (default compression)
-  // - 0xDA (best compression)
-  // The second byte's lower 5 bits are the window size, and bit 5 is the FDICT flag.
-  // We check that bit 5 (0x20) is not set for typical zlib streams without preset dictionary.
-  if data.len() >= 2 && data[0] == 0x78 && (data[1] & 0x20) == 0 {
-    // Looks like zlib compressed data
-    let mut decoder = ZlibDecoder::new(data);
-    let mut decompressed = Vec::new();
-    decoder.read_to_end(&mut decompressed)?;
-    return Ok(decompressed);
-  }
-
-  // Otherwise, treat as uncompressed and validate it's a proper journal
-  if data.len() >= HEADER_SIZE {
-    // Read format version (first 8 bytes as u64 little-endian)
-    let version_bytes: [u8; 8] = data[0 .. 8]
-      .try_into()
-      .map_err(|_| anyhow::anyhow!("Failed to read version bytes"))?;
-    let format_version = u64::from_le_bytes(version_bytes);
-
-    // Check for known format versions
-    if format_version == 1 || format_version == 2 {
-      return Ok(data.to_vec());
-    }
-
-    anyhow::bail!("Invalid journal format version: {format_version}");
-  }
-
-  anyhow::bail!("Data too small to be valid journal (size: {})", data.len())
-}
-
-/// Extract the minimum/maximum timestamps from a journal.
-///
-/// Returns (`min_timestamp`, `max_timestamp`).
-/// These are computed from actual entry timestamps in the journal.
-fn extract_timestamp_range(buffer: &[u8]) -> anyhow::Result<(u64, u64)> {
-  let array = read_bonjson_payload(buffer)?;
-
-  let mut min_timestamp = u64::MAX;
-  let mut max_timestamp = 0;
-
-  if let Value::Array(entries) = array {
-    // Process entries to find min/max timestamps (skip metadata at index 0)
-    for (index, entry) in entries.iter().enumerate() {
-      if index == 0 {
-        continue; // Skip metadata
-      }
-
-      if let Value::Object(obj) = entry
-        && let Some(t) = read_u64_field(obj, "t")
-      {
-        min_timestamp = min_timestamp.min(t);
-        max_timestamp = max_timestamp.max(t);
-      }
-    }
-  }
-
-  // If no entries found, default to (0, 0)
-  if min_timestamp == u64::MAX {
-    min_timestamp = 0;
-    max_timestamp = 0;
-  }
-
-  Ok((min_timestamp, max_timestamp))
 }
 
 /// Replay journal entries up to and including the target timestamp.
@@ -400,6 +240,10 @@ fn read_bonjson_payload(buffer: &[u8]) -> anyhow::Result<Value> {
     .map_err(|_| anyhow::anyhow!("Failed to read position"))?;
   #[allow(clippy::cast_possible_truncation)]
   let position = u64::from_le_bytes(position_bytes) as usize;
+
+  if position < ARRAY_BEGIN {
+    anyhow::bail!("Invalid position: {position}, must be at least {ARRAY_BEGIN}");
+  }
 
   if position > buffer.len() {
     anyhow::bail!(

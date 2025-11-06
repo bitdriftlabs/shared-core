@@ -87,10 +87,7 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 - Recovery transparently decompresses archived journals when needed
 
 **Point-in-Time Recovery**:
-The `VersionedRecovery` utility provides point-in-time recovery capabilities for versioned journals. It works with raw journal bytes and can reconstruct state at any historical timestamp, including across rotation boundaries. `VersionedRecovery` is designed for offline analysis, audit tooling, and server-side operations - it is separate from `VersionedKVStore` which is focused on active write operations. Applications can use `VersionedRecovery` to analyze archived journals and recover state at specific timestamps. The `from_files()` constructor is async for efficient file reading.
-
-**Recovery Optimization**:
-The `recover_current()` method in `VersionedRecovery` is optimized to only read the last journal rather than replaying all journals from the beginning. This is possible because journal rotation writes the complete current state into the new journal with original timestamps preserved, so the last journal alone contains the full current state. For historical timestamp recovery, `recover_at_timestamp()` intelligently selects and replays only the necessary journals.
+The `VersionedRecovery` utility provides point-in-time recovery by replaying journal entries up to a target timestamp. It works with raw journal bytes and can reconstruct state at any historical timestamp across rotation boundaries. Recovery is optimized: `recover_current()` only reads the last journal (since rotation writes complete compacted state), while `recover_at_timestamp()` intelligently selects and replays only necessary journals. The `from_files()` constructor is async for efficient file reading.
 
 ## Critical Design Insights
 
