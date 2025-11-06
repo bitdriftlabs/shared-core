@@ -31,5 +31,5 @@ pub use kv_journal::{
   VersionedKVJournal,
 };
 pub use kv_store::KVStore;
-pub use versioned_kv_store::{RotationCallback, VersionedKVStore};
+pub use versioned_kv_store::VersionedKVStore;
 pub use versioned_recovery::VersionedRecovery;

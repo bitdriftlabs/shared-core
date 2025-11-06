@@ -35,7 +35,7 @@ bd-bonjson = { path = "path/to/bd-bonjson" }
 
 **VersionedKVStore**: Use when you need version tracking
 - Best for: Audit logs, state history, remote backup
-- Features: Every write operation returns a version number, automatic rotation with callbacks
+- Features: Every write operation returns a version number, automatic rotation
 - See: [VERSIONED_FORMAT.md](./VERSIONED_FORMAT.md) for detailed format documentation
 
 ### Basic Usage
@@ -219,46 +219,6 @@ async fn main() -> anyhow::Result<()> {
     if let Some(version) = v3 {
         println!("Removed at version: {}", version);
     }
-
-    Ok(())
-}
-```
-
-### Versioned Store with Rotation Callback
-
-Monitor journal rotation events for remote backup or cleanup:
-
-```rust
-use bd_resilient_kv::{VersionedKVStore, RotationCallback};
-use bd_bonjson::Value;
-
-fn upload_to_remote(path: &std::path::Path, version: u64) {
-    println!("Uploading archived journal {:?} at version {}", path, version);
-    // Upload to S3, backup server, etc.
-}
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let callback: RotationCallback = Box::new(|archived_path, _new_path, version| {
-        upload_to_remote(archived_path, version);
-    });
-
-    let mut store = VersionedKVStore::new(
-        ".",           // Directory path
-        "my_store",    // Journal name
-        512 * 1024,    // 512KB rotation threshold
-        Some(callback)
-    )?;
-
-    // When high water mark is reached during insert/remove,
-    // the callback will be invoked with archived journal path
-    for i in 0..10000 {
-        store.insert(format!("key_{}", i), Value::Integer(i as i64)).await?;
-        // Automatic rotation happens when journal exceeds 512KB
-    }
-
-    // Manual rotation is also supported (also async)
-    store.rotate_journal().await?;
 
     Ok(())
 }

@@ -74,7 +74,6 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 - Current state is compacted into a new journal as versioned entries
 - Old journal is archived with `.v{version}.zz` suffix
 - Archived journals are automatically compressed using zlib (RFC 1950, level 3) asynchronously
-- Optional callback invoked with archived path and version
 - Application controls upload/cleanup of archived journals
 
 **Rotation Guarantees**:
@@ -123,7 +122,6 @@ The `recover_current()` method in `VersionedRecovery` is optimized to only read 
 **Key Differences**:
 - **KVStore**: Switches between two buffers, old buffer is reset and reused
 - **VersionedKVStore**: Archives old journal with `.v{version}` suffix, creates new journal
-- **Callback**: Only `VersionedKVStore` supports rotation callbacks for upload/cleanup
 - **Version Preservation**: Archived journals preserve complete history for recovery
 
 **When Rotation Occurs**:

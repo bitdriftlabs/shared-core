@@ -9,7 +9,6 @@
 
 use crate::VersionedKVStore;
 use bd_bonjson::Value;
-use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
 #[test]
@@ -179,49 +178,6 @@ async fn test_null_value_is_deletion() -> anyhow::Result<()> {
   store.insert("key1".to_string(), Value::Null).await?;
   assert!(!store.contains_key("key1"));
   assert_eq!(store.len(), 0);
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_rotation_callback() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  // Use a small buffer and low high water mark to trigger rotation easily
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 1024, Some(0.3))?;
-
-  // Set up callback to track rotation events
-  let callback_data = Arc::new(Mutex::new(Vec::new()));
-  let callback_data_clone = Arc::clone(&callback_data);
-
-  store.set_rotation_callback(Box::new(move |old_path, new_path, timestamp| {
-    let mut data = callback_data_clone.lock().unwrap();
-    data.push((old_path.to_path_buf(), new_path.to_path_buf(), timestamp));
-  }));
-
-  // Write enough data to trigger rotation
-  let mut last_timestamp = 0;
-  for i in 0 .. 100 {
-    let key = format!("key{}", i);
-    let value = Value::String(format!("value_{}_with_some_extra_padding", i));
-    last_timestamp = store.insert(key, value).await?;
-
-    // Rotation happens automatically inside insert when high water mark is triggered
-    let data = callback_data.lock().unwrap();
-    if !data.is_empty() {
-      break;
-    }
-  }
-
-  // Check that callback was invoked
-  let data = callback_data.lock().unwrap();
-  assert!(data.len() >= 1, "Expected at least one rotation event");
-
-  let (old_path, new_path, rotation_timestamp) = &data[0];
-  assert!(old_path.to_string_lossy().contains(".t"));
-  assert_eq!(new_path, &temp_dir.path().join("test.jrn"));
-  assert!(*rotation_timestamp <= last_timestamp);
 
   Ok(())
 }
@@ -700,45 +656,6 @@ async fn test_multiple_rotations_with_compression() -> anyhow::Result<()> {
       timestamp
     );
   }
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_rotation_callback_receives_compressed_path() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-
-  let callback_data = Arc::new(Mutex::new(None));
-  let callback_data_clone = Arc::clone(&callback_data);
-
-  store.set_rotation_callback(Box::new(move |old_path, _new_path, _version| {
-    let mut data = callback_data_clone.lock().unwrap();
-    *data = Some(old_path.to_path_buf());
-  }));
-
-  store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
-    .await?;
-  store.rotate_journal().await?;
-
-  // Verify callback received compressed path
-  let data = callback_data.lock().unwrap();
-  let archived_path = data.as_ref().unwrap();
-
-  assert!(
-    archived_path.to_string_lossy().ends_with(".zz"),
-    "Callback should receive compressed archive path ending with .zz, got: {:?}",
-    archived_path
-  );
-
-  // Verify the file actually exists
-  assert!(
-    archived_path.exists(),
-    "Compressed archive passed to callback should exist"
-  );
 
   Ok(())
 }

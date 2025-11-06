@@ -10,17 +10,6 @@ use ahash::AHashMap;
 use bd_bonjson::Value;
 use std::path::{Path, PathBuf};
 
-/// Callback invoked when journal rotation occurs.
-///
-/// The callback receives:
-/// - `old_journal_path`: The path to the archived journal file that was just rotated out
-/// - `new_journal_path`: The path to the new active journal file
-/// - `rotation_timestamp`: The timestamp at which rotation occurred (snapshot timestamp)
-///
-/// This callback can be used to trigger asynchronous upload of archived journals to remote
-/// storage, perform cleanup, or other post-rotation operations.
-pub type RotationCallback = Box<dyn FnMut(&Path, &Path, u64) + Send>;
-
 /// Compress an archived journal using zlib.
 ///
 /// This function compresses the source file to the destination using zlib compression.
@@ -106,7 +95,6 @@ pub struct VersionedKVStore {
   journal_name: String,
   buffer_size: usize,
   high_water_mark_ratio: Option<f32>,
-  rotation_callback: Option<RotationCallback>,
 }
 
 impl VersionedKVStore {
@@ -156,7 +144,6 @@ impl VersionedKVStore {
       journal_name: name.to_string(),
       buffer_size,
       high_water_mark_ratio,
-      rotation_callback: None,
     })
   }
 
@@ -197,22 +184,12 @@ impl VersionedKVStore {
       journal_name: name.to_string(),
       buffer_size,
       high_water_mark_ratio,
-      rotation_callback: None,
     })
   }
 
   /// Get the path to the active journal file.
   fn journal_path(&self) -> PathBuf {
     self.dir_path.join(format!("{}.jrn", self.journal_name))
-  }
-
-  /// Set a callback to be invoked when journal rotation occurs.
-  ///
-  /// The callback receives the path to the archived journal file, the new active journal file,
-  /// and the rotation version. This can be used to trigger asynchronous upload of archived
-  /// journals to remote storage.
-  pub fn set_rotation_callback(&mut self, callback: RotationCallback) {
-    self.rotation_callback = Some(callback);
   }
 
   /// Get a value by key.
@@ -394,11 +371,6 @@ impl VersionedKVStore {
 
     // Remove uncompressed version
     tokio::fs::remove_file(&temp_uncompressed).await?;
-
-    // Invoke rotation callback if set
-    if let Some(ref mut callback) = self.rotation_callback {
-      callback(&archived_path, &journal_path, rotation_timestamp);
-    }
 
     Ok(())
   }
