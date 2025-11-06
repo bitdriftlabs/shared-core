@@ -34,7 +34,7 @@ To interact with the running logger, execute other logging commands from another
 
 ```bash
 logger-cli log <message>
-logger-cli log <message> <key1> <value1> <key2> <value2>
+logger-cli log <message> --field <key1> <value1> --field <key2> <value2>
 ```
 
 See `logger-cli --help` for a complete list of commands that be run.
