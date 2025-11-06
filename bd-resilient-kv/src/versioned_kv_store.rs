@@ -7,10 +7,8 @@
 
 use crate::kv_journal::{MemMappedVersionedKVJournal, TimestampedValue, VersionedKVJournal};
 use ahash::AHashMap;
-use async_compression::tokio::write::ZlibEncoder;
 use bd_bonjson::Value;
 use std::path::{Path, PathBuf};
-use tokio::io::AsyncWriteExt;
 
 /// Callback invoked when journal rotation occurs.
 ///
@@ -23,27 +21,27 @@ use tokio::io::AsyncWriteExt;
 /// storage, perform cleanup, or other post-rotation operations.
 pub type RotationCallback = Box<dyn FnMut(&Path, &Path, u64) + Send>;
 
-/// Compress an archived journal using zlib with streaming I/O.
+/// Compress an archived journal using zlib.
 ///
-/// This function uses async I/O to stream data directly from the source file
-/// through a zlib encoder to the destination file, without loading the entire
-/// journal into memory.
+/// This function compresses the source file to the destination using zlib compression.
+/// The compression is performed in a blocking task to avoid holding up the async runtime.
 async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result<()> {
-  // Open source and destination files
-  let source_file = tokio::fs::File::open(source).await?;
-  let dest_file = tokio::fs::File::create(dest).await?;
+  let source = source.to_owned();
+  let dest = dest.to_owned();
 
-  // Create zlib encoder that writes directly to the destination file
-  let mut encoder = ZlibEncoder::new(dest_file);
+  tokio::task::spawn_blocking(move || {
+    use flate2::Compression;
+    use flate2::write::ZlibEncoder;
+    use std::io::{BufReader, copy};
 
-  // Copy data from source through encoder to destination
-  let mut source_reader = tokio::io::BufReader::new(source_file);
-  tokio::io::copy(&mut source_reader, &mut encoder).await?;
-
-  // Flush and finalize compression
-  encoder.shutdown().await?;
-
-  Ok(())
+    let source_file = std::fs::File::open(&source)?;
+    let dest_file = std::fs::File::create(&dest)?;
+    let mut encoder = ZlibEncoder::new(dest_file, Compression::default());
+    copy(&mut BufReader::new(source_file), &mut encoder)?;
+    encoder.finish()?;
+    Ok::<_, anyhow::Error>(())
+  })
+  .await?
 }
 
 /// A persistent key-value store with version and timestamp tracking.
