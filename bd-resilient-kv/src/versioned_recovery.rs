@@ -10,26 +10,6 @@ use ahash::AHashMap;
 use bd_bonjson::Value;
 use bd_bonjson::decoder::from_slice;
 
-/// Helper function to read a u64 field from a BONJSON object.
-///
-/// BONJSON's decoder automatically converts unsigned values that fit in i64 to signed values
-/// during decoding (see bd-bonjson/src/decoder.rs:227-234). This means that even though we
-/// write `Value::Unsigned(version)`, the decoder returns `Value::Signed(version as i64)`.
-///
-/// TODO(snowp): Consider changing BONJSON's decoder to preserve the original unsigned type
-/// to avoid this normalization behavior and eliminate the need for this helper.
-fn read_u64_field(obj: &AHashMap<String, Value>, key: &str) -> Option<u64> {
-  match obj.get(key) {
-    Some(Value::Unsigned(v)) => Some(*v),
-    Some(Value::Signed(v)) if *v >= 0 =>
-    {
-      #[allow(clippy::cast_sign_loss)]
-      Some(*v as u64)
-    },
-    _ => None,
-  }
-}
-
 /// A utility for recovering state at arbitrary timestamps from journal snapshots.
 ///
 /// This utility operates on raw uncompressed byte slices from archived journal snapshots
@@ -188,41 +168,45 @@ fn replay_journal_to_timestamp(
 ) -> anyhow::Result<()> {
   let array = read_bonjson_payload(buffer)?;
 
-  if let Value::Array(entries) = array {
-    for (index, entry) in entries.iter().enumerate() {
-      // Skip metadata (first entry)
-      if index == 0 {
-        continue;
-      }
+  let Value::Array(entries) = &array else {
+    return Ok(());
+  };
 
-      if let Value::Object(obj) = entry {
-        // Extract timestamp (skip entries without timestamp)
-        let Some(entry_timestamp) = read_u64_field(obj, "t") else {
-          continue;
-        };
+  for (index, entry) in entries.iter().enumerate() {
+    // Skip metadata (first entry)
+    if index == 0 {
+      continue;
+    }
 
-        // Only apply entries up to target timestamp
-        if entry_timestamp > target_timestamp {
-          break;
-        }
+    let Value::Object(obj) = entry else {
+      continue;
+    };
 
-        // Extract key and operation
-        if let Some(Value::String(key)) = obj.get("k")
-          && let Some(operation) = obj.get("o")
-        {
-          if operation.is_null() {
-            map.remove(key);
-          } else {
-            map.insert(
-              key.clone(),
-              TimestampedValue {
-                value: operation.clone(),
-                timestamp: entry_timestamp,
-              },
-            );
-          }
-        }
-      }
+    // Extract timestamp (skip entries without timestamp)
+    let Some(entry_timestamp) = read_u64_field(obj, "t") else {
+      continue;
+    };
+
+    // Only apply entries up to target timestamp
+    if entry_timestamp > target_timestamp {
+      break;
+    }
+
+    let (Some(Value::String(key)), Some(operation)) = (obj.get("k"), obj.get("o")) else {
+      continue;
+    };
+
+    // Extract key and operation
+    if operation.is_null() {
+      map.remove(key);
+    } else {
+      map.insert(
+        key.clone(),
+        TimestampedValue {
+          value: operation.clone(),
+          timestamp: entry_timestamp,
+        },
+      );
     }
   }
 
@@ -262,5 +246,25 @@ fn read_bonjson_payload(buffer: &[u8]) -> anyhow::Result<Value> {
     Ok((_, decoded)) => Ok(decoded),
     Err(bd_bonjson::decoder::DecodeError::Partial { partial_value, .. }) => Ok(partial_value),
     Err(e) => anyhow::bail!("Failed to decode buffer: {e:?}"),
+  }
+}
+
+/// Helper function to read a u64 field from a BONJSON object.
+///
+/// BONJSON's decoder automatically converts unsigned values that fit in i64 to signed values
+/// during decoding (see bd-bonjson/src/decoder.rs:227-234). This means that even though we
+/// write `Value::Unsigned(version)`, the decoder returns `Value::Signed(version as i64)`.
+///
+/// TODO(snowp): Consider changing BONJSON's decoder to preserve the original unsigned type
+/// to avoid this normalization behavior and eliminate the need for this helper.
+fn read_u64_field(obj: &AHashMap<String, Value>, key: &str) -> Option<u64> {
+  match obj.get(key) {
+    Some(Value::Unsigned(v)) => Some(*v),
+    Some(Value::Signed(v)) if *v >= 0 =>
+    {
+      #[allow(clippy::cast_sign_loss)]
+      Some(*v as u64)
+    },
+    _ => None,
   }
 }
