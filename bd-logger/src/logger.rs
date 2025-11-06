@@ -38,7 +38,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::watch;
+use tokio::sync::{oneshot, watch};
 
 #[derive(Clone)]
 #[allow(clippy::struct_field_names)]
@@ -584,8 +584,8 @@ pub struct ReportProcessingRequest {
   /// Monitor for processing files
   pub crash_monitor: Monitor,
 
-  /// Which session context to use when processing crash reports
-  pub report_processing_session_type: ReportProcessingSession,
+  /// Session ID to use in reports, or None to use the current session
+  pub session_id_override: Option<String>,
 }
 
 /// A single logger instance. This manages the lifetime of the logger and can be used to access
@@ -616,6 +616,10 @@ pub struct Logger {
 
   sleep_mode_active: watch::Sender<bool>,
 
+  // Channel for receiving a processor for crash reports, once runtime config
+  // loading is completed. Result is stored in crash_monitor
+  crash_monitor_rx: Option<oneshot::Receiver<Monitor>>,
+
   // Shared crash monitor instance initialized by the builder
   crash_monitor: Arc<Mutex<Option<Monitor>>>,
 }
@@ -632,7 +636,7 @@ impl Logger {
     sdk_version: &str,
     store: Arc<bd_key_value::Store>,
     sleep_mode_active: watch::Sender<bool>,
-    crash_monitor: Arc<Mutex<Option<Monitor>>>,
+    crash_monitor_rx: Option<oneshot::Receiver<Monitor>>,
   ) -> Self {
     let stats = Stats::new(&stats_scope);
 
@@ -651,7 +655,8 @@ impl Logger {
       stats_scope,
       store,
       sleep_mode_active,
-      crash_monitor,
+      crash_monitor_rx,
+      crash_monitor: Arc::new(Mutex::new(None)),
     }
   }
 
@@ -676,16 +681,24 @@ impl Logger {
   /// early in the launch cycle) and then enqueues the crash report processing
   /// request.
   pub fn process_crash_reports(&mut self, session: ReportProcessingSession) -> anyhow::Result<()> {
-    let crash_monitor = loop {
-      if let Some(monitor) = self.crash_monitor.lock().as_ref().cloned() {
-        break monitor;
-      }
-      std::thread::sleep(Duration::from_millis(10));
+    let crash_monitor = if let Some(monitor) = self.crash_monitor.lock().clone() {
+      monitor
+    } else if let Some(rx) = self.crash_monitor_rx.take() {
+      let monitor = rx.blocking_recv()?;
+      *self.crash_monitor.lock() = Some(monitor.clone());
+      monitor
+    } else {
+      anyhow::bail!("failed to store/receive crash_monitor instance");
     };
 
+    let session_id_override = match session {
+      ReportProcessingSession::Current => None,
+      ReportProcessingSession::Other(id) => Some(id),
+      ReportProcessingSession::PreviousRun => crash_monitor.previous_session_id.clone(),
+    };
     Ok(self.report_processor_tx.try_send(ReportProcessingRequest {
       crash_monitor,
-      report_processing_session_type: session,
+      session_id_override,
     })?)
   }
 

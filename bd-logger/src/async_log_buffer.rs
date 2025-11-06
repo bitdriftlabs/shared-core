@@ -11,11 +11,7 @@ mod async_log_buffer_test;
 
 use crate::device_id::DeviceIdInterceptor;
 use crate::log_replay::{LogReplay, LogReplayResult};
-use crate::logger::{
-  ReportProcessingRequest,
-  ReportProcessingSession,
-  with_thread_local_logger_guard,
-};
+use crate::logger::{ReportProcessingRequest, with_thread_local_logger_guard};
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
@@ -834,18 +830,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             ).await;
           }
         },
-        Some(ReportProcessingRequest { crash_monitor, report_processing_session_type }) =
-          self.report_processor_rx.recv() => {
-          let session_id_override = match report_processing_session_type {
-            ReportProcessingSession::Current => None,
-            ReportProcessingSession::Other(id) => Some(id),
-            ReportProcessingSession::PreviousRun => crash_monitor.previous_session_id.clone(),
-          };
-
+        Some(ReportProcessingRequest {
+          crash_monitor, session_id_override
+        }) = self.report_processor_rx.recv() => {
           for crash_log in crash_monitor.process_new_reports().await {
-            let attributes_overrides = session_id_override.as_ref().map(|id| {
+            let attributes_overrides = session_id_override.clone().map(|id| {
               LogAttributesOverrides::PreviousRunSessionID(
-                id.clone(),
+                id,
                 crash_log.timestamp,
               )
             });

@@ -194,8 +194,7 @@ impl LoggerBuilder {
     let (flush_buffers_tx, flush_buffers_rx) = tokio::sync::mpsc::channel(1);
     let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
     let (report_proc_tx, report_proc_rx) = tokio::sync::mpsc::channel(1);
-    let crash_monitor_shared: Arc<parking_lot::Mutex<Option<Monitor>>> =
-      Arc::new(parking_lot::Mutex::new(None));
+    let (crash_monitor_tx, crash_monitor_rx) = tokio::sync::oneshot::channel();
 
     let api_network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let log_network_quality_provider = Arc::new(TimedNetworkQualityProvider::new(
@@ -261,7 +260,7 @@ impl LoggerBuilder {
       self.params.static_metadata.sdk_version(),
       self.params.store.clone(),
       sleep_mode_active_tx,
-      crash_monitor_shared.clone(),
+      Some(crash_monitor_rx),
     );
     let log = if self.internal_logger {
       Arc::new(InternalLogger::new(
@@ -302,7 +301,9 @@ impl LoggerBuilder {
       // awaiting loading the config in runtime. This is why the monitor is
       // then passed to the logger (constructed outside of this future) via a
       // channel rather than directly.
-      *crash_monitor_shared.lock() = Some(crash_monitor);
+      if crash_monitor_tx.send(crash_monitor).is_err() {
+        log::error!("failed to deliver monitor");
+      }
 
       // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
       // improve the perceived performance of the logger initialization.
