@@ -23,11 +23,13 @@ pub struct TimestampedValue {
   pub timestamp: u64,
 }
 
-/// Versioned implementation of a key-value journaling system that tracks write versions
+/// Versioned implementation of a key-value journaling system that tracks write timestamps
 /// for point-in-time recovery.
 ///
-/// Each write operation is assigned a monotonically increasing version number, enabling
-/// exact state reconstruction at any historical version.
+/// Each write operation is assigned a monotonically increasing timestamp (in nanoseconds
+/// since UNIX epoch), enabling exact state reconstruction at any historical timestamp.
+/// The monotonicity is enforced by clamping: if the system clock goes backwards, we reuse
+/// the same timestamp value to maintain ordering guarantees without artificial clock skew.
 #[derive(Debug)]
 pub struct VersionedKVJournal<'a> {
   #[allow(dead_code)]
@@ -39,6 +41,7 @@ pub struct VersionedKVJournal<'a> {
   initialized_at_unix_time_ns: u64,
   current_version: u64,
   base_version: u64, // First version in this journal
+  last_timestamp: u64, // Most recent timestamp written (for monotonic enforcement)
 }
 
 // Versioned KV files have the following structure:
@@ -53,6 +56,14 @@ pub struct VersionedKVJournal<'a> {
 //
 // Metadata object: {"initialized": <timestamp>, "format_version": 2, "base_version": <version>}
 // Journal entries: {"v": <version>, "t": <timestamp>, "k": "<key>", "o": <value or null>}
+//
+// # Timestamp Semantics
+//
+// Timestamps serve as logical clocks with monotonic guarantees rather than pure wall time:
+// - Each write gets a timestamp that is guaranteed to be >= previous writes
+// - If system clock goes backward, timestamps are clamped to last_timestamp (reuse same value)
+// - This ensures total ordering while allowing correlation with external timestamped systems
+// - Version numbers (v) are maintained for backward compatibility and as secondary ordering
 
 const VERSION: u64 = 2; // The versioned format version
 const INVALID_VERSION: u64 = 0; // 0 will never be a valid version
@@ -251,6 +262,7 @@ impl<'a> VersionedKVJournal<'a> {
       initialized_at_unix_time_ns: timestamp,
       current_version: base_version,
       base_version,
+      last_timestamp: timestamp,
     })
   }
 
@@ -277,6 +289,10 @@ impl<'a> VersionedKVJournal<'a> {
     let highest_version = Self::find_highest_version(buffer)?;
     let current_version = highest_version.unwrap_or(base_version);
 
+    // Find the highest timestamp in the journal
+    let highest_timestamp = Self::find_highest_timestamp(buffer)?;
+    let last_timestamp = highest_timestamp.unwrap_or(init_timestamp);
+
     Ok(Self {
       format_version,
       position,
@@ -286,6 +302,7 @@ impl<'a> VersionedKVJournal<'a> {
       initialized_at_unix_time_ns: init_timestamp,
       current_version,
       base_version,
+      last_timestamp,
     })
   }
 
@@ -309,6 +326,26 @@ impl<'a> VersionedKVJournal<'a> {
     Ok(None)
   }
 
+  /// Find the highest timestamp in the journal.
+  ///
+  /// Since timestamps are monotonically increasing, this simply returns the timestamp
+  /// from the last entry in the journal.
+  fn find_highest_timestamp(buffer: &[u8]) -> anyhow::Result<Option<u64>> {
+    let array = read_bonjson_payload(buffer)?;
+
+    if let Value::Array(entries) = array {
+      // Skip metadata (index 0) and get the last actual entry
+      // Since timestamps are monotonically increasing, the last entry has the highest timestamp
+      if entries.len() > 1
+        && let Some(Value::Object(obj)) = entries.last()
+      {
+        return Ok(read_u64_field(obj, "t"));
+      }
+    }
+
+    Ok(None)
+  }
+
   /// Get the current version number.
   #[must_use]
   pub fn current_version(&self) -> u64 {
@@ -319,6 +356,18 @@ impl<'a> VersionedKVJournal<'a> {
   #[must_use]
   pub fn base_version(&self) -> u64 {
     self.base_version
+  }
+
+  /// Get the next monotonically increasing timestamp.
+  ///
+  /// This ensures that even if the system clock goes backwards, timestamps remain
+  /// monotonically increasing by clamping to `last_timestamp` (reusing the same value).
+  /// This prevents artificial clock skew while maintaining ordering guarantees.
+  fn next_monotonic_timestamp(&mut self) -> anyhow::Result<u64> {
+    let current = current_timestamp()?;
+    let monotonic = std::cmp::max(current, self.last_timestamp);
+    self.last_timestamp = monotonic;
+    Ok(monotonic)
   }
 
   fn set_position(&mut self, position: usize) {
@@ -344,12 +393,13 @@ impl<'a> VersionedKVJournal<'a> {
     key: &str,
     value: &Value,
   ) -> anyhow::Result<u64> {
+    // Get monotonically increasing timestamp before borrowing buffer
+    let timestamp = self.next_monotonic_timestamp()?;
+
     let buffer_len = self.buffer.len();
     let mut cursor = &mut self.buffer[self.position ..];
 
     // Create entry object: {"v": version, "t": timestamp, "k": key, "o": value}
-    let timestamp = current_timestamp()?;
-
     // TODO(snowp): It would be nice to be able to pass impl AsRef<str> for key or Cow to avoid
     // allocating small strings repeatedly.
     let entry = AHashMap::from([
@@ -369,6 +419,9 @@ impl<'a> VersionedKVJournal<'a> {
 
   /// Set a key-value pair with automatic version increment.
   /// Returns a tuple of (version, timestamp).
+  ///
+  /// The timestamp is monotonically increasing and serves as the primary ordering mechanism.
+  /// If the system clock goes backwards, timestamps are clamped to maintain monotonicity.
   pub fn set_versioned(&mut self, key: &str, value: &Value) -> anyhow::Result<(u64, u64)> {
     self.current_version += 1;
     let version = self.current_version;
@@ -378,6 +431,9 @@ impl<'a> VersionedKVJournal<'a> {
 
   /// Delete a key with automatic version increment.
   /// Returns a tuple of (version, timestamp).
+  ///
+  /// The timestamp is monotonically increasing and serves as the primary ordering mechanism.
+  /// If the system clock goes backwards, timestamps are clamped to maintain monotonicity.
   pub fn delete_versioned(&mut self, key: &str) -> anyhow::Result<(u64, u64)> {
     self.current_version += 1;
     let version = self.current_version;
@@ -496,6 +552,8 @@ impl<'a> VersionedKVJournal<'a> {
   ///
   /// The new journal will have all current key-value pairs written as versioned entries
   /// at the `snapshot_version`, using their original timestamps to preserve historical accuracy.
+  /// The journal's monotonic timestamp enforcement will respect the highest timestamp in the
+  /// provided state.
   ///
   /// # Arguments
   /// * `buffer` - The buffer to write the new journal to
@@ -514,11 +572,18 @@ impl<'a> VersionedKVJournal<'a> {
     // Create a new journal with the snapshot version as the base
     let mut journal = Self::new(buffer, snapshot_version, high_water_mark_ratio)?;
 
+    // Find the maximum timestamp in the state to maintain monotonicity
+    let max_state_timestamp = state.values().map(|tv| tv.timestamp).max().unwrap_or(0);
+
     // Write all current state as versioned entries at the snapshot version
     // Use the original timestamp from each entry to preserve historical accuracy
     for (key, timestamped_value) in state {
       let buffer_len = journal.buffer.len();
       let mut cursor = &mut journal.buffer[journal.position ..];
+
+      // Update last_timestamp to ensure monotonicity is maintained
+      // We use the actual timestamp from the entry, but track the maximum for future writes
+      journal.last_timestamp = std::cmp::max(journal.last_timestamp, timestamped_value.timestamp);
 
       // Create entry object: {"v": version, "t": timestamp, "k": key, "o": value}
       // TODO(snowp): It would be nice to be able to pass impl AsRef<str> for key or Cow to avoid
@@ -539,6 +604,9 @@ impl<'a> VersionedKVJournal<'a> {
       let remaining = cursor.remaining_mut();
       journal.set_position(buffer_len - remaining);
     }
+
+    // Ensure last_timestamp reflects the maximum timestamp we've written
+    journal.last_timestamp = std::cmp::max(journal.last_timestamp, max_state_timestamp);
 
     Ok(journal)
   }

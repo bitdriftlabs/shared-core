@@ -33,10 +33,20 @@ fn read_u64_field(obj: &AHashMap<String, Value>, key: &str) -> Option<u64> {
   }
 }
 
-/// A utility for recovering state at arbitrary versions from raw journal data.
+/// A utility for recovering state at arbitrary versions or timestamps from raw journal data.
 ///
 /// This utility operates on raw byte slices from versioned journals and can reconstruct
-/// the key-value state at any historical version by replaying journal entries.
+/// the key-value state at any historical version or timestamp by replaying journal entries.
+///
+/// # Timestamp-Based Recovery
+///
+/// The primary use case is timestamp-based recovery, which enables correlation with
+/// external timestamped event streams:
+/// - `recover_at_timestamp(ts)` - Recover state at a specific timestamp
+/// - Timestamps are monotonically increasing logical clocks (not pure wall time)
+/// - Enables uploading KV snapshots that match specific event buffer timestamps
+///
+/// Version-based recovery is also supported for backward compatibility.
 ///
 /// Supports both compressed (zlib) and uncompressed journals. Compressed journals are
 /// automatically detected and decompressed transparently.
@@ -66,6 +76,8 @@ struct JournalInfo {
   data: Vec<u8>,
   base_version: u64,
   max_version: u64,
+  min_timestamp: u64,
+  max_timestamp: u64,
 }
 
 impl VersionedRecovery {
@@ -85,10 +97,13 @@ impl VersionedRecovery {
       // Detect and decompress if needed
       let decompressed = decompress_if_needed(data)?;
       let (base_version, max_version) = extract_version_range(&decompressed)?;
+      let (min_timestamp, max_timestamp) = extract_timestamp_range(&decompressed)?;
       journal_infos.push(JournalInfo {
         data: decompressed,
         base_version,
         max_version,
+        min_timestamp,
+        max_timestamp,
       });
     }
 
@@ -176,6 +191,65 @@ impl VersionedRecovery {
     let min = self.journals.first().map(|j| j.base_version)?;
     let max = self.journals.last().map(|j| j.max_version)?;
     Some((min, max))
+  }
+
+  /// Get the range of timestamps available in the recovery utility.
+  ///
+  /// Returns (`min_timestamp`, `max_timestamp`) tuple representing the earliest and latest
+  /// timestamps that can be recovered.
+  #[must_use]
+  pub fn timestamp_range(&self) -> Option<(u64, u64)> {
+    if self.journals.is_empty() {
+      return None;
+    }
+
+    let min = self.journals.first().map(|j| j.min_timestamp)?;
+    let max = self.journals.last().map(|j| j.max_timestamp)?;
+    Some((min, max))
+  }
+
+  /// Recover the key-value state at a specific timestamp.
+  ///
+  /// This method replays all journal entries from all provided journals up to and including
+  /// the target timestamp, reconstructing the exact state at that point in time.
+  ///
+  /// # Arguments
+  ///
+  /// * `target_timestamp` - The timestamp (in nanoseconds since UNIX epoch) to recover state at
+  ///
+  /// # Returns
+  ///
+  /// A hashmap containing all key-value pairs with their timestamps as they existed at the
+  /// target timestamp.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if:
+  /// - The target timestamp is not found in any journal
+  /// - Journal data is corrupted or invalid
+  pub fn recover_at_timestamp(
+    &self,
+    target_timestamp: u64,
+  ) -> anyhow::Result<AHashMap<String, TimestampedValue>> {
+    let mut map = AHashMap::new();
+
+    // Find all journals that might contain entries up to target timestamp
+    for journal in &self.journals {
+      // Skip journals that start after our target
+      if journal.min_timestamp > target_timestamp {
+        break;
+      }
+
+      // Replay entries from this journal
+      replay_journal_to_timestamp(&journal.data, target_timestamp, &mut map)?;
+
+      // If this journal contains the target timestamp, we're done
+      if journal.max_timestamp >= target_timestamp {
+        break;
+      }
+    }
+
+    Ok(map)
   }
 
   /// Get the current state (at the latest version).
@@ -271,6 +345,36 @@ fn extract_version_range(buffer: &[u8]) -> anyhow::Result<(u64, u64)> {
   Ok((base_version, max_version))
 }
 
+/// Extract the minimum and maximum timestamps from a journal.
+fn extract_timestamp_range(buffer: &[u8]) -> anyhow::Result<(u64, u64)> {
+  let array = read_bonjson_payload(buffer)?;
+
+  let mut min_timestamp = u64::MAX;
+  let mut max_timestamp = 0;
+
+  if let Value::Array(entries) = array {
+    for (index, entry) in entries.iter().enumerate() {
+      if index == 0 {
+        continue; // Skip metadata
+      }
+
+      if let Value::Object(obj) = entry
+        && let Some(t) = read_u64_field(obj, "t")
+      {
+        min_timestamp = min_timestamp.min(t);
+        max_timestamp = max_timestamp.max(t);
+      }
+    }
+  }
+
+  // If no entries found, default to (0, 0)
+  if min_timestamp == u64::MAX {
+    min_timestamp = 0;
+  }
+
+  Ok((min_timestamp, max_timestamp))
+}
+
 /// Replay journal entries up to a target version.
 fn replay_journal_to_version(
   buffer: &[u8],
@@ -312,6 +416,55 @@ fn replay_journal_to_version(
               TimestampedValue {
                 value: operation.clone(),
                 timestamp,
+              },
+            );
+          }
+        }
+      }
+    }
+  }
+
+  Ok(())
+}
+
+/// Replay journal entries up to a target timestamp.
+fn replay_journal_to_timestamp(
+  buffer: &[u8],
+  target_timestamp: u64,
+  map: &mut AHashMap<String, TimestampedValue>,
+) -> anyhow::Result<()> {
+  let array = read_bonjson_payload(buffer)?;
+
+  if let Value::Array(entries) = array {
+    for (index, entry) in entries.iter().enumerate() {
+      // Skip metadata (first entry)
+      if index == 0 {
+        continue;
+      }
+
+      if let Value::Object(obj) = entry {
+        // Extract timestamp (skip entries without timestamp)
+        let Some(entry_timestamp) = read_u64_field(obj, "t") else {
+          continue;
+        };
+
+        // Only apply entries up to target timestamp
+        if entry_timestamp > target_timestamp {
+          break;
+        }
+
+        // Extract key and operation
+        if let Some(Value::String(key)) = obj.get("k")
+          && let Some(operation) = obj.get("o")
+        {
+          if operation.is_null() {
+            map.remove(key);
+          } else {
+            map.insert(
+              key.clone(),
+              TimestampedValue {
+                value: operation.clone(),
+                timestamp: entry_timestamp,
               },
             );
           }

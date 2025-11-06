@@ -19,6 +19,6 @@ bd-bonjson                  = { path = "../bd-bonjson" }
 bd-client-common            = { path = "../bd-client-common" }
 bd-workspace-hack.workspace = true
 bytes.workspace             = true
-flate2.workspace            = true
+flate2                      = { workspace = true, features = ["zlib"] }
 memmap2.workspace           = true
 tokio.workspace             = true

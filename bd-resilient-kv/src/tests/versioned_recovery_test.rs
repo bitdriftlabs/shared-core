@@ -737,6 +737,222 @@ async fn test_recovery_mixed_compressed_and_uncompressed() -> anyhow::Result<()>
 }
 
 #[tokio::test]
+async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+
+  // Create a store and write some timestamped data
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  
+  store
+    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .await?;
+  let ts1 = store
+    .get_with_timestamp("key1")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  // Small sleep to ensure different timestamps
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  store
+    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .await?;
+  let ts2 = store
+    .get_with_timestamp("key2")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  // Small sleep to ensure different timestamps
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  store
+    .insert("key1".to_string(), Value::String("updated1".to_string()))
+    .await?;
+  let ts3 = store
+    .get_with_timestamp("key1")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  store.sync()?;
+
+  // Read the journal data
+  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
+
+  // Create recovery utility
+  let recovery = VersionedRecovery::new(vec![&journal_data])?;
+
+  // Verify timestamp range
+  let timestamp_range = recovery.timestamp_range();
+  assert!(timestamp_range.is_some());
+  let (min, max) = timestamp_range.unwrap();
+  assert!(min <= ts1);
+  assert!(max >= ts3);
+
+  // Recover at ts1: should have only key1=value1
+  let state_ts1 = recovery.recover_at_timestamp(ts1)?;
+  assert_eq!(state_ts1.len(), 1);
+  assert_eq!(
+    state_ts1.get("key1").map(|tv| &tv.value),
+    Some(&Value::String("value1".to_string()))
+  );
+
+  // Recover at ts2: should have key1=value1, key2=value2
+  let state_ts2 = recovery.recover_at_timestamp(ts2)?;
+  assert_eq!(state_ts2.len(), 2);
+  assert_eq!(
+    state_ts2.get("key1").map(|tv| &tv.value),
+    Some(&Value::String("value1".to_string()))
+  );
+  assert_eq!(
+    state_ts2.get("key2").map(|tv| &tv.value),
+    Some(&Value::String("value2".to_string()))
+  );
+
+  // Recover at ts3: should have key1=updated1, key2=value2
+  let state_ts3 = recovery.recover_at_timestamp(ts3)?;
+  assert_eq!(state_ts3.len(), 2);
+  assert_eq!(
+    state_ts3.get("key1").map(|tv| &tv.value),
+    Some(&Value::String("updated1".to_string()))
+  );
+  assert_eq!(
+    state_ts3.get("key2").map(|tv| &tv.value),
+    Some(&Value::String("value2".to_string()))
+  );
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+
+  // Write some data before rotation
+  store
+    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .await?;
+  let ts1 = store
+    .get_with_timestamp("key1")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  store
+    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .await?;
+  let ts2 = store
+    .get_with_timestamp("key2")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  // Rotate journal
+  let archive_version = store.current_version();
+  store.rotate_journal().await?;
+
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  // Write data after rotation
+  store
+    .insert("key3".to_string(), Value::String("value3".to_string()))
+    .await?;
+  let ts3 = store
+    .get_with_timestamp("key3")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  store.sync()?;
+
+  // Read both journals
+  let archived_path = temp_dir
+    .path()
+    .join(format!("test.jrn.v{}.zz", archive_version));
+  let archived_data = std::fs::read(&archived_path)?;
+  let active_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
+
+  // Create recovery from both journals
+  let recovery = VersionedRecovery::new(vec![&archived_data, &active_data])?;
+
+  // Verify timestamp range spans both journals
+  let timestamp_range = recovery.timestamp_range();
+  assert!(timestamp_range.is_some());
+  let (min, max) = timestamp_range.unwrap();
+  assert!(min <= ts1);
+  assert!(max >= ts3);
+
+  // Recover at ts1 (should be in archived journal)
+  let state_ts1 = recovery.recover_at_timestamp(ts1)?;
+  assert_eq!(state_ts1.len(), 1);
+  assert!(state_ts1.contains_key("key1"));
+
+  // Recover at ts2 (should be in archived journal)
+  let state_ts2 = recovery.recover_at_timestamp(ts2)?;
+  assert_eq!(state_ts2.len(), 2);
+  assert!(state_ts2.contains_key("key1"));
+  assert!(state_ts2.contains_key("key2"));
+
+  // Recover at ts3 (should include all data)
+  let state_ts3 = recovery.recover_at_timestamp(ts3)?;
+  assert_eq!(state_ts3.len(), 3);
+  assert!(state_ts3.contains_key("key1"));
+  assert!(state_ts3.contains_key("key2"));
+  assert!(state_ts3.contains_key("key3"));
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn test_timestamp_range() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  
+  store
+    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .await?;
+  let ts1 = store
+    .get_with_timestamp("key1")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  store
+    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .await?;
+
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  store
+    .insert("key3".to_string(), Value::String("value3".to_string()))
+    .await?;
+  let ts3 = store
+    .get_with_timestamp("key3")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  store.sync()?;
+
+  let journal_data = std::fs::read(temp_dir.path().join("test.jrn"))?;
+  let recovery = VersionedRecovery::new(vec![&journal_data])?;
+
+  let timestamp_range = recovery.timestamp_range();
+  assert!(timestamp_range.is_some());
+  let (min, max) = timestamp_range.unwrap();
+  
+  // Min should be <= first timestamp, max should be >= last timestamp
+  assert!(min <= ts1);
+  assert!(max >= ts3);
+  
+  // Timestamps should be ordered
+  assert!(ts3 > ts1);
+
+  Ok(())
+}
+
+#[tokio::test]
 async fn test_recovery_decompression_transparent() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 

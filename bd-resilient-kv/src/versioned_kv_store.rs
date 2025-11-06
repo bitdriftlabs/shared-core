@@ -46,13 +46,25 @@ async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result
   Ok(())
 }
 
-/// A persistent key-value store with version tracking.
+/// A persistent key-value store with version and timestamp tracking.
 ///
 /// `VersionedKVStore` provides HashMap-like semantics backed by a versioned journal that
-/// assigns a monotonically increasing version number to each write operation. This enables:
-/// - Audit logs with version tracking for every write
+/// assigns both a version number and a monotonically increasing timestamp to each write
+/// operation. This enables:
+/// - Audit logs with timestamp tracking for every write (timestamps serve as logical clocks)
+/// - Point-in-time recovery at any historical timestamp
+/// - Correlation with external timestamped event streams
 /// - Automatic journal rotation when high water mark is reached
 /// - Optional callbacks for post-rotation operations (e.g., remote backup)
+///
+/// # Timestamp Semantics
+///
+/// Timestamps are monotonically increasing logical clocks (nanoseconds since UNIX epoch):
+/// - Each write gets a timestamp >= all previous writes
+/// - If system clock goes backward, timestamps are clamped to maintain ordering
+/// - Multiple operations may share the same timestamp if system clock hasn't advanced
+/// - Enables natural correlation with timestamped event buffers for upload
+/// - Version numbers provide secondary ordering and backward compatibility
 ///
 /// For performance optimization, `VersionedKVStore` maintains an in-memory cache of the
 /// current key-value data to provide O(1) read operations and avoid expensive journal

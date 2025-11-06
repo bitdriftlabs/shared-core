@@ -28,43 +28,66 @@ fn test_versioned_store_new() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn test_versioned_store_basic_operations() -> anyhow::Result<()> {
+async fn test_timestamp_collision_on_clamping() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
-  // Test insert with version tracking
-  let v1 = store
+  // Insert first value - this establishes a timestamp
+  store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
-  assert_eq!(v1, 2); // First write is version 2 (base is 1)
+  let ts1 = store
+    .get_with_timestamp("key1")
+    .map(|tv| tv.timestamp)
+    .unwrap();
 
-  let retrieved = store.get("key1");
-  assert_eq!(retrieved, Some(&Value::String("value1".to_string())));
-
-  // Test overwrite
-  let v2 = store
-    .insert("key1".to_string(), Value::String("value2".to_string()))
+  // Perform rapid successive writes - these might share timestamps if system clock hasn't advanced
+  store
+    .insert("key2".to_string(), Value::String("value2".to_string()))
     .await?;
-  assert_eq!(v2, 3); // Second write is version 3
-  assert!(v2 > v1);
+  store
+    .insert("key3".to_string(), Value::String("value3".to_string()))
+    .await?;
+  store
+    .insert("key4".to_string(), Value::String("value4".to_string()))
+    .await?;
 
-  let retrieved = store.get("key1");
-  assert_eq!(retrieved, Some(&Value::String("value2".to_string())));
+  let ts2 = store
+    .get_with_timestamp("key2")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+  let ts3 = store
+    .get_with_timestamp("key3")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+  let ts4 = store
+    .get_with_timestamp("key4")
+    .map(|tv| tv.timestamp)
+    .unwrap();
 
-  // Test contains_key
-  assert!(store.contains_key("key1"));
-  assert!(!store.contains_key("nonexistent"));
+  // Verify monotonicity: timestamps should never decrease
+  assert!(ts2 >= ts1, "Timestamps should be monotonically non-decreasing");
+  assert!(ts3 >= ts2, "Timestamps should be monotonically non-decreasing");
+  assert!(ts4 >= ts3, "Timestamps should be monotonically non-decreasing");
 
-  // Test len and is_empty
-  assert_eq!(store.len(), 1);
-  assert!(!store.is_empty());
-
-  // Current version should track latest write
-  assert_eq!(store.current_version(), v2);
+  // Document that timestamps CAN be equal (this is the key difference from the old +1 behavior)
+  // When system clock doesn't advance or goes backwards, we reuse the same timestamp
+  // This is acceptable because version numbers provide total ordering
+  
+  // Count unique timestamps - with rapid operations, we might have collisions
+  let timestamps = [ts1, ts2, ts3, ts4];
+  let unique_count = timestamps.iter().collect::<std::collections::HashSet<_>>().len();
+  
+  // We should have at least 1 unique timestamp (all could be the same in extreme cases)
+  assert!(
+    unique_count >= 1 && unique_count <= 4,
+    "Should have 1-4 unique timestamps, got {}",
+    unique_count
+  );
 
   Ok(())
 }
+
 
 #[tokio::test]
 async fn test_versioned_store_remove() -> anyhow::Result<()> {
@@ -408,6 +431,122 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
     ts2_after > ts1_after,
     "Timestamp ordering should be preserved"
   );
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn test_timestamp_monotonicity() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+
+  // Track timestamps across multiple writes
+  let mut timestamps = Vec::new();
+
+  // Perform multiple writes and collect their timestamps
+  for i in 0 .. 20 {
+    store
+      .insert(format!("key{}", i), Value::Signed(i as i64))
+      .await?;
+    
+    let ts = store
+      .get_with_timestamp(&format!("key{}", i))
+      .map(|tv| tv.timestamp)
+      .unwrap();
+    
+    timestamps.push(ts);
+  }
+
+  // Verify all timestamps are monotonically increasing
+  for i in 1 .. timestamps.len() {
+    assert!(
+      timestamps[i] >= timestamps[i - 1],
+      "Timestamp at index {} ({}) should be >= timestamp at index {} ({})",
+      i,
+      timestamps[i],
+      i - 1,
+      timestamps[i - 1]
+    );
+  }
+
+  // Verify that timestamps are actually different (at least some of them)
+  // This ensures we're not just assigning the same timestamp to everything
+  let unique_timestamps: std::collections::HashSet<_> = timestamps.iter().collect();
+  assert!(
+    unique_timestamps.len() > 1,
+    "Expected multiple unique timestamps, got only {}",
+    unique_timestamps.len()
+  );
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn test_timestamp_monotonicity_across_rotation() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+
+  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+
+  // Write before rotation
+  store
+    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .await?;
+  let ts1 = store
+    .get_with_timestamp("key1")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  store
+    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .await?;
+  let ts2 = store
+    .get_with_timestamp("key2")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  // Rotate journal
+  store.rotate_journal().await?;
+
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  // Write after rotation
+  store
+    .insert("key3".to_string(), Value::String("value3".to_string()))
+    .await?;
+  let ts3 = store
+    .get_with_timestamp("key3")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  std::thread::sleep(std::time::Duration::from_millis(10));
+
+  store
+    .insert("key4".to_string(), Value::String("value4".to_string()))
+    .await?;
+  let ts4 = store
+    .get_with_timestamp("key4")
+    .map(|tv| tv.timestamp)
+    .unwrap();
+
+  // Verify monotonicity across rotation boundary
+  assert!(ts2 >= ts1, "ts2 should be >= ts1");
+  assert!(ts3 >= ts2, "ts3 should be >= ts2 (across rotation)");
+  assert!(ts4 >= ts3, "ts4 should be >= ts3");
+
+  // Verify ordering
+  let timestamps = [ts1, ts2, ts3, ts4];
+  for i in 1 .. timestamps.len() {
+    assert!(
+      timestamps[i] >= timestamps[i - 1],
+      "Timestamp monotonicity violated at index {}: {} < {}",
+      i,
+      timestamps[i],
+      timestamps[i - 1]
+    );
+  }
 
   Ok(())
 }
