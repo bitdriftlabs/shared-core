@@ -14,7 +14,6 @@ use crate::config::{
   ActionEmitMetric,
   ActionEmitSankey,
   ActionFlushBuffers,
-  ActionTakeScreenshot,
   Config,
   Predicate,
   WorkflowDebugMode,
@@ -1079,8 +1078,8 @@ impl Traversal {
             path: SankeyPath::new(action.id(), sankey_state),
           }));
         },
-        Action::TakeScreenshot(action) => {
-          triggered_actions.push(TriggeredAction::TakeScreenshot(action));
+        Action::TakeScreenshot => {
+          triggered_actions.push(TriggeredAction::TakeScreenshot);
         },
         Action::GenerateLog(action) => {
           if let Some(log) = generate_log_action(extractions, action, current_log_fields) {
@@ -1110,7 +1109,7 @@ pub(crate) enum TriggeredAction<'a> {
   FlushBuffers(&'a ActionFlushBuffers),
   EmitMetric(&'a ActionEmitMetric),
   SankeyDiagram(TriggeredActionEmitSankey<'a>),
-  TakeScreenshot(&'a ActionTakeScreenshot),
+  TakeScreenshot,
 }
 
 //

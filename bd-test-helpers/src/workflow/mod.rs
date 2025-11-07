@@ -407,11 +407,8 @@ pub fn make_emit_sankey_action(id: &str, limit: u32, tags: Vec<Tag>) -> Action_t
 }
 
 #[must_use]
-pub fn make_take_screenshot_action(id: &str) -> Action_type {
-  Action_type::ActionTakeScreenshot(ActionTakeScreenshotProto {
-    id: id.to_string(),
-    ..Default::default()
-  })
+pub fn make_take_screenshot_action() -> Action_type {
+  Action_type::ActionTakeScreenshot(ActionTakeScreenshotProto::default())
 }
 
 #[must_use]
