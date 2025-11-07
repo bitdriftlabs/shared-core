@@ -13,9 +13,10 @@ use ahash::AHashMap;
 use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum DataLoss {
   Total,
+  Partial,
   None,
 }
 
@@ -69,7 +70,7 @@ impl VersionedKVStore {
       generation
     );
 
-    let (journal, data_loss) = if journal_path.exists() {
+    let (journal, mut data_loss) = if journal_path.exists() {
       // Try to open existing journal
       MemMappedVersionedKVJournal::from_file(&journal_path, buffer_size, high_water_mark_ratio)
         .map(|j| (j, DataLoss::None))
@@ -91,7 +92,11 @@ impl VersionedKVStore {
       )
     };
 
-    let cached_map = journal.as_hashmap_with_timestamps()?;
+    let (cached_map, incomplete) = journal.as_hashmap_with_timestamps();
+
+    if incomplete && data_loss == DataLoss::None {
+      data_loss = DataLoss::Partial;
+    }
 
     Ok((
       Self {
@@ -129,24 +134,31 @@ impl VersionedKVStore {
     name: &str,
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
-  ) -> anyhow::Result<Self> {
+  ) -> anyhow::Result<(Self, DataLoss)> {
     let dir = dir_path.as_ref();
 
     let (journal_path, generation) = file_manager::find_active_journal(dir, name);
 
     let journal =
       MemMappedVersionedKVJournal::from_file(&journal_path, buffer_size, high_water_mark_ratio)?;
-    let cached_map = journal.as_hashmap_with_timestamps()?;
+    let (cached_map, incomplete) = journal.as_hashmap_with_timestamps();
 
-    Ok(Self {
-      journal,
-      cached_map,
-      dir_path: dir.to_path_buf(),
-      journal_name: name.to_string(),
-      buffer_size,
-      high_water_mark_ratio,
-      current_generation: generation,
-    })
+    Ok((
+      Self {
+        journal,
+        cached_map,
+        dir_path: dir.to_path_buf(),
+        journal_name: name.to_string(),
+        buffer_size,
+        high_water_mark_ratio,
+        current_generation: generation,
+      },
+      if incomplete {
+        DataLoss::Partial
+      } else {
+        DataLoss::None
+      },
+    ))
   }
 
   /// Get a value by key.

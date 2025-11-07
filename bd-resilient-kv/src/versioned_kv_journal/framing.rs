@@ -127,7 +127,7 @@ impl<M: protobuf::Message> Frame<M> {
     let payload_bytes = self
       .payload
       .write_to_bytes()
-      .map_err(|e| anyhow::anyhow!("Failed to serialize payload: {}", e))?;
+      .map_err(|e| anyhow::anyhow!("Failed to serialize payload: {e}"))?;
 
     // Frame length = timestamp + payload + crc
     let frame_len = timestamp_len + payload_bytes.len() + 4;
@@ -200,8 +200,8 @@ impl<M: protobuf::Message> Frame<M> {
       anyhow::bail!("CRC mismatch: expected 0x{stored_crc:08x}, got 0x{computed_crc:08x}");
     }
 
-    let payload = M::parse_from_bytes(&payload)
-      .map_err(|e| anyhow::anyhow!("Failed to parse payload: {}", e))?;
+    let payload =
+      M::parse_from_bytes(&payload).map_err(|e| anyhow::anyhow!("Failed to parse payload: {e}"))?;
 
     Ok((Self::new(timestamp_micros, payload), total_len))
   }

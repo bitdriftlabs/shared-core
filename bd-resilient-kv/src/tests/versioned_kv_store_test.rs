@@ -91,7 +91,7 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
 
   // Reopen and verify data persisted
   {
-    let store = VersionedKVStore::open_existing(temp_dir.path(), "test", 4096, None)?;
+    let (store, _) = VersionedKVStore::open_existing(temp_dir.path(), "test", 4096, None)?;
     assert_eq!(store.len(), 2);
     assert_eq!(
       store.get_with_timestamp("key1"),
@@ -352,7 +352,7 @@ fn make_store_from_snapshot_file(
     decompressed_snapshot,
   )?;
 
-  let store = VersionedKVStore::open_existing(temp_dir.path(), "snapshot", 4096, None)?;
+  let (store, _) = VersionedKVStore::open_existing(temp_dir.path(), "snapshot", 4096, None)?;
 
   Ok(store)
 }

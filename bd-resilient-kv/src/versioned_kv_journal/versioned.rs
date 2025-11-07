@@ -276,10 +276,15 @@ impl<'a> VersionedKVJournal<'a> {
   }
 
   /// Reconstruct the hashmap with timestamps by replaying all journal entries.
-  pub fn to_hashmap_with_timestamps(&self) -> anyhow::Result<AHashMap<String, TimestampedValue>> {
+  ///
+  /// Returns a tuple containing:
+  /// - A hashmap of all key-value pairs with their timestamps
+  /// - A boolean indicating if we failed to decode the entire journal (true if incomplete)
+  pub fn to_hashmap_with_timestamps(&self) -> (AHashMap<String, TimestampedValue>, bool) {
     let mut map = AHashMap::new();
     let mut cursor = HEADER_SIZE;
 
+    let mut incomplete = false;
     while cursor < self.position {
       let remaining = &self.buffer[cursor .. self.position];
 
@@ -301,12 +306,13 @@ impl<'a> VersionedKVJournal<'a> {
         },
         Err(_) => {
           // Stop on first decode error
+          incomplete = true;
           break;
         },
       }
     }
 
-    Ok(map)
+    (map, incomplete)
   }
 }
 

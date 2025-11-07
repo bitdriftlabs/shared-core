@@ -124,6 +124,7 @@ impl MemMappedVersionedKVJournal {
     self.versioned_kv.insert_entry(message)
   }
 
+
   /// Check if the high water mark has been triggered.
   #[must_use]
   pub fn is_high_water_mark_triggered(&self) -> bool {
@@ -131,10 +132,7 @@ impl MemMappedVersionedKVJournal {
   }
 
   /// Reconstruct the hashmap with timestamps by replaying all journal entries.
-  ///
-  /// # Errors
-  /// Returns an error if the buffer cannot be decoded.
-  pub fn as_hashmap_with_timestamps(&self) -> anyhow::Result<AHashMap<String, TimestampedValue>> {
+  pub fn as_hashmap_with_timestamps(&self) -> (AHashMap<String, TimestampedValue>, bool) {
     self.versioned_kv.to_hashmap_with_timestamps()
   }
 
