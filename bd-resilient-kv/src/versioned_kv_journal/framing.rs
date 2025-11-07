@@ -23,10 +23,14 @@ use crc32fast::Hasher;
 /// Maximum varint size for u64 (10 bytes)
 const MAX_VARINT_SIZE: usize = 10;
 
+fn varint_size(value: u64) -> usize {
+  ::protobuf::rt::compute_raw_varint64_size(value) as usize
+}
+
 /// Encode a u64 as a varint into the buffer.
 /// Returns the number of bytes written.
 pub fn encode_varint(value: u64, mut buf: &mut [u8]) -> usize {
-  let size = ::protobuf::rt::compute_raw_varint64_size(value) as usize;
+  let size = varint_size(value);
   debug_assert!(buf.len() >= size, "Buffer too small for varint encoding");
 
   if protobuf::CodedOutputStream::new(&mut buf)
@@ -48,7 +52,7 @@ pub fn decode_varint(buf: &[u8]) -> Option<(u64, usize)> {
     .read_raw_varint64()
     .ok()?;
 
-  let bytes_read = ::protobuf::rt::compute_raw_varint64_size(value) as usize;
+  let bytes_read = varint_size(value);
   Some((value, bytes_read))
 }
 
@@ -83,8 +87,7 @@ impl<M: protobuf::Message> Frame<M> {
   #[must_use]
   pub fn encoded_size(&self) -> usize {
     // Calculate varint size
-    let mut temp_buf = [0u8; MAX_VARINT_SIZE];
-    let varint_size = encode_varint(self.timestamp_micros, &mut temp_buf);
+    let varint_size = varint_size(self.timestamp_micros);
     let payload_size: usize = self.payload.compute_size().try_into().unwrap_or(0);
 
     // length(4) + timestamp_varint + payload + crc(4)
