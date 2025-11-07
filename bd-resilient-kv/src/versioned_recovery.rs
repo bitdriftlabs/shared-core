@@ -21,19 +21,6 @@ use bd_bonjson::decoder::from_slice;
 /// Recovery works exclusively with journal snapshots - complete archived journals created
 /// during rotation. Each snapshot contains the full compacted state at the time of rotation,
 /// with all entries preserving their original timestamps.
-///
-/// Recovery replays snapshot entries in chronological order up to the target timestamp.
-/// Since entry timestamps may overlap across adjacent snapshots, recovery handles this by
-/// replaying snapshots sequentially and applying entries in timestamp order.
-///
-/// ## Optimization
-///
-/// To recover the current state, only the last snapshot needs to be read since each snapshot
-/// contains the complete compacted state at rotation time. For historical timestamp recovery,
-/// the utility automatically identifies and replays only the necessary snapshots.
-///
-/// **Note:** Callers are responsible for decompressing snapshot data if needed before passing
-/// it to this utility.
 #[derive(Debug)]
 pub struct VersionedRecovery {
   snapshots: Vec<SnapshotInfo>,
