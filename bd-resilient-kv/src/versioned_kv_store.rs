@@ -36,24 +36,6 @@ async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result
 /// A persistent key-value store with timestamp tracking.
 ///
 /// `VersionedKVStore` provides HashMap-like semantics backed by a timestamped journal that
-/// assigns a monotonically increasing timestamp to each write operation. This enables:
-/// - Audit logs with timestamp tracking for every write (timestamps serve as logical clocks)
-/// - Point-in-time recovery at any historical timestamp
-/// - Correlation with external timestamped event streams
-/// - Automatic journal rotation when high water mark is reached
-/// - Optional callbacks for post-rotation operations (e.g., remote backup)
-///
-/// # Timestamp Semantics
-///
-/// Timestamps are monotonically increasing logical clocks (microseconds since UNIX epoch):
-/// - Each write gets a timestamp >= all previous writes
-/// - If system clock goes backward, timestamps are clamped to maintain ordering
-/// - Multiple operations may share the same timestamp if system clock hasn't advanced
-/// - Enables natural correlation with timestamped event buffers for upload
-///
-/// For performance optimization, `VersionedKVStore` maintains an in-memory cache of the
-/// current key-value data to provide O(1) read operations and avoid expensive journal
-/// decoding on every access.
 ///
 /// # Rotation Strategy
 ///
@@ -61,21 +43,8 @@ async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result
 /// The rotation process creates a snapshot of the current state while preserving timestamp
 /// semantics for accurate point-in-time recovery.
 ///
-/// ## Rotation Process
-/// 1. Computes `rotation_timestamp` = max timestamp of all current entries
-/// 2. Archives old journal as `<name>.jrn.t<rotation_timestamp>.zz` (compressed)
-/// 3. Creates new journal with compacted state
-/// 4. Writes compacted state with **original timestamps preserved**
-/// 5. Continues normal operations in the new journal
-///
-/// ## Timestamp Semantics Across Snapshots
-///
-/// Compacted entries in the new journal preserve their original timestamps, which means entry
-/// timestamps may overlap across adjacent snapshots. The filename timestamp (`t300`, `t500`)
-/// represents the rotation point (snapshot boundary), not the minimum timestamp of entries.
-///
 /// For detailed information about timestamp semantics, recovery bucketing, and invariants,
-/// see the `VersionedRecovery` documentation.
+/// see the `VERSIONED_FORMAT.md` documentation.
 pub struct VersionedKVStore {
   journal: MemMappedVersionedKVJournal,
   cached_map: AHashMap<String, TimestampedValue>,
