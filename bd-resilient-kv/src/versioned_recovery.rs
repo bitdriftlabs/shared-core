@@ -96,7 +96,7 @@ impl VersionedRecovery {
   ///
   /// # Arguments
   ///
-  /// * `target_timestamp` - The timestamp (in nanoseconds since UNIX epoch) to recover state at
+  /// * `target_timestamp` - The timestamp (in microseconds since UNIX epoch) to recover state at
   ///
   /// # Returns
   ///

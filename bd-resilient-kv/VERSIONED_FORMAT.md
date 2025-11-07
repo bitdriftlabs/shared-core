@@ -23,7 +23,7 @@ The format is built on top of BONJSON, a binary JSON format that provides effici
 ### 1. Active Journal (`my_store.jrn`)
 The current active journal receiving new writes. Active journals are **not compressed** for performance reasons.
 
-### 2. Archived Journals (`my_store.jrn.t1699564900000000000.zz`, etc.)
+### 2. Archived Journals (`my_store.jrn.t1699564900000000.zz`, etc.)
 Previous journals, archived during rotation. Each contains complete state at its creation time plus subsequent incremental writes. The timestamp in the filename indicates the rotation/snapshot timestamp.
 
 **Archived journals are automatically compressed using zlib** (indicated by the `.zz` extension) to reduce storage space and bandwidth requirements for remote backup. Compression is mandatory and occurs automatically during rotation.
@@ -48,7 +48,7 @@ The byte-level layout of a VERSION 2 journal file:
 │  (First entry in the array)                                             │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  {                                                                      │
-│    "initialized": 1699564800000000000,    // u64 timestamp (ns)         │
+│    "initialized": 1699564800000000,       // u64 timestamp (us)         │
 │    "format_version": 2                    // Format identifier          │
 │  }                                                                      │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -58,7 +58,7 @@ The byte-level layout of a VERSION 2 journal file:
 │  (BONJSON Object)                                                       │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  {                                                                      │
-│    "t": 1699564801000000000,              // Timestamp in ns (u64)      │
+│    "t": 1699564801000000,                 // Timestamp in us (u64)      │
 │    "k": "key1",                           // Key (string)               │
 │    "o": "value1"                          // Value or null (any type)   │
 │  }                                                                      │
@@ -80,7 +80,7 @@ The first entry in the array is always a metadata object:
 
 ```json
 {
-  "initialized": <u64>,      // Creation timestamp (nanoseconds since epoch)
+  "initialized": <u64>,      // Creation timestamp (microseconds since epoch)
   "format_version": 2        // Must be 2 for this format
 }
 ```
@@ -91,14 +91,14 @@ Each subsequent entry follows this uniform schema:
 
 ```json
 {
-  "t": <u64>,                // Timestamp in nanoseconds (monotonically non-decreasing, serves as version)
+  "t": <u64>,                // Timestamp in microseconds (monotonically non-decreasing, serves as version)
   "k": "<string>",           // Key being modified
   "o": <value or null>       // Value for SET, null for DELETE
 }
 ```
 
 Fields:
-- `t` (timestamp): Monotonically non-decreasing timestamp (ns since UNIX epoch) that serves as both the write time and version identifier
+- `t` (timestamp): Monotonically non-decreasing timestamp (microseconds since UNIX epoch) that serves as both the write time and version identifier
 - `k` (key): The key being written
 - `o` (operation): The value (for SET) or null (for DELETE)
 
@@ -113,10 +113,10 @@ Timestamps are monotonically non-decreasing, not strictly increasing. If the sys
 
 **Size Considerations:**
 - **Header**: Fixed 17 bytes
-- **Metadata**: ~80-100 bytes (depending on timestamp magnitude)
+- **Metadata**: ~50-70 bytes (depending on timestamp magnitude)
 - **Per Entry**: Varies based on key and value size
-  - Minimum: ~50 bytes (short key, small value)
-  - Typical: 100-500 bytes
+  - Minimum: ~30 bytes (short key, small value)
+  - Typical: 70-470 bytes
   - Maximum: Limited by buffer size
 
 ## Journal Structure
@@ -124,21 +124,21 @@ Timestamps are monotonically non-decreasing, not strictly increasing. If the sys
 ### Initial Journal
 When first created:
 ```json
-{"initialized": 1699564800000000000, "format_version": 2}
-{"t": 1699564801000000000, "k": "key1", "o": "value1"}
-{"t": 1699564802000000000, "k": "key2", "o": "value2"}
+{"initialized": 1699564800000000, "format_version": 2}
+{"t": 1699564801000000, "k": "key1", "o": "value1"}
+{"t": 1699564802000000, "k": "key2", "o": "value2"}
 ...
 ```
 
 ### Rotated Journal
-After rotation at timestamp 1699564900000000000, the new journal contains:
+After rotation at timestamp 1699564900000000, the new journal contains:
 ```json
-{"initialized": 1699564900000000000, "format_version": 2}
-{"t": 1699564800123456789, "k": "key1", "o": "value1"}  // Compacted state (original timestamp preserved)
-{"t": 1699564850987654321, "k": "key2", "o": "value2"}  // Compacted state (original timestamp preserved)
-{"t": 1699564875111222333, "k": "key3", "o": "value3"}  // Compacted state (original timestamp preserved)
-{"t": 1699564901000000000, "k": "key4", "o": "value4"}  // New write after rotation
-{"t": 1699564902000000000, "k": "key1", "o": "updated1"} // New write after rotation
+{"initialized": 1699564900000000, "format_version": 2}
+{"t": 1699564800123456, "k": "key1", "o": "value1"}  // Compacted state (original timestamp preserved)
+{"t": 1699564850987654, "k": "key2", "o": "value2"}  // Compacted state (original timestamp preserved)
+{"t": 1699564875111222, "k": "key3", "o": "value3"}  // Compacted state (original timestamp preserved)
+{"t": 1699564901000000, "k": "key4", "o": "value4"}  // New write after rotation
+{"t": 1699564902000000, "k": "key1", "o": "updated1"} // New write after rotation
 ...
 ```
 

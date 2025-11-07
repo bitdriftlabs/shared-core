@@ -19,14 +19,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub struct TimestampedValue {
   /// The value stored in the key-value store.
   pub value: Value,
-  /// The timestamp (in nanoseconds since UNIX epoch) when this value was last written.
+  /// The timestamp (in microseconds since UNIX epoch) when this value was last written.
   pub timestamp: u64,
 }
 
 /// Timestamped implementation of a key-value journaling system that uses timestamps
 /// as the version identifier for point-in-time recovery.
 ///
-/// Each write operation is assigned a monotonically non-decreasing timestamp (in nanoseconds
+/// Each write operation is assigned a monotonically non-decreasing timestamp (in microseconds
 /// since UNIX epoch), enabling exact state reconstruction at any historical timestamp.
 /// The monotonicity is enforced by clamping: if the system clock goes backwards, we reuse
 /// the same timestamp value to maintain ordering guarantees. When timestamps collide,
@@ -91,12 +91,17 @@ fn read_u64_field(obj: &AHashMap<String, Value>, key: &str) -> Option<u64> {
   }
 }
 
-/// Get current timestamp in nanoseconds since UNIX epoch.
+/// Get current timestamp in microseconds since UNIX epoch.
 fn current_timestamp() -> anyhow::Result<u64> {
   SystemTime::now()
     .duration_since(UNIX_EPOCH)
     .map_err(|_| InvariantError::Invariant.into())
-    .and_then(|d| u64::try_from(d.as_nanos()).map_err(|_| InvariantError::Invariant.into()))
+    .map(|d| {
+      #[allow(clippy::cast_possible_truncation)]
+      {
+        d.as_micros() as u64
+      }
+    })
 }
 
 

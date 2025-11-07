@@ -45,7 +45,7 @@ async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result
 ///
 /// # Timestamp Semantics
 ///
-/// Timestamps are monotonically increasing logical clocks (nanoseconds since UNIX epoch):
+/// Timestamps are monotonically increasing logical clocks (microseconds since UNIX epoch):
 /// - Each write gets a timestamp >= all previous writes
 /// - If system clock goes backward, timestamps are clamped to maintain ordering
 /// - Multiple operations may share the same timestamp if system clock hasn't advanced
