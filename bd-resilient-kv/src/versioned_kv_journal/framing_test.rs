@@ -50,7 +50,7 @@ fn varint_decoding() {
   ];
 
   for (buf, expected_value, expected_len) in test_cases {
-    let (value, len) = decode_varint(&buf).unwrap();
+    let (value, len) = decode(&buf).unwrap();
     assert_eq!(value, expected_value, "Failed for buffer {buf:?}");
     assert_eq!(len, expected_len, "Wrong length for buffer {buf:?}");
   }
@@ -63,7 +63,7 @@ fn varint_roundtrip() {
   for value in values {
     let mut buf = [0u8; MAX_VARINT_SIZE];
     let encoded_len = encode_varint(value, &mut buf);
-    let (decoded_value, decoded_len) = decode_varint(&buf).unwrap();
+    let (decoded_value, decoded_len) = decode(&buf).unwrap();
 
     assert_eq!(decoded_value, value, "Roundtrip failed for {value}");
     assert_eq!(decoded_len, encoded_len, "Length mismatch for {value}");
@@ -74,7 +74,7 @@ fn varint_roundtrip() {
 fn varint_incomplete() {
   // Incomplete varint (has continuation bit but no next byte)
   let buf = vec![0x80];
-  assert!(decode_varint(&buf).is_none());
+  assert!(decode(&buf).is_none());
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn varint_too_long() {
   let buf = vec![
     0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01,
   ];
-  assert!(decode_varint(&buf).is_none());
+  assert!(decode(&buf).is_none());
 }
 
 #[test]

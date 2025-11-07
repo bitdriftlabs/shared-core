@@ -1117,7 +1117,6 @@ dependencies = [
  "memmap2",
  "protobuf 4.0.0-alpha.0",
  "tempfile",
- "thiserror 2.0.17",
  "tokio",
 ]
 

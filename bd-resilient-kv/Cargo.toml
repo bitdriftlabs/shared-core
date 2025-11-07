@@ -27,4 +27,3 @@ flate2                 = { workspace = true, features = ["zlib"] }
 memmap2.workspace      = true
 tokio.workspace        = true
 protobuf.workspace        = true
-thiserror.workspace        = true
