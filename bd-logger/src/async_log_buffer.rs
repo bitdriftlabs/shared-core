@@ -846,8 +846,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           for crash_log in crash_monitor.process_new_reports().await {
             let attributes_overrides = session_id_override.clone().map(|id| {
               LogAttributesOverrides::PreviousRunSessionID(
-                  id,
-                  crash_log.timestamp,
+                id,
+                crash_log.timestamp,
               )
             });
             let log = LogLine {

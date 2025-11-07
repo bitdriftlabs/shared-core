@@ -266,3 +266,39 @@ fn crash_reason_from_empty_errors_vector() {
   assert_eq!(None, detail);
   assert!(report2.is_some());
 }
+
+#[test]
+fn test_report_type_to_reason() {
+  assert_eq!(
+    "ANR",
+    Monitor::report_type_to_reason(ReportType::AppNotResponding)
+  );
+  assert_eq!(
+    "Native Crash",
+    Monitor::report_type_to_reason(ReportType::NativeCrash)
+  );
+  assert_eq!(
+    "Crash",
+    Monitor::report_type_to_reason(ReportType::JVMCrash)
+  );
+  assert_eq!(
+    "Strict Mode Violation",
+    Monitor::report_type_to_reason(ReportType::StrictModeViolation)
+  );
+  assert_eq!(
+    "Memory Termination",
+    Monitor::report_type_to_reason(ReportType::MemoryTermination)
+  );
+  assert_eq!(
+    "Fatal JavaScript Error",
+    Monitor::report_type_to_reason(ReportType::JavaScriptFatalError)
+  );
+  assert_eq!(
+    "Non-Fatal JavaScript Error",
+    Monitor::report_type_to_reason(ReportType::JavaScriptNonFatalError)
+  );
+  assert_eq!(
+    "Handled Error",
+    Monitor::report_type_to_reason(ReportType::HandledError)
+  );
+}

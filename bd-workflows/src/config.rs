@@ -567,7 +567,7 @@ pub enum Action {
   FlushBuffers(ActionFlushBuffers),
   EmitMetric(ActionEmitMetric),
   EmitSankey(ActionEmitSankey),
-  TakeScreenshot(ActionTakeScreenshot),
+  TakeScreenshot,
   GenerateLog(ActionGenerateLog),
 }
 
@@ -593,7 +593,7 @@ impl Action {
       Action_type::ActionEmitSankeyDiagram(diagram) => {
         Ok(Self::EmitSankey(ActionEmitSankey::try_from_proto(diagram)?))
       },
-      Action_type::ActionTakeScreenshot(_) => Ok(Self::TakeScreenshot(ActionTakeScreenshot)),
+      Action_type::ActionTakeScreenshot(_) => Ok(Self::TakeScreenshot),
       Action_type::ActionGenerateLog(action) => Ok(Self::GenerateLog(action)),
     }
   }

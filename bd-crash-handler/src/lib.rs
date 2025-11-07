@@ -93,6 +93,7 @@ pub trait CrashLogger: Send + Sync {
 /// - `reports/` - The root directory for all all reports.
 /// - `reports/new/` - A directory where new crash reports are placed. The platform layer is
 ///   responsible for copying the raw files into this directory.
+#[derive(Clone)]
 pub struct Monitor {
   pub previous_session_id: Option<String>,
 
@@ -199,6 +200,20 @@ impl Monitor {
     })
   }
 
+  fn report_type_to_reason(report_type: ReportType) -> &'static str {
+    match report_type {
+      ReportType::AppNotResponding => "ANR",
+      ReportType::NativeCrash => "Native Crash",
+      ReportType::JVMCrash => "Crash",
+      ReportType::StrictModeViolation => "Strict Mode Violation",
+      ReportType::MemoryTermination => "Memory Termination",
+      ReportType::JavaScriptFatalError => "Fatal JavaScript Error",
+      ReportType::JavaScriptNonFatalError => "Non-Fatal JavaScript Error",
+      ReportType::HandledError => "Handled Error",
+      _ => "Unknown",
+    }
+  }
+
   pub async fn process_new_reports(&self) -> Vec<CrashLog> {
     let mut dir = match tokio::fs::read_dir(&self.report_directory.join("new")).await {
       Ok(dir) => dir,
@@ -285,15 +300,6 @@ impl Monitor {
         let (timestamp, state_fields) =
           Self::read_log_fields(bin_report, &self.previous_run_global_state);
 
-        let report_type = match bin_report.type_() {
-          ReportType::AppNotResponding => "ANR",
-          ReportType::NativeCrash => "Native Crash",
-          ReportType::JVMCrash => "Crash",
-          ReportType::StrictModeViolation => "Strict Mode Violation",
-          ReportType::MemoryTermination => "Memory Termination",
-          _ => "Unknown",
-        };
-
         log::debug!("uploading report out of band");
 
         let Ok(artifact_id) = self.artifact_client.enqueue_upload(
@@ -315,7 +321,10 @@ impl Monitor {
         fields.insert("_crash_artifact_id".into(), artifact_id.to_string().into());
         fields.extend(
           [
-            ("_app_exit_reason".into(), report_type.into()),
+            (
+              "_app_exit_reason".into(),
+              Self::report_type_to_reason(bin_report.type_()).into(),
+            ),
             (
               "_app_exit_info".into(),
               crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
