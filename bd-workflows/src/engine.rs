@@ -21,7 +21,6 @@ use crate::actions_flush_buffers::{
 use crate::config::{
   ActionEmitMetric,
   ActionFlushBuffers,
-  ActionTakeScreenshot,
   Config,
   FlushBufferId,
   Streaming,
@@ -673,7 +672,7 @@ impl WorkflowsEngine {
       mut flush_buffers_actions,
       emit_metric_actions,
       emit_sankey_diagrams_actions,
-      capture_screenshot_actions,
+      capture_screenshot,
     } = Self::prepare_actions(actions);
 
     if let Some(capture_session) = log.capture_session {
@@ -779,7 +778,7 @@ impl WorkflowsEngine {
         .triggered_flush_buffers_action_ids,
       triggered_flushes_buffer_ids: flush_buffers_actions_processing_result
         .triggered_flushes_buffer_ids,
-      capture_screenshot: !capture_screenshot_actions.is_empty(),
+      capture_screenshot,
       logs_to_inject,
       workflow_debug_state: all_cumulative_workflow_debug_state,
       has_debug_workflows,
@@ -827,16 +826,9 @@ impl WorkflowsEngine {
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
 
-    let capture_screenshot_actions = actions
+    let capture_screenshot = actions
       .iter()
-      .filter_map(|action| {
-        if let TriggeredAction::TakeScreenshot(action) = action {
-          Some(*action)
-        } else {
-          None
-        }
-      })
-      .collect();
+      .any(|action| matches!(action, TriggeredAction::TakeScreenshot));
 
     let emit_sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>> = actions
       .into_iter()
@@ -854,7 +846,7 @@ impl WorkflowsEngine {
       flush_buffers_actions,
       emit_metric_actions,
       emit_sankey_diagrams_actions,
-      capture_screenshot_actions,
+      capture_screenshot,
     }
   }
 }
@@ -871,7 +863,7 @@ struct PreparedActions<'a> {
   flush_buffers_actions: BTreeSet<Cow<'a, ActionFlushBuffers>>,
   emit_metric_actions: BTreeSet<&'a ActionEmitMetric>,
   emit_sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>>,
-  capture_screenshot_actions: BTreeSet<&'a ActionTakeScreenshot>,
+  capture_screenshot: bool,
 }
 
 //
