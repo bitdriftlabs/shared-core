@@ -25,44 +25,31 @@ const MAX_VARINT_SIZE: usize = 10;
 
 /// Encode a u64 as a varint into the buffer.
 /// Returns the number of bytes written.
-pub fn encode_varint(value: u64, buf: &mut [u8]) -> usize {
-  let mut val = value;
-  let mut idx = 0;
+pub fn encode_varint(value: u64, mut buf: &mut [u8]) -> usize {
+  let size = ::protobuf::rt::compute_raw_varint64_size(value) as usize;
+  debug_assert!(buf.len() >= size, "Buffer too small for varint encoding");
 
-  #[allow(clippy::cast_possible_truncation)]
-  while val >= 0x80 {
-    buf[idx] = (val as u8) | 0x80;
-    val >>= 7;
-    idx += 1;
-  }
-  #[allow(clippy::cast_possible_truncation)]
+  if protobuf::CodedOutputStream::new(&mut buf)
+    .write_raw_varint64(value)
+    .is_err()
   {
-    buf[idx] = val as u8;
+    // Should never happen as we ensure that there is enough space elsewhere.
+    return 0;
   }
-  idx + 1
+
+  size
 }
 
 /// Decode a varint from the buffer.
 /// Returns (value, `bytes_read`) or None if buffer is incomplete/invalid.
 #[must_use]
 pub fn decode_varint(buf: &[u8]) -> Option<(u64, usize)> {
-  let mut value: u64 = 0;
-  let mut shift = 0;
+  let value = protobuf::CodedInputStream::from_bytes(buf)
+    .read_raw_varint64()
+    .ok()?;
 
-  for (idx, &byte) in buf.iter().enumerate() {
-    if idx >= MAX_VARINT_SIZE {
-      return None; // Varint too long
-    }
-
-    value |= u64::from(byte & 0x7F) << shift;
-    shift += 7;
-
-    if byte & 0x80 == 0 {
-      return Some((value, idx + 1));
-    }
-  }
-
-  None // Incomplete varint
+  let bytes_read = ::protobuf::rt::compute_raw_varint64_size(value) as usize;
+  Some((value, bytes_read))
 }
 
 /// Frame structure for a journal entry.
