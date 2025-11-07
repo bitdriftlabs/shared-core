@@ -10,6 +10,47 @@ use ahash::AHashMap;
 use bd_bonjson::Value;
 use std::path::{Path, PathBuf};
 
+/// Find the active journal file by searching for the highest generation number.
+///
+/// Returns the path to the journal and its generation number, or None if no journal exists.
+/// Supports both legacy journals (`name.jrn`) and generation-based journals (`name.jrn.N`).
+fn find_active_journal(dir: &Path, name: &str) -> anyhow::Result<Option<(PathBuf, u64)>> {
+  // First check for legacy journal format (name.jrn without generation)
+  let legacy_path = dir.join(format!("{name}.jrn"));
+  if legacy_path.exists() {
+    // Migrate legacy journal to generation 0
+    let gen_path = dir.join(format!("{name}.jrn.0"));
+    if !gen_path.exists() {
+      std::fs::rename(&legacy_path, &gen_path)?;
+      return Ok(Some((gen_path, 0)));
+    }
+  }
+
+  // Search for generation-based journals
+  let pattern = format!("{name}.jrn.");
+
+  let mut max_gen = None;
+  for entry in std::fs::read_dir(dir)? {
+    let entry = entry?;
+    let filename = entry.file_name();
+    let filename_str = filename.to_string_lossy();
+
+    if let Some(suffix) = filename_str.strip_prefix(&pattern) {
+      // Parse generation number (before any .zz or other extensions)
+      if let Some(gen_str) = suffix.split('.').next()
+        && let Ok(generation) = gen_str.parse::<u64>()
+      {
+        max_gen = Some(max_gen.map_or(generation, |current: u64| current.max(generation)));
+      }
+    }
+  }
+
+  Ok(max_gen.map(|generation| {
+    let path = dir.join(format!("{name}.jrn.{generation}"));
+    (path, generation)
+  }))
+}
+
 /// Compress an archived journal using zlib.
 ///
 /// This function compresses the source file to the destination using zlib compression.
@@ -52,20 +93,22 @@ pub struct VersionedKVStore {
   journal_name: String,
   buffer_size: usize,
   high_water_mark_ratio: Option<f32>,
+  current_generation: u64,
 }
 
 impl VersionedKVStore {
   /// Create a new `VersionedKVStore` with the specified directory, name, and buffer size.
   ///
-  /// The journal file will be named `<name>.jrn` within the specified directory.
-  /// If the file already exists, it will be loaded with its existing contents.
+  /// The journal file will be named `<name>.jrn.N` where N is the generation number.
+  /// If a journal already exists, it will be loaded with its existing contents.
+  /// Legacy journals (`<name>.jrn`) are automatically migrated to generation 0.
   /// If the specified size is larger than an existing file, it will be resized while preserving
   /// data. If the specified size is smaller and the existing data doesn't fit, a fresh journal
   /// will be created.
   ///
   /// # Arguments
   /// * `dir_path` - Directory path where the journal will be stored
-  /// * `name` - Base name for the journal (e.g., "store" will create "store.jrn")
+  /// * `name` - Base name for the journal (e.g., "store" will create "store.jrn.0")
   /// * `buffer_size` - Size in bytes for the journal buffer
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
   ///
@@ -78,7 +121,12 @@ impl VersionedKVStore {
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
     let dir = dir_path.as_ref();
-    let journal_path = dir.join(format!("{name}.jrn"));
+
+    // Find or create journal with generation tracking
+    let (journal_path, generation) = find_active_journal(dir, name)?.unwrap_or_else(|| {
+      let path = dir.join(format!("{name}.jrn.0"));
+      (path, 0)
+    });
 
     let journal = if journal_path.exists() {
       // Try to open existing journal
@@ -101,6 +149,7 @@ impl VersionedKVStore {
       journal_name: name.to_string(),
       buffer_size,
       high_water_mark_ratio,
+      current_generation: generation,
     })
   }
 
@@ -111,7 +160,7 @@ impl VersionedKVStore {
   ///
   /// # Arguments
   /// * `dir_path` - Directory path where the journal is stored
-  /// * `name` - Base name of the journal (e.g., "store" for "store.jrn")
+  /// * `name` - Base name of the journal (e.g., "store" for "store.jrn.N")
   /// * `buffer_size` - Size in bytes for the journal buffer
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
   ///
@@ -128,7 +177,10 @@ impl VersionedKVStore {
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
     let dir = dir_path.as_ref();
-    let journal_path = dir.join(format!("{name}.jrn"));
+
+    // Find existing journal (fail if not found)
+    let (journal_path, generation) = find_active_journal(dir, name)?
+      .ok_or_else(|| anyhow::anyhow!("No journal file found for '{name}'"))?;
 
     let journal =
       MemMappedVersionedKVJournal::from_file(&journal_path, buffer_size, high_water_mark_ratio)?;
@@ -141,12 +193,8 @@ impl VersionedKVStore {
       journal_name: name.to_string(),
       buffer_size,
       high_water_mark_ratio,
+      current_generation: generation,
     })
-  }
-
-  /// Get the path to the active journal file.
-  fn journal_path(&self) -> PathBuf {
-    self.dir_path.join(format!("{}.jrn", self.journal_name))
   }
 
   /// Get a value by key.
@@ -268,7 +316,38 @@ impl VersionedKVStore {
   /// # Errors
   /// Returns an error if rotation fails.
   pub async fn rotate_journal(&mut self) -> anyhow::Result<()> {
-    // Get the maximum timestamp from current state for rotation tracking
+    // Increment generation counter for new journal
+    let next_generation = self.current_generation + 1;
+    let new_journal_path = self
+      .dir_path
+      .join(format!("{}.jrn.{next_generation}", self.journal_name));
+
+    // Create new journal with compacted state
+    let new_journal = self.create_rotated_journal(&new_journal_path).await?;
+
+    // Replace in-memory journal with new one (critical section - but no file ops!)
+    // The old journal file remains at the previous generation number
+    let old_journal = std::mem::replace(&mut self.journal, new_journal);
+    let old_generation = self.current_generation;
+    self.current_generation = next_generation;
+
+    // Drop the old journal to release the mmap
+    drop(old_journal);
+
+    // Best-effort cleanup: compress and archive the old journal
+    let old_journal_path = self
+      .dir_path
+      .join(format!("{}.jrn.{old_generation}", self.journal_name));
+    self.cleanup_archived_journal(&old_journal_path).await;
+
+    Ok(())
+  }
+
+  /// Clean up after successful rotation (best effort, non-critical).
+  ///
+  /// This compresses and removes the old journal. Failures are logged but not propagated.
+  async fn cleanup_archived_journal(&self, old_journal_path: &Path) {
+    // Generate archived path with timestamp
     let rotation_timestamp = self
       .cached_map
       .values()
@@ -276,41 +355,21 @@ impl VersionedKVStore {
       .max()
       .unwrap_or(0);
 
-    // Generate archived journal path with rotation timestamp (compressed)
-    let archived_path = self.generate_archived_path(rotation_timestamp);
-
-    // Create new journal with rotated state
-    let new_journal = self.create_rotated_journal().await?;
-
-    // Replace old journal with new one
-    let old_journal = std::mem::replace(&mut self.journal, new_journal);
-
-    // Move old journal to temporary location
-    drop(old_journal); // Release mmap before moving file
-    let journal_path = self.journal_path();
-    let temp_uncompressed = self.dir_path.join(format!("{}.jrn.old", self.journal_name));
-    tokio::fs::rename(&journal_path, &temp_uncompressed).await?;
-
-    // Rename new journal to base path
-    let temp_path = self.dir_path.join(format!("{}.jrn.tmp", self.journal_name));
-    tokio::fs::rename(&temp_path, &journal_path).await?;
-
-    // Compress the archived journal
-    compress_archived_journal(&temp_uncompressed, &archived_path).await?;
-
-    // Remove uncompressed version
-    tokio::fs::remove_file(&temp_uncompressed).await?;
-
-    Ok(())
-  }
-
-  /// Generate the archived journal path for a given rotation timestamp.
-  /// Archived journals use the .zz extension to indicate zlib compression.
-  fn generate_archived_path(&self, rotation_timestamp: u64) -> PathBuf {
-    self.dir_path.join(format!(
+    let archived_path = self.dir_path.join(format!(
       "{}.jrn.t{}.zz",
       self.journal_name, rotation_timestamp
-    ))
+    ));
+
+    // Try to compress the old journal
+    match compress_archived_journal(old_journal_path, &archived_path).await {
+      Ok(()) => {
+        // Compression succeeded, remove uncompressed version
+        let _ = tokio::fs::remove_file(old_journal_path).await;
+      },
+      Err(_e) => {
+        // Compression failed - keep the uncompressed version as a fallback
+      },
+    }
   }
 
   /// Create a new rotated journal with compacted state.
@@ -319,10 +378,10 @@ impl VersionedKVStore {
   /// journal with the same buffer size and compaction only removes redundant updates (old
   /// versions of keys), the compacted state is always ≤ the current journal size. If data fits
   /// during normal operation, it will always fit during rotation.
-  async fn create_rotated_journal(&self) -> anyhow::Result<MemMappedVersionedKVJournal> {
-    // Create temporary journal file
-    let temp_path = self.dir_path.join(format!("{}.jrn.tmp", self.journal_name));
-
+  async fn create_rotated_journal(
+    &self,
+    journal_path: &Path,
+  ) -> anyhow::Result<MemMappedVersionedKVJournal> {
     // Create in-memory buffer for new journal
     let mut buffer = vec![0u8; self.buffer_size];
 
@@ -333,10 +392,14 @@ impl VersionedKVStore {
       self.high_water_mark_ratio,
     )?;
 
-    // Write buffer to temporary file
-    tokio::fs::write(&temp_path, &buffer).await?;
+    // Write buffer to the new journal path
+    tokio::fs::write(journal_path, &buffer).await?;
 
     // Open as memory-mapped journal
-    MemMappedVersionedKVJournal::from_file(&temp_path, self.buffer_size, self.high_water_mark_ratio)
+    MemMappedVersionedKVJournal::from_file(
+      journal_path,
+      self.buffer_size,
+      self.high_water_mark_ratio,
+    )
   }
 }

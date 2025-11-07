@@ -23,7 +23,7 @@ fn empty_store() -> anyhow::Result<()> {
   assert!(store.is_empty());
   assert_eq!(store.len(), 0);
 
-  assert!(temp_dir.path().join("test.jrn").exists());
+  assert!(temp_dir.path().join("test.jrn.0").exists());
 
   Ok(())
 }
