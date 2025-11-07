@@ -176,7 +176,7 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
 
   let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   store
-    .insert("key".to_string(), make_string_value("1)"))
+    .insert("key".to_string(), make_string_value("1"))
     .await?;
   let ts1 = store
     .get_with_timestamp("key")
@@ -186,7 +186,7 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   std::thread::sleep(std::time::Duration::from_millis(10));
 
   store
-    .insert("key".to_string(), make_string_value("2)"))
+    .insert("key".to_string(), make_string_value("2"))
     .await?;
   let ts2 = store
     .get_with_timestamp("key")
@@ -196,7 +196,7 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   std::thread::sleep(std::time::Duration::from_millis(10));
 
   store
-    .insert("key".to_string(), make_string_value("3)"))
+    .insert("key".to_string(), make_string_value("3"))
     .await?;
   let ts3 = store
     .get_with_timestamp("key")

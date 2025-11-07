@@ -103,7 +103,7 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
     assert_eq!(
       store.get_with_timestamp("key2"),
       Some(&TimestampedValue {
-        value: make_string_value("42"),
+        value: make_string_value("foo"),
         timestamp: ts2,
       })
     );
@@ -205,7 +205,7 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
 
   let pre_rotation_state = store.as_hashmap().clone();
   let pre_rotation_ts = store
-    .get_with_timestamp("key4")
+    .get_with_timestamp("key1")
     .map(|tv| tv.timestamp)
     .unwrap();
 
@@ -215,14 +215,14 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
   // Verify state is preserved exactly
   let post_rotation_state = store.as_hashmap();
   assert_eq!(pre_rotation_state, *post_rotation_state);
-  assert_eq!(store.len(), 4);
+  assert_eq!(store.len(), 1);
 
   // Verify we can continue writing
   let ts_new = store
-    .insert("key5".to_string(), make_string_value("value5"))
+    .insert("key2".to_string(), make_string_value("value2"))
     .await?;
   assert!(ts_new >= pre_rotation_ts);
-  assert_eq!(store.len(), 5);
+  assert_eq!(store.len(), 2);
 
   Ok(())
 }
@@ -347,7 +347,10 @@ fn make_store_from_snapshot_file(
   // so we can open them as a store.
   let data = std::fs::read(snapshot_path)?;
   let decompressed_snapshot = decompress_zlib(&data)?;
-  std::fs::write(temp_dir.path().join("snapshot.jrn"), decompressed_snapshot)?;
+  std::fs::write(
+    temp_dir.path().join("snapshot.jrn.0"),
+    decompressed_snapshot,
+  )?;
 
   let store = VersionedKVStore::open_existing(temp_dir.path(), "snapshot", 4096, None)?;
 

@@ -10,12 +10,15 @@ doctest = false
 
 [dev-dependencies]
 tempfile.workspace = true
+ctor.workspace = true
 
 [dependencies]
 ahash.workspace        = true
+log.workspace        = true
 anyhow.workspace       = true
 bd-bonjson             = { path = "../bd-bonjson" }
 bd-proto             = { path = "../bd-proto" }
+bd-log             = { path = "../bd-log" }
 bd-client-common       = { path = "../bd-client-common" }
 bd-workspace-hack.workspace = true
 bytes.workspace        = true

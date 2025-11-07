@@ -15,6 +15,14 @@
 )]
 
 #[cfg(test)]
+#[ctor::ctor]
+fn test_global_init() {
+  // TODO(snowp): Ideally we'll depend on bd-test-helpers here, but that would create a cyclic
+  // dependency.
+  bd_log::SwapLogger::initialize();
+}
+
+#[cfg(test)]
 mod tests;
 
 pub mod kv_journal;

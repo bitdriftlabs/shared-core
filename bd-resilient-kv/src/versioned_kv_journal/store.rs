@@ -63,6 +63,12 @@ impl VersionedKVStore {
 
     let (journal_path, generation) = file_manager::find_active_journal(dir, name);
 
+    log::debug!(
+      "Opening VersionedKVStore journal at {:?} (generation {})",
+      journal_path,
+      generation
+    );
+
     let (journal, data_loss) = if journal_path.exists() {
       // Try to open existing journal
       MemMappedVersionedKVJournal::from_file(&journal_path, buffer_size, high_water_mark_ratio)
