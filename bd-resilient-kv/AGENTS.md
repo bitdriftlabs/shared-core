@@ -55,14 +55,14 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 - The async API enables efficient background compression without blocking the main thread
 
 **Version Tracking**:
-- Every write operation (`insert`, `remove`) returns a monotonically non-decreasing timestamp (nanoseconds since UNIX epoch)
+- Every write operation (`insert`, `remove`) returns a monotonically non-decreasing timestamp (microseconds since UNIX epoch)
 - Timestamps serve as both version identifiers and logical clocks
 - If the system clock goes backward, timestamps are clamped to the last timestamp to maintain monotonicity
 - Entries with `Value::Null` are treated as deletions but still timestamped
 - During rotation, snapshot entries preserve their original timestamps
 
 **Timestamp Tracking**:
-- Each entry records a timestamp (nanoseconds since UNIX epoch) when the write occurred
+- Each entry records a timestamp (microseconds since UNIX epoch) when the write occurred
 - Timestamps are monotonically non-decreasing, not strictly increasing
 - Multiple entries may share the same timestamp if the system clock doesn't advance between writes
 - This is expected behavior, particularly during rapid writes or in test environments
@@ -97,12 +97,14 @@ The `VersionedRecovery` utility provides point-in-time recovery by replaying jou
 - Architecture: Two journals with automatic switching
 - Compaction: Compresses entire state into inactive journal
 - No version tracking
+- Format: BONJSON-based entries
 
 **VersionedKVStore (Single Journal with Rotation)**:
 - Best for: Audit logs, state history, remote backup
 - Architecture: Single journal with archived versions
 - Rotation: Creates new journal with compacted state
 - Timestamp tracking: Every write returns a timestamp
+- Format: Protobuf-based entries (VERSION 3)
 
 ### 2. Compaction Efficiency
 **Key Insight**: Compaction via `reinit_from()` is already maximally efficient. It writes data in the most compact possible serialized form (hashmap → bytes). If even this compact representation exceeds high water marks, then the data volume itself is the limiting factor, not inefficient storage.
@@ -255,7 +257,7 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
 ### Impossible Failure Modes (Architectural Guarantees)
 
 1. **Timestamp Overflow (VersionedKVStore)**
-   - **Why Practically Impossible**: Uses u64 for nanosecond timestamps, would require 584+ years to overflow (u64::MAX nanoseconds ≈ year 2554)
+   - **Why Practically Impossible**: Uses u64 for microsecond timestamps, would require 584,000+ years to overflow (u64::MAX microseconds ≈ year 586,524 CE)
    - **Implication**: No overflow handling needed in practice
 
 ## Common Pitfalls

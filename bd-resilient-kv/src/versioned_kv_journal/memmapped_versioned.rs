@@ -5,9 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::versioned::VersionedKVJournal;
+use super::versioned::VersionedJournal;
 use crate::versioned_kv_journal::TimestampedValue;
 use ahash::AHashMap;
+use bd_proto::protos::state::payload::StateKeyValuePair;
 use memmap2::{MmapMut, MmapOptions};
 use std::fs::OpenOptions;
 use std::path::Path;
@@ -26,7 +27,7 @@ use std::path::Path;
 pub struct MemMappedVersionedKVJournal {
   // Note: mmap MUST de-init AFTER versioned_kv because mmap uses it.
   mmap: MmapMut,
-  versioned_kv: VersionedKVJournal<'static>,
+  versioned_kv: VersionedJournal<'static, StateKeyValuePair>,
 }
 
 impl MemMappedVersionedKVJournal {
@@ -81,7 +82,7 @@ impl MemMappedVersionedKVJournal {
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
-    let versioned_kv = VersionedKVJournal::new(buffer, high_water_mark_ratio)?;
+    let versioned_kv = VersionedJournal::new(buffer, high_water_mark_ratio)?;
 
     Ok(Self { mmap, versioned_kv })
   }
@@ -113,7 +114,7 @@ impl MemMappedVersionedKVJournal {
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
-    let versioned_kv = VersionedKVJournal::from_buffer(buffer, high_water_mark_ratio)?;
+    let versioned_kv = VersionedJournal::from_buffer(buffer, high_water_mark_ratio)?;
 
     Ok(Self { mmap, versioned_kv })
   }
@@ -132,8 +133,16 @@ impl MemMappedVersionedKVJournal {
   }
 
   /// Reconstruct the hashmap with timestamps by replaying all journal entries.
-  pub fn as_hashmap_with_timestamps(&self) -> (AHashMap<String, TimestampedValue>, bool) {
-    self.versioned_kv.to_hashmap_with_timestamps()
+  pub fn to_hashmap_with_timestamps(&self) -> (AHashMap<String, TimestampedValue>, bool) {
+    let mut map = AHashMap::new();
+    let complete = self.versioned_kv.read(|payload, timestamp| {
+      if let Some(value) = payload.value.clone().into_option() {
+        map.insert(payload.key.clone(), TimestampedValue { value, timestamp });
+      } else {
+        map.remove(&payload.key);
+      }
+    });
+    (map, !complete)
   }
 
   /// Synchronize changes to disk.

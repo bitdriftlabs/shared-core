@@ -12,7 +12,7 @@ use bd_client_common::error::InvariantError;
 use bd_proto::protos::state::payload::StateKeyValuePair;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Timestamped implementation of a key-value journaling system that uses timestamps
+/// Timestamped implementation of a journaling system that uses timestamps
 /// as the version identifier for point-in-time recovery.
 ///
 /// Each write operation is assigned a monotonically non-decreasing timestamp (in microseconds
@@ -21,12 +21,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// the same timestamp value to maintain ordering guarantees. When timestamps collide,
 /// journal ordering determines precedence.
 #[derive(Debug)]
-pub struct VersionedKVJournal<'a> {
+pub struct VersionedJournal<'a, M> {
   position: usize,
   buffer: &'a mut [u8],
   high_water_mark: usize,
   high_water_mark_triggered: bool,
   last_timestamp: u64, // Most recent timestamp written (for monotonic enforcement)
+  _payload_marker: std::marker::PhantomData<M>,
 }
 
 // Versioned KV files have the following structure:
@@ -39,11 +40,13 @@ pub struct VersionedKVJournal<'a> {
 // | ...      | Frame 2                  | Framed Entry   |
 // | ...      | Frame N                  | Framed Entry   |
 //
-// Frame format: [length: u32][timestamp_micros: varint][payload: bytes][crc32: u32]
+// Frame format: [length: u32][timestamp_micros: varint][protobuf_payload: bytes][crc32: u32]
 //
-// For testing, payload format is:
-//   - Set operation: "key:value" (UTF-8 string)
-//   - Delete operation: "key:null" (UTF-8 string)
+// Payload format:
+//   - Uses `StateKeyValuePair` protobuf messages
+//   - Contains `key: String` and `value: StateValue` fields
+//   - Set operation: `value` field is populated with the state value
+//   - Delete operation: `value` field is null/empty
 //
 // # Timestamp Semantics
 //
@@ -132,7 +135,7 @@ fn calculate_high_water_mark(
   Ok(high_water_mark)
 }
 
-impl<'a> VersionedKVJournal<'a> {
+impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   /// Create a new versioned journal using the provided buffer as storage space.
   ///
   /// # Arguments
@@ -159,6 +162,7 @@ impl<'a> VersionedKVJournal<'a> {
       high_water_mark,
       high_water_mark_triggered: false,
       last_timestamp: timestamp,
+      _payload_marker: std::marker::PhantomData,
     })
   }
 
@@ -196,6 +200,7 @@ impl<'a> VersionedKVJournal<'a> {
       high_water_mark,
       high_water_mark_triggered: position >= high_water_mark,
       last_timestamp: highest_timestamp,
+      _payload_marker: std::marker::PhantomData,
     })
   }
 
@@ -275,32 +280,20 @@ impl<'a> VersionedKVJournal<'a> {
     self.high_water_mark_triggered
   }
 
-  /// Reconstruct the hashmap with timestamps by replaying all journal entries.
+  /// Read and process all complete entries in the journal with their timestamps.
   ///
-  /// Returns a tuple containing:
-  /// - A hashmap of all key-value pairs with their timestamps
-  /// - A boolean indicating if we failed to decode the entire journal (true if incomplete)
-  pub fn to_hashmap_with_timestamps(&self) -> (AHashMap<String, TimestampedValue>, bool) {
-    let mut map = AHashMap::new();
+  ///  # Returns
+  ///  Returns `false` if there are incomplete entries remaining in the journal after reading.
+  pub fn read(&self, mut f: impl FnMut(&M, u64)) -> bool {
     let mut cursor = HEADER_SIZE;
 
     let mut incomplete = false;
     while cursor < self.position {
       let remaining = &self.buffer[cursor .. self.position];
 
-      match Frame::<StateKeyValuePair>::decode(remaining) {
+      match Frame::<M>::decode(remaining) {
         Ok((frame, consumed)) => {
-          if let Some(value) = frame.payload.value.into_option() {
-            map.insert(
-              frame.payload.key,
-              TimestampedValue {
-                value,
-                timestamp: frame.timestamp_micros,
-              },
-            );
-          } else {
-            map.remove(&frame.payload.key);
-          }
+          f(&frame.payload, frame.timestamp_micros);
 
           cursor += consumed;
         },
@@ -317,12 +310,12 @@ impl<'a> VersionedKVJournal<'a> {
       }
     }
 
-    (map, incomplete)
+    !incomplete
   }
 }
 
 /// Rotation utilities for creating new journals with compacted state
-impl<'a> VersionedKVJournal<'a> {
+impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   /// Create a new journal initialized with the compacted state from a snapshot.
   ///
   /// The new journal will have all current key-value pairs written with their **original

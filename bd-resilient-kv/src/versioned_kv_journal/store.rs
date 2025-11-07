@@ -8,7 +8,7 @@
 use crate::versioned_kv_journal::TimestampedValue;
 use crate::versioned_kv_journal::file_manager::{self, compress_archived_journal};
 use crate::versioned_kv_journal::memmapped_versioned::MemMappedVersionedKVJournal;
-use crate::versioned_kv_journal::versioned::VersionedKVJournal;
+use crate::versioned_kv_journal::versioned::VersionedJournal;
 use ahash::AHashMap;
 use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
 use std::path::{Path, PathBuf};
@@ -91,7 +91,7 @@ impl VersionedKVStore {
       )
     };
 
-    let (cached_map, incomplete) = journal.as_hashmap_with_timestamps();
+    let (cached_map, incomplete) = journal.to_hashmap_with_timestamps();
 
     if incomplete && data_loss == DataLoss::None {
       data_loss = DataLoss::Partial;
@@ -140,7 +140,7 @@ impl VersionedKVStore {
 
     let journal =
       MemMappedVersionedKVJournal::from_file(&journal_path, buffer_size, high_water_mark_ratio)?;
-    let (cached_map, incomplete) = journal.as_hashmap_with_timestamps();
+    let (cached_map, incomplete) = journal.to_hashmap_with_timestamps();
 
     Ok((
       Self {
@@ -352,8 +352,8 @@ impl VersionedKVStore {
     // Create in-memory buffer for new journal
     let mut buffer = vec![0u8; self.buffer_size];
 
-    // Use VersionedKVJournal to create rotated journal in memory
-    let _rotated = VersionedKVJournal::create_rotated_journal(
+    // Use VersionedJournal to create rotated journal in memory
+    let _rotated = VersionedJournal::<StateKeyValuePair>::create_rotated_journal(
       &mut buffer,
       &self.cached_map,
       self.high_water_mark_ratio,

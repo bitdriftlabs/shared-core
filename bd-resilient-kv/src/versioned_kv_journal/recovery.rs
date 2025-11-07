@@ -191,10 +191,7 @@ fn replay_journal_to_timestamp(
         }
 
         if let Some(value) = frame.payload.value.into_option() {
-          // Insertion - parse the value string back to a Value
-          // For now, we store everything as strings since that's what the current
-          // implementation does. In the future, you can parse the value_str to
-          // reconstruct the original type.
+          // Insertion - store the protobuf StateValue
           map.insert(
             frame.payload.key,
             TimestampedValue {
