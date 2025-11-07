@@ -6,8 +6,17 @@ This document describes the versioned journal format (VERSION 2) that enables po
 
 ## Goals
 
-1. **Timestamp-Based Versioning**: Each write operation records a monotonically non-decreasing timestamp (in nanoseconds since UNIX epoch) that serves as both a version identifier and a logical clock. This allows correlating entries with with time-based data.
-2. **Journal Rotation**: Periodic compaction with self-contained state in each journal
+1. Enable recovery of key-value store state at any historical point in time
+2. Preserve accurate write timestamps for audit and historical analysis
+3. Support (near) indefinite retention of historical data without unbounded growth of active storage
+
+## Design Overview
+
+The versioned journal format uses timestamps as version identifiers for each write operation. Each entry in the journal records the timestamp, key, and value (or deletion marker) for every operation. This allows the store to reconstruct state at any point in time by replaying entries up to a target timestamp.
+
+To prevent unbounded growth, the system uses journal rotation: when the active journal reaches a size threshold, it is rotated out and replaced with a new journal containing only the current compacted state. The old journal is archived and compressed. Each archived journal preserves the original write timestamps of all entries, enabling point-in-time recovery across rotation boundaries.
+
+The format is built on top of BONJSON, a binary JSON format that provides efficient serialization while maintaining flexibility for different value types.
 
 ## File Types
 
@@ -59,20 +68,11 @@ The byte-level layout of a VERSION 2 journal file:
 
 ### Header Structure (17 bytes total)
 
-1. **Format Version** (offset 0, 8 bytes)
-   - Type: `u64` little-endian
-   - Value: `2` for VERSION 2 format
-   - Purpose: Allows future format evolution
-
-2. **Position** (offset 8, 8 bytes)
-   - Type: `u64` little-endian
-   - Value: Current write position in the buffer
-   - Purpose: Tracks where next entry will be written
-
-3. **Array Start Type Code** (offset 16, 1 byte)
-   - Type: `u8`
-   - Value: BONJSON type code indicating array start
-   - Purpose: Begins the BONJSON array containing all entries
+| Field | Offset | Size | Type | Value | Purpose |
+|-------|--------|------|------|-------|---------|
+| Format Version | 0 | 8 bytes | u64 (little-endian) | `2` | Allows future format evolution |
+| Position | 8 | 8 bytes | u64 (little-endian) | Current write position | Tracks where next entry will be written |
+| Array Start Type Code | 16 | 1 byte | u8 | BONJSON array start code | Begins the BONJSON array containing all entries |
 
 ### Metadata Object (Variable size)
 
