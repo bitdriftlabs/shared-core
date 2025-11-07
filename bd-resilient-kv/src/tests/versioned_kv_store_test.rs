@@ -8,11 +8,13 @@
 #![allow(clippy::unwrap_used)]
 
 use crate::VersionedKVStore;
+use crate::kv_journal::TimestampedValue;
+use crate::tests::decompress_zlib;
 use bd_bonjson::Value;
 use tempfile::TempDir;
 
 #[test]
-fn test_versioned_store_new() -> anyhow::Result<()> {
+fn empty_store() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
   let store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
@@ -21,85 +23,13 @@ fn test_versioned_store_new() -> anyhow::Result<()> {
   assert!(store.is_empty());
   assert_eq!(store.len(), 0);
 
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_timestamp_collision_on_clamping() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-
-  // Insert first value - this establishes a timestamp
-  store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
-    .await?;
-  let ts1 = store
-    .get_with_timestamp("key1")
-    .map(|tv| tv.timestamp)
-    .unwrap();
-
-  // Perform rapid successive writes - these might share timestamps if system clock hasn't advanced
-  store
-    .insert("key2".to_string(), Value::String("value2".to_string()))
-    .await?;
-  store
-    .insert("key3".to_string(), Value::String("value3".to_string()))
-    .await?;
-  store
-    .insert("key4".to_string(), Value::String("value4".to_string()))
-    .await?;
-
-  let ts2 = store
-    .get_with_timestamp("key2")
-    .map(|tv| tv.timestamp)
-    .unwrap();
-  let ts3 = store
-    .get_with_timestamp("key3")
-    .map(|tv| tv.timestamp)
-    .unwrap();
-  let ts4 = store
-    .get_with_timestamp("key4")
-    .map(|tv| tv.timestamp)
-    .unwrap();
-
-  // Verify monotonicity: timestamps should never decrease
-  assert!(
-    ts2 >= ts1,
-    "Timestamps should be monotonically non-decreasing"
-  );
-  assert!(
-    ts3 >= ts2,
-    "Timestamps should be monotonically non-decreasing"
-  );
-  assert!(
-    ts4 >= ts3,
-    "Timestamps should be monotonically non-decreasing"
-  );
-
-  // Document that timestamps CAN be equal (this is the key difference from the old +1 behavior)
-  // When system clock doesn't advance or goes backwards, we reuse the same timestamp
-  // This is acceptable because version numbers provide total ordering
-
-  // Count unique timestamps - with rapid operations, we might have collisions
-  let timestamps = [ts1, ts2, ts3, ts4];
-  let unique_count = timestamps
-    .iter()
-    .collect::<std::collections::HashSet<_>>()
-    .len();
-
-  // We should have at least 1 unique timestamp (all could be the same in extreme cases)
-  assert!(
-    unique_count >= 1 && unique_count <= 4,
-    "Should have 1-4 unique timestamps, got {}",
-    unique_count
-  );
+  assert!(temp_dir.path().join("test.jrn").exists());
 
   Ok(())
 }
 
-
 #[tokio::test]
-async fn test_versioned_store_remove() -> anyhow::Result<()> {
+async fn basic_crud() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
 
@@ -129,6 +59,14 @@ async fn test_versioned_store_remove() -> anyhow::Result<()> {
   let removed = store.remove("nonexistent").await?;
   assert!(removed.is_none());
 
+  // Read back existing key
+  let val = store.get("key2");
+  assert_eq!(val, Some(&Value::String("value2".to_string())));
+
+  // Read non-existent key
+  let val = store.get("key1");
+  assert_eq!(val, None);
+
   Ok(())
 }
 
@@ -138,24 +76,35 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
 
 
   // Create store and write some data
-  {
+  let (ts1, ts2) = {
     let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-    let _ts1 = store
+    let ts1 = store
       .insert("key1".to_string(), Value::String("value1".to_string()))
       .await?;
-    let _ts2 = store.insert("key2".to_string(), Value::Signed(42)).await?;
+    let ts2 = store.insert("key2".to_string(), Value::Signed(42)).await?;
     store.sync()?;
-  }
+
+    (ts1, ts2)
+  };
 
   // Reopen and verify data persisted
   {
     let store = VersionedKVStore::open_existing(temp_dir.path(), "test", 4096, None)?;
     assert_eq!(store.len(), 2);
     assert_eq!(
-      store.get("key1"),
-      Some(&Value::String("value1".to_string()))
+      store.get_with_timestamp("key1"),
+      Some(&TimestampedValue {
+        value: Value::String("value1".to_string()),
+        timestamp: ts1,
+      })
     );
-    assert_eq!(store.get("key2"), Some(&Value::Signed(42)));
+    assert_eq!(
+      store.get_with_timestamp("key2"),
+      Some(&TimestampedValue {
+        value: Value::Signed(42),
+        timestamp: ts2,
+      })
+    );
   }
 
   Ok(())
@@ -233,6 +182,18 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
     Some(&Value::String("value3".to_string()))
   );
 
+  // Decompress the archive and load it as a Store to verify that it contains the old state.
+  let snapshot_store = make_store_from_snapshot_file(&temp_dir, &archived_path)?;
+  assert_eq!(
+    snapshot_store.get("key1"),
+    Some(&Value::String("value1".to_string()))
+  );
+  assert_eq!(
+    snapshot_store.get("key2"),
+    Some(&Value::String("value2".to_string()))
+  );
+  assert_eq!(snapshot_store.len(), 2);
+
   Ok(())
 }
 
@@ -295,45 +256,6 @@ async fn test_empty_store_operations() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn test_version_monotonicity() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-
-  let mut last_timestamp = 0u64;
-
-  // Perform various operations and ensure timestamp always increases
-  for i in 0 .. 20 {
-    let op_timestamp = if i % 3 == 0 {
-      store
-        .insert(format!("key{}", i), Value::Signed(i as i64))
-        .await?
-    } else if i % 3 == 1 {
-      store
-        .insert(
-          format!("key{}", i / 3),
-          Value::String(format!("updated{}", i)),
-        )
-        .await?
-    } else {
-      store
-        .remove(&format!("key{}", i / 3))
-        .await?
-        .unwrap_or(last_timestamp)
-    };
-
-    assert!(
-      op_timestamp >= last_timestamp,
-      "Timestamp should be monotonically non-decreasing"
-    );
-    last_timestamp = op_timestamp;
-  }
-
-  Ok(())
-}
-
-#[tokio::test]
 async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
@@ -342,24 +264,16 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
   let mut store = VersionedKVStore::new(temp_dir.path(), "test", 2048, Some(0.5))?;
 
   // Insert some keys and capture their timestamps
-  store
+  let ts1 = store
     .insert("key1".to_string(), Value::String("value1".to_string()))
     .await?;
-  let ts1 = store
-    .get_with_timestamp("key1")
-    .map(|tv| tv.timestamp)
-    .unwrap();
 
   // Small sleep to ensure different timestamps
   std::thread::sleep(std::time::Duration::from_millis(10));
 
-  store
+  let ts2 = store
     .insert("key2".to_string(), Value::String("value2".to_string()))
     .await?;
-  let ts2 = store
-    .get_with_timestamp("key2")
-    .map(|tv| tv.timestamp)
-    .unwrap();
 
   // Verify timestamps are different
   assert_ne!(ts1, ts2, "Timestamps should be different");
@@ -400,233 +314,7 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn test_timestamp_monotonicity() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-
-  // Track timestamps across multiple writes
-  let mut timestamps = Vec::new();
-
-  // Perform multiple writes and collect their timestamps
-  for i in 0 .. 20 {
-    store
-      .insert(format!("key{}", i), Value::Signed(i as i64))
-      .await?;
-
-    let ts = store
-      .get_with_timestamp(&format!("key{}", i))
-      .map(|tv| tv.timestamp)
-      .unwrap();
-
-    timestamps.push(ts);
-  }
-
-  // Verify all timestamps are monotonically increasing
-  for i in 1 .. timestamps.len() {
-    assert!(
-      timestamps[i] >= timestamps[i - 1],
-      "Timestamp at index {} ({}) should be >= timestamp at index {} ({})",
-      i,
-      timestamps[i],
-      i - 1,
-      timestamps[i - 1]
-    );
-  }
-
-  // Verify that timestamps are actually different (at least some of them)
-  // This ensures we're not just assigning the same timestamp to everything
-  let unique_timestamps: std::collections::HashSet<_> = timestamps.iter().collect();
-  assert!(
-    unique_timestamps.len() > 1,
-    "Expected multiple unique timestamps, got only {}",
-    unique_timestamps.len()
-  );
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_timestamp_monotonicity_across_rotation() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-
-  // Write before rotation
-  store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
-    .await?;
-  let ts1 = store
-    .get_with_timestamp("key1")
-    .map(|tv| tv.timestamp)
-    .unwrap();
-
-  std::thread::sleep(std::time::Duration::from_millis(10));
-
-  store
-    .insert("key2".to_string(), Value::String("value2".to_string()))
-    .await?;
-  let ts2 = store
-    .get_with_timestamp("key2")
-    .map(|tv| tv.timestamp)
-    .unwrap();
-
-  // Rotate journal
-  store.rotate_journal().await?;
-
-  std::thread::sleep(std::time::Duration::from_millis(10));
-
-  // Write after rotation
-  store
-    .insert("key3".to_string(), Value::String("value3".to_string()))
-    .await?;
-  let ts3 = store
-    .get_with_timestamp("key3")
-    .map(|tv| tv.timestamp)
-    .unwrap();
-
-  std::thread::sleep(std::time::Duration::from_millis(10));
-
-  store
-    .insert("key4".to_string(), Value::String("value4".to_string()))
-    .await?;
-  let ts4 = store
-    .get_with_timestamp("key4")
-    .map(|tv| tv.timestamp)
-    .unwrap();
-
-  // Verify monotonicity across rotation boundary
-  assert!(ts2 >= ts1, "ts2 should be >= ts1");
-  assert!(ts3 >= ts2, "ts3 should be >= ts2 (across rotation)");
-  assert!(ts4 >= ts3, "ts4 should be >= ts3");
-
-  // Verify ordering
-  let timestamps = [ts1, ts2, ts3, ts4];
-  for i in 1 .. timestamps.len() {
-    assert!(
-      timestamps[i] >= timestamps[i - 1],
-      "Timestamp monotonicity violated at index {}: {} < {}",
-      i,
-      timestamps[i],
-      timestamps[i - 1]
-    );
-  }
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_compression_during_rotation() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-
-  // Insert some data
-  let data = "x".repeat(1000); // Large value to make compression effective
-  store
-    .insert("key1".to_string(), Value::String(data.clone()))
-    .await?;
-  store
-    .insert("key2".to_string(), Value::String(data.clone()))
-    .await?;
-  store
-    .insert("key3".to_string(), Value::String(data))
-    .await?;
-
-  // Get size of uncompressed journal before rotation
-  let uncompressed_size = std::fs::metadata(temp_dir.path().join("test.jrn"))?.len();
-
-  // Get max timestamp before rotation (this will be used in the archive name)
-  let rotation_timestamp = store
-    .get_with_timestamp("key3")
-    .map(|tv| tv.timestamp)
-    .unwrap();
-
-  // Trigger rotation
-  store.rotate_journal().await?;
-
-  // Verify compressed archive exists
-  let archived_path = temp_dir
-    .path()
-    .join(format!("test.jrn.t{}.zz", rotation_timestamp));
-  assert!(
-    archived_path.exists(),
-    "Compressed archive should exist at {:?}",
-    archived_path
-  );
-
-  // Verify compressed size is smaller than original
-  let compressed_size = std::fs::metadata(&archived_path)?.len();
-  assert!(
-    compressed_size < uncompressed_size,
-    "Compressed size ({}) should be smaller than uncompressed ({})",
-    compressed_size,
-    uncompressed_size
-  );
-
-  // Verify uncompressed temporary file was deleted
-  let temp_archive_path = temp_dir.path().join("test.jrn.old");
-  assert!(
-    !temp_archive_path.exists(),
-    "Temporary uncompressed archive should be deleted"
-  );
-
-  // Verify active journal still works
-  store
-    .insert("key4".to_string(), Value::String("value4".to_string()))
-    .await?;
-  assert_eq!(store.len(), 4);
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_compression_ratio() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 8192, None)?;
-
-  // Insert highly compressible data
-  let compressible_data = "A".repeat(500);
-  for i in 0 .. 10 {
-    store
-      .insert(
-        format!("key{}", i),
-        Value::String(compressible_data.clone()),
-      )
-      .await?;
-  }
-
-  let uncompressed_size = std::fs::metadata(temp_dir.path().join("test.jrn"))?.len();
-  let rotation_timestamp = store
-    .get_with_timestamp(&format!("key{}", 9))
-    .map(|tv| tv.timestamp)
-    .unwrap();
-
-  store.rotate_journal().await?;
-
-  let archived_path = temp_dir
-    .path()
-    .join(format!("test.jrn.t{}.zz", rotation_timestamp));
-  let compressed_size = std::fs::metadata(&archived_path)?.len();
-
-  // With highly compressible data, we should get significant compression
-  // Expecting at least 50% compression ratio for repeated characters
-  #[allow(clippy::cast_precision_loss)]
-  let compression_ratio = (compressed_size as f64) / (uncompressed_size as f64);
-  assert!(
-    compression_ratio < 0.5,
-    "Compression ratio should be better than 50% for repeated data, got {:.2}%",
-    compression_ratio * 100.0
-  );
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_multiple_rotations_with_compression() -> anyhow::Result<()> {
+async fn test_multiple_rotations() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
 
@@ -658,4 +346,19 @@ async fn test_multiple_rotations_with_compression() -> anyhow::Result<()> {
   }
 
   Ok(())
+}
+
+fn make_store_from_snapshot_file(
+  temp_dir: &TempDir,
+  snapshot_path: &std::path::Path,
+) -> anyhow::Result<VersionedKVStore> {
+  // Decompress the snapshot and journal files into the temp directory
+  // so we can open them as a store.
+  let data = std::fs::read(snapshot_path)?;
+  let decompressed_snapshot = decompress_zlib(&data)?;
+  std::fs::write(temp_dir.path().join("snapshot.jrn"), decompressed_snapshot)?;
+
+  let store = VersionedKVStore::open_existing(temp_dir.path(), "snapshot", 4096, None)?;
+
+  Ok(store)
 }

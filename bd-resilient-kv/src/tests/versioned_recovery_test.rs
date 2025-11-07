@@ -9,21 +9,10 @@
 #![allow(clippy::case_sensitive_file_extension_comparisons)]
 
 use crate::VersionedKVStore;
+use crate::tests::decompress_zlib;
 use crate::versioned_recovery::VersionedRecovery;
 use bd_bonjson::Value;
 use tempfile::TempDir;
-
-/// Helper function to decompress zlib-compressed data.
-/// The `VersionedRecovery` no longer handles compression, so tests must decompress manually.
-fn decompress_zlib(data: &[u8]) -> anyhow::Result<Vec<u8>> {
-  use flate2::read::ZlibDecoder;
-  use std::io::Read;
-
-  let mut decoder = ZlibDecoder::new(data);
-  let mut decompressed = Vec::new();
-  decoder.read_to_end(&mut decompressed)?;
-  Ok(decompressed)
-}
 
 /// Helper function to find archived journal files in a directory.
 /// Returns sorted paths to all `.zz` compressed journal archives.
