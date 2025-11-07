@@ -232,9 +232,8 @@ async fn main() -> anyhow::Result<()> {
 - **Automatic Rotation**: When the journal exceeds the high water mark, it automatically:
   - Creates a new journal with the current state as versioned entries (compaction)
   - Preserves original timestamps from the initial writes
-  - Archives the old journal with `.v{version}.zz` suffix
+  - Archives the old journal with `.t{timestamp}.zz` suffix
   - Compresses the archived journal using zlib (RFC 1950, level 5) asynchronously
-  - Invokes the rotation callback (if provided) for upload/cleanup
 - **Automatic Compression**: Archived journals are automatically compressed to save disk space
   - Active journals remain uncompressed for write performance
   - Typically achieves >50% size reduction for text-based data
@@ -326,18 +325,7 @@ pub fn current_version(&self) -> u64
 
 **Internal Timestamp Tracking**: The store internally tracks timestamps for all writes and preserves them during journal rotation. These timestamps are used for recovery and point-in-time operations but are not exposed in the primary API. For advanced use cases requiring timestamp access, the `get_with_timestamp()` method is available.
 
-#### Type Aliases
-
-```rust
-pub type RotationCallback = Box<dyn FnMut(&Path, &Path, u64) + Send>;
-```
-
-**Note**: The callback receives three parameters:
-- `old_journal_path`: Path to the archived journal that was rotated out
-- `new_journal_path`: Path to the new active journal
-- `rotation_version`: The version at which rotation occurred
-
-## Architecture
+#### Core Methods
 
 ### Storage Models
 
@@ -362,18 +350,17 @@ The versioned store uses a different architecture optimized for version tracking
 2. **Version Tracking**: Every entry includes a monotonically increasing version number
 3. **Automatic Rotation**: When the journal reaches the high water mark:
    - Current state is serialized as versioned entries into a new journal
-   - Old journal is archived with `.v{version}` suffix (e.g., `store.jrn.v123`)
-   - Optional callback is invoked for remote upload/cleanup
-4. **Point-in-Time Recovery**: Journal can be replayed up to any previous version
+   - Old journal is archived with `.t{timestamp}` suffix (e.g., `store.jrn.t1699564800000000000`)
+4. **Point-in-Time Recovery**: Journal can be replayed up to any previous timestamp
 
 **Rotation Strategy**:
 ```
 Before rotation:
-  my_store.jrn (1MB, versions 1-1000)
+  my_store.jrn (1MB, multiple timestamped entries)
 
 After rotation:
-  my_store.jrn (compacted, starts at version 1001)
-  my_store.jrn.v1000.zz (archived, compressed, readonly)
+  my_store.jrn (compacted, new entries with fresh timestamps)
+  my_store.jrn.t1699564800000000000.zz (archived, compressed, readonly)
 ```
 
 **Compression**:
@@ -471,16 +458,15 @@ my_store.jrnb  # Journal B
 The versioned store manages a single journal with archived versions:
 
 - **Active Journal**: Current journal file (e.g., `my_store.jrn`)
-- **Archived Journals**: Previous versions with `.v{version}` suffix
+- **Archived Journals**: Previous versions with `.t{timestamp}` suffix
 - **Automatic Archival**: Old journals are preserved during rotation
-- **Callback Integration**: Application controls upload/cleanup of archived journals
 
 Example file structure after multiple rotations:
 ```
-my_store.jrn            # Active journal (current, uncompressed)
-my_store.jrn.v1000.zz   # Archived at version 1000 (compressed)
-my_store.jrn.v2500.zz   # Archived at version 2500 (compressed)
-my_store.jrn.v4000.zz   # Archived at version 4000 (compressed)
+my_store.jrn                           # Active journal (current, uncompressed)
+my_store.jrn.t1699564800000000000.zz   # Archived (compressed)
+my_store.jrn.t1699651200000000000.zz   # Archived (compressed)
+my_store.jrn.t1699737600000000000.zz   # Archived (compressed)
 ```
 
 ## Thread Safety
@@ -524,7 +510,7 @@ async fn main() -> anyhow::Result<()> {
 
     // After rotation, archived journals are automatically compressed:
     // - my_store.jrn (active, uncompressed)
-    // - my_store.jrn.v10000.zz (archived, compressed with zlib asynchronously)
+    // - my_store.jrn.t1699564800000000000.zz (archived, compressed with zlib asynchronously)
 
     Ok(())
 }

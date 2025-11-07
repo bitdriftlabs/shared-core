@@ -73,9 +73,8 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 **Rotation Strategy**:
 - Automatic rotation when journal size exceeds high water mark (triggered during async write operations)
 - Current state is compacted into a new journal as versioned entries
-- Old journal is archived with `.v{version}.zz` suffix
+- Old journal is archived with `.t{timestamp}.zz` suffix
 - Archived journals are automatically compressed using zlib (RFC 1950, level 5) asynchronously
-- Application controls upload/cleanup of archived journals
 
 **Compression**:
 - All archived journals are automatically compressed during rotation using async I/O
@@ -249,8 +248,8 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
    - **Action**: Handle as standard I/O errors
 
 4. **Compression/Archive Errors (VersionedKVStore)**
-   - **When**: Rotation callback receives archived journal path but compression fails
-   - **Result**: Application-level error in rotation callback
+   - **When**: Asynchronous compression of archived journal fails
+   - **Result**: Error during rotation's async compression phase
    - **Action**: Retry compression, handle cleanup appropriately
 
 ### Impossible Failure Modes (Architectural Guarantees)
@@ -352,7 +351,7 @@ When modifying or refactoring code in the kv_journal system (or any Rust codebas
 - **Always update documentation and comments** to reflect current functionality
 - Pay special attention to trait documentation, method comments, and module-level explanations
 - Update CLAUDE.md or similar architectural documentation when making significant changes
-- Ensure code comments explain the "why" behind complex logic, especially around callback mechanisms and compaction strategies
+- Ensure code comments explain the "why" behind complex logic, especially around compaction strategies and retry mechanisms
 
 ### Code Quality Checks
 After making changes, run these commands in order:
@@ -369,7 +368,7 @@ After making changes, run these commands in order:
 
 ### Testing
 - Run the full test suite: `cargo test -p bd-resilient-kv --lib`
-- Pay special attention to tests that verify callback behavior and automatic switching
+- Pay special attention to tests that verify automatic switching and retry logic
 - When adding new functionality, include comprehensive tests covering edge cases
 
 ### Git Workflow
