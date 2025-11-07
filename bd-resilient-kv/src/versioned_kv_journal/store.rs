@@ -65,9 +65,8 @@ impl VersionedKVStore {
     let (journal_path, generation) = file_manager::find_active_journal(dir, name);
 
     log::debug!(
-      "Opening VersionedKVStore journal at {:?} (generation {})",
-      journal_path,
-      generation
+      "Opening VersionedKVStore journal at {} (generation {generation})",
+      journal_path.display()
     );
 
     let (journal, mut data_loss) = if journal_path.exists() {

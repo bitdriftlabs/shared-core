@@ -304,7 +304,12 @@ impl<'a> VersionedKVJournal<'a> {
 
           cursor += consumed;
         },
-        Err(_) => {
+        Err(e) => {
+          // TODO(snowp): In this case we may want to reset the position to cursor to avoid
+          // carrying forward partial/corrupted data. This matters as the recovery will bail on
+          // corrupt data resulting in further writes also being lost.
+          log::debug!("Failed to decode frame at offset {cursor}: {e}");
+
           // Stop on first decode error
           incomplete = true;
           break;
