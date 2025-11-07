@@ -19,17 +19,9 @@ mod tests;
 
 pub mod kv_journal;
 pub mod kv_store;
-pub mod versioned_kv_store;
-pub mod versioned_recovery;
+mod versioned_kv_journal;
 
-pub use kv_journal::{
-  DoubleBufferedKVJournal,
-  InMemoryKVJournal,
-  KVJournal,
-  MemMappedKVJournal,
-  MemMappedVersionedKVJournal,
-  VersionedKVJournal,
-};
+pub use kv_journal::{DoubleBufferedKVJournal, InMemoryKVJournal, KVJournal, MemMappedKVJournal};
 pub use kv_store::KVStore;
-pub use versioned_kv_store::VersionedKVStore;
-pub use versioned_recovery::VersionedRecovery;
+pub use versioned_kv_journal::recovery::VersionedRecovery;
+pub use versioned_kv_journal::store::VersionedKVStore;

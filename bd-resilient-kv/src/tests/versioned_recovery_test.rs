@@ -10,8 +10,8 @@
 
 use crate::VersionedKVStore;
 use crate::tests::decompress_zlib;
-use crate::versioned_recovery::VersionedRecovery;
-use bd_bonjson::Value;
+use crate::versioned_kv_journal::make_string_value;
+use crate::versioned_kv_journal::recovery::VersionedRecovery;
 use tempfile::TempDir;
 
 /// Helper function to find archived journal files in a directory.
@@ -59,10 +59,10 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
 
 
   // Create a store with larger buffer to avoid BufferFull errors during test
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 2048, None)?;
+  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 2048, None)?;
 
   store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .insert("key1".to_string(), make_string_value("value1"))
     .await?;
   let ts1 = store
     .get_with_timestamp("key1")
@@ -72,12 +72,14 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   std::thread::sleep(std::time::Duration::from_millis(10));
 
   store
-    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .insert("key2".to_string(), make_string_value("value2"))
     .await?;
 
   // Write more data to trigger rotation
   for i in 0 .. 20 {
-    store.insert(format!("key{i}"), Value::Signed(i)).await?;
+    store
+      .insert(format!("key{i}"), make_string_value("foo"))
+      .await?;
   }
 
   let ts_middle = store
@@ -89,10 +91,7 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
 
   // Write more after rotation
   store
-    .insert(
-      "final".to_string(),
-      Value::String("final_value".to_string()),
-    )
+    .insert("final".to_string(), make_string_value("final_value"))
     .await?;
   let ts_final = store
     .get_with_timestamp("final")
@@ -136,7 +135,7 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   assert!(state_final.contains_key("final"));
   assert_eq!(
     state_final.get("final").map(|tv| &tv.value),
-    Some(&Value::String("final_value".to_string()))
+    Some(&make_string_value("final_value"))
   );
 
   Ok(())
@@ -148,7 +147,7 @@ async fn test_recovery_empty_journal() -> anyhow::Result<()> {
 
 
   // Create an empty store
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
   store.sync()?;
 
   // Rotate to create snapshot
@@ -175,8 +174,10 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
 
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-  store.insert("key".to_string(), Value::Signed(1)).await?;
+  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  store
+    .insert("key".to_string(), make_string_value("1)"))
+    .await?;
   let ts1 = store
     .get_with_timestamp("key")
     .map(|tv| tv.timestamp)
@@ -184,7 +185,9 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
 
   std::thread::sleep(std::time::Duration::from_millis(10));
 
-  store.insert("key".to_string(), Value::Signed(2)).await?;
+  store
+    .insert("key".to_string(), make_string_value("2)"))
+    .await?;
   let ts2 = store
     .get_with_timestamp("key")
     .map(|tv| tv.timestamp)
@@ -192,7 +195,9 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
 
   std::thread::sleep(std::time::Duration::from_millis(10));
 
-  store.insert("key".to_string(), Value::Signed(3)).await?;
+  store
+    .insert("key".to_string(), make_string_value("3)"))
+    .await?;
   let ts3 = store
     .get_with_timestamp("key")
     .map(|tv| tv.timestamp)
@@ -216,71 +221,19 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   let state_ts1 = recovery.recover_at_timestamp(ts1)?;
   assert_eq!(
     state_ts1.get("key").map(|tv| &tv.value),
-    Some(&Value::Signed(1))
+    Some(&make_string_value("1"))
   );
 
   let state_ts2 = recovery.recover_at_timestamp(ts2)?;
   assert_eq!(
     state_ts2.get("key").map(|tv| &tv.value),
-    Some(&Value::Signed(2))
+    Some(&make_string_value("2"))
   );
 
   let state_ts3 = recovery.recover_at_timestamp(ts3)?;
   assert_eq!(
     state_ts3.get("key").map(|tv| &tv.value),
-    Some(&Value::Signed(3))
-  );
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_recovery_various_value_types() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-  store
-    .insert("string".to_string(), Value::String("hello".to_string()))
-    .await?;
-  store
-    .insert("number".to_string(), Value::Signed(42))
-    .await?;
-  store
-    .insert("float".to_string(), Value::Float(3.14))
-    .await?;
-  store.insert("bool".to_string(), Value::Bool(true)).await?;
-  store.sync()?;
-
-  // Rotate to create snapshot
-  store.rotate_journal().await?;
-
-  // Read the snapshot
-  let archived_files = find_archived_journals(temp_dir.path())?;
-  assert_eq!(archived_files.len(), 1);
-  let compressed_data = std::fs::read(&archived_files[0])?;
-  let decompressed_data = decompress_zlib(&compressed_data)?;
-  let snapshot_ts = extract_rotation_timestamp(&archived_files[0])?;
-
-  let recovery = VersionedRecovery::new(vec![(&decompressed_data, snapshot_ts)])?;
-
-  let state = recovery.recover_current()?;
-  assert_eq!(state.len(), 4);
-  assert_eq!(
-    state.get("string").map(|tv| &tv.value),
-    Some(&Value::String("hello".to_string()))
-  );
-  assert_eq!(
-    state.get("number").map(|tv| &tv.value),
-    Some(&Value::Signed(42))
-  );
-  assert_eq!(
-    state.get("float").map(|tv| &tv.value),
-    Some(&Value::Float(3.14))
-  );
-  assert_eq!(
-    state.get("bool").map(|tv| &tv.value),
-    Some(&Value::Bool(true))
+    Some(&make_string_value("3"))
   );
 
   Ok(())
@@ -291,10 +244,10 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
   // Create a store and write some timestamped data
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .insert("key1".to_string(), make_string_value("value1"))
     .await?;
   let ts1 = store
     .get_with_timestamp("key1")
@@ -305,7 +258,7 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   std::thread::sleep(std::time::Duration::from_millis(10));
 
   store
-    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .insert("key2".to_string(), make_string_value("value2"))
     .await?;
   let ts2 = store
     .get_with_timestamp("key2")
@@ -316,7 +269,7 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   std::thread::sleep(std::time::Duration::from_millis(10));
 
   store
-    .insert("key1".to_string(), Value::String("updated1".to_string()))
+    .insert("key1".to_string(), make_string_value("updated1"))
     .await?;
   let ts3 = store
     .get_with_timestamp("key1")
@@ -343,7 +296,7 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   assert_eq!(state_ts1.len(), 1);
   assert_eq!(
     state_ts1.get("key1").map(|tv| &tv.value),
-    Some(&Value::String("value1".to_string()))
+    Some(&make_string_value("value1"))
   );
 
   // Recover at ts2: should have key1=value1, key2=value2
@@ -351,11 +304,11 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   assert_eq!(state_ts2.len(), 2);
   assert_eq!(
     state_ts2.get("key1").map(|tv| &tv.value),
-    Some(&Value::String("value1".to_string()))
+    Some(&make_string_value("value1"))
   );
   assert_eq!(
     state_ts2.get("key2").map(|tv| &tv.value),
-    Some(&Value::String("value2".to_string()))
+    Some(&make_string_value("value2"))
   );
 
   // Recover at ts3: should have key1=updated1, key2=value2
@@ -363,11 +316,11 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   assert_eq!(state_ts3.len(), 2);
   assert_eq!(
     state_ts3.get("key1").map(|tv| &tv.value),
-    Some(&Value::String("updated1".to_string()))
+    Some(&make_string_value("updated1"))
   );
   assert_eq!(
     state_ts3.get("key2").map(|tv| &tv.value),
-    Some(&Value::String("value2".to_string()))
+    Some(&make_string_value("value2"))
   );
 
   Ok(())
@@ -377,11 +330,11 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
 async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Write some data before rotation
   store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .insert("key1".to_string(), make_string_value("value1"))
     .await?;
   let ts1 = store
     .get_with_timestamp("key1")
@@ -391,7 +344,7 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
   std::thread::sleep(std::time::Duration::from_millis(10));
 
   store
-    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .insert("key2".to_string(), make_string_value("value2"))
     .await?;
   let ts2 = store
     .get_with_timestamp("key2")
@@ -405,7 +358,7 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
 
   // Write data after rotation
   store
-    .insert("key3".to_string(), Value::String("value3".to_string()))
+    .insert("key3".to_string(), make_string_value("value3"))
     .await?;
   let ts3 = store
     .get_with_timestamp("key3")

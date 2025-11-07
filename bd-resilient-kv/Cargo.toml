@@ -15,9 +15,13 @@ tempfile.workspace = true
 ahash.workspace        = true
 anyhow.workspace       = true
 bd-bonjson             = { path = "../bd-bonjson" }
+bd-proto             = { path = "../bd-proto" }
 bd-client-common       = { path = "../bd-client-common" }
 bd-workspace-hack.workspace = true
 bytes.workspace        = true
+crc32fast.workspace    = true
 flate2                 = { workspace = true, features = ["zlib"] }
 memmap2.workspace      = true
 tokio.workspace        = true
+protobuf.workspace        = true
+thiserror.workspace        = true

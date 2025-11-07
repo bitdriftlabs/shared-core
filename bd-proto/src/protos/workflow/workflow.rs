@@ -5753,9 +5753,6 @@ pub mod workflow {
         // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionTakeScreenshot)
         #[derive(PartialEq,Clone,Default,Debug)]
         pub struct ActionTakeScreenshot {
-            // message fields
-            // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionTakeScreenshot.id)
-            pub id: ::std::string::String,
             // special fields
             // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionTakeScreenshot.special_fields)
             pub special_fields: ::protobuf::SpecialFields,
@@ -5773,13 +5770,8 @@ pub mod workflow {
             }
 
             pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                let mut fields = ::std::vec::Vec::with_capacity(1);
+                let mut fields = ::std::vec::Vec::with_capacity(0);
                 let mut oneofs = ::std::vec::Vec::with_capacity(0);
-                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                    "id",
-                    |m: &ActionTakeScreenshot| { &m.id },
-                    |m: &mut ActionTakeScreenshot| { &mut m.id },
-                ));
                 ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ActionTakeScreenshot>(
                     "Workflow.Action.ActionTakeScreenshot",
                     fields,
@@ -5798,9 +5790,6 @@ pub mod workflow {
             fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
                 while let Some(tag) = is.read_raw_tag_or_eof()? {
                     match tag {
-                        10 => {
-                            self.id = is.read_string()?;
-                        },
                         tag => {
                             ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                         },
@@ -5813,18 +5802,12 @@ pub mod workflow {
             #[allow(unused_variables)]
             fn compute_size(&self) -> u64 {
                 let mut my_size = 0;
-                if !self.id.is_empty() {
-                    my_size += ::protobuf::rt::string_size(1, &self.id);
-                }
                 my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
                 self.special_fields.cached_size().set(my_size as u32);
                 my_size
             }
 
             fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-                if !self.id.is_empty() {
-                    os.write_string(1, &self.id)?;
-                }
                 os.write_unknown_fields(self.special_fields.unknown_fields())?;
                 ::std::result::Result::Ok(())
             }
@@ -5842,13 +5825,11 @@ pub mod workflow {
             }
 
             fn clear(&mut self) {
-                self.id.clear();
                 self.special_fields.clear();
             }
 
             fn default_instance() -> &'static ActionTakeScreenshot {
                 static instance: ActionTakeScreenshot = ActionTakeScreenshot {
-                    id: ::std::string::String::new(),
                     special_fields: ::protobuf::SpecialFields::new(),
                 };
                 &instance
@@ -7094,7 +7075,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ic.protobuf.workflow.v1\x1a\x17validate/validate.proto\x1a5bitdrift_publ\
     ic/protobuf/matcher/v1/log_matcher.proto\"f\n\x16WorkflowsConfiguration\
     \x12L\n\tworkflows\x18\x01\x20\x03(\x0b2..bitdrift_public.protobuf.workf\
-    low.v1.WorkflowR\tworkflows\"\xa35\n\x08Workflow\x12\x17\n\x02id\x18\x01\
+    low.v1.WorkflowR\tworkflows\"\x905\n\x08Workflow\x12\x17\n\x02id\x18\x01\
     \x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12V\n\x06states\x18\x02\
     \x20\x03(\x0b24.bitdrift_public.protobuf.workflow.v1.Workflow.StateR\x06\
     statesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12V\n\texecution\x18\x03\x20\
@@ -7141,7 +7122,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x0eextension_type\x12\x03\xf8B\x01\x1a\x89\x01\n\x0cRuleLogMatch\x12Z\n\
     \x0blog_matcher\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf.matcher.\
     v1.LogMatcherR\nlogMatcherB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x1d\n\
-    \x05count\x18\x02\x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a\xf4\
+    \x05count\x18\x02\x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a\xe1\
     \x1d\n\x06Action\x12|\n\x14action_flush_buffers\x18\x01\x20\x01(\x0b2H.b\
     itdrift_public.protobuf.workflow.v1.Workflow.Action.ActionFlushBuffersH\
     \0R\x12actionFlushBuffers\x12v\n\x12action_emit_metric\x18\x02\x20\x01(\
@@ -7215,23 +7196,22 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x18\x04\x20\x01(\x08H\0R\x10logBodyExtracted\x12{\n\x16feature_flag_ext\
     racted\x18\x05\x20\x01(\x0b2C.bitdrift_public.protobuf.workflow.v1.Workf\
     low.FeatureFlagExtractedH\0R\x14featureFlagExtractedB\x0f\n\x08tag_type\
-    \x12\x03\xf8B\x01\x1a/\n\x14ActionTakeScreenshot\x12\x17\n\x02id\x18\x01\
-    \x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01B\x12\n\x0baction_type\x12\
-    \x03\xf8B\x01\x1a\xb9\x01\n\tExecution\x12~\n\x13execution_exclusive\x18\
-    \x01\x20\x01(\x0b2K.bitdrift_public.protobuf.workflow.v1.Workflow.Execut\
-    ion.ExecutionExclusiveH\0R\x12executionExclusive\x1a\x14\n\x12ExecutionE\
-    xclusiveB\x10\n\x0eexecution_typeJ\x04\x08\x02\x10\x03\x1a6\n\x15LimitMa\
-    tchedLogsCount\x12\x1d\n\x05count\x18\x01\x20\x01(\rR\x05countB\x07\xfaB\
-    \x04*\x02\x20\0\x1a9\n\rLimitDuration\x12(\n\x0bduration_ms\x18\x02\x20\
-    \x01(\x04R\ndurationMsB\x07\xfaB\x042\x02\x20\0\x1a\xb1\x01\n\x0eFieldEx\
-    tracted\x12&\n\nfield_name\x18\x01\x20\x01(\tR\tfieldNameB\x07\xfaB\x04r\
-    \x02\x10\x01\x12[\n\x05exact\x18\x02\x20\x01(\x0b2C.bitdrift_public.prot\
-    obuf.workflow.v1.Workflow.FieldExtracted.ExactH\0R\x05exact\x1a\x07\n\
-    \x05ExactB\x11\n\x0fextraction_type\x1a\xb2\x01\n\x14FeatureFlagExtracte\
-    d\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\
-    \x01\x12a\n\x05exact\x18\x02\x20\x01(\x0b2I.bitdrift_public.protobuf.wor\
-    kflow.v1.Workflow.FeatureFlagExtracted.ExactH\0R\x05exact\x1a\x07\n\x05E\
-    xactB\x11\n\x0fextraction_typeb\x06proto3\
+    \x12\x03\xf8B\x01\x1a\x1c\n\x14ActionTakeScreenshotJ\x04\x08\x01\x10\x02\
+    B\x12\n\x0baction_type\x12\x03\xf8B\x01\x1a\xb9\x01\n\tExecution\x12~\n\
+    \x13execution_exclusive\x18\x01\x20\x01(\x0b2K.bitdrift_public.protobuf.\
+    workflow.v1.Workflow.Execution.ExecutionExclusiveH\0R\x12executionExclus\
+    ive\x1a\x14\n\x12ExecutionExclusiveB\x10\n\x0eexecution_typeJ\x04\x08\
+    \x02\x10\x03\x1a6\n\x15LimitMatchedLogsCount\x12\x1d\n\x05count\x18\x01\
+    \x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a9\n\rLimitDuration\x12\
+    (\n\x0bduration_ms\x18\x02\x20\x01(\x04R\ndurationMsB\x07\xfaB\x042\x02\
+    \x20\0\x1a\xb1\x01\n\x0eFieldExtracted\x12&\n\nfield_name\x18\x01\x20\
+    \x01(\tR\tfieldNameB\x07\xfaB\x04r\x02\x10\x01\x12[\n\x05exact\x18\x02\
+    \x20\x01(\x0b2C.bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtra\
+    cted.ExactH\0R\x05exact\x1a\x07\n\x05ExactB\x11\n\x0fextraction_type\x1a\
+    \xb2\x01\n\x14FeatureFlagExtracted\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\
+    \x04nameB\x07\xfaB\x04r\x02\x10\x01\x12a\n\x05exact\x18\x02\x20\x01(\x0b\
+    2I.bitdrift_public.protobuf.workflow.v1.Workflow.FeatureFlagExtracted.Ex\
+    actH\0R\x05exact\x1a\x07\n\x05ExactB\x11\n\x0fextraction_typeb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

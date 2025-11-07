@@ -94,11 +94,7 @@ pub trait KVJournal {
 pub mod double_buffered;
 pub mod in_memory;
 pub mod memmapped;
-pub mod memmapped_versioned;
-pub mod versioned;
 
 pub use double_buffered::DoubleBufferedKVJournal;
 pub use in_memory::InMemoryKVJournal;
 pub use memmapped::MemMappedKVJournal;
-pub use memmapped_versioned::MemMappedVersionedKVJournal;
-pub use versioned::{TimestampedValue, VersionedKVJournal};

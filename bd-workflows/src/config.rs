@@ -29,7 +29,6 @@ use workflow::workflow::action::{
   Action_type,
   ActionEmitMetric as ActionEmitMetricProto,
   ActionEmitSankeyDiagram as ActionEmitSankeyDiagramProto,
-  ActionTakeScreenshot as ActionTakeScreenshotProto,
 };
 use workflow::workflow::rule::Rule_type;
 use workflow::workflow::transition_extension::sankey_diagram_value_extraction;
@@ -594,9 +593,7 @@ impl Action {
       Action_type::ActionEmitSankeyDiagram(diagram) => {
         Ok(Self::EmitSankey(ActionEmitSankey::try_from_proto(diagram)?))
       },
-      Action_type::ActionTakeScreenshot(action) => Ok(Self::TakeScreenshot(
-        ActionTakeScreenshot::try_from_proto(action),
-      )),
+      Action_type::ActionTakeScreenshot(_) => Ok(Self::TakeScreenshot(ActionTakeScreenshot)),
       Action_type::ActionGenerateLog(action) => Ok(Self::GenerateLog(action)),
     }
   }
@@ -814,15 +811,7 @@ impl ActionEmitSankey {
 //
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ActionTakeScreenshot {
-  id: String,
-}
-
-impl ActionTakeScreenshot {
-  fn try_from_proto(proto: ActionTakeScreenshotProto) -> Self {
-    Self { id: proto.id }
-  }
-}
+pub struct ActionTakeScreenshot;
 
 pub type FieldKey = String;
 

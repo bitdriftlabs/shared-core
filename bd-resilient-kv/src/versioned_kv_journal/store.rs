@@ -5,73 +5,18 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::kv_journal::{MemMappedVersionedKVJournal, TimestampedValue, VersionedKVJournal};
+use crate::versioned_kv_journal::TimestampedValue;
+use crate::versioned_kv_journal::file_manager::{self, compress_archived_journal};
+use crate::versioned_kv_journal::memmapped_versioned::MemMappedVersionedKVJournal;
+use crate::versioned_kv_journal::versioned::VersionedKVJournal;
 use ahash::AHashMap;
-use bd_bonjson::Value;
+use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
 use std::path::{Path, PathBuf};
 
-/// Find the active journal file by searching for the highest generation number.
-///
-/// Returns the path to the journal and its generation number, or None if no journal exists.
-/// Supports both legacy journals (`name.jrn`) and generation-based journals (`name.jrn.N`).
-fn find_active_journal(dir: &Path, name: &str) -> anyhow::Result<Option<(PathBuf, u64)>> {
-  // First check for legacy journal format (name.jrn without generation)
-  let legacy_path = dir.join(format!("{name}.jrn"));
-  if legacy_path.exists() {
-    // Migrate legacy journal to generation 0
-    let gen_path = dir.join(format!("{name}.jrn.0"));
-    if !gen_path.exists() {
-      std::fs::rename(&legacy_path, &gen_path)?;
-      return Ok(Some((gen_path, 0)));
-    }
-  }
-
-  // Search for generation-based journals
-  let pattern = format!("{name}.jrn.");
-
-  let mut max_gen = None;
-  for entry in std::fs::read_dir(dir)? {
-    let entry = entry?;
-    let filename = entry.file_name();
-    let filename_str = filename.to_string_lossy();
-
-    if let Some(suffix) = filename_str.strip_prefix(&pattern) {
-      // Parse generation number (before any .zz or other extensions)
-      if let Some(gen_str) = suffix.split('.').next()
-        && let Ok(generation) = gen_str.parse::<u64>()
-      {
-        max_gen = Some(max_gen.map_or(generation, |current: u64| current.max(generation)));
-      }
-    }
-  }
-
-  Ok(max_gen.map(|generation| {
-    let path = dir.join(format!("{name}.jrn.{generation}"));
-    (path, generation)
-  }))
-}
-
-/// Compress an archived journal using zlib.
-///
-/// This function compresses the source file to the destination using zlib compression.
-/// The compression is performed in a blocking task to avoid holding up the async runtime.
-async fn compress_archived_journal(source: &Path, dest: &Path) -> anyhow::Result<()> {
-  let source = source.to_owned();
-  let dest = dest.to_owned();
-
-  tokio::task::spawn_blocking(move || {
-    use flate2::Compression;
-    use flate2::write::ZlibEncoder;
-    use std::io::{BufReader, copy};
-
-    let source_file = std::fs::File::open(&source)?;
-    let dest_file = std::fs::File::create(&dest)?;
-    let mut encoder = ZlibEncoder::new(dest_file, Compression::new(5));
-    copy(&mut BufReader::new(source_file), &mut encoder)?;
-    encoder.finish()?;
-    Ok::<_, anyhow::Error>(())
-  })
-  .await?
+#[derive(Debug)]
+pub enum DataLoss {
+  Total,
+  None,
 }
 
 /// A persistent key-value store with timestamp tracking.
@@ -106,51 +51,54 @@ impl VersionedKVStore {
   /// data. If the specified size is smaller and the existing data doesn't fit, a fresh journal
   /// will be created.
   ///
-  /// # Arguments
-  /// * `dir_path` - Directory path where the journal will be stored
-  /// * `name` - Base name for the journal (e.g., "store" will create "store.jrn.0")
-  /// * `buffer_size` - Size in bytes for the journal buffer
-  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  ///
   /// # Errors
-  /// Returns an error if the journal file cannot be created/opened or if initialization fails.
+  /// Returns an error if we failed to create or open the journal file.
   pub fn new<P: AsRef<Path>>(
     dir_path: P,
     name: &str,
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
-  ) -> anyhow::Result<Self> {
+  ) -> anyhow::Result<(Self, DataLoss)> {
     let dir = dir_path.as_ref();
 
-    // Find or create journal with generation tracking
-    let (journal_path, generation) = find_active_journal(dir, name)?.unwrap_or_else(|| {
-      let path = dir.join(format!("{name}.jrn.0"));
-      (path, 0)
-    });
+    let (journal_path, generation) = file_manager::find_active_journal(dir, name);
 
-    let journal = if journal_path.exists() {
+    let (journal, data_loss) = if journal_path.exists() {
       // Try to open existing journal
       MemMappedVersionedKVJournal::from_file(&journal_path, buffer_size, high_water_mark_ratio)
+        .map(|j| (j, DataLoss::None))
         .or_else(|_| {
+          // TODO(snowp): Distinguish between partial and total data loss.
+
           // Data is corrupt or unreadable, create fresh journal
-          MemMappedVersionedKVJournal::new(&journal_path, buffer_size, high_water_mark_ratio)
+          Ok::<_, anyhow::Error>((
+            MemMappedVersionedKVJournal::new(&journal_path, buffer_size, high_water_mark_ratio)?,
+            DataLoss::Total,
+          ))
         })?
     } else {
       // Create new journal
-      MemMappedVersionedKVJournal::new(&journal_path, buffer_size, high_water_mark_ratio)?
+
+      (
+        MemMappedVersionedKVJournal::new(&journal_path, buffer_size, high_water_mark_ratio)?,
+        DataLoss::None,
+      )
     };
 
     let cached_map = journal.as_hashmap_with_timestamps()?;
 
-    Ok(Self {
-      journal,
-      cached_map,
-      dir_path: dir.to_path_buf(),
-      journal_name: name.to_string(),
-      buffer_size,
-      high_water_mark_ratio,
-      current_generation: generation,
-    })
+    Ok((
+      Self {
+        journal,
+        cached_map,
+        dir_path: dir.to_path_buf(),
+        journal_name: name.to_string(),
+        buffer_size,
+        high_water_mark_ratio,
+        current_generation: generation,
+      },
+      data_loss,
+    ))
   }
 
   /// Open an existing `VersionedKVStore` from a pre-existing journal file.
@@ -178,9 +126,7 @@ impl VersionedKVStore {
   ) -> anyhow::Result<Self> {
     let dir = dir_path.as_ref();
 
-    // Find existing journal (fail if not found)
-    let (journal_path, generation) = find_active_journal(dir, name)?
-      .ok_or_else(|| anyhow::anyhow!("No journal file found for '{name}'"))?;
+    let (journal_path, generation) = file_manager::find_active_journal(dir, name);
 
     let journal =
       MemMappedVersionedKVJournal::from_file(&journal_path, buffer_size, high_water_mark_ratio)?;
@@ -201,7 +147,7 @@ impl VersionedKVStore {
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
-  pub fn get(&self, key: &str) -> Option<&Value> {
+  pub fn get(&self, key: &str) -> Option<&StateValue> {
     self.cached_map.get(key).map(|tv| &tv.value)
   }
 
@@ -219,14 +165,21 @@ impl VersionedKVStore {
   ///
   /// # Errors
   /// Returns an error if the value cannot be written to the journal.
-  pub async fn insert(&mut self, key: String, value: Value) -> anyhow::Result<u64> {
-    let timestamp = if matches!(value, Value::Null) {
+  pub async fn insert(&mut self, key: String, value: StateValue) -> anyhow::Result<u64> {
+    let timestamp = if value.value_type.is_none() {
       // Inserting null is equivalent to deletion
-      let timestamp = self.journal.delete_versioned(&key)?;
+      let timestamp = self.journal.insert_entry(StateKeyValuePair {
+        key: key.clone(),
+        ..Default::default()
+      })?;
       self.cached_map.remove(&key);
       timestamp
     } else {
-      let timestamp = self.journal.set_versioned(&key, &value)?;
+      let timestamp = self.journal.insert_entry(StateKeyValuePair {
+        key: key.clone(),
+        value: Some(value.clone()).into(),
+        ..Default::default()
+      })?;
       self
         .cached_map
         .insert(key, TimestampedValue { value, timestamp });
@@ -252,7 +205,10 @@ impl VersionedKVStore {
       return Ok(None);
     }
 
-    let timestamp = self.journal.delete_versioned(key)?;
+    let timestamp = self.journal.insert_entry(StateKeyValuePair {
+      key: key.to_string(),
+      ..Default::default()
+    })?;
     self.cached_map.remove(key);
 
     // Check if rotation is needed
@@ -299,9 +255,6 @@ impl VersionedKVStore {
   ///
   /// This is a blocking operation that performs synchronous I/O. In async contexts,
   /// consider wrapping this call with `tokio::task::spawn_blocking`.
-  ///
-  /// # Errors
-  /// Returns an error if the sync operation fails.
   pub fn sync(&self) -> anyhow::Result<()> {
     self.journal.sync()
   }
@@ -312,9 +265,6 @@ impl VersionedKVStore {
   /// The archived journal will be compressed using zlib to reduce storage size.
   /// Rotation typically happens automatically when the high water mark is reached, but this
   /// method allows manual control when needed.
-  ///
-  /// # Errors
-  /// Returns an error if rotation fails.
   pub async fn rotate_journal(&mut self) -> anyhow::Result<()> {
     // Increment generation counter for new journal
     let next_generation = self.current_generation + 1;

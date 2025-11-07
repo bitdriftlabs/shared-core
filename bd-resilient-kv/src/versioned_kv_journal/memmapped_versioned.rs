@@ -5,9 +5,9 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::versioned::{TimestampedValue, VersionedKVJournal};
+use super::versioned::VersionedKVJournal;
+use crate::versioned_kv_journal::TimestampedValue;
 use ahash::AHashMap;
-use bd_bonjson::Value;
 use memmap2::{MmapMut, MmapOptions};
 use std::fs::OpenOptions;
 use std::path::Path;
@@ -118,30 +118,10 @@ impl MemMappedVersionedKVJournal {
     Ok(Self { mmap, versioned_kv })
   }
 
-  /// Set a key-value pair with automatic timestamp assignment.
-  ///
+  /// Insert a new entry into the journal with the given payload.
   /// Returns the timestamp of the operation.
-  ///
-  /// # Errors
-  /// Returns an error if the journal entry cannot be written.
-  pub fn set_versioned(&mut self, key: &str, value: &Value) -> anyhow::Result<u64> {
-    self.versioned_kv.set_versioned(key, value)
-  }
-
-  /// Delete a key with automatic timestamp assignment.
-  ///
-  /// Returns the timestamp of the operation.
-  ///
-  /// # Errors
-  /// Returns an error if the journal entry cannot be written.
-  pub fn delete_versioned(&mut self, key: &str) -> anyhow::Result<u64> {
-    self.versioned_kv.delete_versioned(key)
-  }
-
-  /// Get the current high water mark position.
-  #[must_use]
-  pub fn high_water_mark(&self) -> usize {
-    self.versioned_kv.high_water_mark()
+  pub fn insert_entry(&mut self, message: impl protobuf::MessageFull) -> anyhow::Result<u64> {
+    self.versioned_kv.insert_entry(message)
   }
 
   /// Check if the high water mark has been triggered.
@@ -150,26 +130,12 @@ impl MemMappedVersionedKVJournal {
     self.versioned_kv.is_high_water_mark_triggered()
   }
 
-  /// Get the current buffer usage as a percentage (0.0 to 1.0).
-  #[must_use]
-  pub fn buffer_usage_ratio(&self) -> f32 {
-    self.versioned_kv.buffer_usage_ratio()
-  }
-
-  /// Reconstruct the hashmap by replaying all journal entries.
-  ///
-  /// # Errors
-  /// Returns an error if the buffer cannot be decoded.
-  pub fn as_hashmap(&self) -> anyhow::Result<AHashMap<String, Value>> {
-    self.versioned_kv.as_hashmap()
-  }
-
   /// Reconstruct the hashmap with timestamps by replaying all journal entries.
   ///
   /// # Errors
   /// Returns an error if the buffer cannot be decoded.
   pub fn as_hashmap_with_timestamps(&self) -> anyhow::Result<AHashMap<String, TimestampedValue>> {
-    self.versioned_kv.as_hashmap_with_timestamps()
+    self.versioned_kv.to_hashmap_with_timestamps()
   }
 
   /// Synchronize changes to disk.
@@ -185,18 +151,5 @@ impl MemMappedVersionedKVJournal {
   /// Returns an error if the sync operation fails.
   pub fn sync(&self) -> anyhow::Result<()> {
     self.mmap.flush().map_err(Into::into)
-  }
-
-  /// Get the size of the underlying file in bytes.
-  #[must_use]
-  pub fn file_size(&self) -> usize {
-    self.mmap.len()
-  }
-
-  /// Get a copy of the buffer for testing purposes
-  #[cfg(test)]
-  #[must_use]
-  pub fn buffer_copy(&self) -> Vec<u8> {
-    self.versioned_kv.buffer_copy()
   }
 }

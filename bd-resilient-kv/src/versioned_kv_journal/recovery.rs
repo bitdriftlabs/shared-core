@@ -5,10 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::kv_journal::TimestampedValue;
+use crate::versioned_kv_journal::TimestampedValue;
+use crate::versioned_kv_journal::framing::Frame;
 use ahash::AHashMap;
-use bd_bonjson::Value;
-use bd_bonjson::decoder::from_slice;
+use bd_proto::protos::state::payload::StateKeyValuePair;
 
 /// A utility for recovering state at arbitrary timestamps from journal snapshots.
 ///
@@ -36,7 +36,7 @@ impl VersionedRecovery {
   /// Create a new recovery utility from a list of uncompressed snapshot byte slices.
   ///
   /// The snapshots should be provided in chronological order (oldest to newest).
-  /// Each snapshot must be a valid uncompressed versioned journal (VERSION 2 format).
+  /// Each snapshot must be a valid uncompressed versioned journal (VERSION 3 format).
   ///
   /// # Arguments
   ///
@@ -153,71 +153,22 @@ fn replay_journal_to_timestamp(
   target_timestamp: u64,
   map: &mut AHashMap<String, TimestampedValue>,
 ) -> anyhow::Result<()> {
-  let array = read_bonjson_payload(buffer)?;
-
-  let Value::Array(entries) = &array else {
-    return Ok(());
-  };
-
-  for (index, entry) in entries.iter().enumerate() {
-    // Skip metadata (first entry)
-    if index == 0 {
-      continue;
-    }
-
-    let Value::Object(obj) = entry else {
-      continue;
-    };
-
-    // Extract timestamp (skip entries without timestamp)
-    let Some(entry_timestamp) = read_u64_field(obj, "t") else {
-      continue;
-    };
-
-    // Only apply entries up to target timestamp
-    if entry_timestamp > target_timestamp {
-      break;
-    }
-
-    let (Some(Value::String(key)), Some(operation)) = (obj.get("k"), obj.get("o")) else {
-      continue;
-    };
-
-    // Extract key and operation
-    if operation.is_null() {
-      map.remove(key);
-    } else {
-      map.insert(
-        key.clone(),
-        TimestampedValue {
-          value: operation.clone(),
-          timestamp: entry_timestamp,
-        },
-      );
-    }
-  }
-
-  Ok(())
-}
-
-/// Read the bonjson payload from a snapshot buffer.
-fn read_bonjson_payload(buffer: &[u8]) -> anyhow::Result<Value> {
-  const HEADER_SIZE: usize = 16;
-  const ARRAY_BEGIN: usize = 16;
+  // Skip the header (17 bytes: version + position + reserved)
+  const HEADER_SIZE: usize = 17;
 
   if buffer.len() < HEADER_SIZE {
     anyhow::bail!("Buffer too small: {}", buffer.len());
   }
 
-  // Read position from header
+  // Read position from header (bytes 8-15)
   let position_bytes: [u8; 8] = buffer[8 .. 16]
     .try_into()
     .map_err(|_| anyhow::anyhow!("Failed to read position"))?;
   #[allow(clippy::cast_possible_truncation)]
   let position = u64::from_le_bytes(position_bytes) as usize;
 
-  if position < ARRAY_BEGIN {
-    anyhow::bail!("Invalid position: {position}, must be at least {ARRAY_BEGIN}");
+  if position < HEADER_SIZE {
+    anyhow::bail!("Invalid position: {position}, must be at least {HEADER_SIZE}");
   }
 
   if position > buffer.len() {
@@ -227,31 +178,43 @@ fn read_bonjson_payload(buffer: &[u8]) -> anyhow::Result<Value> {
     );
   }
 
-  let slice_to_decode = &buffer[ARRAY_BEGIN .. position];
+  // Decode frames from the journal data
+  let mut offset = 0;
+  let data = &buffer[HEADER_SIZE .. position];
 
-  match from_slice(slice_to_decode) {
-    Ok((_, decoded)) => Ok(decoded),
-    Err(bd_bonjson::decoder::DecodeError::Partial { partial_value, .. }) => Ok(partial_value),
-    Err(e) => anyhow::bail!("Failed to decode buffer: {e:?}"),
-  }
-}
+  while offset < data.len() {
+    match Frame::<StateKeyValuePair>::decode(&data[offset ..]) {
+      Ok((frame, bytes_read)) => {
+        // Only apply entries up to target timestamp
+        if frame.timestamp_micros > target_timestamp {
+          break;
+        }
 
-/// Helper function to read a u64 field from a BONJSON object.
-///
-/// BONJSON's decoder automatically converts unsigned values that fit in i64 to signed values
-/// during decoding (see bd-bonjson/src/decoder.rs:227-234). This means that even though we
-/// write `Value::Unsigned(version)`, the decoder returns `Value::Signed(version as i64)`.
-///
-/// TODO(snowp): Consider changing BONJSON's decoder to preserve the original unsigned type
-/// to avoid this normalization behavior and eliminate the need for this helper.
-fn read_u64_field(obj: &AHashMap<String, Value>, key: &str) -> Option<u64> {
-  match obj.get(key) {
-    Some(Value::Unsigned(v)) => Some(*v),
-    Some(Value::Signed(v)) if *v >= 0 =>
-    {
-      #[allow(clippy::cast_sign_loss)]
-      Some(*v as u64)
-    },
-    _ => None,
+        if let Some(value) = frame.payload.value.into_option() {
+          // Insertion - parse the value string back to a Value
+          // For now, we store everything as strings since that's what the current
+          // implementation does. In the future, you can parse the value_str to
+          // reconstruct the original type.
+          map.insert(
+            frame.payload.key,
+            TimestampedValue {
+              value,
+              timestamp: frame.timestamp_micros,
+            },
+          );
+        } else {
+          // Deletion
+          map.remove(&frame.payload.key);
+        }
+
+        offset += bytes_read;
+      },
+      Err(_) => {
+        // End of valid data or corrupted frame
+        break;
+      },
+    }
   }
+
+  Ok(())
 }

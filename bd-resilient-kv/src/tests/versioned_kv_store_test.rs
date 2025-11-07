@@ -8,16 +8,16 @@
 #![allow(clippy::unwrap_used)]
 
 use crate::VersionedKVStore;
-use crate::kv_journal::TimestampedValue;
 use crate::tests::decompress_zlib;
-use bd_bonjson::Value;
+use crate::versioned_kv_journal::{TimestampedValue, make_string_value};
+use bd_proto::protos::state::payload::StateValue;
 use tempfile::TempDir;
 
 #[test]
 fn empty_store() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
-  let store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Should start empty
   assert!(store.is_empty());
@@ -33,14 +33,14 @@ async fn basic_crud() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
 
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Insert some values
   let ts1 = store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .insert("key1".to_string(), make_string_value("value1"))
     .await?;
   let ts2 = store
-    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .insert("key2".to_string(), make_string_value("value2"))
     .await?;
 
   assert_eq!(store.len(), 2);
@@ -61,7 +61,7 @@ async fn basic_crud() -> anyhow::Result<()> {
 
   // Read back existing key
   let val = store.get("key2");
-  assert_eq!(val, Some(&Value::String("value2".to_string())));
+  assert_eq!(val, Some(&make_string_value("value2")));
 
   // Read non-existent key
   let val = store.get("key1");
@@ -77,11 +77,13 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
 
   // Create store and write some data
   let (ts1, ts2) = {
-    let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+    let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
     let ts1 = store
-      .insert("key1".to_string(), Value::String("value1".to_string()))
+      .insert("key1".to_string(), make_string_value("value1"))
       .await?;
-    let ts2 = store.insert("key2".to_string(), Value::Signed(42)).await?;
+    let ts2 = store
+      .insert("key2".to_string(), make_string_value("foo"))
+      .await?;
     store.sync()?;
 
     (ts1, ts2)
@@ -94,14 +96,14 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
     assert_eq!(
       store.get_with_timestamp("key1"),
       Some(&TimestampedValue {
-        value: Value::String("value1".to_string()),
+        value: make_string_value("value1"),
         timestamp: ts1,
       })
     );
     assert_eq!(
       store.get_with_timestamp("key2"),
       Some(&TimestampedValue {
-        value: Value::Signed(42),
+        value: make_string_value("42"),
         timestamp: ts2,
       })
     );
@@ -115,16 +117,18 @@ async fn test_null_value_is_deletion() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
 
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Insert a value
   store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .insert("key1".to_string(), make_string_value("value1"))
     .await?;
   assert!(store.contains_key("key1"));
 
-  // Insert null to delete
-  store.insert("key1".to_string(), Value::Null).await?;
+  // Insert empty state to delete
+  store
+    .insert("key1".to_string(), StateValue::default())
+    .await?;
   assert!(!store.contains_key("key1"));
   assert_eq!(store.len(), 0);
 
@@ -136,14 +140,14 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
 
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Insert some data
   let _ts1 = store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .insert("key1".to_string(), make_string_value("value1"))
     .await?;
   let ts2 = store
-    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .insert("key2".to_string(), make_string_value("value2"))
     .await?;
 
   // Get max timestamp before rotation (this will be used in the archive name)
@@ -163,34 +167,25 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
 
   // Verify active journal still works
   let ts3 = store
-    .insert("key3".to_string(), Value::String("value3".to_string()))
+    .insert("key3".to_string(), make_string_value("value3"))
     .await?;
   assert!(ts3 >= ts2);
   assert_eq!(store.len(), 3);
 
   // Verify data is intact
-  assert_eq!(
-    store.get("key1"),
-    Some(&Value::String("value1".to_string()))
-  );
-  assert_eq!(
-    store.get("key2"),
-    Some(&Value::String("value2".to_string()))
-  );
-  assert_eq!(
-    store.get("key3"),
-    Some(&Value::String("value3".to_string()))
-  );
+  assert_eq!(store.get("key1"), Some(&make_string_value("value1")));
+  assert_eq!(store.get("key2"), Some(&make_string_value("value2")));
+  assert_eq!(store.get("key3"), Some(&make_string_value("value3")));
 
   // Decompress the archive and load it as a Store to verify that it contains the old state.
   let snapshot_store = make_store_from_snapshot_file(&temp_dir, &archived_path)?;
   assert_eq!(
     snapshot_store.get("key1"),
-    Some(&Value::String("value1".to_string()))
+    Some(&make_string_value("value1"))
   );
   assert_eq!(
     snapshot_store.get("key2"),
-    Some(&Value::String("value2".to_string()))
+    Some(&make_string_value("value2"))
   );
   assert_eq!(snapshot_store.len(), 2);
 
@@ -202,16 +197,10 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
 
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
-  // Create complex state
   store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
-    .await?;
-  store.insert("key2".to_string(), Value::Signed(42)).await?;
-  store.insert("key3".to_string(), Value::Bool(true)).await?;
-  store
-    .insert("key4".to_string(), Value::Float(3.14159))
+    .insert("key1".to_string(), make_string_value("value1"))
     .await?;
 
   let pre_rotation_state = store.as_hashmap().clone();
@@ -230,7 +219,7 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
 
   // Verify we can continue writing
   let ts_new = store
-    .insert("key5".to_string(), Value::String("value5".to_string()))
+    .insert("key5".to_string(), make_string_value("value5"))
     .await?;
   assert!(ts_new >= pre_rotation_ts);
   assert_eq!(store.len(), 5);
@@ -243,7 +232,7 @@ async fn test_empty_store_operations() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
 
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   // Operations on empty store
   assert_eq!(store.get("nonexistent"), None);
@@ -261,18 +250,18 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
 
 
   // Create store with small buffer to trigger rotation easily
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 2048, Some(0.5))?;
+  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 2048, Some(0.5))?;
 
   // Insert some keys and capture their timestamps
   let ts1 = store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
+    .insert("key1".to_string(), make_string_value("value1"))
     .await?;
 
   // Small sleep to ensure different timestamps
   std::thread::sleep(std::time::Duration::from_millis(10));
 
   let ts2 = store
-    .insert("key2".to_string(), Value::String("value2".to_string()))
+    .insert("key2".to_string(), make_string_value("value2"))
     .await?;
 
   // Verify timestamps are different
@@ -281,7 +270,9 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
 
   // Write enough data to trigger rotation
   for i in 0 .. 50 {
-    store.insert(format!("fill{i}"), Value::Signed(i)).await?;
+    store
+      .insert(format!("fill{i}"), make_string_value("foo"))
+      .await?;
   }
 
   // Verify that after rotation, the original timestamps are preserved
@@ -318,14 +309,14 @@ async fn test_multiple_rotations() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
 
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
 
   let mut rotation_timestamps = Vec::new();
 
   // Perform multiple rotations
   for i in 0 .. 3 {
     let key = format!("key{}", i);
-    let value = Value::String(format!("value{}", i));
+    let value = make_string_value(&format!("value{}", i));
     store.insert(key.clone(), value).await?;
     let timestamp = store
       .get_with_timestamp(&key)
