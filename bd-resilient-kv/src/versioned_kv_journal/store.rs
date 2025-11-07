@@ -7,8 +7,8 @@
 
 use crate::versioned_kv_journal::TimestampedValue;
 use crate::versioned_kv_journal::file_manager::{self, compress_archived_journal};
-use crate::versioned_kv_journal::memmapped_versioned::MemMappedVersionedKVJournal;
-use crate::versioned_kv_journal::versioned::VersionedJournal;
+use crate::versioned_kv_journal::journal::VersionedJournal;
+use crate::versioned_kv_journal::memmapped_journal::MemMappedVersionedJournal;
 use ahash::AHashMap;
 use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
 use std::path::{Path, PathBuf};
@@ -33,7 +33,7 @@ pub enum DataLoss {
 /// For detailed information about timestamp semantics, recovery bucketing, and invariants,
 /// see the `VERSIONED_FORMAT.md` documentation.
 pub struct VersionedKVStore {
-  journal: MemMappedVersionedKVJournal,
+  journal: MemMappedVersionedJournal,
   cached_map: AHashMap<String, TimestampedValue>,
   dir_path: PathBuf,
   journal_name: String,
@@ -71,14 +71,14 @@ impl VersionedKVStore {
 
     let (journal, mut data_loss) = if journal_path.exists() {
       // Try to open existing journal
-      MemMappedVersionedKVJournal::from_file(&journal_path, buffer_size, high_water_mark_ratio)
+      MemMappedVersionedJournal::from_file(&journal_path, buffer_size, high_water_mark_ratio)
         .map(|j| (j, DataLoss::None))
         .or_else(|_| {
           // TODO(snowp): Distinguish between partial and total data loss.
 
           // Data is corrupt or unreadable, create fresh journal
           Ok::<_, anyhow::Error>((
-            MemMappedVersionedKVJournal::new(&journal_path, buffer_size, high_water_mark_ratio)?,
+            MemMappedVersionedJournal::new(&journal_path, buffer_size, high_water_mark_ratio)?,
             DataLoss::Total,
           ))
         })?
@@ -86,12 +86,12 @@ impl VersionedKVStore {
       // Create new journal
 
       (
-        MemMappedVersionedKVJournal::new(&journal_path, buffer_size, high_water_mark_ratio)?,
+        MemMappedVersionedJournal::new(&journal_path, buffer_size, high_water_mark_ratio)?,
         DataLoss::None,
       )
     };
 
-    let (cached_map, incomplete) = journal.to_hashmap_with_timestamps();
+    let (initial_state, incomplete) = Self::populate_initial_state(&journal);
 
     if incomplete && data_loss == DataLoss::None {
       data_loss = DataLoss::Partial;
@@ -100,7 +100,7 @@ impl VersionedKVStore {
     Ok((
       Self {
         journal,
-        cached_map,
+        cached_map: initial_state,
         dir_path: dir.to_path_buf(),
         journal_name: name.to_string(),
         buffer_size,
@@ -139,13 +139,14 @@ impl VersionedKVStore {
     let (journal_path, generation) = file_manager::find_active_journal(dir, name);
 
     let journal =
-      MemMappedVersionedKVJournal::from_file(&journal_path, buffer_size, high_water_mark_ratio)?;
-    let (cached_map, incomplete) = journal.to_hashmap_with_timestamps();
+      MemMappedVersionedJournal::from_file(&journal_path, buffer_size, high_water_mark_ratio)?;
+
+    let (initial_state, incomplete) = Self::populate_initial_state(&journal);
 
     Ok((
       Self {
         journal,
-        cached_map,
+        cached_map: initial_state,
         dir_path: dir.to_path_buf(),
         journal_name: name.to_string(),
         buffer_size,
@@ -205,6 +206,8 @@ impl VersionedKVStore {
 
     // Check if rotation is needed
     if self.journal.is_high_water_mark_triggered() {
+      // TODO(snowp): Consider doing this out of band to split error handling for the insert and
+      // rotation.
       self.rotate_journal().await?;
     }
 
@@ -273,7 +276,7 @@ impl VersionedKVStore {
   /// This is a blocking operation that performs synchronous I/O. In async contexts,
   /// consider wrapping this call with `tokio::task::spawn_blocking`.
   pub fn sync(&self) -> anyhow::Result<()> {
-    self.journal.sync()
+    MemMappedVersionedJournal::sync(&self.journal)
   }
 
   /// Manually trigger journal rotation.
@@ -288,6 +291,10 @@ impl VersionedKVStore {
     let new_journal_path = self
       .dir_path
       .join(format!("{}.jrn.{next_generation}", self.journal_name));
+
+    // TODO(snowp): This part needs fuzzing and more safeguards.
+    // TODO(snowp): Consider doing this out of band to split error handling for the insert and
+    // rotation.
 
     // Create new journal with compacted state
     let new_journal = self.create_rotated_journal(&new_journal_path).await?;
@@ -339,6 +346,27 @@ impl VersionedKVStore {
     }
   }
 
+  fn populate_initial_state(
+    journal: &VersionedJournal<'_, StateKeyValuePair>,
+  ) -> (AHashMap<String, TimestampedValue>, bool) {
+    let mut map = AHashMap::new();
+    let incomplete = journal.read(|entry, timestamp| {
+      if let Some(value) = entry.value.as_ref() {
+        map.insert(
+          entry.key.clone(),
+          TimestampedValue {
+            value: value.clone(),
+            timestamp,
+          },
+        );
+      } else {
+        map.remove(&entry.key);
+      }
+    });
+
+    (map, incomplete)
+  }
+
   /// Create a new rotated journal with compacted state.
   ///
   /// Note: Rotation cannot fail due to insufficient buffer space. Since rotation creates a new
@@ -348,14 +376,23 @@ impl VersionedKVStore {
   async fn create_rotated_journal(
     &self,
     journal_path: &Path,
-  ) -> anyhow::Result<MemMappedVersionedKVJournal> {
+  ) -> anyhow::Result<MemMappedVersionedJournal> {
     // Create in-memory buffer for new journal
     let mut buffer = vec![0u8; self.buffer_size];
 
     // Use VersionedJournal to create rotated journal in memory
-    let _rotated = VersionedJournal::<StateKeyValuePair>::create_rotated_journal(
+    let _rotated = self.journal.create_rotated_journal(
       &mut buffer,
-      &self.cached_map,
+      self.cached_map.iter().map(|kv| {
+        (
+          StateKeyValuePair {
+            key: kv.0.clone(),
+            value: Some(kv.1.value.clone()).into(),
+            ..Default::default()
+          },
+          kv.1.timestamp,
+        )
+      }),
       self.high_water_mark_ratio,
     )?;
 
@@ -363,10 +400,6 @@ impl VersionedKVStore {
     tokio::fs::write(journal_path, &buffer).await?;
 
     // Open as memory-mapped journal
-    MemMappedVersionedKVJournal::from_file(
-      journal_path,
-      self.buffer_size,
-      self.high_water_mark_ratio,
-    )
+    MemMappedVersionedJournal::from_file(journal_path, self.buffer_size, self.high_water_mark_ratio)
   }
 }

@@ -2,10 +2,10 @@ use bd_proto::protos::state;
 
 mod file_manager;
 mod framing;
-mod memmapped_versioned;
+mod journal;
+mod memmapped_journal;
 pub mod recovery;
 pub mod store;
-mod versioned;
 
 /// Represents a value with its associated timestamp.
 #[derive(Debug, Clone, PartialEq)]

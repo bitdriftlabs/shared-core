@@ -6,10 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::framing::Frame;
-use crate::versioned_kv_journal::TimestampedValue;
-use ahash::AHashMap;
 use bd_client_common::error::InvariantError;
-use bd_proto::protos::state::payload::StateKeyValuePair;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Timestamped implementation of a journaling system that uses timestamps
@@ -42,12 +39,6 @@ pub struct VersionedJournal<'a, M> {
 //
 // Frame format: [length: u32][timestamp_micros: varint][protobuf_payload: bytes][crc32: u32]
 //
-// Payload format:
-//   - Uses `StateKeyValuePair` protobuf messages
-//   - Contains `key: String` and `value: StateValue` fields
-//   - Set operation: `value` field is populated with the state value
-//   - Delete operation: `value` field is null/empty
-//
 // # Timestamp Semantics
 //
 // Timestamps serve as both version identifiers and logical clocks with monotonic guarantees:
@@ -56,26 +47,13 @@ pub struct VersionedJournal<'a, M> {
 // - When timestamps collide, journal ordering determines precedence
 // - This ensures total ordering while allowing correlation with external timestamped systems
 
-const VERSION: u64 = 3; // The versioned format version (bumped for new framing format)
+// The journal format version, incremented on incompatible changes.
+const VERSION: u64 = 1;
 
 const HEADER_SIZE: usize = 17;
 
 // Minimum buffer size for a valid journal
 const MIN_BUFFER_SIZE: usize = HEADER_SIZE + 4;
-
-/// Get current timestamp in microseconds since UNIX epoch.
-fn current_timestamp() -> anyhow::Result<u64> {
-  SystemTime::now()
-    .duration_since(UNIX_EPOCH)
-    .map_err(|_| InvariantError::Invariant.into())
-    .map(|d| {
-      #[allow(clippy::cast_possible_truncation)]
-      {
-        d.as_micros() as u64
-      }
-    })
-}
-
 
 /// Write to the version field of a journal buffer.
 fn write_version_field(buffer: &mut [u8], version: u64) {
@@ -318,41 +296,35 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
 impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   /// Create a new journal initialized with the compacted state from a snapshot.
   ///
-  /// The new journal will have all current key-value pairs written with their **original
+  /// The new journal will have all current entries written with their **original
   /// timestamps** to preserve historical accuracy. The journal's monotonic timestamp
   /// enforcement will respect the highest timestamp in the provided state.
   ///
   /// # Arguments
   /// * `buffer` - The buffer to write the new journal to
-  /// * `state` - The current key-value state with timestamps to write
+  /// * `entries` - Iterator over the entries that should be included in the new journal
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark
   ///
   /// # Errors
   /// Returns an error if serialization fails or buffer is too small.
   pub fn create_rotated_journal(
+    &self,
     buffer: &'a mut [u8],
-    state: &AHashMap<String, TimestampedValue>,
+    entries: impl IntoIterator<Item = (M, u64)>,
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
     // Create a new journal
     let mut journal = Self::new(buffer, high_water_mark_ratio)?;
 
     // Find the maximum timestamp in the state to maintain monotonicity
-    let max_state_timestamp = state.values().map(|tv| tv.timestamp).max().unwrap_or(0);
+    let max_state_timestamp = self.last_timestamp;
 
     // Write all current state with their original timestamps
-    for (key, timestamped_value) in state {
+    for (entry, timestamp) in entries.into_iter().map(Into::into) {
       // Update last_timestamp to ensure monotonicity is maintained
-      journal.last_timestamp = std::cmp::max(journal.last_timestamp, timestamped_value.timestamp);
+      journal.last_timestamp = std::cmp::max(journal.last_timestamp, timestamp);
 
-      let frame = Frame::new(
-        timestamped_value.timestamp,
-        StateKeyValuePair {
-          key: key.clone(),
-          value: Some(timestamped_value.value.clone()).into(),
-          ..Default::default()
-        },
-      );
+      let frame = Frame::new(timestamp, entry);
 
       // Encode frame
       let available_space = &mut journal.buffer[journal.position ..];
@@ -366,4 +338,17 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
 
     Ok(journal)
   }
+}
+
+/// Get current timestamp in microseconds since UNIX epoch.
+fn current_timestamp() -> anyhow::Result<u64> {
+  SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .map_err(|_| InvariantError::Invariant.into())
+    .map(|d| {
+      #[allow(clippy::cast_possible_truncation)]
+      {
+        d.as_micros() as u64
+      }
+    })
 }

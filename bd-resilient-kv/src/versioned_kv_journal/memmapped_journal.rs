@@ -5,15 +5,13 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::versioned::VersionedJournal;
-use crate::versioned_kv_journal::TimestampedValue;
-use ahash::AHashMap;
+use super::journal::VersionedJournal;
 use bd_proto::protos::state::payload::StateKeyValuePair;
 use memmap2::{MmapMut, MmapOptions};
 use std::fs::OpenOptions;
 use std::path::Path;
 
-/// Memory-mapped implementation of a timestamped key-value journal.
+/// Memory-mapped implementation of a timestamped journal.
 ///
 /// This implementation uses memory-mapped files to provide persistence while maintaining
 /// the efficiency of in-memory operations. All changes are automatically synced to disk.
@@ -21,16 +19,30 @@ use std::path::Path;
 ///
 /// # Safety
 /// During construction, we unsafely declare mmap's internal buffer as having a static
-/// lifetime, but it's actually tied to the lifetime of `versioned_kv`. This works because
+/// lifetime, but it's actually tied to the lifetime of `inner`. This works because
 /// nothing external holds a reference to the buffer.
 #[derive(Debug)]
-pub struct MemMappedVersionedKVJournal {
+pub struct MemMappedVersionedJournal {
   // Note: mmap MUST de-init AFTER versioned_kv because mmap uses it.
   mmap: MmapMut,
-  versioned_kv: VersionedJournal<'static, StateKeyValuePair>,
+  inner: VersionedJournal<'static, StateKeyValuePair>,
 }
 
-impl MemMappedVersionedKVJournal {
+impl std::ops::Deref for MemMappedVersionedJournal {
+  type Target = VersionedJournal<'static, StateKeyValuePair>;
+
+  fn deref(&self) -> &Self::Target {
+    &self.inner
+  }
+}
+
+impl std::ops::DerefMut for MemMappedVersionedJournal {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.inner
+  }
+}
+
+impl MemMappedVersionedJournal {
   /// Create a memory-mapped buffer from a file and convert it to a static lifetime slice.
   ///
   /// # Safety
@@ -84,7 +96,10 @@ impl MemMappedVersionedKVJournal {
 
     let versioned_kv = VersionedJournal::new(buffer, high_water_mark_ratio)?;
 
-    Ok(Self { mmap, versioned_kv })
+    Ok(Self {
+      mmap,
+      inner: versioned_kv,
+    })
   }
 
   /// Create a new memory-mapped versioned KV journal from an existing file.
@@ -116,33 +131,10 @@ impl MemMappedVersionedKVJournal {
 
     let versioned_kv = VersionedJournal::from_buffer(buffer, high_water_mark_ratio)?;
 
-    Ok(Self { mmap, versioned_kv })
-  }
-
-  /// Insert a new entry into the journal with the given payload.
-  /// Returns the timestamp of the operation.
-  pub fn insert_entry(&mut self, message: impl protobuf::MessageFull) -> anyhow::Result<u64> {
-    self.versioned_kv.insert_entry(message)
-  }
-
-
-  /// Check if the high water mark has been triggered.
-  #[must_use]
-  pub fn is_high_water_mark_triggered(&self) -> bool {
-    self.versioned_kv.is_high_water_mark_triggered()
-  }
-
-  /// Reconstruct the hashmap with timestamps by replaying all journal entries.
-  pub fn to_hashmap_with_timestamps(&self) -> (AHashMap<String, TimestampedValue>, bool) {
-    let mut map = AHashMap::new();
-    let complete = self.versioned_kv.read(|payload, timestamp| {
-      if let Some(value) = payload.value.clone().into_option() {
-        map.insert(payload.key.clone(), TimestampedValue { value, timestamp });
-      } else {
-        map.remove(&payload.key);
-      }
-    });
-    (map, !complete)
+    Ok(Self {
+      mmap,
+      inner: versioned_kv,
+    })
   }
 
   /// Synchronize changes to disk.
@@ -156,7 +148,7 @@ impl MemMappedVersionedKVJournal {
   ///
   /// # Errors
   /// Returns an error if the sync operation fails.
-  pub fn sync(&self) -> anyhow::Result<()> {
-    self.mmap.flush().map_err(Into::into)
+  pub fn sync(journal: &Self) -> anyhow::Result<()> {
+    journal.mmap.flush().map_err(Into::into)
   }
 }
