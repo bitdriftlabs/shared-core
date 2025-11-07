@@ -806,13 +806,6 @@ impl ActionEmitSankey {
   }
 }
 
-//
-// ActionTakeScreenshot
-//
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ActionTakeScreenshot;
-
 pub type FieldKey = String;
 
 //
