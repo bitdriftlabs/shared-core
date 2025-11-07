@@ -47,7 +47,6 @@ impl VersionedKVStore {
   ///
   /// The journal file will be named `<name>.jrn.N` where N is the generation number.
   /// If a journal already exists, it will be loaded with its existing contents.
-  /// Legacy journals (`<name>.jrn`) are automatically migrated to generation 0.
   /// If the specified size is larger than an existing file, it will be resized while preserving
   /// data. If the specified size is smaller and the existing data doesn't fit, a fresh journal
   /// will be created.
@@ -63,6 +62,10 @@ impl VersionedKVStore {
     let dir = dir_path.as_ref();
 
     let (journal_path, generation) = file_manager::find_active_journal(dir, name);
+
+    // TODO(snowp): It would be ideal to be able to start with a small buffer and grow is as needed
+    // depending on the particular device need. We can embed size information in the journal header
+    // or in the filename itself to facilitate this.
 
     log::debug!(
       "Opening VersionedKVStore journal at {} (generation {generation})",
