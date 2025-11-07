@@ -2,7 +2,9 @@
 pub const MAX_SIZE: usize = 10;
 
 /// Calculate the size of a u64 when encoded as a varint.
+#[allow(clippy::cast_possible_truncation)]
 pub fn compute_size(value: u64) -> usize {
+  // Safe cast: varint encoding of u64 is at most 10 bytes, which fits in usize on all platforms
   ::protobuf::rt::compute_raw_varint64_size(value) as usize
 }
 

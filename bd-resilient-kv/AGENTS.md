@@ -86,7 +86,7 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 - Recovery transparently decompresses archived journals when needed
 
 **Point-in-Time Recovery**:
-The `VersionedRecovery` utility provides point-in-time recovery by replaying journal entries up to a target timestamp. It works with raw journal bytes and can reconstruct state at any historical timestamp across rotation boundaries. Recovery is optimized: `recover_current()` only reads the last journal (since rotation writes complete compacted state), while `recover_at_timestamp()` intelligently selects and replays only necessary journals. The `from_files()` constructor is async for efficient file reading.
+The `VersionedRecovery` utility provides point-in-time recovery by replaying journal entries up to a target timestamp. It works with raw uncompressed journal bytes and can reconstruct state at any historical timestamp across rotation boundaries. Recovery is optimized: `recover_current()` only reads the last journal (since rotation writes complete compacted state), while `recover_at_timestamp()` intelligently selects and replays only necessary journals. The `new()` constructor accepts a vector of `(&[u8], u64)` tuples (byte slice and snapshot timestamp). Callers must decompress archived journals before passing them to the constructor.
 
 ## Critical Design Insights
 
@@ -104,7 +104,7 @@ The `VersionedRecovery` utility provides point-in-time recovery by replaying jou
 - Architecture: Single journal with archived versions
 - Rotation: Creates new journal with compacted state
 - Timestamp tracking: Every write returns a timestamp
-- Format: Protobuf-based entries (VERSION 3)
+- Format: Protobuf-based entries (VERSION 1)
 
 ### 2. Compaction Efficiency
 **Key Insight**: Compaction via `reinit_from()` is already maximally efficient. It writes data in the most compact possible serialized form (hashmap → bytes). If even this compact representation exceeds high water marks, then the data volume itself is the limiting factor, not inefficient storage.

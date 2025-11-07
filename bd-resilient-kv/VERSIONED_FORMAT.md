@@ -34,7 +34,7 @@ Previous journals, archived during rotation. Each contains complete state at its
 
 ### Binary Structure
 
-The byte-level layout of a VERSION 3 journal file:
+The byte-level layout of a VERSION 1 journal file:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -67,7 +67,7 @@ The byte-level layout of a VERSION 3 journal file:
 
 | Field | Offset | Size | Type | Value | Purpose |
 |-------|--------|------|------|-------|---------|
-| Format Version | 0 | 8 bytes | u64 (little-endian) | `3` | Allows future format evolution |
+| Format Version | 0 | 8 bytes | u64 (little-endian) | `1` | Allows future format evolution |
 | Position | 8 | 8 bytes | u64 (little-endian) | Current write position | Tracks where next entry will be written |
 | Reserved | 16 | 1 byte | u8 | `0` | Reserved for future use |
 

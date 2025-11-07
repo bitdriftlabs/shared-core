@@ -320,7 +320,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     let max_state_timestamp = self.last_timestamp;
 
     // Write all current state with their original timestamps
-    for (entry, timestamp) in entries.into_iter().map(Into::into) {
+    for (entry, timestamp) in entries {
       // Update last_timestamp to ensure monotonicity is maintained
       journal.last_timestamp = std::cmp::max(journal.last_timestamp, timestamp);
 

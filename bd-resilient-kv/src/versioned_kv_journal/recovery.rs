@@ -36,7 +36,7 @@ impl VersionedRecovery {
   /// Create a new recovery utility from a list of uncompressed snapshot byte slices.
   ///
   /// The snapshots should be provided in chronological order (oldest to newest).
-  /// Each snapshot must be a valid uncompressed versioned journal (VERSION 3 format).
+  /// Each snapshot must be a valid uncompressed versioned journal (VERSION 1 format).
   ///
   /// # Arguments
   ///
