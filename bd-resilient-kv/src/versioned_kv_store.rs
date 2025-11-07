@@ -243,24 +243,8 @@ impl VersionedKVStore {
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
-  pub fn as_hashmap_with_timestamps(&self) -> &AHashMap<String, TimestampedValue> {
+  pub fn as_hashmap(&self) -> &AHashMap<String, TimestampedValue> {
     &self.cached_map
-  }
-
-  /// Get a reference to the current hash map (values only, without timestamps).
-  ///
-  /// Note: This method creates a temporary hashmap. For better performance,
-  /// consider using `get()` for individual lookups or `as_hashmap_with_timestamps()`
-  /// if you need the full map with timestamps.
-  ///
-  /// This operation is O(n) where n is the number of keys.
-  #[must_use]
-  pub fn as_hashmap(&self) -> AHashMap<String, Value> {
-    self
-      .cached_map
-      .iter()
-      .map(|(k, tv)| (k.clone(), tv.value.clone()))
-      .collect()
   }
 
   /// Synchronize changes to disk.
@@ -272,18 +256,6 @@ impl VersionedKVStore {
   /// Returns an error if the sync operation fails.
   pub fn sync(&self) -> anyhow::Result<()> {
     self.journal.sync()
-  }
-
-  /// Get the current buffer usage ratio (0.0 to 1.0).
-  #[must_use]
-  pub fn buffer_usage_ratio(&self) -> f32 {
-    self.journal.buffer_usage_ratio()
-  }
-
-  /// Check if the high water mark has been triggered.
-  #[must_use]
-  pub fn is_high_water_mark_triggered(&self) -> bool {
-    self.journal.is_high_water_mark_triggered()
   }
 
   /// Manually trigger journal rotation.

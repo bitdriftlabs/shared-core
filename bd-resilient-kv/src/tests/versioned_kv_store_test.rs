@@ -214,7 +214,7 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
     .insert("key4".to_string(), Value::Float(3.14159))
     .await?;
 
-  let pre_rotation_state = store.as_hashmap();
+  let pre_rotation_state = store.as_hashmap().clone();
   let pre_rotation_ts = store
     .get_with_timestamp("key4")
     .map(|tv| tv.timestamp)
@@ -225,7 +225,7 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
 
   // Verify state is preserved exactly
   let post_rotation_state = store.as_hashmap();
-  assert_eq!(pre_rotation_state, post_rotation_state);
+  assert_eq!(pre_rotation_state, *post_rotation_state);
   assert_eq!(store.len(), 4);
 
   // Verify we can continue writing
