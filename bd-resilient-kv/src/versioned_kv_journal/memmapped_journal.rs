@@ -7,9 +7,11 @@
 
 use super::journal::VersionedJournal;
 use bd_proto::protos::state::payload::StateKeyValuePair;
+use bd_time::TimeProvider;
 use memmap2::{MmapMut, MmapOptions};
 use std::fs::OpenOptions;
 use std::path::Path;
+use std::sync::Arc;
 
 /// Memory-mapped implementation of a timestamped journal.
 ///
@@ -21,7 +23,6 @@ use std::path::Path;
 /// During construction, we unsafely declare mmap's internal buffer as having a static
 /// lifetime, but it's actually tied to the lifetime of `inner`. This works because
 /// nothing external holds a reference to the buffer.
-#[derive(Debug)]
 pub struct MemMappedVersionedJournal {
   // Note: mmap MUST de-init AFTER versioned_kv because mmap uses it.
   mmap: MmapMut,
@@ -79,6 +80,7 @@ impl MemMappedVersionedJournal {
     file_path: P,
     size: usize,
     high_water_mark_ratio: Option<f32>,
+    time_provider: Arc<dyn TimeProvider>,
   ) -> anyhow::Result<Self> {
     let file = OpenOptions::new()
       .read(true)
@@ -94,7 +96,7 @@ impl MemMappedVersionedJournal {
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
-    let versioned_kv = VersionedJournal::new(buffer, high_water_mark_ratio)?;
+    let versioned_kv = VersionedJournal::new(buffer, high_water_mark_ratio, time_provider)?;
 
     Ok(Self {
       mmap,
@@ -119,6 +121,7 @@ impl MemMappedVersionedJournal {
     file_path: P,
     size: usize,
     high_water_mark_ratio: Option<f32>,
+    time_provider: Arc<dyn TimeProvider>,
   ) -> anyhow::Result<Self> {
     let file = OpenOptions::new().read(true).write(true).open(file_path)?;
 
@@ -129,7 +132,7 @@ impl MemMappedVersionedJournal {
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
-    let versioned_kv = VersionedJournal::from_buffer(buffer, high_water_mark_ratio)?;
+    let versioned_kv = VersionedJournal::from_buffer(buffer, high_water_mark_ratio, time_provider)?;
 
     Ok(Self {
       mmap,

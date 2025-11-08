@@ -7,7 +7,16 @@
 
 #![allow(clippy::unwrap_used)]
 
+use crate::VersionedKVStore;
+use crate::tests::decompress_zlib;
+use crate::versioned_kv_journal::make_string_value;
 use crate::versioned_kv_journal::recovery::VersionedRecovery;
+use bd_time::TestTimeProvider;
+use std::sync::Arc;
+use tempfile::TempDir;
+use time::ext::NumericalDuration;
+use time::macros::datetime;
+
 
 #[test]
 fn test_recovery_buffer_too_small() {
@@ -71,14 +80,11 @@ fn test_recovery_position_exceeds_buffer_length() {
 
 #[tokio::test]
 async fn test_recovery_with_deletions() -> anyhow::Result<()> {
-  use crate::tests::decompress_zlib;
-  use crate::versioned_kv_journal::make_string_value;
-  use crate::VersionedKVStore;
-  use tempfile::TempDir;
-
   let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
-  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (mut store, _) =
+    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone())?;
 
   // Insert a key
   store
@@ -89,7 +95,7 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
     .map(|tv| tv.timestamp)
     .unwrap();
 
-  std::thread::sleep(std::time::Duration::from_millis(10));
+  time_provider.advance(10.milliseconds());
 
   // Insert another key
   store
@@ -100,7 +106,7 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
     .map(|tv| tv.timestamp)
     .unwrap();
 
-  std::thread::sleep(std::time::Duration::from_millis(10));
+  time_provider.advance(10.milliseconds());
 
   // Delete key1
   store.remove("key1").await?;
@@ -111,24 +117,10 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
   store.sync()?;
 
   // Rotate to create snapshot
-  store.rotate_journal().await?;
+  let snapshot = store.rotate_journal().await?;
 
   // Read the snapshot
-  let mut archived_files: Vec<_> = std::fs::read_dir(temp_dir.path())?
-    .filter_map(|entry| {
-      let entry = entry.ok()?;
-      let path = entry.path();
-      if path.extension()?.to_str()? == "zz" {
-        Some(path)
-      } else {
-        None
-      }
-    })
-    .collect();
-  archived_files.sort();
-
-  assert_eq!(archived_files.len(), 1, "Expected exactly one archived file");
-  let compressed_data = std::fs::read(&archived_files[0])?;
+  let compressed_data = std::fs::read(&snapshot)?;
   let decompressed_data = decompress_zlib(&compressed_data)?;
 
   // Use u64::MAX as snapshot timestamp since we're only checking the latest state
@@ -187,7 +179,11 @@ async fn test_recovery_current_with_empty_snapshots() -> anyhow::Result<()> {
   let recovery = VersionedRecovery::new(vec![])?;
 
   let state = recovery.recover_current()?;
-  assert_eq!(state.len(), 0, "Should return empty state with no snapshots");
+  assert_eq!(
+    state.len(),
+    0,
+    "Should return empty state with no snapshots"
+  );
 
   Ok(())
 }

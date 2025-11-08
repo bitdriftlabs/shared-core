@@ -12,7 +12,10 @@ use crate::VersionedKVStore;
 use crate::tests::decompress_zlib;
 use crate::versioned_kv_journal::make_string_value;
 use crate::versioned_kv_journal::recovery::VersionedRecovery;
+use std::sync::Arc;
 use tempfile::TempDir;
+use time::ext::NumericalDuration;
+use time::macros::datetime;
 
 /// Helper function to find archived journal files in a directory.
 /// Returns sorted paths to all `.zz` compressed journal archives.
@@ -58,8 +61,13 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
 
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(datetime!(
+    2024-01-01 00:00:00 UTC
+  )));
+
   // Create a store with larger buffer to avoid BufferFull errors during test
-  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 2048, None)?;
+  let (mut store, _) =
+    VersionedKVStore::new(temp_dir.path(), "test", 2048, None, time_provider.clone())?;
 
   store
     .insert("key1".to_string(), make_string_value("value1"))
@@ -69,7 +77,7 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
     .map(|tv| tv.timestamp)
     .unwrap();
 
-  std::thread::sleep(std::time::Duration::from_millis(10));
+  time_provider.advance(10.milliseconds());
 
   store
     .insert("key2".to_string(), make_string_value("value2"))
@@ -87,7 +95,7 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
     .map(|tv| tv.timestamp)
     .unwrap();
 
-  std::thread::sleep(std::time::Duration::from_millis(10));
+  time_provider.advance(10.milliseconds());
 
   // Write more after rotation
   store
@@ -144,10 +152,13 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_empty_journal() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(datetime!(
+    2024-01-01 00:00:00 UTC
+  )));
 
 
   // Create an empty store
-  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider)?;
   store.sync()?;
 
   // Rotate to create snapshot
@@ -172,9 +183,13 @@ async fn test_recovery_empty_journal() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(datetime!(
+    2024-01-01 00:00:00 UTC
+  )));
 
 
-  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (mut store, _) =
+    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone())?;
   store
     .insert("key".to_string(), make_string_value("1"))
     .await?;
@@ -183,7 +198,7 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
     .map(|tv| tv.timestamp)
     .unwrap();
 
-  std::thread::sleep(std::time::Duration::from_millis(10));
+  time_provider.advance(10.milliseconds());
 
   store
     .insert("key".to_string(), make_string_value("2"))
@@ -193,7 +208,7 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
     .map(|tv| tv.timestamp)
     .unwrap();
 
-  std::thread::sleep(std::time::Duration::from_millis(10));
+  time_provider.advance(10.milliseconds());
 
   store
     .insert("key".to_string(), make_string_value("3"))
@@ -242,9 +257,13 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(datetime!(
+    2024-01-01 00:00:00 UTC
+  )));
 
   // Create a store and write some timestamped data
-  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (mut store, _) =
+    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone())?;
 
   store
     .insert("key1".to_string(), make_string_value("value1"))
@@ -254,8 +273,8 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
     .map(|tv| tv.timestamp)
     .unwrap();
 
-  // Small sleep to ensure different timestamps
-  std::thread::sleep(std::time::Duration::from_millis(10));
+  // Advance time to ensure different timestamps
+  time_provider.advance(10.milliseconds());
 
   store
     .insert("key2".to_string(), make_string_value("value2"))
@@ -265,8 +284,8 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
     .map(|tv| tv.timestamp)
     .unwrap();
 
-  // Small sleep to ensure different timestamps
-  std::thread::sleep(std::time::Duration::from_millis(10));
+  // Advance time again
+  time_provider.advance(10.milliseconds());
 
   store
     .insert("key1".to_string(), make_string_value("updated1"))
@@ -329,8 +348,12 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(datetime!(
+    2024-01-01 00:00:00 UTC
+  )));
 
-  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (mut store, _) =
+    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone())?;
 
   // Write some data before rotation
   store
@@ -341,7 +364,7 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
     .map(|tv| tv.timestamp)
     .unwrap();
 
-  std::thread::sleep(std::time::Duration::from_millis(10));
+  time_provider.advance(10.milliseconds());
 
   store
     .insert("key2".to_string(), make_string_value("value2"))
@@ -354,7 +377,7 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
   // Rotate journal
   store.rotate_journal().await?;
 
-  std::thread::sleep(std::time::Duration::from_millis(10));
+  time_provider.advance(10.milliseconds());
 
   // Write data after rotation
   store

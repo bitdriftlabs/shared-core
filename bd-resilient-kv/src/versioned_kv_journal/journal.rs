@@ -7,7 +7,8 @@
 
 use super::framing::Frame;
 use bd_client_common::error::InvariantError;
-use std::time::{SystemTime, UNIX_EPOCH};
+use bd_time::TimeProvider;
+use std::sync::Arc;
 
 /// Timestamped implementation of a journaling system that uses timestamps
 /// as the version identifier for point-in-time recovery.
@@ -17,13 +18,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// The monotonicity is enforced by clamping: if the system clock goes backwards, we reuse
 /// the same timestamp value to maintain ordering guarantees. When timestamps collide,
 /// journal ordering determines precedence.
-#[derive(Debug)]
 pub struct VersionedJournal<'a, M> {
   position: usize,
   buffer: &'a mut [u8],
   high_water_mark: usize,
   high_water_mark_triggered: bool,
   last_timestamp: u64, // Most recent timestamp written (for monotonic enforcement)
+  pub(crate) time_provider: Arc<dyn TimeProvider>,
   _payload_marker: std::marker::PhantomData<M>,
 }
 
@@ -122,12 +123,16 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   ///
   /// # Errors
   /// Returns an error if the buffer is too small or if `high_water_mark_ratio` is invalid.
-  pub fn new(buffer: &'a mut [u8], high_water_mark_ratio: Option<f32>) -> anyhow::Result<Self> {
+  pub fn new(
+    buffer: &'a mut [u8],
+    high_water_mark_ratio: Option<f32>,
+    time_provider: Arc<dyn TimeProvider>,
+  ) -> anyhow::Result<Self> {
     let buffer_len = validate_buffer_len(buffer)?;
     let high_water_mark = calculate_high_water_mark(buffer_len, high_water_mark_ratio)?;
 
     // Write header
-    let timestamp = current_timestamp()?;
+    let timestamp = Self::unix_timestamp_micros(time_provider.as_ref())?;
     let position = HEADER_SIZE;
 
     write_position(buffer, position);
@@ -140,6 +145,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
       high_water_mark,
       high_water_mark_triggered: false,
       last_timestamp: timestamp,
+      time_provider,
       _payload_marker: std::marker::PhantomData,
     })
   }
@@ -156,6 +162,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   pub fn from_buffer(
     buffer: &'a mut [u8],
     high_water_mark_ratio: Option<f32>,
+    time_provider: Arc<dyn TimeProvider>,
   ) -> anyhow::Result<Self> {
     let buffer_len = validate_buffer_len(buffer)?;
     let position = read_position(buffer)?;
@@ -178,6 +185,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
       high_water_mark,
       high_water_mark_triggered: position >= high_water_mark,
       last_timestamp: highest_timestamp,
+      time_provider,
       _payload_marker: std::marker::PhantomData,
     })
   }
@@ -211,7 +219,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   /// monotonically increasing by clamping to `last_timestamp` (reusing the same value).
   /// This prevents artificial clock skew while maintaining ordering guarantees.
   fn next_monotonic_timestamp(&mut self) -> anyhow::Result<u64> {
-    let current = current_timestamp()?;
+    let current = self.current_timestamp()?;
     let monotonic = std::cmp::max(current, self.last_timestamp);
     self.last_timestamp = monotonic;
     Ok(monotonic)
@@ -290,6 +298,22 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
 
     !incomplete
   }
+
+  /// Get current timestamp in microseconds since UNIX epoch.
+  fn current_timestamp(&self) -> std::result::Result<u64, InvariantError> {
+    Self::unix_timestamp_micros(self.time_provider.as_ref())
+  }
+
+  fn unix_timestamp_micros(
+    time_provider: &dyn TimeProvider,
+  ) -> std::result::Result<u64, InvariantError> {
+    time_provider
+      .now()
+      .unix_timestamp_nanos()
+      .checked_div(1_000)
+      .and_then(|micros| micros.try_into().ok())
+      .ok_or(InvariantError::Invariant)
+  }
 }
 
 /// Rotation utilities for creating new journals with compacted state
@@ -314,7 +338,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     high_water_mark_ratio: Option<f32>,
   ) -> anyhow::Result<Self> {
     // Create a new journal
-    let mut journal = Self::new(buffer, high_water_mark_ratio)?;
+    let mut journal = Self::new(buffer, high_water_mark_ratio, self.time_provider.clone())?;
 
     // Find the maximum timestamp in the state to maintain monotonicity
     let max_state_timestamp = self.last_timestamp;
@@ -338,17 +362,4 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
 
     Ok(journal)
   }
-}
-
-/// Get current timestamp in microseconds since UNIX epoch.
-fn current_timestamp() -> anyhow::Result<u64> {
-  SystemTime::now()
-    .duration_since(UNIX_EPOCH)
-    .map_err(|_| InvariantError::Invariant.into())
-    .map(|d| {
-      #[allow(clippy::cast_possible_truncation)]
-      {
-        d.as_micros() as u64
-      }
-    })
 }
