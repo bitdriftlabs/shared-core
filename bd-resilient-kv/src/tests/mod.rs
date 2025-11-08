@@ -36,6 +36,7 @@ pub mod kv_store_test;
 pub mod kv_test;
 pub mod memmapped_test;
 pub mod versioned_kv_store_test;
+pub mod versioned_recovery_error_test;
 pub mod versioned_recovery_test;
 
 /// Helper function to decompress zlib-compressed data.
