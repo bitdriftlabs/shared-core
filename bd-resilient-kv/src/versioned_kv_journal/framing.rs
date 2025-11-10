@@ -17,6 +17,10 @@
 //! - `payload`: Opaque binary data (format determined by caller)
 //! - `crc32`: CRC32 checksum of (`timestamp_bytes` + payload)
 
+#[cfg(test)]
+#[path = "./framing_test.rs"]
+mod tests;
+
 use bytes::BufMut;
 use crc32fast::Hasher;
 
@@ -160,7 +164,3 @@ impl<M: protobuf::Message> Frame<M> {
     Ok((Self::new(timestamp_micros, payload), total_len))
   }
 }
-
-#[cfg(test)]
-#[path = "./framing_test.rs"]
-mod tests;
