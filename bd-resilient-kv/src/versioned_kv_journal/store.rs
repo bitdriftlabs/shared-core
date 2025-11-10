@@ -387,7 +387,7 @@ impl VersionedKVStore {
         "Failed to compress archived journal {}: {}",
         old_journal_path.display(),
         e
-      )
+      );
     }
 
     // Remove the uncompressed regardless of compression success. If we succeeded we no longer need
