@@ -24,12 +24,12 @@ struct Setup {
 }
 
 impl Setup {
-  fn new() -> anyhow::Result<Self> {
+  async fn new() -> anyhow::Result<Self> {
     let temp_dir = TempDir::new()?;
     let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
     let (store, _) =
-      VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone())?;
+      VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
 
     Ok(Self {
       temp_dir,
@@ -38,7 +38,7 @@ impl Setup {
     })
   }
 
-  fn make_store_from_snapshot_file(
+  async fn make_store_from_snapshot_file(
     &self,
     snapshot_path: &std::path::Path,
   ) -> anyhow::Result<VersionedKVStore> {
@@ -57,15 +57,16 @@ impl Setup {
       4096,
       None,
       self.time_provider.clone(),
-    )?;
+    )
+    .await?;
 
     Ok(store)
   }
 }
 
-#[test]
-fn empty_store() -> anyhow::Result<()> {
-  let setup = Setup::new()?;
+#[tokio::test]
+async fn empty_store() -> anyhow::Result<()> {
+  let setup = Setup::new().await?;
 
   // Should start empty
   assert!(setup.store.is_empty());
@@ -82,7 +83,8 @@ async fn basic_crud() -> anyhow::Result<()> {
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
 
-  let (mut store, _) = VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider)?;
+  let (mut store, _) =
+    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider).await?;
 
   // Insert some values
   let ts1 = store
@@ -128,7 +130,7 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
   // Create store and write some data
   let (ts1, ts2) = {
     let (mut store, _) =
-      VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone())?;
+      VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
     let ts1 = store
       .insert("key1".to_string(), make_string_value("value1"))
       .await?;
@@ -143,7 +145,7 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
   // Reopen and verify data persisted
   {
     let (store, _) =
-      VersionedKVStore::open_existing(temp_dir.path(), "test", 4096, None, time_provider)?;
+      VersionedKVStore::open_existing(temp_dir.path(), "test", 4096, None, time_provider).await?;
     assert_eq!(store.len(), 2);
     assert_eq!(
       store.get_with_timestamp("key1"),
@@ -166,7 +168,7 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_null_value_is_deletion() -> anyhow::Result<()> {
-  let mut setup = Setup::new()?;
+  let mut setup = Setup::new().await?;
 
   // Insert a value
   setup
@@ -188,7 +190,7 @@ async fn test_null_value_is_deletion() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_manual_rotation() -> anyhow::Result<()> {
-  let mut setup = Setup::new()?;
+  let mut setup = Setup::new().await?;
 
   // Insert some data
   let _ts1 = setup
@@ -231,7 +233,7 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
   assert_eq!(setup.store.get("key3"), Some(&make_string_value("value3")));
 
   // Decompress the archive and load it as a Store to verify that it contains the old state.
-  let snapshot_store = setup.make_store_from_snapshot_file(&archived_path)?;
+  let snapshot_store = setup.make_store_from_snapshot_file(&archived_path).await?;
   assert_eq!(
     snapshot_store.get("key1"),
     Some(&make_string_value("value1"))
@@ -247,7 +249,7 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_rotation_preserves_state() -> anyhow::Result<()> {
-  let mut setup = Setup::new()?;
+  let mut setup = Setup::new().await?;
 
   setup
     .store
@@ -282,7 +284,7 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_empty_store_operations() -> anyhow::Result<()> {
-  let mut setup = Setup::new()?;
+  let mut setup = Setup::new().await?;
 
   // Operations on empty store
   assert_eq!(setup.store.get("nonexistent"), None);
@@ -296,7 +298,7 @@ async fn test_empty_store_operations() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
-  let mut setup = Setup::new()?;
+  let mut setup = Setup::new().await?;
 
   // Insert some keys and capture their timestamps
   let ts1 = setup
@@ -357,7 +359,7 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_multiple_rotations() -> anyhow::Result<()> {
-  let mut setup = Setup::new()?;
+  let mut setup = Setup::new().await?;
 
   let mut rotation_timestamps = Vec::new();
 

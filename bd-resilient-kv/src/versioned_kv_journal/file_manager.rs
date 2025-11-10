@@ -2,20 +2,16 @@ use std::path::{Path, PathBuf};
 
 /// Find the active journal file by searching for the highest generation number. If we failed
 /// to read the directory or there are no journal files, we return generation 0.
-pub fn find_active_journal(dir: &Path, name: &str) -> (PathBuf, u64) {
+pub async fn find_active_journal(dir: &Path, name: &str) -> (PathBuf, u64) {
   // Search for generation-based journals
   let pattern = format!("{name}.jrn.");
 
   let mut max_gen = 0u64;
-  let Ok(entries) = std::fs::read_dir(dir) else {
+  let Ok(mut entries) = tokio::fs::read_dir(dir).await else {
     return (dir.join(format!("{name}.jrn.{max_gen}")), max_gen);
   };
 
-  for entry in entries {
-    let Ok(entry) = entry else {
-      continue;
-    };
-
+  while let Ok(Some(entry)) = entries.next_entry().await {
     let filename = entry.file_name();
     let filename_str = filename.to_string_lossy();
 

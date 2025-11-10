@@ -55,7 +55,7 @@ impl VersionedKVStore {
   ///
   /// # Errors
   /// Returns an error if we failed to create or open the journal file.
-  pub fn new<P: AsRef<Path>>(
+  pub async fn new<P: AsRef<Path>>(
     dir_path: P,
     name: &str,
     buffer_size: usize,
@@ -64,7 +64,7 @@ impl VersionedKVStore {
   ) -> anyhow::Result<(Self, DataLoss)> {
     let dir = dir_path.as_ref();
 
-    let (journal_path, generation) = file_manager::find_active_journal(dir, name);
+    let (journal_path, generation) = file_manager::find_active_journal(dir, name).await;
 
     // TODO(snowp): It would be ideal to be able to start with a small buffer and grow is as needed
     // depending on the particular device need. We can embed size information in the journal header
@@ -149,7 +149,7 @@ impl VersionedKVStore {
   /// - The journal file cannot be opened
   /// - The journal file contains invalid data
   /// - Initialization fails
-  pub fn open_existing<P: AsRef<Path>>(
+  pub async fn open_existing<P: AsRef<Path>>(
     dir_path: P,
     name: &str,
     buffer_size: usize,
@@ -158,7 +158,7 @@ impl VersionedKVStore {
   ) -> anyhow::Result<(Self, DataLoss)> {
     let dir = dir_path.as_ref();
 
-    let (journal_path, generation) = file_manager::find_active_journal(dir, name);
+    let (journal_path, generation) = file_manager::find_active_journal(dir, name).await;
 
     let journal = MemMappedVersionedJournal::from_file(
       &journal_path,
@@ -304,14 +304,24 @@ impl VersionedKVStore {
   pub fn sync(&self) -> anyhow::Result<()> {
     MemMappedVersionedJournal::sync(&self.journal)
   }
+}
 
+
+/// Information about a journal rotation. This is used by test code to verify rotation results.
+pub struct Rotation {
+  pub new_journal_path: PathBuf,
+  pub old_journal_path: PathBuf,
+  pub snapshot_path: PathBuf,
+}
+
+impl VersionedKVStore {
   /// Manually trigger journal rotation, returning the path to the new journal file.
   ///
   /// This will create a new journal with the current state compacted and archive the old journal.
   /// The archived journal will be compressed using zlib to reduce storage size.
   /// Rotation typically happens automatically when the high water mark is reached, but this
   /// method allows manual control when needed.
-  pub async fn rotate_journal(&mut self) -> anyhow::Result<PathBuf> {
+  pub async fn rotate_journal(&mut self) -> anyhow::Result<Rotation> {
     // Increment generation counter for new journal
     let next_generation = self.current_generation + 1;
     let new_journal_path = self
@@ -338,15 +348,20 @@ impl VersionedKVStore {
     let old_journal_path = self
       .dir_path
       .join(format!("{}.jrn.{old_generation}", self.journal_name));
-    self.cleanup_archived_journal(&old_journal_path).await;
+    let snapshot_path = self.archive_journal(&old_journal_path).await;
 
-    Ok(new_journal_path)
+    Ok(Rotation {
+      new_journal_path,
+      old_journal_path,
+      snapshot_path,
+    })
   }
 
-  /// Clean up after successful rotation (best effort, non-critical).
+  /// Archives the old journal by compressing it and removing the original.
   ///
-  /// This compresses and removes the old journal. Failures are logged but not propagated.
-  async fn cleanup_archived_journal(&self, old_journal_path: &Path) {
+  /// This is a best-effort operation; failures to compress or delete the old journal
+  /// are logged but do not cause the rotation to fail.
+  async fn archive_journal(&self, old_journal_path: &Path) -> PathBuf {
     // Generate archived path with timestamp
     let rotation_timestamp = self
       .cached_map
@@ -360,16 +375,34 @@ impl VersionedKVStore {
       self.journal_name, rotation_timestamp
     ));
 
-    // Try to compress the old journal
-    match compress_archived_journal(old_journal_path, &archived_path).await {
-      Ok(()) => {
-        // Compression succeeded, remove uncompressed version
-        let _ = tokio::fs::remove_file(old_journal_path).await;
-      },
-      Err(_e) => {
-        // Compression failed - keep the uncompressed version as a fallback
-      },
+    log::debug!(
+      "Archiving journal {} to {}",
+      old_journal_path.display(),
+      archived_path.display()
+    );
+
+    // Try to compress the old journal for longer-term storage.
+    if let Err(e) = compress_archived_journal(old_journal_path, &archived_path).await {
+      log::warn!(
+        "Failed to compress archived journal {}: {}",
+        old_journal_path.display(),
+        e
+      )
     }
+
+    // Remove the uncompressed regardless of compression success. If we succeeded we no longer need
+    // it, while if we failed we consider the snapshot lost.
+    let _ignored = tokio::fs::remove_file(old_journal_path)
+      .await
+      .inspect_err(|e| {
+        log::warn!(
+          "Failed to remove old journal {}: {}",
+          old_journal_path.display(),
+          e
+        );
+      });
+
+    archived_path
   }
 
   fn populate_initial_state(
