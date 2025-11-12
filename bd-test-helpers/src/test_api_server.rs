@@ -10,8 +10,6 @@ pub mod log_upload;
 use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::routing::post;
-use axum_server::Handle;
-use axum_server::tls_rustls::RustlsConfig;
 use bd_grpc::finalize_response_compression;
 use bd_grpc_codec::{Compression, OptimizeFor};
 use bd_proto::protos::client::api::api_request::Request_type;
@@ -55,6 +53,7 @@ use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
+use tower::Service;
 
 //
 // StreamAccounting
@@ -682,47 +681,85 @@ async fn dispatch_per_stream_actions(
 }
 
 async fn serve(listener: std::net::TcpListener, tls: bool, service_state: Arc<ServiceState>) {
+  listener.set_nonblocking(true).unwrap();
+  let listener = TcpListener::from_std(listener).unwrap();
+
   if tls {
-    let server_handle = Handle::new();
-    let handle_clone = server_handle.clone();
-    let state_clone = service_state.clone();
-    tokio::spawn(async move {
-      let mut rx = state_clone.shutdown_tx.subscribe();
-
-      let _ignored = rx.recv().await;
-
-      handle_clone.shutdown();
-    });
+    use tokio_rustls::TlsAcceptor;
+    use tokio_rustls::rustls::ServerConfig;
+    use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 
     // Embed the strings into the source file instead of reading from file - this works better
     // on iOS where the files aren't easily available at runtime.
     let cert = include_str!("certs/Bitdrift.crt");
     let key = include_str!("certs/Bitdrift.key");
-    axum_server::from_tcp_rustls(
-      listener,
-      RustlsConfig::from_pem(cert.bytes().collect(), key.bytes().collect())
-        .await
-        .unwrap(),
-    )
-    .handle(server_handle)
-    .serve(router(service_state.clone()).into_make_service())
-    .await
-    .unwrap();
+
+    let certs: Vec<CertificateDer<'_>> = rustls_pemfile::certs(&mut cert.as_bytes())
+      .collect::<Result<_, _>>()
+      .unwrap();
+    let key: PrivateKeyDer<'_> = rustls_pemfile::private_key(&mut key.as_bytes())
+      .unwrap()
+      .unwrap();
+
+    let config = ServerConfig::builder()
+      .with_no_client_auth()
+      .with_single_cert(certs, key)
+      .unwrap();
+
+    let acceptor = TlsAcceptor::from(Arc::new(config));
+    let app = router(service_state.clone());
+
+    let mut shutdown_rx = service_state.shutdown_tx.subscribe();
+
+    loop {
+      tokio::select! {
+        result = listener.accept() => {
+          let (stream, _addr) = match result {
+            Ok(conn) => conn,
+            Err(e) => {
+              log::error!("failed to accept connection: {e}");
+              continue;
+            }
+          };
+
+          let acceptor = acceptor.clone();
+          let app = app.clone();
+
+          tokio::spawn(async move {
+            let stream = match acceptor.accept(stream).await {
+              Ok(stream) => stream,
+              Err(e) => {
+                log::error!("failed to complete TLS handshake: {e}");
+                return;
+              }
+            };
+
+            let hyper_service = hyper::service::service_fn(
+              move |request: Request<hyper::body::Incoming>| {
+              app.clone().call(request)
+            });
+
+            if let Err(e) = hyper::server::conn::http1::Builder::new()
+              .serve_connection(hyper_util::rt::TokioIo::new(stream), hyper_service)
+              .await
+            {
+              log::error!("error serving connection: {e}");
+            }
+          });
+        }
+        _ = shutdown_rx.recv() => {
+          log::debug!("shutting down TLS server");
+          break;
+        }
+      }
+    }
   } else {
-    // TODO(mattklein123): axum_server takes a std TcpListener while axum now takes a tokio
-    // TcpListener. This is not trivial to fix as the listener is currently created outside of
-    // async context above. This took me a long time to debug and I would like to clean this up
-    // but leaving that for a future change.
-    listener.set_nonblocking(true).unwrap();
-    let _ignored = axum::serve(
-      TcpListener::from_std(listener).unwrap(),
-      router(service_state.clone()).into_make_service(),
-    )
-    .with_graceful_shutdown(async move {
-      let mut rx = service_state.shutdown_tx.subscribe();
-      let _ignored = rx.recv().await;
-    })
-    .await;
+    let _ignored = axum::serve(listener, router(service_state.clone()).into_make_service())
+      .with_graceful_shutdown(async move {
+        let mut rx = service_state.shutdown_tx.subscribe();
+        let _ignored = rx.recv().await;
+      })
+      .await;
   }
 }
 
