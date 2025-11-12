@@ -13,7 +13,6 @@ anyhow.workspace            = true
 assert_matches.workspace    = true
 async-trait.workspace       = true
 axum.workspace              = true
-axum-server.workspace       = true
 bd-client-common.path       = "../bd-client-common"
 bd-error-reporter.path      = "../bd-error-reporter"
 bd-events.path              = "../bd-events"
@@ -35,16 +34,21 @@ bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true
 futures-core.workspace      = true
 http-body-util.workspace    = true
+hyper.workspace             = true
+hyper-util.workspace        = true
 log.workspace               = true
 mockall                     = { workspace = true, optional = true }
 parking_lot.workspace       = true
 prometheus.workspace        = true
 protobuf.workspace          = true
+rustls-pemfile.workspace    = true
 serde.workspace             = true
 tempfile.workspace          = true
 time.workspace              = true
 tokio.workspace             = true
+tokio-rustls.workspace      = true
 tokio-stream.workspace      = true
+tower.workspace             = true
 tracing.workspace           = true
 
 [features]
