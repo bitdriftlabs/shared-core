@@ -300,6 +300,22 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     Ok(timestamp)
   }
 
+  pub(crate) fn insert_with_timestamp(
+    &mut self,
+    message: impl protobuf::MessageFull,
+    timestamp: u64,
+  ) -> anyhow::Result<()> {
+    // Create payload
+    let frame = Frame::new(timestamp, message);
+
+    // Encode frame
+    let available_space = &mut self.buffer[self.position ..];
+    let encoded_len = frame.encode(available_space)?;
+
+    self.set_position(self.position + encoded_len);
+    Ok(())
+  }
+
   /// Check if the high water mark has been triggered.
   #[must_use]
   pub fn is_high_water_mark_triggered(&self) -> bool {
