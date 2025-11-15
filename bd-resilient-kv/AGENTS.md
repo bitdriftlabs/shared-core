@@ -4,6 +4,11 @@ This document provides insights and understanding about the `bd-resilient-kv` jo
 
 ## Core Architecture
 
+The `bd-resilient-kv` library provides two storage models:
+
+1. **KVStore**: Standard double-buffered key-value store with automatic compaction
+2. **VersionedKVStore**: Version-tracked store with point-in-time recovery and automatic rotation
+
 ### KVJournal Trait
 The `KVJournal` trait is the foundation of the system, providing:
 - **Append-only semantics**: Journals accumulate entries over time without removing old data
@@ -16,6 +21,9 @@ The `KVJournal` trait is the foundation of the system, providing:
 1. **InMemoryKVJournal**: Core implementation backed by byte buffers
 2. **MemMappedKVJournal**: File-backed implementation wrapping InMemoryKVJournal
 3. **DoubleBufferedKVJournal**: High-level wrapper providing automatic compaction and retry logic
+4. **VersionedKVJournal**: Versioned journal with entry-level version tracking
+5. **MemMappedVersionedKVJournal**: Memory-mapped wrapper for versioned journals
+6. **VersionedKVStore**: High-level API for versioned key-value storage with automatic rotation
 
 ### Bulk Operations Architecture
 
@@ -31,14 +39,91 @@ The system provides efficient bulk operations through a consistent pattern:
 - Optimized for batch processing scenarios
 - Automatic timestamp synchronization for related entries
 
+### Versioned Storage Architecture
+
+The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJournal`:
+
+**Key Components**:
+- **VersionedKVJournal**: Low-level journal that tracks timestamps for each entry
+- **MemMappedVersionedKVJournal**: Memory-mapped persistence layer
+- **VersionedKVStore**: High-level HashMap-like API with automatic rotation and async write operations
+
+**Async API**:
+- Write operations (`insert()`, `remove()`, `rotate_journal()`) are async and require a Tokio runtime
+- Compression of archived journals is performed asynchronously using streaming I/O
+- Read operations remain synchronous and operate on the in-memory cache
+- The async API enables efficient background compression without blocking the main thread
+
+**Version Tracking**:
+- Every write operation (`insert`, `remove`) returns a monotonically non-decreasing timestamp (microseconds since UNIX epoch)
+- Timestamps serve as both version identifiers and logical clocks
+- If the system clock goes backward, timestamps are clamped to the last timestamp to maintain monotonicity
+- Entries with `Value::Null` are treated as deletions but still timestamped
+- During rotation, snapshot entries preserve their original timestamps
+
+**Timestamp Tracking**:
+- Each entry records a timestamp (microseconds since UNIX epoch) when the write occurred
+- Timestamps are monotonically non-decreasing, not strictly increasing
+- Multiple entries may share the same timestamp if the system clock doesn't advance between writes
+- This is expected behavior, particularly during rapid writes or in test environments
+- Recovery at timestamp T includes ALL entries with timestamp ≤ T, applied in version order
+- Timestamps are preserved during rotation, maintaining temporal accuracy for audit purposes
+- Test coverage: `test_timestamp_collision_across_rotation` in `versioned_recovery_test.rs`
+
+**Rotation Strategy**:
+- Automatic rotation when journal size exceeds high water mark (triggered during async write operations)
+- Current state is compacted into a new journal as versioned entries
+- Old journal is archived with `.t{timestamp}.zz` suffix
+- Archived journals are automatically compressed using zlib (RFC 1950, level 5) asynchronously
+
+**Compression**:
+- All archived journals are automatically compressed during rotation using async I/O
+- Active journals remain uncompressed for write performance
+- Compression uses zlib format (RFC 1950) with level 5 for balanced speed/ratio
+- Streaming compression avoids loading entire journals into memory
+- Typical compression achieves >50% size reduction for text-based data
+- File extension `.zz` indicates compressed archives
+- Recovery transparently decompresses archived journals when needed
+
+**Point-in-Time Recovery**:
+The `VersionedRecovery` utility provides point-in-time recovery by replaying journal entries up to a target timestamp. It works with raw uncompressed journal bytes and can reconstruct state at any historical timestamp across rotation boundaries. Recovery is optimized: `recover_current()` only reads the last journal (since rotation writes complete compacted state), while `recover_at_timestamp()` intelligently selects and replays only necessary journals. The `new()` constructor accepts a vector of `(&[u8], u64)` tuples (byte slice and snapshot timestamp). Callers must decompress archived journals before passing them to the constructor.
+
 ## Critical Design Insights
 
-### 1. Compaction Efficiency
+### 1. Two Storage Models
+
+**KVStore (Double-Buffered)**:
+- Best for: General-purpose key-value storage, configuration, caches
+- Architecture: Two journals with automatic switching
+- Compaction: Compresses entire state into inactive journal
+- No version tracking
+- Format: BONJSON-based entries
+
+**VersionedKVStore (Single Journal with Rotation)**:
+- Best for: Audit logs, state history, remote backup
+- Architecture: Single journal with archived versions
+- Rotation: Creates new journal with compacted state
+- Timestamp tracking: Every write returns a timestamp
+- Format: Protobuf-based entries (VERSION 1)
+
+### 2. Compaction Efficiency
 **Key Insight**: Compaction via `reinit_from()` is already maximally efficient. It writes data in the most compact possible serialized form (hashmap → bytes). If even this compact representation exceeds high water marks, then the data volume itself is the limiting factor, not inefficient storage.
 
 **Implication**: Never assume compaction can always solve high water mark issues. Sometimes both buffers are legitimately full.
 
-### 2. Bulk Operations and Retry Logic
+### 3. Versioned Store Rotation vs KVStore Compaction
+
+**Key Differences**:
+- **KVStore**: Switches between two buffers, old buffer is reset and reused
+- **VersionedKVStore**: Archives old journal with `.t{timestamp}` suffix, creates new journal
+- **Version Preservation**: Archived journals preserve complete history for recovery
+
+**When Rotation Occurs**:
+- Triggered during `insert()` or `remove()` when journal size exceeds high water mark
+- Can be manually triggered via `rotate()`
+- Automatic and transparent to the caller
+
+### 4. Bulk Operations and Retry Logic
 The system includes sophisticated retry logic specifically for bulk operations:
 
 **`set_multiple` Intelligence**: The `set_multiple` method in `DoubleBufferedKVJournal` implements a two-phase approach:
@@ -51,7 +136,7 @@ The system includes sophisticated retry logic specifically for bulk operations:
 - A retry immediately after might succeed on the now-compacted journal
 - High water mark flag accurately reflects whether retry is worthwhile
 
-### 3. Simplified High Water Mark Detection
+### 5. Simplified High Water Mark Detection
 The system uses a straightforward approach to high water mark detection:
 
 ```rust
@@ -66,7 +151,7 @@ if journal.is_high_water_mark_triggered() {
 - No callback complexity or thread safety concerns
 - Direct control over when to check status
 
-### 3. Double Buffered Journal Logic
+### 6. Double Buffered Journal Logic
 The `DoubleBufferedKVJournal` implements automatic switching with sophisticated retry logic:
 
 1. **Normal Operations**: Forward to active journal, switch if high water mark triggered
@@ -144,6 +229,37 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
 - **Retry Logic**: `set_multiple` should retry on failure if high water mark not triggered
 - **Error Scenarios**: Actual errors should be propagated, not masked
 
+## Failure Modes: What to Handle vs What's Impossible
+
+### Failure Modes Applications Must Handle
+
+1. **Buffer Full During Normal Writes**
+   - **When**: Writing to journal when buffer is at capacity
+   - **Result**: Write operations return `SerializationError::BufferFull`
+   - **Action**: Check `is_high_water_mark_triggered()`, trigger compaction/rotation if needed
+   - **Note**: Even after compaction, if unique data exceeds buffer size, writes will still fail
+
+2. **High Water Mark Triggered After Compaction (KVStore)**
+   - **When**: Compacted state still exceeds high water mark threshold
+   - **Result**: `is_high_water_mark_triggered()` returns true after `switch_journals()`
+   - **Action**: Indicates buffer size is too small for the unique data volume, not a transient issue
+
+3. **I/O Errors During Persistence**
+   - **When**: File operations fail (disk full, permissions, etc.)
+   - **Result**: I/O errors propagated from memory-mapped operations
+   - **Action**: Handle as standard I/O errors
+
+4. **Compression/Archive Errors (VersionedKVStore)**
+   - **When**: Asynchronous compression of archived journal fails
+   - **Result**: Error during rotation's async compression phase
+   - **Action**: Retry compression, handle cleanup appropriately
+
+### Impossible Failure Modes (Architectural Guarantees)
+
+1. **Timestamp Overflow (VersionedKVStore)**
+   - **Why Practically Impossible**: Uses u64 for microsecond timestamps, would require 584,000+ years to overflow (u64::MAX microseconds ≈ year 586,524 CE)
+   - **Implication**: No overflow handling needed in practice
+
 ## Common Pitfalls
 
 ### 1. Assuming Compaction Always Works
@@ -157,6 +273,10 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
 ### 3. Error Handling
 **Wrong**: Assuming high water mark flag means operation failed
 **Right**: High water mark flag indicates resource pressure, operations may still succeed
+
+### 4. Over-Engineering for Impossible Scenarios
+**Wrong**: Adding error handling for rotation buffer overflow
+**Right**: Trust architectural guarantees, focus on actual failure modes
 
 ## Key Methods and Their Purposes
 
@@ -233,7 +353,7 @@ When modifying or refactoring code in the kv_journal system (or any Rust codebas
 - **Always update documentation and comments** to reflect current functionality
 - Pay special attention to trait documentation, method comments, and module-level explanations
 - Update CLAUDE.md or similar architectural documentation when making significant changes
-- Ensure code comments explain the "why" behind complex logic, especially around callback mechanisms and compaction strategies
+- Ensure code comments explain the "why" behind complex logic, especially around compaction strategies and retry mechanisms
 
 ### Code Quality Checks
 After making changes, run these commands in order:
@@ -250,7 +370,7 @@ After making changes, run these commands in order:
 
 ### Testing
 - Run the full test suite: `cargo test -p bd-resilient-kv --lib`
-- Pay special attention to tests that verify callback behavior and automatic switching
+- Pay special attention to tests that verify automatic switching and retry logic
 - When adding new functionality, include comprehensive tests covering edge cases
 
 ### Git Workflow

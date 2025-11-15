@@ -1077,10 +1077,20 @@ dependencies = [
  "anyhow",
  "bd-bonjson",
  "bd-client-common",
+ "bd-log",
+ "bd-proto",
+ "bd-time",
  "bd-workspace-hack",
  "bytes",
+ "crc32fast",
+ "ctor",
+ "flate2",
+ "log",
  "memmap2",
+ "protobuf 4.0.0-alpha.0",
  "tempfile",
+ "time",
+ "tokio",
 ]
 
 [[package]]
