@@ -9,10 +9,10 @@
 //!
 //! Per-entry format:
 //! ```text
-//! [length: u32][timestamp_micros: varint][payload: bytes][crc32: u32]
+//! [length: varint][timestamp_micros: varint][payload: bytes][crc32: u32]
 //! ```
 //!
-//! - `length`: Total length of the frame (timestamp + payload + crc)
+//! - `length`: Total length of the frame (timestamp + payload + crc), varint encoded
 //! - `timestamp_micros`: Microseconds since UNIX epoch (varint encoded)
 //! - `payload`: Opaque binary data (format determined by caller)
 //! - `crc32`: CRC32 checksum of (`timestamp_bytes` + payload)
@@ -27,7 +27,6 @@ use crc32fast::Hasher;
 mod varint;
 
 const CRC_LEN: usize = 4;
-const LENGTH_LEN: usize = 4;
 
 /// Frame structure for a journal entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,12 +58,13 @@ impl<M: protobuf::Message> Frame<M> {
   /// Calculate the encoded size of this frame.
   #[must_use]
   pub fn encoded_size(&self) -> usize {
-    // Calculate varint size
-    let varint_size = varint::compute_size(self.timestamp_micros);
+    let timestamp_varint_size = varint::compute_size(self.timestamp_micros);
     let payload_size: usize = self.payload.compute_size().try_into().unwrap_or(0);
 
-    // length(4) + timestamp_varint + payload + crc(4)
-    LENGTH_LEN + varint_size + payload_size + CRC_LEN
+    let frame_content_len = timestamp_varint_size + payload_size + CRC_LEN;
+    let length_varint_size = varint::compute_size(frame_content_len as u64);
+
+    length_varint_size + frame_content_len
   }
 
   /// Encode this frame into a buffer.
@@ -94,10 +94,11 @@ impl<M: protobuf::Message> Frame<M> {
 
     // Frame length = timestamp + payload + crc
     let frame_len = timestamp_len + payload_bytes.len() + CRC_LEN;
-    #[allow(clippy::cast_possible_truncation)]
-    {
-      cursor.put_u32_le(frame_len as u32);
-    }
+
+    // Encode frame length as varint
+    let mut length_buf = [0u8; varint::MAX_SIZE];
+    let length_len = varint::encode(frame_len as u64, &mut length_buf);
+    cursor.put_slice(&length_buf[.. length_len]);
 
     cursor.put_slice(&timestamp_buf[.. timestamp_len]);
     cursor.put_slice(&payload_bytes);
@@ -116,15 +117,15 @@ impl<M: protobuf::Message> Frame<M> {
   ///
   /// Returns (Frame, `bytes_consumed`) or error if invalid/incomplete.
   pub fn decode(buf: &[u8]) -> anyhow::Result<(Self, usize)> {
-    if buf.len() < LENGTH_LEN {
-      anyhow::bail!("Buffer too small for length field");
-    }
+    // Decode frame length varint
+    let (frame_len_u64, length_len) =
+      varint::decode(buf).ok_or_else(|| anyhow::anyhow!("Invalid length varint"))?;
 
-    // Read frame length
-    let frame_len = u32::from_le_bytes(buf[0 .. LENGTH_LEN].try_into()?) as usize;
+    let frame_len = usize::try_from(frame_len_u64)
+      .map_err(|_| anyhow::anyhow!("Frame length too large: {frame_len_u64}"))?;
 
     // Check if we have the complete frame
-    let total_len = LENGTH_LEN + frame_len; // length field + frame
+    let total_len = length_len + frame_len; // length varint + frame content
     if buf.len() < total_len {
       anyhow::bail!(
         "Incomplete frame: need {} bytes, have {} bytes",
@@ -133,11 +134,11 @@ impl<M: protobuf::Message> Frame<M> {
       );
     }
 
-    let frame_data = &buf[LENGTH_LEN .. total_len];
+    let frame_data = &buf[length_len .. total_len];
 
     // Decode timestamp varint
     let (timestamp_micros, timestamp_len) =
-      varint::decode(frame_data).ok_or_else(|| anyhow::anyhow!("Invalid varint"))?;
+      varint::decode(frame_data).ok_or_else(|| anyhow::anyhow!("Invalid timestamp varint"))?;
 
     // Extract payload and CRC
     if frame_data.len() < timestamp_len + CRC_LEN {

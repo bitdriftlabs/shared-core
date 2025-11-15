@@ -49,7 +49,7 @@ The byte-level layout of a VERSION 1 journal file:
 │                    VERSIONED JOURNAL ENTRY                              │
 │  (Protobuf-encoded StateKeyValuePair)                                   │
 ├─────────────────────────────────────────────────────────────────────────┤
-│  Frame Length (u32)         │  4 bytes                                  │
+│  Frame Length (varint)      │  Variable length (1-10 bytes)             │
 │  Timestamp (varint)         │  Variable length (microseconds)           │
 │  Protobuf Payload           │  Variable length                          │
 │  CRC32                      │  4 bytes                                  │
@@ -77,7 +77,7 @@ Each entry in the journal uses a length-prefixed framing format with CRC32 integ
 
 | Component | Size | Type | Description |
 |-----------|------|------|-------------|
-| Frame Length | 4 bytes | u32 (little-endian) | Total size of timestamp + protobuf payload + CRC32 |
+| Frame Length | Variable | varint | Total size of timestamp + protobuf payload + CRC32 (1-10 bytes) |
 | Timestamp | Variable | varint | Entry timestamp in microseconds (serves as version) |
 | Protobuf Payload | Variable | bytes | Serialized StateKeyValuePair message |
 | CRC32 | 4 bytes | u32 (little-endian) | Checksum of timestamp + payload |
@@ -118,10 +118,12 @@ Fields:
 **Size Considerations:**
 - **Header**: Fixed 17 bytes
 - **Per Entry**: Varies based on key and value size
-  - Frame overhead: 8+ bytes (length + CRC)
+  - Frame length: 1-10 bytes (varint-encoded)
   - Timestamp: 1-10 bytes (varint-encoded)
   - Protobuf payload: varies by content
-  - Typical: 40-200 bytes per entry
+  - CRC: Fixed 4 bytes
+  - Typical small entries: 20-50 bytes total
+  - Typical medium entries: 50-200 bytes total
 
 ## Journal Structure
 

@@ -152,7 +152,7 @@ fn frame_buffer_too_small() {
 
 #[test]
 fn frame_incomplete_length() {
-  let buf = vec![0x01, 0x02]; // Only 2 bytes (need 4 for length)
+  let buf = vec![0x80]; // Incomplete varint (has continuation bit but no next byte)
 
   let result = Frame::<StateValue>::decode(&buf);
   assert!(result.is_err());
@@ -160,9 +160,12 @@ fn frame_incomplete_length() {
 
 #[test]
 fn frame_incomplete_data() {
-  // Frame says it needs 100 bytes but we only provide 20
+  // Frame says it needs 100 bytes but we only provide partial data
   let mut buf = vec![0u8; 20];
-  buf[0 .. 4].copy_from_slice(&100u32.to_le_bytes());
+  // Encode length varint for 100 bytes
+  let length_len = varint::encode(100, &mut buf);
+  // Truncate to simulate incomplete frame
+  buf.truncate(length_len + 10);
 
   let result = Frame::<StateValue>::decode(&buf);
   assert!(result.is_err());
@@ -205,4 +208,30 @@ fn frame_multiple_frames() {
   assert_eq!(consumed1, len1);
   assert_eq!(consumed2, len2);
   assert_eq!(consumed3, len3);
+}
+
+#[test]
+fn frame_length_varint_encoding() {
+  // Test that frame length is properly varint-encoded
+  // Small frames should use 1 byte for length, larger frames may use more
+
+  // Very small payload (length should fit in 1 byte varint)
+  let small_frame = Frame::new(0, make_string_value("x"));
+  let mut buf = vec![0u8; 1024];
+  let encoded_len = small_frame.encode(&mut buf).unwrap();
+
+  // First byte should be the length varint
+  let (frame_len, length_varint_len) = varint::decode(&buf).unwrap();
+  assert_eq!(
+    length_varint_len, 1,
+    "Small frame should use 1-byte varint for length"
+  );
+
+  // Verify total encoded size matches
+  assert_eq!(encoded_len as u64, length_varint_len as u64 + frame_len);
+
+  // Verify decoding works
+  let (decoded, consumed) = Frame::<StateValue>::decode(&buf).unwrap();
+  assert_eq!(decoded, small_frame);
+  assert_eq!(consumed, encoded_len);
 }
