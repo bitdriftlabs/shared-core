@@ -10,6 +10,14 @@ use bd_client_common::error::InvariantError;
 use bd_time::TimeProvider;
 use std::sync::Arc;
 
+/// Indicates whether partial data loss has occurred. Partial data loss is detected when the
+/// journal would be parsed from disk, but we were not able to find valid records up to `position`
+/// as stored in the header.
+pub enum PartialDataLoss {
+  Yes,
+  None,
+}
+
 /// Timestamped implementation of a journaling system that uses timestamps
 /// as the version identifier for point-in-time recovery.
 ///
@@ -55,6 +63,12 @@ const HEADER_SIZE: usize = 17;
 
 // Minimum buffer size for a valid journal
 const MIN_BUFFER_SIZE: usize = HEADER_SIZE + 4;
+
+/// Returns by
+struct BufferState {
+  highest_timestamp: u64,
+  partial_data_loss: PartialDataLoss,
+}
 
 /// Write to the version field of a journal buffer.
 fn write_version_field(buffer: &mut [u8], version: u64) {
@@ -163,7 +177,8 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     buffer: &'a mut [u8],
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
-  ) -> anyhow::Result<Self> {
+    f: impl FnMut(&M, u64),
+  ) -> anyhow::Result<(Self, PartialDataLoss)> {
     let buffer_len = validate_buffer_len(buffer)?;
     let position = read_position(buffer)?;
     let high_water_mark = calculate_high_water_mark(buffer_len, high_water_mark_ratio)?;
@@ -177,30 +192,37 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     }
 
     // Find initialization timestamp and highest timestamp in the journal
-    let highest_timestamp = Self::find_latest_timestamp(buffer, position);
+    let buffer_state = Self::iterate_buffer(buffer, position, f);
 
-    Ok(Self {
-      position,
-      buffer,
-      high_water_mark,
-      high_water_mark_triggered: position >= high_water_mark,
-      last_timestamp: highest_timestamp,
-      time_provider,
-      _payload_marker: std::marker::PhantomData,
-    })
+    Ok((
+      Self {
+        position,
+        buffer,
+        high_water_mark,
+        high_water_mark_triggered: position >= high_water_mark,
+        last_timestamp: buffer_state.highest_timestamp,
+        time_provider,
+        _payload_marker: std::marker::PhantomData,
+      },
+      buffer_state.partial_data_loss,
+    ))
   }
 
   /// Scan the journal to find the highest timestamp.
-  fn find_latest_timestamp(buffer: &[u8], position: usize) -> u64 {
+  fn iterate_buffer(buffer: &[u8], position: usize, mut f: impl FnMut(&M, u64)) -> BufferState {
     let mut cursor = HEADER_SIZE;
-    let mut highest_timestamp = 0u64;
+    let mut state = BufferState {
+      highest_timestamp: 0,
+      partial_data_loss: PartialDataLoss::None,
+    };
 
     while cursor < position {
       let remaining = &buffer[cursor .. position];
 
-      match Frame::<()>::decode_timestamp(remaining) {
-        Ok((timestamp_micros, consumed)) => {
-          highest_timestamp = timestamp_micros;
+      match Frame::<M>::decode(remaining) {
+        Ok((frame, consumed)) => {
+          f(&frame.payload, frame.timestamp_micros);
+          state.highest_timestamp = frame.timestamp_micros;
           cursor += consumed;
         },
         Err(_) => {
@@ -210,7 +232,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
       }
     }
 
-    highest_timestamp
+    state
   }
 
   /// Get the next monotonically increasing timestamp.
@@ -264,39 +286,6 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   #[must_use]
   pub fn is_high_water_mark_triggered(&self) -> bool {
     self.high_water_mark_triggered
-  }
-
-  /// Read and process all complete entries in the journal with their timestamps.
-  ///
-  ///  # Returns
-  ///  Returns `false` if there are incomplete entries remaining in the journal after reading.
-  pub fn read(&self, mut f: impl FnMut(&M, u64)) -> bool {
-    let mut cursor = HEADER_SIZE;
-
-    let mut incomplete = false;
-    while cursor < self.position {
-      let remaining = &self.buffer[cursor .. self.position];
-
-      match Frame::<M>::decode(remaining) {
-        Ok((frame, consumed)) => {
-          f(&frame.payload, frame.timestamp_micros);
-
-          cursor += consumed;
-        },
-        Err(e) => {
-          // TODO(snowp): In this case we may want to reset the position to cursor to avoid
-          // carrying forward partial/corrupted data. This matters as the recovery will bail on
-          // corrupt data resulting in further writes also being lost.
-          log::debug!("Failed to decode frame at offset {cursor}: {e}");
-
-          // Stop on first decode error
-          incomplete = true;
-          break;
-        },
-      }
-    }
-
-    !incomplete
   }
 
   /// Get current timestamp in microseconds since UNIX epoch.

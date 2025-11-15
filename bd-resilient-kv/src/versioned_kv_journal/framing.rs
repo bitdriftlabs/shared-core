@@ -37,14 +37,6 @@ pub struct Frame<M> {
   pub payload: M,
 }
 
-impl<M> Frame<M> {
-  pub fn decode_timestamp(buf: &[u8]) -> anyhow::Result<(u64, usize)> {
-    let (timestamp_micros, timestamp_len) =
-      varint::decode(buf).ok_or_else(|| anyhow::anyhow!("Invalid varint"))?;
-    Ok((timestamp_micros, timestamp_len))
-  }
-}
-
 impl<M: protobuf::Message> Frame<M> {
   /// Create a new frame.
   #[must_use]

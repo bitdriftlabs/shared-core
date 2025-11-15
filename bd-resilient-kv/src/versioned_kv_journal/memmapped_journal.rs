@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::journal::VersionedJournal;
-use bd_proto::protos::state::payload::StateKeyValuePair;
+use crate::versioned_kv_journal::journal::PartialDataLoss;
 use bd_time::TimeProvider;
 use memmap2::{MmapMut, MmapOptions};
 use std::fs::OpenOptions;
@@ -23,27 +23,27 @@ use std::sync::Arc;
 /// During construction, we unsafely declare mmap's internal buffer as having a static
 /// lifetime, but it's actually tied to the lifetime of `inner`. This works because
 /// nothing external holds a reference to the buffer.
-pub struct MemMappedVersionedJournal {
+pub struct MemMappedVersionedJournal<M> {
   // Note: mmap MUST de-init AFTER versioned_kv because mmap uses it.
   mmap: MmapMut,
-  inner: VersionedJournal<'static, StateKeyValuePair>,
+  inner: VersionedJournal<'static, M>,
 }
 
-impl std::ops::Deref for MemMappedVersionedJournal {
-  type Target = VersionedJournal<'static, StateKeyValuePair>;
+impl<M> std::ops::Deref for MemMappedVersionedJournal<M> {
+  type Target = VersionedJournal<'static, M>;
 
   fn deref(&self) -> &Self::Target {
     &self.inner
   }
 }
 
-impl std::ops::DerefMut for MemMappedVersionedJournal {
+impl<M> std::ops::DerefMut for MemMappedVersionedJournal<M> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.inner
   }
 }
 
-impl MemMappedVersionedJournal {
+impl<M: protobuf::Message> MemMappedVersionedJournal<M> {
   /// Create a memory-mapped buffer from a file and convert it to a static lifetime slice.
   ///
   /// # Safety
@@ -122,7 +122,8 @@ impl MemMappedVersionedJournal {
     size: usize,
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
-  ) -> anyhow::Result<Self> {
+    f: impl FnMut(&M, u64),
+  ) -> anyhow::Result<(Self, PartialDataLoss)> {
     let file = OpenOptions::new().read(true).write(true).open(file_path)?;
 
     let file_len = file.metadata()?.len();
@@ -132,12 +133,16 @@ impl MemMappedVersionedJournal {
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
-    let versioned_kv = VersionedJournal::from_buffer(buffer, high_water_mark_ratio, time_provider)?;
+    let (versioned_kv, partial_data_loss) =
+      VersionedJournal::from_buffer(buffer, high_water_mark_ratio, time_provider, f)?;
 
-    Ok(Self {
-      mmap,
-      inner: versioned_kv,
-    })
+    Ok((
+      Self {
+        mmap,
+        inner: versioned_kv,
+      },
+      partial_data_loss,
+    ))
   }
 
   /// Synchronize changes to disk.
