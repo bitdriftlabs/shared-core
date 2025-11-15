@@ -200,7 +200,7 @@ impl VersionedKVStore {
   )> {
     let mut initial_state = AHashMap::default();
     let (journal, data_loss) = MemMappedVersionedJournal::<StateKeyValuePair>::from_file(
-      &journal_path,
+      journal_path,
       buffer_size,
       high_water_mark_ratio,
       time_provider,
