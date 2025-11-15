@@ -302,3 +302,22 @@ fn test_report_type_to_reason() {
     Monitor::report_type_to_reason(ReportType::HandledError)
   );
 }
+
+#[test]
+fn test_is_reports_watcher_enabled() {
+  let setup = Setup::new(None);
+  assert!(!setup.monitor.is_reports_watcher_enabled());
+
+  std::fs::create_dir_all(setup.directory.path().join("reports/watcher")).unwrap();
+  assert!(setup.monitor.is_reports_watcher_enabled());
+}
+
+#[test]
+fn test_start_file_watcher() {
+  let setup = Setup::new(None);
+  let (tx, _rx) = tokio::sync::mpsc::channel(10);
+  
+  let watcher = setup.monitor.start_file_watcher(tx).unwrap();
+  assert!(setup.directory.path().join("reports/watcher/current_session").exists());
+  drop(watcher);
+}

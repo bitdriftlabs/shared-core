@@ -28,6 +28,7 @@ itertools.workspace         = true
 log.workspace               = true
 memmap2.workspace           = true
 mockall.workspace           = true
+notify.workspace            = true
 regex.workspace             = true
 serde.workspace             = true
 thiserror.workspace         = true

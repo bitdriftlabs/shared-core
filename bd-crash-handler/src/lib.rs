@@ -42,11 +42,13 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
 };
 use fbs::issue_reporting::v_1::root_as_report;
 use memmap2::Mmap;
+use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::ffi::OsStr;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use time::OffsetDateTime;
+use tokio::sync::mpsc;
 
 #[cfg(test)]
 #[ctor::ctor]
@@ -93,6 +95,8 @@ pub trait CrashLogger: Send + Sync {
 /// - `reports/` - The root directory for all all reports.
 /// - `reports/new/` - A directory where new crash reports are placed. The platform layer is
 ///   responsible for copying the raw files into this directory.
+/// - `reports/watcher/current_session/` - When watcher directory exists, native layer will scan for
+///   added reports to be processed right away.
 #[derive(Clone)]
 pub struct Monitor {
   pub previous_session_id: Option<String>,
@@ -214,6 +218,19 @@ impl Monitor {
     }
   }
 
+  /// If reports/watcher is created by platform layer, this will indiate native to start file watching
+  /// on the related directories to automatically detect new reports
+  #[must_use]
+  pub fn is_reports_watcher_enabled(&self) -> bool {
+    let watcher_dir = self.report_directory.join("watcher");
+    watcher_dir.exists() && watcher_dir.is_dir()
+  }
+
+  /// Gets the path to the current session reports directory.
+  fn current_session_directory(&self) -> PathBuf {
+    self.report_directory.join("watcher/current_session")
+  }
+
   pub async fn process_new_reports(&self) -> Vec<CrashLog> {
     let mut dir = match tokio::fs::read_dir(&self.report_directory.join("new")).await {
       Ok(dir) => dir,
@@ -240,21 +257,7 @@ impl Monitor {
     // TODO(snowp): Add smarter handling to avoid duplicate reporting.
     // TODO(snowp): Consider only reporting one of the pending reports if there are multiple.
 
-    let previous_feature_flags = self.feature_flags_manager.previous_feature_flags().ok();
-    let reporting_feature_flags: Vec<SnappedFeatureFlag> = previous_feature_flags
-      .as_ref()
-      .map(|ff| {
-        ff.iter()
-          .map(|(name, flag)| {
-            SnappedFeatureFlag::new(
-              name.to_string(),
-              flag.variant.map(ToString::to_string),
-              flag.timestamp,
-            )
-          })
-          .collect()
-      })
-      .unwrap_or_default();
+    let reporting_feature_flags = self.get_reporting_feature_flags();
 
     let mut logs = vec![];
 
@@ -284,13 +287,13 @@ impl Monitor {
 
         let (crash_reason, crash_details, bin_report) = Self::read_report_contents(&mapped_file);
 
-        if crash_reason.is_none() {
+        let Some(crash_reason) = crash_reason else {
           log::warn!(
             "Failed to infer crash reason from report {}, dropping.",
             path.display()
           );
           continue;
-        }
+        };
 
         let Some(bin_report) = bin_report else {
           log::warn!("Failed to parse report into fbs format, dropping.");
@@ -317,27 +320,12 @@ impl Monitor {
           continue;
         };
 
-        let mut fields = state_fields.clone();
-        fields.insert("_crash_artifact_id".into(), artifact_id.to_string().into());
-        fields.extend(
-          [
-            (
-              "_app_exit_reason".into(),
-              Self::report_type_to_reason(bin_report.type_()).into(),
-            ),
-            (
-              "_app_exit_info".into(),
-              crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
-            ),
-            (
-              "_app_exit_details".into(),
-              crash_details
-                .unwrap_or_else(|| "unknown".to_string())
-                .into(),
-            ),
-            ("_fatal_issue_mechanism".into(), "BUILT_IN".into()),
-          ]
-          .into_iter(),
+        let fields = Self::build_crash_log_fields(
+          state_fields,
+          artifact_id,
+          &bin_report,
+          crash_reason,
+          crash_details,
         );
 
         logs.push(CrashLog {
@@ -367,5 +355,142 @@ impl Monitor {
     }
 
     logs
+  }
+
+  fn build_crash_log_fields(
+    state_fields: LogFields,
+    artifact_id: uuid::Uuid,
+    bin_report: &Report<'_>,
+    crash_reason: String,
+    crash_details: Option<String>,
+  ) -> LogFields {
+    let mut fields = state_fields;
+    fields.insert("_crash_artifact_id".into(), artifact_id.to_string().into());
+    fields.extend([
+      ("_app_exit_reason".into(), Self::report_type_to_reason(bin_report.type_()).into()),
+      ("_app_exit_info".into(), crash_reason.into()),
+      ("_app_exit_details".into(), crash_details.unwrap_or_else(|| "unknown".to_string()).into()),
+      ("_fatal_issue_mechanism".into(), "BUILT_IN".into()),
+    ]);
+    fields
+  }
+
+  fn get_reporting_feature_flags(&self) -> Vec<SnappedFeatureFlag> {
+    self.feature_flags_manager
+      .previous_feature_flags()
+      .ok()
+      .as_ref()
+      .map(|ff| {
+        ff.iter()
+          .map(|(name, flag)| {
+            SnappedFeatureFlag::new(
+              name.to_string(),
+              flag.variant.map(ToString::to_string),
+              flag.timestamp,
+            )
+          })
+          .collect()
+      })
+      .unwrap_or_default()
+  }
+
+  pub async fn process_current_session_file(&self, file_path: &Path, current_session_id: &str) -> Option<CrashLog> {
+    if !file_path.exists() || file_path.extension().and_then(OsStr::to_str) != Some("cap") {
+      return None;
+    }
+
+    let Ok(file) = File::open(file_path) else {
+      log::warn!("Failed to open report file: {}", file_path.display());
+      return None;
+    };
+
+    log::info!("Processing current session report: {}", file_path.display());
+
+    let mapped_file = match unsafe { Mmap::map(&file) } {
+      Ok(m) => m,
+      Err(e) => {
+        log::warn!("Failed to memory-map report file: {} ({e})", file_path.display());
+        return None;
+      },
+    };
+
+    let (crash_reason, crash_details, bin_report) = Self::read_report_contents(&mapped_file);
+    let crash_reason = crash_reason?;
+    let bin_report = bin_report?;
+
+    let reporting_feature_flags = self.get_reporting_feature_flags();
+    let (timestamp, state_fields) = Self::read_log_fields(bin_report, &self.previous_run_global_state);
+
+    let Ok(artifact_id) = self.artifact_client.enqueue_upload(
+      file,
+      state_fields.clone(),
+      timestamp,
+      current_session_id.to_string(),
+      reporting_feature_flags.clone(),
+    ) else {
+      log::warn!("Failed to enqueue current session report for upload: {}", file_path.display());
+      return None;
+    };
+
+    let fields = Self::build_crash_log_fields(
+      state_fields,
+      artifact_id,
+      &bin_report,
+      crash_reason,
+      crash_details,
+    );
+
+    let _ = tokio::fs::remove_file(file_path).await;
+
+    Some(CrashLog {
+      log_level: log_level::ERROR,
+      fields: fields.into_iter()
+        .map(|(key, value)| (key, AnnotatedLogField { value, kind: LogFieldKind::Ootb }))
+        .collect(),
+      timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
+      message: "AppExit".into(),
+    })
+  }
+
+  pub fn start_file_watcher(
+    &self,
+    file_event_tx: mpsc::Sender<PathBuf>,
+  ) -> anyhow::Result<RecommendedWatcher> {
+    let current_dir = self.current_session_directory();
+    std::fs::create_dir_all(&current_dir).map_err(|e| {
+      anyhow::anyhow!("Cannot create current session directory: {} ({})", current_dir.display(), e)
+    })?;
+
+    let mut watcher = RecommendedWatcher::new(
+      move |result: notify::Result<Event>| {
+        let event = match result {
+          Ok(event) => event,
+          Err(e) => {
+            log::warn!("File watcher error: {e}");
+            return;
+          },
+        };
+
+        if !matches!(event.kind, EventKind::Create(_)) {
+          return;
+        }
+
+        for path in event.paths {
+          if path.extension().and_then(OsStr::to_str) != Some("cap") {
+            continue;
+          }
+
+          log::debug!("File watcher detected new report: {}", path.display());
+          if let Err(e) = file_event_tx.try_send(path) {
+            log::warn!("Failed to send file event: {e}");
+          }
+        }
+      },
+      Config::default(),
+    )?;
+
+    watcher.watch(&current_dir, RecursiveMode::NonRecursive)?;
+    log::info!("Started file watcher for current session directory: {}", current_dir.display());
+    Ok(watcher)
   }
 }

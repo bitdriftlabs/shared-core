@@ -23,7 +23,7 @@ use bd_bounded_buffer::{Receiver, Sender, TrySendError, channel};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
-use bd_crash_handler::global_state;
+use bd_crash_handler::{global_state, Monitor};
 use bd_device::Store;
 use bd_error_reporter::reporter::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_feature_flags::{FeatureFlags, FeatureFlagsBuilder};
@@ -192,6 +192,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   communication_rx: Receiver<AsyncLogBufferMessage>,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
   report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
+  current_session_file_rx: Option<mpsc::Receiver<std::path::PathBuf>>,
   data_upload_tx: mpsc::Sender<DataUpload>,
   shutdown_trigger_handle: ComponentShutdownTriggerHandle,
 
@@ -215,6 +216,10 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   feature_flags: FeatureFlagInitialization,
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
+  
+  crash_monitor: Option<Monitor>,
+
+  file_watcher: Option<Box<dyn std::any::Any + Send>>,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -273,6 +278,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         communication_rx: async_log_buffer_communication_rx,
         config_update_rx,
         report_processor_rx,
+        current_session_file_rx: None,
         data_upload_tx,
         shutdown_trigger_handle,
 
@@ -312,6 +318,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
+        
+        crash_monitor: None,
+        file_watcher: None,
       },
       async_log_buffer_communication_tx,
     )
@@ -866,6 +875,21 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               log::debug!("failed to process crash log: {e}");
             }
           }
+
+          if crash_monitor.is_reports_watcher_enabled() && self.file_watcher.is_none() {
+            self.start_file_watcher_if_needed(&crash_monitor);
+          }
+        },
+        file_path_opt = async {
+          if let Some(ref mut rx) = self.current_session_file_rx {
+            rx.recv().await
+          } else {
+            std::future::pending().await
+          }
+        } => {
+          if let Some(file_path) = file_path_opt {
+            self.process_watcher_file(file_path).await;
+          }
         },
         Some(async_log_buffer_message) = self.communication_rx.recv() => {
           match async_log_buffer_message {
@@ -981,6 +1005,51 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           return self;
         },
       }
+    }
+  }
+
+  fn start_file_watcher_if_needed(&mut self, crash_monitor: &Monitor) {
+    self.crash_monitor = Some(crash_monitor.clone());
+    
+    if self.current_session_file_rx.is_none() {
+      let (file_tx, file_rx) = mpsc::channel(100);
+      self.current_session_file_rx = Some(file_rx);
+      
+      match crash_monitor.start_file_watcher(file_tx) {
+        Ok(watcher) => {
+          self.file_watcher = Some(Box::new(watcher));
+          log::info!("Started file watcher for current session reports");
+        },
+        Err(e) => {
+          log::warn!("Failed to start file watcher: {e}");
+        },
+      }
+    }
+  }
+
+  async fn process_watcher_file(&mut self, file_path: std::path::PathBuf) {
+    let Some(ref monitor) = self.crash_monitor else {
+      log::warn!("File watcher detected file but monitor not available: {}", file_path.display());
+      return;
+    };
+
+    let current_session_id = self.session_strategy.session_id();
+    let Some(crash_log) = monitor.process_current_session_file(&file_path, &current_session_id).await else {
+      return;
+    };
+
+    let log = LogLine {
+      log_type: LogType::LIFECYCLE,
+      log_level: crash_log.log_level,
+      message: crash_log.message.clone(),
+      fields: crash_log.fields,
+      matching_fields: [].into(),
+      attributes_overrides: None,
+      capture_session: Some("crash_handler"),
+    };
+
+    if let Err(e) = self.process_all_logs(log, false).await {
+      log::debug!("failed to process current session crash log: {e}");
     }
   }
 

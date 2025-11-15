@@ -584,6 +584,7 @@ dependencies = [
  "log",
  "memmap2",
  "mockall",
+ "notify",
  "regex",
  "serde",
  "tempfile",
