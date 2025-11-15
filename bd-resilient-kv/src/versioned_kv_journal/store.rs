@@ -369,7 +369,7 @@ impl VersionedKVStore {
     // rotation.
 
     // Create new journal with compacted state
-    let new_journal = self.create_rotated_journal(&new_journal_path).await?;
+    let new_journal = self.create_rotated_journal(&new_journal_path)?;
 
     // Replace in-memory journal with new one (critical section - but no file ops!)
     // The old journal file remains at the previous generation number
@@ -447,7 +447,7 @@ impl VersionedKVStore {
   /// journal with the same buffer size and compaction only removes redundant updates (old
   /// versions of keys), the compacted state is always ≤ the current journal size. If data fits
   /// during normal operation, it will always fit during rotation.
-  async fn create_rotated_journal(
+  fn create_rotated_journal(
     &self,
     journal_path: &Path,
   ) -> anyhow::Result<MemMappedVersionedJournal<StateKeyValuePair>> {
