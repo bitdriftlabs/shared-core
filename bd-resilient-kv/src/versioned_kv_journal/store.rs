@@ -451,7 +451,7 @@ impl VersionedKVStore {
     &self,
     journal_path: &Path,
   ) -> anyhow::Result<MemMappedVersionedJournal<StateKeyValuePair>> {
-    let rotated = MemMappedVersionedJournal::new(
+    MemMappedVersionedJournal::new(
       journal_path,
       self.buffer_size,
       self.high_water_mark_ratio,
@@ -466,8 +466,6 @@ impl VersionedKVStore {
           kv.1.timestamp,
         )
       }),
-    )?;
-
-    Ok(rotated)
+    )
   }
 }
