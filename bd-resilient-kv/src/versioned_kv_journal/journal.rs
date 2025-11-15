@@ -134,6 +134,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   /// # Arguments
   /// * `buffer` - The storage buffer
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
+  /// * `entries` - Iterator of entries to be inserted into the newly created buffer.
   ///
   /// # Errors
   /// Returns an error if the buffer is too small or if `high_water_mark_ratio` is invalid.
@@ -141,24 +142,41 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     buffer: &'a mut [u8],
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
+    entries: impl IntoIterator<Item = (M, u64)>,
   ) -> anyhow::Result<Self> {
     let buffer_len = validate_buffer_len(buffer)?;
     let high_water_mark = calculate_high_water_mark(buffer_len, high_water_mark_ratio)?;
 
     // Write header
-    let timestamp = Self::unix_timestamp_micros(time_provider.as_ref())?;
-    let position = HEADER_SIZE;
+    let mut position = HEADER_SIZE;
+
+    let mut max_state_timestamp = None;
+
+    // Write all current state with their original timestamps
+    for (entry, timestamp) in entries {
+      max_state_timestamp = Some(timestamp);
+
+      let frame = Frame::new(timestamp, entry);
+
+      // Encode frame
+      let available_space = &mut buffer[position ..];
+      let encoded_len = frame.encode(available_space)?;
+
+      position += encoded_len;
+    }
 
     write_position(buffer, position);
     write_version(buffer);
     buffer[16] = 0; // Reserved byte
+
+    let now = Self::unix_timestamp_micros(time_provider.as_ref())?;
 
     Ok(Self {
       position,
       buffer,
       high_water_mark,
       high_water_mark_triggered: false,
-      last_timestamp: timestamp,
+      last_timestamp: max_state_timestamp.unwrap_or(now),
       time_provider,
       _payload_marker: std::marker::PhantomData,
     })
@@ -302,53 +320,5 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
       .checked_div(1_000)
       .and_then(|micros| micros.try_into().ok())
       .ok_or(InvariantError::Invariant)
-  }
-}
-
-/// Rotation utilities for creating new journals with compacted state
-impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
-  /// Create a new journal initialized with the compacted state from a snapshot.
-  ///
-  /// The new journal will have all current entries written with their **original
-  /// timestamps** to preserve historical accuracy. The journal's monotonic timestamp
-  /// enforcement will respect the highest timestamp in the provided state.
-  ///
-  /// # Arguments
-  /// * `buffer` - The buffer to write the new journal to
-  /// * `entries` - Iterator over the entries that should be included in the new journal
-  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark
-  ///
-  /// # Errors
-  /// Returns an error if serialization fails or buffer is too small.
-  pub fn create_rotated_journal(
-    &self,
-    buffer: &'a mut [u8],
-    entries: impl IntoIterator<Item = (M, u64)>,
-    high_water_mark_ratio: Option<f32>,
-  ) -> anyhow::Result<Self> {
-    // Create a new journal
-    let mut journal = Self::new(buffer, high_water_mark_ratio, self.time_provider.clone())?;
-
-    // Find the maximum timestamp in the state to maintain monotonicity
-    let max_state_timestamp = self.last_timestamp;
-
-    // Write all current state with their original timestamps
-    for (entry, timestamp) in entries {
-      // Update last_timestamp to ensure monotonicity is maintained
-      journal.last_timestamp = std::cmp::max(journal.last_timestamp, timestamp);
-
-      let frame = Frame::new(timestamp, entry);
-
-      // Encode frame
-      let available_space = &mut journal.buffer[journal.position ..];
-      let encoded_len = frame.encode(available_space)?;
-
-      journal.set_position(journal.position + encoded_len);
-    }
-
-    // Ensure last_timestamp reflects the maximum timestamp we've written
-    journal.last_timestamp = std::cmp::max(journal.last_timestamp, max_state_timestamp);
-
-    Ok(journal)
   }
 }

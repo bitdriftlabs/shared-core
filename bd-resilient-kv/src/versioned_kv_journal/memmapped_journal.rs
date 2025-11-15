@@ -73,6 +73,7 @@ impl<M: protobuf::Message> MemMappedVersionedJournal<M> {
   /// * `file_path` - Path to the file to use for storage
   /// * `size` - Minimum size of the file in bytes
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
+  /// * `entries` - Iterator of entries to be inserted into the newly created buffer.
   ///
   /// # Errors
   /// Returns an error if the file cannot be created/opened or memory-mapped.
@@ -81,6 +82,7 @@ impl<M: protobuf::Message> MemMappedVersionedJournal<M> {
     size: usize,
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
+    entries: impl IntoIterator<Item = (M, u64)>,
   ) -> anyhow::Result<Self> {
     let file = OpenOptions::new()
       .read(true)
@@ -96,7 +98,8 @@ impl<M: protobuf::Message> MemMappedVersionedJournal<M> {
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
-    let versioned_kv = VersionedJournal::new(buffer, high_water_mark_ratio, time_provider)?;
+    let versioned_kv =
+      VersionedJournal::new(buffer, high_water_mark_ratio, time_provider, entries)?;
 
     Ok(Self {
       mmap,

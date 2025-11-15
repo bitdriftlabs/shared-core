@@ -101,6 +101,7 @@ impl VersionedKVStore {
             buffer_size,
             high_water_mark_ratio,
             time_provider,
+            std::iter::empty(),
           )?,
           AHashMap::default(),
           DataLoss::Total,
@@ -108,13 +109,13 @@ impl VersionedKVStore {
       })?
     } else {
       // Create new journal
-
       (
         MemMappedVersionedJournal::new(
           &journal_path,
           buffer_size,
           high_water_mark_ratio,
           time_provider,
+          std::iter::empty(),
         )?,
         AHashMap::default(),
         DataLoss::None,
@@ -450,12 +451,11 @@ impl VersionedKVStore {
     &self,
     journal_path: &Path,
   ) -> anyhow::Result<MemMappedVersionedJournal<StateKeyValuePair>> {
-    // Create in-memory buffer for new journal
-    let mut buffer = vec![0u8; self.buffer_size];
-
-    // Use VersionedJournal to create rotated journal in memory
-    let _rotated = self.journal.create_rotated_journal(
-      &mut buffer,
+    let rotated = MemMappedVersionedJournal::new(
+      journal_path,
+      self.buffer_size,
+      self.high_water_mark_ratio,
+      self.journal.time_provider.clone(),
       self.cached_map.iter().map(|kv| {
         (
           StateKeyValuePair {
@@ -466,22 +466,8 @@ impl VersionedKVStore {
           kv.1.timestamp,
         )
       }),
-      self.high_water_mark_ratio,
     )?;
 
-    // Write buffer to the new journal path
-    tokio::fs::write(journal_path, &buffer).await?;
-
-    // Open as memory-mapped journal
-    Ok(
-      MemMappedVersionedJournal::from_file(
-        journal_path,
-        self.buffer_size,
-        self.high_water_mark_ratio,
-        self.journal.time_provider.clone(),
-        |_, _| {},
-      )?
-      .0,
-    )
+    Ok(rotated)
   }
 }
