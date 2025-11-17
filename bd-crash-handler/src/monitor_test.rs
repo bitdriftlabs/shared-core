@@ -314,16 +314,31 @@ fn test_is_reports_watcher_enabled() {
 
 #[test]
 fn test_start_file_watcher() {
-  let setup = Setup::new(None);
-  let (tx, _rx) = tokio::sync::mpsc::channel(10);
+  let rt = tokio::runtime::Runtime::new().unwrap();
+  rt.block_on(async {
+    let setup = Setup::new(None);
+    let on_crash_log = Arc::new(move |_crash_log: crate::CrashLog| {});
+    let get_session_id = Arc::new(move || "test_session_id".to_string());
+    let get_current_global_state =
+      Arc::new(LogFields::default) as Arc<dyn Fn() -> LogFields + Send + Sync>;
+    let runtime_handle = tokio::runtime::Handle::current();
 
-  let watcher = setup.monitor.start_file_watcher(tx).unwrap();
-  assert!(
-    setup
-      .directory
-      .path()
-      .join("reports/watcher/current_session")
-      .exists()
-  );
-  drop(watcher);
+    let watcher = setup
+      .monitor
+      .start_file_watcher(
+        on_crash_log,
+        get_session_id,
+        get_current_global_state,
+        runtime_handle,
+      )
+      .unwrap();
+    assert!(
+      setup
+        .directory
+        .path()
+        .join("reports/watcher/current_session")
+        .exists()
+    );
+    drop(watcher);
+  });
 }

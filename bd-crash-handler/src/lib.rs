@@ -48,7 +48,6 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use time::OffsetDateTime;
-use tokio::sync::mpsc;
 
 #[cfg(test)]
 #[ctor::ctor]
@@ -257,8 +256,6 @@ impl Monitor {
     // TODO(snowp): Add smarter handling to avoid duplicate reporting.
     // TODO(snowp): Consider only reporting one of the pending reports if there are multiple.
 
-    let reporting_feature_flags = self.get_reporting_feature_flags();
-
     let mut logs = vec![];
 
     while let Ok(Some(entry)) = dir.next_entry().await {
@@ -266,91 +263,13 @@ impl Monitor {
       let path = entry.path();
       let ext = path.extension().and_then(OsStr::to_str);
       if path.is_file() && ext == Some("cap") {
-        let Ok(file) = File::open(&path) else {
-          log::warn!("Failed to open reports report: {}", path.display());
-          continue;
-        };
-
-        log::info!("Processing new reports report: {}", path.display());
-        // Safety: We expect this to be safe as we own the file once it has been written to the
-        // inbox directory. Any modifications to this file during the mmap can cause UB, but we
-        // assume that once a file exists in this directory it is no longer modified.
-        let Ok(mapped_file) = unsafe { Mmap::map(&file) }.map_err(|e| {
-          log::warn!(
-            "Failed to memory-map reports report: {} ({e})",
-            path.display()
-          );
-          e
-        }) else {
-          continue;
-        };
-
-        let (crash_reason, crash_details, bin_report) = Self::read_report_contents(&mapped_file);
-
-        if crash_reason.is_none() {
-          log::warn!(
-            "Failed to infer crash reason from report {}, dropping.",
-            path.display()
-          );
-          continue;
+        let session_id = self.previous_session_id.clone().unwrap_or_default();
+        if let Some(crash_log) = self
+          .process_report_file(&path, &session_id, &self.previous_run_global_state)
+          .await
+        {
+          logs.push(crash_log);
         }
-
-        let Some(bin_report) = bin_report else {
-          log::warn!("Failed to parse report into fbs format, dropping.");
-          continue;
-        };
-
-        let (timestamp, state_fields) =
-          Self::read_log_fields(bin_report, &self.previous_run_global_state);
-
-        log::debug!("uploading report out of band");
-
-        let Ok(artifact_id) = self.artifact_client.enqueue_upload(
-          file,
-          state_fields.clone(),
-          timestamp,
-          self.previous_session_id.clone().unwrap_or_default(),
-          reporting_feature_flags.clone(),
-        ) else {
-          // TODO(snowp): Should we fall back to passing it via a field at this point?
-          log::warn!(
-            "Failed to enqueue crash report for upload: {}",
-            path.display()
-          );
-          continue;
-        };
-
-        let fields = Self::build_crash_log_fields(
-          state_fields,
-          artifact_id,
-          &bin_report,
-          crash_reason,
-          crash_details,
-        );
-
-        logs.push(CrashLog {
-          log_level: log_level::ERROR,
-          fields: fields
-            .into_iter()
-            .map(|(key, value)| {
-              (
-                key,
-                AnnotatedLogField {
-                  value,
-                  kind: LogFieldKind::Ootb,
-                },
-              )
-            })
-            .collect(),
-          timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
-          message: "AppExit".into(),
-        });
-      }
-
-      // Clean up files after processing them. If this fails we'll potentially end up
-      // double-reporting in the future.
-      if let Err(e) = tokio::fs::remove_file(&path).await {
-        log::warn!("Failed to remove crash report: {} ({e})", path.display());
       }
     }
 
@@ -406,10 +325,11 @@ impl Monitor {
       .unwrap_or_default()
   }
 
-  pub async fn process_current_session_file(
+  async fn process_report_file(
     &self,
     file_path: &Path,
-    current_session_id: &str,
+    session_id: &str,
+    global_state_fields: &LogFields,
   ) -> Option<CrashLog> {
     if !file_path.exists() || file_path.extension().and_then(OsStr::to_str) != Some("cap") {
       log::debug!("Skipping invalid report file: {}", file_path.display());
@@ -421,7 +341,7 @@ impl Monitor {
       return None;
     };
 
-    log::debug!("Processing current session report: {}", file_path.display());
+    log::debug!("Processing report file: {}", file_path.display());
 
     let mapped_file = match unsafe { Mmap::map(&file) } {
       Ok(m) => m,
@@ -450,18 +370,19 @@ impl Monitor {
     };
 
     let reporting_feature_flags = self.get_reporting_feature_flags();
-    let (timestamp, state_fields) =
-      Self::read_log_fields(bin_report, &self.previous_run_global_state);
+    let (timestamp, state_fields) = Self::read_log_fields(bin_report, global_state_fields);
+
+    log::debug!("uploading report out of band");
 
     let Ok(artifact_id) = self.artifact_client.enqueue_upload(
       file,
       state_fields.clone(),
       timestamp,
-      current_session_id.to_string(),
+      session_id.to_string(),
       reporting_feature_flags.clone(),
     ) else {
       log::warn!(
-        "Failed to enqueue current session report for upload: {}",
+        "Failed to enqueue issue report for upload: {}",
         file_path.display()
       );
       return None;
@@ -477,7 +398,7 @@ impl Monitor {
 
     if let Err(e) = tokio::fs::remove_file(file_path).await {
       log::warn!(
-        "Failed to remove crash report: {} ({e})",
+        "Failed to remove issue report: {} ({e})",
         file_path.display()
       );
     }
@@ -501,9 +422,23 @@ impl Monitor {
     })
   }
 
+  pub async fn process_current_session_file(
+    &self,
+    file_path: &Path,
+    current_session_id: &str,
+    current_global_state: &LogFields,
+  ) -> Option<CrashLog> {
+    self
+      .process_report_file(file_path, current_session_id, current_global_state)
+      .await
+  }
+
   pub fn start_file_watcher(
     &self,
-    file_event_tx: mpsc::Sender<PathBuf>,
+    on_crash_log: Arc<dyn Fn(CrashLog) + Send + Sync>,
+    get_session_id: Arc<dyn Fn() -> String + Send + Sync>,
+    get_current_global_state: Arc<dyn Fn() -> LogFields + Send + Sync>,
+    runtime_handle: tokio::runtime::Handle,
   ) -> anyhow::Result<RecommendedWatcher> {
     let current_dir = self.current_session_directory();
     std::fs::create_dir_all(&current_dir).map_err(|e| {
@@ -514,6 +449,7 @@ impl Monitor {
       )
     })?;
 
+    let monitor = self.clone();
     let mut watcher = RecommendedWatcher::new(
       move |result: notify::Result<Event>| {
         let event = match result {
@@ -534,9 +470,24 @@ impl Monitor {
           }
 
           log::debug!("File watcher detected new report: {}", path.display());
-          if let Err(e) = file_event_tx.try_send(path) {
-            log::warn!("Failed to send file event: {e}");
-          }
+
+          let monitor_clone = monitor.clone();
+          let on_crash_log_clone = Arc::clone(&on_crash_log);
+          let get_session_id_clone = Arc::clone(&get_session_id);
+          let get_current_global_state_clone = Arc::clone(&get_current_global_state);
+          let path_clone = path.clone();
+          let runtime_handle = runtime_handle.clone();
+
+          runtime_handle.spawn(async move {
+            let session_id = get_session_id_clone();
+            let current_global_state = get_current_global_state_clone();
+            if let Some(crash_log) = monitor_clone
+              .process_current_session_file(&path_clone, &session_id, &current_global_state)
+              .await
+            {
+              on_crash_log_clone(crash_log);
+            }
+          });
         }
       },
       Config::default(),

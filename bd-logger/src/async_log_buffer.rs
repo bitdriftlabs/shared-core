@@ -56,7 +56,6 @@ use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionTy
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::WorkflowDebugStateMap;
 use debug_data_request::workflow_transition_debug_data::Transition_type;
-use futures_util::future;
 use notify::RecommendedWatcher;
 use std::collections::{HashMap, VecDeque};
 use std::mem::size_of_val;
@@ -67,8 +66,6 @@ use time::ext::NumericalDuration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task;
 use tokio::time::Sleep;
-
-const REPORT_FILES_WATCHER_CHANNEL_BUFFER_SIZE: usize = 25;
 
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {
@@ -196,7 +193,6 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   communication_rx: Receiver<AsyncLogBufferMessage>,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
   report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
-  current_session_file_rx: Option<mpsc::Receiver<std::path::PathBuf>>,
   data_upload_tx: mpsc::Sender<DataUpload>,
   shutdown_trigger_handle: ComponentShutdownTriggerHandle,
 
@@ -214,6 +210,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
 
   logging_state: LoggingState<bd_log_primitives::Log>,
   global_state_tracker: global_state::Tracker,
+  store: Arc<Store>,
   time_provider: Arc<dyn TimeProvider>,
   lifecycle_state: InitLifecycleState,
 
@@ -221,9 +218,8 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
 
-  crash_monitor: Option<Monitor>,
-
   file_watcher: Option<RecommendedWatcher>,
+  communication_tx: Sender<AsyncLogBufferMessage>,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -282,7 +278,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         communication_rx: async_log_buffer_communication_rx,
         config_update_rx,
         report_processor_rx,
-        current_session_file_rx: None,
         data_upload_tx,
         shutdown_trigger_handle,
 
@@ -312,9 +307,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         // async log buffer.
         logging_state: LoggingState::Uninitialized(uninitialized_logging_context),
         global_state_tracker: global_state::Tracker::new(
-          store,
+          Arc::clone(&store),
           runtime_loader.register_duration_watch(),
         ),
+        store,
         time_provider,
         lifecycle_state,
 
@@ -323,8 +319,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
 
-        crash_monitor: None,
         file_watcher: None,
+        communication_tx: async_log_buffer_communication_tx.clone(),
       },
       async_log_buffer_communication_tx,
     )
@@ -884,17 +880,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             self.start_file_watcher_if_needed(&crash_monitor);
           }
         },
-        file_path_opt = async {
-          if let Some(rx) = self.current_session_file_rx.as_mut() {
-            rx.recv().await
-          } else {
-            future::pending().await
-          }
-        } => {
-          if let Some(file_path) = file_path_opt {
-            self.process_watcher_file(file_path).await;
-          }
-        },
         Some(async_log_buffer_message) = self.communication_rx.recv() => {
           match async_log_buffer_message {
             AsyncLogBufferMessage::EmitLog((mut log, log_processing_completed_tx)) => {
@@ -1013,13 +998,40 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   }
 
   fn start_file_watcher_if_needed(&mut self, crash_monitor: &Monitor) {
-    self.crash_monitor = Some(crash_monitor.clone());
+    if self.file_watcher.is_none() {
+      let communication_tx = self.communication_tx.clone();
+      let session_strategy = Arc::clone(&self.session_strategy);
 
-    if self.current_session_file_rx.is_none() {
-      let (file_tx, file_rx) = mpsc::channel(REPORT_FILES_WATCHER_CHANNEL_BUFFER_SIZE);
-      self.current_session_file_rx = Some(file_rx);
+      let on_crash_log = Arc::new(move |crash_log: bd_crash_handler::CrashLog| {
+        let log = LogLine {
+          log_type: LogType::LIFECYCLE,
+          log_level: crash_log.log_level,
+          message: crash_log.message.clone(),
+          fields: crash_log.fields,
+          matching_fields: [].into(),
+          attributes_overrides: None,
+          capture_session: Some("crash_handler"),
+        };
 
-      match crash_monitor.start_file_watcher(file_tx) {
+        if let Err(e) = communication_tx.try_send(AsyncLogBufferMessage::EmitLog((log, None))) {
+          log::debug!("Failed to send current session crash log: {e}");
+        }
+      });
+
+      let get_session_id = Arc::new(move || session_strategy.session_id());
+
+      let store = Arc::clone(&self.store);
+      let get_current_global_state =
+        Arc::new(move || global_state::Reader::new(Arc::clone(&store)).global_state_fields());
+
+      let runtime_handle = tokio::runtime::Handle::current();
+
+      match crash_monitor.start_file_watcher(
+        on_crash_log,
+        get_session_id,
+        get_current_global_state,
+        runtime_handle,
+      ) {
         Ok(watcher) => {
           self.file_watcher = Some(watcher);
           log::debug!("Started file watcher for current session reports");
@@ -1028,38 +1040,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log::warn!("Failed to start file watcher: {e}");
         },
       }
-    }
-  }
-
-  async fn process_watcher_file(&mut self, file_path: std::path::PathBuf) {
-    let Some(ref monitor) = self.crash_monitor else {
-      log::warn!(
-        "File watcher detected file but monitor not available: {}",
-        file_path.display()
-      );
-      return;
-    };
-
-    let current_session_id = self.session_strategy.session_id();
-    let Some(crash_log) = monitor
-      .process_current_session_file(&file_path, &current_session_id)
-      .await
-    else {
-      return;
-    };
-
-    let log = LogLine {
-      log_type: LogType::LIFECYCLE,
-      log_level: crash_log.log_level,
-      message: crash_log.message.clone(),
-      fields: crash_log.fields,
-      matching_fields: [].into(),
-      attributes_overrides: None,
-      capture_session: Some("crash_handler"),
-    };
-
-    if let Err(e) = self.process_all_logs(log, false).await {
-      log::debug!("failed to process current session crash log: {e}");
     }
   }
 
