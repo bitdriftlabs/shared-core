@@ -23,7 +23,7 @@ use bd_bounded_buffer::{Receiver, Sender, TrySendError, channel};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
-use bd_crash_handler::{global_state, Monitor};
+use bd_crash_handler::{Monitor, global_state};
 use bd_device::Store;
 use bd_error_reporter::reporter::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_feature_flags::{FeatureFlags, FeatureFlagsBuilder};
@@ -216,7 +216,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   feature_flags: FeatureFlagInitialization,
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
-  
+
   crash_monitor: Option<Monitor>,
 
   file_watcher: Option<Box<dyn std::any::Any + Send>>,
@@ -318,7 +318,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
-        
+
         crash_monitor: None,
         file_watcher: None,
       },
@@ -1010,11 +1010,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
   fn start_file_watcher_if_needed(&mut self, crash_monitor: &Monitor) {
     self.crash_monitor = Some(crash_monitor.clone());
-    
+
     if self.current_session_file_rx.is_none() {
       let (file_tx, file_rx) = mpsc::channel(100);
       self.current_session_file_rx = Some(file_rx);
-      
+
       match crash_monitor.start_file_watcher(file_tx) {
         Ok(watcher) => {
           self.file_watcher = Some(Box::new(watcher));
@@ -1029,12 +1029,18 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
   async fn process_watcher_file(&mut self, file_path: std::path::PathBuf) {
     let Some(ref monitor) = self.crash_monitor else {
-      log::warn!("File watcher detected file but monitor not available: {}", file_path.display());
+      log::warn!(
+        "File watcher detected file but monitor not available: {}",
+        file_path.display()
+      );
       return;
     };
 
     let current_session_id = self.session_strategy.session_id();
-    let Some(crash_log) = monitor.process_current_session_file(&file_path, &current_session_id).await else {
+    let Some(crash_log) = monitor
+      .process_current_session_file(&file_path, &current_session_id)
+      .await
+    else {
       return;
     };
 

@@ -218,8 +218,8 @@ impl Monitor {
     }
   }
 
-  /// If reports/watcher is created by platform layer, this will indiate native to start file watching
-  /// on the related directories to automatically detect new reports
+  /// If reports/watcher is created by platform layer, this will indiate native to start file
+  /// watching on the related directories to automatically detect new reports
   #[must_use]
   pub fn is_reports_watcher_enabled(&self) -> bool {
     let watcher_dir = self.report_directory.join("watcher");
@@ -367,16 +367,25 @@ impl Monitor {
     let mut fields = state_fields;
     fields.insert("_crash_artifact_id".into(), artifact_id.to_string().into());
     fields.extend([
-      ("_app_exit_reason".into(), Self::report_type_to_reason(bin_report.type_()).into()),
+      (
+        "_app_exit_reason".into(),
+        Self::report_type_to_reason(bin_report.type_()).into(),
+      ),
       ("_app_exit_info".into(), crash_reason.into()),
-      ("_app_exit_details".into(), crash_details.unwrap_or_else(|| "unknown".to_string()).into()),
+      (
+        "_app_exit_details".into(),
+        crash_details
+          .unwrap_or_else(|| "unknown".to_string())
+          .into(),
+      ),
       ("_fatal_issue_mechanism".into(), "BUILT_IN".into()),
     ]);
     fields
   }
 
   fn get_reporting_feature_flags(&self) -> Vec<SnappedFeatureFlag> {
-    self.feature_flags_manager
+    self
+      .feature_flags_manager
       .previous_feature_flags()
       .ok()
       .as_ref()
@@ -394,7 +403,11 @@ impl Monitor {
       .unwrap_or_default()
   }
 
-  pub async fn process_current_session_file(&self, file_path: &Path, current_session_id: &str) -> Option<CrashLog> {
+  pub async fn process_current_session_file(
+    &self,
+    file_path: &Path,
+    current_session_id: &str,
+  ) -> Option<CrashLog> {
     if !file_path.exists() || file_path.extension().and_then(OsStr::to_str) != Some("cap") {
       return None;
     }
@@ -409,7 +422,10 @@ impl Monitor {
     let mapped_file = match unsafe { Mmap::map(&file) } {
       Ok(m) => m,
       Err(e) => {
-        log::warn!("Failed to memory-map report file: {} ({e})", file_path.display());
+        log::warn!(
+          "Failed to memory-map report file: {} ({e})",
+          file_path.display()
+        );
         return None;
       },
     };
@@ -419,7 +435,8 @@ impl Monitor {
     let bin_report = bin_report?;
 
     let reporting_feature_flags = self.get_reporting_feature_flags();
-    let (timestamp, state_fields) = Self::read_log_fields(bin_report, &self.previous_run_global_state);
+    let (timestamp, state_fields) =
+      Self::read_log_fields(bin_report, &self.previous_run_global_state);
 
     let Ok(artifact_id) = self.artifact_client.enqueue_upload(
       file,
@@ -428,7 +445,10 @@ impl Monitor {
       current_session_id.to_string(),
       reporting_feature_flags.clone(),
     ) else {
-      log::warn!("Failed to enqueue current session report for upload: {}", file_path.display());
+      log::warn!(
+        "Failed to enqueue current session report for upload: {}",
+        file_path.display()
+      );
       return None;
     };
 
@@ -444,8 +464,17 @@ impl Monitor {
 
     Some(CrashLog {
       log_level: log_level::ERROR,
-      fields: fields.into_iter()
-        .map(|(key, value)| (key, AnnotatedLogField { value, kind: LogFieldKind::Ootb }))
+      fields: fields
+        .into_iter()
+        .map(|(key, value)| {
+          (
+            key,
+            AnnotatedLogField {
+              value,
+              kind: LogFieldKind::Ootb,
+            },
+          )
+        })
         .collect(),
       timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
       message: "AppExit".into(),
@@ -458,7 +487,11 @@ impl Monitor {
   ) -> anyhow::Result<RecommendedWatcher> {
     let current_dir = self.current_session_directory();
     std::fs::create_dir_all(&current_dir).map_err(|e| {
-      anyhow::anyhow!("Cannot create current session directory: {} ({})", current_dir.display(), e)
+      anyhow::anyhow!(
+        "Cannot create current session directory: {} ({})",
+        current_dir.display(),
+        e
+      )
     })?;
 
     let mut watcher = RecommendedWatcher::new(
@@ -490,7 +523,10 @@ impl Monitor {
     )?;
 
     watcher.watch(&current_dir, RecursiveMode::NonRecursive)?;
-    log::info!("Started file watcher for current session directory: {}", current_dir.display());
+    log::info!(
+      "Started file watcher for current session directory: {}",
+      current_dir.display()
+    );
     Ok(watcher)
   }
 }

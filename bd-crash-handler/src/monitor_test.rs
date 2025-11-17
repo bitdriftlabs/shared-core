@@ -316,8 +316,14 @@ fn test_is_reports_watcher_enabled() {
 fn test_start_file_watcher() {
   let setup = Setup::new(None);
   let (tx, _rx) = tokio::sync::mpsc::channel(10);
-  
+
   let watcher = setup.monitor.start_file_watcher(tx).unwrap();
-  assert!(setup.directory.path().join("reports/watcher/current_session").exists());
+  assert!(
+    setup
+      .directory
+      .path()
+      .join("reports/watcher/current_session")
+      .exists()
+  );
   drop(watcher);
 }
