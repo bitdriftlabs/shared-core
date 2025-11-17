@@ -117,6 +117,20 @@ fn main() {
     .out_dir("src/protos/logging/")
     .capture_stderr()
     .run_from_script();
+  std::fs::create_dir_all("src/protos/state").unwrap();
+  protobuf_codegen::Codegen::new()
+    .protoc()
+    .customize(
+      Customize::default()
+        .gen_mod_rs(false)
+        .oneofs_non_exhaustive(false)
+        .file_header(GENERATED_HEADER.to_string()),
+    )
+    .includes(["../api/thirdparty", "../api/src"])
+    .inputs(["../api/src/bitdrift_public/protobuf/state/v1/payload.proto"])
+    .out_dir("src/protos/state/")
+    .capture_stderr()
+    .run_from_script();
   std::fs::create_dir_all("src/protos/log_matcher").unwrap();
   protobuf_codegen::Codegen::new()
     .protoc()

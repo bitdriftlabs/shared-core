@@ -62,6 +62,7 @@ arbitrary         = { version = "1.4.2", features = ["derive"] }
 arc-swap          = "1.7.1"
 assert_matches    = "1.5.0"
 assert_no_alloc   = "1.1.2"
+async-compression = { version = "0.4.20", features = ["tokio", "zlib"] }
 async-trait       = "0.1.89"
 axum              = { version = "0.8.6", features = ["http2", "macros"] }
 backoff           = "0.4.0"
