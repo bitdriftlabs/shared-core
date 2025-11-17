@@ -218,7 +218,7 @@ impl Monitor {
     }
   }
 
-  /// If reports/watcher is created by platform layer, this will indiate native to start file
+  /// If reports/watcher is created by platform layer, this will indicate native to start file
   /// watching on the related directories to automatically detect new reports
   #[must_use]
   pub fn is_reports_watcher_enabled(&self) -> bool {
