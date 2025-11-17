@@ -358,27 +358,23 @@ impl VersionedKVStore {
   /// Rotation typically happens automatically when the high water mark is reached, but this
   /// method allows manual control when needed.
   pub async fn rotate_journal(&mut self) -> anyhow::Result<Rotation> {
-    // Increment generation counter for new journal
     let next_generation = self.current_generation + 1;
-    let new_journal_path = self
-      .dir_path
-      .join(format!("{}.jrn.{next_generation}", self.journal_name));
+    let old_generation = self.current_generation;
+    self.current_generation = next_generation;
 
     // TODO(snowp): This part needs fuzzing and more safeguards.
     // TODO(snowp): Consider doing this out of band to split error handling for the insert and
     // rotation.
 
-    // Create new journal with compacted state
+    // Create new journal with compacted state. This doens't touch the file containing the old
+    // journal.
+    let new_journal_path = self
+      .dir_path
+      .join(format!("{}.jrn.{next_generation}", self.journal_name));
+
+    MemMappedVersionedJournal::sync(&self.journal)?;
     let new_journal = self.create_rotated_journal(&new_journal_path)?;
-
-    // Replace in-memory journal with new one (critical section - but no file ops!)
-    // The old journal file remains at the previous generation number
-    let old_journal = std::mem::replace(&mut self.journal, new_journal);
-    let old_generation = self.current_generation;
-    self.current_generation = next_generation;
-
-    // Drop the old journal to release the mmap
-    drop(old_journal);
+    self.journal = new_journal;
 
     // Best-effort cleanup: compress and archive the old journal
     let old_journal_path = self
