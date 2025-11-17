@@ -56,6 +56,8 @@ use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionTy
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::WorkflowDebugStateMap;
 use debug_data_request::workflow_transition_debug_data::Transition_type;
+use futures_util::future;
+use notify::RecommendedWatcher;
 use std::collections::{HashMap, VecDeque};
 use std::mem::size_of_val;
 use std::pin::Pin;
@@ -65,6 +67,8 @@ use time::ext::NumericalDuration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task;
 use tokio::time::Sleep;
+
+const REPORT_FILES_WATCHER_CHANNEL_BUFFER_SIZE: usize = 25;
 
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {
@@ -219,7 +223,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
 
   crash_monitor: Option<Monitor>,
 
-  file_watcher: Option<Box<dyn std::any::Any + Send>>,
+  file_watcher: Option<RecommendedWatcher>,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -876,15 +880,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             }
           }
 
-          if crash_monitor.is_reports_watcher_enabled() && self.file_watcher.is_none() {
+          if crash_monitor.is_reports_watcher_enabled() {
             self.start_file_watcher_if_needed(&crash_monitor);
           }
         },
         file_path_opt = async {
-          if let Some(ref mut rx) = self.current_session_file_rx {
+          if let Some(rx) = self.current_session_file_rx.as_mut() {
             rx.recv().await
           } else {
-            std::future::pending().await
+            future::pending().await
           }
         } => {
           if let Some(file_path) = file_path_opt {
@@ -1012,13 +1016,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     self.crash_monitor = Some(crash_monitor.clone());
 
     if self.current_session_file_rx.is_none() {
-      let (file_tx, file_rx) = mpsc::channel(100);
+      let (file_tx, file_rx) = mpsc::channel(REPORT_FILES_WATCHER_CHANNEL_BUFFER_SIZE);
       self.current_session_file_rx = Some(file_rx);
 
       match crash_monitor.start_file_watcher(file_tx) {
         Ok(watcher) => {
-          self.file_watcher = Some(Box::new(watcher));
-          log::info!("Started file watcher for current session reports");
+          self.file_watcher = Some(watcher);
+          log::debug!("Started file watcher for current session reports");
         },
         Err(e) => {
           log::warn!("Failed to start file watcher: {e}");

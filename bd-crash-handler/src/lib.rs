@@ -287,13 +287,13 @@ impl Monitor {
 
         let (crash_reason, crash_details, bin_report) = Self::read_report_contents(&mapped_file);
 
-        let Some(crash_reason) = crash_reason else {
+        if crash_reason.is_none() {
           log::warn!(
             "Failed to infer crash reason from report {}, dropping.",
             path.display()
           );
           continue;
-        };
+        }
 
         let Some(bin_report) = bin_report else {
           log::warn!("Failed to parse report into fbs format, dropping.");
@@ -361,7 +361,7 @@ impl Monitor {
     state_fields: LogFields,
     artifact_id: uuid::Uuid,
     bin_report: &Report<'_>,
-    crash_reason: String,
+    crash_reason: Option<String>,
     crash_details: Option<String>,
   ) -> LogFields {
     let mut fields = state_fields;
@@ -371,7 +371,10 @@ impl Monitor {
         "_app_exit_reason".into(),
         Self::report_type_to_reason(bin_report.type_()).into(),
       ),
-      ("_app_exit_info".into(), crash_reason.into()),
+      (
+        "_app_exit_info".into(),
+        crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
+      ),
       (
         "_app_exit_details".into(),
         crash_details
@@ -409,6 +412,7 @@ impl Monitor {
     current_session_id: &str,
   ) -> Option<CrashLog> {
     if !file_path.exists() || file_path.extension().and_then(OsStr::to_str) != Some("cap") {
+      log::debug!("Skipping invalid report file: {}", file_path.display());
       return None;
     }
 
@@ -417,7 +421,7 @@ impl Monitor {
       return None;
     };
 
-    log::info!("Processing current session report: {}", file_path.display());
+    log::debug!("Processing current session report: {}", file_path.display());
 
     let mapped_file = match unsafe { Mmap::map(&file) } {
       Ok(m) => m,
@@ -431,8 +435,19 @@ impl Monitor {
     };
 
     let (crash_reason, crash_details, bin_report) = Self::read_report_contents(&mapped_file);
-    let crash_reason = crash_reason?;
-    let bin_report = bin_report?;
+
+    if crash_reason.is_none() {
+      log::warn!(
+        "Failed to infer crash reason from report {}, dropping.",
+        file_path.display()
+      );
+      return None;
+    }
+
+    let Some(bin_report) = bin_report else {
+      log::warn!("Failed to parse report into fbs format, dropping.");
+      return None;
+    };
 
     let reporting_feature_flags = self.get_reporting_feature_flags();
     let (timestamp, state_fields) =
@@ -460,7 +475,12 @@ impl Monitor {
       crash_details,
     );
 
-    let _ = tokio::fs::remove_file(file_path).await;
+    if let Err(e) = tokio::fs::remove_file(file_path).await {
+      log::warn!(
+        "Failed to remove crash report: {} ({e})",
+        file_path.display()
+      );
+    }
 
     Some(CrashLog {
       log_level: log_level::ERROR,
@@ -523,7 +543,7 @@ impl Monitor {
     )?;
 
     watcher.watch(&current_dir, RecursiveMode::NonRecursive)?;
-    log::info!(
+    log::debug!(
       "Started file watcher for current session directory: {}",
       current_dir.display()
     );
