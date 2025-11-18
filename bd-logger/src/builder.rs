@@ -5,7 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::InitParams;
 use crate::async_log_buffer::AsyncLogBuffer;
 use crate::client_config::{self, LoggerUpdate};
 use crate::consumer::BufferUploadManager;
@@ -13,6 +12,7 @@ use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
 use crate::logger::Logger;
 use crate::logging_state::UninitializedLoggingContext;
+use crate::{InitParams, LogAttributesOverrides};
 use bd_api::{
   AggregatedNetworkQualityProvider,
   DataUpload,
@@ -32,6 +32,7 @@ use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
 use bd_feature_flags::FeatureFlagsBuilder;
 use bd_internal_logging::NoopLogger;
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::network_quality::NetworkCallOnlineIndicatorTimeout;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
 use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
@@ -239,7 +240,7 @@ impl LoggerBuilder {
       log_network_quality_provider,
       aggregated_network_quality_provider,
       self.params.device.id(),
-      self.params.store.clone(),
+      &self.params.store,
       time_provider.clone(),
       init_lifecycle.clone(),
       feature_flags_builder.clone(),
@@ -253,7 +254,7 @@ impl LoggerBuilder {
       maybe_shutdown_trigger,
       runtime_loader.clone(),
       scope.clone(),
-      async_log_buffer_communication_tx,
+      async_log_buffer_communication_tx.clone(),
       report_proc_tx,
       self.params.session_strategy.clone(),
       self.params.device,
@@ -291,9 +292,23 @@ impl LoggerBuilder {
         &self.params.sdk_directory,
         self.params.store.clone(),
         Arc::new(artifact_client),
-        self.params.session_strategy.previous_process_session_id(),
+        self.params.session_strategy.clone(),
         &init_lifecycle,
         feature_flags_builder,
+        move |log| {
+          AsyncLogBuffer::<LoggerReplay>::enqueue_log(
+            &async_log_buffer_communication_tx,
+            log.log_level,
+            LogType::LIFECYCLE,
+            log.message,
+            log.fields,
+            [].into(),
+            LogAttributesOverrides::OccurredAt(log.timestamp).into(),
+            crate::Block::No,
+            None,
+          )
+          .map_err(Into::into)
+        },
       );
 
       // Building the crash monitor requires artifact uploader and knowing

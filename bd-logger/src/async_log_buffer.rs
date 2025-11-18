@@ -233,7 +233,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     log_network_quality_monitor: Arc<dyn NetworkQualityMonitor>,
     network_quality_resolver: Arc<dyn NetworkQualityResolver>,
     device_id: String,
-    store: Arc<Store>,
+    store: &Arc<Store>,
     time_provider: Arc<dyn TimeProvider>,
     lifecycle_state: InitLifecycleState,
     feature_flags_builder: FeatureFlagsBuilder,
@@ -302,7 +302,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         // async log buffer.
         logging_state: LoggingState::Uninitialized(uninitialized_logging_context),
         global_state_tracker: global_state::Tracker::new(
-          store,
+          Arc::clone(store),
           runtime_loader.register_duration_watch(),
         ),
         time_provider,
@@ -843,7 +843,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         Some(ReportProcessingRequest {
           crash_monitor, session_id_override
         }) = self.report_processor_rx.recv() => {
-          for crash_log in crash_monitor.process_new_reports().await {
+          // TODO(snowp): Once we move over to using the file watcher we can more accurately pick
+          // current vs previous for all reports, but as we need to handle restarts etc we may
+          // also want to embed the full information into the report. This should ensure that we
+          // can upload files after the fact and intelligently drop them.
+          // TODO(snowp): Consider emitting the crash log as part of writing the log instead of
+          // emitting it as part of the upload process. This avoids having to mess with time
+          // overrides at a later stage.
+
+          for crash_log in crash_monitor.process_all_pending_reports().await {
             let attributes_overrides = session_id_override.clone().map(|id| {
               LogAttributesOverrides::PreviousRunSessionID(
                 id,

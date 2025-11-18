@@ -141,6 +141,7 @@ impl Tracker {
 // Reader
 //
 
+#[derive(Clone)]
 pub struct Reader {
   store: Arc<Store>,
 }
