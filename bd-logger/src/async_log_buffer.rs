@@ -233,7 +233,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     log_network_quality_monitor: Arc<dyn NetworkQualityMonitor>,
     network_quality_resolver: Arc<dyn NetworkQualityResolver>,
     device_id: String,
-    store: Arc<Store>,
+    store: &Arc<Store>,
     time_provider: Arc<dyn TimeProvider>,
     lifecycle_state: InitLifecycleState,
     feature_flags_builder: FeatureFlagsBuilder,
@@ -302,7 +302,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         // async log buffer.
         logging_state: LoggingState::Uninitialized(uninitialized_logging_context),
         global_state_tracker: global_state::Tracker::new(
-          Arc::clone(&store),
+          Arc::clone(store),
           runtime_loader.register_duration_watch(),
         ),
         time_provider,

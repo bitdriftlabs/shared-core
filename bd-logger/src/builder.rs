@@ -240,7 +240,7 @@ impl LoggerBuilder {
       log_network_quality_provider,
       aggregated_network_quality_provider,
       self.params.device.id(),
-      self.params.store.clone(),
+      &self.params.store,
       time_provider.clone(),
       init_lifecycle.clone(),
       feature_flags_builder.clone(),
