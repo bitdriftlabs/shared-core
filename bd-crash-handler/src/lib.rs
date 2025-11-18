@@ -19,11 +19,13 @@
 mod tests;
 
 pub mod config_writer;
+mod file_watcher;
 pub mod global_state;
 
 use bd_artifact_upload::SnappedFeatureFlag;
 use bd_client_common::debug_check_lifecycle_less_than;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
+use bd_error_reporter::reporter::handle_unexpected;
 use bd_feature_flags::FeatureFlagsBuilder;
 use bd_log_primitives::{
   AnnotatedLogField,
@@ -42,7 +44,6 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
 };
 use fbs::issue_reporting::v_1::root_as_report;
 use memmap2::Mmap;
-use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::ffi::OsStr;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -82,6 +83,13 @@ pub trait CrashLogger: Send + Sync {
   fn log_crash(&self, report: &[u8]);
 }
 
+/// Indicates whether the report is from the previous or current process execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReportOrigin {
+  Current,
+  Previous,
+}
+
 //
 // Monitor
 //
@@ -98,12 +106,14 @@ pub trait CrashLogger: Send + Sync {
 ///   added reports to be processed right away.
 #[derive(Clone)]
 pub struct Monitor {
-  pub previous_session_id: Option<String>,
-
   report_directory: PathBuf,
   previous_run_global_state: LogFields,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
   feature_flags_manager: FeatureFlagsBuilder,
+
+  global_state_reader: global_state::Reader,
+  pub session: Arc<bd_session::Strategy>,
+  monitor: Option<file_watcher::FileWatcher>,
 }
 
 impl Monitor {
@@ -111,9 +121,10 @@ impl Monitor {
     sdk_directory: &Path,
     store: Arc<bd_device::Store>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
-    previous_session_id: Option<String>,
+    session: Arc<bd_session::Strategy>,
     init_lifecycle: &InitLifecycleState,
     feature_flags_manager: FeatureFlagsBuilder,
+    emit_log: impl Fn(CrashLog) -> anyhow::Result<()> + Send + Sync + 'static,
   ) -> Self {
     debug_check_lifecycle_less_than!(
       init_lifecycle,
@@ -121,15 +132,67 @@ impl Monitor {
       "Monitor must be created before log processing starts"
     );
 
-    let previous_run_global_state = global_state::Reader::new(store).global_state_fields();
+    let global_state_reader = global_state::Reader::new(store);
+    let previous_run_global_state = global_state_reader.global_state_fields();
 
-    Self {
+    let mut monitor = Self {
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
-      artifact_client,
-      previous_session_id,
       previous_run_global_state,
+      artifact_client,
       feature_flags_manager,
+      global_state_reader,
+      session,
+      monitor: None,
+    };
+
+    // Only enable the file watcher if the reports/watcher directory exists. This allows the
+    // platform layer to control whether file watching is enabled.
+    if Self::is_reports_watcher_enabled(&sdk_directory.join(REPORTS_DIRECTORY)) {
+      let monitor_clone = monitor.clone();
+      match file_watcher::FileWatcher::new(&sdk_directory.join(REPORTS_DIRECTORY).join("watcher")) {
+        Err(e) => {
+          handle_unexpected::<(), anyhow::Error>(
+            Err(e),
+            "Failed to initialize report file watcher",
+          );
+        },
+        Ok((watcher, mut rx)) => {
+          tokio::spawn(async move {
+            loop {
+              let Some(report) = rx.recv().await else {
+                log::debug!("Report file watcher channel closed, exiting");
+                break;
+              };
+
+              log::debug!(
+                "Report file watcher detected new report: {}",
+                report.path.display()
+              );
+              if let Some(crash_log) = monitor_clone
+                .process_file(&report.path, report.origin)
+                .await
+              {
+                // TODO(snowp): Once we migrate over all logs (including previous process logs),
+                // we'll need to ensure that we are setting the correct fields. For current
+                // session, it is correct to let freshly evaluated global state be snapped.
+                // TODO(snowp): Consider not setting timestamp at all for the current session logs
+                // as it is correct to use now().
+                if let Err(e) = emit_log(crash_log) {
+                  log::warn!(
+                    "Failed to emit crash log for report {}: {}",
+                    report.path.display(),
+                    e
+                  );
+                }
+              }
+            }
+          });
+          monitor.monitor = Some(watcher);
+        },
+      }
     }
+
+    monitor
   }
 
   fn read_log_fields(
@@ -217,20 +280,15 @@ impl Monitor {
     }
   }
 
-  /// If reports/watcher is created by platform layer, this will indicate native to start file
-  /// watching on the related directories to automatically detect new reports
+  /// Checks whether the reports/watcher directory exists. This indicates that we want to make use
+  /// of file watching to detect new reports during the current session.
   #[must_use]
-  pub fn is_reports_watcher_enabled(&self) -> bool {
-    let watcher_dir = self.report_directory.join("watcher");
-    watcher_dir.exists() && watcher_dir.is_dir()
+  pub fn is_reports_watcher_enabled(report_directory: &Path) -> bool {
+    report_directory.join("watcher").is_dir()
   }
 
-  /// Gets the path to the current session reports directory.
-  fn current_session_directory(&self) -> PathBuf {
-    self.report_directory.join("watcher/current_session")
-  }
-
-  pub async fn process_new_reports(&self) -> Vec<CrashLog> {
+  /// Processes all pending reports found in the "new" reports directory.
+  pub async fn process_all_pending_reports(&self) -> Vec<CrashLog> {
     let mut dir = match tokio::fs::read_dir(&self.report_directory.join("new")).await {
       Ok(dir) => dir,
       Err(e) => {
@@ -262,14 +320,11 @@ impl Monitor {
       log::debug!("Considering report file: {}", entry.path().display());
       let path = entry.path();
       let ext = path.extension().and_then(OsStr::to_str);
-      if path.is_file() && ext == Some("cap") {
-        let session_id = self.previous_session_id.clone().unwrap_or_default();
-        if let Some(crash_log) = self
-          .process_report_file(&path, &session_id, &self.previous_run_global_state)
-          .await
-        {
-          logs.push(crash_log);
-        }
+      if path.is_file()
+        && ext == Some("cap")
+        && let Some(crash_log) = self.process_file(&path, ReportOrigin::Previous).await
+      {
+        logs.push(crash_log);
       }
     }
 
@@ -305,32 +360,47 @@ impl Monitor {
     fields
   }
 
-  fn get_reporting_feature_flags(&self) -> Vec<SnappedFeatureFlag> {
-    self
-      .feature_flags_manager
-      .previous_feature_flags()
-      .ok()
-      .as_ref()
-      .map(|ff| {
-        ff.iter()
-          .map(|(name, flag)| {
-            SnappedFeatureFlag::new(
-              name.to_string(),
-              flag.variant.map(ToString::to_string),
-              flag.timestamp,
-            )
-          })
-          .collect()
-      })
-      .unwrap_or_default()
+  fn get_feature_flags(&self, origin: ReportOrigin) -> Vec<SnappedFeatureFlag> {
+    // TODO(snowp): This pattern won't work for current feature flags as we cannot have
+    // concurrent handles to the file manager. Fix this with the FF rework.
+    match origin {
+      ReportOrigin::Current => self.feature_flags_manager.current_feature_flags(),
+      ReportOrigin::Previous => self.feature_flags_manager.previous_feature_flags(),
+    }
+    .ok()
+    .as_ref()
+    .map(|ff| {
+      ff.iter()
+        .map(|(name, flag)| {
+          SnappedFeatureFlag::new(
+            name.to_string(),
+            flag.variant.map(ToString::to_string),
+            flag.timestamp,
+          )
+        })
+        .collect()
+    })
+    .unwrap_or_default()
   }
 
-  async fn process_report_file(
-    &self,
-    file_path: &Path,
-    session_id: &str,
-    global_state_fields: &LogFields,
-  ) -> Option<CrashLog> {
+  fn get_global_state_fields(&self, origin: ReportOrigin) -> LogFields {
+    match origin {
+      ReportOrigin::Current => self.global_state_reader.global_state_fields(),
+      ReportOrigin::Previous => self.previous_run_global_state.clone(),
+    }
+  }
+
+  fn get_session_id(&self, origin: ReportOrigin) -> String {
+    match origin {
+      ReportOrigin::Current => self.session.session_id(),
+      ReportOrigin::Previous => self
+        .session
+        .previous_process_session_id()
+        .unwrap_or_default(),
+    }
+  }
+
+  async fn process_file(&self, file_path: &Path, origin: ReportOrigin) -> Option<CrashLog> {
     if !file_path.exists() || file_path.extension().and_then(OsStr::to_str) != Some("cap") {
       log::debug!("Skipping invalid report file: {}", file_path.display());
       return None;
@@ -369,8 +439,10 @@ impl Monitor {
       return None;
     };
 
-    let reporting_feature_flags = self.get_reporting_feature_flags();
-    let (timestamp, state_fields) = Self::read_log_fields(bin_report, global_state_fields);
+    let reporting_feature_flags = self.get_feature_flags(origin);
+    let global_state_fields = self.get_global_state_fields(origin);
+    let session_id = self.get_session_id(origin);
+    let (timestamp, state_fields) = Self::read_log_fields(bin_report, &global_state_fields);
 
     log::debug!("uploading report out of band");
 
@@ -378,7 +450,7 @@ impl Monitor {
       file,
       state_fields.clone(),
       timestamp,
-      session_id.to_string(),
+      session_id.clone(),
       reporting_feature_flags.clone(),
     ) else {
       log::warn!(
@@ -420,84 +492,5 @@ impl Monitor {
       timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
       message: "AppExit".into(),
     })
-  }
-
-  pub async fn process_current_session_file(
-    &self,
-    file_path: &Path,
-    current_session_id: &str,
-    current_global_state: &LogFields,
-  ) -> Option<CrashLog> {
-    self
-      .process_report_file(file_path, current_session_id, current_global_state)
-      .await
-  }
-
-  pub fn start_file_watcher(
-    &self,
-    on_crash_log: Arc<dyn Fn(CrashLog) + Send + Sync>,
-    get_session_id: Arc<dyn Fn() -> String + Send + Sync>,
-    get_current_global_state: Arc<dyn Fn() -> LogFields + Send + Sync>,
-    runtime_handle: tokio::runtime::Handle,
-  ) -> anyhow::Result<RecommendedWatcher> {
-    let current_dir = self.current_session_directory();
-    std::fs::create_dir_all(&current_dir).map_err(|e| {
-      anyhow::anyhow!(
-        "Cannot create current session directory: {} ({})",
-        current_dir.display(),
-        e
-      )
-    })?;
-
-    let monitor = self.clone();
-    let mut watcher = RecommendedWatcher::new(
-      move |result: notify::Result<Event>| {
-        let event = match result {
-          Ok(event) => event,
-          Err(e) => {
-            log::warn!("File watcher error: {e}");
-            return;
-          },
-        };
-
-        if !matches!(event.kind, EventKind::Create(_)) {
-          return;
-        }
-
-        for path in event.paths {
-          if path.extension().and_then(OsStr::to_str) != Some("cap") {
-            continue;
-          }
-
-          log::debug!("File watcher detected new report: {}", path.display());
-
-          let monitor_clone = monitor.clone();
-          let on_crash_log_clone = Arc::clone(&on_crash_log);
-          let get_session_id_clone = Arc::clone(&get_session_id);
-          let get_current_global_state_clone = Arc::clone(&get_current_global_state);
-          let path_clone = path.clone();
-          let runtime_handle = runtime_handle.clone();
-
-          runtime_handle.spawn(async move {
-            let session_id = get_session_id_clone();
-            let current_global_state = get_current_global_state_clone();
-            if let Some(crash_log) = monitor_clone
-              .process_current_session_file(&path_clone, &session_id, &current_global_state)
-              .await
-            {
-              on_crash_log_clone(crash_log);
-            }
-          });
-        }
-      },
-      Config::default(),
-    )?;
-
-    watcher.watch(&current_dir, RecursiveMode::NonRecursive)?;
-    log::debug!(
-      "Started file watcher for current session directory: {}",
-      current_dir.display()
-    );
-    Ok(watcher)
   }
 }

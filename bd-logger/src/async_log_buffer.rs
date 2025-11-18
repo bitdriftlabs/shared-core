@@ -23,7 +23,7 @@ use bd_bounded_buffer::{Receiver, Sender, TrySendError, channel};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
-use bd_crash_handler::{Monitor, global_state};
+use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_error_reporter::reporter::{handle_unexpected, handle_unexpected_error_with_details};
 use bd_feature_flags::{FeatureFlags, FeatureFlagsBuilder};
@@ -56,7 +56,6 @@ use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionTy
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::WorkflowDebugStateMap;
 use debug_data_request::workflow_transition_debug_data::Transition_type;
-use notify::RecommendedWatcher;
 use std::collections::{HashMap, VecDeque};
 use std::mem::size_of_val;
 use std::pin::Pin;
@@ -210,16 +209,12 @@ pub struct AsyncLogBuffer<R: LogReplay> {
 
   logging_state: LoggingState<bd_log_primitives::Log>,
   global_state_tracker: global_state::Tracker,
-  store: Arc<Store>,
   time_provider: Arc<dyn TimeProvider>,
   lifecycle_state: InitLifecycleState,
 
   feature_flags: FeatureFlagInitialization,
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
-
-  file_watcher: Option<RecommendedWatcher>,
-  communication_tx: Sender<AsyncLogBufferMessage>,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -310,7 +305,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           Arc::clone(&store),
           runtime_loader.register_duration_watch(),
         ),
-        store,
         time_provider,
         lifecycle_state,
 
@@ -318,9 +312,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
-
-        file_watcher: None,
-        communication_tx: async_log_buffer_communication_tx.clone(),
       },
       async_log_buffer_communication_tx,
     )
@@ -852,7 +843,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         Some(ReportProcessingRequest {
           crash_monitor, session_id_override
         }) = self.report_processor_rx.recv() => {
-          for crash_log in crash_monitor.process_new_reports().await {
+          // TODO(snowp): Once we move over to using the file watcher we can more accurately pick
+          // current vs previous for all reports, but as we need to handle restarts etc we may
+          // also want to embed the full information into the report. This should ensure that we
+          // can upload files after the fact and intelligently drop them.
+          // TODO(snowp): Consider emitting the crash log as part of writing the log instead of
+          // emitting it as part of the upload process. This avoids having to mess with time
+          // overrides at a later stage.
+
+          for crash_log in crash_monitor.process_all_pending_reports().await {
             let attributes_overrides = session_id_override.clone().map(|id| {
               LogAttributesOverrides::PreviousRunSessionID(
                 id,
@@ -874,10 +873,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             if let Err(e) = self.process_all_logs(log, false).await {
               log::debug!("failed to process crash log: {e}");
             }
-          }
-
-          if crash_monitor.is_reports_watcher_enabled() {
-            self.start_file_watcher_if_needed(&crash_monitor);
           }
         },
         Some(async_log_buffer_message) = self.communication_rx.recv() => {
@@ -992,52 +987,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         },
         () = &mut self_shutdown => {
           return self;
-        },
-      }
-    }
-  }
-
-  fn start_file_watcher_if_needed(&mut self, crash_monitor: &Monitor) {
-    if self.file_watcher.is_none() {
-      let communication_tx = self.communication_tx.clone();
-      let session_strategy = Arc::clone(&self.session_strategy);
-
-      let on_crash_log = Arc::new(move |crash_log: bd_crash_handler::CrashLog| {
-        let log = LogLine {
-          log_type: LogType::LIFECYCLE,
-          log_level: crash_log.log_level,
-          message: crash_log.message.clone(),
-          fields: crash_log.fields,
-          matching_fields: [].into(),
-          attributes_overrides: None,
-          capture_session: Some("crash_handler"),
-        };
-
-        if let Err(e) = communication_tx.try_send(AsyncLogBufferMessage::EmitLog((log, None))) {
-          log::debug!("Failed to send current session crash log: {e}");
-        }
-      });
-
-      let get_session_id = Arc::new(move || session_strategy.session_id());
-
-      let store = Arc::clone(&self.store);
-      let get_current_global_state =
-        Arc::new(move || global_state::Reader::new(Arc::clone(&store)).global_state_fields());
-
-      let runtime_handle = tokio::runtime::Handle::current();
-
-      match crash_monitor.start_file_watcher(
-        on_crash_log,
-        get_session_id,
-        get_current_global_state,
-        runtime_handle,
-      ) {
-        Ok(watcher) => {
-          self.file_watcher = Some(watcher);
-          log::debug!("Started file watcher for current session reports");
-        },
-        Err(e) => {
-          log::warn!("Failed to start file watcher: {e}");
         },
       }
     }

@@ -694,7 +694,9 @@ impl Logger {
     let session_id_override = match session {
       ReportProcessingSession::Current => None,
       ReportProcessingSession::Other(id) => Some(id),
-      ReportProcessingSession::PreviousRun => crash_monitor.previous_session_id.clone(),
+      // TODO(snowp): Ideally we should just tell the monitor about current vs previous session
+      // directly rather than going through session IDs.
+      ReportProcessingSession::PreviousRun => crash_monitor.session.previous_process_session_id(),
     };
     Ok(self.report_processor_tx.try_send(ReportProcessingRequest {
       crash_monitor,
