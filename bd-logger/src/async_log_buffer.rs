@@ -843,7 +843,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         Some(ReportProcessingRequest {
           crash_monitor, session_id_override
         }) = self.report_processor_rx.recv() => {
-          for crash_log in crash_monitor.process_new_reports().await {
+          // TODO(snowp): Once we move over to using the file watcher we can more accurately pick
+          // current vs previous for all reports, but as we need to handle restarts etc we may
+          // also want to embed the full information into the report. This should ensure that we
+          // can upload files after the fact and intelligently drop them.
+          // TODO(snowp): Consider emitting the crash log as part of writing the log instead of
+          // emitting it as part of the upload process. This avoids having to mess with time
+          // overrides at a later stage.
+
+          for crash_log in crash_monitor.process_all_pending_reports().await {
             let attributes_overrides = session_id_override.clone().map(|id| {
               LogAttributesOverrides::PreviousRunSessionID(
                 id,
