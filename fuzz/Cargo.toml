@@ -29,6 +29,7 @@ log.workspace               = true
 tempfile.workspace          = true
 time.workspace              = true
 tokio.workspace             = true
+anyhow.workspace            = true
 
 [dev-dependencies]
 bd-test-helpers.path = "../bd-test-helpers"

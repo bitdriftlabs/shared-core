@@ -226,7 +226,8 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     ))
   }
 
-  /// Scan the journal to find the highest timestamp.
+  /// Scan the journal to find the highest timestamp and apply the provided function to each entry.
+  /// This is used during initialization to reconstruct state and also detects partial data loss.
   fn iterate_buffer(buffer: &[u8], position: usize, mut f: impl FnMut(&M, u64)) -> BufferState {
     let mut cursor = HEADER_SIZE;
     let mut state = BufferState {
@@ -245,6 +246,11 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
         },
         Err(_) => {
           // Stop on first decode error (partial frame or corruption)
+          log::debug!(
+            "Journal decode error at position {}, marking partial data loss",
+            cursor
+          );
+          state.partial_data_loss = PartialDataLoss::Yes;
           break;
         },
       }
@@ -286,7 +292,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   ///
   /// The timestamp is monotonically non-decreasing and serves as the version identifier.
   /// If the system clock goes backwards, timestamps are clamped to maintain monotonicity.
-  pub fn insert_entry(&mut self, message: impl protobuf::MessageFull) -> anyhow::Result<u64> {
+  pub fn insert_entry(&mut self, message: M) -> anyhow::Result<u64> {
     let timestamp = self.next_monotonic_timestamp()?;
 
     // Create payload
@@ -298,22 +304,6 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
 
     self.set_position(self.position + encoded_len);
     Ok(timestamp)
-  }
-
-  pub(crate) fn insert_with_timestamp(
-    &mut self,
-    message: impl protobuf::MessageFull,
-    timestamp: u64,
-  ) -> anyhow::Result<()> {
-    // Create payload
-    let frame = Frame::new(timestamp, message);
-
-    // Encode frame
-    let available_space = &mut self.buffer[self.position ..];
-    let encoded_len = frame.encode(available_space)?;
-
-    self.set_position(self.position + encoded_len);
-    Ok(())
   }
 
   /// Check if the high water mark has been triggered.

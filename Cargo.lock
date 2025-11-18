@@ -2139,6 +2139,7 @@ name = "fuzz"
 version = "0.0.0"
 dependencies = [
  "ahash",
+ "anyhow",
  "arbitrary",
  "async-trait",
  "bd-bonjson",

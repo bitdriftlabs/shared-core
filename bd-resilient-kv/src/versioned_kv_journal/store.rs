@@ -340,6 +340,15 @@ impl VersionedKVStore {
   pub fn sync(&self) -> anyhow::Result<()> {
     MemMappedVersionedJournal::sync(&self.journal)
   }
+
+  /// Returns the path to the current primary journal file.
+  #[must_use]
+  pub fn journal_path(&self) -> PathBuf {
+    self.dir_path.join(format!(
+      "{}.jrn.{}",
+      self.journal_name, self.current_generation
+    ))
+  }
 }
 
 
@@ -361,6 +370,8 @@ impl VersionedKVStore {
     let next_generation = self.current_generation + 1;
     let old_generation = self.current_generation;
     self.current_generation = next_generation;
+
+    log::debug!("Rotating journal to generation {}", next_generation);
 
     // TODO(snowp): This part needs fuzzing and more safeguards.
     // TODO(snowp): Consider doing this out of band to split error handling for the insert and
