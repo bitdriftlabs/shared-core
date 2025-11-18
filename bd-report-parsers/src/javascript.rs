@@ -7,6 +7,11 @@
 
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1;
 use flatbuffers::FlatBufferBuilder;
+use nom::branch::alt;
+use nom::bytes::complete::{tag, take_till, take_while1};
+use nom::combinator::{map, rest};
+use nom::sequence::{delimited, pair, preceded, separated_pair};
+use nom::{IResult, Parser};
 
 #[derive(Debug, Clone)]
 struct JavaScriptFrame {
@@ -28,6 +33,7 @@ pub struct JavaScriptDeviceMetrics {
   pub os_brand: Option<String>,
   pub os_kernversion: Option<String>,
   pub architecture: Option<v_1::Architecture>,
+  pub cpu_abis: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -55,17 +61,19 @@ fn parse_javascript_stack_trace(
   frames
 }
 
+fn determine_in_app(_file_path: &str) -> bool {
+  // Always return false; backend will re-evaluate in_app after symbolication based on
+  // the actual symbolicated source file path. This ensures accurate in_app determination
+  // for both debug builds (with source paths) and release builds (with bundle paths).
+  false
+}
+
 fn parse_javascript_frame(line: &str, debugger_id: Option<&str>) -> Option<JavaScriptFrame> {
   let trimmed = line.trim();
 
-  if trimmed.contains("(native)") || trimmed == "[native code]" {
-    let function_name = trimmed
-      .replace(" (native)", "")
-      .replace("[native code]", "")
-      .trim()
-      .to_string();
+  if trimmed == "[native code]" {
     return Some(JavaScriptFrame {
-      function_name,
+      function_name: "[native code]".to_string(),
       file_path: "[native code]".to_string(),
       line: 0,
       column: 0,
@@ -77,14 +85,11 @@ fn parse_javascript_frame(line: &str, debugger_id: Option<&str>) -> Option<JavaS
     });
   }
 
-  if let Some((function_name_part, location_part)) = trimmed.split_once(" at ") {
-    let function_name = function_name_part.trim().to_string();
-    let location = location_part.trim();
+  if let Ok((_, (function_name, location))) = parse_frame_with_nom(trimmed) {
     let (file_path, line_num, column_num, bundle_path) = parse_location(location);
     let in_app = determine_in_app(&file_path);
-
     return Some(JavaScriptFrame {
-      function_name,
+      function_name: function_name.to_string(),
       file_path,
       line: line_num.unwrap_or(0),
       column: column_num.unwrap_or(0),
@@ -94,64 +99,57 @@ fn parse_javascript_frame(line: &str, debugger_id: Option<&str>) -> Option<JavaS
         .map(ToString::to_string),
       in_app,
     });
-  }
-
-  if let Some((function_name_part, location_part)) = trimmed.split_once('@') {
-    let function_name = function_name_part.trim().to_string();
-    let location = location_part.trim();
-    let (file_path, line_num, column_num, bundle_path) = parse_location(location);
-    let in_app = determine_in_app(&file_path);
-
-    return Some(JavaScriptFrame {
-      function_name,
-      file_path,
-      line: line_num.unwrap_or(0),
-      column: column_num.unwrap_or(0),
-      bundle_path,
-      image_id: debugger_id
-        .filter(|id| !id.is_empty())
-        .map(ToString::to_string),
-      in_app,
-    });
-  }
-
-  if trimmed.starts_with("at ") {
-    let location = trimmed.strip_prefix("at ").unwrap_or(trimmed).trim();
-    if let Some((function_name_part, location_part)) = location.split_once('(') {
-      let function_name = function_name_part.trim().to_string();
-      let location = location_part
-        .strip_suffix(")")
-        .unwrap_or(location_part)
-        .trim();
-      let (file_path, line_num, column_num, bundle_path) = parse_location(location);
-      let in_app = determine_in_app(&file_path);
-
-      return Some(JavaScriptFrame {
-        function_name,
-        file_path,
-        line: line_num.unwrap_or(0),
-        column: column_num.unwrap_or(0),
-        bundle_path,
-        image_id: debugger_id
-          .filter(|id| !id.is_empty())
-          .map(ToString::to_string),
-        in_app,
-      });
-    }
   }
 
   None
 }
 
+fn parse_frame_with_nom(input: &str) -> IResult<&str, (&str, &str)> {
+  alt((
+    map(
+      separated_pair(take_till(|c| c == '@'), tag("@"), rest),
+      |(func, loc): (&str, &str)| (func.trim(), loc.trim()),
+    ),
+    map(
+      separated_pair(take_till(|c| c == ' '), tag(" at "), rest),
+      |(func, loc): (&str, &str)| (func.trim(), loc.trim()),
+    ),
+    preceded(
+      tag("at "),
+      map(
+        pair(
+          take_till(|c| c == '('),
+          delimited(tag("("), take_while1(|c| c != ')'), tag(")")),
+        ),
+        |(func, loc): (&str, &str)| (func.trim(), loc.trim()),
+      ),
+    ),
+    preceded(
+      tag("at "),
+      map(rest, |location: &str| ("", location.trim())),
+    ),
+  ))
+  .parse(input)
+}
+
 fn parse_location(location: &str) -> (String, Option<i64>, Option<i64>, Option<String>) {
-  let parts: Vec<&str> = location.split(':').collect();
-  if parts.len() >= 3 {
-    let file_path = parts[0 .. parts.len() - 2].join(":");
-    let line_num = parts[parts.len() - 2].parse::<i64>().ok();
-    let column_num = parts[parts.len() - 1].parse::<i64>().ok();
+  if let Some(last_colon) = location.rfind(':')
+    && let Some(second_last_colon) = location[.. last_colon].rfind(':')
+  {
+    let mut file_path = location[.. second_last_colon].to_string();
+
+    if file_path.starts_with("address at ") {
+      file_path = file_path["address at ".len() ..].to_string();
+    }
+
+    let line_num = location[second_last_colon + 1 .. last_colon]
+      .parse::<i64>()
+      .ok();
+    let column_num = location[last_colon + 1 ..].parse::<i64>().ok();
 
     let bundle_path = if file_path.ends_with(".bundle") {
-      file_path.rsplit('/').next().map(|name| format!("/{name}"))
+      // Extract just the filename (no leading slash) to match source map format
+      file_path.rsplit('/').next().map(String::from)
     } else {
       None
     };
@@ -159,24 +157,13 @@ fn parse_location(location: &str) -> (String, Option<i64>, Option<i64>, Option<S
     return (file_path, line_num, column_num, bundle_path);
   }
 
-  (location.to_string(), None, None, None)
+  let mut file_path = location.to_string();
+  if file_path.starts_with("address at ") {
+    file_path = file_path["address at ".len() ..].to_string();
+  }
+  (file_path, None, None, None)
 }
 
-fn determine_in_app(file_path: &str) -> bool {
-  if file_path == "[native code]" {
-    return false;
-  }
-
-  if file_path.contains("/node_modules/")
-    || file_path.contains("\\node_modules\\")
-    || file_path.contains("react-native/Libraries/")
-    || file_path.contains("react-native\\Libraries\\")
-  {
-    return false;
-  }
-
-  true
-}
 
 fn build_javascript_error_report(
   error_name: &str,
@@ -188,6 +175,8 @@ fn build_javascript_error_report(
   timestamp_nanos: u32,
   device_metrics: &JavaScriptDeviceMetrics,
   app_metrics: &JavaScriptAppMetrics,
+  sdk_id: &str,
+  sdk_version: &str,
 ) -> Vec<u8> {
   let mut builder = FlatBufferBuilder::new();
   let timestamp = v_1::Timestamp::new(timestamp_seconds, timestamp_nanos);
@@ -201,6 +190,16 @@ fn build_javascript_error_report(
     .iter()
     .map(|frame| {
       let function_name_offset = builder.create_string(&frame.function_name);
+      let bundle_path_offset = frame
+        .bundle_path
+        .as_ref()
+        .map(|path| builder.create_string(path));
+      let image_id_offset = frame.image_id.as_ref().map(|id| builder.create_string(id));
+
+      // Bundle paths need to be in source_file (with line/column) so the backend can symbolicate
+      // them. The backend will attempt symbolication and either return a real source path or
+      // preserve the bundle path. The backend uses js_bundle_path for bundle path lookup, so
+      // source_file.path() can use the original file_path.
       let file_path_offset = builder.create_string(&frame.file_path);
       let source_file = v_1::SourceFile::create(
         &mut builder,
@@ -210,21 +209,18 @@ fn build_javascript_error_report(
           column: frame.column,
         },
       );
-      let bundle_path_offset = frame
-        .bundle_path
-        .as_ref()
-        .map(|path| builder.create_string(path));
-      let image_id_offset = frame.image_id.as_ref().map(|id| builder.create_string(id));
 
       v_1::Frame::create(
         &mut builder,
         &v_1::FrameArgs {
           type_: v_1::FrameType::JavaScript,
           symbol_name: Some(function_name_offset),
+          symbolicated_name: Some(function_name_offset),
           source_file: Some(source_file),
           image_id: image_id_offset,
           js_bundle_path: bundle_path_offset,
           in_app: frame.in_app,
+          frame_status: v_1::FrameStatus::Symbolicated,
           ..Default::default()
         },
       )
@@ -296,6 +292,14 @@ fn build_javascript_error_report(
     device_info.arch = arch;
   }
 
+  if let Some(ref cpu_abis) = device_metrics.cpu_abis {
+    let cpu_abis_offsets: Vec<_> = cpu_abis
+      .iter()
+      .map(|abi| builder.create_string(abi))
+      .collect();
+    device_info.cpu_abis = Some(builder.create_vector(&cpu_abis_offsets));
+  }
+
   let mut app_info = v_1::AppMetricsArgs {
     app_id: app_metrics
       .app_id
@@ -320,11 +324,31 @@ fn build_javascript_error_report(
     app_info.build_number = Some(build_number);
   }
 
+  let sdk_id_offset = builder.create_string(sdk_id);
+  let sdk_version_offset = builder.create_string(sdk_version);
+  let sdk_info = v_1::SDKInfo::create(
+    &mut builder,
+    &v_1::SDKInfoArgs {
+      id: Some(sdk_id_offset),
+      version: Some(sdk_version_offset),
+    },
+  );
+
+  let thread_details = v_1::ThreadDetails::create(
+    &mut builder,
+    &v_1::ThreadDetailsArgs {
+      count: 0,
+      threads: None,
+    },
+  );
+
   let args = v_1::ReportArgs {
+    sdk: Some(sdk_info),
     type_: report_type,
     errors: Some(builder.create_vector(&[error])),
     app_metrics: Some(v_1::AppMetrics::create(&mut builder, &app_info)),
     device_metrics: Some(v_1::DeviceMetrics::create(&mut builder, &device_info)),
+    thread_details: Some(thread_details),
     ..Default::default()
   };
   let report_offset = v_1::Report::create(&mut builder, &args);
@@ -343,6 +367,8 @@ pub fn build_javascript_error_report_to_file(
   timestamp_nanos: u32,
   device_metrics: &JavaScriptDeviceMetrics,
   app_metrics: &JavaScriptAppMetrics,
+  sdk_id: &str,
+  sdk_version: &str,
   destination_path: &str,
 ) -> anyhow::Result<()> {
   let bytes = build_javascript_error_report(
@@ -355,6 +381,8 @@ pub fn build_javascript_error_report_to_file(
     timestamp_nanos,
     device_metrics,
     app_metrics,
+    sdk_id,
+    sdk_version,
   );
   std::fs::write(destination_path, bytes)
     .map_err(|e| anyhow::anyhow!("failed to write report to file: {e}"))?;
@@ -382,7 +410,7 @@ mod tests {
     );
     assert_eq!(frames[0].line, 78);
     assert_eq!(frames[0].column, 24);
-    assert!(frames[0].in_app);
+    assert!(!frames[0].in_app);
     assert_eq!(
       frames[1].function_name,
       "_renderValidatedComponentWithoutOwnerOrContext"
@@ -406,7 +434,7 @@ mod tests {
     assert_eq!(frames[0].file_path, "/home/test/project/App.js");
     assert_eq!(frames[0].line, 125);
     assert_eq!(frames[0].column, 13);
-    assert!(frames[0].in_app);
+    assert!(!frames[0].in_app);
     assert!(!frames[1].in_app);
     assert!(!frames[2].in_app);
   }
@@ -423,17 +451,80 @@ mod tests {
     assert_eq!(frames[0].column, 1917);
     assert_eq!(
       frames[0].bundle_path,
-      Some("/index.android.bundle".to_string())
+      Some("index.android.bundle".to_string())
     );
+    assert!(!frames[0].in_app);
     assert_eq!(frames[1].function_name, "onPress");
     assert_eq!(frames[1].file_path, "index.android.bundle");
     assert_eq!(
       frames[1].bundle_path,
-      Some("/index.android.bundle".to_string())
+      Some("index.android.bundle".to_string())
     );
-    assert_eq!(frames[3].function_name, "");
+    assert!(!frames[1].in_app);
+    assert_eq!(frames[3].function_name, "[native code]");
     assert_eq!(frames[3].file_path, "[native code]");
     assert_eq!(frames[3].line, 0);
     assert_eq!(frames[3].column, 0);
+    assert!(!frames[3].in_app);
+  }
+
+  #[test]
+  fn parse_release_build_with_address_at_prefix() {
+    let stack = "triggerGlobalJsError@address at \
+                 index.android.bundle:1:726416\n_performTransitionSideEffects@address at \
+                 index.android.bundle:1:460430";
+    let frames = parse_javascript_stack_trace(stack, None);
+    assert_eq!(frames.len(), 2);
+    assert_eq!(frames[0].function_name, "triggerGlobalJsError");
+    assert_eq!(frames[0].file_path, "index.android.bundle");
+    assert_eq!(frames[0].line, 1);
+    assert_eq!(frames[0].column, 726_416);
+    assert_eq!(
+      frames[0].bundle_path,
+      Some("index.android.bundle".to_string())
+    );
+    assert!(!frames[0].in_app);
+    assert_eq!(frames[1].function_name, "_performTransitionSideEffects");
+    assert_eq!(frames[1].file_path, "index.android.bundle");
+    assert_eq!(frames[1].line, 1);
+    assert_eq!(frames[1].column, 460_430);
+    assert_eq!(
+      frames[1].bundle_path,
+      Some("index.android.bundle".to_string())
+    );
+    assert!(!frames[1].in_app);
+  }
+
+  #[test]
+  fn parse_release_build_at_format_with_address_at() {
+    let stack = "Error: Triggered Global JS Error - Intentional for testing\n    at \
+                 triggerGlobalJsError (address at index.android.bundle:1:726416)\n    at \
+                 _performTransitionSideEffects (address at index.android.bundle:1:460430)\n    at \
+                 forEach (native)";
+    let frames = parse_javascript_stack_trace(stack, None);
+    assert_eq!(frames.len(), 3);
+    assert_eq!(frames[0].function_name, "triggerGlobalJsError");
+    assert_eq!(frames[0].file_path, "index.android.bundle");
+    assert_eq!(frames[0].line, 1);
+    assert_eq!(frames[0].column, 726_416);
+    assert_eq!(
+      frames[0].bundle_path,
+      Some("index.android.bundle".to_string())
+    );
+    assert!(!frames[0].in_app);
+    assert_eq!(frames[1].function_name, "_performTransitionSideEffects");
+    assert_eq!(frames[1].file_path, "index.android.bundle");
+    assert_eq!(frames[1].line, 1);
+    assert_eq!(frames[1].column, 460_430);
+    assert_eq!(
+      frames[1].bundle_path,
+      Some("index.android.bundle".to_string())
+    );
+    assert!(!frames[1].in_app);
+    assert_eq!(frames[2].function_name, "forEach");
+    assert_eq!(frames[2].file_path, "native");
+    assert_eq!(frames[2].line, 0);
+    assert_eq!(frames[2].column, 0);
+    assert!(!frames[2].in_app);
   }
 }
