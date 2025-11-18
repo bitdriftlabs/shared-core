@@ -14,6 +14,7 @@ use nom::{IResult, Parser};
 
 pub mod android;
 mod input;
+pub mod javascript;
 
 #[cfg(test)]
 fn make_tempfile(contents: &[u8]) -> anyhow::Result<std::fs::File> {
