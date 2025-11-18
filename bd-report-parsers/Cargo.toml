@@ -14,6 +14,7 @@ bd-proto.path               = "../bd-proto"
 bd-workspace-hack.workspace = true
 flatbuffers.workspace       = true
 itertools.workspace         = true
+log.workspace               = true
 memmap2.workspace           = true
 nom.workspace               = true
 
