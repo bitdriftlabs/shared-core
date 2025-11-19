@@ -244,9 +244,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
         cursor += consumed;
       } else {
         // Stop on first decode error (partial frame or corruption)
-        log::debug!(
-          "Journal decode error at position {cursor}, marking partial data loss"
-        );
+        log::debug!("Journal decode error at position {cursor}, marking partial data loss");
         state.partial_data_loss = PartialDataLoss::Yes;
         break;
       }
