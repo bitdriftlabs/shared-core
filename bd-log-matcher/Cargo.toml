@@ -10,9 +10,9 @@ doctest = false
 
 [dependencies]
 anyhow.workspace            = true
-bd-state.path       = "../bd-state"
 bd-log-primitives.path      = "../bd-log-primitives"
 bd-proto.path               = "../bd-proto"
+bd-state.path               = "../bd-state"
 bd-workspace-hack.workspace = true
 itertools.workspace         = true
 protobuf.workspace          = true

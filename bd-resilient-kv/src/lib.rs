@@ -15,23 +15,21 @@
 )]
 
 #[cfg(test)]
+#[ctor::ctor]
+fn test_global_init() {
+  // TODO(snowp): Ideally we'll depend on bd-test-helpers here, but that would create a cyclic
+  // dependency.
+  bd_log::SwapLogger::initialize();
+}
+
+#[cfg(test)]
 mod tests;
 
 pub mod kv_journal;
 pub mod kv_store;
-pub mod snapshot_cleanup;
-pub mod versioned_kv_store;
-pub mod versioned_recovery;
+mod versioned_kv_journal;
 
-pub use kv_journal::{
-  DoubleBufferedKVJournal,
-  InMemoryKVJournal,
-  KVJournal,
-  MemMappedKVJournal,
-  MemMappedVersionedKVJournal,
-  VersionedKVJournal,
-};
+pub use kv_journal::{DoubleBufferedKVJournal, InMemoryKVJournal, KVJournal, MemMappedKVJournal};
 pub use kv_store::KVStore;
-pub use snapshot_cleanup::{SnapshotCleanup, SnapshotInfo};
-pub use versioned_kv_store::{RotationCallback, VersionedKVStore};
-pub use versioned_recovery::VersionedRecovery;
+pub use versioned_kv_journal::recovery::VersionedRecovery;
+pub use versioned_kv_journal::store::VersionedKVStore;

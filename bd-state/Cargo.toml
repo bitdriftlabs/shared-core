@@ -18,7 +18,7 @@ bd-bonjson                  = { path = "../bd-bonjson" }
 bd-client-common            = { path = "../bd-client-common" }
 bd-resilient-kv             = { path = "../bd-resilient-kv" }
 bd-workspace-hack.workspace = true
+itertools.workspace         = true
 log.workspace               = true
 tempfile.workspace          = true
 time.workspace              = true
-itertools.workspace              = true

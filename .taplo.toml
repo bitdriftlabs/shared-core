@@ -1,3 +1,6 @@
+# Exclude submodule directories
+exclude = ["api/**", "thirdparty/flatbuffers/**"]
+
 [formatting]
 align_comments       = true
 align_entries        = true

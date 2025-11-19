@@ -8,87 +8,99 @@
 #![allow(clippy::unwrap_used)]
 
 use crate::VersionedKVStore;
-use bd_bonjson::Value;
-use std::path::Path;
-use std::sync::{Arc, Mutex};
+use crate::tests::decompress_zlib;
+use crate::versioned_kv_journal::{TimestampedValue, make_string_value};
+use bd_proto::protos::state::payload::StateValue;
+use bd_time::TestTimeProvider;
+use std::sync::Arc;
 use tempfile::TempDir;
+use time::ext::NumericalDuration;
+use time::macros::datetime;
 
-#[test]
-fn test_versioned_store_new() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
+struct Setup {
+  temp_dir: TempDir,
+  store: VersionedKVStore,
+  time_provider: Arc<TestTimeProvider>,
+}
 
-  let store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+impl Setup {
+  async fn new() -> anyhow::Result<Self> {
+    let temp_dir = TempDir::new()?;
+    let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+
+    let (store, _) =
+      VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
+
+    Ok(Self {
+      temp_dir,
+      store,
+      time_provider,
+    })
+  }
+
+  async fn make_store_from_snapshot_file(
+    &self,
+    snapshot_path: &std::path::Path,
+  ) -> anyhow::Result<VersionedKVStore> {
+    // Decompress the snapshot and journal files into the temp directory
+    // so we can open them as a store.
+    let data = std::fs::read(snapshot_path)?;
+    let decompressed_snapshot = decompress_zlib(&data)?;
+    std::fs::write(
+      self.temp_dir.path().join("snapshot.jrn.0"),
+      decompressed_snapshot,
+    )?;
+
+    let (store, _) = VersionedKVStore::open_existing(
+      self.temp_dir.path(),
+      "snapshot",
+      4096,
+      None,
+      self.time_provider.clone(),
+    )
+    .await?;
+
+    Ok(store)
+  }
+}
+
+#[tokio::test]
+async fn empty_store() -> anyhow::Result<()> {
+  let setup = Setup::new().await?;
 
   // Should start empty
-  assert!(store.is_empty());
-  assert_eq!(store.len(), 0);
-  assert_eq!(store.base_version(), 1); // Base version starts at 1
-  assert_eq!(store.current_version(), 1);
+  assert!(setup.store.is_empty());
+  assert_eq!(setup.store.len(), 0);
+
+  assert!(setup.temp_dir.path().join("test.jrn.0").exists());
 
   Ok(())
 }
 
 #[tokio::test]
-async fn test_versioned_store_basic_operations() -> anyhow::Result<()> {
+async fn basic_crud() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-
-  // Test insert with version tracking
-  let v1 = store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
-    .await?;
-  assert_eq!(v1, 2); // First write is version 2 (base is 1)
-
-  let retrieved = store.get("key1");
-  assert_eq!(retrieved, Some(&Value::String("value1".to_string())));
-
-  // Test overwrite
-  let v2 = store
-    .insert("key1".to_string(), Value::String("value2".to_string()))
-    .await?;
-  assert_eq!(v2, 3); // Second write is version 3
-  assert!(v2 > v1);
-
-  let retrieved = store.get("key1");
-  assert_eq!(retrieved, Some(&Value::String("value2".to_string())));
-
-  // Test contains_key
-  assert!(store.contains_key("key1"));
-  assert!(!store.contains_key("nonexistent"));
-
-  // Test len and is_empty
-  assert_eq!(store.len(), 1);
-  assert!(!store.is_empty());
-
-  // Current version should track latest write
-  assert_eq!(store.current_version(), v2);
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_versioned_store_remove() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
 
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let (mut store, _) =
+    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider).await?;
 
   // Insert some values
-  let v1 = store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
+  let ts1 = store
+    .insert("key1".to_string(), make_string_value("value1"))
     .await?;
-  let v2 = store
-    .insert("key2".to_string(), Value::String("value2".to_string()))
+  let ts2 = store
+    .insert("key2".to_string(), make_string_value("value2"))
     .await?;
 
   assert_eq!(store.len(), 2);
-  assert!(v2 > v1);
+  assert!(ts2 >= ts1);
 
   // Remove a key
-  let v3 = store.remove("key1").await?;
-  assert!(v3.is_some());
-  assert!(v3.unwrap() > v2);
+  let ts3 = store.remove("key1").await?;
+  assert!(ts3.is_some());
+  assert!(ts3.unwrap() >= ts2);
 
   assert_eq!(store.len(), 1);
   assert!(!store.contains_key("key1"));
@@ -98,38 +110,57 @@ async fn test_versioned_store_remove() -> anyhow::Result<()> {
   let removed = store.remove("nonexistent").await?;
   assert!(removed.is_none());
 
+  // Read back existing key
+  let val = store.get("key2");
+  assert_eq!(val, Some(&make_string_value("value2")));
+
+  // Read non-existent key
+  let val = store.get("key1");
+  assert_eq!(val, None);
+
   Ok(())
 }
 
 #[tokio::test]
 async fn test_persistence_and_reload() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
-
-  let v2;
 
   // Create store and write some data
-  {
-    let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-    let _v1 = store
-      .insert("key1".to_string(), Value::String("value1".to_string()))
+  let (ts1, ts2) = {
+    let (mut store, _) =
+      VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
+    let ts1 = store
+      .insert("key1".to_string(), make_string_value("value1"))
       .await?;
-    v2 = store.insert("key2".to_string(), Value::Signed(42)).await?;
+    let ts2 = store
+      .insert("key2".to_string(), make_string_value("foo"))
+      .await?;
     store.sync()?;
-  }
+
+    (ts1, ts2)
+  };
 
   // Reopen and verify data persisted
   {
-    let store = VersionedKVStore::open_existing(temp_dir.path(), "test", 4096, None)?;
+    let (store, _) =
+      VersionedKVStore::open_existing(temp_dir.path(), "test", 4096, None, time_provider).await?;
     assert_eq!(store.len(), 2);
     assert_eq!(
-      store.get("key1"),
-      Some(&Value::String("value1".to_string()))
+      store.get_with_timestamp("key1"),
+      Some(&TimestampedValue {
+        value: make_string_value("value1"),
+        timestamp: ts1,
+      })
     );
-    assert_eq!(store.get("key2"), Some(&Value::Signed(42)));
-
-    // Version numbers should be preserved
-    assert_eq!(store.current_version(), v2);
+    assert_eq!(
+      store.get_with_timestamp("key2"),
+      Some(&TimestampedValue {
+        value: make_string_value("foo"),
+        timestamp: ts2,
+      })
+    );
   }
 
   Ok(())
@@ -137,245 +168,151 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_null_value_is_deletion() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let mut setup = Setup::new().await?;
 
   // Insert a value
-  store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
+  setup
+    .store
+    .insert("key1".to_string(), make_string_value("value1"))
     .await?;
-  assert!(store.contains_key("key1"));
+  assert!(setup.store.contains_key("key1"));
 
-  // Insert null to delete
-  store.insert("key1".to_string(), Value::Null).await?;
-  assert!(!store.contains_key("key1"));
-  assert_eq!(store.len(), 0);
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_rotation_callback() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  // Use a small buffer and low high water mark to trigger rotation easily
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 1024, Some(0.3))?;
-
-  // Set up callback to track rotation events
-  let callback_data = Arc::new(Mutex::new(Vec::new()));
-  let callback_data_clone = Arc::clone(&callback_data);
-
-  store.set_rotation_callback(Arc::new(Mutex::new(
-    move |old_path: &Path, new_path: &Path, version: u64| {
-      let mut data = callback_data_clone.lock().unwrap();
-      data.push((old_path.to_path_buf(), new_path.to_path_buf(), version));
-    },
-  )));
-
-  // Write enough data to trigger rotation
-  let mut last_version = 0;
-  for i in 0 .. 100 {
-    let key = format!("key{}", i);
-    let value = Value::String(format!("value_{}_with_some_extra_padding", i));
-    last_version = store.insert(key, value).await?;
-
-    // Rotation happens automatically inside insert when high water mark is triggered
-    let data = callback_data.lock().unwrap();
-    if !data.is_empty() {
-      break;
-    }
-  }
-
-  // Check that callback was invoked
-  let data = callback_data.lock().unwrap();
-  assert!(data.len() >= 1, "Expected at least one rotation event");
-
-  let (old_path, new_path, rotation_version) = &data[0];
-  assert!(old_path.to_string_lossy().contains(".v"));
-  assert_eq!(new_path, &temp_dir.path().join("test.jrn"));
-  assert!(*rotation_version <= last_version);
+  // Insert empty state to delete
+  setup
+    .store
+    .insert("key1".to_string(), StateValue::default())
+    .await?;
+  assert!(!setup.store.contains_key("key1"));
+  assert_eq!(setup.store.len(), 0);
 
   Ok(())
 }
 
 #[tokio::test]
 async fn test_manual_rotation() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let mut setup = Setup::new().await?;
 
   // Insert some data
-  let _v1 = store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
+  let _ts1 = setup
+    .store
+    .insert("key1".to_string(), make_string_value("value1"))
     .await?;
-  let v2 = store
-    .insert("key2".to_string(), Value::String("value2".to_string()))
+  let ts2 = setup
+    .store
+    .insert("key2".to_string(), make_string_value("value2"))
     .await?;
+
+  // Get max timestamp before rotation (this will be used in the archive name)
+  let rotation_timestamp = setup
+    .store
+    .get_with_timestamp("key2")
+    .map(|tv| tv.timestamp)
+    .unwrap();
 
   // Manually trigger rotation
-  let rotation_version = store.current_version();
-  store.rotate_journal().await?;
+  setup.store.rotate_journal().await?;
 
   // Verify archived file exists (compressed)
-  let archived_path = temp_dir
+  let archived_path = setup
+    .temp_dir
     .path()
-    .join(format!("test.jrn.v{}.zz", rotation_version));
+    .join(format!("test.jrn.t{}.zz", rotation_timestamp));
   assert!(archived_path.exists());
 
   // Verify active journal still works
-  let v3 = store
-    .insert("key3".to_string(), Value::String("value3".to_string()))
+  let ts3 = setup
+    .store
+    .insert("key3".to_string(), make_string_value("value3"))
     .await?;
-  assert!(v3 > v2);
-  assert_eq!(store.len(), 3);
+  assert!(ts3 >= ts2);
+  assert_eq!(setup.store.len(), 3);
 
   // Verify data is intact
-  assert_eq!(
-    store.get("key1"),
-    Some(&Value::String("value1".to_string()))
-  );
-  assert_eq!(
-    store.get("key2"),
-    Some(&Value::String("value2".to_string()))
-  );
-  assert_eq!(
-    store.get("key3"),
-    Some(&Value::String("value3".to_string()))
-  );
+  assert_eq!(setup.store.get("key1"), Some(&make_string_value("value1")));
+  assert_eq!(setup.store.get("key2"), Some(&make_string_value("value2")));
+  assert_eq!(setup.store.get("key3"), Some(&make_string_value("value3")));
 
-  // New journal should have base version at rotation point
-  assert_eq!(store.base_version(), rotation_version);
+  // Decompress the archive and load it as a Store to verify that it contains the old state.
+  let snapshot_store = setup.make_store_from_snapshot_file(&archived_path).await?;
+  assert_eq!(
+    snapshot_store.get("key1"),
+    Some(&make_string_value("value1"))
+  );
+  assert_eq!(
+    snapshot_store.get("key2"),
+    Some(&make_string_value("value2"))
+  );
+  assert_eq!(snapshot_store.len(), 2);
 
   Ok(())
 }
 
 #[tokio::test]
 async fn test_rotation_preserves_state() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
+  let mut setup = Setup::new().await?;
 
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-
-  // Create complex state
-  store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
-    .await?;
-  store.insert("key2".to_string(), Value::Signed(42)).await?;
-  store.insert("key3".to_string(), Value::Bool(true)).await?;
-  store
-    .insert("key4".to_string(), Value::Float(3.14159))
+  setup
+    .store
+    .insert("key1".to_string(), make_string_value("value1"))
     .await?;
 
-  let pre_rotation_state = store.as_hashmap();
-  let pre_rotation_version = store.current_version();
+  let pre_rotation_state = setup.store.as_hashmap().clone();
+  let pre_rotation_ts = setup
+    .store
+    .get_with_timestamp("key1")
+    .map(|tv| tv.timestamp)
+    .unwrap();
 
   // Rotate
-  store.rotate_journal().await?;
+  setup.store.rotate_journal().await?;
 
   // Verify state is preserved exactly
-  let post_rotation_state = store.as_hashmap();
-  assert_eq!(pre_rotation_state, post_rotation_state);
-  assert_eq!(store.len(), 4);
+  let post_rotation_state = setup.store.as_hashmap();
+  assert_eq!(pre_rotation_state, *post_rotation_state);
+  assert_eq!(setup.store.len(), 1);
 
   // Verify we can continue writing
-  let v_new = store
-    .insert("key5".to_string(), Value::String("value5".to_string()))
+  let ts_new = setup
+    .store
+    .insert("key2".to_string(), make_string_value("value2"))
     .await?;
-  assert!(v_new > pre_rotation_version);
-  assert_eq!(store.len(), 5);
+  assert!(ts_new >= pre_rotation_ts);
+  assert_eq!(setup.store.len(), 2);
 
   Ok(())
 }
 
 #[tokio::test]
 async fn test_empty_store_operations() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
+  let mut setup = Setup::new().await?;
 
   // Operations on empty store
-  assert_eq!(store.get("nonexistent"), None);
-  assert!(!store.contains_key("nonexistent"));
-  assert_eq!(store.remove("nonexistent").await?, None);
-  assert!(store.is_empty());
-  assert_eq!(store.len(), 0);
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_version_monotonicity() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-
-  let mut last_version = store.current_version();
-
-  // Perform various operations and ensure version always increases
-  for i in 0 .. 20 {
-    let op_version = if i % 3 == 0 {
-      store
-        .insert(format!("key{}", i), Value::Signed(i as i64))
-        .await?
-    } else if i % 3 == 1 {
-      store
-        .insert(
-          format!("key{}", i / 3),
-          Value::String(format!("updated{}", i)),
-        )
-        .await?
-    } else {
-      store
-        .remove(&format!("key{}", i / 3))
-        .await?
-        .unwrap_or(last_version)
-    };
-
-    assert!(
-      op_version >= last_version,
-      "Version should be monotonically increasing"
-    );
-    last_version = op_version;
-  }
-
-  assert_eq!(store.current_version(), last_version);
+  assert_eq!(setup.store.get("nonexistent"), None);
+  assert!(!setup.store.contains_key("nonexistent"));
+  assert_eq!(setup.store.remove("nonexistent").await?, None);
+  assert!(setup.store.is_empty());
+  assert_eq!(setup.store.len(), 0);
 
   Ok(())
 }
 
 #[tokio::test]
 async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  // Create store with small buffer to trigger rotation easily
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 2048, Some(0.5))?;
+  let mut setup = Setup::new().await?;
 
   // Insert some keys and capture their timestamps
-  store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
+  let ts1 = setup
+    .store
+    .insert("key1".to_string(), make_string_value("value1"))
     .await?;
-  let ts1 = store
-    .get_with_timestamp("key1")
-    .map(|tv| tv.timestamp)
-    .unwrap();
 
-  // Small sleep to ensure different timestamps
-  std::thread::sleep(std::time::Duration::from_millis(10));
+  // Advance time to ensure different timestamps.
+  setup.time_provider.advance(10.milliseconds());
 
-  store
-    .insert("key2".to_string(), Value::String("value2".to_string()))
+  let ts2 = setup
+    .store
+    .insert("key2".to_string(), make_string_value("value2"))
     .await?;
-  let ts2 = store
-    .get_with_timestamp("key2")
-    .map(|tv| tv.timestamp)
-    .unwrap();
 
   // Verify timestamps are different
   assert_ne!(ts1, ts2, "Timestamps should be different");
@@ -383,16 +320,21 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
 
   // Write enough data to trigger rotation
   for i in 0 .. 50 {
-    store.insert(format!("fill{i}"), Value::Signed(i)).await?;
+    setup
+      .store
+      .insert(format!("fill{i}"), make_string_value("foo"))
+      .await?;
   }
 
   // Verify that after rotation, the original timestamps are preserved
-  let ts1_after = store
+  let ts1_after = setup
+    .store
     .get_with_timestamp("key1")
     .map(|tv| tv.timestamp)
     .unwrap();
 
-  let ts2_after = store
+  let ts2_after = setup
+    .store
     .get_with_timestamp("key2")
     .map(|tv| tv.timestamp)
     .unwrap();
@@ -416,177 +358,37 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn test_compression_during_rotation() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
+async fn test_multiple_rotations() -> anyhow::Result<()> {
+  let mut setup = Setup::new().await?;
 
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-
-  // Insert some data
-  let data = "x".repeat(1000); // Large value to make compression effective
-  store
-    .insert("key1".to_string(), Value::String(data.clone()))
-    .await?;
-  store
-    .insert("key2".to_string(), Value::String(data.clone()))
-    .await?;
-  store
-    .insert("key3".to_string(), Value::String(data))
-    .await?;
-
-  // Get size of uncompressed journal before rotation
-  let uncompressed_size = std::fs::metadata(temp_dir.path().join("test.jrn"))?.len();
-
-  // Get current version before rotation (this is what will be used in the archive name)
-  let rotation_version = store.current_version();
-
-  // Trigger rotation
-  store.rotate_journal().await?;
-
-  // Verify compressed archive exists
-  let archived_path = temp_dir
-    .path()
-    .join(format!("test.jrn.v{}.zz", rotation_version));
-  assert!(
-    archived_path.exists(),
-    "Compressed archive should exist at {:?}",
-    archived_path
-  );
-
-  // Verify compressed size is smaller than original
-  let compressed_size = std::fs::metadata(&archived_path)?.len();
-  assert!(
-    compressed_size < uncompressed_size,
-    "Compressed size ({}) should be smaller than uncompressed ({})",
-    compressed_size,
-    uncompressed_size
-  );
-
-  // Verify uncompressed temporary file was deleted
-  let temp_archive_path = temp_dir.path().join("test.jrn.old");
-  assert!(
-    !temp_archive_path.exists(),
-    "Temporary uncompressed archive should be deleted"
-  );
-
-  // Verify active journal still works
-  store
-    .insert("key4".to_string(), Value::String("value4".to_string()))
-    .await?;
-  assert_eq!(store.len(), 4);
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_compression_ratio() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 8192, None)?;
-
-  // Insert highly compressible data
-  let compressible_data = "A".repeat(500);
-  for i in 0 .. 10 {
-    store
-      .insert(
-        format!("key{}", i),
-        Value::String(compressible_data.clone()),
-      )
-      .await?;
-  }
-
-  let uncompressed_size = std::fs::metadata(temp_dir.path().join("test.jrn"))?.len();
-  let rotation_version = store.current_version();
-
-  store.rotate_journal().await?;
-
-  let archived_path = temp_dir
-    .path()
-    .join(format!("test.jrn.v{}.zz", rotation_version));
-  let compressed_size = std::fs::metadata(&archived_path)?.len();
-
-  // With highly compressible data, we should get significant compression
-  // Expecting at least 50% compression ratio for repeated characters
-  #[allow(clippy::cast_precision_loss)]
-  let compression_ratio = (compressed_size as f64) / (uncompressed_size as f64);
-  assert!(
-    compression_ratio < 0.5,
-    "Compression ratio should be better than 50% for repeated data, got {:.2}%",
-    compression_ratio * 100.0
-  );
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_multiple_rotations_with_compression() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-
-  let mut rotation_versions = Vec::new();
+  let mut rotation_timestamps = Vec::new();
 
   // Perform multiple rotations
   for i in 0 .. 3 {
     let key = format!("key{}", i);
-    let value = Value::String(format!("value{}", i));
-    let version = store.insert(key, value).await?;
-    rotation_versions.push(version);
-    store.rotate_journal().await?;
+    let value = make_string_value(&format!("value{}", i));
+    setup.store.insert(key.clone(), value).await?;
+    let timestamp = setup
+      .store
+      .get_with_timestamp(&key)
+      .map(|tv| tv.timestamp)
+      .unwrap();
+    rotation_timestamps.push(timestamp);
+    setup.store.rotate_journal().await?;
   }
 
   // Verify all compressed archives exist
-  for version in rotation_versions {
-    let archived_path = temp_dir.path().join(format!("test.jrn.v{}.zz", version));
+  for timestamp in rotation_timestamps {
+    let archived_path = setup
+      .temp_dir
+      .path()
+      .join(format!("test.jrn.t{}.zz", timestamp));
     assert!(
       archived_path.exists(),
-      "Compressed archive for version {} should exist",
-      version
+      "Compressed archive for timestamp {} should exist",
+      timestamp
     );
   }
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_rotation_callback_receives_compressed_path() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-
-
-  let mut store = VersionedKVStore::new(temp_dir.path(), "test", 4096, None)?;
-
-  let callback_data = Arc::new(Mutex::new(None));
-  let callback_data_clone = Arc::clone(&callback_data);
-
-  store.set_rotation_callback(Arc::new(Mutex::new(
-    move |old_path: &Path, _new_path: &Path, _version: u64| {
-      let mut data = callback_data_clone.lock().unwrap();
-      *data = Some(old_path.to_path_buf());
-    },
-  )));
-
-  store
-    .insert("key1".to_string(), Value::String("value1".to_string()))
-    .await?;
-  store.rotate_journal().await?;
-
-  // Verify callback received compressed path
-  let data = callback_data.lock().unwrap();
-  let archived_path = data.as_ref().unwrap();
-
-  assert!(
-    archived_path.to_string_lossy().ends_with(".zz"),
-    "Callback should receive compressed archive path ending with .zz, got: {:?}",
-    archived_path
-  );
-
-  // Verify the file actually exists
-  assert!(
-    archived_path.exists(),
-    "Compressed archive passed to callback should exist"
-  );
 
   Ok(())
 }

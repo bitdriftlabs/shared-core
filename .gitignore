@@ -2,3 +2,4 @@
 flamegraph.svg
 flamegraph_old.svg
 perf.data*
+/.idea

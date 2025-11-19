@@ -44,7 +44,7 @@ The system provides efficient bulk operations through a consistent pattern:
 The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJournal`:
 
 **Key Components**:
-- **VersionedKVJournal**: Low-level journal that tracks version numbers for each entry
+- **VersionedKVJournal**: Low-level journal that tracks timestamps for each entry
 - **MemMappedVersionedKVJournal**: Memory-mapped persistence layer
 - **VersionedKVStore**: High-level HashMap-like API with automatic rotation and async write operations
 
@@ -55,43 +55,38 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 - The async API enables efficient background compression without blocking the main thread
 
 **Version Tracking**:
-- Every write operation (`insert`, `remove`) returns a monotonically increasing version number
-- Version numbers start at 1 (base version), first write is version 2
-- Entries with `Value::Null` are treated as deletions but still versioned
+- Every write operation (`insert`, `remove`) returns a monotonically non-decreasing timestamp (microseconds since UNIX epoch)
+- Timestamps serve as both version identifiers and logical clocks
+- If the system clock goes backward, timestamps are clamped to the last timestamp to maintain monotonicity
+- Entries with `Value::Null` are treated as deletions but still timestamped
+- During rotation, snapshot entries preserve their original timestamps
+
+**Timestamp Tracking**:
+- Each entry records a timestamp (microseconds since UNIX epoch) when the write occurred
+- Timestamps are monotonically non-decreasing, not strictly increasing
+- Multiple entries may share the same timestamp if the system clock doesn't advance between writes
+- This is expected behavior, particularly during rapid writes or in test environments
+- Recovery at timestamp T includes ALL entries with timestamp ≤ T, applied in version order
+- Timestamps are preserved during rotation, maintaining temporal accuracy for audit purposes
+- Test coverage: `test_timestamp_collision_across_rotation` in `versioned_recovery_test.rs`
 
 **Rotation Strategy**:
 - Automatic rotation when journal size exceeds high water mark (triggered during async write operations)
 - Current state is compacted into a new journal as versioned entries
-- Old journal is archived with `.v{version}.zz` suffix
-- Archived journals are automatically compressed using zlib (RFC 1950, level 3) asynchronously
-- Optional callback invoked with archived path and version
-- Application controls upload/cleanup of archived journals
-
-**Rotation Guarantees**:
-- **Impossible Failure Mode**: Rotation cannot fail due to insufficient buffer space
-- **Reasoning**: Rotation creates a new journal with the same buffer size as the original. Since compaction only removes redundant updates (old versions of keys), the compacted state is always ≤ the current journal size. If data fits in the journal during normal operation, it will always fit during rotation.
-- **Implication**: Applications do not need to handle "buffer overflow during rotation" errors. This is an architectural guarantee.
+- Old journal is archived with `.t{timestamp}.zz` suffix
+- Archived journals are automatically compressed using zlib (RFC 1950, level 5) asynchronously
 
 **Compression**:
 - All archived journals are automatically compressed during rotation using async I/O
 - Active journals remain uncompressed for write performance
-- Compression uses zlib format (RFC 1950) with level 3 for balanced speed/ratio
+- Compression uses zlib format (RFC 1950) with level 5 for balanced speed/ratio
 - Streaming compression avoids loading entire journals into memory
 - Typical compression achieves >50% size reduction for text-based data
 - File extension `.zz` indicates compressed archives
 - Recovery transparently decompresses archived journals when needed
 
 **Point-in-Time Recovery**:
-The `VersionedRecovery` utility provides point-in-time recovery capabilities for versioned journals. It works with raw journal bytes and can reconstruct state at any historical version, including across rotation boundaries. `VersionedRecovery` is designed for offline analysis, audit tooling, and server-side operations - it is separate from `VersionedKVStore` which is focused on active write operations. Applications can use `VersionedRecovery` to analyze archived journals and recover state at specific versions. The `from_files()` constructor is async for efficient file reading.
-
-**Recovery Optimization**:
-The `recover_current()` method in `VersionedRecovery` is optimized to only read the last journal rather than replaying all journals from the beginning. This is possible because journal rotation writes the complete current state into the new journal at the snapshot version, so the last journal alone contains the full current state. For historical version recovery, `recover_at_version()` intelligently selects and replays only the necessary journals.
-
-**Snapshot Cleanup**:
-The `SnapshotCleanup` utility provides async methods for managing archived journal snapshots:
-- All cleanup operations are async and require a Tokio runtime
-- `list_snapshots()`, `cleanup_before_version()`, `cleanup_keep_recent()` are all async
-- Enables efficient disk space management without blocking operations
+The `VersionedRecovery` utility provides point-in-time recovery by replaying journal entries up to a target timestamp. It works with raw uncompressed journal bytes and can reconstruct state at any historical timestamp across rotation boundaries. Recovery is optimized: `recover_current()` only reads the last journal (since rotation writes complete compacted state), while `recover_at_timestamp()` intelligently selects and replays only necessary journals. The `new()` constructor accepts a vector of `(&[u8], u64)` tuples (byte slice and snapshot timestamp). Callers must decompress archived journals before passing them to the constructor.
 
 ## Critical Design Insights
 
@@ -102,12 +97,14 @@ The `SnapshotCleanup` utility provides async methods for managing archived journ
 - Architecture: Two journals with automatic switching
 - Compaction: Compresses entire state into inactive journal
 - No version tracking
+- Format: BONJSON-based entries
 
 **VersionedKVStore (Single Journal with Rotation)**:
 - Best for: Audit logs, state history, remote backup
 - Architecture: Single journal with archived versions
 - Rotation: Creates new journal with compacted state
-- Version tracking: Every write returns a version number
+- Timestamp tracking: Every write returns a timestamp
+- Format: Protobuf-based entries (VERSION 1)
 
 ### 2. Compaction Efficiency
 **Key Insight**: Compaction via `reinit_from()` is already maximally efficient. It writes data in the most compact possible serialized form (hashmap → bytes). If even this compact representation exceeds high water marks, then the data volume itself is the limiting factor, not inefficient storage.
@@ -118,14 +115,13 @@ The `SnapshotCleanup` utility provides async methods for managing archived journ
 
 **Key Differences**:
 - **KVStore**: Switches between two buffers, old buffer is reset and reused
-- **VersionedKVStore**: Archives old journal with `.v{version}` suffix, creates new journal
-- **Callback**: Only `VersionedKVStore` supports rotation callbacks for upload/cleanup
+- **VersionedKVStore**: Archives old journal with `.t{timestamp}` suffix, creates new journal
 - **Version Preservation**: Archived journals preserve complete history for recovery
 
 **When Rotation Occurs**:
 - Triggered during `insert()` or `remove()` when journal size exceeds high water mark
 - Can be manually triggered via `rotate()`
-- Automatic and transparent to the caller (except for callback)
+- Automatic and transparent to the caller
 
 ### 4. Bulk Operations and Retry Logic
 The system includes sophisticated retry logic specifically for bulk operations:
@@ -254,22 +250,14 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
    - **Action**: Handle as standard I/O errors
 
 4. **Compression/Archive Errors (VersionedKVStore)**
-   - **When**: Rotation callback receives archived journal path but compression fails
-   - **Result**: Application-level error in rotation callback
+   - **When**: Asynchronous compression of archived journal fails
+   - **Result**: Error during rotation's async compression phase
    - **Action**: Retry compression, handle cleanup appropriately
 
 ### Impossible Failure Modes (Architectural Guarantees)
 
-1. **Buffer Overflow During Rotation (VersionedKVStore)**
-   - **Why Impossible**: Rotation creates new journal with same buffer size. Compaction only removes redundant updates, so compacted state ≤ current journal size. If data fits during normal operation, it always fits during rotation.
-   - **Implication**: No need to handle "insufficient buffer during rotation" errors
-
-2. **Buffer Overflow During Compaction (KVStore)**
-   - **Why Impossible**: Compaction via `reinit_from()` writes to inactive buffer of the same size. Same reasoning as rotation.
-   - **Implication**: `switch_journals()` may set high water mark flag, but won't fail due to buffer overflow
-
-3. **Version Number Overflow (VersionedKVStore)**
-   - **Why Practically Impossible**: Uses u64, would require 58+ million years at 10,000 writes/second
+1. **Timestamp Overflow (VersionedKVStore)**
+   - **Why Practically Impossible**: Uses u64 for microsecond timestamps, would require 584,000+ years to overflow (u64::MAX microseconds ≈ year 586,524 CE)
    - **Implication**: No overflow handling needed in practice
 
 ## Common Pitfalls
@@ -365,7 +353,7 @@ When modifying or refactoring code in the kv_journal system (or any Rust codebas
 - **Always update documentation and comments** to reflect current functionality
 - Pay special attention to trait documentation, method comments, and module-level explanations
 - Update CLAUDE.md or similar architectural documentation when making significant changes
-- Ensure code comments explain the "why" behind complex logic, especially around callback mechanisms and compaction strategies
+- Ensure code comments explain the "why" behind complex logic, especially around compaction strategies and retry mechanisms
 
 ### Code Quality Checks
 After making changes, run these commands in order:
@@ -382,7 +370,7 @@ After making changes, run these commands in order:
 
 ### Testing
 - Run the full test suite: `cargo test -p bd-resilient-kv --lib`
-- Pay special attention to tests that verify callback behavior and automatic switching
+- Pay special attention to tests that verify automatic switching and retry logic
 - When adding new functionality, include comprehensive tests covering edge cases
 
 ### Git Workflow

@@ -19,10 +19,15 @@
 - Make sure to run `cargo +nightly fmt` after making changes to apply default formatting rules.
 - Use pattern matching with if-let and match expressions for error handling
 
+## Documentation Guidelines
+- Avoid redundant documentation for the sake of convention. For example
+    - Don't include an Errors section if the only errors are generic failures.
+    - Don't include an Arguments section if the arguments are obvious based on the function signature.
+
 ## Test File Conventions
 1. Test files should be placed adjacent to the implementation file they're testing
 2. Test files should be named with a `_test.rs` suffix (e.g., `network_quality_test.rs`)
-3. Link test files in the implementation file using:
+3. Link test files in the implementation file using the following pattern at the top of the file, right below the license header and optional module-level docs.
    ```rust
    #[cfg(test)]
    #[path = "./file_name_test.rs"]

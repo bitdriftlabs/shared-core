@@ -22,6 +22,8 @@
   clippy::items_after_statements
 )]
 
+use bd_proto::protos::state;
+
 pub mod boundary_test;
 pub mod concurrency_test;
 pub mod double_buffered_automatic_switching_test;
@@ -33,6 +35,26 @@ pub mod error_handling_test;
 pub mod kv_store_test;
 pub mod kv_test;
 pub mod memmapped_test;
-pub mod snapshot_cleanup_test;
 pub mod versioned_kv_store_test;
+pub mod versioned_recovery_error_test;
 pub mod versioned_recovery_test;
+
+/// Helper function to decompress zlib-compressed data.
+pub fn decompress_zlib(data: &[u8]) -> anyhow::Result<Vec<u8>> {
+  use flate2::read::ZlibDecoder;
+  use std::io::Read;
+
+  let mut decoder = ZlibDecoder::new(data);
+  let mut decompressed = Vec::new();
+  decoder.read_to_end(&mut decompressed)?;
+  Ok(decompressed)
+}
+
+pub fn make_string_value(s: &str) -> state::payload::StateValue {
+  state::payload::StateValue {
+    value_type: Some(state::payload::state_value::Value_type::StringValue(
+      s.to_string(),
+    )),
+    ..Default::default()
+  }
+}

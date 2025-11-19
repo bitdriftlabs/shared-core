@@ -3299,7 +3299,7 @@ async fn take_screenshot_action() {
   let a = state("A").declare_transition_with_actions(
     &b,
     rule!(message_equals("foo")),
-    &[make_take_screenshot_action("screenshot_action_id")],
+    &[make_take_screenshot_action()],
   );
 
   let workflow = WorkflowBuilder::new("1", &[&a, &b]).make_config();

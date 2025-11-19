@@ -633,8 +633,11 @@ pub struct Logger {
   sleep_mode_active: watch::Sender<bool>,
 
   // Channel for receiving a processor for crash reports, once runtime config
-  // loading is completed
+  // loading is completed. Result is stored in crash_monitor
   crash_monitor_rx: Option<oneshot::Receiver<Monitor>>,
+
+  // Shared crash monitor instance initialized by the builder
+  crash_monitor: Arc<Mutex<Option<Monitor>>>,
 }
 
 impl Logger {
@@ -669,6 +672,7 @@ impl Logger {
       store,
       sleep_mode_active,
       crash_monitor_rx,
+      crash_monitor: Arc::new(Mutex::new(None)),
     }
   }
 
@@ -689,23 +693,26 @@ impl Logger {
   /// the logs, depending on whether the crash occurred in the current or prior
   /// session.
   ///
-  /// This function is **blocking** for whichever thread calls it while the
-  /// crash monitor is constructed (early in the launch cycle) and logs are
-  /// dispatched. Subsequent calls to this function currently have no effect.
+  /// This function blocks until the crash monitor is initialized (which happens
+  /// early in the launch cycle) and then enqueues the crash report processing
+  /// request.
   pub fn process_crash_reports(&mut self, session: ReportProcessingSession) -> anyhow::Result<()> {
-    let Some(rx) = self.crash_monitor_rx.take() else {
-      // TODO(delisa): converting this function to support multiple invocations
-      // in the future is mostly trivial and only dependent on storing the crash
-      // monitor and updating the processor tx to accept a reference
-      anyhow::bail!("crash monitor rx exhausted");
+    let crash_monitor = if let Some(monitor) = self.crash_monitor.lock().clone() {
+      monitor
+    } else if let Some(rx) = self.crash_monitor_rx.take() {
+      let monitor = rx.blocking_recv()?;
+      *self.crash_monitor.lock() = Some(monitor.clone());
+      monitor
+    } else {
+      anyhow::bail!("failed to store/receive crash_monitor instance");
     };
-
-    let crash_monitor = rx.blocking_recv()?;
 
     let session_id_override = match session {
       ReportProcessingSession::Current => None,
       ReportProcessingSession::Other(id) => Some(id),
-      ReportProcessingSession::PreviousRun => crash_monitor.previous_session_id.clone(),
+      // TODO(snowp): Ideally we should just tell the monitor about current vs previous session
+      // directly rather than going through session IDs.
+      ReportProcessingSession::PreviousRun => crash_monitor.session.previous_process_session_id(),
     };
     Ok(self.report_processor_tx.try_send(ReportProcessingRequest {
       crash_monitor,

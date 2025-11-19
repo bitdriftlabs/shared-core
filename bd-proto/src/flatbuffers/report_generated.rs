@@ -1127,6 +1127,26 @@ impl<'a> Timestamp {
     }
   }
 
+  pub fn unpack(&self) -> TimestampT {
+    TimestampT {
+      seconds: self.seconds(),
+      nanos: self.nanos(),
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TimestampT {
+  pub seconds: u64,
+  pub nanos: u32,
+}
+impl TimestampT {
+  pub fn pack(&self) -> Timestamp {
+    Timestamp::new(
+      self.seconds,
+      self.nanos,
+    )
+  }
 }
 
 // struct Memory, aligned to 8
@@ -1287,6 +1307,29 @@ impl<'a> Memory {
     }
   }
 
+  pub fn unpack(&self) -> MemoryT {
+    MemoryT {
+      total: self.total(),
+      free: self.free(),
+      used: self.used(),
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct MemoryT {
+  pub total: u64,
+  pub free: u64,
+  pub used: u64,
+}
+impl MemoryT {
+  pub fn pack(&self) -> Memory {
+    Memory::new(
+      self.total,
+      self.free,
+      self.used,
+    )
+  }
 }
 
 pub enum AppBuildNumberOffset {}
@@ -1323,6 +1366,16 @@ impl<'a> AppBuildNumber<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> AppBuildNumberT {
+    let version_code = self.version_code();
+    let cf_bundle_version = self.cf_bundle_version().map(|x| {
+      x.to_string()
+    });
+    AppBuildNumberT {
+      version_code,
+      cf_bundle_version,
+    }
+  }
 
   #[inline]
   pub fn version_code(&self) -> i64 {
@@ -1403,6 +1456,35 @@ impl core::fmt::Debug for AppBuildNumber<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct AppBuildNumberT {
+  pub version_code: i64,
+  pub cf_bundle_version: Option<String>,
+}
+impl Default for AppBuildNumberT {
+  fn default() -> Self {
+    Self {
+      version_code: 0,
+      cf_bundle_version: None,
+    }
+  }
+}
+impl AppBuildNumberT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<AppBuildNumber<'b>> {
+    let version_code = self.version_code;
+    let cf_bundle_version = self.cf_bundle_version.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    AppBuildNumber::create(_fbb, &AppBuildNumberArgs{
+      version_code,
+      cf_bundle_version,
+    })
+  }
+}
 pub enum ProcessorUsageOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -1437,6 +1519,14 @@ impl<'a> ProcessorUsage<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> ProcessorUsageT {
+    let duration_seconds = self.duration_seconds();
+    let used_percent = self.used_percent();
+    ProcessorUsageT {
+      duration_seconds,
+      used_percent,
+    }
+  }
 
   #[inline]
   pub fn duration_seconds(&self) -> u64 {
@@ -1517,6 +1607,33 @@ impl core::fmt::Debug for ProcessorUsage<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProcessorUsageT {
+  pub duration_seconds: u64,
+  pub used_percent: u8,
+}
+impl Default for ProcessorUsageT {
+  fn default() -> Self {
+    Self {
+      duration_seconds: 0,
+      used_percent: 0,
+    }
+  }
+}
+impl ProcessorUsageT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<ProcessorUsage<'b>> {
+    let duration_seconds = self.duration_seconds;
+    let used_percent = self.used_percent;
+    ProcessorUsage::create(_fbb, &ProcessorUsageArgs{
+      duration_seconds,
+      used_percent,
+    })
+  }
+}
 pub enum AppMetricsOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -1567,6 +1684,46 @@ impl<'a> AppMetrics<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> AppMetricsT {
+    let app_id = self.app_id().map(|x| {
+      x.to_string()
+    });
+    let memory = self.memory().map(|x| {
+      x.unpack()
+    });
+    let version = self.version().map(|x| {
+      x.to_string()
+    });
+    let build_number = self.build_number().map(|x| {
+      Box::new(x.unpack())
+    });
+    let running_state = self.running_state().map(|x| {
+      x.to_string()
+    });
+    let process_id = self.process_id();
+    let region_format = self.region_format().map(|x| {
+      x.to_string()
+    });
+    let cpu_usage = self.cpu_usage().map(|x| {
+      Box::new(x.unpack())
+    });
+    let lifecycle_event = self.lifecycle_event().map(|x| {
+      x.to_string()
+    });
+    let javascript_engine = self.javascript_engine();
+    AppMetricsT {
+      app_id,
+      memory,
+      version,
+      build_number,
+      running_state,
+      process_id,
+      region_format,
+      cpu_usage,
+      lifecycle_event,
+      javascript_engine,
+    }
+  }
 
   #[inline]
   pub fn app_id(&self) -> Option<&'a str> {
@@ -1767,6 +1924,80 @@ impl core::fmt::Debug for AppMetrics<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct AppMetricsT {
+  pub app_id: Option<String>,
+  pub memory: Option<MemoryT>,
+  pub version: Option<String>,
+  pub build_number: Option<Box<AppBuildNumberT>>,
+  pub running_state: Option<String>,
+  pub process_id: u32,
+  pub region_format: Option<String>,
+  pub cpu_usage: Option<Box<ProcessorUsageT>>,
+  pub lifecycle_event: Option<String>,
+  pub javascript_engine: JavaScriptEngine,
+}
+impl Default for AppMetricsT {
+  fn default() -> Self {
+    Self {
+      app_id: None,
+      memory: None,
+      version: None,
+      build_number: None,
+      running_state: None,
+      process_id: 0,
+      region_format: None,
+      cpu_usage: None,
+      lifecycle_event: None,
+      javascript_engine: JavaScriptEngine::UnknownJsEngine,
+    }
+  }
+}
+impl AppMetricsT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<AppMetrics<'b>> {
+    let app_id = self.app_id.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let memory_tmp = self.memory.as_ref().map(|x| x.pack());
+    let memory = memory_tmp.as_ref();
+    let version = self.version.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let build_number = self.build_number.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    let running_state = self.running_state.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let process_id = self.process_id;
+    let region_format = self.region_format.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let cpu_usage = self.cpu_usage.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    let lifecycle_event = self.lifecycle_event.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let javascript_engine = self.javascript_engine;
+    AppMetrics::create(_fbb, &AppMetricsArgs{
+      app_id,
+      memory,
+      version,
+      build_number,
+      running_state,
+      process_id,
+      region_format,
+      cpu_usage,
+      lifecycle_event,
+      javascript_engine,
+    })
+  }
+}
 pub enum OSBuildOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -1805,6 +2036,26 @@ impl<'a> OSBuild<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> OSBuildT {
+    let version = self.version().map(|x| {
+      x.to_string()
+    });
+    let brand = self.brand().map(|x| {
+      x.to_string()
+    });
+    let fingerprint = self.fingerprint().map(|x| {
+      x.to_string()
+    });
+    let kern_osversion = self.kern_osversion().map(|x| {
+      x.to_string()
+    });
+    OSBuildT {
+      version,
+      brand,
+      fingerprint,
+      kern_osversion,
+    }
+  }
 
   #[inline]
   pub fn version(&self) -> Option<&'a str> {
@@ -1915,6 +2166,49 @@ impl core::fmt::Debug for OSBuild<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct OSBuildT {
+  pub version: Option<String>,
+  pub brand: Option<String>,
+  pub fingerprint: Option<String>,
+  pub kern_osversion: Option<String>,
+}
+impl Default for OSBuildT {
+  fn default() -> Self {
+    Self {
+      version: None,
+      brand: None,
+      fingerprint: None,
+      kern_osversion: None,
+    }
+  }
+}
+impl OSBuildT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<OSBuild<'b>> {
+    let version = self.version.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let brand = self.brand.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let fingerprint = self.fingerprint.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let kern_osversion = self.kern_osversion.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    OSBuild::create(_fbb, &OSBuildArgs{
+      version,
+      brand,
+      fingerprint,
+      kern_osversion,
+    })
+  }
+}
 pub enum PowerMetricsOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -1949,6 +2243,14 @@ impl<'a> PowerMetrics<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> PowerMetricsT {
+    let power_state = self.power_state();
+    let charge_percent = self.charge_percent();
+    PowerMetricsT {
+      power_state,
+      charge_percent,
+    }
+  }
 
   #[inline]
   pub fn power_state(&self) -> PowerState {
@@ -2029,6 +2331,33 @@ impl core::fmt::Debug for PowerMetrics<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowerMetricsT {
+  pub power_state: PowerState,
+  pub charge_percent: u8,
+}
+impl Default for PowerMetricsT {
+  fn default() -> Self {
+    Self {
+      power_state: PowerState::Unknown,
+      charge_percent: 0,
+    }
+  }
+}
+impl PowerMetricsT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<PowerMetrics<'b>> {
+    let power_state = self.power_state;
+    let charge_percent = self.charge_percent;
+    PowerMetrics::create(_fbb, &PowerMetricsArgs{
+      power_state,
+      charge_percent,
+    })
+  }
+}
 pub enum DisplayOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -2065,6 +2394,16 @@ impl<'a> Display<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> DisplayT {
+    let height = self.height();
+    let width = self.width();
+    let density_dpi = self.density_dpi();
+    DisplayT {
+      height,
+      width,
+      density_dpi,
+    }
+  }
 
   #[inline]
   pub fn height(&self) -> u32 {
@@ -2160,6 +2499,37 @@ impl core::fmt::Debug for Display<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct DisplayT {
+  pub height: u32,
+  pub width: u32,
+  pub density_dpi: u32,
+}
+impl Default for DisplayT {
+  fn default() -> Self {
+    Self {
+      height: 0,
+      width: 0,
+      density_dpi: 0,
+    }
+  }
+}
+impl DisplayT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<Display<'b>> {
+    let height = self.height;
+    let width = self.width;
+    let density_dpi = self.density_dpi;
+    Display::create(_fbb, &DisplayArgs{
+      height,
+      width,
+      density_dpi,
+    })
+  }
+}
 pub enum DeviceMetricsOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -2220,6 +2590,58 @@ impl<'a> DeviceMetrics<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> DeviceMetricsT {
+    let time = self.time().map(|x| {
+      x.unpack()
+    });
+    let timezone = self.timezone().map(|x| {
+      x.to_string()
+    });
+    let power_metrics = self.power_metrics().map(|x| {
+      Box::new(x.unpack())
+    });
+    let network_state = self.network_state();
+    let rotation = self.rotation();
+    let arch = self.arch();
+    let display = self.display().map(|x| {
+      Box::new(x.unpack())
+    });
+    let manufacturer = self.manufacturer().map(|x| {
+      x.to_string()
+    });
+    let model = self.model().map(|x| {
+      x.to_string()
+    });
+    let os_build = self.os_build().map(|x| {
+      Box::new(x.unpack())
+    });
+    let platform = self.platform();
+    let cpu_abis = self.cpu_abis().map(|x| {
+      x.iter().map(|s| s.to_string()).collect()
+    });
+    let low_power_mode_enabled = self.low_power_mode_enabled();
+    let cpu_usage = self.cpu_usage().map(|x| {
+      Box::new(x.unpack())
+    });
+    let thermal_state = self.thermal_state();
+    DeviceMetricsT {
+      time,
+      timezone,
+      power_metrics,
+      network_state,
+      rotation,
+      arch,
+      display,
+      manufacturer,
+      model,
+      os_build,
+      platform,
+      cpu_abis,
+      low_power_mode_enabled,
+      cpu_usage,
+      thermal_state,
+    }
+  }
 
   #[inline]
   pub fn time(&self) -> Option<&'a Timestamp> {
@@ -2495,6 +2917,102 @@ impl core::fmt::Debug for DeviceMetrics<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeviceMetricsT {
+  pub time: Option<TimestampT>,
+  pub timezone: Option<String>,
+  pub power_metrics: Option<Box<PowerMetricsT>>,
+  pub network_state: NetworkState,
+  pub rotation: Rotation,
+  pub arch: Architecture,
+  pub display: Option<Box<DisplayT>>,
+  pub manufacturer: Option<String>,
+  pub model: Option<String>,
+  pub os_build: Option<Box<OSBuildT>>,
+  pub platform: Platform,
+  pub cpu_abis: Option<Vec<String>>,
+  pub low_power_mode_enabled: bool,
+  pub cpu_usage: Option<Box<ProcessorUsageT>>,
+  pub thermal_state: u8,
+}
+impl Default for DeviceMetricsT {
+  fn default() -> Self {
+    Self {
+      time: None,
+      timezone: None,
+      power_metrics: None,
+      network_state: NetworkState::Unknown,
+      rotation: Rotation::Unknown,
+      arch: Architecture::Unknown,
+      display: None,
+      manufacturer: None,
+      model: None,
+      os_build: None,
+      platform: Platform::Unknown,
+      cpu_abis: None,
+      low_power_mode_enabled: false,
+      cpu_usage: None,
+      thermal_state: 0,
+    }
+  }
+}
+impl DeviceMetricsT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<DeviceMetrics<'b>> {
+    let time_tmp = self.time.as_ref().map(|x| x.pack());
+    let time = time_tmp.as_ref();
+    let timezone = self.timezone.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let power_metrics = self.power_metrics.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    let network_state = self.network_state;
+    let rotation = self.rotation;
+    let arch = self.arch;
+    let display = self.display.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    let manufacturer = self.manufacturer.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let model = self.model.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let os_build = self.os_build.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    let platform = self.platform;
+    let cpu_abis = self.cpu_abis.as_ref().map(|x|{
+      let w: Vec<_> = x.iter().map(|s| _fbb.create_string(s)).collect();_fbb.create_vector(&w)
+    });
+    let low_power_mode_enabled = self.low_power_mode_enabled;
+    let cpu_usage = self.cpu_usage.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    let thermal_state = self.thermal_state;
+    DeviceMetrics::create(_fbb, &DeviceMetricsArgs{
+      time,
+      timezone,
+      power_metrics,
+      network_state,
+      rotation,
+      arch,
+      display,
+      manufacturer,
+      model,
+      os_build,
+      platform,
+      cpu_abis,
+      low_power_mode_enabled,
+      cpu_usage,
+      thermal_state,
+    })
+  }
+}
 pub enum SourceFileOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -2531,6 +3049,18 @@ impl<'a> SourceFile<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> SourceFileT {
+    let path = self.path().map(|x| {
+      x.to_string()
+    });
+    let line = self.line();
+    let column = self.column();
+    SourceFileT {
+      path,
+      line,
+      column,
+    }
+  }
 
   #[inline]
   pub fn path(&self) -> Option<&'a str> {
@@ -2626,6 +3156,39 @@ impl core::fmt::Debug for SourceFile<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct SourceFileT {
+  pub path: Option<String>,
+  pub line: i64,
+  pub column: i64,
+}
+impl Default for SourceFileT {
+  fn default() -> Self {
+    Self {
+      path: None,
+      line: 0,
+      column: 0,
+    }
+  }
+}
+impl SourceFileT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<SourceFile<'b>> {
+    let path = self.path.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let line = self.line;
+    let column = self.column;
+    SourceFile::create(_fbb, &SourceFileArgs{
+      path,
+      line,
+      column,
+    })
+  }
+}
 pub enum CPURegisterOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -2660,6 +3223,16 @@ impl<'a> CPURegister<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> CPURegisterT {
+    let name = self.name().map(|x| {
+      x.to_string()
+    });
+    let value = self.value();
+    CPURegisterT {
+      name,
+      value,
+    }
+  }
 
   #[inline]
   pub fn name(&self) -> Option<&'a str> {
@@ -2740,6 +3313,35 @@ impl core::fmt::Debug for CPURegister<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct CPURegisterT {
+  pub name: Option<String>,
+  pub value: u64,
+}
+impl Default for CPURegisterT {
+  fn default() -> Self {
+    Self {
+      name: None,
+      value: 0,
+    }
+  }
+}
+impl CPURegisterT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<CPURegister<'b>> {
+    let name = self.name.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let value = self.value;
+    CPURegister::create(_fbb, &CPURegisterArgs{
+      name,
+      value,
+    })
+  }
+}
 pub enum FrameOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -2798,6 +3400,54 @@ impl<'a> Frame<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> FrameT {
+    let type_ = self.type_();
+    let class_name = self.class_name().map(|x| {
+      x.to_string()
+    });
+    let symbol_name = self.symbol_name().map(|x| {
+      x.to_string()
+    });
+    let source_file = self.source_file().map(|x| {
+      Box::new(x.unpack())
+    });
+    let image_id = self.image_id().map(|x| {
+      x.to_string()
+    });
+    let frame_address = self.frame_address();
+    let symbol_address = self.symbol_address();
+    let registers = self.registers().map(|x| {
+      x.iter().map(|t| t.unpack()).collect()
+    });
+    let state = self.state().map(|x| {
+      x.iter().map(|s| s.to_string()).collect()
+    });
+    let frame_status = self.frame_status();
+    let original_index = self.original_index();
+    let in_app = self.in_app();
+    let symbolicated_name = self.symbolicated_name().map(|x| {
+      x.to_string()
+    });
+    let js_bundle_path = self.js_bundle_path().map(|x| {
+      x.to_string()
+    });
+    FrameT {
+      type_,
+      class_name,
+      symbol_name,
+      source_file,
+      image_id,
+      frame_address,
+      symbol_address,
+      registers,
+      state,
+      frame_status,
+      original_index,
+      in_app,
+      symbolicated_name,
+      js_bundle_path,
+    }
+  }
 
   #[inline]
   pub fn type_(&self) -> FrameType {
@@ -3058,6 +3708,97 @@ impl core::fmt::Debug for Frame<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct FrameT {
+  pub type_: FrameType,
+  pub class_name: Option<String>,
+  pub symbol_name: Option<String>,
+  pub source_file: Option<Box<SourceFileT>>,
+  pub image_id: Option<String>,
+  pub frame_address: u64,
+  pub symbol_address: u64,
+  pub registers: Option<Vec<CPURegisterT>>,
+  pub state: Option<Vec<String>>,
+  pub frame_status: FrameStatus,
+  pub original_index: u64,
+  pub in_app: bool,
+  pub symbolicated_name: Option<String>,
+  pub js_bundle_path: Option<String>,
+}
+impl Default for FrameT {
+  fn default() -> Self {
+    Self {
+      type_: FrameType::Unknown,
+      class_name: None,
+      symbol_name: None,
+      source_file: None,
+      image_id: None,
+      frame_address: 0,
+      symbol_address: 0,
+      registers: None,
+      state: None,
+      frame_status: FrameStatus::Missing,
+      original_index: 0,
+      in_app: false,
+      symbolicated_name: None,
+      js_bundle_path: None,
+    }
+  }
+}
+impl FrameT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<Frame<'b>> {
+    let type_ = self.type_;
+    let class_name = self.class_name.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let symbol_name = self.symbol_name.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let source_file = self.source_file.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    let image_id = self.image_id.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let frame_address = self.frame_address;
+    let symbol_address = self.symbol_address;
+    let registers = self.registers.as_ref().map(|x|{
+      let w: Vec<_> = x.iter().map(|t| t.pack(_fbb)).collect();_fbb.create_vector(&w)
+    });
+    let state = self.state.as_ref().map(|x|{
+      let w: Vec<_> = x.iter().map(|s| _fbb.create_string(s)).collect();_fbb.create_vector(&w)
+    });
+    let frame_status = self.frame_status;
+    let original_index = self.original_index;
+    let in_app = self.in_app;
+    let symbolicated_name = self.symbolicated_name.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let js_bundle_path = self.js_bundle_path.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    Frame::create(_fbb, &FrameArgs{
+      type_,
+      class_name,
+      symbol_name,
+      source_file,
+      image_id,
+      frame_address,
+      symbol_address,
+      registers,
+      state,
+      frame_status,
+      original_index,
+      in_app,
+      symbolicated_name,
+      js_bundle_path,
+    })
+  }
+}
 pub enum ThreadOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -3104,6 +3845,34 @@ impl<'a> Thread<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> ThreadT {
+    let name = self.name().map(|x| {
+      x.to_string()
+    });
+    let active = self.active();
+    let index = self.index();
+    let state = self.state().map(|x| {
+      x.to_string()
+    });
+    let priority = self.priority();
+    let quality_of_service = self.quality_of_service();
+    let stack_trace = self.stack_trace().map(|x| {
+      x.iter().map(|t| t.unpack()).collect()
+    });
+    let summary = self.summary().map(|x| {
+      x.to_string()
+    });
+    ThreadT {
+      name,
+      active,
+      index,
+      state,
+      priority,
+      quality_of_service,
+      stack_trace,
+      summary,
+    }
+  }
 
   #[inline]
   pub fn name(&self) -> Option<&'a str> {
@@ -3274,6 +4043,65 @@ impl core::fmt::Debug for Thread<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThreadT {
+  pub name: Option<String>,
+  pub active: bool,
+  pub index: u32,
+  pub state: Option<String>,
+  pub priority: f32,
+  pub quality_of_service: i8,
+  pub stack_trace: Option<Vec<FrameT>>,
+  pub summary: Option<String>,
+}
+impl Default for ThreadT {
+  fn default() -> Self {
+    Self {
+      name: None,
+      active: false,
+      index: 0,
+      state: None,
+      priority: 0.0,
+      quality_of_service: -1,
+      stack_trace: None,
+      summary: None,
+    }
+  }
+}
+impl ThreadT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<Thread<'b>> {
+    let name = self.name.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let active = self.active;
+    let index = self.index;
+    let state = self.state.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let priority = self.priority;
+    let quality_of_service = self.quality_of_service;
+    let stack_trace = self.stack_trace.as_ref().map(|x|{
+      let w: Vec<_> = x.iter().map(|t| t.pack(_fbb)).collect();_fbb.create_vector(&w)
+    });
+    let summary = self.summary.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    Thread::create(_fbb, &ThreadArgs{
+      name,
+      active,
+      index,
+      state,
+      priority,
+      quality_of_service,
+      stack_trace,
+      summary,
+    })
+  }
+}
 pub enum ThreadDetailsOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -3308,6 +4136,16 @@ impl<'a> ThreadDetails<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> ThreadDetailsT {
+    let count = self.count();
+    let threads = self.threads().map(|x| {
+      x.iter().map(|t| t.unpack()).collect()
+    });
+    ThreadDetailsT {
+      count,
+      threads,
+    }
+  }
 
   #[inline]
   pub fn count(&self) -> u16 {
@@ -3388,6 +4226,35 @@ impl core::fmt::Debug for ThreadDetails<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThreadDetailsT {
+  pub count: u16,
+  pub threads: Option<Vec<ThreadT>>,
+}
+impl Default for ThreadDetailsT {
+  fn default() -> Self {
+    Self {
+      count: 0,
+      threads: None,
+    }
+  }
+}
+impl ThreadDetailsT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<ThreadDetails<'b>> {
+    let count = self.count;
+    let threads = self.threads.as_ref().map(|x|{
+      let w: Vec<_> = x.iter().map(|t| t.pack(_fbb)).collect();_fbb.create_vector(&w)
+    });
+    ThreadDetails::create(_fbb, &ThreadDetailsArgs{
+      count,
+      threads,
+    })
+  }
+}
 pub enum ErrorOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -3426,6 +4293,24 @@ impl<'a> Error<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> ErrorT {
+    let name = self.name().map(|x| {
+      x.to_string()
+    });
+    let reason = self.reason().map(|x| {
+      x.to_string()
+    });
+    let stack_trace = self.stack_trace().map(|x| {
+      x.iter().map(|t| t.unpack()).collect()
+    });
+    let relation_to_next = self.relation_to_next();
+    ErrorT {
+      name,
+      reason,
+      stack_trace,
+      relation_to_next,
+    }
+  }
 
   #[inline]
   pub fn name(&self) -> Option<&'a str> {
@@ -3536,6 +4421,47 @@ impl core::fmt::Debug for Error<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct ErrorT {
+  pub name: Option<String>,
+  pub reason: Option<String>,
+  pub stack_trace: Option<Vec<FrameT>>,
+  pub relation_to_next: ErrorRelation,
+}
+impl Default for ErrorT {
+  fn default() -> Self {
+    Self {
+      name: None,
+      reason: None,
+      stack_trace: None,
+      relation_to_next: ErrorRelation::CausedBy,
+    }
+  }
+}
+impl ErrorT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<Error<'b>> {
+    let name = self.name.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let reason = self.reason.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let stack_trace = self.stack_trace.as_ref().map(|x|{
+      let w: Vec<_> = x.iter().map(|t| t.pack(_fbb)).collect();_fbb.create_vector(&w)
+    });
+    let relation_to_next = self.relation_to_next;
+    Error::create(_fbb, &ErrorArgs{
+      name,
+      reason,
+      stack_trace,
+      relation_to_next,
+    })
+  }
+}
 pub enum BinaryImageOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -3572,6 +4498,20 @@ impl<'a> BinaryImage<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> BinaryImageT {
+    let id = self.id().map(|x| {
+      x.to_string()
+    });
+    let path = self.path().map(|x| {
+      x.to_string()
+    });
+    let load_address = self.load_address();
+    BinaryImageT {
+      id,
+      path,
+      load_address,
+    }
+  }
 
   #[inline]
   pub fn id(&self) -> Option<&'a str> {
@@ -3667,6 +4607,41 @@ impl core::fmt::Debug for BinaryImage<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct BinaryImageT {
+  pub id: Option<String>,
+  pub path: Option<String>,
+  pub load_address: u64,
+}
+impl Default for BinaryImageT {
+  fn default() -> Self {
+    Self {
+      id: None,
+      path: None,
+      load_address: 0,
+    }
+  }
+}
+impl BinaryImageT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<BinaryImage<'b>> {
+    let id = self.id.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let path = self.path.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let load_address = self.load_address;
+    BinaryImage::create(_fbb, &BinaryImageArgs{
+      id,
+      path,
+      load_address,
+    })
+  }
+}
 pub enum SDKInfoOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -3701,6 +4676,18 @@ impl<'a> SDKInfo<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> SDKInfoT {
+    let id = self.id().map(|x| {
+      x.to_string()
+    });
+    let version = self.version().map(|x| {
+      x.to_string()
+    });
+    SDKInfoT {
+      id,
+      version,
+    }
+  }
 
   #[inline]
   pub fn id(&self) -> Option<&'a str> {
@@ -3781,6 +4768,37 @@ impl core::fmt::Debug for SDKInfo<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct SDKInfoT {
+  pub id: Option<String>,
+  pub version: Option<String>,
+}
+impl Default for SDKInfoT {
+  fn default() -> Self {
+    Self {
+      id: None,
+      version: None,
+    }
+  }
+}
+impl SDKInfoT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<SDKInfo<'b>> {
+    let id = self.id.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let version = self.version.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    SDKInfo::create(_fbb, &SDKInfoArgs{
+      id,
+      version,
+    })
+  }
+}
 pub enum FeatureFlagOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -3817,6 +4835,22 @@ impl<'a> FeatureFlag<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> FeatureFlagT {
+    let name = self.name().map(|x| {
+      x.to_string()
+    });
+    let value = self.value().map(|x| {
+      x.to_string()
+    });
+    let timestamp = self.timestamp().map(|x| {
+      Box::new(x.unpack())
+    });
+    FeatureFlagT {
+      name,
+      value,
+      timestamp,
+    }
+  }
 
   #[inline]
   pub fn name(&self) -> Option<&'a str> {
@@ -3912,6 +4946,43 @@ impl core::fmt::Debug for FeatureFlag<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct FeatureFlagT {
+  pub name: Option<String>,
+  pub value: Option<String>,
+  pub timestamp: Option<Box<super::super::common::v_1::TimestampT>>,
+}
+impl Default for FeatureFlagT {
+  fn default() -> Self {
+    Self {
+      name: None,
+      value: None,
+      timestamp: None,
+    }
+  }
+}
+impl FeatureFlagT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<FeatureFlag<'b>> {
+    let name = self.name.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let value = self.value.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let timestamp = self.timestamp.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    FeatureFlag::create(_fbb, &FeatureFlagArgs{
+      name,
+      value,
+      timestamp,
+    })
+  }
+}
 pub enum ReportOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -3960,6 +5031,44 @@ impl<'a> Report<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> ReportT {
+    let sdk = self.sdk().map(|x| {
+      Box::new(x.unpack())
+    });
+    let type_ = self.type_();
+    let app_metrics = self.app_metrics().map(|x| {
+      Box::new(x.unpack())
+    });
+    let device_metrics = self.device_metrics().map(|x| {
+      Box::new(x.unpack())
+    });
+    let errors = self.errors().map(|x| {
+      x.iter().map(|t| t.unpack()).collect()
+    });
+    let thread_details = self.thread_details().map(|x| {
+      Box::new(x.unpack())
+    });
+    let binary_images = self.binary_images().map(|x| {
+      x.iter().map(|t| t.unpack()).collect()
+    });
+    let state = self.state().map(|x| {
+      x.iter().map(|t| t.unpack()).collect()
+    });
+    let feature_flags = self.feature_flags().map(|x| {
+      x.iter().map(|t| t.unpack()).collect()
+    });
+    ReportT {
+      sdk,
+      type_,
+      app_metrics,
+      device_metrics,
+      errors,
+      thread_details,
+      binary_images,
+      state,
+      feature_flags,
+    }
+  }
 
   #[inline]
   pub fn sdk(&self) -> Option<SDKInfo<'a>> {
@@ -4143,6 +5252,77 @@ impl core::fmt::Debug for Report<'_> {
       ds.field("state", &self.state());
       ds.field("feature_flags", &self.feature_flags());
       ds.finish()
+  }
+}
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReportT {
+  pub sdk: Option<Box<SDKInfoT>>,
+  pub type_: ReportType,
+  pub app_metrics: Option<Box<AppMetricsT>>,
+  pub device_metrics: Option<Box<DeviceMetricsT>>,
+  pub errors: Option<Vec<ErrorT>>,
+  pub thread_details: Option<Box<ThreadDetailsT>>,
+  pub binary_images: Option<Vec<BinaryImageT>>,
+  pub state: Option<Vec<super::super::common::v_1::FieldT>>,
+  pub feature_flags: Option<Vec<FeatureFlagT>>,
+}
+impl Default for ReportT {
+  fn default() -> Self {
+    Self {
+      sdk: None,
+      type_: ReportType::Unknown,
+      app_metrics: None,
+      device_metrics: None,
+      errors: None,
+      thread_details: None,
+      binary_images: None,
+      state: None,
+      feature_flags: None,
+    }
+  }
+}
+impl ReportT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<Report<'b>> {
+    let sdk = self.sdk.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    let type_ = self.type_;
+    let app_metrics = self.app_metrics.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    let device_metrics = self.device_metrics.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    let errors = self.errors.as_ref().map(|x|{
+      let w: Vec<_> = x.iter().map(|t| t.pack(_fbb)).collect();_fbb.create_vector(&w)
+    });
+    let thread_details = self.thread_details.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    let binary_images = self.binary_images.as_ref().map(|x|{
+      let w: Vec<_> = x.iter().map(|t| t.pack(_fbb)).collect();_fbb.create_vector(&w)
+    });
+    let state = self.state.as_ref().map(|x|{
+      let w: Vec<_> = x.iter().map(|t| t.pack(_fbb)).collect();_fbb.create_vector(&w)
+    });
+    let feature_flags = self.feature_flags.as_ref().map(|x|{
+      let w: Vec<_> = x.iter().map(|t| t.pack(_fbb)).collect();_fbb.create_vector(&w)
+    });
+    Report::create(_fbb, &ReportArgs{
+      sdk,
+      type_,
+      app_metrics,
+      device_metrics,
+      errors,
+      thread_details,
+      binary_images,
+      state,
+      feature_flags,
+    })
   }
 }
 #[inline]

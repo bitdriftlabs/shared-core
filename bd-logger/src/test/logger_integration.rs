@@ -745,7 +745,7 @@ fn session_replay_actions() {
   let a = state("A").declare_transition_with_actions(
     &b,
     rule!(message_equals("take a screenshot")),
-    &[make_take_screenshot_action("screenshot_id")],
+    &[make_take_screenshot_action()],
   );
 
   // Send a configuration that takes a screenshot on "foo" message.

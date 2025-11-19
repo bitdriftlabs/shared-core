@@ -32,6 +32,5 @@ tokio-stream.workspace      = true
 [dev-dependencies]
 assert_matches.workspace = true
 axum.workspace           = true
-axum-server.workspace    = true
 bd-test-helpers          = { path = "../bd-test-helpers", default-features = false }
 ctor.workspace           = true

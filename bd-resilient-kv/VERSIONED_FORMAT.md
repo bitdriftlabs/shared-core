@@ -1,175 +1,302 @@
-# Versioned Journal Format Design
+# Versioned KV Journal Design
 
 ## Overview
 
-This document describes the versioned journal format (VERSION 2) that enables version tracking for audit logs and remote backup by tracking write versions for each operation.
+This document describes the versioned k-v store, which enables point-in-time state recovery by using timestamps as version identifiers. Each write operation is tagged with a timestamp, allowing the system to reconstruct the key-value store state at any historical moment.
 
 ## Goals
 
-1. **Version Tracking**: Each write operation gets a unique, monotonically increasing version number
-2. **Journal Rotation**: Periodic compaction with self-contained state in each journal
-3. **Remote Backup**: Archived journals can be uploaded to remote storage
-4. **Backward Compatible**: New format coexists with existing VERSION 1
+1. Enable recovery of key-value store state at any historical point in time
+2. Preserve accurate write timestamps for audit and historical analysis
+3. Support (near) indefinite retention of historical data without unbounded growth of active storage
 
-## Design Philosophy
+## Design Overview
 
-Unlike traditional journal systems that use separate snapshot files, this design uses a **unified format** where:
-- Each journal is self-contained with complete state embedded as regular entries
-- No special "snapshot entry" format needed
-- First N entries in a rotated journal are just regular versioned entries (all at same version)
-- Simpler file structure and uniform entry format throughout
+The versioned journal format uses timestamps as version identifiers for each write operation. Each entry in the journal records the timestamp, key, and value (or deletion marker) for every operation. This allows the store to reconstruct state at any point in time by replaying entries up to a target timestamp.
+
+To prevent unbounded growth, the system uses journal rotation: when the active journal reaches a size threshold, it is rotated out and replaced with a new journal containing only the current compacted state. The old journal is archived and compressed. Each archived journal preserves the original write timestamps of all entries, enabling point-in-time recovery across rotation boundaries.
+
+The underlying journal uses Protobuf to serialize the payloads that are used to implement the key-value semantics.
 
 ## File Types
 
-### 1. Active Journal (`my_store.jrn`)
+### 1. Active Journal (`my_store.jrn.0`)
 The current active journal receiving new writes. Active journals are **not compressed** for performance reasons.
 
-### 2. Archived Journals (`my_store.jrn.v00020000.zz`, `my_store.jrn.v00030000.zz`, etc.)
-Previous journals, archived during rotation. Each contains complete state at rotation version plus subsequent incremental writes. The version number in the filename indicates the rotation/snapshot version.
+The number at the end of the active journal reflects the generation of the active journal, which allows us to safely rotate the journal while gracefully handling I/O errors. More on this below in the rotation section.
+
+### 2. Archived Journals (`my_store.jrn.t1699564900000000.zz`, etc.)
+Previous journals, archived during rotation. Each contains complete state at its creation time plus subsequent incremental writes. The timestamp in the filename indicates the rotation/snapshot timestamp.
 
 **Archived journals are automatically compressed using zlib** (indicated by the `.zz` extension) to reduce storage space and bandwidth requirements for remote backup. Compression is mandatory and occurs automatically during rotation.
 
 ## Format Specification
 
-### Journal Format (VERSION 2)
+### Binary Structure
+
+The byte-level layout of a VERSION 1 journal file:
 
 ```
-| Position | Data                     | Type           | Size    |
-|----------|--------------------------|----------------|---------|
-| 0        | Format Version           | u64            | 8 bytes |
-| 8        | Position                 | u64            | 8 bytes |
-| 16       | Type Code: Array Start   | u8             | 1 byte  |
-| 17       | Metadata Object          | BONJSON Object | varies  |
-| ...      | Versioned Journal Entry  | BONJSON Object | varies  |
-| ...      | Versioned Journal Entry  | BONJSON Object | varies  |
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         JOURNAL FILE HEADER                             │
+├──────────────────┬──────────────────┬───────────────────────────────────┤
+│  Format Version  │    Position      │  Reserved                         │
+│     (u64)        │     (u64)        │    (u8)                           │
+│    8 bytes       │    8 bytes       │   1 byte                          │
+└──────────────────┴──────────────────┴───────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    VERSIONED JOURNAL ENTRY                              │
+│  (Protobuf-encoded StateKeyValuePair)                                   │
+├─────────────────────────────────────────────────────────────────────────┤
+│  Frame Length (varint)      │  Variable length (1-10 bytes)             │
+│  Timestamp (varint)         │  Variable length (microseconds)           │
+│  Protobuf Payload           │  Variable length                          │
+│  CRC32                      │  4 bytes                                  │
+│                                                                         │
+│  Payload contains:                                                      │
+│  StateKeyValuePair {                                                    │
+│    key: String,              // The key being modified                  │
+│    value: StateValue         // Value for SET, null for DELETE          │
+│  }                                                                      │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Metadata Object** (first entry in array):
-```json
-{
-  "initialized": <u64 timestamp in ns>,
-  "format_version": 2,
-  "base_version": <u64 starting version for this journal>
+
+### Header Structure (17 bytes total)
+
+| Field | Offset | Size | Type | Value | Purpose |
+|-------|--------|------|------|-------|---------|
+| Format Version | 0 | 8 bytes | u64 (little-endian) | `1` | Allows future format evolution |
+| Position | 8 | 8 bytes | u64 (little-endian) | Current write position | Tracks where next entry will be written |
+| Reserved | 16 | 1 byte | u8 | `0` | Reserved for future use |
+
+### Entry Framing Format
+
+Each entry in the journal uses a length-prefixed framing format with CRC32 integrity checking:
+
+| Component | Size | Type | Description |
+|-----------|------|------|-------------|
+| Frame Length | Variable | varint | Total size of timestamp + protobuf payload + CRC32 (1-10 bytes) |
+| Timestamp | Variable | varint | Entry timestamp in microseconds (serves as version) |
+| Protobuf Payload | Variable | bytes | Serialized StateKeyValuePair message |
+| CRC32 | 4 bytes | u32 (little-endian) | Checksum of timestamp + payload |
+
+### Versioned Journal Entry Schema
+
+Each entry in the journal is a `StateKeyValuePair` protobuf message:
+
+```protobuf
+message StateKeyValuePair {
+  string key = 1;         // The key being modified
+  StateValue value = 2;   // Value for SET, null/empty for DELETE
 }
-```
 
-**Versioned Journal Entry**:
-```json
-{
-  "v": <u64 write version>,
-  "t": <u64 timestamp in ns>,
-  "k": "<key>",
-  "o": <value or null for delete>
+message StateValue {
+  oneof value {
+    string string_value = 1;
+  }
 }
 ```
 
 Fields:
-- `v` (version): Monotonic write version number
-- `t` (timestamp): When the write occurred (ns since UNIX epoch)
-- `k` (key): The key being written
-- `o` (operation): The value (for SET) or null (for DELETE)
+- `key`: The key being written (string)
+- `value`: The value being set (StateValue) or null/empty for DELETE operations
+
+**Timestamp Semantics:**
+- Timestamps are stored as varints in microseconds since UNIX epoch
+- Timestamps are monotonically non-decreasing, not strictly increasing
+- If the system clock doesn't advance between writes, multiple entries may share the same timestamp
+- This is expected behavior and ensures proper ordering without clock skew
+
+**Type Flexibility**: The `StateValue` message supports multiple value types:
+- Primitives: strings, integers, doubles, booleans
+- Complex types: lists, maps
+- Binary data: bytes
+- null value (indicates DELETE operation)
+
+**Size Considerations:**
+- **Header**: Fixed 17 bytes
+- **Per Entry**: Varies based on key and value size
+  - Frame length: 1-10 bytes (varint-encoded)
+  - Timestamp: 1-10 bytes (varint-encoded)
+  - Protobuf payload: varies by content
+  - CRC: Fixed 4 bytes
+  - Typical small entries: 20-50 bytes total
+  - Typical medium entries: 50-200 bytes total
 
 ## Journal Structure
 
 ### Initial Journal
-When first created with base version 1:
-```json
-{"initialized": 1699564800000000000, "format_version": 2, "base_version": 1}
-{"v": 2, "t": 1699564801000000000, "k": "key1", "o": "value1"}
-{"v": 3, "t": 1699564802000000000, "k": "key2", "o": "value2"}
+When first created, the journal contains versioned entries:
+```
+Entry 0: {"key": "key1", "value": "value1"} @ t=1699564801000000
+Entry 1: {"key": "key2", "value": "value2"} @ t=1699564802000000
 ...
 ```
 
 ### Rotated Journal
-After rotation at version 30000, the new journal contains:
-```json
-{"initialized": 1699564900000000000, "format_version": 2, "base_version": 30000}
-{"v": 30000, "t": 1699564800123456789, "k": "key1", "o": "value1"}  // Compacted state (original timestamp)
-{"v": 30000, "t": 1699564850987654321, "k": "key2", "o": "value2"}  // Compacted state (original timestamp)
-{"v": 30000, "t": 1699564875111222333, "k": "key3", "o": "value3"}  // Compacted state (original timestamp)
-{"v": 30001, "t": 1699564901000000000, "k": "key4", "o": "value4"}  // New write
-{"v": 30002, "t": 1699564902000000000, "k": "key1", "o": "updated1"} // New write
+After rotation at timestamp 1699564900000000, the new journal contains:
+```
+Entry 0: {"key": "key1", "value": "value1"} @ t=1699564800123456  // Compacted state (original timestamp preserved)
+Entry 1: {"key": "key2", "value": "value2"} @ t=1699564850987654  // Compacted state (original timestamp preserved)
+Entry 2: {"key": "key3", "value": "value3"} @ t=1699564875111222  // Compacted state (original timestamp preserved)
+Entry 3: {"key": "key4", "value": "value4"} @ t=1699564901000000  // New write after rotation
+Entry 4: {"key": "key1", "value": "updated1"} @ t=1699564902000000 // New write after rotation
 ...
 ```
 
 Key observations:
-- All compacted state entries have the same version (30000)
 - **Timestamps are preserved**: Each compacted entry retains its original write timestamp (not the rotation time)
-- These are regular journal entries, not a special format
-- Incremental writes continue with version 30001+
+    - This ensures that not only is the state at any given time recoverable from a given snapshot, we'll also be able to recover how long the current state values have been active for without looking at the previous snapshot.
+- All entries use the same protobuf framing format
+- New writes continue with later timestamps
 - Each rotated journal is self-contained and can be read independently
 
 ## Rotation Process
 
-When high water mark is reached at version N:
+When high water mark is reached:
 
-1. **Create New Journal**: Initialize fresh journal file (e.g., `my_store.jrn.tmp`)
-2. **Write Compacted State**: Write all current key-value pairs as versioned entries at version N
-   - **Timestamp Preservation**: Each entry retains its original write timestamp, not the rotation timestamp
-   - This preserves historical accuracy and allows proper temporal analysis of the data
-3. **Archive Old Journal**: Rename `my_store.jrn` → `my_store.jrn.old` (temporary)
-4. **Activate New Journal**: Rename `my_store.jrn.tmp` → `my_store.jrn`
-5. **Compress Archive**: Compress `my_store.jrn.old` → `my_store.jrn.v{N}.zz` using zlib
-6. **Delete Temporary**: Remove uncompressed `my_store.jrn.old`
-7. **Callback**: Notify application for upload/cleanup of compressed archived journal
+1. **Determine Rotation Timestamp**: Calculate max timestamp T from the most recent entry
+2. **Increment Generation**: Calculate next generation number (e.g., 0 → 1)
+3. **Create New Journal**: Initialize fresh journal file with next generation (e.g., `my_store.jrn.1`)
+4. **Write Compacted State**: Write all current key-value pairs as versioned entries using their original update timestamp
+5. **Activate New Journal**: Switch to new journal in-memory, unmap old journal
+6. **Compress Archive** (async, best-effort): Compress old generation → `my_store.jrn.t{T}.zz` using zlib
+7. **Delete Original** (best-effort): Remove uncompressed old generation file
 
 Example:
 ```
-Before rotation at v30000:
-  my_store.jrn                    # Active, base_version=20000, contains v20000-v30000
+Before rotation (generation 0):
+  my_store.jrn.0                            # Active journal (generation 0)
 
-After rotation:
-  my_store.jrn                    # Active, base_version=30000, contains compacted state at v30000
-  my_store.jrn.v30000.zz         # Compressed archive, contains v20000-v30000
+After rotation (generation 1):
+  my_store.jrn.1                            # Active, contains compacted state (generation 1)
+  my_store.jrn.t1699564900000000.zz        # Compressed archive of generation 0
+```
+
+### Rotation Timeline Visualization
+
+```
+TIME
+  │
+  ├─ t0: Normal Operation (Generation 0)
+  │    ┌────────────────────────────────────┐
+  │    │  my_store.jrn.0                    │
+  │    │  ├─ Entry @ t=1699564795000000     │
+  │    │  ├─ Entry @ t=1699564796000000     │
+  │    │  ├─ Entry @ t=1699564797000000     │
+  │    │  ├─ Entry @ t=1699564798000000     │
+  │    │  └─ Entry @ t=1699564799000000     │
+  │    └────────────────────────────────────┘
+  │
+  ├─ t1: High Water Mark Reached
+  │    ┌────────────────────────────────────┐
+  │    │  my_store.jrn.0                    │
+  │    │  └─ Entry @ t=1699564800000000     │ ← TRIGGER
+  │    └────────────────────────────────────┘
+  │    max_timestamp = 1699564800000000
+  │
+  ├─ t2: Create New Journal (Step 1)
+  │    ┌────────────────────────────────────┐
+  │    │  my_store.jrn.0                    │  (old, still active - generation 0)
+  │    └────────────────────────────────────┘
+  │    ┌────────────────────────────────────┐
+  │    │  my_store.jrn.1                    │  (new, being written - generation 1)
+  │    │  └─ [header]                       │
+  │    └────────────────────────────────────┘
+  │
+  ├─ t3: Write Compacted State (Step 2)
+  │    ┌────────────────────────────────────┐
+  │    │  my_store.jrn.0                    │  (old, still active)
+  │    └────────────────────────────────────┘
+  │    ┌────────────────────────────────────┐
+  │    │  my_store.jrn.1                    │  (new, being written)
+  │    │  ├─ Entry {"key1", ...} @ t=1699564750000000│ ← Original timestamps
+  │    │  ├─ Entry {"key2", ...} @ t=1699564780000000│ ← Original timestamps
+  │    │  └─ Entry {"key3", ...} @ t=1699564799000000│ ← Original timestamps
+  │    └────────────────────────────────────┘
+  │
+  ├─ t4: Activate New Journal (Step 3)
+  │    ┌────────────────────────────────────┐
+  │    │  my_store.jrn.0                    │  (old, unmapped - ready for archive)
+  │    └────────────────────────────────────┘
+  │    ┌────────────────────────────────────┐
+  │    │  my_store.jrn.1                    │  ← NOW ACTIVE! (generation 1)
+  │    │  (contains compacted state)        │
+  │    └────────────────────────────────────┘
+  │
+  ├─ t5: Compress Archive (Step 4 - Async)
+  │    ┌────────────────────────────────────┐
+  │    │  my_store.jrn.1                    │  (active, accepting writes)
+  │    │  └─ Entry @ t=1699564801000000     │ ← New writes
+  │    └────────────────────────────────────┘
+  │    ┌────────────────────────────────────┐
+  │    │  my_store.jrn.0                    │  (being compressed...)
+  │    └────────────────────────────────────┘
+  │    ┌────────────────────────────────────┐
+  │    │  my_store.jrn.t1699564800000000.zz │ (compressed output)
+  │    └────────────────────────────────────┘
+  │
+  ├─ t6: Delete Original (Step 5)
+  │    ┌────────────────────────────────────┐
+  │    │  my_store.jrn.1                    │  (active - generation 1)
+  │    └────────────────────────────────────┘
+  │    ┌────────────────────────────────────┐
+  │    │  my_store.jrn.t1699564800000000.zz │ (compressed archive of gen 0)
+  │    └────────────────────────────────────┘
+  │
+  └─ t7: Continue Normal Operation
+       ┌────────────────────────────────────┐
+       │  my_store.jrn.1                    │
+       │  ├─ Entry @ t=1699564801000000     │
+       │  ├─ Entry @ t=1699564802000000     │
+       │  └─ Entry @ t=1699564803000000     │
+       └────────────────────────────────────┘
+       ┌────────────────────────────────────┐
+       │  my_store.jrn.t1699564800000000.zz │ (ready for upload)
+       └────────────────────────────────────┘
 ```
 
 ### Compression
 
-Archived journals are automatically compressed using zlib (compression level 3) during rotation:
+Archived journals are automatically compressed using zlib (compression level 5) during rotation:
 - **Format**: Standard zlib format (RFC 1950)
 - **Extension**: `.zz` indicates zlib compression
-- **Transparency**: `VersionedRecovery` automatically decompresses archives when reading
 - **Benefits**: Reduced storage space and bandwidth for remote backups
-- **Performance**: Compression level 3 provides good balance between speed and compression ratio
 
-### Rotation Failure Modes
+### Rotation Failure Modes and Recovery
 
-**Impossible Failure: Buffer Overflow During Rotation**
+The generation-based rotation process is designed to be resilient:
 
-Rotation **cannot fail** due to insufficient buffer space. This is an architectural guarantee:
+| Failure Point | State | Recovery |
+|---------------|-------|----------|
+| Before Step 3 | Old generation active, new generation partially written | Delete incomplete new generation, retry |
+| During/After Step 5 | New generation active | Continue normally, old generation remains until compressed |
+| During Step 6-7 | Compression fails | Uncompressed old generation may remain, but new journal is valid |
 
-- **Why**: Rotation creates a new journal with the same buffer size as the original journal
-- **Compaction Property**: The compacted state only includes current key-value pairs (removes redundant/old versions)
-- **Mathematical Guarantee**: Compacted state size ≤ current journal size
-- **Conclusion**: If data fits in the journal during normal operation, it will always fit during rotation
 
 **What Can Fail:**
 - I/O errors (disk full, permissions, etc.)
-- Compression errors in the callback phase (application-level)
+- Compression errors during async compression phase
 
-**What Cannot Fail:**
-- Writing compacted state to new journal buffer (guaranteed to fit)
+**Key Design Feature**: The rotation switches journals in-memory without file renames, making the critical transition atomic from the application's perspective. Old generation files remain at their original paths until successfully archived.
 
 ## Recovery and Audit
 
 ### Current State Recovery
-Simply read the active journal (`my_store.jrn`) and replay all entries to reconstruct the current state.
+The active journal is identified by finding the highest generation number (e.g., `my_store.jrn.0`, `my_store.jrn.1`, etc.). Simply read the active journal and replay all entries to reconstruct the current state.
 
 ### Audit and Analysis
-While `VersionedKVStore` does not support point-in-time recovery through its API, archived journals contain complete historical data that can be used for:
+While `VersionedKVStore` does not support point-in-time recovery through its API, archived journals contain complete historical data.
 
-- **Audit Logging**: Review what changes were made and when
-- **Offline Analysis**: Process archived journals to understand historical patterns
-- **Remote Backup**: Upload archived journals to remote storage for disaster recovery
-- **Compliance**: Maintain immutable records of all changes with version tracking
+The timestamps in each entry allow you to understand the exact sequence of operations and build custom tooling for analyzing historical data.
 
-The version numbers in each entry allow you to understand the exact sequence of operations and build custom tooling for analyzing historical data.
-
-**Timestamp Accuracy**: All entries preserve their original write timestamps, even after rotation. This means you can accurately track when each write originally occurred, making the journals suitable for temporal analysis, compliance auditing, and debugging time-sensitive issues.
+**Timestamp Accuracy**: All entries preserve their original write timestamps, even after rotation. This means you can accurately track when each write originally occurred.
 
 ### Point-in-Time Recovery with VersionedRecovery
 
-While `VersionedKVStore` is designed for active operation and does not support point-in-time recovery through its API, the `VersionedRecovery` utility provides a way to reconstruct state at arbitrary historical versions from raw journal bytes.
+While `VersionedKVStore` is designed for active operation and does not support point-in-time recovery through its API, the `VersionedRecovery` utility provides a way to reconstruct state at arbitrary historical timestamps from raw journal bytes.
 
 #### Overview
 
@@ -179,152 +306,3 @@ While `VersionedKVStore` is designed for active operation and does not support p
 - Can process multiple journals for cross-rotation recovery
 - Designed for offline analysis, server-side tooling, and audit systems
 - Completely independent from `VersionedKVStore`
-
-#### Use Cases
-
-- **Server-Side Analysis**: Reconstruct state at specific versions for debugging or investigation
-- **Audit Tooling**: Build custom audit systems that analyze historical changes
-- **Cross-Rotation Recovery**: Recover state spanning multiple archived journals
-- **Compliance**: Extract state at specific points in time for regulatory requirements
-- **Testing**: Validate that state at historical versions matches expectations
-
-#### API Methods
-
-```rust
-// Create recovery utility from journal files (oldest to newest) - async
-let recovery = VersionedRecovery::from_files(vec![
-    "store.jrn.v20000.zz",
-    "store.jrn.v30000.zz", 
-    "store.jrn"
-]).await?;
-
-// Recover state at specific version
-let state = recovery.recover_at_version(25000)?;
-
-// Get current state (latest version)
-let current = recovery.recover_current()?;
-
-// Get available version range
-if let Some((min, max)) = recovery.version_range() {
-    println!("Can recover versions {min} to {max}");
-}
-```
-
-#### Example: Cross-Rotation Recovery
-
-```rust
-use bd_resilient_kv::VersionedRecovery;
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Create recovery utility from files (automatically decompresses .zz archives)
-    // Provide journal paths in chronological order (oldest to newest)
-    let recovery = VersionedRecovery::from_files(vec![
-        "store.jrn.v20000.zz",
-        "store.jrn.v30000.zz",
-        "store.jrn",
-    ]).await?;
-
-    // Recover state at version 25000 (in archived journal)
-    let state_at_25000 = recovery.recover_at_version(25000)?;
-
-    // Recover state at version 35000 (across rotation boundary)
-    let state_at_35000 = recovery.recover_at_version(35000)?;
-
-    // Process the recovered state
-    for (key, value) in state_at_25000 {
-        println!("{key} = {value:?}");
-    }
-    
-    Ok(())
-}
-```
-
-#### Implementation Details
-
-- **Async File Loading**: Constructor uses async I/O to load journal files efficiently
-- **Automatic Decompression**: Transparently decompresses `.zz` archives when loading
-- **Chronological Order**: Journals should be provided oldest to newest
-- **Efficient Replay**: Automatically skips journals outside the target version range
-- **Cross-Rotation**: Seamlessly handles recovery across multiple archived journals
-- **Version Tracking**: Replays all entries up to and including the target version
-
-## Storage Efficiency
-
-**Space Requirements:**
-- Active journal: Compacted state + recent writes since rotation
-- Archived journals: Full history for their version ranges
-
-**Benefits of Unified Format:**
-- Simpler file management (no separate snapshot + journal pairs)
-- Each archived journal is self-contained
-- Uniform entry format reduces code complexity
-- Easy to understand and debug
-
-**Cleanup Strategy:**
-- Keep N most recent archived journals for recovery
-- Upload archived journals to remote storage
-- Delete old archived journals after successful upload
-
-## API Usage
-
-### Basic Operations
-
-```rust
-use bd_resilient_kv::VersionedKVStore;
-use bd_bonjson::Value;
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Create or open store (requires directory path and name)
-    let mut store = VersionedKVStore::new("/path/to/dir", "mystore", 1024 * 1024, None)?;
-
-    // Writes return version numbers (async operations)
-    let v1 = store.insert("key1".to_string(), Value::from(42)).await?;
-    let v2 = store.insert("key2".to_string(), Value::from("hello")).await?;
-
-    // Read current values (synchronous)
-    let value = store.get("key1")?;
-    
-    Ok(())
-}
-```
-
-### Rotation Callback
-
-```rust
-// Set callback for rotation events
-store.set_rotation_callback(Box::new(|old_path, new_path, version| {
-    println!("Rotated at version {version}");
-    println!("Archived journal (compressed): {old_path:?}");
-    println!("New active journal: {new_path:?}");
-    // Upload old_path to remote storage...
-}));
-```
-
-### Manual Rotation
-
-```rust
-// Automatic rotation on high water mark
-let version = store.insert("key".to_string(), Value::from("value")).await?;
-// Rotation happens automatically if high water mark exceeded
-
-// Or manually trigger rotation (async)
-store.rotate_journal().await?;
-```
-
-## Migration from VERSION 1
-
-VERSION 1 journals (without versioning) can coexist with VERSION 2:
-- Existing VERSION 1 files continue to work with current `KVStore`
-- New `VersionedKVStore` creates VERSION 2 journals
-- No automatic migration (opt-in by using `VersionedKVStore`)
-
-## Implementation Notes
-
-1. **Version Counter Persistence**: Stored in metadata, initialized from journal on restart
-2. **Atomicity**: Version increments are atomic with writes
-3. **Monotonicity**: Versions never decrease or skip
-4. **Concurrency**: Not thread-safe by design (same as current implementation)
-5. **Format Field Names**: Use short names (`v`, `t`, `k`, `o`) to minimize storage overhead
-6. **Self-Contained Journals**: Each rotated journal can be read independently without dependencies
