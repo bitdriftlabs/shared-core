@@ -15,7 +15,7 @@
 )]
 
 use ahash::AHashMap;
-use bd_resilient_kv::{DataLoss, StateValue, Value_type};
+use bd_resilient_kv::{DataLoss, StateValue, TimestampedValue, Value_type};
 use bd_time::TimeProvider;
 use itertools::Itertools as _;
 use std::path::Path;
@@ -47,8 +47,8 @@ impl Scope {
   pub fn as_prefix(&self) -> &'static str {
     // Use a small prefix since we have to pay for the size.
     match self {
-      Self::FeatureFlag => "ff",
-      Self::GlobalState => "g",
+      Self::FeatureFlag => "ff:",
+      Self::GlobalState => "g:",
     }
   }
 }
@@ -58,7 +58,7 @@ impl Scope {
 //
 
 /// A simple snapshot of the state store, used for crash reporting and similar use cases.
-/// Contains (feature_flags, global_state) as separate hash maps.
+/// Contains (`feature_flags`, `global_state`) as separate hash maps.
 #[derive(Debug, Clone)]
 pub struct StateSnapshot {
   pub feature_flags: AHashMap<String, (String, OffsetDateTime)>,
@@ -99,7 +99,7 @@ impl Store {
   }
 
   pub async fn insert(&self, scope: Scope, key: &str, value: String) -> anyhow::Result<()> {
-    let namespaced_key = format!("{}:{}", scope.as_prefix(), key);
+    let namespaced_key = format!("{}{key}", scope.as_prefix());
     self
       .inner
       .write()
@@ -116,7 +116,7 @@ impl Store {
   }
 
   pub async fn remove(&self, scope: Scope, key: &str) -> anyhow::Result<()> {
-    let namespaced_key = format!("{}:{}", scope.as_prefix(), key);
+    let namespaced_key = format!("{}{key}", scope.as_prefix());
     self
       .inner
       .write()
@@ -150,7 +150,7 @@ impl Store {
   /// Returns an iterator that yields (key, value) tuples where the key has been stripped
   /// of its scope prefix.
   pub async fn iter_scope(&self, scope: Scope) -> impl IntoIterator<Item = (String, String)> {
-    let prefix = format!("{}:", scope.as_prefix());
+    let prefix = scope.as_prefix();
     let prefix_len = prefix.len();
 
     self
@@ -186,67 +186,57 @@ impl Store {
     scope: Scope,
   ) -> AHashMap<String, (String, OffsetDateTime)> {
     let mut scoped_snapshot = AHashMap::new();
-    let prefix = format!("{}:", scope.as_prefix());
+    let prefix = scope.as_prefix();
 
     for (key, timestamped_value) in self.inner.read().await.as_hashmap() {
-      let Some(value) = timestamped_value
-        .value
-        .has_string_value()
-        .then(|| timestamped_value.value.string_value())
-      else {
+      let Some((value, timestamp)) = Self::to_string_and_timestamp(timestamped_value) else {
         continue;
       };
 
       if let Some(stripped_key) = key.strip_prefix(&prefix) {
-        scoped_snapshot.insert(
-          stripped_key.to_string(),
-          (
-            value.to_string(),
-            OffsetDateTime::from_unix_timestamp_nanos(timestamped_value.timestamp as i128 * 1_000)
-              .unwrap(),
-          ),
-        );
+        scoped_snapshot.insert(stripped_key.to_string(), (value.to_string(), timestamp));
       }
     }
 
     scoped_snapshot
   }
 
+  fn to_string_and_timestamp(
+    timestamped_value: &TimestampedValue,
+  ) -> Option<(String, OffsetDateTime)> {
+    // Neither of these should fail but we defensively return None if they do.
+
+    let Some(value) = timestamped_value
+      .value
+      .has_string_value()
+      .then(|| timestamped_value.value.string_value())
+    else {
+      return None;
+    };
+
+    let Ok(timestamp) =
+      OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamped_value.timestamp) * 1_000)
+    else {
+      return None;
+    };
+
+    Some((value.to_string(), timestamp))
+  }
+
   pub async fn to_snapshot(&self) -> StateSnapshot {
     let mut feature_flags = AHashMap::new();
     let mut global_state = AHashMap::new();
 
-    let ff_prefix = format!("{}:", Scope::FeatureFlag.as_prefix());
-    let gs_prefix = format!("{}:", Scope::GlobalState.as_prefix());
-
     // TODO(snowp): Move the snapshot capture to the ctor so we don't have to lock.
     for (key, timestamped_value) in self.inner.read().await.as_hashmap() {
-      let Some(value) = timestamped_value
-        .value
-        .has_string_value()
-        .then(|| timestamped_value.value.string_value())
-      else {
+      let Some((value, timestamp)) = Self::to_string_and_timestamp(timestamped_value) else {
         continue;
       };
 
-      if let Some(stripped_key) = key.strip_prefix(&ff_prefix) {
-        feature_flags.insert(
-          stripped_key.to_string(),
-          (
-            value.to_string(),
-            OffsetDateTime::from_unix_timestamp_nanos(timestamped_value.timestamp as i128 * 1_000)
-              .unwrap(),
-          ),
-        );
-      } else if let Some(stripped_key) = key.strip_prefix(&gs_prefix) {
-        global_state.insert(
-          stripped_key.to_string(),
-          (
-            value.to_string(),
-            OffsetDateTime::from_unix_timestamp_nanos(timestamped_value.timestamp as i128 * 1_000)
-              .unwrap(),
-          ),
-        );
+      if let Some(stripped_key) = key.strip_prefix(Scope::FeatureFlag.as_prefix()) {
+        feature_flags.insert(stripped_key.to_string(), (value.to_string(), timestamp));
+      } else if let Some(stripped_key) = key.strip_prefix(Scope::GlobalState.as_prefix()) {
+        global_state.insert(stripped_key.to_string(), (value.to_string(), timestamp));
       }
     }
 

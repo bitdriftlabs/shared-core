@@ -376,7 +376,7 @@ impl Monitor {
     .iter()
     .map(|(name, (variant, timestamp))| {
       SnappedFeatureFlag::new(
-        name.to_string(),
+        name.clone(),
         (!variant.is_empty()).then(|| variant.clone()),
         *timestamp,
       )
