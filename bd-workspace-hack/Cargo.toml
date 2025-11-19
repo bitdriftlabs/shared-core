@@ -21,14 +21,7 @@ doctest = false
 [dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
 clap = { version = "4", features = ["derive", "env"] }
-clap_builder = { version = "4", default-features = false, features = [
-  "color",
-  "env",
-  "help",
-  "std",
-  "suggestions",
-  "usage",
-] }
+clap_builder = { version = "4", default-features = false, features = ["color", "env", "help", "std", "suggestions", "usage"] }
 either = { version = "1", features = ["use_std"] }
 flate2 = { version = "1", features = ["zlib", "zlib-ng"] }
 futures-channel = { version = "0.3", features = ["sink"] }
@@ -45,21 +38,9 @@ libc = { version = "0.2" }
 log = { version = "0.4", default-features = false, features = ["std"] }
 memchr = { version = "2" }
 once_cell = { version = "1" }
-protobuf = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack", features = [
-  "with-bytes",
-] }
+protobuf = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack", features = ["with-bytes"] }
 regex = { version = "1" }
-regex-automata = { version = "0.4", default-features = false, features = [
-  "dfa-build",
-  "dfa-onepass",
-  "hybrid",
-  "meta",
-  "nfa-backtrack",
-  "perf-inline",
-  "perf-literal",
-  "std",
-  "unicode",
-] }
+regex-automata = { version = "0.4", default-features = false, features = ["dfa-build", "dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1", features = ["alloc", "rc"] }
@@ -77,14 +58,7 @@ tracing-core = { version = "0.1" }
 bitflags = { version = "2", default-features = false, features = ["std"] }
 cc = { version = "1", default-features = false, features = ["parallel"] }
 clap = { version = "4", features = ["derive", "env"] }
-clap_builder = { version = "4", default-features = false, features = [
-  "color",
-  "env",
-  "help",
-  "std",
-  "suggestions",
-  "usage",
-] }
+clap_builder = { version = "4", default-features = false, features = ["color", "env", "help", "std", "suggestions", "usage"] }
 either = { version = "1", features = ["use_std"] }
 flate2 = { version = "1", features = ["zlib", "zlib-ng"] }
 futures-channel = { version = "0.3", features = ["sink"] }
@@ -101,22 +75,10 @@ libc = { version = "0.2" }
 log = { version = "0.4", default-features = false, features = ["std"] }
 memchr = { version = "2" }
 once_cell = { version = "1" }
-protobuf = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack", features = [
-  "with-bytes",
-] }
+protobuf = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack", features = ["with-bytes"] }
 quote = { version = "1" }
 regex = { version = "1" }
-regex-automata = { version = "0.4", default-features = false, features = [
-  "dfa-build",
-  "dfa-onepass",
-  "hybrid",
-  "meta",
-  "nfa-backtrack",
-  "perf-inline",
-  "perf-literal",
-  "std",
-  "unicode",
-] }
+regex-automata = { version = "0.4", default-features = false, features = ["dfa-build", "dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1", features = ["alloc", "rc"] }
@@ -135,17 +97,17 @@ tracing-core = { version = "0.1" }
 winnow = { version = "0.7" }
 
 [target.aarch64-apple-darwin.dependencies]
-hyper-util  = { version = "0.1", default-features = false, features = ["client-proxy", "client-proxy-system"] }
-libc        = { version = "0.2", default-features = false, features = ["extra_traits"] }
+hyper-util = { version = "0.1", default-features = false, features = ["client-proxy", "client-proxy-system"] }
+libc = { version = "0.2", default-features = false, features = ["extra_traits"] }
 miniz_oxide = { version = "0.8", default-features = false, features = ["simd", "with-alloc"] }
-tower       = { version = "0.5", default-features = false, features = ["timeout"] }
-tower-http  = { version = "0.6", features = ["compression-deflate", "follow-redirect"] }
+tower = { version = "0.5", default-features = false, features = ["timeout"] }
+tower-http = { version = "0.6", features = ["compression-deflate", "follow-redirect"] }
 
 [target.aarch64-apple-darwin.build-dependencies]
-hyper-util  = { version = "0.1", default-features = false, features = ["client-proxy", "client-proxy-system"] }
-libc        = { version = "0.2", default-features = false, features = ["extra_traits"] }
+hyper-util = { version = "0.1", default-features = false, features = ["client-proxy", "client-proxy-system"] }
+libc = { version = "0.2", default-features = false, features = ["extra_traits"] }
 miniz_oxide = { version = "0.8", default-features = false, features = ["simd", "with-alloc"] }
-tower       = { version = "0.5", default-features = false, features = ["timeout"] }
-tower-http  = { version = "0.6", features = ["compression-deflate", "follow-redirect"] }
+tower = { version = "0.5", default-features = false, features = ["timeout"] }
+tower-http = { version = "0.6", features = ["compression-deflate", "follow-redirect"] }
 
 ### END HAKARI SECTION
