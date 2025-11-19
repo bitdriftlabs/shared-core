@@ -260,3 +260,7 @@ impl StateReader for ReadLockedStoreGuard<'_> {
 
 #[path = "./test.rs"]
 pub mod test;
+
+#[cfg(test)]
+#[path = "./lib_test.rs"]
+mod tests;
