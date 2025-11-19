@@ -238,21 +238,17 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     while cursor < position {
       let remaining = &buffer[cursor .. position];
 
-      match Frame::<M>::decode(remaining) {
-        Ok((frame, consumed)) => {
-          f(&frame.payload, frame.timestamp_micros);
-          state.highest_timestamp = frame.timestamp_micros;
-          cursor += consumed;
-        },
-        Err(_) => {
-          // Stop on first decode error (partial frame or corruption)
-          log::debug!(
-            "Journal decode error at position {}, marking partial data loss",
-            cursor
-          );
-          state.partial_data_loss = PartialDataLoss::Yes;
-          break;
-        },
+      if let Ok((frame, consumed)) = Frame::<M>::decode(remaining) {
+        f(&frame.payload, frame.timestamp_micros);
+        state.highest_timestamp = frame.timestamp_micros;
+        cursor += consumed;
+      } else {
+        // Stop on first decode error (partial frame or corruption)
+        log::debug!(
+          "Journal decode error at position {cursor}, marking partial data loss"
+        );
+        state.partial_data_loss = PartialDataLoss::Yes;
+        break;
       }
     }
 

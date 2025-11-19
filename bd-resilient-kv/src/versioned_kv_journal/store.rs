@@ -371,7 +371,7 @@ impl VersionedKVStore {
     let old_generation = self.current_generation;
     self.current_generation = next_generation;
 
-    log::debug!("Rotating journal to generation {}", next_generation);
+    log::debug!("Rotating journal to generation {next_generation}");
 
     // TODO(snowp): This part needs fuzzing and more safeguards.
     // TODO(snowp): Consider doing this out of band to split error handling for the insert and
