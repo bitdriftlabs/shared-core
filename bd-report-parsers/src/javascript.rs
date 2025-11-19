@@ -61,12 +61,6 @@ fn parse_javascript_stack_trace(
   frames
 }
 
-fn determine_in_app(_file_path: &str) -> bool {
-  // Always return false; backend will re-evaluate in_app after symbolication based on
-  // the actual symbolicated source file path. This ensures accurate in_app determination
-  // for both debug builds (with source paths) and release builds (with bundle paths).
-  false
-}
 
 fn parse_javascript_frame(line: &str, debugger_id: Option<&str>) -> Option<JavaScriptFrame> {
   let trimmed = line.trim();
@@ -87,7 +81,10 @@ fn parse_javascript_frame(line: &str, debugger_id: Option<&str>) -> Option<JavaS
 
   if let Ok((_, (function_name, location))) = parse_frame_with_nom(trimmed) {
     let (file_path, line_num, column_num, bundle_path) = parse_location(location);
-    let in_app = determine_in_app(&file_path);
+    // Always set in_app to false; backend will re-evaluate in_app after symbolication based on
+    // the actual symbolicated source file path. This ensures accurate in_app determination
+    // for both debug builds (with source paths) and release builds (with bundle paths).
+    let in_app = false;
     return Some(JavaScriptFrame {
       function_name: function_name.to_string(),
       file_path,
@@ -196,10 +193,6 @@ fn build_javascript_error_report(
         .map(|path| builder.create_string(path));
       let image_id_offset = frame.image_id.as_ref().map(|id| builder.create_string(id));
 
-      // Bundle paths need to be in source_file (with line/column) so the backend can symbolicate
-      // them. The backend will attempt symbolication and either return a real source path or
-      // preserve the bundle path. The backend uses js_bundle_path for bundle path lookup, so
-      // source_file.path() can use the original file_path.
       let file_path_offset = builder.create_string(&frame.file_path);
       let source_file = v_1::SourceFile::create(
         &mut builder,
