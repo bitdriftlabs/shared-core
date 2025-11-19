@@ -24,7 +24,7 @@ impl Setup {
     let time_provider = Arc::new(bd_time::TestTimeProvider::new(
       datetime!(2024-01-01 00:00:00 UTC),
     ));
-    let (store, _) = Store::new(temp_dir.path(), time_provider.clone())
+    let (store, _, _) = Store::new(temp_dir.path(), time_provider.clone())
       .await
       .unwrap();
 
@@ -305,7 +305,7 @@ async fn persistence_across_restart() {
   ));
 
   {
-    let (store, _) = Store::new(temp_dir.path(), time_provider.clone())
+    let (store, _, _) = Store::new(temp_dir.path(), time_provider.clone())
       .await
       .unwrap();
     store
@@ -318,13 +318,14 @@ async fn persistence_across_restart() {
       .unwrap();
   }
 
-  let (store, _) = Store::new(temp_dir.path(), time_provider.clone())
+  let (store, _, _) = Store::new(temp_dir.path(), time_provider.clone())
     .await
     .unwrap();
 
+  // After restart, ephemeral scopes are cleared
   let reader = store.lock_for_read().await;
-  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some("value1"));
-  assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global_value"));
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
+  assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
 }
 
 #[tokio::test]
@@ -432,4 +433,86 @@ async fn empty_value() {
 
   let reader = setup.store.lock_for_read().await;
   assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some(""));
+}
+
+#[tokio::test]
+async fn ephemeral_scopes_cleared_on_restart() {
+  let temp_dir = tempfile::tempdir().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  // First process: write state and verify snapshot on creation is empty
+  {
+    let (store, _, prev_snapshot) = Store::new(temp_dir.path(), time_provider.clone())
+      .await
+      .unwrap();
+
+    // First run should have empty snapshot
+    assert!(prev_snapshot.feature_flags.is_empty());
+    assert!(prev_snapshot.global_state.is_empty());
+
+    // Insert some values
+    store
+      .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+      .await
+      .unwrap();
+    store
+      .insert(Scope::FeatureFlag, "flag2", "value2".to_string())
+      .await
+      .unwrap();
+    store
+      .insert(Scope::GlobalState, "key1", "global_value".to_string())
+      .await
+      .unwrap();
+
+    // Verify they're present
+    let reader = store.lock_for_read().await;
+    assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some("value1"));
+    assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), Some("value2"));
+    assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global_value"));
+  }
+
+  // Second process: state should be cleared but snapshot should have previous data
+  {
+    let (store, _, prev_snapshot) = Store::new(temp_dir.path(), time_provider.clone())
+      .await
+      .unwrap();
+
+    // Snapshot should contain previous process's data
+    assert_eq!(prev_snapshot.feature_flags.len(), 2);
+    assert_eq!(prev_snapshot.global_state.len(), 1);
+    assert_eq!(
+      prev_snapshot
+        .feature_flags
+        .get("flag1")
+        .map(|(v, _)| v.as_str()),
+      Some("value1")
+    );
+    assert_eq!(
+      prev_snapshot
+        .feature_flags
+        .get("flag2")
+        .map(|(v, _)| v.as_str()),
+      Some("value2")
+    );
+    assert_eq!(
+      prev_snapshot
+        .global_state
+        .get("key1")
+        .map(|(v, _)| v.as_str()),
+      Some("global_value")
+    );
+
+    // But current store should be empty (ephemeral scopes cleared)
+    let reader = store.lock_for_read().await;
+    assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
+    assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), None);
+    assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
+
+    // Verify snapshot is also empty
+    let current_snapshot = store.to_snapshot().await;
+    assert!(current_snapshot.feature_flags.is_empty());
+    assert!(current_snapshot.global_state.is_empty());
+  }
 }

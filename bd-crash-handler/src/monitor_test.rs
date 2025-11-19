@@ -219,6 +219,9 @@ impl Setup {
       .await
       .unwrap();
 
+    // Capture the snapshot before passing to Monitor (simulating what happens at startup)
+    let previous_run_state = state.to_snapshot().await;
+
     let monitor = Monitor::new(
       directory.path(),
       store,
@@ -226,9 +229,9 @@ impl Setup {
       Arc::new(session),
       &InitLifecycleState::new(),
       (*state).clone(),
+      previous_run_state,
       emit_log,
-    )
-    .await;
+    );
 
     Self {
       directory,

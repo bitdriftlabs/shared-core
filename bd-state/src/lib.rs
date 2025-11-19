@@ -78,24 +78,45 @@ pub struct Store {
 }
 
 impl Store {
-  /// Creates a new `Store` instance at the given directory with the provided time provider. If
-  /// there is an existing store, it will be loaded. If there was any data loss during recovery,
-  /// it will be indicated in the returned `DataLoss` value.
+  /// Creates a new `Store` instance at the given directory with the provided time provider.
   ///
-  /// Returns the store and any data loss information.
+  /// If there is an existing store, it will be loaded and a snapshot of the previous process's
+  /// state will be captured before clearing all ephemeral scopes. This allows crash reporting
+  /// to access the previous run's feature flags while ensuring the current process starts fresh.
+  ///
+  /// Both `FeatureFlag` and `GlobalState` scopes are cleared on each process start, requiring
+  /// users to re-set these values.
+  ///
+  /// Returns:
+  /// - The store (with ephemeral scopes cleared)
+  /// - Data loss information from loading the persisted state
+  /// - Snapshot of state from the previous process (before clearing ephemeral scopes)
   pub async fn new(
     directory: &Path,
     time_provider: Arc<dyn TimeProvider>,
-  ) -> anyhow::Result<(Self, DataLoss)> {
+  ) -> anyhow::Result<(Self, DataLoss, StateSnapshot)> {
     let (inner, data_loss) =
       bd_resilient_kv::VersionedKVStore::new(directory, "state", 1024 * 1024, None, time_provider)
         .await?;
-    Ok((
-      Self {
-        inner: Arc::new(RwLock::new(inner)),
-      },
-      data_loss,
-    ))
+
+    let store = Self {
+      inner: Arc::new(RwLock::new(inner)),
+    };
+
+    // Capture a snapshot of the previous process's state before clearing ephemeral scopes.
+    // This snapshot is used for crash reporting to include feature flags from the crashed process.
+    let previous_snapshot = store.to_snapshot().await;
+
+    // Clear ephemeral scopes so the current process starts with fresh state.
+    // Users must re-set feature flags and global state on each process start.
+    // TODO(snowp): Consider improving the overhead of clear by adding explicit support for
+    // clearing by prefix in the underlying store, rather than iterating and removing individual
+    // keys.
+    // Ignore errors during clearing - we'll proceed with whatever state we have.
+    let _ = store.clear(Scope::FeatureFlag).await;
+    let _ = store.clear(Scope::GlobalState).await;
+
+    Ok((store, data_loss, previous_snapshot))
   }
 
   pub async fn insert(&self, scope: Scope, key: &str, value: String) -> anyhow::Result<()> {

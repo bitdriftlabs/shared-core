@@ -118,13 +118,14 @@ pub struct Monitor {
 }
 
 impl Monitor {
-  pub async fn new(
+  pub fn new(
     sdk_directory: &Path,
     store: Arc<bd_device::Store>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
     session: Arc<bd_session::Strategy>,
     init_lifecycle: &InitLifecycleState,
     state: bd_state::Store,
+    previous_run_state: bd_state::StateSnapshot,
     emit_log: impl Fn(CrashLog) -> anyhow::Result<()> + Send + Sync + 'static,
   ) -> Self {
     debug_check_lifecycle_less_than!(
@@ -135,7 +136,6 @@ impl Monitor {
 
     let global_state_reader = global_state::Reader::new(store);
     let previous_run_global_state = global_state_reader.global_state_fields();
-    let previous_run_state = state.to_snapshot().await;
 
     let mut monitor = Self {
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
