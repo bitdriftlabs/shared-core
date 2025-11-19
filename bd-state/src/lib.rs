@@ -159,7 +159,7 @@ impl Store {
       .await
       .as_hashmap()
       .iter()
-      .filter(move |(key, _)| key.starts_with(&prefix))
+      .filter(move |(key, _)| key.starts_with(prefix))
       .filter_map(move |(key, timestamped_value)| {
         let stripped_key = &key[prefix_len ..];
 
@@ -193,8 +193,8 @@ impl Store {
         continue;
       };
 
-      if let Some(stripped_key) = key.strip_prefix(&prefix) {
-        scoped_snapshot.insert(stripped_key.to_string(), (value.to_string(), timestamp));
+      if let Some(stripped_key) = key.strip_prefix(prefix) {
+        scoped_snapshot.insert(stripped_key.to_string(), (value.clone(), timestamp));
       }
     }
 
@@ -206,13 +206,10 @@ impl Store {
   ) -> Option<(String, OffsetDateTime)> {
     // Neither of these should fail but we defensively return None if they do.
 
-    let Some(value) = timestamped_value
+    let value = timestamped_value
       .value
       .has_string_value()
-      .then(|| timestamped_value.value.string_value())
-    else {
-      return None;
-    };
+      .then(|| timestamped_value.value.string_value())?;
 
     let Ok(timestamp) =
       OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamped_value.timestamp) * 1_000)
@@ -234,9 +231,9 @@ impl Store {
       };
 
       if let Some(stripped_key) = key.strip_prefix(Scope::FeatureFlag.as_prefix()) {
-        feature_flags.insert(stripped_key.to_string(), (value.to_string(), timestamp));
+        feature_flags.insert(stripped_key.to_string(), (value.clone(), timestamp));
       } else if let Some(stripped_key) = key.strip_prefix(Scope::GlobalState.as_prefix()) {
-        global_state.insert(stripped_key.to_string(), (value.to_string(), timestamp));
+        global_state.insert(stripped_key.to_string(), (value.clone(), timestamp));
       }
     }
 
@@ -251,7 +248,7 @@ struct ReadLockedStoreGuard<'a> {
   guard: tokio::sync::RwLockReadGuard<'a, bd_resilient_kv::VersionedKVStore>,
 }
 
-impl<'a> StateReader for ReadLockedStoreGuard<'_> {
+impl StateReader for ReadLockedStoreGuard<'_> {
   fn get(&self, scope: Scope, key: &str) -> Option<&str> {
     let namespaced_key = format!("{}{}", scope.as_prefix(), key);
     self
