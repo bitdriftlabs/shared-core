@@ -133,6 +133,77 @@ impl<'a> flatbuffers::Verifiable for Data {
 impl flatbuffers::SimpleToVerifyInSlice for Data {}
 pub struct DataUnionTableOffset {}
 
+#[allow(clippy::upper_case_acronyms)]
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub enum DataT {
+  NONE,
+  StringData(Box<StringDataT>),
+  BinaryData(Box<BinaryDataT>),
+}
+impl Default for DataT {
+  fn default() -> Self {
+    Self::NONE
+  }
+}
+impl DataT {
+  pub fn data_type(&self) -> Data {
+    match self {
+      Self::NONE => Data::NONE,
+      Self::StringData(_) => Data::string_data,
+      Self::BinaryData(_) => Data::binary_data,
+    }
+  }
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(&self, fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>) -> Option<flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>> {
+    match self {
+      Self::NONE => None,
+      Self::StringData(v) => Some(v.pack(fbb).as_union_value()),
+      Self::BinaryData(v) => Some(v.pack(fbb).as_union_value()),
+    }
+  }
+  /// If the union variant matches, return the owned StringDataT, setting the union to NONE.
+  pub fn take_string_data(&mut self) -> Option<Box<StringDataT>> {
+    if let Self::StringData(_) = self {
+      let v = core::mem::replace(self, Self::NONE);
+      if let Self::StringData(w) = v {
+        Some(w)
+      } else {
+        unreachable!()
+      }
+    } else {
+      None
+    }
+  }
+  /// If the union variant matches, return a reference to the StringDataT.
+  pub fn as_string_data(&self) -> Option<&StringDataT> {
+    if let Self::StringData(v) = self { Some(v.as_ref()) } else { None }
+  }
+  /// If the union variant matches, return a mutable reference to the StringDataT.
+  pub fn as_string_data_mut(&mut self) -> Option<&mut StringDataT> {
+    if let Self::StringData(v) = self { Some(v.as_mut()) } else { None }
+  }
+  /// If the union variant matches, return the owned BinaryDataT, setting the union to NONE.
+  pub fn take_binary_data(&mut self) -> Option<Box<BinaryDataT>> {
+    if let Self::BinaryData(_) = self {
+      let v = core::mem::replace(self, Self::NONE);
+      if let Self::BinaryData(w) = v {
+        Some(w)
+      } else {
+        unreachable!()
+      }
+    } else {
+      None
+    }
+  }
+  /// If the union variant matches, return a reference to the BinaryDataT.
+  pub fn as_binary_data(&self) -> Option<&BinaryDataT> {
+    if let Self::BinaryData(v) = self { Some(v.as_ref()) } else { None }
+  }
+  /// If the union variant matches, return a mutable reference to the BinaryDataT.
+  pub fn as_binary_data_mut(&mut self) -> Option<&mut BinaryDataT> {
+    if let Self::BinaryData(v) = self { Some(v.as_mut()) } else { None }
+  }
+}
 pub enum StringDataOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -165,6 +236,15 @@ impl<'a> StringData<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> StringDataT {
+    let data = {
+      let x = self.data();
+      x.to_string()
+    };
+    StringDataT {
+      data,
+    }
+  }
 
   #[inline]
   pub fn data(&self) -> &'a str {
@@ -231,6 +311,32 @@ impl core::fmt::Debug for StringData<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct StringDataT {
+  pub data: String,
+}
+impl Default for StringDataT {
+  fn default() -> Self {
+    Self {
+      data: "".to_string(),
+    }
+  }
+}
+impl StringDataT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<StringData<'b>> {
+    let data = Some({
+      let x = &self.data;
+      _fbb.create_string(x)
+    });
+    StringData::create(_fbb, &StringDataArgs{
+      data,
+    })
+  }
+}
 pub enum BinaryDataOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -265,6 +371,19 @@ impl<'a> BinaryData<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> BinaryDataT {
+    let data_type = self.data_type().map(|x| {
+      x.to_string()
+    });
+    let data = {
+      let x = self.data();
+      x.into_iter().collect()
+    };
+    BinaryDataT {
+      data_type,
+      data,
+    }
+  }
 
   #[inline]
   pub fn data_type(&self) -> Option<&'a str> {
@@ -346,6 +465,38 @@ impl core::fmt::Debug for BinaryData<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct BinaryDataT {
+  pub data_type: Option<String>,
+  pub data: Vec<u8>,
+}
+impl Default for BinaryDataT {
+  fn default() -> Self {
+    Self {
+      data_type: None,
+      data: Default::default(),
+    }
+  }
+}
+impl BinaryDataT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<BinaryData<'b>> {
+    let data_type = self.data_type.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let data = Some({
+      let x = &self.data;
+      _fbb.create_vector(x)
+    });
+    BinaryData::create(_fbb, &BinaryDataArgs{
+      data_type,
+      data,
+    })
+  }
+}
 pub enum FieldOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -382,6 +533,30 @@ impl<'a> Field<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> FieldT {
+    let key = {
+      let x = self.key();
+      x.to_string()
+    };
+    let value = match self.value_type() {
+      Data::NONE => DataT::NONE,
+      Data::string_data => DataT::StringData(Box::new(
+        self.value_as_string_data()
+            .expect("Invalid union table, expected `Data::string_data`.")
+            .unpack()
+      )),
+      Data::binary_data => DataT::BinaryData(Box::new(
+        self.value_as_binary_data()
+            .expect("Invalid union table, expected `Data::binary_data`.")
+            .unpack()
+      )),
+      _ => DataT::NONE,
+    };
+    FieldT {
+      key,
+      value,
+    }
+  }
 
   #[inline]
   pub fn key(&self) -> &'a str {
@@ -531,6 +706,38 @@ impl core::fmt::Debug for Field<'_> {
       ds.finish()
   }
 }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldT {
+  pub key: String,
+  pub value: DataT,
+}
+impl Default for FieldT {
+  fn default() -> Self {
+    Self {
+      key: "".to_string(),
+      value: DataT::NONE,
+    }
+  }
+}
+impl FieldT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<Field<'b>> {
+    let key = Some({
+      let x = &self.key;
+      _fbb.create_string(x)
+    });
+    let value_type = self.value.data_type();
+    let value = self.value.pack(_fbb);
+    Field::create(_fbb, &FieldArgs{
+      key,
+      value_type,
+      value,
+    })
+  }
+}
 pub enum TimestampOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -565,6 +772,14 @@ impl<'a> Timestamp<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> TimestampT {
+    let seconds = self.seconds();
+    let nanos = self.nanos();
+    TimestampT {
+      seconds,
+      nanos,
+    }
+  }
 
   #[inline]
   pub fn seconds(&self) -> i64 {
@@ -643,6 +858,33 @@ impl core::fmt::Debug for Timestamp<'_> {
       ds.field("seconds", &self.seconds());
       ds.field("nanos", &self.nanos());
       ds.finish()
+  }
+}
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimestampT {
+  pub seconds: i64,
+  pub nanos: i32,
+}
+impl Default for TimestampT {
+  fn default() -> Self {
+    Self {
+      seconds: 0,
+      nanos: 0,
+    }
+  }
+}
+impl TimestampT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<Timestamp<'b>> {
+    let seconds = self.seconds;
+    let nanos = self.nanos;
+    Timestamp::create(_fbb, &TimestampArgs{
+      seconds,
+      nanos,
+    })
   }
 }
 }  // pub mod v1

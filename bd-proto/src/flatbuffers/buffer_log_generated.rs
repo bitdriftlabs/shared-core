@@ -208,6 +208,49 @@ impl<'a> Log<'a> {
     builder.finish()
   }
 
+  pub fn unpack(&self) -> LogT {
+    let log_level = self.log_level();
+    let message = match self.message_type() {
+      super::super::common::v_1::Data::NONE => super::super::common::v_1::DataT::NONE,
+      super::super::common::v_1::Data::string_data => super::super::common::v_1::DataT::StringData(Box::new(
+        self.message_as_string_data()
+            .expect("Invalid union table, expected `super::super::common::v_1::Data::string_data`.")
+            .unpack()
+      )),
+      super::super::common::v_1::Data::binary_data => super::super::common::v_1::DataT::BinaryData(Box::new(
+        self.message_as_binary_data()
+            .expect("Invalid union table, expected `super::super::common::v_1::Data::binary_data`.")
+            .unpack()
+      )),
+      _ => super::super::common::v_1::DataT::NONE,
+    };
+    let fields = self.fields().map(|x| {
+      x.iter().map(|t| t.unpack()).collect()
+    });
+    let session_id = self.session_id().map(|x| {
+      x.to_string()
+    });
+    let timestamp = self.timestamp().map(|x| {
+      Box::new(x.unpack())
+    });
+    let workflow_action_ids = self.workflow_action_ids().map(|x| {
+      x.iter().map(|s| s.to_string()).collect()
+    });
+    let log_type = self.log_type();
+    let stream_ids = self.stream_ids().map(|x| {
+      x.iter().map(|s| s.to_string()).collect()
+    });
+    LogT {
+      log_level,
+      message,
+      fields,
+      session_id,
+      timestamp,
+      workflow_action_ids,
+      log_type,
+      stream_ids,
+    }
+  }
 
   #[inline]
   pub fn log_level(&self) -> u32 {
@@ -444,6 +487,69 @@ impl core::fmt::Debug for Log<'_> {
       ds.field("log_type", &self.log_type());
       ds.field("stream_ids", &self.stream_ids());
       ds.finish()
+  }
+}
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct LogT {
+  pub log_level: u32,
+  pub message: super::super::common::v_1::DataT,
+  pub fields: Option<Vec<super::super::common::v_1::FieldT>>,
+  pub session_id: Option<String>,
+  pub timestamp: Option<Box<super::super::common::v_1::TimestampT>>,
+  pub workflow_action_ids: Option<Vec<String>>,
+  pub log_type: LogType,
+  pub stream_ids: Option<Vec<String>>,
+}
+impl Default for LogT {
+  fn default() -> Self {
+    Self {
+      log_level: 0,
+      message: super::super::common::v_1::DataT::NONE,
+      fields: None,
+      session_id: None,
+      timestamp: None,
+      workflow_action_ids: None,
+      log_type: LogType::Normal,
+      stream_ids: None,
+    }
+  }
+}
+impl LogT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<Log<'b>> {
+    let log_level = self.log_level;
+    let message_type = self.message.data_type();
+    let message = self.message.pack(_fbb);
+    let fields = self.fields.as_ref().map(|x|{
+      let w: Vec<_> = x.iter().map(|t| t.pack(_fbb)).collect();_fbb.create_vector(&w)
+    });
+    let session_id = self.session_id.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let timestamp = self.timestamp.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    let workflow_action_ids = self.workflow_action_ids.as_ref().map(|x|{
+      let w: Vec<_> = x.iter().map(|s| _fbb.create_string(s)).collect();_fbb.create_vector(&w)
+    });
+    let log_type = self.log_type;
+    let stream_ids = self.stream_ids.as_ref().map(|x|{
+      let w: Vec<_> = x.iter().map(|s| _fbb.create_string(s)).collect();_fbb.create_vector(&w)
+    });
+    Log::create(_fbb, &LogArgs{
+      log_level,
+      message_type,
+      message,
+      fields,
+      session_id,
+      timestamp,
+      workflow_action_ids,
+      log_type,
+      stream_ids,
+    })
   }
 }
 #[inline]

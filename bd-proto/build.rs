@@ -247,6 +247,7 @@ fn main() {
     ],
     includes: &[Path::new("../api/src")],
     out_dir: Path::new("src/flatbuffers"),
+    extra: &["--gen-object-api"],
     ..flatc_rust::Args::default()
   })
   .unwrap();
@@ -257,6 +258,7 @@ fn main() {
     ],
     includes: &[Path::new("../api/src")],
     out_dir: Path::new("src/flatbuffers"),
+    extra: &["--gen-object-api"],
     ..flatc_rust::Args::default()
   })
   .unwrap();
