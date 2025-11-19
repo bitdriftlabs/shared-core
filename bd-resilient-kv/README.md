@@ -15,7 +15,6 @@ A crash-resilient key-value store library for Rust with automatic persistence, c
 - **🔄 Self-Managing**: Automatic high water mark detection and buffer switching
 - **🎯 Simple API**: HashMap-like interface that's easy to use
 - **🏗️ JSON-like Values**: Built on `bd-bonjson` for flexible value types
-- **📊 Version Tracking**: Optional versioned store with point-in-time recovery and automatic journal rotation
 
 ## Quick Start
 
@@ -26,17 +25,6 @@ Add to your `Cargo.toml`:
 bd-resilient-kv = { path = "path/to/bd-resilient-kv" }
 bd-bonjson = { path = "path/to/bd-bonjson" }
 ```
-
-### Choosing Between KVStore and VersionedKVStore
-
-**KVStore**: Use for general key-value storage with automatic compaction
-- Best for: Configuration storage, caches, general-purpose persistence
-- Features: Double-buffered journaling, automatic compaction, high performance
-
-**VersionedKVStore**: Use when you need version tracking
-- Best for: Audit logs, state history, remote backup
-- Features: Every write operation returns a version number, automatic rotation with callbacks
-- See: [VERSIONED_FORMAT.md](./VERSIONED_FORMAT.md) for detailed format documentation
 
 ### Basic Usage
 
@@ -186,108 +174,9 @@ fn main() -> anyhow::Result<()> {
 }
 ```
 
-## Versioned Key-Value Store
-
-For applications that require version tracking, audit logs, or point-in-time recovery, use `VersionedKVStore`:
-
-```rust
-use bd_resilient_kv::VersionedKVStore;
-use bd_bonjson::Value;
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Create a versioned store with automatic rotation at 1MB
-    let mut store = VersionedKVStore::new(
-        ".",                // Directory path
-        "versioned_store",  // Journal name
-        1024 * 1024,        // Rotate when journal reaches 1MB
-        None                // Optional high water mark ratio
-    )?;
-
-    // Write operations are async and return version numbers
-    let v1 = store.insert("config".to_string(), Value::String("v1".to_string())).await?;
-    println!("Inserted at version: {}", v1);
-
-    let v2 = store.insert("config".to_string(), Value::String("v2".to_string())).await?;
-    println!("Updated at version: {}", v2);
-
-    // Read current state (O(1) from cache)
-    assert_eq!(store.get("config"), Some(&Value::String("v2".to_string())));
-
-    // Removing a key is also async and returns a version
-    let v3 = store.remove("config").await?;
-    if let Some(version) = v3 {
-        println!("Removed at version: {}", version);
-    }
-
-    Ok(())
-}
-```
-
-### Versioned Store with Rotation Callback
-
-Monitor journal rotation events for remote backup or cleanup:
-
-```rust
-use bd_resilient_kv::{VersionedKVStore, RotationCallback};
-use bd_bonjson::Value;
-
-fn upload_to_remote(path: &std::path::Path, version: u64) {
-    println!("Uploading archived journal {:?} at version {}", path, version);
-    // Upload to S3, backup server, etc.
-}
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let callback: RotationCallback = Box::new(|archived_path, _new_path, version| {
-        upload_to_remote(archived_path, version);
-    });
-
-    let mut store = VersionedKVStore::new(
-        ".",           // Directory path
-        "my_store",    // Journal name
-        512 * 1024,    // 512KB rotation threshold
-        Some(callback)
-    )?;
-
-    // When high water mark is reached during insert/remove,
-    // the callback will be invoked with archived journal path
-    for i in 0..10000 {
-        store.insert(format!("key_{}", i), Value::Integer(i as i64)).await?;
-        // Automatic rotation happens when journal exceeds 512KB
-    }
-
-    // Manual rotation is also supported (also async)
-    store.rotate_journal().await?;
-
-    Ok(())
-}
-```
-
-### Key Features of VersionedKVStore
-
-- **Async API**: Write operations (`insert()`, `remove()`, `rotate_journal()`) are async and require a Tokio runtime
-- **Version Tracking**: Every `insert()` and `remove()` returns a monotonically increasing version number
-- **Timestamp Preservation**: Write timestamps are internally tracked and preserved during journal rotation for recovery purposes
-- **Automatic Rotation**: When the journal exceeds the high water mark, it automatically:
-  - Creates a new journal with the current state as versioned entries (compaction)
-  - Preserves original timestamps from the initial writes
-  - Archives the old journal with `.v{version}.zz` suffix
-  - Compresses the archived journal using zlib (RFC 1950, level 3) asynchronously
-  - Invokes the rotation callback (if provided) for upload/cleanup
-- **Automatic Compression**: Archived journals are automatically compressed to save disk space
-  - Active journals remain uncompressed for write performance
-  - Typically achieves >50% size reduction for text-based data
-  - Transparent decompression during recovery operations
-  - Compression is performed asynchronously using streaming I/O
-- **O(1) Reads**: In-memory cache provides constant-time access to current state
-- **Persistent**: Uses memory-mapped journals for crash-resilient storage
-
-See [VERSIONED_FORMAT.md](./VERSIONED_FORMAT.md) for detailed format documentation and recovery scenarios.
-
 ## API Reference
 
-### KVStore (Standard Key-Value Store)
+### KVStore
 
 The main interface for the key-value store.
 
@@ -323,69 +212,11 @@ pub fn remove(&mut self, key: &str) -> anyhow::Result<Option<Value>>
 pub fn clear(&mut self) -> anyhow::Result<()>
 ```
 
-### VersionedKVStore (Version-Tracked Key-Value Store)
-
-A higher-level store that tracks versions for every write operation and supports point-in-time recovery. Write operations are async and require a Tokio runtime.
-
-#### Constructor
-
-```rust
-pub fn new<P: AsRef<Path>>(
-    dir_path: P,
-    name: &str,
-    buffer_size: usize,
-    high_water_mark_ratio: Option<f32>
-) -> anyhow::Result<Self>
-```
-
-- `dir_path`: Directory path where the journal will be stored
-- `name`: Base name for the journal (e.g., "store" will create "store.jrn")
-- `buffer_size`: Size in bytes for the journal buffer
-- `high_water_mark_ratio`: Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-
-#### Core Methods
-
-```rust
-// Read operations (O(1) from cache, synchronous)
-pub fn get(&self, key: &str) -> Option<&Value>
-pub fn contains_key(&self, key: &str) -> bool
-pub fn len(&self) -> usize
-pub fn is_empty(&self) -> bool
-pub fn as_hashmap(&self) -> HashMap<String, &Value>
-
-// Write operations (async, return version numbers)
-pub async fn insert(&mut self, key: String, value: Value) -> anyhow::Result<u64>
-pub async fn remove(&mut self, key: &str) -> anyhow::Result<Option<u64>>
-
-// Manual rotation (async)
-pub async fn rotate_journal(&mut self) -> anyhow::Result<()>
-
-// Version information (synchronous)
-pub fn current_version(&self) -> u64
-```
-
-**Internal Timestamp Tracking**: The store internally tracks timestamps for all writes and preserves them during journal rotation. These timestamps are used for recovery and point-in-time operations but are not exposed in the primary API. For advanced use cases requiring timestamp access, the `get_with_timestamp()` method is available.
-
-#### Type Aliases
-
-```rust
-pub type RotationCallback = Box<dyn FnMut(&Path, &Path, u64) + Send>;
-```
-
-**Note**: The callback receives three parameters:
-- `old_journal_path`: Path to the archived journal that was rotated out
-- `new_journal_path`: Path to the new active journal
-- `rotation_version`: The version at which rotation occurred
-
 ## Architecture
 
-### Storage Models
+### Double-Buffered Journaling
 
-The library provides two storage architectures:
-
-#### 1. Double-Buffered Journaling (KVStore)
-
-The standard store uses a double-buffered approach with two journal files:
+The store uses a double-buffered approach with two journal files:
 
 1. **Active Journal**: Receives new writes
 2. **Inactive Journal**: Standby for compression
@@ -393,34 +224,6 @@ The standard store uses a double-buffered approach with two journal files:
    - Compresses the current state into the inactive journal
    - Switches the inactive journal to become the new active journal
    - Resets the old active journal for future use
-
-#### 2. Versioned Single-Journal (VersionedKVStore)
-
-The versioned store uses a different architecture optimized for version tracking:
-
-1. **Single Active Journal**: All writes go to one journal file
-2. **Version Tracking**: Every entry includes a monotonically increasing version number
-3. **Automatic Rotation**: When the journal reaches the high water mark:
-   - Current state is serialized as versioned entries into a new journal
-   - Old journal is archived with `.v{version}` suffix (e.g., `store.jrn.v123`)
-   - Optional callback is invoked for remote upload/cleanup
-4. **Point-in-Time Recovery**: Journal can be replayed up to any previous version
-
-**Rotation Strategy**:
-```
-Before rotation:
-  my_store.jrn (1MB, versions 1-1000)
-
-After rotation:
-  my_store.jrn (compacted, starts at version 1001)
-  my_store.jrn.v1000.zz (archived, compressed, readonly)
-```
-
-**Compression**:
-- Archived journals are automatically compressed using zlib (RFC 1950, level 3)
-- Active journals remain uncompressed for optimal write performance
-- Decompression is handled transparently during recovery
-- File extension `.zz` indicates compressed archives
 
 ### Memory-Mapped I/O
 
@@ -430,20 +233,12 @@ After rotation:
 
 ### Caching Strategy
 
-Both `KVStore` and `VersionedKVStore` use the same caching approach:
-
 - Maintains an in-memory `HashMap` cache of all key-value pairs
 - Cache is always kept in sync with the persistent state
 - Provides O(1) read performance
 - Write operations update both cache and journal
 
-**VersionedKVStore Additions**:
-- Maintains current version counter
-- Can reconstruct state at any historical version by replaying journal entries
-
 ## Performance Characteristics
-
-### KVStore (Standard)
 
 | Operation        | Time Complexity | Notes                           |
 |------------------|-----------------|---------------------------------|
@@ -454,19 +249,6 @@ Both `KVStore` and `VersionedKVStore` use the same caching approach:
 | `len()`          | O(1)            | Cache size                      |
 | `as_hashmap()`   | O(1)            | Returns reference to cache      |
 | `clear()`        | O(1)            | Efficient journal clearing      |
-
-### VersionedKVStore (With Version Tracking)
-
-| Operation          | Time Complexity | Notes                               |
-|--------------------|-----------------|-------------------------------------|
-| `get()`            | O(1)            | Reads from in-memory cache          |
-| `insert()`         | O(1) amortized  | Async journal write + cache + version |
-| `remove()`         | O(1) amortized  | Async journal write + cache + version |
-| `contains_key()`   | O(1)            | Cache lookup                        |
-| `len()`            | O(1)            | Cache size                          |
-| `as_hashmap()`     | O(n)            | Creates temporary map of values     |
-| `rotate_journal()` | O(n)            | Async - serializes current state to new journal |
-| `current_version()`| O(1)            | Returns version counter             |
 
 ## Error Handling
 
@@ -490,8 +272,6 @@ fn main() -> anyhow::Result<()> {
 
 ## File Management
 
-### KVStore Files
-
 The library automatically manages journal files:
 
 - **Creation**: Files are created if they don't exist
@@ -506,26 +286,9 @@ my_store.jrna  # Journal A
 my_store.jrnb  # Journal B
 ```
 
-### VersionedKVStore Files
-
-The versioned store manages a single journal with archived versions:
-
-- **Active Journal**: Current journal file (e.g., `my_store.jrn`)
-- **Archived Journals**: Previous versions with `.v{version}` suffix
-- **Automatic Archival**: Old journals are preserved during rotation
-- **Callback Integration**: Application controls upload/cleanup of archived journals
-
-Example file structure after multiple rotations:
-```
-my_store.jrn            # Active journal (current, uncompressed)
-my_store.jrn.v1000.zz   # Archived at version 1000 (compressed)
-my_store.jrn.v2500.zz   # Archived at version 2500 (compressed)
-my_store.jrn.v4000.zz   # Archived at version 4000 (compressed)
-```
-
 ## Thread Safety
 
-Both `KVStore` and `VersionedKVStore` are **not** thread-safe by design for maximum performance. For concurrent access, wrap them in appropriate synchronization primitives:
+`KVStore` is **not** thread-safe by design for maximum performance. For concurrent access, wrap it in appropriate synchronization primitives:
 
 ```rust
 use std::sync::{Arc, Mutex};
@@ -539,129 +302,6 @@ let store = Arc::new(Mutex::new(
 ```
 
 ## Advanced Usage
-
-### Archived Journal Compression
-
-**VersionedKVStore** automatically compresses archived journals asynchronously to save disk space:
-
-```rust
-use bd_resilient_kv::VersionedKVStore;
-use bd_bonjson::Value;
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let mut store = VersionedKVStore::new(
-        ".",         // Directory path
-        "my_store",  // Journal name
-        512 * 1024,  // 512KB rotation threshold
-        None
-    )?;
-
-    // Write data that will trigger rotation
-    for i in 0..10000 {
-        store.insert(format!("key_{}", i), Value::Integer(i as i64)).await?;
-    }
-
-    // After rotation, archived journals are automatically compressed:
-    // - my_store.jrn (active, uncompressed)
-    // - my_store.jrn.v10000.zz (archived, compressed with zlib asynchronously)
-
-    Ok(())
-}
-```
-
-**Compression Details**:
-- **Format**: zlib (RFC 1950) with compression level 3
-- **Performance**: Balanced speed/compression ratio, performed asynchronously with streaming I/O
-- **Transparency**: Recovery automatically detects and decompresses archived journals
-- **Naming**: `.zz` extension indicates compressed archives
-- **Typical Savings**: >50% size reduction for text-based data
-
-**Active vs Archived**:
-- Active journals remain **uncompressed** for maximum write performance
-- Only archived journals are compressed during rotation (asynchronously)
-- No configuration needed - compression is automatic
-
-### Snapshot Cleanup Management
-
-**SnapshotCleanup** provides utilities for managing disk space by cleaning up old archived journals. Its methods are async and require a Tokio runtime.
-
-```rust
-use bd_resilient_kv::SnapshotCleanup;
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Create cleanup utility for your journal
-    let cleanup = SnapshotCleanup::new("my_store.jrn")?;
-
-    // List all archived snapshots (async)
-    let snapshots = cleanup.list_snapshots().await?;
-    for snapshot in &snapshots {
-        println!("Version: {}, Size: {} bytes, Path: {:?}",
-                 snapshot.version, snapshot.size_bytes, snapshot.path);
-    }
-
-    // Strategy 1: Remove snapshots older than a specific version (async)
-    // (e.g., your system determined you need to keep data back to version 5000)
-    let removed = cleanup.cleanup_before_version(5000).await?;
-    println!("Removed {} old snapshots", removed.len());
-
-    // Strategy 2: Keep only the N most recent snapshots (async)
-    let removed = cleanup.cleanup_keep_recent(10).await?;
-    println!("Removed {} snapshots, kept 10 most recent", removed.len());
-
-    // Check disk usage (async)
-    let total_size = cleanup.total_snapshot_size().await?;
-    println!("Total snapshot size: {} bytes", total_size);
-
-    // Get version range (async)
-    if let Some(oldest) = cleanup.oldest_snapshot_version().await? {
-        if let Some(newest) = cleanup.newest_snapshot_version().await? {
-            println!("Snapshots range from version {} to {}", oldest, newest);
-        }
-    }
-
-    Ok(())
-}
-```
-
-**Key Features**:
-- **Async operations**: All methods are async and require a Tokio runtime
-- **Version-based cleanup**: Remove snapshots before a specific version
-- **Count-based cleanup**: Keep only N most recent snapshots
-- **Safe operations**: Only removes compressed archives (`.zz` files), never active journals
-- **Disk space monitoring**: Query total size and version ranges
-- **Per-journal isolation**: Each cleanup instance only manages its own journal's snapshots
-
-**Integration with VersionedKVStore**:
-```rust
-use bd_resilient_kv::{VersionedKVStore, SnapshotCleanup};
-use bd_bonjson::Value;
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Your application logic determines minimum required version
-    let min_version_from_external_system = get_minimum_required_version();
-
-    // Create store
-    let mut store = VersionedKVStore::new(".", "my_store", 1024 * 1024, None)?;
-
-    // Perform operations... (async)
-    store.insert("key".to_string(), Value::from(42)).await?;
-
-    // Periodically clean up old snapshots (async)
-    let cleanup = SnapshotCleanup::new("my_store.jrn")?;
-    cleanup.cleanup_before_version(min_version_from_external_system).await?;
-
-    Ok(())
-}
-
-fn get_minimum_required_version() -> u64 {
-    // Your external system (e.g., backup service, replication manager)
-    // tells you how far back you need to maintain history
-    5000
-}
-```
 
 ### Custom Buffer Sizes
 
