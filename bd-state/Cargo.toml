@@ -13,15 +13,15 @@ tempfile.workspace = true
 
 [dependencies]
 ahash.workspace             = true
-async-trait.workspace             = true
-tokio.workspace             = true
 anyhow.workspace            = true
+async-trait.workspace       = true
 bd-bonjson                  = { path = "../bd-bonjson" }
-bd-time                  = { path = "../bd-time" }
 bd-client-common            = { path = "../bd-client-common" }
 bd-resilient-kv             = { path = "../bd-resilient-kv" }
+bd-time                     = { path = "../bd-time" }
 bd-workspace-hack.workspace = true
 itertools.workspace         = true
 log.workspace               = true
 tempfile.workspace          = true
 time.workspace              = true
+tokio.workspace             = true
