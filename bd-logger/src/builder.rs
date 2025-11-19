@@ -195,7 +195,6 @@ impl LoggerBuilder {
     let (flush_buffers_tx, flush_buffers_rx) = tokio::sync::mpsc::channel(1);
     let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
     let (report_proc_tx, report_proc_rx) = tokio::sync::mpsc::channel(1);
-    let (crash_monitor_tx, crash_monitor_rx) = tokio::sync::oneshot::channel();
 
     let api_network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let log_network_quality_provider = Arc::new(TimedNetworkQualityProvider::new(
@@ -261,7 +260,6 @@ impl LoggerBuilder {
       self.params.static_metadata.sdk_version(),
       self.params.store.clone(),
       sleep_mode_active_tx,
-      Some(crash_monitor_rx),
     );
     let log = if self.internal_logger {
       Arc::new(InternalLogger::new(
@@ -310,15 +308,6 @@ impl LoggerBuilder {
           .map_err(Into::into)
         },
       );
-
-      // Building the crash monitor requires artifact uploader and knowing
-      // whether to send artifacts out-of-band, both of which are dependent on
-      // awaiting loading the config in runtime. This is why the monitor is
-      // then passed to the logger (constructed outside of this future) via a
-      // channel rather than directly.
-      if crash_monitor_tx.send(crash_monitor).is_err() {
-        log::error!("failed to deliver monitor");
-      }
 
       // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
       // improve the perceived performance of the logger initialization.
@@ -380,7 +369,7 @@ impl LoggerBuilder {
         async move { buffer_uploader.run().await },
         async move { config_writer.run().await },
         async move {
-          async_log_buffer.run().await;
+          async_log_buffer.run(crash_monitor).await;
           Ok(())
         },
         async move { buffer_manager.process_flushes(flush_buffers_rx).await },
