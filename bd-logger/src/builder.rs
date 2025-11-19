@@ -267,22 +267,18 @@ impl LoggerBuilder {
 
     UnexpectedErrorHandler::register_stats(&scope);
 
-    // Backup the state before creating the logger future.
-    // This is done synchronously to avoid Send/Sync issues with the Store.
-    {
-      let state_directory = self.params.sdk_directory.join("state");
-      if let Ok(state_store) = bd_state::Store::new(&state_directory) {
-        if let Err(e) = state_store.backup_previous(&state_directory) {
-          log::warn!("Failed to backup previous state: {e}");
-        }
-        // state_store is explicitly dropped here
-        drop(state_store);
-      }
-    }
 
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
       init_lifecycle.set(bd_client_common::init_lifecycle::InitLifecycle::RuntimeLoaded);
+
+      // Load the previous state snapshot into memory-mapped storage for crash reporting.
+      // This loads the state from disk without maintaining an open file handle.
+      let state_directory = self.params.sdk_directory.join("state");
+
+      // TODO(snowp): Error handling so we don't stop the logger if state loading fails.
+      let (store, data_loss) =
+        bd_state::Store::new(&state_directory, time_provider.clone()).await?;
 
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
@@ -299,7 +295,7 @@ impl LoggerBuilder {
         Arc::new(artifact_client),
         self.params.session_strategy.clone(),
         &init_lifecycle,
-        feature_flags_builder,
+        store,
         move |log| {
           AsyncLogBuffer::<LoggerReplay>::enqueue_log(
             &async_log_buffer_communication_tx,
@@ -314,7 +310,8 @@ impl LoggerBuilder {
           )
           .map_err(Into::into)
         },
-      );
+      )
+      .await;
 
       // Building the crash monitor requires artifact uploader and knowing
       // whether to send artifacts out-of-band, both of which are dependent on

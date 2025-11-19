@@ -36,6 +36,7 @@ use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::fixed::UUIDCallbacks;
 use bd_session::{Strategy, fixed};
 use bd_shutdown::ComponentShutdownTrigger;
+use bd_state::test::TestStore;
 use bd_stats_common::labels;
 use bd_test_helpers::events::NoOpListenerTarget;
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -123,7 +124,6 @@ impl Setup {
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
 
     AsyncLogBuffer::new(
-      self.tmp_dir.path(),
       self.make_logging_context(),
       replayer,
       Arc::new(Strategy::Fixed(fixed::Strategy::new(
@@ -591,10 +591,14 @@ async fn updates_workflow_engine_in_response_to_config_update() {
     assert_ok!(config_update_tx.blocking_send(config_update));
   });
 
+  let state_store = TestStore::new().await;
+
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(
+    buffer.run_with_shutdown(state_store.take_inner(), shutdown_trigger.make_shutdown()),
+  );
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   handle.await.unwrap();
@@ -660,10 +664,14 @@ async fn logs_resource_utilization_log() {
 
   sender.try_send(message).unwrap();
 
+  let state_store = TestStore::new().await;
+
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(
+    buffer.run_with_shutdown(state_store.take_inner(), shutdown_trigger.make_shutdown()),
+  );
   500.milliseconds().sleep().await;
 
   shutdown_trigger.shutdown().await;

@@ -10,6 +10,8 @@
 
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
+use time::macros::datetime;
 
 //
 // TestStateReader
@@ -60,24 +62,29 @@ impl crate::StateReader for TestStateReader {
 pub struct TestStore {
   _dir: tempfile::TempDir,
   inner: crate::Store,
+  _time_provider: Arc<bd_time::TestTimeProvider>,
 }
 
 impl TestStore {
   #[must_use]
-  pub fn new() -> Self {
+  pub async fn new() -> Self {
     let temp_dir = tempfile::tempdir().unwrap();
-    let store = crate::Store::new(temp_dir.path()).unwrap();
+    let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+      datetime!(2024-01-01 00:00:00 UTC),
+    ));
+    let (store, _) = crate::Store::new(temp_dir.path(), time_provider.clone())
+      .await
+      .unwrap();
 
     Self {
       _dir: temp_dir,
       inner: store,
+      _time_provider: time_provider,
     }
   }
-}
 
-impl Default for TestStore {
-  fn default() -> Self {
-    Self::new()
+  pub fn take_inner(self) -> crate::Store {
+    self.inner
   }
 }
 
@@ -92,11 +99,5 @@ impl Deref for TestStore {
 impl DerefMut for TestStore {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.inner
-  }
-}
-
-impl crate::StateReader for TestStore {
-  fn get(&self, scope: crate::Scope, key: &str) -> Option<&str> {
-    self.inner.get(scope, key)
   }
 }

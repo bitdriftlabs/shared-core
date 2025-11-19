@@ -56,7 +56,6 @@ use bd_workflows::workflow::WorkflowDebugStateMap;
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use std::collections::{HashMap, VecDeque};
 use std::mem::size_of_val;
-use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -184,14 +183,12 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   time_provider: Arc<dyn TimeProvider>,
   lifecycle_state: InitLifecycleState,
 
-  state_store: bd_state::Store,
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   pub(crate) fn new(
-    sdk_directory: &Path,
     uninitialized_logging_context: UninitializedLoggingContext<bd_log_primitives::Log>,
     replayer: R,
     session_strategy: Arc<bd_session::Strategy>,
@@ -279,18 +276,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         ),
         time_provider,
         lifecycle_state,
-
-        // TODO(snowp): We need to handle new vs old here.
-        state_store: {
-          let state_dir = sdk_directory.join("state");
-          if let Err(e) = std::fs::create_dir_all(&state_dir) {
-            log::error!("Failed to create state directory: {e}");
-          }
-          bd_state::Store::new(&state_dir).unwrap_or_else(|e| {
-            log::error!("Failed to create state store: {e}");
-            std::process::exit(1);
-          })
-        },
 
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
@@ -431,11 +416,16 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     Ok(())
   }
 
-  async fn process_all_logs(&mut self, log: LogLine, block: bool) -> anyhow::Result<()> {
+  async fn process_all_logs(
+    &mut self,
+    log: LogLine,
+    block: bool,
+    state_store: &bd_state::Store,
+  ) -> anyhow::Result<()> {
     let mut logs = VecDeque::new();
     logs.push_back(log);
     while let Some(log) = logs.pop_front() {
-      let log_replay_result = self.process_log(log, block).await?;
+      let log_replay_result = self.process_log(log, block, state_store).await?;
       logs.extend(log_replay_result.logs_to_inject.into_iter().map(|log| {
         LogLine {
           log_level: log.log_level,
@@ -488,7 +478,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     Ok(())
   }
 
-  async fn process_log(&mut self, log: LogLine, block: bool) -> anyhow::Result<LogReplayResult> {
+  async fn process_log(
+    &mut self,
+    log: LogLine,
+    block: bool,
+    state_store: &bd_state::Store,
+  ) -> anyhow::Result<LogReplayResult> {
     // Prevent re-entrancy when we are evaluating the log metadata.
     let result = with_thread_local_logger_guard(|| {
       if let Some(LogAttributesOverrides::PreviousRunSessionID(_id, _timestamp)) =
@@ -571,6 +566,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   metadata.matching_fields.clone(),
                   session_id.clone(),
                   metadata.timestamp,
+                  &state_store,
                 )
                 .await;
 
@@ -614,7 +610,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: log.capture_session,
         };
 
-        self.write_log(processed_log, block).await
+        self.write_log(processed_log, block, &state_store).await
       },
       Err(e) => {
         // TODO(Augustyniak): Consider logging as error so that SDK customers can see these
@@ -625,7 +621,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  async fn write_log(&mut self, log: Log, block: bool) -> anyhow::Result<LogReplayResult> {
+  async fn write_log(
+    &mut self,
+    log: Log,
+    block: bool,
+    state_store: &bd_state::Store,
+  ) -> anyhow::Result<LogReplayResult> {
     let log_replay_result = match &mut self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
         let result = uninitialized_logging_context
@@ -648,7 +649,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log,
           block,
           &mut initialized_logging_context.processing_pipeline,
-          Some(&self.state_store),
+          &state_store,
           self.time_provider.now(),
         )
         .await
@@ -683,6 +684,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn maybe_replay_pre_config_buffer_logs(
     &mut self,
     pre_config_log_buffer: PreConfigBuffer<bd_log_primitives::Log>,
+    state_store: &bd_state::Store,
   ) {
     let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state else {
       return;
@@ -696,7 +698,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log_line,
           false,
           &mut initialized_logging_context.processing_pipeline,
-          Some(&self.state_store),
+          state_store,
           now,
         )
         .await
@@ -706,16 +708,20 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  pub async fn run(self) -> Self {
+  pub async fn run(self, state_store: bd_state::Store) -> Self {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     self
-      .run_with_shutdown(shutdown_trigger.make_shutdown())
+      .run_with_shutdown(state_store, shutdown_trigger.make_shutdown())
       .await
   }
 
   // TODO(mattklein123): This seems to only be used for tests. Figure out how to clean this up
   // so we don't need this just for tests.
-  pub async fn run_with_shutdown(mut self, mut shutdown: ComponentShutdown) -> Self {
+  pub async fn run_with_shutdown(
+    mut self,
+    state_store: bd_state::Store,
+    mut shutdown: ComponentShutdown,
+  ) -> Self {
     // Processes incoming logs and reacts to workflows config updates.
     //
     // The first workflows config update makes the async log buffer disable
@@ -747,6 +753,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             self.lifecycle_state.set(InitLifecycle::LogProcessingStarted);
             self.maybe_replay_pre_config_buffer_logs(
                 pre_config_log_buffer,
+                &state_store,
 
             ).await;
           }
@@ -781,7 +788,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               // grouping here to help make smarter decisions during intent negotiation.
               capture_session: Some("crash_handler"),
             };
-            if let Err(e) = self.process_all_logs(log, false).await {
+            if let Err(e) = self.process_all_logs(log, false, &state_store).await {
               log::debug!("failed to process crash log: {e}");
             }
           }
@@ -801,7 +808,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
               if let Err(e) = self.process_all_logs(
                 log,
-                log_processing_completed_tx.is_some()
+                log_processing_completed_tx.is_some(),
+                &state_store,
               ).await {
                 log::debug!("failed to process all logs: {e}");
               }
@@ -812,17 +820,17 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               }
             },
             AsyncLogBufferMessage::UpsertState(scope, key, value) => {
-              if let Err(e) = self.state_store.insert(scope, &key, value).await {
+              if let Err(e) = state_store.insert(scope, &key, value).await {
                 log::debug!("failed to upsert state for key '{key}': {e}");
               }
             },
             AsyncLogBufferMessage::RemoveState(scope, key) => {
-              if let Err(e) = self.state_store.remove(scope, &key).await {
+              if let Err(e) = state_store.remove(scope, &key).await {
                 log::debug!("failed to remove state for key '{key}': {e}");
               }
             },
             AsyncLogBufferMessage::ClearState(scope) => {
-              if let Err(e) = self.state_store.clear(scope).await {
+              if let Err(e) = state_store.clear(scope).await {
                 log::debug!("failed to clear state: {e}");
               }
             },
@@ -936,6 +944,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     matching_fields: LogFields,
     session_id: String,
     occurred_at: time::OffsetDateTime,
+    store: &bd_state::Store,
   ) -> anyhow::Result<()> {
     // TODO(mattklein123): Should we support injected logs for internal logs?
     self
@@ -951,6 +960,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: None,
         },
         false,
+        store,
       )
       .await?;
 

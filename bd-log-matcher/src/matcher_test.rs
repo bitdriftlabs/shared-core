@@ -208,8 +208,8 @@ fn test_message_string_invalid_regex_config() {
   );
 }
 
-#[test]
-fn test_extracted_string_matcher() {
+#[tokio::test]
+async fn test_extracted_string_matcher() {
   let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "key".to_string(),
     value_match: Some(StringValueMatch(base_log_matcher::StringValueMatch {
@@ -228,7 +228,8 @@ fn test_extracted_string_matcher() {
       (log_msg("no fields"), false),
     ],
     &TinyMap::default(),
-  );
+  )
+  .await;
 
   match_test_runner_with_extractions(
     config,
@@ -238,7 +239,8 @@ fn test_extracted_string_matcher() {
       (log_msg("no fields"), false),
     ],
     &[("id1".to_string(), "exact".to_string())].into(),
-  );
+  )
+  .await;
 }
 
 #[test]
@@ -862,7 +864,7 @@ async fn feature_flag_matcher() {
   ] {
     let matcher = TestMatcher::new(&input.matcher).unwrap();
 
-    let mut state = bd_state::test::TestStore::default();
+    let mut state = bd_state::test::TestStore::new().await;
     for (key, value) in input.flags {
       state
         .insert(
@@ -944,13 +946,13 @@ fn match_test_runner(config: LogMatcher, cases: Vec<(Input<'_>, bool)>) {
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn match_test_runner_with_extractions(
+async fn match_test_runner_with_extractions(
   config: LogMatcher,
   cases: Vec<(Input<'_>, bool)>,
   extracted_fields: &TinyMap<String, String>,
 ) {
   let match_tree = Tree::new(&config).unwrap();
-  let state = bd_state::test::TestStore::default();
+  let state = bd_state::test::TestStore::new().await;
 
   for (input, should_match) in cases {
     let (log_type, log_level, message, fields) = input.clone();

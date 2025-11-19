@@ -26,7 +26,6 @@ use bd_artifact_upload::SnappedFeatureFlag;
 use bd_client_common::debug_check_lifecycle_less_than;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_error_reporter::reporter::handle_unexpected;
-use bd_feature_flags::FeatureFlagsBuilder;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
@@ -43,6 +42,7 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   ReportType,
 };
 use fbs::issue_reporting::v_1::root_as_report;
+use itertools::Itertools as _;
 use memmap2::Mmap;
 use std::ffi::OsStr;
 use std::fs::File;
@@ -108,9 +108,9 @@ pub enum ReportOrigin {
 pub struct Monitor {
   report_directory: PathBuf,
   previous_run_global_state: LogFields,
+  previous_run_state: bd_state::StateSnapshot,
+  state: bd_state::Store,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
-  sdk_directory: PathBuf,
-  feature_flags_manager: FeatureFlagsBuilder,
 
   global_state_reader: global_state::Reader,
   pub session: Arc<bd_session::Strategy>,
@@ -118,13 +118,13 @@ pub struct Monitor {
 }
 
 impl Monitor {
-  pub fn new(
+  pub async fn new(
     sdk_directory: &Path,
     store: Arc<bd_device::Store>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
     session: Arc<bd_session::Strategy>,
     init_lifecycle: &InitLifecycleState,
-    feature_flags_manager: FeatureFlagsBuilder,
+    state: bd_state::Store,
     emit_log: impl Fn(CrashLog) -> anyhow::Result<()> + Send + Sync + 'static,
   ) -> Self {
     debug_check_lifecycle_less_than!(
@@ -135,14 +135,14 @@ impl Monitor {
 
     let global_state_reader = global_state::Reader::new(store);
     let previous_run_global_state = global_state_reader.global_state_fields();
+    let previous_run_state = state.to_snapshot().await;
 
     let mut monitor = Self {
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
       previous_run_global_state,
-      sdk_directory: sdk_directory.to_path_buf(),
-      feature_flags_manager,
+      previous_run_state,
+      state,
       artifact_client,
-      feature_flags_manager,
       global_state_reader,
       session,
       monitor: None,
@@ -317,29 +317,6 @@ impl Monitor {
     // TODO(snowp): Add smarter handling to avoid duplicate reporting.
     // TODO(snowp): Consider only reporting one of the pending reports if there are multiple.
 
-    // Try to open the previous state to read feature flags. If this fails, we'll just use empty
-    // feature flags.
-    let previous_state = bd_state::Store::open_previous(&self.sdk_directory.join("state")).ok();
-    let reporting_feature_flags: Vec<SnappedFeatureFlag> = previous_state
-      .as_ref()
-      .map(|state| {
-        state
-          .iter_scope(bd_state::Scope::FeatureFlag)
-          .map(|(name, value)| {
-            // Use current time as timestamp since we don't store timestamps in the state store.
-            // This is acceptable for crash reporting as we just need the flag values.
-            // Empty strings represent flags without variants (stored as None).
-            let variant = if value.is_empty() {
-              None
-            } else {
-              Some(value.to_string())
-            };
-            SnappedFeatureFlag::new(name.to_string(), variant, OffsetDateTime::now_utc())
-          })
-          .collect()
-      })
-      .unwrap_or_default();
-
     let mut logs = vec![];
 
     while let Ok(Some(entry)) = dir.next_entry().await {
@@ -386,27 +363,25 @@ impl Monitor {
     fields
   }
 
-  fn get_feature_flags(&self, origin: ReportOrigin) -> Vec<SnappedFeatureFlag> {
-    // TODO(snowp): This pattern won't work for current feature flags as we cannot have
-    // concurrent handles to the file manager. Fix this with the FF rework.
+  async fn get_feature_flags(&self, origin: ReportOrigin) -> Vec<SnappedFeatureFlag> {
     match origin {
-      ReportOrigin::Current => self.feature_flags_manager.current_feature_flags(),
-      ReportOrigin::Previous => self.feature_flags_manager.previous_feature_flags(),
+      ReportOrigin::Previous => self.previous_run_state.feature_flags.clone(),
+      ReportOrigin::Current => {
+        self
+          .state
+          .to_scoped_snapshot(bd_state::Scope::FeatureFlag)
+          .await
+      },
     }
-    .ok()
-    .as_ref()
-    .map(|ff| {
-      ff.iter()
-        .map(|(name, flag)| {
-          SnappedFeatureFlag::new(
-            name.to_string(),
-            flag.variant.map(ToString::to_string),
-            flag.timestamp,
-          )
-        })
-        .collect()
+    .iter()
+    .map(|(name, (variant, timestamp))| {
+      SnappedFeatureFlag::new(
+        name.to_string(),
+        (!variant.is_empty()).then(|| variant.clone()),
+        *timestamp,
+      )
     })
-    .unwrap_or_default()
+    .collect_vec()
   }
 
   fn get_global_state_fields(&self, origin: ReportOrigin) -> LogFields {
@@ -465,7 +440,7 @@ impl Monitor {
       return None;
     };
 
-    let reporting_feature_flags = self.get_feature_flags(origin);
+    let reporting_feature_flags = self.get_feature_flags(origin).await;
     let global_state_fields = self.get_global_state_fields(origin);
     let session_id = self.get_session_id(origin);
     let (timestamp, state_fields) = Self::read_log_fields(bin_report, &global_state_fields);

@@ -14,9 +14,14 @@
   clippy::unwrap_used
 )]
 
-use bd_bonjson::Value;
+use ahash::AHashMap;
+use bd_resilient_kv::{DataLoss, StateValue, Value_type};
+use bd_time::TimeProvider;
 use itertools::Itertools as _;
 use std::path::Path;
+use std::sync::Arc;
+use time::OffsetDateTime;
+use tokio::sync::RwLock;
 
 /// A state scope that determines the namespace used for storing state. This avoids key collisions
 /// but also allows us to handle the state with different semantics.
@@ -49,80 +54,84 @@ impl Scope {
 }
 
 //
+// StateSnapshot
+//
+
+/// A simple snapshot of the state store, used for crash reporting and similar use cases.
+/// Contains (feature_flags, global_state) as separate hash maps.
+#[derive(Debug, Clone)]
+pub struct StateSnapshot {
+  pub feature_flags: AHashMap<String, (String, OffsetDateTime)>,
+  pub global_state: AHashMap<String, (String, OffsetDateTime)>,
+}
+
+//
 // StateStore
 //
 
 /// Wraps a versioned key-value store for managing application state with namespaced keys.
+#[derive(Clone)]
 pub struct Store {
-  inner: bd_resilient_kv::VersionedKVStore,
+  // Use a mutex since we want to be able to share the store across tasks, so we handle locking
+  // at this level.
+  inner: Arc<RwLock<bd_resilient_kv::VersionedKVStore>>,
 }
 
 impl Store {
-  pub fn new(directory: &Path) -> anyhow::Result<Self> {
-    Ok(Self {
-      inner: bd_resilient_kv::VersionedKVStore::new(directory, "state_current", 1024 * 1024, None)?,
-    })
+  /// Creates a new `Store` instance at the given directory with the provided time provider. If
+  /// there is an existing store, it will be loaded. If there was any data loss during recovery,
+  /// it will be indicated in the returned `DataLoss` value.
+  ///
+  /// Returns the store and any data loss information.
+  pub async fn new(
+    directory: &Path,
+    time_provider: Arc<dyn TimeProvider>,
+  ) -> anyhow::Result<(Self, DataLoss)> {
+    let (inner, data_loss) =
+      bd_resilient_kv::VersionedKVStore::new(directory, "state", 1024 * 1024, None, time_provider)
+        .await?;
+    Ok((
+      Self {
+        inner: Arc::new(RwLock::new(inner)),
+      },
+      data_loss,
+    ))
   }
 
-  /// Opens a previous state snapshot for read-only access.
-  ///
-  /// This is typically used to read state from a previous run, such as for crash reporting.
-  /// The previous state is created by calling `backup_previous()` at application startup.
-  ///
-  /// # Errors
-  /// Returns an error if the previous state file does not exist or cannot be opened.
-  pub fn open_previous(directory: &Path) -> anyhow::Result<Self> {
-    Ok(Self {
-      inner: bd_resilient_kv::VersionedKVStore::open_existing(
-        directory,
-        "state_previous",
-        1024 * 1024,
-        None,
-      )?,
-    })
-  }
-
-  /// Creates a backup of the current state as "previous" state.
-  ///
-  /// This should be called once at application startup to preserve the state from the previous
-  /// run. This allows crash handlers and other components to access the state that was active
-  /// during a previous process that may have crashed.
-  ///
-  /// # Errors
-  /// Returns an error if the file copy operation fails.
-  pub fn backup_previous(&self, directory: &Path) -> anyhow::Result<()> {
-    let current_path = directory.join("state_current.jrn");
-    let previous_path = directory.join("state_previous.jrn");
-
-    // If there's no current state file, nothing to backup
-    if !current_path.exists() {
-      return Ok(());
-    }
-
-    // Copy current to previous, overwriting any existing previous
-    std::fs::copy(&current_path, &previous_path)?;
-    Ok(())
-  }
-
-  pub async fn insert(&mut self, scope: Scope, key: &str, value: String) -> anyhow::Result<()> {
+  pub async fn insert(&self, scope: Scope, key: &str, value: String) -> anyhow::Result<()> {
     let namespaced_key = format!("{}:{}", scope.as_prefix(), key);
     self
       .inner
-      .insert(namespaced_key, Value::String(value))
+      .write()
+      .await
+      .insert(
+        namespaced_key,
+        StateValue {
+          value_type: Value_type::StringValue(value).into(),
+          ..Default::default()
+        },
+      )
       .await
       .map(|_| ())
   }
 
-  pub async fn remove(&mut self, scope: Scope, key: &str) -> anyhow::Result<()> {
+  pub async fn remove(&self, scope: Scope, key: &str) -> anyhow::Result<()> {
     let namespaced_key = format!("{}:{}", scope.as_prefix(), key);
-    self.inner.remove(&namespaced_key).await.map(|_| ())
+    self
+      .inner
+      .write()
+      .await
+      .remove(&namespaced_key)
+      .await
+      .map(|_| ())
   }
 
-  pub async fn clear(&mut self, scope: Scope) -> anyhow::Result<()> {
+  pub async fn clear(&self, scope: Scope) -> anyhow::Result<()> {
     let prefix = scope.as_prefix();
-    let keys_to_remove: Vec<String> = self
-      .inner
-      .as_hashmap_with_timestamps()
+
+    let mut store = self.inner.write().await;
+    let keys_to_remove: Vec<String> = store
+      .as_hashmap()
       .keys()
       .filter(|key| key.starts_with(prefix))
       .cloned()
@@ -131,50 +140,134 @@ impl Store {
     // TODO(snowp): Ideally we should have built in support for batch deletions in the underlying
     // store. This leaves us open for partial deletions if something fails halfway through.
     for key in keys_to_remove {
-      self.inner.remove(&key).await?;
+      store.remove(&key).await?;
     }
     Ok(())
-  }
-
-  #[must_use]
-  pub fn current_version(&self) -> u64 {
-    self.inner.current_version()
   }
 
   /// Iterates over all key-value pairs in a given scope.
   ///
   /// Returns an iterator that yields (key, value) tuples where the key has been stripped
   /// of its scope prefix.
-  pub fn iter_scope(&self, scope: Scope) -> impl Iterator<Item = (&str, &str)> {
+  pub async fn iter_scope(&self, scope: Scope) -> impl IntoIterator<Item = (String, String)> {
     let prefix = format!("{}:", scope.as_prefix());
     let prefix_len = prefix.len();
 
     self
       .inner
-      .as_hashmap_with_timestamps()
+      .read()
+      .await
+      .as_hashmap()
       .iter()
       .filter(move |(key, _)| key.starts_with(&prefix))
       .filter_map(move |(key, timestamped_value)| {
         let stripped_key = &key[prefix_len ..];
-        if let Value::String(s) = &timestamped_value.value {
-          Some((stripped_key, s.as_str()))
-        } else {
-          None
-        }
+
+        let value = timestamped_value
+          .value
+          .has_string_value()
+          .then(|| timestamped_value.value.string_value())?;
+
+        // TODO(snowp): With the way we are doing the locking etc we cannot return references
+        // whcih seems suboptimal. Consider changing the API to take a closure to avoid allocations.
+        Some((stripped_key.to_string(), value.to_string()))
       })
+      .collect_vec()
+  }
+
+  pub async fn lock_for_read(&self) -> impl StateReader + '_ {
+    ReadLockedStoreGuard {
+      guard: self.inner.read().await,
+    }
+  }
+
+  pub async fn to_scoped_snapshot(
+    &self,
+    scope: Scope,
+  ) -> AHashMap<String, (String, OffsetDateTime)> {
+    let mut scoped_snapshot = AHashMap::new();
+    let prefix = format!("{}:", scope.as_prefix());
+
+    for (key, timestamped_value) in self.inner.read().await.as_hashmap() {
+      let Some(value) = timestamped_value
+        .value
+        .has_string_value()
+        .then(|| timestamped_value.value.string_value())
+      else {
+        continue;
+      };
+
+      if let Some(stripped_key) = key.strip_prefix(&prefix) {
+        scoped_snapshot.insert(
+          stripped_key.to_string(),
+          (
+            value.to_string(),
+            OffsetDateTime::from_unix_timestamp_nanos(timestamped_value.timestamp as i128 * 1_000)
+              .unwrap(),
+          ),
+        );
+      }
+    }
+
+    scoped_snapshot
+  }
+
+  pub async fn to_snapshot(&self) -> StateSnapshot {
+    let mut feature_flags = AHashMap::new();
+    let mut global_state = AHashMap::new();
+
+    let ff_prefix = format!("{}:", Scope::FeatureFlag.as_prefix());
+    let gs_prefix = format!("{}:", Scope::GlobalState.as_prefix());
+
+    // TODO(snowp): Move the snapshot capture to the ctor so we don't have to lock.
+    for (key, timestamped_value) in self.inner.read().await.as_hashmap() {
+      let Some(value) = timestamped_value
+        .value
+        .has_string_value()
+        .then(|| timestamped_value.value.string_value())
+      else {
+        continue;
+      };
+
+      if let Some(stripped_key) = key.strip_prefix(&ff_prefix) {
+        feature_flags.insert(
+          stripped_key.to_string(),
+          (
+            value.to_string(),
+            OffsetDateTime::from_unix_timestamp_nanos(timestamped_value.timestamp as i128 * 1_000)
+              .unwrap(),
+          ),
+        );
+      } else if let Some(stripped_key) = key.strip_prefix(&gs_prefix) {
+        global_state.insert(
+          stripped_key.to_string(),
+          (
+            value.to_string(),
+            OffsetDateTime::from_unix_timestamp_nanos(timestamped_value.timestamp as i128 * 1_000)
+              .unwrap(),
+          ),
+        );
+      }
+    }
+
+    StateSnapshot {
+      feature_flags,
+      global_state,
+    }
   }
 }
 
-impl StateReader for Store {
+struct ReadLockedStoreGuard<'a> {
+  guard: tokio::sync::RwLockReadGuard<'a, bd_resilient_kv::VersionedKVStore>,
+}
+
+impl<'a> StateReader for ReadLockedStoreGuard<'_> {
   fn get(&self, scope: Scope, key: &str) -> Option<&str> {
     let namespaced_key = format!("{}:{}", scope.as_prefix(), key);
-    self.inner.get(&namespaced_key).and_then(|v| {
-      if let Value::String(s) = v {
-        Some(s.as_str())
-      } else {
-        None
-      }
-    })
+    self
+      .guard
+      .get(&namespaced_key)
+      .and_then(|v| v.has_string_value().then(|| v.string_value()))
   }
 }
 

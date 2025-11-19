@@ -1257,14 +1257,17 @@ version = "1.0.0"
 dependencies = [
  "ahash",
  "anyhow",
+ "async-trait",
  "bd-bonjson",
  "bd-client-common",
  "bd-resilient-kv",
+ "bd-time",
  "bd-workspace-hack",
  "itertools 0.14.0",
  "log",
  "tempfile",
  "time",
+ "tokio",
 ]
 
 [[package]]
