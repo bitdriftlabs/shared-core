@@ -83,8 +83,15 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
-  let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    4096,
+    None,
+    time_provider.clone(),
+    None,
+  )
+  .await?;
 
   let ts1 = store
     .insert("key1".to_string(), make_string_value("value1"))

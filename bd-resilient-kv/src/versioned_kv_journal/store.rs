@@ -9,6 +9,7 @@ use crate::versioned_kv_journal::TimestampedValue;
 use crate::versioned_kv_journal::file_manager::{self, compress_archived_journal};
 use crate::versioned_kv_journal::journal::PartialDataLoss;
 use crate::versioned_kv_journal::memmapped_journal::MemMappedVersionedJournal;
+use crate::versioned_kv_journal::retention::RetentionRegistry;
 use ahash::AHashMap;
 use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
 use bd_time::TimeProvider;
@@ -51,6 +52,7 @@ pub struct VersionedKVStore {
   buffer_size: usize,
   high_water_mark_ratio: Option<f32>,
   current_generation: u64,
+  retention_registry: Option<Arc<RetentionRegistry>>,
 }
 
 impl VersionedKVStore {
@@ -70,6 +72,7 @@ impl VersionedKVStore {
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
+    retention_registry: Option<Arc<RetentionRegistry>>,
   ) -> anyhow::Result<(Self, DataLoss)> {
     let dir = dir_path.as_ref();
 
@@ -131,6 +134,7 @@ impl VersionedKVStore {
         buffer_size,
         high_water_mark_ratio,
         current_generation: generation,
+        retention_registry,
       },
       data_loss,
     ))
@@ -159,6 +163,7 @@ impl VersionedKVStore {
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
+    retention_registry: Option<Arc<RetentionRegistry>>,
   ) -> anyhow::Result<(Self, DataLoss)> {
     let dir = dir_path.as_ref();
 
@@ -180,6 +185,7 @@ impl VersionedKVStore {
         buffer_size,
         high_water_mark_ratio,
         current_generation: generation,
+        retention_registry,
       },
       if matches!(data_loss, PartialDataLoss::Yes) {
         DataLoss::Partial
@@ -366,6 +372,9 @@ impl VersionedKVStore {
   /// The archived journal will be compressed using zlib to reduce storage size.
   /// Rotation typically happens automatically when the high water mark is reached, but this
   /// method allows manual control when needed.
+  ///
+  /// If a retention registry is configured and no subsystem requires historical snapshots,
+  /// the old journal will be deleted without creating a compressed snapshot.
   pub async fn rotate_journal(&mut self) -> anyhow::Result<Rotation> {
     let next_generation = self.current_generation + 1;
     let old_generation = self.current_generation;
@@ -404,8 +413,11 @@ impl VersionedKVStore {
   ///
   /// This is a best-effort operation; failures to compress or delete the old journal
   /// are logged but do not cause the rotation to fail.
+  ///
+  /// If a retention registry is configured, this method checks if any subsystem requires
+  /// snapshots. If no retention is needed, the journal is deleted without compression.
   async fn archive_journal(&self, old_journal_path: &Path) -> PathBuf {
-    // Generate archived path with timestamp
+    // Get the maximum timestamp from the current state to use for the snapshot filename
     let rotation_timestamp = self
       .cached_map
       .values()
@@ -413,28 +425,51 @@ impl VersionedKVStore {
       .max()
       .unwrap_or(0);
 
+    // Check if we need to create a snapshot based on retention requirements
+    let should_create_snapshot = if let Some(registry) = &self.retention_registry {
+      let min_retention = registry.min_retention_timestamp().await;
+      // If min_retention is None (no handles), don't create snapshot
+      // If min_retention is Some(0), retain everything (at least one handle wants all data)
+      // If min_retention > rotation_timestamp, no one needs this snapshot
+      match min_retention {
+        None => false,
+        Some(0) => true,
+        Some(ts) => ts <= rotation_timestamp,
+      }
+    } else {
+      // No registry configured, create snapshot by default
+      true
+    };
+
     let archived_path = self.dir_path.join(format!(
       "{}.jrn.t{}.zz",
       self.journal_name, rotation_timestamp
     ));
 
-    log::debug!(
-      "Archiving journal {} to {}",
-      old_journal_path.display(),
-      archived_path.display()
-    );
-
-    // Try to compress the old journal for longer-term storage.
-    if let Err(e) = compress_archived_journal(old_journal_path, &archived_path).await {
-      log::warn!(
-        "Failed to compress archived journal {}: {}",
+    if should_create_snapshot {
+      log::debug!(
+        "Archiving journal {} to {}",
         old_journal_path.display(),
-        e
+        archived_path.display()
+      );
+
+      // Try to compress the old journal for longer-term storage.
+      if let Err(e) = compress_archived_journal(old_journal_path, &archived_path).await {
+        log::warn!(
+          "Failed to compress archived journal {}: {}",
+          old_journal_path.display(),
+          e
+        );
+      }
+    } else {
+      log::debug!(
+        "Skipping snapshot creation for {} (no retention required)",
+        old_journal_path.display()
       );
     }
 
-    // Remove the uncompressed regardless of compression success. If we succeeded we no longer need
-    // it, while if we failed we consider the snapshot lost.
+    // Remove the uncompressed regardless of compression success or skip. If we succeeded we no
+    // longer need it, while if we failed we consider the snapshot lost.
     let _ignored = tokio::fs::remove_file(old_journal_path)
       .await
       .inspect_err(|e| {

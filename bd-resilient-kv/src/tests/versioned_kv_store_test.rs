@@ -28,8 +28,15 @@ impl Setup {
     let temp_dir = TempDir::new()?;
     let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
-    let (store, _) =
-      VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
+    let (store, _) = VersionedKVStore::new(
+      temp_dir.path(),
+      "test",
+      4096,
+      None,
+      time_provider.clone(),
+      None,
+    )
+    .await?;
 
     Ok(Self {
       temp_dir,
@@ -57,6 +64,7 @@ impl Setup {
       4096,
       None,
       self.time_provider.clone(),
+      None,
     )
     .await?;
 
@@ -84,7 +92,7 @@ async fn basic_crud() -> anyhow::Result<()> {
 
 
   let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider).await?;
+    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider, None).await?;
 
   // Insert some values
   let ts1 = store
@@ -129,8 +137,15 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
 
   // Create store and write some data
   let (ts1, ts2) = {
-    let (mut store, _) =
-      VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
+    let (mut store, _) = VersionedKVStore::new(
+      temp_dir.path(),
+      "test",
+      4096,
+      None,
+      time_provider.clone(),
+      None,
+    )
+    .await?;
     let ts1 = store
       .insert("key1".to_string(), make_string_value("value1"))
       .await?;
@@ -145,7 +160,8 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
   // Reopen and verify data persisted
   {
     let (store, _) =
-      VersionedKVStore::open_existing(temp_dir.path(), "test", 4096, None, time_provider).await?;
+      VersionedKVStore::open_existing(temp_dir.path(), "test", 4096, None, time_provider, None)
+        .await?;
     assert_eq!(store.len(), 2);
     assert_eq!(
       store.get_with_timestamp("key1"),
@@ -389,6 +405,91 @@ async fn test_multiple_rotations() -> anyhow::Result<()> {
       timestamp
     );
   }
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
+  use crate::RetentionRegistry;
+  use std::sync::Arc;
+
+  let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+  let registry = Arc::new(RetentionRegistry::new());
+
+  // Create store with retention registry
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    4096,
+    None,
+    time_provider.clone(),
+    Some(registry.clone()),
+  )
+  .await?;
+
+  // Insert some data
+  store
+    .insert("key1".to_string(), make_string_value("value1"))
+    .await?;
+
+  // Advance time so each rotation has a different timestamp
+  time_provider.advance(1.seconds());
+
+  // Rotate WITHOUT any retention handles - snapshot should NOT be created
+  let rotation1 = store.rotate_journal().await?;
+  let snapshot_path1 = rotation1.snapshot_path;
+
+  // Snapshot file should NOT exist because no handles require it
+  assert!(
+    !snapshot_path1.exists(),
+    "Snapshot should not be created when no retention handles exist"
+  );
+
+  // Now create a handle that requires retention - use a timestamp far in the past
+  // so that any rotation will be newer than the retention requirement
+  let handle = registry.create_handle("test_subsystem").await;
+  handle.update_retention_micros(0); // Retain all data from epoch
+
+  // Insert more data and rotate WITH retention handle - snapshot SHOULD be created
+  store
+    .insert("key2".to_string(), make_string_value("value2"))
+    .await?;
+
+  // Advance time so each rotation has a different timestamp
+  time_provider.advance(1.seconds());
+
+  let rotation2 = store.rotate_journal().await?;
+  let snapshot_path2 = rotation2.snapshot_path;
+
+  // Snapshot file SHOULD exist because handle requires retention
+  assert!(
+    snapshot_path2.exists(),
+    "Snapshot should be created when retention handle exists"
+  );
+
+  // Drop the handle and rotate again - snapshot should NOT be created
+  drop(handle);
+
+  // Give the registry time to clean up the dropped handle
+  tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+  store
+    .insert("key3".to_string(), make_string_value("value3"))
+    .await?;
+
+  // Advance time so each rotation has a different timestamp
+  time_provider.advance(1.seconds());
+
+  let rotation3 = store.rotate_journal().await?;
+  let snapshot_path3 = rotation3.snapshot_path;
+
+  // After handle is dropped, snapshot should not be created
+  assert!(
+    !snapshot_path3.exists(),
+    "Snapshot should not be created after handle is dropped"
+  );
 
   Ok(())
 }

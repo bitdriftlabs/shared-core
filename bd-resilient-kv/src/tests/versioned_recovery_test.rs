@@ -66,8 +66,15 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   )));
 
   // Create a store with larger buffer to avoid BufferFull errors during test
-  let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 2048, None, time_provider.clone()).await?;
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    2048,
+    None,
+    time_provider.clone(),
+    None,
+  )
+  .await?;
 
   store
     .insert("key1".to_string(), make_string_value("value1"))
@@ -159,7 +166,7 @@ async fn test_recovery_empty_journal() -> anyhow::Result<()> {
 
   // Create an empty store
   let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider).await?;
+    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider, None).await?;
   store.sync()?;
 
   // Rotate to create snapshot
@@ -189,8 +196,15 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   )));
 
 
-  let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    4096,
+    None,
+    time_provider.clone(),
+    None,
+  )
+  .await?;
   store
     .insert("key".to_string(), make_string_value("1"))
     .await?;
@@ -263,8 +277,15 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   )));
 
   // Create a store and write some timestamped data
-  let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    4096,
+    None,
+    time_provider.clone(),
+    None,
+  )
+  .await?;
 
   store
     .insert("key1".to_string(), make_string_value("value1"))
@@ -353,8 +374,15 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
     2024-01-01 00:00:00 UTC
   )));
 
-  let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    4096,
+    None,
+    time_provider.clone(),
+    None,
+  )
+  .await?;
 
   // Write some data before rotation
   store

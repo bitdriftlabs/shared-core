@@ -297,6 +297,7 @@ impl VersionedKVJournalFuzzTest {
       self.buffer_size,
       self.high_water_mark_ratio,
       self.time_provider.clone(),
+      None,
     )
     .await
   }
@@ -308,6 +309,7 @@ impl VersionedKVJournalFuzzTest {
       self.buffer_size,
       self.high_water_mark_ratio,
       self.time_provider.clone(),
+      None,
     )
     .await
   }
