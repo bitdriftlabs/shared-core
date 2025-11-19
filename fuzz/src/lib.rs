@@ -33,6 +33,7 @@ use tempfile::TempDir;
 pub mod buffer_corruption_fuzz_test;
 pub mod mpsc_buffer_fuzz_test;
 pub mod spsc_buffer_fuzz_test;
+pub mod versioned_kv_journal;
 
 #[cfg(test)]
 #[ctor::ctor]

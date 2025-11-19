@@ -14,16 +14,23 @@ cargo-fuzz = true
 [dependencies]
 ahash.workspace             = true
 arbitrary.workspace         = true
+async-trait.workspace       = true
 bd-bonjson.path             = "../bd-bonjson"
 bd-buffer.path              = "../bd-buffer"
 bd-client-common.path       = "../bd-client-common"
 bd-client-stats-store.path  = "../bd-client-stats-store"
 bd-log-primitives.path      = "../bd-log-primitives"
+bd-proto.path               = "../bd-proto"
 bd-resilient-kv.path        = "../bd-resilient-kv"
+bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true
 libfuzzer-sys.workspace     = true
 log.workspace               = true
 tempfile.workspace          = true
+time.workspace              = true
+protobuf.workspace          = true
+tokio.workspace             = true
+anyhow.workspace            = true
 
 [dev-dependencies]
 bd-test-helpers.path = "../bd-test-helpers"
@@ -75,4 +82,10 @@ test = false
 doc  = false
 name = "resilient_kv_store"
 path = "fuzz_targets/resilient_kv_store.rs"
+test = false
+
+[[bin]]
+doc  = false
+name = "versioned_kv_journal"
+path = "fuzz_targets/versioned_kv_journal.rs"
 test = false
