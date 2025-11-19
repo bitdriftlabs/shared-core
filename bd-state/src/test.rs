@@ -83,7 +83,7 @@ impl TestStore {
     }
   }
 
-  #[must_use] 
+  #[must_use]
   pub fn take_inner(self) -> crate::Store {
     self.inner
   }
