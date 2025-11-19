@@ -543,7 +543,8 @@ async fn creates_workflows_engine_in_response_to_config_update() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(state_store, shutdown_trigger.make_shutdown()));
+  let handle =
+    tokio::task::spawn(buffer.run_with_shutdown(state_store, shutdown_trigger.make_shutdown()));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   buffer = handle.await.unwrap();
@@ -582,7 +583,8 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(state_store, shutdown_trigger.make_shutdown()));
+  let handle =
+    tokio::task::spawn(buffer.run_with_shutdown(state_store, shutdown_trigger.make_shutdown()));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   buffer = handle.await.unwrap();

@@ -30,6 +30,7 @@ use bd_proto_util::ToFlatBufferString;
 use bd_runtime::runtime::{self};
 use bd_session::fixed::{self, UUIDCallbacks};
 use bd_shutdown::ComponentShutdownTrigger;
+use bd_state::test::TestStore;
 use bd_test_helpers::make_mut;
 use bd_test_helpers::session::in_memory_store;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, WIPOffset};
@@ -51,16 +52,118 @@ impl fixed::Callbacks for StaticSession {
   }
 }
 
+//
+// CrashReportBuilder
+//
+
+/// Helper for building crash reports with less boilerplate
+struct CrashReportBuilder {
+  name: String,
+  reason: Option<String>,
+  report_type: ReportType,
+  app_id: Option<String>,
+  app_version: Option<String>,
+  timestamp: Option<OffsetDateTime>,
+}
+
+impl CrashReportBuilder {
+  fn new(name: impl Into<String>) -> Self {
+    Self {
+      name: name.into(),
+      reason: None,
+      report_type: ReportType::NativeCrash,
+      app_id: None,
+      app_version: None,
+      timestamp: None,
+    }
+  }
+
+  fn reason(mut self, reason: impl Into<String>) -> Self {
+    self.reason = Some(reason.into());
+    self
+  }
+
+  #[allow(dead_code)]
+  fn report_type(mut self, report_type: ReportType) -> Self {
+    self.report_type = report_type;
+    self
+  }
+
+  fn app_id(mut self, app_id: impl Into<String>) -> Self {
+    self.app_id = Some(app_id.into());
+    self
+  }
+
+  fn app_version(mut self, version: impl Into<String>) -> Self {
+    self.app_version = Some(version.into());
+    self
+  }
+
+  fn timestamp(mut self, timestamp: OffsetDateTime) -> Self {
+    self.timestamp = Some(timestamp);
+    self
+  }
+
+  fn build(self) -> Vec<u8> {
+    use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
+      AppMetricsT,
+      DeviceMetricsT,
+      ErrorT,
+      ReportT,
+      TimestampT,
+    };
+
+    let mut error = ErrorT::default();
+    error.name = Some(self.name);
+    error.reason = self.reason;
+    error.relation_to_next = ErrorRelation::CausedBy;
+
+    let app_metrics = if self.app_id.is_some() || self.app_version.is_some() {
+      let mut metrics = AppMetricsT::default();
+      metrics.app_id = self.app_id;
+      metrics.version = self.app_version;
+      Some(Box::new(metrics))
+    } else {
+      None
+    };
+
+    let device_metrics = self.timestamp.map(|ts| {
+      let mut metrics = DeviceMetricsT::default();
+      metrics.time = Some(TimestampT {
+        seconds: ts.unix_timestamp().try_into().unwrap(),
+        nanos: 0,
+      });
+      Box::new(metrics)
+    });
+
+    let mut report_t = ReportT::default();
+    report_t.type_ = self.report_type;
+    report_t.errors = Some(vec![error]);
+    report_t.app_metrics = app_metrics;
+    report_t.device_metrics = device_metrics;
+
+    let mut builder = FlatBufferBuilder::new();
+    let report = report_t.pack(&mut builder);
+    builder.finish(report, None);
+    builder.finished_data().to_vec()
+  }
+}
+
+//
+// Setup
+//
+
 struct Setup {
   directory: TempDir,
   monitor: Monitor,
   upload_client: Arc<bd_artifact_upload::MockClient>,
   emit_log_rx: tokio::sync::mpsc::Receiver<crate::CrashLog>,
+  state: TestStore,
   _shutdown: ComponentShutdownTrigger,
 }
 
 impl Setup {
-  fn new(maybe_global_state: Option<LogFields>, enable_file_watcher: bool) -> Self {
+  async fn new(maybe_global_state: Option<LogFields>, enable_file_watcher: bool) -> Self {
     let directory = TempDir::new().unwrap();
 
     let shutdown = ComponentShutdownTrigger::default();
@@ -73,8 +176,6 @@ impl Setup {
       tracker.maybe_update_global_state(&global_state);
     }
 
-    let feature_flags_builder =
-      FeatureFlagsBuilder::new(&directory.path().join("feature_flags"), 1024, 0.8);
     // Set up the session to return a fixed previous session ID, making it obvious that we are
     // using the previous session ID for uploads.
     let mut session = bd_session::Strategy::Fixed(bd_session::fixed::Strategy::new(
@@ -98,23 +199,53 @@ impl Setup {
       let _ = std::fs::create_dir_all(&watcher_dir);
     }
 
+    let state = TestStore::new().await;
+
+    // Seed state with initial feature flags by default
+    state
+      .insert(
+        bd_state::Scope::FeatureFlag,
+        "initial_flag",
+        "true".to_string(),
+      )
+      .await
+      .unwrap();
+    state
+      .insert(
+        bd_state::Scope::FeatureFlag,
+        "previous_only_flag",
+        "enabled".to_string(),
+      )
+      .await
+      .unwrap();
+
     let monitor = Monitor::new(
       directory.path(),
       store,
       upload_client.clone(),
       Arc::new(session),
       &InitLifecycleState::new(),
-      feature_flags_builder,
+      (*state).clone(),
       emit_log,
-    );
+    )
+    .await;
 
     Self {
       directory,
       monitor,
       upload_client,
       emit_log_rx: rx,
+      state,
       _shutdown: shutdown,
     }
+  }
+
+  async fn update_feature_flag(&self, key: &str, value: &str) {
+    self
+      .state
+      .insert(bd_state::Scope::FeatureFlag, key, value.to_string())
+      .await
+      .unwrap();
   }
 
   fn current_session_directory(&self) -> PathBuf {
@@ -169,18 +300,47 @@ impl Setup {
     timestamp: Option<OffsetDateTime>,
     session_id: &str,
   ) {
+    self.expect_artifact_upload_with_flags(content, uuid, state, timestamp, session_id, None);
+  }
+
+  fn expect_artifact_upload_with_flags(
+    &mut self,
+    content: &[u8],
+    uuid: Uuid,
+    state: LogFields,
+    timestamp: Option<OffsetDateTime>,
+    session_id: &str,
+    expected_flags: Option<Vec<(String, String)>>,
+  ) {
     let content = content.to_vec();
     let session_id = session_id.to_string();
     make_mut(&mut self.upload_client)
       .expect_enqueue_upload()
-      .withf(move |mut file, fstate, ftimestamp, fsession_id, _| {
-        let mut output = vec![];
-        file.read_to_end(&mut output).unwrap();
-        output == content
-          && &state == fstate
-          && &timestamp == ftimestamp
-          && session_id == *fsession_id
-      })
+      .withf(
+        move |mut file, fstate, ftimestamp, fsession_id, feature_flags| {
+          let mut output = vec![];
+          file.read_to_end(&mut output).unwrap();
+          let content_match = output == content;
+          let state_match = &state == fstate;
+          let timestamp_match = &timestamp == ftimestamp;
+          let session_match = session_id == *fsession_id;
+
+          let flags_match = if let Some(ref expected) = expected_flags {
+            if feature_flags.len() != expected.len() {
+              return false;
+            }
+            expected.iter().all(|(name, variant)| {
+              feature_flags
+                .iter()
+                .any(|f| f.name() == name && f.variant() == Some(variant.as_str()))
+            })
+          } else {
+            true
+          };
+
+          content_match && state_match && timestamp_match && session_match && flags_match
+        },
+      )
       .returning(move |_, _, _, _, _| Ok(uuid));
   }
 }
@@ -263,7 +423,8 @@ async fn test_log_report_fields() {
       .into(),
     ),
     false,
-  );
+  )
+  .await;
   setup.make_crash("report.cap", data);
 
   let uuid = "12345678-1234-5678-1234-5678123456aa".parse().unwrap();
@@ -375,57 +536,19 @@ async fn file_watcher_enabled_when_watcher_directory_exists() {
 
 #[tokio::test]
 async fn file_watcher_detects_current_session_report() {
-  let mut builder = FlatBufferBuilder::new();
-  let name = "CurrentSessionCrash".to_fb(&mut builder);
-  let reason = "null pointer".to_fb(&mut builder);
-  let error = Error::create(
-    &mut builder,
-    &ErrorArgs {
-      name,
-      reason,
-      stack_trace: None,
-      relation_to_next: ErrorRelation::CausedBy,
-    },
-  );
-  let errors = Some(builder.create_vector::<WIPOffset<Error<'_>>>(&[error]));
-  let app_id = "com.example.app".to_fb(&mut builder);
-  let version = "1.0".to_fb(&mut builder);
-  let app_metrics = Some(AppMetrics::create(
-    &mut builder,
-    &AppMetricsArgs {
-      app_id,
-      version,
-      ..Default::default()
-    },
-  ));
   let crash_timestamp = datetime!(2024-01-15 12:34:56 UTC);
-  let unix_timestamp = crash_timestamp.unix_timestamp();
-  let timestamp = Timestamp::new(unix_timestamp.try_into().unwrap(), 0);
-  let device_metrics = Some(DeviceMetrics::create(
-    &mut builder,
-    &DeviceMetricsArgs {
-      time: Some(&timestamp),
-      ..Default::default()
-    },
-  ));
-  let report = Report::create(
-    &mut builder,
-    &ReportArgs {
-      type_: ReportType::NativeCrash,
-      errors,
-      app_metrics,
-      device_metrics,
-      ..Default::default()
-    },
-  );
-  builder.finish(report, None);
-  let data = builder.finished_data();
+  let data = CrashReportBuilder::new("CurrentSessionCrash")
+    .reason("null pointer")
+    .app_id("com.example.app")
+    .app_version("1.0")
+    .timestamp(crash_timestamp)
+    .build();
 
-  let mut setup = Setup::new(None, true);
+  let mut setup = Setup::new(None, true).await;
 
   let uuid = "12345678-1234-5678-1234-567812345678".parse().unwrap();
   setup.expect_artifact_upload(
-    data,
+    &data,
     uuid,
     [
       ("app_id".into(), "com.example.app".into()),
@@ -438,7 +561,7 @@ async fn file_watcher_detects_current_session_report() {
   );
 
   // Write a crash report to the current_session directory
-  std::fs::write(setup.current_session_directory().join("crash1.cap"), data).unwrap();
+  std::fs::write(setup.current_session_directory().join("crash1.cap"), &data).unwrap();
 
   // Verify that the crash log was emitted
   let crash_log = tokio::time::timeout(
@@ -476,34 +599,14 @@ async fn file_watcher_detects_current_session_report() {
 
 #[tokio::test]
 async fn file_watcher_detects_previous_session_report() {
-  let mut builder = FlatBufferBuilder::new();
-  let name = "PreviousSessionCrash".to_fb(&mut builder);
-  let reason = "segmentation fault".to_fb(&mut builder);
-  let error = Error::create(
-    &mut builder,
-    &ErrorArgs {
-      name,
-      reason,
-      stack_trace: None,
-      relation_to_next: ErrorRelation::CausedBy,
-    },
-  );
-  let errors = Some(builder.create_vector::<WIPOffset<Error<'_>>>(&[error]));
-  let report = Report::create(
-    &mut builder,
-    &ReportArgs {
-      type_: ReportType::NativeCrash,
-      errors,
-      ..Default::default()
-    },
-  );
-  builder.finish(report, None);
-  let data = builder.finished_data();
+  let data = CrashReportBuilder::new("PreviousSessionCrash")
+    .reason("segmentation fault")
+    .build();
 
-  let mut setup = Setup::new(None, true);
+  let mut setup = Setup::new(None, true).await;
 
   setup.expect_artifact_upload(
-    data,
+    &data,
     "12345678-1234-5678-1234-567812345679".parse().unwrap(),
     [
       ("app_version".into(), "unknown".into()),
@@ -515,7 +618,7 @@ async fn file_watcher_detects_previous_session_report() {
   );
 
   // Write a crash report to the previous_session directory
-  std::fs::write(setup.previous_session_directory().join("crash2.cap"), data).unwrap();
+  std::fs::write(setup.previous_session_directory().join("crash2.cap"), &data).unwrap();
 
   // Verify that the crash log was emitted
   let crash_log = tokio::time::timeout(2.std_seconds(), setup.emit_log_rx.recv())
@@ -546,7 +649,7 @@ async fn file_watcher_detects_previous_session_report() {
 
 #[tokio::test]
 async fn file_watcher_ignores_non_cap_files() {
-  let mut setup = Setup::new(None, true);
+  let mut setup = Setup::new(None, true).await;
 
   // Write files with wrong extensions
   std::fs::write(
@@ -588,7 +691,7 @@ async fn file_watcher_ignores_non_cap_files() {
 
 #[tokio::test]
 async fn file_watcher_not_created_without_watcher_directory() {
-  let setup = Setup::new(None, false);
+  let setup = Setup::new(None, false).await;
 
   // The file watcher would typically hold this channel, so it being closed indicates no file
   // watcher was created.
@@ -597,7 +700,7 @@ async fn file_watcher_not_created_without_watcher_directory() {
 
 #[tokio::test]
 async fn file_watcher_processes_multiple_reports() {
-  let mut setup = Setup::new(None, true);
+  let mut setup = Setup::new(None, true).await;
 
   // Setup mock to return different UUIDs for each upload
   let uuid1 = "11111111-1111-1111-1111-111111111111".parse().unwrap();
@@ -614,60 +717,14 @@ async fn file_watcher_processes_multiple_reports() {
     .in_sequence(&mut seq)
     .returning(move |_, _, _, _, _| Ok(uuid2));
 
-  // Create first crash report
-  let mut builder1 = FlatBufferBuilder::new();
-  let name1 = "Crash1".to_fb(&mut builder1);
-  let reason1 = "error1".to_fb(&mut builder1);
-  let error1 = Error::create(
-    &mut builder1,
-    &ErrorArgs {
-      name: name1,
-      reason: reason1,
-      stack_trace: None,
-      relation_to_next: ErrorRelation::CausedBy,
-    },
-  );
-  let errors1 = Some(builder1.create_vector::<WIPOffset<Error<'_>>>(&[error1]));
-  let report1 = Report::create(
-    &mut builder1,
-    &ReportArgs {
-      type_: ReportType::NativeCrash,
-      errors: errors1,
-      ..Default::default()
-    },
-  );
-  builder1.finish(report1, None);
-  let data1 = builder1.finished_data();
-
-  // Create second crash report
-  let mut builder2 = FlatBufferBuilder::new();
-  let name2 = "Crash2".to_fb(&mut builder2);
-  let reason2 = "error2".to_fb(&mut builder2);
-  let error2 = Error::create(
-    &mut builder2,
-    &ErrorArgs {
-      name: name2,
-      reason: reason2,
-      stack_trace: None,
-      relation_to_next: ErrorRelation::CausedBy,
-    },
-  );
-  let errors2 = Some(builder2.create_vector::<WIPOffset<Error<'_>>>(&[error2]));
-  let report2 = Report::create(
-    &mut builder2,
-    &ReportArgs {
-      type_: ReportType::NativeCrash,
-      errors: errors2,
-      ..Default::default()
-    },
-  );
-  builder2.finish(report2, None);
-  let data2 = builder2.finished_data();
+  // Create two crash reports
+  let data1 = CrashReportBuilder::new("Crash1").reason("error1").build();
+  let data2 = CrashReportBuilder::new("Crash2").reason("error2").build();
 
   // Write both crash reports
-  std::fs::write(setup.current_session_directory().join("crash1.cap"), data1).unwrap();
+  std::fs::write(setup.current_session_directory().join("crash1.cap"), &data1).unwrap();
   tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-  std::fs::write(setup.current_session_directory().join("crash2.cap"), data2).unwrap();
+  std::fs::write(setup.current_session_directory().join("crash2.cap"), &data2).unwrap();
 
   // Verify that both crash logs were emitted
   let crash_log1 = tokio::time::timeout(
@@ -719,4 +776,85 @@ async fn file_watcher_processes_multiple_reports() {
       .join("crash2.cap")
       .exists()
   );
+}
+
+#[tokio::test]
+async fn previous_session_crash_uses_previous_feature_flags() {
+  let data = CrashReportBuilder::new("PreviousCrash").build();
+
+  let mut setup = Setup::new(None, true).await;
+
+  // Update feature flags after Monitor creation - these should NOT appear in previous session
+  // crash
+  setup.update_feature_flag("current_only_flag", "new").await;
+  setup.update_feature_flag("initial_flag", "updated").await;
+
+  // Expect upload with previous session feature flags only
+  setup.expect_artifact_upload_with_flags(
+    &data,
+    "12345678-1234-5678-1234-567812345679".parse().unwrap(),
+    [
+      ("app_version".into(), "unknown".into()),
+      ("os_version".into(), "unknown".into()),
+    ]
+    .into(),
+    None,
+    "previous_session_id",
+    Some(vec![
+      ("initial_flag".to_string(), "true".to_string()),
+      ("previous_only_flag".to_string(), "enabled".to_string()),
+    ]),
+  );
+
+  // Write a crash report to the previous_session directory
+  std::fs::write(setup.previous_session_directory().join("crash.cap"), &data).unwrap();
+
+  // Wait for the crash to be processed
+  tokio::time::timeout(2.std_seconds(), setup.emit_log_rx.recv())
+    .await
+    .expect("Timeout waiting for crash log")
+    .expect("Channel closed without receiving crash log");
+}
+
+#[tokio::test]
+async fn current_session_crash_uses_current_feature_flags() {
+  let crash_timestamp = datetime!(2024-01-15 12:34:56 UTC);
+  let data = CrashReportBuilder::new("CurrentCrash")
+    .timestamp(crash_timestamp)
+    .build();
+
+  let mut setup = Setup::new(None, true).await;
+
+  // Update feature flags after Monitor creation - these SHOULD appear in current session crash
+  setup.update_feature_flag("current_only_flag", "new").await;
+  setup.update_feature_flag("initial_flag", "updated").await;
+
+  // Expect upload with current session feature flags (updated values)
+  // Note: We don't remove previous_only_flag in this test, so it will appear with its original
+  // value
+  setup.expect_artifact_upload_with_flags(
+    &data,
+    "12345678-1234-5678-1234-567812345678".parse().unwrap(),
+    [
+      ("app_version".into(), "unknown".into()),
+      ("os_version".into(), "unknown".into()),
+    ]
+    .into(),
+    crash_timestamp.into(),
+    setup.monitor.session.session_id().as_str(),
+    Some(vec![
+      ("initial_flag".to_string(), "updated".to_string()),
+      ("current_only_flag".to_string(), "new".to_string()),
+      ("previous_only_flag".to_string(), "enabled".to_string()),
+    ]),
+  );
+
+  // Write a crash report to the current_session directory
+  std::fs::write(setup.current_session_directory().join("crash.cap"), &data).unwrap();
+
+  // Wait for the crash to be processed
+  tokio::time::timeout(2.std_seconds(), setup.emit_log_rx.recv())
+    .await
+    .expect("Timeout waiting for crash log")
+    .expect("Channel closed without receiving crash log");
 }

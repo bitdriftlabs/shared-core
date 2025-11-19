@@ -563,12 +563,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                       ),
                     ])
                     .collect(),
-                metadata.matching_fields.clone(),
-                session_id.clone(),
-                metadata.timestamp,
-                state_store,
-              )
-              .await;
+                  metadata.matching_fields.clone(),
+                  session_id.clone(),
+                  metadata.timestamp,
+                  state_store,
+                )
+                .await;
 
               // We drop the log as the provided override attributes do not match our expectations.
               return Ok(LogReplayResult::default());
