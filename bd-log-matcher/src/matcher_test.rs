@@ -23,6 +23,7 @@ use bd_log_primitives::{
 use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::feature_flag_match;
 use bd_proto::protos::log_matcher::log_matcher::{LogMatcher, log_matcher};
 use bd_proto::protos::logging::payload::LogType;
+use bd_state::StateReader;
 use log_matcher::base_log_matcher::Match_type::{MessageMatch, TagMatch};
 use log_matcher::base_log_matcher::Operator;
 use log_matcher::base_log_matcher::double_value_match::Double_value_match_type;
@@ -208,8 +209,8 @@ fn test_message_string_invalid_regex_config() {
   );
 }
 
-#[tokio::test]
-async fn test_extracted_string_matcher() {
+#[test]
+fn test_extracted_string_matcher() {
   let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "key".to_string(),
     value_match: Some(StringValueMatch(base_log_matcher::StringValueMatch {
@@ -228,8 +229,8 @@ async fn test_extracted_string_matcher() {
       (log_msg("no fields"), false),
     ],
     &TinyMap::default(),
-  )
-  .await;
+    &bd_state::test::TestStateReader::new(),
+  );
 
   match_test_runner_with_extractions(
     config,
@@ -239,8 +240,8 @@ async fn test_extracted_string_matcher() {
       (log_msg("no fields"), false),
     ],
     &[("id1".to_string(), "exact".to_string())].into(),
-  )
-  .await;
+    &bd_state::test::TestStateReader::new(),
+  );
 }
 
 #[test]
@@ -291,6 +292,7 @@ fn test_extracted_double_matcher() {
       (log_tag("key", "13"), false),
     ],
     &TinyMap::default(),
+    &bd_state::test::TestStateReader::new(),
   );
   match_test_runner_with_extractions(
     config.clone(),
@@ -299,11 +301,13 @@ fn test_extracted_double_matcher() {
       (log_tag("key", "13"), false),
     ],
     &[("id1".to_string(), "bad".to_string())].into(),
+    &bd_state::test::TestStateReader::new(),
   );
   match_test_runner_with_extractions(
     config,
     vec![(log_tag("key", "13.0"), true), (log_tag("key", "13"), true)],
     &[("id1".to_string(), "13".to_string())].into(),
+    &bd_state::test::TestStateReader::new(),
   );
 }
 
@@ -401,12 +405,14 @@ fn test_extracted_int_matcher() {
       (log_tag("key", "13.0"), false),
     ],
     &TinyMap::default(),
+    &bd_state::test::TestStateReader::new(),
   );
 
   match_test_runner_with_extractions(
     config,
     vec![(log_tag("key", "13"), true), (log_tag("key", "13.0"), true)],
     &[("id1".to_string(), "13".to_string())].into(),
+    &bd_state::test::TestStateReader::new(),
   );
 }
 
@@ -864,7 +870,7 @@ async fn feature_flag_matcher() {
   ] {
     let matcher = TestMatcher::new(&input.matcher).unwrap();
 
-    let mut state = bd_state::test::TestStore::new().await;
+    let state = bd_state::test::TestStore::new().await;
     for (key, value) in input.flags {
       state
         .insert(
@@ -878,7 +884,13 @@ async fn feature_flag_matcher() {
 
     assert_eq!(
       input.matches,
-      matcher.match_log_with_state(TypedLogLevel::Debug, LogType::NORMAL, "foo", [], &state,)
+      matcher.match_log_with_state(
+        TypedLogLevel::Debug,
+        LogType::NORMAL,
+        "foo",
+        [],
+        &state.lock_for_read().await,
+      )
     );
   }
 }
@@ -942,17 +954,18 @@ fn make_feature_flag_is_set_matcher(flag_name: &str) -> LogMatcher {
 
 #[allow(clippy::needless_pass_by_value)]
 fn match_test_runner(config: LogMatcher, cases: Vec<(Input<'_>, bool)>) {
-  match_test_runner_with_extractions(config, cases, &TinyMap::default());
+  let state = bd_state::test::TestStateReader::new();
+  match_test_runner_with_extractions(config, cases, &TinyMap::default(), &state);
 }
 
 #[allow(clippy::needless_pass_by_value)]
-async fn match_test_runner_with_extractions(
+fn match_test_runner_with_extractions(
   config: LogMatcher,
   cases: Vec<(Input<'_>, bool)>,
   extracted_fields: &TinyMap<String, String>,
+  state: &dyn StateReader,
 ) {
   let match_tree = Tree::new(&config).unwrap();
-  let state = bd_state::test::TestStore::new().await;
 
   for (input, should_match) in cases {
     let (log_type, log_level, message, fields) = input.clone();
@@ -966,7 +979,7 @@ async fn match_test_runner_with_extractions(
         log_type,
         &message,
         fields,
-        &state,
+        state,
         extracted_fields
       ),
       "{input:?} should result in {should_match} but did not",
