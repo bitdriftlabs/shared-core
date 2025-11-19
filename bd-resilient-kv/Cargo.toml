@@ -24,6 +24,7 @@ bd-proto                    = { path = "../bd-proto" }
 bd-time                     = { path = "../bd-time" }
 bd-workspace-hack.workspace = true
 bytes.workspace             = true
+crc32fast.workspace         = true
 flate2                      = { workspace = true, features = ["zlib"] }
 log.workspace               = true
 memmap2.workspace           = true

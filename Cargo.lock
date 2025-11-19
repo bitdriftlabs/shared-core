@@ -1092,6 +1092,7 @@ dependencies = [
  "bd-time",
  "bd-workspace-hack",
  "bytes",
+ "crc32fast",
  "ctor",
  "flate2",
  "log",
