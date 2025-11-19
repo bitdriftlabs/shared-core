@@ -24,7 +24,7 @@ impl Setup {
     let time_provider = Arc::new(bd_time::TestTimeProvider::new(
       datetime!(2024-01-01 00:00:00 UTC),
     ));
-    let (store, _, _) = Store::new(temp_dir.path(), time_provider.clone())
+    let (store, ..) = Store::new(temp_dir.path(), time_provider.clone())
       .await
       .unwrap();
 
@@ -305,7 +305,7 @@ async fn persistence_across_restart() {
   ));
 
   {
-    let (store, _, _) = Store::new(temp_dir.path(), time_provider.clone())
+    let (store, ..) = Store::new(temp_dir.path(), time_provider.clone())
       .await
       .unwrap();
     store
@@ -318,7 +318,7 @@ async fn persistence_across_restart() {
       .unwrap();
   }
 
-  let (store, _, _) = Store::new(temp_dir.path(), time_provider.clone())
+  let (store, ..) = Store::new(temp_dir.path(), time_provider.clone())
     .await
     .unwrap();
 
