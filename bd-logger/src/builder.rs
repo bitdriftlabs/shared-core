@@ -208,7 +208,6 @@ impl LoggerBuilder {
       ]));
 
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
-      &self.params.sdk_directory,
       UninitializedLoggingContext::new(
         &self.params.sdk_directory,
         &runtime_loader,
@@ -275,9 +274,10 @@ impl LoggerBuilder {
       // Load the previous state snapshot into memory-mapped storage for crash reporting.
       // This loads the state from disk without maintaining an open file handle.
       let state_directory = self.params.sdk_directory.join("state");
+      std::fs::create_dir_all(&state_directory)?;
 
       // TODO(snowp): Error handling so we don't stop the logger if state loading fails.
-      let (store, data_loss) =
+      let (state_store, _data_loss) =
         bd_state::Store::new(&state_directory, time_provider.clone()).await?;
 
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
@@ -295,7 +295,7 @@ impl LoggerBuilder {
         Arc::new(artifact_client),
         self.params.session_strategy.clone(),
         &init_lifecycle,
-        store,
+        state_store.clone(),
         move |log| {
           AsyncLogBuffer::<LoggerReplay>::enqueue_log(
             &async_log_buffer_communication_tx,
@@ -382,7 +382,7 @@ impl LoggerBuilder {
         async move { buffer_uploader.run().await },
         async move { config_writer.run().await },
         async move {
-          async_log_buffer.run().await;
+          async_log_buffer.run(state_store).await;
           Ok(())
         },
         async move { buffer_manager.process_flushes(flush_buffers_rx).await },

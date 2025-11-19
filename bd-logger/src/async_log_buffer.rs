@@ -563,12 +563,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                       ),
                     ])
                     .collect(),
-                  metadata.matching_fields.clone(),
-                  session_id.clone(),
-                  metadata.timestamp,
-                  &state_store,
-                )
-                .await;
+                metadata.matching_fields.clone(),
+                session_id.clone(),
+                metadata.timestamp,
+                state_store,
+              )
+              .await;
 
               // We drop the log as the provided override attributes do not match our expectations.
               return Ok(LogReplayResult::default());
@@ -610,7 +610,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: log.capture_session,
         };
 
-        self.write_log(processed_log, block, &state_store).await
+        self.write_log(processed_log, block, state_store).await
       },
       Err(e) => {
         // TODO(Augustyniak): Consider logging as error so that SDK customers can see these
@@ -649,7 +649,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log,
           block,
           &mut initialized_logging_context.processing_pipeline,
-          &state_store,
+          state_store,
           self.time_provider.now(),
         )
         .await

@@ -170,7 +170,6 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
 //
 pub struct InitializedLoggingContext {
   pub(crate) processing_pipeline: ProcessingPipeline,
-  pub(crate) state_store: bd_state::Store,
 }
 
 // Skip `buffer_producers`, `trigger_matcher`, `runtime`, and `stats` fields that don't implement
@@ -183,10 +182,9 @@ impl Debug for InitializedLoggingContext {
 }
 
 impl InitializedLoggingContext {
-  const fn new(processing_pipeline: ProcessingPipeline, state_store: bd_state::Store) -> Self {
+  const fn new(processing_pipeline: ProcessingPipeline) -> Self {
     Self {
       processing_pipeline,
-      state_store,
     }
   }
 
