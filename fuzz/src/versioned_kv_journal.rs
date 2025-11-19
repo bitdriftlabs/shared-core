@@ -7,10 +7,11 @@
 
 use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
-use bd_proto::protos::state::payload::StateValue;
 use bd_proto::protos::state::payload::state_value::Value_type;
+use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
 use bd_resilient_kv::{DataLoss, TimestampedValue, VersionedKVStore};
 use bd_time::{TestTimeProvider, TimeProvider as _};
+use protobuf::MessageDyn;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::macros::datetime;
@@ -24,7 +25,9 @@ struct ArbitraryStateValue(StateValue);
 #[derive(Arbitrary, Debug, Clone)]
 enum ValueEdgeCase {
   EmptyString,
-  LargeString, // ~10KB string
+  LargeString,          // ~10KB string
+  VeryLargeString,      // ~100KB string
+  ExtremelyLargeString, // ~1MB string (may exceed buffer capacity)
   MinInt,
   MaxInt,
   PositiveInfinity,
@@ -42,6 +45,12 @@ impl ValueEdgeCase {
       },
       Self::LargeString => {
         value.value_type = Some(Value_type::StringValue("x".repeat(10_000)));
+      },
+      Self::VeryLargeString => {
+        value.value_type = Some(Value_type::StringValue("y".repeat(100_000)));
+      },
+      Self::ExtremelyLargeString => {
+        value.value_type = Some(Value_type::StringValue("z".repeat(1_000_000)));
       },
       Self::MinInt => {
         value.value_type = Some(Value_type::IntValue(i64::MIN));
@@ -225,6 +234,16 @@ pub struct VersionedKVJournalFuzzTestCase {
   operations: Vec<OperationType>,
 }
 
+/// Classification of buffer capacity errors
+enum CapacityErrorKind {
+  /// A single entry is too large for the buffer (> 50% of buffer size)
+  OversizedEntry,
+  /// Buffer is full due to accumulated entries
+  BufferFull,
+  /// Not a capacity error
+  Other,
+}
+
 pub struct VersionedKVJournalFuzzTest {
   test_case: VersionedKVJournalFuzzTestCase,
   buffer_size: usize,
@@ -233,6 +252,8 @@ pub struct VersionedKVJournalFuzzTest {
   time_provider: Arc<TestTimeProvider>,
   state: AHashMap<String, TimestampedValue>,
   keys: KeyPool,
+  /// Track whether the journal is full (capacity exceeded)
+  is_full: bool,
 }
 
 impl VersionedKVJournalFuzzTest {
@@ -265,6 +286,7 @@ impl VersionedKVJournalFuzzTest {
       time_provider,
       state: AHashMap::default(),
       keys: KeyPool { keys: Vec::new() },
+      is_full: false,
     }
   }
 
@@ -288,6 +310,109 @@ impl VersionedKVJournalFuzzTest {
       self.time_provider.clone(),
     )
     .await
+  }
+
+  /// Estimate the size of a single entry in bytes.
+  ///
+  /// This estimates the size that would be required to store this key-value pair
+  /// in the journal.
+  fn estimate_entry_size(key: &str, value: &StateValue) -> usize {
+    const AVG_VARINT_SIZE: usize = 5; // Average size for frame length and timestamp varints
+    const CRC_SIZE: usize = 4;
+    const OVERHEAD_PER_ENTRY: usize = AVG_VARINT_SIZE + AVG_VARINT_SIZE + CRC_SIZE;
+
+    let entry_size = StateKeyValuePair {
+      key: key.to_string(),
+      value: Some(value.clone()).into(),
+      ..Default::default()
+    }
+    .compute_size_dyn();
+
+    OVERHEAD_PER_ENTRY + entry_size.try_into().unwrap_or(usize::MAX)
+  }
+
+  /// Estimate the size of the current state in bytes.
+  /// We estimate conservatively to avoid false positives.
+  fn estimate_state_size(&self) -> usize {
+    const HEADER_SIZE: usize = 17;
+
+    let mut total_size = HEADER_SIZE;
+
+    for (key, timestamped_value) in &self.state {
+      // Use our entry size estimator for consistency
+      let entry_size = Self::estimate_entry_size(key, &timestamped_value.value);
+      total_size += entry_size;
+    }
+
+    total_size
+  }
+
+  /// Verify that when the buffer is flagged as full, the state is actually using
+  /// a significant portion of the buffer capacity.
+  ///
+  /// This validation is lenient for cases with very large individual entries that
+  /// may not fit in the buffer, focusing on detecting genuine incorrect full detection.
+  fn verify_full_flag(&self) {
+    if self.is_full {
+      let estimated_size = self.estimate_state_size();
+
+      // Check if we have any very large entries that individually exceed the buffer
+      // We use 75% as the threshold - entries larger than this are genuinely oversized
+      // and can be the primary cause of capacity issues.
+      let has_oversized_entry = self
+        .state
+        .iter()
+        .any(|(key, tv)| Self::estimate_entry_size(key, &tv.value) > self.buffer_size * 3 / 4);
+
+      if has_oversized_entry {
+        // When we have oversized entries, we can't reliably validate capacity usage
+        // since even a single entry may not fit. This is an expected failure case.
+        log::debug!("Buffer full with oversized entries present, skipping capacity validation");
+        return;
+      }
+
+      // We expect the state to use at least 50% of the buffer size when flagged as full.
+      // This threshold is conservative to account for estimation errors and overhead.
+      let min_expected_size = self.buffer_size / 2;
+
+      assert!(
+        estimated_size >= min_expected_size,
+        "Buffer flagged as full but state only uses ~{} bytes out of {} buffer capacity (expected \
+         at least {}). This suggests incorrect full detection.",
+        estimated_size,
+        self.buffer_size,
+        min_expected_size
+      );
+    }
+  }
+
+  /// Check if an error is a buffer capacity error and classify it.
+  ///
+  /// Returns the kind of capacity error, or `Other` if it's not a capacity error.
+  fn classify_capacity_error(
+    error: &anyhow::Error,
+    entry_size_estimate: Option<usize>,
+    buffer_size: usize,
+  ) -> CapacityErrorKind {
+    let error_msg = error.to_string();
+
+    // TODO(snowp): Might be nicer to use typed errors instead of string matching.
+
+    // Check if this is a buffer capacity error
+    if !error_msg.contains("Buffer too small") {
+      return CapacityErrorKind::Other;
+    }
+
+    // If we have an entry size estimate, determine if it's an oversized entry.
+    // We use 75% as the threshold - entries larger than this are genuinely oversized
+    // and are the primary cause of the capacity error, rather than accumulated writes.
+    if let Some(entry_size) = entry_size_estimate
+      && entry_size > buffer_size * 3 / 4
+    {
+      return CapacityErrorKind::OversizedEntry;
+    }
+
+    CapacityErrorKind::BufferFull
   }
 
   pub fn run(self) {
@@ -330,46 +455,100 @@ impl VersionedKVJournalFuzzTest {
 
           let key = self.keys.key_for_write(&key_strategy);
 
-          let timestamp = store.insert(key.clone(), value.0.clone()).await.unwrap();
+          let result = store.insert(key.clone(), value.0.clone()).await;
 
-          // Since time is frozen unless advanced, the timestamp of the entry should be exactly the
-          // current time.
-          assert_eq!(timestamp, current_timestamp_micros());
+          match result {
+            Ok(timestamp) => {
+              // Reset full flag on successful insert
+              self.is_full = false;
 
-          if value.0.value_type.is_some() {
-            self.state.insert(
-              key.clone(),
-              TimestampedValue {
-                value: value.0.clone(),
-                timestamp,
-              },
-            );
+              // Since time is frozen unless advanced, the timestamp of the entry should be exactly
+              // the current time.
+              assert_eq!(timestamp, current_timestamp_micros());
 
-            // Verify timestamp is available
-            let with_timestamp = store.get_with_timestamp(&key);
-            assert!(with_timestamp.is_some());
-            assert_eq!(with_timestamp.unwrap().timestamp, timestamp);
-          } else {
-            self.state.remove(&key);
-            assert!(store.get(&key).is_none());
+              if value.0.value_type.is_some() {
+                self.state.insert(
+                  key.clone(),
+                  TimestampedValue {
+                    value: value.0.clone(),
+                    timestamp,
+                  },
+                );
+
+                // Verify timestamp is available
+                let with_timestamp = store.get_with_timestamp(&key);
+                assert!(with_timestamp.is_some());
+                assert_eq!(with_timestamp.unwrap().timestamp, timestamp);
+              } else {
+                self.state.remove(&key);
+                assert!(store.get(&key).is_none());
+              }
+            },
+            Err(e) => {
+              // Classify the error
+              let entry_size = Self::estimate_entry_size(&key, &value.0);
+              match Self::classify_capacity_error(&e, Some(entry_size), self.buffer_size) {
+                CapacityErrorKind::OversizedEntry => {
+                  log::info!(
+                    "Single entry too large (~{entry_size} bytes) for buffer ({} bytes), skipping \
+                     insert",
+                    self.buffer_size
+                  );
+                  // Don't set is_full - this is an oversized entry, not accumulated capacity
+                  continue;
+                },
+                CapacityErrorKind::BufferFull => {
+                  log::info!(
+                    "Journal full (entry size ~{entry_size} bytes), cannot insert more entries"
+                  );
+                  self.is_full = true;
+                  continue;
+                },
+                CapacityErrorKind::Other => {
+                  // Unexpected error, propagate
+                  panic!("Unexpected error during insert: {e}");
+                },
+              }
+            },
           }
         },
         OperationType::Remove { key_strategy } => {
           let key = self.keys.key_for_read(&key_strategy);
 
-          let timestamp = store.remove(&key).await.unwrap();
+          let result = store.remove(&key).await;
 
-          if self.state.contains_key(&key) {
-            // Key existed, should get the current timestamp of removal.
-            assert_eq!(timestamp, Some(current_timestamp_micros()));
+          match result {
+            Ok(timestamp) => {
+              // Reset full flag on successful remove
+              self.is_full = false;
 
-            self.state.remove(&key);
+              if self.state.contains_key(&key) {
+                // Key existed, should get the current timestamp of removal.
+                assert_eq!(timestamp, Some(current_timestamp_micros()));
 
-            // Verify the value was removed
-            assert!(store.get(&key).is_none());
-          } else {
-            // If key did not exist we'll get None timestamp since no change was made.
-            assert_eq!(timestamp, None);
+                self.state.remove(&key);
+
+                // Verify the value was removed
+                assert!(store.get(&key).is_none());
+              } else {
+                // If key did not exist we'll get None timestamp since no change was made.
+                assert_eq!(timestamp, None);
+              }
+            },
+            Err(e) => {
+              // Classify the error (remove operations write small deletion markers)
+              match Self::classify_capacity_error(&e, None, self.buffer_size) {
+                CapacityErrorKind::BufferFull | CapacityErrorKind::OversizedEntry => {
+                  log::info!("Journal full, cannot remove entries");
+                  self.is_full = true;
+                  continue;
+                },
+                CapacityErrorKind::Other => {
+                  // Unexpected error, propagate
+                  panic!("Unexpected error during remove: {e}");
+                },
+              }
+            },
           }
         },
         OperationType::Get { key_strategy } => {
@@ -464,6 +643,8 @@ impl VersionedKVJournalFuzzTest {
             store = new_store;
             self.state.clear();
             self.keys.keys.clear();
+            // Reset full flag since we have a fresh store with no data
+            self.is_full = false;
             continue;
           };
 
@@ -476,7 +657,10 @@ impl VersionedKVJournalFuzzTest {
           if data_loss != DataLoss::None {
             // We saw some data loss so we need to update our expected state.
             self.state.clear();
+            // Reset full flag since we lost data
+            self.is_full = false;
           }
+          // If no data loss, keep is_full flag as-is since we recovered the same state
 
           // In the case of partial data loss, update expected keys based on what was recovered.
           if data_loss == DataLoss::Partial {
@@ -488,7 +672,27 @@ impl VersionedKVJournalFuzzTest {
         },
         OperationType::RotateJournal => {
           // Manually trigger rotation
-          store.rotate_journal().await.unwrap();
+          let result = store.rotate_journal().await;
+          match result {
+            Ok(_) => {
+              // Reset full flag after successful rotation
+              self.is_full = false;
+            },
+            Err(e) => {
+              // Rotation might fail if there's not enough space to write the compacted state
+              match Self::classify_capacity_error(&e, None, self.buffer_size) {
+                CapacityErrorKind::BufferFull | CapacityErrorKind::OversizedEntry => {
+                  log::info!("Failed to rotate journal due to insufficient space");
+                  self.is_full = true;
+                  continue;
+                },
+                CapacityErrorKind::Other => {
+                  // Unexpected error, propagate
+                  panic!("Unexpected error during rotation: {e}");
+                },
+              }
+            },
+          }
         },
         OperationType::BulkInsert { count, key_prefix } => {
           // Insert multiple entries to stress the buffer
@@ -501,20 +705,51 @@ impl VersionedKVJournalFuzzTest {
             let int_value = i as i64;
             value.value_type = Some(Value_type::IntValue(int_value));
 
-            let timestamp = store.insert(key.clone(), value.clone()).await.unwrap();
+            let result = store.insert(key.clone(), value.clone()).await;
 
-            // Track in our state
-            self.state.insert(
-              key.clone(),
-              TimestampedValue {
-                value: value.clone(),
-                timestamp,
+            match result {
+              Ok(timestamp) => {
+                // Reset full flag on successful insert
+                self.is_full = false;
+
+                // Track in our state
+                self.state.insert(
+                  key.clone(),
+                  TimestampedValue {
+                    value: value.clone(),
+                    timestamp,
+                  },
+                );
+
+                // Add to key pool for future operations
+                if !self.keys.keys.contains(&key) {
+                  self.keys.keys.push(key);
+                }
               },
-            );
-
-            // Add to key pool for future operations
-            if !self.keys.keys.contains(&key) {
-              self.keys.keys.push(key);
+              Err(e) => {
+                // Classify the error (bulk inserts use small int values)
+                let entry_size = Self::estimate_entry_size(&key, &value);
+                match Self::classify_capacity_error(&e, Some(entry_size), self.buffer_size) {
+                  CapacityErrorKind::OversizedEntry => {
+                    log::info!(
+                      "Entry too large (~{entry_size} bytes) during bulk insert at entry {i}, \
+                       stopping bulk insert"
+                    );
+                    break;
+                  },
+                  CapacityErrorKind::BufferFull => {
+                    log::info!(
+                      "Journal full during bulk insert at entry {i}, stopping bulk insert"
+                    );
+                    self.is_full = true;
+                    break;
+                  },
+                  CapacityErrorKind::Other => {
+                    // Unexpected error, propagate
+                    panic!("Unexpected error during bulk insert: {e}");
+                  },
+                }
+              },
             }
           }
         },
@@ -530,28 +765,24 @@ impl VersionedKVJournalFuzzTest {
           };
 
           store = reopened_store;
-
-          // Update our expected state based on what was actually persisted
-          if data_loss != DataLoss::None {
-            self.state.clear();
-            if data_loss == DataLoss::Partial {
-              for (key, value) in store.as_hashmap() {
-                self.state.insert(key.clone(), value.clone());
-              }
-            }
-          }
+          assert_eq!(
+            data_loss,
+            DataLoss::None,
+            "Unexpected data loss on reopen without sync"
+          );
         },
       }
 
-      // Assert consistency after each operation
+      // Verify that if buffer is flagged as full, the state is close to the size of the buffer.
+      self.verify_full_flag();
+
+      // Ensure that the store's state matches our expected state
       assert!(
         compare_maps(store.as_hashmap(), &self.state),
         "State mismatch, {:?} vs {:?}",
         store.as_hashmap(),
         self.state
       );
-
-      // Verify additional state invariants
       assert_eq!(
         store.len(),
         self.state.len(),
@@ -562,8 +793,6 @@ impl VersionedKVJournalFuzzTest {
         self.state.is_empty(),
         "is_empty mismatch after operation"
       );
-
-      // Verify contains_key consistency for all known keys
       for key in &self.keys.keys {
         assert_eq!(
           store.contains_key(key),

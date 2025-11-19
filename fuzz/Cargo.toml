@@ -28,6 +28,7 @@ libfuzzer-sys.workspace     = true
 log.workspace               = true
 tempfile.workspace          = true
 time.workspace              = true
+protobuf.workspace          = true
 tokio.workspace             = true
 anyhow.workspace            = true
 
