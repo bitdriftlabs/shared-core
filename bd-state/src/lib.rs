@@ -253,7 +253,7 @@ struct ReadLockedStoreGuard<'a> {
 
 impl<'a> StateReader for ReadLockedStoreGuard<'_> {
   fn get(&self, scope: Scope, key: &str) -> Option<&str> {
-    let namespaced_key = format!("{}:{}", scope.as_prefix(), key);
+    let namespaced_key = format!("{}{}", scope.as_prefix(), key);
     self
       .guard
       .get(&namespaced_key)

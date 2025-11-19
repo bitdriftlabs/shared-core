@@ -831,7 +831,7 @@ async fn feature_flag_matcher() {
     matches: bool,
   }
 
-  for input in [
+  for (idx, input) in [
     Input {
       flags: vec![("flag1", Some("value1"))],
       matcher: make_string_feature_flag_matcher("flag1", Operator::OPERATOR_EQUALS, "value1"),
@@ -867,7 +867,10 @@ async fn feature_flag_matcher() {
       matcher: make_feature_flag_is_set_matcher("flag2"),
       matches: false,
     },
-  ] {
+  ]
+  .into_iter()
+  .enumerate()
+  {
     let matcher = TestMatcher::new(&input.matcher).unwrap();
 
     let state = bd_state::test::TestStore::new().await;
@@ -882,15 +885,18 @@ async fn feature_flag_matcher() {
         .unwrap();
     }
 
+    let actual = matcher.match_log_with_state(
+      TypedLogLevel::Debug,
+      LogType::NORMAL,
+      "foo",
+      [],
+      &state.lock_for_read().await,
+    );
+
     assert_eq!(
-      input.matches,
-      matcher.match_log_with_state(
-        TypedLogLevel::Debug,
-        LogType::NORMAL,
-        "foo",
-        [],
-        &state.lock_for_read().await,
-      )
+      input.matches, actual,
+      "Test case {} failed: expected {}, got {}",
+      idx, input.matches, actual
     );
   }
 }
