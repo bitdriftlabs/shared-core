@@ -1084,7 +1084,6 @@ version = "1.0.0"
 dependencies = [
  "ahash",
  "anyhow",
- "async-compression",
  "bd-bonjson",
  "bd-client-common",
  "bd-log",
