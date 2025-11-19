@@ -2169,19 +2169,26 @@ name = "fuzz"
 version = "0.0.0"
 dependencies = [
  "ahash",
+ "anyhow",
  "arbitrary",
+ "async-trait",
  "bd-bonjson",
  "bd-buffer",
  "bd-client-common",
  "bd-client-stats-store",
  "bd-log-primitives",
+ "bd-proto",
  "bd-resilient-kv",
  "bd-test-helpers",
+ "bd-time",
  "bd-workspace-hack",
  "ctor",
  "libfuzzer-sys",
  "log",
+ "protobuf 4.0.0-alpha.0",
  "tempfile",
+ "time",
+ "tokio",
 ]
 
 [[package]]

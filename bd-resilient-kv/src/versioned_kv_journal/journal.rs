@@ -226,7 +226,8 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     ))
   }
 
-  /// Scan the journal to find the highest timestamp.
+  /// Scan the journal to find the highest timestamp and apply the provided function to each entry.
+  /// This is used during initialization to reconstruct state and also detects partial data loss.
   fn iterate_buffer(buffer: &[u8], position: usize, mut f: impl FnMut(&M, u64)) -> BufferState {
     let mut cursor = HEADER_SIZE;
     let mut state = BufferState {
@@ -237,16 +238,15 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     while cursor < position {
       let remaining = &buffer[cursor .. position];
 
-      match Frame::<M>::decode(remaining) {
-        Ok((frame, consumed)) => {
-          f(&frame.payload, frame.timestamp_micros);
-          state.highest_timestamp = frame.timestamp_micros;
-          cursor += consumed;
-        },
-        Err(_) => {
-          // Stop on first decode error (partial frame or corruption)
-          break;
-        },
+      if let Ok((frame, consumed)) = Frame::<M>::decode(remaining) {
+        f(&frame.payload, frame.timestamp_micros);
+        state.highest_timestamp = frame.timestamp_micros;
+        cursor += consumed;
+      } else {
+        // Stop on first decode error (partial frame or corruption)
+        log::debug!("Journal decode error at position {cursor}, marking partial data loss");
+        state.partial_data_loss = PartialDataLoss::Yes;
+        break;
       }
     }
 
@@ -286,7 +286,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   ///
   /// The timestamp is monotonically non-decreasing and serves as the version identifier.
   /// If the system clock goes backwards, timestamps are clamped to maintain monotonicity.
-  pub fn insert_entry(&mut self, message: impl protobuf::MessageFull) -> anyhow::Result<u64> {
+  pub fn insert_entry(&mut self, message: M) -> anyhow::Result<u64> {
     let timestamp = self.next_monotonic_timestamp()?;
 
     // Create payload
