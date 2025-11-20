@@ -21,6 +21,7 @@ mod tests;
 pub mod test;
 
 use ahash::AHashMap;
+pub use bd_resilient_kv::Scope;
 use bd_resilient_kv::{DataLoss, StateValue, TimestampedValue, Value_type};
 use bd_time::TimeProvider;
 use itertools::Itertools as _;
@@ -28,14 +29,6 @@ use std::path::Path;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::RwLock;
-
-/// A state scope that determines the namespace used for storing state. This avoids key collisions
-/// but also allows us to handle the state with different semantics.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Scope {
-  FeatureFlag,
-  GlobalState,
-}
 
 //
 // StateReader
@@ -46,17 +39,6 @@ pub enum Scope {
 pub trait StateReader {
   /// Gets a value from the state store.
   fn get(&self, scope: Scope, key: &str) -> Option<&str>;
-}
-
-impl Scope {
-  #[must_use]
-  pub fn as_prefix(&self) -> &'static str {
-    // Use a small prefix since we have to pay for the size.
-    match self {
-      Self::FeatureFlag => "ff:",
-      Self::GlobalState => "g:",
-    }
-  }
 }
 
 //
@@ -126,13 +108,13 @@ impl Store {
   }
 
   pub async fn insert(&self, scope: Scope, key: &str, value: String) -> anyhow::Result<()> {
-    let namespaced_key = format!("{}{key}", scope.as_prefix());
     self
       .inner
       .write()
       .await
       .insert(
-        namespaced_key,
+        scope,
+        key,
         StateValue {
           value_type: Value_type::StringValue(value).into(),
           ..Default::default()
@@ -143,53 +125,44 @@ impl Store {
   }
 
   pub async fn remove(&self, scope: Scope, key: &str) -> anyhow::Result<()> {
-    let namespaced_key = format!("{}{key}", scope.as_prefix());
     self
       .inner
       .write()
       .await
-      .remove(&namespaced_key)
+      .remove(scope, key)
       .await
       .map(|_| ())
   }
 
   pub async fn clear(&self, scope: Scope) -> anyhow::Result<()> {
-    let prefix = scope.as_prefix();
-
     let mut store = self.inner.write().await;
     let keys_to_remove: Vec<String> = store
       .as_hashmap()
       .keys()
-      .filter(|key| key.starts_with(prefix))
-      .cloned()
+      .filter(|(s, _)| *s == scope)
+      .map(|(_, key)| key.clone())
       .collect_vec();
 
     // TODO(snowp): Ideally we should have built in support for batch deletions in the underlying
     // store. This leaves us open for partial deletions if something fails halfway through.
     for key in keys_to_remove {
-      store.remove(&key).await?;
+      store.remove(scope, &key).await?;
     }
     Ok(())
   }
 
   /// Iterates over all key-value pairs in a given scope.
   ///
-  /// Returns an iterator that yields (key, value) tuples where the key has been stripped
-  /// of its scope prefix.
+  /// Returns an iterator that yields (key, value) tuples.
   pub async fn iter_scope(&self, scope: Scope) -> impl IntoIterator<Item = (String, String)> {
-    let prefix = scope.as_prefix();
-    let prefix_len = prefix.len();
-
     self
       .inner
       .read()
       .await
       .as_hashmap()
       .iter()
-      .filter(move |(key, _)| key.starts_with(prefix))
-      .filter_map(move |(key, timestamped_value)| {
-        let stripped_key = &key[prefix_len ..];
-
+      .filter(move |((s, _), _)| *s == scope)
+      .filter_map(move |((_, key), timestamped_value)| {
         let value = timestamped_value
           .value
           .has_string_value()
@@ -197,7 +170,7 @@ impl Store {
 
         // TODO(snowp): With the way we are doing the locking etc we cannot return references
         // whcih seems suboptimal. Consider changing the API to take a closure to avoid allocations.
-        Some((stripped_key.to_string(), value.to_string()))
+        Some((key.clone(), value.to_string()))
       })
       .collect_vec()
   }
@@ -213,16 +186,17 @@ impl Store {
     scope: Scope,
   ) -> AHashMap<String, (String, OffsetDateTime)> {
     let mut scoped_snapshot = AHashMap::new();
-    let prefix = scope.as_prefix();
 
-    for (key, timestamped_value) in self.inner.read().await.as_hashmap() {
+    for ((s, key), timestamped_value) in self.inner.read().await.as_hashmap() {
+      if *s != scope {
+        continue;
+      }
+
       let Some((value, timestamp)) = Self::to_string_and_timestamp(timestamped_value) else {
         continue;
       };
 
-      if let Some(stripped_key) = key.strip_prefix(prefix) {
-        scoped_snapshot.insert(stripped_key.to_string(), (value.clone(), timestamp));
-      }
+      scoped_snapshot.insert(key.clone(), (value.clone(), timestamp));
     }
 
     scoped_snapshot
@@ -252,15 +226,18 @@ impl Store {
     let mut global_state = AHashMap::new();
 
     // TODO(snowp): Move the snapshot capture to the ctor so we don't have to lock.
-    for (key, timestamped_value) in self.inner.read().await.as_hashmap() {
+    for ((scope, key), timestamped_value) in self.inner.read().await.as_hashmap() {
       let Some((value, timestamp)) = Self::to_string_and_timestamp(timestamped_value) else {
         continue;
       };
 
-      if let Some(stripped_key) = key.strip_prefix(Scope::FeatureFlag.as_prefix()) {
-        feature_flags.insert(stripped_key.to_string(), (value.clone(), timestamp));
-      } else if let Some(stripped_key) = key.strip_prefix(Scope::GlobalState.as_prefix()) {
-        global_state.insert(stripped_key.to_string(), (value.clone(), timestamp));
+      match scope {
+        Scope::FeatureFlag => {
+          feature_flags.insert(key.clone(), (value.clone(), timestamp));
+        },
+        Scope::GlobalState => {
+          global_state.insert(key.clone(), (value.clone(), timestamp));
+        },
       }
     }
 
@@ -277,10 +254,9 @@ struct ReadLockedStoreGuard<'a> {
 
 impl StateReader for ReadLockedStoreGuard<'_> {
   fn get(&self, scope: Scope, key: &str) -> Option<&str> {
-    let namespaced_key = format!("{}{}", scope.as_prefix(), key);
     self
       .guard
-      .get(&namespaced_key)
+      .get(scope, key)
       .and_then(|v| v.has_string_value().then(|| v.string_value()))
   }
 }

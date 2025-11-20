@@ -28,4 +28,5 @@ flate2                      = { workspace = true, features = ["zlib"] }
 log.workspace               = true
 memmap2.workspace           = true
 protobuf.workspace          = true
+strum.workspace             = true
 tokio.workspace             = true

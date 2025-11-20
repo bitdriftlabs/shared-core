@@ -9,7 +9,7 @@ use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
 use bd_proto::protos::state::payload::state_value::Value_type;
 use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
-use bd_resilient_kv::{DataLoss, TimestampedValue, VersionedKVStore};
+use bd_resilient_kv::{DataLoss, Scope, TimestampedValue, VersionedKVStore};
 use bd_time::{TestTimeProvider, TimeProvider as _};
 use protobuf::MessageDyn;
 use std::sync::Arc;
@@ -17,6 +17,21 @@ use tempfile::TempDir;
 use time::macros::datetime;
 
 const JOURNAL_NAME: &str = "fuzz_journal";
+
+// Wrapper for Scope to implement Arbitrary
+#[derive(Debug, Clone, Copy)]
+struct ArbitraryScope(Scope);
+
+impl<'a> Arbitrary<'a> for ArbitraryScope {
+  fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+    let variant: u8 = u.arbitrary()?;
+    Ok(Self(match variant % 2 {
+      0 => Scope::FeatureFlag,
+      1 => Scope::GlobalState,
+      _ => unreachable!(),
+    }))
+  }
+}
 
 // Wrapper for StateValue to implement Arbitrary
 #[derive(Debug, Clone)]
@@ -122,8 +137,8 @@ impl<'a> Arbitrary<'a> for ArbitraryStateValue {
 enum KeyStrategy {
   // Use an existing key from the key pool (by index)
   Existing(u8),
-  // Generate a new key
-  New(String),
+  // Generate a new key with a scope
+  New(ArbitraryScope, String),
 }
 
 // Types of corruption to apply to journal files
@@ -168,6 +183,7 @@ enum OperationType {
   // Insert multiple entries to stress buffer
   BulkInsert {
     count: u8, // 1-256 entries
+    scope: ArbitraryScope,
     key_prefix: String,
   },
   // Reopen without syncing first (test dirty state handling)
@@ -176,18 +192,18 @@ enum OperationType {
 
 /// Tracks keys created during the test to allow reuse between INSERT/GET/REMOVE operations.
 struct KeyPool {
-  keys: Vec<String>,
+  keys: Vec<(Scope, String)>,
 }
 
 impl KeyPool {
   /// Selects a key for writing based on the provided strategy. This either resuses an existing key
   /// or generates a new one, updating the key pool accordingly.
-  fn key_for_write(&mut self, strategy: &KeyStrategy) -> String {
+  fn key_for_write(&mut self, strategy: &KeyStrategy) -> (Scope, String) {
     match strategy {
       KeyStrategy::Existing(index) => {
         if self.keys.is_empty() {
           // No existing keys, create a new one.
-          let new_key = format!("key_{}", self.keys.len());
+          let new_key = (Scope::FeatureFlag, format!("key_{}", self.keys.len()));
           self.keys.push(new_key.clone());
           new_key
         } else {
@@ -196,8 +212,8 @@ impl KeyPool {
           self.keys[idx].clone()
         }
       },
-      KeyStrategy::New(key) => {
-        let new_key = format!("{}_{:x}", key, self.keys.len());
+      KeyStrategy::New(scope, key) => {
+        let new_key = (scope.0, format!("{}_{:x}", key, self.keys.len()));
         self.keys.push(new_key.clone());
         new_key
       },
@@ -206,22 +222,22 @@ impl KeyPool {
 
   /// Selects a key for reading based on the provided strategy. This either resuses an existing key
   /// or generates a new one without updating the key pool.
-  fn key_for_read(&self, strategy: &KeyStrategy) -> String {
+  fn key_for_read(&self, strategy: &KeyStrategy) -> (Scope, String) {
     match strategy {
       KeyStrategy::Existing(index) => {
         if self.keys.is_empty() {
           // No existing keys, create a new one. At this point we have not inserted any keys yet so
           // // we can just create a new key.
-          format!("key_{}", self.keys.len())
+          (Scope::FeatureFlag, format!("key_{}", self.keys.len()))
         } else {
           // Use modulo to wrap index into valid range
           let idx = (*index as usize) % self.keys.len();
           self.keys[idx].clone()
         }
       },
-      KeyStrategy::New(key) => {
+      KeyStrategy::New(scope, key) => {
         // Generate a new key that hasn't been used before.
-        format!("{}_{:x}", key, self.keys.len())
+        (scope.0, format!("{}_{:x}", key, self.keys.len()))
       },
     }
   }
@@ -250,7 +266,7 @@ pub struct VersionedKVJournalFuzzTest {
   high_water_mark_ratio: Option<f32>,
   temp_dir: TempDir,
   time_provider: Arc<TestTimeProvider>,
-  state: AHashMap<String, TimestampedValue>,
+  state: AHashMap<(Scope, String), TimestampedValue>,
   keys: KeyPool,
   /// Track whether the journal is full (capacity exceeded)
   is_full: bool,

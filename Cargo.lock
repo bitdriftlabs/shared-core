@@ -1097,6 +1097,7 @@ dependencies = [
  "log",
  "memmap2",
  "protobuf 4.0.0-alpha.0",
+ "strum",
  "tempfile",
  "time",
  "tokio",

@@ -5,10 +5,11 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::Scope;
 use crate::versioned_kv_journal::TimestampedValue;
 use crate::versioned_kv_journal::framing::Frame;
 use ahash::AHashMap;
-use bd_proto::protos::state::payload::StateKeyValuePair;
+use bd_proto::protos::state::payload::StateValue;
 
 /// A utility for recovering state at arbitrary timestamps from journal snapshots.
 ///
@@ -98,7 +99,7 @@ impl VersionedRecovery {
   pub fn recover_at_timestamp(
     &self,
     target_timestamp: u64,
-  ) -> anyhow::Result<AHashMap<String, TimestampedValue>> {
+  ) -> anyhow::Result<AHashMap<(Scope, String), TimestampedValue>> {
     let mut map = AHashMap::new();
 
     // Replay snapshots up to and including the snapshot that was created at or after
@@ -125,7 +126,7 @@ impl VersionedRecovery {
   /// # Errors
   ///
   /// Returns an error if snapshot data is corrupted or invalid.
-  pub fn recover_current(&self) -> anyhow::Result<AHashMap<String, TimestampedValue>> {
+  pub fn recover_current(&self) -> anyhow::Result<AHashMap<(Scope, String), TimestampedValue>> {
     let mut map = AHashMap::new();
 
     // Optimization: Only read the last snapshot since rotation writes the complete
@@ -151,7 +152,7 @@ impl VersionedRecovery {
 fn replay_journal_to_timestamp(
   buffer: &[u8],
   target_timestamp: u64,
-  map: &mut AHashMap<String, TimestampedValue>,
+  map: &mut AHashMap<(Scope, String), TimestampedValue>,
 ) -> anyhow::Result<()> {
   // Skip the header (17 bytes: version + position + reserved)
   const HEADER_SIZE: usize = 17;
@@ -183,25 +184,25 @@ fn replay_journal_to_timestamp(
   let data = &buffer[HEADER_SIZE .. position];
 
   while offset < data.len() {
-    match Frame::<StateKeyValuePair>::decode(&data[offset ..]) {
+    match Frame::<StateValue>::decode(&data[offset ..]) {
       Ok((frame, bytes_read)) => {
         // Only apply entries up to target timestamp
         if frame.timestamp_micros > target_timestamp {
           break;
         }
 
-        if let Some(value) = frame.payload.value.into_option() {
-          // Insertion - store the protobuf StateValue
+        if frame.payload.value_type.is_none() {
+          // Deletion (StateValue with no value_type set)
+          map.remove(&(frame.scope, frame.key.to_string()));
+        } else {
+          // Insertion - store the protobuf StateValue with (scope, key) tuple
           map.insert(
-            frame.payload.key,
+            (frame.scope, frame.key.to_string()),
             TimestampedValue {
-              value,
+              value: frame.payload,
               timestamp: frame.timestamp_micros,
             },
           );
-        } else {
-          // Deletion
-          map.remove(&frame.payload.key);
         }
 
         offset += bytes_read;
