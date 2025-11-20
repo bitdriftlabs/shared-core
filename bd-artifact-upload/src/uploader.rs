@@ -72,6 +72,21 @@ impl SnappedFeatureFlag {
       last_updated,
     }
   }
+
+  #[must_use]
+  pub fn name(&self) -> &str {
+    &self.name
+  }
+
+  #[must_use]
+  pub fn variant(&self) -> Option<&str> {
+    self.variant.as_deref()
+  }
+
+  #[must_use]
+  pub fn last_updated(&self) -> OffsetDateTime {
+    self.last_updated
+  }
 }
 
 //

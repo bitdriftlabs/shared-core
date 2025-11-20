@@ -918,11 +918,20 @@ pub mod global_state {
   use time::ext::NumericalDuration as _;
 
   // Controls the time window within which multiple updates to the global state are coalesced into a
-  // single write. The first write happens immediately, and subsequent writes within the coalesce
-  // window are delayed until the window has passed.
+  // single write. The first write happens immediately, and subsequent writes within the window are delayed until the window has passed.
   duration_feature_flag!(
     CoalesceWindow,
     "global_state.coalesce_window_ms",
     1.seconds()
+  );
+
+  // Controls whether the state store uses persistent storage or operates purely in-memory.
+  // When set to false, the state store operates in-memory only and does not persist
+  // feature flags or global state to disk. When set to true (default), the state store will
+  // attempt to use persistent storage, falling back to in-memory if initialization fails.
+  bool_feature_flag!(
+    UsePersistentStorage,
+    "global_state.use_persistent_storage",
+    true
   );
 }

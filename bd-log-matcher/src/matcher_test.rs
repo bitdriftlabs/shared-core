@@ -9,7 +9,6 @@ use crate::builder;
 use crate::matcher::Tree;
 use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
 use crate::test::TestMatcher;
-use bd_feature_flags::test::TestFeatureFlags;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{
   EMPTY_FIELDS,
@@ -24,6 +23,7 @@ use bd_log_primitives::{
 use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::feature_flag_match;
 use bd_proto::protos::log_matcher::log_matcher::{LogMatcher, log_matcher};
 use bd_proto::protos::logging::payload::LogType;
+use bd_state::StateReader;
 use log_matcher::base_log_matcher::Match_type::{MessageMatch, TagMatch};
 use log_matcher::base_log_matcher::Operator;
 use log_matcher::base_log_matcher::double_value_match::Double_value_match_type;
@@ -229,6 +229,7 @@ fn test_extracted_string_matcher() {
       (log_msg("no fields"), false),
     ],
     &TinyMap::default(),
+    &bd_state::test::TestStateReader::new(),
   );
 
   match_test_runner_with_extractions(
@@ -239,6 +240,7 @@ fn test_extracted_string_matcher() {
       (log_msg("no fields"), false),
     ],
     &[("id1".to_string(), "exact".to_string())].into(),
+    &bd_state::test::TestStateReader::new(),
   );
 }
 
@@ -290,6 +292,7 @@ fn test_extracted_double_matcher() {
       (log_tag("key", "13"), false),
     ],
     &TinyMap::default(),
+    &bd_state::test::TestStateReader::new(),
   );
   match_test_runner_with_extractions(
     config.clone(),
@@ -298,11 +301,13 @@ fn test_extracted_double_matcher() {
       (log_tag("key", "13"), false),
     ],
     &[("id1".to_string(), "bad".to_string())].into(),
+    &bd_state::test::TestStateReader::new(),
   );
   match_test_runner_with_extractions(
     config,
     vec![(log_tag("key", "13.0"), true), (log_tag("key", "13"), true)],
     &[("id1".to_string(), "13".to_string())].into(),
+    &bd_state::test::TestStateReader::new(),
   );
 }
 
@@ -400,12 +405,14 @@ fn test_extracted_int_matcher() {
       (log_tag("key", "13.0"), false),
     ],
     &TinyMap::default(),
+    &bd_state::test::TestStateReader::new(),
   );
 
   match_test_runner_with_extractions(
     config,
     vec![(log_tag("key", "13"), true), (log_tag("key", "13.0"), true)],
     &[("id1".to_string(), "13".to_string())].into(),
+    &bd_state::test::TestStateReader::new(),
   );
 }
 
@@ -824,7 +831,7 @@ fn feature_flag_matcher() {
     matches: bool,
   }
 
-  for input in [
+  for (idx, input) in [
     Input {
       flags: vec![("flag1", Some("value1"))],
       matcher: make_string_feature_flag_matcher("flag1", Operator::OPERATOR_EQUALS, "value1"),
@@ -860,29 +867,28 @@ fn feature_flag_matcher() {
       matcher: make_feature_flag_is_set_matcher("flag2"),
       matches: false,
     },
-  ] {
+  ]
+  .into_iter()
+  .enumerate()
+  {
     let matcher = TestMatcher::new(&input.matcher).unwrap();
 
-    let mut feature_flags = TestFeatureFlags::default();
-    feature_flags
-      .set_multiple(
-        input
-          .flags
-          .into_iter()
-          .map(|(k, v)| (k.to_string(), v))
-          .collect(),
-      )
-      .unwrap();
+    let mut state = bd_state::test::TestStateReader::default();
+    for (key, value) in input.flags {
+      state.insert(
+        bd_state::Scope::FeatureFlag,
+        key,
+        value.unwrap_or("").to_string(),
+      );
+    }
+
+    let actual =
+      matcher.match_log_with_state(TypedLogLevel::Debug, LogType::NORMAL, "foo", [], &state);
 
     assert_eq!(
-      input.matches,
-      matcher.match_log_with_feature_flags(
-        TypedLogLevel::Debug,
-        LogType::NORMAL,
-        "foo",
-        [],
-        &feature_flags,
-      )
+      input.matches, actual,
+      "Test case {} failed: expected {}, got {}",
+      idx, input.matches, actual
     );
   }
 }
@@ -946,7 +952,8 @@ fn make_feature_flag_is_set_matcher(flag_name: &str) -> LogMatcher {
 
 #[allow(clippy::needless_pass_by_value)]
 fn match_test_runner(config: LogMatcher, cases: Vec<(Input<'_>, bool)>) {
-  match_test_runner_with_extractions(config, cases, &TinyMap::default());
+  let state = bd_state::test::TestStateReader::new();
+  match_test_runner_with_extractions(config, cases, &TinyMap::default(), &state);
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -954,6 +961,7 @@ fn match_test_runner_with_extractions(
   config: LogMatcher,
   cases: Vec<(Input<'_>, bool)>,
   extracted_fields: &TinyMap<String, String>,
+  state: &dyn StateReader,
 ) {
   let match_tree = Tree::new(&config).unwrap();
 
@@ -969,7 +977,7 @@ fn match_test_runner_with_extractions(
         log_type,
         &message,
         fields,
-        None,
+        state,
         extracted_fields
       ),
       "{input:?} should result in {should_match} but did not",

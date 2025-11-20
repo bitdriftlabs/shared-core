@@ -843,16 +843,13 @@ impl TagValue {
     &self,
     fields: FieldsRef<'a>,
     message: &'a LogMessage,
-    feature_flags: Option<&'a bd_feature_flags::FeatureFlags>,
+    state_reader: &'a dyn bd_state::StateReader,
   ) -> Option<Cow<'a, str>> {
     match self {
       Self::FieldExtract(field_key) => fields.field_value(field_key),
-      Self::FeatureFlagExtract(flag_key) => feature_flags.and_then(|feature_flags| {
-        feature_flags
-          .get(flag_key)
-          .and_then(|flag| flag.variant)
-          .map(Cow::Borrowed)
-      }),
+      Self::FeatureFlagExtract(flag_key) => state_reader
+        .get(bd_state::Scope::FeatureFlag, flag_key)
+        .map(Cow::Borrowed),
       Self::Fixed(value) => Some(Cow::Owned(value.clone())),
       Self::LogBodyExtract => message.as_str().map(Cow::Borrowed),
     }

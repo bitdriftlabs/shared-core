@@ -264,7 +264,7 @@ impl AnnotatedWorkflowsEngine {
         capture_session: None,
       },
       &self.log_destination_buffer_ids,
-      None,
+      &bd_state::test::TestStateReader::default(),
       log.now,
     )
   }
@@ -1624,7 +1624,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
       capture_session: None,
     },
     &TinySet::default(),
-    None,
+    &bd_state::test::TestStateReader::default(),
     OffsetDateTime::now_utc(),
   );
 

@@ -90,7 +90,7 @@ impl AnnotatedWorkflow {
         matching_fields: LogFields::new(),
         capture_session: None,
       },
-      None,
+      &bd_state::test::TestStateReader::default(),
       log.now,
     )
   }

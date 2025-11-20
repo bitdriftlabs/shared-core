@@ -186,9 +186,9 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "axum"
-version = "0.8.6"
+version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a18ed336352031311f4e0b4dd2ff392d4fbb370777c9d18d7fc9d7359f73871"
+checksum = "5b098575ebe77cb6d14fc7f32749631a6e44edbef6b796f89b020e99ba20d425"
 dependencies = [
  "axum-core",
  "axum-macros",
@@ -576,6 +576,7 @@ dependencies = [
  "bd-runtime",
  "bd-session",
  "bd-shutdown",
+ "bd-state",
  "bd-test-helpers",
  "bd-time",
  "bd-workspace-hack",
@@ -656,6 +657,7 @@ dependencies = [
  "bd-bonjson",
  "bd-client-common",
  "bd-resilient-kv",
+ "bd-state",
  "bd-workspace-hack",
  "log",
  "tempfile",
@@ -808,10 +810,10 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "bd-client-stats-store",
- "bd-feature-flags",
  "bd-log-matcher",
  "bd-log-primitives",
  "bd-proto",
+ "bd-state",
  "bd-test-helpers",
  "bd-time",
  "bd-workspace-hack",
@@ -829,9 +831,9 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "assert_matches",
- "bd-feature-flags",
  "bd-log-primitives",
  "bd-proto",
+ "bd-state",
  "bd-test-helpers",
  "bd-workspace-hack",
  "itertools 0.14.0",
@@ -841,6 +843,7 @@ dependencies = [
  "regex",
  "tempfile",
  "time",
+ "tokio",
 ]
 
 [[package]]
@@ -875,6 +878,7 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "backoff",
+ "base64",
  "bd-api",
  "bd-artifact-upload",
  "bd-bounded-buffer",
@@ -904,6 +908,7 @@ dependencies = [
  "bd-session",
  "bd-session-replay",
  "bd-shutdown",
+ "bd-state",
  "bd-stats-common",
  "bd-test-helpers",
  "bd-time",
@@ -1247,6 +1252,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-state"
+version = "1.0.0"
+dependencies = [
+ "ahash",
+ "anyhow",
+ "async-trait",
+ "bd-bonjson",
+ "bd-client-common",
+ "bd-resilient-kv",
+ "bd-time",
+ "bd-workspace-hack",
+ "itertools 0.14.0",
+ "log",
+ "tempfile",
+ "time",
+ "tokio",
+]
+
+[[package]]
 name = "bd-stats-common"
 version = "1.0.0"
 dependencies = [
@@ -1336,6 +1360,7 @@ dependencies = [
  "bd-proto",
  "bd-runtime",
  "bd-shutdown",
+ "bd-state",
  "bd-stats-common",
  "bd-test-helpers",
  "bd-time",
@@ -1487,9 +1512,9 @@ checksum = "46c5e41b57b8bba42a04676d81cb89e9ee8e859a1a66f80a5a72e1cb76b34d43"
 
 [[package]]
 name = "bytes"
-version = "1.10.1"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
+checksum = "b35204fbdc0b3f4446b89fc1ac2cf84a8a68971995d0bf2e925ec7cd960f9cb3"
 
 [[package]]
 name = "cbindgen"
@@ -1512,9 +1537,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.45"
+version = "1.2.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35900b6c8d709fb1d854671ae27aeaa9eec2f8b01b364e1619a40da3e6fe2afe"
+checksum = "b97463e1064cb1b1c1384ad0a0b9c8abd0988e2a91f52606c80ef14aadb63e36"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -1564,9 +1589,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.51"
+version = "4.5.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c26d721170e0295f191a69bd9a1f93efcdb0aff38684b61ab5750468972e5f5"
+checksum = "aa8120877db0e5c011242f96806ce3c94e0737ab8108532a76a3300a01db2ab8"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -1574,9 +1599,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.51"
+version = "4.5.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75835f0c7bf681bfd05abe44e965760fea999a5286c6eb2d59883634fd02011a"
+checksum = "02576b399397b659c26064fbc92a75fede9d18ffd5f80ca1cd74ddab167016e1"
 dependencies = [
  "anstream",
  "anstyle",
@@ -1954,9 +1979,9 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52051878f80a721bb68ebfbc930e07b65ba72f2da88968ea5c06fd6ca3d3a127"
+checksum = "3a3076410a55c90011c298b04d0cfa770b00fa04e1e3c97d3f6c9de105a03844"
 
 [[package]]
 name = "flatbuffers"
@@ -4115,6 +4140,7 @@ dependencies = [
  "bd-proto",
  "bd-runtime",
  "bd-shutdown",
+ "bd-state",
  "bd-stats-common",
  "bd-test-helpers",
  "bd-time",

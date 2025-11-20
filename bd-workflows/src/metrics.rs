@@ -36,13 +36,13 @@ impl MetricsCollector {
     &self,
     actions: &BTreeSet<&ActionEmitMetric>,
     log: &Log,
-    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
+    state_reader: &dyn bd_state::StateReader,
   ) {
     // TODO(Augustyniak): We dedupe stats in here too only when both their tags and the value of
     // If `counter_increment` values are identical, consider deduping metrics even if their
     // `counter_increment` fields have different values.
     for action in actions {
-      let tags = Self::extract_tags(log, feature_flags, &action.tags);
+      let tags = Self::extract_tags(log, state_reader, &action.tags);
 
       #[allow(clippy::cast_precision_loss)]
       let maybe_value: anyhow::Result<f64> = match &action.increment {
@@ -83,10 +83,10 @@ impl MetricsCollector {
     &self,
     actions: &BTreeSet<TriggeredActionEmitSankey<'_>>,
     log: &Log,
-    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
+    state_reader: &dyn bd_state::StateReader,
   ) {
     for action in actions {
-      let mut tags = Self::extract_tags(log, feature_flags, action.action.tags());
+      let mut tags = Self::extract_tags(log, state_reader, action.action.tags());
       tags.insert("_path_id".to_string(), action.path.path_id.clone());
 
       self
@@ -105,17 +105,16 @@ impl MetricsCollector {
 
   fn resolve_feature_flag_value<'a>(
     key: &str,
-    feature_flags: Option<&'a bd_feature_flags::FeatureFlags>,
+    state_reader: &'a dyn bd_state::StateReader,
   ) -> Option<Cow<'a, str>> {
-    feature_flags?
-      .get(key)
-      .and_then(|flag| flag.variant)
+    state_reader
+      .get(bd_state::Scope::FeatureFlag, key)
       .map(Cow::Borrowed)
   }
 
   fn extract_tags(
     log: &Log,
-    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
+    state_reader: &dyn bd_state::StateReader,
     tags: &BTreeMap<String, TagValue>,
   ) -> BTreeMap<String, String> {
     let mut extracted_tags = BTreeMap::new();
@@ -124,7 +123,7 @@ impl MetricsCollector {
       if let Some(extracted_value) = match value {
         crate::config::TagValue::FieldExtract(extract) => Self::resolve_field_name(extract, log),
         crate::config::TagValue::FeatureFlagExtract(extract) => {
-          Self::resolve_feature_flag_value(extract, feature_flags)
+          Self::resolve_feature_flag_value(extract, state_reader)
         },
         crate::config::TagValue::Fixed(value) => Some(value.as_str().into()),
         crate::config::TagValue::LogBodyExtract => log.message.as_str().map(Cow::Borrowed),

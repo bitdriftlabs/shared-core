@@ -275,6 +275,44 @@ impl LoggerBuilder {
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
       init_lifecycle.set(bd_client_common::init_lifecycle::InitLifecycle::RuntimeLoaded);
+
+      // Load the previous state snapshot into memory-mapped storage for crash reporting.
+      // This loads the state from disk without maintaining an open file handle.
+      let state_directory = self.params.sdk_directory.join("state");
+      std::fs::create_dir_all(&state_directory)?;
+
+      // Check if persistent storage is enabled via runtime flag
+      let use_persistent_storage =
+        *bd_runtime::runtime::global_state::UsePersistentStorage::register(&runtime_loader)
+          .into_inner()
+          .borrow();
+
+      let (state_store, _data_loss, previous_run_state, used_fallback) = if use_persistent_storage
+      {
+        // Attempt persistent storage with fallback to in-memory
+        bd_state::Store::new_or_fallback(&state_directory, time_provider.clone()).await
+      } else {
+        // Use in-memory only
+        (
+          bd_state::Store::new_in_memory(),
+          None,
+          bd_state::StateSnapshot {
+            feature_flags: Default::default(),
+            global_state: Default::default(),
+          },
+          false,
+        )
+      };
+
+      if used_fallback {
+        handle_unexpected(
+          Err::<(), anyhow::Error>(anyhow::anyhow!(
+            "Failed to initialize persistent state store, using in-memory fallback"
+          )),
+          "state initialization",
+        );
+      }
+
       feature_flags_builder.backup_previous();
 
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
@@ -292,8 +330,9 @@ impl LoggerBuilder {
         Arc::new(artifact_client),
         self.params.session_strategy.clone(),
         &init_lifecycle,
-        feature_flags_builder,
-        move |log| {
+        state_store.clone(),
+        previous_run_state,
+        move |log: bd_crash_handler::CrashLog| {
           AsyncLogBuffer::<LoggerReplay>::enqueue_log(
             &async_log_buffer_communication_tx,
             log.log_level,
@@ -369,7 +408,7 @@ impl LoggerBuilder {
         async move { buffer_uploader.run().await },
         async move { config_writer.run().await },
         async move {
-          async_log_buffer.run(crash_monitor).await;
+          async_log_buffer.run(state_store, crash_monitor).await;
           Ok(())
         },
         async move { buffer_manager.process_flushes(flush_buffers_rx).await },
