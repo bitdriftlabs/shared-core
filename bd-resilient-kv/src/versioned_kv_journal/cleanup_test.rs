@@ -28,7 +28,7 @@ async fn cleanup_deletes_old_snapshots() {
   create_test_snapshot(temp_dir.path(), "test", 2, 3000).await;
 
   // Create a handle that requires data from timestamp 2500 forward
-  let handle = registry.create_handle("test_handle").await;
+  let handle = registry.create_handle().await;
   handle.update_retention_micros(2500);
 
   // Verify files exist before cleanup
@@ -78,7 +78,7 @@ async fn cleanup_only_deletes_matching_journal_name() {
   create_test_snapshot(temp_dir.path(), "journal1", 0, 1000).await;
   create_test_snapshot(temp_dir.path(), "journal2", 0, 1000).await;
 
-  let handle = registry.create_handle("test").await;
+  let handle = registry.create_handle().await;
   handle.update_retention_micros(2000); // Delete anything older than 2000
 
   // Run cleanup for journal1 only
@@ -100,7 +100,7 @@ async fn cleanup_handles_missing_directory_gracefully() {
   let nonexistent = temp_dir.path().join("nonexistent");
 
   // Create a handle so cleanup actually tries to run
-  let _handle = registry.create_handle("test").await;
+  let _handle = registry.create_handle().await;
 
   // Should error when trying to read a nonexistent directory
   let result = cleanup_old_snapshots(&nonexistent, "test", &registry).await;
@@ -117,7 +117,7 @@ async fn cleanup_respects_zero_retention() {
   create_test_snapshot(temp_dir.path(), "test", 1, 2000).await;
 
   // Create handle with retention timestamp 0 (retain all)
-  let handle = registry.create_handle("test").await;
+  let handle = registry.create_handle().await;
   handle.update_retention_micros(0);
 
   let result = cleanup_old_snapshots(temp_dir.path(), "test", &registry).await;

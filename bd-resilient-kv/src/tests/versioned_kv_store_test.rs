@@ -431,7 +431,7 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
 
   // Now create a handle that requires retention - use a timestamp far in the past
   // so that any rotation will be newer than the retention requirement
-  let handle = registry.create_handle("test_subsystem").await;
+  let handle = registry.create_handle().await;
   handle.update_retention_micros(0); // Retain all data from epoch
 
   // Insert more data and rotate WITH retention handle - snapshot SHOULD be created

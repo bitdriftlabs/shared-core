@@ -27,9 +27,6 @@ pub struct RetentionHandle {
   ///
   /// Stored as microseconds since epoch to match the journal timestamp format.
   retain_from: Arc<AtomicU64>,
-
-  /// Human-readable name for debugging/logging
-  name: String,
 }
 
 impl RetentionHandle {
@@ -45,20 +42,6 @@ impl RetentionHandle {
   #[must_use]
   pub fn get_retention(&self) -> u64 {
     self.retain_from.load(Ordering::Relaxed)
-  }
-
-  /// Human-readable name for this handle.
-  #[must_use]
-  pub fn name(&self) -> &str {
-    &self.name
-  }
-}
-
-impl Drop for RetentionHandle {
-  fn drop(&mut self) {
-    // When the handle is dropped, we don't need to do anything special.
-    // The Arc<AtomicU64> will be dropped when all RetentionHandles referencing it are dropped,
-    // and the registry will clean up the weak reference automatically.
   }
 }
 
@@ -84,11 +67,11 @@ impl RetentionRegistry {
     }
   }
 
-  /// Creates a new retention handle with the given name.
+  /// Creates a new retention handle.
   ///
   /// The handle starts with a retention timestamp of 0 (epoch), meaning it initially
   /// requires all historical data to be retained.
-  pub async fn create_handle(&self, name: impl Into<String>) -> RetentionHandle {
+  pub async fn create_handle(&self) -> RetentionHandle {
     let retain_from = Arc::new(AtomicU64::new(0)); // Start with "retain everything"
 
     // Store weak reference to the Arc<AtomicU64> so dropped handles are automatically cleaned up
@@ -98,10 +81,7 @@ impl RetentionRegistry {
       .await
       .push(Arc::downgrade(&retain_from));
 
-    RetentionHandle {
-      retain_from,
-      name: name.into(),
-    }
+    RetentionHandle { retain_from }
   }
 
   /// Computes the minimum retention timestamp across all registered handles.

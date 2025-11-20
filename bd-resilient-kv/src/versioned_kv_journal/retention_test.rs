@@ -15,20 +15,19 @@ use std::sync::Arc;
 #[tokio::test]
 async fn handle_starts_with_retain_all() {
   let registry = Arc::new(RetentionRegistry::new());
-  let handle = registry.create_handle("test").await;
+  let handle = registry.create_handle().await;
 
   assert_eq!(
     handle.get_retention(),
     0,
     "Handle should start with timestamp 0 (retain all)"
   );
-  assert_eq!(handle.name(), "test");
 }
 
 #[tokio::test]
 async fn handle_can_update_retention() {
   let registry = Arc::new(RetentionRegistry::new());
-  let handle = registry.create_handle("test").await;
+  let handle = registry.create_handle().await;
 
   let timestamp_micros = 1_000_000_u64; // 1 second since epoch
   handle.update_retention_micros(timestamp_micros);
@@ -51,9 +50,9 @@ async fn registry_returns_none_when_no_handles() {
 async fn registry_returns_minimum_across_handles() {
   let registry = Arc::new(RetentionRegistry::new());
 
-  let handle1 = registry.create_handle("handle1").await;
-  let handle2 = registry.create_handle("handle2").await;
-  let handle3 = registry.create_handle("handle3").await;
+  let handle1 = registry.create_handle().await;
+  let handle2 = registry.create_handle().await;
+  let handle3 = registry.create_handle().await;
 
   // Set different retention timestamps
   let ts1 = 1_000_000_u64;
@@ -77,8 +76,8 @@ async fn registry_returns_minimum_across_handles() {
 async fn registry_handles_zero_retention() {
   let registry = Arc::new(RetentionRegistry::new());
 
-  let _handle1 = registry.create_handle("handle1").await;
-  let handle2 = registry.create_handle("handle2").await;
+  let _handle1 = registry.create_handle().await;
+  let handle2 = registry.create_handle().await;
 
   // handle1 wants all data (timestamp 0), handle2 wants recent data
   let ts2 = 2_000_000_u64;
@@ -97,7 +96,7 @@ async fn handle_releases_on_drop() {
   let registry = Arc::new(RetentionRegistry::new());
 
   {
-    let handle = registry.create_handle("temporary").await;
+    let handle = registry.create_handle().await;
     let ts = 1_000_000_u64;
     handle.update_retention_micros(ts);
 
@@ -122,8 +121,8 @@ async fn handle_releases_on_drop() {
 async fn registry_cleans_up_weak_references() {
   let registry = Arc::new(RetentionRegistry::new());
 
-  let handle1 = registry.create_handle("handle1").await;
-  let handle2 = registry.create_handle("handle2").await;
+  let handle1 = registry.create_handle().await;
+  let handle2 = registry.create_handle().await;
 
   let ts1 = 1_000_000_u64;
   let ts2 = 2_000_000_u64;
@@ -147,8 +146,8 @@ async fn registry_cleans_up_weak_references() {
 async fn debug_info_shows_all_handles() {
   let registry = Arc::new(RetentionRegistry::new());
 
-  let handle1 = registry.create_handle("crash_reporter").await;
-  let handle2 = registry.create_handle("metrics").await;
+  let handle1 = registry.create_handle().await;
+  let handle2 = registry.create_handle().await;
 
   let ts1 = 1_000_000_u64;
   let ts2 = 2_000_000_u64;
@@ -164,7 +163,7 @@ async fn debug_info_shows_all_handles() {
 #[tokio::test]
 async fn handle_can_be_cloned() {
   let registry = Arc::new(RetentionRegistry::new());
-  let handle1 = registry.create_handle("test").await;
+  let handle1 = registry.create_handle().await;
 
   let handle2 = handle1.clone();
 
@@ -183,8 +182,8 @@ async fn multiple_registries_are_independent() {
   let registry1 = Arc::new(RetentionRegistry::new());
   let registry2 = Arc::new(RetentionRegistry::new());
 
-  let handle1 = registry1.create_handle("registry1_handle").await;
-  let handle2 = registry2.create_handle("registry2_handle").await;
+  let handle1 = registry1.create_handle().await;
+  let handle2 = registry2.create_handle().await;
 
   let ts1 = 1_000_000_u64;
   let ts2 = 2_000_000_u64;
