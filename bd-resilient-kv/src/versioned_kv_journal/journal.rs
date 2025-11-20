@@ -142,7 +142,9 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   /// # Arguments
   /// * `buffer` - The storage buffer
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  /// * `entries` - Iterator of entries to be inserted into the newly created buffer.
+  /// * `time_provider` - Time provider for generating timestamps
+  /// * `entries` - Iterator of (scope, key, payload, timestamp) tuples to be inserted into the
+  ///   newly created buffer
   ///
   /// # Errors
   /// Returns an error if the buffer is too small or if `high_water_mark_ratio` is invalid.
@@ -195,6 +197,8 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   /// # Arguments
   /// * `buffer` - The storage buffer containing existing versioned KV data
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
+  /// * `time_provider` - Time provider for generating timestamps
+  /// * `f` - Function called for each entry with (scope, key, payload, timestamp)
   ///
   /// # Errors
   /// Returns an error if the buffer is invalid, corrupted, or if `high_water_mark_ratio` is
@@ -236,6 +240,9 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
 
   /// Scan the journal to find the highest timestamp and apply the provided function to each entry.
   /// This is used during initialization to reconstruct state and also detects partial data loss.
+  ///
+  /// The provided function `f` is called with (scope, key, payload, timestamp) for each valid
+  /// entry in the journal.
   fn iterate_buffer(
     buffer: &[u8],
     position: usize,
@@ -298,11 +305,16 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     self.high_water_mark_triggered = true;
   }
 
-  /// Insert a new entry into the journal with the given payload.
+  /// Insert a new entry into the journal with the given scope, key, and payload.
   /// Returns the timestamp of the operation.
   ///
   /// The timestamp is monotonically non-decreasing and serves as the version identifier.
   /// If the system clock goes backwards, timestamps are clamped to maintain monotonicity.
+  ///
+  /// # Arguments
+  /// * `scope` - The scope for this entry (e.g., `FeatureFlag`, `ClientStat`, etc.)
+  /// * `key` - The key for this entry
+  /// * `message` - The protobuf message payload
   pub fn insert_entry(&mut self, scope: Scope, key: &str, message: M) -> anyhow::Result<u64> {
     let timestamp = self.next_monotonic_timestamp()?;
 
