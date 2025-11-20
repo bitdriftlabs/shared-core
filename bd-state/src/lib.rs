@@ -118,10 +118,11 @@ pub trait StateReader {
 }
 
 //
-// StateStore
+// Store
 //
 
-/// Wraps a versioned key-value store for managing application state with namespaced keys.
+/// Wraps a versioned key-value store for managing application state. This adds synchronization,
+/// management of ephemeral scopes, and snapshot capabilities.
 #[derive(Clone)]
 pub struct Store {
   // Use a mutex since we want to be able to share the store across tasks, so we handle locking
