@@ -47,7 +47,8 @@ pub struct VersionedJournal<'a, M> {
 // | ...      | Frame 2                  | Framed Entry   |
 // | ...      | Frame N                  | Framed Entry   |
 //
-// Frame format: [length: u32][timestamp_micros: varint][protobuf_payload: bytes][crc32: u32]
+// Frame format: [length: varint][scope: u8][key_len: varint][key: bytes][timestamp_micros:
+// varint][protobuf_payload: bytes][crc32: u32]
 //
 // # Timestamp Semantics
 //
