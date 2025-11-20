@@ -46,7 +46,7 @@ async fn basic_insert_and_get() {
     .await
     .unwrap();
 
-  let reader = setup.store.lock_for_read().await;
+  let reader = setup.store.read().await;
   assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some("value1"));
   assert_eq!(reader.get(Scope::GlobalState, "flag1"), None);
 }
@@ -71,7 +71,7 @@ async fn insert_multiple_values() {
     .await
     .unwrap();
 
-  let reader = setup.store.lock_for_read().await;
+  let reader = setup.store.read().await;
   assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some("value1"));
   assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), Some("value2"));
   assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global_value"));
@@ -92,7 +92,7 @@ async fn update_existing_value() {
     .await
     .unwrap();
 
-  let reader = setup.store.lock_for_read().await;
+  let reader = setup.store.read().await;
   assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some("value2"));
 }
 
@@ -111,7 +111,7 @@ async fn remove_value() {
     .await
     .unwrap();
 
-  let reader = setup.store.lock_for_read().await;
+  let reader = setup.store.read().await;
   assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
 }
 
@@ -125,7 +125,7 @@ async fn remove_nonexistent_value() {
     .await
     .unwrap();
 
-  let reader = setup.store.lock_for_read().await;
+  let reader = setup.store.read().await;
   assert_eq!(reader.get(Scope::FeatureFlag, "nonexistent"), None);
 }
 
@@ -151,7 +151,7 @@ async fn clear_scope() {
 
   setup.store.clear(Scope::FeatureFlag).await.unwrap();
 
-  let reader = setup.store.lock_for_read().await;
+  let reader = setup.store.read().await;
   assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
   assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), None);
   assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global_value"));
@@ -172,7 +172,7 @@ async fn scope_isolation() {
     .await
     .unwrap();
 
-  let reader = setup.store.lock_for_read().await;
+  let reader = setup.store.read().await;
   assert_eq!(reader.get(Scope::FeatureFlag, "key"), Some("flag_value"));
   assert_eq!(reader.get(Scope::GlobalState, "key"), Some("global_value"));
 }
@@ -197,11 +197,11 @@ async fn iter_scope() {
     .await
     .unwrap();
 
-  let items: std::collections::HashMap<_, _> = setup
-    .store
-    .iter_scope(Scope::FeatureFlag)
-    .await
-    .into_iter()
+  let reader = setup.store.read().await;
+  let items: std::collections::HashMap<_, _> = reader
+    .iter()
+    .filter(|entry| entry.scope == Scope::FeatureFlag)
+    .map(|entry| (entry.key.to_string(), entry.value.to_string()))
     .collect();
 
   assert_eq!(items.len(), 2);
@@ -214,11 +214,10 @@ async fn iter_scope() {
 async fn iter_empty_scope() {
   let setup = Setup::new().await;
 
-  let count = setup
-    .store
-    .iter_scope(Scope::FeatureFlag)
-    .await
-    .into_iter()
+  let reader = setup.store.read().await;
+  let count = reader
+    .iter()
+    .filter(|entry| entry.scope == Scope::FeatureFlag)
     .count();
 
   assert_eq!(count, 0);
@@ -244,7 +243,8 @@ async fn to_snapshot() {
     .await
     .unwrap();
 
-  let snapshot = setup.store.to_snapshot().await;
+  let reader = setup.store.read().await;
+  let snapshot = reader.to_snapshot();
 
   assert_eq!(snapshot.feature_flags.len(), 2);
   assert_eq!(snapshot.global_state.len(), 1);
@@ -277,7 +277,8 @@ async fn to_scoped_snapshot() {
     .await
     .unwrap();
 
-  let snapshot = setup.store.to_scoped_snapshot(Scope::FeatureFlag).await;
+  let reader = setup.store.read().await;
+  let snapshot = reader.to_scoped_snapshot(Scope::FeatureFlag);
 
   assert_eq!(snapshot.len(), 1);
   assert_eq!(
@@ -291,7 +292,8 @@ async fn to_scoped_snapshot() {
 async fn empty_snapshot() {
   let setup = Setup::new().await;
 
-  let snapshot = setup.store.to_snapshot().await;
+  let reader = setup.store.read().await;
+  let snapshot = reader.to_snapshot();
 
   assert_eq!(snapshot.feature_flags.len(), 0);
   assert_eq!(snapshot.global_state.len(), 0);
@@ -323,7 +325,7 @@ async fn persistence_across_restart() {
     .unwrap();
 
   // After restart, ephemeral scopes are cleared
-  let reader = store.lock_for_read().await;
+  let reader = store.read().await;
   assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
   assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
 }
@@ -339,7 +341,7 @@ async fn large_value() {
     .await
     .unwrap();
 
-  let reader = setup.store.lock_for_read().await;
+  let reader = setup.store.read().await;
   assert_eq!(
     reader.get(Scope::FeatureFlag, "large"),
     Some(large_value.as_str())
@@ -358,7 +360,8 @@ async fn many_keys() {
       .unwrap();
   }
 
-  let snapshot = setup.store.to_snapshot().await;
+  let reader = setup.store.read().await;
+  let snapshot = reader.to_snapshot();
   assert_eq!(snapshot.feature_flags.len(), 100);
 
   for i in 0 .. 100 {
@@ -392,7 +395,7 @@ async fn special_characters_in_keys() {
     .await
     .unwrap();
 
-  let reader = setup.store.lock_for_read().await;
+  let reader = setup.store.read().await;
   assert_eq!(
     reader.get(Scope::FeatureFlag, "key:with:colons"),
     Some("value1")
@@ -417,7 +420,7 @@ async fn empty_key() {
     .await
     .unwrap();
 
-  let reader = setup.store.lock_for_read().await;
+  let reader = setup.store.read().await;
   assert_eq!(reader.get(Scope::FeatureFlag, ""), Some("value"));
 }
 
@@ -431,7 +434,7 @@ async fn empty_value() {
     .await
     .unwrap();
 
-  let reader = setup.store.lock_for_read().await;
+  let reader = setup.store.read().await;
   assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some(""));
 }
 
@@ -467,7 +470,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
       .unwrap();
 
     // Verify they're present
-    let reader = store.lock_for_read().await;
+    let reader = store.read().await;
     assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some("value1"));
     assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), Some("value2"));
     assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global_value"));
@@ -505,13 +508,14 @@ async fn ephemeral_scopes_cleared_on_restart() {
     );
 
     // But current store should be empty (ephemeral scopes cleared)
-    let reader = store.lock_for_read().await;
+    let reader = store.read().await;
     assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
     assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), None);
     assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
 
     // Verify snapshot is also empty
-    let current_snapshot = store.to_snapshot().await;
+    let reader = store.read().await;
+    let current_snapshot = reader.to_snapshot();
     assert!(current_snapshot.feature_flags.is_empty());
     assert!(current_snapshot.global_state.is_empty());
   }

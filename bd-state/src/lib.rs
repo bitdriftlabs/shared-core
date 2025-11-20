@@ -22,7 +22,7 @@ pub mod test;
 
 use ahash::AHashMap;
 pub use bd_resilient_kv::Scope;
-use bd_resilient_kv::{DataLoss, StateValue, TimestampedValue, Value_type};
+use bd_resilient_kv::{DataLoss, StateValue, Value_type};
 use bd_time::TimeProvider;
 use itertools::Itertools as _;
 use std::path::Path;
@@ -30,27 +30,91 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::RwLock;
 
-//
-// StateReader
-//
+/// A timestamped state value, used in snapshots.
+pub type TimestampedStateValue = (String, OffsetDateTime);
 
-/// A trait for reading state values. This allows for simple in-memory implementations in tests
-/// without requiring async or filesystem access.
-pub trait StateReader {
-  /// Gets a value from the state store.
-  fn get(&self, scope: Scope, key: &str) -> Option<&str>;
-}
+/// A map of keys to timestamped values for a single scope.
+pub type ScopedStateMap = AHashMap<String, TimestampedStateValue>;
 
 //
 // StateSnapshot
 //
 
 /// A simple snapshot of the state store, used for crash reporting and similar use cases.
-/// Contains (`feature_flags`, `global_state`) as separate hash maps.
 #[derive(Debug, Clone)]
 pub struct StateSnapshot {
-  pub feature_flags: AHashMap<String, (String, OffsetDateTime)>,
-  pub global_state: AHashMap<String, (String, OffsetDateTime)>,
+  pub feature_flags: ScopedStateMap,
+  pub global_state: ScopedStateMap,
+}
+
+//
+// StateEntry
+//
+
+/// A single entry in the state store, including its scope, key, value, and timestamp.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateEntry<'a> {
+  pub scope: Scope,
+  pub key: &'a str,
+  pub value: &'a str,
+  pub timestamp: OffsetDateTime,
+}
+
+//
+// StateReader
+//
+
+/// A trait for reading state values. This allows for simple in-memory implementations in tests
+/// without requiring async or filesystem access.
+///
+/// This trait provides a core `iter()` method that returns all entries, along with default
+/// implementations for common filtering patterns.
+pub trait StateReader {
+  /// Gets a value from the state store.
+  fn get(&self, scope: Scope, key: &str) -> Option<&str>;
+
+  /// Returns an iterator over all entries in the state store.
+  fn iter(&self) -> impl Iterator<Item = StateEntry<'_>>;
+
+  /// Creates an owned snapshot of all entries in a specific scope.
+  ///
+  /// Returns a map of key -> (value, timestamp) for all entries in the scope.
+  fn to_scoped_snapshot(&self, scope: Scope) -> ScopedStateMap {
+    self
+      .iter()
+      .filter(move |entry| entry.scope == scope)
+      .map(|entry| {
+        (
+          entry.key.to_string(),
+          (entry.value.to_string(), entry.timestamp),
+        )
+      })
+      .collect()
+  }
+
+  /// Creates an owned snapshot of the entire state store, organized by scope. Prefer this over
+  /// calling `to_scoped_snapshot` multiple times to avoid multiple iterations.
+  fn to_snapshot(&self) -> StateSnapshot {
+    let mut feature_flags = AHashMap::new();
+    let mut global_state = AHashMap::new();
+
+    for entry in self.iter() {
+      let kv = (entry.value.to_string(), entry.timestamp);
+      match entry.scope {
+        Scope::FeatureFlag => {
+          feature_flags.insert(entry.key.to_string(), kv);
+        },
+        Scope::GlobalState => {
+          global_state.insert(entry.key.to_string(), kv);
+        },
+      }
+    }
+
+    StateSnapshot {
+      feature_flags,
+      global_state,
+    }
+  }
 }
 
 //
@@ -93,7 +157,7 @@ impl Store {
 
     // Capture a snapshot of the previous process's state before clearing ephemeral scopes.
     // This snapshot is used for crash reporting to include feature flags from the crashed process.
-    let previous_snapshot = store.to_snapshot().await;
+    let previous_snapshot = store.read().await.to_snapshot();
 
     // Clear ephemeral scopes so the current process starts with fresh state.
     // Users must re-set feature flags and global state on each process start.
@@ -151,99 +215,9 @@ impl Store {
     Ok(())
   }
 
-  /// Iterates over all key-value pairs in a given scope.
-  ///
-  /// Returns an iterator that yields (key, value) tuples.
-  pub async fn iter_scope(&self, scope: Scope) -> impl IntoIterator<Item = (String, String)> {
-    self
-      .inner
-      .read()
-      .await
-      .as_hashmap()
-      .iter()
-      .filter(move |((s, _), _)| *s == scope)
-      .filter_map(move |((_, key), timestamped_value)| {
-        let value = timestamped_value
-          .value
-          .has_string_value()
-          .then(|| timestamped_value.value.string_value())?;
-
-        // TODO(snowp): With the way we are doing the locking etc we cannot return references
-        // whcih seems suboptimal. Consider changing the API to take a closure to avoid allocations.
-        Some((key.clone(), value.to_string()))
-      })
-      .collect_vec()
-  }
-
-  pub async fn lock_for_read(&self) -> impl StateReader + '_ {
+  pub async fn read(&self) -> impl StateReader + '_ {
     ReadLockedStoreGuard {
       guard: self.inner.read().await,
-    }
-  }
-
-  pub async fn to_scoped_snapshot(
-    &self,
-    scope: Scope,
-  ) -> AHashMap<String, (String, OffsetDateTime)> {
-    let mut scoped_snapshot = AHashMap::new();
-
-    for ((s, key), timestamped_value) in self.inner.read().await.as_hashmap() {
-      if *s != scope {
-        continue;
-      }
-
-      let Some((value, timestamp)) = Self::to_string_and_timestamp(timestamped_value) else {
-        continue;
-      };
-
-      scoped_snapshot.insert(key.clone(), (value.clone(), timestamp));
-    }
-
-    scoped_snapshot
-  }
-
-  fn to_string_and_timestamp(
-    timestamped_value: &TimestampedValue,
-  ) -> Option<(String, OffsetDateTime)> {
-    // Neither of these should fail but we defensively return None if they do.
-
-    let value = timestamped_value
-      .value
-      .has_string_value()
-      .then(|| timestamped_value.value.string_value())?;
-
-    let Ok(timestamp) =
-      OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamped_value.timestamp) * 1_000)
-    else {
-      return None;
-    };
-
-    Some((value.to_string(), timestamp))
-  }
-
-  pub async fn to_snapshot(&self) -> StateSnapshot {
-    let mut feature_flags = AHashMap::new();
-    let mut global_state = AHashMap::new();
-
-    // TODO(snowp): Move the snapshot capture to the ctor so we don't have to lock.
-    for ((scope, key), timestamped_value) in self.inner.read().await.as_hashmap() {
-      let Some((value, timestamp)) = Self::to_string_and_timestamp(timestamped_value) else {
-        continue;
-      };
-
-      match scope {
-        Scope::FeatureFlag => {
-          feature_flags.insert(key.clone(), (value.clone(), timestamp));
-        },
-        Scope::GlobalState => {
-          global_state.insert(key.clone(), (value.clone(), timestamp));
-        },
-      }
-    }
-
-    StateSnapshot {
-      feature_flags,
-      global_state,
     }
   }
 }
@@ -258,5 +232,30 @@ impl StateReader for ReadLockedStoreGuard<'_> {
       .guard
       .get(scope, key)
       .and_then(|v| v.has_string_value().then(|| v.string_value()))
+  }
+
+  fn iter(&self) -> impl Iterator<Item = StateEntry<'_>> {
+    self
+      .guard
+      .as_hashmap()
+      .iter()
+      .filter_map(|((scope, key), timestamped_value)| {
+        let value = timestamped_value
+          .value
+          .has_string_value()
+          .then(|| timestamped_value.value.string_value())?;
+
+        let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
+          i128::from(timestamped_value.timestamp) * 1_000,
+        )
+        .ok()?;
+
+        Some(StateEntry {
+          scope: *scope,
+          key,
+          value,
+          timestamp,
+        })
+      })
   }
 }
