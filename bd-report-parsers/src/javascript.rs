@@ -46,7 +46,7 @@ pub struct JavaScriptAppMetrics {
 
 fn parse_javascript_stack_trace(
   stack_trace: &str,
-  debugger_id: Option<&str>,
+  debug_id: Option<&str>,
 ) -> Vec<JavaScriptFrame> {
   let lines: Vec<&str> = stack_trace
     .lines()
@@ -56,13 +56,13 @@ fn parse_javascript_stack_trace(
 
   let frames: Vec<JavaScriptFrame> = lines
     .iter()
-    .filter_map(|line| parse_javascript_frame(line, debugger_id))
+    .filter_map(|line| parse_javascript_frame(line, debug_id))
     .collect();
   frames
 }
 
 
-fn parse_javascript_frame(line: &str, debugger_id: Option<&str>) -> Option<JavaScriptFrame> {
+fn parse_javascript_frame(line: &str, debug_id: Option<&str>) -> Option<JavaScriptFrame> {
   let trimmed = line.trim();
 
   if trimmed == "[native code]" {
@@ -72,7 +72,7 @@ fn parse_javascript_frame(line: &str, debugger_id: Option<&str>) -> Option<JavaS
       line: 0,
       column: 0,
       bundle_path: None,
-      image_id: debugger_id
+      image_id: debug_id
         .filter(|id| !id.is_empty())
         .map(ToString::to_string),
       in_app: false,
@@ -91,7 +91,7 @@ fn parse_javascript_frame(line: &str, debugger_id: Option<&str>) -> Option<JavaS
       line: line_num.unwrap_or(0),
       column: column_num.unwrap_or(0),
       bundle_path,
-      image_id: debugger_id
+      image_id: debug_id
         .filter(|id| !id.is_empty())
         .map(ToString::to_string),
       in_app,
@@ -167,7 +167,7 @@ fn build_javascript_error_report(
   error_message: &str,
   stack_trace: &str,
   is_fatal: bool,
-  debugger_id: Option<&str>,
+  debug_id: Option<&str>,
   timestamp_seconds: u64,
   timestamp_nanos: u32,
   device_metrics: &JavaScriptDeviceMetrics,
@@ -178,7 +178,7 @@ fn build_javascript_error_report(
   let mut builder = FlatBufferBuilder::new();
   let timestamp = v_1::Timestamp::new(timestamp_seconds, timestamp_nanos);
 
-  let frames = parse_javascript_stack_trace(stack_trace, debugger_id);
+  let frames = parse_javascript_stack_trace(stack_trace, debug_id);
 
   let error_name_offset = builder.create_string(error_name);
   let error_message_offset = builder.create_string(error_message);
@@ -355,7 +355,7 @@ pub fn build_javascript_error_report_to_file(
   error_message: &str,
   stack_trace: &str,
   is_fatal: bool,
-  debugger_id: Option<&str>,
+  debug_id: Option<&str>,
   timestamp_seconds: u64,
   timestamp_nanos: u32,
   device_metrics: &JavaScriptDeviceMetrics,
@@ -369,7 +369,7 @@ pub fn build_javascript_error_report_to_file(
     error_message,
     stack_trace,
     is_fatal,
-    debugger_id,
+    debug_id,
     timestamp_seconds,
     timestamp_nanos,
     device_metrics,
