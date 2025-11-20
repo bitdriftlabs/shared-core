@@ -7,9 +7,8 @@
 
 #![allow(clippy::unwrap_used)]
 
-use super::{RetentionRegistry, SnapshotCleanupTask};
+use super::{RetentionRegistry, cleanup_old_snapshots};
 use std::sync::Arc;
-use std::time::Duration;
 use tempfile::TempDir;
 
 async fn create_test_snapshot(dir: &std::path::Path, name: &str, generation: u64, timestamp: u64) {
@@ -23,7 +22,7 @@ async fn cleanup_deletes_old_snapshots() {
   let temp_dir = TempDir::new().unwrap();
   let registry = Arc::new(RetentionRegistry::new());
 
-  // Create some test snapshots
+  // Create some test snapshots with different timestamps
   create_test_snapshot(temp_dir.path(), "test", 0, 1000).await;
   create_test_snapshot(temp_dir.path(), "test", 1, 2000).await;
   create_test_snapshot(temp_dir.path(), "test", 2, 3000).await;
@@ -32,28 +31,20 @@ async fn cleanup_deletes_old_snapshots() {
   let handle = registry.create_handle("test_handle").await;
   handle.update_retention_micros(2500);
 
-  // Create cleanup task
-  let task = SnapshotCleanupTask::new(
-    temp_dir.path(),
-    "test",
-    registry.clone(),
-    Duration::from_secs(3600),
-  );
-
   // Verify files exist before cleanup
   assert!(temp_dir.path().join("test.jrn.g0.t1000.zz").exists());
   assert!(temp_dir.path().join("test.jrn.g1.t2000.zz").exists());
   assert!(temp_dir.path().join("test.jrn.g2.t3000.zz").exists());
 
-  // Drop handle so min_retention returns None
-  drop(handle);
+  // Run cleanup
+  let result = cleanup_old_snapshots(temp_dir.path(), "test", &registry).await;
+  assert!(result.is_ok(), "Cleanup should succeed");
 
-  let result = task.cleanup_once().await;
-  assert!(result.is_ok(), "Cleanup should succeed when no handles");
+  // Old snapshots (timestamp < 2500) should be deleted
+  assert!(!temp_dir.path().join("test.jrn.g0.t1000.zz").exists());
+  assert!(!temp_dir.path().join("test.jrn.g1.t2000.zz").exists());
 
-  // All files should still exist because no handles means no cleanup
-  assert!(temp_dir.path().join("test.jrn.g0.t1000.zz").exists());
-  assert!(temp_dir.path().join("test.jrn.g1.t2000.zz").exists());
+  // New snapshot (timestamp >= 2500) should still exist
   assert!(temp_dir.path().join("test.jrn.g2.t3000.zz").exists());
 }
 
@@ -66,15 +57,14 @@ async fn cleanup_skips_when_no_handles() {
   create_test_snapshot(temp_dir.path(), "test", 0, 1000).await;
   create_test_snapshot(temp_dir.path(), "test", 1, 2000).await;
 
-  let task = SnapshotCleanupTask::new(temp_dir.path(), "test", registry, Duration::from_secs(3600));
-
-  let result = task.cleanup_once().await;
+  // Run cleanup without any handles
+  let result = cleanup_old_snapshots(temp_dir.path(), "test", &registry).await;
   assert!(
     result.is_ok(),
     "Cleanup should succeed even with no handles"
   );
 
-  // Files should still exist
+  // Files should still exist because no handles means no cleanup
   assert!(temp_dir.path().join("test.jrn.g0.t1000.zz").exists());
   assert!(temp_dir.path().join("test.jrn.g1.t2000.zz").exists());
 }
@@ -89,19 +79,16 @@ async fn cleanup_only_deletes_matching_journal_name() {
   create_test_snapshot(temp_dir.path(), "journal2", 0, 1000).await;
 
   let handle = registry.create_handle("test").await;
-  handle.update_retention_micros(1000);
+  handle.update_retention_micros(2000); // Delete anything older than 2000
 
-  let task = SnapshotCleanupTask::new(
-    temp_dir.path(),
-    "journal1",
-    registry,
-    Duration::from_secs(3600),
-  );
-
-  let result = task.cleanup_once().await;
+  // Run cleanup for journal1 only
+  let result = cleanup_old_snapshots(temp_dir.path(), "journal1", &registry).await;
   assert!(result.is_ok());
 
-  // journal2 snapshot should still exist since we only clean journal1
+  // journal1 snapshot should be deleted (timestamp 1000 < 2000)
+  assert!(!temp_dir.path().join("journal1.jrn.g0.t1000.zz").exists());
+
+  // journal2 snapshot should still exist (different journal name)
   assert!(temp_dir.path().join("journal2.jrn.g0.t1000.zz").exists());
 }
 
@@ -112,35 +99,16 @@ async fn cleanup_handles_missing_directory_gracefully() {
 
   let nonexistent = temp_dir.path().join("nonexistent");
 
-  let task = SnapshotCleanupTask::new(nonexistent, "test", registry, Duration::from_secs(3600));
+  // Create a handle so cleanup actually tries to run
+  let _handle = registry.create_handle("test").await;
 
-  // Should error when trying to read a nonexistent directory, but we should handle it gracefully
-  let result = task.cleanup_once().await;
-  // Either errors or succeeds with no cleanup - both are acceptable
-  let _ = result;
+  // Should error when trying to read a nonexistent directory
+  let result = cleanup_old_snapshots(&nonexistent, "test", &registry).await;
+  assert!(result.is_err(), "Should error for nonexistent directory");
 }
 
 #[tokio::test]
-async fn cleanup_task_can_be_spawned() {
-  let temp_dir = TempDir::new().unwrap();
-  let registry = Arc::new(RetentionRegistry::new());
-
-  let task = SnapshotCleanupTask::new(temp_dir.path(), "test", registry, Duration::from_millis(10));
-
-  let handle = task.spawn();
-
-  // Let it run a bit
-  tokio::time::sleep(Duration::from_millis(50)).await;
-
-  // Abort the task
-  handle.abort();
-
-  // Wait for abort to complete
-  let _ = handle.await;
-}
-
-#[tokio::test]
-async fn extract_timestamp_from_various_filenames() {
+async fn cleanup_handles_various_timestamp_formats() {
   let temp_dir = TempDir::new().unwrap();
   let registry = Arc::new(RetentionRegistry::new());
 
@@ -149,18 +117,42 @@ async fn extract_timestamp_from_various_filenames() {
   create_test_snapshot(temp_dir.path(), "test", 1, 123_456_789).await;
   create_test_snapshot(temp_dir.path(), "test", 2, 999_999_999_999).await;
 
-  let task = SnapshotCleanupTask::new(temp_dir.path(), "test", registry, Duration::from_secs(3600));
+  let handle = registry.create_handle("test").await;
+  handle.update_retention_micros(500_000_000); // Keep anything >= 500M
 
-  let result = task.cleanup_once().await;
+  let result = cleanup_old_snapshots(temp_dir.path(), "test", &registry).await;
   assert!(result.is_ok(), "Should handle various timestamp formats");
 
-  // All files should still exist (no cleanup without retention requirements)
-  assert!(temp_dir.path().join("test.jrn.g0.t123.zz").exists());
-  assert!(temp_dir.path().join("test.jrn.g1.t123456789.zz").exists());
+  // Small timestamps should be deleted (123 < 500M and 123M < 500M)
+  assert!(!temp_dir.path().join("test.jrn.g0.t123.zz").exists());
+  assert!(!temp_dir.path().join("test.jrn.g1.t123456789.zz").exists());
+
+  // Large timestamps should be kept (999B > 500M)
   assert!(
     temp_dir
       .path()
       .join("test.jrn.g2.t999999999999.zz")
       .exists()
   );
+}
+
+#[tokio::test]
+async fn cleanup_respects_zero_retention() {
+  let temp_dir = TempDir::new().unwrap();
+  let registry = Arc::new(RetentionRegistry::new());
+
+  // Create some test snapshots
+  create_test_snapshot(temp_dir.path(), "test", 0, 1000).await;
+  create_test_snapshot(temp_dir.path(), "test", 1, 2000).await;
+
+  // Create handle with retention timestamp 0 (retain all)
+  let handle = registry.create_handle("test").await;
+  handle.update_retention_micros(0);
+
+  let result = cleanup_old_snapshots(temp_dir.path(), "test", &registry).await;
+  assert!(result.is_ok());
+
+  // All files should still exist (retention timestamp 0 means keep everything)
+  assert!(temp_dir.path().join("test.jrn.g0.t1000.zz").exists());
+  assert!(temp_dir.path().join("test.jrn.g1.t2000.zz").exists());
 }

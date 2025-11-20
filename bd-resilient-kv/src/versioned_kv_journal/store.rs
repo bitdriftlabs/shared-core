@@ -418,6 +418,7 @@ impl VersionedKVStore {
   ///
   /// If a retention registry is configured, this method checks if any subsystem requires
   /// snapshots. If no retention is needed, the journal is deleted without compression.
+  /// After creating a snapshot, this method triggers cleanup of old snapshots.
   async fn archive_journal(&self, old_journal_path: &Path, generation: u64) -> PathBuf {
     // Get the maximum timestamp from the current state to use for the snapshot filename
     let rotation_timestamp = self
@@ -462,6 +463,14 @@ impl VersionedKVStore {
           old_journal_path.display(),
           e
         );
+      }
+
+      // After creating a snapshot, trigger cleanup of old snapshots
+      if let Some(registry) = &self.retention_registry
+        && let Err(e) =
+          super::cleanup::cleanup_old_snapshots(&self.dir_path, &self.journal_name, registry).await
+      {
+        log::warn!("Failed to cleanup old snapshots: {e}");
       }
     } else {
       log::debug!(
