@@ -8,6 +8,7 @@
 #![allow(clippy::unwrap_used)]
 
 use super::*;
+use crate::Scope;
 use crate::tests::make_string_value;
 use bd_proto::protos::state::payload::StateValue;
 
@@ -88,7 +89,12 @@ fn varint_too_long() {
 
 #[test]
 fn frame_encode_decode() {
-  let frame = Frame::new(1_700_000_000_000_000, make_string_value("value"));
+  let frame = Frame::new(
+    Scope::FeatureFlag,
+    "key1",
+    1_700_000_000_000_000,
+    make_string_value("value"),
+  );
 
   let mut buf = vec![0u8; 1024];
   let encoded_len = frame.encode(&mut buf).unwrap();
@@ -101,7 +107,12 @@ fn frame_encode_decode() {
 
 #[test]
 fn frame_with_delete() {
-  let frame = Frame::new(1_700_000_000_000_000, make_string_value(""));
+  let frame = Frame::new(
+    Scope::GlobalState,
+    "key2",
+    1_700_000_000_000_000,
+    make_string_value(""),
+  );
 
   let mut buf = vec![0u8; 1024];
   let encoded_len = frame.encode(&mut buf).unwrap();
@@ -114,7 +125,12 @@ fn frame_with_delete() {
 
 #[test]
 fn frame_empty_payload() {
-  let frame = Frame::new(1_700_000_000_000_000, StateValue::default());
+  let frame = Frame::new(
+    Scope::FeatureFlag,
+    "empty_key",
+    1_700_000_000_000_000,
+    StateValue::default(),
+  );
 
   let mut buf = vec![0u8; 1024];
   let encoded_len = frame.encode(&mut buf).unwrap();
@@ -130,12 +146,19 @@ fn frame_various_timestamps() {
   let timestamps = vec![0, 1, 127, 128, 1_000_000, 1_700_000_000_000_000, u64::MAX];
 
   for timestamp in timestamps {
-    let frame = Frame::new(timestamp, make_string_value("test"));
+    let frame = Frame::new(
+      Scope::FeatureFlag,
+      "test_key",
+      timestamp,
+      make_string_value("test"),
+    );
     let mut buf = vec![0u8; 1024];
     let encoded_len = frame.encode(&mut buf).unwrap();
     let (decoded_frame, decoded_len) = Frame::<StateValue>::decode(&buf).unwrap();
 
     assert_eq!(decoded_frame.timestamp_micros, timestamp);
+    assert_eq!(decoded_frame.scope, Scope::FeatureFlag);
+    assert_eq!(decoded_frame.key, "test_key");
     assert_eq!(decoded_frame.payload, make_string_value("test"));
     assert_eq!(decoded_len, encoded_len);
   }
@@ -143,7 +166,12 @@ fn frame_various_timestamps() {
 
 #[test]
 fn frame_buffer_too_small() {
-  let frame = Frame::new(1_700_000_000_000_000, make_string_value("key:value"));
+  let frame = Frame::new(
+    Scope::FeatureFlag,
+    "mykey",
+    1_700_000_000_000_000,
+    make_string_value("key:value"),
+  );
   let mut buf = vec![0u8; 5]; // Too small
 
   let result = frame.encode(&mut buf);
@@ -173,7 +201,12 @@ fn frame_incomplete_data() {
 
 #[test]
 fn frame_crc_mismatch() {
-  let frame = Frame::new(1_700_000_000_000_000, make_string_value("key:value"));
+  let frame = Frame::new(
+    Scope::FeatureFlag,
+    "mykey",
+    1_700_000_000_000_000,
+    make_string_value("key:value"),
+  );
 
   let mut buf = vec![0u8; 1024];
   let encoded_len = frame.encode(&mut buf).unwrap();
@@ -188,9 +221,14 @@ fn frame_crc_mismatch() {
 
 #[test]
 fn frame_multiple_frames() {
-  let frame1 = Frame::new(1000, make_string_value("first"));
-  let frame2 = Frame::new(2000, make_string_value("second"));
-  let frame3 = Frame::new(3000, make_string_value("third"));
+  let frame1 = Frame::new(Scope::FeatureFlag, "key1", 1000, make_string_value("first"));
+  let frame2 = Frame::new(
+    Scope::GlobalState,
+    "key2",
+    2000,
+    make_string_value("second"),
+  );
+  let frame3 = Frame::new(Scope::FeatureFlag, "key3", 3000, make_string_value("third"));
 
   let mut buf = vec![0u8; 1024];
   let len1 = frame1.encode(&mut buf).unwrap();
@@ -216,7 +254,7 @@ fn frame_length_varint_encoding() {
   // Small frames should use 1 byte for length, larger frames may use more
 
   // Very small payload (length should fit in 1 byte varint)
-  let small_frame = Frame::new(0, make_string_value("x"));
+  let small_frame = Frame::new(Scope::FeatureFlag, "x", 0, make_string_value("x"));
   let mut buf = vec![0u8; 1024];
   let encoded_len = small_frame.encode(&mut buf).unwrap();
 

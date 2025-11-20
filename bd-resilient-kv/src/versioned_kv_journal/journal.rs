@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::framing::Frame;
+use crate::Scope;
 use bd_client_common::error::InvariantError;
 use bd_time::TimeProvider;
 use std::sync::Arc;
@@ -142,7 +143,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     buffer: &'a mut [u8],
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
-    entries: impl IntoIterator<Item = (M, u64)>,
+    entries: impl IntoIterator<Item = (Scope, String, M, u64)>,
   ) -> anyhow::Result<Self> {
     let buffer_len = validate_buffer_len(buffer)?;
     let high_water_mark = calculate_high_water_mark(buffer_len, high_water_mark_ratio)?;
@@ -153,10 +154,10 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     let mut max_state_timestamp = None;
 
     // Write all current state with their original timestamps
-    for (entry, timestamp) in entries {
+    for (scope, key, entry, timestamp) in entries {
       max_state_timestamp = Some(timestamp);
 
-      let frame = Frame::new(timestamp, entry);
+      let frame = Frame::new(scope, &key, timestamp, entry);
 
       // Encode frame
       let available_space = &mut buffer[position ..];
@@ -195,7 +196,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     buffer: &'a mut [u8],
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
-    f: impl FnMut(&M, u64),
+    f: impl FnMut(Scope, &str, &M, u64),
   ) -> anyhow::Result<(Self, PartialDataLoss)> {
     let buffer_len = validate_buffer_len(buffer)?;
     let position = read_position(buffer)?;
@@ -228,7 +229,11 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
 
   /// Scan the journal to find the highest timestamp and apply the provided function to each entry.
   /// This is used during initialization to reconstruct state and also detects partial data loss.
-  fn iterate_buffer(buffer: &[u8], position: usize, mut f: impl FnMut(&M, u64)) -> BufferState {
+  fn iterate_buffer(
+    buffer: &[u8],
+    position: usize,
+    mut f: impl FnMut(Scope, &str, &M, u64),
+  ) -> BufferState {
     let mut cursor = HEADER_SIZE;
     let mut state = BufferState {
       highest_timestamp: 0,
@@ -239,7 +244,12 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
       let remaining = &buffer[cursor .. position];
 
       if let Ok((frame, consumed)) = Frame::<M>::decode(remaining) {
-        f(&frame.payload, frame.timestamp_micros);
+        f(
+          frame.scope,
+          frame.key,
+          &frame.payload,
+          frame.timestamp_micros,
+        );
         state.highest_timestamp = frame.timestamp_micros;
         cursor += consumed;
       } else {
@@ -286,11 +296,11 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   ///
   /// The timestamp is monotonically non-decreasing and serves as the version identifier.
   /// If the system clock goes backwards, timestamps are clamped to maintain monotonicity.
-  pub fn insert_entry(&mut self, message: M) -> anyhow::Result<u64> {
+  pub fn insert_entry(&mut self, scope: Scope, key: &str, message: M) -> anyhow::Result<u64> {
     let timestamp = self.next_monotonic_timestamp()?;
 
     // Create payload
-    let frame = Frame::new(timestamp, message);
+    let frame = Frame::new(scope, key, timestamp, message);
 
     // Encode frame
     let available_space = &mut self.buffer[self.position ..];
