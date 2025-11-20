@@ -526,7 +526,10 @@ async fn test_multiple_rotations_with_same_timestamp() -> anyhow::Result<()> {
   let snapshot2_data = std::fs::read(&rotation2.snapshot_path)?;
 
   // The files should exist and be valid
-  assert!(!snapshot1_data.is_empty(), "First snapshot should have data");
+  assert!(
+    !snapshot1_data.is_empty(),
+    "First snapshot should have data"
+  );
   assert!(
     !snapshot2_data.is_empty(),
     "Second snapshot should have data"

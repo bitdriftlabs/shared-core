@@ -400,7 +400,9 @@ impl VersionedKVStore {
     let old_journal_path = self
       .dir_path
       .join(format!("{}.jrn.{old_generation}", self.journal_name));
-    let snapshot_path = self.archive_journal(&old_journal_path, old_generation).await;
+    let snapshot_path = self
+      .archive_journal(&old_journal_path, old_generation)
+      .await;
 
     Ok(Rotation {
       new_journal_path,

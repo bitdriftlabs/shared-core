@@ -12,12 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 
-async fn create_test_snapshot(
-  dir: &std::path::Path,
-  name: &str,
-  generation: u64,
-  timestamp: u64,
-) {
+async fn create_test_snapshot(dir: &std::path::Path, name: &str, generation: u64, timestamp: u64) {
   let filename = format!("{name}.jrn.g{generation}.t{timestamp}.zz");
   let path = dir.join(filename);
   tokio::fs::write(path, b"test snapshot data").await.unwrap();
@@ -162,8 +157,10 @@ async fn extract_timestamp_from_various_filenames() {
   // All files should still exist (no cleanup without retention requirements)
   assert!(temp_dir.path().join("test.jrn.g0.t123.zz").exists());
   assert!(temp_dir.path().join("test.jrn.g1.t123456789.zz").exists());
-  assert!(temp_dir
-    .path()
-    .join("test.jrn.g2.t999999999999.zz")
-    .exists());
+  assert!(
+    temp_dir
+      .path()
+      .join("test.jrn.g2.t999999999999.zz")
+      .exists()
+  );
 }
