@@ -541,16 +541,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     Ok(())
   }
 
-  async fn process_all_logs(
-    &mut self,
-    log: LogLine,
-    block: bool,
-    state_store: &bd_state::Store,
-  ) -> anyhow::Result<()> {
+  async fn process_all_logs(&mut self, log: LogLine, block: bool) -> anyhow::Result<()> {
     let mut logs = VecDeque::new();
     logs.push_back(log);
     while let Some(log) = logs.pop_front() {
-      let log_replay_result = self.process_log(log, block, state_store).await?;
+      let log_replay_result = self.process_log(log, block).await?;
       logs.extend(log_replay_result.logs_to_inject.into_iter().map(|log| {
         LogLine {
           log_level: log.log_level,
@@ -603,12 +598,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     Ok(())
   }
 
-  async fn process_log(
-    &mut self,
-    log: LogLine,
-    block: bool,
-    state_store: &bd_state::Store,
-  ) -> anyhow::Result<LogReplayResult> {
+  async fn process_log(&mut self, log: LogLine, block: bool) -> anyhow::Result<LogReplayResult> {
     // Prevent re-entrancy when we are evaluating the log metadata.
     let result = with_thread_local_logger_guard(|| {
       if let Some(LogAttributesOverrides::PreviousRunSessionID(_id, _timestamp)) =
@@ -691,7 +681,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   metadata.matching_fields.clone(),
                   session_id.clone(),
                   metadata.timestamp,
-                  state_store,
                 )
                 .await;
 
@@ -735,7 +724,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: log.capture_session,
         };
 
-        self.write_log(processed_log, block, state_store).await
+        self.write_log(processed_log, block).await
       },
       Err(e) => {
         // TODO(Augustyniak): Consider logging as error so that SDK customers can see these
@@ -746,12 +735,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  async fn write_log(
-    &mut self,
-    log: Log,
-    block: bool,
-    state_store: &bd_state::Store,
-  ) -> anyhow::Result<LogReplayResult> {
+  async fn write_log(&mut self, log: Log, block: bool) -> anyhow::Result<LogReplayResult> {
     let log_replay_result = match &mut self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
         let result = uninitialized_logging_context
@@ -774,7 +758,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log,
           block,
           &mut initialized_logging_context.processing_pipeline,
-          state_store,
+          self.feature_flags.get(),
           self.time_provider.now(),
         )
         .await
@@ -809,7 +793,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn maybe_replay_pre_config_buffer_logs(
     &mut self,
     pre_config_log_buffer: PreConfigBuffer<bd_log_primitives::Log>,
-    state_store: &bd_state::Store,
   ) {
     let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state else {
       return;
@@ -823,7 +806,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log_line,
           false,
           &mut initialized_logging_context.processing_pipeline,
-          state_store,
+          self.feature_flags.get(),
           now,
         )
         .await
@@ -833,10 +816,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  pub async fn run(self, state_store: bd_state::Store, report_processor: impl ReportProcessor) -> Self {
+  pub async fn run(self, report_processor: impl ReportProcessor) -> Self {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     self
-      .run_with_shutdown(state_store, report_processor, shutdown_trigger.make_shutdown())
+      .run_with_shutdown(report_processor, shutdown_trigger.make_shutdown())
       .await
   }
 
@@ -844,7 +827,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   // so we don't need this just for tests.
   pub async fn run_with_shutdown(
     mut self,
-    state_store: bd_state::Store,
     report_processor: impl ReportProcessor,
     mut shutdown: ComponentShutdown,
   ) -> Self {
@@ -879,7 +861,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             self.lifecycle_state.set(InitLifecycle::LogProcessingStarted);
             self.maybe_replay_pre_config_buffer_logs(
                 pre_config_log_buffer,
-                &state_store,
+
             ).await;
           }
         },
@@ -921,7 +903,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               // grouping here to help make smarter decisions during intent negotiation.
               capture_session: Some("crash_handler"),
             };
-            if let Err(e) = self.process_all_logs(log, false, &state_store).await {
+            if let Err(e) = self.process_all_logs(log, false).await {
               log::debug!("failed to process crash log: {e}");
             }
           }
@@ -941,8 +923,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
               if let Err(e) = self.process_all_logs(
                 log,
-                log_processing_completed_tx.is_some(),
-                &state_store,
+                log_processing_completed_tx.is_some()
               ).await {
                 log::debug!("failed to process all logs: {e}");
               }
@@ -1131,7 +1112,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     matching_fields: LogFields,
     session_id: String,
     occurred_at: time::OffsetDateTime,
-    store: &bd_state::Store,
   ) -> anyhow::Result<()> {
     // TODO(mattklein123): Should we support injected logs for internal logs?
     self
@@ -1147,7 +1127,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: None,
         },
         false,
-        store,
       )
       .await?;
 

@@ -30,6 +30,7 @@ use bd_client_stats::stats::{
 use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
+use bd_feature_flags::FeatureFlagsBuilder;
 use bd_internal_logging::NoopLogger;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::network_quality::NetworkCallOnlineIndicatorTimeout;
@@ -194,7 +195,6 @@ impl LoggerBuilder {
     let (flush_buffers_tx, flush_buffers_rx) = tokio::sync::mpsc::channel(1);
     let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
     let (report_proc_tx, report_proc_rx) = tokio::sync::mpsc::channel(1);
-    let (crash_monitor_tx, crash_monitor_rx) = tokio::sync::oneshot::channel();
 
     let api_network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let log_network_quality_provider = Arc::new(TimedNetworkQualityProvider::new(
@@ -206,6 +206,12 @@ impl LoggerBuilder {
         api_network_quality_provider.clone(),
         log_network_quality_provider.clone(),
       ]));
+
+    let feature_flags_builder = FeatureFlagsBuilder::new(
+      &self.params.sdk_directory,
+      self.params.feature_flags_file_size_bytes,
+      self.params.feature_flags_high_watermark,
+    );
 
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
@@ -236,6 +242,7 @@ impl LoggerBuilder {
       &self.params.store,
       time_provider.clone(),
       init_lifecycle.clone(),
+      feature_flags_builder.clone(),
       data_upload_tx.clone(),
     );
 
@@ -253,7 +260,6 @@ impl LoggerBuilder {
       self.params.static_metadata.sdk_version(),
       self.params.store.clone(),
       sleep_mode_active_tx,
-      Some(crash_monitor_rx),
     );
     let log = if self.internal_logger {
       Arc::new(InternalLogger::new(
@@ -265,7 +271,6 @@ impl LoggerBuilder {
     };
 
     UnexpectedErrorHandler::register_stats(&scope);
-
 
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
@@ -308,6 +313,8 @@ impl LoggerBuilder {
         );
       }
 
+      feature_flags_builder.backup_previous();
+
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
         data_upload_tx_clone.clone(),
@@ -325,7 +332,7 @@ impl LoggerBuilder {
         &init_lifecycle,
         state_store.clone(),
         previous_run_state,
-        move |log| {
+        move |log: bd_crash_handler::CrashLog| {
           AsyncLogBuffer::<LoggerReplay>::enqueue_log(
             &async_log_buffer_communication_tx,
             log.log_level,
@@ -340,15 +347,6 @@ impl LoggerBuilder {
           .map_err(Into::into)
         },
       );
-
-      // Building the crash monitor requires artifact uploader and knowing
-      // whether to send artifacts out-of-band, both of which are dependent on
-      // awaiting loading the config in runtime. This is why the monitor is
-      // then passed to the logger (constructed outside of this future) via a
-      // channel rather than directly.
-      if crash_monitor_tx.send(crash_monitor).is_err() {
-        log::error!("failed to deliver monitor");
-      }
 
       // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
       // improve the perceived performance of the logger initialization.
@@ -410,7 +408,7 @@ impl LoggerBuilder {
         async move { buffer_uploader.run().await },
         async move { config_writer.run().await },
         async move {
-          async_log_buffer.run(state_store).await;
+          async_log_buffer.run(state_store, crash_monitor).await;
           Ok(())
         },
         async move { buffer_manager.process_flushes(flush_buffers_rx).await },

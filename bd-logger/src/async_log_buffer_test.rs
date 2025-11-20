@@ -18,6 +18,7 @@ use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
+use bd_feature_flags::FeatureFlagsBuilder;
 use bd_log_filter::FilterChain;
 use bd_log_matcher::builder::message_equals;
 use bd_log_primitives::size::MemorySized;
@@ -144,6 +145,7 @@ impl Setup {
       &in_memory_store(),
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
+      FeatureFlagsBuilder::new(&self.tmp_dir.path().join("feature_flags"), 1024, 0.8),
       self.data_upload_tx.clone(),
     )
   }
@@ -178,6 +180,7 @@ impl Setup {
       &in_memory_store(),
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
+      FeatureFlagsBuilder::new(&self.tmp_dir.path().join("feature_flags"), 1024, 0.8),
       self.data_upload_tx.clone(),
     )
   }
@@ -429,7 +432,7 @@ async fn logs_are_replayed_in_order() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let run_buffer_task = tokio::task::spawn(async move {
-    _ = buffer.run(state_store).await;
+    _ = buffer.run(state_store, ()).await;
   });
 
   shutdown.store(true, Ordering::SeqCst);
@@ -504,7 +507,7 @@ fn enqueuing_log_blocks() {
     let test_store = TestStore::new().await;
     let state_store = (*test_store).clone();
     buffer
-      .run_with_shutdown(state_store, shutdown_trigger.make_shutdown())
+      .run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown())
       .await;
     shutdown_trigger.shutdown().await;
     drop(test_store);
@@ -543,8 +546,7 @@ async fn creates_workflows_engine_in_response_to_config_update() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle =
-    tokio::task::spawn(buffer.run_with_shutdown(state_store, shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   buffer = handle.await.unwrap();
@@ -583,8 +585,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle =
-    tokio::task::spawn(buffer.run_with_shutdown(state_store, shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   buffer = handle.await.unwrap();
@@ -609,9 +610,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(
-    buffer.run_with_shutdown(state_store.take_inner(), shutdown_trigger.make_shutdown()),
-  );
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(state_store.take_inner(), (), shutdown_trigger.make_shutdown()));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   handle.await.unwrap();
@@ -682,9 +681,7 @@ async fn logs_resource_utilization_log() {
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(
-    buffer.run_with_shutdown(state_store.take_inner(), shutdown_trigger.make_shutdown()),
-  );
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(state_store.take_inner(), (), shutdown_trigger.make_shutdown()));
   500.milliseconds().sleep().await;
 
   shutdown_trigger.shutdown().await;
