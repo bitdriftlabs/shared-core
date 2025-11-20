@@ -56,6 +56,12 @@ pub struct VersionedJournal<'a, M> {
 // - If system clock goes backward, timestamps are clamped to last_timestamp (reuse same value)
 // - When timestamps collide, journal ordering determines precedence
 // - This ensures total ordering while allowing correlation with external timestamped systems
+//
+// # Scope / Frame Type
+//
+// The wire format supports an arbirary frame type value that we are currently tying to the Scope
+// enum. The wire representation is arbitrary so if we ever want to use this journal for other
+// purposes we can abstract out the enum we want to use for frame types.
 
 // The journal format version, incremented on incompatible changes.
 const VERSION: u64 = 1;
