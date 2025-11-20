@@ -8,7 +8,7 @@
 use strum::FromRepr;
 
 /// A state scope that determines the namespace used for storing state. This avoids key collisions
-/// but also allows us to handle the state with different semantics.
+/// and provides logical separation of different types of state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromRepr)]
 #[repr(u8)]
 pub enum Scope {
