@@ -14,6 +14,12 @@
   clippy::unwrap_used
 )]
 
+#[cfg(test)]
+#[path = "./lib_test.rs"]
+mod tests;
+
+pub mod test;
+
 use ahash::AHashMap;
 use bd_resilient_kv::{DataLoss, StateValue, TimestampedValue, Value_type};
 use bd_time::TimeProvider;
@@ -278,10 +284,3 @@ impl StateReader for ReadLockedStoreGuard<'_> {
       .and_then(|v| v.has_string_value().then(|| v.string_value()))
   }
 }
-
-#[path = "./test.rs"]
-pub mod test;
-
-#[cfg(test)]
-#[path = "./lib_test.rs"]
-mod tests;
