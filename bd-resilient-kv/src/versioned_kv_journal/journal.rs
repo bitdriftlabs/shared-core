@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::framing::Frame;
+use crate::Scope;
 use bd_client_common::error::InvariantError;
 use bd_time::TimeProvider;
 use std::sync::Arc;
@@ -46,7 +47,8 @@ pub struct VersionedJournal<'a, M> {
 // | ...      | Frame 2                  | Framed Entry   |
 // | ...      | Frame N                  | Framed Entry   |
 //
-// Frame format: [length: u32][timestamp_micros: varint][protobuf_payload: bytes][crc32: u32]
+// Frame format: [length: varint][scope: u8][key_len: varint][key: bytes][timestamp_micros:
+// varint][protobuf_payload: bytes][crc32: u32]
 //
 // # Timestamp Semantics
 //
@@ -55,6 +57,12 @@ pub struct VersionedJournal<'a, M> {
 // - If system clock goes backward, timestamps are clamped to last_timestamp (reuse same value)
 // - When timestamps collide, journal ordering determines precedence
 // - This ensures total ordering while allowing correlation with external timestamped systems
+//
+// # Scope / Frame Type
+//
+// The wire format supports an arbirary frame type value that we are currently tying to the Scope
+// enum. The wire representation is arbitrary so if we ever want to use this journal for other
+// purposes we can abstract out the enum we want to use for frame types.
 
 // The journal format version, incremented on incompatible changes.
 const VERSION: u64 = 1;
@@ -134,7 +142,9 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   /// # Arguments
   /// * `buffer` - The storage buffer
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  /// * `entries` - Iterator of entries to be inserted into the newly created buffer.
+  /// * `time_provider` - Time provider for generating timestamps
+  /// * `entries` - Iterator of (scope, key, payload, timestamp) tuples to be inserted into the
+  ///   newly created buffer
   ///
   /// # Errors
   /// Returns an error if the buffer is too small or if `high_water_mark_ratio` is invalid.
@@ -142,7 +152,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     buffer: &'a mut [u8],
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
-    entries: impl IntoIterator<Item = (M, u64)>,
+    entries: impl IntoIterator<Item = (Scope, String, M, u64)>,
   ) -> anyhow::Result<Self> {
     let buffer_len = validate_buffer_len(buffer)?;
     let high_water_mark = calculate_high_water_mark(buffer_len, high_water_mark_ratio)?;
@@ -153,10 +163,10 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     let mut max_state_timestamp = None;
 
     // Write all current state with their original timestamps
-    for (entry, timestamp) in entries {
+    for (scope, key, entry, timestamp) in entries {
       max_state_timestamp = Some(timestamp);
 
-      let frame = Frame::new(timestamp, entry);
+      let frame = Frame::new(scope, &key, timestamp, entry);
 
       // Encode frame
       let available_space = &mut buffer[position ..];
@@ -187,6 +197,8 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   /// # Arguments
   /// * `buffer` - The storage buffer containing existing versioned KV data
   /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
+  /// * `time_provider` - Time provider for generating timestamps
+  /// * `f` - Function called for each entry with (scope, key, payload, timestamp)
   ///
   /// # Errors
   /// Returns an error if the buffer is invalid, corrupted, or if `high_water_mark_ratio` is
@@ -195,7 +207,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     buffer: &'a mut [u8],
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
-    f: impl FnMut(&M, u64),
+    f: impl FnMut(Scope, &str, &M, u64),
   ) -> anyhow::Result<(Self, PartialDataLoss)> {
     let buffer_len = validate_buffer_len(buffer)?;
     let position = read_position(buffer)?;
@@ -228,7 +240,14 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
 
   /// Scan the journal to find the highest timestamp and apply the provided function to each entry.
   /// This is used during initialization to reconstruct state and also detects partial data loss.
-  fn iterate_buffer(buffer: &[u8], position: usize, mut f: impl FnMut(&M, u64)) -> BufferState {
+  ///
+  /// The provided function `f` is called with (scope, key, payload, timestamp) for each valid
+  /// entry in the journal.
+  fn iterate_buffer(
+    buffer: &[u8],
+    position: usize,
+    mut f: impl FnMut(Scope, &str, &M, u64),
+  ) -> BufferState {
     let mut cursor = HEADER_SIZE;
     let mut state = BufferState {
       highest_timestamp: 0,
@@ -239,7 +258,12 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
       let remaining = &buffer[cursor .. position];
 
       if let Ok((frame, consumed)) = Frame::<M>::decode(remaining) {
-        f(&frame.payload, frame.timestamp_micros);
+        f(
+          frame.scope,
+          frame.key,
+          &frame.payload,
+          frame.timestamp_micros,
+        );
         state.highest_timestamp = frame.timestamp_micros;
         cursor += consumed;
       } else {
@@ -281,16 +305,21 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     self.high_water_mark_triggered = true;
   }
 
-  /// Insert a new entry into the journal with the given payload.
+  /// Insert a new entry into the journal with the given scope, key, and payload.
   /// Returns the timestamp of the operation.
   ///
   /// The timestamp is monotonically non-decreasing and serves as the version identifier.
   /// If the system clock goes backwards, timestamps are clamped to maintain monotonicity.
-  pub fn insert_entry(&mut self, message: M) -> anyhow::Result<u64> {
+  ///
+  /// # Arguments
+  /// * `scope` - The scope for this entry (e.g., `FeatureFlag`, `ClientStat`, etc.)
+  /// * `key` - The key for this entry
+  /// * `message` - The protobuf message payload
+  pub fn insert_entry(&mut self, scope: Scope, key: &str, message: M) -> anyhow::Result<u64> {
     let timestamp = self.next_monotonic_timestamp()?;
 
     // Create payload
-    let frame = Frame::new(timestamp, message);
+    let frame = Frame::new(scope, key, timestamp, message);
 
     // Encode frame
     let available_space = &mut self.buffer[self.position ..];

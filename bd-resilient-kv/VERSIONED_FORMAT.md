@@ -50,6 +50,9 @@ The byte-level layout of a VERSION 1 journal file:
 │  (Protobuf-encoded StateKeyValuePair)                                   │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  Frame Length (varint)      │  Variable length (1-10 bytes)             │
+│  Scope (u8)                 │  1 byte (namespace identifier)            │
+│  Key Length (varint)        │  Variable length (1-10 bytes)             │
+│  Key (UTF-8 bytes)          │  Variable length                          │
 │  Timestamp (varint)         │  Variable length (microseconds)           │
 │  Protobuf Payload           │  Variable length                          │
 │  CRC32                      │  4 bytes                                  │
@@ -77,10 +80,13 @@ Each entry in the journal uses a length-prefixed framing format with CRC32 integ
 
 | Component | Size | Type | Description |
 |-----------|------|------|-------------|
-| Frame Length | Variable | varint | Total size of timestamp + protobuf payload + CRC32 (1-10 bytes) |
+| Frame Length | Variable | varint | Total size of scope + key_len + key + timestamp + protobuf payload + CRC32 (1-10 bytes) |
+| Scope | 1 byte | u8 | Namespace identifier for the entry |
+| Key Length | Variable | varint | Length of the key in bytes (1-10 bytes) |
+| Key | Variable | bytes | UTF-8 encoded key string |
 | Timestamp | Variable | varint | Entry timestamp in microseconds (serves as version) |
 | Protobuf Payload | Variable | bytes | Serialized StateKeyValuePair message |
-| CRC32 | 4 bytes | u32 (little-endian) | Checksum of timestamp + payload |
+| CRC32 | 4 bytes | u32 (little-endian) | Checksum of scope + key_len + key + timestamp + payload |
 
 ### Versioned Journal Entry Schema
 
@@ -119,11 +125,14 @@ Fields:
 - **Header**: Fixed 17 bytes
 - **Per Entry**: Varies based on key and value size
   - Frame length: 1-10 bytes (varint-encoded)
+  - Scope: 1 byte
+  - Key length: 1-10 bytes (varint-encoded)
+  - Key: Variable (UTF-8 bytes)
   - Timestamp: 1-10 bytes (varint-encoded)
   - Protobuf payload: varies by content
   - CRC: Fixed 4 bytes
-  - Typical small entries: 20-50 bytes total
-  - Typical medium entries: 50-200 bytes total
+  - Typical small entries: 25-60 bytes total
+  - Typical medium entries: 60-220 bytes total
 
 ## Journal Structure
 

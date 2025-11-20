@@ -149,6 +149,7 @@ sketches-rust = { git = "https://github.com/mattklein123/sketches-rust.git", bra
 snap              = "1.1.1"
 sqlite            = "0.37.0"
 static_assertions = "1.1.0"
+strum             = { version = "0.27", features = ["derive"] }
 tarpc             = { version = "0.37.0", features = ["full"] }
 tempfile          = "3.23.0"
 termcolor         = "1.4.1"

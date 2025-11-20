@@ -27,10 +27,12 @@ mod tests;
 
 pub mod kv_journal;
 pub mod kv_store;
+mod scope;
 mod versioned_kv_journal;
 
 pub use kv_journal::{DoubleBufferedKVJournal, InMemoryKVJournal, KVJournal, MemMappedKVJournal};
 pub use kv_store::KVStore;
+pub use scope::Scope;
 pub use versioned_kv_journal::TimestampedValue;
 pub use versioned_kv_journal::recovery::VersionedRecovery;
 pub use versioned_kv_journal::store::{DataLoss, VersionedKVStore};
