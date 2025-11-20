@@ -36,6 +36,9 @@ pub type TimestampedStateValue = (String, OffsetDateTime);
 /// A map of keys to timestamped values for a single scope.
 pub type ScopedStateMap = AHashMap<String, TimestampedStateValue>;
 
+/// In-memory storage type for the state store.
+type InMemoryStateMap = AHashMap<(Scope, String), (String, OffsetDateTime)>;
+
 //
 // StateSnapshot
 //
@@ -125,9 +128,13 @@ pub trait StateReader {
 /// management of ephemeral scopes, and snapshot capabilities.
 #[derive(Clone)]
 pub struct Store {
-  // Use a mutex since we want to be able to share the store across tasks, so we handle locking
-  // at this level.
-  inner: Arc<RwLock<bd_resilient_kv::VersionedKVStore>>,
+  inner: StoreInner,
+}
+
+#[derive(Clone)]
+enum StoreInner {
+  Persistent(Arc<RwLock<bd_resilient_kv::VersionedKVStore>>),
+  InMemory(Arc<RwLock<InMemoryStateMap>>),
 }
 
 impl Store {
@@ -153,7 +160,7 @@ impl Store {
         .await?;
 
     let store = Self {
-      inner: Arc::new(RwLock::new(inner)),
+      inner: StoreInner::Persistent(Arc::new(RwLock::new(inner))),
     };
 
     // Capture a snapshot of the previous process's state before clearing ephemeral scopes.
@@ -173,96 +180,172 @@ impl Store {
   }
 
   pub async fn insert(&self, scope: Scope, key: &str, value: String) -> anyhow::Result<()> {
-    self
-      .inner
-      .write()
-      .await
-      .insert(
-        scope,
-        key,
-        StateValue {
-          value_type: Value_type::StringValue(value).into(),
-          ..Default::default()
-        },
-      )
-      .await
-      .map(|_| ())
+    match &self.inner {
+      StoreInner::Persistent(store) => {
+        store
+          .write()
+          .await
+          .insert(
+            scope,
+            key,
+            StateValue {
+              value_type: Value_type::StringValue(value).into(),
+              ..Default::default()
+            },
+          )
+          .await
+          .map(|_| ())
+      },
+      StoreInner::InMemory(map) => {
+        map
+          .write()
+          .await
+          .insert((scope, key.to_string()), (value, OffsetDateTime::now_utc()));
+        Ok(())
+      },
+    }
   }
 
   pub async fn remove(&self, scope: Scope, key: &str) -> anyhow::Result<()> {
-    self
-      .inner
-      .write()
-      .await
-      .remove(scope, key)
-      .await
-      .map(|_| ())
+    match &self.inner {
+      StoreInner::Persistent(store) => store.write().await.remove(scope, key).await.map(|_| ()),
+      StoreInner::InMemory(map) => {
+        map.write().await.remove(&(scope, key.to_string()));
+        Ok(())
+      },
+    }
   }
 
   pub async fn clear(&self, scope: Scope) -> anyhow::Result<()> {
-    let mut store = self.inner.write().await;
-    let keys_to_remove: Vec<String> = store
-      .as_hashmap()
-      .keys()
-      .filter(|(s, _)| *s == scope)
-      .map(|(_, key)| key.clone())
-      .collect_vec();
+    match &self.inner {
+      StoreInner::Persistent(store) => {
+        let mut locked_store = store.write().await;
+        let keys_to_remove: Vec<String> = locked_store
+          .as_hashmap()
+          .keys()
+          .filter(|(s, _)| *s == scope)
+          .map(|(_, key)| key.clone())
+          .collect_vec();
 
-    // TODO(snowp): Ideally we should have built in support for batch deletions in the underlying
-    // store. This leaves us open for partial deletions if something fails halfway through.
-    for key in keys_to_remove {
-      store.remove(scope, &key).await?;
+        // TODO(snowp): Ideally we should have built in support for batch deletions in the
+        // underlying store. This leaves us open for partial deletions if something fails halfway
+        // through.
+        for key in keys_to_remove {
+          locked_store.remove(scope, &key).await?;
+        }
+
+        Ok(())
+      },
+      StoreInner::InMemory(map) => {
+        let mut locked_map = map.write().await;
+        locked_map.retain(|(s, _), _| *s != scope);
+        Ok(())
+      },
     }
-
-    Ok(())
   }
 
   /// Returns a reader for accessing state values.
   ///
   /// The returned reader holds a read lock on the store for its lifetime.
   pub async fn read(&self) -> impl StateReader + '_ {
-    ReadLockedStoreGuard {
-      guard: self.inner.read().await,
+    match &self.inner {
+      StoreInner::Persistent(store) => ReadLockedStoreGuard::Persistent(store.read().await),
+      StoreInner::InMemory(map) => ReadLockedStoreGuard::InMemory(map.read().await),
+    }
+  }
+
+  /// Creates a new Store, falling back to an in-memory store if initialization fails.
+  ///
+  /// This method never fails - if the persistent store cannot be initialized, it will
+  /// return an in-memory store instead. The boolean return value indicates whether
+  /// a fallback occurred.
+  ///
+  /// # Returns
+  /// - The store (either persistent or in-memory)
+  /// - Data loss information (None if using in-memory fallback)
+  /// - Snapshot of state from the previous process (empty if using in-memory fallback)
+  /// - Boolean indicating whether fallback to in-memory occurred (true = fallback)
+  pub async fn new_or_fallback(
+    directory: &Path,
+    time_provider: Arc<dyn TimeProvider>,
+  ) -> (Self, Option<DataLoss>, StateSnapshot, bool) {
+    match Self::new(directory, time_provider.clone()).await {
+      Ok((store, data_loss, snapshot)) => (store, Some(data_loss), snapshot, false),
+      Err(e) => {
+        log::warn!(
+          "Failed to initialize persistent state store: {e}, falling back to in-memory store"
+        );
+        let store = Self::new_in_memory();
+        let empty_snapshot = StateSnapshot {
+          feature_flags: AHashMap::new(),
+          global_state: AHashMap::new(),
+        };
+        (store, None, empty_snapshot, true)
+      },
+    }
+  }
+
+  /// Creates a new in-memory Store that does not persist to disk.
+  ///
+  /// This is useful when persistent storage is not needed or when used as a fallback
+  /// when the persistent store cannot be initialized.
+  pub fn new_in_memory() -> Self {
+    Self {
+      inner: StoreInner::InMemory(Arc::new(RwLock::new(AHashMap::new()))),
     }
   }
 }
 
-struct ReadLockedStoreGuard<'a> {
-  guard: tokio::sync::RwLockReadGuard<'a, bd_resilient_kv::VersionedKVStore>,
+enum ReadLockedStoreGuard<'a> {
+  Persistent(tokio::sync::RwLockReadGuard<'a, bd_resilient_kv::VersionedKVStore>),
+  InMemory(tokio::sync::RwLockReadGuard<'a, InMemoryStateMap>),
 }
 
 impl StateReader for ReadLockedStoreGuard<'_> {
   fn get(&self, scope: Scope, key: &str) -> Option<&str> {
-    self
-      .guard
-      .get(scope, key)
-      .and_then(|v| v.has_string_value().then(|| v.string_value()))
+    match self {
+      Self::Persistent(guard) => guard
+        .get(scope, key)
+        .and_then(|v| v.has_string_value().then(|| v.string_value())),
+      Self::InMemory(map) => map
+        .get(&(scope, key.to_string()))
+        .map(|(value, _)| value.as_str()),
+    }
   }
 
   fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = StateEntry<'a>> + 'a> {
-    Box::new(
-      self
-        .guard
-        .as_hashmap()
-        .iter()
-        .filter_map(|((scope, key), timestamped_value)| {
-          let value = timestamped_value
-            .value
-            .has_string_value()
-            .then(|| timestamped_value.value.string_value())?;
+    match self {
+      Self::Persistent(guard) => Box::new(
+        guard
+          .as_hashmap()
+          .iter()
+          .filter_map(|((scope, key), timestamped_value)| {
+            let value = timestamped_value
+              .value
+              .has_string_value()
+              .then(|| timestamped_value.value.string_value())?;
 
-          let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
-            i128::from(timestamped_value.timestamp) * 1_000,
-          )
-          .ok()?;
+            let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
+              i128::from(timestamped_value.timestamp) * 1_000,
+            )
+            .ok()?;
 
-          Some(StateEntry {
-            scope: *scope,
-            key,
-            value,
-            timestamp,
-          })
-        }),
-    )
+            Some(StateEntry {
+              scope: *scope,
+              key,
+              value,
+              timestamp,
+            })
+          }),
+      ),
+      Self::InMemory(map) => Box::new(map.iter().map(|((scope, key), (value, timestamp))| {
+        StateEntry {
+          scope: *scope,
+          key,
+          value,
+          timestamp: *timestamp,
+        }
+      })),
+    }
   }
 }

@@ -520,3 +520,239 @@ async fn ephemeral_scopes_cleared_on_restart() {
     assert!(current_snapshot.global_state.is_empty());
   }
 }
+
+#[tokio::test]
+async fn fallback_to_in_memory_on_invalid_directory() {
+  // Try to create a store with an invalid path (e.g., a file instead of a directory)
+  let temp_file = tempfile::NamedTempFile::new().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  let (store, data_loss, snapshot, used_fallback) =
+    Store::new_or_fallback(temp_file.path(), time_provider).await;
+
+  // Should have fallen back to in-memory
+  assert!(used_fallback);
+  assert!(data_loss.is_none());
+  assert!(snapshot.feature_flags.is_empty());
+  assert!(snapshot.global_state.is_empty());
+
+  // Verify in-memory store works correctly
+  store
+    .insert(Scope::FeatureFlag, "test_flag", "test_value".to_string())
+    .await
+    .unwrap();
+
+  let reader = store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "test_flag"), Some("test_value"));
+}
+
+#[tokio::test]
+async fn in_memory_store_supports_all_operations() {
+  let temp_file = tempfile::NamedTempFile::new().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  let (store, .., used_fallback) = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  assert!(used_fallback);
+
+  // Test insert
+  store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+  store
+    .insert(Scope::FeatureFlag, "flag2", "value2".to_string())
+    .await
+    .unwrap();
+  store
+    .insert(Scope::GlobalState, "key1", "global".to_string())
+    .await
+    .unwrap();
+
+  // Test get
+  let reader = store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some("value1"));
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), Some("value2"));
+  assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global"));
+
+  // Test iter
+  let entries: Vec<_> = reader.iter().collect();
+  assert_eq!(entries.len(), 3);
+
+  // Test to_snapshot
+  let snapshot = reader.to_snapshot();
+  assert_eq!(snapshot.feature_flags.len(), 2);
+  assert_eq!(snapshot.global_state.len(), 1);
+  drop(reader);
+
+  // Test remove
+  store.remove(Scope::FeatureFlag, "flag1").await.unwrap();
+  let reader = store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), Some("value2"));
+  drop(reader);
+
+  // Test clear
+  store.clear(Scope::FeatureFlag).await.unwrap();
+  let reader = store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), None);
+  assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global"));
+}
+
+#[tokio::test]
+async fn in_memory_store_does_not_persist() {
+  let temp_file = tempfile::NamedTempFile::new().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  // Create in-memory store and add data
+  {
+    let (store, .., used_fallback) =
+      Store::new_or_fallback(temp_file.path(), time_provider.clone()).await;
+    assert!(used_fallback);
+
+    store
+      .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+      .await
+      .unwrap();
+
+    let reader = store.read().await;
+    assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some("value1"));
+  }
+
+  // Create a new in-memory store - data should not persist
+  {
+    let (store, .., used_fallback) =
+      Store::new_or_fallback(temp_file.path(), time_provider).await;
+    assert!(used_fallback);
+
+    let reader = store.read().await;
+    assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
+  }
+}
+
+#[tokio::test]
+async fn in_memory_store_scoped_snapshot() {
+  let temp_file = tempfile::NamedTempFile::new().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  let (store, .., used_fallback) = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  assert!(used_fallback);
+
+  // Add data to different scopes
+  store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+  store
+    .insert(Scope::FeatureFlag, "flag2", "value2".to_string())
+    .await
+    .unwrap();
+  store
+    .insert(Scope::GlobalState, "key1", "global".to_string())
+    .await
+    .unwrap();
+
+  // Test scoped snapshot for FeatureFlag
+  let reader = store.read().await;
+  let ff_snapshot = reader.to_scoped_snapshot(Scope::FeatureFlag);
+  assert_eq!(ff_snapshot.len(), 2);
+  assert_eq!(ff_snapshot.get("flag1").map(|(v, _)| v.as_str()), Some("value1"));
+  assert_eq!(ff_snapshot.get("flag2").map(|(v, _)| v.as_str()), Some("value2"));
+  assert!(ff_snapshot.get("key1").is_none());
+
+  // Test scoped snapshot for GlobalState
+  let gs_snapshot = reader.to_scoped_snapshot(Scope::GlobalState);
+  assert_eq!(gs_snapshot.len(), 1);
+  assert_eq!(gs_snapshot.get("key1").map(|(v, _)| v.as_str()), Some("global"));
+}
+
+#[tokio::test]
+async fn in_memory_store_clear_respects_scope() {
+  let temp_file = tempfile::NamedTempFile::new().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  let (store, .., used_fallback) = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  assert!(used_fallback);
+
+  // Add data to both scopes
+  store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+  store
+    .insert(Scope::GlobalState, "key1", "global".to_string())
+    .await
+    .unwrap();
+
+  // Clear only FeatureFlag scope
+  store.clear(Scope::FeatureFlag).await.unwrap();
+
+  // Verify FeatureFlag cleared but GlobalState remains
+  let reader = store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
+  assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global"));
+}
+
+#[tokio::test]
+async fn in_memory_store_concurrent_readers() {
+  let temp_file = tempfile::NamedTempFile::new().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  let (store, .., used_fallback) = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  assert!(used_fallback);
+
+  store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+
+  // Clone the store and verify both can read
+  let store2 = store.clone();
+
+  let reader1 = store.read().await;
+  let reader2 = store2.read().await;
+
+  assert_eq!(reader1.get(Scope::FeatureFlag, "flag1"), Some("value1"));
+  assert_eq!(reader2.get(Scope::FeatureFlag, "flag1"), Some("value1"));
+}
+
+#[tokio::test]
+async fn in_memory_store_empty_operations() {
+  let temp_file = tempfile::NamedTempFile::new().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  let (store, .., used_fallback) = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  assert!(used_fallback);
+
+  // Operations on empty store should work
+  let reader = store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "nonexistent"), None);
+  assert_eq!(reader.iter().count(), 0);
+
+  let snapshot = reader.to_snapshot();
+  assert!(snapshot.feature_flags.is_empty());
+  assert!(snapshot.global_state.is_empty());
+  drop(reader);
+
+  // Remove on empty store should succeed
+  store
+    .remove(Scope::FeatureFlag, "nonexistent")
+    .await
+    .unwrap();
+
+  // Clear on empty store should succeed
+  store.clear(Scope::FeatureFlag).await.unwrap();
+}

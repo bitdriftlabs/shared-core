@@ -873,15 +873,13 @@ fn feature_flag_matcher() {
   {
     let matcher = TestMatcher::new(&input.matcher).unwrap();
 
-    let state = bd_state::test::TestStateReader::default();
+    let mut state = bd_state::test::TestStateReader::default();
     for (key, value) in input.flags {
-      state
-        .insert(
-          bd_state::Scope::FeatureFlag,
-          key,
-          value.unwrap_or("").to_string(),
-        )
-        .unwrap();
+      state.insert(
+        bd_state::Scope::FeatureFlag,
+        key,
+        value.unwrap_or("").to_string(),
+      );
     }
 
     let actual =

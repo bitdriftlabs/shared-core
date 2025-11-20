@@ -276,9 +276,37 @@ impl LoggerBuilder {
       let state_directory = self.params.sdk_directory.join("state");
       std::fs::create_dir_all(&state_directory)?;
 
-      // TODO(snowp): Error handling so we don't stop the logger if state loading fails.
-      let (state_store, _data_loss, previous_run_state) =
-        bd_state::Store::new(&state_directory, time_provider.clone()).await?;
+      // Check if persistent storage is enabled via runtime flag
+      let use_persistent_storage =
+        *bd_runtime::runtime::global_state::UsePersistentStorage::register(&runtime_loader)
+          .into_inner()
+          .borrow();
+
+      let (state_store, _data_loss, previous_run_state, used_fallback) = if use_persistent_storage
+      {
+        // Attempt persistent storage with fallback to in-memory
+        bd_state::Store::new_or_fallback(&state_directory, time_provider.clone()).await
+      } else {
+        // Use in-memory only
+        (
+          bd_state::Store::new_in_memory(),
+          None,
+          bd_state::StateSnapshot {
+            feature_flags: Default::default(),
+            global_state: Default::default(),
+          },
+          false,
+        )
+      };
+
+      if used_fallback {
+        handle_unexpected(
+          Err::<(), anyhow::Error>(anyhow::anyhow!(
+            "Failed to initialize persistent state store, using in-memory fallback"
+          )),
+          "state initialization",
+        );
+      }
 
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
