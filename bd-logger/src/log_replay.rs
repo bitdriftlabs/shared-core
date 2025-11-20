@@ -193,7 +193,7 @@ impl ProcessingPipeline {
   ) -> anyhow::Result<LogReplayResult> {
     self.stats.logs_received.inc();
 
-    let state_reader = state.lock_for_read().await;
+    let state_reader = state.read().await;
     // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
     self.filter_chain.process(&mut log, &state_reader);
     let mut log = LogEncodingHelper::new(log, (*self.min_log_compression_size.read()).into());

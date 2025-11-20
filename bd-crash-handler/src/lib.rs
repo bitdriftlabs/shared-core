@@ -41,6 +41,7 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Report,
   ReportType,
 };
+use bd_state::StateReader;
 use fbs::issue_reporting::v_1::root_as_report;
 use itertools::Itertools as _;
 use memmap2::Mmap;
@@ -366,20 +367,15 @@ impl Monitor {
   async fn get_feature_flags(&self, origin: ReportOrigin) -> Vec<SnappedFeatureFlag> {
     match origin {
       ReportOrigin::Previous => self.previous_run_state.feature_flags.clone(),
-      ReportOrigin::Current => {
-        self
-          .state
-          .to_scoped_snapshot(bd_state::Scope::FeatureFlag)
-          .await
-      },
+      ReportOrigin::Current => self
+        .state
+        .read()
+        .await
+        .to_scoped_snapshot(bd_state::Scope::FeatureFlag),
     }
-    .iter()
+    .into_iter()
     .map(|(name, (variant, timestamp))| {
-      SnappedFeatureFlag::new(
-        name.clone(),
-        (!variant.is_empty()).then(|| variant.clone()),
-        *timestamp,
-      )
+      SnappedFeatureFlag::new(name, (!variant.is_empty()).then(|| variant), timestamp)
     })
     .collect_vec()
   }

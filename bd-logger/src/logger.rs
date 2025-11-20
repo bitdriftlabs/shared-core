@@ -392,7 +392,8 @@ impl LoggerHandle {
   pub fn add_log_field(&self, key: &str, value: LogFieldValue) {
     with_reentrancy_guard!(
       {
-        let result = AsyncLogBuffer::<LoggerReplay>::add_log_field(&self.tx, key, value);
+        let result =
+          AsyncLogBuffer::<LoggerReplay>::add_log_field(&self.tx, key.to_string(), value);
         if let Err(e) = result {
           log::warn!("failed to add {key:?} log field: {e:?}");
         }
@@ -436,12 +437,7 @@ impl LoggerHandle {
   pub fn set_feature_flag(&self, flag: String, variant: Option<String>) {
     with_reentrancy_guard!(
       {
-        let value = variant.unwrap_or_default();
-        let result = self.tx.try_send(AsyncLogBufferMessage::UpsertState(
-          bd_state::Scope::FeatureFlag,
-          flag,
-          value,
-        ));
+        let result = AsyncLogBuffer::<LoggerReplay>::set_feature_flag(&self.tx, flag, variant);
         if let Err(e) = result {
           log::warn!("failed to set feature flag: {e:?}");
         }
@@ -472,16 +468,9 @@ impl LoggerHandle {
   pub fn set_feature_flags(&self, flags: Vec<(String, Option<String>)>) {
     with_reentrancy_guard!(
       {
-        for (flag, variant) in flags {
-          let value = variant.unwrap_or_default();
-          let result = self.tx.try_send(AsyncLogBufferMessage::UpsertState(
-            bd_state::Scope::FeatureFlag,
-            flag,
-            value,
-          ));
-          if let Err(e) = result {
-            log::warn!("failed to set feature flag: {e:?}");
-          }
+        let result = AsyncLogBuffer::<LoggerReplay>::set_feature_flags(&self.tx, flags);
+        if let Err(e) = result {
+          log::warn!("failed to set feature flags: {e:?}");
         }
       },
       "failed to set {:?} feature flags, setting flags from within a callback is not permitted",
@@ -505,10 +494,7 @@ impl LoggerHandle {
   pub fn remove_feature_flag(&self, flag: String) {
     with_reentrancy_guard!(
       {
-        let result = self.tx.try_send(AsyncLogBufferMessage::RemoveState(
-          bd_state::Scope::FeatureFlag,
-          flag,
-        ));
+        let result = AsyncLogBuffer::<LoggerReplay>::remove_feature_flag(&self.tx, flag);
         if let Err(e) = result {
           log::warn!("failed to remove feature flag: {e:?}");
         }
@@ -524,9 +510,7 @@ impl LoggerHandle {
   pub fn clear_feature_flags(&self) {
     with_reentrancy_guard!(
       {
-        let result = self.tx.try_send(AsyncLogBufferMessage::ClearState(
-          bd_state::Scope::FeatureFlag,
-        ));
+        let result = AsyncLogBuffer::<LoggerReplay>::clear_feature_flags(&self.tx);
         if let Err(e) = result {
           log::warn!("failed to clear feature flags: {e:?}");
         }

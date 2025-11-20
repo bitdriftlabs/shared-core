@@ -52,16 +52,18 @@ impl crate::StateReader for TestStateReader {
     self.data.get(&(scope, key.to_string())).map(String::as_str)
   }
 
-  fn iter(&self) -> impl Iterator<Item = crate::StateEntry<'_>> {
-    self
-      .data
-      .iter()
-      .map(|((scope, key), value)| crate::StateEntry {
-        scope: *scope,
-        key,
-        value,
-        timestamp: time::macros::datetime!(2024-01-01 00:00:00 UTC),
-      })
+  fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = crate::StateEntry<'a>> + 'a> {
+    Box::new(
+      self
+        .data
+        .iter()
+        .map(|((scope, key), value)| crate::StateEntry {
+          scope: *scope,
+          key,
+          value,
+          timestamp: time::macros::datetime!(2024-01-01 00:00:00 UTC),
+        }),
+    )
   }
 }
 

@@ -890,7 +890,7 @@ async fn feature_flag_matcher() {
       LogType::NORMAL,
       "foo",
       [],
-      &state.lock_for_read().await,
+      &state.read().await,
     );
 
     assert_eq!(

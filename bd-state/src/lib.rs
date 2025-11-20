@@ -74,7 +74,7 @@ pub trait StateReader {
   fn get(&self, scope: Scope, key: &str) -> Option<&str>;
 
   /// Returns an iterator over all entries in the state store.
-  fn iter(&self) -> impl Iterator<Item = StateEntry<'_>>;
+  fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = StateEntry<'a>> + 'a>;
 
   /// Creates an owned snapshot of all entries in a specific scope.
   ///
@@ -213,9 +213,13 @@ impl Store {
     for key in keys_to_remove {
       store.remove(scope, &key).await?;
     }
+
     Ok(())
   }
 
+  /// Returns a reader for accessing state values.
+  ///
+  /// The returned reader holds a read lock on the store for its lifetime.
   pub async fn read(&self) -> impl StateReader + '_ {
     ReadLockedStoreGuard {
       guard: self.inner.read().await,
@@ -235,28 +239,30 @@ impl StateReader for ReadLockedStoreGuard<'_> {
       .and_then(|v| v.has_string_value().then(|| v.string_value()))
   }
 
-  fn iter(&self) -> impl Iterator<Item = StateEntry<'_>> {
-    self
-      .guard
-      .as_hashmap()
-      .iter()
-      .filter_map(|((scope, key), timestamped_value)| {
-        let value = timestamped_value
-          .value
-          .has_string_value()
-          .then(|| timestamped_value.value.string_value())?;
+  fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = StateEntry<'a>> + 'a> {
+    Box::new(
+      self
+        .guard
+        .as_hashmap()
+        .iter()
+        .filter_map(|((scope, key), timestamped_value)| {
+          let value = timestamped_value
+            .value
+            .has_string_value()
+            .then(|| timestamped_value.value.string_value())?;
 
-        let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
-          i128::from(timestamped_value.timestamp) * 1_000,
-        )
-        .ok()?;
+          let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
+            i128::from(timestamped_value.timestamp) * 1_000,
+          )
+          .ok()?;
 
-        Some(StateEntry {
-          scope: *scope,
-          key,
-          value,
-          timestamp,
-        })
-      })
+          Some(StateEntry {
+            scope: *scope,
+            key,
+            value,
+            timestamp,
+          })
+        }),
+    )
   }
 }
