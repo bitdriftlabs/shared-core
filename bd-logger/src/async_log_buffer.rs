@@ -66,6 +66,27 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task;
 use tokio::time::Sleep;
 
+//
+// ReportProcessor
+//
+
+/// Abstraction over crash report processing to allow for easier testing.
+pub trait ReportProcessor {
+  async fn process_all_pending_reports(&self) -> Vec<bd_crash_handler::CrashLog>;
+}
+
+impl ReportProcessor for bd_crash_handler::Monitor {
+  async fn process_all_pending_reports(&self) -> Vec<bd_crash_handler::CrashLog> {
+    self.process_all_pending_reports().await
+  }
+}
+
+impl ReportProcessor for () {
+  async fn process_all_pending_reports(&self) -> Vec<bd_crash_handler::CrashLog> {
+    vec![]
+  }
+}
+
 #[derive(Debug)]
 pub enum AsyncLogBufferMessage {
   EmitLog((LogLine, Option<oneshot::Sender<()>>)),
@@ -795,16 +816,20 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  pub async fn run(self) -> Self {
+  pub async fn run(self, report_processor: impl ReportProcessor) -> Self {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     self
-      .run_with_shutdown(shutdown_trigger.make_shutdown())
+      .run_with_shutdown(report_processor, shutdown_trigger.make_shutdown())
       .await
   }
 
   // TODO(mattklein123): This seems to only be used for tests. Figure out how to clean this up
   // so we don't need this just for tests.
-  pub async fn run_with_shutdown(mut self, mut shutdown: ComponentShutdown) -> Self {
+  pub async fn run_with_shutdown(
+    mut self,
+    report_processor: impl ReportProcessor,
+    mut shutdown: ComponentShutdown,
+  ) -> Self {
     // Processes incoming logs and reacts to workflows config updates.
     //
     // The first workflows config update makes the async log buffer disable
@@ -841,7 +866,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           }
         },
         Some(ReportProcessingRequest {
-          crash_monitor, session_id_override
+           session
         }) = self.report_processor_rx.recv() => {
           // TODO(snowp): Once we move over to using the file watcher we can more accurately pick
           // current vs previous for all reports, but as we need to handle restarts etc we may
@@ -851,7 +876,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           // emitting it as part of the upload process. This avoids having to mess with time
           // overrides at a later stage.
 
-          for crash_log in crash_monitor.process_all_pending_reports().await {
+            let session_id_override = match session {
+                crate::ReportProcessingSession::Current => None,
+                crate::ReportProcessingSession::PreviousRun => self
+                  .session_strategy
+                  .previous_process_session_id(),
+                crate::ReportProcessingSession::Other(id) => Some(id),
+            };
+
+          for crash_log in report_processor.process_all_pending_reports().await {
             let attributes_overrides = session_id_override.clone().map(|id| {
               LogAttributesOverrides::PreviousRunSessionID(
                 id,

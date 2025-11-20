@@ -429,7 +429,7 @@ async fn logs_are_replayed_in_order() {
   setup.shutdown_in(1.seconds());
 
   let run_buffer_task = tokio::task::spawn(async move {
-    _ = buffer.run().await;
+    _ = buffer.run(()).await;
   });
 
   shutdown.store(true, Ordering::SeqCst);
@@ -501,7 +501,7 @@ fn enqueuing_log_blocks() {
 
     let shutdown_trigger = ComponentShutdownTrigger::default();
     buffer
-      .run_with_shutdown(shutdown_trigger.make_shutdown())
+      .run_with_shutdown((), shutdown_trigger.make_shutdown())
       .await;
     shutdown_trigger.shutdown().await;
   });
@@ -537,7 +537,7 @@ async fn creates_workflows_engine_in_response_to_config_update() {
   );
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(buffer.run_with_shutdown((), shutdown_trigger.make_shutdown()));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   buffer = handle.await.unwrap();
@@ -573,7 +573,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(buffer.run_with_shutdown((), shutdown_trigger.make_shutdown()));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   buffer = handle.await.unwrap();
@@ -595,7 +595,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(buffer.run_with_shutdown((), shutdown_trigger.make_shutdown()));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   handle.await.unwrap();
@@ -664,7 +664,7 @@ async fn logs_resource_utilization_log() {
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(buffer.run_with_shutdown((), shutdown_trigger.make_shutdown()));
   500.milliseconds().sleep().await;
 
   shutdown_trigger.shutdown().await;

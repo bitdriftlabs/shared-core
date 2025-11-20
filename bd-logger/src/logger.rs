@@ -16,7 +16,6 @@ use crate::{MetadataProvider, app_version};
 use bd_api::Metadata;
 use bd_bounded_buffer::{self, Sender as MemoryBoundSender};
 use bd_client_stats_store::{Counter, Scope};
-use bd_crash_handler::Monitor;
 use bd_log::warn_every;
 use bd_log_primitives::{
   AnnotatedLogField,
@@ -38,7 +37,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::{oneshot, watch};
+use tokio::sync::watch;
 
 #[derive(Clone)]
 #[allow(clippy::struct_field_names)]
@@ -581,11 +580,8 @@ pub struct InitParams {
 }
 
 pub struct ReportProcessingRequest {
-  /// Monitor for processing files
-  pub crash_monitor: Monitor,
-
-  /// Session ID to use in reports, or None to use the current session
-  pub session_id_override: Option<String>,
+  /// Session to use in reports
+  pub session: ReportProcessingSession,
 }
 
 /// A single logger instance. This manages the lifetime of the logger and can be used to access
@@ -615,13 +611,6 @@ pub struct Logger {
   stats_scope: Scope,
 
   sleep_mode_active: watch::Sender<bool>,
-
-  // Channel for receiving a processor for crash reports, once runtime config
-  // loading is completed. Result is stored in crash_monitor
-  crash_monitor_rx: Option<oneshot::Receiver<Monitor>>,
-
-  // Shared crash monitor instance initialized by the builder
-  crash_monitor: Arc<Mutex<Option<Monitor>>>,
 }
 
 impl Logger {
@@ -636,7 +625,6 @@ impl Logger {
     sdk_version: &str,
     store: Arc<bd_key_value::Store>,
     sleep_mode_active: watch::Sender<bool>,
-    crash_monitor_rx: Option<oneshot::Receiver<Monitor>>,
   ) -> Self {
     let stats = Stats::new(&stats_scope);
 
@@ -655,8 +643,6 @@ impl Logger {
       stats_scope,
       store,
       sleep_mode_active,
-      crash_monitor_rx,
-      crash_monitor: Arc::new(Mutex::new(None)),
     }
   }
 
@@ -676,32 +662,12 @@ impl Logger {
   /// The `session` parameter is used to determine which session ID is used for
   /// the logs, depending on whether the crash occurred in the current or prior
   /// session.
-  ///
-  /// This function blocks until the crash monitor is initialized (which happens
-  /// early in the launch cycle) and then enqueues the crash report processing
-  /// request.
   pub fn process_crash_reports(&mut self, session: ReportProcessingSession) -> anyhow::Result<()> {
-    let crash_monitor = if let Some(monitor) = self.crash_monitor.lock().clone() {
-      monitor
-    } else if let Some(rx) = self.crash_monitor_rx.take() {
-      let monitor = rx.blocking_recv()?;
-      *self.crash_monitor.lock() = Some(monitor.clone());
-      monitor
-    } else {
-      anyhow::bail!("failed to store/receive crash_monitor instance");
-    };
-
-    let session_id_override = match session {
-      ReportProcessingSession::Current => None,
-      ReportProcessingSession::Other(id) => Some(id),
-      // TODO(snowp): Ideally we should just tell the monitor about current vs previous session
-      // directly rather than going through session IDs.
-      ReportProcessingSession::PreviousRun => crash_monitor.session.previous_process_session_id(),
-    };
-    Ok(self.report_processor_tx.try_send(ReportProcessingRequest {
-      crash_monitor,
-      session_id_override,
-    })?)
+    Ok(
+      self
+        .report_processor_tx
+        .try_send(ReportProcessingRequest { session })?,
+    )
   }
 
   pub fn shutdown(&self, blocking: bool) {
