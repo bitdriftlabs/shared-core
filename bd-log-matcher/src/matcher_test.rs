@@ -823,8 +823,8 @@ fn test_is_set_matcher() {
   );
 }
 
-#[tokio::test]
-async fn feature_flag_matcher() {
+#[test]
+fn feature_flag_matcher() {
   struct Input {
     flags: Vec<(&'static str, Option<&'static str>)>,
     matcher: LogMatcher,
@@ -873,7 +873,7 @@ async fn feature_flag_matcher() {
   {
     let matcher = TestMatcher::new(&input.matcher).unwrap();
 
-    let state = bd_state::test::TestStore::new().await;
+    let state = bd_state::test::TestStateReader::default();
     for (key, value) in input.flags {
       state
         .insert(
@@ -881,17 +881,11 @@ async fn feature_flag_matcher() {
           key,
           value.unwrap_or("").to_string(),
         )
-        .await
         .unwrap();
     }
 
-    let actual = matcher.match_log_with_state(
-      TypedLogLevel::Debug,
-      LogType::NORMAL,
-      "foo",
-      [],
-      &state.read().await,
-    );
+    let actual =
+      matcher.match_log_with_state(TypedLogLevel::Debug, LogType::NORMAL, "foo", [], &state);
 
     assert_eq!(
       input.matches, actual,
