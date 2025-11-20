@@ -1,0 +1,27 @@
+[package]
+edition      = "2024"
+license-file = "../LICENSE"
+name         = "bd-state"
+publish      = false
+version      = "1.0.0"
+
+[lib]
+doctest = false
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[dependencies]
+ahash.workspace             = true
+anyhow.workspace            = true
+async-trait.workspace       = true
+bd-bonjson                  = { path = "../bd-bonjson" }
+bd-client-common            = { path = "../bd-client-common" }
+bd-resilient-kv             = { path = "../bd-resilient-kv" }
+bd-time                     = { path = "../bd-time" }
+bd-workspace-hack.workspace = true
+itertools.workspace         = true
+log.workspace               = true
+tempfile.workspace          = true
+time.workspace              = true
+tokio.workspace             = true

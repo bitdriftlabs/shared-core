@@ -576,6 +576,7 @@ dependencies = [
  "bd-runtime",
  "bd-session",
  "bd-shutdown",
+ "bd-state",
  "bd-test-helpers",
  "bd-time",
  "bd-workspace-hack",
@@ -904,6 +905,7 @@ dependencies = [
  "bd-session",
  "bd-session-replay",
  "bd-shutdown",
+ "bd-state",
  "bd-stats-common",
  "bd-test-helpers",
  "bd-time",
@@ -1243,6 +1245,25 @@ version = "1.0.0"
 dependencies = [
  "bd-workspace-hack",
  "log",
+ "tokio",
+]
+
+[[package]]
+name = "bd-state"
+version = "1.0.0"
+dependencies = [
+ "ahash",
+ "anyhow",
+ "async-trait",
+ "bd-bonjson",
+ "bd-client-common",
+ "bd-resilient-kv",
+ "bd-time",
+ "bd-workspace-hack",
+ "itertools 0.14.0",
+ "log",
+ "tempfile",
+ "time",
  "tokio",
 ]
 

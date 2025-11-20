@@ -45,6 +45,7 @@ members = [
   "bd-runtime",
   "bd-runtime-config",
   "bd-server-stats",
+  "bd-state",
   "bd-stats-common",
   "bd-test-helpers",
   "bd-time",

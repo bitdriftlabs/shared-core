@@ -22,6 +22,7 @@ bd-log-primitives.path      = "../bd-log-primitives"
 bd-proto.path               = "../bd-proto"
 bd-runtime.path             = "../bd-runtime"
 bd-shutdown.path            = "../bd-shutdown"
+bd-state.path               = "../bd-state"
 bd-time.path                = "../bd-time"
 bd-session.path             = "../bd-session"
 bd-workspace-hack.workspace = true
