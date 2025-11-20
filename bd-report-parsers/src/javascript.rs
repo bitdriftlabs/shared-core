@@ -44,10 +44,7 @@ pub struct JavaScriptAppMetrics {
   pub javascript_engine: v_1::JavaScriptEngine,
 }
 
-fn parse_javascript_stack_trace(
-  stack_trace: &str,
-  debug_id: Option<&str>,
-) -> Vec<JavaScriptFrame> {
+fn parse_javascript_stack_trace(stack_trace: &str, debug_id: Option<&str>) -> Vec<JavaScriptFrame> {
   let lines: Vec<&str> = stack_trace
     .lines()
     .map(str::trim)
