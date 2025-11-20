@@ -1260,6 +1260,7 @@ dependencies = [
  "bd-workspace-hack",
  "itertools 0.14.0",
  "log",
+ "rstest",
  "tempfile",
  "time",
  "tokio",

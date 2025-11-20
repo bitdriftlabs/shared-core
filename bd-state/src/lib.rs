@@ -40,6 +40,42 @@ pub type ScopedStateMap = AHashMap<String, TimestampedStateValue>;
 type InMemoryStateMap = AHashMap<(Scope, String), (String, OffsetDateTime)>;
 
 //
+// StoreInitResult
+//
+
+/// Result of initializing a Store with persistent storage.
+///
+/// Contains the initialized store, data loss information from loading persisted state,
+/// and a snapshot of the previous process's state (captured before clearing ephemeral scopes).
+pub struct StoreInitResult {
+  /// The initialized store with ephemeral scopes cleared
+  pub store: Store,
+  /// Information about any data loss detected when loading the persisted state
+  pub data_loss: DataLoss,
+  /// Snapshot of state from the previous process, captured before clearing ephemeral scopes
+  pub previous_state: StateSnapshot,
+}
+
+//
+// StoreInitWithFallbackResult
+//
+
+/// Result of initializing a Store with automatic fallback to in-memory storage.
+///
+/// If persistent storage initialization fails, the store automatically falls back to
+/// in-memory mode. The `fallback_occurred` flag indicates whether this happened.
+pub struct StoreInitWithFallbackResult {
+  /// The initialized store (either persistent or in-memory)
+  pub store: Store,
+  /// Data loss information (None if fallback to in-memory occurred)
+  pub data_loss: Option<DataLoss>,
+  /// Snapshot of previous state (empty if fallback occurred)
+  pub previous_state: StateSnapshot,
+  /// Whether fallback to in-memory storage occurred
+  pub fallback_occurred: bool,
+}
+
+//
 // StateSnapshot
 //
 
@@ -144,15 +180,10 @@ impl Store {
   ///
   /// Both `FeatureFlag` and `GlobalState` scopes are cleared on each process start, requiring
   /// users to re-set these values.
-  ///
-  /// Returns:
-  /// - The store (with ephemeral scopes cleared)
-  /// - Data loss information from loading the persisted state
-  /// - Snapshot of state from the previous process (before clearing ephemeral scopes)
   pub async fn new(
     directory: &Path,
     time_provider: Arc<dyn TimeProvider>,
-  ) -> anyhow::Result<(Self, DataLoss, StateSnapshot)> {
+  ) -> anyhow::Result<StoreInitResult> {
     // TODO(snowp): Ideally we start small and grow as needed rather than pre-allocating 1MB.
     let (inner, data_loss) =
       bd_resilient_kv::VersionedKVStore::new(directory, "state", 1024 * 1024, None, time_provider)
@@ -176,26 +207,28 @@ impl Store {
     let _ = store.clear(Scope::FeatureFlag).await;
     let _ = store.clear(Scope::GlobalState).await;
 
-    Ok((store, data_loss, previous_snapshot))
+    Ok(StoreInitResult {
+      store,
+      data_loss,
+      previous_state: previous_snapshot,
+    })
   }
 
   /// Creates a new Store, falling back to an in-memory store if initialization fails.
   ///
   /// This method never fails - if the persistent store cannot be initialized, it will
-  /// return an in-memory store instead. The boolean return value indicates whether
-  /// a fallback occurred.
-  ///
-  /// # Returns
-  /// - The store (either persistent or in-memory)
-  /// - Data loss information (None if using in-memory fallback)
-  /// - Snapshot of state from the previous process (empty if using in-memory fallback)
-  /// - Boolean indicating whether fallback to in-memory occurred (true = fallback)
+  /// return an in-memory store instead.
   pub async fn new_or_fallback(
     directory: &Path,
     time_provider: Arc<dyn TimeProvider>,
-  ) -> (Self, Option<DataLoss>, StateSnapshot, bool) {
+  ) -> StoreInitWithFallbackResult {
     match Self::new(directory, time_provider.clone()).await {
-      Ok((store, data_loss, snapshot)) => (store, Some(data_loss), snapshot, false),
+      Ok(result) => StoreInitWithFallbackResult {
+        store: result.store,
+        data_loss: Some(result.data_loss),
+        previous_state: result.previous_state,
+        fallback_occurred: false,
+      },
       Err(e) => {
         log::warn!(
           "Failed to initialize persistent state store: {e}, falling back to in-memory store"
@@ -205,7 +238,12 @@ impl Store {
           feature_flags: AHashMap::new(),
           global_state: AHashMap::new(),
         };
-        (store, None, empty_snapshot, true)
+        StoreInitWithFallbackResult {
+          store,
+          data_loss: None,
+          previous_state: empty_snapshot,
+          fallback_occurred: true,
+        }
       },
     }
   }
