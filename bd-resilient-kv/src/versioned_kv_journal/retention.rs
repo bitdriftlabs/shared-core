@@ -106,23 +106,4 @@ impl RetentionRegistry {
       .map(|atomic| atomic.load(Ordering::Relaxed))
       .min()
   }
-
-  /// Returns debug information about current retention requirements.
-  ///
-  /// This is useful for debugging and monitoring retention requirements.
-  pub async fn debug_info(&self) -> Vec<(String, u64)> {
-    let mut handles = self.handles.write().await;
-
-    // Clean up dropped handles
-    handles.retain(|weak| weak.strong_count() > 0);
-
-    // We can't easily get the names since we only store Weak<AtomicU64>
-    // Return just the retention timestamps
-    handles
-      .iter()
-      .filter_map(std::sync::Weak::upgrade)
-      .enumerate()
-      .map(|(i, atomic)| (format!("handle_{i}"), atomic.load(Ordering::Relaxed)))
-      .collect()
-  }
 }
