@@ -67,11 +67,9 @@ pub struct StateEntry<'a> {
 // StateReader
 //
 
-/// A trait for reading state values. This allows for simple in-memory implementations in tests
-/// without requiring async or filesystem access.
-///
-/// This trait provides a core `iter()` method that returns all entries, along with default
-/// implementations for common filtering patterns.
+/// A trait for reading state values. This is used to abstract over different storage
+/// implementations, such as persistent stores and in-memory stores. This pattern allows for
+/// non-async access to state values while the underlying store may be async.
 pub trait StateReader {
   /// Gets a value from the state store.
   fn get(&self, scope: Scope, key: &str) -> Option<&str>;
@@ -155,6 +153,7 @@ impl Store {
     directory: &Path,
     time_provider: Arc<dyn TimeProvider>,
   ) -> anyhow::Result<(Self, DataLoss, StateSnapshot)> {
+    // TODO(snowp): Ideally we start small and grow as needed rather than pre-allocating 1MB.
     let (inner, data_loss) =
       bd_resilient_kv::VersionedKVStore::new(directory, "state", 1024 * 1024, None, time_provider)
         .await?;
@@ -169,6 +168,7 @@ impl Store {
 
     // Clear ephemeral scopes so the current process starts with fresh state.
     // Users must re-set feature flags and global state on each process start.
+
     // TODO(snowp): Consider improving the overhead of clear by adding explicit support for
     // clearing by prefix in the underlying store, rather than iterating and removing individual
     // keys.
@@ -177,6 +177,48 @@ impl Store {
     let _ = store.clear(Scope::GlobalState).await;
 
     Ok((store, data_loss, previous_snapshot))
+  }
+
+  /// Creates a new Store, falling back to an in-memory store if initialization fails.
+  ///
+  /// This method never fails - if the persistent store cannot be initialized, it will
+  /// return an in-memory store instead. The boolean return value indicates whether
+  /// a fallback occurred.
+  ///
+  /// # Returns
+  /// - The store (either persistent or in-memory)
+  /// - Data loss information (None if using in-memory fallback)
+  /// - Snapshot of state from the previous process (empty if using in-memory fallback)
+  /// - Boolean indicating whether fallback to in-memory occurred (true = fallback)
+  pub async fn new_or_fallback(
+    directory: &Path,
+    time_provider: Arc<dyn TimeProvider>,
+  ) -> (Self, Option<DataLoss>, StateSnapshot, bool) {
+    match Self::new(directory, time_provider.clone()).await {
+      Ok((store, data_loss, snapshot)) => (store, Some(data_loss), snapshot, false),
+      Err(e) => {
+        log::warn!(
+          "Failed to initialize persistent state store: {e}, falling back to in-memory store"
+        );
+        let store = Self::new_in_memory();
+        let empty_snapshot = StateSnapshot {
+          feature_flags: AHashMap::new(),
+          global_state: AHashMap::new(),
+        };
+        (store, None, empty_snapshot, true)
+      },
+    }
+  }
+
+  /// Creates a new in-memory Store that does not persist to disk.
+  ///
+  /// This is useful when persistent storage is not needed or when used as a fallback
+  /// when the persistent store cannot be initialized.
+  #[must_use]
+  pub fn new_in_memory() -> Self {
+    Self {
+      inner: StoreInner::InMemory(Arc::new(RwLock::new(AHashMap::new()))),
+    }
   }
 
   pub async fn insert(&self, scope: Scope, key: &str, value: String) -> anyhow::Result<()> {
@@ -249,48 +291,6 @@ impl Store {
     match &self.inner {
       StoreInner::Persistent(store) => ReadLockedStoreGuard::Persistent(store.read().await),
       StoreInner::InMemory(map) => ReadLockedStoreGuard::InMemory(map.read().await),
-    }
-  }
-
-  /// Creates a new Store, falling back to an in-memory store if initialization fails.
-  ///
-  /// This method never fails - if the persistent store cannot be initialized, it will
-  /// return an in-memory store instead. The boolean return value indicates whether
-  /// a fallback occurred.
-  ///
-  /// # Returns
-  /// - The store (either persistent or in-memory)
-  /// - Data loss information (None if using in-memory fallback)
-  /// - Snapshot of state from the previous process (empty if using in-memory fallback)
-  /// - Boolean indicating whether fallback to in-memory occurred (true = fallback)
-  pub async fn new_or_fallback(
-    directory: &Path,
-    time_provider: Arc<dyn TimeProvider>,
-  ) -> (Self, Option<DataLoss>, StateSnapshot, bool) {
-    match Self::new(directory, time_provider.clone()).await {
-      Ok((store, data_loss, snapshot)) => (store, Some(data_loss), snapshot, false),
-      Err(e) => {
-        log::warn!(
-          "Failed to initialize persistent state store: {e}, falling back to in-memory store"
-        );
-        let store = Self::new_in_memory();
-        let empty_snapshot = StateSnapshot {
-          feature_flags: AHashMap::new(),
-          global_state: AHashMap::new(),
-        };
-        (store, None, empty_snapshot, true)
-      },
-    }
-  }
-
-  /// Creates a new in-memory Store that does not persist to disk.
-  ///
-  /// This is useful when persistent storage is not needed or when used as a fallback
-  /// when the persistent store cannot be initialized.
-  #[must_use]
-  pub fn new_in_memory() -> Self {
-    Self {
-      inner: StoreInner::InMemory(Arc::new(RwLock::new(AHashMap::new()))),
     }
   }
 }
