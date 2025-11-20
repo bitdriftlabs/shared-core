@@ -180,6 +180,7 @@ impl Store {
   ///
   /// Both `FeatureFlag` and `GlobalState` scopes are cleared on each process start, requiring
   /// users to re-set these values.
+  #[allow(clippy::new_ret_no_self)]
   pub async fn new(
     directory: &Path,
     time_provider: Arc<dyn TimeProvider>,

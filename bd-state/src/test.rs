@@ -86,9 +86,10 @@ impl TestStore {
     let time_provider = Arc::new(bd_time::TestTimeProvider::new(
       datetime!(2024-01-01 00:00:00 UTC),
     ));
-    let (store, ..) = crate::Store::new(temp_dir.path(), time_provider.clone())
+    let store = crate::Store::new(temp_dir.path(), time_provider.clone())
       .await
-      .unwrap();
+      .unwrap()
+      .store;
 
     Self {
       _dir: temp_dir,

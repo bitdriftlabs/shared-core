@@ -24,9 +24,10 @@ impl Setup {
     let time_provider = Arc::new(bd_time::TestTimeProvider::new(
       datetime!(2024-01-01 00:00:00 UTC),
     ));
-    let (store, ..) = Store::new(temp_dir.path(), time_provider.clone())
+    let store = Store::new(temp_dir.path(), time_provider.clone())
       .await
-      .unwrap();
+      .unwrap()
+      .store;
 
     Self {
       _dir: temp_dir,
@@ -307,9 +308,10 @@ async fn persistence_across_restart() {
   ));
 
   {
-    let (store, ..) = Store::new(temp_dir.path(), time_provider.clone())
+    let store = Store::new(temp_dir.path(), time_provider.clone())
       .await
-      .unwrap();
+      .unwrap()
+      .store;
     store
       .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
       .await
@@ -320,9 +322,10 @@ async fn persistence_across_restart() {
       .unwrap();
   }
 
-  let (store, ..) = Store::new(temp_dir.path(), time_provider.clone())
+  let store = Store::new(temp_dir.path(), time_provider.clone())
     .await
-    .unwrap();
+    .unwrap()
+    .store;
 
   // After restart, ephemeral scopes are cleared
   let reader = store.read().await;
@@ -447,9 +450,11 @@ async fn ephemeral_scopes_cleared_on_restart() {
 
   // First process: write state and verify snapshot on creation is empty
   {
-    let (store, _, prev_snapshot) = Store::new(temp_dir.path(), time_provider.clone())
+    let result = Store::new(temp_dir.path(), time_provider.clone())
       .await
       .unwrap();
+    let store = result.store;
+    let prev_snapshot = result.previous_state;
 
     // First run should have empty snapshot
     assert!(prev_snapshot.feature_flags.is_empty());
@@ -478,9 +483,11 @@ async fn ephemeral_scopes_cleared_on_restart() {
 
   // Second process: state should be cleared but snapshot should have previous data
   {
-    let (store, _, prev_snapshot) = Store::new(temp_dir.path(), time_provider.clone())
+    let result = Store::new(temp_dir.path(), time_provider.clone())
       .await
       .unwrap();
+    let store = result.store;
+    let prev_snapshot = result.previous_state;
 
     // Snapshot should contain previous process's data
     assert_eq!(prev_snapshot.feature_flags.len(), 2);
@@ -529,14 +536,14 @@ async fn fallback_to_in_memory_on_invalid_directory() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
-  let (store, data_loss, snapshot, used_fallback) =
-    Store::new_or_fallback(temp_file.path(), time_provider).await;
+  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  let store = result.store;
 
   // Should have fallen back to in-memory
-  assert!(used_fallback);
-  assert!(data_loss.is_none());
-  assert!(snapshot.feature_flags.is_empty());
-  assert!(snapshot.global_state.is_empty());
+  assert!(result.fallback_occurred);
+  assert!(result.data_loss.is_none());
+  assert!(result.previous_state.feature_flags.is_empty());
+  assert!(result.previous_state.global_state.is_empty());
 
   // Verify in-memory store works correctly
   store
@@ -558,8 +565,9 @@ async fn in_memory_store_supports_all_operations() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
-  let (store, .., used_fallback) = Store::new_or_fallback(temp_file.path(), time_provider).await;
-  assert!(used_fallback);
+  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  assert!(result.fallback_occurred);
+  let store = result.store;
 
   // Test insert
   store
@@ -614,9 +622,9 @@ async fn in_memory_store_does_not_persist() {
 
   // Create in-memory store and add data
   {
-    let (store, .., used_fallback) =
-      Store::new_or_fallback(temp_file.path(), time_provider.clone()).await;
-    assert!(used_fallback);
+    let result = Store::new_or_fallback(temp_file.path(), time_provider.clone()).await;
+    assert!(result.fallback_occurred);
+    let store = result.store;
 
     store
       .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
@@ -629,8 +637,9 @@ async fn in_memory_store_does_not_persist() {
 
   // Create a new in-memory store - data should not persist
   {
-    let (store, .., used_fallback) = Store::new_or_fallback(temp_file.path(), time_provider).await;
-    assert!(used_fallback);
+    let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+    assert!(result.fallback_occurred);
+    let store = result.store;
 
     let reader = store.read().await;
     assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
@@ -644,8 +653,9 @@ async fn in_memory_store_scoped_snapshot() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
-  let (store, .., used_fallback) = Store::new_or_fallback(temp_file.path(), time_provider).await;
-  assert!(used_fallback);
+  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  assert!(result.fallback_occurred);
+  let store = result.store;
 
   // Add data to different scopes
   store
@@ -691,8 +701,9 @@ async fn in_memory_store_clear_respects_scope() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
-  let (store, .., used_fallback) = Store::new_or_fallback(temp_file.path(), time_provider).await;
-  assert!(used_fallback);
+  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  assert!(result.fallback_occurred);
+  let store = result.store;
 
   // Add data to both scopes
   store
@@ -720,8 +731,9 @@ async fn in_memory_store_concurrent_readers() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
-  let (store, .., used_fallback) = Store::new_or_fallback(temp_file.path(), time_provider).await;
-  assert!(used_fallback);
+  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  assert!(result.fallback_occurred);
+  let store = result.store;
 
   store
     .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
@@ -745,8 +757,9 @@ async fn in_memory_store_empty_operations() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
-  let (store, .., used_fallback) = Store::new_or_fallback(temp_file.path(), time_provider).await;
-  assert!(used_fallback);
+  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  assert!(result.fallback_occurred);
+  let store = result.store;
 
   // Operations on empty store should work
   let reader = store.read().await;
