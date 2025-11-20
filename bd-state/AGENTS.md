@@ -41,7 +41,7 @@ This lifecycle enables crash reporting to access the crashed process's feature f
 
 ```rust
 // With fallback (recommended for production)
-let (store, data_loss, prev_snapshot, fallback_occurred) = 
+let (store, data_loss, prev_snapshot, fallback_occurred) =
     Store::new_or_fallback(&directory, time_provider).await;
 
 if fallback_occurred {
@@ -49,7 +49,7 @@ if fallback_occurred {
 }
 
 // Without fallback (if you need to handle errors explicitly)
-let (store, data_loss, prev_snapshot) = 
+let (store, data_loss, prev_snapshot) =
     Store::new(&directory, time_provider).await?;
 
 // In-memory only (for tests)
@@ -281,4 +281,4 @@ Potential improvements to consider:
 - **Type-safe reading**: StateReader trait for flexible access patterns
 - **Async-first**: All operations designed for async/await contexts
 
-When working with bd-state, remember that it's designed for runtime state management, not long-term persistence. For durable storage, use bd-resilient-kv directly or another appropriate mechanism.
+When working with bd-state, remember that it's designed for runtime state management, not long-term persistence.
