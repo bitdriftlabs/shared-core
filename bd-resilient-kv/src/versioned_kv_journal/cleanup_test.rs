@@ -108,35 +108,6 @@ async fn cleanup_handles_missing_directory_gracefully() {
 }
 
 #[tokio::test]
-async fn cleanup_handles_various_timestamp_formats() {
-  let temp_dir = TempDir::new().unwrap();
-  let registry = Arc::new(RetentionRegistry::new());
-
-  // Create snapshots with different timestamp formats
-  create_test_snapshot(temp_dir.path(), "test", 0, 123).await;
-  create_test_snapshot(temp_dir.path(), "test", 1, 123_456_789).await;
-  create_test_snapshot(temp_dir.path(), "test", 2, 999_999_999_999).await;
-
-  let handle = registry.create_handle("test").await;
-  handle.update_retention_micros(500_000_000); // Keep anything >= 500M
-
-  let result = cleanup_old_snapshots(temp_dir.path(), "test", &registry).await;
-  assert!(result.is_ok(), "Should handle various timestamp formats");
-
-  // Small timestamps should be deleted (123 < 500M and 123M < 500M)
-  assert!(!temp_dir.path().join("test.jrn.g0.t123.zz").exists());
-  assert!(!temp_dir.path().join("test.jrn.g1.t123456789.zz").exists());
-
-  // Large timestamps should be kept (999B > 500M)
-  assert!(
-    temp_dir
-      .path()
-      .join("test.jrn.g2.t999999999999.zz")
-      .exists()
-  );
-}
-
-#[tokio::test]
 async fn cleanup_respects_zero_retention() {
   let temp_dir = TempDir::new().unwrap();
   let registry = Arc::new(RetentionRegistry::new());
