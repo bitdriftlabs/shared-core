@@ -194,15 +194,6 @@ enum FeatureFlagInitialization {
   Initialized(Option<FeatureFlags>),
 }
 
-impl FeatureFlagInitialization {
-  fn get(&self) -> Option<&FeatureFlags> {
-    match self {
-      Self::Pending(_) => None,
-      Self::Initialized(flags_option) => flags_option.as_ref(),
-    }
-  }
-}
-
 //
 // AsyncLogBuffer
 //
