@@ -37,7 +37,7 @@ fn find_archived_journals(dir: &std::path::Path) -> anyhow::Result<Vec<std::path
 }
 
 /// Helper function to extract rotation timestamp from an archived journal filename.
-/// Archived journals have the format: `{name}.jrn.t{timestamp}.zz`
+/// Archived journals have the format: `{name}.jrn.g{generation}.t{timestamp}.zz`
 fn extract_rotation_timestamp(path: &std::path::Path) -> anyhow::Result<u64> {
   let filename = path
     .file_name()

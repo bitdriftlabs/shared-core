@@ -218,22 +218,11 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
     .insert("key2".to_string(), make_string_value("value2"))
     .await?;
 
-  // Get max timestamp before rotation (this will be used in the archive name)
-  let rotation_timestamp = setup
-    .store
-    .get_with_timestamp("key2")
-    .map(|tv| tv.timestamp)
-    .unwrap();
-
   // Manually trigger rotation
-  setup.store.rotate_journal().await?;
+  let rotation = setup.store.rotate_journal().await?;
 
   // Verify archived file exists (compressed)
-  let archived_path = setup
-    .temp_dir
-    .path()
-    .join(format!("test.jrn.t{}.zz", rotation_timestamp));
-  assert!(archived_path.exists());
+  assert!(rotation.snapshot_path.exists());
 
   // Verify active journal still works
   let ts3 = setup
@@ -249,7 +238,9 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
   assert_eq!(setup.store.get("key3"), Some(&make_string_value("value3")));
 
   // Decompress the archive and load it as a Store to verify that it contains the old state.
-  let snapshot_store = setup.make_store_from_snapshot_file(&archived_path).await?;
+  let snapshot_store = setup
+    .make_store_from_snapshot_file(&rotation.snapshot_path)
+    .await?;
   assert_eq!(
     snapshot_store.get("key1"),
     Some(&make_string_value("value1"))
@@ -377,32 +368,23 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
 async fn test_multiple_rotations() -> anyhow::Result<()> {
   let mut setup = Setup::new().await?;
 
-  let mut rotation_timestamps = Vec::new();
+  let mut snapshot_paths = Vec::new();
 
   // Perform multiple rotations
   for i in 0 .. 3 {
     let key = format!("key{}", i);
     let value = make_string_value(&format!("value{}", i));
     setup.store.insert(key.clone(), value).await?;
-    let timestamp = setup
-      .store
-      .get_with_timestamp(&key)
-      .map(|tv| tv.timestamp)
-      .unwrap();
-    rotation_timestamps.push(timestamp);
-    setup.store.rotate_journal().await?;
+    let rotation = setup.store.rotate_journal().await?;
+    snapshot_paths.push(rotation.snapshot_path);
   }
 
   // Verify all compressed archives exist
-  for timestamp in rotation_timestamps {
-    let archived_path = setup
-      .temp_dir
-      .path()
-      .join(format!("test.jrn.t{}.zz", timestamp));
+  for snapshot_path in snapshot_paths {
     assert!(
-      archived_path.exists(),
-      "Compressed archive for timestamp {} should exist",
-      timestamp
+      snapshot_path.exists(),
+      "Compressed archive {} should exist",
+      snapshot_path.display()
     );
   }
 
@@ -489,6 +471,65 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
   assert!(
     !snapshot_path3.exists(),
     "Snapshot should not be created after handle is dropped"
+  );
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn test_multiple_rotations_with_same_timestamp() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  // Use fixed time so all rotations have the same data timestamp
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+
+  let (mut store, _) =
+    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider, None).await?;
+
+  // Insert data once
+  store
+    .insert("key1".to_string(), make_string_value("value1"))
+    .await?;
+
+  // Perform first rotation
+  let rotation1 = store.rotate_journal().await?;
+  assert!(
+    rotation1.snapshot_path.exists(),
+    "First rotation should create snapshot"
+  );
+
+  // Perform second rotation WITHOUT inserting new data
+  // This means both rotations will have the same max timestamp
+  let rotation2 = store.rotate_journal().await?;
+  assert!(
+    rotation2.snapshot_path.exists(),
+    "Second rotation should create snapshot"
+  );
+
+  // Verify both snapshots exist with different filenames (due to different generations)
+  assert!(
+    rotation1.snapshot_path.exists(),
+    "First snapshot should still exist"
+  );
+  assert!(
+    rotation2.snapshot_path.exists(),
+    "Second snapshot should exist"
+  );
+
+  // Verify the paths are different (different generations prevent collision)
+  assert_ne!(
+    rotation1.snapshot_path, rotation2.snapshot_path,
+    "Snapshots should have different paths despite same timestamp"
+  );
+
+  // Verify we can read both snapshots (they should be different files)
+  let snapshot1_data = std::fs::read(&rotation1.snapshot_path)?;
+  let snapshot2_data = std::fs::read(&rotation2.snapshot_path)?;
+
+  // The files should exist and be valid
+  assert!(!snapshot1_data.is_empty(), "First snapshot should have data");
+  assert!(
+    !snapshot2_data.is_empty(),
+    "Second snapshot should have data"
   );
 
   Ok(())

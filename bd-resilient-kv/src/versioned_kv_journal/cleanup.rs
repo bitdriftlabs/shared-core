@@ -120,7 +120,7 @@ impl SnapshotCleanupTask {
     while let Some(entry) = entries.next_entry().await? {
       let path = entry.path();
 
-      // Match pattern: {name}.jrn.t{timestamp}.zz
+      // Match pattern: {name}.jrn.g{generation}.t{timestamp}.zz
       if let Some(filename) = path.file_name().and_then(|f| f.to_str())
         && filename.starts_with(&self.journal_name)
         && std::path::Path::new(filename)
@@ -139,7 +139,7 @@ impl SnapshotCleanupTask {
 
 /// Extracts the timestamp from an archived journal filename.
 ///
-/// Expected format: `{name}.jrn.t{timestamp}.zz`
+/// Expected format: `{name}.jrn.g{generation}.t{timestamp}.zz`
 fn extract_timestamp_from_filename(filename: &str) -> anyhow::Result<u64> {
   filename
     .split('.')

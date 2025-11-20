@@ -400,7 +400,7 @@ impl VersionedKVStore {
     let old_journal_path = self
       .dir_path
       .join(format!("{}.jrn.{old_generation}", self.journal_name));
-    let snapshot_path = self.archive_journal(&old_journal_path).await;
+    let snapshot_path = self.archive_journal(&old_journal_path, old_generation).await;
 
     Ok(Rotation {
       new_journal_path,
@@ -416,7 +416,7 @@ impl VersionedKVStore {
   ///
   /// If a retention registry is configured, this method checks if any subsystem requires
   /// snapshots. If no retention is needed, the journal is deleted without compression.
-  async fn archive_journal(&self, old_journal_path: &Path) -> PathBuf {
+  async fn archive_journal(&self, old_journal_path: &Path, generation: u64) -> PathBuf {
     // Get the maximum timestamp from the current state to use for the snapshot filename
     let rotation_timestamp = self
       .cached_map
@@ -442,8 +442,8 @@ impl VersionedKVStore {
     };
 
     let archived_path = self.dir_path.join(format!(
-      "{}.jrn.t{}.zz",
-      self.journal_name, rotation_timestamp
+      "{}.jrn.g{}.t{}.zz",
+      self.journal_name, generation, rotation_timestamp
     ));
 
     if should_create_snapshot {
