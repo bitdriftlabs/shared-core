@@ -84,7 +84,11 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   .await?;
 
   store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
   let ts1 = store
     .get_with_timestamp(Scope::FeatureFlag, "key1")
@@ -94,7 +98,11 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   time_provider.advance(10.milliseconds());
 
   store
-    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
 
   // Write more data to trigger rotation
@@ -102,7 +110,7 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
     store
       .insert(
         Scope::FeatureFlag,
-        &format!("key{i}"),
+        format!("key{i}"),
         make_string_value("foo"),
       )
       .await?;
@@ -119,7 +127,7 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   store
     .insert(
       Scope::FeatureFlag,
-      "final",
+      "final".to_string(),
       make_string_value("final_value"),
     )
     .await?;
@@ -223,7 +231,11 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   )
   .await?;
   store
-    .insert(Scope::FeatureFlag, "key", make_string_value("1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key".to_string(),
+      make_string_value("1"),
+    )
     .await?;
   let ts1 = store
     .get_with_timestamp(Scope::FeatureFlag, "key")
@@ -233,7 +245,11 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   time_provider.advance(10.milliseconds());
 
   store
-    .insert(Scope::FeatureFlag, "key", make_string_value("2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key".to_string(),
+      make_string_value("2"),
+    )
     .await?;
   let ts2 = store
     .get_with_timestamp(Scope::FeatureFlag, "key")
@@ -243,7 +259,11 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   time_provider.advance(10.milliseconds());
 
   store
-    .insert(Scope::FeatureFlag, "key", make_string_value("3"))
+    .insert(
+      Scope::FeatureFlag,
+      "key".to_string(),
+      make_string_value("3"),
+    )
     .await?;
   let ts3 = store
     .get_with_timestamp(Scope::FeatureFlag, "key")
@@ -311,7 +331,11 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   .await?;
 
   store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
   let ts1 = store
     .get_with_timestamp(Scope::FeatureFlag, "key1")
@@ -322,7 +346,11 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   time_provider.advance(10.milliseconds());
 
   store
-    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
   let ts2 = store
     .get_with_timestamp(Scope::FeatureFlag, "key2")
@@ -333,7 +361,11 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   time_provider.advance(10.milliseconds());
 
   store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("updated1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("updated1"),
+    )
     .await?;
   let ts3 = store
     .get_with_timestamp(Scope::FeatureFlag, "key1")
@@ -419,7 +451,11 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
 
   // Write some data before rotation
   store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
   let ts1 = store
     .get_with_timestamp(Scope::FeatureFlag, "key1")
@@ -429,7 +465,11 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
   time_provider.advance(10.milliseconds());
 
   store
-    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
   let ts2 = store
     .get_with_timestamp(Scope::FeatureFlag, "key2")
@@ -443,7 +483,11 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
 
   // Write data after rotation
   store
-    .insert(Scope::FeatureFlag, "key3", make_string_value("value3"))
+    .insert(
+      Scope::FeatureFlag,
+      "key3".to_string(),
+      make_string_value("value3"),
+    )
     .await?;
   let ts3 = store
     .get_with_timestamp(Scope::FeatureFlag, "key3")

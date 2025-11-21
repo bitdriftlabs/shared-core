@@ -96,10 +96,18 @@ async fn basic_crud() -> anyhow::Result<()> {
 
   // Insert some values
   let ts1 = store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
   let ts2 = store
-    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
 
   assert_eq!(store.len(), 2);
@@ -147,10 +155,18 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
     )
     .await?;
     let ts1 = store
-      .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+      .insert(
+        Scope::FeatureFlag,
+        "key1".to_string(),
+        make_string_value("value1"),
+      )
       .await?;
     let ts2 = store
-      .insert(Scope::FeatureFlag, "key2", make_string_value("foo"))
+      .insert(
+        Scope::FeatureFlag,
+        "key2".to_string(),
+        make_string_value("foo"),
+      )
       .await?;
     store.sync()?;
 
@@ -189,14 +205,22 @@ async fn test_null_value_is_deletion() -> anyhow::Result<()> {
   // Insert a value
   setup
     .store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
   assert!(setup.store.contains_key(Scope::FeatureFlag, "key1"));
 
   // Insert empty state to delete
   setup
     .store
-    .insert(Scope::FeatureFlag, "key1", StateValue::default())
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      StateValue::default(),
+    )
     .await?;
   assert!(!setup.store.contains_key(Scope::FeatureFlag, "key1"));
   assert_eq!(setup.store.len(), 0);
@@ -211,15 +235,22 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
   // Insert some data
   let _ts1 = setup
     .store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
   let ts2 = setup
     .store
-    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
 
-  // Get max timestamp before rotation (this will be used in the archive name)
-  let rotation_timestamp = setup
+  setup
     .store
     .get_with_timestamp(Scope::FeatureFlag, "key2")
     .map(|tv| tv.timestamp)
@@ -234,7 +265,11 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
   // Verify active journal still works
   let ts3 = setup
     .store
-    .insert(Scope::FeatureFlag, "key3", make_string_value("value3"))
+    .insert(
+      Scope::FeatureFlag,
+      "key3".to_string(),
+      make_string_value("value3"),
+    )
     .await?;
   assert!(ts3 >= ts2);
   assert_eq!(setup.store.len(), 3);
@@ -276,7 +311,11 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
 
   setup
     .store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
 
   let pre_rotation_state = setup.store.as_hashmap().clone();
@@ -297,7 +336,11 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
   // Verify we can continue writing
   let ts_new = setup
     .store
-    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
   assert!(ts_new >= pre_rotation_ts);
   assert_eq!(setup.store.len(), 2);
@@ -332,7 +375,11 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
   // Insert some keys and capture their timestamps
   let ts1 = setup
     .store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
 
   // Advance time to ensure different timestamps.
@@ -340,7 +387,11 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
 
   let ts2 = setup
     .store
-    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
 
   // Verify timestamps are different
@@ -353,7 +404,7 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
       .store
       .insert(
         Scope::FeatureFlag,
-        &format!("fill{i}"),
+        format!("fill{i}"),
         make_string_value("foo"),
       )
       .await?;
@@ -400,13 +451,13 @@ async fn test_multiple_rotations() -> anyhow::Result<()> {
   for i in 0 .. 3 {
     let key = format!("key{}", i);
     let value = make_string_value(&format!("value{}", i));
-    setup.store.insert(Scope::FeatureFlag, &key, value).await?;
+    setup.store.insert(Scope::FeatureFlag, key, value).await?;
     let timestamp = setup
       .store
-      .get_with_timestamp(Scope::FeatureFlag, &key)
+      .get_with_timestamp(Scope::FeatureFlag, &format!("key{}", i))
       .map(|tv| tv.timestamp)
       .unwrap();
-    rotation_timestamps.push(timestamp);
+    snapshot_paths.push(rotation.snapshot_path.clone());
     setup.store.rotate_journal().await?;
   }
 
@@ -444,7 +495,11 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
 
   // Insert some data
   store
-    .insert("key1".to_string(), make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
 
   // Advance time so each rotation has a different timestamp
@@ -467,7 +522,11 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
 
   // Insert more data and rotate WITH retention handle - snapshot SHOULD be created
   store
-    .insert("key2".to_string(), make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
 
   // Advance time so each rotation has a different timestamp
@@ -489,7 +548,11 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
   tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
   store
-    .insert("key3".to_string(), make_string_value("value3"))
+    .insert(
+      Scope::FeatureFlag,
+      "key3".to_string(),
+      make_string_value("value3"),
+    )
     .await?;
 
   // Advance time so each rotation has a different timestamp
@@ -518,7 +581,11 @@ async fn test_multiple_rotations_with_same_timestamp() -> anyhow::Result<()> {
 
   // Insert data once
   store
-    .insert("key1".to_string(), make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
 
   // Perform first rotation

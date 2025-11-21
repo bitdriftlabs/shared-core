@@ -271,22 +271,21 @@ impl VersionedKVStore {
   pub async fn insert(
     &mut self,
     scope: Scope,
-    key: &str,
+    key: String,
     value: StateValue,
   ) -> anyhow::Result<u64> {
     let timestamp = if value.value_type.is_none() {
       // Inserting null is equivalent to deletion
       let timestamp = self
         .journal
-        .insert_entry(scope, key, StateValue::default())?;
-      self.cached_map.remove(&(scope, key.to_string()));
+        .insert_entry(scope, &key, StateValue::default())?;
+      self.cached_map.remove(&(scope, key));
       timestamp
     } else {
-      let timestamp = self.journal.insert_entry(scope, key, value.clone())?;
-      self.cached_map.insert(
-        (scope, key.to_string()),
-        TimestampedValue { value, timestamp },
-      );
+      let timestamp = self.journal.insert_entry(scope, &key, value.clone())?;
+      self
+        .cached_map
+        .insert((scope, key), TimestampedValue { value, timestamp });
       timestamp
     };
 

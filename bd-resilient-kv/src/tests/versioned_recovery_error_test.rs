@@ -95,13 +95,21 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
   .await?;
 
   let ts1 = store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
 
   time_provider.advance(10_i64.milliseconds());
 
   let ts2 = store
-    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
 
   time_provider.advance(10_i64.milliseconds());
