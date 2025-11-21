@@ -8,6 +8,7 @@
 #![allow(clippy::unwrap_used)]
 
 use crate::tests::decompress_zlib;
+use crate::versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
 use crate::versioned_kv_journal::{TimestampedValue, make_string_value};
 use crate::{Scope, VersionedKVStore};
 use bd_proto::protos::state::payload::StateValue;
@@ -21,12 +22,15 @@ struct Setup {
   temp_dir: TempDir,
   store: VersionedKVStore,
   time_provider: Arc<TestTimeProvider>,
+  _retention_handle: RetentionHandle, // Keep handle alive to retain snapshots
 }
 
 impl Setup {
   async fn new() -> anyhow::Result<Self> {
     let temp_dir = TempDir::new()?;
     let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+    let registry = Arc::new(RetentionRegistry::new());
+    let retention_handle = registry.create_handle().await; // Retain all snapshots
 
     let (store, _) = VersionedKVStore::new(
       temp_dir.path(),
@@ -34,7 +38,7 @@ impl Setup {
       4096,
       None,
       time_provider.clone(),
-      None,
+      registry,
     )
     .await?;
 
@@ -42,6 +46,7 @@ impl Setup {
       temp_dir,
       store,
       time_provider,
+      _retention_handle: retention_handle,
     })
   }
 
@@ -58,13 +63,14 @@ impl Setup {
       decompressed_snapshot,
     )?;
 
+    let registry = Arc::new(RetentionRegistry::new());
     let (store, _) = VersionedKVStore::open_existing(
       self.temp_dir.path(),
       "snapshot",
       4096,
       None,
       self.time_provider.clone(),
-      None,
+      registry,
     )
     .await?;
 
@@ -89,10 +95,10 @@ async fn empty_store() -> anyhow::Result<()> {
 async fn basic_crud() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-
+  let registry = Arc::new(RetentionRegistry::new());
 
   let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider, None).await?;
+    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider, registry).await?;
 
   // Insert some values
   let ts1 = store
@@ -141,7 +147,7 @@ async fn basic_crud() -> anyhow::Result<()> {
 async fn test_persistence_and_reload() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-
+  let registry = Arc::new(RetentionRegistry::new());
 
   // Create store and write some data
   let (ts1, ts2) = {
@@ -151,7 +157,7 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
       4096,
       None,
       time_provider.clone(),
-      None,
+      registry.clone(),
     )
     .await?;
     let ts1 = store
@@ -176,7 +182,7 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
   // Reopen and verify data persisted
   {
     let (store, _) =
-      VersionedKVStore::open_existing(temp_dir.path(), "test", 4096, None, time_provider, None)
+      VersionedKVStore::open_existing(temp_dir.path(), "test", 4096, None, time_provider, registry)
         .await?;
     assert_eq!(store.len(), 2);
     assert_eq!(
@@ -484,7 +490,7 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
     4096,
     None,
     time_provider.clone(),
-    Some(registry.clone()),
+    registry.clone(),
   )
   .await?;
 
@@ -570,9 +576,11 @@ async fn test_multiple_rotations_with_same_timestamp() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   // Use fixed time so all rotations have the same data timestamp
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+  let registry = Arc::new(RetentionRegistry::new());
+  let _handle = registry.create_handle().await; // Retain all snapshots
 
   let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider, None).await?;
+    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider, registry).await?;
 
   // Insert data once
   store

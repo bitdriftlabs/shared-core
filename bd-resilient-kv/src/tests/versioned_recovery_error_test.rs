@@ -11,6 +11,7 @@
 use crate::tests::decompress_zlib;
 use crate::versioned_kv_journal::make_string_value;
 use crate::versioned_kv_journal::recovery::VersionedRecovery;
+use crate::versioned_kv_journal::retention::RetentionRegistry;
 use crate::{Scope, VersionedKVStore};
 use bd_time::TestTimeProvider;
 use std::sync::Arc;
@@ -83,6 +84,8 @@ fn test_recovery_position_exceeds_buffer_length() {
 async fn test_recovery_with_deletions() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+  let registry = Arc::new(RetentionRegistry::new());
+  let _handle = registry.create_handle().await; // Retain all snapshots
 
   let (mut store, _) = VersionedKVStore::new(
     temp_dir.path(),
@@ -90,7 +93,7 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
     4096,
     None,
     time_provider.clone(),
-    None,
+    registry,
   )
   .await?;
 

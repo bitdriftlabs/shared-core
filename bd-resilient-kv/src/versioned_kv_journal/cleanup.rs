@@ -12,7 +12,6 @@ mod tests;
 use super::retention::RetentionRegistry;
 use bd_error_reporter::reporter::handle_unexpected;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 /// Cleans up old snapshot files based on retention requirements.
 ///
@@ -22,7 +21,7 @@ use std::sync::Arc;
 /// If no retention handles are registered, no cleanup is performed (snapshots are kept).
 pub async fn cleanup_old_snapshots(
   directory: &Path,
-  registry: &Arc<RetentionRegistry>,
+  registry: &RetentionRegistry,
 ) -> anyhow::Result<()> {
   // Get minimum retention timestamp across all subsystems
   let Some(min_retention) = registry.min_retention_timestamp().await else {

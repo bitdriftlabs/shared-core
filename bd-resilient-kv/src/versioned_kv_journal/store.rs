@@ -54,7 +54,7 @@ pub struct VersionedKVStore {
   buffer_size: usize,
   high_water_mark_ratio: Option<f32>,
   current_generation: u64,
-  retention_registry: Option<Arc<RetentionRegistry>>,
+  retention_registry: Arc<RetentionRegistry>,
 }
 
 impl VersionedKVStore {
@@ -74,7 +74,7 @@ impl VersionedKVStore {
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
-    retention_registry: Option<Arc<RetentionRegistry>>,
+    retention_registry: Arc<RetentionRegistry>,
   ) -> anyhow::Result<(Self, DataLoss)> {
     let dir = dir_path.as_ref();
 
@@ -165,7 +165,7 @@ impl VersionedKVStore {
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
-    retention_registry: Option<Arc<RetentionRegistry>>,
+    retention_registry: Arc<RetentionRegistry>,
   ) -> anyhow::Result<(Self, DataLoss)> {
     let dir = dir_path.as_ref();
 
@@ -448,19 +448,14 @@ impl VersionedKVStore {
       .unwrap_or(0);
 
     // Check if we need to create a snapshot based on retention requirements
-    let should_create_snapshot = if let Some(registry) = &self.retention_registry {
-      let min_retention = registry.min_retention_timestamp().await;
-      // If min_retention is None (no handles), don't create snapshot
-      // If min_retention is Some(0), retain everything (at least one handle wants all data)
-      // If min_retention > rotation_timestamp, no one needs this snapshot
-      match min_retention {
-        None => false,
-        Some(0) => true,
-        Some(ts) => ts <= rotation_timestamp,
-      }
-    } else {
-      // No registry configured, create snapshot by default
-      true
+    let min_retention = self.retention_registry.min_retention_timestamp().await;
+    // If min_retention is None (no handles), don't create snapshot
+    // If min_retention is Some(0), retain everything (at least one handle wants all data)
+    // If min_retention > rotation_timestamp, no one needs this snapshot
+    let should_create_snapshot = match min_retention {
+      None => false,
+      Some(0) => true,
+      Some(ts) => ts <= rotation_timestamp,
     };
 
     // Store snapshots in a separate subdirectory
@@ -502,12 +497,10 @@ impl VersionedKVStore {
         }
 
         // After creating a snapshot, trigger cleanup of old snapshots
-        if let Some(registry) = &self.retention_registry {
-          handle_unexpected(
-            super::cleanup::cleanup_old_snapshots(&snapshots_dir, registry).await,
-            "old snapshot cleanup",
-          );
-        }
+        handle_unexpected(
+          super::cleanup::cleanup_old_snapshots(&snapshots_dir, &self.retention_registry).await,
+          "old snapshot cleanup",
+        );
       }
     } else {
       log::debug!(

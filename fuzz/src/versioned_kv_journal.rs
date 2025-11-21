@@ -9,6 +9,7 @@ use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
 use bd_proto::protos::state::payload::state_value::Value_type;
 use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
+use bd_resilient_kv::versioned_kv_journal::retention::RetentionRegistry;
 use bd_resilient_kv::{DataLoss, Scope, TimestampedValue, VersionedKVStore};
 use bd_time::{TestTimeProvider, TimeProvider as _};
 use protobuf::MessageDyn;
@@ -266,6 +267,7 @@ pub struct VersionedKVJournalFuzzTest {
   high_water_mark_ratio: Option<f32>,
   temp_dir: TempDir,
   time_provider: Arc<TestTimeProvider>,
+  registry: Arc<RetentionRegistry>,
   state: AHashMap<(Scope, String), TimestampedValue>,
   keys: KeyPool,
   /// Track whether the journal is full (capacity exceeded)
@@ -293,6 +295,7 @@ impl VersionedKVJournalFuzzTest {
     };
 
     let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+    let registry = Arc::new(RetentionRegistry::new());
 
     Self {
       test_case,
@@ -300,6 +303,7 @@ impl VersionedKVJournalFuzzTest {
       high_water_mark_ratio,
       temp_dir,
       time_provider,
+      registry,
       state: AHashMap::default(),
       keys: KeyPool { keys: Vec::new() },
       is_full: false,
@@ -313,7 +317,7 @@ impl VersionedKVJournalFuzzTest {
       self.buffer_size,
       self.high_water_mark_ratio,
       self.time_provider.clone(),
-      None,
+      self.registry.clone(),
     )
     .await
   }
@@ -325,7 +329,7 @@ impl VersionedKVJournalFuzzTest {
       self.buffer_size,
       self.high_water_mark_ratio,
       self.time_provider.clone(),
-      None,
+      self.registry.clone(),
     )
     .await
   }

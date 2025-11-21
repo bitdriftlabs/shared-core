@@ -11,7 +11,9 @@
 use crate::tests::decompress_zlib;
 use crate::versioned_kv_journal::make_string_value;
 use crate::versioned_kv_journal::recovery::VersionedRecovery;
+use crate::versioned_kv_journal::retention::RetentionRegistry;
 use crate::{Scope, VersionedKVStore};
+use bd_time::TestTimeProvider;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::ext::NumericalDuration;
@@ -67,10 +69,11 @@ fn extract_rotation_timestamp(path: &std::path::Path) -> anyhow::Result<u64> {
 async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
-
-  let time_provider = Arc::new(bd_time::TestTimeProvider::new(datetime!(
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
   )));
+  let registry = Arc::new(RetentionRegistry::new());
+  let _handle = registry.create_handle().await; // Retain all snapshots
 
   // Create a store with larger buffer to avoid BufferFull errors during test
   let (mut store, _) = VersionedKVStore::new(
@@ -79,7 +82,7 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
     2048,
     None,
     time_provider.clone(),
-    None,
+    registry,
   )
   .await?;
 
@@ -184,14 +187,15 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_empty_journal() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let time_provider = Arc::new(bd_time::TestTimeProvider::new(datetime!(
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
   )));
-
+  let registry = Arc::new(RetentionRegistry::new());
+  let _handle = registry.create_handle().await; // Retain all snapshots
 
   // Create an empty store
   let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider, None).await?;
+    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider, registry).await?;
   store.sync()?;
 
   // Rotate to create snapshot
@@ -216,10 +220,11 @@ async fn test_recovery_empty_journal() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let time_provider = Arc::new(bd_time::TestTimeProvider::new(datetime!(
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
   )));
-
+  let registry = Arc::new(RetentionRegistry::new());
+  let _handle = registry.create_handle().await; // Retain all snapshots
 
   let (mut store, _) = VersionedKVStore::new(
     temp_dir.path(),
@@ -227,7 +232,7 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
     4096,
     None,
     time_provider.clone(),
-    None,
+    registry,
   )
   .await?;
   store
@@ -315,9 +320,11 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let time_provider = Arc::new(bd_time::TestTimeProvider::new(datetime!(
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
   )));
+  let registry = Arc::new(RetentionRegistry::new());
+  let _handle = registry.create_handle().await; // Retain all snapshots
 
   // Create a store and write some timestamped data
   let (mut store, _) = VersionedKVStore::new(
@@ -326,7 +333,7 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
     4096,
     None,
     time_provider.clone(),
-    None,
+    registry,
   )
   .await?;
 
@@ -435,9 +442,11 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let time_provider = Arc::new(bd_time::TestTimeProvider::new(datetime!(
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
   )));
+  let registry = Arc::new(RetentionRegistry::new());
+  let _handle = registry.create_handle().await; // Retain all snapshots
 
   let (mut store, _) = VersionedKVStore::new(
     temp_dir.path(),
@@ -445,7 +454,7 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
     4096,
     None,
     time_provider.clone(),
-    None,
+    registry,
   )
   .await?;
 
