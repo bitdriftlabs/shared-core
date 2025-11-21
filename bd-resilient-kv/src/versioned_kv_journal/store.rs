@@ -101,6 +101,11 @@ impl ScopedMaps {
     self.feature_flags.len() + self.global_state.len()
   }
 
+  #[must_use]
+  pub fn is_empty(&self) -> bool {
+    self.feature_flags.is_empty() && self.global_state.is_empty()
+  }
+
   pub fn iter(&self) -> impl Iterator<Item = (Scope, &String, &TimestampedValue)> {
     self
       .feature_flags
