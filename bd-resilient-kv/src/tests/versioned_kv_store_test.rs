@@ -25,12 +25,9 @@ enum StoreMode {
 }
 
 // Parameterized setup for tests that work with both modes
-#[allow(dead_code)]
 struct DualModeSetup {
   temp_dir: Option<TempDir>,
   store: VersionedKVStore,
-  time_provider: Arc<TestTimeProvider>,
-  mode: StoreMode,
 }
 
 impl DualModeSetup {
@@ -50,60 +47,7 @@ impl DualModeSetup {
       },
     };
 
-    Ok(Self {
-      temp_dir,
-      store,
-      time_provider,
-      mode,
-    })
-  }
-}
-
-// Original setup for persistent-only tests
-struct Setup {
-  temp_dir: TempDir,
-  store: VersionedKVStore,
-  time_provider: Arc<TestTimeProvider>,
-}
-
-impl Setup {
-  async fn new() -> anyhow::Result<Self> {
-    let temp_dir = TempDir::new()?;
-    let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-
-    let (store, _) =
-      VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
-
-    Ok(Self {
-      temp_dir,
-      store,
-      time_provider,
-    })
-  }
-
-  async fn make_store_from_snapshot_file(
-    &self,
-    snapshot_path: &std::path::Path,
-  ) -> anyhow::Result<VersionedKVStore> {
-    // Decompress the snapshot and journal files into the temp directory
-    // so we can open them as a store.
-    let data = std::fs::read(snapshot_path)?;
-    let decompressed_snapshot = decompress_zlib(&data)?;
-    std::fs::write(
-      self.temp_dir.path().join("snapshot.jrn.0"),
-      decompressed_snapshot,
-    )?;
-
-    let (store, _) = VersionedKVStore::open_existing(
-      self.temp_dir.path(),
-      "snapshot",
-      4096,
-      None,
-      self.time_provider.clone(),
-    )
-    .await?;
-
-    Ok(store)
+    Ok(Self { temp_dir, store })
   }
 }
 
@@ -196,6 +140,55 @@ async fn test_null_value_is_deletion(#[case] mode: StoreMode) -> anyhow::Result<
 
   Ok(())
 }
+
+// Original setup for persistent-only tests
+struct Setup {
+  temp_dir: TempDir,
+  store: VersionedKVStore,
+  time_provider: Arc<TestTimeProvider>,
+}
+
+impl Setup {
+  async fn new() -> anyhow::Result<Self> {
+    let temp_dir = TempDir::new()?;
+    let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+
+    let (store, _) =
+      VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
+
+    Ok(Self {
+      temp_dir,
+      store,
+      time_provider,
+    })
+  }
+
+  async fn make_store_from_snapshot_file(
+    &self,
+    snapshot_path: &std::path::Path,
+  ) -> anyhow::Result<VersionedKVStore> {
+    // Decompress the snapshot and journal files into the temp directory
+    // so we can open them as a store.
+    let data = std::fs::read(snapshot_path)?;
+    let decompressed_snapshot = decompress_zlib(&data)?;
+    std::fs::write(
+      self.temp_dir.path().join("snapshot.jrn.0"),
+      decompressed_snapshot,
+    )?;
+
+    let (store, _) = VersionedKVStore::open_existing(
+      self.temp_dir.path(),
+      "snapshot",
+      4096,
+      None,
+      self.time_provider.clone(),
+    )
+    .await?;
+
+    Ok(store)
+  }
+}
+
 
 #[tokio::test]
 async fn test_persistence_and_reload() -> anyhow::Result<()> {
