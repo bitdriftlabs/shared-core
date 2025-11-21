@@ -22,7 +22,6 @@ use std::sync::Arc;
 /// If no retention handles are registered, no cleanup is performed (snapshots are kept).
 pub async fn cleanup_old_snapshots(
   directory: &Path,
-  journal_name: &str,
   registry: &Arc<RetentionRegistry>,
 ) -> anyhow::Result<()> {
   // Get minimum retention timestamp across all subsystems
@@ -34,7 +33,7 @@ pub async fn cleanup_old_snapshots(
   log::debug!("Running snapshot cleanup with min_retention={min_retention}");
 
   // Find all archived snapshots
-  let snapshots = find_archived_snapshots(directory, journal_name).await?;
+  let snapshots = find_archived_snapshots(directory).await?;
 
   let mut deleted_count = 0;
   let mut kept_count = 0;
@@ -51,7 +50,7 @@ pub async fn cleanup_old_snapshots(
       handle_unexpected(
         tokio::fs::remove_file(&path)
           .await
-          .map(|_| deleted_count += 1),
+          .map(|()| deleted_count += 1),
         "snapshot deletion",
       );
     } else {
@@ -68,24 +67,22 @@ pub async fn cleanup_old_snapshots(
 
 /// Finds all archived snapshot files and extracts their timestamps.
 ///
+/// Since snapshots are stored in a dedicated directory for this journal, all `.zz` files
+/// are assumed to be snapshots belonging to this journal.
 /// Returns a vector of (path, timestamp) tuples sorted by timestamp.
-async fn find_archived_snapshots(
-  directory: &Path,
-  journal_name: &str,
-) -> anyhow::Result<Vec<(PathBuf, u64)>> {
+async fn find_archived_snapshots(directory: &Path) -> anyhow::Result<Vec<(PathBuf, u64)>> {
   let mut entries = tokio::fs::read_dir(directory).await?;
   let mut snapshots = Vec::new();
 
   while let Some(entry) = entries.next_entry().await? {
     let path = entry.path();
 
-    // Match pattern: {name}.jrn.g{generation}.t{timestamp}.zz
+    // All .zz files in the snapshots directory belong to this journal
     if let Some(filename) = path.file_name().and_then(|f| f.to_str())
-      && filename.starts_with(journal_name)
       && std::path::Path::new(filename)
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("zz"))
-      && let Ok(timestamp) = extract_timestamp_from_filename(filename)
+      && let Some(timestamp) = extract_timestamp_from_filename(filename)
     {
       snapshots.push((path, timestamp));
     }
@@ -98,7 +95,7 @@ async fn find_archived_snapshots(
 /// Extracts the timestamp from an archived journal filename.
 ///
 /// Expected format: `{name}.jrn.g{generation}.t{timestamp}.zz`
-fn extract_timestamp_from_filename(filename: &str) -> anyhow::Result<u64> {
+fn extract_timestamp_from_filename(filename: &str) -> Option<u64> {
   filename
     .split('.')
     .find(|part| {
@@ -106,5 +103,4 @@ fn extract_timestamp_from_filename(filename: &str) -> anyhow::Result<u64> {
     })
     .and_then(|part| part.strip_prefix('t'))
     .and_then(|ts| ts.parse::<u64>().ok())
-    .ok_or_else(|| anyhow::anyhow!("No timestamp found in filename: {filename}"))
 }

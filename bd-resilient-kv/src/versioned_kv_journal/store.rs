@@ -489,8 +489,7 @@ impl VersionedKVStore {
         // After creating a snapshot, trigger cleanup of old snapshots
         if let Some(registry) = &self.retention_registry {
           handle_unexpected(
-            super::cleanup::cleanup_old_snapshots(&snapshots_dir, &self.journal_name, registry)
-              .await,
+            super::cleanup::cleanup_old_snapshots(&snapshots_dir, registry).await,
             "old snapshot cleanup",
           );
         }
