@@ -442,8 +442,8 @@ impl PersistentStore {
       );
     }
 
-    // Remove the uncompressed journal regardless of compression success or skip. If we succeeded we no
-    // longer need it, while if we failed we consider the snapshot lost.
+    // Remove the uncompressed journal regardless of compression success or skip. If we succeeded we
+    // no longer need it, while if we failed we consider the snapshot lost.
     let _ignored = tokio::fs::remove_file(&old_journal_path)
       .await
       .inspect_err(|e| {
@@ -783,7 +783,7 @@ impl VersionedKVStore {
   pub async fn rotate_journal(&mut self) -> anyhow::Result<Rotation> {
     match &mut self.backend {
       StoreBackend::Persistent(store) => store.rotate_journal().await,
-      StoreBackend::InMemory(_) => anyhow::bail!("Cannot rotate journal on an in-memory store"),
+      StoreBackend::InMemory(_) => anyhow::bail!("Cannot rotate journal on in-memory store"),
     }
   }
 }
