@@ -96,6 +96,7 @@ impl ScopedMaps {
     }
   }
 
+  #[must_use]
   pub fn len(&self) -> usize {
     self.feature_flags.len() + self.global_state.len()
   }
