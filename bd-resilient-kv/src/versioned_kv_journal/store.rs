@@ -321,6 +321,12 @@ impl PersistentStore {
 
     log::debug!("Rotating journal to generation {next_generation}");
 
+    // TODO(snowp): This part needs fuzzing and more safeguards around I/O errors.
+    // TODO(snowp): Consider doing this out of band to split error handling for the insert and
+    // rotation.
+
+    // Create new journal with compacted state. This doens't touch the file containing the old
+    // journal.
     let new_journal_path = self
       .dir_path
       .join(format!("{}.jrn.{next_generation}", self.journal_name));
@@ -339,6 +345,7 @@ impl PersistentStore {
     )?;
     self.journal = new_journal;
 
+    // Best-effort cleanup: compress and archive the old journal
     let old_journal_path = self
       .dir_path
       .join(format!("{}.jrn.{old_generation}", self.journal_name));
@@ -368,6 +375,8 @@ impl PersistentStore {
       );
     }
 
+    // Remove the uncompressed journal regardless of compression success. If we succeeded we no
+    // longer need it, while if we failed we consider the snapshot lost.
     let _ignored = tokio::fs::remove_file(&old_journal_path)
       .await
       .inspect_err(|e| {
