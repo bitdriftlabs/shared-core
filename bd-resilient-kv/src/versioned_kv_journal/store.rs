@@ -39,6 +39,13 @@ pub struct Rotation {
   pub snapshot_path: PathBuf,
 }
 
+/// Result of opening a journal file, containing the journal, initial state, and data loss info.
+struct OpenedJournal {
+  journal: MemMappedVersionedJournal<StateValue>,
+  initial_state: ScopedMaps,
+  data_loss: PartialDataLoss,
+}
+
 /// Scoped maps that avoid string allocations during lookups.
 ///
 /// Instead of using a single map with `(Scope, String)` as the key (which requires `to_string()`
@@ -149,7 +156,13 @@ impl PersistentStore {
         high_water_mark_ratio,
         time_provider.clone(),
       )
-      .map(|(j, initial_state, data_loss)| (j, initial_state, data_loss.into()))
+      .map(|opened| {
+        (
+          opened.journal,
+          opened.initial_state,
+          opened.data_loss.into(),
+        )
+      })
       .or_else(|_| {
         Ok::<_, anyhow::Error>((
           MemMappedVersionedJournal::new(
@@ -201,7 +214,7 @@ impl PersistentStore {
     let dir = dir_path.as_ref();
     let (journal_path, generation) = file_manager::find_active_journal(dir, name).await;
 
-    let (journal, initial_state, data_loss) = Self::open(
+    let opened = Self::open(
       &journal_path,
       buffer_size,
       high_water_mark_ratio,
@@ -210,15 +223,15 @@ impl PersistentStore {
 
     Ok((
       Self {
-        journal,
+        journal: opened.journal,
         dir_path: dir.to_path_buf(),
         journal_name: name.to_string(),
         buffer_size,
         high_water_mark_ratio,
         current_generation: generation,
-        cached_map: initial_state,
+        cached_map: opened.initial_state,
       },
-      if matches!(data_loss, PartialDataLoss::Yes) {
+      if matches!(opened.data_loss, PartialDataLoss::Yes) {
         DataLoss::Partial
       } else {
         DataLoss::None
@@ -226,17 +239,12 @@ impl PersistentStore {
     ))
   }
 
-  #[allow(clippy::type_complexity)]
   fn open(
     journal_path: &Path,
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
-  ) -> anyhow::Result<(
-    MemMappedVersionedJournal<StateValue>,
-    ScopedMaps,
-    PartialDataLoss,
-  )> {
+  ) -> anyhow::Result<OpenedJournal> {
     let mut initial_state = ScopedMaps::new();
     let (journal, data_loss) = MemMappedVersionedJournal::<StateValue>::from_file(
       journal_path,
@@ -259,7 +267,11 @@ impl PersistentStore {
       },
     )?;
 
-    Ok((journal, initial_state, data_loss))
+    Ok(OpenedJournal {
+      journal,
+      initial_state,
+      data_loss,
+    })
   }
 
   async fn insert(&mut self, scope: Scope, key: &str, value: StateValue) -> anyhow::Result<u64> {
@@ -330,6 +342,11 @@ impl PersistentStore {
     let new_journal_path = self
       .dir_path
       .join(format!("{}.jrn.{next_generation}", self.journal_name));
+
+    // Note: Rotation cannot fail due to insufficient buffer space. Since rotation creates a new
+    // journal with the same buffer size and compaction only removes redundant updates (old
+    // versions of keys), the compacted state is always ≤ the current journal size. If data fits
+    // during normal operation, it will always fit during rotation.
 
     MemMappedVersionedJournal::sync(&self.journal)?;
     let time_provider = self.journal.time_provider.clone();
