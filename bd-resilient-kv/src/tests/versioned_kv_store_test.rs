@@ -452,11 +452,6 @@ async fn test_multiple_rotations() -> anyhow::Result<()> {
     let key = format!("key{}", i);
     let value = make_string_value(&format!("value{}", i));
     setup.store.insert(Scope::FeatureFlag, key, value).await?;
-    let timestamp = setup
-      .store
-      .get_with_timestamp(Scope::FeatureFlag, &format!("key{}", i))
-      .map(|tv| tv.timestamp)
-      .unwrap();
     let rotation = setup.store.rotate_journal().await?;
     snapshot_paths.push(rotation.snapshot_path.clone());
   }
