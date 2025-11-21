@@ -36,8 +36,36 @@ pub type TimestampedStateValue = (String, OffsetDateTime);
 /// A map of keys to timestamped values for a single scope.
 pub type ScopedStateMap = AHashMap<String, TimestampedStateValue>;
 
-/// In-memory storage type for the state store.
-type InMemoryStateMap = AHashMap<(Scope, String), (String, OffsetDateTime)>;
+/// In-memory storage for the state store.
+struct InMemoryState {
+  // TODO(snowp): We should apply the same pattern to the underlying journal to avoid string
+  // allocations during lookups.
+  feature_flags: AHashMap<String, (String, OffsetDateTime)>,
+  global_state: AHashMap<String, (String, OffsetDateTime)>,
+}
+
+impl InMemoryState {
+  fn new() -> Self {
+    Self {
+      feature_flags: AHashMap::new(),
+      global_state: AHashMap::new(),
+    }
+  }
+
+  fn get_map(&self, scope: Scope) -> &AHashMap<String, (String, OffsetDateTime)> {
+    match scope {
+      Scope::FeatureFlag => &self.feature_flags,
+      Scope::GlobalState => &self.global_state,
+    }
+  }
+
+  fn get_map_mut(&mut self, scope: Scope) -> &mut AHashMap<String, (String, OffsetDateTime)> {
+    match scope {
+      Scope::FeatureFlag => &mut self.feature_flags,
+      Scope::GlobalState => &mut self.global_state,
+    }
+  }
+}
 
 //
 // StoreInitResult
@@ -168,7 +196,7 @@ pub struct Store {
 #[derive(Clone)]
 enum StoreInner {
   Persistent(Arc<RwLock<bd_resilient_kv::VersionedKVStore>>),
-  InMemory(Arc<RwLock<InMemoryStateMap>>),
+  InMemory(Arc<RwLock<InMemoryState>>),
 }
 
 impl Store {
@@ -256,7 +284,7 @@ impl Store {
   #[must_use]
   pub fn new_in_memory() -> Self {
     Self {
-      inner: StoreInner::InMemory(Arc::new(RwLock::new(AHashMap::new()))),
+      inner: StoreInner::InMemory(Arc::new(RwLock::new(InMemoryState::new()))),
     }
   }
 
@@ -275,11 +303,12 @@ impl Store {
         )
         .await
         .map(|_| ()),
-      StoreInner::InMemory(map) => {
-        map
+      StoreInner::InMemory(state) => {
+        state
           .write()
           .await
-          .insert((scope, key.to_string()), (value, OffsetDateTime::now_utc()));
+          .get_map_mut(scope)
+          .insert(key.to_string(), (value, OffsetDateTime::now_utc()));
         Ok(())
       },
     }
@@ -288,8 +317,8 @@ impl Store {
   pub async fn remove(&self, scope: Scope, key: &str) -> anyhow::Result<()> {
     match &self.inner {
       StoreInner::Persistent(store) => store.write().await.remove(scope, key).await.map(|_| ()),
-      StoreInner::InMemory(map) => {
-        map.write().await.remove(&(scope, key.to_string()));
+      StoreInner::InMemory(state) => {
+        state.write().await.get_map_mut(scope).remove(key);
         Ok(())
       },
     }
@@ -315,9 +344,8 @@ impl Store {
 
         Ok(())
       },
-      StoreInner::InMemory(map) => {
-        let mut locked_map = map.write().await;
-        locked_map.retain(|(s, _), _| *s != scope);
+      StoreInner::InMemory(state) => {
+        state.write().await.get_map_mut(scope).clear();
         Ok(())
       },
     }
@@ -336,7 +364,7 @@ impl Store {
 
 enum ReadLockedStoreGuard<'a> {
   Persistent(tokio::sync::RwLockReadGuard<'a, bd_resilient_kv::VersionedKVStore>),
-  InMemory(tokio::sync::RwLockReadGuard<'a, InMemoryStateMap>),
+  InMemory(tokio::sync::RwLockReadGuard<'a, InMemoryState>),
 }
 
 impl StateReader for ReadLockedStoreGuard<'_> {
@@ -345,8 +373,9 @@ impl StateReader for ReadLockedStoreGuard<'_> {
       Self::Persistent(guard) => guard
         .get(scope, key)
         .and_then(|v| v.has_string_value().then(|| v.string_value())),
-      Self::InMemory(map) => map
-        .get(&(scope, key.to_string()))
+      Self::InMemory(state) => state
+        .get_map(scope)
+        .get(key)
         .map(|(value, _)| value.as_str()),
     }
   }
@@ -373,17 +402,30 @@ impl StateReader for ReadLockedStoreGuard<'_> {
           })
         },
       )),
-      Self::InMemory(map) => {
-        Box::new(
-          map
+      Self::InMemory(state) => {
+        let feature_flags_iter =
+          state
+            .feature_flags
             .iter()
-            .map(|((scope, key), (value, timestamp))| StateEntry {
-              scope: *scope,
+            .map(|(key, (value, timestamp))| StateEntry {
+              scope: Scope::FeatureFlag,
               key,
               value,
               timestamp: *timestamp,
-            }),
-        )
+            });
+
+        let global_state_iter =
+          state
+            .global_state
+            .iter()
+            .map(|(key, (value, timestamp))| StateEntry {
+              scope: Scope::GlobalState,
+              key,
+              value,
+              timestamp: *timestamp,
+            });
+
+        Box::new(feature_flags_iter.chain(global_state_iter))
       },
     }
   }
