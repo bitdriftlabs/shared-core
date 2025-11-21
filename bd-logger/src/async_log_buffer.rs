@@ -826,7 +826,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 crate::ReportProcessingSession::Current => LogAttributesOverrides::OccurredAt(
                   crash_log.timestamp,
                 ),
-                crate::ReportProcessingSession::PreviousRun => LogAttributesOverrides::PreviousRunSessionID(
+                crate::ReportProcessingSession::PreviousRun =>
+                    LogAttributesOverrides::PreviousRunSessionID(
                   crash_log.timestamp)
             }.into();
             let log = LogLine {
