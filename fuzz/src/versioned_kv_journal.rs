@@ -612,7 +612,10 @@ impl VersionedKVJournalFuzzTest {
           // Sync to ensure all data is written before corruption
           let _ = store.sync();
 
-          let journal_path = store.journal_path();
+          let Some(journal_path) = store.journal_path() else {
+            log::info!("Skipping corruption test for in-memory store");
+            continue;
+          };
 
           drop(store);
 
@@ -688,8 +691,8 @@ impl VersionedKVJournalFuzzTest {
           // In the case of partial data loss, update expected keys based on what was recovered.
           if data_loss == DataLoss::Partial {
             // Update expected state based on what was recovered
-            for ((scope, key), value) in store.as_hashmap() {
-              self.state.insert((*scope, key.clone()), value.clone());
+            for (scope, key, value) in store.as_hashmap().iter() {
+              self.state.insert((scope, key.clone()), value.clone());
             }
           }
         },
@@ -834,16 +837,16 @@ impl VersionedKVJournalFuzzTest {
 }
 
 fn compare_maps(
+  actual_maps: &bd_resilient_kv::ScopedMaps,
   expected: &AHashMap<(Scope, String), TimestampedValue>,
-  actual: &AHashMap<(Scope, String), TimestampedValue>,
 ) -> bool {
-  if expected.len() != actual.len() {
+  if actual_maps.len() != expected.len() {
     return false;
   }
 
-  for (key, expected_value) in expected {
-    match actual.get(key) {
-      Some(actual_value) => {
+  for (scope, key, actual_value) in actual_maps.iter() {
+    match expected.get(&(scope, key.clone())) {
+      Some(expected_value) => {
         if !compare_values(expected_value, actual_value) {
           return false;
         }
