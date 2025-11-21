@@ -13,7 +13,7 @@ use crate::versioned_kv_journal::memmapped_journal::MemMappedVersionedJournal;
 use crate::versioned_kv_journal::retention::RetentionRegistry;
 use ahash::AHashMap;
 use bd_error_reporter::reporter::handle_unexpected;
-use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
+use bd_proto::protos::state::payload::StateValue;
 use bd_time::TimeProvider;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

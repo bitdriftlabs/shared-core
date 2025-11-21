@@ -457,8 +457,8 @@ async fn test_multiple_rotations() -> anyhow::Result<()> {
       .get_with_timestamp(Scope::FeatureFlag, &format!("key{}", i))
       .map(|tv| tv.timestamp)
       .unwrap();
+    let rotation = setup.store.rotate_journal().await?;
     snapshot_paths.push(rotation.snapshot_path.clone());
-    setup.store.rotate_journal().await?;
   }
 
   // Verify all compressed archives exist
