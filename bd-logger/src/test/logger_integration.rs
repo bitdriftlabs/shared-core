@@ -414,7 +414,7 @@ fn log_upload_attributes_override() {
   let time_second = datetime!(2024-06-01 13:00:00 UTC);
 
   let error_reporter = Arc::new(RecordingErrorReporter::default());
-  UnexpectedErrorHandler::set_reporter(error_reporter.clone());
+  UnexpectedErrorHandler::set_reporter(error_reporter);
 
   setup.store.set(
     &fixed::STATE_KEY,
