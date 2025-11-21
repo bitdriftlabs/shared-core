@@ -9,7 +9,7 @@ use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
 use bd_proto::protos::state::payload::state_value::Value_type;
 use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
-use bd_resilient_kv::{DataLoss, Scope, TimestampedValue, VersionedKVStore};
+use bd_resilient_kv::{DataLoss, Scope, ScopedMaps, TimestampedValue, VersionedKVStore};
 use bd_time::{TestTimeProvider, TimeProvider as _};
 use protobuf::MessageDyn;
 use std::sync::Arc;
@@ -607,7 +607,9 @@ impl VersionedKVJournalFuzzTest {
           // Sync to ensure all data is written before corruption
           let _ = store.sync();
 
-          let journal_path = store.journal_path();
+          let journal_path = store
+            .journal_path()
+            .expect("Persistent store should have a journal path");
 
           drop(store);
 
@@ -683,8 +685,8 @@ impl VersionedKVJournalFuzzTest {
           // In the case of partial data loss, update expected keys based on what was recovered.
           if data_loss == DataLoss::Partial {
             // Update expected state based on what was recovered
-            for ((scope, key), value) in store.as_hashmap() {
-              self.state.insert((*scope, key.clone()), value.clone());
+            for (scope, key, value) in store.state().iter() {
+              self.state.insert((scope, key.clone()), value.clone());
             }
           }
         },
@@ -802,9 +804,9 @@ impl VersionedKVJournalFuzzTest {
 
       // Ensure that the store's state matches our expected state
       assert!(
-        compare_maps(store.as_hashmap(), &self.state),
+        compare_maps(store.state(), &self.state),
         "State mismatch, {:?} vs {:?}",
-        store.as_hashmap(),
+        store.state(),
         self.state
       );
       assert_eq!(
@@ -829,15 +831,15 @@ impl VersionedKVJournalFuzzTest {
 }
 
 fn compare_maps(
-  expected: &AHashMap<(Scope, String), TimestampedValue>,
+  expected: &ScopedMaps,
   actual: &AHashMap<(Scope, String), TimestampedValue>,
 ) -> bool {
   if expected.len() != actual.len() {
     return false;
   }
 
-  for (key, expected_value) in expected {
-    match actual.get(key) {
+  for (scope, key, expected_value) in expected.iter() {
+    match actual.get(&(scope, key.clone())) {
       Some(actual_value) => {
         if !compare_values(expected_value, actual_value) {
           return false;

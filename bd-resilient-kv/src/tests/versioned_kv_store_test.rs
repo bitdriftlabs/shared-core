@@ -12,11 +12,54 @@ use crate::versioned_kv_journal::{TimestampedValue, make_string_value};
 use crate::{Scope, VersionedKVStore};
 use bd_proto::protos::state::payload::StateValue;
 use bd_time::TestTimeProvider;
+use rstest::rstest;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::ext::NumericalDuration;
 use time::macros::datetime;
 
+#[derive(Debug, Clone, Copy)]
+enum StoreMode {
+  Persistent,
+  InMemory,
+}
+
+// Parameterized setup for tests that work with both modes
+#[allow(dead_code)]
+struct DualModeSetup {
+  temp_dir: Option<TempDir>,
+  store: VersionedKVStore,
+  time_provider: Arc<TestTimeProvider>,
+  mode: StoreMode,
+}
+
+impl DualModeSetup {
+  async fn new(mode: StoreMode) -> anyhow::Result<Self> {
+    let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+
+    let (temp_dir, store) = match mode {
+      StoreMode::Persistent => {
+        let temp_dir = TempDir::new()?;
+        let (store, _) =
+          VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
+        (Some(temp_dir), store)
+      },
+      StoreMode::InMemory => {
+        let store = VersionedKVStore::new_in_memory(time_provider.clone());
+        (None, store)
+      },
+    };
+
+    Ok(Self {
+      temp_dir,
+      store,
+      time_provider,
+      mode,
+    })
+  }
+}
+
+// Original setup for persistent-only tests
 struct Setup {
   temp_dir: TempDir,
   store: VersionedKVStore,
@@ -64,59 +107,92 @@ impl Setup {
   }
 }
 
+#[rstest]
+#[case(StoreMode::Persistent)]
+#[case(StoreMode::InMemory)]
 #[tokio::test]
-async fn empty_store() -> anyhow::Result<()> {
-  let setup = Setup::new().await?;
+async fn empty_store(#[case] mode: StoreMode) -> anyhow::Result<()> {
+  let setup = DualModeSetup::new(mode).await?;
 
   // Should start empty
   assert!(setup.store.is_empty());
   assert_eq!(setup.store.len(), 0);
 
-  assert!(setup.temp_dir.path().join("test.jrn.0").exists());
+  if let Some(ref temp_dir) = setup.temp_dir {
+    assert!(temp_dir.path().join("test.jrn.0").exists());
+  }
 
   Ok(())
 }
 
+#[rstest]
+#[case(StoreMode::Persistent)]
+#[case(StoreMode::InMemory)]
 #[tokio::test]
-async fn basic_crud() -> anyhow::Result<()> {
-  let temp_dir = TempDir::new()?;
-  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-
-
-  let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider).await?;
+async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
+  let mut setup = DualModeSetup::new(mode).await?;
 
   // Insert some values
-  let ts1 = store
+  let ts1 = setup
+    .store
     .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
     .await?;
-  let ts2 = store
+  let ts2 = setup
+    .store
     .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
     .await?;
 
-  assert_eq!(store.len(), 2);
+  assert_eq!(setup.store.len(), 2);
   assert!(ts2 >= ts1);
 
   // Remove a key
-  let ts3 = store.remove(Scope::FeatureFlag, "key1").await?;
+  let ts3 = setup.store.remove(Scope::FeatureFlag, "key1").await?;
   assert!(ts3.is_some());
   assert!(ts3.unwrap() >= ts2);
 
-  assert_eq!(store.len(), 1);
-  assert!(!store.contains_key(Scope::FeatureFlag, "key1"));
-  assert!(store.contains_key(Scope::FeatureFlag, "key2"));
+  assert_eq!(setup.store.len(), 1);
+  assert!(!setup.store.contains_key(Scope::FeatureFlag, "key1"));
+  assert!(setup.store.contains_key(Scope::FeatureFlag, "key2"));
 
   // Remove non-existent key
-  let removed = store.remove(Scope::FeatureFlag, "nonexistent").await?;
+  let removed = setup
+    .store
+    .remove(Scope::FeatureFlag, "nonexistent")
+    .await?;
   assert!(removed.is_none());
 
   // Read back existing key
-  let val = store.get(Scope::FeatureFlag, "key2");
+  let val = setup.store.get(Scope::FeatureFlag, "key2");
   assert_eq!(val, Some(&make_string_value("value2")));
 
   // Read non-existent key
-  let val = store.get(Scope::FeatureFlag, "key1");
+  let val = setup.store.get(Scope::FeatureFlag, "key1");
   assert_eq!(val, None);
+
+  Ok(())
+}
+
+#[rstest]
+#[case(StoreMode::Persistent)]
+#[case(StoreMode::InMemory)]
+#[tokio::test]
+async fn test_null_value_is_deletion(#[case] mode: StoreMode) -> anyhow::Result<()> {
+  let mut setup = DualModeSetup::new(mode).await?;
+
+  // Insert a value
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .await?;
+  assert!(setup.store.contains_key(Scope::FeatureFlag, "key1"));
+
+  // Insert empty state to delete
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "key1", StateValue::default())
+    .await?;
+  assert!(!setup.store.contains_key(Scope::FeatureFlag, "key1"));
+  assert_eq!(setup.store.len(), 0);
 
   Ok(())
 }
@@ -162,28 +238,6 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
       })
     );
   }
-
-  Ok(())
-}
-
-#[tokio::test]
-async fn test_null_value_is_deletion() -> anyhow::Result<()> {
-  let mut setup = Setup::new().await?;
-
-  // Insert a value
-  setup
-    .store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
-    .await?;
-  assert!(setup.store.contains_key(Scope::FeatureFlag, "key1"));
-
-  // Insert empty state to delete
-  setup
-    .store
-    .insert(Scope::FeatureFlag, "key1", StateValue::default())
-    .await?;
-  assert!(!setup.store.contains_key(Scope::FeatureFlag, "key1"));
-  assert_eq!(setup.store.len(), 0);
 
   Ok(())
 }
@@ -265,7 +319,7 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
     .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
     .await?;
 
-  let pre_rotation_state = setup.store.as_hashmap().clone();
+  let pre_rotation_state = setup.store.state().clone();
   let pre_rotation_ts = setup
     .store
     .get_with_timestamp(Scope::FeatureFlag, "key1")
@@ -276,7 +330,7 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
   setup.store.rotate_journal().await?;
 
   // Verify state is preserved exactly
-  let post_rotation_state = setup.store.as_hashmap();
+  let post_rotation_state = setup.store.state();
   assert_eq!(pre_rotation_state, *post_rotation_state);
   assert_eq!(setup.store.len(), 1);
 

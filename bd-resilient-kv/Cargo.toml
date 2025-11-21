@@ -12,6 +12,7 @@ doctest = false
 tempfile.workspace = true
 ctor.workspace = true
 time.workspace        = true
+rstest.workspace = true
 
 [dependencies]
 ahash.workspace             = true
