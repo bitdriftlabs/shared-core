@@ -8,18 +8,19 @@
 #![allow(clippy::unwrap_used)]
 
 use crate::{Scope, StateReader, Store};
+use rstest::rstest;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::macros::datetime;
 
 struct Setup {
-  _dir: TempDir,
+  _dir: Option<TempDir>,
   _time_provider: Arc<bd_time::TestTimeProvider>,
   store: Store,
 }
 
 impl Setup {
-  async fn new() -> Self {
+  async fn persistent() -> Self {
     let temp_dir = tempfile::tempdir().unwrap();
     let time_provider = Arc::new(bd_time::TestTimeProvider::new(
       datetime!(2024-01-01 00:00:00 UTC),
@@ -30,7 +31,20 @@ impl Setup {
       .store;
 
     Self {
-      _dir: temp_dir,
+      _dir: Some(temp_dir),
+      _time_provider: time_provider,
+      store,
+    }
+  }
+
+  fn in_memory() -> Self {
+    let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+      datetime!(2024-01-01 00:00:00 UTC),
+    ));
+    let store = Store::new_in_memory();
+
+    Self {
+      _dir: None,
       _time_provider: time_provider,
       store,
     }
@@ -38,8 +52,15 @@ impl Setup {
 }
 
 #[tokio::test]
-async fn basic_insert_and_get() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn basic_insert_and_get(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   setup
     .store
@@ -53,8 +74,15 @@ async fn basic_insert_and_get() {
 }
 
 #[tokio::test]
-async fn insert_multiple_values() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn insert_multiple_values(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   setup
     .store
@@ -79,8 +107,15 @@ async fn insert_multiple_values() {
 }
 
 #[tokio::test]
-async fn update_existing_value() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn update_existing_value(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   setup
     .store
@@ -98,8 +133,15 @@ async fn update_existing_value() {
 }
 
 #[tokio::test]
-async fn remove_value() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn remove_value(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   setup
     .store
@@ -117,8 +159,15 @@ async fn remove_value() {
 }
 
 #[tokio::test]
-async fn remove_nonexistent_value() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn remove_nonexistent_value(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   setup
     .store
@@ -131,8 +180,15 @@ async fn remove_nonexistent_value() {
 }
 
 #[tokio::test]
-async fn clear_scope() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn clear_scope(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   setup
     .store
@@ -159,8 +215,15 @@ async fn clear_scope() {
 }
 
 #[tokio::test]
-async fn scope_isolation() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn scope_isolation(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   setup
     .store
@@ -179,8 +242,15 @@ async fn scope_isolation() {
 }
 
 #[tokio::test]
-async fn iter_scope() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn iter_scope(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   setup
     .store
@@ -212,8 +282,15 @@ async fn iter_scope() {
 }
 
 #[tokio::test]
-async fn iter_empty_scope() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn iter_empty_scope(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   let reader = setup.store.read().await;
   let count = reader
@@ -225,8 +302,15 @@ async fn iter_empty_scope() {
 }
 
 #[tokio::test]
-async fn to_snapshot() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn to_snapshot(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   setup
     .store
@@ -264,8 +348,15 @@ async fn to_snapshot() {
 }
 
 #[tokio::test]
-async fn to_scoped_snapshot() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn to_scoped_snapshot(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   setup
     .store
@@ -290,8 +381,15 @@ async fn to_scoped_snapshot() {
 }
 
 #[tokio::test]
-async fn empty_snapshot() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn empty_snapshot(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   let reader = setup.store.read().await;
   let snapshot = reader.to_snapshot();
@@ -334,8 +432,15 @@ async fn persistence_across_restart() {
 }
 
 #[tokio::test]
-async fn large_value() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn large_value(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   let large_value = "x".repeat(10_000);
   setup
@@ -352,8 +457,15 @@ async fn large_value() {
 }
 
 #[tokio::test]
-async fn many_keys() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn many_keys(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   for i in 0 .. 100 {
     setup
@@ -379,8 +491,15 @@ async fn many_keys() {
 }
 
 #[tokio::test]
-async fn special_characters_in_keys() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn special_characters_in_keys(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   setup
     .store
@@ -414,8 +533,15 @@ async fn special_characters_in_keys() {
 }
 
 #[tokio::test]
-async fn empty_key() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn empty_key(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   setup
     .store
@@ -428,8 +554,15 @@ async fn empty_key() {
 }
 
 #[tokio::test]
-async fn empty_value() {
-  let setup = Setup::new().await;
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+async fn empty_value(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+  let setup = setup.await;
 
   setup
     .store

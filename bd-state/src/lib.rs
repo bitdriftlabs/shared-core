@@ -231,7 +231,7 @@ impl Store {
         fallback_occurred: false,
       },
       Err(e) => {
-        log::warn!(
+        log::debug!(
           "Failed to initialize persistent state store: {e}, falling back to in-memory store"
         );
         let store = Self::new_in_memory();
