@@ -40,7 +40,6 @@ use bd_log_primitives::{
   LogLevel,
   LogMessage,
   StringOrBytes,
-  log_level,
 };
 use bd_network_quality::{NetworkQualityMonitor, NetworkQualityResolver};
 use bd_proto::protos::client::api::debug_data_request::{
@@ -153,13 +152,11 @@ pub struct LogLine {
 
 #[derive(Debug)]
 pub enum LogAttributesOverrides {
-  /// The hint that tells the SDK what the expected previous session ID was. The SDK uses it to
-  /// verify whether the passed information matches its internal session ID tracking and drops
-  /// logs whose hints are invalid.
+  /// The hint that tells the SDK to use the previous session ID if available.
   ///
   /// Use of this override assumes that all relevant metadata has been attached to the log as no
   /// current session metadata will be added.
-  PreviousRunSessionID(String, OffsetDateTime),
+  PreviousRunSessionID(OffsetDateTime),
 
   /// Overrides the time when the log occurred at, useful for cases like spans with a provided
   /// time.
@@ -601,9 +598,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn process_log(&mut self, log: LogLine, block: bool) -> anyhow::Result<LogReplayResult> {
     // Prevent re-entrancy when we are evaluating the log metadata.
     let result = with_thread_local_logger_guard(|| {
-      if let Some(LogAttributesOverrides::PreviousRunSessionID(_id, _timestamp)) =
-        &log.attributes_overrides
-      {
+      if let Some(LogAttributesOverrides::PreviousRunSessionID(_)) = &log.attributes_overrides {
         // avoid normalizing metadata for logs from previous sessions, which may
         // have had different global state
         self
@@ -624,69 +619,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     match result {
       Ok(metadata) => {
         let (session_id, timestamp, extra_fields) = match log.attributes_overrides {
-          Some(LogAttributesOverrides::PreviousRunSessionID(
-            expected_previous_process_session_id,
-            occurred_at,
-          )) => {
-            if Some(&expected_previous_process_session_id)
-              == self.session_strategy.previous_process_session_id().as_ref()
-            {
-              // Session ID override hint provided and matches our expectations. Emit log with
-              // overrides applied.
-              (
-                expected_previous_process_session_id,
-                occurred_at,
-                Some(LogFields::from([(
-                  "_logged_at".into(),
-                  LogFieldValue::String(metadata.timestamp.to_string()),
-                )])),
-              )
-            } else {
-              // Session ID override hint provided but doesn't match our expectations. Drop log.
-              let session_id = self.session_strategy.session_id();
-
-              handle_unexpected_error_with_details(
-                anyhow::Error::msg(
-                  "failed to override log attributes, provided override attributes do not match \
-                   expectations",
-                ),
-                &format!(
-                  "original_session_id {session_id:?}, override attribute session ID {:?} \
-                   original timestamp {:?}, override timestamp {:?}",
-                  expected_previous_process_session_id, metadata.timestamp, occurred_at
-                ),
-                || None,
-              );
-
-              // We log an internal log and continue processing the log.
-              let _ignored = self
-                .write_log_internal(
-                  "failed to override log attributes, provided override attributes do not match \
-                   expectations",
-                  metadata
-                    .fields
-                    .clone()
-                    .into_iter()
-                    .chain([
-                      (
-                        "_original_session_id".into(),
-                        LogFieldValue::String(session_id.clone()),
-                      ),
-                      (
-                        "_override_session_id".into(),
-                        LogFieldValue::String(expected_previous_process_session_id.clone()),
-                      ),
-                    ])
-                    .collect(),
-                  metadata.matching_fields.clone(),
-                  session_id.clone(),
-                  metadata.timestamp,
-                )
-                .await;
-
-              // We drop the log as the provided override attributes do not match our expectations.
-              return Ok(LogReplayResult::default());
-            }
+          Some(LogAttributesOverrides::PreviousRunSessionID(occurred_at)) => {
+            // Use the previous session ID if available and the provided timestamp.
+            (
+              self
+                .session_strategy
+                .previous_process_session_id()
+                .unwrap_or_else(|| self.session_strategy.session_id()),
+              occurred_at,
+              Some(LogFields::from([(
+                "_logged_at".into(),
+                LogFieldValue::String(metadata.timestamp.to_string()),
+              )])),
+            )
           },
           Some(LogAttributesOverrides::OccurredAt(overridden_timestamp)) => {
             // Occurred at override provided. Emit log with overrides applied.
@@ -876,21 +821,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           // emitting it as part of the upload process. This avoids having to mess with time
           // overrides at a later stage.
 
-            let session_id_override = match session {
-                crate::ReportProcessingSession::Current => None,
-                crate::ReportProcessingSession::PreviousRun => self
-                  .session_strategy
-                  .previous_process_session_id(),
-                crate::ReportProcessingSession::Other(id) => Some(id),
-            };
-
           for crash_log in report_processor.process_all_pending_reports().await {
-            let attributes_overrides = session_id_override.clone().map(|id| {
-              LogAttributesOverrides::PreviousRunSessionID(
-                id,
-                crash_log.timestamp,
-              )
-            });
+            let attributes_overrides = match session {
+                crate::ReportProcessingSession::Current => LogAttributesOverrides::OccurredAt(
+                  crash_log.timestamp,
+                ),
+                crate::ReportProcessingSession::PreviousRun => LogAttributesOverrides::PreviousRunSessionID(
+                  crash_log.timestamp)
+            }.into();
             let log = LogLine {
               log_type: LogType::LIFECYCLE,
               log_level: crash_log.log_level,
@@ -1103,33 +1041,5 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         ..Default::default()
       }))
       .await;
-  }
-
-  async fn write_log_internal(
-    &mut self,
-    msg: &str,
-    fields: LogFields,
-    matching_fields: LogFields,
-    session_id: String,
-    occurred_at: time::OffsetDateTime,
-  ) -> anyhow::Result<()> {
-    // TODO(mattklein123): Should we support injected logs for internal logs?
-    self
-      .write_log(
-        Log {
-          log_level: log_level::WARNING,
-          log_type: LogType::INTERNAL_SDK,
-          message: msg.into(),
-          fields,
-          matching_fields,
-          session_id,
-          occurred_at,
-          capture_session: None,
-        },
-        false,
-      )
-      .await?;
-
-    Ok(())
   }
 }

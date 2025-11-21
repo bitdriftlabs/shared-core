@@ -423,8 +423,6 @@ fn log_upload_attributes_override() {
     },
   );
 
-  let current_session_id = setup.logger.new_logger_handle().session_id();
-
   // This log should end up being emitted with an overridden session ID and timestamp,
   // and no fields associated with the current session
   setup.log(
@@ -433,10 +431,7 @@ fn log_upload_attributes_override() {
     "log with overridden attributes".into(),
     [].into(),
     [].into(),
-    Some(LogAttributesOverrides::PreviousRunSessionID(
-      "foo_overridden".to_string(),
-      time_second,
-    )),
+    Some(LogAttributesOverrides::PreviousRunSessionID(time_second)),
   );
 
   // This log should end up being emitted with an overridden session ID, timestamp,
@@ -447,26 +442,10 @@ fn log_upload_attributes_override() {
     "log with overridden attributes and fields".into(),
     AnnotatedLogFields::from([("_some_version".into(), AnnotatedLogField::new_ootb("350"))]),
     [].into(),
-    Some(LogAttributesOverrides::PreviousRunSessionID(
-      "foo_overridden".to_string(),
-      time_second,
-    )),
+    Some(LogAttributesOverrides::PreviousRunSessionID(time_second)),
   );
 
-  // This log should end up being dropped.
-  setup.log(
-    log_level::DEBUG,
-    LogType::NORMAL,
-    "log with overridden attributes".into(),
-    [].into(),
-    [].into(),
-    Some(LogAttributesOverrides::PreviousRunSessionID(
-      "bar_overridden".to_string(),
-      time_second,
-    )),
-  );
-
-  for _ in 0 .. 6 {
+  for _ in 0 .. 7 {
     setup.log(
       log_level::DEBUG,
       LogType::NORMAL,
@@ -510,17 +489,10 @@ fn log_upload_attributes_override() {
     // Confirm can override provider fields
     assert_eq!(second_uploaded_log.field("_some_version"), "350".to_string());
 
-    // Confirm that second log was dropped and error was emitted.
-    let third_uploaded_log = &log_upload.logs()[2];
-    assert_eq!(third_uploaded_log.session_id(), current_session_id);
-    assert_eq!(third_uploaded_log.field("_override_session_id"), "bar_overridden");
-
     // Confirm the log overriding the time worked.
     let occurred_at_overriden_log = &log_upload.logs()[9];
     assert_eq!(occurred_at_overriden_log.timestamp(), time_first);
     assert_eq!(occurred_at_overriden_log.field("_some_version"), "400".to_string());
-
-    assert!(error_reporter.error().is_some());
   });
 }
 
