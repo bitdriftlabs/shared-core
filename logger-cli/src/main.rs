@@ -136,6 +136,33 @@ async fn main() -> anyhow::Result<()> {
 
       client.stop(context::current()).await?;
     },
+    Command::SetFeatureFlag {
+      ref name,
+      ref variant,
+    } => {
+      with_logger(&args, async |logger| {
+        logger
+          .set_feature_flag(context::current(), name.clone(), variant.clone())
+          .await?;
+        Ok(())
+      })
+      .await?;
+    },
+    Command::SetMultipleFeatureFlag { ref flags } => {
+      with_logger(&args, async |logger| {
+        logger
+          .set_feature_flags(
+            context::current(),
+            flags
+              .chunks_exact(2)
+              .map(|pair| (pair[0].clone(), pair[1].clone()))
+              .collect(),
+          )
+          .await?;
+        Ok(())
+      })
+      .await?;
+    },
   }
 
   Ok(())
